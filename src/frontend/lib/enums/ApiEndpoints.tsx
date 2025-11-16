@@ -66,6 +66,9 @@ export enum ApiEndpoints {
   icons = 'icons/',
   selectionlist_list = 'selection/',
   selectionentry_list = 'selection/:id/entry/',
+  kanban_card_list = 'kanban/cards/',
+  kanban_card_detail = 'kanban/cards/:id/',
+  kanban_card_restore = 'kanban/cards/:id/restore/',
 
   // Barcode API endpoints
   barcode = 'barcode/',

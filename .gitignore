@@ -119,3 +119,6 @@ InvenTree/web/static
 
 # performance test results
 .codspeed/
+
+#backup
+InvenTree-backup/

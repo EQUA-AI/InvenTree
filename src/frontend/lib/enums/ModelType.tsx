@@ -38,6 +38,7 @@ export enum ModelType {
   contenttype = 'contenttype',
   selectionlist = 'selectionlist',
   selectionentry = 'selectionentry',
+  kanbancard = 'kanbancard',
   error = 'error',
   tag = 'tag'
 }

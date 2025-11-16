@@ -44,7 +44,7 @@ function DrawerContent({ closeFunc }: Readonly<{ closeFunc?: () => void }>) {
 
   const globalSettings = useGlobalSettingsState();
 
-  const [scrollHeight, setScrollHeight] = useState(0);
+  const [_scrollHeight, setScrollHeight] = useState(0);
   const ref = useRef(null);
   const { height } = useViewportSize();
 
@@ -99,6 +99,17 @@ function DrawerContent({ closeFunc }: Readonly<{ closeFunc?: () => void }>) {
         link: '/sales/',
         hidden: !user.hasViewRole(UserRoles.sales_order),
         icon: 'sales_orders'
+      },
+      {
+        id: 'tasks-kanban',
+        title: t`Kanban`,
+        link: '/tasks/kanban/',
+        hidden:
+          !(
+            user.hasViewPermission(ModelType.kanbancard) ||
+            user.isStaff()
+          ),
+        icon: 'list'
       },
       {
         id: 'users',

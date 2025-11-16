@@ -50,6 +50,7 @@ import {
 import {
   RenderContentType,
   RenderError,
+  RenderKanbanCard,
   RenderImportSession,
   RenderParameter,
   RenderParameterTemplate,
@@ -117,6 +118,7 @@ export const RendererLookup: ModelRendererDict = {
   [ModelType.contenttype]: RenderContentType,
   [ModelType.selectionlist]: RenderSelectionList,
   [ModelType.selectionentry]: RenderSelectionEntry,
+  [ModelType.kanbancard]: RenderKanbanCard,
   [ModelType.error]: RenderError,
   [ModelType.tag]: RenderTag
 };

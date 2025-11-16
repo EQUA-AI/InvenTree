@@ -10,6 +10,7 @@ import {
   IconBox,
   IconBuildingFactory2,
   IconDashboard,
+  IconLayoutKanban,
   IconPackages,
   IconShoppingCart,
   IconTruckDelivery
@@ -72,6 +73,11 @@ export function getNavTabs(user: UserStateProps): NavTab[] {
         user.hasViewRole(UserRoles.sales_order) ||
         (globalSettings.isSet('RETURNORDER_ENABLED') &&
           user.hasViewRole(UserRoles.return_order))
+    },
+    {
+      name: 'tasks',
+      title: t`Tasks`,
+      icon: <IconLayoutKanban />
     }
   ];
 
