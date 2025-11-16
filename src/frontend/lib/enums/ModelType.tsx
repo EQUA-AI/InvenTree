@@ -34,5 +34,6 @@ export enum ModelType {
   pluginconfig = 'pluginconfig',
   contenttype = 'contenttype',
   selectionlist = 'selectionlist',
+  kanbancard = 'kanbancard',
   error = 'error'
 }

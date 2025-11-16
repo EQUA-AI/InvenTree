@@ -9,6 +9,7 @@ import {
   IconBox,
   IconBuildingFactory2,
   IconDashboard,
+  IconLayoutKanban,
   IconPackages,
   IconShoppingCart,
   IconTruckDelivery
@@ -60,6 +61,11 @@ export function getNavTabs(user: UserStateProps): NavTab[] {
       title: t`Sales`,
       icon: <IconTruckDelivery />,
       role: UserRoles.sales_order
+    },
+    {
+      name: 'tasks',
+      title: t`Tasks`,
+      icon: <IconLayoutKanban />
     }
   ];
 

@@ -75,6 +75,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 # Build paths inside the project like this: BASE_DIR.joinpath(...)
 BASE_DIR = config.get_base_dir()
 
+# Add the project backend directory to PYTHONPATH so sibling apps (e.g. the
+# Kanban tasks app) can be imported directly as Django apps.
+BACKEND_ROOT = BASE_DIR.parent
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
 # Load configuration data
 CONFIG = config.load_config_data(set_cache=True)
 config.load_version_file()
@@ -289,6 +295,7 @@ INSTALLED_APPS = [
     'part.apps.PartConfig',
     'report.apps.ReportConfig',
     'stock.apps.StockConfig',
+    'tasks.apps.TasksConfig',
     'users.apps.UsersConfig',
     'machine.apps.MachineConfig',
     'data_exporter.apps.DataExporterConfig',
@@ -305,6 +312,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites',
+    'django.contrib.postgres',
     # Maintenance
     'maintenance_mode',
     # Third part add-ons

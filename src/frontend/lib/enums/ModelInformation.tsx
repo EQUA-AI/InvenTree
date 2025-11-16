@@ -271,6 +271,13 @@ export const ModelInformationDict: ModelDict = {
     api_endpoint: ApiEndpoints.selectionlist_list,
     icon: 'list_details'
   },
+  kanbancard: {
+    label: () => t`Kanban Card`,
+    label_multiple: () => t`Kanban Cards`,
+    url_overview: '/tasks/kanban/',
+    api_endpoint: ApiEndpoints.kanban_card_list,
+    icon: 'list'
+  },
   error: {
     label: () => t`Error`,
     label_multiple: () => t`Errors`,

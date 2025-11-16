@@ -35,6 +35,7 @@ import {
 import {
   RenderContentType,
   RenderError,
+  RenderKanbanCard,
   RenderImportSession,
   RenderProjectCode,
   RenderSelectionList
@@ -97,6 +98,7 @@ export const RendererLookup: ModelRendererDict = {
   [ModelType.pluginconfig]: RenderPlugin,
   [ModelType.contenttype]: RenderContentType,
   [ModelType.selectionlist]: RenderSelectionList,
+  [ModelType.kanbancard]: RenderKanbanCard,
   [ModelType.error]: RenderError
 };
 
