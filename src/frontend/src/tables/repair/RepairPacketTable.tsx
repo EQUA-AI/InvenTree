@@ -6,8 +6,8 @@ import { ModelType } from '@lib/enums/ModelType';
 import { apiUrl } from '@lib/functions/Api';
 import type { TableColumn } from '@lib/types/Tables';
 import type { RepairPacket } from '@lib/types/Repair';
-import { useTable } from '../../hooks/UseTable';
-import { InvenTreeTable } from '../InvenTreeTable';
+import useTable from '@lib/hooks/UseTable';
+import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 
 /**
  * Table component for displaying Repair Packets.

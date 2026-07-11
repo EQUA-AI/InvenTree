@@ -44,7 +44,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../App';
 import { type ChatMessage, type ChatThread, type UploadedFile, useAIChat } from '../../hooks/UseAIChat';
 import { HITLApprovalCard, HITLResultBanner } from '../ai/HITLApprovalModal';
-import { Boundary } from '../Boundary';
+import { Boundary } from '@lib/components/Boundary';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history';
 

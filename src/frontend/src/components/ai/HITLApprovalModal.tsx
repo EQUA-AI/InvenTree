@@ -461,7 +461,7 @@ export function HITLApprovalCard({
                 >
                   {detailsOpened ? t`Hide details` : t`Show details`}
                 </Button>
-                <Collapse in={detailsOpened}>
+                <Collapse expanded={detailsOpened}>
                   <Box
                     mb='sm'
                     p='sm'
@@ -480,7 +480,7 @@ export function HITLApprovalCard({
             )}
 
             {/* Reject reason input */}
-            <Collapse in={showRejectInput}>
+            <Collapse expanded={showRejectInput}>
               <Textarea
                 placeholder={t`Why are you rejecting this? (optional)`}
                 size='xs'

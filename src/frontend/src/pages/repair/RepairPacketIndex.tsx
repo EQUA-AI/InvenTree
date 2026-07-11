@@ -4,7 +4,8 @@ import { IconClipboardList } from '@tabler/icons-react';
 import { useMemo } from 'react';
 
 import { PageDetail } from '../../components/nav/PageDetail';
-import type { PanelType } from '../../components/panels/Panel';
+import type { PanelType } from '@lib/types/Panel';
+import { ModelType } from '@lib/enums/ModelType';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { RepairPacketTable } from '../../tables/repair/RepairPacketTable';
 
@@ -29,7 +30,7 @@ export default function RepairPacketIndex() {
       <PanelGroup
         pageKey='repair-packet-index'
         panels={panels}
-        model='repairpacket'
+        model={ModelType.repairpacket}
         id={null}
       />
     </Stack>

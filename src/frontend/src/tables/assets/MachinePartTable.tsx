@@ -5,8 +5,8 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type { TableColumn } from '@lib/types/Tables';
 import type { MachinePart } from '@lib/types/Assets';
-import { useTable } from '../../hooks/UseTable';
-import { InvenTreeTable } from '../InvenTreeTable';
+import useTable from '@lib/hooks/UseTable';
+import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 
 /**
  * Table component for displaying parts installed on a machine.

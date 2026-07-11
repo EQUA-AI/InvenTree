@@ -150,6 +150,8 @@ temp_lib/
 .cursorrules
 .aider*
 .claude/
+.agents/
+skills-lock.json
 
 # ---------------------------------------------------------------------------
 # Ad-hoc / scratch test harnesses (local only — not part of the CI test suite)

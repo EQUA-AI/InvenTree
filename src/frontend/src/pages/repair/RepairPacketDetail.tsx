@@ -24,7 +24,7 @@ import {
 import { ItemDetailsGrid } from '../../components/details/ItemDetails';
 import InstanceDetail from '../../components/nav/InstanceDetail';
 import { PageDetail } from '../../components/nav/PageDetail';
-import type { PanelType } from '../../components/panels/Panel';
+import type { PanelType } from '@lib/types/Panel';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useApi } from '../../contexts/ApiContext';
 import { useInstance } from '../../hooks/UseInstance';

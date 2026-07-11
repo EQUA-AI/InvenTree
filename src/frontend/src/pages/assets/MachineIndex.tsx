@@ -4,7 +4,8 @@ import { IconTools } from '@tabler/icons-react';
 import { useMemo } from 'react';
 
 import { PageDetail } from '../../components/nav/PageDetail';
-import type { PanelType } from '../../components/panels/Panel';
+import type { PanelType } from '@lib/types/Panel';
+import { ModelType } from '@lib/enums/ModelType';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { AssetMachineTable } from '../../tables/assets/AssetMachineTable';
 
@@ -29,7 +30,7 @@ export default function MachineIndex() {
       <PanelGroup
         pageKey='asset-machine-index'
         panels={panels}
-        model='machines'
+        model={ModelType.assetmachine}
         id={null}
       />
     </Stack>
