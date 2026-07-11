@@ -16,11 +16,15 @@ import {
   RowDeleteAction,
   RowEditAction
 } from '@lib/components/RowActions';
+import { StylishText } from '@lib/components/StylishText';
+import { DetailDrawer } from '@lib/components/nav/DetailDrawer';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
-import { type ApiFormModalProps, getDetailUrl } from '@lib/index';
+import { getDetailUrl } from '@lib/functions/Navigation';
+import useTable from '@lib/hooks/UseTable';
+import type { ApiFormModalProps } from '@lib/index';
 import type { TableFilter } from '@lib/types/Filters';
 import type { TableColumn, TableState } from '@lib/types/Tables';
 import { showNotification } from '@mantine/notifications';
@@ -28,12 +32,12 @@ import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { api } from '../../App';
 import { EditApiForm } from '../../components/forms/ApiForm';
-import { StylishText } from '../../components/items/StylishText';
 import {
   TransferList,
   type TransferListItem
 } from '../../components/items/TransferList';
-import { DetailDrawer } from '../../components/nav/DetailDrawer';
+import { BooleanColumn } from '../../components/tables/ColumnRenderers';
+import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 import { showApiErrorMessage } from '../../functions/notifications';
 import {
   useApiFormModal,
@@ -41,10 +45,7 @@ import {
   useDeleteApiFormModal
 } from '../../hooks/UseForm';
 import { useInstance } from '../../hooks/UseInstance';
-import { useTable } from '../../hooks/UseTable';
 import { useUserState } from '../../states/UserState';
-import { BooleanColumn } from '../ColumnRenderers';
-import { InvenTreeTable } from '../InvenTreeTable';
 import type { GroupDetailI } from './GroupTable';
 
 export interface UserDetailI {
@@ -180,7 +181,7 @@ export function UserDrawer({
                     disabled: isCurrentUser
                   },
                   is_staff: {
-                    label: t`Is Staff`,
+                    label: t`Is Administrator`,
                     description: t`Designates whether the user can log into the django admin site.`,
                     disabled: isCurrentUser
                   },
@@ -281,7 +282,8 @@ export function UserTable({
         }
       },
       BooleanColumn({
-        accessor: 'is_staff'
+        accessor: 'is_staff',
+        title: t`Administrator`
       }),
       BooleanColumn({
         accessor: 'is_superuser'
@@ -402,8 +404,8 @@ export function UserTable({
       },
       {
         name: 'is_staff',
-        label: t`Staff`,
-        description: t`Show staff users`
+        label: t`Administrator`,
+        description: t`Show administrators`
       },
       {
         name: 'is_superuser',

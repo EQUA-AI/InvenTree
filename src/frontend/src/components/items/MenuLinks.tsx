@@ -10,9 +10,10 @@ import {
 } from '@mantine/core';
 import { type JSX, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+
+import { StylishText } from '@lib/components/StylishText';
 import type { InvenTreeIconType } from '@lib/types/Icons';
 import { InvenTreeIcon } from '../../functions/icons';
-import { StylishText } from './StylishText';
 
 export interface MenuLinkItem {
   id: string;

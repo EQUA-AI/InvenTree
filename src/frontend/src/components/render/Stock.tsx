@@ -5,9 +5,9 @@ import type { ReactNode } from 'react';
 import { ModelType } from '@lib/enums/ModelType';
 import { formatDecimal } from '@lib/functions/Formatting';
 import { getDetailUrl } from '@lib/functions/Navigation';
-import { shortenString } from '../../functions/tables';
-import { TableHoverCard } from '../../tables/TableHoverCard';
+import { shortenString } from '@lib/functions/String';
 import { ApiIcon } from '../items/ApiIcon';
+import { TableHoverCard } from '../tables/TableHoverCard';
 import {
   InlineSecondaryBadge,
   type InstanceRenderInterface,
@@ -48,12 +48,7 @@ export function RenderStockLocation(
     <RenderInlineModel
       {...props}
       tooltip={instance.pathstring}
-      prefix={
-        <>
-          {instance.level > 0 && `${'- '.repeat(instance.level)}`}
-          {instance.icon && <ApiIcon name={instance.icon} />}
-        </>
-      }
+      prefix={instance.icon && <ApiIcon name={instance.icon} />}
       primary={location}
       suffix={suffix}
       url={

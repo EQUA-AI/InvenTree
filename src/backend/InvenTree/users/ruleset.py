@@ -12,12 +12,14 @@ class RuleSetEnum(StringEnum):
     ADMIN = 'admin'
     PART_CATEGORY = 'part_category'
     PART = 'part'
+    BOM = 'bom'
     STOCK_LOCATION = 'stock_location'
     STOCK = 'stock'
     BUILD = 'build'
     PURCHASE_ORDER = 'purchase_order'
     SALES_ORDER = 'sales_order'
     RETURN_ORDER = 'return_order'
+    TRANSFER_ORDER = 'transfer_order'
 
 
 # This is a list of all the ruleset choices available in the system.
@@ -26,12 +28,14 @@ RULESET_CHOICES = [
     (RuleSetEnum.ADMIN, _('Admin')),
     (RuleSetEnum.PART_CATEGORY, _('Part Categories')),
     (RuleSetEnum.PART, _('Parts')),
+    (RuleSetEnum.BOM, _('Bills of Material')),
     (RuleSetEnum.STOCK_LOCATION, _('Stock Locations')),
     (RuleSetEnum.STOCK, _('Stock Items')),
     (RuleSetEnum.BUILD, _('Build Orders')),
     (RuleSetEnum.PURCHASE_ORDER, _('Purchase Orders')),
     (RuleSetEnum.SALES_ORDER, _('Sales Orders')),
     (RuleSetEnum.RETURN_ORDER, _('Return Orders')),
+    (RuleSetEnum.TRANSFER_ORDER, _('Transfer Orders')),
 ]
 
 # Ruleset names available in the system.
@@ -40,7 +44,7 @@ RULESET_NAMES = [choice[0] for choice in RULESET_CHOICES]
 # Permission types available for each ruleset.
 RULESET_PERMISSIONS = ['view', 'add', 'change', 'delete']
 
-RULESET_CHANGE_INHERIT = [('part', 'partparameter'), ('part', 'bomitem')]
+RULESET_CHANGE_INHERIT = [('part', 'bomitem')]
 
 
 def get_ruleset_models() -> dict:
@@ -74,6 +78,7 @@ def get_ruleset_models() -> dict:
             'oauth2_provider_idtoken',
             'oauth2_provider_accesstoken',
             'oauth2_provider_refreshtoken',
+            'oauth2_provider_devicegrant',
             # Plugins
             'plugin_pluginconfig',
             'plugin_pluginsetting',
@@ -93,35 +98,7 @@ def get_ruleset_models() -> dict:
             'django_mailbox_messageattachment',
             'django_mailbox_message',
         ],
-        RuleSetEnum.PART_CATEGORY: [
-            'part_partcategory',
-            'part_partcategoryparametertemplate',
-            'part_partcategorystar',
-        ],
-        RuleSetEnum.PART: [
-            'part_part',
-            'part_partpricing',
-            'part_bomitem',
-            'part_bomitemsubstitute',
-            'part_partsellpricebreak',
-            'part_partinternalpricebreak',
-            'part_parttesttemplate',
-            'part_partparametertemplate',
-            'part_partparameter',
-            'part_partrelated',
-            'part_partstar',
-            'part_partstocktake',
-            'part_partcategorystar',
-            'company_supplierpart',
-            'company_manufacturerpart',
-            'company_manufacturerpartparameter',
-        ],
-        RuleSetEnum.STOCK_LOCATION: ['stock_stocklocation', 'stock_stocklocationtype'],
-        RuleSetEnum.STOCK: [
-            'stock_stockitem',
-            'stock_stockitemtracking',
-            'stock_stockitemtestresult',
-        ],
+        RuleSetEnum.BOM: ['part_bomitem', 'part_bomitemsubstitute'],
         RuleSetEnum.BUILD: [
             'part_part',
             'part_partcategory',
@@ -133,12 +110,35 @@ def get_ruleset_models() -> dict:
             'stock_stockitem',
             'stock_stocklocation',
         ],
+        RuleSetEnum.PART_CATEGORY: [
+            'part_partcategory',
+            'part_partcategoryparametertemplate',
+            'part_partcategorystar',
+        ],
+        RuleSetEnum.PART: [
+            'part_part',
+            'part_partpricing',
+            'part_partsellpricebreak',
+            'part_partinternalpricebreak',
+            'part_parttesttemplate',
+            'part_partrelated',
+            'part_partstar',
+            'part_partstocktake',
+            'part_partcategorystar',
+            'company_supplierpart',
+            'company_manufacturerpart',
+        ],
+        RuleSetEnum.STOCK_LOCATION: ['stock_stocklocation', 'stock_stocklocationtype'],
+        RuleSetEnum.STOCK: [
+            'stock_stockitem',
+            'stock_stockitemtracking',
+            'stock_stockitemtestresult',
+        ],
         RuleSetEnum.PURCHASE_ORDER: [
             'company_company',
             'company_contact',
             'company_address',
             'company_manufacturerpart',
-            'company_manufacturerpartparameter',
             'company_supplierpart',
             'company_supplierpricebreak',
             'order_purchaseorder',
@@ -163,6 +163,11 @@ def get_ruleset_models() -> dict:
             'order_returnorderlineitem',
             'order_returnorderextraline',
         ],
+        RuleSetEnum.TRANSFER_ORDER: [
+            'order_transferorder',
+            'order_transferorderallocation',
+            'order_transferorderlineitem',
+        ],
     }
 
     if settings.SITE_MULTI:
@@ -179,6 +184,8 @@ def get_ruleset_ignore() -> list[str]:
         'contenttypes_contenttype',
         # Models which currently do not require permissions
         'common_attachment',
+        'common_parametertemplate',
+        'common_parameter',
         'common_customunit',
         'common_dataoutput',
         'common_inventreesetting',

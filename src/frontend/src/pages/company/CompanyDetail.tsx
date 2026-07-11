@@ -18,6 +18,8 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
+import { TagsList } from '@lib/index';
+import type { PanelType } from '@lib/types/Panel';
 import AdminButton from '../../components/buttons/AdminButton';
 import { PrintingActions } from '../../components/buttons/PrintingActions';
 import {
@@ -29,6 +31,7 @@ import { DetailsImage } from '../../components/details/DetailsImage';
 import { ItemDetailsGrid } from '../../components/details/ItemDetails';
 import {
   DeleteItemAction,
+  DuplicateItemAction,
   EditItemAction,
   OptionsActionDropdown
 } from '../../components/items/ActionDropdown';
@@ -37,10 +40,11 @@ import InstanceDetail from '../../components/nav/InstanceDetail';
 import { PageDetail } from '../../components/nav/PageDetail';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
 import NotesPanel from '../../components/panels/NotesPanel';
-import type { PanelType } from '../../components/panels/Panel';
 import { PanelGroup } from '../../components/panels/PanelGroup';
+import ParametersPanel from '../../components/panels/ParametersPanel';
 import { companyFields } from '../../forms/CompanyForms';
 import {
+  useCreateApiFormModal,
   useDeleteApiFormModal,
   useEditApiFormModal
 } from '../../hooks/UseForm';
@@ -77,7 +81,9 @@ export default function CompanyDetail(props: Readonly<CompanyDetailProps>) {
   } = useInstance({
     endpoint: ApiEndpoints.company_list,
     pk: id,
-    params: {},
+    params: {
+      tags: true
+    },
     refetchOnMount: true
   });
 
@@ -152,23 +158,26 @@ export default function CompanyDetail(props: Readonly<CompanyDetailProps>) {
 
     return (
       <ItemDetailsGrid>
-        <Grid grow>
-          <DetailsImage
-            appRole={UserRoles.purchase_order}
-            apiPath={apiUrl(ApiEndpoints.company_list, company.pk)}
-            src={company.image}
-            pk={company.pk}
-            refresh={refreshInstance}
-            imageActions={{
-              uploadFile: true,
-              downloadImage: true,
-              deleteFile: true
-            }}
-          />
-          <Grid.Col span={{ base: 12, sm: 8 }}>
-            <DetailsTable item={company} fields={tl} />
-          </Grid.Col>
-        </Grid>
+        <Stack gap='xs'>
+          <Grid grow>
+            <DetailsImage
+              appRole={UserRoles.purchase_order}
+              apiPath={apiUrl(ApiEndpoints.company_list, company.pk)}
+              src={company.image}
+              pk={company.pk}
+              refresh={refreshInstance}
+              imageActions={{
+                uploadFile: true,
+                downloadImage: true,
+                deleteFile: true
+              }}
+            />
+            <Grid.Col span={{ base: 12, sm: 8 }}>
+              <DetailsTable item={company} fields={tl} />
+            </Grid.Col>
+          </Grid>
+          <TagsList tags={company.tags} />
+        </Stack>
         <DetailsTable item={company} fields={tr} />
       </ItemDetailsGrid>
     );
@@ -247,6 +256,7 @@ export default function CompanyDetail(props: Readonly<CompanyDetailProps>) {
             tableName='assigned-stock'
             showLocation={false}
             allowReturn
+            defaultInStock={null}
             params={{ customer: company.pk }}
           />
         ) : (
@@ -265,13 +275,18 @@ export default function CompanyDetail(props: Readonly<CompanyDetailProps>) {
         icon: <IconMap2 />,
         content: company?.pk && <AddressTable companyId={company.pk} />
       },
+      ParametersPanel({
+        model_type: ModelType.company,
+        model_id: company?.pk
+      }),
       AttachmentPanel({
         model_type: ModelType.company,
         model_id: company.pk
       }),
       NotesPanel({
         model_type: ModelType.company,
-        model_id: company.pk
+        model_id: company.pk,
+        has_note: !!company.notes
       })
     ];
   }, [id, company, user]);
@@ -280,8 +295,21 @@ export default function CompanyDetail(props: Readonly<CompanyDetailProps>) {
     url: ApiEndpoints.company_list,
     pk: company?.pk,
     title: t`Edit Company`,
-    fields: companyFields(),
+    fields: useMemo(() => companyFields({}), []),
+    queryParams: new URLSearchParams({ tags: 'true' }),
     onFormSuccess: refreshInstance
+  });
+
+  const duplicateCompany = useCreateApiFormModal({
+    url: ApiEndpoints.company_list,
+    title: t`Duplicate Company`,
+    initialData: useMemo(() => ({ ...company }), [company]),
+    fields: useMemo(
+      () => companyFields({ duplicateCompanyId: company?.pk }),
+      [company]
+    ),
+    follow: true,
+    modelType: ModelType.company
   });
 
   const deleteCompany = useDeleteApiFormModal({
@@ -308,6 +336,10 @@ export default function CompanyDetail(props: Readonly<CompanyDetailProps>) {
             hidden: !user.hasChangeRole(UserRoles.purchase_order),
             onClick: () => editCompany.open()
           }),
+          DuplicateItemAction({
+            hidden: !user.hasAddRole(UserRoles.purchase_order),
+            onClick: () => duplicateCompany.open()
+          }),
           DeleteItemAction({
             hidden: !user.hasDeleteRole(UserRoles.purchase_order),
             onClick: () => deleteCompany.open()
@@ -331,6 +363,7 @@ export default function CompanyDetail(props: Readonly<CompanyDetailProps>) {
     <>
       {editCompany.modal}
       {deleteCompany.modal}
+      {duplicateCompany.modal}
       <InstanceDetail
         query={instanceQuery}
         requiredPermission={ModelType.company}

@@ -8,23 +8,23 @@ import {
   Group,
   Space,
   Stack,
-  Table,
-  Text
+  Table
 } from '@mantine/core';
 import type { ContextModalProps } from '@mantine/modals';
 import { useQuery } from '@tanstack/react-query';
 
+import { CopyButton } from '@lib/components/CopyButton';
+import { StylishText } from '@lib/components/StylishText';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { useShallow } from 'zustand/react/shallow';
 import { api } from '../../App';
+import { docLinks } from '../../defaults/links';
 import { generateUrl } from '../../functions/urls';
 import { useServerApiState } from '../../states/ServerApiState';
-import { useUserState } from '../../states/UserState';
-import { CopyButton } from '../buttons/CopyButton';
-import { StylishText } from '../items/StylishText';
 
 import type { JSX } from 'react';
+import { OnlyStaff } from '../items/OnlyStaff';
 
 type AboutLookupRef = {
   ref: string;
@@ -42,15 +42,11 @@ export function AboutInvenTreeModal({
     modalBody: string;
   }>
 >) {
-  const [user] = useUserState(useShallow((state) => [state.user]));
-
-  if (!user?.is_staff)
-    return (
-      <Text>
-        <Trans>This information is only available for staff users</Trans>
-      </Text>
-    );
-  return <AboutContent context={context} id={id} innerProps={innerProps} />;
+  return (
+    <OnlyStaff>
+      <AboutContent context={context} id={id} innerProps={innerProps} />
+    </OnlyStaff>
+  );
 }
 
 const AboutContent = ({
@@ -70,8 +66,8 @@ const AboutContent = ({
   function fillTable(lookup: AboutLookupRef[], data: any, alwaysLink = false) {
     return lookup
       .filter((entry: AboutLookupRef) => !!data[entry.ref])
-      .map((entry: AboutLookupRef, idx) => (
-        <Table.Tr key={idx}>
+      .map((entry: AboutLookupRef) => (
+        <Table.Tr key={entry.ref}>
           <Table.Td>{entry.title}</Table.Td>
           <Table.Td>
             <Group justify='space-between' gap='xs'>
@@ -182,7 +178,12 @@ const AboutContent = ({
               { ref: 'app', title: <Trans>Mobile App</Trans> },
               { ref: 'bug', title: <Trans>Submit Bug Report</Trans> }
             ],
-            data.links,
+            {
+              doc: docLinks.docs,
+              code: docLinks.github,
+              app: docLinks.app,
+              bug: docLinks.bug
+            },
             true
           )}
         </Table.Tbody>

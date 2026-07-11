@@ -1,10 +1,48 @@
 import { test } from './baseFixtures.js';
+import { stevenuser } from './defaults.js';
 import {
   clearTableFilters,
   navigate,
-  setTableChoiceFilter
+  openFilterDrawer,
+  setTableChoiceFilter,
+  toggleColumnSorting
 } from './helpers.js';
 import { doCachedLogin } from './login.js';
+
+// Test filtering by "quick filter" actions (against table columns)
+test('Tables - Quick Filters', async ({ browser }) => {
+  const page = await doCachedLogin(browser, {
+    url: 'part/category/index/parts/'
+  });
+
+  await clearTableFilters(page);
+
+  await page
+    .getByRole('button', { name: 'Part Not sorted' })
+    .getByRole('button')
+    .first()
+    .click();
+  await page.getByRole('combobox', { name: 'choice-filter-active' }).click();
+  await page.getByRole('option', { name: 'Yes' }).click();
+
+  await page
+    .getByRole('button', { name: 'Part Not sorted' })
+    .getByRole('button')
+    .first()
+    .click();
+  await page.getByRole('combobox', { name: 'choice-filter-locked' }).click();
+  await page.getByRole('option', { name: 'No' }).click();
+
+  await page
+    .getByRole('button', { name: 'IPN Not sorted' })
+    .getByRole('button')
+    .first()
+    .click();
+  await page.getByRole('combobox', { name: 'choice-filter-has_ipn' }).click();
+  await page.getByRole('option', { name: 'Yes' }).click();
+
+  await page.getByRole('cell', { name: 'ENCAB' }).first().waitFor();
+});
 
 test('Tables - Filters', async ({ browser }) => {
   // Head to the "build order list" page
@@ -37,13 +75,40 @@ test('Tables - Filters', async ({ browser }) => {
   await setTableChoiceFilter(page, 'Has Start Date', 'Yes');
 
   await clearTableFilters(page);
+
+  // Next, let's create a "custom filter group" and apply it
+  await openFilterDrawer(page);
+  await page.getByRole('button', { name: 'Add Filter' }).click();
+  await page.getByRole('combobox', { name: 'Filter' }).click();
+  await page.getByRole('option', { name: 'Outstanding' }).click();
+
+  await page
+    .getByRole('combobox', { name: 'choice-filter-outstanding' })
+    .click();
+  await page.getByRole('option', { name: 'Yes' }).click();
+
+  // Save the filter group
+  await page.getByRole('button', { name: 'Save Filters' }).click();
+  await page.getByRole('textbox', { name: 'filter-group-name' }).fill('custom');
+  await page
+    .getByRole('button', { name: 'save-filter-set', exact: true })
+    .click();
+
+  // Clear filters, and then restore from saved group
+  await page.getByRole('button', { name: 'Clear Filters' }).click();
+  await page.getByRole('button', { name: 'load-filter-group-custom' }).click();
+  await page.getByText('Show outstanding items').first().waitFor();
+
+  // Remove the filter group
+  await page
+    .getByRole('button', { name: 'delete-filter-group-custom' })
+    .click();
 });
 
 test('Tables - Pagination', async ({ browser }) => {
   const page = await doCachedLogin(browser, {
     url: 'manufacturing/index/buildorders',
-    username: 'steven',
-    password: 'wizardstaff'
+    user: stevenuser
   });
 
   await clearTableFilters(page);
@@ -75,8 +140,7 @@ test('Tables - Columns', async ({ browser }) => {
   // Go to the "stock list" page
   const page = await doCachedLogin(browser, {
     url: 'stock/location/index/stock-items',
-    username: 'steven',
-    password: 'wizardstaff'
+    user: stevenuser
   });
 
   // Open column selector
@@ -84,7 +148,8 @@ test('Tables - Columns', async ({ browser }) => {
 
   // De-select some items
   await page.getByRole('menuitem', { name: 'Description' }).click();
-  await page.getByRole('menuitem', { name: 'Stocktake' }).click();
+  await page.getByRole('menuitem', { name: 'Batch Code' }).click();
+
   await page.keyboard.press('Escape');
 
   await navigate(page, '/sales/index/salesorders');
@@ -96,4 +161,25 @@ test('Tables - Columns', async ({ browser }) => {
   await page.getByRole('menuitem', { name: 'Target Date' }).click();
   await page.getByRole('menuitem', { name: 'Reference', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Project Code' }).click();
+});
+
+test('Tables - Sorting', async ({ browser }) => {
+  // Go to the "stock list" page
+  const page = await doCachedLogin(browser, {
+    url: 'stock/location/index/stock-items',
+    user: stevenuser
+  });
+
+  // Stock table sorting
+  await toggleColumnSorting(page, 'Part');
+  await toggleColumnSorting(page, 'IPN');
+  await toggleColumnSorting(page, 'Stock');
+  await toggleColumnSorting(page, 'Status');
+
+  // Purchase order sorting
+  await navigate(page, '/web/purchasing/index/purchaseorders');
+  await toggleColumnSorting(page, 'Reference');
+  await toggleColumnSorting(page, 'Supplier');
+  await toggleColumnSorting(page, 'Order Status');
+  await toggleColumnSorting(page, 'Line Items');
 });

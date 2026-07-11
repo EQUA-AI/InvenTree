@@ -15,6 +15,7 @@ class BarcodeAPITest(InvenTreeAPITestCase):
     """Tests for barcode api."""
 
     fixtures = ['category', 'part', 'location', 'stock']
+    roles = ['stock.view', 'stock_location.view', 'part.view']
 
     def setUp(self):
         """Setup for all tests."""
@@ -178,7 +179,7 @@ class BarcodeAPITest(InvenTreeAPITestCase):
         item = StockItem.objects.get(pk=522)
 
         data = self.generateBarcode('stockitem', item.pk, expected_code=200).data
-        self.assertEqual(data['barcode'], '{"stockitem": 522}')
+        self.assertEqual(data['barcode'], 'INV-SI522')
 
     def test_barcode_generation_invalid(self):
         """Test barcode generation for invalid model/pk."""
@@ -259,6 +260,7 @@ class SOAllocateTest(InvenTreeAPITestCase):
     """Unit tests for the barcode endpoint for allocating items to a sales order."""
 
     fixtures = ['category', 'company', 'part', 'location', 'stock']
+    roles = ['stock.view']
 
     @classmethod
     def setUpTestData(cls):
@@ -343,10 +345,14 @@ class SOAllocateTest(InvenTreeAPITestCase):
         # Test with barcode which points to a *part* instance
         item.part.assign_barcode(barcode_data='abcde')
 
+        # missing permission for viewing the part - error
+        self.postBarcode('abcde', sales_order=self.sales_order.pk, expected_code=403)
+
+        # Add part.view role and test again
+        self.assignRole('part.view')
         result = self.postBarcode(
             'abcde', sales_order=self.sales_order.pk, expected_code=400
         )
-
         self.assertIn('does not match an existing stock item', str(result['error']))
 
     def test_submit(self):

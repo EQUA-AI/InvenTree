@@ -1,5 +1,5 @@
 import { t } from '@lingui/core/macro';
-import { Alert, Grid, Skeleton, Stack, Text } from '@mantine/core';
+import { Grid, Skeleton, Stack, Text } from '@mantine/core';
 import {
   IconBookmark,
   IconCircleCheck,
@@ -13,7 +13,9 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
 import { getDetailUrl } from '@lib/functions/Navigation';
-import dayjs from 'dayjs';
+import { TagsList } from '@lib/index';
+import type { PanelType } from '@lib/types/Panel';
+import AdminButton from '../../components/buttons/AdminButton';
 import PrimaryActionButton from '../../components/buttons/PrimaryActionButton';
 import { PrintingActions } from '../../components/buttons/PrintingActions';
 import {
@@ -33,17 +35,18 @@ import InstanceDetail from '../../components/nav/InstanceDetail';
 import { PageDetail } from '../../components/nav/PageDetail';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
 import NotesPanel from '../../components/panels/NotesPanel';
-import type { PanelType } from '../../components/panels/Panel';
 import { PanelGroup } from '../../components/panels/PanelGroup';
+import ParametersPanel from '../../components/panels/ParametersPanel';
 import { RenderAddress } from '../../components/render/Company';
 import { RenderUser } from '../../components/render/User';
 import { formatDate } from '../../defaults/formatters';
 import {
-  useSalesOrderShipmentCompleteFields,
-  useSalesOrderShipmentFields
+  useCheckShipmentForm,
+  useCompleteShipmentForm,
+  useSalesOrderShipmentFields,
+  useUncheckShipmentForm
 } from '../../forms/SalesOrderForms';
 import {
-  useCreateApiFormModal,
   useDeleteApiFormModal,
   useEditApiFormModal
 } from '../../hooks/UseForm';
@@ -66,15 +69,12 @@ export default function SalesOrderShipmentDetail() {
     endpoint: ApiEndpoints.sales_order_shipment_list,
     pk: id,
     params: {
-      order_detail: true
+      order_detail: true,
+      tags: true
     }
   });
 
-  const {
-    instance: customer,
-    instanceQuery: customerQuery,
-    refreshInstance: refreshCustomer
-  } = useInstance({
+  const { instance: customer, instanceQuery: customerQuery } = useInstance({
     endpoint: ApiEndpoints.company_list,
     pk: shipment.order_detail?.customer,
     hasPrimaryKey: true
@@ -223,23 +223,26 @@ export default function SalesOrderShipmentDetail() {
     return (
       <>
         <ItemDetailsGrid>
-          <Grid grow>
-            <DetailsImage
-              appRole={UserRoles.sales_order}
-              apiPath={ApiEndpoints.company_list}
-              src={customer?.image}
-              pk={customer?.pk}
-              imageActions={{
-                selectExisting: false,
-                downloadImage: false,
-                uploadFile: false,
-                deleteFile: false
-              }}
-            />
-            <Grid.Col span={{ base: 12, sm: 8 }}>
-              <DetailsTable fields={tl} item={data} />
-            </Grid.Col>
-          </Grid>
+          <Stack gap='xs'>
+            <Grid grow>
+              <DetailsImage
+                appRole={UserRoles.sales_order}
+                apiPath={ApiEndpoints.company_list}
+                src={customer?.image}
+                pk={customer?.pk}
+                imageActions={{
+                  selectExisting: false,
+                  downloadImage: false,
+                  uploadFile: false,
+                  deleteFile: false
+                }}
+              />
+              <Grid.Col span={{ base: 12, sm: 8 }}>
+                <DetailsTable fields={tl} item={data} />
+              </Grid.Col>
+            </Grid>
+            <TagsList tags={shipment.tags} />
+          </Stack>
           <DetailsTable fields={tr} item={data} />
           <DetailsTable fields={bl} item={data} />
           <DetailsTable fields={br} item={data} />
@@ -271,13 +274,18 @@ export default function SalesOrderShipmentDetail() {
           />
         )
       },
+      ParametersPanel({
+        model_type: ModelType.salesordershipment,
+        model_id: shipment.pk
+      }),
       AttachmentPanel({
         model_type: ModelType.salesordershipment,
         model_id: shipment.pk
       }),
       NotesPanel({
         model_type: ModelType.salesordershipment,
-        model_id: shipment.pk
+        model_id: shipment.pk,
+        has_note: !!shipment.notes
       })
     ];
   }, [isPending, shipment, detailsPanel]);
@@ -292,6 +300,7 @@ export default function SalesOrderShipmentDetail() {
     pk: shipment.pk,
     fields: editShipmentFields,
     title: t`Edit Shipment`,
+    queryParams: new URLSearchParams({ tags: 'true' }),
     onFormSuccess: refreshShipment
   });
 
@@ -305,59 +314,19 @@ export default function SalesOrderShipmentDetail() {
     }
   });
 
-  const completeShipmentFields = useSalesOrderShipmentCompleteFields({});
-
-  const completeShipment = useCreateApiFormModal({
-    url: ApiEndpoints.sales_order_shipment_complete,
-    pk: shipment.pk,
-    fields: completeShipmentFields,
-    title: t`Complete Shipment`,
-    focus: 'tracking_number',
-    initialData: {
-      ...shipment,
-      shipment_date: dayjs().format('YYYY-MM-DD')
-    },
-    onFormSuccess: refreshShipment
+  const completeShipment = useCompleteShipmentForm({
+    shipment: shipment,
+    onSuccess: refreshShipment
   });
 
-  const checkShipment = useEditApiFormModal({
-    url: ApiEndpoints.sales_order_shipment_list,
-    pk: shipment.pk,
-    title: t`Check Shipment`,
-    preFormContent: (
-      <Alert color='green' icon={<IconCircleCheck />} title={t`Check Shipment`}>
-        <Text>{t`Marking the shipment as checked indicates that you have verified that all items included in this shipment are correct`}</Text>
-      </Alert>
-    ),
-    fetchInitialData: false,
-    fields: {
-      checked_by: {
-        hidden: true,
-        value: userId
-      }
-    },
-    successMessage: t`Shipment marked as checked`,
-    onFormSuccess: refreshShipment
+  const checkShipment = useCheckShipmentForm({
+    shipmentId: shipment.pk,
+    onSuccess: refreshShipment
   });
 
-  const uncheckShipment = useEditApiFormModal({
-    url: ApiEndpoints.sales_order_shipment_list,
-    pk: shipment.pk,
-    title: t`Uncheck Shipment`,
-    preFormContent: (
-      <Alert color='red' icon={<IconCircleX />} title={t`Uncheck Shipment`}>
-        <Text>{t`Marking the shipment as unchecked indicates that the shipment requires further verification`}</Text>
-      </Alert>
-    ),
-    fetchInitialData: false,
-    fields: {
-      checked_by: {
-        hidden: true,
-        value: null
-      }
-    },
-    successMessage: t`Shipment marked as unchecked`,
-    onFormSuccess: refreshShipment
+  const uncheckShipment = useUncheckShipmentForm({
+    shipmentId: shipment.pk,
+    onSuccess: refreshShipment
   });
 
   const shipmentBadges = useMemo(() => {
@@ -415,6 +384,7 @@ export default function SalesOrderShipmentDetail() {
           completeShipment.open();
         }}
       />,
+      <AdminButton model={ModelType.salesordershipment} id={shipment.pk} />,
       <BarcodeActionDropdown
         key='barcode'
         model={ModelType.salesordershipment}

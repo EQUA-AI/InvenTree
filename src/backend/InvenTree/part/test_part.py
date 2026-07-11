@@ -160,7 +160,7 @@ class PartTest(TestCase):
 
         p = Part.objects.get(pk=1)
         barcode = p.format_barcode()
-        self.assertEqual(barcode, '{"part": 1}')
+        self.assertEqual(barcode, 'INV-PA1')
 
     def test_str(self):
         """Test string representation of a Part."""
@@ -248,7 +248,7 @@ class PartTest(TestCase):
     def test_barcode(self):
         """Test barcode format functionality."""
         barcode = self.r1.format_barcode()
-        self.assertEqual('{"part": 3}', barcode)
+        self.assertEqual('INV-PA3', barcode)
 
     def test_sell_pricing(self):
         """Check that the sell pricebreaks were loaded."""
@@ -353,6 +353,28 @@ class PartTest(TestCase):
 
         part.delete()
 
+    def test_delete_locking_disabled(self):
+        """Test that a locked part can be deleted when PART_ENABLE_LOCKING is disabled."""
+        part = Part.objects.create(
+            name='Locked Part Test',
+            description='Part for testing locking override',
+            active=False,
+        )
+
+        part.locked = True
+        part.save()
+
+        # With locking enabled (default), deletion of a locked part raises an error
+        with self.assertRaises(ValidationError):
+            part.delete()
+
+        # Disable locking globally — locked part should now be deletable
+        set_global_setting('PART_ENABLE_LOCKING', False)
+        part.delete()
+
+        # Re-enable for other tests
+        set_global_setting('PART_ENABLE_LOCKING', True)
+
     def test_revisions(self):
         """Test the 'revision' and 'revision_of' field."""
         template = Part.objects.create(
@@ -412,15 +434,11 @@ class PartTest(TestCase):
             name='Master Part', description='Master part (revision B)'
         )
 
-        with self.assertRaises(ValidationError) as exc:
-            rev_b.revision_of = rev_a
-            rev_b.revision = 'B'
-            rev_b.save()
-
-        self.assertIn(
-            'Cannot make a revision of a part which is already a revision',
-            str(exc.exception),
-        )
+        # Ensure we can make a revision of a revision
+        rev_b.revision_of = rev_a
+        rev_b.variant_of = template
+        rev_b.revision = 'B'
+        rev_b.save()
 
         rev_b.variant_of = template
         rev_b.revision_of = part

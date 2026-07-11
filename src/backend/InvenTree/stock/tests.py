@@ -378,10 +378,8 @@ class StockTest(StockTestBase):
         self.assertEqual(it.status, StockStatus.OK.value)
 
         # Next, perform a valid stocktake
-        self.assertTrue(
-            it.stocktake(
-                100, None, notes='test stocktake', status=StockStatus.DAMAGED.value
-            )
+        it.stocktake(
+            100, None, notes='test stocktake', status=StockStatus.DAMAGED.value
         )
 
         it.refresh_from_db()
@@ -729,6 +727,13 @@ class StockTest(StockTestBase):
         self.assertEqual(s1.quantity, 60)
         self.assertIsNone(s1.purchase_price)
 
+        merge_entry = s1.tracking_info.filter(
+            tracking_type=StockHistoryCode.MERGED_STOCK_ITEMS
+        ).first()
+        self.assertIsNotNone(merge_entry)
+        self.assertEqual(merge_entry.deltas['added'], 50.0)
+        self.assertEqual(merge_entry.deltas['quantity'], 60.0)
+
         part.stock_items.all().delete()
 
         # Create some stock items with pricing information
@@ -838,16 +843,26 @@ class StockBarcodeTest(StockTestBase):
 
         # Render simple barcode data for the StockItem
         barcode = item.barcode
-        self.assertEqual(barcode, '{"stockitem": 1}')
+        self.assertEqual(barcode, 'INV-SI1')
 
     def test_location_barcode_basics(self):
         """Simple tests for the StockLocation barcode integration."""
+        # Set the barcode plugin to use the legacy barcode format
+        from plugin.registry import registry
+
+        plugin = registry.get_plugin('inventreebarcode')
+
+        plugin.set_setting('INTERNAL_BARCODE_FORMAT', 'json')
+
         self.assertEqual(StockLocation.barcode_model_type(), 'stocklocation')
 
         loc = StockLocation.objects.get(pk=1)
 
         barcode = loc.format_barcode()
         self.assertEqual('{"stocklocation": 1}', barcode)
+
+        # Revert the barcode format to the default
+        plugin.set_setting('INTERNAL_BARCODE_FORMAT', 'short')
 
 
 class VariantTest(StockTestBase):
@@ -866,6 +881,16 @@ class VariantTest(StockTestBase):
         green = Part.objects.get(pk=10003)
         self.assertEqual(green.stock_entries(include_variants=False).count(), 0)
         self.assertEqual(green.stock_entries().count(), 3)
+
+        # Test with an "external" location
+        entry = green.stock_entries().first()
+        entry.location = StockLocation.objects.create(
+            name='External Location', description='An external location', external=True
+        )
+        entry.save()
+
+        self.assertEqual(green.stock_entries(include_external=True).count(), 3)
+        self.assertEqual(green.stock_entries(include_external=False).count(), 2)
 
     def test_serial_numbers(self):
         """Test serial number functionality for variant / template parts."""
@@ -1271,9 +1296,11 @@ class StockTreeTest(StockTestBase):
         self.assertEqual(item_1.get_children().count(), 1)
         self.assertEqual(item_2.parent, item_1)
 
+        loc = StockLocation.objects.filter(structural=False).first()
+
         # Serialize the secondary item
         serials = [str(i) for i in range(20)]
-        items = item_2.serializeStock(20, serials)
+        items = item_2.serializeStock(20, serials, location=loc)
 
         self.assertEqual(len(items), 20)
         self.assertEqual(StockItem.objects.count(), N + 22)
@@ -1290,6 +1317,9 @@ class StockTreeTest(StockTestBase):
             self.assertEqual(child.parent, item_2)
             self.assertGreater(child.lft, item_2.lft)
             self.assertLess(child.rght, item_2.rght)
+            self.assertEqual(child.location, loc)
+            self.assertIsNotNone(child.location)
+            self.assertEqual(child.tracking_info.count(), 2)
 
         # Delete item_2 : we expect that all children will be re-parented to item_1
         item_2.delete()

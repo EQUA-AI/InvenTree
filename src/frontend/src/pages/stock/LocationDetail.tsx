@@ -3,16 +3,27 @@ import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
 import { getDetailUrl } from '@lib/functions/Navigation';
+import type { TableFilter } from '@lib/index';
 import type { StockOperationProps } from '@lib/types/Forms';
+import type { PanelType } from '@lib/types/Panel';
 import { t } from '@lingui/core/macro';
-import { Group, Skeleton, Stack, Text } from '@mantine/core';
-import { IconInfoCircle, IconPackages, IconSitemap } from '@tabler/icons-react';
+import { Group, Skeleton, Stack } from '@mantine/core';
+import {
+  IconCalendar,
+  IconInfoCircle,
+  IconListDetails,
+  IconPackages,
+  IconSitemap,
+  IconTable,
+  IconTransfer
+} from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../App';
 import { useBarcodeScanDialog } from '../../components/barcodes/BarcodeScanDialog';
 import AdminButton from '../../components/buttons/AdminButton';
 import { PrintingActions } from '../../components/buttons/PrintingActions';
+import OrderCalendar from '../../components/calendar/OrderCalendar';
 import {
   type DetailsField,
   DetailsTable
@@ -28,8 +39,9 @@ import { ApiIcon } from '../../components/items/ApiIcon';
 import InstanceDetail from '../../components/nav/InstanceDetail';
 import NavigationTree from '../../components/nav/NavigationTree';
 import { PageDetail } from '../../components/nav/PageDetail';
-import type { PanelType } from '../../components/panels/Panel';
 import { PanelGroup } from '../../components/panels/PanelGroup';
+import ParametersPanel from '../../components/panels/ParametersPanel';
+import SegmentedControlPanel from '../../components/panels/SegmentedControlPanel';
 import LocateItemButton from '../../components/plugins/LocateItemButton';
 import { stockLocationFields } from '../../forms/StockForms';
 import { InvenTreeIcon } from '../../functions/icons';
@@ -39,10 +51,31 @@ import {
 } from '../../hooks/UseForm';
 import { useInstance } from '../../hooks/UseInstance';
 import { useStockAdjustActions } from '../../hooks/UseStockAdjustActions';
+import { useUserSettingsState } from '../../states/SettingsStates';
+import { useGlobalSettingsState } from '../../states/SettingsStates';
 import { useUserState } from '../../states/UserState';
 import { PartListTable } from '../../tables/part/PartTable';
 import { StockItemTable } from '../../tables/stock/StockItemTable';
+import StockLocationParametricTable from '../../tables/stock/StockLocationParametricTable';
 import { StockLocationTable } from '../../tables/stock/StockLocationTable';
+import TransferOrderParametricTable from '../../tables/stock/TransferOrderParametricTable';
+import { TransferOrderTable } from '../../tables/stock/TransferOrderTable';
+
+function TransferOrderCalendar() {
+  const calendarFilters: TableFilter[] = useMemo(() => {
+    return [];
+  }, []);
+
+  return (
+    <OrderCalendar
+      model={ModelType.transferorder}
+      role={UserRoles.transfer_order}
+      params={{}}
+      filters={calendarFilters}
+      initialFilters={[{ name: 'outstanding', value: 'true' }]}
+    />
+  );
+}
 
 export default function Stock() {
   const { id: _id } = useParams();
@@ -54,6 +87,8 @@ export default function Stock() {
 
   const navigate = useNavigate();
   const user = useUserState();
+  const settings = useUserSettingsState();
+  const globalSettings = useGlobalSettingsState();
 
   const [treeOpen, setTreeOpen] = useState(false);
 
@@ -151,15 +186,14 @@ export default function Stock() {
 
     return (
       <ItemDetailsGrid>
-        {id && location?.pk ? (
-          <DetailsTable item={location} fields={left} />
-        ) : (
-          <Text>{t`Top level stock location`}</Text>
-        )}
+        {id && location?.pk && <DetailsTable item={location} fields={left} />}
         {id && location?.pk && <DetailsTable item={location} fields={right} />}
       </ItemDetailsGrid>
     );
   }, [location, instanceQuery]);
+
+  const [sublocationView, setSublocationView] = useState<string>('table');
+  const [transferOrderView, setTransferOrderView] = useState<string>('table');
 
   const locationPanels: PanelType[] = useMemo(() => {
     return [
@@ -167,14 +201,35 @@ export default function Stock() {
         name: 'details',
         label: t`Location Details`,
         icon: <IconInfoCircle />,
-        content: detailsPanel
+        content: detailsPanel,
+        hidden: !location?.pk
       },
-      {
+      SegmentedControlPanel({
         name: 'sublocations',
         label: id ? t`Sublocations` : t`Stock Locations`,
         icon: <IconSitemap />,
-        content: <StockLocationTable parentId={id} />
-      },
+        hidden: !user.hasViewPermission(ModelType.stocklocation),
+        selection: sublocationView,
+        onChange: setSublocationView,
+        options: [
+          {
+            value: 'table',
+            label: t`Table View`,
+            icon: <IconTable />,
+            content: <StockLocationTable parentId={id} />
+          },
+          {
+            value: 'parametric',
+            label: t`Parametric View`,
+            icon: <IconListDetails />,
+            content: (
+              <StockLocationParametricTable
+                queryParams={id ? { parent: id } : {}}
+              />
+            )
+          }
+        ]
+      }),
       {
         name: 'stock-items',
         label: t`Stock Items`,
@@ -189,6 +244,36 @@ export default function Stock() {
           />
         )
       },
+      SegmentedControlPanel({
+        name: 'transfer-orders',
+        label: t`Transfer Orders`,
+        icon: <IconTransfer />,
+        hidden:
+          !user.hasViewRole(UserRoles.transfer_order) ||
+          !globalSettings.isSet('TRANSFERORDER_ENABLED'),
+        selection: transferOrderView,
+        onChange: setTransferOrderView,
+        options: [
+          {
+            value: 'table',
+            label: t`Table View`,
+            icon: <IconTable />,
+            content: <TransferOrderTable />
+          },
+          {
+            value: 'calendar',
+            label: t`Calendar View`,
+            icon: <IconCalendar />,
+            content: <TransferOrderCalendar />
+          },
+          {
+            value: 'parametric',
+            label: t`Parametric View`,
+            icon: <IconListDetails />,
+            content: <TransferOrderParametricTable />
+          }
+        ]
+      }),
       {
         name: 'default_parts',
         label: t`Default Parts`,
@@ -203,9 +288,14 @@ export default function Stock() {
             }}
           />
         )
-      }
+      },
+      ParametersPanel({
+        model_type: ModelType.stocklocation,
+        model_id: location.pk,
+        hidden: !location.pk
+      })
     ];
-  }, [location, id]);
+  }, [sublocationView, transferOrderView, location, id]);
 
   const editLocation = useEditApiFormModal({
     url: ApiEndpoints.stock_location_list,
@@ -241,7 +331,7 @@ export default function Stock() {
         choices: deleteOptions
       },
       delete_sub_locations: {
-        label: t`Locations Action`,
+        label: t`Location Actions`,
         required: true,
         description: t`Action for child locations in this location`,
         field_type: 'choice',
@@ -259,10 +349,9 @@ export default function Stock() {
 
   const stockOperationProps: StockOperationProps = useMemo(() => {
     return {
-      pk: location.pk,
-      model: 'location',
       refresh: refreshInstance,
       filters: {
+        location: location.pk,
         in_stock: true
       }
     };
@@ -271,6 +360,7 @@ export default function Stock() {
   const stockAdjustActions = useStockAdjustActions({
     formProps: stockOperationProps,
     enabled: true,
+    changeBatch: false,
     delete: false,
     merge: false,
     assign: false
@@ -344,15 +434,15 @@ export default function Stock() {
           perm={user.hasChangeRole(UserRoles.stock_location)}
           actions={[
             {
-              name: 'Scan in stock items',
+              name: t`Scan in stock items`,
               icon: <InvenTreeIcon icon='stock' />,
-              tooltip: 'Scan item into this location',
+              tooltip: t`Scan item into this location`,
               onClick: scanInStockItem.open
             },
             {
-              name: 'Scan in container',
+              name: t`Scan in container`,
               icon: <InvenTreeIcon icon='unallocated_stock' />,
-              tooltip: 'Scan container into this location',
+              tooltip: t`Scan container into this location`,
               onClick: scanInStockLocation.open
             }
           ]}
@@ -397,6 +487,17 @@ export default function Stock() {
     [location]
   );
 
+  const defaultPanel = useMemo(() => {
+    if (
+      settings.isSet('DISPLAY_ITEMS_FINAL_LEVEL', true) &&
+      location.pk &&
+      location.sublocations === 0
+    ) {
+      return 'stock-items';
+    }
+    return undefined;
+  }, [settings, location]);
+
   return (
     <>
       {editLocation.modal}
@@ -412,6 +513,7 @@ export default function Stock() {
             title={t`Stock Locations`}
             modelType={ModelType.stocklocation}
             endpoint={ApiEndpoints.stock_location_tree}
+            childIdentifier='sublocations'
             opened={treeOpen}
             onClose={() => setTreeOpen(false)}
             selectedId={location?.pk}
@@ -420,7 +522,7 @@ export default function Stock() {
             title={(location?.name ?? id) ? t`Stock Location` : t`Stock`}
             subtitle={location?.description}
             icon={location?.icon && <ApiIcon name={location?.icon} />}
-            actions={locationActions}
+            actions={location?.pk ? locationActions : undefined}
             editAction={editLocation.open}
             editEnabled={
               !!location?.pk &&
@@ -444,6 +546,8 @@ export default function Stock() {
             reloadInstance={refreshInstance}
             id={location?.pk}
             instance={location}
+            pluginPanelWithoutId
+            defaultPanel={defaultPanel}
           />
         </Stack>
         {stockAdjustActions.modals.map((modal) => modal.modal)}

@@ -1,7 +1,10 @@
 import { expect, test } from '../baseFixtures.js';
+import { stevenuser } from '../defaults.js';
 import {
+  activateCalendarView,
   clearTableFilters,
   clickButtonIfVisible,
+  clickOnRowMenu,
   loadTab,
   navigate,
   openFilterDrawer,
@@ -13,9 +16,6 @@ test('Stock - Basic Tests', async ({ browser }) => {
   const page = await doCachedLogin(browser, { url: 'stock/location/index/' });
 
   await page.waitForURL('**/web/stock/location/**');
-
-  await loadTab(page, 'Location Details');
-  await page.waitForURL('**/web/stock/location/index/details');
 
   await loadTab(page, 'Stock Items');
   await page.getByText('1551ABK').first().click();
@@ -36,13 +36,31 @@ test('Stock - Basic Tests', async ({ browser }) => {
   await loadTab(page, 'Test Results');
   await page.getByText('395c6d5586e5fb656901d047be27e1f7').waitFor();
   await loadTab(page, 'Installed Items');
+
+  // Let's create a new stock item
+  await navigate(page, 'part/822/stock');
+  await page
+    .getByRole('button', { name: 'action-button-add-stock-item' })
+    .click();
+  await page
+    .getByRole('textbox', { name: 'number-field-quantity' })
+    .fill('987');
+  await page.getByRole('button', { name: 'Submit' }).click();
+
+  // Automatically navigate through to the newly created stock item
+  await page.getByText('Quantity: 987').first().waitFor();
+  await loadTab(page, 'Stock Tracking');
+  await page
+    .getByRole('cell', { name: 'Stock item created' })
+    .first()
+    .waitFor();
+  await page.getByRole('cell', { name: 'allaccess Ally Access' }).waitFor();
 });
 
 test('Stock - Location Tree', async ({ browser }) => {
   const page = await doCachedLogin(browser, { url: 'stock/location/index/' });
 
   await page.waitForURL('**/web/stock/location/**');
-  await loadTab(page, 'Location Details');
 
   await page.getByLabel('nav-breadcrumb-action').click();
   await page.getByLabel('nav-tree-toggle-1}').click();
@@ -52,6 +70,24 @@ test('Stock - Location Tree', async ({ browser }) => {
   await page.getByLabel('breadcrumb-1-factory').click();
 
   await page.getByRole('cell', { name: 'Factory' }).first().waitFor();
+
+  // Load the tree again - from a deeply nested location
+  // We expect it to auto-expand to the current location
+  await navigate(page, 'stock/location/17/stock-items');
+  await page.getByLabel('nav-breadcrumb-action').click();
+
+  for (let ii = 0; ii <= 5; ii++) {
+    await page
+      .locator('div')
+      .filter({ hasText: `Location ${ii}` })
+      .first()
+      .waitFor();
+  }
+
+  // Let's search for a particular location
+  await page.getByRole('textbox', { name: 'nav-tree-search' }).fill('room');
+  await page.getByText('Storage Room A').first().waitFor();
+  await page.getByText('Storage Room B').first().waitFor();
 });
 
 test('Stock - Location Delete', async ({ browser }) => {
@@ -59,13 +95,14 @@ test('Stock - Location Delete', async ({ browser }) => {
     url: 'stock/location/38/sublocations'
   });
 
+  const loc_1 = `loc-1-${Math.floor(Math.random() * 1000)}`;
+  const loc_2 = `loc-2-${Math.floor(Math.random() * 1000)}`;
+
   // Create a sub-location
   await page
     .getByRole('button', { name: 'action-button-add-stock-location' })
     .click();
-  await page
-    .getByRole('textbox', { name: 'text-field-name' })
-    .fill('my-location-1');
+  await page.getByRole('textbox', { name: 'text-field-name' }).fill(loc_1);
   await page.getByRole('button', { name: 'Submit' }).click();
 
   // Create a secondary sub-location
@@ -73,37 +110,32 @@ test('Stock - Location Delete', async ({ browser }) => {
   await page
     .getByRole('button', { name: 'action-button-add-stock-location' })
     .click();
-  await page
-    .getByRole('textbox', { name: 'text-field-name' })
-    .fill('my-location-2');
+  await page.getByRole('textbox', { name: 'text-field-name' }).fill(loc_2);
   await page.getByRole('button', { name: 'Submit' }).click();
 
   // Navigate up to parent
-  await page.getByRole('link', { name: 'breadcrumb-2-my-location-1' }).click();
+  await page.getByRole('link', { name: `breadcrumb-2-${loc_1}` }).click();
   await loadTab(page, 'Sublocations');
-  await page
-    .getByRole('cell', { name: 'my-location-2', exact: true })
-    .waitFor();
+  await page.getByRole('cell', { name: loc_2, exact: true }).waitFor();
 
   // Delete this location, and all child locations
   await page
-    .locator('div')
-    .filter({ hasText: /^Stock>PCB Assembler>my-location-1Stock Location$/ })
-    .getByLabel('action-menu-location-actions')
+    .getByRole('button', { name: 'action-menu-location-actions' })
+    .first()
     .click();
   await page
     .getByRole('menuitem', { name: 'action-menu-location-actions-delete' })
     .click();
 
   await page
-    .getByRole('textbox', { name: 'choice-field-delete_stock_items' })
+    .getByRole('combobox', { name: 'choice-field-delete_stock_items' })
     .click();
   await page
     .getByRole('option', { name: 'Move items to parent location' })
     .click();
 
   await page
-    .getByRole('textbox', { name: 'choice-field-delete_sub_locations' })
+    .getByRole('combobox', { name: 'choice-field-delete_sub_locations' })
     .click();
   await page.getByRole('option', { name: 'Delete items' }).click();
 
@@ -117,8 +149,7 @@ test('Stock - Location Delete', async ({ browser }) => {
 
 test('Stock - Filters', async ({ browser }) => {
   const page = await doCachedLogin(browser, {
-    username: 'steven',
-    password: 'wizardstaff',
+    user: stevenuser,
     url: '/stock/location/index/'
   });
 
@@ -155,9 +186,14 @@ test('Stock - Filters', async ({ browser }) => {
   // Filter by custom status code
   await clearTableFilters(page);
   await setTableChoiceFilter(page, 'Status', 'Incoming goods inspection');
-  await page.getByText('1 - 8 / 8').waitFor();
   await page.getByRole('cell', { name: '1551AGY' }).first().waitFor();
+
+  await page.getByPlaceholder('Search').clear();
+  await page.getByPlaceholder('Search').fill('blue');
   await page.getByRole('cell', { name: 'widget.blue' }).first().waitFor();
+
+  await page.getByPlaceholder('Search').clear();
+  await page.getByPlaceholder('Search').fill('002.01');
   await page.getByRole('cell', { name: '002.01-PCBA' }).first().waitFor();
 
   await clearTableFilters(page);
@@ -311,10 +347,20 @@ test('Stock - Stock Actions', async ({ browser }) => {
     await page.getByRole('option', { name: status }).click();
   };
 
+  // Duplicate the stock item first - prevent impacting other tests
+  await page
+    .getByRole('button', { name: 'action-menu-stock-item-actions' })
+    .click();
+  await page
+    .getByRole('menuitem', { name: 'action-menu-stock-item-actions-duplicate' })
+    .click();
+  await page.getByRole('button', { name: 'Submit' }).click();
+  await page.waitForLoadState('networkidle');
+
   // Check for required values
   await page.getByText('Status', { exact: true }).waitFor();
   await page.getByText('Custom Status', { exact: true }).waitFor();
-  await page.getByText('Attention needed').waitFor();
+  await page.getByText('Attention needed').first().waitFor();
   await page
     .getByLabel('Stock Details')
     .getByText('Incoming goods inspection')
@@ -332,6 +378,11 @@ test('Stock - Stock Actions', async ({ browser }) => {
   await page.getByRole('button', { name: 'Scan', exact: true }).click();
   await page.getByText('Scanned stock item into location').waitFor();
 
+  // Add "zero" stock - ensure the quantity stays the same
+  await launchStockAction('add');
+  await page.getByRole('button', { name: 'Submit' }).click();
+  await page.getByText('Quantity: 123').first().waitFor();
+
   // Add stock, and change status
   await launchStockAction('add');
   await page.getByLabel('number-field-quantity').fill('12');
@@ -341,6 +392,11 @@ test('Stock - Stock Actions', async ({ browser }) => {
   await page.getByText('Lost').first().waitFor();
   await page.getByText('Unavailable').first().waitFor();
   await page.getByText('135').first().waitFor();
+
+  // Remove "zero" stock - ensure the quantity stays the same
+  await launchStockAction('remove');
+  await page.getByRole('button', { name: 'Submit' }).click();
+  await page.getByText('Quantity: 135').first().waitFor();
 
   // Remove stock, and change status
   await launchStockAction('remove');
@@ -369,13 +425,46 @@ test('Stock - Stock Actions', async ({ browser }) => {
   await page.getByLabel('action-menu-stock-operations-return').click();
 });
 
+// Test conversion between part variants
+test('Stock - Convert', async ({ browser }) => {
+  const page = await doCachedLogin(browser, { url: 'stock/item/242/details' });
+
+  await page.getByText('widget.red.00 | Red Widget |').waitFor();
+
+  // Convert to widget.red.02
+  await page
+    .getByRole('button', { name: 'action-menu-stock-item-actions' })
+    .click();
+  await page
+    .getByRole('menuitem', { name: 'action-menu-stock-item-actions-convert' })
+    .click();
+  await page.getByRole('combobox', { name: 'related-field-part' }).fill('red');
+  await page.getByText('widget.red.02 | Red Widget |').click();
+  await page.getByRole('button', { name: 'Submit' }).click();
+
+  await page.getByText('widget.red.02 | Red Widget |').waitFor();
+
+  // Convert to widget.red.00
+  await page
+    .getByRole('button', { name: 'action-menu-stock-item-actions' })
+    .click();
+  await page
+    .getByRole('menuitem', { name: 'action-menu-stock-item-actions-convert' })
+    .click();
+  await page.getByRole('combobox', { name: 'related-field-part' }).fill('red');
+  await page.getByText('widget.red.00 | Red Widget |').click();
+  await page.getByRole('button', { name: 'Submit' }).click();
+
+  await page.getByText('widget.red.00 | Red Widget |').waitFor();
+});
+
 test('Stock - Return Items', async ({ browser }) => {
   const page = await doCachedLogin(browser, {
     url: 'sales/customer/32/assigned-stock'
   });
 
   // Return stock items assigned to customer
-  await page.getByRole('cell', { name: 'Select all records' }).click();
+  await page.getByRole('checkbox', { name: 'Select all records' }).check();
   await page.getByRole('button', { name: 'action-menu-stock-actions' }).click();
   await page
     .getByRole('menuitem', { name: 'action-menu-stock-actions-return-stock' })
@@ -410,9 +499,59 @@ test('Stock - Tracking', async ({ browser }) => {
 
   // Navigate to the "stock tracking" tab
   await loadTab(page, 'Stock Tracking');
-  await page.getByText('- - Factory/Office Block/Room').first().waitFor();
+
+  await page.getByText('Factory/Office Block/Room').first().waitFor();
   await page.getByRole('link', { name: 'Widget Assembly' }).waitFor();
   await page.getByRole('cell', { name: 'Installed into assembly' }).waitFor();
+
+  /* Add some more stock items and tracking information:
+   * - Duplicate this stock item
+   * - Give it a unique serial number
+   * - Ensure the tracking information is duplicated correctly
+   * - Delete the new stock item
+   * - Ensure that the tracking information is retained against the base part
+   */
+
+  // Duplicate the stock item
+  await page
+    .getByRole('button', { name: 'action-menu-stock-item-actions' })
+    .click();
+  await page
+    .getByRole('menuitem', { name: 'action-menu-stock-item-actions-duplicate' })
+    .click();
+  await page
+    .getByRole('textbox', { name: 'text-field-serial_numbers' })
+    .fill('9876');
+  await page.getByRole('button', { name: 'Submit' }).click();
+
+  // Check stock tracking information is correct
+  await page.getByText('Serial Number: 9876').first().waitFor();
+  await loadTab(page, 'Stock Tracking');
+  await page
+    .getByRole('cell', { name: 'Stock item created' })
+    .first()
+    .waitFor();
+
+  // Delete this stock item
+  await page
+    .getByRole('button', { name: 'action-menu-stock-item-actions' })
+    .click();
+  await page
+    .getByRole('menuitem', { name: 'action-menu-stock-item-actions-delete' })
+    .click();
+  await page.getByRole('button', { name: 'Delete' }).click();
+
+  // Check stock tracking for base part
+  await loadTab(page, 'Stock History');
+  await page.getByRole('button', { name: 'Stock Tracking' }).click();
+
+  await page.getByText('Stock item no longer exists').first().waitFor();
+  await page
+    .getByRole('cell', { name: 'Thumbnail Blue Widget' })
+    .first()
+    .waitFor();
+
+  await page.getByText('# 162').first().waitFor();
 });
 
 test('Stock - Location', async ({ browser }) => {
@@ -444,4 +583,210 @@ test('Stock - Location', async ({ browser }) => {
     .fill('{"stocklocation": 1234}');
   await page.getByRole('button', { name: 'Scan', exact: true }).click();
   await page.getByText('No match found for barcode data').waitFor();
+});
+
+test('Transfer Orders - General', async ({ browser }) => {
+  const page = await doCachedLogin(browser);
+
+  await page.getByRole('tab', { name: 'Stock' }).click();
+  await page.waitForURL('**/stock/location/index/**');
+
+  await loadTab(page, 'Transfer Orders');
+
+  await clearTableFilters(page);
+
+  // We have now loaded the "Transfer Orders" table. Check for some expected texts
+  await page.getByText('Complete').first().waitFor();
+  await page.getByText('Issued').first().waitFor();
+  await page.getByText('Cancelled').first().waitFor();
+
+  // Load a particular Transfer Order
+  await page.getByRole('cell', { name: 'TO-0002' }).click();
+  await page.waitForTimeout(200);
+
+  // This transfer order should be "issued"
+  await page.getByText('Issued').first().waitFor();
+
+  // Edit the transfer order (via keyboard shortcut)
+  await page.keyboard.press('Control+E');
+  await page.getByLabel('text-field-reference', { exact: true }).waitFor();
+  await page.getByLabel('related-field-project_code').waitFor();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+
+  await page.getByRole('button', { name: 'Complete Order' }).click();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+
+  // Check for other expected actions
+  await page.getByRole('button', { name: 'action-menu-order-actions' }).click();
+  await page.getByLabel('action-menu-order-actions-edit').waitFor();
+  await page.getByLabel('action-menu-order-actions-duplicate').waitFor();
+  await page.getByLabel('action-menu-order-actions-hold').waitFor();
+
+  // Click on some tabs
+  await loadTab(page, 'Line Items');
+  await loadTab(page, 'Allocated Stock');
+  await loadTab(page, 'Parameters');
+  await loadTab(page, 'Attachments');
+  await loadTab(page, 'Notes');
+});
+
+test('Transfer Order - Reference', async ({ browser }) => {
+  const page = await doCachedLogin(browser);
+
+  // go to transfer orders
+  await page.getByRole('tab', { name: 'Stock' }).click();
+  await page.waitForURL('**/stock/location/index/**');
+  await loadTab(page, 'Transfer Orders');
+
+  // click add button
+  await page
+    .getByRole('button', { name: 'action-button-add-transfer-' })
+    .click();
+
+  // Ensure a new reference is suggested
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(250);
+
+  // Grab the Transfer Order reference
+  const reference: string = await page
+    .getByRole('textbox', { name: 'text-field-reference' })
+    .inputValue();
+  expect(reference).toMatch(/TO-\d+/);
+
+  await page.getByRole('textbox', { name: 'text-field-description' }).click();
+  await page
+    .getByRole('textbox', { name: 'text-field-description' })
+    .fill('creating from playwrigh!');
+
+  // create the transfer order
+  await page.getByRole('button', { name: 'Submit' }).click();
+  await page.getByText('Item Created').waitFor();
+
+  // go back to stock page
+  await page.getByRole('link', { name: 'Stock', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'action-button-add-transfer-' })
+    .click();
+
+  const nextReference: string = await page
+    .getByRole('textbox', { name: 'text-field-reference' })
+    .inputValue();
+  expect(nextReference).toMatch(/TO-\d+/);
+
+  // Ensure that the reference has incremented
+  const refNumber = Number(reference.replace('TO-', ''));
+  const nextRefNumber = Number(nextReference.replace('TO-', ''));
+  expect(nextRefNumber).toBe(refNumber + 1);
+});
+
+test('Transfer Order - Calendar', async ({ browser }) => {
+  const page = await doCachedLogin(browser);
+
+  await navigate(page, 'stock/location/index/transfer-orders');
+  await activateCalendarView(page);
+
+  // Export calendar data
+  await page.getByLabel('calendar-export-data').click();
+  await page.getByRole('button', { name: 'Export', exact: true }).click();
+  await page.getByText('Process completed successfully').waitFor();
+
+  // Required because we downloaded a file
+  await page.context().close();
+});
+
+test('Transfer Order - Edit', async ({ browser }) => {
+  const page = await doCachedLogin(browser);
+
+  await navigate(page, 'stock/transfer-order/2/');
+
+  // Check for expected text items
+  await page.getByText('Consume some paint').first().waitFor();
+  await page.getByText('2026-04-20').waitFor(); // Created date
+  await page.getByText('2026-04-23').waitFor(); // Issue date
+  await page.getByText('PRJ-HEL').waitFor(); // Project Code
+
+  await page.keyboard.press('Control+E');
+
+  // Edit start date
+  await page.getByLabel('date-field-start_date').fill('2026-04-28');
+
+  // Submit the form
+  await page.getByRole('button', { name: 'Submit' }).click();
+
+  // Expect error
+  await page.getByText('Errors exist for one or more form fields').waitFor();
+  await page.getByText('Target date must be after start date').waitFor();
+
+  // Cancel the form
+  await page.getByRole('button', { name: 'Cancel' }).click();
+});
+
+test('Transfer Order - Allocate and Transfer', async ({ browser }) => {
+  const page = await doCachedLogin(browser);
+
+  await navigate(page, 'stock/transfer-order/6/');
+
+  // Duplicate this transfer order, to ensure a fresh run each time
+  await page.getByLabel('action-menu-order-actions').click();
+  await page.getByLabel('action-menu-order-actions-duplicate').click();
+
+  // Submit the duplicate request and ensure it completes
+  await page.getByRole('button', { name: 'Submit' }).isEnabled();
+  await page.getByRole('button', { name: 'Submit' }).click();
+  await page.getByText('Item Created').waitFor();
+
+  // Issue the order
+  await page.getByRole('button', { name: 'Issue Order' }).click();
+  await page.getByRole('button', { name: 'Submit' }).click();
+  await page.getByText('Issued', { exact: true }).first().waitFor();
+
+  await loadTab(page, 'Line Items');
+
+  // Allocate line item 1
+  const cell1 = await page.getByText('C_100pF_0402', { exact: true });
+  await clickOnRowMenu(cell1);
+  await page.getByRole('menuitem', { name: 'Allocate Stock' }).click();
+  await page.getByText('C_100pF_0402Location:Offsite').waitFor();
+  await page.waitForTimeout(200);
+  await page.getByRole('button', { name: 'Submit' }).click();
+
+  // Allocate line item 1
+  const cell2 = await page.getByText('R_2.2K_0603_1%', { exact: true });
+  await clickOnRowMenu(cell2);
+  await page.getByRole('menuitem', { name: 'Allocate Stock' }).click();
+  await page.getByText('R_2.2K_0603_1%Location:').waitFor();
+  await page.waitForTimeout(200);
+  await page.getByRole('button', { name: 'Submit' }).click();
+
+  // Complete the order
+  await page.getByRole('button', { name: 'Complete Order' }).click();
+  await page.getByRole('button', { name: 'Submit' }).click();
+  await page.getByText('Complete', { exact: true }).first().waitFor();
+
+  // Tab should have changed to Transferred Stock
+  await loadTab(page, 'Transferred Stock');
+  await page.getByText('C_100pF_0402').waitFor();
+  await page.getByText('2.2K resistor in 0603 SMD').waitFor();
+});
+
+test('Transfer Orders - Duplicate', async ({ browser }) => {
+  const page = await doCachedLogin(browser, {
+    url: 'stock/transfer-order/1/detail'
+  });
+
+  await page.getByLabel('action-menu-order-actions').click();
+  await page.getByLabel('action-menu-order-actions-duplicate').click();
+
+  // Ensure a new reference is suggested
+  await expect(
+    page.getByLabel('text-field-reference', { exact: true })
+  ).not.toBeEmpty();
+
+  // Submit the duplicate request and ensure it completes
+  await page.getByRole('button', { name: 'Submit' }).isEnabled();
+  await page.getByRole('button', { name: 'Submit' }).click();
+  await page.getByRole('tab', { name: 'Order Details' }).waitFor();
+  await page.getByRole('tab', { name: 'Order Details' }).click();
+
+  await page.getByText('Pending').first().waitFor();
 });

@@ -8,6 +8,7 @@ from django.test import TestCase
 
 import build.models
 import stock.models
+from common.settings import set_global_setting
 
 from .models import BomItem, BomItemSubstitute, Part
 
@@ -276,6 +277,52 @@ class BomItemTest(TestCase):
 
         self.assertEqual(assembly.can_build, 20)
 
+        # Mark 'c4' as consumable at the *part* level (not the BOM line itself)
+        c4.consumable = True
+        c4.save()
+
+        bom_item_c4 = BomItem.objects.create(part=assembly, sub_part=c4, quantity=200)
+
+        # The raw BomItem field is unset, but the part is marked as consumable
+        self.assertFalse(bom_item_c4.consumable)
+        self.assertTrue(bom_item_c4.is_consumable)
+
+        # A BomItem which is consumable via its part does not alter the can_build calculation
+        self.assertEqual(assembly.can_build, 20)
+
+    def test_consumable_filter(self):
+        """Tests for the BomItem.consumable_filter() helper method."""
+        assembly = Part.objects.create(
+            name='Another assembly', description='Made with parts', assembly=True
+        )
+
+        c1 = Part.objects.create(name='D1', description='Not consumable')
+        c2 = Part.objects.create(name='D2', description='Consumable BOM line')
+        c3 = Part.objects.create(
+            name='D3', description='Consumable part', consumable=True
+        )
+
+        bom_item_1 = BomItem.objects.create(part=assembly, sub_part=c1, quantity=1)
+        bom_item_2 = BomItem.objects.create(
+            part=assembly, sub_part=c2, quantity=1, consumable=True
+        )
+        bom_item_3 = BomItem.objects.create(part=assembly, sub_part=c3, quantity=1)
+
+        consumable_items = set(
+            BomItem.objects.filter(BomItem.consumable_filter(consumable=True))
+        )
+        non_consumable_items = set(
+            BomItem.objects.filter(BomItem.consumable_filter(consumable=False))
+        )
+
+        self.assertIn(bom_item_2, consumable_items)
+        self.assertIn(bom_item_3, consumable_items)
+        self.assertNotIn(bom_item_1, consumable_items)
+
+        self.assertIn(bom_item_1, non_consumable_items)
+        self.assertNotIn(bom_item_2, non_consumable_items)
+        self.assertNotIn(bom_item_3, non_consumable_items)
+
     def test_metadata(self):
         """Unit tests for the metadata field."""
         for model in [BomItem]:
@@ -390,3 +437,121 @@ class BomItemTest(TestCase):
 
         # Delete the new BOM item
         bom_item.delete()
+
+    def test_locked_assembly_locking_disabled(self):
+        """Test that a locked assembly is not enforced when PART_ENABLE_LOCKING is disabled."""
+        assembly = Part.objects.create(
+            name='Assembly3', description='An assembly part', assembly=True
+        )
+        sub_part = Part.objects.create(
+            name='SubPart2', description='A sub-part', component=True
+        )
+
+        bom_item = BomItem.objects.create(part=assembly, sub_part=sub_part, quantity=1)
+
+        assembly.locked = True
+        assembly.save()
+
+        # With locking enabled (default), editing is blocked
+        with self.assertRaises(django_exceptions.ValidationError):
+            bom_item.quantity = 5
+            bom_item.save()
+
+        # Disable locking globally — all BOM operations should now be allowed
+        set_global_setting('PART_ENABLE_LOCKING', False)
+
+        bom_item.quantity = 5
+        bom_item.save()
+
+        BomItem.objects.create(part=assembly, sub_part=sub_part, quantity=2)
+
+        bom_item.delete()
+
+        # Re-enable for other tests
+        set_global_setting('PART_ENABLE_LOCKING', True)
+
+        # Confirm locking is enforced again
+        bom_item2 = BomItem.objects.get(part=assembly, sub_part=sub_part, quantity=2)
+        with self.assertRaises(django_exceptions.ValidationError):
+            bom_item2.quantity = 99
+            bom_item2.save()
+
+    def test_bom_validated(self):
+        """Test for caching of 'bom_validated' property."""
+        from part.tasks import validate_bom
+
+        assembly = Part.objects.create(
+            name='Assembly1', description='An assembly part', assembly=True
+        )
+
+        assembly_2 = Part.objects.create(
+            name='Assembly2', description='An assembly part', assembly=True
+        )
+
+        def check(valid: bool = True):
+            """Helper function to check the BOM for this assembly."""
+            nonlocal assembly
+            assembly.refresh_from_db()
+            self.assertEqual(assembly.bom_validated, valid)
+
+        def validate(valid: bool = True):
+            """Helper function to validate the BOM for this assembly."""
+            nonlocal assembly
+            validate_bom(assembly.pk, valid)
+            check(valid)
+
+        check(valid=False)
+        validate()
+
+        sub_part_1 = Part.objects.create(
+            name='SubPart1', description='A sub-part', component=True
+        )
+
+        sub_part_2 = Part.objects.create(
+            name='SubPart2', description='A sub-part', component=True
+        )
+
+        # Still valid at this stage - we have not made any changes to the BOM
+        check(valid=True)
+
+        # Creating a *new* BOM item should invalidate the bom_validated cache
+        bom_item = BomItem.objects.create(
+            part=assembly, sub_part=sub_part_1, quantity=1
+        )
+
+        check(valid=False)
+
+        # Editing the BOM item should also invalidate the bom_validated cache
+        validate()
+        bom_item.set_quantity(2)
+        bom_item.save()
+        check(valid=False)
+
+        # Editing the BOM item without changing any relevant fields should not invalidate the bom_validated cache
+        validate()
+        bom_item.description = 'This is a description'
+        bom_item.save()
+        check(valid=True)
+
+        # Point the BOM item to a different component
+        validate()
+        bom_item.sub_part = sub_part_2
+        bom_item.save()
+        check(valid=False)
+
+        # Point the BOM to a different assembly
+        validate()
+        bom_item.part = assembly_2
+        bom_item.save()
+        check(valid=False)
+
+        # Check a partial restore - returning to previous state should re-validate
+        bom_item.part = assembly
+        bom_item.save()
+        check(valid=True)
+
+        # Now, delete the BomItem entirely
+        bom_item.delete()
+        check(valid=False)
+
+        self.assertIsNotNone(assembly.bom_checked_date)

@@ -1,11 +1,17 @@
 import { Group, Paper, Space, Stack, Text } from '@mantine/core';
-import { useHotkeys } from '@mantine/hooks';
 
+import { StylishText } from '@lib/components/StylishText';
+import { useInvenTreeHotkeys } from '@lib/functions/Events';
+import { shortenString } from '@lib/functions/String';
+import { t } from '@lingui/core/macro';
 import { Fragment, type ReactNode, useMemo } from 'react';
-import { shortenString } from '../../functions/tables';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { usePluginUIFeature } from '../../hooks/UsePluginUIFeature';
 import { useUserSettingsState } from '../../states/SettingsStates';
+import PrimaryActionButton from '../buttons/PrimaryActionButton';
 import { ApiImage } from '../images/ApiImage';
-import { StylishText } from '../items/StylishText';
+import { ApiIcon } from '../items/ApiIcon';
+import type { PrimaryActionUIFeature } from '../plugins/PluginUIFeatureTypes';
 import { type Breadcrumb, BreadcrumbList } from './BreadcrumbList';
 import PageTitle from './PageTitle';
 
@@ -17,6 +23,7 @@ interface PageDetailInterface {
   badges?: ReactNode[];
   breadcrumbs?: Breadcrumb[];
   lastCrumb?: Breadcrumb[];
+  thumbnailUrl?: string;
   breadcrumbAction?: () => void;
   actions?: ReactNode[];
   editAction?: () => void;
@@ -35,6 +42,7 @@ export function PageDetail({
   subtitle,
   badges,
   imageUrl,
+  thumbnailUrl,
   breadcrumbs,
   lastCrumb: last_crumb,
   breadcrumbAction,
@@ -43,16 +51,24 @@ export function PageDetail({
   editEnabled
 }: Readonly<PageDetailInterface>) {
   const userSettings = useUserSettingsState();
-  useHotkeys([
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useInvenTreeHotkeys([
     [
       'mod+E',
-      () => {
+      t`Edit`,
+      (event) => {
+        if (event.repeat) {
+          return;
+        }
         if (editEnabled ?? true) {
           editAction?.();
         }
       }
     ]
   ]);
+  useActionHotkeys(actions);
 
   const pageTitleString = useMemo(
     () =>
@@ -81,6 +97,39 @@ export function PageDetail({
     }
   }, [breadcrumbs, last_crumb, userSettings]);
 
+  const extraActions = usePluginUIFeature<PrimaryActionUIFeature>({
+    featureType: 'primary_action',
+    context: { location: location.pathname }
+  });
+
+  // action caching
+  const computedActions = useMemo(() => {
+    const extraActionArray: ReactNode[] = extraActions.map((action) => {
+      const { options: opts, func } = action;
+      const { title, icon, context, options } = opts;
+
+      const click = () => {
+        const url = options?.url;
+        if (url) {
+          navigate(url);
+        } else if (func) {
+          func(context);
+        }
+      };
+
+      return (
+        <PrimaryActionButton
+          title={title}
+          leftSection={<ApiIcon name={icon as string} />}
+          color={options?.color}
+          onClick={click}
+          key={title}
+        />
+      );
+    });
+    return [...(extraActionArray ?? []), ...(actions ?? [])];
+  }, [extraActions, actions]);
+
   return (
     <>
       <PageTitle title={pageTitleString} />
@@ -108,6 +157,7 @@ export function PageDetail({
                 {imageUrl && (
                   <ApiImage
                     src={imageUrl}
+                    thumbnail={thumbnailUrl}
                     radius='sm'
                     miw={42}
                     mah={42}
@@ -134,9 +184,9 @@ export function PageDetail({
                 </Group>
               )}
             </Group>
-            {actions && (
+            {computedActions && (
               <Group gap={5} justify='right' wrap='nowrap' align='flex-start'>
-                {actions.map((action, idx) => (
+                {computedActions.map((action, idx) => (
                   <Fragment key={idx}>{action}</Fragment>
                 ))}
               </Group>
@@ -146,4 +196,75 @@ export function PageDetail({
       </Stack>
     </>
   );
+}
+
+function useActionHotkeys(actions: ReactNode[] = []) {
+  const hotkeys = useMemo(() => extractHotkeys(actions), [actions]);
+
+  useInvenTreeHotkeys(
+    hotkeys.map(({ hotkey, onClick, name }) => [
+      hotkey,
+      name,
+      (event) => {
+        if (event.repeat) {
+          return;
+        }
+        onClick();
+      }
+    ])
+  );
+}
+
+function extractHotkeys(actions: ReactNode[]) {
+  const calcActions = actions
+    .filter(
+      (action) =>
+        action &&
+        typeof action === 'object' &&
+        'hotkey' in action &&
+        action.hotkey
+    )
+    .map((action: any) => {
+      return {
+        hotkey: action?.hotkey,
+        name: action?.name,
+        onClick: action?.onClick
+      };
+    })
+    .filter((action) => action !== null);
+
+  let primaryActionHotkeyAdded = false;
+  // now iterate over the actions to extract more possible hotkeys
+  actions.forEach((action: any) => {
+    const typeName = action?.type?.name;
+
+    // dropdowns - nested actions
+    if (typeName === 'ActionDropdown' || typeName === 'OptionsActionDropdown') {
+      const dropdownActions = action?.props?.actions as any[];
+      dropdownActions.forEach((dropdownAction: any) => {
+        if (dropdownAction.hotkey) {
+          calcActions.push({
+            hotkey: dropdownAction.hotkey,
+            name: dropdownAction.name,
+            onClick: dropdownAction.onClick
+          });
+        }
+      });
+    }
+
+    // PrimaryActionButton - use the 'mod+A' hotkey if it is enabled
+    if (typeName === 'PrimaryActionButton' && action?.props?.hidden !== true) {
+      if (primaryActionHotkeyAdded) return;
+
+      const hotkey = action?.props?.hotkey ?? 'mod+A';
+      calcActions.push({
+        hotkey,
+        name:
+          action?.props?.tooltip ?? action?.props?.title ?? t`Primary Action`,
+        onClick: action?.props?.onClick
+      });
+      primaryActionHotkeyAdded = true;
+    }
+  });
+  return calcActions;
 }

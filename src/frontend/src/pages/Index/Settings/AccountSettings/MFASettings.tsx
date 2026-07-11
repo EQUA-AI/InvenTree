@@ -1,4 +1,6 @@
 import { create } from '@github/webauthn-json/browser-ponyfill';
+import { CopyButton } from '@lib/components/CopyButton';
+import { StylishText } from '@lib/components/StylishText';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { FlowEnum } from '@lib/types/Auth';
@@ -28,12 +30,12 @@ import {
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { api, queryClient } from '../../../../App';
-import { CopyButton } from '../../../../components/buttons/CopyButton';
-import { StylishText } from '../../../../components/items/StylishText';
-import { authApi } from '../../../../functions/auth';
+import { authApi, doLogout } from '../../../../functions/auth';
 import { useServerApiState } from '../../../../states/ServerApiState';
+import { useGlobalSettingsState } from '../../../../states/SettingsStates';
 import { QrRegistrationForm } from './QrRegistrationForm';
 import { parseDate } from './SecurityContent';
 
@@ -697,6 +699,7 @@ export default function MFASettings() {
   const [auth_config] = useServerApiState(
     useShallow((state) => [state.auth_config])
   );
+  const navigate = useNavigate();
 
   // Fetch list of MFA methods currently configured for the user
   const { isLoading, data, refetch } = useQuery({
@@ -707,6 +710,17 @@ export default function MFASettings() {
         .then((res) => res?.data?.data ?? [])
         .catch(() => [])
   });
+
+  const refetchAfterRemoval = () => {
+    refetch();
+    if (
+      data == undefined &&
+      useGlobalSettingsState.getState().isSet('LOGIN_ENFORCE_MFA')
+    ) {
+      console.log('MFA enforced but no MFA methods remain - logging out now');
+      doLogout(navigate);
+    }
+  };
 
   // Memoize the list of currently used MFA factors
   const usedFactors: string[] = useMemo(() => {
@@ -921,14 +935,14 @@ export default function MFASettings() {
         opened={removeTOTPModalOpen}
         setOpen={setRemoveTOTPModalOpen}
         onReauthFlow={reauthenticate}
-        onSuccess={refetch}
+        onSuccess={refetchAfterRemoval}
       />
       <RemoveWebauthnModal
         tokenId={webauthnToken}
         opened={removeWebauthnModalOpen}
         setOpen={setRemoveWebauthnModalOpen}
         onReauthFlow={reauthenticate}
-        onSuccess={refetch}
+        onSuccess={refetchAfterRemoval}
       />
       <RegisterTOTPModal
         opened={registerTOTPModalOpen}

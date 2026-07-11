@@ -9,33 +9,43 @@ import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
 import { navigateToLink } from '@lib/functions/Navigation';
+import useTable from '@lib/hooks/UseTable';
 import type { TableFilter } from '@lib/types/Filters';
+import {
+  BooleanColumn,
+  CompanyColumn,
+  DescriptionColumn
+} from '../../components/tables/ColumnRenderers';
+import { TagsFilter } from '../../components/tables/Filter';
+import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 import { companyFields } from '../../forms/CompanyForms';
 import {
   useCreateApiFormModal,
   useEditApiFormModal
 } from '../../hooks/UseForm';
-import { useTable } from '../../hooks/UseTable';
 import { useUserState } from '../../states/UserState';
-import {
-  BooleanColumn,
-  CompanyColumn,
-  DescriptionColumn
-} from '../ColumnRenderers';
-import { InvenTreeTable } from '../InvenTreeTable';
 
 /**
  * A table which displays a list of company records,
  * based on the provided filter parameters
  */
 export function CompanyTable({
+  companyType,
   params,
   path
 }: Readonly<{
+  companyType?: string;
   params?: any;
   path?: string;
 }>) {
-  const table = useTable('company');
+  const table = useTable(`company-${companyType ?? 'index'}`, {
+    initialFilters: [
+      {
+        name: 'active',
+        value: 'true'
+      }
+    ]
+  });
 
   const navigate = useNavigate();
   const user = useUserState();
@@ -54,6 +64,7 @@ export function CompanyTable({
       DescriptionColumn({}),
       BooleanColumn({
         accessor: 'active',
+        filter: 'active',
         title: t`Active`,
         sortable: true,
         switchable: true
@@ -71,7 +82,8 @@ export function CompanyTable({
     fields: companyFields(),
     initialData: params,
     follow: true,
-    modelType: ModelType.company
+    modelType: ModelType.company,
+    keepOpenOption: true
   });
 
   const [selectedCompany, setSelectedCompany] = useState<number>(0);
@@ -105,7 +117,8 @@ export function CompanyTable({
         name: 'is_customer',
         label: t`Customer`,
         description: t`Show companies which are customers`
-      }
+      },
+      TagsFilter({ modelType: ModelType.company })
     ];
   }, []);
 

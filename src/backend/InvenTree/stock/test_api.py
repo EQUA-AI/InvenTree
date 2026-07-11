@@ -3,12 +3,12 @@
 import os
 import random
 from datetime import datetime, timedelta
-from enum import IntEnum
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.urls import reverse
 
+import pytest
 from djmoney.money import Money
 from rest_framework import status
 
@@ -17,7 +17,7 @@ import company.models
 import part.models
 from common.models import InvenTreeCustomUserStateModel, InvenTreeSetting
 from common.settings import set_global_setting
-from InvenTree.unit_test import InvenTreeAPITestCase
+from InvenTree.unit_test import InvenTreeAPIPerformanceTestCase, InvenTreeAPITestCase
 from part.models import Part, PartTestTemplate
 from stock.models import (
     StockItem,
@@ -66,6 +66,11 @@ class StockLocationTest(StockAPITestCase):
 
         # Add some stock locations
         StockLocation.objects.create(name='top', description='top category')
+
+    def test_ordering(self):
+        """Test ordering options for the StockLocation list endpoint."""
+        for ordering in ['name', 'pathstring', 'level', 'tree_id']:
+            self.run_ordering_test(self.list_url, ordering)
 
     def test_list(self):
         """Test the StockLocationList API endpoint."""
@@ -136,13 +141,6 @@ class StockLocationTest(StockAPITestCase):
 
     def test_stock_location_delete(self):
         """Test stock location deletion with different parameters."""
-
-        class Target(IntEnum):
-            move_sub_locations_to_parent_move_stockitems_to_parent = (0,)
-            move_sub_locations_to_parent_delete_stockitems = (1,)
-            delete_sub_locations_move_stockitems_to_parent = (2,)
-            delete_sub_locations_delete_stockitems = (3,)
-
         # First, construct a set of template / variant parts
         part = Part.objects.create(
             name='Part for stock item creation',
@@ -151,117 +149,95 @@ class StockLocationTest(StockAPITestCase):
             is_template=False,
         )
 
-        for i in range(4):
-            delete_sub_locations: bool = False
-            delete_stock_items: bool = False
-
-            if i in (
-                Target.move_sub_locations_to_parent_delete_stockitems,
-                Target.delete_sub_locations_delete_stockitems,
-            ):
-                delete_stock_items = True
-            if i in (
-                Target.delete_sub_locations_move_stockitems_to_parent,
-                Target.delete_sub_locations_delete_stockitems,
-            ):
-                delete_sub_locations = True
-
-            # Create a parent stock location
-            parent_stock_location = StockLocation.objects.create(
-                name='Parent stock location',
-                description='This is the parent stock location where the sub categories and stock items are moved to',
-                parent=None,
-            )
-
-            stocklocation_count_before = StockLocation.objects.count()
-            stock_location_count_before = StockItem.objects.count()
-
-            # Create a stock location to be deleted
-            stock_location_to_delete = StockLocation.objects.create(
-                name='Stock location to delete',
-                description='This is the stock location to be deleted',
-                parent=parent_stock_location,
-            )
-
-            url = reverse(
-                'api-location-detail', kwargs={'pk': stock_location_to_delete.id}
-            )
-
-            stock_items = []
-            # Create stock items in the location to be deleted
-            for jj in range(3):
-                stock_items.append(
-                    StockItem.objects.create(
-                        batch=f'Batch xyz {jj}',
-                        location=stock_location_to_delete,
-                        part=part,
-                    )
+        for delete_sub_locations in [False, True]:
+            for delete_stock_items in [False, True]:
+                # Create a parent stock location
+                parent_stock_location = StockLocation.objects.create(
+                    name='Parent stock location',
+                    description='This is the parent stock location where the sub categories and stock items are moved to',
+                    parent=None,
                 )
 
-            child_stock_locations = []
-            child_stock_locations_items = []
-            # Create sub location under the stock location to be deleted
-            for ii in range(3):
-                child = StockLocation.objects.create(
-                    name=f'Sub-location {ii}',
-                    description='A sub-location of the deleted stock location',
-                    parent=stock_location_to_delete,
-                )
-                child_stock_locations.append(child)
+                location_count_before = StockLocation.objects.count()
+                item_count_before = StockItem.objects.count()
 
-                # Create stock items in the sub locations
+                # Create a stock location to be deleted
+                location_to_delete = StockLocation.objects.create(
+                    name='Stock location to delete',
+                    description='This is the stock location to be deleted',
+                    parent=parent_stock_location,
+                )
+
+                url = reverse(
+                    'api-location-detail', kwargs={'pk': location_to_delete.id}
+                )
+
+                stock_items = []
+
+                # Create stock items in the location to be deleted
                 for jj in range(3):
-                    child_stock_locations_items.append(
+                    stock_items.append(
                         StockItem.objects.create(
-                            batch=f'B xyz {jj}', part=part, location=child
+                            batch=f'Batch xyz {jj}',
+                            location=location_to_delete,
+                            part=part,
                         )
                     )
 
-            # Delete the created stock location
-            params = {}
-            if delete_stock_items:
-                params['delete_stock_items'] = '1'
-            if delete_sub_locations:
-                params['delete_sub_locations'] = '1'
-            response = self.delete(url, params, expected_code=204)
+                child_locations = []
+                child_locations_items = []
 
-            self.assertEqual(response.status_code, 204)
+                # Create sub location under the stock location to be deleted
+                for ii in range(3):
+                    child = StockLocation.objects.create(
+                        name=f'Sub-location {ii}',
+                        description='A sub-location of the deleted stock location',
+                        parent=location_to_delete,
+                    )
+                    child_locations.append(child)
 
-            if delete_stock_items:
-                if i == Target.delete_sub_locations_delete_stockitems:
-                    # Check if all sub-categories deleted
+                    # Create stock items in the sub locations
+                    for jj in range(3):
+                        child_locations_items.append(
+                            StockItem.objects.create(
+                                batch=f'B xyz {jj}', part=part, location=child
+                            )
+                        )
+
+                # Delete the created stock location
+                params = {
+                    'delete_stock_items': delete_stock_items,
+                    'delete_sub_locations': delete_sub_locations,
+                }
+
+                response = self.delete(url, data=params, expected_code=204)
+
+                self.assertEqual(response.status_code, 204)
+
+                # If we were deleting stock items, the count must not have changed
+                if delete_stock_items:
+                    extra_items = 0 if delete_sub_locations else 9
                     self.assertEqual(
-                        StockItem.objects.count(), stock_location_count_before
+                        StockItem.objects.count(), item_count_before + extra_items
                     )
-                elif i == Target.move_sub_locations_to_parent_delete_stockitems:
-                    # Check if all stock locations deleted
-                    self.assertEqual(
-                        StockItem.objects.count(),
-                        stock_location_count_before + len(child_stock_locations_items),
-                    )
-            else:
-                # Stock locations moved to the parent location
-                for stock_item in stock_items:
-                    stock_item.refresh_from_db()
-                    self.assertEqual(stock_item.location, parent_stock_location)
+                else:
+                    # Stock items moved to the parent location
+                    self.assertGreater(StockItem.objects.count(), item_count_before)
+
+                    for stock_item in stock_items:
+                        stock_item.refresh_from_db()
+                        self.assertEqual(stock_item.location, parent_stock_location)
 
                 if delete_sub_locations:
-                    for child_stock_location_item in child_stock_locations_items:
-                        child_stock_location_item.refresh_from_db()
-                        self.assertEqual(
-                            child_stock_location_item.location, parent_stock_location
-                        )
-
-            if delete_sub_locations:
-                # Check if all sub-locations are deleted
-                self.assertEqual(
-                    StockLocation.objects.count(), stocklocation_count_before
-                )
-            else:
-                #  Check if all sub-locations moved to the parent
-                for child in child_stock_locations:
-                    child.refresh_from_db()
-                    self.assertEqual(child.parent, parent_stock_location)
+                    # Check if all sub-categories deleted
+                    self.assertEqual(
+                        StockLocation.objects.count(), location_count_before
+                    )
+                else:
+                    # Check if all sub-categories moved to the parent category
+                    for location in child_locations:
+                        location.refresh_from_db()
+                        self.assertEqual(location.parent, parent_stock_location)
 
     def test_output_options(self):
         """Test output options."""
@@ -563,6 +539,140 @@ class StockItemListTest(StockAPITestCase):
 
         # Return JSON data
         return response.data
+
+    def test_ordering(self):
+        """Run ordering tests against the StockItem list endpoint."""
+        for ordering in ['part', 'location', 'stock', 'status', 'IPN', 'MPN', 'SKU']:
+            self.run_ordering_test(self.list_url, ordering)
+
+    def test_creation_date_filter_and_ordering(self):
+        """Test created_before / created_after filters and ordering by creation_date."""
+        import datetime
+
+        part = Part.objects.first()
+        location = StockLocation.objects.first()
+
+        # Create items with known, spread-out creation_dates via UPDATE after insert
+        dates = [
+            datetime.date(2020, 1, 1),
+            datetime.date(2021, 6, 15),
+            datetime.date(2023, 3, 30),
+        ]
+        pks = []
+        for d in dates:
+            item = StockItem.objects.create(part=part, location=location, quantity=1)
+            StockItem.objects.filter(pk=item.pk).update(creation_date=d)
+            pks.append(item.pk)
+
+        # created_after=2020-12-31 should exclude the 2020 item
+        result_pks = [r['pk'] for r in self.get_stock(created_after='2020-12-31')]
+        self.assertNotIn(pks[0], result_pks)
+        self.assertIn(pks[1], result_pks)
+        self.assertIn(pks[2], result_pks)
+
+        # created_before=2022-01-01 should exclude the 2023 item
+        result_pks = [r['pk'] for r in self.get_stock(created_before='2022-01-01')]
+        self.assertIn(pks[0], result_pks)
+        self.assertIn(pks[1], result_pks)
+        self.assertNotIn(pks[2], result_pks)
+
+        # combined: only the 2021 item falls in the window
+        result_pks = [
+            r['pk']
+            for r in self.get_stock(
+                created_after='2020-12-31', created_before='2022-01-01'
+            )
+        ]
+        self.assertNotIn(pks[0], result_pks)
+        self.assertIn(pks[1], result_pks)
+        self.assertNotIn(pks[2], result_pks)
+
+        # ordering=creation_date: our three items must appear in ascending date order
+        results = self.get(
+            self.list_url, {'ordering': 'creation_date'}, expected_code=200
+        ).data
+        ordered_pks = [r['pk'] for r in results if r['pk'] in pks]
+        self.assertEqual(ordered_pks, pks)
+
+        # ordering=-creation_date: descending
+        results = self.get(
+            self.list_url, {'ordering': '-creation_date'}, expected_code=200
+        ).data
+        ordered_pks = [r['pk'] for r in results if r['pk'] in pks]
+        self.assertEqual(ordered_pks, list(reversed(pks)))
+
+    def test_pagination(self):
+        """Test that pagination boundaries are observed correctly.
+
+        Ref: https://github.com/inventree/InvenTree/issues/11442
+        """
+        location = StockLocation.objects.first()
+        part = Part.objects.first()
+
+        items = []
+
+        # Delete all existing stock item objects
+        for item in StockItem.objects.all():
+            item.delete()
+
+        for idx in range(1000):
+            items.append(
+                StockItem(
+                    part=part,
+                    location=location,
+                    quantity=idx % 10,
+                    level=0,
+                    lft=0,
+                    rght=0,
+                    tree_id=0,
+                )
+            )
+
+        StockItem.objects.bulk_create(items, batch_size=250)
+
+        self.assertEqual(StockItem.objects.count(), 1000)
+
+        url = reverse('api-stock-list')
+
+        # Keep track of the unique PKs we have seen in the results
+        unique_pks = set()
+
+        for idx in range(0, 100, 10):
+            data = self.get(url, {'limit': 10, 'offset': idx}).data
+            self.assertEqual(data['count'], 1000)
+            self.assertEqual(len(data['results']), 10)
+
+            for item in data['results']:
+                self.assertNotIn(
+                    item['pk'],
+                    unique_pks,
+                    f'Duplicate PK {item["pk"]} found in paginated results @ page {idx // 10}',
+                )
+                unique_pks.add(item['pk'])
+
+        self.assertEqual(
+            len(unique_pks), 100, 'Expected to see 100 unique PKs in paginated results'
+        )
+
+        # Run same test again, with reverse ordering on part IPN
+        unique_pks = set()
+
+        for idx in range(0, 100, 10):
+            data = self.get(url, {'limit': 10, 'offset': idx, 'ordering': '-IPN'}).data
+            self.assertEqual(data['count'], 1000)
+            self.assertEqual(len(data['results']), 10)
+
+            for item in data['results']:
+                self.assertNotIn(
+                    item['pk'],
+                    unique_pks,
+                    f'Duplicate PK {item["pk"]} found in paginated results @ page {idx // 10} with reverse ordering',
+                )
+                unique_pks.add(item['pk'])
+
+        self.assertEqual(
+            len(unique_pks), 100, 'Expected to see 100 unique PKs in paginated results'
+        )
 
     def test_top_level_filtering(self):
         """Test filtering against "top level" stock location."""
@@ -866,7 +976,13 @@ class StockItemListTest(StockAPITestCase):
 
         excluded_headers = ['metadata']
 
-        with self.export_data(self.list_url) as data_file:
+        filters = {
+            'part_detail': True,
+            'location_detail': True,
+            'supplier_part_detail': True,
+        }
+
+        with self.export_data(self.list_url, params=filters) as data_file:
             self.process_csv(
                 data_file,
                 required_cols=required_headers,
@@ -875,9 +991,10 @@ class StockItemListTest(StockAPITestCase):
             )
 
         # Now, add a filter to the results
-        with self.export_data(
-            self.list_url, {'location': 1, 'cascade': True}
-        ) as data_file:
+        filters['location'] = 1
+        filters['cascade'] = True
+
+        with self.export_data(self.list_url, params=filters) as data_file:
             data = self.process_csv(data_file, required_rows=9)
 
             for row in data:
@@ -904,6 +1021,53 @@ class StockItemListTest(StockAPITestCase):
         # Export stock items with a specific part
         with self.export_data(self.list_url, {'part': 25}) as data_file:
             self.process_csv(data_file, required_rows=items.count())
+
+    def test_large_export(self):
+        """Test export of very large dataset.
+
+        - Ensure that the time taken to export a large dataset is reasonable.
+        - Ensure that the number of DB queries is reasonable.
+        """
+        # Create a large number of stock items
+        locations = list(StockLocation.objects.all())
+        parts = list(Part.objects.filter(virtual=False))
+
+        idx = 0
+
+        N_LOCATIONS = len(locations)
+        N_PARTS = len(parts)
+
+        stock_items = []
+
+        while idx < 2500:
+            part = parts[idx % N_PARTS]
+            location = locations[idx % N_LOCATIONS]
+
+            item = StockItem(
+                part=part,
+                location=location,
+                quantity=10,
+                level=0,
+                tree_id=0,
+                lft=0,
+                rght=0,
+            )
+            stock_items.append(item)
+            idx += 1
+
+        StockItem.objects.bulk_create(stock_items)
+
+        self.assertGreaterEqual(StockItem.objects.count(), 2500)
+
+        # Note: While the export is quick on pgsql, it is still quite slow on sqlite3
+        with self.export_data(
+            self.list_url,
+            max_query_count=100,
+            max_query_time=12.0,  # Test time increased due to worker variability
+        ) as data_file:
+            data = self.process_csv(data_file)
+
+            self.assertGreaterEqual(len(data), 2500)
 
     def test_filter_by_allocated(self):
         """Test that we can filter by "allocated" status.
@@ -1118,7 +1282,7 @@ class CustomStockItemStatusTest(StockAPITestCase):
             name='OK - advanced',
             label='OK - adv.',
             color='secondary',
-            logical_key=10,
+            logical_key=StockStatus.OK.value,
             model=ContentType.objects.get(model='stockitem'),
             reference_status='StockStatus',
         )
@@ -1127,14 +1291,55 @@ class CustomStockItemStatusTest(StockAPITestCase):
             name='attention 2',
             label='attention 2',
             color='secondary',
-            logical_key=50,
+            logical_key=StockStatus.ATTENTION.value,
             model=ContentType.objects.get(model='stockitem'),
             reference_status='StockStatus',
         )
 
     def test_custom_status(self):
         """Tests interaction with states."""
+        part = Part.objects.filter(virtual=False).first()
+
+        # Try creating a new stock item with an invalid status code
+        response = self.post(
+            reverse('api-stock-list'),
+            {'part': part.pk, 'quantity': 10, 'status_custom_key': 'xyz'},
+        )
+
+        data = response.data[0]
+
+        # An invalid status value has been set to the default value
+        self.assertEqual(data['status'], StockStatus.OK.value)
+
+        # Create a stock item with a non-default, built-in status value
+        response = self.post(
+            reverse('api-stock-list'),
+            {
+                'part': part.pk,
+                'quantity': 10,
+                'status_custom_key': StockStatus.QUARANTINED.value,
+            },
+        )
+
+        data = response.data[0]
+
+        self.assertEqual(data['status'], StockStatus.QUARANTINED.value)
+        self.assertEqual(data['status_custom_key'], StockStatus.QUARANTINED.value)
+        self.assertEqual(data['status_text'], 'Quarantined')
+
+        # Create a stock item with a custom status value
+        response = self.post(
+            reverse('api-stock-list'),
+            {'part': part.pk, 'quantity': 10, 'status_custom_key': self.status2.key},
+        )
+
+        data = response.data[0]
+
+        self.assertEqual(data['status'], StockStatus.ATTENTION.value)
+        self.assertEqual(data['status_custom_key'], self.status2.key)
+
         # Create a stock item with the custom status code via the API
+        # Note: We test with a string value here
         response = self.post(
             self.list_url,
             {
@@ -1142,7 +1347,7 @@ class CustomStockItemStatusTest(StockAPITestCase):
                 'description': 'Test desc 1',
                 'quantity': 1,
                 'part': 1,
-                'status_custom_key': self.status.key,
+                'status_custom_key': str(self.status.key),
             },
             expected_code=201,
         )
@@ -1206,6 +1411,82 @@ class CustomStockItemStatusTest(StockAPITestCase):
         self.assertEqual(status['value'], self.status.key)
         self.assertEqual(status['display_name'], self.status.label)
 
+    def test_custom_status_query_count(self):
+        """Test that listing StockItems with custom statuses does not cause N+1 queries.
+
+        Ensures that resolving 'status_text' for custom status values is O(1)
+        in database queries, not O(N) relative to the number of results.
+        """
+        stock_content_type = ContentType.objects.get(model='stockitem')
+
+        # 10 custom status values - different keys, labels, and logical_keys
+        logical_keys = [
+            StockStatus.OK.value,
+            StockStatus.ATTENTION.value,
+            StockStatus.DAMAGED.value,
+            StockStatus.DESTROYED.value,
+            StockStatus.REJECTED.value,
+            StockStatus.LOST.value,
+            StockStatus.QUARANTINED.value,
+            StockStatus.RETURNED.value,
+            StockStatus.OK.value,
+            StockStatus.ATTENTION.value,
+        ]
+
+        custom_statuses = [
+            InvenTreeCustomUserStateModel.objects.create(
+                key=2000 + i,
+                name=f'StockCustomStatus{i}',
+                label=f'Stock Custom Status Label {i}',
+                color='secondary',
+                logical_key=logical_keys[i],
+                model=stock_content_type,
+                reference_status='StockStatus',
+            )
+            for i in range(10)
+        ]
+
+        part = Part.objects.filter(active=True, virtual=False).first()
+
+        # Create 500 stock items, cycling through the 10 custom statuses
+        StockItem.objects.bulk_create([
+            StockItem(
+                part=part,
+                quantity=1,
+                level=0,
+                tree_id=0,
+                lft=0,
+                rght=0,
+                status=custom_statuses[i % 10].logical_key,
+                status_custom_key=custom_statuses[i % 10].key,
+            )
+            for i in range(500)
+        ])
+
+        # Lookup: custom_key -> custom_status_object, for quick per-row assertions
+        custom_lookup = {cs.key: cs for cs in custom_statuses}
+
+        # Query count must stay below the fixed threshold regardless of limit.
+        # An N+1 bug would push limit=100 or limit=500 well over the threshold.
+        for limit in [50, 100, 500]:
+            response = self.get(
+                self.list_url,
+                data={'limit': limit},
+                expected_code=200,
+                max_query_count=50,
+            )
+
+            for result in response.data['results']:
+                cs = custom_lookup.get(result['status_custom_key'])
+
+                if cs is None:
+                    # Item from fixtures - no custom status assigned
+                    continue
+
+                self.assertEqual(result['status'], cs.logical_key)
+                self.assertEqual(result['status_custom_key'], cs.key)
+                self.assertEqual(result['status_text'], cs.label)
+
 
 class StockItemTest(StockAPITestCase):
     """Series of API tests for the StockItem API."""
@@ -1221,15 +1502,33 @@ class StockItemTest(StockAPITestCase):
         StockLocation.objects.create(name='B', description='location b', parent=top)
         StockLocation.objects.create(name='C', description='location c', parent=top)
 
+        # Create a custom status
+        self.inspect_custom_status = InvenTreeCustomUserStateModel.objects.create(
+            key=150,
+            name='INSPECT',
+            label='Incoming goods inspection',
+            color='warning',
+            logical_key=50,
+            model=ContentType.objects.get(model='stockitem'),
+            reference_status='StockStatus',
+        )
+
     def test_create_default_location(self):
         """Test the default location functionality, if a 'location' is not specified in the creation request."""
         # The part 'R_4K7_0603' (pk=4) has a default location specified
 
+        # Create a new StockItem instance
         response = self.post(
             self.list_url, data={'part': 4, 'quantity': 10}, expected_code=201
         )
 
         self.assertEqual(response.data[0]['location'], 2)
+
+        # Check that the item was associated with the correct user
+        item = StockItem.objects.get(pk=response.data[0]['pk'])
+        self.assertEqual(item.tracking_info_count, 1)
+        tracking = item.tracking_info.first()
+        self.assertEqual(tracking.user, self.user)
 
         # What if we explicitly set the location to a different value?
 
@@ -1287,6 +1586,49 @@ class StockItemTest(StockAPITestCase):
             data={'part': 1, 'location': 1, 'quantity': 10},
             expected_code=201,
         )
+        # creation_date must be populated on the newly created item
+        item = StockItem.objects.get(pk=response.data[0]['pk'])
+        self.assertIsNotNone(item.creation_date)
+
+    def test_creation_date_is_readonly(self):
+        """creation_date must not be modifiable via the API."""
+        item = StockItem.objects.create(
+            part=Part.objects.get(pk=1),
+            location=StockLocation.objects.get(pk=1),
+            quantity=1,
+        )
+        original_date = item.creation_date
+        self.assertIsNotNone(original_date)
+
+        url = reverse('api-stock-detail', kwargs={'pk': item.pk})
+        self.patch(
+            url, data={'creation_date': '2000-01-01T00:00:00Z'}, expected_code=200
+        )
+        # Field is read-only; the DB value must be unchanged
+        item.refresh_from_db()
+        self.assertEqual(item.creation_date, original_date)
+
+    def test_creation_date_set_on_serialize(self):
+        """creation_date must be set on items produced by the serialize endpoint."""
+        # Stock item 100: part 25 (trackable), quantity 10, location 7
+        item = StockItem.objects.get(pk=100)
+        url = reverse('api-stock-item-serialize', kwargs={'pk': item.pk})
+
+        self.post(
+            url,
+            data={
+                'quantity': 3,
+                'serial_numbers': '901,902,903',
+                'destination': item.location.pk,
+            },
+            expected_code=201,
+        )
+        new_items = StockItem.objects.filter(
+            part=item.part, serial__in=['901', '902', '903']
+        )
+        self.assertEqual(new_items.count(), 3)
+        for new_item in new_items:
+            self.assertIsNotNone(new_item.creation_date)
 
     def test_stock_item_create_with_supplier_part(self):
         """Test creation of a StockItem via the API, including SupplierPart data."""
@@ -1430,6 +1772,7 @@ class StockItemTest(StockAPITestCase):
             # Item location should have been set automatically
             self.assertIsNotNone(item.location)
             self.assertIn(item.serial, serials)
+            self.assertIsNotNone(item.creation_date)
 
         # There now should be 10 unique stock entries for this part
         self.assertEqual(trackable_part.stock_entries().count(), 10)
@@ -1446,6 +1789,36 @@ class StockItemTest(StockAPITestCase):
             str(response.data),
         )
         self.assertEqual(trackable_part.get_stock_count(), 10)
+
+    def test_edit_serial(self):
+        """Test that we can edit serial numbers via the API."""
+        item = StockItem.objects.create(
+            part=Part.objects.filter(trackable=True).first(),
+            quantity=1,
+            location=StockLocation.objects.first(),
+        )
+
+        set_global_setting('STOCK_ALLOW_EDIT_SERIAL', False)
+
+        url = reverse('api-stock-detail', kwargs={'pk': item.pk})
+
+        # Edit the serial number
+        # This should succeed, as the initial serial number is blank
+        response = self.patch(url, {'serial': '54321'}, expected_code=200)
+        self.assertEqual(response.data['serial'], '54321')
+
+        # Edit it again - this time, should fail as the serial number is already set
+        response = self.patch(url, {'serial': '98765'}, expected_code=400)
+        self.assertIn('Editing of serial numbers is not allowed', str(response.data))
+
+        # Ensure that changing a different field does not cause an error
+        response = self.patch(url, {'batch': 'abcde'}, expected_code=200)
+        self.assertEqual(response.data['batch'], 'abcde')
+
+        # Adjust the setting to allow serial editing
+        set_global_setting('STOCK_ALLOW_EDIT_SERIAL', True)
+        response = self.patch(url, {'serial': '98765'}, expected_code=200)
+        self.assertEqual(response.data['serial'], '98765')
 
     def test_default_expiry(self):
         """Test that the "default_expiry" functionality works via the API.
@@ -1701,12 +2074,18 @@ class StockItemTest(StockAPITestCase):
 
         prt = Part.objects.first()
 
+        # Number of items to create
+        N_ITEMS = 10
+
         # Create a bunch of items
-        items = [StockItem.objects.create(part=prt, quantity=10) for _ in range(10)]
+        items = [
+            StockItem.objects.create(part=prt, quantity=10) for _ in range(N_ITEMS)
+        ]
 
         for item in items:
             item.refresh_from_db()
             self.assertEqual(item.status, StockStatus.OK.value)
+            self.assertEqual(item.tracking_info.count(), 1)
 
         data = {
             'items': [item.pk for item in items],
@@ -1719,10 +2098,19 @@ class StockItemTest(StockAPITestCase):
         for item in items:
             item.refresh_from_db()
             self.assertEqual(item.status, StockStatus.DAMAGED.value)
-            self.assertEqual(item.tracking_info.count(), 1)
+            self.assertEqual(item.tracking_info.count(), 2)
+            tracking = item.tracking_info.last()
+            self.assertEqual(tracking.deltas['old_status'], StockStatus.OK.value)
+            self.assertEqual(
+                tracking.deltas['old_status_logical'], StockStatus.OK.value
+            )
+            self.assertEqual(tracking.deltas['status'], StockStatus.DAMAGED.value)
+            self.assertEqual(
+                tracking.deltas['status_logical'], StockStatus.DAMAGED.value
+            )
 
         # Same test, but with one item unchanged
-        items[0].status = StockStatus.ATTENTION.value
+        items[0].set_status(StockStatus.ATTENTION.value)
         items[0].save()
 
         data['status'] = StockStatus.ATTENTION.value
@@ -1732,10 +2120,99 @@ class StockItemTest(StockAPITestCase):
         for item in items:
             item.refresh_from_db()
             self.assertEqual(item.status, StockStatus.ATTENTION.value)
-            self.assertEqual(item.tracking_info.count(), 2)
+            self.assertEqual(item.tracking_info.count(), 3)
 
             tracking = item.tracking_info.last()
             self.assertEqual(tracking.tracking_type, StockHistoryCode.EDITED.value)
+
+    def test_set_custom_status(self):
+        """Test API endpoint for setting StockItem custom status."""
+        url = reverse('api-stock-change-status')
+
+        prt = Part.objects.first()
+
+        # Number of items to create
+        N_ITEMS = 10
+
+        # Create a bunch of items
+        items = [
+            StockItem.objects.create(part=prt, quantity=10) for _ in range(N_ITEMS)
+        ]
+
+        for item in items:
+            item.refresh_from_db()
+            self.assertEqual(item.status, StockStatus.OK.value)
+            self.assertEqual(item.tracking_info.count(), 1)
+
+        # Test tracking with custom status
+        # *from* standard *to* custom
+        data = {
+            'items': [item.pk for item in items],
+            'status': self.inspect_custom_status.key,
+        }
+
+        self.post(url, data, expected_code=201)
+
+        for item in items:
+            item.refresh_from_db()
+            self.assertEqual(item.status, self.inspect_custom_status.logical_key)
+            self.assertEqual(item.get_custom_status(), self.inspect_custom_status.key)
+            tracking = item.tracking_info.last()
+            self.assertEqual(tracking.deltas['old_status'], StockStatus.OK.value)
+            self.assertEqual(
+                tracking.deltas['old_status_logical'], StockStatus.OK.value
+            )
+            self.assertEqual(tracking.deltas['status'], self.inspect_custom_status.key)
+            self.assertEqual(
+                tracking.deltas['status_logical'],
+                self.inspect_custom_status.logical_key,
+            )
+
+        # reverse case
+        # *from* custom *to* standard
+        data['status'] = StockStatus.OK.value
+        self.post(url, data, expected_code=201)
+        for item in items:
+            item.refresh_from_db()
+            self.assertEqual(item.status, StockStatus.OK.value)
+            self.assertIsNone(item.get_custom_status())
+            tracking = item.tracking_info.last()
+            self.assertEqual(
+                tracking.deltas['old_status'], self.inspect_custom_status.key
+            )
+            self.assertEqual(
+                tracking.deltas['old_status_logical'],
+                self.inspect_custom_status.logical_key,
+            )
+            self.assertEqual(tracking.deltas['status'], StockStatus.OK.value)
+            self.assertEqual(tracking.deltas['status_logical'], StockStatus.OK.value)
+
+    def test_bulk_batch_change(self):
+        """Test that we can bulk-change batch code for a set of stock items."""
+        url = reverse('api-stock-list')
+
+        # Find the first 10 stock items
+        items = StockItem.objects.all()[:10]
+        self.assertEqual(len(items), 10)
+
+        response = self.patch(
+            url,
+            data={'items': [item.pk for item in items], 'batch': 'NEW-BATCH-CODE'},
+            max_query_count=300,
+        )
+
+        data = response.data
+
+        self.assertEqual(data['success'], 'Updated 10 items')
+        self.assertEqual(len(data['items']), 10)
+
+        for item in data['items']:
+            self.assertEqual(item['batch'], 'NEW-BATCH-CODE')
+
+        # Check database items also
+        for item in items:
+            item.refresh_from_db()
+            self.assertEqual(item.batch, 'NEW-BATCH-CODE')
 
 
 class StocktakeTest(StockAPITestCase):
@@ -1812,6 +2289,32 @@ class StocktakeTest(StockAPITestCase):
             self.assertEqual(response.data['items'][0]['pk'], 1234)
             self.assertEqual(response.data['items'][0]['quantity'], target[endpoint])
 
+    def test_count_serialized(self):
+        """Test that counting a serialized stock item correctly updates stocktake_date."""
+        import datetime
+
+        # Fixture item pk=501 is a serialized item (serial=1)
+        item = StockItem.objects.get(pk=501)
+        self.assertTrue(item.serialized)
+        self.assertEqual(item.quantity, 1)
+
+        # Clear any existing stocktake date so we can verify it gets set
+        item.stocktake_date = None
+        item.save()
+
+        url = reverse('api-stock-count')
+
+        # Count the serialized item — quantity must be 1
+        data = {'items': [{'pk': item.pk, 'quantity': 1}]}
+        response = self.post(url, data, expected_code=201)
+
+        self.assertEqual(response.data['items'][0]['pk'], item.pk)
+        self.assertEqual(response.data['items'][0]['quantity'], '1.00000')
+
+        # stocktake_date must have been set to today
+        item.refresh_from_db()
+        self.assertEqual(item.stocktake_date, datetime.date.today())
+
     def test_transfer(self):
         """Test stock transfers."""
         stock_item = StockItem.objects.get(pk=1234)
@@ -1852,6 +2355,263 @@ class StocktakeTest(StockAPITestCase):
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
+    def test_count_with_location(self):
+        """Test that the stock count endpoint correctly handles the optional location field."""
+        url = reverse('api-stock-count')
+
+        # Stock item pk=1234 starts at location 5; pk=1 starts at location 3
+        item_a = StockItem.objects.get(pk=1234)
+        item_b = StockItem.objects.get(pk=1)
+
+        self.assertEqual(item_a.location.pk, 5)
+        self.assertEqual(item_b.location.pk, 3)
+
+        # --- location is updated when provided (single item) ---
+        response = self.post(
+            url,
+            {'items': [{'pk': item_a.pk, 'quantity': 10}], 'location': 1},
+            expected_code=201,
+        )
+        self.assertEqual(response.data['items'][0]['pk'], item_a.pk)
+
+        item_a.refresh_from_db()
+        self.assertEqual(item_a.location.pk, 1)
+
+        # Tracking entry records the location change
+        entry = StockItemTracking.objects.filter(
+            item=item_a, tracking_type=StockHistoryCode.STOCK_COUNT
+        ).latest('date')
+        self.assertEqual(entry.deltas.get('location'), 1)
+        self.assertEqual(entry.deltas.get('old_location'), 5)
+
+        # --- location is updated for multiple items simultaneously ---
+        response = self.post(
+            url,
+            {
+                'items': [
+                    {'pk': item_a.pk, 'quantity': 5},
+                    {'pk': item_b.pk, 'quantity': 20},
+                ],
+                'location': 2,
+            },
+            expected_code=201,
+        )
+        self.assertEqual(len(response.data['items']), 2)
+
+        item_a.refresh_from_db()
+        item_b.refresh_from_db()
+        self.assertEqual(item_a.location.pk, 2)
+        self.assertEqual(item_b.location.pk, 2)
+
+        # Both items have a tracking entry with the new location
+        for item, old_loc in [(item_a, 1), (item_b, 3)]:
+            entry = StockItemTracking.objects.filter(
+                item=item, tracking_type=StockHistoryCode.STOCK_COUNT
+            ).latest('date')
+            self.assertEqual(entry.deltas.get('location'), 2)
+            self.assertEqual(entry.deltas.get('old_location'), old_loc)
+
+        # --- location is unchanged when not provided ---
+        response = self.post(
+            url, {'items': [{'pk': item_a.pk, 'quantity': 7}]}, expected_code=201
+        )
+
+        item_a.refresh_from_db()
+        # Location should still be 2 (unchanged from the previous count)
+        self.assertEqual(item_a.location.pk, 2)
+
+        # Tracking entry has no location delta when location was not provided
+        entry = StockItemTracking.objects.filter(
+            item=item_a, tracking_type=StockHistoryCode.STOCK_COUNT
+        ).latest('date')
+        self.assertNotIn('location', entry.deltas)
+        self.assertNotIn('old_location', entry.deltas)
+
+        # --- structural location is rejected ---
+        structural = StockLocation.objects.create(name='Structural', structural=True)
+
+        response = self.post(
+            url,
+            {'items': [{'pk': item_a.pk, 'quantity': 1}], 'location': structural.pk},
+            expected_code=400,
+        )
+        self.assertIn(
+            'Structural locations cannot be assigned stock items',
+            str(response.data['location']),
+        )
+
+
+class StockTransferMergeTest(StockAPITestCase):
+    """Tests for optional merge-on-transfer behavior."""
+
+    def setUp(self):
+        """Set up stock items for merge transfer tests."""
+        super().setUp()
+
+        self.part = Part.objects.get(pk=1)
+        self.dest = StockLocation.objects.get(pk=2)
+        self.source_loc = StockLocation.objects.get(pk=5)
+        self.url = reverse('api-stock-transfer')
+
+        # Remove fixture stock at the destination so merge targets are deterministic
+        StockItem.objects.filter(part=self.part, location=self.dest).delete()
+
+    def test_transfer_without_merge_creates_separate_lot(self):
+        """Transfer without merge leaves multiple stock rows at destination."""
+        existing = StockItem.objects.create(
+            part=self.part, location=self.dest, quantity=100
+        )
+        incoming = StockItem.objects.create(
+            part=self.part, location=self.source_loc, quantity=50
+        )
+
+        self.post(
+            self.url,
+            {
+                'items': [{'pk': incoming.pk, 'quantity': 50, 'merge': False}],
+                'location': self.dest.pk,
+            },
+            expected_code=201,
+        )
+
+        self.assertEqual(
+            StockItem.objects.filter(part=self.part, location=self.dest).count(), 2
+        )
+
+        existing.refresh_from_db()
+        self.assertEqual(existing.quantity, 100)
+
+    def test_transfer_with_merge_combines_lots(self):
+        """Transfer with merge combines into an existing compatible lot."""
+        existing = StockItem.objects.create(
+            part=self.part, location=self.dest, quantity=100
+        )
+        incoming = StockItem.objects.create(
+            part=self.part, location=self.source_loc, quantity=50
+        )
+
+        self.post(
+            self.url,
+            {
+                'items': [{'pk': incoming.pk, 'quantity': 50, 'merge': True}],
+                'location': self.dest.pk,
+            },
+            expected_code=201,
+        )
+
+        self.assertEqual(
+            StockItem.objects.filter(part=self.part, location=self.dest).count(), 1
+        )
+
+        existing.refresh_from_db()
+        self.assertEqual(existing.quantity, 150)
+        self.assertFalse(StockItem.objects.filter(pk=incoming.pk).exists())
+
+    def test_transfer_mixed_merge_per_item(self):
+        """Each transfer line can merge or move independently."""
+        existing = StockItem.objects.create(
+            part=self.part, location=self.dest, quantity=100
+        )
+        merge_incoming = StockItem.objects.create(
+            part=self.part, location=self.source_loc, quantity=30
+        )
+        separate_incoming = StockItem.objects.create(
+            part=self.part, location=self.source_loc, quantity=20
+        )
+
+        self.post(
+            self.url,
+            {
+                'items': [
+                    {'pk': merge_incoming.pk, 'quantity': 30, 'merge': True},
+                    {'pk': separate_incoming.pk, 'quantity': 20, 'merge': False},
+                ],
+                'location': self.dest.pk,
+            },
+            expected_code=201,
+        )
+
+        self.assertEqual(
+            StockItem.objects.filter(part=self.part, location=self.dest).count(), 2
+        )
+
+        existing.refresh_from_db()
+        self.assertEqual(existing.quantity, 130)
+        self.assertFalse(StockItem.objects.filter(pk=merge_incoming.pk).exists())
+        self.assertTrue(StockItem.objects.filter(pk=separate_incoming.pk).exists())
+
+    def test_transfer_merge_does_not_copy_source_tracking(self):
+        """Transfer merge keeps destination history and adds a single merge entry."""
+        existing = StockItem.objects.create(
+            part=self.part, location=self.dest, quantity=100
+        )
+        incoming = StockItem.objects.create(
+            part=self.part, location=self.source_loc, quantity=50
+        )
+
+        incoming.add_tracking_entry(
+            StockHistoryCode.STOCK_UPDATE, self.user, notes='Source tracking entry'
+        )
+
+        incoming_pk = incoming.pk
+        tracking_count = existing.tracking_info.count()
+
+        self.post(
+            self.url,
+            {
+                'items': [{'pk': incoming.pk, 'quantity': 50, 'merge': True}],
+                'location': self.dest.pk,
+            },
+            expected_code=201,
+        )
+
+        existing.refresh_from_db()
+
+        self.assertFalse(
+            existing.tracking_info.filter(notes='Source tracking entry').exists()
+        )
+        self.assertEqual(existing.tracking_info.count(), tracking_count + 1)
+        merge_entry = existing.tracking_info.filter(
+            tracking_type=StockHistoryCode.MERGED_STOCK_ITEMS
+        ).first()
+        self.assertIsNotNone(merge_entry)
+        self.assertEqual(merge_entry.deltas['added'], 50.0)
+        self.assertEqual(merge_entry.deltas['quantity'], 150.0)
+        self.assertEqual(merge_entry.deltas['stockitem'], incoming_pk)
+        self.assertEqual(merge_entry.deltas['location'], self.dest.pk)
+
+    def test_transfer_merge_partial_reuses_split_transfer_deltas(self):
+        """Partial merge reuses split transfer deltas on the merge tracking entry."""
+        existing = StockItem.objects.create(
+            part=self.part, location=self.dest, quantity=100
+        )
+        incoming = StockItem.objects.create(
+            part=self.part, location=self.source_loc, quantity=100
+        )
+
+        self.post(
+            self.url,
+            {
+                'items': [{'pk': incoming.pk, 'quantity': 30, 'merge': True}],
+                'location': self.dest.pk,
+            },
+            expected_code=201,
+        )
+
+        incoming.refresh_from_db()
+        self.assertEqual(incoming.quantity, 70)
+
+        merge_entry = existing.tracking_info.filter(
+            tracking_type=StockHistoryCode.MERGED_STOCK_ITEMS
+        ).first()
+        self.assertEqual(merge_entry.deltas['stockitem'], incoming.pk)
+        self.assertEqual(merge_entry.deltas['location'], self.dest.pk)
+        self.assertFalse(
+            incoming.tracking_info.filter(
+                tracking_type=StockHistoryCode.SPLIT_CHILD_ITEM
+            ).exists()
+        )
+
 
 class StockItemDeletionTest(StockAPITestCase):
     """Tests for stock item deletion via the API."""
@@ -1879,6 +2639,37 @@ class StockItemDeletionTest(StockAPITestCase):
             )
 
         self.assertEqual(StockItem.objects.count(), n)
+
+    def test_delete_serialized(self):
+        """Test deletion of serialized stock items."""
+        trackable_part = part.models.Part.objects.create(
+            name='My part',
+            description='A trackable part',
+            trackable=True,
+            default_location=StockLocation.objects.get(pk=1),
+        )
+
+        stock_item = StockItem.objects.create(
+            part=trackable_part, quantity=1, serial='12345'
+        )
+
+        set_global_setting('STOCK_ALLOW_DELETE_SERIALIZED', False)
+
+        response = self.delete(
+            reverse('api-stock-detail', kwargs={'pk': stock_item.pk}), expected_code=400
+        )
+
+        self.assertIn('Serialized stock items cannot be deleted', str(response.data))
+
+        set_global_setting('STOCK_ALLOW_DELETE_SERIALIZED', True)
+
+        response = self.delete(
+            reverse('api-stock-detail', kwargs={'pk': stock_item.pk}), expected_code=204
+        )
+
+        self.get(
+            reverse('api-stock-detail', kwargs={'pk': stock_item.pk}), expected_code=404
+        )
 
 
 class StockTestResultTest(StockAPITestCase):
@@ -2131,17 +2922,7 @@ class StockTestResultTest(StockAPITestCase):
         self.delete(url, {}, expected_code=400)
 
         # Now, let's delete all the newly created items with a single API request
-        # However, we will provide incorrect filters
-        response = self.delete(
-            url, {'items': tests, 'filters': {'stock_item': 10}}, expected_code=400
-        )
-
-        self.assertEqual(StockItemTestResult.objects.count(), n + 50)
-
-        # Try again, but with the correct filters this time
-        response = self.delete(
-            url, {'items': tests, 'filters': {'stock_item': 1}}, expected_code=200
-        )
+        response = self.delete(url, {'items': tests}, expected_code=200)
 
         self.assertEqual(StockItemTestResult.objects.count(), n)
 
@@ -2506,37 +3287,48 @@ class StockMetadataAPITest(InvenTreeAPITestCase):
 
     roles = ['stock.change', 'stock_location.change']
 
-    def metatester(self, apikey, model):
+    def metatester(self, raw_url: str, model):
         """Generic tester."""
         modeldata = model.objects.first()
 
         # Useless test unless a model object is found
         self.assertIsNotNone(modeldata)
 
-        url = reverse(apikey, kwargs={'pk': modeldata.pk})
+        url = raw_url.format(pk=modeldata.pk)
 
         # Metadata is initially null
         self.assertIsNone(modeldata.metadata)
 
-        numstr = f'12{len(apikey)}'
+        numstr = f'12{len(raw_url)}'
+        target_key = f'abc-{numstr}'
+        target_value = f'xyz-{raw_url}-{numstr}'
 
-        self.patch(
-            url,
-            {'metadata': {f'abc-{numstr}': f'xyz-{apikey}-{numstr}'}},
-            expected_code=200,
-        )
+        # Create / update metadata entry (first try via old addresses)
+        data = {'metadata': {target_key: target_value}}
+        rsp = self.patch(url, data, expected_code=301)
+        self.patch(rsp.url, data, expected_code=200)
 
-        # Refresh
+        # Refresh and check that metadata has been updated
         modeldata.refresh_from_db()
-        self.assertEqual(
-            modeldata.get_metadata(f'abc-{numstr}'), f'xyz-{apikey}-{numstr}'
-        )
+        self.assertEqual(modeldata.get_metadata(target_key), target_value)
 
     def test_metadata(self):
         """Test all endpoints."""
-        for apikey, model in {
-            'api-location-metadata': StockLocation,
-            'api-stock-test-result-metadata': StockItemTestResult,
-            'api-stock-item-metadata': StockItem,
+        for raw_url, model in {
+            '/api/stock/location/{pk}/metadata/': StockLocation,
+            '/api/stock/test/{pk}/metadata/': StockItemTestResult,
+            '/api/stock/{pk}/metadata/': StockItem,
         }.items():
-            self.metatester(apikey, model)
+            self.metatester(raw_url, model)
+
+
+class StockApiPerformanceTest(StockAPITestCase, InvenTreeAPIPerformanceTestCase):
+    """Performance tests for the Stock API."""
+
+    @pytest.mark.django_db
+    @pytest.mark.benchmark
+    def test_api_stock_list(self):
+        """Test that Stock API queries are performant."""
+        url = reverse('api-stock-list')
+        response = self.get(url, expected_code=200)
+        self.assertGreater(len(response.data), 13)

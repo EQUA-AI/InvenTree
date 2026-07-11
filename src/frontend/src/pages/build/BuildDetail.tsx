@@ -5,6 +5,7 @@ import {
   IconCircleCheck,
   IconClipboardCheck,
   IconClipboardList,
+  IconExclamationCircle,
   IconInfoCircle,
   IconList,
   IconListCheck,
@@ -20,7 +21,9 @@ import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
 import { getDetailUrl } from '@lib/functions/Navigation';
+import { TagsList } from '@lib/index';
 import type { ApiFormFieldSet } from '@lib/types/Forms';
+import type { PanelType } from '@lib/types/Panel';
 import AdminButton from '../../components/buttons/AdminButton';
 import PrimaryActionButton from '../../components/buttons/PrimaryActionButton';
 import { PrintingActions } from '../../components/buttons/PrintingActions';
@@ -43,8 +46,8 @@ import InstanceDetail from '../../components/nav/InstanceDetail';
 import { PageDetail } from '../../components/nav/PageDetail';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
 import NotesPanel from '../../components/panels/NotesPanel';
-import type { PanelType } from '../../components/panels/Panel';
 import { PanelGroup } from '../../components/panels/PanelGroup';
+import ParametersPanel from '../../components/panels/ParametersPanel';
 import { StatusRenderer } from '../../components/render/StatusRenderer';
 import { RenderStockLocation } from '../../components/render/Stock';
 import { useBuildOrderFields } from '../../forms/BuildForms';
@@ -87,6 +90,13 @@ function BuildLinesPanel({
   isLoading: boolean;
   hasItems: boolean;
 }>) {
+  const bomInformation = useInstance({
+    endpoint: ApiEndpoints.bom_validate,
+    pk: build?.part,
+    hasPrimaryKey: true,
+    refetchOnMount: true
+  });
+
   const buildLocation = useInstance({
     endpoint: ApiEndpoints.stock_location_list,
     pk: build?.take_from,
@@ -104,6 +114,16 @@ function BuildLinesPanel({
 
   return (
     <Stack gap='xs'>
+      {bomInformation?.isLoaded &&
+        bomInformation?.instance?.bom_validated == false && (
+          <Alert
+            color='orange'
+            icon={<IconExclamationCircle />}
+            title={t`BOM Not Validated`}
+          >
+            <Text>{t`The Bill of Materials for this assembly has not been validated.`}</Text>
+          </Alert>
+        )}
       {buildLocation.instance.pk && (
         <Alert color='blue' icon={<IconSitemap />} title={t`Source Location`}>
           <RenderStockLocation instance={buildLocation.instance} />
@@ -160,6 +180,45 @@ export default function BuildDetail() {
       defaultValue: {}
     });
 
+  // Fetch the number of assembled BOM items associated with the build order
+  // i.e. how many items are subassemblies?
+  const { instance: subassemblyLineData } = useInstance({
+    endpoint: ApiEndpoints.build_line_list,
+    params: {
+      build: id,
+      allocations: false,
+      part_detail: false,
+      build_detail: false,
+      bom_item_detail: false,
+      assembly: true,
+      limit: 1
+    },
+    disabled: !id,
+    hasPrimaryKey: false,
+    defaultValue: {}
+  });
+
+  // Fetch the number of child build orders associated with this build order
+  const { instance: childBuildData } = useInstance({
+    endpoint: ApiEndpoints.build_order_list,
+    params: {
+      parent: id,
+      limit: 1
+    },
+    disabled: !id,
+    hasPrimaryKey: false,
+    defaultValue: {}
+  });
+
+  /**
+   * Display the "Child Build Orders" panel if either:
+   * - There are any child build orders (childBuildData.count > 0)
+   * - There are any sub-assembly items (subassemblyLineData.count > 0)
+   */
+  const showChildBuilds = useMemo(() => {
+    return childBuildData?.count > 0 || subassemblyLineData?.count > 0;
+  }, [childBuildData, subassemblyLineData]);
+
   const buildStatus = useStatusCodes({ modelType: ModelType.build });
 
   const {
@@ -170,7 +229,8 @@ export default function BuildDetail() {
     endpoint: ApiEndpoints.build_order_list,
     pk: id,
     params: {
-      part_detail: true
+      part_detail: true,
+      tags: true
     },
     refetchOnMount: true
   });
@@ -273,7 +333,7 @@ export default function BuildDetail() {
         name: 'can_build',
         unit: build.part_detail?.units,
         label: t`Can Build`,
-        hidden: partRequirementsQuery.isFetching
+        hidden: partRequirements?.can_build === undefined
       },
       {
         type: 'progressbar',
@@ -380,28 +440,26 @@ export default function BuildDetail() {
 
     return (
       <ItemDetailsGrid>
-        <Grid grow>
-          <DetailsImage
-            appRole={UserRoles.part}
-            apiPath={ApiEndpoints.part_list}
-            src={build.part_detail?.image ?? build.part_detail?.thumbnail}
-            pk={build.part}
-          />
-          <Grid.Col span={{ base: 12, sm: 8 }}>
-            <DetailsTable fields={tl} item={data} />
-          </Grid.Col>
-        </Grid>
+        <Stack gap='xs'>
+          <Grid grow>
+            <DetailsImage
+              appRole={UserRoles.part}
+              apiPath={ApiEndpoints.part_list}
+              src={build.part_detail?.image ?? build.part_detail?.thumbnail}
+              pk={build.part}
+            />
+            <Grid.Col span={{ base: 12, sm: 8 }}>
+              <DetailsTable fields={tl} item={data} />
+            </Grid.Col>
+          </Grid>
+          <TagsList tags={build.tags} />
+        </Stack>
         <DetailsTable fields={tr} item={data} />
         <DetailsTable fields={bl} item={data} />
         <DetailsTable fields={br} item={data} />
       </ItemDetailsGrid>
     );
-  }, [
-    build,
-    instanceQuery,
-    partRequirements,
-    partRequirementsQuery.isFetching
-  ]);
+  }, [build, instanceQuery, partRequirements, partRequirementsQuery]);
 
   const buildPanels: PanelType[] = useMemo(() => {
     return [
@@ -450,6 +508,7 @@ export default function BuildDetail() {
             tableName='build-consumed'
             showLocation={false}
             allowReturn
+            defaultInStock={null}
             params={{
               consumed_by: id
             }}
@@ -502,6 +561,7 @@ export default function BuildDetail() {
         name: 'child-orders',
         label: t`Child Build Orders`,
         icon: <IconSitemap />,
+        hidden: !showChildBuilds,
         content: build.pk ? (
           <BuildOrderTable parentBuildId={build.pk} />
         ) : (
@@ -519,21 +579,28 @@ export default function BuildDetail() {
           <Skeleton />
         )
       },
+      ParametersPanel({
+        model_type: ModelType.build,
+        model_id: build.pk
+      }),
       AttachmentPanel({
         model_type: ModelType.build,
         model_id: build.pk
       }),
       NotesPanel({
         model_type: ModelType.build,
-        model_id: build.pk
+        model_id: build.pk,
+        has_note: !!build.notes
       })
     ];
   }, [
     build,
     id,
     user,
+    partRequirements,
     buildStatus,
     globalSettings,
+    showChildBuilds,
     buildLineQuery.isFetching,
     buildLineQuery.isLoading,
     buildLineData
@@ -550,6 +617,7 @@ export default function BuildDetail() {
     title: t`Edit Build Order`,
     modalId: 'edit-build-order',
     fields: editBuildOrderFields,
+    queryParams: new URLSearchParams({ tags: 'true' }),
     onFormSuccess: refreshInstance
   });
 
@@ -564,6 +632,7 @@ export default function BuildDetail() {
 
   const duplicateBuildOrderFields = useBuildOrderFields({
     create: false,
+    duplicateBuildId: build.pk,
     modalId: 'duplicate-build-order'
   });
 
@@ -715,7 +784,7 @@ export default function BuildDetail() {
       ? []
       : [
           <StatusRenderer
-            status={build.status_custom_key}
+            status={build.status_custom_key || build.status}
             type={ModelType.build}
             options={{ size: 'lg' }}
           />,

@@ -41,6 +41,12 @@ USER_SETTINGS: dict[str, InvenTreeSettingsKeyType] = {
         'default': False,
         'validator': bool,
     },
+    'BARCODE_IN_FORM_FIELDS': {
+        'name': _('Barcode Scanner in Form Fields'),
+        'description': _('Allow barcode scanner input in form fields'),
+        'default': False,
+        'validator': bool,
+    },
     'SEARCH_PREVIEW_SHOW_PARTS': {
         'name': _('Search Parts'),
         'description': _('Display parts in search preview window'),
@@ -229,6 +235,12 @@ USER_SETTINGS: dict[str, InvenTreeSettingsKeyType] = {
         'default': False,
         'validator': bool,
     },
+    'SHOW_EXTRA_MODEL_INFO': {
+        'name': _('Show Extra Model Information'),
+        'description': _('Display extra information in model selection dropdowns'),
+        'default': False,
+        'validator': bool,
+    },
     'SHOW_FULL_LOCATION_IN_TABLES': {
         'name': _('Show full stock location in tables'),
         'description': _(
@@ -245,6 +257,12 @@ USER_SETTINGS: dict[str, InvenTreeSettingsKeyType] = {
         'default': False,
         'validator': bool,
     },
+    'SHOW_BOM_SUBASSEMBLY_LEVELS': {
+        'name': _('Show Subassemblies in BOM table'),
+        'description': _('Enable display of subassemblies in the BOM table'),
+        'default': True,
+        'validator': bool,
+    },
     'NOTIFICATION_ERROR_REPORT': {
         'name': _('Receive error reports'),
         'description': _('Receive notifications for system errors'),
@@ -255,5 +273,13 @@ USER_SETTINGS: dict[str, InvenTreeSettingsKeyType] = {
         'name': _('Last used printing machines'),
         'description': _('Save the last used printing machines for a user'),
         'default': '',
+    },
+    'DISPLAY_ITEMS_FINAL_LEVEL': {
+        'name': _('Display Items at Final Level'),
+        'description': _(
+            'Automatically default to showing items/parts instead of sub-levels for locations or categories with no children'
+        ),
+        'default': False,
+        'validator': bool,
     },
 }

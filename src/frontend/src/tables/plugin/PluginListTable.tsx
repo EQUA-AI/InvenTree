@@ -15,23 +15,26 @@ import { useNavigate } from 'react-router-dom';
 
 import { ActionButton } from '@lib/components/ActionButton';
 import type { RowAction } from '@lib/components/RowActions';
+import { DetailDrawer } from '@lib/components/nav/DetailDrawer';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
+import useTable from '@lib/hooks/UseTable';
 import type { TableColumn } from '@lib/types/Tables';
-import { DetailDrawer } from '../../components/nav/DetailDrawer';
 import PluginDrawer from '../../components/plugins/PluginDrawer';
 import type { PluginInterface } from '../../components/plugins/PluginInterface';
+import {
+  BooleanColumn,
+  LinkColumn
+} from '../../components/tables/ColumnRenderers';
+import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 import { useApi } from '../../contexts/ApiContext';
 import {
   useCreateApiFormModal,
   useDeleteApiFormModal,
   useEditApiFormModal
 } from '../../hooks/UseForm';
-import { useTable } from '../../hooks/UseTable';
 import { useServerApiState } from '../../states/ServerApiState';
 import { useUserState } from '../../states/UserState';
-import { BooleanColumn } from '../ColumnRenderers';
-import { InvenTreeTable } from '../InvenTreeTable';
 
 /**
  * Construct an indicator icon for a single plugin
@@ -82,10 +85,12 @@ export default function PluginListTable() {
             return;
           }
 
+          const name: string = record.name || record.meta?.human_name;
+
           return (
             <Group justify='left'>
               <PluginIcon plugin={record} />
-              <Text>{record.name}</Text>
+              <Text size='sm'>{name}</Text>
             </Group>
           );
         }
@@ -98,11 +103,13 @@ export default function PluginListTable() {
       BooleanColumn({
         accessor: 'is_builtin',
         sortable: false,
+        filter: 'builtin',
         title: t`Builtin`
       }),
       BooleanColumn({
         accessor: 'is_mandatory',
         sortable: false,
+        filter: 'mandatory',
         title: t`Mandatory`
       }),
       {
@@ -134,7 +141,13 @@ export default function PluginListTable() {
         accessor: 'meta.author',
         title: 'Author',
         sortable: false
-      }
+      },
+      LinkColumn({
+        accessor: 'meta.website',
+        title: t`Website`,
+        sortable: false,
+        switchable: true
+      })
     ];
   }, []);
 
@@ -214,7 +227,6 @@ export default function PluginListTable() {
           // Uninstall an installed plugin
           // Must be inactive, not a builtin, not a sample, and installed as a package
           hidden:
-            !user.isSuperuser() ||
             record.active ||
             record.is_builtin ||
             record.is_mandatory ||
@@ -238,8 +250,7 @@ export default function PluginListTable() {
             record.is_builtin ||
             record.is_mandatory ||
             record.is_sample ||
-            record.is_installed ||
-            !user.isSuperuser(),
+            record.is_installed,
           title: t`Delete`,
           tooltip: t`Delete selected plugin configuration`,
           color: 'red',
@@ -257,7 +268,7 @@ export default function PluginListTable() {
   const [pluginPackage, setPluginPackage] = useState<string>('');
 
   const activatePluginModal = useEditApiFormModal({
-    title: t`Activate Plugin`,
+    title: activate ? t`Activate Plugin` : t`Deactivate Plugin`,
     url: ApiEndpoints.plugin_activate,
     pathParams: { key: selectedPluginKey },
     preFormContent: activateModalContent,
@@ -349,7 +360,12 @@ export default function PluginListTable() {
 
   // Custom table actions
   const tableActions = useMemo(() => {
-    if (!user.isSuperuser() || !server.plugins_enabled) {
+    if (
+      !user.isSuperuser() ||
+      !server.plugins_enabled ||
+      server.plugins_install_disabled
+    ) {
+      // Prevent installation if plugins are disabled or user is not superuser
       return [];
     }
 
@@ -370,7 +386,6 @@ export default function PluginListTable() {
           setPluginPackage('');
           installPluginModal.open();
         }}
-        disabled={server.plugins_install_disabled || false}
       />
     ];
   }, [user, server]);

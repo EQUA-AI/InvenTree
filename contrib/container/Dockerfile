@@ -9,7 +9,8 @@
 # - Runs InvenTree web server under django development server
 # - Monitors source files for any changes, and live-reloads server
 
-FROM python:3.11-slim-trixie@sha256:1d6131b5d479888b43200645e03a78443c7157efbdb730e6b48129740727c312 AS inventree_base
+# Base image last bumped 2026-06-16
+FROM python:3.14.6-slim-trixie@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1 AS inventree_base
 
 # Build arguments for this image
 ARG commit_tag=""
@@ -17,6 +18,7 @@ ARG commit_hash=""
 ARG commit_date=""
 
 ARG data_dir="data"
+ARG NODE_VERSION=24
 
 ENV PYTHONUNBUFFERED=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -150,6 +152,9 @@ ENV PATH=/root/.local/bin:$PATH
 
 COPY --from=builder_stage ${INVENTREE_BACKEND_DIR}/InvenTree/web/static/web ${INVENTREE_BACKEND_DIR}/InvenTree/web/static/web
 COPY --from=builder_stage /root/.local /root/.local
+
+# Compile Django backend translations during image build
+RUN bash -c "cd '${INVENTREE_HOME}' && invoke int.backend-compilemessages"
 
 # Launch the production server
 CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker -c ./gunicorn.conf.py InvenTree.asgi:application -b 0.0.0.0:8000 --chdir ${INVENTREE_BACKEND_DIR}/InvenTree"]

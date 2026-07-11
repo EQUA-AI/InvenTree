@@ -12,7 +12,7 @@ import {
 import { useId } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type FieldValues,
   FormProvider,
@@ -20,35 +20,39 @@ import {
   type SubmitHandler,
   useForm
 } from 'react-hook-form';
-import { type NavigateFunction, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
+import { Boundary } from '@lib/components/Boundary';
 import { isTrue } from '@lib/functions/Conversion';
+import { useInvenTreeHotkeys } from '@lib/functions/Events';
+import {
+  type NestedDict,
+  constructFormUrl,
+  mapFields
+} from '@lib/functions/Forms';
 import { getDetailUrl } from '@lib/functions/Navigation';
+import {
+  invalidResponse,
+  showTimeoutNotification
+} from '@lib/functions/Notification';
 import type {
   ApiFormFieldSet,
   ApiFormFieldType,
   ApiFormProps
 } from '@lib/types/Forms';
 import { useApi } from '../../contexts/ApiContext';
-import {
-  type NestedDict,
-  constructField,
-  constructFormUrl,
-  extractAvailableFields,
-  mapFields
-} from '../../functions/forms';
-import {
-  invalidResponse,
-  showTimeoutNotification
-} from '../../functions/notifications';
-import { Boundary } from '../Boundary';
+import { isEquivalent } from '../../functions/comparison';
+import { constructField, extractAvailableFields } from '../../functions/forms';
+import { KeepFormOpenSwitch } from './KeepFormOpenSwitch';
 import { ApiFormField } from './fields/ApiFormField';
 
 export function OptionsApiForm({
   props: _props,
+  opened,
   id: pId
 }: Readonly<{
   props: ApiFormProps;
+  opened?: boolean;
   id?: string;
 }>) {
   const api = useApi();
@@ -75,24 +79,26 @@ export function OptionsApiForm({
   );
 
   const optionsQuery = useQuery({
-    enabled: true,
+    enabled: opened !== false && props.ignorePermissionCheck !== true,
     refetchOnMount: false,
     queryKey: [
       'form-options-data',
       id,
+      opened,
+      props.ignorePermissionCheck,
       props.method,
       props.url,
       props.pk,
       props.pathParams
     ],
     queryFn: async () => {
-      const response = await api.options(url);
-      let fields: Record<string, ApiFormFieldType> | null = {};
-      if (!props.ignorePermissionCheck) {
-        fields = extractAvailableFields(response, props.method);
+      if (props.ignorePermissionCheck === true || opened === false) {
+        return {};
       }
 
-      return fields;
+      return api.options(url).then((response: any) => {
+        return extractAvailableFields(response, props.method);
+      });
     },
     throwOnError: (error: any) => {
       if (error.response) {
@@ -110,15 +116,30 @@ export function OptionsApiForm({
     }
   });
 
+  // Refetch form options whenever the modal is opened
+  useEffect(() => {
+    if (opened !== false) {
+      optionsQuery.refetch();
+    }
+  }, [opened]);
+
+  // Preserve the previous reference for any field whose constructed
+  // definition did not actually change, so unrelated fields don't force a
+  // fields-object replacement (and cascade a re-render to every field)
+  // whenever this recomputes for an unrelated reason (e.g. options data or
+  // the caller's own fields hook re-running with equivalent output)
+  const previousConstructedFieldsRef = useRef<ApiFormFieldSet>({});
+
   const formProps: ApiFormProps = useMemo(() => {
     const _props = { ...props };
 
     if (!_props.fields) return _props;
 
-    _props.fields = { ..._props.fields };
+    const prevFields = previousConstructedFieldsRef.current;
+    const nextFields: ApiFormFieldSet = {};
 
     for (const [k, v] of Object.entries(_props.fields)) {
-      _props.fields[k] = constructField({
+      const constructed = constructField({
         field: v,
         definition: optionsQuery?.data?.[k]
       });
@@ -127,9 +148,16 @@ export function OptionsApiForm({
       const value = _props?.initialData?.[k];
 
       if (value) {
-        _props.fields[k].value = value;
+        constructed.value = value;
       }
+
+      const prev = prevFields[k];
+      nextFields[k] =
+        prev && isEquivalent(prev, constructed) ? prev : constructed;
     }
+
+    previousConstructedFieldsRef.current = nextFields;
+    _props.fields = nextFields;
 
     return _props;
   }, [optionsQuery.data, props]);
@@ -158,15 +186,22 @@ export function ApiForm({
 }>) {
   const api = useApi();
   const queryClient = useQueryClient();
+  const keepOpenRef = useRef(false);
 
-  // Accessor for the navigation function (which is used to redirect the user)
-  let navigate: NavigateFunction | null = null;
+  const onKeepOpenChange = (v: boolean) => {
+    keepOpenRef.current = v;
+    props.onKeepOpenChange?.(v);
+  };
 
-  try {
-    navigate = useNavigate();
-  } catch (_error) {
-    // Note: If we launch a form within a plugin context, useNavigate() may not be available
-    navigate = null;
+  let navigate = props.navigate || null;
+
+  if (!navigate) {
+    try {
+      navigate = useNavigate();
+    } catch (_error) {
+      // Note: If we launch a form within a plugin context, useNavigate() may not be available
+      navigate = null;
+    }
   }
 
   const [fields, setFields] = useState<ApiFormFieldSet>(
@@ -295,7 +330,21 @@ export function ApiForm({
       }
     }
 
-    setFields(_fields);
+    // Preserve the previous reference for any field whose definition did not
+    // actually change, so unrelated fields don't re-render just because the
+    // fields hook rebuilt its entire output (e.g. in response to some other
+    // field's onValueChange updating local state elsewhere in that hook)
+    setFields((prevFields) => {
+      const nextFields: ApiFormFieldSet = {};
+
+      for (const k of Object.keys(_fields)) {
+        const prev = prevFields[k];
+        const next = _fields[k];
+        nextFields[k] = prev && isEquivalent(prev, next) ? prev : next;
+      }
+
+      return nextFields;
+    });
   }, [props.fields, props.initialData, defaultValues, initialDataQuery.data]);
 
   // Fetch initial data on form load
@@ -368,16 +417,29 @@ export function ApiForm({
 
     Object.keys(data).forEach((key: string) => {
       let value: any = data[key];
-      const field_type = fields[key]?.field_type;
-      const exclude = fields[key]?.exclude;
+      const field: ApiFormFieldType = fields[key] ?? {};
+      const field_type = field?.field_type;
+      const exclude = field?.exclude;
 
       if (field_type == 'file upload' && !!value) {
         hasFiles = true;
       }
 
-      // Ensure any boolean values are actually boolean
-      if (field_type === 'boolean') {
-        value = isTrue(value) || false;
+      // Special consideration for various field types
+      switch (field_type) {
+        case 'boolean':
+          // Ensure boolean values are actually boolean
+          value = isTrue(value) || false;
+          break;
+        case 'string':
+          // Replace null string values with an empty string
+          if (value === null && field?.allow_null == false) {
+            value = '';
+            jsonData[key] = value;
+          }
+          break;
+        default:
+          break;
       }
 
       // Stringify any JSON objects
@@ -386,7 +448,9 @@ export function ApiForm({
           case 'file upload':
             break;
           default:
-            value = JSON.stringify(value);
+            if (value !== null && value !== undefined) {
+              value = JSON.stringify(value);
+            }
             break;
         }
       }
@@ -422,6 +486,12 @@ export function ApiForm({
       }
     })
       .then((response) => {
+        const followPk = Array.isArray(response.data)
+          ? response.data.length === 1
+            ? response.data[0]?.pk
+            : undefined
+          : response.data?.pk;
+
         switch (response.status) {
           case 200:
           case 201:
@@ -433,10 +503,15 @@ export function ApiForm({
               props.onFormSuccess(response.data, form);
             }
 
-            if (props.follow && props.modelType && response.data?.pk) {
+            if (
+              props.follow &&
+              props.modelType &&
+              followPk &&
+              !keepOpenRef.current
+            ) {
               // If we want to automatically follow the returned data
-              if (!!navigate) {
-                navigate(getDetailUrl(props.modelType, response.data?.pk));
+              if (!!navigate && !keepOpenRef.current) {
+                navigate(getDetailUrl(props.modelType, followPk));
               }
             } else if (props.table) {
               // If we want to automatically update or reload a linked table
@@ -555,6 +630,41 @@ export function ApiForm({
     [props.onFormError]
   );
 
+  // Submit the form when "Enter" is pressed in a field.
+  // Routed through a ref so that the callback identity passed down to every
+  // field stays stable across renders - isValid / isDirty change on every
+  // keystroke anywhere in the form, and a fresh onKeyDown reference here
+  // would force every field (not just the one being edited) to re-render.
+  const submitOnEnterRef = useRef<() => void>(() => {});
+  submitOnEnterRef.current = () => {
+    if (!isLoading && (!props.fetchInitialData || isDirty)) {
+      form.handleSubmit(submitForm, onFormError)();
+    }
+  };
+
+  const onFieldKeyDown = useCallback((value: any) => {
+    if (value === 'Enter') {
+      submitOnEnterRef.current();
+    }
+  }, []);
+
+  // Submit the form with Ctrl+Enter (Cmd+Enter on Mac) while it is open.
+  // An empty tagsToIgnore list allows the hotkey to fire from within form inputs.
+  useInvenTreeHotkeys(
+    [
+      [
+        'mod+Enter',
+        t`Submit form`,
+        () => {
+          if (!isLoading && (!props.fetchInitialData || isDirty)) {
+            form.handleSubmit(submitForm, onFormError)();
+          }
+        }
+      ]
+    ],
+    []
+  );
+
   if (optionsLoading || initialDataQuery.isFetching) {
     return (
       <Paper mah={'65vh'}>
@@ -562,7 +672,6 @@ export function ApiForm({
       </Paper>
     );
   }
-
   return (
     <Stack>
       <Boundary label={`ApiForm-${id}`}>
@@ -622,16 +731,9 @@ export function ApiForm({
                           definition={field}
                           control={form.control}
                           url={url}
+                          navigate={navigate}
                           setFields={setFields}
-                          onKeyDown={(value) => {
-                            if (
-                              value == 'Enter' &&
-                              !isLoading &&
-                              (!props.fetchInitialData || isDirty)
-                            ) {
-                              form.handleSubmit(submitForm, onFormError)();
-                            }
-                          }}
+                          onKeyDown={onFieldKeyDown}
                         />
                       );
                     })}
@@ -647,7 +749,12 @@ export function ApiForm({
 
         {/* Footer with Action Buttons */}
         <Divider />
-        <div>
+        <Group justify='space-between'>
+          <Group justify='left'>
+            {props.keepOpenOption && (
+              <KeepFormOpenSwitch onChange={onKeepOpenChange} />
+            )}
+          </Group>
           <Group justify='right'>
             {props.actions?.map((action, i) => (
               <Button
@@ -670,7 +777,7 @@ export function ApiForm({
               {props.submitText ?? t`Submit`}
             </Button>
           </Group>
-        </div>
+        </Group>
       </Boundary>
     </Stack>
   );

@@ -1,3 +1,5 @@
+import { DefaultFallback } from '@lib/components/Boundary';
+import { StylishText } from '@lib/components/StylishText';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type { AuthConfig, AuthProvider } from '@lib/types/Auth';
@@ -20,6 +22,7 @@ import {
   TextInput
 } from '@mantine/core';
 import { hideNotification, showNotification } from '@mantine/notifications';
+import { ErrorBoundary } from '@sentry/react';
 import {
   IconAlertCircle,
   IconAt,
@@ -29,7 +32,6 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { StylishText } from '../../../../components/items/StylishText';
 import { ProviderLogin, authApi } from '../../../../functions/auth';
 import { useServerApiState } from '../../../../states/ServerApiState';
 import { useUserState } from '../../../../states/UserState';
@@ -42,6 +44,13 @@ export function SecurityContent() {
   );
 
   const user = useUserState();
+
+  const onError = useCallback(
+    (error: unknown, componentStack: string | undefined, eventId: string) => {
+      console.error(`ERR: Error rendering component: ${error}`);
+    },
+    []
+  );
 
   return (
     <Stack>
@@ -85,7 +94,12 @@ export function SecurityContent() {
             <StylishText size='lg'>{t`Access Tokens`}</StylishText>
           </Accordion.Control>
           <Accordion.Panel>
-            <ApiTokenTable only_myself />
+            <ErrorBoundary
+              fallback={<DefaultFallback title={'API Table'} />}
+              onError={onError}
+            >
+              <ApiTokenTable only_myself />
+            </ErrorBoundary>
           </Accordion.Panel>
         </Accordion.Item>
         {user.isSuperuser() && (

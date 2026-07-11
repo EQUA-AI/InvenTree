@@ -4,10 +4,13 @@ import { IconInfoCircle, IconList, IconPackages } from '@tabler/icons-react';
 import { type ReactNode, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 
+import { StylishText } from '@lib/components/StylishText';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
+import { TagsList } from '@lib/index';
+import type { PanelType } from '@lib/types/Panel';
 import AdminButton from '../../components/buttons/AdminButton';
 import PrimaryActionButton from '../../components/buttons/PrimaryActionButton';
 import { PrintingActions } from '../../components/buttons/PrintingActions';
@@ -25,13 +28,12 @@ import {
   HoldItemAction,
   OptionsActionDropdown
 } from '../../components/items/ActionDropdown';
-import { StylishText } from '../../components/items/StylishText';
 import InstanceDetail from '../../components/nav/InstanceDetail';
 import { PageDetail } from '../../components/nav/PageDetail';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
 import NotesPanel from '../../components/panels/NotesPanel';
-import type { PanelType } from '../../components/panels/Panel';
 import { PanelGroup } from '../../components/panels/PanelGroup';
+import ParametersPanel from '../../components/panels/ParametersPanel';
 import { StatusRenderer } from '../../components/render/StatusRenderer';
 import { formatCurrency } from '../../defaults/formatters';
 import { usePurchaseOrderFields } from '../../forms/PurchaseOrderForms';
@@ -64,7 +66,8 @@ export default function PurchaseOrderDetail() {
     endpoint: ApiEndpoints.purchase_order_list,
     pk: id,
     params: {
-      supplier_detail: true
+      supplier_detail: true,
+      tags: true
     },
     refetchOnMount: true
   });
@@ -88,6 +91,7 @@ export default function PurchaseOrderDetail() {
     pk: id,
     title: t`Edit Purchase Order`,
     fields: purchaseOrderFields,
+    queryParams: new URLSearchParams({ tags: 'true' }),
     onFormSuccess: () => {
       refreshInstance();
     }
@@ -303,22 +307,34 @@ export default function PurchaseOrderDetail() {
         label: t`Completion Date`,
         copy: true,
         hidden: !order.complete_date
+      },
+      {
+        type: 'date',
+        name: 'updated_at',
+        label: t`Last Updated`,
+        icon: 'calendar',
+        copy: true,
+        showTime: true,
+        hidden: !order.updated_at
       }
     ];
 
     return (
       <ItemDetailsGrid>
-        <Grid grow>
-          <DetailsImage
-            appRole={UserRoles.purchase_order}
-            apiPath={ApiEndpoints.company_list}
-            src={order.supplier_detail?.image}
-            pk={order.supplier}
-          />
-          <Grid.Col span={{ base: 12, sm: 8 }}>
-            <DetailsTable fields={tl} item={order} />
-          </Grid.Col>
-        </Grid>
+        <Stack gap='xs'>
+          <Grid grow>
+            <DetailsImage
+              appRole={UserRoles.purchase_order}
+              apiPath={ApiEndpoints.company_list}
+              src={order.supplier_detail?.image}
+              pk={order.supplier}
+            />
+            <Grid.Col span={{ base: 12, sm: 8 }}>
+              <DetailsTable fields={tl} item={order} />
+            </Grid.Col>
+          </Grid>
+          <TagsList tags={order.tags} />
+        </Stack>
         <DetailsTable fields={tr} item={order} />
         <DetailsTable fields={bl} item={order} />
         <DetailsTable fields={br} item={order} />
@@ -389,13 +405,24 @@ export default function PurchaseOrderDetail() {
           />
         )
       },
+      ParametersPanel({
+        model_type: ModelType.purchaseorder,
+        model_id: order.pk
+      }),
       AttachmentPanel({
         model_type: ModelType.purchaseorder,
         model_id: order.pk
       }),
       NotesPanel({
         model_type: ModelType.purchaseorder,
-        model_id: order.pk
+        model_id: order.pk,
+        has_note: !!order.notes,
+        // TODO @matmair - change API to include a "locked" attribute that we can check here
+        editable:
+          order.status == poStatus.COMPLETE &&
+          !globalSettings.isSet('PURCHASEORDER_EDIT_COMPLETED_ORDERS')
+            ? false
+            : undefined
       })
     ];
   }, [order, id, user]);
@@ -516,7 +543,7 @@ export default function PurchaseOrderDetail() {
       ? []
       : [
           <StatusRenderer
-            status={order.status_custom_key}
+            status={order.status_custom_key || order.status}
             type={ModelType.purchaseorder}
             options={{ size: 'lg' }}
           />

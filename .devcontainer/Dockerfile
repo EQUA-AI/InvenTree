@@ -1,9 +1,7 @@
 # Dockerfile for the InvenTree devcontainer
+# This container is used for development of the InvenTree project, and includes all necessary dependencies for both backend and frontend development.
 
-# In contrast with the "production" image (which is based on an Alpine image)
-# we use a Debian-based image for the devcontainer
-
-FROM mcr.microsoft.com/devcontainers/python:3.11-bookworm@sha256:5140e54af7a0399a4932dd4c4653d085fcf451b093d7424867df1828ffbb9b81
+FROM mcr.microsoft.com/devcontainers/python:3.12-trixie@sha256:5440cb68898d190ad6c6e8a4634ce89d0645bea47f9c8beb75612bb8e3983711
 
 # InvenTree paths
 ENV INVENTREE_HOME="/home/inventree"
@@ -31,7 +29,7 @@ RUN apt-get update && apt-get install -y \
    python3.11-dev python3.11-venv \
    postgresql-client \
    libldap2-dev libsasl2-dev \
-   libpango1.0-0 libcairo2 \
+   libpango-1.0-0 libcairo2 \
    poppler-utils weasyprint
 
 # Install packages required for frontend development
@@ -40,5 +38,13 @@ RUN apt-get install -y \
 
 # Update to the latest stable node version
 RUN npm install -g n --ignore-scripts && n lts
+
+# Install yarn
+RUN npm install -g yarn
+
+# Ensure node and yarn are available at the command line
+RUN node --version && yarn --version
+
+RUN yarn config set httpTimeout 600000 --home
 
 ENTRYPOINT ["/bin/bash", "./init.sh"]

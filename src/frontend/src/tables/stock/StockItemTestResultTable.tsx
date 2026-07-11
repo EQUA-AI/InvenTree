@@ -21,10 +21,19 @@ import { PassFailButton } from '@lib/components/YesNoButton';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
+import useTable from '@lib/hooks/UseTable';
 import type { TableFilter } from '@lib/types/Filters';
 import type { ApiFormFieldSet } from '@lib/types/Forms';
 import type { TableColumn } from '@lib/types/Tables';
 import { AttachmentLink } from '../../components/items/AttachmentLink';
+import {
+  DateColumn,
+  DescriptionColumn,
+  NoteColumn,
+  UserColumn
+} from '../../components/tables/ColumnRenderers';
+import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
+import RowExpansionIcon from '../../components/tables/RowExpansionIcon';
 import { useApi } from '../../contexts/ApiContext';
 import { formatDate } from '../../defaults/formatters';
 import { useTestResultFields } from '../../forms/StockForms';
@@ -33,17 +42,8 @@ import {
   useDeleteApiFormModal,
   useEditApiFormModal
 } from '../../hooks/UseForm';
-import { useTable } from '../../hooks/UseTable';
 import { useGlobalSettingsState } from '../../states/SettingsStates';
 import { useUserState } from '../../states/UserState';
-import {
-  DateColumn,
-  DescriptionColumn,
-  NoteColumn,
-  UserColumn
-} from '../ColumnRenderers';
-import { InvenTreeTable } from '../InvenTreeTable';
-import RowExpansionIcon from '../RowExpansionIcon';
 
 export default function StockItemTestResultTable({
   partId,
@@ -144,6 +144,7 @@ export default function StockItemTestResultTable({
           title: t`Test`,
           switchable: false,
           sortable: true,
+          filter: ['enabled', 'required'],
           render: (record: any) => {
             const enabled = record.enabled ?? record.template_detail?.enabled;
             const installed =
@@ -305,7 +306,7 @@ export default function StockItemTestResultTable({
     pk: selectedTest,
     fields: useMemo(() => ({ ...editResultFields }), [editResultFields]),
     title: t`Edit Test Result`,
-    onFormSuccess: () => table.refreshTable,
+    table: table,
     successMessage: t`Test result updated`
   });
 
@@ -358,6 +359,7 @@ export default function StockItemTestResultTable({
           icon: <IconCircleCheck />,
           hidden:
             !record.templateId ||
+            !!record.choices ||
             record?.requires_attachment ||
             record?.requires_value ||
             record.result,

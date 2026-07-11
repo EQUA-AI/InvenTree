@@ -10,10 +10,13 @@ import {
 import { type ReactNode, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 
+import { StylishText } from '@lib/components/StylishText';
+import TagsList from '@lib/components/TagsList';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
+import type { PanelType } from '@lib/types/Panel';
 import AdminButton from '../../components/buttons/AdminButton';
 import PrimaryActionButton from '../../components/buttons/PrimaryActionButton';
 import { PrintingActions } from '../../components/buttons/PrintingActions';
@@ -31,13 +34,12 @@ import {
   HoldItemAction,
   OptionsActionDropdown
 } from '../../components/items/ActionDropdown';
-import { StylishText } from '../../components/items/StylishText';
 import InstanceDetail from '../../components/nav/InstanceDetail';
 import { PageDetail } from '../../components/nav/PageDetail';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
 import NotesPanel from '../../components/panels/NotesPanel';
-import type { PanelType } from '../../components/panels/Panel';
 import { PanelGroup } from '../../components/panels/PanelGroup';
+import ParametersPanel from '../../components/panels/ParametersPanel';
 import { RenderAddress } from '../../components/render/Company';
 import { StatusRenderer } from '../../components/render/StatusRenderer';
 import { formatCurrency } from '../../defaults/formatters';
@@ -74,7 +76,8 @@ export default function SalesOrderDetail() {
     endpoint: ApiEndpoints.sales_order_list,
     pk: id,
     params: {
-      customer_detail: true
+      customer_detail: true,
+      tags: true
     }
   });
 
@@ -272,22 +275,34 @@ export default function SalesOrderDetail() {
         label: t`Completion Date`,
         hidden: !order.shipment_date,
         copy: true
+      },
+      {
+        type: 'date',
+        name: 'updated_at',
+        label: t`Last Updated`,
+        icon: 'calendar',
+        copy: true,
+        showTime: true,
+        hidden: !order.updated_at
       }
     ];
 
     return (
       <ItemDetailsGrid>
-        <Grid grow>
-          <DetailsImage
-            appRole={UserRoles.purchase_order}
-            apiPath={ApiEndpoints.company_list}
-            src={order.customer_detail?.image}
-            pk={order.customer}
-          />
-          <Grid.Col span={{ base: 12, sm: 8 }}>
-            <DetailsTable fields={tl} item={order} />
-          </Grid.Col>
-        </Grid>
+        <Stack gap='xs'>
+          <Grid grow>
+            <DetailsImage
+              appRole={UserRoles.purchase_order}
+              apiPath={ApiEndpoints.company_list}
+              src={order.customer_detail?.image}
+              pk={order.customer}
+            />
+            <Grid.Col span={{ base: 12, sm: 8 }}>
+              <DetailsTable fields={tl} item={order} />
+            </Grid.Col>
+          </Grid>
+          <TagsList tags={order.tags} />
+        </Stack>
         <DetailsTable fields={tr} item={order} />
         <DetailsTable fields={bl} item={order} />
         <DetailsTable fields={br} item={order} />
@@ -315,6 +330,7 @@ export default function SalesOrderDetail() {
     pk: order.pk,
     title: t`Edit Sales Order`,
     fields: salesOrderFields,
+    queryParams: new URLSearchParams({ tags: 'true' }),
     onFormSuccess: () => {
       refreshInstance();
     }
@@ -427,13 +443,24 @@ export default function SalesOrderDetail() {
           <Skeleton />
         )
       },
+      ParametersPanel({
+        model_type: ModelType.salesorder,
+        model_id: order.pk
+      }),
       AttachmentPanel({
         model_type: ModelType.salesorder,
         model_id: order.pk
       }),
       NotesPanel({
         model_type: ModelType.salesorder,
-        model_id: order.pk
+        model_id: order.pk,
+        has_note: !!order.notes,
+        // TODO @matmair - change API to include a "locked" attribute that we can check here
+        editable:
+          order.status == soStatus.COMPLETE &&
+          !globalSettings.isSet('SALESORDER_EDIT_COMPLETED_ORDERS')
+            ? false
+            : undefined
       })
     ];
   }, [order, id, user, soStatus, user]);
@@ -578,7 +605,7 @@ export default function SalesOrderDetail() {
       ? []
       : [
           <StatusRenderer
-            status={order.status_custom_key}
+            status={order.status_custom_key || order.status}
             type={ModelType.salesorder}
             options={{ size: 'lg' }}
             key={order.pk}

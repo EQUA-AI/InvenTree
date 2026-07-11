@@ -171,6 +171,8 @@ class TestLabelPrinterMachineType(InvenTreeAPITestCase):
 
     fixtures = ['category', 'part', 'location', 'stock']
 
+    roles = ['part.view']
+
     def test_registration(self):
         """Test that the machine is correctly registered from the plugin."""
         PLG_KEY = 'label-printer-test-plugin'
@@ -232,10 +234,10 @@ class TestLabelPrinterMachineType(InvenTreeAPITestCase):
         machine = self.create_machine()
 
         # setup the label app
-        apps.get_app_config('report').create_default_labels()  # type: ignore
+        apps.get_app_config('report').create_default_labels()
         plg_registry.reload_plugins()
 
-        config = cast(PluginConfig, plg_registry.get_plugin(plugin_ref).plugin_config())  # type: ignore
+        config = cast(PluginConfig, plg_registry.get_plugin(plugin_ref).plugin_config())
         config.active = True
         config.save()
 
@@ -294,6 +296,14 @@ class TestLabelPrinterMachineType(InvenTreeAPITestCase):
         )
 
         self.assertIn('is not a valid choice', str(response.data['machine']))
+
+    def test_location_invalid_pk(self):
+        """Test that location property returns None for an invalid PK without raising."""
+        machine = self.create_machine()
+
+        machine.set_setting('LOCATION', 'M', 999999)
+
+        self.assertIsNone(machine.location)
 
 
 class AdminTest(AdminTestCase):

@@ -1,5 +1,9 @@
 import { t } from '@lingui/core/macro';
-import { IconTruckDelivery } from '@tabler/icons-react';
+import {
+  IconCircleCheck,
+  IconCircleX,
+  IconTruckDelivery
+} from '@tabler/icons-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -15,27 +19,29 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
+import useTable from '@lib/hooks/UseTable';
 import type { TableFilter } from '@lib/types/Filters';
 import type { TableColumn } from '@lib/types/Tables';
-import dayjs from 'dayjs';
 import {
-  useSalesOrderShipmentCompleteFields,
-  useSalesOrderShipmentFields
+  CompanyColumn,
+  DateColumn,
+  LinkColumn,
+  StatusColumn
+} from '../../components/tables/ColumnRenderers';
+import { TagsFilter } from '../../components/tables/Filter';
+import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
+import {
+  useCheckShipmentForm,
+  useCompleteShipmentForm,
+  useSalesOrderShipmentFields,
+  useUncheckShipmentForm
 } from '../../forms/SalesOrderForms';
 import {
   useCreateApiFormModal,
   useDeleteApiFormModal,
   useEditApiFormModal
 } from '../../hooks/UseForm';
-import { useTable } from '../../hooks/UseTable';
 import { useUserState } from '../../states/UserState';
-import {
-  CompanyColumn,
-  DateColumn,
-  LinkColumn,
-  StatusColumn
-} from '../ColumnRenderers';
-import { InvenTreeTable } from '../InvenTreeTable';
 
 export default function SalesOrderShipmentTable({
   showOrderInfo = false,
@@ -61,15 +67,15 @@ export default function SalesOrderShipmentTable({
   });
 
   const editShipmentFields = useSalesOrderShipmentFields({
-    customerId: customerId
+    customerId: customerId,
+    pending: !selectedShipment.shipment_date
   });
-
-  const completeShipmentFields = useSalesOrderShipmentCompleteFields({});
 
   const newShipment = useCreateApiFormModal({
     url: ApiEndpoints.sales_order_shipment_list,
     fields: newShipmentFields,
     title: t`Create Shipment`,
+    successMessage: t`Shipment created`,
     table: table,
     initialData: {
       order: orderId
@@ -91,17 +97,23 @@ export default function SalesOrderShipmentTable({
     table: table
   });
 
-  const completeShipment = useCreateApiFormModal({
-    url: ApiEndpoints.sales_order_shipment_complete,
-    pk: selectedShipment.pk,
-    fields: completeShipmentFields,
-    title: t`Complete Shipment`,
-    table: table,
-    focus: 'tracking_number',
-    initialData: {
-      ...selectedShipment,
-      shipment_date: dayjs().format('YYYY-MM-DD')
+  const checkShipment = useCheckShipmentForm({
+    shipmentId: selectedShipment.pk,
+    onSuccess: () => {
+      table.refreshTable();
     }
+  });
+
+  const uncheckShipment = useUncheckShipmentForm({
+    shipmentId: selectedShipment.pk,
+    onSuccess: () => {
+      table.refreshTable();
+    }
+  });
+
+  const completeShipment = useCompleteShipmentForm({
+    shipment: selectedShipment,
+    onSuccess: table.refreshTable
   });
 
   const tableColumns: TableColumn[] = useMemo(() => {
@@ -121,7 +133,8 @@ export default function SalesOrderShipmentTable({
         accessor: 'order_detail.reference',
         title: t`Sales Order`,
         hidden: !showOrderInfo,
-        sortable: false
+        sortable: false,
+        copyable: true
       },
       StatusColumn({
         switchable: true,
@@ -134,7 +147,8 @@ export default function SalesOrderShipmentTable({
         accessor: 'reference',
         title: t`Shipment Reference`,
         switchable: false,
-        sortable: true
+        sortable: true,
+        copyable: true
       },
       {
         accessor: 'allocated_items',
@@ -145,6 +159,7 @@ export default function SalesOrderShipmentTable({
       {
         accessor: 'checked',
         title: t`Checked`,
+        filter: 'checked',
         switchable: true,
         sortable: false,
         render: (record: any) => <YesNoButton value={!!record.checked_by} />
@@ -154,12 +169,14 @@ export default function SalesOrderShipmentTable({
         title: t`Shipped`,
         switchable: true,
         sortable: false,
+        filter: 'shipped',
         render: (record: any) => <YesNoButton value={!!record.shipment_date} />
       },
       {
         accessor: 'delivered',
         title: t`Delivered`,
         switchable: true,
+        filter: 'delivered',
         sortable: false,
         render: (record: any) => <YesNoButton value={!!record.delivery_date} />
       },
@@ -172,14 +189,14 @@ export default function SalesOrderShipmentTable({
         title: t`Delivery Date`
       }),
       {
-        accessor: 'tracking_number'
+        accessor: 'tracking_number',
+        copyable: true
       },
       {
-        accessor: 'invoice_number'
+        accessor: 'invoice_number',
+        copyable: true
       },
-      LinkColumn({
-        accessor: 'link'
-      })
+      LinkColumn({})
     ];
   }, [showOrderInfo]);
 
@@ -188,6 +205,30 @@ export default function SalesOrderShipmentTable({
       const shipped: boolean = !!record.shipment_date;
 
       return [
+        {
+          hidden:
+            !!record.checked_by || !user.hasChangeRole(UserRoles.sales_order),
+          title: t`Check Shipment`,
+          color: 'blue',
+          icon: <IconCircleCheck />,
+          onClick: () => {
+            setSelectedShipment(record);
+            checkShipment.open();
+          }
+        },
+        {
+          hidden:
+            shipped ||
+            !record.checked_by ||
+            !user.hasChangeRole(UserRoles.sales_order),
+          title: t`Uncheck Shipment`,
+          color: 'red',
+          icon: <IconCircleX />,
+          onClick: () => {
+            setSelectedShipment(record);
+            uncheckShipment.open();
+          }
+        },
         {
           hidden: shipped || !user.hasChangeRole(UserRoles.sales_order),
           title: t`Complete Shipment`,
@@ -263,7 +304,8 @@ export default function SalesOrderShipmentTable({
         name: 'delivered',
         label: t`Delivered`,
         description: t`Show shipments which have been delivered`
-      }
+      },
+      TagsFilter({ modelType: ModelType.salesordershipment })
     ];
   }, []);
 
@@ -271,7 +313,9 @@ export default function SalesOrderShipmentTable({
     <>
       {newShipment.modal}
       {editShipment.modal}
+      {checkShipment.modal}
       {deleteShipment.modal}
+      {uncheckShipment.modal}
       {completeShipment.modal}
       <InvenTreeTable
         url={apiUrl(ApiEndpoints.sales_order_shipment_list)}

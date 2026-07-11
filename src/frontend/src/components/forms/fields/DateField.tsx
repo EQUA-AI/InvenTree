@@ -3,12 +3,12 @@ import { t } from '@lingui/core/macro';
 import { DateInput } from '@mantine/dates';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
-import { useCallback, useId, useMemo } from 'react';
+import { memo, useCallback, useId, useMemo } from 'react';
 import type { FieldValues, UseControllerReturn } from 'react-hook-form';
 
 dayjs.extend(customParseFormat);
 
-export default function DateField({
+function DateField({
   controller,
   definition
 }: Readonly<{
@@ -22,12 +22,7 @@ export default function DateField({
     fieldState: { error }
   } = controller;
 
-  const valueFormat = useMemo(() => {
-    // Determine the format based on the field type
-    return definition.field_type == 'date'
-      ? 'YYYY-MM-DD'
-      : 'YYYY-MM-DD HH:mm:ss';
-  }, [definition.field_type]);
+  const valueFormat = 'YYYY-MM-DD';
 
   const onChange = useCallback(
     (value: any) => {
@@ -35,6 +30,8 @@ export default function DateField({
       if (value) {
         value = value.toString();
         value = dayjs(value).format(valueFormat);
+
+        // Strip the time portion from the date input
         value = value.toString().split('T')[0];
       }
 
@@ -79,3 +76,5 @@ export default function DateField({
     />
   );
 }
+
+export default memo(DateField);
