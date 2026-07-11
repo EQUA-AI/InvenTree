@@ -105,6 +105,13 @@ src/backend/InvenTree/plugins/
 *.mo
 messages.ts
 
+# Local secrets (never commit)
+.secrets/
+src/backend/InvenTree/ai/secrets/
+# Environment files (templates like .env.template stay tracked; real .env never)
+.env
+*.env
+
 # Generated API schema file
 api.yaml
 
@@ -114,3 +121,34 @@ InvenTree/web/static
 
 #backup
 InvenTree-backup/
+LocalDocs/
+
+# Vendored/temporary Python libs
+temp_lib/
+
+# ---------------------------------------------------------------------------
+# Local dev tooling — Spec Kit + AI/MCP assistants.
+# Not needed for CI or the container images pushed via GitHub Actions.
+# ---------------------------------------------------------------------------
+
+# Spec Kit (specs live in specs/; the tooling below is local-only)
+.specify/
+
+# Copilot / AI assistant customization dirs (agents, skills, prompts)
+.github/agents/
+.github/skills/
+.github/prompts/
+
+# MCP / AI assistant config
+# (.vscode/mcp.json is already covered by the .vscode/* rule above)
+.cursor/
+.cursorrules
+.aider*
+.claude/
+
+# ---------------------------------------------------------------------------
+# Ad-hoc / scratch test harnesses (local only — not part of the CI test suite)
+# ---------------------------------------------------------------------------
+# Self-contained AI tools test harness (own requirements.txt + run_tests.py,
+# hyphenated name => not importable by app code)
+src/backend/InvenTree/ai/core/tools/Tools-Testing/

@@ -72,3 +72,9 @@ opentelemetry-instrumentation-pymysql
 
 # Pins
 xmlsec==1.3.14  # 2025-06-02 pinned to avoid issues with builds - see https://github.com/inventree/InvenTree/pull/9713
+
+# AI Dependencies
+agent-framework>=1.0.0b251120           # Microsoft Agent Framework
+azure-ai-documentintelligence>=1.0.0    # Azure Document Intelligence
+azure-identity>=1.15.0                  # Azure Identity
+openai>=1.12.0                          # OpenAI SDK

@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
-import { AboutLinks, DocumentationLinks } from '../../defaults/links';
 import useInstanceName from '../../hooks/UseInstanceName';
 import * as classes from '../../main.css';
 import { useGlobalSettingsState } from '../../states/SettingsStates';
@@ -112,6 +111,12 @@ function DrawerContent({ closeFunc }: Readonly<{ closeFunc?: () => void }>) {
         icon: 'list'
       },
       {
+        id: 'assets-machines',
+        title: t`Machines`,
+        link: '/machines/',
+        icon: 'build'
+      },
+      {
         id: 'users',
         title: t`Users`,
         link: '/core/index/users',
@@ -169,16 +174,6 @@ function DrawerContent({ closeFunc }: Readonly<{ closeFunc?: () => void }>) {
     ];
   }, [user]);
 
-  const menuItemsDocumentation: MenuLinkItem[] = useMemo(
-    () => DocumentationLinks(),
-    []
-  );
-
-  const menuItemsAbout: MenuLinkItem[] = useMemo(
-    () => AboutLinks(globalSettings, user),
-    []
-  );
-
   return (
     <Flex direction='column' mih='100vh' p={16}>
       <Group wrap='nowrap'>
@@ -213,20 +208,7 @@ function DrawerContent({ closeFunc }: Readonly<{ closeFunc?: () => void }>) {
           <></>
         )}
       </Container>
-      <div ref={ref}>
-        <Space h='md' />
-        <MenuLinks
-          title={t`Documentation`}
-          links={menuItemsDocumentation}
-          beforeClick={closeFunc}
-        />
-        <Space h='md' />
-        <MenuLinks
-          title={t`About`}
-          links={menuItemsAbout}
-          beforeClick={closeFunc}
-        />
-      </div>
+      <div ref={ref}></div>
     </Flex>
   );
 }

@@ -16,7 +16,7 @@ export default function PageTitle({
   const pageTitle = useMemo(() => {
     const instanceName = globalSettings.getSetting(
       'INVENTREE_INSTANCE',
-      'InvenTree'
+      'Equa AIMMS'
     );
     const useInstanceName = globalSettings.isSet(
       'INVENTREE_INSTANCE_TITLE',

@@ -39,6 +39,7 @@ import {
 import { useUserState } from '../../states/UserState';
 import { ScanButton } from '../buttons/ScanButton';
 import { SpotlightButton } from '../buttons/SpotlightButton';
+import { AIChatButton, AIChatDrawer } from './AIChatDrawer';
 import { Alerts } from './Alerts';
 import { MainMenu } from './MainMenu';
 import { NavHoverMenu } from './NavHoverMenu';
@@ -77,6 +78,11 @@ export function Header() {
   const [
     notificationDrawerOpened,
     { open: openNotificationDrawer, close: closeNotificationDrawer }
+  ] = useDisclosure(false);
+
+  const [
+    aiChatDrawerOpened,
+    { open: openAIChatDrawer, close: closeAIChatDrawer }
   ] = useDisclosure(false);
 
   const { isLoggedIn } = useUserState();
@@ -153,6 +159,7 @@ export function Header() {
           closeNotificationDrawer();
         }}
       />
+      <AIChatDrawer opened={aiChatDrawerOpened} onClose={closeAIChatDrawer} />
       <Container className={classes.layoutHeaderSection} size='100%'>
         <Group justify='space-between'>
           <Group>
@@ -195,6 +202,7 @@ export function Header() {
                 </ActionIcon>
               </Tooltip>
             </Indicator>
+            <AIChatButton onClick={openAIChatDrawer} />
             <Alerts />
             <MainMenu />
           </Group>

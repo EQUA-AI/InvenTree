@@ -95,7 +95,7 @@ class PluginsRegistry:
         'inventree-exporter',
         'inventree-ui-notification',
         'inventree-machines',
-        'inventree-email-notification',
+        'equa-aimms-email-notification',
         'inventreecurrencyexchange',
         'inventreelabel',
         'inventreelabelmachine',

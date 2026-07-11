@@ -57,3 +57,29 @@ export function RenderSelectionList({
     )
   );
 }
+
+export function RenderAssetMachine({
+  instance
+}: Readonly<InstanceRenderInterface>): ReactNode {
+  return (
+    instance && (
+      <RenderInlineModel
+        primary={instance.name}
+        secondary={instance.location}
+      />
+    )
+  );
+}
+
+export function RenderRepairPacket({
+  instance
+}: Readonly<InstanceRenderInterface>): ReactNode {
+  return (
+    instance && (
+      <RenderInlineModel
+        primary={instance.reference}
+        secondary={instance.status_label ?? instance.status}
+      />
+    )
+  );
+}

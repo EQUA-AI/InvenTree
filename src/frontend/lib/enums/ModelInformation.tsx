@@ -278,6 +278,22 @@ export const ModelInformationDict: ModelDict = {
     api_endpoint: ApiEndpoints.kanban_card_list,
     icon: 'list'
   },
+  assetmachine: {
+    label: () => t`Machine`,
+    label_multiple: () => t`Machines`,
+    url_overview: '/machines/index/',
+    url_detail: '/machines/machine/:pk/',
+    api_endpoint: ApiEndpoints.asset_machine_list,
+    icon: 'build'
+  },
+  repairpacket: {
+    label: () => t`Repair Packet`,
+    label_multiple: () => t`Repair Packets`,
+    url_overview: '/repair/packets/',
+    url_detail: '/repair/packets/:pk/',
+    api_endpoint: ApiEndpoints.repair_packet_list,
+    icon: 'build'
+  },
   error: {
     label: () => t`Error`,
     label_multiple: () => t`Errors`,

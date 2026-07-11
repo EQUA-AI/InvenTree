@@ -1,0 +1,56 @@
+properties:
+  template:
+    volumes:
+      - name: inventree-data-volume
+        storageType: AzureFile
+        storageName: inventree-storage
+    containers:
+      - name: inventree-worker
+        image: aimms-hjcxb6epgvhgbyge.azurecr.io/inventree:kanban-board
+        command:
+          - invoke
+        args:
+          - worker
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        volumeMounts:
+          - volumeName: inventree-data-volume
+            mountPath: /home/inventree/data
+        env:
+          - name: INVENTREE_DB_ENGINE
+            value: postgresql
+          - name: INVENTREE_DB_NAME
+            value: postgres
+          - name: INVENTREE_DB_USER
+            value: Rhyme0466
+          - name: INVENTREE_DB_PASSWORD
+            secretRef: pw-secret
+          - name: INVENTREE_DB_HOST
+            value: machine-ai-chat.postgres.database.azure.com
+          - name: INVENTREE_DB_PORT
+            value: "5432"
+          - name: INVENTREE_DOCKER
+            value: "TRUE"
+          - name: INVENTREE_PLUGINS_ENABLED
+            value: "True"
+          - name: INVENTREE_LOG_LEVEL
+            value: INFO
+          - name: INVENTREE_SITE_URL
+            value: https://aimms.equa.work/
+          - name: INVENTREE_AUTO_UPDATE
+            value: "False"
+          - name: INVENTREE_MEDIA_ROOT
+            value: /home/inventree/data/media
+          - name: INVENTREE_ADMIN_USER
+            value: LNaidu
+          - name: INVENTREE_ADMIN_PASSWORD
+            secretRef: admin-pw
+          - name: INVENTREE_ADMIN_EMAIL
+            value: lokesh@equa.work
+          - name: INVENTREE_DEBUG
+            value: "False"
+          - name: INVENTREE_BACKUP_DIR
+            value: /home/inventree/data/backup
+          - name: INVENTREE_LOGIN_REQUIRED
+            value: "True"

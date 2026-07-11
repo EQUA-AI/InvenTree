@@ -46,7 +46,7 @@ class CoreNotificationTestTests(InvenTreeTestCase):
 
         print('- get email plugin:')
 
-        plugin = registry.get_plugin('inventree-email-notification')
+        plugin = registry.get_plugin('equa-aimms-email-notification')
         self.assertIsNotNone(plugin, 'Email notification plugin should be available')
 
         # First, try with setting disabled

@@ -5,7 +5,7 @@ services:
     ports:
       - 5432/tcp
     volumes:
-      - ../dev-db/:/var/lib/postgresql/data:z
+      - db_data:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: inventree
       POSTGRES_USER: inventree_user
@@ -42,5 +42,20 @@ services:
       INVENTREE_PY_ENV: /home/inventree/dev/venv
       INVENTREE_DEVCONTAINER: True
 
+    # Allow bubblewrap / user-namespace creation (required by the Codex CLI sandbox).
+    # Docker's default capability set omits SYS_ADMIN and its default seccomp profile
+    # blocks the unshare()/clone() namespace syscalls, so `bwrap` fails with
+    # "No permissions to create new namespace" without these. If a rebuild still
+    # cannot create namespaces on a locked-down host, replace both keys with
+    # `privileged: true` as a broader fallback.
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+
     depends_on:
       - db
+
+volumes:
+  db_data:

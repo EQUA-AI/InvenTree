@@ -113,7 +113,15 @@ Make sure you have `gnupg` and `pinentry-mac` installed and set up correctly. Re
 
 Backups, media/static files, venv, plugin.txt, secret_key.txt, ... are stored in the `dev` folder. If you want to start with a clean setup, you can remove that folder, but be aware that this will delete everything you already setup in InvenTree.
 
-Database data are stored in the `dev-db` directory. This is managed by the `postgres` docker container.
+Database data are stored in a Docker volume (`inventree_devcontainer_db_data`) managed by the `postgres` container.
+
+If you want to reset the database, you can remove the volume and re-open the devcontainer:
+
+```bash
+docker volume rm inventree_devcontainer_db_data
+```
+
+If you prefer storing database files on your host filesystem (e.g. in `dev-db/`), edit the bind-mount in `.devcontainer/docker-compose.yml` instead.
 
 ### Performance Improvements
 

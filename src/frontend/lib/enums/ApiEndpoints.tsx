@@ -67,6 +67,34 @@ export enum ApiEndpoints {
   kanban_card_list = 'kanban/cards/',
   kanban_card_detail = 'kanban/cards/:id/',
   kanban_card_restore = 'kanban/cards/:id/restore/',
+  kanban_card_parts = 'kanban/cards/:id/parts/',
+  kanban_card_part_detail = 'kanban/cards/:cardId/parts/:id/',
+  kanban_card_allocate = 'kanban/cards/:id/allocate-parts/',
+
+  // Repair Packet endpoints
+  repair_packet_list = 'repair/packets/',
+  repair_packet_detail = 'repair/packets/:id/',
+  repair_packet_generate = 'repair/packets/:id/generate/',
+  repair_packet_advance = 'repair/packets/:id/advance/',
+  repair_packet_cancel = 'repair/packets/:id/cancel/',
+  repair_packet_generation_status = 'repair/packets/:id/generation-status/',
+  repair_packet_resolve_gates = 'repair/packets/:id/resolve-gates/',
+  repair_packet_gate_list = 'repair/packets/:id/gates/',
+  repair_packet_gate_confirm = 'repair/packets/:id/gates/:gate_pk/confirm/',
+  repair_packet_gate_verify = 'repair/packets/:id/gates/:gate_pk/verify/',
+  repair_packet_gate_waive = 'repair/packets/:id/gates/:gate_pk/waive/',
+  repair_packet_gate_proof = 'repair/packets/:id/gates/:gate_pk/proofs/',
+  repair_packet_gate_lockout = 'repair/packets/:id/gates/:gate_pk/lockout/',
+  safety_gate_template_list = 'repair/gate-templates/',
+  safety_gate_template_detail = 'repair/gate-templates/:id/',
+
+  // Asset / Equipment endpoints
+  asset_machine_list = 'assets/machines/',
+  asset_machine_detail = 'assets/machines/:id/',
+  asset_machine_part_list = 'assets/parts/',
+  asset_machine_part_detail = 'assets/parts/:id/',
+  asset_maintenance_list = 'assets/maintenance/',
+  asset_maintenance_detail = 'assets/maintenance/:id/',
 
   // Barcode API endpoints
   barcode = 'barcode/',

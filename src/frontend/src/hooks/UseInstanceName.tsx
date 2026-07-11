@@ -9,6 +9,6 @@ export default function useInstanceName(): string {
   const globalSettings = useGlobalSettingsState();
 
   return useMemo(() => {
-    return globalSettings.getSetting('INVENTREE_INSTANCE', 'InvenTree');
+    return globalSettings.getSetting('INVENTREE_INSTANCE', 'Equa AIMMS');
   }, [globalSettings]);
 }

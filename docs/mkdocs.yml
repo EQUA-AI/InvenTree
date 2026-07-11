@@ -80,6 +80,7 @@ nav:
     - Development:
       - Contributing: develop/contributing.md
       - Architecture: develop/architecture.md
+      - Azure Marketplace SaaS Offer: develop/azure-marketplace-saas.md
       - Roadmap: develop/roadmap.md
       - Devcontainer: develop/devcontainer.md
       - React Frontend: develop/react-frontend.md

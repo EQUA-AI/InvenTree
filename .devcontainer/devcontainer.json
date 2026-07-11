@@ -32,7 +32,8 @@
         "ms-python.vscode-pylance",
         "batisteo.vscode-django",
         "eamodio.gitlens",
-        "biomejs.biome"
+        "biomejs.biome",
+        "openai.chatgpt"
       ]
     }
   },

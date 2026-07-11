@@ -11,6 +11,7 @@ import {
   IconDashboard,
   IconLayoutKanban,
   IconPackages,
+  IconSitemap,
   IconShoppingCart,
   IconTruckDelivery
 } from '@tabler/icons-react';
@@ -43,6 +44,11 @@ export function getNavTabs(user: UserStateProps): NavTab[] {
       title: t`Stock`,
       icon: <IconPackages />,
       role: UserRoles.stock
+    },
+    {
+      name: 'machines',
+      title: t`Machines`,
+      icon: <IconSitemap />
     },
     {
       name: 'manufacturing',
@@ -92,21 +98,21 @@ export function DocumentationLinks(): MenuLinkItem[] {
       title: t`Getting Started`,
       link: docLinks.getting_started,
       external: true,
-      description: t`Getting started with InvenTree`
+      description: t`Getting started with Equa AIMMS`
     },
     {
       id: 'api',
       title: t`API`,
       link: docLinks.api,
       external: true,
-      description: t`InvenTree API documentation`
+      description: t`Equa AIMMS API documentation`
     },
     {
       id: 'developer',
       title: t`Developer Manual`,
       link: docLinks.developer,
       external: true,
-      description: t`InvenTree developer manual`
+      description: t`Equa AIMMS developer manual`
     },
     {
       id: 'faq',
@@ -120,7 +126,7 @@ export function DocumentationLinks(): MenuLinkItem[] {
       title: t`GitHub Repository`,
       link: docLinks.github,
       external: true,
-      description: t`InvenTree source code on GitHub`
+      description: t`Equa AIMMS source code on GitHub`
     }
   ];
 }
@@ -143,7 +149,7 @@ export function aboutInvenTree() {
     modal: 'about',
     title: (
       <StylishText size='xl'>
-        <Trans>About InvenTree</Trans>
+        <Trans>About Equa AIMMS</Trans>
       </StylishText>
     ),
     size: 'xl',
@@ -172,14 +178,14 @@ export function AboutLinks(
     {
       id: 'instance',
       title: t`System Information`,
-      description: t`About this InvenTree instance`,
+      description: t`About this Equa AIMMS instance`,
       icon: 'info',
       action: serverInfo
     },
     {
       id: 'licenses',
       title: t`License Information`,
-      description: t`Licenses for dependencies of the InvenTree software`,
+      description: t`Licenses for dependencies of the Equa AIMMS software`,
       icon: 'license',
       action: licenseInfo
     }
@@ -189,8 +195,8 @@ export function AboutLinks(
   if (user.isSuperuser() || !settings.isSet('INVENTREE_RESTRICT_ABOUT')) {
     base_items.push({
       id: 'about',
-      title: t`About InvenTree`,
-      description: t`About the InvenTree Project`,
+      title: t`About Equa AIMMS`,
+      description: t`About the Equa AIMMS Project`,
       icon: 'info',
       action: aboutInvenTree
     });

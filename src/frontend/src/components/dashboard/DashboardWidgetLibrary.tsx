@@ -190,7 +190,7 @@ export function BuiltinGettingStartedWidgets(): DashboardWidgetProps[] {
     {
       label: 'news',
       title: t`News Updates`,
-      description: t`The latest news from InvenTree`,
+      description: t`The latest news from Equa AIMMS`,
       minWidth: 5,
       minHeight: 4,
       render: () => <NewsWidget />

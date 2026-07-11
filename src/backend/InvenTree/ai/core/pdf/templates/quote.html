@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block page_header_left %}Quote{% endblock %}
+{% block page_header_right %}{{ reference }}{% endblock %}
+
+{% block title %}Quote{% endblock %}
+{% block subtitle %}{{ reference }}{% endblock %}
+
+{% block content %}
+<!-- ── Quote meta ─────────────────────────────────────────────── -->
+<div class="two-col">
+  <div>
+    <table class="meta">
+      <tr><td class="label">Reference</td><td>{{ reference }}</td></tr>
+      <tr><td class="label">Status</td><td>{{ status | default("Draft", true) }}</td></tr>
+      <tr><td class="label">Date</td><td>{{ issue_date }}</td></tr>
+      <tr><td class="label">Valid Until</td><td>{{ valid_until | default("—", true) }}</td></tr>
+    </table>
+  </div>
+  <div>
+    <h3>{{ quote_direction | default("Customer", true) }}</h3>
+    <div class="address">
+      <div class="name">{{ customer_name | default(supplier_name | default("—", true), true) }}</div>
+      {% if contact_address %}
+        {{ contact_address }}
+      {% endif %}
+      {% if contact_email %}
+        <div class="text-muted">{{ contact_email }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if introduction %}
+<div class="mb-4" style="font-size:9pt;">
+  {{ introduction }}
+</div>
+{% endif %}
+
+<!-- ── Quoted line items ──────────────────────────────────────── -->
+<table class="line-items">
+  <thead>
+    <tr>
+      <th style="width:30px">#</th>
+      <th>Part / Service</th>
+      <th>Description</th>
+      <th class="center" style="width:55px">Qty</th>
+      <th class="right" style="width:85px">Unit Price</th>
+      {% if show_lead_time %}<th class="center" style="width:70px">Lead Time</th>{% endif %}
+      <th class="right" style="width:90px">Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in lines %}
+    <tr>
+      <td class="center">{{ loop.index }}</td>
+      <td>{{ line.part_name }}{% if line.part_ipn %} <span class="text-muted">({{ line.part_ipn }})</span>{% endif %}</td>
+      <td>{{ line.description | default("", true) }}</td>
+      <td class="center">{{ line.quantity | number(0) }}</td>
+      <td class="right">{{ line.unit_price | currency(currency_symbol | default("$", true)) }}</td>
+      {% if show_lead_time %}<td class="center">{{ line.lead_time | default("—", true) }}</td>{% endif %}
+      <td class="right">{{ line.total_price | currency(currency_symbol | default("$", true)) }}</td>
+    </tr>
+    {% endfor %}
+
+    {% if subtotal and tax %}
+    <tr class="subtotal-row">
+      <td colspan="{{ 5 + (1 if show_lead_time else 0) }}" class="text-right">Subtotal</td>
+      <td class="right">{{ subtotal | currency(currency_symbol | default("$", true)) }}</td>
+    </tr>
+    <tr>
+      <td colspan="{{ 5 + (1 if show_lead_time else 0) }}" class="text-right">Tax ({{ tax_rate | default("", true) }})</td>
+      <td class="right">{{ tax | currency(currency_symbol | default("$", true)) }}</td>
+    </tr>
+    {% endif %}
+
+    <tr class="total-row">
+      <td colspan="{{ 5 + (1 if show_lead_time else 0) }}" class="text-right">Total ({{ currency | default("USD", true) }})</td>
+      <td class="right">{{ total_price | currency(currency_symbol | default("$", true)) }}</td>
+    </tr>
+  </tbody>
+</table>
+
+{% if terms %}
+<div class="mt-4">
+  <h3>Terms &amp; Conditions</h3>
+  <div class="text-sm text-muted">{{ terms }}</div>
+</div>
+{% endif %}
+
+{% if acceptance_block %}
+<div class="mt-4" style="border-top: 1px solid #ccc; padding-top: 14px;">
+  <div class="two-col">
+    <div>
+      <div class="text-sm text-muted">Accepted by (signature):</div>
+      <div style="margin-top: 40px; border-bottom: 1px solid #666; width: 200px;"></div>
+    </div>
+    <div>
+      <div class="text-sm text-muted">Date:</div>
+      <div style="margin-top: 40px; border-bottom: 1px solid #666; width: 150px;"></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

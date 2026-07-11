@@ -113,6 +113,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Build and install python dependencies
 RUN pip install --user --require-hashes -r base_requirements.txt --no-cache-dir && \
     pip install --user --require-hashes -r requirements.txt --no-cache-dir && \
+    pip install --user -r src/backend/InvenTree/ai/requirements.txt --no-cache-dir && \
     pip cache purge && \
     rm -rf /root/.cache/pip
 
@@ -122,9 +123,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g n yarn --ignore-scripts && \
-    yarn config set network-timeout 600000 -g
+RUN npm install -g n --ignore-scripts
 RUN bash -c "n lts"
+RUN npm install -g yarn --ignore-scripts && \
+    yarn config set network-timeout 600000 -g
 RUN cd "${INVENTREE_HOME}" && invoke int.frontend-compile --extract
 
 # InvenTree production image:
@@ -140,6 +142,7 @@ ENV INVENTREE_COMMIT_DATE="${commit_date}"
 
 # Copy source code
 COPY src/backend/InvenTree ${INVENTREE_BACKEND_DIR}/InvenTree
+COPY src/backend/tasks ${INVENTREE_BACKEND_DIR}/tasks
 COPY src/backend/requirements.txt ${INVENTREE_BACKEND_DIR}/requirements.txt
 
 # Copy compiled dependencies from prebuild image
@@ -149,7 +152,7 @@ COPY --from=builder_stage ${INVENTREE_BACKEND_DIR}/InvenTree/web/static/web ${IN
 COPY --from=builder_stage /root/.local /root/.local
 
 # Launch the production server
-CMD ["sh", "-c", "exec gunicorn -c ./gunicorn.conf.py InvenTree.wsgi -b 0.0.0.0:8000 --chdir ${INVENTREE_BACKEND_DIR}/InvenTree"]
+CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker -c ./gunicorn.conf.py InvenTree.asgi:application -b 0.0.0.0:8000 --chdir ${INVENTREE_BACKEND_DIR}/InvenTree"]
 
 FROM builder_stage AS dev
 
@@ -170,7 +173,7 @@ ENV INVENTREE_PY_ENV="${INVENTREE_DATA_DIR}/env"
 WORKDIR ${INVENTREE_HOME}
 
 # Entrypoint ensures that we are running in the python virtual environment
-ENTRYPOINT ["/bin/bash", "./contrib/container/init.sh"]
+ENTRYPOINT ["/bin/bash", "./init.sh"]
 
 # Launch the development server
-CMD ["invoke", "dev.server", "-a", "${INVENTREE_WEB_ADDR}:${INVENTREE_WEB_PORT}"]
+CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker -c ./gunicorn.conf.py InvenTree.asgi:application -b 0.0.0.0:8000 --chdir ${INVENTREE_BACKEND_DIR}/InvenTree --reload"]

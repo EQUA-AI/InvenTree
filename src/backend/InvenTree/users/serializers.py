@@ -113,7 +113,13 @@ def generate_permission_dict(permissions) -> dict:
     perms = {}
 
     for permission in permissions:
-        perm, model = permission.codename.split('_')
+        parts = permission.codename.split('_', 1)
+        if len(parts) == 2:
+            perm, model = parts
+        else:
+            # Custom permissions without the standard 'action_model' format
+            model = permission.content_type.model
+            perm = parts[0]
 
         if model not in perms:
             perms[model] = []

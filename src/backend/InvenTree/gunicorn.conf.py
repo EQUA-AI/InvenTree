@@ -1,10 +1,15 @@
 """Gunicorn configuration script for InvenTree web server."""
 
 import multiprocessing
+import os
 
 bind = '0.0.0.0:8000'
 
 workers = multiprocessing.cpu_count() * 2 + 1
+
+# Default Gunicorn timeout is 30s which is too low for some AI operations
+# (e.g. streaming requests, long tool calls). Allow configuration via env.
+timeout = int(os.environ.get('INVENTREE_GUNICORN_TIMEOUT', '180'))
 
 max_requests = 1000
 max_requests_jitter = 50

@@ -33,8 +33,7 @@ export function MainMenu() {
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
 
   return (
-    <>
-      <Menu width={260} position='bottom-end'>
+    <Menu width={260} position='bottom-end'>
         <Menu.Target>
           <UnstyledButton className={classes.layoutHeaderUser}>
             <Group gap={7}>
@@ -96,7 +95,7 @@ export function MainMenu() {
             onClick={() => aboutInvenTree()}
             leftSection={<IconInfoCircle />}
           >
-            <Trans>About InvenTree</Trans>
+            <Trans>About Equa AIMMS</Trans>
           </Menu.Item>
           <Menu.Divider />
           <Menu.Item
@@ -109,6 +108,5 @@ export function MainMenu() {
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
-    </>
   );
 }

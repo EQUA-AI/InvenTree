@@ -23,8 +23,11 @@ ENV LIBGL_ALWAYS_INDIRECT=1
 COPY contrib/container/init.sh ./
 RUN chmod +x init.sh
 
+# Remove yarn apt source to avoid GPG key errors
+RUN rm -f /etc/apt/sources.list.d/yarn.list
+
 # Install required base packages
-RUN apt update && apt install -y \
+RUN apt-get update && apt-get install -y \
    python3.11-dev python3.11-venv \
    postgresql-client \
    libldap2-dev libsasl2-dev \
@@ -32,12 +35,10 @@ RUN apt update && apt install -y \
    poppler-utils weasyprint
 
 # Install packages required for frontend development
-RUN apt install -y \
-   yarn nodejs npm
+RUN apt-get install -y \
+   nodejs npm
 
 # Update to the latest stable node version
 RUN npm install -g n --ignore-scripts && n lts
-
-RUN yarn config set network-timeout 600000 -g
 
 ENTRYPOINT ["/bin/bash", "./init.sh"]

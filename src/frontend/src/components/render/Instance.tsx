@@ -38,7 +38,9 @@ import {
   RenderKanbanCard,
   RenderImportSession,
   RenderProjectCode,
-  RenderSelectionList
+  RenderSelectionList,
+  RenderAssetMachine,
+  RenderRepairPacket
 } from './Generic';
 import {
   RenderPurchaseOrder,
@@ -99,6 +101,8 @@ export const RendererLookup: ModelRendererDict = {
   [ModelType.contenttype]: RenderContentType,
   [ModelType.selectionlist]: RenderSelectionList,
   [ModelType.kanbancard]: RenderKanbanCard,
+  [ModelType.assetmachine]: RenderAssetMachine,
+  [ModelType.repairpacket]: RenderRepairPacket,
   [ModelType.error]: RenderError
 };
 

@@ -35,5 +35,7 @@ export enum ModelType {
   contenttype = 'contenttype',
   selectionlist = 'selectionlist',
   kanbancard = 'kanbancard',
+  assetmachine = 'assetmachine',
+  repairpacket = 'repairpacket',
   error = 'error'
 }

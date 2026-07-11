@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block page_header_left %}Sales Order{% endblock %}
+{% block page_header_right %}{{ reference }}{% endblock %}
+
+{% block title %}Sales Order{% endblock %}
+{% block subtitle %}{{ reference }}{% endblock %}
+
+{% block content %}
+<!-- ── Order meta ──────────────────────────────────────────────── -->
+<div class="two-col">
+  <div>
+    <table class="meta">
+      <tr><td class="label">Reference</td><td>{{ reference }}</td></tr>
+      <tr><td class="label">Status</td><td>{{ status }}</td></tr>
+      <tr><td class="label">Issue Date</td><td>{{ issue_date }}</td></tr>
+      <tr><td class="label">Target Date</td><td>{{ target_date }}</td></tr>
+      {% if po_reference %}
+      <tr><td class="label">PO Reference</td><td>{{ po_reference }}</td></tr>
+      {% endif %}
+    </table>
+  </div>
+  <div>
+    <h3>Customer</h3>
+    <div class="address">
+      <div class="name">{{ customer_name }}</div>
+      {% if customer_address %}
+        {{ customer_address }}
+      {% endif %}
+      {% if customer_email %}
+        <div class="text-muted">{{ customer_email }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if ship_to_address %}
+<div class="mb-4">
+  <h3>Ship To</h3>
+  <div class="address">{{ ship_to_address }}</div>
+</div>
+{% endif %}
+
+<!-- ── Line items ─────────────────────────────────────────────── -->
+<table class="line-items">
+  <thead>
+    <tr>
+      <th style="width:30px">#</th>
+      <th>Part</th>
+      <th>Description</th>
+      <th class="center" style="width:55px">Qty</th>
+      <th class="right" style="width:85px">Unit Price</th>
+      {% if show_discount %}<th class="right" style="width:65px">Discount</th>{% endif %}
+      <th class="right" style="width:90px">Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in lines %}
+    <tr>
+      <td class="center">{{ loop.index }}</td>
+      <td>{{ line.part_name }}{% if line.part_ipn %} <span class="text-muted">({{ line.part_ipn }})</span>{% endif %}</td>
+      <td>{{ line.description | default("", true) }}</td>
+      <td class="center">{{ line.quantity | number(0) }}</td>
+      <td class="right">{{ line.unit_price | currency(currency_symbol | default("$", true)) }}</td>
+      {% if show_discount %}<td class="right">{{ line.discount | default("—", true) }}</td>{% endif %}
+      <td class="right">{{ line.total_price | currency(currency_symbol | default("$", true)) }}</td>
+    </tr>
+    {% endfor %}
+
+    {% if subtotal and tax %}
+    <tr class="subtotal-row">
+      <td colspan="{{ 5 + (1 if show_discount else 0) }}" class="text-right">Subtotal</td>
+      <td class="right">{{ subtotal | currency(currency_symbol | default("$", true)) }}</td>
+    </tr>
+    <tr>
+      <td colspan="{{ 5 + (1 if show_discount else 0) }}" class="text-right">Tax ({{ tax_rate | default("", true) }})</td>
+      <td class="right">{{ tax | currency(currency_symbol | default("$", true)) }}</td>
+    </tr>
+    {% endif %}
+
+    <tr class="total-row">
+      <td colspan="{{ 5 + (1 if show_discount else 0) }}" class="text-right">Total ({{ currency | default("USD", true) }})</td>
+      <td class="right">{{ total_price | currency(currency_symbol | default("$", true)) }}</td>
+    </tr>
+  </tbody>
+</table>
+
+{% if terms %}
+<div class="mt-4">
+  <h3>Terms &amp; Conditions</h3>
+  <div class="text-sm text-muted">{{ terms }}</div>
+</div>
+{% endif %}
+{% endblock %}

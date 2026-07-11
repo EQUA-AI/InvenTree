@@ -1,4 +1,4 @@
-#!/bin/ash
+#!/bin/bash
 
 # exit when any command fails
 set -e
@@ -28,7 +28,7 @@ fi
 if test -f "$INVENTREE_CONFIG_FILE"; then
     echo "Loading config file : $INVENTREE_CONFIG_FILE"
 else
-    echo "Copying config file from $INVENTREE_BACKEND_DIR/InvenTree/config_template.yml to $INVENTREE_CONFIG_FILE"
+    echo "Copying config file from $INVENTREE_BACKEND_DIR/InvenTree/config_template.yaml to $INVENTREE_CONFIG_FILE"
     cp $INVENTREE_BACKEND_DIR/InvenTree/config_template.yaml $INVENTREE_CONFIG_FILE
 fi
 
@@ -55,5 +55,42 @@ fi
 
 cd ${INVENTREE_HOME}
 
+sync_spa_bundle() {
+    local src_dir="${INVENTREE_BACKEND_DIR}/InvenTree/web/static/web"
+    local dest_dir="${INVENTREE_STATIC_ROOT}/web"
+
+    if [[ ! -d "${src_dir}" ]]; then
+        echo "SPA bundle source directory not found: ${src_dir}"
+        return
+    fi
+
+    mkdir -p "${dest_dir}"
+    # Remove stale compiled artefacts so hashed filenames always match the baked manifest
+    rm -rf "${dest_dir}/assets" "${dest_dir}/.vite"
+    cp -a "${src_dir}/." "${dest_dir}/"
+    echo "Synchronized SPA bundle into ${dest_dir}"
+}
+
+# Collect static assets once for production builds so WhiteNoise can serve them
+if [[ "${INVENTREE_DEBUG,,}" != "true" ]]; then
+    STATIC_SENTINEL="${INVENTREE_STATIC_ROOT}/.static_collected"
+
+    if [[ "${INVENTREE_FORCE_COLLECTSTATIC,,}" == "true" && -f "${STATIC_SENTINEL}" ]]; then
+        echo "INVENTREE_FORCE_COLLECTSTATIC is enabled - forcing static asset refresh"
+        rm -f "${STATIC_SENTINEL}"
+    fi
+
+    if [[ ! -f "${STATIC_SENTINEL}" ]]; then
+        echo "Collecting static files into ${INVENTREE_STATIC_ROOT}"
+        invoke static --skip-plugins
+        touch "${STATIC_SENTINEL}"
+    else
+        echo "Static files already collected, skipping"
+    fi
+
+    sync_spa_bundle
+fi
+
 # Launch the CMD *after* the ENTRYPOINT completes
 exec "$@"
+ 

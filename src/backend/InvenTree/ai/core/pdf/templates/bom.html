@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block page_header_left %}Bill of Materials{% endblock %}
+{% block page_header_right %}{{ part_name }}{% endblock %}
+
+{% block title %}Bill of Materials{% endblock %}
+{% block subtitle %}{{ part_name }}{% if part_ipn %} ({{ part_ipn }}){% endif %}{% endblock %}
+
+{% block content %}
+<style>
+  /* BOM-specific: wider page for many columns */
+  {% if landscape %}
+  @page { size: A4 landscape; }
+  {% endif %}
+</style>
+
+<!-- ── Assembly meta ──────────────────────────────────────────── -->
+<table class="meta">
+  <tr>
+    <td class="label">Assembly</td><td>{{ part_name }}</td>
+    <td class="label">IPN</td><td>{{ part_ipn | default("—", true) }}</td>
+  </tr>
+  <tr>
+    <td class="label">Revision</td><td>{{ revision | default("—", true) }}</td>
+    <td class="label">Quantity</td><td>{{ build_quantity | default(1) }}</td>
+  </tr>
+  {% if description %}
+  <tr>
+    <td class="label">Description</td><td colspan="3">{{ description }}</td>
+  </tr>
+  {% endif %}
+</table>
+
+<!-- ── BOM line items ─────────────────────────────────────────── -->
+<table class="line-items">
+  <thead>
+    <tr>
+      <th style="width:30px">#</th>
+      <th>Part</th>
+      <th>IPN</th>
+      <th>Reference</th>
+      <th class="center" style="width:55px">Qty</th>
+      <th class="center" style="width:50px">Units</th>
+      {% if show_stock %}<th class="center" style="width:60px">In Stock</th>{% endif %}
+      <th class="center" style="width:55px">Optional</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in lines %}
+    <tr>
+      <td class="center">{{ loop.index }}</td>
+      <td>{{ line.part_name }}</td>
+      <td class="text-muted">{{ line.part_ipn | default("—", true) }}</td>
+      <td>{{ line.reference | default("", true) }}</td>
+      <td class="center">{{ line.quantity | number(2) }}</td>
+      <td class="center">{{ line.units | default("—", true) }}</td>
+      {% if show_stock %}<td class="center">{{ line.in_stock | default("—", true) }}</td>{% endif %}
+      <td class="center">{{ "Yes" if line.optional else "" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="mt-4 text-sm text-muted">
+  Total unique parts: {{ lines | length }}
+  {% if build_quantity and build_quantity > 1 %}
+    &nbsp;|&nbsp; For build quantity: {{ build_quantity }}
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block footer %}
+{% if revision %}
+<div class="mt-4 text-sm text-muted text-right">
+  BOM revision {{ revision }} — {{ generated_date }}
+</div>
+{% endif %}
+{% endblock %}

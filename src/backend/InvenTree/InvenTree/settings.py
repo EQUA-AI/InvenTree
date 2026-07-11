@@ -296,6 +296,9 @@ INSTALLED_APPS = [
     'report.apps.ReportConfig',
     'stock.apps.StockConfig',
     'tasks.apps.TasksConfig',
+    'assets.apps.AssetsConfig',
+    'approvals.apps.ApprovalsConfig',
+    'repair.apps.RepairConfig',
     'users.apps.UsersConfig',
     'machine.apps.MachineConfig',
     'data_exporter.apps.DataExporterConfig',
@@ -1138,6 +1141,15 @@ if not ALLOWED_HOSTS:
         # Server cannot run without ALLOWED_HOSTS
         if isInMainThread():
             sys.exit(-1)
+
+# When running inside Azure Container Apps, also allow the platform-provided FQDN
+container_app_suffix = os.environ.get('CONTAINER_APP_ENV_DNS_SUFFIX')
+container_app_name = os.environ.get('CONTAINER_APP_NAME')
+if container_app_suffix and container_app_name:
+    container_app_host = f"{container_app_name}.{container_app_suffix}"
+    # Avoid duplicates when ALLOWED_HOSTS already contains the entry (case-insensitive)
+    if container_app_host.lower() not in {host.lower() for host in ALLOWED_HOSTS}:
+        ALLOWED_HOSTS.append(container_app_host)
 
 # Ensure that the ALLOWED_HOSTS do not contain any scheme info
 for i, host in enumerate(ALLOWED_HOSTS):

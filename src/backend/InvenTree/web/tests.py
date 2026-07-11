@@ -3,7 +3,10 @@
 import json
 import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
+
+from django.test import override_settings
 
 from InvenTree.config import get_frontend_settings
 from InvenTree.unit_test import InvenTreeTestCase
@@ -50,6 +53,26 @@ class TemplateTagTest(InvenTreeTestCase):
         self.assertEqual(resp, '')
 
         new_name.rename(manifest_file.with_suffix('.json'))  # Name back
+
+    def test_spa_bundle_static_root_fallback(self):
+        """Manifest lookup falls back to STATIC_ROOT when packaged assets are missing."""
+
+        manifest_file = Path(__file__).parent.joinpath('static/web/.vite/manifest.json')
+
+        with TemporaryDirectory() as tmp_dir:
+            static_manifest = Path(tmp_dir).joinpath('web/.vite/manifest.json')
+            static_manifest.parent.mkdir(parents=True, exist_ok=True)
+            static_manifest.write_text(manifest_file.read_text())
+
+            renamed_manifest = manifest_file.with_suffix('.json.bak')
+            manifest_file.rename(renamed_manifest)
+
+            try:
+                with override_settings(STATIC_ROOT=tmp_dir):
+                    resp = spa_helper.spa_bundle()
+                    self.assertNotEqual(resp, 'NOT_FOUND')
+            finally:
+                renamed_manifest.rename(manifest_file)
 
     def test_spa_settings(self):
         """Test the 'spa_settings' template tag."""

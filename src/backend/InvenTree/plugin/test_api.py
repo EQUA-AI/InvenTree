@@ -417,7 +417,7 @@ class PluginDetailAPITest(PluginMixin, InvenTreeAPITestCase):
         # Fetch all user settings for the 'email' plugin
         url = reverse(
             'api-plugin-user-setting-list',
-            kwargs={'plugin': 'inventree-email-notification'},
+            kwargs={'plugin': 'equa-aimms'},
         )
 
         response = self.get(url, expected_code=200)
@@ -429,7 +429,7 @@ class PluginDetailAPITest(PluginMixin, InvenTreeAPITestCase):
         self.get(
             reverse(
                 'api-plugin-user-setting-detail',
-                kwargs={'plugin': 'inventree-email-notification', 'key': 'INVALID_KEY'},
+                kwargs={'plugin': 'equa-aimms', 'key': 'INVALID_KEY'},
             ),
             expected_code=404,
         )
@@ -439,7 +439,7 @@ class PluginDetailAPITest(PluginMixin, InvenTreeAPITestCase):
             reverse(
                 'api-plugin-user-setting-detail',
                 kwargs={
-                    'plugin': 'inventree-email-notification',
+                    'plugin': 'equa-aimms',
                     'key': 'NOTIFY_BY_EMAIL',
                 },
             ),

@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.urls import include, path
 
 from django_filters.rest_framework import FilterSet, filters
+from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -14,8 +15,8 @@ import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
-from .models import KanbanCard
-from .serializers import KanbanCardSerializer
+from .models import KanbanCard, KanbanCardPart
+from .serializers import KanbanCardPartSerializer, KanbanCardSerializer
 
 
 class KanbanCardFilter(FilterSet):
@@ -104,6 +105,99 @@ class KanbanCardRestore(APIView):
         return Response(serializer.data)
 
 
+class KanbanCardPartList(APIView):
+    """List and add parts for a Kanban card."""
+
+    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+
+    def get(self, request, card_pk):
+        """List all parts for a card."""
+        card = get_object_or_404(KanbanCard, pk=card_pk)
+        parts = card.card_parts.all().select_related('part')
+        serializer = KanbanCardPartSerializer(parts, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, card_pk):
+        """Add a part to a card and check stock availability."""
+        card = get_object_or_404(KanbanCard, pk=card_pk)
+        serializer = KanbanCardPartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        card_part = KanbanCardPart.objects.create(
+            card=card,
+            part=serializer.validated_data['part'],
+            quantity=serializer.validated_data.get('quantity', 1),
+        )
+        card_part.check_and_allocate()
+
+        return Response(
+            KanbanCardPartSerializer(card_part).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class KanbanCardPartDetail(APIView):
+    """Retrieve, update, or remove a part from a Kanban card."""
+
+    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+
+    def get(self, request, card_pk, pk):
+        card_part = get_object_or_404(KanbanCardPart, pk=pk, card_id=card_pk)
+        return Response(KanbanCardPartSerializer(card_part).data)
+
+    def patch(self, request, card_pk, pk):
+        card_part = get_object_or_404(KanbanCardPart, pk=pk, card_id=card_pk)
+        quantity = request.data.get('quantity')
+        if quantity is not None:
+            card_part.quantity = quantity
+            card_part.save(update_fields=['quantity', 'updated_at'])
+            card_part.check_and_allocate()
+        return Response(KanbanCardPartSerializer(card_part).data)
+
+    def delete(self, request, card_pk, pk):
+        card_part = get_object_or_404(KanbanCardPart, pk=pk, card_id=card_pk)
+        card_part.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class KanbanCardAllocateParts(APIView):
+    """Check stock and allocate all parts for a Kanban card.
+
+    Returns allocation results with warnings for any insufficient stock.
+    """
+
+    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+
+    def post(self, request, card_pk):
+        card = get_object_or_404(KanbanCard, pk=card_pk)
+        card_parts = card.card_parts.all().select_related('part')
+
+        results = []
+        warnings = []
+
+        for cp in card_parts:
+            cp.check_and_allocate()
+            result = KanbanCardPartSerializer(cp).data
+            results.append(result)
+
+            if cp.allocation_status == 'insufficient':
+                warnings.append(
+                    f"Part '{cp.part.name}' (ID {cp.part.pk}): "
+                    f"need {cp.quantity}, only {cp.allocated_quantity} available"
+                )
+            elif cp.allocation_status == 'partial':
+                warnings.append(
+                    f"Part '{cp.part.name}' (ID {cp.part.pk}): "
+                    f"partial allocation - {cp.allocated_quantity} of {cp.quantity}"
+                )
+
+        return Response({
+            'parts': results,
+            'warnings': warnings,
+            'all_allocated': len(warnings) == 0,
+        })
+
+
 kanban_api_urls = [
     path(
         'cards/',
@@ -111,6 +205,9 @@ kanban_api_urls = [
             path('', KanbanCardList.as_view(), name='kanban-card-list'),
             path('<int:pk>/', KanbanCardDetail.as_view(), name='kanban-card-detail'),
             path('<int:pk>/restore/', KanbanCardRestore.as_view(), name='kanban-card-restore'),
+            path('<int:card_pk>/parts/', KanbanCardPartList.as_view(), name='kanban-card-part-list'),
+            path('<int:card_pk>/parts/<int:pk>/', KanbanCardPartDetail.as_view(), name='kanban-card-part-detail'),
+            path('<int:card_pk>/allocate-parts/', KanbanCardAllocateParts.as_view(), name='kanban-card-allocate'),
         ]),
     ),
 ]

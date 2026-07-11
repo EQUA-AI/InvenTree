@@ -3,7 +3,7 @@
 import json
 import json.decoder
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 from django import template
 from django.conf import settings
@@ -25,21 +25,37 @@ def spa_bundle(manifest_path: Union[str, Path] = '', app: str = 'web'):
         """Get static url for file."""
         return f'{settings.STATIC_URL}{app}/{file}'
 
-    if manifest_path == '':
-        manifest = Path(__file__).parent.parent.joinpath(
-            'static/web/.vite/manifest.json'
-        )
-    else:
-        manifest = Path(manifest_path)
+    def get_manifest() -> Optional[Path]:
+        base_dir = Path(__file__).parent.parent
 
-    if not manifest.exists():
-        # Try old path for manifest file
-        manifest = Path(__file__).parent.parent.joinpath('static/web/manifest.json')
+        # Caller provided an explicit manifest path
+        if manifest_path:
+            potential = Path(manifest_path)
+            return potential if potential.exists() else None
 
-        # Final check - fail if manifest file not found
-        if not manifest.exists():
-            logger.error('Manifest file not found')
-            return 'NOT_FOUND'
+        # Default location shipped with the backend package
+        candidates = [
+            base_dir / f'static/{app}/.vite/manifest.json',
+            base_dir / f'static/{app}/manifest.json',
+        ]
+
+        # Fallback to STATIC_ROOT if the manifest was moved there (e.g. custom builds)
+        if settings.STATIC_ROOT:
+            candidates.append(
+                Path(settings.STATIC_ROOT).joinpath(app, '.vite', 'manifest.json')
+            )
+
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+
+        return None
+
+    manifest = get_manifest()
+
+    if manifest is None:
+        logger.error('Manifest file not found for app %s', app)
+        return 'NOT_FOUND'
 
     try:
         manifest_data = json.load(manifest.open())

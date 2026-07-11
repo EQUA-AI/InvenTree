@@ -27,6 +27,9 @@ import plugin.api
 import report.api
 import stock.api
 import tasks.api
+import assets.api
+import approvals.api
+import repair.api
 import users.api
 from plugin.urls import get_plugin_urls
 from web.urls import cui_compatibility_urls
@@ -63,6 +66,9 @@ apipatterns = [
     path('part/', include(part.api.part_api_urls)),
     path('report/', include(report.api.report_api_urls)),
     path('kanban/', include(tasks.api.kanban_api_urls)),
+    path('assets/', include(assets.api.assets_api_urls)),
+    path('approvals/', include(approvals.api.approvals_api_urls)),
+    path('repair/', include(repair.api.repair_api_urls)),
     path('search/', APISearchView.as_view(), name='api-search'),
     path('settings/', include(common.api.settings_api_urls)),
     path('stock/', include(stock.api.stock_api_urls)),

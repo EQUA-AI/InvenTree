@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{# ── Page header (printed on every page) ─────────────────────── #}
+{% block page_header_left %}Work Order{% endblock %}
+{% block page_header_right %}{{ reference | default("—") }}{% endblock %}
+
+{# ── Document header ─────────────────────────────────────────── #}
+{% block title %}Work Order{% endblock %}
+{% block subtitle %}{{ reference | default("") }}{% endblock %}
+
+{# ── Body ────────────────────────────────────────────────────── #}
+{% block content %}
+
+  <!-- ── Meta + Contact ───────────────────────────────────────── -->
+  <div class="two-col">
+
+    <!-- Left: key-value meta table -->
+    <div>
+      <table class="meta">
+        <tr>
+          <td class="label">Reference</td>
+          <td>{{ reference | default("—") }}</td>
+        </tr>
+        <tr>
+          <td class="label">Status</td>
+          <td>{{ status | default("Pending") }}</td>
+        </tr>
+        <tr>
+          <td class="label">Priority</td>
+          <td>{{ priority | default("Normal") }}</td>
+        </tr>
+        <tr>
+          <td class="label">Created Date</td>
+          <td>{{ created_date | default("—") }}</td>
+        </tr>
+        <tr>
+          <td class="label">Due Date</td>
+          <td>{{ due_date | default("—") }}</td>
+        </tr>
+        {% if job_number %}
+        <tr>
+          <td class="label">Job Number</td>
+          <td>{{ job_number }}</td>
+        </tr>
+        {% endif %}
+        {% if assigned_to %}
+        <tr>
+          <td class="label">Assigned To</td>
+          <td>{{ assigned_to }}</td>
+        </tr>
+        {% endif %}
+        {% if service_quote_ref %}
+        <tr>
+          <td class="label">Service Quote</td>
+          <td>{{ service_quote_ref }}</td>
+        </tr>
+        {% endif %}
+      </table>
+    </div>
+
+    <!-- Right: company / customer info -->
+    <div>
+      {% if customer or company %}
+      <div class="address">
+        {% if customer %}
+          <div class="name">{{ customer.name | default("") }}</div>
+          {% if customer.address %}{{ customer.address }}<br>{% endif %}
+          {% if customer.city %}{{ customer.city }}{% endif %}
+          {% if customer.state %}, {{ customer.state }}{% endif %}
+          {% if customer.postal_code %} {{ customer.postal_code }}{% endif %}
+          {% if customer.country %}<br>{{ customer.country }}{% endif %}
+          {% if customer.phone %}<br>Phone: {{ customer.phone }}{% endif %}
+          {% if customer.email %}<br>Email: {{ customer.email }}{% endif %}
+        {% elif company %}
+          <div class="name">{{ company.name | default("") }}</div>
+          {% if company.address %}{{ company.address }}<br>{% endif %}
+          {% if company.city %}{{ company.city }}{% endif %}
+          {% if company.state %}, {{ company.state }}{% endif %}
+          {% if company.postal_code %} {{ company.postal_code }}{% endif %}
+          {% if company.country %}<br>{{ company.country }}{% endif %}
+          {% if company.phone %}<br>Phone: {{ company.phone }}{% endif %}
+          {% if company.email %}<br>Email: {{ company.email }}{% endif %}
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Description / Scope of Work ─────────────────────────── -->
+  {% if description %}
+  <div style="margin-bottom: 14px;">
+    <strong style="font-size: 9pt;">Scope of Work</strong>
+    <p style="font-size: 9pt; margin: 4px 0 0 0; line-height: 1.5;">{{ description }}</p>
+  </div>
+  {% endif %}
+
+  <!-- ── Line Items / Tasks ──────────────────────────────────── -->
+  {% if line_items %}
+  <table class="line-items">
+    <thead>
+      <tr>
+        <th style="width:30px;">#</th>
+        <th>Task / Part</th>
+        <th>Description</th>
+        <th class="text-right" style="width:60px;">Qty</th>
+        {% if show_pricing | default(true) %}
+        <th class="text-right" style="width:90px;">Unit Price</th>
+        <th class="text-right" style="width:90px;">Total</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in line_items %}
+      <tr>
+        <td class="text-center">{{ loop.index }}</td>
+        <td>{{ item.name | default("") }}</td>
+        <td>{{ item.description | default("") }}</td>
+        <td class="text-right">{{ item.quantity | default(1) | number }}</td>
+        {% if show_pricing | default(true) %}
+        <td class="text-right">{{ item.unit_price | default(0) | currency(currency_symbol | default("$", true)) }}</td>
+        <td class="text-right">{{ item.total | default(0) | currency(currency_symbol | default("$", true)) }}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+
+    {% if show_pricing | default(true) %}
+    <tfoot>
+      {% if labor_total is defined %}
+      <tr class="subtotal-row">
+        <td colspan="4"></td>
+        <td class="text-right">Labor</td>
+        <td class="text-right">{{ labor_total | currency(currency_symbol | default("$", true)) }}</td>
+      </tr>
+      {% endif %}
+      {% if materials_total is defined %}
+      <tr class="subtotal-row">
+        <td colspan="4"></td>
+        <td class="text-right">Materials</td>
+        <td class="text-right">{{ materials_total | currency(currency_symbol | default("$", true)) }}</td>
+      </tr>
+      {% endif %}
+      {% if subtotal is defined %}
+      <tr class="subtotal-row">
+        <td colspan="4"></td>
+        <td class="text-right">Subtotal</td>
+        <td class="text-right">{{ subtotal | currency(currency_symbol | default("$", true)) }}</td>
+      </tr>
+      {% endif %}
+      {% if tax is defined %}
+      <tr>
+        <td colspan="4"></td>
+        <td class="text-right text-muted text-sm">Tax</td>
+        <td class="text-right text-muted text-sm">{{ tax | currency(currency_symbol | default("$", true)) }}</td>
+      </tr>
+      {% endif %}
+      <tr class="total-row">
+        <td colspan="4"></td>
+        <td class="text-right">Total</td>
+        <td class="text-right">{{ total | default(0) | currency(currency_symbol | default("$", true)) }}</td>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+  {% endif %}
+
+  <!-- ── Materials Required ──────────────────────────────────── -->
+  {% if materials %}
+  <div class="mt-4">
+    <strong style="font-size: 9pt;">Materials Required</strong>
+    <table class="line-items" style="margin-top: 6px;">
+      <thead>
+        <tr>
+          <th style="width:30px;">#</th>
+          <th>Part / Material</th>
+          <th>SKU</th>
+          <th class="text-right" style="width:60px;">Qty</th>
+          {% if show_pricing | default(true) %}
+          <th class="text-right" style="width:90px;">Cost</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for mat in materials %}
+        <tr>
+          <td class="text-center">{{ loop.index }}</td>
+          <td>{{ mat.name | default("") }}</td>
+          <td>{{ mat.sku | default("—") }}</td>
+          <td class="text-right">{{ mat.quantity | default(1) | number }}</td>
+          {% if show_pricing | default(true) %}
+          <td class="text-right">{{ mat.cost | default(0) | currency(currency_symbol | default("$", true)) }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- ── Special Instructions ────────────────────────────────── -->
+  {% if instructions %}
+  <div class="notes mt-4">
+    <strong>Special Instructions</strong>
+    {{ instructions }}
+  </div>
+  {% endif %}
+
+  <!-- ── Completion / Sign-off ───────────────────────────────── -->
+  {% if show_signoff | default(true) %}
+  <div class="mt-4" style="margin-top: 40px;">
+    <div class="two-col">
+      <div>
+        <div style="border-bottom: 1px solid #333; width: 90%; margin-bottom: 4px;">&nbsp;</div>
+        <span class="text-sm text-muted">Completed By &nbsp; / &nbsp; Date</span>
+      </div>
+      <div>
+        <div style="border-bottom: 1px solid #333; width: 90%; margin-bottom: 4px;">&nbsp;</div>
+        <span class="text-sm text-muted">Approved By &nbsp; / &nbsp; Date</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+{% endblock %}

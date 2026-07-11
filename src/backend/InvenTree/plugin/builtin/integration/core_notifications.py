@@ -64,8 +64,8 @@ class InvenTreeEmailNotifications(NotificationMixin, SettingsMixin, InvenTreePlu
     """Plugin mixin class for supporting email notification methods."""
 
     NAME = 'InvenTreeEmailNotifications'
-    TITLE = _('InvenTree Email Notifications')
-    SLUG = 'inventree-email-notification'
+    TITLE = _('Equa AIMMS Email Notifications')
+    SLUG = 'equa-aimms-email-notification'
     AUTHOR = _('InvenTree contributors')
     DESCRIPTION = _('Integrated email notification methods')
     VERSION = '1.0.0'

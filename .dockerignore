@@ -1,0 +1,32 @@
+.git
+.gitignore
+.venv
+**/.venv
+node_modules
+**/node_modules
+.devcontainer
+.vscode
+
+# Local dev data
+/dev-db
+/dev/media
+/dev/backup
+/dev/plugins
+/dev/static
+
+# Large / local artifacts
+InvenTree-backup
+inventree-demo-dataset
+
+# Python caches
+__pycache__
+**/__pycache__
+*.pyc
+
+# Frontend build output
+src/frontend/dist
+src/frontend/.vite
+
+# Docs build output
+site
+docs/site

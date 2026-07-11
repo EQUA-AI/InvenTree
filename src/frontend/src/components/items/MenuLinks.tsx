@@ -9,9 +9,7 @@ import {
   UnstyledButton
 } from '@mantine/core';
 import { type JSX, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-
-import { navigateToLink } from '@lib/functions/Navigation';
+import { Link } from 'react-router-dom';
 import type { InvenTreeIconType } from '@lib/types/Icons';
 import { InvenTreeIcon } from '../../functions/icons';
 import { StylishText } from './StylishText';
@@ -36,8 +34,6 @@ export function MenuLinks({
   links: MenuLinkItem[];
   beforeClick?: () => void;
 }>) {
-  const navigate = useNavigate();
-
   // Filter out any hidden links
   const visibleLinks = useMemo(
     () => links.filter((item) => !item.hidden),
@@ -80,16 +76,29 @@ export function MenuLinks({
                     </Text>
                   </Group>
                 </Anchor>
+              ) : item.link ? (
+                <UnstyledButton
+                  component={Link}
+                  to={item.link}
+                  onClick={() => beforeClick?.()}
+                >
+                  <Group wrap='nowrap'>
+                    {item.icon && (
+                      <InvenTreeIcon
+                        icon={item.icon}
+                        iconProps={{ size: '14' }}
+                      />
+                    )}
+                    <Text fw={500} p={5}>
+                      {item.title}
+                    </Text>
+                  </Group>
+                </UnstyledButton>
               ) : (
                 <UnstyledButton
-                  onClick={(event) => {
-                    if (item.link) {
-                      beforeClick?.();
-                      navigateToLink(item.link, navigate, event);
-                    } else if (item.action) {
-                      beforeClick?.();
-                      item.action();
-                    }
+                  onClick={() => {
+                    beforeClick?.();
+                    item.action?.();
                   }}
                 >
                   <Group wrap='nowrap'>
