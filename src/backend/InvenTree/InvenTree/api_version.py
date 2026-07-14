@@ -1,10 +1,20 @@
 """InvenTree API version information."""
 
 # InvenTree API version
-INVENTREE_API_VERSION = 519
+INVENTREE_API_VERSION = 522
 """Increment this API version number whenever there is a significant change to the API that any clients need to know about."""
 
 INVENTREE_API_TEXT = """
+
+v522 -> 2026-07-14 : https://github.com/inventree/InvenTree/pull/12388
+    - Adds "unique" field to the ParameterTemplate model
+
+v521 -> 2026-07-12 : https://github.com/inventree/InvenTree/pull/12360
+    - Removes the MPTT mixin from the StockItem model, and removes the self-referential tree structure from the database.
+
+v520 -> 2026-07-11 : https://github.com/inventree/InvenTree/pull/12310
+    - Adds new "disassemble" API endpoint for stock items
+    - Allows a stock item to be broken down into component parts, based on its Bill of Materials
 
 v519 -> 2026-07-09 : https://github.com/inventree/InvenTree/pull/TODO
     - Adds optional "roles" and "permissions" fields to the /user/me/ API endpoint, via the "?roles=true" query parameter
