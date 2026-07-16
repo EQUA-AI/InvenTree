@@ -6,13 +6,13 @@
 # Note: Install from the latest available versions on PyPI
 # =============================================================================
 # Pinned exactly: newer releases (>=1.11.0) renamed ChatAgent/ai_function and
-# break every workflow module. Upgrading requires a coordinated code migration.
-agent-framework==1.0.0b251120
+# break every workflow module. The agent-framework meta-package installs
+# agent-framework-core[all], which includes unpublished optional integrations.
+# Install only the components used by AIMMS instead.
 agent-framework-core==1.0.0b251120
+agent-framework-devui==1.0.0b251120
 
-# Azure integration for MAF (if available separately, otherwise included in agent-framework)
-# agent-framework-azure>=0.0.0
-# agent-framework-devui>=0.0.0
+# AzureOpenAIChatClient is included in agent-framework-core at this pinned version.
 
 # =============================================================================
 # Azure AI Services
