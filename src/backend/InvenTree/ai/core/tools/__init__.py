@@ -8,8 +8,18 @@ Tools are organized into:
 - operations/ - Complex multi-step operations
 """
 
-from ai.core.tools.inventree import INVENTREE_TOOLS
+from ai.core.tools.diagnostics import (
+    DIAGNOSTIC_TOOL_NAMES,
+    DIAGNOSTIC_TOOL_REGISTRY,
+    DiagnosticToolRegistry,
+    build_diagnostic_context,
+    get_diagnostic_tool_registry,
+)
 
 __all__ = [
-    "INVENTREE_TOOLS",
+    "DIAGNOSTIC_TOOL_NAMES",
+    "DIAGNOSTIC_TOOL_REGISTRY",
+    "DiagnosticToolRegistry",
+    "build_diagnostic_context",
+    "get_diagnostic_tool_registry",
 ]

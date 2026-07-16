@@ -8,7 +8,7 @@ with SSE streaming support.
 Usage:
     # Development
     python -m ai.core.app
-    
+
     # Production
     uvicorn ai.core.app:app --host 0.0.0.0 --port 8080
 """
@@ -20,27 +20,46 @@ import logging
 import os
 import sys
 import uuid
+from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
+from ai.core.api import get_devui
+from ai.core.auth import (
+    AIPrincipal,
+    get_current_principal,
+    record_identity_anomaly,
+    require_ai_principal,
+)
+from ai.core.config import get_devui_settings, get_settings
+from ai.core.memory import get_semantic_cache
+from ai.core.middleware import (
+    RateLimitConfig,
+    RateLimitMiddleware,
+    get_rate_limiter,
+    get_retry_stats,
+)
+from ai.core.streaming import AGUIEvent, EventType, InMemoryEventEmitter, SSEEventStream
+from ai.core.trusted_context import build_trusted_turn_context
+from ai.core.turn_service import (
+    NormalizedTurnService,
+    TurnAlreadyRunning,
+    TurnExecutionFailed,
+)
+from ai.core.workflows.root import RootWorkflow, get_root_workflow
+from aichat.models import TurnModality, TurnState
+from aichat.services import (
+    IdempotencyConflict,
+    ScopedThreadRejected,
+    ThreadNotFound,
+    ThreadRepository,
+)
+from asgiref.sync import sync_to_async
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-
-from ai.core.config import get_settings, get_devui_settings
-from ai.core.api import get_devui, devui_context
-from ai.core.streaming import get_event_emitter, SSEEventStream, create_run_context, AGUIEvent, EventType
-from ai.core.workflows.root import RootWorkflow, get_root_workflow
-from ai.core.memory import get_semantic_cache
-from ai.core.middleware import (
-    get_rate_limiter,
-    RateLimitMiddleware,
-    RateLimitConfig,
-    get_retry_stats,
-    retry_azure_openai_call,
-)
 
 # Configure logging
 logging.basicConfig(
@@ -54,15 +73,21 @@ logger = logging.getLogger(__name__)
 # Pydantic models for API
 class ChatRequest(BaseModel):
     """Request model for chat endpoint."""
+
     message: str
     thread_id: str | None = None
     user_id: str = "anonymous"
     context: dict[str, Any] | None = None
     file_ids: list[str] | None = None
+    modality: str = TurnModality.TEXT
+    modality_metadata: dict[str, Any] | None = None
+    idempotency_key: str | None = None
+    correlation_id: str | None = None
 
 
 class ChatResponse(BaseModel):
     """Response model for chat endpoint."""
+
     thread_id: str
     message: str
     agent: str
@@ -71,6 +96,7 @@ class ChatResponse(BaseModel):
 
 class UploadResponse(BaseModel):
     """Response model for file upload."""
+
     file_id: str
     filename: str
     size: int
@@ -80,6 +106,7 @@ class UploadResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Response model for health check."""
+
     status: str
     version: str
     environment: str
@@ -87,6 +114,7 @@ class HealthResponse(BaseModel):
 
 class ThreadInfo(BaseModel):
     """Information about a thread."""
+
     thread_id: str
     title: str = ""
     message_count: int
@@ -99,6 +127,7 @@ class ThreadInfo(BaseModel):
 
 class ThreadSyncResponse(BaseModel):
     """Response for thread sync operation."""
+
     threads: list[ThreadInfo]
     sync_token: str | None = None
     has_more: bool = False
@@ -106,6 +135,7 @@ class ThreadSyncResponse(BaseModel):
 
 class ThreadMessage(BaseModel):
     """A message in a thread."""
+
     id: str
     role: str
     content: str
@@ -120,11 +150,39 @@ def get_workflow_root() -> RootWorkflow:
     return get_root_workflow()
 
 
+def get_turn_service() -> NormalizedTurnService:
+    """Return the normalized service used by every interactive modality."""
+
+    return NormalizedTurnService(workflow_factory=get_workflow_root)
+
+
+def _principal() -> AIPrincipal:
+    """Return the immutable mounted-boundary principal or fail closed."""
+
+    principal = get_current_principal()
+    if not isinstance(principal, AIPrincipal):
+        raise HTTPException(status_code=401, detail="AI authentication required")
+    return principal
+
+
+def _repository(principal: AIPrincipal) -> ThreadRepository:
+    """Bind the sole thread repository to the server-owned pilot boundary."""
+
+    return ThreadRepository(actor=principal.user_pk, scope_key=principal.scope)
+
+
+def _observe_legacy_identity(value: str | None, *, source: str) -> None:
+    """Record, but never consume, caller-supplied identity compatibility fields."""
+
+    if value is not None:
+        record_identity_anomaly(f"legacy_{source}_user_id")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     Application lifespan manager.
-    
+
     Handles startup and shutdown tasks:
     - Initialize root workflow
     - Start DevUI if enabled
@@ -133,48 +191,38 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     settings = get_settings()
     devui_settings = get_devui_settings()
-    
+
     logger.info(f"Starting AIMMS Backend (env: {settings.env})")
-    
+
     # Initialize root workflow
-    workflow_root = get_workflow_root()
+    get_workflow_root()
     logger.info("Root workflow initialized")
-    
-    # Initialize conversation persistence and search index
-    if settings.conversation_persistence_enabled:
-        try:
-            # Initialize the search index if search is enabled
-            if settings.conversation_search_enabled:
-                conversation_manager = workflow_root.conversation_manager
-                # Check if initialize_search_index exists (it might be on the persistence object)
-                # For now, we assume ConversationManager handles initialization internally or lazily
-                # But if we need explicit init:
-                if hasattr(conversation_manager, "initialize_search_index"):
-                     await conversation_manager.initialize_search_index()
-                logger.info("Conversation search index initialized")
-            else:
-                logger.info("Conversation search disabled, using database only")
-        except Exception as e:
-            logger.warning(f"Failed to initialize conversation persistence: {e}")
-    
+
+    # Durable threads and turns are owned exclusively by the aichat repository.
+    # The workflow's legacy memory object is execution-local and is not an
+    # authorization or persistence source.
+    logger.info("Authorized aichat persistence boundary initialized")
+
     # Initialize semantic cache
     if settings.semantic_cache_enabled:
-        cache = get_semantic_cache()
-        logger.info(f"Semantic cache initialized (threshold: {settings.semantic_cache_similarity_threshold})")
-    
+        get_semantic_cache()
+        logger.info(
+            f"Semantic cache initialized (threshold: {settings.semantic_cache_similarity_threshold})"
+        )
+
     # Start DevUI if enabled
     if devui_settings.enabled:
         devui = get_devui()
         await devui.start()
         logger.info(f"DevUI available at {devui.url}")
-    
-    yield
-    
+
+    yield  # noqa: RUF075
+
     # Cleanup
     if devui_settings.enabled:
         devui = get_devui()
         await devui.stop()
-    
+
     logger.info("AIMMS Backend shutdown complete")
 
 
@@ -184,7 +232,14 @@ app = FastAPI(
     description="AI-powered Manufacturing Management System",
     version="2.3.0",
     lifespan=lifespan,
+    dependencies=[Depends(require_ai_principal)],
 )
+
+# Realtime Voice session routes (WS4). The router inherits the boundary
+# principal dependency above; feature flags keep every route fail-closed.
+from ai.core.voice.routes import router as _voice_router  # noqa: E402
+
+app.include_router(_voice_router)
 
 # Configure CORS - restrict to InvenTree frontend origins
 # Set CORS_ALLOWED_ORIGINS env var for production:
@@ -203,6 +258,8 @@ app.add_middleware(
         "Authorization",
         "X-User-ID",
         "X-Request-ID",
+        "X-CSRFToken",
+        "Idempotency-Key",
     ],
     expose_headers=[
         "X-RateLimit-Remaining",
@@ -224,7 +281,14 @@ app.add_middleware(
     RateLimitMiddleware,
     limiter=get_rate_limiter(rate_limit_config),
     user_id_header="X-User-ID",
-    exempt_paths={"/health", "/docs", "/openapi.json", "/workflows", "/rate-limit/stats", "/retry/stats", "/upload"},
+    exempt_paths={
+        "/health",
+        "/docs",
+        "/openapi.json",
+        "/workflows",
+        "/rate-limit/stats",
+        "/retry/stats",
+    },
 )
 
 
@@ -237,10 +301,25 @@ MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 UPLOAD_TTL_HOURS = 24
 
 
+def _is_audio_upload(contents: bytes, content_type: str | None) -> bool:
+    """Is audio upload."""
+    declared = (content_type or "").split(";", 1)[0].strip().casefold()
+    if declared.startswith("audio/"):
+        return True
+    header = contents[:16]
+    return (
+        header.startswith((b"ID3", b"OggS", b"fLaC", b"\x1aE\xdf\xa3"))
+        or header.startswith((b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"))
+        or (header.startswith(b"RIFF") and header[8:12] == b"WAVE")
+        or (len(header) >= 12 and header[4:8] == b"ftyp")
+    )
+
+
 def _get_upload_dir() -> Path:
     """Get the ai_uploads directory under MEDIA_ROOT."""
     try:
         from django.conf import settings as django_settings
+
         media_root = Path(django_settings.MEDIA_ROOT)
     except Exception:
         # Fallback for standalone mode
@@ -252,20 +331,39 @@ def _get_upload_dir() -> Path:
 
 def _get_thread_upload_dir(thread_id: str) -> Path:
     """Get thread-scoped upload directory."""
-    # Sanitise thread_id to prevent path traversal
-    safe_id = "".join(c for c in thread_id if c.isalnum() or c in ("_", "-"))
-    thread_dir = _get_upload_dir() / safe_id
+    if (
+        not thread_id
+        or len(thread_id) > 80
+        or any(
+            c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+            for c in thread_id
+        )
+    ):
+        raise HTTPException(status_code=400, detail="Invalid thread identifier")
+    thread_dir = _get_upload_dir() / thread_id
     thread_dir.mkdir(parents=True, exist_ok=True)
     return thread_dir
 
 
-def resolve_upload_path(file_id: str) -> Path | None:
-    """Resolve a file_id to its absolute path, or None if not found."""
+def resolve_upload_path(file_id: str, *, expected_thread_id: str | None = None) -> Path | None:
+    """Resolve a file only inside its already-authorized owning thread."""
+
     upload_dir = _get_upload_dir()
-    # file_id format: {thread_id}/{uuid}_{filename}
-    candidate = upload_dir / file_id
-    if candidate.exists() and candidate.is_file() and upload_dir in candidate.resolve().parents:
-        return candidate.resolve()
+    parts = Path(file_id).parts
+    if len(parts) != 2 or any(part in {"", ".", ".."} for part in parts):
+        return None
+    file_thread_id, filename = parts
+    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
+    if any(char not in allowed for part in parts for char in part):
+        return None
+    if expected_thread_id is not None and file_thread_id != expected_thread_id:
+        return None
+    candidate = (upload_dir / file_thread_id / filename).resolve()
+    expected_parent = (upload_dir / file_thread_id).resolve()
+    if candidate.parent != expected_parent:
+        return None
+    if candidate.exists() and candidate.is_file():
+        return candidate
     return None
 
 
@@ -284,9 +382,16 @@ async def upload_file(
       - Max 20 MB
       - Allowed types: .pdf, .png, .jpg, .jpeg, .xlsx, .csv, .docx
     """
+    principal = _principal()
+    repository = _repository(principal)
+    try:
+        await sync_to_async(repository.get_or_create, thread_sensitive=True)(thread_id)
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+
     # Validate filename & extension
     original_name = file.filename or "upload"
-    ext = os.path.splitext(original_name)[1].lower()
+    ext = Path(original_name).suffix.lower()
     if ext not in ALLOWED_UPLOAD_EXTENSIONS:
         raise HTTPException(
             status_code=400,
@@ -294,12 +399,14 @@ async def upload_file(
         )
 
     # Read the file (enforce size limit)
-    contents = await file.read()
+    contents = await file.read(MAX_UPLOAD_SIZE_BYTES + 1)
     if len(contents) > MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(
             status_code=413,
             detail=f"File too large ({len(contents)} bytes). Maximum is {MAX_UPLOAD_SIZE_BYTES} bytes (20 MB).",
         )
+    if _is_audio_upload(contents, file.content_type):
+        raise HTTPException(status_code=400, detail="Audio uploads are not allowed")
 
     # Build a unique filename
     file_uuid = uuid.uuid4().hex[:12]
@@ -314,7 +421,7 @@ async def upload_file(
     safe_thread = thread_dir.name
     file_id = f"{safe_thread}/{stored_name}"
 
-    logger.info(f"File uploaded: {file_id} ({len(contents)} bytes)")
+    logger.info("AI file uploaded (thread_id=%s, size=%d)", thread_id, len(contents))
 
     return UploadResponse(
         file_id=file_id,
@@ -326,12 +433,17 @@ async def upload_file(
 
 
 @app.post("/upload/cleanup")
-async def cleanup_uploads(max_age_hours: int = UPLOAD_TTL_HOURS) -> dict[str, Any]:
+async def cleanup_uploads(
+    max_age_hours: int = Query(default=UPLOAD_TTL_HOURS, ge=1, le=168),
+) -> dict[str, Any]:
     """
     Remove uploaded files older than max_age_hours.
     Called periodically or manually.
     """
     import time
+
+    if not _principal().is_staff:
+        raise HTTPException(status_code=403, detail="Staff access required")
 
     upload_dir = _get_upload_dir()
     cutoff = time.time() - (max_age_hours * 3600)
@@ -346,8 +458,8 @@ async def cleanup_uploads(max_age_hours: int = UPLOAD_TTL_HOURS) -> dict[str, An
                 if fpath.stat().st_mtime < cutoff:
                     fpath.unlink()
                     removed += 1
-            except Exception as e:
-                logger.warning(f"Failed to remove {fpath}: {e}")
+            except OSError:
+                logger.warning("AI upload cleanup failed for one file")
                 errors += 1
         # Remove empty thread dirs
         try:
@@ -373,78 +485,66 @@ async def health_check() -> HealthResponse:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
-    """
-    Main chat endpoint (non-streaming).
-    
-    Processes user messages through the root workflow.
-    For real-time updates during processing, use /chat/stream instead.
-    """
-    try:
-        workflow_root = get_workflow_root()
-        emitter = get_event_emitter()
-        thread_id = request.thread_id or str(uuid.uuid4())
-        
-        # Helper to capture metadata from events
-        class MetadataCapture:
-            def __init__(self):
-                self.workflow_id = None
-                
-            async def handle(self, event: AGUIEvent) -> None:
-                if event.thread_id == thread_id:
-                    if event.event_type == EventType.WORKFLOW_STARTED:
-                        self.workflow_id = event.data.get("workflow_id")
+    """Adapt typed REST chat to the shared normalized turn service."""
 
-        capture = MetadataCapture()
-        unsubscribe = await emitter.subscribe(capture)
-        
-        response_text = []
-        
-        # Merge uploaded file metadata into context
-        context = dict(request.context or {})
-        if request.file_ids:
-            uploaded_files = []
-            for fid in request.file_ids:
-                fpath = resolve_upload_path(fid)
-                if fpath:
-                    uploaded_files.append({
-                        "file_id": fid,
-                        "path": str(fpath),
-                        "filename": fpath.name,
-                        "extension": fpath.suffix.lower(),
-                        "size": fpath.stat().st_size,
-                    })
-            if uploaded_files:
-                context["uploaded_files"] = uploaded_files
-        
-        try:
-            async for chunk in workflow_root.run_stream(
-                message=request.message,
-                emitter=emitter,
-                thread_id=thread_id,
-                user_id=request.user_id,
-                context=context,
-            ):
-                response_text.append(chunk)
-                
-            return ChatResponse(
-                thread_id=thread_id,
-                message="".join(response_text),
-                agent="root_workflow",
-                workflow_used=capture.workflow_id,
-            )
-        finally:
-            unsubscribe()
-    
-    except Exception as e:
-        logger.error(f"Chat error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    principal = _principal()
+    if "user_id" in request.model_fields_set:
+        _observe_legacy_identity(request.user_id, source="body")
+    idempotency_key = request.idempotency_key or str(uuid.uuid4())
+    correlation_id = request.correlation_id or str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f"{principal.subject}:{idempotency_key}")
+    )
+    try:
+        if request.modality != TurnModality.TEXT:
+            raise ValueError("typed chat only accepts text modality")
+        trusted_context = build_trusted_turn_context(
+            principal,
+            correlation_id=correlation_id,
+            browser_context=request.context,
+            server_route_hints=("/chat",),
+        )
+        metadata = await _turn_metadata(principal, request)
+        result = await get_turn_service().process(
+            actor=principal,
+            thread_id=request.thread_id,
+            content=request.message,
+            modality=TurnModality.TEXT,
+            trusted_context=trusted_context,
+            modality_metadata=metadata,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+        )
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    except (IdempotencyConflict, TurnAlreadyRunning):
+        raise HTTPException(status_code=409, detail="Idempotency conflict") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except Exception:
+        logger.error("Normalized AI chat failed")
+        raise HTTPException(status_code=500, detail="AI turn failed") from None
+
+    if result.response_state == TurnState.FAILED:
+        raise HTTPException(status_code=500, detail="AI turn failed")
+    if result.response_state != TurnState.COMPLETE:
+        raise HTTPException(
+            status_code=409,
+            detail=f"AI turn is {result.response_state}",
+        )
+
+    return ChatResponse(
+        thread_id=result.thread_id,
+        message=result.message,
+        agent=result.agent,
+        workflow_used=result.workflow_used,
+    )
 
 
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
     """
     Streaming chat endpoint with Server-Sent Events.
-    
+
     Returns real-time updates during agent execution:
     - RUN_STARTED/RUN_FINISHED lifecycle events
     - AGENT_THINKING/AGENT_EXECUTING state changes
@@ -453,86 +553,104 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     - TOOL_CALL_* for tool execution
     - HITL_REQUIRED for approval requests
     - ERROR for failures
-    
+
     AG-UI event format (SSE):
         event: EVENT_TYPE
         data: {"key": "value", ...}
     """
-    async def event_generator() -> AsyncIterator[str]:
-        emitter = get_event_emitter()
-        
-        # Ensure we have a thread ID for filtering
-        thread_id = request.thread_id or str(uuid.uuid4())
-        
-        # Create SSE stream first to capture all events
-        stream = SSEEventStream(emitter, thread_id=thread_id)
-        
-        async def process_in_background():
-            """Run workflow processing in background."""
-            try:
-                workflow_root = get_workflow_root()
-                
-                # Merge uploaded file metadata into context
-                context = dict(request.context or {})
-                if request.file_ids:
-                    uploaded_files = []
-                    for fid in request.file_ids:
-                        fpath = resolve_upload_path(fid)
-                        if fpath:
-                            uploaded_files.append({
-                                "file_id": fid,
-                                "path": str(fpath),
-                                "filename": fpath.name,
-                                "extension": fpath.suffix.lower(),
-                                "size": fpath.stat().st_size,
-                            })
-                    if uploaded_files:
-                        context["uploaded_files"] = uploaded_files
+    principal = _principal()
+    if "user_id" in request.model_fields_set:
+        _observe_legacy_identity(request.user_id, source="body")
+    idempotency_key = request.idempotency_key or str(uuid.uuid4())
+    correlation_id = request.correlation_id or str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f"{principal.subject}:{idempotency_key}")
+    )
+    try:
+        if request.modality != TurnModality.TEXT:
+            raise ValueError("typed chat only accepts text modality")
+        trusted_context = build_trusted_turn_context(
+            principal,
+            correlation_id=correlation_id,
+            browser_context=request.context,
+            server_route_hints=("/chat/stream",),
+        )
+        metadata = await _turn_metadata(principal, request)
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
-                # Consume streaming response - events are emitted to emitter
-                async for _ in workflow_root.run_stream(
-                    message=request.message,
+    # A caller-created id is retained for visible SSE filtering. When omitted,
+    # this is the id the service durably creates through get_or_create.
+    thread_id = request.thread_id or f"thread_{uuid.uuid4().hex}"
+
+    async def event_generator() -> AsyncIterator[str]:
+        """Event generator."""
+        emitter = InMemoryEventEmitter()
+        stream = SSEEventStream(emitter, thread_id=thread_id)
+        await stream.start()
+
+        async def process_in_background() -> None:
+            """Process in background."""
+            try:
+                await get_turn_service().process(
+                    actor=principal,
+                    thread_id=thread_id,
+                    content=request.message,
+                    modality=TurnModality.TEXT,
+                    trusted_context=trusted_context,
+                    modality_metadata=metadata,
+                    idempotency_key=idempotency_key,
+                    correlation_id=correlation_id,
                     emitter=emitter,
-                    thread_id=thread_id,
-                    user_id=request.user_id,
-                    context=context,
-                ):
-                    pass  # Response chunks are also available here if needed
-                    
-            except Exception as e:
-                logger.error(f"Processing error: {e}", exc_info=True)
-                # Emit error event
-                error_event = AGUIEvent(
-                    event_type=EventType.RUN_ERROR,
-                    data={"error": str(e)},
-                    thread_id=thread_id,
                 )
-                await emitter.emit(error_event)
+            except asyncio.CancelledError:
+                raise
+            except (ThreadNotFound, ScopedThreadRejected):
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={"message": "Thread not found", "code": "thread_not_found"},
+                        thread_id=thread_id,
+                    )
+                )
+            except (IdempotencyConflict, TurnAlreadyRunning):
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={"message": "Idempotency conflict", "code": "idempotency_conflict"},
+                        thread_id=thread_id,
+                    )
+                )
+            except TurnExecutionFailed:
+                # The service emitted and durably captured one value-free
+                # RUN_ERROR event before raising this marker.
+                logger.error("Normalized AI stream turn failed")
+            except Exception:
+                logger.error("Normalized AI stream failed")
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={"message": "AI turn failed", "code": "turn_failed"},
+                        thread_id=thread_id,
+                    )
+                )
             finally:
-                # Signal stream to stop when processing is complete
                 await stream.stop()
-        
-        # Start background processing
+
         process_task = asyncio.create_task(process_in_background())
-        
+
         try:
-            # Stream events as they come in
-            # The stream will end when stream.stop() is called in process_in_background
             async for event_data in stream.events():
                 yield event_data
-                    
-        except Exception as e:
-            logger.error(f"Stream error: {e}", exc_info=True)
-            yield f"event: ERROR\ndata: {{\"error\": \"{str(e)}\"}}\n\n"
         finally:
-            # Ensure the processing task is cleaned up
             if not process_task.done():
                 process_task.cancel()
-                try:
+                try:  # noqa: SIM105
                     await process_task
                 except asyncio.CancelledError:
                     pass
-    
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
@@ -544,99 +662,78 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     )
 
 
+async def _turn_metadata(principal: AIPrincipal, request: ChatRequest) -> dict[str, Any]:
+    """Build bounded modality metadata after authorizing every file reference."""
+
+    metadata: dict[str, Any] = {
+        "untrusted_client_context": dict(request.context or {}),
+    }
+    if not request.file_ids:
+        return metadata
+    if not request.thread_id:
+        raise ValueError("thread_id is required when using uploaded files")
+
+    repository = _repository(principal)
+    try:
+        await sync_to_async(repository.get, thread_sensitive=True)(request.thread_id)
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise ThreadNotFound("Thread not found") from None
+
+    uploaded_files: list[dict[str, Any]] = []
+    for file_id in request.file_ids:
+        path = resolve_upload_path(file_id, expected_thread_id=request.thread_id)
+        if path is None:
+            raise ValueError("Uploaded file is unavailable for this thread")
+        uploaded_files.append({
+            "file_id": file_id,
+            "path": str(path),
+            "filename": path.name,
+            "extension": path.suffix.lower(),
+            "size": path.stat().st_size,
+        })
+    metadata["uploaded_files"] = uploaded_files
+    return metadata
+
+
 # ===== Thread Management Endpoints =====
 
 
 @app.get("/threads", response_model=ThreadSyncResponse)
 async def list_threads(
-    user_id: str = "anonymous",
+    user_id: str | None = None,
     include_persisted: bool = True,
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=100),
 ) -> ThreadSyncResponse:
-    """
-    List all threads for a user.
-    
-    Combines in-memory threads with persisted threads from the database.
-    This is the primary endpoint for frontend thread sync.
-    
-    Args:
-        user_id: User ID to filter threads by
-        include_persisted: Whether to include persisted threads from DB
-        limit: Maximum number of threads to return
-    """
-    workflow_root = get_workflow_root()
-    seen_thread_ids: set[str] = set()
-    threads: list[ThreadInfo] = []
-    
-    # First, get in-memory threads (most recent state)
-    # Note: ConversationManager might not expose list_active_threads directly if it's just a dict
-    # We assume it does or we access the internal dict if needed, but better to use public API
-    # If list_active_threads doesn't exist, we might need to add it to ConversationManager
-    # For now, assuming it exists as it was used before
-    if hasattr(workflow_root.conversation_manager, "list_active_threads"):
-        thread_ids = workflow_root.conversation_manager.list_active_threads()
-    else:
-        # Fallback if method missing (e.g. if I didn't copy it)
-        # In my implementation of ConversationManager, I didn't add list_active_threads!
-        # I should check ConversationManager implementation again.
-        # I only copied get_or_create_state, gather_context, etc.
-        # I should probably add list_active_threads to ConversationManager.
-        thread_ids = []
+    """List only threads within the authenticated owner/scope boundary."""
 
-    for thread_id in thread_ids:
-        state = workflow_root.conversation_manager.get_or_create_state(thread_id) # get_state might not exist
-        if state and (user_id == "anonymous" or state.user_id == user_id):
-            threads.append(ThreadInfo(
-                thread_id=thread_id,
-                title=state.summary[:50] if state.summary else "",
-                message_count=len(state.messages),
-                turn_count=state.turn_count,
-                summary=state.summary or "",
-                created_at=state.created_at.isoformat(),
-                last_activity=state.updated_at.isoformat(),
-                is_persisted=False,
-            ))
-            seen_thread_ids.add(thread_id)
-    
-    # Then, add persisted threads not already in memory
-    if include_persisted:
-        from ai.core.infrastructure.persistence import ConversationPersistence
-        persistence = ConversationPersistence()
-        
-        if persistence.persistence_enabled:
-            try:
-                persisted = await persistence.list_threads(
-                    user_id=user_id if user_id != "anonymous" else None,
-                    active_only=True,
-                    limit=limit,
-                )
-                
-                for pt in persisted:
-                    if pt.thread_id not in seen_thread_ids:
-                        threads.append(ThreadInfo(
-                            thread_id=pt.thread_id,
-                            title=pt.title,
-                            message_count=0,  # Not loaded for list
-                            turn_count=pt.turn_count,
-                            summary=pt.summary,
-                            created_at=pt.created_at.isoformat(),
-                            last_activity=pt.updated_at.isoformat(),
-                            is_persisted=True,
-                        ))
-                        seen_thread_ids.add(pt.thread_id)
-            except Exception as e:
-                logger.error(f"Failed to load persisted threads: {e}")
-    
-    # Sort by last activity (most recent first)
-    threads.sort(key=lambda t: t.last_activity or "", reverse=True)
-    
-    # Apply limit
-    threads = threads[:limit]
-    
+    del include_persisted  # Durable storage is always authoritative in WS1.
+    _observe_legacy_identity(user_id, source="query")
+    repository = _repository(_principal())
+
+    def materialize() -> tuple[list[ThreadInfo], int]:
+        """Materialize."""
+        all_threads = repository.list()
+        selected = all_threads[: max(1, min(limit, 100))]
+        result = [
+            ThreadInfo(
+                thread_id=thread.pk,
+                title=thread.title,
+                message_count=thread.messages.count(),
+                turn_count=thread.turns.count(),
+                summary=thread.summary,
+                created_at=thread.created_at.isoformat(),
+                last_activity=thread.updated_at.isoformat(),
+                is_persisted=True,
+            )
+            for thread in selected
+        ]
+        return result, len(all_threads)
+
+    threads, total = await sync_to_async(materialize, thread_sensitive=True)()
     return ThreadSyncResponse(
         threads=threads,
-        sync_token=None,  # Could add pagination token here
-        has_more=len(seen_thread_ids) > limit,
+        sync_token=None,
+        has_more=total > len(threads),
     )
 
 
@@ -644,101 +741,58 @@ async def list_threads(
 async def get_thread(
     thread_id: str,
     include_messages: bool = True,
-    message_limit: int = 50,
+    message_limit: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
-    """
-    Get thread details and optionally messages.
-    
-    First checks in-memory state, then falls back to persisted data.
-    This allows loading historical threads that aren't in memory.
-    """
-    workflow_root = get_workflow_root()
-    state = workflow_root.conversation_manager.get_state(thread_id)
-    
-    # If not in memory, try to load from persistence
-    if state is None:
-        from ai.core.infrastructure.persistence import ConversationPersistence
-        persistence = ConversationPersistence()
-        
-        if persistence.persistence_enabled:
-            try:
-                persisted = await persistence.load_thread(thread_id)
-                if persisted:
-                    # Convert persisted thread to response format
-                    messages = []
-                    if include_messages:
-                        messages = [
-                            {
-                                "id": m.message_id,
-                                "role": m.role,
-                                "content": m.content,
-                                "timestamp": m.created_at.isoformat(),
-                                "tool_name": m.tool_name,
-                                "workflow_id": m.workflow_id,
-                            }
-                            for m in persisted.messages[-message_limit:]
-                        ]
-                    
-                    return {
-                        "thread_id": thread_id,
-                        "user_id": persisted.user_id or "anonymous",
-                        "title": persisted.title,
-                        "turn_count": persisted.turn_count,
-                        "last_workflow": persisted.last_workflow,
-                        "pending_handoff": persisted.pending_handoff,
-                        "summary": persisted.summary,
-                        "messages": messages,
-                        "metrics": {},
-                        "created_at": persisted.created_at.isoformat(),
-                        "updated_at": persisted.updated_at.isoformat(),
-                        "is_persisted": True,
-                    }
-            except Exception as e:
-                logger.error(f"Failed to load persisted thread: {e}")
-        
-        raise HTTPException(status_code=404, detail="Thread not found")
-    
-    # Return in-memory state
-    # metrics = workflow_root.conversation_manager.get_conversation_metrics(thread_id) # Not implemented yet
-    metrics = {}
-    messages = []
-    if include_messages:
-        messages = [m.to_dict() for m in state.get_recent_messages(message_limit)]
-    
-    return {
-        "thread_id": thread_id,
-        "user_id": state.user_id,
-        "title": state.summary[:50] if state.summary else "",
-        "turn_count": state.turn_count,
-        "last_workflow": state.last_workflow,
-        "pending_handoff": state.pending_handoff,
-        "summary": state.summary,
-        "messages": messages,
-        "metrics": metrics,
-        "created_at": state.created_at.isoformat(),
-        "updated_at": state.updated_at.isoformat(),
-        "is_persisted": False,
-    }
+    """Return a durable thread only after scope-first authorization."""
+
+    principal = _principal()
+    repository = _repository(principal)
+
+    def materialize() -> dict[str, Any]:
+        """Materialize."""
+        thread = repository.get(thread_id)
+        stored_messages = repository.messages(thread_id) if include_messages else []
+        selected = stored_messages[-max(1, min(message_limit, 200)) :]
+        return {
+            "thread_id": thread.pk,
+            "user_id": principal.user_pk,
+            "title": thread.title,
+            "turn_count": thread.turns.count(),
+            "last_workflow": thread.last_workflow,
+            "pending_handoff": None,
+            "summary": thread.summary,
+            "messages": [
+                {
+                    "id": message.pk,
+                    "role": message.role,
+                    "content": message.content,
+                    "timestamp": message.created_at.isoformat(),
+                    "tool_name": message.metadata.get("tool_name"),
+                    "workflow_id": message.metadata.get("workflow_id"),
+                    "response_state": message.metadata.get("response_state"),
+                }
+                for message in selected
+            ],
+            "metrics": {},
+            "created_at": thread.created_at.isoformat(),
+            "updated_at": thread.updated_at.isoformat(),
+            "is_persisted": True,
+        }
+
+    try:
+        return await sync_to_async(materialize, thread_sensitive=True)()
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
 
 
 @app.delete("/threads/{thread_id}")
 async def delete_thread(thread_id: str) -> dict[str, str]:
-    """Delete a thread and clean up its state from both memory and persistence."""
-    workflow_root = get_workflow_root()
-    
-    # Clean up in-memory state
-    workflow_root.conversation_manager.cleanup(thread_id)
-    
-    # Also delete from persistence
-    from ai.core.infrastructure.persistence import ConversationPersistence
-    persistence = ConversationPersistence()
-    
-    if persistence.persistence_enabled:
-        try:
-            await persistence.delete_thread(thread_id)
-        except Exception as e:
-            logger.error(f"Failed to delete persisted thread: {e}")
-    
+    """Delete a thread through the sole authorized repository."""
+
+    try:
+        await sync_to_async(_repository(_principal()).delete, thread_sensitive=True)(thread_id)
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
     return {"status": "deleted", "thread_id": thread_id}
 
 
@@ -747,70 +801,47 @@ async def update_thread(
     thread_id: str,
     title: str | None = None,
 ) -> dict[str, Any]:
-    """
-    Update thread metadata (e.g., title).
-    
-    Used by frontend to rename threads.
-    """
-    workflow_root = get_workflow_root()
-    state = workflow_root.conversation_manager.get_state(thread_id)
-    
-    # Update in-memory if exists
-    if state and title:
-        # Store title in summary for now (could add separate title field)
-        pass
-    
-    # Update in persistence
-    from ai.core.infrastructure.persistence import ConversationPersistence
-    persistence = ConversationPersistence()
-    
-    if persistence.persistence_enabled and title:
-        from common.ai_models import AIConversationThread
-        from asgiref.sync import sync_to_async
-        
-        @sync_to_async
-        def _update():
-            AIConversationThread.objects.filter(thread_id=thread_id).update(title=title)
-        
-        try:
-            await _update()
-        except Exception as e:
-            logger.error(f"Failed to update thread title: {e}")
-    
-    return {"thread_id": thread_id, "title": title, "updated": True}
+    """Rename a thread through the sole authorized repository."""
+
+    if title is None:
+        raise HTTPException(status_code=400, detail="title is required")
+    try:
+        thread = await sync_to_async(_repository(_principal()).rename, thread_sensitive=True)(
+            thread_id, title
+        )
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    return {"thread_id": thread.pk, "title": thread.title, "updated": True}
 
 
 @app.post("/threads/sync")
 async def sync_threads(
-    user_id: str = "anonymous",
+    user_id: str | None = None,
     local_thread_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Sync threads between frontend and backend.
-    
+
     This endpoint helps resolve conflicts when frontend has threads
     that backend doesn't know about, or vice versa.
-    
+
     Args:
         user_id: User ID for filtering
         local_thread_ids: Thread IDs the frontend has locally
-    
+
     Returns:
         - threads_to_fetch: Threads that exist on server but not locally
         - threads_to_remove: Threads that don't exist on server anymore
         - threads_in_sync: Threads that exist on both
     """
+    _observe_legacy_identity(user_id, source="query")
     local_thread_ids = local_thread_ids or []
     local_set = set(local_thread_ids)
-    
+
     # Get all server threads
-    sync_response = await list_threads(
-        user_id=user_id,
-        include_persisted=True,
-        limit=100,
-    )
+    sync_response = await list_threads(user_id=None, include_persisted=True, limit=100)
     server_thread_ids = {t.thread_id for t in sync_response.threads}
-    
+
     return {
         "threads_to_fetch": list(server_thread_ids - local_set),
         "threads_to_remove": list(local_set - server_thread_ids),
@@ -823,8 +854,10 @@ async def sync_threads(
 # HITL (Human-in-the-Loop) Endpoints
 # ==============================================================================
 
+
 class HITLRespondRequest(BaseModel):
     """Request model for HITL approval/rejection."""
+
     request_id: str
     approved: bool
     reason: str | None = None
@@ -833,6 +866,7 @@ class HITLRespondRequest(BaseModel):
 
 class HITLResponse(BaseModel):
     """Response model for HITL operations."""
+
     success: bool
     request_id: str
     status: str
@@ -853,6 +887,7 @@ def register_hitl_request(
 ) -> None:
     """Register a pending HITL request."""
     import time
+
     _pending_hitl_requests[request_id] = {
         "action": action,
         "details": details,
@@ -866,8 +901,9 @@ def register_hitl_request(
 def get_hitl_request(request_id: str) -> dict[str, Any] | None:
     """Get a pending HITL request."""
     import time
+
     request = _pending_hitl_requests.get(request_id)
-    if request:
+    if request:  # noqa: SIM102
         # Check if expired
         if time.time() > request["expires_at"]:
             request["status"] = "expired"
@@ -895,108 +931,96 @@ def resolve_hitl_request(
 async def respond_to_hitl(request: HITLRespondRequest) -> HITLResponse:
     """
     Respond to a Human-in-the-Loop approval request.
-    
+
     This endpoint is called when the user approves or rejects an action
     that requires human verification (e.g., creating/deleting items,
     large batch operations, etc.).
-    
+
     Request:
         - request_id: Unique ID of the HITL request
         - approved: True if approved, False if rejected
         - reason: Optional reason (especially for rejections)
         - user_id: User making the decision
-    
+
     Response:
         - success: Whether the response was recorded
         - request_id: The request ID
         - status: New status (approved/rejected/expired/not_found)
         - message: Human-readable message
     """
-    # Look up the pending request
-    pending = get_hitl_request(request.request_id)
-    
-    if pending is None:
-        return HITLResponse(
-            success=False,
-            request_id=request.request_id,
-            status="not_found",
-            message="HITL request not found. It may have already been processed or expired.",
-        )
-    
-    if pending["status"] == "expired":
-        return HITLResponse(
-            success=False,
-            request_id=request.request_id,
-            status="expired",
-            message="HITL request has expired. The action was not performed.",
-        )
-    
-    if pending["status"] in ("approved", "rejected"):
-        return HITLResponse(
-            success=False,
-            request_id=request.request_id,
-            status=pending["status"],
-            message=f"HITL request has already been {pending['status']}.",
-        )
-    
-    # Resolve the request
-    resolved = resolve_hitl_request(
-        request.request_id,
-        request.approved,
-        request.reason,
-        request.user_id,
-    )
-    
-    status = "approved" if request.approved else "rejected"
-    action = pending.get("action", "Unknown action")
-    
-    if request.approved:
-        message = f"Action '{action}' has been approved and will proceed."
-    else:
-        reason_text = f" Reason: {request.reason}" if request.reason else ""
-        message = f"Action '{action}' has been rejected.{reason_text}"
-    
-    logger.info(f"HITL request {request.request_id} {status} by {request.user_id}")
-    
+    _principal()  # authentication is still required to receive the notice
+    if "user_id" in request.model_fields_set:
+        _observe_legacy_identity(request.user_id, source="body")
+
+    # WS7: the in-memory HITL rail is retired. It never dispatched a real
+    # domain command, and body-identity approval is unacceptable. Reviews
+    # and confirmations happen only on the authenticated proposal surface
+    # (/api/aichat/proposals/), which executes canonical work-order commands
+    # and stores real receipts. This endpoint resolves nothing.
+    logger.info("Legacy HITL respond called; rail is retired")
     return HITLResponse(
-        success=True,
+        success=False,
         request_id=request.request_id,
-        status=status,
-        message=message,
+        status="retired",
+        message=(
+            "The legacy approval rail is retired and performs no action. "
+            "Confirm or reject actions on the authenticated proposal "
+            "surface at /api/aichat/proposals/."
+        ),
     )
 
 
 @app.get("/hitl/pending")
 async def get_pending_hitl(
     thread_id: str | None = None,
-    user_id: str = "anonymous",
+    user_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Get pending HITL requests.
-    
+
     Args:
         thread_id: Filter by thread ID
         user_id: User ID for filtering
-    
+
     Returns:
         List of pending HITL requests
     """
     import time
+
+    _observe_legacy_identity(user_id, source="query")
+    repository = _repository(_principal())
+    if thread_id:
+        try:
+            await sync_to_async(repository.get, thread_sensitive=True)(thread_id)
+        except (ThreadNotFound, ScopedThreadRejected):
+            raise HTTPException(status_code=404, detail="Thread not found") from None
+
+    # WS7: the in-memory rail is retired; never surface approvable items
+    # from it. The authenticated proposal surface owns pending approvals.
+    return []
+
     pending = []
-    
+
     for request_id, request in _pending_hitl_requests.items():
         # Filter by thread if specified
         if thread_id and request.get("thread_id") != thread_id:
             continue
-        
+
         # Only return pending requests
         if request["status"] != "pending":
             continue
-        
+
         # Check if expired
         if time.time() > request["expires_at"]:
             continue
-        
+
+        request_thread_id = request.get("thread_id")
+        if request_thread_id:
+            try:
+                await sync_to_async(repository.get, thread_sensitive=True)(request_thread_id)
+            except (ThreadNotFound, ScopedThreadRejected):
+                continue
+
         pending.append({
             "request_id": request_id,
             "action": request["action"],
@@ -1004,7 +1028,7 @@ async def get_pending_hitl(
             "thread_id": request.get("thread_id"),
             "expires_in_seconds": int(request["expires_at"] - time.time()),
         })
-    
+
     return pending
 
 
@@ -1014,7 +1038,7 @@ async def cache_stats() -> dict[str, Any]:
     settings = get_settings()
     if not settings.semantic_cache_enabled:
         return {"enabled": False}
-    
+
     cache = get_semantic_cache()
     return {
         "enabled": True,
@@ -1027,10 +1051,12 @@ async def invalidate_cache(
     workflow_id: str | None = None,
 ) -> dict[str, Any]:
     """Invalidate cache entries."""
+    if not _principal().is_staff:
+        raise HTTPException(status_code=403, detail="Staff access required")
     settings = get_settings()
     if not settings.semantic_cache_enabled:
         return {"enabled": False, "invalidated": 0}
-    
+
     cache = get_semantic_cache()
     count = cache.invalidate(workflow_id=workflow_id)
     return {"invalidated": count}
@@ -1064,7 +1090,7 @@ async def retry_stats() -> dict[str, Any]:
 async def list_workflows() -> list[dict[str, Any]]:
     """List available workflows and their status."""
     settings = get_settings()
-    
+
     return [
         {
             "id": "wf1_diagnostics",
@@ -1122,10 +1148,11 @@ async def list_workflows() -> list[dict[str, Any]]:
 async def data_status() -> dict[str, Any]:
     """
     Get current data mode status.
-    
+
     Returns whether the system is using demo data or live InvenTree API.
     """
     from ai.core.integrations import get_mode_status
+
     return get_mode_status()
 
 
@@ -1133,22 +1160,24 @@ async def data_status() -> dict[str, Any]:
 async def switch_data_mode(mode: str) -> dict[str, Any]:
     """
     Switch between demo and live data modes.
-    
+
     Note: This only updates the setting. A server restart is required
     for the change to take full effect.
-    
+
     Args:
         mode: Either "demo" or "live"
     """
+    if not _principal().is_staff:
+        raise HTTPException(status_code=403, detail="Staff access required")
     if mode not in ("demo", "live"):
         raise HTTPException(status_code=400, detail="Mode must be 'demo' or 'live'")
-    
+
+    from ai.core.integrations import get_mode_status, reset_provider
     from ai.core.switch_mode import get_env_file_path, update_env_value
-    from ai.core.integrations import reset_provider, get_mode_status
-    
+
     env_path = get_env_file_path()
     value = "true" if mode == "demo" else "false"
-    
+
     if update_env_value("USE_DEMO_DATASET", value, env_path):
         # Reset the provider so next request uses new mode
         reset_provider()
@@ -1165,9 +1194,9 @@ async def switch_data_mode(mode: str) -> dict[str, Any]:
 def main() -> None:
     """Run the application."""
     import uvicorn
-    
+
     settings = get_settings()
-    
+
     uvicorn.run(
         "ai.core.app:app",
         host=settings.host,

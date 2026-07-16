@@ -28,6 +28,7 @@ import {
   IconMessagePlus,
   IconMessages,
   IconPaperclip,
+  IconPencil,
   IconPlayerStop,
   IconRefresh,
   IconRobot,
@@ -41,10 +42,21 @@ import {
 } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { api } from '../../App';
-import { type ChatMessage, type ChatThread, type UploadedFile, useAIChat } from '../../hooks/UseAIChat';
-import { HITLApprovalCard, HITLResultBanner } from '../ai/HITLApprovalModal';
 import { Boundary } from '@lib/components/Boundary';
+import { api } from '../../App';
+import {
+  type ChatMessage,
+  type ChatThread,
+  type UploadedFile,
+  useAIChat
+} from '../../hooks/UseAIChat';
+import { useVoiceLiveSession } from '../../hooks/useVoiceLiveSession';
+import { useLocalState } from '../../states/LocalState';
+import { ChatActionProposalList } from '../ai/ChatActionProposals';
+import { HITLApprovalCard, HITLResultBanner } from '../ai/HITLApprovalModal';
+import { VoiceContextBadge } from '../ai/VoiceContextBadge';
+import { VoiceSessionControl } from '../ai/VoiceSessionControl';
+import { VoiceTranscript } from '../ai/VoiceTranscript';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history';
 
@@ -201,7 +213,8 @@ function ApprovalInboxPanel({
               <Box style={{ flex: 1 }}>
                 <Text fw={600}>{detail.summary}</Text>
                 <Text size='xs' c='dimmed'>
-                  {t`Tier`} {detail.risk_tier} • {detail.action_type} • {detail.status}
+                  {t`Tier`} {detail.risk_tier} • {detail.action_type} •{' '}
+                  {detail.status}
                 </Text>
               </Box>
               <Badge variant='light' color='blue'>
@@ -236,7 +249,9 @@ function ApprovalInboxPanel({
                         align='flex-start'
                         gap='md'
                         py={6}
-                        style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}
+                        style={{
+                          borderBottom: '1px solid var(--mantine-color-gray-2)'
+                        }}
                       >
                         <Text size='sm' fw={500} style={{ flex: '0 0 40%' }}>
                           {key}
@@ -316,7 +331,8 @@ function ApprovalInboxPanel({
                 e.currentTarget.style.borderColor = theme.colors.blue[4];
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--mantine-color-gray-3)';
+                e.currentTarget.style.borderColor =
+                  'var(--mantine-color-gray-3)';
               }}
             >
               <Group justify='space-between' align='flex-start'>
@@ -348,13 +364,17 @@ function ThreadSelector({
   activeThreadId,
   onSelectThread,
   onNewThread,
-  onDeleteThread
+  onDeleteThread,
+  onRenameThread,
+  disabled = false
 }: Readonly<{
   threads: ChatThread[];
   activeThreadId: string;
   onSelectThread: (threadId: string) => void;
   onNewThread: () => void;
   onDeleteThread: (threadId: string) => void;
+  onRenameThread: (threadId: string, title: string) => void;
+  disabled?: boolean;
 }>) {
   const theme = useMantineTheme();
   const activeThread = threads.find((t) => t.id === activeThreadId);
@@ -377,6 +397,8 @@ function ThreadSelector({
     <Menu shadow='md' width={280} position='bottom-start'>
       <Menu.Target>
         <UnstyledButton
+          aria-label='select-ai-chat-thread'
+          disabled={disabled}
           px='sm'
           py={6}
           style={{
@@ -403,6 +425,7 @@ function ThreadSelector({
 
         {/* New chat option */}
         <Menu.Item
+          aria-label='new-ai-chat-thread'
           leftSection={<IconMessagePlus size={16} />}
           onClick={onNewThread}
           color='blue'
@@ -419,17 +442,40 @@ function ThreadSelector({
               key={thread.id}
               onClick={() => onSelectThread(thread.id)}
               rightSection={
-                <ActionIcon
-                  size='xs'
-                  variant='subtle'
-                  color='red'
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteThread(thread.id);
-                  }}
-                >
-                  <IconTrash size={12} />
-                </ActionIcon>
+                <Group gap={2} wrap='nowrap'>
+                  <ActionIcon
+                    aria-label={`rename-ai-chat-thread-${thread.id}`}
+                    size='xs'
+                    variant='subtle'
+                    color='gray'
+                    disabled={disabled}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const title = window.prompt(
+                        t`Rename conversation`,
+                        thread.title
+                      );
+                      if (title?.trim()) {
+                        onRenameThread(thread.id, title.trim());
+                      }
+                    }}
+                  >
+                    <IconPencil size={12} />
+                  </ActionIcon>
+                  <ActionIcon
+                    aria-label={`delete-ai-chat-thread-${thread.id}`}
+                    size='xs'
+                    variant='subtle'
+                    color='red'
+                    disabled={disabled}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteThread(thread.id);
+                    }}
+                  >
+                    <IconTrash size={12} />
+                  </ActionIcon>
+                </Group>
               }
               style={{
                 backgroundColor:
@@ -439,7 +485,11 @@ function ThreadSelector({
               }}
             >
               <Box>
-                <Text size='sm' truncate fw={thread.id === activeThreadId ? 600 : 400}>
+                <Text
+                  size='sm'
+                  truncate
+                  fw={thread.id === activeThreadId ? 600 : 400}
+                >
                   {thread.title}
                 </Text>
                 <Text size='xs' c='dimmed'>
@@ -541,6 +591,7 @@ function MessageActions({
         {({ copied, copy }) => (
           <Tooltip label={copied ? t`Copied!` : t`Copy`} withArrow>
             <ActionIcon
+              aria-label='copy-ai-chat-message'
               size='xs'
               variant='subtle'
               color={copied ? 'teal' : 'gray'}
@@ -553,6 +604,7 @@ function MessageActions({
       </CopyButton>
       <Tooltip label={t`Good response`} withArrow>
         <ActionIcon
+          aria-label='rate-ai-chat-message-good'
           size='xs'
           variant='subtle'
           color={feedback === 'up' ? 'blue' : 'gray'}
@@ -563,6 +615,7 @@ function MessageActions({
       </Tooltip>
       <Tooltip label={t`Bad response`} withArrow>
         <ActionIcon
+          aria-label='rate-ai-chat-message-bad'
           size='xs'
           variant='subtle'
           color={feedback === 'down' ? 'red' : 'gray'}
@@ -573,7 +626,13 @@ function MessageActions({
       </Tooltip>
       {onRegenerate && (
         <Tooltip label={t`Regenerate`} withArrow>
-          <ActionIcon size='xs' variant='subtle' color='gray' onClick={onRegenerate}>
+          <ActionIcon
+            aria-label='regenerate-ai-chat-message'
+            size='xs'
+            variant='subtle'
+            color='gray'
+            onClick={onRegenerate}
+          >
             <IconRefresh size={14} />
           </ActionIcon>
         </Tooltip>
@@ -716,6 +775,7 @@ export function AIChatDrawer({
     switchThread,
     createNewThread,
     deleteThread,
+    renameThread,
     isSyncing,
     syncThreads,
     // HITL (Human-in-the-Loop) approval
@@ -727,6 +787,30 @@ export function AIChatDrawer({
     clearHITLResult,
     uploadFile
   } = useAIChat();
+
+  // Realtime voice (WS5): explicit user-started sessions in the same
+  // drawer, converging on the same server-backed conversation history.
+  const backendHost = useLocalState((state) => state.getHost());
+  const voiceHost = new URL('api/ai/', `${backendHost.replace(/\/$/, '')}/`)
+    .toString()
+    .replace(/\/$/, '');
+  const voice = useVoiceLiveSession({
+    host: voiceHost,
+    enabled: true,
+    threadId: activeThreadId ?? undefined,
+    onTurnResult: (turn) => {
+      // Typed and voice turns share one server history; resync so the
+      // drawer renders the converged conversation.
+      void syncThreads();
+      if (turn.thread_id && turn.thread_id !== activeThreadId) {
+        switchThread(turn.thread_id);
+      }
+    }
+  });
+  const handleClose = useCallback(() => {
+    void voice.end();
+    onClose();
+  }, [onClose, voice.end]);
 
   const [activeTab, setActiveTab] = useLocalStorage<AIChatDrawerTab>({
     key: 'ai-chat-drawer-active-tab',
@@ -754,6 +838,16 @@ export function AIChatDrawer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const activeThreadIdRef = useRef(activeThreadId);
+  const previousThreadIdRef = useRef(activeThreadId);
+  activeThreadIdRef.current = activeThreadId;
+
+  useEffect(() => {
+    if (previousThreadIdRef.current !== activeThreadId) {
+      setAttachedFiles([]);
+      previousThreadIdRef.current = activeThreadId;
+    }
+  }, [activeThreadId]);
 
   // Resizable drawer width (persisted in localStorage)
   const MIN_WIDTH = 340;
@@ -867,10 +961,11 @@ export function AIChatDrawer({
       if (!files || files.length === 0) return;
 
       setIsUploading(true);
+      const uploadThreadId = activeThreadId;
       try {
         for (const file of Array.from(files)) {
           const result = await uploadFile(file);
-          if (result) {
+          if (result && activeThreadIdRef.current === uploadThreadId) {
             setAttachedFiles((prev) => [...prev, result]);
           }
         }
@@ -882,13 +977,41 @@ export function AIChatDrawer({
         }
       }
     },
-    [uploadFile]
+    [activeThreadId, uploadFile]
   );
 
   // Remove an attached file
   const removeAttachedFile = useCallback((fileId: string) => {
     setAttachedFiles((prev) => prev.filter((f) => f.file_id !== fileId));
   }, []);
+
+  // Uploads are bound to the thread which created them. Never carry an
+  // attachment into another conversation.
+  const handleSwitchThread = useCallback(
+    (threadId: string) => {
+      setAttachedFiles([]);
+      switchThread(threadId);
+    },
+    [switchThread]
+  );
+
+  const handleNewThread = useCallback(() => {
+    setAttachedFiles([]);
+    createNewThread();
+  }, [createNewThread]);
+
+  const handleClearChat = useCallback(() => {
+    setAttachedFiles([]);
+    clearChat();
+  }, [clearChat]);
+
+  const handleDeleteThread = useCallback(
+    (threadId: string) => {
+      setAttachedFiles([]);
+      deleteThread(threadId);
+    },
+    [deleteThread]
+  );
 
   // Handle Enter key to send message
   const handleKeyDown = useCallback(
@@ -902,7 +1025,7 @@ export function AIChatDrawer({
   );
 
   // Keyboard shortcut to close drawer
-  useHotkeys([['Escape', onClose]]);
+  useHotkeys([['Escape', handleClose]]);
 
   const hasMessages = messages.length > 0;
 
@@ -911,7 +1034,7 @@ export function AIChatDrawer({
       opened={opened}
       size={drawerWidth}
       position='right'
-      onClose={onClose}
+      onClose={handleClose}
       withCloseButton={false}
       closeOnClickOutside={false}
       trapFocus={false}
@@ -999,8 +1122,12 @@ export function AIChatDrawer({
             </Group>
             <Group gap='xs'>
               {/* Sync button */}
-              <Tooltip label={isSyncing ? t`Syncing...` : t`Sync conversations`} withArrow>
+              <Tooltip
+                label={isSyncing ? t`Syncing...` : t`Sync conversations`}
+                withArrow
+              >
                 <ActionIcon
+                  aria-label='sync-ai-chat-threads'
                   variant='subtle'
                   color='gray'
                   radius='xl'
@@ -1008,9 +1135,12 @@ export function AIChatDrawer({
                   loading={isSyncing}
                   disabled={isSyncing}
                 >
-                  <IconRefresh size={18} style={{ 
-                    animation: isSyncing ? 'spin 1s linear infinite' : 'none' 
-                  }} />
+                  <IconRefresh
+                    size={18}
+                    style={{
+                      animation: isSyncing ? 'spin 1s linear infinite' : 'none'
+                    }}
+                  />
                 </ActionIcon>
               </Tooltip>
               {hasMessages && (
@@ -1019,7 +1149,9 @@ export function AIChatDrawer({
                     variant='subtle'
                     color='gray'
                     radius='xl'
-                    onClick={clearChat}
+                    onClick={handleClearChat}
+                    aria-label='new-ai-chat-thread'
+                    disabled={isLoading}
                   >
                     <IconMessagePlus size={18} />
                   </ActionIcon>
@@ -1027,17 +1159,18 @@ export function AIChatDrawer({
               )}
               <Tooltip label={t`Close`} withArrow>
                 <ActionIcon
+                  aria-label='close-ai-chat'
                   variant='subtle'
                   color='gray'
                   radius='xl'
-                  onClick={onClose}
+                  onClick={handleClose}
                 >
                   <IconX size={18} />
                 </ActionIcon>
               </Tooltip>
             </Group>
           </Group>
-          
+
           {/* Sync indicator */}
           {isSyncing && (
             <Text size='xs' c='dimmed' ta='center' mt='xs'>
@@ -1047,7 +1180,11 @@ export function AIChatDrawer({
 
           {/* Drawer tab strip (Chat / Approvals / History) */}
           <Box mt='sm'>
-            <Tabs value={activeTab} onChange={(v) => setActiveTab((v as AIChatDrawerTab) || 'chat')} variant='pills'>
+            <Tabs
+              value={activeTab}
+              onChange={(v) => setActiveTab((v as AIChatDrawerTab) || 'chat')}
+              variant='pills'
+            >
               <Tabs.List>
                 <Tabs.Tab value='chat'>{t`Chat`}</Tabs.Tab>
                 <Tabs.Tab value='approvals'>
@@ -1071,9 +1208,11 @@ export function AIChatDrawer({
               <ThreadSelector
                 threads={threads}
                 activeThreadId={activeThreadId}
-                onSelectThread={switchThread}
-                onNewThread={createNewThread}
-                onDeleteThread={deleteThread}
+                onSelectThread={handleSwitchThread}
+                onNewThread={handleNewThread}
+                onDeleteThread={handleDeleteThread}
+                onRenameThread={renameThread}
+                disabled={isLoading}
               />
             </Box>
           )}
@@ -1151,10 +1290,7 @@ export function AIChatDrawer({
 
               {/* Message list */}
               {messages.map((message) => (
-                <ChatMessageItem
-                  key={message.id}
-                  message={message}
-                />
+                <ChatMessageItem key={message.id} message={message} />
               ))}
 
               {/* HITL Result Banner - shows approval/rejection confirmation */}
@@ -1171,7 +1307,9 @@ export function AIChatDrawer({
                 <HITLApprovalCard
                   request={pendingHITL}
                   onApprove={(requestId) => approveHITL(requestId)}
-                  onReject={(requestId, reason) => rejectHITL(requestId, reason)}
+                  onReject={(requestId, reason) =>
+                    rejectHITL(requestId, reason)
+                  }
                   onDismiss={() => dismissHITL()}
                 />
               )}
@@ -1188,15 +1326,30 @@ export function AIChatDrawer({
           )}
 
           {activeTab === 'approvals' && (
-            <ApprovalInboxPanel
-              statuses={['pending', 'in_review', 'changes_requested', 'approved', 'executing']}
-              emptyText={t`No actions waiting for review`}
-            />
+            <>
+              <ChatActionProposalList />
+              <ApprovalInboxPanel
+                statuses={[
+                  'pending',
+                  'in_review',
+                  'changes_requested',
+                  'approved',
+                  'executing'
+                ]}
+                emptyText={t`No actions waiting for review`}
+              />
+            </>
           )}
 
           {activeTab === 'history' && (
             <ApprovalInboxPanel
-              statuses={['succeeded', 'denied', 'failed', 'expired', 'canceled']}
+              statuses={[
+                'succeeded',
+                'denied',
+                'failed',
+                'expired',
+                'canceled'
+              ]}
               emptyText={t`No resolved actions yet`}
             />
           )}
@@ -1211,139 +1364,168 @@ export function AIChatDrawer({
               background: 'var(--mantine-color-body)'
             }}
           >
-          {/* Attached file chips */}
-          {attachedFiles.length > 0 && (
-            <Group gap='xs' mb='xs' wrap='wrap'>
-              {attachedFiles.map((f) => (
-                <Badge
-                  key={f.file_id}
-                  variant='light'
-                  color='blue'
-                  size='sm'
-                  rightSection={
-                    <ActionIcon
-                      size='xs'
-                      variant='transparent'
-                      color='blue'
-                      onClick={() => removeAttachedFile(f.file_id)}
-                    >
-                      <IconX size={12} />
-                    </ActionIcon>
-                  }
-                >
-                  {f.filename.length > 20
-                    ? `${f.filename.slice(0, 17)}...`
-                    : f.filename}
-                </Badge>
-              ))}
-            </Group>
-          )}
-
-          {/* Hidden file input */}
-          <input
-            ref={fileInputRef}
-            type='file'
-            multiple
-            accept='.pdf,.png,.jpg,.jpeg,.xlsx,.csv,.docx'
-            style={{ display: 'none' }}
-            onChange={handleFileSelect}
-          />
-
-          <Paper
-            radius='xl'
-            p='xs'
-            withBorder
-            style={{
-              borderColor: 'var(--mantine-color-gray-3)',
-              transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
-            }}
-          >
-            <Group gap='xs' align='flex-end' wrap='nowrap'>
-              <Tooltip label={t`Attach file`} withArrow>
-                <ActionIcon
-                  size='lg'
-                  radius='xl'
-                  variant='subtle'
-                  color='gray'
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isLoading || isUploading}
-                  loading={isUploading}
-                >
-                  <IconPaperclip size={18} />
-                </ActionIcon>
-              </Tooltip>
-              <Textarea
-                ref={inputRef}
-                placeholder={
-                  attachedFiles.length > 0
-                    ? t`Add a message about attached files...`
-                    : t`Type a message...`
-                }
-                value={inputValue}
-                onChange={(e) => setInputValue(e.currentTarget.value)}
-                onKeyDown={handleKeyDown}
-                autosize
-                minRows={1}
-                maxRows={4}
-                disabled={isLoading}
-                styles={{
-                  input: {
-                    border: 'none',
-                    background: 'transparent',
-                    padding: '8px 12px',
-                    fontSize: '14px',
-                    '&:focus': {
-                      outline: 'none'
+            {/* Attached file chips */}
+            {attachedFiles.length > 0 && (
+              <Group gap='xs' mb='xs' wrap='wrap'>
+                {attachedFiles.map((f) => (
+                  <Badge
+                    key={f.file_id}
+                    variant='light'
+                    color='blue'
+                    size='sm'
+                    rightSection={
+                      <ActionIcon
+                        aria-label={`remove-ai-chat-attachment-${f.file_id}`}
+                        size='xs'
+                        variant='transparent'
+                        color='blue'
+                        onClick={() => removeAttachedFile(f.file_id)}
+                      >
+                        <IconX size={12} />
+                      </ActionIcon>
                     }
-                  },
-                  wrapper: {
-                    flex: 1
-                  }
-                }}
-                style={{ flex: 1 }}
+                  >
+                    {f.filename.length > 20
+                      ? `${f.filename.slice(0, 17)}...`
+                      : f.filename}
+                  </Badge>
+                ))}
+              </Group>
+            )}
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type='file'
+              multiple
+              accept='.pdf,.png,.jpg,.jpeg,.xlsx,.csv,.docx'
+              style={{ display: 'none' }}
+              onChange={handleFileSelect}
+            />
+
+            <Group gap='xs' mb={6} wrap='nowrap'>
+              <VoiceSessionControl
+                state={voice.state}
+                error={voice.error}
+                muted={voice.muted}
+                webrtcPreview={voice.session?.webrtc_preview ?? true}
+                onStart={() => void voice.start()}
+                onEnd={() => void voice.end()}
+                onCancel={() => void voice.cancel()}
+                onToggleMute={voice.toggleMute}
               />
-              <Group gap={4}>
-                {isLoading ? (
-                  <Tooltip label={t`Stop generating`} withArrow>
-                    <ActionIcon
-                      size='lg'
-                      radius='xl'
-                      variant='filled'
-                      color='red'
-                      onClick={cancelRequest}
-                    >
-                      <IconPlayerStop size={18} />
-                    </ActionIcon>
-                  </Tooltip>
-                ) : (
-                  <Tooltip label={t`Send message`} withArrow>
-                    <ActionIcon
-                      size='lg'
-                      radius='xl'
-                      variant='filled'
-                      color='blue'
-                      onClick={() => handleSendMessage()}
-                      disabled={!inputValue.trim() && attachedFiles.length === 0}
-                      style={{
-                        transition: 'transform 0.2s ease',
-                        transform:
-                          inputValue.trim() || attachedFiles.length > 0
+              <VoiceContextBadge
+                threadId={voice.session?.thread_id ?? null}
+                scoped={false}
+              />
+            </Group>
+            <VoiceTranscript
+              partial={voice.partial}
+              listening={voice.state === 'listening'}
+              pending={voice.pendingTranscript}
+              confidenceFloor={voice.confidenceFloor}
+              onConfirmPending={(text) =>
+                void voice.confirmPendingTranscript(text)
+              }
+              onDiscardPending={voice.discardPendingTranscript}
+            />
+            <Paper
+              radius='xl'
+              p='xs'
+              withBorder
+              style={{
+                borderColor: 'var(--mantine-color-gray-3)',
+                transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+              }}
+            >
+              <Group gap='xs' align='flex-end' wrap='nowrap'>
+                <Tooltip label={t`Attach file`} withArrow>
+                  <ActionIcon
+                    aria-label='attach-ai-chat-file'
+                    size='lg'
+                    radius='xl'
+                    variant='subtle'
+                    color='gray'
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isLoading || isUploading}
+                    loading={isUploading}
+                  >
+                    <IconPaperclip size={18} />
+                  </ActionIcon>
+                </Tooltip>
+                <Textarea
+                  ref={inputRef}
+                  placeholder={
+                    attachedFiles.length > 0
+                      ? t`Add a message about attached files...`
+                      : t`Type a message...`
+                  }
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.currentTarget.value)}
+                  onKeyDown={handleKeyDown}
+                  autosize
+                  minRows={1}
+                  maxRows={4}
+                  disabled={isLoading}
+                  styles={{
+                    input: {
+                      border: 'none',
+                      background: 'transparent',
+                      padding: '8px 12px',
+                      fontSize: '14px',
+                      '&:focus': {
+                        outline: 'none'
+                      }
+                    },
+                    wrapper: {
+                      flex: 1
+                    }
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <Group gap={4}>
+                  {isLoading ? (
+                    <Tooltip label={t`Stop generating`} withArrow>
+                      <ActionIcon
+                        aria-label='cancel-ai-chat-turn'
+                        size='lg'
+                        radius='xl'
+                        variant='filled'
+                        color='red'
+                        onClick={cancelRequest}
+                      >
+                        <IconPlayerStop size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip label={t`Send message`} withArrow>
+                      <ActionIcon
+                        aria-label='send-ai-chat-message'
+                        size='lg'
+                        radius='xl'
+                        variant='filled'
+                        color='blue'
+                        onClick={() => handleSendMessage()}
+                        disabled={!inputValue.trim()}
+                        style={{
+                          transition: 'transform 0.2s ease',
+                          transform: inputValue.trim()
                             ? 'scale(1)'
                             : 'scale(0.95)'
-                      }}
-                    >
-                      <IconSend size={18} />
-                    </ActionIcon>
-                  </Tooltip>
-                )}
+                        }}
+                      >
+                        <IconSend size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                </Group>
               </Group>
-            </Group>
-          </Paper>
+            </Paper>
 
-          {/* Footer text */}
-          <Text size='xs' c='dimmed' ta='center' mt='xs'>
-            {t`AI may make mistakes. Verify important information.`}
-          </Text>
+            {/* Footer text */}
+            <Text size='xs' c='dimmed' ta='center' mt='xs'>
+              {t`AI may make mistakes. Verify important information.`}
+            </Text>
           </Box>
         )}
       </Boundary>

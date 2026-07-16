@@ -80,7 +80,10 @@ export default defineConfig({
       timeout: 120 * 1000
     },
     {
-      command: 'invoke dev.server -a 0.0.0.0:8000',
+      // ASGI serving is required: the AI app is mounted in InvenTree.asgi
+      // and would 404 under the WSGI dev server.
+      command:
+        'cd ../backend/InvenTree && python -m uvicorn InvenTree.asgi:application --host 0.0.0.0 --port 8000',
       env: {
         INVENTREE_DEBUG: 'True',
         INVENTREE_LOG_LEVEL: 'WARNING',
@@ -93,7 +96,10 @@ export default defineConfig({
         INVENTREE_LOGIN_ATTEMPTS: '3',
         INVENTREE_PLUGINS_MANDATORY: 'samplelocate',
         INVENTREE_CUSTOM_SPLASH: 'img/playwright_custom_splash.png',
-        INVENTREE_CUSTOM_LOGO: 'img/playwright_custom_logo.png'
+        INVENTREE_CUSTOM_LOGO: 'img/playwright_custom_logo.png',
+        AIMMS_SINGLE_SITE_POLICY_KEY: 'playwright-pilot',
+        AIMMS_ALLOWED_ORIGINS:
+          '["http://localhost:5173","http://localhost:8000"]'
       },
       url: 'http://localhost:8000/api/',
       reuseExistingServer: IS_CI,

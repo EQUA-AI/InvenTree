@@ -67,6 +67,7 @@ data.json
 *.code-workspace
 .bash_history
 .DS_Store
+specs/
 
 # https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
 .vscode/*
@@ -151,6 +152,7 @@ temp_lib/
 .aider*
 .claude/
 .agents/
+.codex/
 skills-lock.json
 
 # ---------------------------------------------------------------------------

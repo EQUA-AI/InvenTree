@@ -15,19 +15,25 @@ MagneticBuilder enables:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent, ChatMessage, MagenticBuilder, Role
+from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
-
 from ai.core.config import get_settings
-from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
+
+# WS3 intentionally leaves this legacy workflow with no model-callable tools.
+# Complex diagnosis is intercepted by NormalizedTurnService and sent through
+# the Foundry adapter plus ``ai.core.tools.diagnostics``. Reattaching the
+# deployment-wide INVENTORY_TOOLS collection here would reopen write access.
+LEGACY_DIAGNOSTIC_TOOLS: tuple[Any, ...] = ()
 
 
 class ProblemCategory(Enum):
@@ -209,7 +215,7 @@ Format your diagnosis:
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Technical Diagnostics Agent",
-                tools=INVENTORY_TOOLS,
+                tools=list(LEGACY_DIAGNOSTIC_TOOLS),
             )
         return self._agent
 
@@ -266,7 +272,7 @@ Format your recommendations:
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Solution Recommendation Agent",
-                tools=INVENTORY_TOOLS,
+                tools=list(LEGACY_DIAGNOSTIC_TOOLS),
             )
         return self._agent
 
@@ -344,7 +350,7 @@ class T6DiagnosticsWorkflow:
         response_text = ""
         if response.messages:
             last_msg = response.messages[-1]
-            response_text = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+            response_text = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
 
         # Parse findings from response
         findings = self._extract_list_items(response_text, ["finding", "cause", "symptom"])
@@ -377,10 +383,10 @@ class T6DiagnosticsWorkflow:
 
             # Extract list items
             if (
-                line.strip().startswith(("-", "*", "•", "–"))
+                line.strip().startswith(("-", "*", "•", "–"))  # noqa: RUF001
                 or line.strip()[:2].replace(".", "").isdigit()
             ):
-                content = line.strip().lstrip("-*•–0123456789. ").strip()
+                content = line.strip().lstrip("-*•–0123456789. ").strip()  # noqa: RUF001
                 if content and in_relevant_section:
                     items.append(content)
 
@@ -394,7 +400,7 @@ class T6DiagnosticsWorkflow:
         self,
         query: str,
         thread_id: str = "",
-        context: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> DiagnosticsResult:
         """
         Execute diagnostics workflow.
@@ -519,7 +525,7 @@ Recommend practical solutions to address the identified root causes."""
             return DiagnosticsResult(
                 success=False,
                 error=str(e),
-                formatted_response=f"Diagnostics failed: {str(e)}",
+                formatted_response=f"Diagnostics failed: {e!s}",
                 execution_time_ms=execution_time,
             )
 
@@ -665,7 +671,7 @@ Recommend practical solutions to address the identified root causes."""
     async def stream_execute(
         self,
         query: str,
-        thread_id: str = "",
+        thread_id: str = "",  # noqa: ARG002
     ) -> AsyncIterator[str]:
         """Execute with streaming response."""
         yield "🔍 **Starting Diagnostic Analysis**\n\n"
@@ -677,7 +683,7 @@ Recommend practical solutions to address the identified root causes."""
         response = await agent.run(analysis_query)
         if response.messages:
             last_msg = response.messages[-1]
-            content = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+            content = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
             yield f"\n{content}\n"
 
         yield "\n---\n🔧 Step 2: Identifying root causes...\n"
@@ -687,7 +693,7 @@ Recommend practical solutions to address the identified root causes."""
         response = await agent.run(f"Diagnose: {query}")
         if response.messages:
             last_msg = response.messages[-1]
-            content = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+            content = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
             yield f"\n{content}\n"
 
         yield "\n---\n💡 Step 3: Recommending solutions...\n"
@@ -697,7 +703,7 @@ Recommend practical solutions to address the identified root causes."""
         response = await agent.run(f"Recommend solutions for: {query}")
         if response.messages:
             last_msg = response.messages[-1]
-            content = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+            content = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
             yield f"\n{content}\n"
 
         yield "\n---\n✅ Diagnostic analysis complete.\n"
@@ -714,7 +720,7 @@ class T6DiagnosticsBuilder:
         self._cache: Any | None = None
         self._additional_agents: list = []
 
-    def with_cache(self, cache: Any) -> "T6DiagnosticsBuilder":
+    def with_cache(self, cache: Any) -> T6DiagnosticsBuilder:
         """Set the problem-solution cache."""
         self._cache = cache
         return self
@@ -723,7 +729,7 @@ class T6DiagnosticsBuilder:
         self,
         name: str,
         agent: Any,
-    ) -> "T6DiagnosticsBuilder":
+    ) -> T6DiagnosticsBuilder:
         """Add an additional diagnostic agent."""
         self._additional_agents.append((name, agent))
         return self
@@ -766,7 +772,7 @@ Provide thorough analysis with:
             instructions=combined_prompt,
             name="AIMMS Diagnostics Agent",
             description="Equipment diagnostics and troubleshooting",
-            tools=INVENTORY_TOOLS,
+            tools=list(LEGACY_DIAGNOSTIC_TOOLS),
         )
 
 

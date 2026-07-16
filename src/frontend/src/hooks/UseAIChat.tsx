@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '../App';
+import { getCsrfCookie } from '../functions/auth';
+import { useLocalState } from '../states/LocalState';
 import { useUserState } from '../states/UserState';
 
 // ===== Retry Configuration =====
@@ -58,6 +60,8 @@ function isRetryableError(error: unknown): boolean {
     const message = error.message.toLowerCase();
     return (
       message.includes('network') ||
+      message.includes('failed to fetch') ||
+      message.includes('load failed') ||
       message.includes('timeout') ||
       message.includes('connection') ||
       message.includes('rate limit') ||
@@ -75,7 +79,7 @@ function isRetryableError(error: unknown): boolean {
 function extractRetryAfter(response: Response): number | undefined {
   const retryAfter = response.headers.get('Retry-After');
   if (retryAfter) {
-    const seconds = parseInt(retryAfter, 10);
+    const seconds = Number.parseInt(retryAfter, 10);
     return Number.isNaN(seconds) ? undefined : seconds;
   }
   return undefined;
@@ -84,8 +88,54 @@ function extractRetryAfter(response: Response): number | undefined {
 /**
  * Sleep for a specified number of milliseconds
  */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Request cancelled', 'AbortError'));
+      return;
+    }
+
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new DOMException('Request cancelled', 'AbortError'));
+    };
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/**
+ * Resolve an AI endpoint against the configured InvenTree backend. In local
+ * development the frontend and Django run on different ports, so relative
+ * fetches would otherwise be sent to Vite instead of the authenticated API.
+ */
+function resolveBackendUrl(path: string, backendHost: string): string {
+  return new URL(path, `${backendHost.replace(/\/$/, '')}/`).toString();
+}
+
+/**
+ * Django requires the CSRF cookie value on every unsafe session-authenticated
+ * fetch. Axios supplies this automatically, but the streaming and upload
+ * transports use fetch directly.
+ */
+function csrfHeaders(): Record<string, string> {
+  const token = getCsrfCookie();
+  return token ? { 'X-CSRFToken': token } : {};
+}
+
+/** Generate one opaque turn key which is reused for every transport retry. */
+function generateIdempotencyKey(): string {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
+    return `typed:${crypto.randomUUID()}`;
+  }
+
+  return `typed:${Date.now()}:${Math.random().toString(36).substring(2)}`;
 }
 
 /**
@@ -97,6 +147,7 @@ export enum AGUIEventType {
   RUN_STARTED = 'RUN_STARTED',
   RUN_FINISHED = 'RUN_FINISHED',
   RUN_ERROR = 'RUN_ERROR',
+  RUN_CANCELLED = 'RUN_CANCELLED',
   STEP_STARTED = 'STEP_STARTED',
   STEP_FINISHED = 'STEP_FINISHED',
 
@@ -365,7 +416,7 @@ export interface AIChatConfig {
 const DEFAULT_CONFIG: AIChatConfig = {
   endpoint: '/api/ai/chat/',
   streaming: true,
-  systemPrompt: `You are a helpful AI assistant for AIMMS, an inventory management system. 
+  systemPrompt: `You are a helpful AI assistant for AIMMS, an inventory management system.
 You can help users with:
 - Searching for parts, stock items, and orders
 - Creating new parts, stock locations, and suppliers
@@ -405,17 +456,15 @@ function saveStoredThreads(threads: StoredThread[]): void {
  * Fetch threads from server
  */
 async function fetchServerThreads(
-  userId: string,
   host: string
 ): Promise<ThreadSyncResponse | null> {
   try {
     const response = await fetch(
-      `${host}/threads?user_id=${encodeURIComponent(userId)}&include_persisted=true&limit=50`,
+      `${host}/threads?include_persisted=true&limit=50`,
       {
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
-          'X-User-ID': userId
+          'Content-Type': 'application/json'
         },
         credentials: 'include'
       }
@@ -500,7 +549,8 @@ async function deleteServerThread(
       {
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...csrfHeaders()
         },
         credentials: 'include'
       }
@@ -526,7 +576,8 @@ async function updateServerThreadTitle(
       {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...csrfHeaders()
         },
         credentials: 'include'
       }
@@ -597,7 +648,8 @@ function formatHITLDescription(
   action: string,
   details: Record<string, unknown>
 ): string {
-  const itemCount = (details.items as unknown[])?.length || details.line_count || 0;
+  const itemCount =
+    (details.items as unknown[])?.length || details.line_count || 0;
   const totalValue = details.total_value as number;
 
   switch (action) {
@@ -616,7 +668,9 @@ function formatHITLDescription(
     case 'bulk_operation':
       return `Perform ${details.operation || 'operation'} on ${details.count || 'multiple'} items`;
     default:
-      return (details.description as string) || 'This action requires your approval';
+      return (
+        (details.description as string) || 'This action requires your approval'
+      );
   }
 }
 
@@ -672,7 +726,8 @@ async function sendHITLApproval(
     const response = await fetch(`${host}/hitl/respond`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...csrfHeaders()
       },
       credentials: 'include',
       body: JSON.stringify({
@@ -699,9 +754,8 @@ export function useAIChat(config: AIChatConfig = {}) {
 
   // Get current user from InvenTree auth state
   const user = useUserState();
-  const userId = user.userId();
-  const username = user.username();
   const isLoggedIn = user.isLoggedIn();
+  const backendHost = useLocalState((state) => state.getHost());
 
   // State for stored threads (persisted to localStorage)
   const [storedThreads, setStoredThreads] =
@@ -739,9 +793,17 @@ export function useAIChat(config: AIChatConfig = {}) {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const syncInProgressRef = useRef(false);
+  const storedThreadsRef = useRef(storedThreads);
+  const activeThreadIdRef = useRef(activeThreadId);
+  storedThreadsRef.current = storedThreads;
+  activeThreadIdRef.current = activeThreadId;
 
-  // Get the AI backend host from config or default
-  const aiHost = mergedConfig.endpoint?.replace('/chat/', '') || '/api/ai';
+  // Get absolute chat and API URLs from the configured Django backend.
+  const chatEndpoint = resolveBackendUrl(
+    mergedConfig.endpoint || DEFAULT_CONFIG.endpoint!,
+    backendHost
+  ).replace(/\/$/, '');
+  const aiHost = chatEndpoint.replace(/\/chat\/?$/, '');
 
   /**
    * Sync threads with the server
@@ -756,66 +818,88 @@ export function useAIChat(config: AIChatConfig = {}) {
     setIsSyncing(true);
 
     try {
-      const userIdStr = userId ? String(userId) : 'anonymous';
-      const serverData = await fetchServerThreads(userIdStr, aiHost);
+      const serverData = await fetchServerThreads(aiHost);
 
       if (!serverData) {
         return;
       }
 
-      // Merge server threads with local threads
-      setStoredThreads((localThreads) => {
-        const localMap = new Map(localThreads.map((t) => [t.id, t]));
-        const mergedThreads: StoredThread[] = [];
-        const seenIds = new Set<string>();
+      const localThreads = storedThreadsRef.current;
+      const serverIds = new Set(
+        serverData.threads.map((thread) => thread.thread_id)
+      );
+      const mergedThreads: StoredThread[] = serverData.threads.map(
+        (serverThread) => ({
+          id: serverThread.thread_id,
+          title: serverThread.title || serverThread.summary || 'Chat',
+          // A successful server sync makes durable history authoritative. The
+          // detail endpoint supplies messages when this thread becomes active.
+          messages: [],
+          createdAt: serverThread.created_at || new Date().toISOString(),
+          updatedAt: serverThread.last_activity || new Date().toISOString(),
+          isPersisted: true
+        })
+      );
 
-        // Process server threads first (they take priority)
-        for (const serverThread of serverData.threads) {
-          const threadId = serverThread.thread_id;
-          seenIds.add(threadId);
-
-          const localThread = localMap.get(threadId);
-
-          if (localThread) {
-            // Thread exists locally - keep local messages but update metadata
-            mergedThreads.push({
-              ...localThread,
-              title: serverThread.title || localThread.title,
-              isPersisted: serverThread.is_persisted
-            });
-          } else {
-            // Thread only exists on server - add as placeholder
-            // Messages will be loaded when user switches to it
-            mergedThreads.push({
-              id: threadId,
-              title: serverThread.title || serverThread.summary || 'Chat',
-              messages: [],
-              createdAt:
-                serverThread.created_at || new Date().toISOString(),
-              updatedAt:
-                serverThread.last_activity || new Date().toISOString(),
-              isPersisted: true
-            });
-          }
+      // Preserve only genuinely local legacy conversations. Threads which
+      // were previously known to be durable but disappeared from the server
+      // are removed rather than resurrected from stale localStorage.
+      for (const localThread of localThreads) {
+        if (!serverIds.has(localThread.id) && !localThread.isPersisted) {
+          mergedThreads.push(localThread);
         }
+      }
 
-        // Add local-only threads (not on server yet)
-        for (const localThread of localThreads) {
-          if (!seenIds.has(localThread.id)) {
-            mergedThreads.push(localThread);
-          }
-        }
+      mergedThreads.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
 
-        // Sort by updatedAt (most recent first)
-        mergedThreads.sort(
-          (a, b) =>
-            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      let nextActiveThreadId = activeThreadIdRef.current;
+      if (!mergedThreads.some((thread) => thread.id === nextActiveThreadId)) {
+        nextActiveThreadId = mergedThreads[0]?.id || generateThreadId();
+        activeThreadIdRef.current = nextActiveThreadId;
+        setActiveThreadId(nextActiveThreadId);
+      }
+
+      storedThreadsRef.current = mergedThreads;
+      saveStoredThreads(mergedThreads);
+      setStoredThreads(mergedThreads);
+
+      if (serverIds.has(nextActiveThreadId)) {
+        const serverThread = await fetchServerThread(
+          nextActiveThreadId,
+          aiHost
         );
-
-        // Save merged threads to localStorage
-        saveStoredThreads(mergedThreads);
-        return mergedThreads;
-      });
+        if (serverThread) {
+          const withAuthoritativeMessages = mergedThreads.map((thread) =>
+            thread.id === nextActiveThreadId
+              ? {
+                  ...thread,
+                  title: serverThread.title || thread.title,
+                  messages: serverThread.messages,
+                  createdAt: serverThread.created_at || thread.createdAt,
+                  updatedAt: serverThread.updated_at || thread.updatedAt
+                }
+              : thread
+          );
+          storedThreadsRef.current = withAuthoritativeMessages;
+          saveStoredThreads(withAuthoritativeMessages);
+          setStoredThreads(withAuthoritativeMessages);
+          if (activeThreadIdRef.current === nextActiveThreadId) {
+            setMessages(serverThread.messages);
+          }
+        } else if (activeThreadIdRef.current === nextActiveThreadId) {
+          setMessages([]);
+        }
+      } else {
+        const localActive = mergedThreads.find(
+          (thread) => thread.id === nextActiveThreadId
+        );
+        if (activeThreadIdRef.current === nextActiveThreadId) {
+          setMessages(localActive?.messages || []);
+        }
+      }
 
       setLastSyncTime(new Date());
     } catch (error) {
@@ -824,7 +908,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       setIsSyncing(false);
       syncInProgressRef.current = false;
     }
-  }, [userId, isLoggedIn, aiHost]);
+  }, [isLoggedIn, aiHost]);
 
   /**
    * Load thread messages from server if not available locally
@@ -846,6 +930,7 @@ export function useAIChat(config: AIChatConfig = {}) {
               updatedAt: serverData.updated_at || updated[idx].updatedAt
             };
             saveStoredThreads(updated);
+            storedThreadsRef.current = updated;
             return updated;
           }
           return prev;
@@ -877,7 +962,7 @@ export function useAIChat(config: AIChatConfig = {}) {
    * Save current messages to the active thread
    */
   const saveCurrentThread = useCallback(
-    (currentMessages: ChatMessage[], title?: string) => {
+    (currentMessages: ChatMessage[], title?: string, markPersisted = false) => {
       setStoredThreads((prev: StoredThread[]) => {
         const existingIndex = prev.findIndex(
           (t: StoredThread) => t.id === activeThreadId
@@ -894,7 +979,9 @@ export function useAIChat(config: AIChatConfig = {}) {
               : 'New Chat'),
           messages: currentMessages,
           createdAt: prev[existingIndex]?.createdAt || now,
-          updatedAt: now
+          updatedAt: now,
+          isPersisted:
+            markPersisted || prev[existingIndex]?.isPersisted || false
         };
 
         let newThreads: StoredThread[];
@@ -910,6 +997,7 @@ export function useAIChat(config: AIChatConfig = {}) {
 
         // Persist to localStorage
         saveStoredThreads(newThreads);
+        storedThreadsRef.current = newThreads;
         return newThreads;
       });
     },
@@ -927,11 +1015,10 @@ export function useAIChat(config: AIChatConfig = {}) {
         saveCurrentThread(messages);
       }
 
-      const thread = storedThreads.find(
-        (t: StoredThread) => t.id === threadId
-      );
-      
+      const thread = storedThreads.find((t: StoredThread) => t.id === threadId);
+
       if (thread) {
+        activeThreadIdRef.current = threadId;
         setActiveThreadId(threadId);
         setError(null);
 
@@ -969,6 +1056,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     }
 
     const newId = generateThreadId();
+    activeThreadIdRef.current = newId;
     setActiveThreadId(newId);
     setMessages([]);
     setError(null);
@@ -980,15 +1068,19 @@ export function useAIChat(config: AIChatConfig = {}) {
    */
   const deleteThread = useCallback(
     async (threadId: string) => {
-      // Delete from server first
-      await deleteServerThread(threadId, aiHost);
+      const durable = storedThreadsRef.current.find(
+        (thread) => thread.id === threadId
+      )?.isPersisted;
+      if (durable && !(await deleteServerThread(threadId, aiHost))) {
+        setError('Failed to delete conversation from the server');
+        return;
+      }
 
       // Then delete locally
       setStoredThreads((prev: StoredThread[]) => {
-        const newThreads = prev.filter(
-          (t: StoredThread) => t.id !== threadId
-        );
+        const newThreads = prev.filter((t: StoredThread) => t.id !== threadId);
         saveStoredThreads(newThreads);
+        storedThreadsRef.current = newThreads;
         return newThreads;
       });
 
@@ -998,10 +1090,12 @@ export function useAIChat(config: AIChatConfig = {}) {
           (t: StoredThread) => t.id !== threadId
         );
         if (remaining.length > 0) {
+          activeThreadIdRef.current = remaining[0].id;
           setActiveThreadId(remaining[0].id);
           setMessages(remaining[0].messages);
         } else {
           const newId = generateThreadId();
+          activeThreadIdRef.current = newId;
           setActiveThreadId(newId);
           setMessages([]);
         }
@@ -1015,7 +1109,17 @@ export function useAIChat(config: AIChatConfig = {}) {
    */
   const renameThread = useCallback(
     async (threadId: string, newTitle: string) => {
-      // Update locally first for instant feedback
+      const durable = storedThreadsRef.current.find(
+        (thread) => thread.id === threadId
+      )?.isPersisted;
+      if (
+        durable &&
+        !(await updateServerThreadTitle(threadId, newTitle, aiHost))
+      ) {
+        setError('Failed to rename conversation on the server');
+        return;
+      }
+
       setStoredThreads((prev: StoredThread[]) => {
         const newThreads = prev.map((t: StoredThread) =>
           t.id === threadId
@@ -1023,11 +1127,9 @@ export function useAIChat(config: AIChatConfig = {}) {
             : t
         );
         saveStoredThreads(newThreads);
+        storedThreadsRef.current = newThreads;
         return newThreads;
       });
-
-      // Then update on server
-      await updateServerThreadTitle(threadId, newTitle, aiHost);
     },
     [aiHost]
   );
@@ -1052,10 +1154,26 @@ export function useAIChat(config: AIChatConfig = {}) {
   /**
    * Update a message's content (used for streaming)
    */
-  const updateMessage = useCallback((messageId: string, content: string) => {
+  const updateMessage = useCallback(
+    (messageId: string, content: string) => {
+      setMessages((prev) => {
+        const updated = prev.map((msg) =>
+          msg.id === messageId ? { ...msg, content, isStreaming: false } : msg
+        );
+        // Cancellation and terminal errors are part of the visible history and
+        // must survive closing or reloading the drawer.
+        saveCurrentThread(updated);
+        return updated;
+      });
+    },
+    [saveCurrentThread]
+  );
+
+  /** Drop partial output before replaying the same turn after a failure. */
+  const resetStreamingMessage = useCallback((messageId: string) => {
     setMessages((prev) =>
       prev.map((msg) =>
-        msg.id === messageId ? { ...msg, content, isStreaming: false } : msg
+        msg.id === messageId ? { ...msg, content: '', isStreaming: true } : msg
       )
     );
   }, []);
@@ -1107,44 +1225,49 @@ export function useAIChat(config: AIChatConfig = {}) {
 
       // Track message IDs from AG-UI events
       const messageIdMap = new Map<string, string>();
+      // This key identifies the logical turn, not an individual fetch. It is
+      // deliberately created outside the retry loop.
+      const idempotencyKey = generateIdempotencyKey();
 
       try {
-        // Prepare request payload for OrchestratorAgent
-        // The orchestrator handles conversation context server-side via ConversationManager
+        // Browser-supplied identity, authentication state, prompt policy, and
+        // workflow hints are not authority. The mounted Django boundary
+        // derives all trusted turn context from the authenticated session.
         const payload = {
           message: userContent.trim(),
           thread_id: activeThreadId,
-          user_id: userId ? String(userId) : 'anonymous',
-          context: {
-            system_prompt: mergedConfig.systemPrompt,
-            max_tokens: mergedConfig.maxTokens,
-            // Include user context for personalization
-            user_name: username || undefined,
-            is_authenticated: isLoggedIn
-          },
-          file_ids: fileIds && fileIds.length > 0 ? fileIds : undefined
+          file_ids: fileIds && fileIds.length > 0 ? fileIds : undefined,
+          idempotency_key: idempotencyKey
         };
 
         // Use streaming endpoint for real-time AG-UI events
-        const streamingEndpoint = mergedConfig.streaming 
-          ? `${mergedConfig.endpoint}stream`
-          : mergedConfig.endpoint;
+        const streamingEndpoint = mergedConfig.streaming
+          ? `${chatEndpoint.replace(/\/$/, '')}/stream`
+          : chatEndpoint;
 
         if (mergedConfig.streaming) {
           // Streaming response handling with AG-UI protocol
           // Includes retry logic for transient failures
-          let lastError: Error | null = null;
           let retryAttempt = 0;
           const retryConfig = DEFAULT_RETRY_CONFIG;
 
           while (retryAttempt < retryConfig.maxAttempts) {
             try {
+              if (retryAttempt > 0) {
+                // A replay can return the complete durable result. Remove any
+                // partial output from the failed connection before replaying
+                // so content is never duplicated.
+                resetStreamingMessage(assistantMessage.id);
+              }
+              messageIdMap.clear();
+
               const response = await fetch(streamingEndpoint!, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                   Accept: 'text/event-stream',
-                  'X-User-ID': userId ? String(userId) : 'anonymous'
+                  'Idempotency-Key': idempotencyKey,
+                  ...csrfHeaders()
                 },
                 body: JSON.stringify(payload),
                 signal: abortControllerRef.current.signal,
@@ -1153,23 +1276,37 @@ export function useAIChat(config: AIChatConfig = {}) {
 
               // Check for rate limiting
               if (response.status === 429) {
+                if (retryAttempt >= retryConfig.maxAttempts - 1) {
+                  throw new Error('HTTP error! status: 429');
+                }
                 const retryAfter = extractRetryAfter(response);
-                const delay = calculateRetryDelay(retryAttempt, retryConfig, retryAfter);
-                console.warn(`[AI Chat] Rate limited. Retrying in ${delay}ms (attempt ${retryAttempt + 1}/${retryConfig.maxAttempts})`);
-                appendToMessage(assistantMessage.id, `\n⏳ Rate limited. Retrying in ${Math.ceil(delay / 1000)}s...\n`);
-                await sleep(delay);
+                const delay = calculateRetryDelay(
+                  retryAttempt,
+                  retryConfig,
+                  retryAfter
+                );
+                console.warn(
+                  `[AI Chat] Rate limited. Retrying in ${delay}ms (attempt ${retryAttempt + 1}/${retryConfig.maxAttempts})`
+                );
+                await sleep(delay, abortControllerRef.current.signal);
                 retryAttempt++;
                 continue;
               }
 
               if (!response.ok) {
-                const error = new Error(`HTTP error! status: ${response.status}`);
-                if (isRetryableError(response) && retryAttempt < retryConfig.maxAttempts - 1) {
+                const error = new Error(
+                  `HTTP error! status: ${response.status}`
+                );
+                if (
+                  isRetryableError(response) &&
+                  retryAttempt < retryConfig.maxAttempts - 1
+                ) {
                   const delay = calculateRetryDelay(retryAttempt, retryConfig);
-                  console.warn(`[AI Chat] Retryable error ${response.status}. Retrying in ${delay}ms (attempt ${retryAttempt + 1}/${retryConfig.maxAttempts})`);
-                  await sleep(delay);
+                  console.warn(
+                    `[AI Chat] Retryable error ${response.status}. Retrying in ${delay}ms (attempt ${retryAttempt + 1}/${retryConfig.maxAttempts})`
+                  );
+                  await sleep(delay, abortControllerRef.current.signal);
                   retryAttempt++;
-                  lastError = error;
                   continue;
                 }
                 throw error;
@@ -1202,172 +1339,261 @@ export function useAIChat(config: AIChatConfig = {}) {
 
                       try {
                         const event = JSON.parse(data) as AGUIEvent;
-                        
+
                         // Handle AG-UI protocol events
                         switch (event.type) {
                           case AGUIEventType.RUN_STARTED: {
                             const runEvent = event as AGUIRunStartedEvent;
-                            console.debug('[AG-UI] Run started:', runEvent.runId, 'Thread:', runEvent.threadId);
+                            console.debug(
+                              '[AG-UI] Run started:',
+                              runEvent.runId,
+                              'Thread:',
+                              runEvent.threadId
+                            );
                             break;
                           }
 
-                      case AGUIEventType.TEXT_MESSAGE_START: {
-                        const msgStartEvent = event as AGUITextMessageStartEvent;
-                        if (msgStartEvent.role === 'assistant') {
-                          messageIdMap.set(msgStartEvent.messageId, assistantMessage.id);
+                          case AGUIEventType.TEXT_MESSAGE_START: {
+                            const msgStartEvent =
+                              event as AGUITextMessageStartEvent;
+                            if (msgStartEvent.role === 'assistant') {
+                              messageIdMap.set(
+                                msgStartEvent.messageId,
+                                assistantMessage.id
+                              );
+                            }
+                            break;
+                          }
+
+                          case AGUIEventType.TEXT_MESSAGE_CONTENT: {
+                            const contentEvent =
+                              event as AGUITextMessageContentEvent;
+                            const localMsgId =
+                              messageIdMap.get(contentEvent.messageId) ||
+                              assistantMessage.id;
+                            if (contentEvent.delta) {
+                              appendToMessage(localMsgId, contentEvent.delta);
+                            }
+                            break;
+                          }
+
+                          case AGUIEventType.TEXT_MESSAGE_END: {
+                            // Message complete, will be finalized on RUN_FINISHED
+                            break;
+                          }
+
+                          case AGUIEventType.TEXT_MESSAGE_CHUNK: {
+                            // Convenience event - auto-expands to Start → Content → End
+                            const chunkEvent = event as unknown as {
+                              messageId?: string;
+                              role?: string;
+                              delta?: string;
+                            };
+                            if (
+                              chunkEvent.messageId &&
+                              !messageIdMap.has(chunkEvent.messageId)
+                            ) {
+                              messageIdMap.set(
+                                chunkEvent.messageId,
+                                assistantMessage.id
+                              );
+                            }
+                            if (chunkEvent.delta) {
+                              appendToMessage(
+                                assistantMessage.id,
+                                chunkEvent.delta
+                              );
+                            }
+                            break;
+                          }
+
+                          case AGUIEventType.TOOL_CALL_START: {
+                            const toolEvent = event as AGUIToolCallStartEvent;
+                            console.debug(
+                              '[AG-UI] Tool call started:',
+                              toolEvent.toolCallName
+                            );
+                            // Optionally show tool call in UI
+                            appendToMessage(
+                              assistantMessage.id,
+                              `\n🔧 Calling: ${toolEvent.toolCallName}...\n`
+                            );
+                            break;
+                          }
+
+                          case AGUIEventType.TOOL_CALL_RESULT: {
+                            const resultEvent =
+                              event as AGUIToolCallResultEvent;
+                            console.debug(
+                              '[AG-UI] Tool call result:',
+                              resultEvent.toolCallId
+                            );
+                            break;
+                          }
+
+                          case AGUIEventType.RUN_FINISHED: {
+                            const finishEvent = event as AGUIRunFinishedEvent;
+                            console.debug(
+                              '[AG-UI] Run finished:',
+                              finishEvent.runId
+                            );
+                            break;
+                          }
+
+                          case AGUIEventType.RUN_ERROR: {
+                            const errorEvent = event as AGUIRunErrorEvent;
+                            throw new Error(
+                              errorEvent.message || 'Agent run failed'
+                            );
+                          }
+
+                          case AGUIEventType.RUN_CANCELLED:
+                            throw new DOMException(
+                              'Message cancelled',
+                              'AbortError'
+                            );
+
+                          case AGUIEventType.HITL_REQUIRED: {
+                            // Human-in-the-loop approval required
+                            const hitlEvent = event as AGUIHITLRequiredEvent;
+                            console.debug(
+                              '[AG-UI] HITL required:',
+                              hitlEvent.action
+                            );
+
+                            // Parse action details to create user-friendly request
+                            const details = hitlEvent.details || {};
+                            const hitlRequest: HITLRequest = {
+                              id: `hitl_${Date.now()}`,
+                              action: hitlEvent.action,
+                              title: formatHITLTitle(hitlEvent.action, details),
+                              description: formatHITLDescription(
+                                hitlEvent.action,
+                                details
+                              ),
+                              details,
+                              items: details.items as HITLRequest['items'],
+                              totalValue: details.total_value as number,
+                              currency: (details.currency as string) || 'USD',
+                              riskLevel: determineRiskLevel(
+                                hitlEvent.action,
+                                details
+                              ),
+                              timeoutSeconds: hitlEvent.timeout_seconds || 300,
+                              createdAt: new Date(),
+                              threadId: activeThreadId
+                            };
+
+                            setPendingHITL(hitlRequest);
+                            appendToMessage(
+                              assistantMessage.id,
+                              '\n⏳ Waiting for your approval...\n'
+                            );
+                            break;
+                          }
+
+                          case AGUIEventType.HITL_APPROVED: {
+                            const approvedEvent =
+                              event as AGUIHITLApprovedEvent;
+                            console.debug(
+                              '[AG-UI] HITL approved:',
+                              approvedEvent.action
+                            );
+                            setPendingHITL(null);
+                            setHitlResult({
+                              approved: true,
+                              action: approvedEvent.action
+                            });
+                            appendToMessage(
+                              assistantMessage.id,
+                              `\n✅ Approved: ${approvedEvent.action}\n`
+                            );
+                            break;
+                          }
+
+                          case AGUIEventType.HITL_REJECTED: {
+                            const rejectedEvent =
+                              event as AGUIHITLRejectedEvent;
+                            console.debug(
+                              '[AG-UI] HITL rejected:',
+                              rejectedEvent.action
+                            );
+                            setPendingHITL(null);
+                            setHitlResult({
+                              approved: false,
+                              action: rejectedEvent.action
+                            });
+                            appendToMessage(
+                              assistantMessage.id,
+                              `\n❌ Rejected: ${rejectedEvent.action}\n`
+                            );
+                            break;
+                          }
+
+                          case AGUIEventType.STEP_STARTED:
+                          case AGUIEventType.STEP_FINISHED:
+                            // Progress events - could be used for UI feedback
+                            break;
+
+                          default:
+                            // Handle legacy/fallback formats (OpenAI-style)
+                            const legacyContent =
+                              (event as any).choices?.[0]?.delta?.content ||
+                              (event as any).choices?.[0]?.message?.content ||
+                              (event as any).delta?.content ||
+                              (event as any).content ||
+                              '';
+                            if (legacyContent) {
+                              appendToMessage(
+                                assistantMessage.id,
+                                legacyContent
+                              );
+                            }
+                            break;
                         }
-                        break;
-                      }
-
-                      case AGUIEventType.TEXT_MESSAGE_CONTENT: {
-                        const contentEvent = event as AGUITextMessageContentEvent;
-                        const localMsgId = messageIdMap.get(contentEvent.messageId) || assistantMessage.id;
-                        if (contentEvent.delta) {
-                          appendToMessage(localMsgId, contentEvent.delta);
+                      } catch (eventError) {
+                        if (data.startsWith('{')) {
+                          throw eventError;
                         }
-                        break;
-                      }
-
-                      case AGUIEventType.TEXT_MESSAGE_END: {
-                        // Message complete, will be finalized on RUN_FINISHED
-                        break;
-                      }
-
-                      case AGUIEventType.TEXT_MESSAGE_CHUNK: {
-                        // Convenience event - auto-expands to Start → Content → End
-                        const chunkEvent = event as unknown as {
-                          messageId?: string;
-                          role?: string;
-                          delta?: string;
-                        };
-                        if (chunkEvent.messageId && !messageIdMap.has(chunkEvent.messageId)) {
-                          messageIdMap.set(chunkEvent.messageId, assistantMessage.id);
+                        // Non-JSON data line, might be plain text content
+                        if (data) {
+                          appendToMessage(assistantMessage.id, data);
                         }
-                        if (chunkEvent.delta) {
-                          appendToMessage(assistantMessage.id, chunkEvent.delta);
-                        }
-                        break;
                       }
-
-                      case AGUIEventType.TOOL_CALL_START: {
-                        const toolEvent = event as AGUIToolCallStartEvent;
-                        console.debug('[AG-UI] Tool call started:', toolEvent.toolCallName);
-                        // Optionally show tool call in UI
-                        appendToMessage(assistantMessage.id, `\n🔧 Calling: ${toolEvent.toolCallName}...\n`);
-                        break;
-                      }
-
-                      case AGUIEventType.TOOL_CALL_RESULT: {
-                        const resultEvent = event as AGUIToolCallResultEvent;
-                        console.debug('[AG-UI] Tool call result:', resultEvent.toolCallId);
-                        break;
-                      }
-
-                      case AGUIEventType.RUN_FINISHED: {
-                        const finishEvent = event as AGUIRunFinishedEvent;
-                        console.debug('[AG-UI] Run finished:', finishEvent.runId);
-                        break;
-                      }
-
-                      case AGUIEventType.RUN_ERROR: {
-                        const errorEvent = event as AGUIRunErrorEvent;
-                        throw new Error(errorEvent.message || 'Agent run failed');
-                      }
-
-                      case AGUIEventType.HITL_REQUIRED: {
-                        // Human-in-the-loop approval required
-                        const hitlEvent = event as AGUIHITLRequiredEvent;
-                        console.debug('[AG-UI] HITL required:', hitlEvent.action);
-                        
-                        // Parse action details to create user-friendly request
-                        const details = hitlEvent.details || {};
-                        const hitlRequest: HITLRequest = {
-                          id: `hitl_${Date.now()}`,
-                          action: hitlEvent.action,
-                          title: formatHITLTitle(hitlEvent.action, details),
-                          description: formatHITLDescription(hitlEvent.action, details),
-                          details,
-                          items: details.items as HITLRequest['items'],
-                          totalValue: details.total_value as number,
-                          currency: (details.currency as string) || 'USD',
-                          riskLevel: determineRiskLevel(hitlEvent.action, details),
-                          timeoutSeconds: hitlEvent.timeout_seconds || 300,
-                          createdAt: new Date(),
-                          threadId: activeThreadId
-                        };
-                        
-                        setPendingHITL(hitlRequest);
-                        appendToMessage(assistantMessage.id, `\n⏳ Waiting for your approval...\n`);
-                        break;
-                      }
-
-                      case AGUIEventType.HITL_APPROVED: {
-                        const approvedEvent = event as AGUIHITLApprovedEvent;
-                        console.debug('[AG-UI] HITL approved:', approvedEvent.action);
-                        setPendingHITL(null);
-                        setHitlResult({ approved: true, action: approvedEvent.action });
-                        appendToMessage(assistantMessage.id, `\n✅ Approved: ${approvedEvent.action}\n`);
-                        break;
-                      }
-
-                      case AGUIEventType.HITL_REJECTED: {
-                        const rejectedEvent = event as AGUIHITLRejectedEvent;
-                        console.debug('[AG-UI] HITL rejected:', rejectedEvent.action);
-                        setPendingHITL(null);
-                        setHitlResult({ approved: false, action: rejectedEvent.action });
-                        appendToMessage(assistantMessage.id, `\n❌ Rejected: ${rejectedEvent.action}\n`);
-                        break;
-                      }
-
-                      case AGUIEventType.STEP_STARTED:
-                      case AGUIEventType.STEP_FINISHED:
-                        // Progress events - could be used for UI feedback
-                        break;
-
-                      default:
-                        // Handle legacy/fallback formats (OpenAI-style)
-                        const legacyContent = 
-                          (event as any).choices?.[0]?.delta?.content ||
-                          (event as any).choices?.[0]?.message?.content ||
-                          (event as any).delta?.content ||
-                          (event as any).content ||
-                          '';
-                        if (legacyContent) {
-                          appendToMessage(assistantMessage.id, legacyContent);
-                        }
-                        break;
+                    } else if (line.startsWith('event: ')) {
                     }
-                  } catch {
-                    // Non-JSON data line, might be plain text content
-                    if (data && !data.startsWith('{')){
+                  }
+                }
+
+                // Process any remaining buffer content
+                if (buffer.trim() && buffer.startsWith('data: ')) {
+                  const data = buffer.slice(6).trim();
+                  if (data && data !== '[DONE]') {
+                    try {
+                      const event = JSON.parse(data);
+                      if (
+                        event.type === AGUIEventType.TEXT_MESSAGE_CONTENT &&
+                        event.delta
+                      ) {
+                        appendToMessage(assistantMessage.id, event.delta);
+                      } else if (event.type === AGUIEventType.RUN_ERROR) {
+                        throw new Error(event.message || 'Agent run failed');
+                      } else if (event.type === AGUIEventType.RUN_CANCELLED) {
+                        throw new DOMException(
+                          'Message cancelled',
+                          'AbortError'
+                        );
+                      }
+                    } catch (eventError) {
+                      if (data.startsWith('{')) {
+                        throw eventError;
+                      }
+                      // Plain text fallback
                       appendToMessage(assistantMessage.id, data);
                     }
                   }
-                } else if (line.startsWith('event: ')) {
                 }
               }
-            }
-
-            // Process any remaining buffer content
-            if (buffer.trim() && buffer.startsWith('data: ')) {
-              const data = buffer.slice(6).trim();
-              if (data && data !== '[DONE]') {
-                try {
-                  const event = JSON.parse(data);
-                  if (event.type === AGUIEventType.TEXT_MESSAGE_CONTENT && event.delta) {
-                    appendToMessage(assistantMessage.id, event.delta);
-                  } else if (event.type === AGUIEventType.RUN_ERROR) {
-                    throw new Error(event.message || 'Agent run failed');
-                  }
-                } catch {
-                  // Plain text fallback
-                  if (!data.startsWith('{')) {
-                    appendToMessage(assistantMessage.id, data);
-                  }
-                }
-              }
-            }
-          }
 
               // Mark streaming as complete and save
               setMessages((prev) => {
@@ -1376,42 +1602,51 @@ export function useAIChat(config: AIChatConfig = {}) {
                     ? { ...msg, isStreaming: false }
                     : msg
                 );
-                saveCurrentThread(updated);
+                saveCurrentThread(updated, undefined, true);
                 return updated;
               });
-              
+
               // Success - break out of retry loop
               break;
-              
             } catch (streamError: unknown) {
               // Handle stream errors with retry
-              const error = streamError instanceof Error 
-                ? streamError 
-                : new Error(String(streamError));
-              
+              const error =
+                streamError instanceof Error
+                  ? streamError
+                  : new Error(String(streamError));
+
               if (error.name === 'AbortError') {
                 // User cancelled - don't retry
                 throw error;
               }
-              
-              if (isRetryableError(error) && retryAttempt < retryConfig.maxAttempts - 1) {
+
+              if (
+                isRetryableError(error) &&
+                retryAttempt < retryConfig.maxAttempts - 1
+              ) {
                 const delay = calculateRetryDelay(retryAttempt, retryConfig);
-                console.warn(`[AI Chat] Stream error: ${error.message}. Retrying in ${delay}ms (attempt ${retryAttempt + 1}/${retryConfig.maxAttempts})`);
-                appendToMessage(assistantMessage.id, `\n⚠️ Connection error. Retrying...\n`);
-                await sleep(delay);
+                console.warn(
+                  `[AI Chat] Stream error: ${error.message}. Retrying in ${delay}ms (attempt ${retryAttempt + 1}/${retryConfig.maxAttempts})`
+                );
+                resetStreamingMessage(assistantMessage.id);
+                await sleep(delay, abortControllerRef.current.signal);
                 retryAttempt++;
-                lastError = error;
                 continue;
               }
-              
+
               // Non-retryable or max retries exceeded
-              throw lastError || error;
+              throw error;
             }
           } // end retry while loop
         } else {
           // Non-streaming response - use regular /chat endpoint
-          const response = await api.post(mergedConfig.endpoint!, payload, {
-            signal: abortControllerRef.current.signal
+          const response = await api.post(chatEndpoint, payload, {
+            signal: abortControllerRef.current.signal,
+            withCredentials: true,
+            headers: {
+              'Idempotency-Key': idempotencyKey,
+              ...csrfHeaders()
+            }
           });
 
           const data = response.data;
@@ -1428,7 +1663,7 @@ export function useAIChat(config: AIChatConfig = {}) {
                 ? { ...msg, content, isStreaming: false }
                 : msg
             );
-            saveCurrentThread(updated);
+            saveCurrentThread(updated, undefined, true);
             return updated;
           });
         }
@@ -1457,7 +1692,9 @@ export function useAIChat(config: AIChatConfig = {}) {
       addMessage,
       updateMessage,
       appendToMessage,
-      saveCurrentThread
+      saveCurrentThread,
+      resetStreamingMessage,
+      chatEndpoint
     ]
   );
 
@@ -1475,14 +1712,14 @@ export function useAIChat(config: AIChatConfig = {}) {
           method: 'POST',
           body: formData,
           credentials: 'include',
-          headers: {
-            'X-User-ID': userId ? String(userId) : 'anonymous'
-          }
+          headers: csrfHeaders()
         });
 
         if (!response.ok) {
           const errBody = await response.json().catch(() => ({}));
-          throw new Error(errBody.detail || `Upload failed: ${response.status}`);
+          throw new Error(
+            errBody.detail || `Upload failed: ${response.status}`
+          );
         }
 
         return (await response.json()) as UploadedFile;
@@ -1492,7 +1729,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         return null;
       }
     },
-    [activeThreadId, aiHost, userId]
+    [activeThreadId, aiHost]
   );
 
   /**

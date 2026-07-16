@@ -1,0 +1,33 @@
+{
+  "manifest_version": 1,
+  "validated_on": null,
+  "validated_by": null,
+  "foundry_project_endpoint": "https://aimms-foundry.services.ai.azure.com/api/projects/Epcon-AIMMS",
+  "voice_live_resource_host": "aimms-foundry.services.ai.azure.com",
+  "region": "REPLACE_WITH_RESOURCE_REGION",
+  "geography_retention_approved": null,
+  "identity": {
+    "mode": "managed_identity",
+    "token_scope": "https://ai.azure.com/.default",
+    "required_roles": ["Cognitive Services User", "Foundry User"]
+  },
+  "voice_live": {
+    "control_api_version": "2026-04-10",
+    "webrtc_calls_api_version": "2026-01-01-preview",
+    "session_model_candidate": "gpt-4.1-mini",
+    "transcription_model_candidate": "azure-speech",
+    "voice_candidate": "en-US-AvaNeural",
+    "locale": "en-US"
+  },
+  "reasoning": {
+    "invocation_mode": "agent_reference",
+    "agent_name": "voice-agent-test",
+    "agent_version": "3",
+    "fallback_deployment": "gpt-5.6-luna",
+    "quota_notes": null
+  },
+  "network": {
+    "reverse_proxy_websocket_validated": null,
+    "webrtc_pilot_matrix_validated": null
+  }
+}

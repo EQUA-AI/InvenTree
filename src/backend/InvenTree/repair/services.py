@@ -9,6 +9,8 @@ audited.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import uuid
 from typing import Any
@@ -19,7 +21,6 @@ from django.utils import timezone
 from .generation import GenerationResult, get_generator
 from .models import (
     GenerationStatus,
-    GateStatus,
     LockoutPoint,
     PacketStatus,
     RepairPacket,
@@ -115,7 +116,10 @@ def resolve_templates_for(packet: RepairPacket) -> list[SafetyGateTemplate]:
         if rule.get('always'):
             out.append(template)
             continue
-        if 'criticality_in' in rule and packet.criticality not in rule['criticality_in']:
+        if (
+            'criticality_in' in rule
+            and packet.criticality not in rule['criticality_in']
+        ):
             continue
         keywords = [str(k).lower() for k in rule.get('fault_keywords', [])]
         if keywords and not any(k in text for k in keywords):
@@ -231,7 +235,7 @@ def run_repair_packet_workflow(
         'user_id': params.get('user_id'),
     }
 
-    try:
+    try:  # noqa: PLW0717
         generator = get_generator(params.get('generator'))
         result = generator.generate(fault_summary=fault, context=context)
         validate_diagnosis(result.diagnosis)
@@ -289,8 +293,10 @@ def _check_gate_permission(gate: RepairPacketGate, user) -> tuple[bool, str]:
     """Check the optional Django permission attached to a gate."""
     if not gate.required_permission:
         return True, ''
-    if user and getattr(user, 'is_authenticated', False) and user.has_perm(
-        gate.required_permission
+    if (
+        user
+        and getattr(user, 'is_authenticated', False)
+        and user.has_perm(gate.required_permission)
     ):
         return True, ''
     return False, f'Missing permission: {gate.required_permission}'
@@ -309,7 +315,9 @@ def add_gate_proof(
         lockout_point=lockout_point,
         proof_type=proof_type,
         value=value or {},
-        captured_by=user if (user and getattr(user, 'is_authenticated', False)) else None,
+        captured_by=user
+        if (user and getattr(user, 'is_authenticated', False))
+        else None,
     )
     _record_event(
         gate.packet,
@@ -346,7 +354,11 @@ def confirm_gate(gate: RepairPacketGate, user=None, note: str = '') -> tuple[boo
 
 def verify_gate(gate: RepairPacketGate, user=None, note: str = '') -> tuple[bool, str]:
     """Record second-person verification for a gate."""
-    if gate.confirmed_by_id and user and gate.confirmed_by_id == getattr(user, 'pk', None):
+    if (
+        gate.confirmed_by_id
+        and user
+        and gate.confirmed_by_id == getattr(user, 'pk', None)
+    ):
         return False, 'Verifier must be different from confirmer'
     gate.verify(user=user, note=note)
     _record_event(
@@ -360,10 +372,7 @@ def verify_gate(gate: RepairPacketGate, user=None, note: str = '') -> tuple[bool
 
 
 def waive_gate(
-    gate: RepairPacketGate,
-    user=None,
-    reason: str = '',
-    authority: str = '',
+    gate: RepairPacketGate, user=None, reason: str = '', authority: str = ''
 ) -> tuple[bool, str]:
     """Waive a gate with explicit metadata.
 
@@ -415,21 +424,19 @@ def create_safety_gate_approval(
             'agent_checkpoint_id': 'repair-safety',
             'tool_call_id': tool_call_id,
             'risk_tier': gate.template.risk_tier if gate.template else 3,
-            'assigned_to_user': user if (user and getattr(user, 'is_authenticated', False)) else None,
+            'assigned_to_user': user
+            if (user and getattr(user, 'is_authenticated', False))
+            else None,
         },
     )
     RepairPacketApprovalLink.objects.get_or_create(
-        packet=gate.packet,
-        approval=approval,
-        defaults={'purpose': 'safety'},
+        packet=gate.packet, approval=approval, defaults={'purpose': 'safety'}
     )
     return approval
 
 
 def upsert_lockout_point(
-    gate: RepairPacketGate,
-    data: dict[str, Any],
-    user=None,
+    gate: RepairPacketGate, data: dict[str, Any], user=None
 ) -> LockoutPoint:
     """Create or update a lockout point and stamp status-specific metadata."""
     point_id = data.get('pk') or data.get('id')
@@ -449,10 +456,21 @@ def upsert_lockout_point(
     else:
         point = LockoutPoint(gate=gate, **fields)
 
-    if point.status in (LockoutPoint.PointStatus.LOCKED, LockoutPoint.PointStatus.VERIFIED):
-        point.applied_by = user if (user and getattr(user, 'is_authenticated', False)) else point.applied_by
+    if point.status in (
+        LockoutPoint.PointStatus.LOCKED,
+        LockoutPoint.PointStatus.VERIFIED,
+    ):
+        point.applied_by = (
+            user
+            if (user and getattr(user, 'is_authenticated', False))
+            else point.applied_by
+        )
     if point.status == LockoutPoint.PointStatus.VERIFIED:
-        point.verified_by = user if (user and getattr(user, 'is_authenticated', False)) else point.verified_by
+        point.verified_by = (
+            user
+            if (user and getattr(user, 'is_authenticated', False))
+            else point.verified_by
+        )
         point.verified_at = timezone.now()
     if point.status == LockoutPoint.PointStatus.RESTORED:
         point.restored_at = timezone.now()
@@ -461,7 +479,11 @@ def upsert_lockout_point(
         gate.packet,
         RepairPacketEvent.EventType.LOCKOUT_UPDATED,
         actor=user,
-        metadata={'gate_id': gate.pk, 'lockout_point_id': point.pk, 'status': point.status},
+        metadata={
+            'gate_id': gate.pk,
+            'lockout_point_id': point.pk,
+            'status': point.status,
+        },
     )
     return point
 
@@ -582,9 +604,7 @@ def advance_packet(
     return True, ''
 
 
-def run_generation_by_id(
-    packet_id: int, params: dict[str, Any] | None = None
-) -> None:
+def run_generation_by_id(packet_id: int, params: dict[str, Any] | None = None) -> None:
     """Offload-friendly wrapper: load the packet by id, then generate.
 
     Used by :func:`InvenTree.tasks.offload_task` for asynchronous generation.
@@ -594,3 +614,604 @@ def run_generation_by_id(
     except RepairPacket.DoesNotExist:
         return
     run_repair_packet_workflow(packet, params or {})
+
+
+# --------------------------------------------------------------------------- #
+# Authorized diagnostic reads
+# --------------------------------------------------------------------------- #
+
+_DIAGNOSTIC_CAPABILITIES = frozenset({
+    'diagnostics.machine.read',
+    'diagnostics.packet.read',
+    'diagnostics.maintenance.read',
+    'diagnostics.manuals.read',
+    'diagnostics.playbooks.read',
+    'diagnostics.parts.read',
+    'diagnostics.safety_p0.read',
+})
+_DIAGNOSTIC_ABSTENTION = 'No authorized citation-ready evidence was available.'
+_DIAGNOSTIC_SAFETY_ROW_LIMIT = 100
+_DIAGNOSTIC_PLAYBOOK_STEP_LIMIT = 50
+
+
+def diagnostic_rehydrate_actor(user_pk):
+    """Reload an active authenticated actor for a diagnostic read."""
+    from django.contrib.auth import get_user_model
+    from django.core.exceptions import ValidationError
+
+    user_model = get_user_model()
+    try:
+        actor = user_model.objects.get(pk=user_pk, is_active=True)
+    except (user_model.DoesNotExist, TypeError, ValidationError, ValueError):
+        return None
+    return actor if getattr(actor, 'is_authenticated', False) else None
+
+
+def _diagnostic_capabilities_for_actor(actor) -> frozenset[str]:
+    """Resolve current diagnostic grants through one deployment-owned seam."""
+    from django.conf import settings as django_settings
+    from django.utils.module_loading import import_string
+
+    resolver = getattr(django_settings, 'AIMMS_DIAGNOSTIC_CAPABILITY_RESOLVER', None)
+    if resolver is None:
+        from ai.core.config import get_settings
+
+        resolver = get_settings().diagnostic_capability_resolver
+    if isinstance(resolver, str):
+        resolver = resolver.strip()
+        if not resolver:
+            return frozenset()
+        try:
+            resolver = import_string(resolver)
+        except (ImportError, AttributeError):
+            return frozenset()
+    if not callable(resolver):
+        return frozenset()
+    try:
+        values = resolver(actor)
+    except Exception:
+        return frozenset()
+    if not isinstance(values, (list, tuple, set, frozenset)):
+        return frozenset()
+    return frozenset(
+        value
+        for value in values
+        if isinstance(value, str) and value in _DIAGNOSTIC_CAPABILITIES
+    )
+
+
+def _diagnostic_revision(record) -> str:
+    """Return a stable optimistic-read revision for a maintenance root."""
+    updated_at = getattr(record, 'updated_at', None)
+    if updated_at is None:
+        return ''
+    return updated_at.isoformat()
+
+
+def _diagnostic_scoped_entity(actor, entity_type: str, entity_id: int):
+    """Load only fields required to decide the entity ACL."""
+    from tasks.scope import MaintenanceScope, ScopeError, scope_for_actor
+
+    try:
+        authorized_scopes = scope_for_actor(actor)
+    except ScopeError:
+        return None
+
+    if entity_type == 'machine':
+        from assets.models import AssetMachine
+
+        try:
+            entity = AssetMachine.objects.only('pk', 'customer_id', 'updated_at').get(
+                pk=entity_id
+            )
+        except AssetMachine.DoesNotExist:
+            return None
+        customer_id = entity.customer_id
+    elif entity_type == 'repair_packet':
+        try:
+            entity = (
+                RepairPacket.objects
+                .select_related('machine')
+                .only(
+                    'pk',
+                    'machine_id',
+                    'machine__pk',
+                    'machine__customer_id',
+                    'updated_at',
+                )
+                .get(pk=entity_id)
+            )
+        except RepairPacket.DoesNotExist:
+            return None
+        customer_id = entity.machine.customer_id if entity.machine_id else None
+    else:
+        return None
+
+    if customer_id is None:
+        return None
+    required_scope = MaintenanceScope(customer_id=customer_id, site_key=None)
+    if required_scope not in authorized_scopes:
+        return None
+    return entity
+
+
+def authorize_diagnostic_read(
+    *,
+    actor,
+    capability: str,
+    entity_type: str,
+    entity_id: int,
+    expected_revision: str,
+    linked_machine_id: int | None,
+    check_id: str,
+):
+    """Authorize a root without retrieving any user-facing record content."""
+    if (
+        actor is None
+        or not getattr(actor, 'is_authenticated', False)
+        or not getattr(actor, 'is_active', False)
+        or capability not in _DIAGNOSTIC_CAPABILITIES
+    ):
+        return None
+
+    if capability not in _diagnostic_capabilities_for_actor(actor):
+        return None
+
+    entity = _diagnostic_scoped_entity(actor, entity_type, entity_id)
+    if entity is None:
+        return None
+    current_revision = _diagnostic_revision(entity)
+    if not current_revision or current_revision != expected_revision:
+        return None
+
+    actual_linked_machine_id = (
+        entity.pk if entity_type == 'machine' else entity.machine_id
+    )
+    expected_linked_machine_id = None if entity_type == 'machine' else linked_machine_id
+    if entity_type == 'repair_packet' and (
+        expected_linked_machine_id is None
+        or actual_linked_machine_id != expected_linked_machine_id
+    ):
+        return None
+
+    return {
+        'check_id': check_id,
+        'actor_id': f'user:{actor.pk}',
+        'capability': capability,
+        'entity_type': entity_type,
+        'entity_id': entity.pk,
+        'current_revision': current_revision,
+        'authorization_class': 'maintenance_scope',
+        'scoped': True,
+        'linked_machine_id': expected_linked_machine_id,
+        'checked_at': timezone.now(),
+    }
+
+
+def _diagnostic_reauthorize(actor, authorization, expected_revision: str) -> bool:
+    """Repeat the ACL and revision check immediately before content retrieval."""
+    decision = authorize_diagnostic_read(
+        actor=actor,
+        capability=authorization.capability,
+        entity_type=authorization.entity_type,
+        entity_id=authorization.entity_id,
+        expected_revision=expected_revision,
+        linked_machine_id=authorization.linked_machine_id,
+        check_id=authorization.check_id,
+    )
+    return decision is not None and decision['actor_id'] == authorization.actor_id
+
+
+def _diagnostic_result(*evidence, reason: str = '') -> dict[str, Any]:
+    """Return the strict transfer shape consumed by the AI facade."""
+    return {
+        'evidence': tuple(evidence),
+        'abstention_reason': reason if not evidence else '',
+    }
+
+
+def _diagnostic_evidence(
+    *,
+    source_type: str,
+    source_id,
+    revision: str,
+    locator: str,
+    as_of,
+    claim: str,
+    untrusted: bool,
+) -> dict[str, Any]:
+    """Create a citation-ready service transfer object."""
+    return {
+        'source_type': source_type,
+        'id': str(source_id),
+        'revision': revision,
+        'locator': locator,
+        'as_of': as_of,
+        'authorization_class': 'maintenance_scope',
+        'claim': claim,
+        'untrusted': untrusted,
+    }
+
+
+def read_diagnostic_machine_context(
+    *, actor, authorization, machine_id: int, expected_revision: str
+) -> dict[str, Any]:
+    """Read an authorized machine snapshot after a repeated ACL check."""
+    if (
+        authorization.entity_type != 'machine'
+        or authorization.entity_id != machine_id
+        or not _diagnostic_reauthorize(actor, authorization, expected_revision)
+    ):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+
+    from assets.models import AssetMachine
+
+    try:
+        machine = AssetMachine.objects.get(pk=machine_id)
+    except AssetMachine.DoesNotExist:
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+    claim = json.dumps(
+        {
+            'name': machine.name,
+            'description': machine.description,
+            'manufacturer': machine.manufacturer,
+            'model': machine.model,
+            'serial': machine.serial,
+            'location': machine.location,
+            'active': machine.active,
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+    )
+    return _diagnostic_result(
+        _diagnostic_evidence(
+            source_type='asset_machine',
+            source_id=machine.pk,
+            revision=_diagnostic_revision(machine),
+            locator=f'/machines/{machine.pk}',
+            as_of=machine.updated_at,
+            claim=claim,
+            untrusted=True,
+        )
+    )
+
+
+def read_diagnostic_repair_packet(
+    *, actor, authorization, repair_packet_id: int, expected_revision: str
+) -> dict[str, Any]:
+    """Read an authorized packet with all control and safety fields omitted."""
+    if (
+        authorization.entity_type != 'repair_packet'
+        or authorization.entity_id != repair_packet_id
+        or not _diagnostic_reauthorize(actor, authorization, expected_revision)
+    ):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+    try:
+        packet = RepairPacket.objects.only(
+            'pk',
+            'reference',
+            'status',
+            'fault_summary',
+            'symptom',
+            'criticality',
+            'production_impact',
+            'machine_id',
+            'updated_at',
+        ).get(pk=repair_packet_id)
+    except RepairPacket.DoesNotExist:
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+    claim = json.dumps(
+        {
+            'reference': packet.reference,
+            'status': packet.status,
+            'fault_summary': packet.fault_summary,
+            'symptom': packet.symptom,
+            'criticality': packet.criticality,
+            'production_impact': packet.production_impact,
+            'machine_id': packet.machine_id,
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+    )
+    return _diagnostic_result(
+        _diagnostic_evidence(
+            source_type='repair_packet_redacted',
+            source_id=packet.pk,
+            revision=_diagnostic_revision(packet),
+            locator=f'/repair/packets/{packet.pk}',
+            as_of=packet.updated_at,
+            claim=claim,
+            untrusted=True,
+        )
+    )
+
+
+def read_diagnostic_maintenance_history(
+    *, actor, authorization, machine_id: int, expected_revision: str, limit: int
+) -> dict[str, Any]:
+    """Read recent maintenance records only after machine authorization."""
+    if (
+        authorization.entity_type != 'machine'
+        or authorization.entity_id != machine_id
+        or not _diagnostic_reauthorize(actor, authorization, expected_revision)
+    ):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+
+    from assets.models import AssetMaintenanceRecord
+
+    records = AssetMaintenanceRecord.objects.filter(machine_id=machine_id).order_by(
+        '-date', '-pk'
+    )[:limit]
+    evidence = []
+    for record in records:
+        claim = json.dumps(
+            {
+                'date': record.date.isoformat(),
+                'summary': record.summary,
+                'details': record.details,
+                'performed_by': record.performed_by,
+                'work_order_id': record.work_order_id,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        )
+        evidence.append(
+            _diagnostic_evidence(
+                source_type='asset_maintenance_record',
+                source_id=record.pk,
+                revision=_diagnostic_revision(record),
+                locator=f'/machines/{machine_id}/maintenance/{record.pk}',
+                as_of=record.updated_at,
+                claim=claim,
+                untrusted=True,
+            )
+        )
+    return _diagnostic_result(*evidence, reason=_DIAGNOSTIC_ABSTENTION)
+
+
+def read_diagnostic_approved_manuals(
+    *,
+    actor,
+    authorization,
+    machine_id: int,
+    expected_revision: str,
+    query: str,
+    limit: int,
+) -> dict[str, Any]:
+    """Abstain until the attachment domain has explicit manual approval state."""
+    del query, limit
+    if (
+        authorization.entity_type != 'machine'
+        or authorization.entity_id != machine_id
+        or not _diagnostic_reauthorize(actor, authorization, expected_revision)
+    ):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+    return _diagnostic_result(
+        reason='No explicitly approved manual source is configured for this machine.'
+    )
+
+
+def read_diagnostic_published_playbooks(
+    *,
+    actor,
+    authorization,
+    machine_id: int,
+    expected_revision: str,
+    query: str,
+    limit: int,
+) -> dict[str, Any]:
+    """Read published procedures with an explicit applicability edge to the machine."""
+    if (
+        authorization.entity_type != 'machine'
+        or authorization.entity_id != machine_id
+        or not _diagnostic_reauthorize(actor, authorization, expected_revision)
+    ):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+
+    from django.db.models import F, Q
+
+    from tasks.procedure_models import ProcedureRevision, ProcedureRevisionStatus
+
+    revisions = (
+        ProcedureRevision.objects
+        .filter(
+            status=ProcedureRevisionStatus.PUBLISHED,
+            procedure__active=True,
+            applicability_rules__machine_id=machine_id,
+            procedure__customer_id=F('applicability_rules__machine__customer_id'),
+        )
+        .filter(
+            Q(procedure__code__icontains=query)
+            | Q(procedure__name__icontains=query)
+            | Q(procedure__description__icontains=query)
+            | Q(steps__title__icontains=query)
+            | Q(steps__instruction__icontains=query)
+        )
+        .select_related('procedure')
+        .distinct()[:limit]
+    )
+    evidence = []
+    for revision in revisions:
+        selected_steps = list(
+            revision.steps.order_by('sequence')[: _DIAGNOSTIC_PLAYBOOK_STEP_LIMIT + 1]
+        )
+        steps_truncated = len(selected_steps) > _DIAGNOSTIC_PLAYBOOK_STEP_LIMIT
+        steps = [
+            {
+                'sequence': step.sequence,
+                'type': step.step_type,
+                'title': step.title,
+                'instruction': step.instruction,
+            }
+            for step in selected_steps[:_DIAGNOSTIC_PLAYBOOK_STEP_LIMIT]
+        ]
+        claim = json.dumps(
+            {
+                'code': revision.procedure.code,
+                'name': revision.procedure.name,
+                'description': revision.procedure.description,
+                'work_order_type': revision.work_order_type,
+                'steps': steps,
+                'steps_truncated': steps_truncated,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        )
+        evidence.append(
+            _diagnostic_evidence(
+                source_type='published_procedure_revision',
+                source_id=revision.pk,
+                revision=(
+                    f'{revision.revision}:{revision.content_hash}'
+                    if revision.content_hash
+                    else f'{revision.revision}:{revision.content_version}'
+                ),
+                locator=(
+                    f'/maintenance/procedures/{revision.procedure_id}'
+                    f'/revisions/{revision.pk}'
+                ),
+                as_of=revision.published_at,
+                claim=claim,
+                untrusted=True,
+            )
+        )
+    return _diagnostic_result(*evidence, reason=_DIAGNOSTIC_ABSTENTION)
+
+
+def read_diagnostic_parts_availability(
+    *,
+    actor,
+    authorization,
+    machine_id: int,
+    expected_revision: str,
+    part_ids,
+    limit: int,
+) -> dict[str, Any]:
+    """Observe linked-part availability without reserving or allocating stock."""
+    if (
+        authorization.entity_type != 'machine'
+        or authorization.entity_id != machine_id
+        or not _diagnostic_reauthorize(actor, authorization, expected_revision)
+    ):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+
+    from assets.models import MachinePart
+
+    links = MachinePart.objects.filter(machine_id=machine_id).select_related('part')
+    if part_ids:
+        links = links.filter(part_id__in=part_ids)
+    links = links.order_by('part_id')[:limit]
+    observed_at = timezone.now()
+    evidence = []
+    for link in links:
+        part = link.part
+        claim = json.dumps(
+            {
+                'part_id': part.pk,
+                'name': part.name,
+                'ipn': part.IPN,
+                'required_quantity': link.quantity,
+                'available_quantity': str(part.available_stock),
+                'units': part.units,
+                'observation_only': True,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        )
+        evidence.append(
+            _diagnostic_evidence(
+                source_type='part_availability_observation',
+                source_id=part.pk,
+                revision=part.revision or str(part.pk),
+                locator=f'/part/{part.pk}',
+                as_of=observed_at,
+                claim=claim,
+                untrusted=True,
+            )
+        )
+    return _diagnostic_result(*evidence, reason=_DIAGNOSTIC_ABSTENTION)
+
+
+def read_diagnostic_live_safety_status(
+    *, actor, authorization, repair_packet_id: int, expected_revision: str
+) -> dict[str, Any]:
+    """Return raw command-side status coverage without an operational inference."""
+    if (
+        authorization.entity_type != 'repair_packet'
+        or authorization.entity_id != repair_packet_id
+        or not _diagnostic_reauthorize(actor, authorization, expected_revision)
+    ):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+    from django.db import connection
+
+    with transaction.atomic():
+        # PostgreSQL otherwise uses READ COMMITTED and the two bounded child
+        # queries could observe different moments. This read-only transaction
+        # fixes one repeatable snapshot without acquiring business-row locks.
+        if connection.vendor == 'postgresql':
+            with connection.cursor() as cursor:
+                cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+        try:
+            packet = RepairPacket.objects.only('pk', 'status', 'updated_at').get(
+                pk=repair_packet_id
+            )
+        except RepairPacket.DoesNotExist:
+            return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+        if _diagnostic_revision(packet) != expected_revision:
+            return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+
+        gates = list(
+            packet.gates.order_by('sequence', 'pk').values('pk', 'gate_type', 'status')[
+                : _DIAGNOSTIC_SAFETY_ROW_LIMIT + 1
+            ]
+        )
+        points = list(
+            LockoutPoint.objects
+            .filter(gate__packet_id=packet.pk)
+            .order_by('pk')
+            .values('pk', 'gate_id', 'energy_source', 'status')[
+                : _DIAGNOSTIC_SAFETY_ROW_LIMIT + 1
+            ]
+        )
+        if (
+            len(gates) > _DIAGNOSTIC_SAFETY_ROW_LIMIT
+            or len(points) > _DIAGNOSTIC_SAFETY_ROW_LIMIT
+        ):
+            return _diagnostic_result(
+                reason=(
+                    'Raw command-side status exceeded the bounded safety reader; '
+                    'check the authoritative safety surface.'
+                )
+            )
+
+        observed_at = timezone.now()
+        snapshot = {
+            'packet_status': packet.status,
+            'gate_statuses': gates,
+            'lockout_point_statuses': points,
+            'coverage': {'gate_count': len(gates), 'lockout_point_count': len(points)},
+            'caveat': (
+                'Raw recorded command-side states only; verify field conditions and '
+                'authoritative controls before action.'
+            ),
+        }
+        claim = json.dumps(snapshot, ensure_ascii=True, sort_keys=True)
+        snapshot_revision = hashlib.sha256(
+            json.dumps(
+                {'packet_revision': _diagnostic_revision(packet), 'snapshot': snapshot},
+                ensure_ascii=True,
+                separators=(',', ':'),
+                sort_keys=True,
+            ).encode('utf-8')
+        ).hexdigest()
+        return _diagnostic_result(
+            _diagnostic_evidence(
+                source_type='repair_packet_command_status',
+                source_id=packet.pk,
+                revision=f'sha256:{snapshot_revision}',
+                locator=f'/repair/packets/{packet.pk}/command-status',
+                as_of=observed_at,
+                claim=claim,
+                untrusted=False,
+            )
+        )
