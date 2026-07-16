@@ -28,12 +28,23 @@
 
       // Add the IDs of extensions you want installed when the container is created.
       "extensions": [
+        "anthropic.claude-code",
+        "batisteo.vscode-django",
+        "biomejs.biome",
+        "dbaeumer.vscode-eslint",
+        "eamodio.gitlens",
+        "ms-azuretools.vscode-azure-github-copilot",
+        "ms-azuretools.vscode-azure-mcp-server",
+        "ms-azuretools.vscode-azureresourcegroups",
+        "ms-azuretools.vscode-containers",
+        "ms-ossdata.vscode-pgsql",
+        "ms-python.autopep8",
+        "ms-python.debugpy",
         "ms-python.python",
         "ms-python.vscode-pylance",
-        "batisteo.vscode-django",
-        "eamodio.gitlens",
-        "biomejs.biome",
-        "openai.chatgpt"
+        "ms-python.vscode-python-envs",
+        "openai.chatgpt",
+        "upstash.context7-mcp"
       ]
     }
   },

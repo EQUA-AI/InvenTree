@@ -26,7 +26,7 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list
 
 # Install required base packages
 RUN apt-get update && apt-get install -y \
-   python3.11-dev python3.11-venv \
+   python3-dev python3-venv \
    postgresql-client \
    libldap2-dev libsasl2-dev \
    libpango-1.0-0 libcairo2 \
