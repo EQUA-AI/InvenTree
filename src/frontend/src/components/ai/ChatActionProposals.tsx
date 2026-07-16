@@ -45,7 +45,7 @@ const ACTION_LABELS: Record<string, string> = {
   'work_order.resume': 'Resume work order'
 };
 
-function ProposalCard({
+export function ProposalCard({
   proposal,
   onChanged
 }: Readonly<{

@@ -74,6 +74,15 @@ export enum ApiEndpoints {
   kanban_card_part_detail = 'kanban/cards/:cardId/parts/:id/',
   kanban_card_allocate = 'kanban/cards/:id/allocate-parts/',
 
+  // Scoped AI chat governance endpoints (Feature #14)
+  aichat_context_resolve = 'aichat/context/resolve/',
+  aichat_conversation_list = 'aichat/conversations/',
+  aichat_conversation_detail = 'aichat/conversations/:id/',
+  aichat_conversation_citations = 'aichat/conversations/:id/citations/',
+  aichat_conversation_tools = 'aichat/conversations/:id/tools/',
+  aichat_conversation_tool_invoke = 'aichat/conversations/:id/tools/invoke/',
+  aichat_proposal_list = 'aichat/proposals/',
+
   // Repair Packet endpoints
   repair_packet_list = 'repair/packets/',
   repair_packet_detail = 'repair/packets/:id/',

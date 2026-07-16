@@ -48,6 +48,7 @@ import type {
 	KanbanStatus
 } from '@lib/types/Tasks';
 
+import { ScopedChatButton } from '../../components/aichat/ScopedChatButton';
 import PageTitle from '../../components/nav/PageTitle';
 import { useApi } from '../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../functions/notifications';
@@ -1433,6 +1434,14 @@ export default function Kanban() {
 			>
 				<form onSubmit={handleTaskSubmit}>
 					<Stack gap='md'>
+						{editingTask && (
+							<Group justify='flex-end'>
+								<ScopedChatButton
+									contextType='work_order'
+									objectId={editingTask.id}
+								/>
+							</Group>
+						)}
 						<TextInput
 							label={t`Title`}
 							placeholder={t`Add a concise task name`}
