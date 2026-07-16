@@ -136,6 +136,19 @@ class AssetDemoDataTest(TestCase):
             quantity=2,
             notes='sensor interface boards (placeholder link)',
         )
+        compressor = AssetMachine.objects.get(name='Air Compressor #4')
+        legacy_compressor_links = []
+        for revision in ('REV-A', 'REV-B'):
+            compressor_part = Part.objects.create(
+                name='Widget Board (assembled)', IPN='002.01-PCBA', revision=revision
+            )
+            legacy_compressor_links.append(
+                MachinePart.objects.create(
+                    machine=compressor,
+                    part=compressor_part,
+                    notes='Control PCB assembly (placeholder link)',
+                )
+            )
         custom_part = Part.objects.create(
             name='Technician-added Conveyor Guard', IPN='CUSTOM-CONVEYOR-GUARD'
         )
@@ -173,6 +186,12 @@ class AssetDemoDataTest(TestCase):
         self.assertTrue(MachinePart.objects.filter(pk=modified_legacy_link.pk).exists())
         self.assertTrue(MachinePart.objects.filter(pk=custom_link.pk).exists())
         self.assertTrue(
+            all(
+                MachinePart.objects.filter(pk=link.pk).exists()
+                for link in legacy_compressor_links
+            )
+        )
+        self.assertTrue(
             AssetMaintenanceRecord.objects.filter(pk=legacy_history.pk).exists()
         )
         self.assertTrue(
@@ -188,6 +207,12 @@ class AssetDemoDataTest(TestCase):
         self.assertFalse(MachinePart.objects.filter(pk=legacy_link.pk).exists())
         self.assertTrue(MachinePart.objects.filter(pk=modified_legacy_link.pk).exists())
         self.assertTrue(MachinePart.objects.filter(pk=custom_link.pk).exists())
+        self.assertTrue(
+            all(
+                not MachinePart.objects.filter(pk=link.pk).exists()
+                for link in legacy_compressor_links
+            )
+        )
         self.assertFalse(
             AssetMaintenanceRecord.objects.filter(pk=legacy_history.pk).exists()
         )

@@ -303,6 +303,7 @@ class Command(BaseCommand):
                 .filter(
                     machine__name__iexact=record['machine'],
                     part__IPN__iexact=record['ipn'],
+                    part__revision=record['part_revision'],
                     quantity=record['quantity'],
                 )
                 .order_by('pk')
@@ -313,6 +314,7 @@ class Command(BaseCommand):
                 if link.machine.name == record['machine']
                 and record['ipn'] == link.part.IPN
                 and link.part.name == record['part_name']
+                and link.part.revision == record['part_revision']
                 and link.notes == record['notes']
             ]
             if len(matches) > 1:

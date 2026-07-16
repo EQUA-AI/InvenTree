@@ -6,6 +6,7 @@
         "machine": "Packaging Line 2 Conveyor",
         "ipn": "TB1",
         "part_name": "Test Board 1",
+        "part_revision": "",
         "quantity": 1,
         "notes": "Controller test board (placeholder link)"
       },
@@ -13,6 +14,7 @@
         "machine": "Packaging Line 2 Conveyor",
         "ipn": "TB2",
         "part_name": "Test Board 2",
+        "part_revision": "",
         "quantity": 2,
         "notes": "Sensor interface boards (placeholder link)"
       },
@@ -20,6 +22,7 @@
         "machine": "Packaging Line 2 Conveyor",
         "ipn": "002.02-PCB",
         "part_name": "Widget Board",
+        "part_revision": "B",
         "quantity": 1,
         "notes": "Local I/O board (placeholder link)"
       },
@@ -27,6 +30,7 @@
         "machine": "Unit 3 Switchgear Breaker",
         "ipn": "BRK-MTZ3-3P",
         "part_name": "MasterPacT MTZ3 circuit breaker",
+        "part_revision": "",
         "quantity": 1,
         "notes": "Breaker assembly (placeholder link)"
       },
@@ -34,6 +38,7 @@
         "machine": "Unit 3 Switchgear Breaker",
         "ipn": "MAST",
         "part_name": "Master Assembly",
+        "part_revision": "",
         "quantity": 1,
         "notes": "Associated master assembly (placeholder link)"
       },
@@ -41,6 +46,7 @@
         "machine": "Air Compressor #4",
         "ipn": "TB3",
         "part_name": "Test Board 3",
+        "part_revision": "",
         "quantity": 1,
         "notes": "Diagnostics board (placeholder link)"
       },
@@ -48,6 +54,15 @@
         "machine": "Air Compressor #4",
         "ipn": "002.01-PCBA",
         "part_name": "Widget Board (assembled)",
+        "part_revision": "REV-A",
+        "quantity": 1,
+        "notes": "Control PCB assembly (placeholder link)"
+      },
+      {
+        "machine": "Air Compressor #4",
+        "ipn": "002.01-PCBA",
+        "part_name": "Widget Board (assembled)",
+        "part_revision": "REV-B",
         "quantity": 1,
         "notes": "Control PCB assembly (placeholder link)"
       },
@@ -55,6 +70,7 @@
         "machine": "Boiler Feed Pump B",
         "ipn": "002.01-PCB",
         "part_name": "Widget Board",
+        "part_revision": "A",
         "quantity": 1,
         "notes": "Control PCB (placeholder link)"
       },
@@ -62,6 +78,7 @@
         "machine": "Boiler Feed Pump B",
         "ipn": "WID-TEMPLATE",
         "part_name": "Widget Assembly",
+        "part_revision": "",
         "quantity": 1,
         "notes": "Template assembly (placeholder link)"
       },
@@ -69,6 +86,7 @@
         "machine": "Customer Test Stand (ACME)",
         "ipn": "WID-REV-A",
         "part_name": "Widget Assembly Variant",
+        "part_revision": "A",
         "quantity": 1,
         "notes": "Test stand assembly variant (placeholder link)"
       },
@@ -76,6 +94,7 @@
         "machine": "Customer Test Stand (ACME)",
         "ipn": "WID-REV-B",
         "part_name": "Widget Assembly Variant",
+        "part_revision": "B",
         "quantity": 1,
         "notes": "Test stand assembly variant (placeholder link)"
       }
