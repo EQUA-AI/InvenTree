@@ -10,11 +10,12 @@ Implements the four core tables specified in the approval queue spec:
 import hashlib
 import uuid
 
-import structlog
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+
+import structlog
 
 logger = structlog.get_logger('approvals')
 
@@ -22,6 +23,7 @@ logger = structlog.get_logger('approvals')
 # ---------------------------------------------------------------------------
 # Enums / Choices
 # ---------------------------------------------------------------------------
+
 
 class ApprovalStatus(models.TextChoices):
     """Approval status finite state machine states."""
@@ -57,6 +59,8 @@ class ActionType(models.TextChoices):
     WORKFLOW = 'workflow', _('Run Workflow')
     NOTIFICATION = 'notification', _('Send Notification')
     SAFETY_GATE = 'safety_gate', _('Safety Gate')
+    PROCEDURE_PUBLISH = 'procedure_publish', _('Publish Procedure')
+    JOB_KIT_SUBSTITUTION = ('job_kit_substitution', _('Approve Job Kit Substitution'))
 
 
 class EventType(models.TextChoices):
@@ -108,14 +112,8 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
         ApprovalStatus.CANCELED,
         ApprovalStatus.EXPIRED,
     },
-    ApprovalStatus.APPROVED: {
-        ApprovalStatus.EXECUTING,
-        ApprovalStatus.FAILED,
-    },
-    ApprovalStatus.EXECUTING: {
-        ApprovalStatus.SUCCEEDED,
-        ApprovalStatus.FAILED,
-    },
+    ApprovalStatus.APPROVED: {ApprovalStatus.EXECUTING, ApprovalStatus.FAILED},
+    ApprovalStatus.EXECUTING: {ApprovalStatus.SUCCEEDED, ApprovalStatus.FAILED},
 }
 
 
@@ -135,58 +133,71 @@ def compute_idempotency_key(agent_run_id: str, tool_call_id: str) -> str:
 # Configuration helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_setting(name: str, default):
     """Get a setting from Django settings with a default fallback."""
     return getattr(settings, name, default)
 
 
 def get_default_expiry_days() -> int:
+    """Get default expiry days."""
     return _get_setting('APPROVAL_DEFAULT_EXPIRY_DAYS', 7)
 
 
 def get_lock_ttl_seconds() -> int:
+    """Get lock ttl seconds."""
     return _get_setting('APPROVAL_MODIFY_LOCK_TTL_SECONDS', 600)
 
 
 def get_baseline_stale_threshold_hours() -> int:
+    """Get baseline stale threshold hours."""
     return _get_setting('APPROVAL_BASELINE_STALE_THRESHOLD_HOURS', 24)
 
 
 def get_retention_days() -> int:
+    """Get retention days."""
     return _get_setting('APPROVAL_RETENTION_DAYS', 90)
 
 
 def is_approval_queue_enabled() -> bool:
+    """Is approval queue enabled."""
     return _get_setting('APPROVAL_QUEUE_ENABLED', False)
 
 
 def is_modify_in_chat_enabled() -> bool:
+    """Is modify in chat enabled."""
     return _get_setting('APPROVAL_MODIFY_IN_CHAT_ENABLED', False)
 
 
 def is_revalidation_enabled() -> bool:
+    """Is revalidation enabled."""
     return _get_setting('APPROVAL_REVALIDATION_ENABLED', True)
 
 
 def is_expiry_job_enabled() -> bool:
+    """Is expiry job enabled."""
     return _get_setting('APPROVAL_EXPIRY_JOB_ENABLED', True)
 
 
 def is_retention_purge_enabled() -> bool:
+    """Is retention purge enabled."""
     return _get_setting('APPROVAL_RETENTION_PURGE_ENABLED', False)
 
 
 def get_resume_stuck_threshold_seconds() -> int:
+    """Get resume stuck threshold seconds."""
     return _get_setting('APPROVAL_RESUME_STUCK_THRESHOLD_SECONDS', 300)
 
 
 def get_execution_stuck_threshold_seconds() -> int:
+    """Get execution stuck threshold seconds."""
     return _get_setting('APPROVAL_EXECUTION_STUCK_THRESHOLD_SECONDS', 1800)
 
 
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+
 
 class Approval(models.Model):
     """Core approval record — one per approval-required tool invocation.
@@ -195,10 +206,7 @@ class Approval(models.Model):
     """
 
     id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False,
-        verbose_name=_('ID'),
+        primary_key=True, default=uuid.uuid4, editable=False, verbose_name=_('ID')
     )
 
     # --- Status FSM ---
@@ -230,21 +238,16 @@ class Approval(models.Model):
 
     # --- Payload ---
     payload = models.JSONField(
-        verbose_name=_('Payload'),
-        help_text=_('Current draft arguments (JSONB)'),
+        verbose_name=_('Payload'), help_text=_('Current draft arguments (JSONB)')
     )
 
     payload_schema_version = models.IntegerField(
-        default=1,
-        verbose_name=_('Payload Schema Version'),
+        default=1, verbose_name=_('Payload Schema Version')
     )
 
     # --- Correlation ---
     source_chat_id = models.CharField(
-        max_length=255,
-        blank=True,
-        default='',
-        verbose_name=_('Source Chat ID'),
+        max_length=255, blank=True, default='', verbose_name=_('Source Chat ID')
     )
 
     agent_run_id = models.CharField(
@@ -255,8 +258,7 @@ class Approval(models.Model):
     )
 
     agent_checkpoint_id = models.CharField(
-        max_length=255,
-        verbose_name=_('Agent Checkpoint ID'),
+        max_length=255, verbose_name=_('Agent Checkpoint ID')
     )
 
     tool_call_id = models.CharField(
@@ -277,21 +279,13 @@ class Approval(models.Model):
 
     # --- Timestamps ---
     created_at = models.DateTimeField(
-        auto_now_add=True,
-        db_index=True,
-        verbose_name=_('Created At'),
+        auto_now_add=True, db_index=True, verbose_name=_('Created At')
     )
 
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        verbose_name=_('Updated At'),
-    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name=_('Updated At'))
 
     expires_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        db_index=True,
-        verbose_name=_('Expires At'),
+        null=True, blank=True, db_index=True, verbose_name=_('Expires At')
     )
 
     # --- Safety / context ---
@@ -323,9 +317,7 @@ class Approval(models.Model):
 
     # --- Viewed-confirmed gate ---
     viewed_confirmed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name=_('Viewed Confirmed At'),
+        null=True, blank=True, verbose_name=_('Viewed Confirmed At')
     )
 
     viewed_confirmed_by_user = models.ForeignKey(
@@ -355,34 +347,24 @@ class Approval(models.Model):
     )
 
     modification_lock_acquired_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name=_('Lock Acquired At'),
+        null=True, blank=True, verbose_name=_('Lock Acquired At')
     )
 
     modification_lock_expires_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name=_('Lock Expires At'),
+        null=True, blank=True, verbose_name=_('Lock Expires At')
     )
 
     # --- Denormalized terminal fields ---
     deny_reason = models.TextField(
-        blank=True,
-        default='',
-        verbose_name=_('Deny Reason'),
+        blank=True, default='', verbose_name=_('Deny Reason')
     )
 
     canceled_reason = models.TextField(
-        blank=True,
-        default='',
-        verbose_name=_('Canceled Reason'),
+        blank=True, default='', verbose_name=_('Canceled Reason')
     )
 
     execution_result = models.JSONField(
-        null=True,
-        blank=True,
-        verbose_name=_('Execution Result'),
+        null=True, blank=True, verbose_name=_('Execution Result')
     )
 
     execution_error = models.JSONField(
@@ -393,9 +375,7 @@ class Approval(models.Model):
     )
 
     resolved_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name=_('Resolved At'),
+        null=True, blank=True, verbose_name=_('Resolved At')
     )
 
     resolved_by_user = models.ForeignKey(
@@ -408,16 +388,15 @@ class Approval(models.Model):
     )
 
     class Meta:
+        """Model metadata."""
+
         ordering = ['-created_at']
         verbose_name = _('Approval')
         verbose_name_plural = _('Approvals')
-        permissions = [
-            ('review', 'Can review and act on approvals'),
-        ]
+        permissions = [('review', 'Can review and act on approvals')]
         indexes = [
             models.Index(
-                fields=['status', 'created_at'],
-                name='idx_approvals_status_created',
+                fields=['status', 'created_at'], name='idx_approvals_status_created'
             ),
             models.Index(
                 fields=['action_type', 'created_at'],
@@ -435,25 +414,26 @@ class Approval(models.Model):
         ]
 
     def __str__(self):
+        """Readable identity for admin and logs."""
         return f'Approval {self.id} [{self.status}] - {self.summary[:60]}'
 
     # ---- Properties ----
 
     @property
     def is_terminal(self) -> bool:
-        """Return True if this approval is in a terminal status."""
+        """Whether this approval is in a terminal status."""
         return self.status in TERMINAL_STATUSES
 
     @property
     def is_lock_active(self) -> bool:
-        """Return True if the modification lock is currently active (not expired)."""
+        """Whether the modification lock is currently active (not expired)."""
         if not self.modification_lock_user_id or not self.modification_lock_expires_at:
             return False
         return timezone.now() < self.modification_lock_expires_at
 
     @property
     def lock_holder_id(self):
-        """Return the user ID of the lock holder, or None if no active lock."""
+        """The user ID of the lock holder, or None if no active lock."""
         if self.is_lock_active:
             return self.modification_lock_user_id
         return None
@@ -491,9 +471,7 @@ class Approval(models.Model):
             )
 
         if not self.can_transition_to(new_status):
-            raise ValueError(
-                f'Invalid transition: {self.status} → {new_status}'
-            )
+            raise ValueError(f'Invalid transition: {self.status} → {new_status}')
 
         old_status = self.status
         self.status = new_status
@@ -505,9 +483,7 @@ class Approval(models.Model):
             if actor_user:
                 self.resolved_by_user = actor_user
 
-        fields_to_save = [
-            'status', 'updated_at', 'resolved_at', 'resolved_by_user',
-        ]
+        fields_to_save = ['status', 'updated_at', 'resolved_at', 'resolved_by_user']
         if extra_update_fields:
             fields_to_save.extend(extra_update_fields)
 
@@ -532,10 +508,8 @@ class Approval(models.Model):
             approval=self,
             event_type=event_type,
             actor_user=actor_user,
-            event_payload=event_payload or {
-                'from_status': old_status,
-                'to_status': new_status,
-            },
+            event_payload=event_payload
+            or {'from_status': old_status, 'to_status': new_status},
         )
 
         logger.info(
@@ -579,12 +553,14 @@ class Approval(models.Model):
         self.modification_lock_user = user
         self.modification_lock_acquired_at = now
         self.modification_lock_expires_at = now + timezone.timedelta(seconds=ttl)
-        self.save(update_fields=[
-            'modification_lock_user',
-            'modification_lock_acquired_at',
-            'modification_lock_expires_at',
-            'updated_at',
-        ])
+        self.save(
+            update_fields=[
+                'modification_lock_user',
+                'modification_lock_acquired_at',
+                'modification_lock_expires_at',
+                'updated_at',
+            ]
+        )
 
         # Emit lock_acquired event
         ApprovalEvent.objects.create(
@@ -614,12 +590,14 @@ class Approval(models.Model):
         self.modification_lock_user = None
         self.modification_lock_acquired_at = None
         self.modification_lock_expires_at = None
-        self.save(update_fields=[
-            'modification_lock_user',
-            'modification_lock_acquired_at',
-            'modification_lock_expires_at',
-            'updated_at',
-        ])
+        self.save(
+            update_fields=[
+                'modification_lock_user',
+                'modification_lock_acquired_at',
+                'modification_lock_expires_at',
+                'updated_at',
+            ]
+        )
 
         ApprovalEvent.objects.create(
             approval=self,
@@ -634,11 +612,13 @@ class Approval(models.Model):
             'holder_user_id': self.modification_lock_user_id,
             'acquired_at': (
                 self.modification_lock_acquired_at.isoformat()
-                if self.modification_lock_acquired_at else None
+                if self.modification_lock_acquired_at
+                else None
             ),
             'expires_at': (
                 self.modification_lock_expires_at.isoformat()
-                if self.modification_lock_expires_at else None
+                if self.modification_lock_expires_at
+                else None
             ),
         }
 
@@ -666,10 +646,7 @@ class ApprovalEvent(models.Model):
     """
 
     id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False,
-        verbose_name=_('ID'),
+        primary_key=True, default=uuid.uuid4, editable=False, verbose_name=_('ID')
     )
 
     approval = models.ForeignKey(
@@ -695,9 +672,7 @@ class ApprovalEvent(models.Model):
     )
 
     timestamp = models.DateTimeField(
-        auto_now_add=True,
-        db_index=True,
-        verbose_name=_('Timestamp'),
+        auto_now_add=True, db_index=True, verbose_name=_('Timestamp')
     )
 
     event_payload = models.JSONField(
@@ -707,17 +682,19 @@ class ApprovalEvent(models.Model):
     )
 
     class Meta:
+        """Model metadata."""
+
         ordering = ['timestamp']
         verbose_name = _('Approval Event')
         verbose_name_plural = _('Approval Events')
         indexes = [
             models.Index(
-                fields=['approval', 'timestamp'],
-                name='idx_events_approval_timestamp',
-            ),
+                fields=['approval', 'timestamp'], name='idx_events_approval_timestamp'
+            )
         ]
 
     def __str__(self):
+        """Readable identity for admin and logs."""
         return f'{self.event_type} on {self.approval_id} at {self.timestamp}'
 
 
@@ -729,10 +706,7 @@ class ApprovalRevision(models.Model):
     """
 
     id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False,
-        verbose_name=_('ID'),
+        primary_key=True, default=uuid.uuid4, editable=False, verbose_name=_('ID')
     )
 
     approval = models.ForeignKey(
@@ -747,9 +721,7 @@ class ApprovalRevision(models.Model):
         help_text=_('0 = initial snapshot at creation; 1+ = user revisions'),
     )
 
-    payload_snapshot = models.JSONField(
-        verbose_name=_('Payload Snapshot'),
-    )
+    payload_snapshot = models.JSONField(verbose_name=_('Payload Snapshot'))
 
     diff_summary = models.JSONField(
         null=True,
@@ -758,10 +730,7 @@ class ApprovalRevision(models.Model):
         help_text=_('NULL for revision 0 (initial snapshot at creation)'),
     )
 
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name=_('Created At'),
-    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_('Created At'))
 
     created_by_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -773,12 +742,15 @@ class ApprovalRevision(models.Model):
     )
 
     class Meta:
+        """Model metadata."""
+
         ordering = ['revision_number']
         verbose_name = _('Approval Revision')
         verbose_name_plural = _('Approval Revisions')
         unique_together = [('approval', 'revision_number')]
 
     def __str__(self):
+        """Readable identity for admin and logs."""
         return f'Rev {self.revision_number} of {self.approval_id}'
 
 
@@ -789,9 +761,7 @@ class ExecutedEffect(models.Model):
     """
 
     idempotency_key = models.CharField(
-        max_length=64,
-        primary_key=True,
-        verbose_name=_('Idempotency Key'),
+        max_length=64, primary_key=True, verbose_name=_('Idempotency Key')
     )
 
     approval = models.ForeignKey(
@@ -801,10 +771,7 @@ class ExecutedEffect(models.Model):
         verbose_name=_('Approval'),
     )
 
-    effect_type = models.CharField(
-        max_length=100,
-        verbose_name=_('Effect Type'),
-    )
+    effect_type = models.CharField(max_length=100, verbose_name=_('Effect Type'))
 
     effect_ref = models.CharField(
         max_length=255,
@@ -812,14 +779,14 @@ class ExecutedEffect(models.Model):
         help_text=_('Reference to created object/message'),
     )
 
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name=_('Created At'),
-    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_('Created At'))
 
     class Meta:
+        """Model metadata."""
+
         verbose_name = _('Executed Effect')
         verbose_name_plural = _('Executed Effects')
 
     def __str__(self):
+        """Readable identity for admin and logs."""
         return f'{self.effect_type}: {self.effect_ref} ({self.idempotency_key[:12]}...)'

@@ -1,5 +1,10 @@
 """Stock database model definitions."""
 
+# EQUA fork note: this is an upstream InvenTree file; the pre-existing
+# docstring/try-block style predates the preview lint rules. Suppressed
+# file-wide to keep the diff against upstream minimal.
+# ruff: noqa: D421, PLW0717
+
 from __future__ import annotations
 
 import os
@@ -1658,13 +1663,55 @@ class StockItem(
 
         return total
 
-    def allocation_count(self):
-        """Return the total quantity allocated to builds or orders."""
-        bo = self.build_allocation_count()
-        so = self.sales_order_allocation_count()
-        to = self.transfer_order_allocation_count()
+    def job_kit_allocation_count(self, active=True, **kwargs):
+        """Return the total quantity allocated to maintenance Job Kits.
 
-        return bo + so + to
+        Only active reservation states (reserved/staged/issued) count against
+        stock availability; consumed/returned/released rows are terminal and are
+        not double-counted. Returns zero when the maintenance app is unavailable.
+        """
+        try:
+            query = self.job_kit_allocations.all()
+        except AttributeError:
+            return Decimal(0)
+
+        if exclude_allocations := kwargs.get('exclude_allocations'):
+            query = query.exclude(**exclude_allocations)
+
+        if active:
+            # Active reservation states, mirrored from tasks.jobkit_models to
+            # avoid importing the maintenance app into core stock.
+            query = query.filter(status__in=['reserved', 'staged', 'issued'])
+
+        total = query.aggregate(q=Coalesce(Sum('quantity'), Decimal(0)))['q']
+
+        return total if total is not None else Decimal(0)
+
+    def total_committed_allocation(
+        self,
+        *,
+        exclude_build=None,
+        exclude_sales=None,
+        exclude_transfer=None,
+        exclude_job_kit=None,
+    ):
+        """Return active allocation across all four domains under one authority.
+
+        Build, sales-order, transfer-order, and Job Kit writers share this total
+        so their over-allocation validation agrees. Pass an
+        ``exclude_*={'pk': ...}`` dict to omit the row currently being validated
+        from its own domain (preventing self double-counting).
+        """
+        return (
+            self.build_allocation_count(exclude_allocations=exclude_build)
+            + self.sales_order_allocation_count(exclude_allocations=exclude_sales)
+            + self.transfer_order_allocation_count(exclude_allocations=exclude_transfer)
+            + self.job_kit_allocation_count(exclude_allocations=exclude_job_kit)
+        )
+
+    def allocation_count(self):
+        """Return the total quantity allocated to builds, orders, or Job Kits."""
+        return self.total_committed_allocation()
 
     def unallocated_quantity(self):
         """Return the quantity of this StockItem which is *not* allocated."""

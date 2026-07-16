@@ -53,32 +53,27 @@ class AssetMachine(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     )
 
     manufacturer = models.CharField(
-        max_length=255,
-        blank=True,
-        verbose_name=_('Manufacturer'),
+        max_length=255, blank=True, verbose_name=_('Manufacturer')
     )
 
-    model = models.CharField(
-        max_length=255,
-        blank=True,
-        verbose_name=_('Model'),
-    )
+    model = models.CharField(max_length=255, blank=True, verbose_name=_('Model'))
 
     serial = models.CharField(
-        max_length=255,
-        blank=True,
-        verbose_name=_('Serial Number'),
+        max_length=255, blank=True, verbose_name=_('Serial Number')
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Model metadata."""
+
         ordering = ['name']
         verbose_name = _('Asset Machine')
         verbose_name_plural = _('Asset Machines')
 
     def __str__(self) -> str:
+        """Readable identity for admin and logs."""
         return self.name
 
 
@@ -99,23 +94,20 @@ class MachinePart(models.Model):
         verbose_name=_('Part'),
     )
 
-    quantity = models.PositiveIntegerField(
-        default=1,
-        verbose_name=_('Quantity'),
-    )
+    quantity = models.PositiveIntegerField(default=1, verbose_name=_('Quantity'))
 
-    notes = models.TextField(
-        blank=True,
-        verbose_name=_('Notes'),
-    )
+    notes = models.TextField(blank=True, verbose_name=_('Notes'))
 
     class Meta:
+        """Model metadata."""
+
         unique_together = [('machine', 'part')]
         ordering = ['part__name']
         verbose_name = _('Machine Part')
         verbose_name_plural = _('Machine Parts')
 
     def __str__(self) -> str:
+        """Readable identity for admin and logs."""
         return f'{self.machine.name} — {self.part.name} x{self.quantity}'
 
 
@@ -130,32 +122,23 @@ class AssetMaintenanceRecord(models.Model):
     )
 
     date = models.DateField(
-        verbose_name=_('Date'),
-        help_text=_('Date the maintenance was performed'),
+        verbose_name=_('Date'), help_text=_('Date the maintenance was performed')
     )
 
-    summary = models.CharField(
-        max_length=255,
-        verbose_name=_('Summary'),
-    )
+    summary = models.CharField(max_length=255, verbose_name=_('Summary'))
 
-    details = models.TextField(
-        blank=True,
-        verbose_name=_('Details'),
-    )
+    details = models.TextField(blank=True, verbose_name=_('Details'))
 
     performed_by = models.CharField(
-        max_length=255,
-        blank=True,
-        verbose_name=_('Performed By'),
+        max_length=255, blank=True, verbose_name=_('Performed By')
     )
 
-    work_order = models.ForeignKey(
+    work_order = models.OneToOneField(
         'tasks.KanbanCard',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='maintenance_records',
+        related_name='maintenance_record',
         verbose_name=_('Work Order'),
         help_text=_('Linked Kanban card / work order (optional)'),
     )
@@ -164,9 +147,12 @@ class AssetMaintenanceRecord(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Model metadata."""
+
         ordering = ['-date']
         verbose_name = _('Maintenance Record')
         verbose_name_plural = _('Maintenance Records')
 
     def __str__(self) -> str:
+        """Readable identity for admin and logs."""
         return f'{self.machine.name} — {self.summary} ({self.date})'

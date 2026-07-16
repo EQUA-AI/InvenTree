@@ -1,5 +1,10 @@
 """Build database model definitions."""
 
+# EQUA fork note: this is an upstream InvenTree file; the pre-existing
+# docstring/try-block style predates the preview lint rules. Suppressed
+# file-wide to keep the diff against upstream minimal.
+# ruff: noqa: D421
+
 import decimal
 from typing import Optional, TypedDict
 
@@ -1973,17 +1978,17 @@ class BuildItem(InvenTree.models.InvenTreeMetadataModel):
                 )
             }
 
-        # Ensure that we do not 'over allocate' a stock item
+        # Ensure that we do not 'over allocate' a stock item.
+        # Uses the shared four-domain authority (build + sales + transfer +
+        # job kit) so this build allocation cannot exceed availability against
+        # stock already promised to any other domain.
         available = decimal.Decimal(self.stock_item.quantity)
         quantity = decimal.Decimal(self.quantity)
-        build_allocation_count = decimal.Decimal(
-            self.stock_item.build_allocation_count(exclude_allocations={'pk': self.pk})
-        )
-        sales_allocation_count = decimal.Decimal(
-            self.stock_item.sales_order_allocation_count()
+        committed_allocation = decimal.Decimal(
+            self.stock_item.total_committed_allocation(exclude_build={'pk': self.pk})
         )
 
-        total_allocation = build_allocation_count + sales_allocation_count + quantity
+        total_allocation = committed_allocation + quantity
 
         if total_allocation > available:
             error = {'quantity': _('Stock item is over-allocated')}

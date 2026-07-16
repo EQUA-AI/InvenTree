@@ -74,6 +74,26 @@ export enum ApiEndpoints {
   kanban_card_part_detail = 'kanban/cards/:cardId/parts/:id/',
   kanban_card_allocate = 'kanban/cards/:id/allocate-parts/',
 
+  // Canonical maintenance work orders + Closeout Automation (Feature #15)
+  work_order_list = 'tasks/work-orders/',
+  work_order_detail = 'tasks/work-orders/:id/',
+  work_order_readiness = 'tasks/work-orders/:id/readiness/',
+  work_order_complete = 'tasks/work-orders/:id/complete/',
+  work_order_events = 'tasks/work-orders/:id/events/',
+  work_order_closeout_captures = 'tasks/work-orders/:id/closeout/captures/',
+  work_order_closeout_capture_detail = 'tasks/work-orders/:id/closeout/captures/:capId/',
+  work_order_closeout_capture_extract = 'tasks/work-orders/:id/closeout/captures/:capId/extract/',
+  work_order_closeout_capture_proposal = 'tasks/work-orders/:id/closeout/captures/:capId/proposal/',
+  work_order_closeout_capture_decisions = 'tasks/work-orders/:id/closeout/captures/:capId/decisions/',
+  work_order_closeout_part_usage = 'tasks/work-orders/:id/closeout/part-usage/',
+  work_order_closeout_part_usage_resolve = 'tasks/work-orders/:id/closeout/part-usage/:rowId/resolve/',
+  work_order_closeout_part_usage_refresh = 'tasks/work-orders/:id/closeout/part-usage/refresh/',
+  work_order_closeout_readings = 'tasks/work-orders/:id/closeout/readings/',
+  work_order_closeout_reading_disposition = 'tasks/work-orders/:id/closeout/readings/:readingId/disposition/',
+  work_order_closeout_effects = 'tasks/work-orders/:id/closeout/effects/',
+  work_order_closeout_verify = 'tasks/work-orders/:id/closeout/verify/',
+  work_order_closeout_amendments = 'tasks/work-orders/:id/closeout/amendments/',
+
   // Scoped AI chat governance endpoints (Feature #14)
   aichat_context_resolve = 'aichat/context/resolve/',
   aichat_conversation_list = 'aichat/conversations/',

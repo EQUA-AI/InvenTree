@@ -1,5 +1,10 @@
 """Order model definitions."""
 
+# EQUA fork note: this is an upstream InvenTree file; the pre-existing
+# docstring/try-block style predates the preview lint rules. Suppressed
+# file-wide to keep the diff against upstream minimal.
+# ruff: noqa: D421, PLW0717
+
 from decimal import Decimal
 from typing import Any, Optional, TypedDict
 
@@ -2823,14 +2828,12 @@ class SalesOrderAllocation(models.Model):
         if self.quantity > self.item.quantity:
             errors['quantity'] = _('Allocation quantity cannot exceed stock quantity')
 
-        # Ensure that we do not 'over allocate' a stock item
-        build_allocation_count = self.item.build_allocation_count()
-        sales_allocation_count = self.item.sales_order_allocation_count(
-            exclude_allocations={'pk': self.pk}
-        )
-
+        # Ensure that we do not 'over allocate' a stock item.
+        # Uses the shared four-domain authority (build + sales + transfer + job
+        # kit), excluding this sales allocation from its own domain.
         total_allocation = (
-            build_allocation_count + sales_allocation_count + self.quantity
+            self.item.total_committed_allocation(exclude_sales={'pk': self.pk})
+            + self.quantity
         )
 
         if total_allocation > self.item.quantity:
@@ -3879,14 +3882,13 @@ class TransferOrderAllocation(models.Model):
         if self.quantity > self.item.quantity:
             errors['quantity'] = _('Allocation quantity cannot exceed stock quantity')
 
-        # Ensure that we do not 'over allocate' a stock item
-        build_allocation_count = self.item.build_allocation_count()
-        sales_allocation_count = self.item.sales_order_allocation_count(
-            exclude_allocations={'pk': self.pk}
-        )
-
+        # Ensure that we do not 'over allocate' a stock item.
+        # Uses the shared four-domain authority (build + sales + transfer + job
+        # kit), excluding this transfer allocation from its own domain. The prior
+        # logic ignored the transfer domain entirely, permitting over-allocation.
         total_allocation = (
-            build_allocation_count + sales_allocation_count + self.quantity
+            self.item.total_committed_allocation(exclude_transfer={'pk': self.pk})
+            + self.quantity
         )
 
         if total_allocation > self.item.quantity:

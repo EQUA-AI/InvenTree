@@ -3,10 +3,9 @@
 from django.test import TestCase
 from django.urls import reverse
 
-from InvenTree.unit_test import InvenTreeAPITestCase
-
 from approvals.executors import SafetyGateExecutor
 from approvals.models import ActionType, Approval
+from InvenTree.unit_test import InvenTreeAPITestCase
 
 from . import services
 from .models import (
@@ -15,17 +14,31 @@ from .models import (
     PacketStatus,
     RepairPacket,
     RepairPacketApprovalLink,
-    RepairPacketGate,
     RepairPacketEvent,
+    RepairPacketGate,
     SafetyEvidenceProof,
     SafetyGateTemplate,
 )
 
 
+def _create_electrical_template():
+    return SafetyGateTemplate.objects.create(
+        name='Test electrical lockout',
+        gate_type='loto',
+        applies_to={'fault_keywords': ['motor']},
+    )
+
+
 class SafetyTemplateResolutionTest(TestCase):
     """Template applicability and gate materialisation."""
 
+    @classmethod
+    def setUpTestData(cls):
+        """Create shared test fixtures."""
+        _create_electrical_template()
+
     def test_resolve_templates_creates_matching_gate_once(self):
+        """Test resolve templates creates matching gate once."""
         packet = RepairPacket.objects.create(
             fault_summary='Motor contactor has no voltage',
             status=PacketStatus.DIAGNOSED,
@@ -43,9 +56,9 @@ class SafetyTemplateResolutionTest(TestCase):
         )
 
     def test_pending_blocking_template_gate_blocks_approval(self):
+        """Test pending blocking template gate blocks approval."""
         packet = RepairPacket.objects.create(
-            fault_summary='Motor breaker fault',
-            status=PacketStatus.DIAGNOSED,
+            fault_summary='Motor breaker fault', status=PacketStatus.DIAGNOSED
         )
         services.resolve_safety_gates(packet)
         ok, detail = services.advance_packet(packet, PacketStatus.APPROVED)
@@ -58,13 +71,12 @@ class SafetyGateActionTest(TestCase):
     """Gate confirm / verify / waive behaviour."""
 
     def test_required_photo_blocks_confirm_until_proof_exists(self):
+        """Test required photo blocks confirm until proof exists."""
         packet = RepairPacket.objects.create(
             fault_summary='x', status=PacketStatus.DIAGNOSED
         )
         gate = RepairPacketGate.objects.create(
-            packet=packet,
-            name='Photo gate',
-            requires_photo=True,
+            packet=packet, name='Photo gate', requires_photo=True
         )
 
         ok, detail = services.confirm_gate(gate)
@@ -78,13 +90,12 @@ class SafetyGateActionTest(TestCase):
         self.assertEqual(gate.status, GateStatus.CONFIRMED)
 
     def test_loto_gate_blocks_confirm_until_points_verified(self):
+        """Test loto gate blocks confirm until points verified."""
         packet = RepairPacket.objects.create(
             fault_summary='x', status=PacketStatus.DIAGNOSED
         )
         gate = RepairPacketGate.objects.create(
-            packet=packet,
-            name='LOTO',
-            gate_type='loto',
+            packet=packet, name='LOTO', gate_type='loto'
         )
         point = LockoutPoint.objects.create(
             gate=gate,
@@ -103,15 +114,14 @@ class SafetyGateActionTest(TestCase):
         self.assertTrue(ok, detail)
 
     def test_second_person_verifier_must_differ(self):
+        """Test second person verifier must differ."""
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
         user = User.objects.create_user(username='loto-user')
         packet = RepairPacket.objects.create(fault_summary='x')
         gate = RepairPacketGate.objects.create(
-            packet=packet,
-            name='Two person gate',
-            requires_second_person=True,
+            packet=packet, name='Two person gate', requires_second_person=True
         )
         gate.confirm(user=user)
 
@@ -120,11 +130,10 @@ class SafetyGateActionTest(TestCase):
         self.assertIn('different', detail.lower())
 
     def test_high_risk_waiver_creates_safety_approval(self):
+        """Test high risk waiver creates safety approval."""
         packet = RepairPacket.objects.create(fault_summary='x')
         template = SafetyGateTemplate.objects.create(
-            name='High risk safety gate',
-            gate_type='loto',
-            risk_tier=3,
+            name='High risk safety gate', gate_type='loto', risk_tier=3
         )
         gate = RepairPacketGate.objects.create(
             packet=packet,
@@ -134,9 +143,7 @@ class SafetyGateActionTest(TestCase):
         )
 
         ok, detail = services.waive_gate(
-            gate,
-            reason='controlled exception',
-            authority='EHS supervisor',
+            gate, reason='controlled exception', authority='EHS supervisor'
         )
         self.assertFalse(ok)
         self.assertIn('Safety approval required', detail)
@@ -148,6 +155,7 @@ class SafetyGateActionTest(TestCase):
         )
 
     def test_safety_gate_executor_waives_gate(self):
+        """Test safety gate executor waives gate."""
         packet = RepairPacket.objects.create(fault_summary='x')
         gate = RepairPacketGate.objects.create(packet=packet, name='Executor gate')
         result = SafetyGateExecutor().execute(
@@ -171,13 +179,15 @@ class SafetyGateAPITest(InvenTreeAPITestCase):
     roles = 'all'
 
     def setUp(self):
+        """Create shared test fixtures."""
         super().setUp()
         RepairPacket.objects.all().delete()
 
     def test_resolve_gates_endpoint(self):
+        """Test resolve gates endpoint."""
+        _create_electrical_template()
         packet = RepairPacket.objects.create(
-            fault_summary='Motor coil voltage fault',
-            status=PacketStatus.DIAGNOSED,
+            fault_summary='Motor coil voltage fault', status=PacketStatus.DIAGNOSED
         )
         url = reverse('repair-packet-resolve-gates', kwargs={'pk': packet.pk})
         response = self.post(url, {}, expected_code=200)
@@ -186,15 +196,13 @@ class SafetyGateAPITest(InvenTreeAPITestCase):
         self.assertGreaterEqual(len(response.data['gates']), 1)
 
     def test_proof_then_confirm_endpoint(self):
+        """Test proof then confirm endpoint."""
         packet = RepairPacket.objects.create(fault_summary='x')
         gate = RepairPacketGate.objects.create(
-            packet=packet,
-            name='Photo gate',
-            requires_photo=True,
+            packet=packet, name='Photo gate', requires_photo=True
         )
         proof_url = reverse(
-            'repair-packet-gate-proof',
-            kwargs={'pk': packet.pk, 'gate_pk': gate.pk},
+            'repair-packet-gate-proof', kwargs={'pk': packet.pk, 'gate_pk': gate.pk}
         )
         self.post(
             proof_url,
@@ -202,26 +210,22 @@ class SafetyGateAPITest(InvenTreeAPITestCase):
             expected_code=201,
         )
         confirm_url = reverse(
-            'repair-packet-gate-confirm',
-            kwargs={'pk': packet.pk, 'gate_pk': gate.pk},
+            'repair-packet-gate-confirm', kwargs={'pk': packet.pk, 'gate_pk': gate.pk}
         )
         response = self.post(confirm_url, {'note': 'photo captured'}, expected_code=200)
         self.assertTrue(response.data['ok'])
         self.assertEqual(response.data['status'], GateStatus.CONFIRMED)
 
     def test_lockout_endpoint_blocks_close_until_restored(self):
+        """Test lockout endpoint blocks close until restored."""
         packet = RepairPacket.objects.create(
             fault_summary='x', status=PacketStatus.EXECUTING
         )
         gate = RepairPacketGate.objects.create(
-            packet=packet,
-            name='LOTO',
-            gate_type='loto',
-            status=GateStatus.CONFIRMED,
+            packet=packet, name='LOTO', gate_type='loto', status=GateStatus.CONFIRMED
         )
         lockout_url = reverse(
-            'repair-packet-gate-lockout',
-            kwargs={'pk': packet.pk, 'gate_pk': gate.pk},
+            'repair-packet-gate-lockout', kwargs={'pk': packet.pk, 'gate_pk': gate.pk}
         )
         point = self.post(
             lockout_url,

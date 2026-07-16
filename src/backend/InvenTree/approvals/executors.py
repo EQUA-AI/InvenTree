@@ -7,18 +7,32 @@ the ApprovalExecutor interface.
 """
 
 import hashlib
-
-import structlog
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
 
+import structlog
+
+from .models import ActionType
+
 logger = structlog.get_logger('approvals.executors')
+
+
+EXECUTOR_REQUIRED_ACTIONS = frozenset({
+    ActionType.PROCEDURE_PUBLISH,
+    ActionType.JOB_KIT_SUBSTITUTION,
+})
+
+
+def is_executor_required(action_type) -> bool:
+    """Return whether an action must have a registered executor."""
+    return action_type in EXECUTOR_REQUIRED_ACTIONS
 
 
 # ---------------------------------------------------------------------------
 # Data classes for executor results
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class DriftReport:
@@ -44,6 +58,7 @@ class EffectResult:
 # Base executor class
 # ---------------------------------------------------------------------------
 
+
 class ApprovalExecutor(ABC):
     """Base class for all approval action type executors.
 
@@ -66,9 +81,7 @@ class ApprovalExecutor(ABC):
         ...
 
     @abstractmethod
-    def check_preconditions(
-        self, payload: dict, baseline_context: dict
-    ) -> DriftReport:
+    def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
         """Check live state against baseline for drift.
 
         Called at approve-time (Section 10).
@@ -109,6 +122,7 @@ class ApprovalExecutor(ABC):
 # Executor Registry
 # ---------------------------------------------------------------------------
 
+
 class ExecutorRegistry:
     """Registry of approval executors keyed by action_type.
 
@@ -117,6 +131,7 @@ class ExecutorRegistry:
     """
 
     def __init__(self):
+        """Initialize the instance."""
         self._executors: dict[str, ApprovalExecutor] = {}
 
     def register(self, executor: ApprovalExecutor):
@@ -149,9 +164,7 @@ class ExecutorRegistry:
             KeyError: If no executor is registered for the action_type.
         """
         if action_type not in self._executors:
-            raise KeyError(
-                f'No executor registered for action_type: {action_type}'
-            )
+            raise KeyError(f'No executor registered for action_type: {action_type}')
         return self._executors[action_type]
 
     def has(self, action_type: str) -> bool:
@@ -171,6 +184,7 @@ registry = ExecutorRegistry()
 # Stub executors (Phase 1 — to be replaced with real implementations)
 # ---------------------------------------------------------------------------
 
+
 class EmailExecutor(ApprovalExecutor):
     """Executor for sending emails (Phase 1 stub).
 
@@ -180,6 +194,7 @@ class EmailExecutor(ApprovalExecutor):
     action_type = 'email'
 
     def validate(self, payload: dict) -> list[str]:
+        """Validate."""
         warnings = []
         if 'to' not in payload or not payload['to']:
             warnings.append('Missing "to" recipients')
@@ -187,14 +202,14 @@ class EmailExecutor(ApprovalExecutor):
             warnings.append('Missing "subject"')
         return warnings
 
-    def check_preconditions(
-        self, payload: dict, baseline_context: dict
-    ) -> DriftReport:
+    def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
         # Phase 1: no live checks, always pass
+        """Check preconditions."""
         return DriftReport(has_drift=False)
 
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
         # Phase 1 stub — real implementation in Phase 4
+        """Execute."""
         logger.info(
             'email_executor_stub',
             to=payload.get('to'),
@@ -214,6 +229,7 @@ class PurchaseOrderExecutor(ApprovalExecutor):
     action_type = 'purchase_order'
 
     def validate(self, payload: dict) -> list[str]:
+        """Validate."""
         warnings = []
         if 'supplier_id' not in payload:
             warnings.append('Missing "supplier_id"')
@@ -221,13 +237,13 @@ class PurchaseOrderExecutor(ApprovalExecutor):
             warnings.append('Missing or empty "line_items"')
         return warnings
 
-    def check_preconditions(
-        self, payload: dict, baseline_context: dict
-    ) -> DriftReport:
+    def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
         # Phase 4 will check: supplier exists/active, parts valid, etc.
+        """Check preconditions."""
         return DriftReport(has_drift=False)
 
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
+        """Execute."""
         logger.info(
             'po_executor_stub',
             supplier_id=payload.get('supplier_id'),
@@ -246,6 +262,7 @@ class SalesOrderExecutor(ApprovalExecutor):
     action_type = 'sales_order'
 
     def validate(self, payload: dict) -> list[str]:
+        """Validate."""
         warnings = []
         if 'customer_id' not in payload:
             warnings.append('Missing "customer_id"')
@@ -253,12 +270,12 @@ class SalesOrderExecutor(ApprovalExecutor):
             warnings.append('Missing or empty "line_items"')
         return warnings
 
-    def check_preconditions(
-        self, payload: dict, baseline_context: dict
-    ) -> DriftReport:
+    def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
+        """Check preconditions."""
         return DriftReport(has_drift=False)
 
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
+        """Execute."""
         logger.info(
             'so_executor_stub',
             customer_id=payload.get('customer_id'),
@@ -277,6 +294,7 @@ class StockUpdateExecutor(ApprovalExecutor):
     action_type = 'stock_update'
 
     def validate(self, payload: dict) -> list[str]:
+        """Validate."""
         warnings = []
         if 'stock_item_id' not in payload and 'part_id' not in payload:
             warnings.append('Missing "stock_item_id" or "part_id"')
@@ -286,12 +304,12 @@ class StockUpdateExecutor(ApprovalExecutor):
             warnings.append('Missing "quantity"')
         return warnings
 
-    def check_preconditions(
-        self, payload: dict, baseline_context: dict
-    ) -> DriftReport:
+    def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
+        """Check preconditions."""
         return DriftReport(has_drift=False)
 
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
+        """Execute."""
         logger.info(
             'stock_executor_stub',
             stock_item_id=payload.get('stock_item_id'),
@@ -311,17 +329,18 @@ class WorkflowExecutor(ApprovalExecutor):
     action_type = 'workflow'
 
     def validate(self, payload: dict) -> list[str]:
+        """Validate."""
         warnings = []
         if 'workflow_id' not in payload and 'workflow_name' not in payload:
             warnings.append('Missing "workflow_id" or "workflow_name"')
         return warnings
 
-    def check_preconditions(
-        self, payload: dict, baseline_context: dict
-    ) -> DriftReport:
+    def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
+        """Check preconditions."""
         return DriftReport(has_drift=False)
 
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
+        """Execute."""
         logger.info(
             'workflow_executor_stub',
             workflow_id=payload.get('workflow_id'),
@@ -340,6 +359,7 @@ class NotificationExecutor(ApprovalExecutor):
     action_type = 'notification'
 
     def validate(self, payload: dict) -> list[str]:
+        """Validate."""
         warnings = []
         if 'recipients' not in payload or not payload['recipients']:
             warnings.append('Missing "recipients"')
@@ -347,12 +367,12 @@ class NotificationExecutor(ApprovalExecutor):
             warnings.append('Missing "message"')
         return warnings
 
-    def check_preconditions(
-        self, payload: dict, baseline_context: dict
-    ) -> DriftReport:
+    def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
+        """Check preconditions."""
         return DriftReport(has_drift=False)
 
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
+        """Execute."""
         logger.info(
             'notification_executor_stub',
             recipients=payload.get('recipients'),
@@ -371,6 +391,7 @@ class SafetyGateExecutor(ApprovalExecutor):
     action_type = 'safety_gate'
 
     def validate(self, payload: dict) -> list[str]:
+        """Validate."""
         warnings = []
         if not payload.get('gate_id'):
             warnings.append('gate_id is required')
@@ -380,9 +401,8 @@ class SafetyGateExecutor(ApprovalExecutor):
             warnings.append('reason is required for waiver')
         return warnings
 
-    def check_preconditions(
-        self, payload: dict, baseline_context: dict
-    ) -> DriftReport:
+    def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
+        """Check preconditions."""
         try:
             from repair.models import RepairPacketGate
 
@@ -403,7 +423,8 @@ class SafetyGateExecutor(ApprovalExecutor):
         )
 
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
-        try:
+        """Execute."""
+        try:  # noqa: PLW0717 - established executor effect block
             from repair.models import RepairPacketEvent, RepairPacketGate
 
             gate = RepairPacketGate.objects.get(pk=payload['gate_id'])
@@ -452,6 +473,7 @@ class SafetyGateExecutor(ApprovalExecutor):
 # Register all Phase 1 stub executors
 # ---------------------------------------------------------------------------
 
+
 def register_default_executors():
     """Register all default executors. Called at app startup."""
     executors = [
@@ -475,6 +497,7 @@ register_default_executors()
 # ---------------------------------------------------------------------------
 # Effect idempotency key helper (E-4)
 # ---------------------------------------------------------------------------
+
 
 def compute_effect_idempotency_key(
     approval_idempotency_key: str, effect_type: str, sequence: int = 0

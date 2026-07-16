@@ -64,8 +64,10 @@ export const BuildDetail = Loadable(
   lazy(() => import('./pages/build/BuildDetail'))
 );
 
-export const TasksKanban = Loadable(
-  lazy(() => import('./pages/tasks/Kanban'))
+export const TasksKanban = Loadable(lazy(() => import('./pages/tasks/Kanban')));
+
+export const WorkOrderDetail = Loadable(
+  lazy(() => import('./pages/tasks/workorders/WorkOrderDetail'))
 );
 
 export const RepairPacketIndex = Loadable(
@@ -225,6 +227,7 @@ export const routes = (
       <Route path='tasks/'>
         <Route index element={<Navigate to='kanban/' />} />
         <Route path='kanban/*' element={<TasksKanban />} />
+        <Route path='work-orders/:id/*' element={<WorkOrderDetail />} />
       </Route>
       <Route path='machines/'>
         <Route index element={<Navigate to='index/' />} />

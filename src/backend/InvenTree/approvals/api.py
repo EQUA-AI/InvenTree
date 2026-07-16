@@ -1,54 +1,41 @@
 """API views for the AI Agent Approval Queue.
 
-Implements all endpoints from spec Sections 7.0 – 7.4.
+Implements all endpoints from spec Sections 7.0 - 7.4.
 """
 
 import uuid as _uuid
 
-import structlog
 from django.db import transaction
-from django.db.models import Q
 from django.urls import include, path
 from django.utils import timezone
-from django.utils.translation import gettext_lazy as _
 
 import django_filters.rest_framework.filters as rest_filters
+import structlog
 from django_filters.rest_framework.filterset import FilterSet
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .permissions import (
-    HasApprovalReviewPermission,
-    ApprovalCreationThrottle,
-    ApprovalDecisionThrottle,
-    ApprovalReadThrottle,
-    ApprovalReviseThrottle,
-)
-from .resume import attempt_agent_resume
-from .sanitizers import redact_error
-
 from InvenTree.filters import SEARCH_ORDER_FILTER
-from InvenTree.mixins import (
-    CreateAPI,
-    ListAPI,
-    ListCreateAPI,
-    RetrieveAPI,
-)
+from InvenTree.mixins import CreateAPI, ListAPI, ListCreateAPI, RetrieveAPI
 
 from . import serializers as approval_serializers
 from .models import (
+    TERMINAL_STATUSES,
     Approval,
     ApprovalEvent,
     ApprovalRevision,
     ApprovalStatus,
     EventType,
     ExecutedEffect,
-    TERMINAL_STATUSES,
-    get_lock_ttl_seconds,
-    is_approval_queue_enabled,
-    is_modify_in_chat_enabled,
 )
+from .permissions import (
+    ApprovalDecisionThrottle,
+    ApprovalReadThrottle,
+    ApprovalReviseThrottle,
+    HasApprovalReviewPermission,
+)
+from .resume import attempt_agent_resume
+from .sanitizers import redact_error
 
 logger = structlog.get_logger('approvals.api')
 
@@ -56,6 +43,7 @@ logger = structlog.get_logger('approvals.api')
 # ---------------------------------------------------------------------------
 # Filters
 # ---------------------------------------------------------------------------
+
 
 class ApprovalFilter(FilterSet):
     """Filter for the approval list endpoint."""
@@ -72,6 +60,8 @@ class ApprovalFilter(FilterSet):
     )
 
     class Meta:
+        """Metadata options."""
+
         model = Approval
         fields = ['status', 'risk_tier', 'action_type', 'assigned_to']
 
@@ -84,6 +74,7 @@ class ApprovalFilter(FilterSet):
 # ---------------------------------------------------------------------------
 # Read endpoints (Section 7.1)
 # ---------------------------------------------------------------------------
+
 
 class ApprovalList(ListCreateAPI):
     """List approvals with filters, or create a new approval.
@@ -147,9 +138,7 @@ class ApprovalList(ListCreateAPI):
             response_status = status.HTTP_200_OK
 
         detail_serializer = approval_serializers.ApprovalDetailSerializer(approval)
-        return Response(
-            detail_serializer.data, status=response_status, headers=headers
-        )
+        return Response(detail_serializer.data, status=response_status, headers=headers)
 
     def _check_entity_conflicts(self, exclude_pk, entity_refs):
         """Check for active approvals targeting the same entities."""
@@ -159,9 +148,9 @@ class ApprovalList(ListCreateAPI):
 
         # Build JSON containment query for overlapping entity_refs
         return (
-            Approval.objects.filter(
-                status__in=active_statuses,
-                payload__entity_refs__contains=entity_refs,
+            Approval.objects
+            .filter(
+                status__in=active_statuses, payload__entity_refs__contains=entity_refs
             )
             .exclude(pk=exclude_pk)
             .first()
@@ -180,6 +169,7 @@ class ApprovalDetail(RetrieveAPI):
     lookup_field = 'pk'
 
     def get_queryset(self):
+        """Return the scoped queryset."""
         return Approval.objects.all()
 
 
@@ -195,6 +185,7 @@ class ApprovalCardPackage(RetrieveAPI):
     lookup_field = 'pk'
 
     def get_queryset(self):
+        """Return the scoped queryset."""
         return Approval.objects.all()
 
 
@@ -211,6 +202,7 @@ class ApprovalCount(ListAPI):
     filter_backends = SEARCH_ORDER_FILTER
 
     def get_queryset(self):
+        """Return the scoped queryset."""
         return Approval.objects.all()
 
     def list(self, request, *args, **kwargs):
@@ -230,9 +222,10 @@ class ApprovalRevisionList(ListAPI):
     serializer_class = approval_serializers.ApprovalRevisionSerializer
 
     def get_queryset(self):
-        return ApprovalRevision.objects.filter(
-            approval_id=self.kwargs['pk']
-        ).order_by('revision_number')
+        """Return the scoped queryset."""
+        return ApprovalRevision.objects.filter(approval_id=self.kwargs['pk']).order_by(
+            'revision_number'
+        )
 
 
 class ApprovalEventList(ListAPI):
@@ -246,14 +239,16 @@ class ApprovalEventList(ListAPI):
     serializer_class = approval_serializers.ApprovalEventSerializer
 
     def get_queryset(self):
-        return ApprovalEvent.objects.filter(
-            approval_id=self.kwargs['pk']
-        ).order_by('timestamp')
+        """Return the scoped queryset."""
+        return ApprovalEvent.objects.filter(approval_id=self.kwargs['pk']).order_by(
+            'timestamp'
+        )
 
 
 # ---------------------------------------------------------------------------
 # Write endpoints (Section 7.2) — state machine actions
 # ---------------------------------------------------------------------------
+
 
 def _get_approval_or_404(pk):
     """Get an approval by PK without row lock (read-only use)."""
@@ -291,11 +286,12 @@ class ApprovalOpenView(CreateAPI):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        """Create."""
         approval = _get_approval_for_update(self.kwargs['pk'])
         if not approval:
             return _error_response(
                 'not_found',
-                f"Approval {self.kwargs['pk']} not found",
+                f'Approval {self.kwargs["pk"]} not found',
                 status.HTTP_404_NOT_FOUND,
             )
 
@@ -307,10 +303,7 @@ class ApprovalOpenView(CreateAPI):
                 current_status=approval.status,
             )
 
-        approval.transition_to(
-            ApprovalStatus.IN_REVIEW,
-            actor_user=request.user,
-        )
+        approval.transition_to(ApprovalStatus.IN_REVIEW, actor_user=request.user)
 
         return Response(
             approval_serializers.ApprovalDetailSerializer(approval).data,
@@ -330,11 +323,12 @@ class ApprovalConfirmViewedView(CreateAPI):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        """Create."""
         approval = _get_approval_for_update(self.kwargs['pk'])
         if not approval:
             return _error_response(
                 'not_found',
-                f"Approval {self.kwargs['pk']} not found",
+                f'Approval {self.kwargs["pk"]} not found',
                 status.HTTP_404_NOT_FOUND,
             )
 
@@ -360,9 +354,13 @@ class ApprovalConfirmViewedView(CreateAPI):
         now = timezone.now()
         approval.viewed_confirmed_at = now
         approval.viewed_confirmed_by_user = request.user
-        approval.save(update_fields=[
-            'viewed_confirmed_at', 'viewed_confirmed_by_user', 'updated_at',
-        ])
+        approval.save(
+            update_fields=[
+                'viewed_confirmed_at',
+                'viewed_confirmed_by_user',
+                'updated_at',
+            ]
+        )
 
         ApprovalEvent.objects.create(
             approval=approval,
@@ -389,6 +387,7 @@ class ApprovalRequestChangesView(CreateAPI):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        """Create."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -396,7 +395,7 @@ class ApprovalRequestChangesView(CreateAPI):
         if not approval:
             return _error_response(
                 'not_found',
-                f"Approval {self.kwargs['pk']} not found",
+                f'Approval {self.kwargs["pk"]} not found',
                 status.HTTP_404_NOT_FOUND,
             )
 
@@ -411,9 +410,7 @@ class ApprovalRequestChangesView(CreateAPI):
         approval.transition_to(
             ApprovalStatus.CHANGES_REQUESTED,
             actor_user=request.user,
-            event_payload={
-                'instructions': serializer.validated_data['instructions'],
-            },
+            event_payload={'instructions': serializer.validated_data['instructions']},
         )
 
         return Response(
@@ -440,15 +437,14 @@ class ApprovalApproveView(CreateAPI):
     serializer_class = approval_serializers.ApproveSerializer
 
     def create(self, request, *args, **kwargs):
+        """Create."""
         pk = self.kwargs['pk']
 
         # ── Phase 1: Read-only checks (no lock, no transaction) ──
         approval = _get_approval_or_404(pk)
         if not approval:
             return _error_response(
-                'not_found',
-                f'Approval {pk} not found',
-                status.HTTP_404_NOT_FOUND,
+                'not_found', f'Approval {pk} not found', status.HTTP_404_NOT_FOUND
             )
 
         # Idempotent: if already approved/executing/succeeded, return current
@@ -476,7 +472,8 @@ class ApprovalApproveView(CreateAPI):
                 holder_user_id=approval.lock_holder_id,
                 expires_at=(
                     approval.modification_lock_expires_at.isoformat()
-                    if approval.modification_lock_expires_at else None
+                    if approval.modification_lock_expires_at
+                    else None
                 ),
             )
 
@@ -496,14 +493,15 @@ class ApprovalApproveView(CreateAPI):
             )
 
         # ── Phase 2: Revalidation (no lock, may do network I/O) ──
+        from .executors import is_executor_required
         from .executors import registry as executor_registry
 
         executor = None
         if executor_registry.has(approval.action_type):
             executor = executor_registry.get(approval.action_type)
-            try:
+            try:  # noqa: PLW0717 - established drift-check block
                 drift_report = executor.check_preconditions(
-                    approval.payload, approval.baseline_context,
+                    approval.payload, approval.baseline_context
                 )
                 if drift_report and getattr(drift_report, 'has_drift', False):
                     with transaction.atomic():
@@ -513,9 +511,7 @@ class ApprovalApproveView(CreateAPI):
                                 approval=locked,
                                 event_type=EventType.REVALIDATION_FAILED,
                                 actor_user=request.user,
-                                event_payload={
-                                    'drift_report': str(drift_report),
-                                },
+                                event_payload={'drift_report': str(drift_report)},
                             )
                             if locked.can_transition_to(
                                 ApprovalStatus.CHANGES_REQUESTED
@@ -523,9 +519,7 @@ class ApprovalApproveView(CreateAPI):
                                 locked.transition_to(
                                     ApprovalStatus.CHANGES_REQUESTED,
                                     actor_user=request.user,
-                                    event_payload={
-                                        'reason': 'revalidation_failed',
-                                    },
+                                    event_payload={'reason': 'revalidation_failed'},
                                 )
                     return _error_response(
                         'conflict',
@@ -533,20 +527,14 @@ class ApprovalApproveView(CreateAPI):
                         status.HTTP_409_CONFLICT,
                     )
             except Exception:
-                logger.warning(
-                    'revalidation_error',
-                    approval_id=str(pk),
-                    exc_info=True,
-                )
+                logger.warning('revalidation_error', approval_id=str(pk), exc_info=True)
 
         # ── Phase 3: Lock + transition to approved → executing ──
         with transaction.atomic():
             locked = _get_approval_for_update(pk)
             if not locked:
                 return _error_response(
-                    'not_found',
-                    f'Approval {pk} not found',
-                    status.HTTP_404_NOT_FOUND,
+                    'not_found', f'Approval {pk} not found', status.HTTP_404_NOT_FOUND
                 )
 
             # Re-verify state after acquiring lock
@@ -572,27 +560,33 @@ class ApprovalApproveView(CreateAPI):
                     current_status=locked.status,
                 )
 
-            locked.transition_to(
-                ApprovalStatus.APPROVED, actor_user=request.user,
-            )
-            if locked.can_transition_to(ApprovalStatus.EXECUTING):
-                locked.transition_to(
-                    ApprovalStatus.EXECUTING, actor_user=request.user,
+            missing_required_executor = is_executor_required(
+                locked.action_type
+            ) and not executor_registry.has(locked.action_type)
+            locked.transition_to(ApprovalStatus.APPROVED, actor_user=request.user)
+            if missing_required_executor:
+                locked.execution_error = redact_error(
+                    'No executor registered for required action'
                 )
+                locked.transition_to(
+                    ApprovalStatus.FAILED,
+                    actor_user=request.user,
+                    extra_update_fields=['execution_error'],
+                )
+            elif locked.can_transition_to(ApprovalStatus.EXECUTING):
+                locked.transition_to(ApprovalStatus.EXECUTING, actor_user=request.user)
 
         # ── Phase 4: Execute via executor (outside transaction) ──
         effect_result = None
         if executor:
             try:
-                effect_result = executor.execute(
-                    locked.payload, locked.idempotency_key,
-                )
+                effect_result = executor.execute(locked.payload, locked.idempotency_key)
             except Exception as exc:
-                logger.error(
-                    'executor_failed', approval_id=str(pk), exc_info=True,
-                )
+                logger.error('executor_failed', approval_id=str(pk), exc_info=True)
                 effect_result = type(
-                    'EffectResult', (), {
+                    'EffectResult',
+                    (),
+                    {
                         'success': False,
                         'error_message': str(exc),
                         'result_payload': None,
@@ -608,16 +602,15 @@ class ApprovalApproveView(CreateAPI):
                     from .executors import compute_effect_idempotency_key
 
                     effect_key = compute_effect_idempotency_key(
-                        locked.idempotency_key, locked.action_type,
+                        locked.idempotency_key, locked.action_type
                     )
                     ExecutedEffect.objects.get_or_create(
                         idempotency_key=effect_key,
                         defaults={
                             'approval': locked,
                             'effect_type': locked.action_type,
-                            'effect_ref': getattr(
-                                effect_result, 'effect_ref', '',
-                            ) or '',
+                            'effect_ref': getattr(effect_result, 'effect_ref', '')
+                            or '',
                         },
                     )
                     locked.execution_result = (
@@ -629,20 +622,26 @@ class ApprovalApproveView(CreateAPI):
                         extra_update_fields=['execution_result'],
                     )
                 elif effect_result and not effect_result.success:
-                    locked.execution_error = redact_error(
-                        effect_result.error_message,
-                    )
+                    locked.execution_error = redact_error(effect_result.error_message)
                     locked.transition_to(
                         ApprovalStatus.FAILED,
                         actor_user=request.user,
                         extra_update_fields=['execution_error'],
                     )
                 else:
-                    # No executor registered — transition to succeeded
-                    locked.transition_to(
-                        ApprovalStatus.SUCCEEDED,
-                        actor_user=request.user,
-                    )
+                    if is_executor_required(locked.action_type):
+                        locked.execution_error = redact_error(
+                            'No executor registered for required action'
+                        )
+                        locked.transition_to(
+                            ApprovalStatus.FAILED,
+                            actor_user=request.user,
+                            extra_update_fields=['execution_error'],
+                        )
+                    else:
+                        locked.transition_to(
+                            ApprovalStatus.SUCCEEDED, actor_user=request.user
+                        )
 
         # ── Phase 6: Agent resume (outside transaction) ──
         attempt_agent_resume(locked, 'approved', request.user)
@@ -665,6 +664,7 @@ class ApprovalDenyView(CreateAPI):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        """Create."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -672,7 +672,7 @@ class ApprovalDenyView(CreateAPI):
         if not approval:
             return _error_response(
                 'not_found',
-                f"Approval {self.kwargs['pk']} not found",
+                f'Approval {self.kwargs["pk"]} not found',
                 status.HTTP_404_NOT_FOUND,
             )
 
@@ -694,7 +694,8 @@ class ApprovalDenyView(CreateAPI):
                 holder_user_id=approval.lock_holder_id,
                 expires_at=(
                     approval.modification_lock_expires_at.isoformat()
-                    if approval.modification_lock_expires_at else None
+                    if approval.modification_lock_expires_at
+                    else None
                 ),
             )
 
@@ -738,6 +739,7 @@ class ApprovalCancelView(CreateAPI):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        """Create."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -745,7 +747,7 @@ class ApprovalCancelView(CreateAPI):
         if not approval:
             return _error_response(
                 'not_found',
-                f"Approval {self.kwargs['pk']} not found",
+                f'Approval {self.kwargs["pk"]} not found',
                 status.HTTP_404_NOT_FOUND,
             )
 
@@ -769,17 +771,16 @@ class ApprovalCancelView(CreateAPI):
         # If there are revisions beyond 0, revert to previous
         if approval.current_revision_number > 0:
             prev_revision = ApprovalRevision.objects.filter(
-                approval=approval,
-                revision_number=approval.current_revision_number - 1,
+                approval=approval, revision_number=approval.current_revision_number - 1
             ).first()
             if prev_revision:
                 old_revision = approval.current_revision_number
                 approval.payload = prev_revision.payload_snapshot
                 # A-7: Update current_revision_number on revert
                 approval.current_revision_number = prev_revision.revision_number
-                approval.save(update_fields=[
-                    'payload', 'current_revision_number', 'updated_at',
-                ])
+                approval.save(
+                    update_fields=['payload', 'current_revision_number', 'updated_at']
+                )
 
                 ApprovalEvent.objects.create(
                     approval=approval,
@@ -826,11 +827,12 @@ class ApprovalAcquireModifyLockView(CreateAPI):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        """Create."""
         approval = _get_approval_for_update(self.kwargs['pk'])
         if not approval:
             return _error_response(
                 'not_found',
-                f"Approval {self.kwargs['pk']} not found",
+                f'Approval {self.kwargs["pk"]} not found',
                 status.HTTP_404_NOT_FOUND,
             )
 
@@ -853,7 +855,8 @@ class ApprovalAcquireModifyLockView(CreateAPI):
                 holder_user_id=approval.lock_holder_id,
                 expires_at=(
                     approval.modification_lock_expires_at.isoformat()
-                    if approval.modification_lock_expires_at else None
+                    if approval.modification_lock_expires_at
+                    else None
                 ),
             )
 
@@ -872,27 +875,21 @@ class ApprovalReleaseModifyLockView(CreateAPI):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        """Create."""
         approval = _get_approval_for_update(self.kwargs['pk'])
         if not approval:
             return _error_response(
                 'not_found',
-                f"Approval {self.kwargs['pk']} not found",
+                f'Approval {self.kwargs["pk"]} not found',
                 status.HTTP_404_NOT_FOUND,
             )
 
         try:
             approval.release_lock(request.user)
         except ValueError as e:
-            return _error_response(
-                'forbidden',
-                str(e),
-                status.HTTP_403_FORBIDDEN,
-            )
+            return _error_response('forbidden', str(e), status.HTTP_403_FORBIDDEN)
 
-        return Response(
-            {'detail': 'Lock released'},
-            status=status.HTTP_200_OK,
-        )
+        return Response({'detail': 'Lock released'}, status=status.HTTP_200_OK)
 
 
 class ApprovalReviseView(CreateAPI):
@@ -907,6 +904,7 @@ class ApprovalReviseView(CreateAPI):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        """Create."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -914,7 +912,7 @@ class ApprovalReviseView(CreateAPI):
         if not approval:
             return _error_response(
                 'not_found',
-                f"Approval {self.kwargs['pk']} not found",
+                f'Approval {self.kwargs["pk"]} not found',
                 status.HTTP_404_NOT_FOUND,
             )
 
@@ -929,7 +927,10 @@ class ApprovalReviseView(CreateAPI):
             )
 
         # Lock enforcement
-        if approval.is_lock_active and approval.modification_lock_user_id != request.user.pk:
+        if (
+            approval.is_lock_active
+            and approval.modification_lock_user_id != request.user.pk
+        ):
             return _error_response(
                 'locked',
                 'Approval is being modified by another user',
@@ -937,7 +938,8 @@ class ApprovalReviseView(CreateAPI):
                 holder_user_id=approval.modification_lock_user_id,
                 expires_at=(
                     approval.modification_lock_expires_at.isoformat()
-                    if approval.modification_lock_expires_at else None
+                    if approval.modification_lock_expires_at
+                    else None
                 ),
             )
 
@@ -968,9 +970,9 @@ class ApprovalReviseView(CreateAPI):
         # Update approval
         approval.payload = data['payload']
         approval.current_revision_number = new_revision_number
-        approval.save(update_fields=[
-            'payload', 'current_revision_number', 'updated_at',
-        ])
+        approval.save(
+            update_fields=['payload', 'current_revision_number', 'updated_at']
+        )
 
         # Emit revised event
         ApprovalEvent.objects.create(
@@ -1000,11 +1002,7 @@ approvals_api_urls = [
         '<uuid:pk>/',
         include([
             # Sub-action endpoints
-            path(
-                'open/',
-                ApprovalOpenView.as_view(),
-                name='api-approval-open',
-            ),
+            path('open/', ApprovalOpenView.as_view(), name='api-approval-open'),
             path(
                 'confirm-viewed/',
                 ApprovalConfirmViewedView.as_view(),
@@ -1016,20 +1014,10 @@ approvals_api_urls = [
                 name='api-approval-request-changes',
             ),
             path(
-                'approve/',
-                ApprovalApproveView.as_view(),
-                name='api-approval-approve',
+                'approve/', ApprovalApproveView.as_view(), name='api-approval-approve'
             ),
-            path(
-                'deny/',
-                ApprovalDenyView.as_view(),
-                name='api-approval-deny',
-            ),
-            path(
-                'cancel/',
-                ApprovalCancelView.as_view(),
-                name='api-approval-cancel',
-            ),
+            path('deny/', ApprovalDenyView.as_view(), name='api-approval-deny'),
+            path('cancel/', ApprovalCancelView.as_view(), name='api-approval-cancel'),
             path(
                 'acquire-modify-lock/',
                 ApprovalAcquireModifyLockView.as_view(),
@@ -1040,11 +1028,7 @@ approvals_api_urls = [
                 ApprovalReleaseModifyLockView.as_view(),
                 name='api-approval-release-lock',
             ),
-            path(
-                'revise/',
-                ApprovalReviseView.as_view(),
-                name='api-approval-revise',
-            ),
+            path('revise/', ApprovalReviseView.as_view(), name='api-approval-revise'),
             path(
                 'card-package/',
                 ApprovalCardPackage.as_view(),
@@ -1055,29 +1039,13 @@ approvals_api_urls = [
                 ApprovalRevisionList.as_view(),
                 name='api-approval-revisions',
             ),
-            path(
-                'events/',
-                ApprovalEventList.as_view(),
-                name='api-approval-events',
-            ),
+            path('events/', ApprovalEventList.as_view(), name='api-approval-events'),
             # Detail view (must be last to avoid matching sub-paths)
-            path(
-                '',
-                ApprovalDetail.as_view(),
-                name='api-approval-detail',
-            ),
+            path('', ApprovalDetail.as_view(), name='api-approval-detail'),
         ]),
     ),
     # Count endpoint (before list to avoid UUID matching)
-    path(
-        'count/',
-        ApprovalCount.as_view(),
-        name='api-approval-count',
-    ),
+    path('count/', ApprovalCount.as_view(), name='api-approval-count'),
     # List + create endpoint
-    path(
-        '',
-        ApprovalList.as_view(),
-        name='api-approval-list',
-    ),
+    path('', ApprovalList.as_view(), name='api-approval-list'),
 ]

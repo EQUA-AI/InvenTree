@@ -275,17 +275,34 @@ def cancel_capture(
 def handoff_capture(*, capture: VoiceCaptureSession):
     """Hand the exact accepted revision to its canonical destination.
 
-    Fails closed for both purposes until their substrate is live:
-    ``fault_intake`` requires the canonical Repair intake service (WS11) and
-    ``closeout`` requires Feature #15's ``CloseoutCapture`` contract. Voice
-    never writes packets or work orders itself (NG-07).
+    ``closeout`` hands the accepted revision to Feature #15's
+    ``CloseoutCapture`` contract (fails closed while the closeout wizard is
+    disabled); ``fault_intake`` still fails closed until the canonical Repair
+    intake service (WS11) exists. Voice never writes packets or work orders
+    itself (NG-07): the destination service authorizes, snapshots, and
+    replays under its own idempotency.
     """
     if capture.state != CaptureState.ACCEPTED:
         raise CaptureError('only an accepted capture may be handed off')
     if capture.purpose == CapturePurpose.CLOSEOUT:
-        raise DestinationUnavailable(
-            'Feature #15 CloseoutCapture substrate is not live'
-        )
+        from tasks.services import closeout_capture as closeout_service
+
+        try:
+            closeout_row = closeout_service.accept_voice_handoff(voice_capture=capture)
+        except closeout_service.VoiceHandoffUnavailable as exc:
+            raise DestinationUnavailable(str(exc)) from exc
+        except closeout_service.WorkOrderCommandError as exc:
+            error = CaptureError(str(exc))
+            error.code = getattr(exc, 'code', CaptureError.code)
+            raise error from exc
+
+        with transaction.atomic():
+            locked = VoiceCaptureSession.objects.select_for_update().get(pk=capture.pk)
+            if locked.state == CaptureState.ACCEPTED:
+                locked.state = CaptureState.COMMITTED
+                locked.save(update_fields=['state', 'updated_at'])
+            capture.state = locked.state
+        return closeout_row
     raise DestinationUnavailable(
         'canonical Repair packet intake service (WS11) is not live'
     )

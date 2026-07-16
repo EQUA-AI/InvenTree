@@ -1,6 +1,6 @@
 """Comprehensive tests for the AI Agent Approval Queue.
 
-Covers spec Sections 18.1–18.5:
+Covers spec Sections 18.1-18.5:
 - 18.1: Unit tests (FSM, idempotency, concurrency, locks, gates)
 - 18.2: Integration tests (drift, revalidation)
 - 18.3: End-to-end tests (happy path, deny, modify, expiry, cancel-revert)
@@ -8,20 +8,21 @@ Covers spec Sections 18.1–18.5:
 - 18.5: Failure injection tests
 """
 
-import json
 import uuid
 from datetime import timedelta
-from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import TestCase, override_settings
 from django.utils import timezone
+
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from .executors import DriftReport, EffectResult, registry
+from .executors import EffectResult, is_executor_required, registry
 from .models import (
+    TERMINAL_STATUSES,
+    VALID_TRANSITIONS,
     ActionType,
     Approval,
     ApprovalEvent,
@@ -29,8 +30,6 @@ from .models import (
     ApprovalStatus,
     EventType,
     ExecutedEffect,
-    TERMINAL_STATUSES,
-    VALID_TRANSITIONS,
     compute_idempotency_key,
     get_lock_ttl_seconds,
     is_valid_transition,
@@ -41,6 +40,7 @@ User = get_user_model()
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_approval_data(**overrides):
     """Build valid approval creation payload with defaults."""
@@ -69,19 +69,16 @@ class ApprovalTestBase(TestCase):
     """Base class for approval tests with common setup."""
 
     def setUp(self):
+        """Create shared test fixtures."""
         self.user = User.objects.create_user(
-            username='reviewer',
-            password='testpass123',
-            email='reviewer@test.com',
+            username='reviewer', password='testpass123', email='reviewer@test.com'
         )
         self.user2 = User.objects.create_user(
-            username='reviewer2',
-            password='testpass123',
-            email='reviewer2@test.com',
+            username='reviewer2', password='testpass123', email='reviewer2@test.com'
         )
         # Grant approvals.review permission for write operations
         review_perm = Permission.objects.get(
-            codename='review', content_type__app_label='approvals',
+            codename='review', content_type__app_label='approvals'
         )
         self.user.user_permissions.add(review_perm)
         self.user2.user_permissions.add(review_perm)
@@ -266,9 +263,7 @@ class IdempotencyTests(ApprovalTestBase):
         approval.transition_to(ApprovalStatus.DENIED, actor_user=self.user)
 
         resp = self.client.post(
-            f'/api/approvals/{approval.pk}/deny/',
-            {'reason': 'Again'},
-            format='json',
+            f'/api/approvals/{approval.pk}/deny/', {'reason': 'Again'}, format='json'
         )
         self.assertEqual(resp.status_code, 200)
 
@@ -290,7 +285,11 @@ class OptimisticConcurrencyTests(ApprovalTestBase):
         resp = self.client.post(
             f'/api/approvals/{approval.pk}/revise/',
             {
-                'payload': {'updated': True, 'entity_refs': {}, 'intent_summary': 'revised'},
+                'payload': {
+                    'updated': True,
+                    'entity_refs': {},
+                    'intent_summary': 'revised',
+                },
                 'expected_revision': 0,
                 'diff_summary': {'changed': ['summary']},
             },
@@ -332,10 +331,7 @@ class OptimisticConcurrencyTests(ApprovalTestBase):
 
         resp = self.client.post(
             f'/api/approvals/{approval.pk}/revise/',
-            {
-                'payload': {'test': True},
-                'expected_revision': 0,
-            },
+            {'payload': {'test': True}, 'expected_revision': 0},
             format='json',
         )
         self.assertEqual(resp.status_code, 409)
@@ -365,10 +361,7 @@ class LockEnforcementTests(ApprovalTestBase):
 
         resp = self.client2.post(
             f'/api/approvals/{approval.pk}/revise/',
-            {
-                'payload': {'test': True},
-                'expected_revision': 0,
-            },
+            {'payload': {'test': True}, 'expected_revision': 0},
             format='json',
         )
         self.assertEqual(resp.status_code, 423)
@@ -387,10 +380,7 @@ class LockEnforcementTests(ApprovalTestBase):
         approval.acquire_lock(self.user2)
         resp = self.client2.post(
             f'/api/approvals/{approval.pk}/revise/',
-            {
-                'payload': {'test': True},
-                'expected_revision': 0,
-            },
+            {'payload': {'test': True}, 'expected_revision': 0},
             format='json',
         )
         self.assertEqual(resp.status_code, 200)
@@ -414,9 +404,7 @@ class LockEnforcementTests(ApprovalTestBase):
         approval.acquire_lock(self.user)
 
         resp = self.client2.post(
-            f'/api/approvals/{approval.pk}/deny/',
-            {'reason': 'no'},
-            format='json',
+            f'/api/approvals/{approval.pk}/deny/', {'reason': 'no'}, format='json'
         )
         self.assertEqual(resp.status_code, 423)
 
@@ -438,7 +426,7 @@ class LockEnforcementTests(ApprovalTestBase):
         approval.transition_to(ApprovalStatus.IN_REVIEW, actor_user=self.user)
 
         resp1 = self.client.post(f'/api/approvals/{approval.pk}/acquire-modify-lock/')
-        expires1 = resp1.data['expires_at']
+        self.assertIn('expires_at', resp1.data)
 
         # Re-acquire extends lease
         resp2 = self.client.post(f'/api/approvals/{approval.pk}/acquire-modify-lock/')
@@ -467,6 +455,29 @@ class ViewedConfirmedGateTests(ApprovalTestBase):
         resp = self.client.post(f'/api/approvals/{approval.pk}/approve/')
         self.assertEqual(resp.status_code, 200)
 
+    def test_required_action_without_executor_fails_closed(self):
+        """Required actions cannot succeed without an executor.
+
+        Uses JOB_KIT_SUBSTITUTION: it is executor-required but has no registered
+        executor (unlike PROCEDURE_PUBLISH, which the tasks app registers).
+        """
+        approval = self._create_approval_obj(
+            action_type=ActionType.JOB_KIT_SUBSTITUTION
+        )
+        approval.transition_to(ApprovalStatus.IN_REVIEW, actor_user=self.user)
+        self.client.post(f'/api/approvals/{approval.pk}/confirm-viewed/')
+
+        resp = self.client.post(f'/api/approvals/{approval.pk}/approve/')
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        approval.refresh_from_db()
+        self.assertEqual(approval.status, ApprovalStatus.FAILED)
+        self.assertEqual(
+            approval.execution_error,
+            {'error': 'No executor registered for required action'},
+        )
+        self.assertFalse(ExecutedEffect.objects.filter(approval=approval).exists())
+
     def test_viewed_confirmed_persists_across_revisions(self):
         """viewed_confirmed_at does NOT reset after /revise."""
         approval = self._create_approval_obj()
@@ -481,10 +492,7 @@ class ViewedConfirmedGateTests(ApprovalTestBase):
         approval.acquire_lock(self.user)
         self.client.post(
             f'/api/approvals/{approval.pk}/revise/',
-            {
-                'payload': {'updated': True},
-                'expected_revision': 0,
-            },
+            {'payload': {'updated': True}, 'expected_revision': 0},
             format='json',
         )
 
@@ -507,7 +515,11 @@ class CancelRevertTests(ApprovalTestBase):
         self.client.post(
             f'/api/approvals/{approval.pk}/revise/',
             {
-                'payload': {'changed': True, 'entity_refs': {}, 'intent_summary': 'changed'},
+                'payload': {
+                    'changed': True,
+                    'entity_refs': {},
+                    'intent_summary': 'changed',
+                },
                 'expected_revision': 0,
             },
             format='json',
@@ -531,8 +543,7 @@ class CancelRevertTests(ApprovalTestBase):
         # Check cancel_reverted event exists
         self.assertTrue(
             ApprovalEvent.objects.filter(
-                approval=approval,
-                event_type=EventType.CANCEL_REVERTED,
+                approval=approval, event_type=EventType.CANCEL_REVERTED
             ).exists()
         )
 
@@ -540,10 +551,7 @@ class CancelRevertTests(ApprovalTestBase):
         """Cancel on approval with only revision 0 transitions to canceled."""
         approval = self._create_approval_obj()
 
-        resp = self.client.post(
-            f'/api/approvals/{approval.pk}/cancel/',
-            format='json',
-        )
+        resp = self.client.post(f'/api/approvals/{approval.pk}/cancel/', format='json')
         self.assertEqual(resp.status_code, 200)
         approval.refresh_from_db()
         self.assertEqual(approval.status, ApprovalStatus.CANCELED)
@@ -551,8 +559,7 @@ class CancelRevertTests(ApprovalTestBase):
         # No cancel_reverted event should exist
         self.assertFalse(
             ApprovalEvent.objects.filter(
-                approval=approval,
-                event_type=EventType.CANCEL_REVERTED,
+                approval=approval, event_type=EventType.CANCEL_REVERTED
             ).exists()
         )
 
@@ -601,16 +608,14 @@ class RevisionManagementTests(ApprovalTestBase):
         for i in range(2):
             self.client.post(
                 f'/api/approvals/{approval.pk}/revise/',
-                {
-                    'payload': {'version': i + 1},
-                    'expected_revision': i,
-                },
+                {'payload': {'version': i + 1}, 'expected_revision': i},
                 format='json',
             )
 
         resp = self.client.get(f'/api/approvals/{approval.pk}/revisions/')
         self.assertEqual(resp.status_code, 200)
-        revisions = resp.data['results'] if 'results' in resp.data else resp.data
+        # resp.data is a ReturnList when unpaginated, a dict when paginated.
+        revisions = resp.data['results'] if isinstance(resp.data, dict) else resp.data
         numbers = [r['revision_number'] for r in revisions]
         self.assertEqual(numbers, [0, 1, 2])
 
@@ -729,8 +734,10 @@ class DriftRevalidationTests(ApprovalTestBase):
         self.assertEqual(resp.status_code, 200)
         warnings = resp.data.get('validation_warnings', [])
         self.assertTrue(
-            any('old' in w.lower() or 'stale' in w.lower() or 'threshold' in w.lower()
-                for w in warnings),
+            any(
+                'old' in w.lower() or 'stale' in w.lower() or 'threshold' in w.lower()
+                for w in warnings
+            ),
             f'Expected stale baseline warning, got: {warnings}',
         )
 
@@ -744,6 +751,7 @@ class HappyPathE2ETest(ApprovalTestBase):
     """E2E: created → opened → viewed → approved → executing → succeeded."""
 
     def test_full_happy_path(self):
+        """Test full happy path."""
         approval = self._create_approval_obj()
         self.assertEqual(approval.status, ApprovalStatus.PENDING)
 
@@ -762,6 +770,12 @@ class HappyPathE2ETest(ApprovalTestBase):
         self.assertEqual(resp.status_code, 200)
         approval.refresh_from_db()
         self.assertEqual(approval.status, ApprovalStatus.SUCCEEDED)
+        self.assertEqual(
+            ExecutedEffect.objects.filter(
+                approval=approval, effect_type=ActionType.PURCHASE_ORDER
+            ).count(),
+            1,
+        )
         self.assertTrue(approval.is_terminal)
         self.assertIsNotNone(approval.resolved_at)
 
@@ -770,6 +784,7 @@ class DenyPathE2ETest(ApprovalTestBase):
     """E2E: created → opened → denied."""
 
     def test_deny_path(self):
+        """Test deny path."""
         approval = self._create_approval_obj()
 
         self.client.post(f'/api/approvals/{approval.pk}/open/')
@@ -788,6 +803,7 @@ class ModifyPathE2ETest(ApprovalTestBase):
     """E2E: created → opened → lock → revised → unlock → approved → succeeded."""
 
     def test_modify_path(self):
+        """Test modify path."""
         approval = self._create_approval_obj()
 
         self.client.post(f'/api/approvals/{approval.pk}/open/')
@@ -797,7 +813,11 @@ class ModifyPathE2ETest(ApprovalTestBase):
         resp = self.client.post(
             f'/api/approvals/{approval.pk}/revise/',
             {
-                'payload': {'revised': True, 'entity_refs': {}, 'intent_summary': 'revised'},
+                'payload': {
+                    'revised': True,
+                    'entity_refs': {},
+                    'intent_summary': 'revised',
+                },
                 'expected_revision': 0,
                 'diff_summary': {'changed': ['line_items']},
                 'note': 'Updated quantities',
@@ -820,6 +840,7 @@ class CancelRevertPathE2ETest(ApprovalTestBase):
     """E2E: created → revised → cancel → payload reverted → canceled."""
 
     def test_cancel_revert_path(self):
+        """Test cancel revert path."""
         approval = self._create_approval_obj()
         original_payload = approval.payload.copy()
 
@@ -828,18 +849,13 @@ class CancelRevertPathE2ETest(ApprovalTestBase):
 
         self.client.post(
             f'/api/approvals/{approval.pk}/revise/',
-            {
-                'payload': {'modified': True},
-                'expected_revision': 0,
-            },
+            {'payload': {'modified': True}, 'expected_revision': 0},
             format='json',
         )
         approval.release_lock(self.user)
 
         resp = self.client.post(
-            f'/api/approvals/{approval.pk}/cancel/',
-            {'reason': 'Revert'},
-            format='json',
+            f'/api/approvals/{approval.pk}/cancel/', {'reason': 'Revert'}, format='json'
         )
         self.assertEqual(resp.status_code, 200)
         approval.refresh_from_db()
@@ -936,8 +952,7 @@ class ReconciliationJobTests(ApprovalTestBase):
     """Test the reconciliation background job (Section 11.5)."""
 
     @override_settings(
-        APPROVAL_QUEUE_ENABLED=True,
-        APPROVAL_EXECUTION_STUCK_THRESHOLD_SECONDS=1800,
+        APPROVAL_QUEUE_ENABLED=True, APPROVAL_EXECUTION_STUCK_THRESHOLD_SECONDS=1800
     )
     def test_stuck_executing_transitions_to_failed(self):
         """Stuck executing approval transitions to failed."""
@@ -965,11 +980,13 @@ class ReconciliationJobTests(ApprovalTestBase):
         approval.modification_lock_user = self.user
         approval.modification_lock_acquired_at = timezone.now() - timedelta(minutes=20)
         approval.modification_lock_expires_at = timezone.now() - timedelta(minutes=10)
-        approval.save(update_fields=[
-            'modification_lock_user',
-            'modification_lock_acquired_at',
-            'modification_lock_expires_at',
-        ])
+        approval.save(
+            update_fields=[
+                'modification_lock_user',
+                'modification_lock_acquired_at',
+                'modification_lock_expires_at',
+            ]
+        )
 
         reconcile_approvals()
 
@@ -1004,8 +1021,7 @@ class RetentionPurgeTests(ApprovalTestBase):
     """Test the retention purge background job (Section 15)."""
 
     @override_settings(
-        APPROVAL_RETENTION_PURGE_ENABLED=True,
-        APPROVAL_RETENTION_DAYS=90,
+        APPROVAL_RETENTION_PURGE_ENABLED=True, APPROVAL_RETENTION_DAYS=90
     )
     def test_purge_deletes_old_terminal_approvals(self):
         """Purge job deletes terminal approvals older than retention threshold."""
@@ -1021,8 +1037,7 @@ class RetentionPurgeTests(ApprovalTestBase):
         self.assertFalse(Approval.objects.filter(pk=approval.pk).exists())
 
     @override_settings(
-        APPROVAL_RETENTION_PURGE_ENABLED=True,
-        APPROVAL_RETENTION_DAYS=90,
+        APPROVAL_RETENTION_PURGE_ENABLED=True, APPROVAL_RETENTION_DAYS=90
     )
     def test_purge_keeps_recent_terminal(self):
         """Purge job keeps terminal approvals within retention period."""
@@ -1046,13 +1061,20 @@ class RetentionPurgeTests(ApprovalTestBase):
 class ExecutorRegistryTests(TestCase):
     """Test executor registry (Section 17)."""
 
-    def test_all_action_types_registered(self):
-        """All ActionType values have registered executors."""
+    def test_all_non_required_action_types_registered(self):
+        """All non-required ActionType values have registered executors."""
         for action_type in ActionType.values:
-            self.assertTrue(
-                registry.has(action_type),
-                f'No executor registered for {action_type}',
-            )
+            if not is_executor_required(action_type):
+                self.assertTrue(
+                    registry.has(action_type),
+                    f'No executor registered for {action_type}',
+                )
+
+    def test_executor_required_actions(self):
+        """Only maintenance effect actions require executors."""
+        required = {ActionType.PROCEDURE_PUBLISH, ActionType.JOB_KIT_SUBSTITUTION}
+        for action_type in ActionType.values:
+            self.assertEqual(is_executor_required(action_type), action_type in required)
 
     def test_get_executor(self):
         """Registry returns correct executor for action type."""
@@ -1068,7 +1090,7 @@ class ExecutorRegistryTests(TestCase):
         """Executors validate payloads."""
         executor = registry.get('purchase_order')
         warnings = executor.validate({})
-        self.assertTrue(len(warnings) > 0)
+        self.assertGreater(len(warnings), 0)
 
         warnings = executor.validate({
             'supplier_id': 42,
@@ -1086,8 +1108,7 @@ class ExecutorRegistryTests(TestCase):
         """Executors return EffectResult."""
         executor = registry.get('email')
         result = executor.execute(
-            {'to': ['a@b.com'], 'subject': 'Test'},
-            'test-key-123',
+            {'to': ['a@b.com'], 'subject': 'Test'}, 'test-key-123'
         )
         self.assertIsInstance(result, EffectResult)
         self.assertTrue(result.success)
@@ -1176,7 +1197,7 @@ class ApprovalCreationTests(ApprovalTestBase):
         self.assertEqual(approval.status, ApprovalStatus.PENDING)
         self.assertIsNotNone(approval.expires_at)
         self.assertEqual(approval.current_revision_number, 0)
-        self.assertTrue(len(approval.idempotency_key) == 64)
+        self.assertEqual(len(approval.idempotency_key), 64)
 
         # Revision 0 exists
         self.assertTrue(
@@ -1215,30 +1236,40 @@ class ConfigurationTests(TestCase):
 
     @override_settings(APPROVAL_DEFAULT_EXPIRY_DAYS=14)
     def test_custom_expiry_days(self):
+        """Test custom expiry days."""
         from .models import get_default_expiry_days
+
         self.assertEqual(get_default_expiry_days(), 14)
 
     @override_settings(APPROVAL_MODIFY_LOCK_TTL_SECONDS=300)
     def test_custom_lock_ttl(self):
-        from .models import get_lock_ttl_seconds
+        """Test custom lock ttl."""
         self.assertEqual(get_lock_ttl_seconds(), 300)
 
     @override_settings(APPROVAL_RETENTION_DAYS=180)
     def test_custom_retention_days(self):
+        """Test custom retention days."""
         from .models import get_retention_days
+
         self.assertEqual(get_retention_days(), 180)
 
     @override_settings(APPROVAL_QUEUE_ENABLED=True)
     def test_queue_enabled(self):
+        """Test queue enabled."""
         from .models import is_approval_queue_enabled
+
         self.assertTrue(is_approval_queue_enabled())
 
     @override_settings(APPROVAL_RESUME_STUCK_THRESHOLD_SECONDS=600)
     def test_custom_resume_threshold(self):
+        """Test custom resume threshold."""
         from .models import get_resume_stuck_threshold_seconds
+
         self.assertEqual(get_resume_stuck_threshold_seconds(), 600)
 
     @override_settings(APPROVAL_EXECUTION_STUCK_THRESHOLD_SECONDS=3600)
     def test_custom_execution_threshold(self):
+        """Test custom execution threshold."""
         from .models import get_execution_stuck_threshold_seconds
+
         self.assertEqual(get_execution_stuck_threshold_seconds(), 3600)
