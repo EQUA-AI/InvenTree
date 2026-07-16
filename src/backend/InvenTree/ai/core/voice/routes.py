@@ -31,11 +31,21 @@ router = APIRouter(prefix="/voice", tags=["voice"])
 #: transport is honestly unavailable and text remains the fallback.
 _provider_channel_factory = None
 
+#: Companion hook: an async callable tearing down the provider channel for
+#: one ended session id. Installed beside the factory by the app lifespan.
+_provider_channel_closer = None
+
 
 def set_provider_channel_factory(factory) -> None:
     """Install (or clear) the Voice Live provider channel factory."""
     global _provider_channel_factory
     _provider_channel_factory = factory
+
+
+def set_provider_channel_closer(closer) -> None:
+    """Install (or clear) the async per-session provider channel closer."""
+    global _provider_channel_closer
+    _provider_channel_closer = closer
 
 
 class VoiceSessionCreateRequest(BaseModel):
@@ -213,6 +223,12 @@ async def end_voice_session(session_id: str) -> dict:
     session = await sync_to_async(
         lambda: realtime.end_session(session=session), thread_sensitive=True
     )()
+    if _provider_channel_closer is not None:
+        try:
+            await _provider_channel_closer(str(session.id))
+        except Exception:
+            # The sweeper reconciles channels we could not close cleanly.
+            logger.warning("Voice channel close failed", extra={"session": str(session.id)})
     return _session_payload(session, settings)
 
 
@@ -359,6 +375,35 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
             }
         except realtime.VoiceSessionError as exc:
             raise _session_error(exc) from None
+
+        # Exact TTS (WS4-T8): persist-before-speak already happened above, so
+        # the payload builder can prove the text/hash pair before any speech
+        # request. A missing or failed channel leaves playback honestly
+        # pending; the visible chat answer is never blocked by TTS.
+        channel = _provider_channel_factory(session) if _provider_channel_factory else None
+        send_control = getattr(channel, "send_control", None)
+        if send_control is not None:
+            from ai.core.voice.speech import ExactSpeechViolation, build_exact_tts_payload
+            from voice.models import PlaybackState
+
+            try:
+                tts_payload = build_exact_tts_payload(
+                    persisted_text=utterance.spoken_summary,
+                    persisted_hash=utterance.spoken_summary_hash,
+                )
+                await send_control(tts_payload)
+            except ExactSpeechViolation as exc:
+                raise HTTPException(status_code=409, detail="IDEMPOTENCY_CONFLICT") from exc
+            except Exception:
+                logger.warning("Exact TTS dispatch failed", extra={"session": str(session.id)})
+            else:
+                utterance = await sync_to_async(
+                    lambda: realtime.mark_playback(
+                        utterance=utterance, state=PlaybackState.REQUESTED
+                    ),
+                    thread_sensitive=True,
+                )()
+                spoken["playback_state"] = utterance.playback_state
 
     return {
         "session_id": str(session.id),

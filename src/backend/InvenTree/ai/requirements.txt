@@ -20,6 +20,10 @@ agent-framework-devui==1.0.0b251120
 azure-ai-documentintelligence>=1.0.0
 azure-identity>=1.15.0
 openai>=1.12.0
+# Foundry project agent invocation (Luna agent_reference mode, owner decision
+# 2026-07-15). The Voice Live gateway itself uses aiohttp + azure-identity
+# directly against the pinned wire protocol; no Voice Live SDK is required.
+azure-ai-projects>=2.1.0
 
 # =============================================================================
 # Web Framework

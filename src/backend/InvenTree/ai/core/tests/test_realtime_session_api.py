@@ -390,3 +390,93 @@ def test_capability_probe_serves_configured_confidence_floor():
 
     result = _run(_principal(user), lambda: voice_capability(), settings)
     assert result["confidence_floor"] == 0.7  # noqa: RUF069
+
+
+def test_turn_bridge_dispatches_exact_tts_through_provider_channel():
+    user = _user()
+    settings = _settings([user.pk])
+    principal = _principal(user)
+    created = _run(
+        principal,
+        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        settings,
+    )
+
+    sent = []
+
+    class SpeakingChannel:
+        async def request_sdp_answer(self, _payload):  # pragma: no cover - unused
+            raise AssertionError("no SDP expected in this test")
+
+        async def send_control(self, payload):
+            sent.append(payload)
+
+    routes.set_provider_channel_factory(lambda session: SpeakingChannel())  # noqa: ARG005
+    try:
+        with (
+            patch.object(ai_app, "get_turn_service", return_value=_FakeTurnService()),
+            patch(
+                "ai.core.trusted_context.build_trusted_turn_context",
+                return_value=SimpleNamespace(),
+            ),
+        ):
+            result = _run(
+                principal,
+                lambda: submit_voice_turn(
+                    created["id"],
+                    VoiceTurnRequest(transcript="Pump is vibrating.", item_id="item-tts"),
+                ),
+                settings,
+            )
+    finally:
+        routes.set_provider_channel_factory(None)
+
+    # Persist-before-speak: playback advanced only after the exact payload
+    # was accepted, and the spoken bytes equal the persisted summary.
+    assert result["spoken"]["playback_state"] == "requested"
+    assert len(sent) == 1
+    assert sent[0]["type"] == "response.create"
+    message = sent[0]["response"]["pre_generated_assistant_message"]
+    assert message["content"][0]["text"] == result["spoken"]["spoken_summary"]
+
+
+def test_turn_bridge_tts_failure_leaves_playback_honestly_pending():
+    user = _user()
+    settings = _settings([user.pk])
+    principal = _principal(user)
+    created = _run(
+        principal,
+        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        settings,
+    )
+
+    class BrokenChannel:
+        async def request_sdp_answer(self, _payload):  # pragma: no cover - unused
+            raise AssertionError("no SDP expected in this test")
+
+        async def send_control(self, _payload):
+            raise RuntimeError("provider connection lost")
+
+    routes.set_provider_channel_factory(lambda session: BrokenChannel())  # noqa: ARG005
+    try:
+        with (
+            patch.object(ai_app, "get_turn_service", return_value=_FakeTurnService()),
+            patch(
+                "ai.core.trusted_context.build_trusted_turn_context",
+                return_value=SimpleNamespace(),
+            ),
+        ):
+            result = _run(
+                principal,
+                lambda: submit_voice_turn(
+                    created["id"],
+                    VoiceTurnRequest(transcript="Pump is vibrating.", item_id="item-fail"),
+                ),
+                settings,
+            )
+    finally:
+        routes.set_provider_channel_factory(None)
+
+    # The visible chat answer is never blocked by TTS; playback stays pending.
+    assert result["response_state"] == "complete"
+    assert result["spoken"]["playback_state"] == "pending"

@@ -198,6 +198,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     get_workflow_root()
     logger.info("Root workflow initialized")
 
+    # Voice Live provider gateway (WS4-T4 deployment wiring). Installed only
+    # when the realtime flag is on; otherwise the SDP relay keeps reporting
+    # honestly unavailable and text remains the fallback.
+    if settings.feature_voice_live:
+        from ai.core.voice import gateway as voice_gateway
+        from ai.core.voice.routes import (
+            set_provider_channel_closer,
+            set_provider_channel_factory,
+        )
+
+        set_provider_channel_factory(voice_gateway.channel_for_session)
+        set_provider_channel_closer(voice_gateway.close_channel)
+        logger.info("Voice Live provider gateway installed")
+
     # Durable threads and turns are owned exclusively by the aichat repository.
     # The workflow's legacy memory object is execution-local and is not an
     # authorization or persistence source.
@@ -219,6 +233,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield  # noqa: RUF075
 
     # Cleanup
+    if settings.feature_voice_live:
+        from ai.core.voice import gateway as voice_gateway
+
+        await voice_gateway.shutdown()
+
     if devui_settings.enabled:
         devui = get_devui()
         await devui.stop()
