@@ -1,0 +1,811 @@
+{
+  "schema_version": 1,
+  "legacy_records": {
+    "machine_parts": [
+      {
+        "machine": "Packaging Line 2 Conveyor",
+        "ipn": "TB1",
+        "part_name": "Test Board 1",
+        "quantity": 1,
+        "notes": "Controller test board (placeholder link)"
+      },
+      {
+        "machine": "Packaging Line 2 Conveyor",
+        "ipn": "TB2",
+        "part_name": "Test Board 2",
+        "quantity": 2,
+        "notes": "Sensor interface boards (placeholder link)"
+      },
+      {
+        "machine": "Packaging Line 2 Conveyor",
+        "ipn": "002.02-PCB",
+        "part_name": "Widget Board",
+        "quantity": 1,
+        "notes": "Local I/O board (placeholder link)"
+      },
+      {
+        "machine": "Unit 3 Switchgear Breaker",
+        "ipn": "BRK-MTZ3-3P",
+        "part_name": "MasterPacT MTZ3 circuit breaker",
+        "quantity": 1,
+        "notes": "Breaker assembly (placeholder link)"
+      },
+      {
+        "machine": "Unit 3 Switchgear Breaker",
+        "ipn": "MAST",
+        "part_name": "Master Assembly",
+        "quantity": 1,
+        "notes": "Associated master assembly (placeholder link)"
+      },
+      {
+        "machine": "Air Compressor #4",
+        "ipn": "TB3",
+        "part_name": "Test Board 3",
+        "quantity": 1,
+        "notes": "Diagnostics board (placeholder link)"
+      },
+      {
+        "machine": "Air Compressor #4",
+        "ipn": "002.01-PCBA",
+        "part_name": "Widget Board (assembled)",
+        "quantity": 1,
+        "notes": "Control PCB assembly (placeholder link)"
+      },
+      {
+        "machine": "Boiler Feed Pump B",
+        "ipn": "002.01-PCB",
+        "part_name": "Widget Board",
+        "quantity": 1,
+        "notes": "Control PCB (placeholder link)"
+      },
+      {
+        "machine": "Boiler Feed Pump B",
+        "ipn": "WID-TEMPLATE",
+        "part_name": "Widget Assembly",
+        "quantity": 1,
+        "notes": "Template assembly (placeholder link)"
+      },
+      {
+        "machine": "Customer Test Stand (ACME)",
+        "ipn": "WID-REV-A",
+        "part_name": "Widget Assembly Variant",
+        "quantity": 1,
+        "notes": "Test stand assembly variant (placeholder link)"
+      },
+      {
+        "machine": "Customer Test Stand (ACME)",
+        "ipn": "WID-REV-B",
+        "part_name": "Widget Assembly Variant",
+        "quantity": 1,
+        "notes": "Test stand assembly variant (placeholder link)"
+      }
+    ],
+    "maintenance": [
+      {
+        "machine": "Packaging Line 2 Conveyor",
+        "date": "2026-01-18",
+        "summary": "Replaced discharge photoeye",
+        "details": "Sensor was intermittently dropping; replaced and re-aligned bracket. Verified I/O in PLC.",
+        "performed_by": "J. Rivera"
+      },
+      {
+        "machine": "Packaging Line 2 Conveyor",
+        "date": "2026-02-02",
+        "summary": "Tightened drive belt, checked VFD params",
+        "details": "Belt tension adjusted; verified accel/decel and overload settings.",
+        "performed_by": "M. Patel"
+      },
+      {
+        "machine": "Unit 3 Switchgear Breaker",
+        "date": "2025-12-12",
+        "summary": "Annual PM + trip test",
+        "details": "Cleaned arc chute area, inspected contacts, performed secondary injection test.",
+        "performed_by": "L. Chen"
+      },
+      {
+        "machine": "Air Compressor #4",
+        "date": "2026-01-05",
+        "summary": "Service kit change",
+        "details": "Replaced intake filter and oil separator; topped up oil to spec. Checked for leaks.",
+        "performed_by": "S. Nguyen"
+      },
+      {
+        "machine": "Boiler Feed Pump B",
+        "date": "2026-02-10",
+        "summary": "Seal inspection",
+        "details": "Observed minor weep at seal; scheduled seal replacement next outage window.",
+        "performed_by": "A. Gomez"
+      },
+      {
+        "machine": "Customer Test Stand (ACME)",
+        "date": "2026-02-07",
+        "summary": "Remote troubleshooting session",
+        "details": "Customer reported intermittent test failures; updated PLC debounce logic and provided new procedure.",
+        "performed_by": "Support Team"
+      }
+    ]
+  },
+  "customers": [
+    {
+      "name": "ACME Manufacturing",
+      "description": "Demo customer operating an EQUA acceptance-test cell at its Austin quality lab.",
+      "active": true,
+      "is_customer": true,
+      "is_supplier": false,
+      "is_manufacturer": false,
+      "legacy_machine": "Customer Test Stand (ACME)"
+    }
+  ],
+  "parts": [
+    {
+      "ipn": "EQ-CNV-DRV-2200",
+      "name": "Conveyor Gearmotor, 2.2 kW",
+      "description": "Helical-bevel gearmotor for the Packaging Line 2 conveyor drive station."
+    },
+    {
+      "ipn": "EQ-CNV-VFD-G120C",
+      "name": "Variable Frequency Drive, 2.2 kW",
+      "description": "480 VAC variable frequency drive configured for the Line 2 conveyor."
+    },
+    {
+      "ipn": "EQ-CNV-PE-W4",
+      "name": "Conveyor Photoelectric Sensor",
+      "description": "Polarized retro-reflective sensor used for carton detection and accumulation control."
+    },
+    {
+      "ipn": "EQ-CNV-BELT-M25",
+      "name": "Modular Conveyor Belt, M25",
+      "description": "Food-grade modular belt supplied as one 18 m endless conveyor assembly."
+    },
+    {
+      "ipn": "EQ-CNV-BRG-30",
+      "name": "Conveyor Drive Bearing, 30 mm",
+      "description": "Sealed flange bearing supporting the conveyor head-shaft assembly."
+    },
+    {
+      "ipn": "EQ-SWG-VI-15KV",
+      "name": "15 kV Vacuum Interrupter Pole",
+      "description": "Replacement vacuum interrupter pole assembly for the Unit 3 feeder breaker."
+    },
+    {
+      "ipn": "EQ-SWG-TRIP-P3U",
+      "name": "Feeder Protection Trip Unit",
+      "description": "Digital overcurrent and ground-fault protection unit for the Unit 3 feeder."
+    },
+    {
+      "ipn": "EQ-SWG-CM-125V",
+      "name": "Breaker Spring-Charging Motor, 125 VDC",
+      "description": "DC motor used to charge the breaker closing spring."
+    },
+    {
+      "ipn": "EQ-SWG-CC-125V",
+      "name": "Breaker Closing Coil, 125 VDC",
+      "description": "Replacement closing release coil for the Unit 3 breaker mechanism."
+    },
+    {
+      "ipn": "EQ-SWG-TC-125V",
+      "name": "Breaker Trip Coil, 125 VDC",
+      "description": "Replacement shunt trip coil for the Unit 3 breaker mechanism."
+    },
+    {
+      "ipn": "EQ-AC4-AF-GA30",
+      "name": "Compressor Intake Air Filter",
+      "description": "Intake filter element sized for the Atlas Copco GA 30 compressor."
+    },
+    {
+      "ipn": "EQ-AC4-OF-GA30",
+      "name": "Compressor Oil Filter",
+      "description": "Full-flow lubricant filter used during the GA 30 service interval."
+    },
+    {
+      "ipn": "EQ-AC4-AS-GA30",
+      "name": "Compressor Air-Oil Separator",
+      "description": "Air-oil separator element for the GA 30 compressor vessel."
+    },
+    {
+      "ipn": "EQ-AC4-TEMP-PT100",
+      "name": "Compressor Discharge Temperature Sensor",
+      "description": "PT100 probe monitoring air-end discharge temperature."
+    },
+    {
+      "ipn": "EQ-AC4-DRAIN-EWD",
+      "name": "Electronic Condensate Drain",
+      "description": "Zero-loss electronic drain installed below the compressor moisture separator."
+    },
+    {
+      "ipn": "EQ-BFP-SEAL-CR45",
+      "name": "Boiler Feed Pump Cartridge Seal",
+      "description": "High-temperature cartridge mechanical seal for the CR 45 feed pump."
+    },
+    {
+      "ipn": "EQ-BFP-BRG-6312",
+      "name": "Boiler Feed Pump Motor Bearing Set",
+      "description": "Matched drive-end and non-drive-end bearing set for the pump motor."
+    },
+    {
+      "ipn": "EQ-BFP-CPL-42",
+      "name": "Boiler Feed Pump Coupling Insert",
+      "description": "Elastomer coupling insert between the feed pump and motor."
+    },
+    {
+      "ipn": "EQ-BFP-MTR-30KW",
+      "name": "Boiler Feed Pump Motor, 30 kW",
+      "description": "TEFC 30 kW motor for the standby boiler feed pump."
+    },
+    {
+      "ipn": "EQ-BFP-PT-16BAR",
+      "name": "Feedwater Pressure Transmitter, 16 bar",
+      "description": "4-20 mA discharge-pressure transmitter for feedwater control and alarming."
+    },
+    {
+      "ipn": "EQ-TS200-PLC",
+      "name": "TS-200 Safety PLC Controller",
+      "description": "Safety-rated PLC controlling the ACME acceptance-test sequence."
+    },
+    {
+      "ipn": "EQ-TS200-DAQ16",
+      "name": "TS-200 16-Channel DAQ Module",
+      "description": "Isolated analog acquisition module for voltage, current, and temperature checks."
+    },
+    {
+      "ipn": "EQ-TS200-SR",
+      "name": "TS-200 Dual-Channel Safety Relay",
+      "description": "Monitored safety relay for the guard switch and emergency-stop circuit."
+    },
+    {
+      "ipn": "EQ-TS200-SCAN",
+      "name": "TS-200 Industrial Barcode Scanner",
+      "description": "Fixed-mount scanner used for serial-number and test-recipe selection."
+    },
+    {
+      "ipn": "EQ-TS200-PSU24",
+      "name": "TS-200 24 VDC Power Supply",
+      "description": "DIN-rail 24 VDC, 20 A supply for test-stand controls and fixtures."
+    },
+    {
+      "ipn": "TB1",
+      "name": "Test Board 1",
+      "description": "Primary controller interface board used by engineering test fixtures.",
+      "reuse_existing": true
+    },
+    {
+      "ipn": "TB2",
+      "name": "Test Board 2",
+      "description": "Secondary sensor and communications interface board for bench diagnostics.",
+      "reuse_existing": true
+    },
+    {
+      "ipn": "TB3",
+      "name": "Test Board 3",
+      "description": "Fault-injection and diagnostics board used during repair verification.",
+      "reuse_existing": true
+    },
+    {
+      "ipn": "002.02-PCB",
+      "name": "Widget Board",
+      "description": "Configurable I/O board used in prototypes and automated test fixtures.",
+      "reuse_existing": true
+    },
+    {
+      "ipn": "EQ-LAB-PSU-60V",
+      "name": "Programmable Bench Power Supply, 60 V",
+      "description": "Dual-output programmable DC supply with remote sense and data logging."
+    },
+    {
+      "ipn": "EQ-LAB-ESD-MON",
+      "name": "Dual-Operator ESD Monitor",
+      "description": "Continuous wrist-strap and work-surface monitor for Electronics Bench 1."
+    }
+  ],
+  "machines": [
+    {
+      "name": "Packaging Line 2 Conveyor",
+      "description": "Critical carton-transfer conveyor between case packer CP-02 and palletizer PL-02. Rated for 1,200 cartons/hour with three accumulation zones and one 18 m modular belt. Commissioned 2021-08-14; owner: Packaging; criticality: High; PM cadence: monthly inspection and quarterly drive service. Isolate MCC-L2-07 and release pneumatic stops before work.",
+      "active": true,
+      "location": "Plant A / Packaging Hall / Line 2 / Zone P2-04",
+      "customer": null,
+      "manufacturer": "Interroll",
+      "model": "MCP Modular Conveyor",
+      "serial": "PLC2-CONV-001",
+      "legacy_identity": {
+        "manufacturer": "Interroll",
+        "model": "Modular Conveyor",
+        "serial": "PLC2-CONV-001"
+      },
+      "installed_parts": [
+        {
+          "ipn": "EQ-CNV-DRV-2200",
+          "quantity": 1,
+          "notes": "Drive station DS-02; 25.8:1 ratio; normal motor current 3.6-4.1 A."
+        },
+        {
+          "ipn": "EQ-CNV-VFD-G120C",
+          "quantity": 1,
+          "notes": "Panel MCC-L2-07; parameter backup CONV-L2-2026-06 is the approved baseline."
+        },
+        {
+          "ipn": "EQ-CNV-PE-W4",
+          "quantity": 6,
+          "notes": "Sensors PE-201 through PE-206 cover infeed, accumulation, and discharge zones."
+        },
+        {
+          "ipn": "EQ-CNV-BELT-M25",
+          "quantity": 1,
+          "notes": "18 m endless belt; inspect hinge rods monthly and replace at 10% link damage."
+        },
+        {
+          "ipn": "EQ-CNV-BRG-30",
+          "quantity": 2,
+          "notes": "Head-shaft bearings BRG-DS and BRG-NDS; grease with NSF H1 every quarter."
+        }
+      ],
+      "maintenance": [
+        {
+          "date": "2025-09-12",
+          "summary": "Quarterly conveyor inspection and lubrication",
+          "details": "Locked out MCC-L2-07, inspected all belt hinge rods and wear strips, lubricated both head-shaft bearings, and checked gearbox leakage. Belt damage measured below 2%; bearing temperatures stabilized at 43 C drive side and 41 C non-drive side after restart.",
+          "performed_by": "M. Patel",
+          "work_order": {
+            "reference": "WO-DEMO-250912-001",
+            "type": "preventive",
+            "priority": "medium"
+          }
+        },
+        {
+          "date": "2026-01-18",
+          "summary": "Replaced discharge photoeye PE-206",
+          "details": "PE-206 intermittently dropped carton presence because its lens seal had failed. Replaced the sensor, set the reflector margin to 62%, realigned the bracket, and completed 200-carton verification with zero missed counts. Line downtime was 47 minutes.",
+          "performed_by": "J. Rivera",
+          "work_order": {
+            "reference": "WO-DEMO-260118-001",
+            "type": "corrective",
+            "priority": "high"
+          }
+        },
+        {
+          "date": "2026-04-03",
+          "summary": "Adjusted belt tracking and inspected drive train",
+          "details": "Corrected a 9 mm discharge-side belt drift, squared the tail shaft, verified sprocket alignment, and torqued bearing fasteners to 48 Nm. Gearmotor vibration was 2.1 mm/s RMS, below the 4.5 mm/s alert limit.",
+          "performed_by": "M. Patel",
+          "work_order": {
+            "reference": "WO-DEMO-260403-001",
+            "type": "preventive",
+            "priority": "medium"
+          }
+        },
+        {
+          "date": "2026-06-21",
+          "summary": "Resolved VFD overcurrent trips at palletizer handoff",
+          "details": "Trend data showed current spikes when accumulation zone 3 released a full queue. Freed a sticking pneumatic stop, restored the approved VFD acceleration ramp from 0.8 s to 1.5 s, and saved a new parameter backup. Peak current fell from 7.9 A to 5.2 A across 20 loaded starts.",
+          "performed_by": "L. Chen",
+          "work_order": {
+            "reference": "WO-DEMO-260621-001",
+            "type": "corrective",
+            "priority": "high"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Unit 3 Switchgear Breaker",
+      "description": "Primary 13.8 kV vacuum feeder breaker supplying Unit 3 process loads from lineup SG-3. Rated 1,200 A with 25 kA interrupting duty. Commissioned 2019-05-22; owner: Electrical; criticality: Safety Critical; PM cadence: annual outage service plus quarterly visual and thermographic inspection. Arc-flash boundary is 3.7 m; follow the approved switching order and verify absence of voltage before racking.",
+      "active": true,
+      "location": "Plant A / Substation U3 / Lineup SG-3 / Cubicle 3B",
+      "customer": null,
+      "manufacturer": "Schneider Electric",
+      "model": "EvoPacT HVX 15 kV",
+      "serial": "U3-SWG-BKR-0138",
+      "legacy_identity": {
+        "manufacturer": "Schneider Electric",
+        "model": "Masterpact MTZ",
+        "serial": "U3-SWG-BKR-0138"
+      },
+      "installed_parts": [
+        {
+          "ipn": "EQ-SWG-VI-15KV",
+          "quantity": 3,
+          "notes": "Phase A-C pole assemblies; 2025 contact-wear readings: 1.1, 1.0, and 1.2 mm."
+        },
+        {
+          "ipn": "EQ-SWG-TRIP-P3U",
+          "quantity": 1,
+          "notes": "Protection profile U3-FDR-R5; settings changes require Electrical Engineering approval."
+        },
+        {
+          "ipn": "EQ-SWG-CM-125V",
+          "quantity": 1,
+          "notes": "Spring-charge motor M1; replaced 2026-03-07 after insulation resistance declined."
+        },
+        {
+          "ipn": "EQ-SWG-CC-125V",
+          "quantity": 1,
+          "notes": "Closing coil Y1; measured resistance 188 ohm at the 2025 annual PM."
+        },
+        {
+          "ipn": "EQ-SWG-TC-125V",
+          "quantity": 1,
+          "notes": "Trip coil Y2; measured resistance 176 ohm at the 2025 annual PM."
+        }
+      ],
+      "maintenance": [
+        {
+          "date": "2025-08-20",
+          "summary": "Quarterly infrared inspection",
+          "details": "Scanned the closed cubicle at 78% feeder load. Maximum phase-to-phase temperature delta was 2.4 C at the upper stabs, below the 10 C alert threshold. No abnormal heating was found at control-power terminals.",
+          "performed_by": "Electrical Reliability Team",
+          "work_order": null
+        },
+        {
+          "date": "2025-12-12",
+          "summary": "Annual outage PM and secondary-injection test",
+          "details": "Breaker was isolated, racked to test, cleaned, lubricated, and inspected. Contact resistance measured 31, 29, and 32 micro-ohm. Secondary injection confirmed long-time, short-time, instantaneous, and ground-fault pickup within tolerance. Trip time was 52 ms.",
+          "performed_by": "L. Chen / HighVolt Services",
+          "work_order": {
+            "reference": "WO-DEMO-251212-001",
+            "type": "preventive",
+            "priority": "high"
+          }
+        },
+        {
+          "date": "2026-03-07",
+          "summary": "Replaced spring-charging motor M1",
+          "details": "The motor stalled intermittently at the end of charge. Insulation resistance was 1.8 Mohm versus the 10 Mohm minimum. Replaced M1, verified limit-switch timing, and completed 25 close-open cycles. Charge time improved from 19.4 s to 8.7 s.",
+          "performed_by": "L. Chen",
+          "work_order": {
+            "reference": "WO-DEMO-260307-001",
+            "type": "corrective",
+            "priority": "high"
+          }
+        },
+        {
+          "date": "2026-06-18",
+          "summary": "Verified feeder protection settings and trip circuit",
+          "details": "Compared active settings against approved profile U3-FDR-R5, tested remote and local trip paths, verified 125 VDC control supply at 128.4 V, and checked trip-circuit supervision. No deviations or alarms were found.",
+          "performed_by": "A. Gomez",
+          "work_order": {
+            "reference": "WO-DEMO-260618-001",
+            "type": "inspection",
+            "priority": "high"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Air Compressor #4",
+      "description": "Lead 30 kW variable-speed rotary screw compressor serving the 7.5 bar plant-air header. Nominal capacity is 5.4 m3/min with automatic lead-lag rotation across four units. Commissioned 2022-03-10; owner: Utilities; criticality: High; service interval: 4,000 run hours with weekly condensate and leak checks. Isolate 480 VAC, close the discharge valve, and vent receiver pressure before service.",
+      "active": true,
+      "location": "Plant A / Utilities Building / Compressor Room / Pad C4",
+      "customer": null,
+      "manufacturer": "Atlas Copco",
+      "model": "GA 30 VSD+",
+      "serial": "AC-004-GA30-22",
+      "legacy_identity": {
+        "manufacturer": "Atlas Copco",
+        "model": "GA 30",
+        "serial": "AC-004"
+      },
+      "installed_parts": [
+        {
+          "ipn": "EQ-AC4-AF-GA30",
+          "quantity": 1,
+          "notes": "Change at 4,000 run hours or at 45 mbar differential pressure."
+        },
+        {
+          "ipn": "EQ-AC4-OF-GA30",
+          "quantity": 1,
+          "notes": "Installed with food-grade synthetic compressor lubricant."
+        },
+        {
+          "ipn": "EQ-AC4-AS-GA30",
+          "quantity": 1,
+          "notes": "Replace at 8,000 hours or when separator differential exceeds 0.8 bar."
+        },
+        {
+          "ipn": "EQ-AC4-TEMP-PT100",
+          "quantity": 1,
+          "notes": "Air-end outlet sensor TT-AC4-01; high-temperature trip setpoint 110 C."
+        },
+        {
+          "ipn": "EQ-AC4-DRAIN-EWD",
+          "quantity": 1,
+          "notes": "Drain CD-AC4; weekly test button check and quarterly strainer cleaning."
+        }
+      ],
+      "maintenance": [
+        {
+          "date": "2025-10-06",
+          "summary": "4,000-hour compressor service",
+          "details": "Changed intake and oil filters, sampled lubricant, cleaned the cooler, checked electrical terminals, and inspected hoses. Loaded discharge temperature was 86 C and specific power was 6.3 kW per m3/min after service.",
+          "performed_by": "S. Nguyen",
+          "work_order": {
+            "reference": "WO-DEMO-251006-001",
+            "type": "preventive",
+            "priority": "medium"
+          }
+        },
+        {
+          "date": "2026-01-05",
+          "summary": "Replaced air-oil separator element",
+          "details": "Separator differential reached 0.84 bar at full load and oil carryover was visible downstream. Replaced the separator element and vessel O-ring, leak-tested the cover, and confirmed 0.21 bar differential at 7.5 bar discharge.",
+          "performed_by": "S. Nguyen",
+          "work_order": {
+            "reference": "WO-DEMO-260105-001",
+            "type": "corrective",
+            "priority": "medium"
+          }
+        },
+        {
+          "date": "2026-03-14",
+          "summary": "Corrected high discharge-temperature alarm",
+          "details": "Unit alarmed at 104 C during peak demand. Cooler face was 60% obstructed by packaging dust. Vacuumed and washed the cooler, verified fan rotation, and checked the PT100 against a calibrated probe. Full-load temperature dropped to 88 C.",
+          "performed_by": "S. Nguyen / J. Rivera",
+          "work_order": {
+            "reference": "WO-DEMO-260314-001",
+            "type": "corrective",
+            "priority": "high"
+          }
+        },
+        {
+          "date": "2026-06-02",
+          "summary": "Cleaned condensate drain and verified zero-loss cycle",
+          "details": "A slow drain cycle was reported during the weekly route. Removed rust scale from the inlet strainer, flushed the valve, and completed ten demand cycles with no compressed-air loss. No production interruption was required.",
+          "performed_by": "Utilities Operator - Shift B",
+          "work_order": null
+        }
+      ]
+    },
+    {
+      "name": "Boiler Feed Pump B",
+      "description": "Automatic standby vertical multistage pump supplying Boiler 1 feedwater when Pump A is unavailable. Rated 42 m3/hour at 11.5 bar and 90 C with a 30 kW motor. Commissioned 2020-11-02; owner: Utilities; criticality: High; PM cadence: monthly auto-start, quarterly vibration route, and annual alignment check. Isolate the motor starter and both suction and discharge valves before opening the pump.",
+      "active": true,
+      "location": "Plant A / Boiler House / Feedwater Skid / Position B",
+      "customer": null,
+      "manufacturer": "Grundfos",
+      "model": "CR 45-5",
+      "serial": "BFP-B-CR45-2020",
+      "legacy_identity": {
+        "manufacturer": "Grundfos",
+        "model": "CR 45",
+        "serial": "BFP-B-045"
+      },
+      "installed_parts": [
+        {
+          "ipn": "EQ-BFP-SEAL-CR45",
+          "quantity": 1,
+          "notes": "Seal position MS-B; last replaced 2026-03-02 with flush plan verified clear."
+        },
+        {
+          "ipn": "EQ-BFP-BRG-6312",
+          "quantity": 1,
+          "notes": "Matched motor bearing set; relubricate every 2,000 run hours."
+        },
+        {
+          "ipn": "EQ-BFP-CPL-42",
+          "quantity": 1,
+          "notes": "Coupling insert CI-B; inspect for cracking during annual laser alignment."
+        },
+        {
+          "ipn": "EQ-BFP-MTR-30KW",
+          "quantity": 1,
+          "notes": "Motor M-BFP-B; 400 VAC; full-load current 54 A; insulation class F."
+        },
+        {
+          "ipn": "EQ-BFP-PT-16BAR",
+          "quantity": 1,
+          "notes": "Transmitter PT-BFP-B; control range 0-16 bar; calibration due 2027-03."
+        }
+      ],
+      "maintenance": [
+        {
+          "date": "2025-11-19",
+          "summary": "Quarterly vibration and standby-start check",
+          "details": "Completed automatic failover from Pump A and ran Pump B for 30 minutes at 39 m3/hour. Peak vibration was 2.7 mm/s RMS at the motor drive end and seal leakage was below one drop per minute. Start permissives and low-suction trip passed.",
+          "performed_by": "Utilities Reliability Route",
+          "work_order": null
+        },
+        {
+          "date": "2026-02-10",
+          "summary": "Investigated mechanical-seal leakage",
+          "details": "Leakage increased to approximately 18 drops per minute at normal discharge pressure. Confirmed flush line flow and no shaft runout. Pump remained available as standby with daily checks while seal replacement was scheduled for the outage window.",
+          "performed_by": "A. Gomez",
+          "work_order": {
+            "reference": "WO-DEMO-260210-001",
+            "type": "inspection",
+            "priority": "high"
+          }
+        },
+        {
+          "date": "2026-03-02",
+          "summary": "Replaced cartridge seal and laser-aligned motor",
+          "details": "Isolated and drained the pump, replaced the cartridge seal and coupling insert, flushed the seal line, and laser-aligned the motor to 0.03 mm offset and 0.04 mm/100 mm angular. A 60-minute loaded run showed no visible leakage and 1.9 mm/s RMS vibration.",
+          "performed_by": "A. Gomez / Rotating Equipment Team",
+          "work_order": {
+            "reference": "WO-DEMO-260302-001",
+            "type": "corrective",
+            "priority": "high"
+          }
+        },
+        {
+          "date": "2026-06-11",
+          "summary": "Verified pump performance after seal repair",
+          "details": "Ran the pump at three operating points and compared results with the acceptance curve. At 42 m3/hour, discharge pressure was 11.4 bar and motor current was 49.8 A. No seal leakage or cavitation was observed; standby status was confirmed.",
+          "performed_by": "M. Patel",
+          "work_order": {
+            "reference": "WO-DEMO-260611-001",
+            "type": "inspection",
+            "priority": "medium"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Customer Test Stand (ACME)",
+      "description": "End-of-line functional acceptance stand installed at ACME Manufacturing for 24 V control assemblies. The cell validates 64 digital I/O points, eight analog channels, safety-loop response, and serialized test results at up to 18 units/hour. Commissioned 2024-05-20; owner: Field Service; criticality: Customer Production; calibration cadence: annual with quarterly remote health review. ACME controls site access and lockout; EQUA support owns software and calibration baselines.",
+      "active": true,
+      "location": "ACME Manufacturing / Austin, TX / Quality Lab / Cell A-01",
+      "customer": "ACME Manufacturing",
+      "manufacturer": "EQUA Automation",
+      "model": "TS-200",
+      "serial": "ACME-TS200-01",
+      "legacy_identity": {
+        "manufacturer": "Equa",
+        "model": "TS-200",
+        "serial": "ACME-TS-200-01"
+      },
+      "installed_parts": [
+        {
+          "ipn": "EQ-TS200-PLC",
+          "quantity": 1,
+          "notes": "Controller PLC-01; approved program checksum 8F4C-21A7; backup held by Field Service."
+        },
+        {
+          "ipn": "EQ-TS200-DAQ16",
+          "quantity": 2,
+          "notes": "Modules DAQ-01 and DAQ-02; channels 1-24 used, channels 25-32 reserved."
+        },
+        {
+          "ipn": "EQ-TS200-SR",
+          "quantity": 1,
+          "notes": "Safety relay SR-01; proof-test interval 12 months."
+        },
+        {
+          "ipn": "EQ-TS200-SCAN",
+          "quantity": 1,
+          "notes": "Scanner BC-01; reads unit serial and selects the released test recipe."
+        },
+        {
+          "ipn": "EQ-TS200-PSU24",
+          "quantity": 1,
+          "notes": "Power supply PS-01; output baseline 24.18 VDC at 8.2 A production load."
+        }
+      ],
+      "maintenance": [
+        {
+          "date": "2025-12-04",
+          "summary": "Annual calibration and safety proof test",
+          "details": "Calibrated 16 analog channels against traceable voltage and current standards; maximum as-found error was 0.31%. Verified all 64 digital points, emergency-stop channels, guard switch, and safety relay response. Certificate CAL-TS200-2025-041 was issued.",
+          "performed_by": "R. Shah / ACME Quality",
+          "work_order": {
+            "reference": "WO-DEMO-251204-001",
+            "type": "calibration",
+            "priority": "high"
+          }
+        },
+        {
+          "date": "2026-02-07",
+          "summary": "Remote troubleshooting for intermittent false failures",
+          "details": "Review of 312 test logs isolated 17 false failures to contact bounce on fixture input DI-27. Increased the validated debounce from 20 ms to 45 ms, issued recipe version 3.8.2, and monitored the next 150 units with zero repeat failures.",
+          "performed_by": "EQUA Support - R. Shah",
+          "work_order": null
+        },
+        {
+          "date": "2026-04-16",
+          "summary": "Replaced safety relay SR-01",
+          "details": "The relay reported a channel synchronization fault during startup. ACME isolated the cell before Field Service replaced SR-01, verified dual-channel timing, and completed 30 emergency-stop and guard-open cycles. Total customer downtime was 2.3 hours.",
+          "performed_by": "R. Shah / ACME Maintenance",
+          "work_order": {
+            "reference": "WO-DEMO-260416-001",
+            "type": "corrective",
+            "priority": "high"
+          }
+        },
+        {
+          "date": "2026-06-25",
+          "summary": "Validated test recipe 3.9.0 for product revision C",
+          "details": "Added two analog tolerance checks and a barcode rule for revision C assemblies. Completed gauge repeatability testing with ten units and three operators; study variation was 6.8%. Released recipe 3.9.0 and archived the prior baseline.",
+          "performed_by": "EQUA Applications / ACME Quality",
+          "work_order": {
+            "reference": "WO-DEMO-260625-001",
+            "type": "calibration",
+            "priority": "medium"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Electronics Test Bench 1",
+      "description": "Engineering bench used for board bring-up, fault injection, and post-repair verification. Supports 0-60 VDC at 20 A, isolated communications, programmable loads, and two grounded ESD work positions. Commissioned 2023-09-18; owner: Engineering Lab; criticality: Medium; calibration cadence: annual for power and measurement instruments with monthly ESD checks. Bench configuration baseline is LAB-E01-R4.",
+      "active": true,
+      "location": "Plant A / Engineering Lab / Bench E-01",
+      "customer": null,
+      "manufacturer": "In-house",
+      "model": "TB-Series Rev 4",
+      "serial": "LAB-TB-001",
+      "legacy_identity": {
+        "manufacturer": "In-house",
+        "model": "TB-Series",
+        "serial": "LAB-TB-001"
+      },
+      "installed_parts": [
+        {
+          "ipn": "TB1",
+          "quantity": 1,
+          "notes": "Primary controller interface in fixture slot A; firmware baseline 2.6.1."
+        },
+        {
+          "ipn": "TB2",
+          "quantity": 1,
+          "notes": "Sensor and communications interface in fixture slot B."
+        },
+        {
+          "ipn": "TB3",
+          "quantity": 1,
+          "notes": "Fault-injection board in fixture slot C; inspect relay contacts every 5,000 cycles."
+        },
+        {
+          "ipn": "002.02-PCB",
+          "quantity": 1,
+          "notes": "Configurable I/O interface in fixture slot D; loaded with lab image 4.2."
+        },
+        {
+          "ipn": "EQ-LAB-PSU-60V",
+          "quantity": 1,
+          "notes": "Supply PS-E01; calibration sticker CAL-2026-011; due 2027-01-22."
+        },
+        {
+          "ipn": "EQ-LAB-ESD-MON",
+          "quantity": 1,
+          "notes": "Monitor ESD-E01 covers both operator positions and the common work surface."
+        }
+      ],
+      "maintenance": [
+        {
+          "date": "2025-11-03",
+          "summary": "Monthly ESD control verification",
+          "details": "Tested both wrist-strap channels, the common point ground, and dissipative work surface. Point-to-ground resistance measured 3.2 and 3.5 Mohm at the two operator positions. Replaced one damaged coil cord and recorded passing results in ESD log E01.",
+          "performed_by": "K. Morgan",
+          "work_order": null
+        },
+        {
+          "date": "2026-01-22",
+          "summary": "Calibrated programmable bench power supply",
+          "details": "Verified voltage and current output at 10%, 50%, and 100% of range using traceable standards. Maximum voltage error was 0.042% and maximum current error was 0.061%. Adjusted remote-sense compensation and applied calibration label CAL-2026-011.",
+          "performed_by": "Metrology - D. Brooks",
+          "work_order": {
+            "reference": "WO-DEMO-260122-001",
+            "type": "calibration",
+            "priority": "medium"
+          }
+        },
+        {
+          "date": "2026-04-09",
+          "summary": "Replaced fixture harness and verified channel map",
+          "details": "Intermittent continuity on harness J4 caused false open-circuit results. Replaced the 48-way harness, performed point-to-point verification, insulation-tested at 250 VDC, and passed the golden-board sequence 25 consecutive times.",
+          "performed_by": "K. Morgan",
+          "work_order": {
+            "reference": "WO-DEMO-260409-001",
+            "type": "corrective",
+            "priority": "medium"
+          }
+        },
+        {
+          "date": "2026-06-13",
+          "summary": "Updated diagnostic image and fixture baselines",
+          "details": "Updated the bench controller to diagnostic image 4.2, TB1 firmware to 2.6.1, and archived prior checksums. Revalidated voltage, communications, relay, and fault-injection sequences against three golden boards with no deviations.",
+          "performed_by": "Engineering Lab - K. Morgan",
+          "work_order": null
+        }
+      ]
+    }
+  ]
+}

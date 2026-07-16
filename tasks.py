@@ -1899,6 +1899,10 @@ def setup_test(
         verbose=verbose,
     )
 
+    # Extend the upstream dataset with the equipment assets used by this fork.
+    info('Loading equipment-machine demo records ...')
+    manage(c, 'load_asset_demo_data --prune', verbose=verbose)
+
     # Copy media files
     src = template_dir.joinpath('media')
     dst = get_media_dir()
@@ -2159,7 +2163,7 @@ def frontend_build(c):
         path.write_text(content, encoding='utf-8')
 
     # Write version marker
-    try:
+    try:  # noqa: PLW0717
         import src.backend.InvenTree.InvenTree.version as InvenTreeVersion  # type: ignore[import]
 
         if version_hash := InvenTreeVersion.inventreeCommitHash():
