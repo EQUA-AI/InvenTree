@@ -404,6 +404,10 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
                     thread_sensitive=True,
                 )()
                 spoken["playback_state"] = utterance.playback_state
+                logger.info(
+                    "Exact TTS dispatched",
+                    extra={"session": str(session.id), "utterance": str(utterance.id)},
+                )
 
     return {
         "session_id": str(session.id),

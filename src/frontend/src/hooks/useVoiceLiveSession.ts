@@ -235,12 +235,27 @@ export function useVoiceLiveSession(
         const turn = (await response.json()) as VoiceTurnResponse;
         onTurnResult?.(turn);
         setPartial(null);
-        setState(turn.spoken ? 'speaking' : 'listening');
-        if (!turn.spoken) {
+        // Only a dispatched TTS request ('requested') produces audio; a
+        // persisted-but-undelivered utterance ('pending') stays text-only.
+        const playbackRequested = turn.spoken?.playback_state === 'requested';
+        setState(playbackRequested ? 'speaking' : 'listening');
+        if (!playbackRequested) {
           return;
         }
-        // Playback arrives on the WebRTC audio track; return to listening
-        // when the element goes quiet or shortly after, whichever is first.
+        // Playback arrives on the WebRTC audio track. Resume the shared
+        // element if an earlier cancel() paused it, and retry on the next
+        // user gesture when autoplay policy blocks audible playback.
+        const audio = audioRef.current;
+        if (audio?.paused) {
+          audio.play().catch(() => {
+            const resume = () => {
+              audioRef.current?.play().catch(() => {});
+            };
+            window.addEventListener('pointerdown', resume, { once: true });
+          });
+        }
+        // Return to listening when the element goes quiet or shortly after,
+        // whichever is first.
         window.setTimeout(() => {
           setState((current) =>
             current === 'speaking' ? 'listening' : current
@@ -262,6 +277,12 @@ export function useVoiceLiveSession(
         return;
       }
       const type = String(event.type ?? '');
+      if (type === 'error') {
+        // Provider-side failure (for example a rejected speech request).
+        // Transcripts and typed chat keep working; keep it diagnosable.
+        console.warn('Voice Live provider error event', event.error ?? event);
+        return;
+      }
       if (type === PARTIAL_EVENT) {
         setPartial({
           text: String(event.delta ?? event.transcript ?? ''),
@@ -381,6 +402,10 @@ export function useVoiceLiveSession(
         audio.autoplay = true;
         audio.srcObject = event.streams[0] ?? new MediaStream([event.track]);
         audioRef.current = audio;
+        // Autoplay policy may block a detached element created outside a
+        // user gesture; the speaking turn retries and falls back to the
+        // next pointer interaction.
+        void audio.play().catch(() => {});
       });
       const channel = peer.createDataChannel(DATA_CHANNEL_LABEL);
       channel.addEventListener('message', (event) =>

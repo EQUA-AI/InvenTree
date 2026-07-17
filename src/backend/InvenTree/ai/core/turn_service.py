@@ -12,6 +12,8 @@ import hashlib
 import inspect
 import json
 import logging
+import re
+import unicodedata
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -26,6 +28,7 @@ from ai.core.streaming import (
 from aichat.models import ThreadNamespace, TurnModality, TurnState
 from aichat.services import IdempotencyConflict, ThreadRepository
 from asgiref.sync import sync_to_async
+from pydantic import ValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -182,18 +185,89 @@ def _event_from_record(record: dict[str, Any]) -> AGUIEvent:
     return AGUIEvent(**kwargs)
 
 
-def _canonical_response_for_legacy(message: str) -> CanonicalTurnResponse:
-    """Adapt existing workflow text without changing its visible rendering."""
+#: Ceiling for a spoken legacy answer. Only the complete plain text is ever
+#: spoken — clipping could drop a safety qualifier mid-claim, so an answer
+#: that does not fit is honestly not spoken at all.
+_SPOKEN_SUMMARY_MAX_CHARS = 700
+
+_LEGACY_REASONING_SUMMARY = (
+    "This text was produced by the selected legacy workflow. No hidden reasoning was persisted."
+)
+
+
+def _plain_spoken_text(message: str) -> str:
+    """Reduce workflow markdown to the plain text the spoken schema accepts.
+
+    Table rows and rule lines read as word-soup when spoken, so they are
+    dropped entirely; removing text can only tighten the entailment check.
+    """
+    prose_lines = [
+        line
+        for line in message.splitlines()
+        if not re.match(r"^\s*\|", line) and not re.match(r"^\s*[-=|:\s]{3,}$", line)
+    ]
+    text = re.sub(r"```.*?```", " ", "\n".join(prose_lines), flags=re.DOTALL)
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
+    text = re.sub(r"\[([^\]\n]+)\]\([^)\n]+\)", r"\1", text)
+    text = re.sub(r"</?[A-Za-z][^>\n]*>", " ", text)
+    text = re.sub(r"^\s{0,3}(?:#{1,6}\s+|>\s?|[-+*]\s+|\d+[.)]\s+)", " ", text, flags=re.MULTILINE)
+    text = re.sub(r"[`|*_~#>]", " ", text)
+    text = "".join(
+        " " if unicodedata.category(character).startswith("C") else character for character in text
+    )
+    return " ".join(text.split())
+
+
+def _speakable_summary_candidates(message: str) -> tuple[str, ...]:
+    """Return spoken-summary candidates derived only from the visible answer.
+
+    Deriving from the answer text keeps the schema's lexical-entailment check
+    satisfiable by construction. Truncation is deliberately never attempted:
+    a clip can silently drop a qualifier ("... only if the machine is locked
+    out") and speak a stronger claim than the visible answer makes.
+    """
+    plain = _plain_spoken_text(message)
+    if not plain or len(plain) > _SPOKEN_SUMMARY_MAX_CHARS:
+        return ()
+    return (plain,)
+
+
+def _canonical_response_for_legacy(
+    message: str, *, speakable: bool = False
+) -> CanonicalTurnResponse:
+    """Adapt existing workflow text without changing its visible rendering.
+
+    For voice-modality turns, attempt a schema-valid spoken summary derived
+    from the answer itself so simple queries are spoken back. Every candidate
+    must pass the full canonical validators (plain text, lexical entailment,
+    caveat preservation); when none does, the turn stays honestly silent.
+    """
+    if speakable:
+        for summary in _speakable_summary_candidates(message):
+            try:
+                return CanonicalTurnResponse(
+                    kind="legacy_chat",
+                    response_version=1,
+                    response_state="complete",
+                    detailed_response=message or "No response was produced.",
+                    spoken_summary=summary,
+                    reasoning_summary=_LEGACY_REASONING_SUMMARY,
+                    confidence="low",
+                    evidence=[],
+                    next_questions=[],
+                    recommended_actions=[],
+                    safety_boundary="No additional safety boundary.",
+                    speak=True,
+                )
+            except ValidationError:
+                continue
     return CanonicalTurnResponse(
         kind="legacy_chat",
         response_version=1,
         response_state="complete",
         detailed_response=message or "No response was produced.",
         spoken_summary="",
-        reasoning_summary=(
-            "This text was produced by the selected legacy workflow. "
-            "No hidden reasoning was persisted."
-        ),
+        reasoning_summary=_LEGACY_REASONING_SUMMARY,
         confidence="low",
         evidence=[],
         next_questions=[],
@@ -695,7 +769,9 @@ class NormalizedTurnService:
                     chunks.append(str(chunk))
 
                 message = "".join(chunks)
-                response = _canonical_response_for_legacy(message)
+                response = _canonical_response_for_legacy(
+                    message, speakable=modality == TurnModality.VOICE
+                )
                 canonical = {
                     "thread_id": thread.pk,
                     "turn_id": turn.pk,

@@ -41,6 +41,14 @@ _EVENT_KINDS: dict[str, EventKind] = {
     "response.done": "speech_lifecycle",
     "response.audio.delta": "speech_lifecycle",
     "response.audio.done": "speech_lifecycle",
+    "response.audio_transcript.delta": "speech_lifecycle",
+    "response.audio_transcript.done": "speech_lifecycle",
+    "response.content_part.added": "speech_lifecycle",
+    "response.content_part.done": "speech_lifecycle",
+    "response.output_item.added": "speech_lifecycle",
+    "response.output_item.done": "speech_lifecycle",
+    "response.text.delta": "speech_lifecycle",
+    "response.text.done": "speech_lifecycle",
     "response.cancelled": "speech_lifecycle",
     "error": "error",
 }
@@ -110,11 +118,34 @@ class EventGate:
 
     expected_response_ids: set[str] = field(default_factory=set)
     violations: list[str] = field(default_factory=list)
+    pending_app_responses: int = 0
 
     def expect_response(self, response_id: str) -> None:
         """Register a response id the application itself requested."""
         if response_id:
             self.expected_response_ids.add(response_id)
+
+    def expect_app_response(self) -> None:
+        """Register one application ``response.create`` before its id is known.
+
+        Provider-generated response ids are only learned from the
+        acknowledging ``response.created`` event, so exact-TTS dispatch
+        registers intent here and :meth:`classify` adopts the next id.
+        Adoption is first-come: a provider drifting in exactly the
+        request-to-ack window could be misattributed, so this gate remains
+        telemetry and fail-closed teardown, never the speech authority —
+        ``create_response:false`` is what structurally prevents drift.
+        """
+        self.pending_app_responses += 1
+
+    def abandon_app_response(self) -> None:
+        """Drop one pending allowance for a failed or rejected request.
+
+        An allowance without a forthcoming acknowledgement would otherwise
+        legitimize the next autonomous provider response indefinitely.
+        """
+        if self.pending_app_responses > 0:
+            self.pending_app_responses -= 1
 
     def classify(self, event: dict[str, Any]) -> EventKind:
         """Return the event kind, flagging policy violations as forbidden."""
@@ -129,12 +160,26 @@ class EventGate:
         kind = _EVENT_KINDS.get(event_type)
         if kind is None:
             return "ignorable"
+        if kind == "error":
+            # A rejected request (e.g. an active-response conflict) never
+            # acknowledges; consume its allowance so it cannot later
+            # legitimize an autonomous response.
+            self.abandon_app_response()
+            return kind
         if event_type.startswith(_RESPONSE_PREFIX):
             response_id = str(
                 event.get("response", {}).get("id", "") or event.get("response_id", "")
             )
-            if not response_id or response_id not in self.expected_response_ids:
-                # An answer nobody asked for: the two-agent drift case.
-                self.violations.append(event_type)
-                return "forbidden"
+            if response_id and response_id in self.expected_response_ids:
+                return kind
+            if event_type == "response.created" and self.pending_app_responses > 0:
+                # The acknowledgement of a response the application itself
+                # requested through exact TTS: adopt its provider-generated id.
+                self.pending_app_responses -= 1
+                if response_id:
+                    self.expected_response_ids.add(response_id)
+                return kind
+            # An answer nobody asked for: the two-agent drift case.
+            self.violations.append(event_type)
+            return "forbidden"
         return kind

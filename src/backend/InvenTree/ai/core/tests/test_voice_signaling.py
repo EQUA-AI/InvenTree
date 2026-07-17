@@ -77,7 +77,18 @@ def test_missing_channel_reports_transport_unavailable():
 def test_voice_routes_are_registered_on_the_ai_app():
     from ai.core.app import app
 
-    paths = {route.path for route in app.routes}
+    def _paths(routes):
+        # FastAPI >= 0.138 registers included routers lazily; walk any nested
+        # router objects so the assertion sees the real route table.
+        for route in routes:
+            path = getattr(route, "path", None)
+            if path is not None:
+                yield path
+            nested = getattr(route, "router", None) or getattr(route, "original_router", None)
+            if nested is not None:
+                yield from _paths(nested.routes)
+
+    paths = set(_paths(app.routes))
     for expected in (
         "/voice/sessions",
         "/voice/sessions/{session_id}",

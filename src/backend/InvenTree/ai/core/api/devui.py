@@ -16,10 +16,13 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any
 
 from ai.core.config import get_devui_settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -126,14 +129,23 @@ class DevUIServer:
                 await self._task
             except asyncio.CancelledError:
                 pass
+            except Exception as e:
+                # A failed server task must not abort application shutdown.
+                logger.warning(f"DevUI server task ended with error: {e}")
+            self._task = None
 
         self._running = False
         logger.info("DevUI stopped")
 
     async def _run_server(self) -> None:
         """Run the DevUI server."""
-        if self._server:
-            await self._server.run()
+        if self._server is None:
+            return
+        serve = getattr(self._server, "serve", None) or getattr(self._server, "run", None)
+        if serve is None:
+            logger.warning("DevUI server exposes no serve/run entrypoint; DevUI unavailable")
+            return
+        await serve()
 
     async def _open_browser(self) -> None:
         """Open DevUI in default browser."""
@@ -219,14 +231,12 @@ class DevUIIntegration:
         if thread_id not in self._threads:
             self._threads[thread_id] = []
 
-        self._threads[thread_id].append(
-            {
-                "role": role,
-                "content": content,
-                "agent_name": agent_name,
-                "timestamp": asyncio.get_event_loop().time(),
-            }
-        )
+        self._threads[thread_id].append({
+            "role": role,
+            "content": content,
+            "agent_name": agent_name,
+            "timestamp": asyncio.get_event_loop().time(),
+        })
 
     def log_tool_call(
         self,
@@ -248,6 +258,7 @@ class DevUIIntegration:
             error: Error message if failed (optional)
             duration_ms: Execution time in milliseconds
         """
+        del result
         logger.debug(
             f"[DevUI] Tool call: {agent_name}.{tool_name}",
             extra={
