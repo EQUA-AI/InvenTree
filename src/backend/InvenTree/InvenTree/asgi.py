@@ -6,6 +6,8 @@ It mounts the AIMMS FastAPI app under /api/ai/ to serve AI features alongside Dj
 """
 
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from django.core.asgi import get_asgi_application
 
@@ -24,8 +26,17 @@ from ai.core.auth import AIBoundaryAuthMiddleware
 
 authenticated_ai_app = AIBoundaryAuthMiddleware(ai_app)
 
+
+@asynccontextmanager
+async def lifespan(_: Starlette) -> AsyncIterator[None]:
+    """Run the mounted AIMMS application's startup and shutdown handlers."""
+    async with ai_app.router.lifespan_context(ai_app):
+        yield
+
+
 # Mount the FastAPI app under /api/ai
 # Requests to /api/ai/chat/stream will be routed to ai_app as /chat/stream
 application = Starlette(
-    routes=[Mount('/api/ai', app=authenticated_ai_app), Mount('/', app=django_app)]
+    routes=[Mount('/api/ai', app=authenticated_ai_app), Mount('/', app=django_app)],
+    lifespan=lifespan,
 )
