@@ -78,6 +78,22 @@ class JobKitLineError(JobKitError):
     code = 'JOB_KIT_LINE_INVALID'
 
 
+class JobKitVerificationError(JobKitError):
+    """A Right-Part Finder precondition blocked the substitution effect.
+
+    The instance ``code`` preserves the stable RPF consumer code
+    (spec section 13.3) so the API envelope can surface it unchanged.
+    """
+
+    code = 'PART_VERIFICATION_REQUIRED'
+
+    def __init__(self, message='', *, code=''):
+        """Preserve the stable consumer code on the instance."""
+        super().__init__(message)
+        if code:
+            self.code = code
+
+
 # States in which planned lines may still be edited/added manually.
 EDITABLE_KIT_STATUSES = frozenset({'draft', 'short'})
 
@@ -492,12 +508,106 @@ def propose_substitution(
     )
 
 
+def _require_part_verification(
+    *, substitution, actor, work_order, confirmed_verification_id
+):
+    """Enforce the Right-Part Finder precondition for critical categories.
+
+    Disabled deployments (the default) change nothing. When
+    ``AIMMS_RPF_JOBKIT_ENFORCEMENT`` is set, a substitution whose requested
+    part belongs to a configured critical category requires a current,
+    exactly-bound confirmed verification; the RPF service revalidates under
+    its own locks and records one immutable use (spec section 13.2).
+    """
+    from django.conf import settings as django_settings
+
+    if not getattr(django_settings, 'AIMMS_RPF_JOBKIT_ENFORCEMENT', False):
+        return None
+
+    critical = set(getattr(django_settings, 'AIMMS_RPF_CRITICAL_CATEGORY_IDS', []))
+    category = substitution.requested_part.category
+    if category is None:
+        raise JobKitVerificationError(
+            'A current part verification is required because the requested part '
+            'category is unresolved',
+            code='PART_VERIFICATION_REQUIRED',
+        )
+    # A configured critical category covers its whole subtree (spec 13.1:
+    # critical selectors may include the category tree).
+    ancestor_ids = {row.pk for row in category.get_ancestors(include_self=True)}
+    if not ancestor_ids & critical:
+        return None
+
+    if not confirmed_verification_id:
+        raise JobKitVerificationError(
+            'A current part verification is required before this substitution',
+            code='PART_VERIFICATION_REQUIRED',
+        )
+
+    from part.verification.errors import (
+        VerificationCommandError,
+        VerificationScopeError,
+    )
+    from part.verification.schema import ConsumerCodes, HashDomains, hash_canonical
+    from part.verification.scope import VerificationScope
+    from part.verification.services import validate_and_bind_use
+    from tasks.scope import scope_for_work_order
+
+    scope = scope_for_work_order(work_order)
+
+    command_payload = {
+        'consumer': 'job_kit',
+        'action': 'substitution_decide',
+        'substitution': substitution.pk,
+        'work_order': work_order.pk,
+        'job_kit_line': substitution.line_id,
+        'requested_part': substitution.requested_part_id,
+        'proposed_part': substitution.proposed_part_id,
+        'decision': confirmed_verification_id,
+    }
+
+    try:
+        return validate_and_bind_use(
+            decision_id=confirmed_verification_id,
+            actor=actor,
+            consumer_kind='job_kit',
+            consumer_model='tasks.jobkitsubstitution',
+            consumer_object_id=str(substitution.pk),
+            consumer_action='substitution_decide',
+            expected_purpose='job_kit_substitution',
+            expected_work_order_id=work_order.pk,
+            expected_job_kit_line_id=substitution.line_id,
+            expected_requested_part_id=substitution.requested_part_id,
+            expected_selected_part_id=substitution.proposed_part_id,
+            expected_scope=VerificationScope(
+                customer_id=scope.customer_id, site_key=scope.site_key
+            ),
+            command_hash=hash_canonical(HashDomains.COMMAND, command_payload),
+            idempotency_key=f'jobkit-substitution-{substitution.pk}',
+        )
+    except VerificationCommandError as exc:
+        code = exc.code
+        if isinstance(exc, VerificationScopeError) or code.startswith('RPF_SCOPE_'):
+            code = ConsumerCodes.PART_VERIFICATION_SCOPE_MISMATCH
+        raise JobKitVerificationError(str(exc), code=code) from exc
+
+
 @transaction.atomic
-def decide_substitution(*, work_order_id, substitution_id, actor, approve, reason=''):
+def decide_substitution(
+    *,
+    work_order_id,
+    substitution_id,
+    actor,
+    approve,
+    reason='',
+    confirmed_verification_id=None,
+):
     """Approve or reject a proposed substitution under separation of duties.
 
     Approval is the only authorized path that sets the line's ``selected_part``.
-    It is refused while the line holds active reservations for the old part.
+    It is refused while the line holds active reservations for the old part,
+    and, for configured critical categories, without a current exact part
+    verification.
     """
     work_order = _locked_work_order(work_order_id)
     require_permission(actor, APPROVE_JOBKIT_SUBSTITUTION)
@@ -525,6 +635,12 @@ def decide_substitution(*, work_order_id, substitution_id, actor, approve, reaso
             raise JobKitStateError(
                 'Release active reservations before substituting the part'
             )
+        _require_part_verification(
+            substitution=substitution,
+            actor=actor,
+            work_order=work_order,
+            confirmed_verification_id=confirmed_verification_id,
+        )
         line.selected_part_id = substitution.proposed_part_id
         line.version = line.version + 1
         line.save(update_fields=['selected_part', 'version', 'updated_at'])

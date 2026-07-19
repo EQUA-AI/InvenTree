@@ -82,6 +82,14 @@ export const RepairPacketDetail = Loadable(
   lazy(() => import('./pages/repair/RepairPacketDetail'))
 );
 
+export const PartVerificationIndex = Loadable(
+  lazy(() => import('./pages/part/RightPartFinderIndex'))
+);
+
+export const PartVerificationDetail = Loadable(
+  lazy(() => import('./pages/part/RightPartFinderDetail'))
+);
+
 export const MachineIndex = Loadable(
   lazy(() => import('./pages/assets/MachineIndex'))
 );
@@ -242,6 +250,11 @@ export const routes = (
         <Route index element={<Navigate to='packets/' />} />
         <Route path='packets/' element={<RepairPacketIndex />} />
         <Route path='packets/:id/*' element={<RepairPacketDetail />} />
+      </Route>
+      <Route path='part-verification/'>
+        <Route index element={<Navigate to='index/' />} />
+        <Route path='index/*' element={<PartVerificationIndex />} />
+        <Route path=':id/*' element={<PartVerificationDetail />} />
       </Route>
       <Route path='command-center/*' element={<CommandCenter />} />
       <Route path='company/:id/*' element={<CompanyDetail />} />

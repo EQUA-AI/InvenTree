@@ -133,6 +133,18 @@ export enum ApiEndpoints {
   command_center_summary = 'repair/command-center/summary/',
   risk_rule_health = 'repair/risk-rules/health/',
 
+  // Right-Part Finder (part verification) endpoints
+  part_verification_session_list = 'part/verification/sessions/',
+  part_verification_session_detail = 'part/verification/sessions/:id/',
+  part_verification_session_evaluate = 'part/verification/sessions/:id/evaluate/',
+  part_verification_session_reevaluate = 'part/verification/sessions/:id/reevaluate/',
+  part_verification_session_cancel = 'part/verification/sessions/:id/cancel/',
+  part_verification_session_invalidate = 'part/verification/sessions/:id/invalidate/',
+  part_verification_session_readiness = 'part/verification/sessions/:id/readiness/',
+  part_verification_session_requirements = 'part/verification/sessions/:id/requirements/',
+  part_verification_session_candidates = 'part/verification/sessions/:id/candidates/',
+  part_verification_session_decisions = 'part/verification/sessions/:id/decisions/',
+
   // Asset / Equipment endpoints
   asset_machine_list = 'assets/machines/',
   asset_machine_detail = 'assets/machines/:id/',

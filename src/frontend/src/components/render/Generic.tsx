@@ -131,3 +131,16 @@ export function RenderRepairPacket({
     )
   );
 }
+
+export function RenderPartVerificationSession({
+  instance
+}: Readonly<InstanceRenderInterface>): ReactNode {
+  return (
+    instance && (
+      <RenderInlineModel
+        primary={instance.reference}
+        secondary={instance.requested_part_name}
+      />
+    )
+  );
+}

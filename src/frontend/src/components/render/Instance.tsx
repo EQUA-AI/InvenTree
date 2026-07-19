@@ -48,17 +48,18 @@ import {
   RenderSupplierPart
 } from './Company';
 import {
+  RenderAssetMachine,
   RenderContentType,
   RenderError,
-  RenderKanbanCard,
   RenderImportSession,
+  RenderKanbanCard,
   RenderParameter,
   RenderParameterTemplate,
+  RenderPartVerificationSession,
   RenderProjectCode,
+  RenderRepairPacket,
   RenderSelectionEntry,
   RenderSelectionList,
-  RenderAssetMachine,
-  RenderRepairPacket,
   RenderTag
 } from './Generic';
 import {
@@ -122,6 +123,7 @@ export const RendererLookup: ModelRendererDict = {
   [ModelType.kanbancard]: RenderKanbanCard,
   [ModelType.assetmachine]: RenderAssetMachine,
   [ModelType.repairpacket]: RenderRepairPacket,
+  [ModelType.partverificationsession]: RenderPartVerificationSession,
   [ModelType.selectionentry]: RenderSelectionEntry,
   [ModelType.error]: RenderError,
   [ModelType.tag]: RenderTag

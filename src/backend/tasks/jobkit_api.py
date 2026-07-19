@@ -42,6 +42,7 @@ from .services.job_kits import (
     JobKitLineError,
     JobKitStaleVersion,
     JobKitStateError,
+    JobKitVerificationError,
     add_manual_line,
     build_job_kit,
     decide_substitution,
@@ -675,6 +676,13 @@ class JobKitSubstitutionDecide(JobKitEnabledMixin, APIView):
                 correlation_id=correlation_id,
                 current_version=_kit_version(work_order.pk),
                 response_status=status.HTTP_403_FORBIDDEN,
+            )
+        except JobKitVerificationError as exc:
+            return _line_command_error(
+                exc,
+                correlation_id=correlation_id,
+                current_version=_kit_version(work_order.pk),
+                response_status=status.HTTP_409_CONFLICT,
             )
         except JobKitStateError as exc:
             return _line_command_error(

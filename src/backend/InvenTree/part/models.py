@@ -4586,3 +4586,20 @@ class PartRelated(InvenTree.models.InvenTreeMetadataModel):
         # Check for inverse relationship
         if PartRelated.objects.filter(part_1=self.part_2, part_2=self.part_1).exists():
             raise ValidationError(_('Duplicate relationship already exists'))
+
+
+# Register the Right-Part Finder verification models with the 'part' app.
+# The import must stay at the bottom of this module: verification models
+# reference Part/BomItem by string FK, and this placement guarantees
+# deterministic registry discovery via apps.get_model('part', ...).
+from part.verification_models import (  # noqa: F401 isort:skip
+    PartCandidateEvaluation,
+    PartVerificationCommand,
+    PartVerificationDecision,
+    PartVerificationEvent,
+    PartVerificationEvidence,
+    PartVerificationPolicyVersion,
+    PartVerificationRequirement,
+    PartVerificationSession,
+    PartVerificationUse,
+)

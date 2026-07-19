@@ -172,10 +172,18 @@ class ProposeSubstitutionSerializer(serializers.Serializer):
 
 
 class DecideSubstitutionSerializer(serializers.Serializer):
-    """Intent to approve or reject a proposed substitution."""
+    """Intent to approve or reject a proposed substitution.
+
+    ``confirmed_verification_id`` binds a current Right-Part Finder decision;
+    it is required only for configured critical categories when RPF Job Kit
+    enforcement is enabled, and is rechecked by the backend service.
+    """
 
     approve = serializers.BooleanField()
     reason = serializers.CharField(required=False, allow_blank=True, default='')
+    confirmed_verification_id = serializers.IntegerField(
+        required=False, allow_null=True, default=None
+    )
 
 
 class LinkPurchaseOrderSerializer(serializers.Serializer):

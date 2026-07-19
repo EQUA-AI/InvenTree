@@ -62,6 +62,7 @@ from .models import (
     PartStocktake,
     PartTestTemplate,
 )
+from .verification.api import verification_api_urls
 
 
 class CategoryMixin:
@@ -1570,6 +1571,9 @@ class BomItemSubstituteDetail(RetrieveUpdateDestroyAPI):
 
 
 part_api_urls = [
+    # Right-Part Finder verification endpoints (additive; hidden unless the
+    # AIMMS_RPF_ENABLED deployment flag is set)
+    path('verification/', include(verification_api_urls)),
     # Base URL for PartCategory API endpoints
     path(
         'category/',

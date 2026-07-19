@@ -41,6 +41,7 @@ export enum ModelType {
   kanbancard = 'kanbancard',
   assetmachine = 'assetmachine',
   repairpacket = 'repairpacket',
+  partverificationsession = 'partverificationsession',
   error = 'error',
   tag = 'tag'
 }

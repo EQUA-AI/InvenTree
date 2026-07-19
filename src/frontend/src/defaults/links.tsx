@@ -9,6 +9,7 @@ import type { UserStateProps } from '@lib/types/User';
 import {
   IconBox,
   IconBuildingFactory2,
+  IconChecklist,
   IconDashboard,
   IconLayoutKanban,
   IconPackages,
@@ -85,6 +86,11 @@ export function getNavTabs(user: UserStateProps): NavTab[] {
       name: 'tasks',
       title: t`Tasks`,
       icon: <IconLayoutKanban />
+    },
+    {
+      name: 'part-verification',
+      title: t`Right-Part Finder`,
+      icon: <IconChecklist />
     },
     {
       name: 'command-center',
