@@ -1422,12 +1422,6 @@ export function AIChatDrawer({
             <VoiceTranscript
               partial={voice.partial}
               listening={voice.state === 'listening'}
-              pending={voice.pendingTranscript}
-              confidenceFloor={voice.confidenceFloor}
-              onConfirmPending={(text) =>
-                void voice.confirmPendingTranscript(text)
-              }
-              onDiscardPending={voice.discardPendingTranscript}
             />
             <Paper
               radius='xl'

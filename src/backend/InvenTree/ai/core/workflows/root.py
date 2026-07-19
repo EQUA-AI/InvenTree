@@ -203,15 +203,21 @@ class RootWorkflow:
             raise
 
 
-def get_root_workflow() -> RootWorkflow:
-    """Factory to create a fresh RootWorkflow instance."""
-    router = UnifiedRouter()
-    registry = get_workflow_registry()
-    # ConversationManager handles its own persistence/caching
-    conversation_manager = ConversationManager()
+#: Process-wide instance: the semantic router's embedding index (~70 example
+#: embeddings, one batch call) and the conversation context cache are only
+#: useful when they survive across turns; per-turn construction re-embedded
+#: the whole index on every request (~1s of pure latency).
+_root_workflow: RootWorkflow | None = None
 
-    return RootWorkflow(
-        router=router,
-        registry=registry,
-        conversation_manager=conversation_manager,
-    )
+
+def get_root_workflow() -> RootWorkflow:
+    """Return the shared RootWorkflow instance."""
+    global _root_workflow
+    if _root_workflow is None:
+        _root_workflow = RootWorkflow(
+            router=UnifiedRouter(),
+            registry=get_workflow_registry(),
+            # ConversationManager handles its own persistence/caching
+            conversation_manager=ConversationManager(),
+        )
+    return _root_workflow

@@ -446,9 +446,7 @@ class CommandModelTests(TestCase):
 
         # The same key under a different command remains legal
         row = PartVerificationCommand.objects.create(
-            command='RPF_EVALUATE',
-            idempotency_key='cmd-1',
-            request_hash=_hash(403),
+            command='RPF_EVALUATE', idempotency_key='cmd-1', request_hash=_hash(403)
         )
         self.assertEqual(row.command, 'RPF_EVALUATE')
 

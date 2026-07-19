@@ -25,6 +25,7 @@ import asyncio
 import contextlib
 import logging
 import time
+import uuid
 from typing import Any
 
 from ai.core.voice.endpoints import TOKEN_SCOPE, build_calls_url
@@ -195,6 +196,10 @@ class VoiceLiveChannel:
             # session acks and lifecycle events are expected; keep reading.
         raise TransportUnavailable("provider closed the signaling channel")
 
+    def has_active_app_response(self) -> bool:
+        """Whether an application-requested response may still be playing."""
+        return self._gate.has_active_app_response()
+
     async def send_control(self, payload: dict[str, Any]) -> None:
         """Send one application control event (exact TTS ``response.create``)."""
         ws = self._ws
@@ -203,13 +208,17 @@ class VoiceLiveChannel:
         if payload.get("type") == "response.create":
             # Let the gate adopt the acknowledging response id instead of
             # flagging the application's own speech as a policy violation.
-            self._gate.expect_app_response()
+            # The client event id lets a provider error be attributed to
+            # exactly this request and no other.
+            event_id = str(payload.get("event_id") or "") or f"app-{uuid.uuid4().hex}"
+            payload = {**payload, "event_id": event_id}
+            self._gate.expect_app_response(event_id)
             try:
                 await ws.send_json(payload)
             except Exception:
                 # A failed send never acknowledges; the allowance must not
                 # survive to legitimize an autonomous response later.
-                self._gate.abandon_app_response()
+                self._gate.abandon_app_response(event_id)
                 raise
             return
         await ws.send_json(payload)
@@ -243,7 +252,7 @@ class VoiceLiveChannel:
         http, self._http = self._http, None
         # No allowance may outlive the connection whose acknowledgement it
         # awaits; the channel object itself is reused across reconnects.
-        self._gate.pending_app_responses = 0
+        self._gate.reset_pending()
         if ws is not None:
             with contextlib.suppress(Exception):
                 await ws.close()

@@ -20,14 +20,58 @@ import type {
   VoiceSessionPayload,
   VoiceTurnResponse
 } from '../../lib/types/Voice';
-import {
-  DEFAULT_CONFIDENCE_FLOOR,
-  needsConfirmation
-} from '../components/ai/voiceCriticalTerms';
 
 const DATA_CHANNEL_LABEL = 'voice-live-events';
 const FINAL_EVENT = 'conversation.item.input_audio_transcription.completed';
 const PARTIAL_EVENT = 'conversation.item.input_audio_transcription.delta';
+
+// Pure-filler utterances that should never become application turns.
+const FILLER_ONLY = /^(?:uh|um|hmm+|mm+|mhm|huh|erm|ah|oh)[.!?,\s]*$/i;
+
+// A public STUN server lets the browser discover its server-reflexive
+// candidate so the peer can be reached across NAT. It carries no credentials,
+// so nothing provider-authoritative ever reaches this module. Fully locked-
+// down networks (symmetric NAT / UDP-blocked) may additionally need a TURN
+// relay, which is a separate deliberate deployment decision.
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' }
+];
+// The SDP is relayed once with no trickle-ICE channel, so the offer must
+// already carry the browser's candidates. Cap gathering so a stalled
+// candidate never blocks the call forever.
+const ICE_GATHERING_TIMEOUT_MS = 2500;
+// Backstop: if the media/data path never connects, fail honestly instead of
+// showing a 'listening' UI that captures nothing.
+const MEDIA_CONNECT_TIMEOUT_MS = 12_000;
+
+/** Resolve once ICE candidate gathering completes or the cap elapses. */
+function waitForIceGathering(
+  peer: RTCPeerConnection,
+  timeoutMs: number
+): Promise<void> {
+  if (peer.iceGatheringState === 'complete') {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      peer.removeEventListener('icegatheringstatechange', onChange);
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const onChange = () => {
+      if (peer.iceGatheringState === 'complete') {
+        finish();
+      }
+    };
+    peer.addEventListener('icegatheringstatechange', onChange);
+    const timer = window.setTimeout(finish, timeoutMs);
+  });
+}
 
 function getCsrfCookie(): string {
   const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
@@ -87,14 +131,13 @@ export interface UseVoiceLiveSessionResult {
   end: () => Promise<void>;
   cancel: () => Promise<void>;
   toggleMute: () => void;
-  /** Submit a (possibly user-corrected) completed transcript as a turn. */
+  /**
+   * Submit a completed transcript as a turn. The voice loop is hands-free:
+   * completed transcripts are auto-submitted and the spoken answer is the
+   * correction loop. Confirmation of critical values remains a requirement
+   * of structured use (fault/closeout capture), not of advisory chat.
+   */
   submitTranscript: (transcript: VoiceFinalTranscript) => Promise<void>;
-  /** Transcript held for critical-term / low-confidence confirmation. */
-  pendingTranscript: VoiceFinalTranscript | null;
-  confirmPendingTranscript: (correctedText?: string) => Promise<void>;
-  discardPendingTranscript: () => void;
-  /** Server-configured ASR confidence floor for critical-term review. */
-  confidenceFloor: number;
 }
 
 export function useVoiceLiveSession(
@@ -109,30 +152,29 @@ export function useVoiceLiveSession(
   const [partial, setPartial] = useState<VoicePartialTranscript | null>(null);
   const [error, setError] = useState<VoiceError | null>(null);
   const [muted, setMuted] = useState<boolean>(false);
-  const [pendingTranscript, _setPendingTranscript] =
-    useState<VoiceFinalTranscript | null>(null);
-  const pendingTranscriptRef = useRef<VoiceFinalTranscript | null>(null);
-  const setPendingTranscript = useCallback(
-    (value: VoiceFinalTranscript | null) => {
-      pendingTranscriptRef.current = value;
-      _setPendingTranscript(value);
-    },
-    []
-  );
 
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sessionRef = useRef<VoiceSessionPayload | null>(null);
   const submittedItemsRef = useRef<Set<string>>(new Set());
+  const connectTimerRef = useRef<number | null>(null);
+  const speakingTimerRef = useRef<number | null>(null);
+  const speakingSinceRef = useRef<number>(0);
+  const submitQueueRef = useRef<VoiceFinalTranscript[]>([]);
+  const submittingRef = useRef<boolean>(false);
+
+  const clearSpeakingTimer = useCallback(() => {
+    if (speakingTimerRef.current !== null) {
+      window.clearTimeout(speakingTimerRef.current);
+      speakingTimerRef.current = null;
+    }
+  }, []);
 
   // Server capability probe: the control renders only when the deployment
   // flag is on AND this actor is in the pilot cohort. The probe discloses
   // nothing beyond booleans and never errors visibly.
   const [serverEnabled, setServerEnabled] = useState<boolean>(false);
-  const [confidenceFloor, setConfidenceFloor] = useState<number>(
-    DEFAULT_CONFIDENCE_FLOOR
-  );
   useEffect(() => {
     let cancelled = false;
     if (!enabled) {
@@ -147,14 +189,8 @@ export function useVoiceLiveSession(
           credentials: 'include'
         });
         if (!cancelled && response.ok) {
-          const body = (await response.json()) as {
-            enabled?: boolean;
-            confidence_floor?: number;
-          };
+          const body = (await response.json()) as { enabled?: boolean };
           setServerEnabled(Boolean(body.enabled));
-          if (typeof body.confidence_floor === 'number') {
-            setConfidenceFloor(body.confidence_floor);
-          }
           return;
         }
       } catch {
@@ -182,6 +218,11 @@ export function useVoiceLiveSession(
   }, [effectiveEnabled]);
 
   const releaseMedia = useCallback(() => {
+    if (connectTimerRef.current !== null) {
+      window.clearTimeout(connectTimerRef.current);
+      connectTimerRef.current = null;
+    }
+    clearSpeakingTimer();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     peerRef.current?.close();
@@ -191,7 +232,7 @@ export function useVoiceLiveSession(
       audioRef.current.srcObject = null;
       audioRef.current = null;
     }
-  }, []);
+  }, [clearSpeakingTimer]);
 
   const fail = useCallback(
     (code: VoiceErrorCode, detail?: string) => {
@@ -202,17 +243,26 @@ export function useVoiceLiveSession(
     [releaseMedia]
   );
 
-  const submitTranscript = useCallback(
+  const submitNow = useCallback(
     async (transcript: VoiceFinalTranscript) => {
       const active = sessionRef.current;
       if (!active) {
         return;
       }
-      if (submittedItemsRef.current.has(transcript.itemId)) {
-        return;
-      }
-      submittedItemsRef.current.add(transcript.itemId);
       setState('reviewing');
+      // Status speech (the thinking/failure phrases) streams on the shared
+      // element while the turn is still processing, so resume it up front
+      // if an earlier cancel() paused it. Autoplay-policy rejections retry
+      // on the next user gesture.
+      const audio = audioRef.current;
+      if (audio?.paused) {
+        audio.play().catch(() => {
+          const resume = () => {
+            audioRef.current?.play().catch(() => {});
+          };
+          window.addEventListener('pointerdown', resume, { once: true });
+        });
+      }
       try {
         const response = await fetch(
           resolveUrl(`voice/sessions/${active.id}/turns`, host),
@@ -229,7 +279,21 @@ export function useVoiceLiveSession(
           }
         );
         if (!response.ok) {
-          fail(await readErrorCode(response));
+          const code = await readErrorCode(response);
+          if (
+            code === 'VOICE_RESPONSE_INCOMPLETE' ||
+            code === 'VOICE_TRANSCRIPT_INCOMPLETE' ||
+            code === 'IDEMPOTENCY_CONFLICT'
+          ) {
+            // Turn-level failure: keep the session and microphone alive so
+            // the spoken failure phrase can play and the technician can
+            // simply try again by voice.
+            setError({ code });
+            setPartial(null);
+            setState('listening');
+            return;
+          }
+          fail(code);
           return;
         }
         const turn = (await response.json()) as VoiceTurnResponse;
@@ -238,25 +302,19 @@ export function useVoiceLiveSession(
         // Only a dispatched TTS request ('requested') produces audio; a
         // persisted-but-undelivered utterance ('pending') stays text-only.
         const playbackRequested = turn.spoken?.playback_state === 'requested';
+        if (playbackRequested) {
+          speakingSinceRef.current = Date.now();
+        }
         setState(playbackRequested ? 'speaking' : 'listening');
         if (!playbackRequested) {
           return;
         }
-        // Playback arrives on the WebRTC audio track. Resume the shared
-        // element if an earlier cancel() paused it, and retry on the next
-        // user gesture when autoplay policy blocks audible playback.
-        const audio = audioRef.current;
-        if (audio?.paused) {
-          audio.play().catch(() => {
-            const resume = () => {
-              audioRef.current?.play().catch(() => {});
-            };
-            window.addEventListener('pointerdown', resume, { once: true });
-          });
-        }
-        // Return to listening when the element goes quiet or shortly after,
-        // whichever is first.
-        window.setTimeout(() => {
+        // The data channel's response.audio.done / barge-in events drive the
+        // return to listening; this timer is only a fallback for a lost
+        // event so the loop can never wedge in 'speaking'.
+        clearSpeakingTimer();
+        speakingTimerRef.current = window.setTimeout(() => {
+          speakingTimerRef.current = null;
           setState((current) =>
             current === 'speaking' ? 'listening' : current
           );
@@ -265,7 +323,43 @@ export function useVoiceLiveSession(
         fail('VOICE_RESPONSE_INCOMPLETE');
       }
     },
-    [fail, host, onTurnResult]
+    [clearSpeakingTimer, fail, host, onTurnResult]
+  );
+
+  // Hands-free utterances can complete while the previous turn is still
+  // processing; a serial queue keeps turns (and their spoken answers)
+  // ordered instead of racing the state machine and the provider TTS slot.
+  const drainQueue = useCallback(async () => {
+    if (submittingRef.current) {
+      return;
+    }
+    submittingRef.current = true;
+    try {
+      while (submitQueueRef.current.length > 0) {
+        const next = submitQueueRef.current.shift();
+        if (next) {
+          await submitNow(next);
+        }
+      }
+    } finally {
+      submittingRef.current = false;
+    }
+  }, [submitNow]);
+
+  const submitTranscript = useCallback(
+    async (transcript: VoiceFinalTranscript) => {
+      if (submittedItemsRef.current.has(transcript.itemId)) {
+        return;
+      }
+      submittedItemsRef.current.add(transcript.itemId);
+      if (submitQueueRef.current.length >= 3) {
+        // Keep the conversation current rather than replaying a backlog.
+        submitQueueRef.current.shift();
+      }
+      submitQueueRef.current.push(transcript);
+      void drainQueue();
+    },
+    [drainQueue]
   );
 
   const handleDataChannelMessage = useCallback(
@@ -281,6 +375,27 @@ export function useVoiceLiveSession(
         // Provider-side failure (for example a rejected speech request).
         // Transcripts and typed chat keep working; keep it diagnosable.
         console.warn('Voice Live provider error event', event.error ?? event);
+        return;
+      }
+      if (type === 'input_audio_buffer.speech_started') {
+        // Barge-in: the technician talking always wins over playback. The
+        // provider stops synthesis server-side (interrupt_response) and the
+        // live track simply goes quiet — never pause the local element here,
+        // or later status/answer speech plays into a dead element.
+        clearSpeakingTimer();
+        setState((current) => (current === 'speaking' ? 'listening' : current));
+        return;
+      }
+      if (type === 'response.audio.done' || type === 'response.done') {
+        // Playback for this response has drained; resume the loop precisely
+        // instead of waiting out the fallback timer. Ignore terminal events
+        // that raced ahead of a just-started answer (the cancelled thinking
+        // phrase drains milliseconds before the answer begins).
+        if (Date.now() - speakingSinceRef.current < 750) {
+          return;
+        }
+        clearSpeakingTimer();
+        setState((current) => (current === 'speaking' ? 'listening' : current));
         return;
       }
       if (type === PARTIAL_EVENT) {
@@ -301,45 +416,21 @@ export function useVoiceLiveSession(
         if (!finalTranscript.text || !finalTranscript.itemId) {
           return;
         }
-        onFinalTranscript?.(finalTranscript);
-        // Critical terms and low-confidence transcripts require a visible
-        // typed/tap confirmation before they become an application turn.
-        if (
-          needsConfirmation(
-            finalTranscript.text,
-            finalTranscript.confidence,
-            confidenceFloor
-          )
-        ) {
-          setPartial(null);
-          setPendingTranscript(finalTranscript);
+        // Ambient-noise guard: skip transcripts with no letters or digits
+        // and pure filler utterances so a VAD blip never becomes a turn.
+        const trimmed = finalTranscript.text.trim();
+        if (!/[\p{L}\p{N}]/u.test(trimmed) || FILLER_ONLY.test(trimmed)) {
           return;
         }
+        onFinalTranscript?.(finalTranscript);
+        // Hands-free loop: every completed transcript becomes a turn and the
+        // spoken answer is the correction loop. Critical-value confirmation
+        // remains a structured-use (capture) requirement, not a chat gate.
         void submitTranscript(finalTranscript);
       }
     },
-    [onFinalTranscript, submitTranscript]
+    [clearSpeakingTimer, onFinalTranscript, submitTranscript]
   );
-
-  const confirmPendingTranscript = useCallback(
-    async (correctedText?: string) => {
-      const pendingFinal = pendingTranscriptRef.current;
-      if (!pendingFinal) {
-        return;
-      }
-      const text = (correctedText ?? pendingFinal.text).trim();
-      setPendingTranscript(null);
-      if (!text) {
-        return;
-      }
-      await submitTranscript({ ...pendingFinal, text });
-    },
-    [submitTranscript]
-  );
-
-  const discardPendingTranscript = useCallback(() => {
-    setPendingTranscript(null);
-  }, []);
 
   const start = useCallback(async () => {
     if (!effectiveEnabled || sessionRef.current) {
@@ -394,7 +485,7 @@ export function useVoiceLiveSession(
     streamRef.current = stream;
 
     try {
-      const peer = new RTCPeerConnection();
+      const peer = new RTCPeerConnection({ iceServers: DEFAULT_ICE_SERVERS });
       peerRef.current = peer;
       stream.getAudioTracks().forEach((track) => peer.addTrack(track, stream));
       peer.addEventListener('track', (event) => {
@@ -407,12 +498,28 @@ export function useVoiceLiveSession(
         // next pointer interaction.
         void audio.play().catch(() => {});
       });
+
+      // Speech recognition flows over this channel, so the session is only
+      // truthfully 'listening' once it opens (or the peer is connected).
+      const markListening = () => {
+        if (connectTimerRef.current !== null) {
+          window.clearTimeout(connectTimerRef.current);
+          connectTimerRef.current = null;
+        }
+        setState((current) =>
+          current === 'connecting' ? 'listening' : current
+        );
+      };
+
       const channel = peer.createDataChannel(DATA_CHANNEL_LABEL);
+      channel.addEventListener('open', markListening);
       channel.addEventListener('message', (event) =>
         handleDataChannelMessage(String(event.data))
       );
       peer.addEventListener('connectionstatechange', () => {
-        if (
+        if (peer.connectionState === 'connected') {
+          markListening();
+        } else if (
           peer.connectionState === 'failed' ||
           peer.connectionState === 'disconnected'
         ) {
@@ -420,15 +527,19 @@ export function useVoiceLiveSession(
         }
       });
 
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
+      await peer.setLocalDescription(await peer.createOffer());
+      // createOffer()'s SDP carries no ICE candidates; they are gathered
+      // asynchronously after setLocalDescription. Because the relay is a
+      // single request/response with no trickle path, wait for gathering and
+      // send the local description that now includes the candidates.
+      await waitForIceGathering(peer, ICE_GATHERING_TIMEOUT_MS);
       const response = await fetch(
         resolveUrl(`voice/sessions/${created.id}/sdp`, host),
         {
           method: 'POST',
           headers: jsonHeaders(true),
           credentials: 'include',
-          body: JSON.stringify({ sdp_offer: offer.sdp ?? '' })
+          body: JSON.stringify({ sdp_offer: peer.localDescription?.sdp ?? '' })
         }
       );
       if (!response.ok) {
@@ -439,7 +550,26 @@ export function useVoiceLiveSession(
       }
       const body = (await response.json()) as { sdp_answer: string };
       await peer.setRemoteDescription({ type: 'answer', sdp: body.sdp_answer });
-      setState('listening');
+      // The connection may already have completed during setup; otherwise
+      // wait for the data channel/peer to connect (via the listeners above)
+      // and fail honestly if it never does, rather than capturing nothing
+      // behind a listening UI.
+      if (
+        channel.readyState === 'open' ||
+        peer.connectionState === 'connected'
+      ) {
+        markListening();
+      } else {
+        connectTimerRef.current = window.setTimeout(() => {
+          connectTimerRef.current = null;
+          if (
+            channel.readyState !== 'open' &&
+            peer.connectionState !== 'connected'
+          ) {
+            fail('VOICE_SIGNALING_FAILED', 'media path did not connect');
+          }
+        }, MEDIA_CONNECT_TIMEOUT_MS);
+      }
     } catch {
       await endInternal('signaling_failed');
       fail('VOICE_SIGNALING_FAILED');
@@ -452,9 +582,9 @@ export function useVoiceLiveSession(
       const active = sessionRef.current;
       sessionRef.current = null;
       submittedItemsRef.current.clear();
+      submitQueueRef.current = [];
       releaseMedia();
       setPartial(null);
-      setPendingTranscript(null);
       if (!active) {
         return;
       }
@@ -527,10 +657,6 @@ export function useVoiceLiveSession(
     end,
     cancel,
     toggleMute,
-    submitTranscript,
-    pendingTranscript,
-    confirmPendingTranscript,
-    discardPendingTranscript,
-    confidenceFloor
+    submitTranscript
   };
 }

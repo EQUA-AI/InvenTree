@@ -124,10 +124,13 @@ test('closing the drawer ends voice and releases the microphone', async ({
       }
     });
     class MockDataChannel {
+      readyState = 'open';
       addEventListener() {}
     }
     class MockPeerConnection {
       connectionState = 'connected';
+      iceGatheringState = 'complete';
+      localDescription = { type: 'offer', sdp: 'v=0\r\nmock-offer' };
       addTrack() {}
       addEventListener() {}
       createDataChannel() {

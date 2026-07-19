@@ -18,15 +18,14 @@ import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
-from openai import AsyncAzureOpenAI
-
 from ai.core.config import get_settings
 from ai.core.integrations.data_provider import get_data_provider
+from openai import AsyncAzureOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +43,7 @@ class AzureOpenAIEmbeddingClient:
 
     async def embed(self, inputs: list[str]) -> list[list[float]]:
         """Generate embeddings for a list of texts."""
-        response = await self.client.embeddings.create(
-            input=inputs,
-            model=self.deployment_name
-        )
+        response = await self.client.embeddings.create(input=inputs, model=self.deployment_name)
         return [data.embedding for data in response.data]
 
 
@@ -101,7 +97,7 @@ class RoutingDecision:
     fast_path_result: dict[str, Any] | None = None
     extracted_entities: dict[str, Any] = field(default_factory=dict)
     use_fast_path: bool = False
-    
+
     def get_workflow_id(self) -> str | None:
         """Get the workflow registry ID for this decision."""
         return WORKFLOW_ID_MAP.get(self.workflow_type)
@@ -113,7 +109,7 @@ class FastPathRouter:
 
     Uses pattern matching to identify queries that can be answered
     directly from InvenTree without LLM involvement.
-    
+
     Patterns supported:
     - Stock queries: "how much stock of X", "do we have X in stock"
     - Part info: "tell me about part X", "part details for X"
@@ -122,7 +118,7 @@ class FastPathRouter:
     """
 
     # Patterns for stock queries
-    STOCK_PATTERNS = [
+    STOCK_PATTERNS: ClassVar[list[str]] = [
         r"(?:how much|how many|what(?:'s| is) the)\s+(?:stock|inventory|quantity)\s+(?:of|for)\s+(.+?)(?:\?|$)",
         r"(?:do we have|is there|check)\s+(?:any\s+)?(.+?)\s+(?:in stock|available|on hand)",
         r"stock\s+(?:level|count|quantity)\s+(?:of|for)\s+(.+?)(?:\?|$)",
@@ -132,21 +128,21 @@ class FastPathRouter:
     ]
 
     # Patterns for part info queries
-    PART_PATTERNS = [
+    PART_PATTERNS: ClassVar[list[str]] = [
         r"(?:what is|tell me about|info(?:rmation)? (?:on|about))\s+(?:part\s+)?(.+?)(?:\?|$)",
         r"(?:part|component)\s+(?:details|info|information)\s+(?:for|of)\s+(.+?)(?:\?|$)",
         r"(?:get|show|find)\s+(?:part\s+)?(?:details|info)\s+(?:for|of|on)\s+(.+?)(?:\?|$)",
     ]
 
     # Patterns for BOM queries
-    BOM_PATTERNS = [
+    BOM_PATTERNS: ClassVar[list[str]] = [
         r"(?:what(?:'s| is) the|show|get)\s+bom\s+(?:for|of)\s+(.+?)(?:\?|$)",
         r"(?:bill of materials|components)\s+(?:for|of)\s+(.+?)(?:\?|$)",
         r"(?:what parts|which components)\s+(?:are in|make up|compose)\s+(.+?)(?:\?|$)",
     ]
 
     # Patterns for location queries
-    LOCATION_PATTERNS = [
+    LOCATION_PATTERNS: ClassVar[list[str]] = [
         r"(?:where is|locate|find)\s+(.+?)(?:\?|$)",
         r"(?:location|position)\s+(?:of|for)\s+(.+?)(?:\?|$)",
         r"(?:which (?:bin|shelf|location))\s+(?:has|contains)\s+(.+?)(?:\?|$)",
@@ -419,14 +415,14 @@ Only output the JSON object, no other text."""
             return RoutingDecision(
                 workflow_type=WorkflowType.GENERAL,
                 confidence=0.2,
-                reasoning=f"Classification error: {str(e)}",
+                reasoning=f"Classification error: {e!s}",
             )
 
 
 def format_fast_path_response(decision: RoutingDecision) -> str:
     """
     Format fast-path result as natural language response.
-    
+
     This is a utility function that can be used by any agent
     to format fast-path results consistently.
     """
@@ -469,8 +465,7 @@ def format_fast_path_response(decision: RoutingDecision) -> str:
         if not locations:
             return f"**{part_name}** has no recorded stock locations."
         loc_list = "\n".join(
-            f"- {loc['location']}: {loc['quantity']} units"
-            for loc in locations[:10]
+            f"- {loc['location']}: {loc['quantity']} units" for loc in locations[:10]
         )
         return f"**Locations for {part_name}:**\n{loc_list}"
 
@@ -480,17 +475,22 @@ def format_fast_path_response(decision: RoutingDecision) -> str:
 class SemanticRouter:
     """
     Embedding-based router for common intents.
-    
+
     Uses vector similarity to route queries to workflows based on
     canonical examples, reducing the need for LLM calls.
     """
-    
+
     # Canonical examples for each workflow
-    ROUTES = {
+    ROUTES: ClassVar[dict[WorkflowType, list[str]]] = {
         WorkflowType.T1_LOOKUP: [
             "how much stock of X",
             "do we have X in stock",
             "inventory level for X",
+            "which part has the highest stock",
+            "which fastener has the most stock",
+            "what item has the lowest inventory",
+            "rank parts by stock quantity",
+            "top five parts by stock level",
             "where is part X located",
             "what is the bin location for X",
             "show me the BOM for X",
@@ -595,32 +595,32 @@ class SemanticRouter:
             return
 
         client = await self._get_client()
-        
+
         # Flatten routes for batch embedding
         all_texts = []
         mapping = []  # (workflow_type, index_in_list)
-        
+
         for wf_type, examples in self.ROUTES.items():
             for example in examples:
                 all_texts.append(example)
                 mapping.append(wf_type)
-        
+
         # Generate embeddings in batches
         try:
             # Note: Agent Framework embedding client might return different formats
             # We assume it returns a list of embeddings or similar
             embeddings = await client.embed(all_texts)
-            
+
             # Organize into index
             for i, embedding in enumerate(embeddings):
                 wf_type = mapping[i]
                 if wf_type not in self._index:
                     self._index[wf_type] = []
                 self._index[wf_type].append(embedding)
-                
+
             self._initialized = True
             logger.info("Semantic router initialized with %d examples", len(all_texts))
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize semantic router: {e}")
             # We don't raise here to allow fallback to other routers
@@ -628,11 +628,11 @@ class SemanticRouter:
     async def route(self, query: str, threshold: float = 0.82) -> RoutingDecision | None:
         """
         Route query using vector similarity.
-        
+
         Args:
             query: User query
             threshold: Similarity threshold (0.0-1.0)
-            
+
         Returns:
             RoutingDecision if match found above threshold, else None
         """
@@ -644,18 +644,18 @@ class SemanticRouter:
         try:
             client = await self._get_client()
             query_embedding = (await client.embed([query]))[0]
-            
+
             best_score = -1.0
             best_wf = None
-            
+
             # Find best match
             # We use simple cosine similarity
             q_vec = np.array(query_embedding)
             q_norm = np.linalg.norm(q_vec)
-            
+
             if q_norm == 0:
                 return None
-                
+
             for wf_type, embeddings in self._index.items():
                 for emb in embeddings:
                     vec = np.array(emb)
@@ -665,7 +665,7 @@ class SemanticRouter:
                         if score > best_score:
                             best_score = score
                             best_wf = wf_type
-            
+
             if best_wf and best_score >= threshold:
                 return RoutingDecision(
                     workflow_type=best_wf,
@@ -673,33 +673,30 @@ class SemanticRouter:
                     reasoning=f"Semantic match with score {best_score:.2f}",
                     use_fast_path=False,
                 )
-                
+
         except Exception as e:
             logger.warning(f"Semantic routing failed: {e}")
-            
+
         return None
 
 
 class UnifiedRouter:
     """
     Unified router that combines FastPath, Semantic, and LLM routing.
-    
+
     Strategy:
     1. Try FastPath (regex) - Very fast, high precision
     2. Try Semantic (embeddings) - Fast, good for common intents
     3. Try LLM (classifier) - Slower, handles complex/ambiguous queries
     """
-    
+
     def __init__(self):
         self.fast_path = FastPathRouter()
         self.semantic = SemanticRouter()
         self.classifier = IntentClassifier()
-        
+
     async def route(
-        self, 
-        message: str, 
-        thread_id: str, 
-        context: dict[str, Any] | None = None
+        self, message: str, thread_id: str, context: dict[str, Any] | None = None
     ) -> RoutingDecision:
         """
         Route a message to a workflow.
@@ -708,17 +705,17 @@ class UnifiedRouter:
         fast_result = await self.fast_path.try_fast_path(message, thread_id)
         if fast_result:
             return fast_result
-            
+
         # 2. Semantic Routing
         # We use a high threshold to avoid false positives
         semantic_result = await self.semantic.route(message, threshold=0.85)
         if semantic_result:
             return semantic_result
-            
+
         # 3. LLM Classification
         # Fallback to LLM
         return await self.classifier.classify(
             query=message,
             user_context=str(context) if context else "",
-            conversation_summary=context.get("summary", "") if context else ""
+            conversation_summary=context.get("summary", "") if context else "",
         )

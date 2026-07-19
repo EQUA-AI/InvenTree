@@ -25,6 +25,7 @@ from ai.core.streaming import (
     EventType,
     InMemoryEventEmitter,
 )
+from ai.core.tools.read_only import READ_ONLY_TOOLS
 from aichat.models import ThreadNamespace, TurnModality, TurnState
 from aichat.services import IdempotencyConflict, ThreadRepository
 from asgiref.sync import sync_to_async
@@ -693,6 +694,11 @@ class NormalizedTurnService:
         unsubscribe = await isolated_emitter.subscribe(capture)
         chunks: list[str] = []
 
+        # Hands-free voice has no visible confirmation step, so speech must be
+        # structurally unable to execute an effect (contract §0.2): the fence
+        # makes every write tool fail closed for the whole voice execution.
+        fence_token = READ_ONLY_TOOLS.set(True) if modality == TurnModality.VOICE else None
+
         try:
             diagnostic_context = await self._build_diagnostic_context(
                 actor=actor,
@@ -940,6 +946,8 @@ class NormalizedTurnService:
             )
             raise TurnExecutionFailed("AI turn failed") from None
         finally:
+            if fence_token is not None:
+                READ_ONLY_TOOLS.reset(fence_token)
             unsubscribe()
 
     @staticmethod

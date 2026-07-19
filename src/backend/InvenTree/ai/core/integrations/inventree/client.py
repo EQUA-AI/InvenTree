@@ -8,13 +8,15 @@ Async HTTP client for InvenTree API with:
 - Error classification for reflection
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from enum import Enum
-from typing import Any, AsyncGenerator
+from enum import StrEnum
+from typing import Any
 
 import httpx
 import structlog
+from ai.core.config import get_inventree_settings
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -22,34 +24,33 @@ from tenacity import (
     wait_exponential,
 )
 
-from ai.core.config import get_inventree_settings
-
 logger = structlog.get_logger(__name__)
 
 
-class CircuitState(str, Enum):
+class CircuitState(StrEnum):
     """Circuit breaker states."""
-    CLOSED = "closed"      # Normal operation
-    OPEN = "open"          # Failing, reject requests
+
+    CLOSED = "closed"  # Normal operation
+    OPEN = "open"  # Failing, reject requests
     HALF_OPEN = "half_open"  # Testing if service recovered
 
 
 class CircuitBreaker:
     """
     Simple circuit breaker implementation.
-    
+
     States:
     - CLOSED: Normal operation, requests pass through
     - OPEN: Service is failing, reject requests immediately
     - HALF_OPEN: Testing if service has recovered
-    
+
     Transitions:
     - CLOSED -> OPEN: After failure_threshold consecutive failures
     - OPEN -> HALF_OPEN: After recovery_timeout
     - HALF_OPEN -> CLOSED: On successful request
     - HALF_OPEN -> OPEN: On failed request
     """
-    
+
     def __init__(
         self,
         failure_threshold: int = 5,
@@ -59,17 +60,17 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.name = name
-        
+
         self.state = CircuitState.CLOSED
         self.failure_count = 0
         self.last_failure_time: datetime | None = None
         self.success_count = 0
-    
+
     def can_execute(self) -> bool:
         """Check if request can be executed."""
         if self.state == CircuitState.CLOSED:
             return True
-        
+
         if self.state == CircuitState.OPEN:
             # Check if recovery timeout has passed
             if self.last_failure_time:
@@ -83,10 +84,10 @@ class CircuitBreaker:
                     )
                     return True
             return False
-        
+
         # HALF_OPEN - allow one request to test
         return True
-    
+
     def record_success(self) -> None:
         """Record a successful request."""
         if self.state == CircuitState.HALF_OPEN:
@@ -97,12 +98,12 @@ class CircuitBreaker:
                 logger.info("Circuit breaker closed", name=self.name)
         else:
             self.failure_count = 0
-    
+
     def record_failure(self) -> None:
         """Record a failed request."""
         self.failure_count += 1
         self.last_failure_time = datetime.utcnow()
-        
+
         if self.state == CircuitState.HALF_OPEN:
             self.state = CircuitState.OPEN
             logger.warning(
@@ -120,7 +121,7 @@ class CircuitBreaker:
 
 class InvenTreeError(Exception):
     """Base exception for InvenTree errors."""
-    
+
     def __init__(
         self,
         message: str,
@@ -134,21 +135,21 @@ class InvenTreeError(Exception):
 
 class TransientError(InvenTreeError):
     """Transient infrastructure error (can be retried)."""
-    
+
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message, status_code, "TRANSIENT_INFRA")
 
 
 class ValidationError(InvenTreeError):
     """Validation error (needs LLM reflection)."""
-    
+
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message, status_code, "VALIDATION")
 
 
 class BusinessRuleError(InvenTreeError):
     """Business rule violation (surface to user)."""
-    
+
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message, status_code, "BUSINESS_RULE")
 
@@ -156,14 +157,14 @@ class BusinessRuleError(InvenTreeError):
 class InvenTreeClient:
     """
     Async HTTP client for InvenTree API.
-    
+
     Features:
     - Automatic authentication with API token
     - Circuit breaker for resilience
     - Retry with exponential backoff for transient errors
     - Request/response logging with structlog
     - Error classification for reflection middleware
-    
+
     Example usage:
         ```python
         async with get_inventree_client() as client:
@@ -171,7 +172,7 @@ class InvenTreeClient:
             stock = await client.get_stock(part_id=42)
         ```
     """
-    
+
     def __init__(
         self,
         base_url: str | None = None,
@@ -180,23 +181,23 @@ class InvenTreeClient:
     ) -> None:
         """
         Initialize the InvenTree client.
-        
+
         Args:
             base_url: InvenTree API base URL.
             token: API authentication token.
             timeout: Request timeout in seconds.
         """
         config = get_inventree_settings()
-        
+
         self.base_url = (base_url or config.url).rstrip("/")
         self.token = token or config.token.get_secret_value()
         self.timeout = timeout or config.timeout
-        
+
         self._client: httpx.AsyncClient | None = None
         self._circuit_breaker = CircuitBreaker(name="inventree")
-        
+
         logger.info("InvenTreeClient initialized", base_url=self.base_url)
-    
+
     @asynccontextmanager
     async def _get_client(self) -> AsyncGenerator[httpx.AsyncClient, None]:
         """Get or create the HTTP client."""
@@ -209,15 +210,15 @@ class InvenTreeClient:
                 },
                 timeout=self.timeout,
             )
-        
+
         yield self._client
-    
+
     async def close(self) -> None:
         """Close the HTTP client."""
         if self._client:
             await self._client.aclose()
             self._client = None
-    
+
     def _classify_error(self, status_code: int, response_body: str) -> InvenTreeError:
         """Classify an HTTP error into the error taxonomy."""
         if status_code in (500, 502, 503, 504):
@@ -225,39 +226,39 @@ class InvenTreeClient:
                 f"InvenTree server error: {status_code}",
                 status_code,
             )
-        
+
         if status_code == 429:
             return TransientError("Rate limited by InvenTree", status_code)
-        
+
         if status_code == 400:
             return ValidationError(
                 f"Invalid request: {response_body}",
                 status_code,
             )
-        
+
         if status_code == 404:
             return BusinessRuleError(
                 f"Resource not found: {response_body}",
                 status_code,
             )
-        
+
         if status_code == 403:
             return BusinessRuleError(
                 f"Permission denied: {response_body}",
                 status_code,
             )
-        
+
         if status_code == 401:
             return BusinessRuleError(
                 "Authentication failed - invalid API token",
                 status_code,
             )
-        
+
         return InvenTreeError(
             f"Unexpected error: {status_code} - {response_body}",
             status_code,
         )
-    
+
     @retry(
         retry=retry_if_exception_type(TransientError),
         stop=stop_after_attempt(3),
@@ -272,34 +273,42 @@ class InvenTreeClient:
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """
         Make an HTTP request to InvenTree.
-        
+
         Args:
             method: HTTP method (GET, POST, PUT, PATCH, DELETE).
             endpoint: API endpoint (e.g., "/part/").
             params: Query parameters.
             json_data: JSON body for POST/PUT/PATCH.
-            
+
         Returns:
             Response JSON data.
-            
+
         Raises:
             TransientError: For retryable errors.
             ValidationError: For validation errors (needs reflection).
             BusinessRuleError: For business rule violations.
         """
+        # Voice turns run under a read-only fence (contract §0.2): speech may
+        # never execute an effect, so mutating requests fail as tool errors.
+        if method.upper() != "GET":
+            from ai.core.tools.read_only import READ_ONLY_MESSAGE, read_only_tools_active
+
+            if read_only_tools_active():
+                raise BusinessRuleError(READ_ONLY_MESSAGE)
+
         # Check circuit breaker
         if not self._circuit_breaker.can_execute():
             raise TransientError("Circuit breaker is open - InvenTree unavailable")
-        
+
         endpoint = endpoint.lstrip("/")
-        
+
         logger.debug(
             "InvenTree request",
             method=method,
             endpoint=endpoint,
             params=params,
         )
-        
+
         try:
             async with self._get_client() as client:
                 response = await client.request(
@@ -308,43 +317,43 @@ class InvenTreeClient:
                     params=params,
                     json=json_data,
                 )
-                
+
                 if response.status_code >= 400:
                     error = self._classify_error(
                         response.status_code,
                         response.text,
                     )
-                    
+
                     if isinstance(error, TransientError):
                         self._circuit_breaker.record_failure()
-                    
+
                     raise error
-                
+
                 self._circuit_breaker.record_success()
-                
+
                 result = response.json()
-                
+
                 logger.debug(
                     "InvenTree response",
                     endpoint=endpoint,
                     status_code=response.status_code,
                     result_count=len(result) if isinstance(result, list) else 1,
                 )
-                
+
                 return result
-                
+
         except httpx.TimeoutException as e:
             self._circuit_breaker.record_failure()
             raise TransientError(f"Request timeout: {e}") from e
-        
+
         except httpx.ConnectError as e:
             self._circuit_breaker.record_failure()
             raise TransientError(f"Connection error: {e}") from e
-    
+
     # -------------------------------------------------------------------------
     # Part Operations
     # -------------------------------------------------------------------------
-    
+
     async def search_parts(
         self,
         query: str | None = None,
@@ -356,7 +365,7 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         Search for parts.
-        
+
         Args:
             query: Search query string (searches name, description, IPN).
             category: Filter by category ID.
@@ -364,7 +373,7 @@ class InvenTreeClient:
             active: Filter by active status.
             limit: Maximum results to return.
             offset: Pagination offset.
-            
+
         Returns:
             List of matching parts.
         """
@@ -372,7 +381,7 @@ class InvenTreeClient:
             "limit": limit,
             "offset": offset,
         }
-        
+
         if query:
             params["search"] = query
         if category:
@@ -381,22 +390,22 @@ class InvenTreeClient:
             params["IPN"] = ipn
         if active is not None:
             params["active"] = str(active).lower()
-        
+
         result = await self._request("GET", "/part/", params=params)
-        
+
         # Handle paginated response
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
-    
+
     async def get_part(self, part_id: int) -> dict[str, Any] | None:
         """
         Get a single part by ID.
-        
+
         Args:
             part_id: The part ID.
-            
+
         Returns:
             Part data or None if not found.
         """
@@ -407,20 +416,20 @@ class InvenTreeClient:
             if e.status_code == 404:
                 return None
             raise
-    
+
     async def get_part_by_ipn(self, ipn: str) -> dict[str, Any] | None:
         """
         Get a part by Internal Part Number.
-        
+
         Args:
             ipn: The Internal Part Number.
-            
+
         Returns:
             Part data or None if not found.
         """
         results = await self.search_parts(ipn=ipn, limit=1)
         return results[0] if results else None
-    
+
     async def create_part(
         self,
         name: str,
@@ -431,14 +440,14 @@ class InvenTreeClient:
     ) -> dict[str, Any]:
         """
         Create a new part.
-        
+
         Args:
             name: Part name.
             category: Category ID.
             description: Part description.
             ipn: Internal Part Number.
             **kwargs: Additional part fields.
-            
+
         Returns:
             Created part data.
         """
@@ -447,15 +456,15 @@ class InvenTreeClient:
             "category": category,
             **kwargs,
         }
-        
+
         if description:
             data["description"] = description
         if ipn:
             data["IPN"] = ipn
-        
+
         result = await self._request("POST", "/part/", json_data=data)
         return result if isinstance(result, dict) else {}
-    
+
     async def update_part(
         self,
         part_id: int,
@@ -463,11 +472,11 @@ class InvenTreeClient:
     ) -> dict[str, Any]:
         """
         Update a part.
-        
+
         Args:
             part_id: The part ID.
             **updates: Fields to update.
-            
+
         Returns:
             Updated part data.
         """
@@ -477,11 +486,11 @@ class InvenTreeClient:
             json_data=updates,
         )
         return result if isinstance(result, dict) else {}
-    
+
     # -------------------------------------------------------------------------
     # Stock Operations
     # -------------------------------------------------------------------------
-    
+
     async def get_stock(
         self,
         part_id: int | None = None,
@@ -492,14 +501,14 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         Get stock items.
-        
+
         Args:
             part_id: Filter by part ID.
             location: Filter by location ID.
             in_stock: Filter by in-stock status.
             limit: Maximum results.
             offset: Pagination offset.
-            
+
         Returns:
             List of stock items.
         """
@@ -507,28 +516,28 @@ class InvenTreeClient:
             "limit": limit,
             "offset": offset,
         }
-        
+
         if part_id:
             params["part"] = part_id
         if location:
             params["location"] = location
         if in_stock is not None:
             params["in_stock"] = str(in_stock).lower()
-        
+
         result = await self._request("GET", "/stock/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
-    
+
     async def get_stock_item(self, stock_id: int) -> dict[str, Any] | None:
         """
         Get a single stock item by ID.
-        
+
         Args:
             stock_id: The stock item ID.
-            
+
         Returns:
             Stock item data or None if not found.
         """
@@ -539,7 +548,7 @@ class InvenTreeClient:
             if e.status_code == 404:
                 return None
             raise
-    
+
     async def adjust_stock(
         self,
         stock_id: int,
@@ -548,26 +557,26 @@ class InvenTreeClient:
     ) -> dict[str, Any]:
         """
         Adjust stock quantity (add or remove).
-        
+
         Args:
             stock_id: The stock item ID.
             quantity: Quantity to add (positive) or remove (negative).
             notes: Notes for the stock adjustment.
-            
+
         Returns:
             Updated stock item data.
         """
         data: dict[str, Any] = {
             "items": [{"pk": stock_id, "quantity": abs(quantity)}],
         }
-        
+
         if notes:
             data["notes"] = notes
-        
+
         endpoint = "/stock/add/" if quantity > 0 else "/stock/remove/"
         result = await self._request("POST", endpoint, json_data=data)
         return result if isinstance(result, dict) else {}
-    
+
     async def transfer_stock(
         self,
         stock_id: int,
@@ -577,35 +586,35 @@ class InvenTreeClient:
     ) -> dict[str, Any]:
         """
         Transfer stock to a different location.
-        
+
         Args:
             stock_id: The stock item ID.
             location: Target location ID.
             quantity: Quantity to transfer (defaults to all).
             notes: Notes for the transfer.
-            
+
         Returns:
             Transfer result.
         """
         item: dict[str, Any] = {"pk": stock_id}
         if quantity:
             item["quantity"] = quantity
-        
+
         data: dict[str, Any] = {
             "location": location,
             "items": [item],
         }
-        
+
         if notes:
             data["notes"] = notes
-        
+
         result = await self._request("POST", "/stock/transfer/", json_data=data)
         return result if isinstance(result, dict) else {}
-    
+
     # -------------------------------------------------------------------------
     # BOM Operations
     # -------------------------------------------------------------------------
-    
+
     async def get_bom(
         self,
         part_id: int,
@@ -613,11 +622,11 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         Get Bill of Materials for a part.
-        
+
         Args:
             part_id: The parent part ID.
             include_inherited: Include inherited BOM items.
-            
+
         Returns:
             List of BOM items.
         """
@@ -625,21 +634,21 @@ class InvenTreeClient:
             "part": part_id,
             "inherited": str(include_inherited).lower(),
         }
-        
+
         result = await self._request("GET", "/bom/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
-    
+
     async def get_bom_item(self, bom_id: int) -> dict[str, Any] | None:
         """
         Get a single BOM item.
-        
+
         Args:
             bom_id: The BOM item ID.
-            
+
         Returns:
             BOM item data or None if not found.
         """
@@ -650,11 +659,11 @@ class InvenTreeClient:
             if e.status_code == 404:
                 return None
             raise
-    
+
     # -------------------------------------------------------------------------
     # Category Operations
     # -------------------------------------------------------------------------
-    
+
     async def list_categories(
         self,
         parent: int | None = None,
@@ -662,30 +671,30 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         List part categories.
-        
+
         Args:
             parent: Filter by parent category ID.
             limit: Maximum results.
-            
+
         Returns:
             List of categories.
         """
         params: dict[str, Any] = {"limit": limit}
-        
+
         if parent is not None:
             params["parent"] = parent
-        
+
         result = await self._request("GET", "/part/category/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
-    
+
     # -------------------------------------------------------------------------
     # Location Operations
     # -------------------------------------------------------------------------
-    
+
     async def list_locations(
         self,
         parent: int | None = None,
@@ -693,30 +702,30 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         List stock locations.
-        
+
         Args:
             parent: Filter by parent location ID.
             limit: Maximum results.
-            
+
         Returns:
             List of locations.
         """
         params: dict[str, Any] = {"limit": limit}
-        
+
         if parent is not None:
             params["parent"] = parent
-        
+
         result = await self._request("GET", "/stock/location/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
-    
+
     # -------------------------------------------------------------------------
     # Supplier Operations
     # -------------------------------------------------------------------------
-    
+
     async def list_suppliers(
         self,
         active: bool = True,
@@ -724,11 +733,11 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         List suppliers.
-        
+
         Args:
             active: Filter by active status.
             limit: Maximum results.
-            
+
         Returns:
             List of suppliers.
         """
@@ -736,17 +745,17 @@ class InvenTreeClient:
             "limit": limit,
             "is_supplier": "true",
         }
-        
+
         if active is not None:
             params["active"] = str(active).lower()
-        
+
         result = await self._request("GET", "/company/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
-    
+
     async def get_supplier_parts(
         self,
         supplier_id: int | None = None,
@@ -755,33 +764,33 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         Get supplier parts (parts available from suppliers).
-        
+
         Args:
             supplier_id: Filter by supplier ID.
             part_id: Filter by part ID.
             limit: Maximum results.
-            
+
         Returns:
             List of supplier parts.
         """
         params: dict[str, Any] = {"limit": limit}
-        
+
         if supplier_id:
             params["supplier"] = supplier_id
         if part_id:
             params["part"] = part_id
-        
+
         result = await self._request("GET", "/company/part/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
-    
+
     # -------------------------------------------------------------------------
     # Purchase Order Operations
     # -------------------------------------------------------------------------
-    
+
     async def list_purchase_orders(
         self,
         supplier_id: int | None = None,
@@ -790,29 +799,29 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         List purchase orders.
-        
+
         Args:
             supplier_id: Filter by supplier.
             status: Filter by status code.
             limit: Maximum results.
-            
+
         Returns:
             List of purchase orders.
         """
         params: dict[str, Any] = {"limit": limit}
-        
+
         if supplier_id:
             params["supplier"] = supplier_id
         if status is not None:
             params["status"] = status
-        
+
         result = await self._request("GET", "/order/po/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
-    
+
     async def create_purchase_order(
         self,
         supplier: int,
@@ -822,13 +831,13 @@ class InvenTreeClient:
     ) -> dict[str, Any]:
         """
         Create a purchase order.
-        
+
         Args:
             supplier: Supplier company ID.
             description: Order description.
             reference: Reference number.
             **kwargs: Additional order fields.
-            
+
         Returns:
             Created purchase order data.
         """
@@ -836,22 +845,22 @@ class InvenTreeClient:
             "supplier": supplier,
             **kwargs,
         }
-        
+
         if description:
             data["description"] = description
         if reference:
             data["reference"] = reference
-        
+
         result = await self._request("POST", "/order/po/", json_data=data)
         return result if isinstance(result, dict) else {}
 
     async def get_purchase_order(self, po_id: int) -> dict[str, Any] | None:
         """
         Get a single purchase order.
-        
+
         Args:
             po_id: The purchase order ID.
-            
+
         Returns:
             Purchase order data or None if not found.
         """
@@ -866,16 +875,16 @@ class InvenTreeClient:
     async def get_purchase_order_lines(self, po_id: int) -> list[dict[str, Any]]:
         """
         Get lines for a purchase order.
-        
+
         Args:
             po_id: The purchase order ID.
-            
+
         Returns:
             List of PO lines.
         """
         params = {"order": po_id, "limit": 250}
         result = await self._request("GET", "/order/po-line/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
         return result if isinstance(result, list) else []
@@ -883,7 +892,7 @@ class InvenTreeClient:
     # -------------------------------------------------------------------------
     # Sales Order Operations
     # -------------------------------------------------------------------------
-    
+
     async def list_sales_orders(
         self,
         customer_id: int | None = None,
@@ -892,36 +901,36 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         List sales orders.
-        
+
         Args:
             customer_id: Filter by customer.
             status: Filter by status code.
             limit: Maximum results.
-            
+
         Returns:
             List of sales orders.
         """
         params: dict[str, Any] = {"limit": limit}
-        
+
         if customer_id:
             params["customer"] = customer_id
         if status is not None:
             params["status"] = status
-        
+
         result = await self._request("GET", "/order/so/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
-    
+
     async def get_sales_order(self, so_id: int) -> dict[str, Any] | None:
         """
         Get a single sales order.
-        
+
         Args:
             so_id: The sales order ID.
-            
+
         Returns:
             Sales order data or None if not found.
         """
@@ -936,16 +945,16 @@ class InvenTreeClient:
     async def get_sales_order_lines(self, so_id: int) -> list[dict[str, Any]]:
         """
         Get lines for a sales order.
-        
+
         Args:
             so_id: The sales order ID.
-            
+
         Returns:
             List of SO lines.
         """
         params = {"order": so_id, "limit": 250}
         result = await self._request("GET", "/order/so-line/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
         return result if isinstance(result, list) else []
@@ -953,7 +962,7 @@ class InvenTreeClient:
     # -------------------------------------------------------------------------
     # Build Order Operations
     # -------------------------------------------------------------------------
-    
+
     async def list_build_orders(
         self,
         part_id: int | None = None,
@@ -962,36 +971,36 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         List build orders.
-        
+
         Args:
             part_id: Filter by part.
             status: Filter by status code.
             limit: Maximum results.
-            
+
         Returns:
             List of build orders.
         """
         params: dict[str, Any] = {"limit": limit}
-        
+
         if part_id:
             params["part"] = part_id
         if status is not None:
             params["status"] = status
-        
+
         result = await self._request("GET", "/build/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
-    
+
     async def get_build_order(self, bo_id: int) -> dict[str, Any] | None:
         """
         Get a single build order.
-        
+
         Args:
             bo_id: The build order ID.
-            
+
         Returns:
             Build order data or None if not found.
         """
@@ -1006,10 +1015,10 @@ class InvenTreeClient:
     async def get_build_order_allocations(self, bo_id: int) -> list[dict[str, Any]]:
         """
         Get stock allocations for a build order.
-        
+
         Args:
             bo_id: The build order ID.
-            
+
         Returns:
             List of stock allocations.
         """
@@ -1019,7 +1028,7 @@ class InvenTreeClient:
         # but the prompt asks about status/what is missing.
         # Let's try /build/item/ which are the "Build Line Items"
         result = await self._request("GET", "/build/item/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
         return result if isinstance(result, list) else []
@@ -1035,11 +1044,11 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         Get parameters for a part.
-        
+
         Args:
             part_id: The part ID.
             limit: Maximum results.
-            
+
         Returns:
             List of part parameters.
         """
@@ -1047,12 +1056,12 @@ class InvenTreeClient:
             "part": part_id,
             "limit": limit,
         }
-        
+
         result = await self._request("GET", "/part/parameter/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
 
     # -------------------------------------------------------------------------
@@ -1066,11 +1075,11 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         Get attachments for a part.
-        
+
         Args:
             part_id: The part ID.
             limit: Maximum results.
-            
+
         Returns:
             List of part attachments.
         """
@@ -1080,12 +1089,12 @@ class InvenTreeClient:
             "model_id": part_id,
             "limit": limit,
         }
-        
+
         result = await self._request("GET", "/attachment/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
 
     # -------------------------------------------------------------------------
@@ -1099,11 +1108,11 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         Get assemblies where a part is used.
-        
+
         Args:
             part_id: The sub-part ID.
             limit: Maximum results.
-            
+
         Returns:
             List of BOM items where this part is used.
         """
@@ -1111,12 +1120,12 @@ class InvenTreeClient:
             "sub_part": part_id,
             "limit": limit,
         }
-        
+
         result = await self._request("GET", "/bom/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             return result["results"]
-        
+
         return result if isinstance(result, list) else [result]
 
     # -------------------------------------------------------------------------
@@ -1130,11 +1139,11 @@ class InvenTreeClient:
     ) -> list[dict[str, Any]]:
         """
         Get parts with stock below minimum threshold.
-        
+
         Args:
             threshold: Optional override for minimum stock threshold.
             limit: Maximum results.
-            
+
         Returns:
             List of parts with low stock.
         """
@@ -1142,21 +1151,18 @@ class InvenTreeClient:
             "low_stock": "true",
             "limit": limit,
         }
-        
+
         result = await self._request("GET", "/part/", params=params)
-        
+
         if isinstance(result, dict) and "results" in result:
             parts = result["results"]
         else:
             parts = result if isinstance(result, list) else [result]
-        
+
         # If threshold provided, filter further
         if threshold is not None:
-            parts = [
-                p for p in parts
-                if p.get("in_stock", 0) < threshold
-            ]
-        
+            parts = [p for p in parts if p.get("in_stock", 0) < threshold]
+
         return parts
 
 
@@ -1175,8 +1181,5 @@ def get_inventree_client() -> InvenTreeClient:
 @asynccontextmanager
 async def inventree_client() -> AsyncGenerator[InvenTreeClient, None]:
     """Context manager for InvenTree client."""
-    client = get_inventree_client()
-    try:
-        yield client
-    finally:
-        pass  # Don't close singleton
+    # Don't close singleton
+    yield get_inventree_client()

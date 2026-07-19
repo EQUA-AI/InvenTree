@@ -119,13 +119,19 @@ class EventGate:
     expected_response_ids: set[str] = field(default_factory=set)
     violations: list[str] = field(default_factory=list)
     pending_app_responses: int = 0
+    #: Client event ids of in-flight ``response.create`` requests, so a
+    #: provider error can be attributed to the request that caused it.
+    pending_create_event_ids: set[str] = field(default_factory=set)
+    #: Adopted app responses that have not yet reached a terminal event;
+    #: used to decide whether a ``response.cancel`` has anything to cancel.
+    active_app_response_ids: set[str] = field(default_factory=set)
 
     def expect_response(self, response_id: str) -> None:
         """Register a response id the application itself requested."""
         if response_id:
             self.expected_response_ids.add(response_id)
 
-    def expect_app_response(self) -> None:
+    def expect_app_response(self, event_id: str = "") -> None:
         """Register one application ``response.create`` before its id is known.
 
         Provider-generated response ids are only learned from the
@@ -137,8 +143,10 @@ class EventGate:
         ``create_response:false`` is what structurally prevents drift.
         """
         self.pending_app_responses += 1
+        if event_id:
+            self.pending_create_event_ids.add(event_id)
 
-    def abandon_app_response(self) -> None:
+    def abandon_app_response(self, event_id: str = "") -> None:
         """Drop one pending allowance for a failed or rejected request.
 
         An allowance without a forthcoming acknowledgement would otherwise
@@ -146,6 +154,18 @@ class EventGate:
         """
         if self.pending_app_responses > 0:
             self.pending_app_responses -= 1
+        if event_id:
+            self.pending_create_event_ids.discard(event_id)
+
+    def reset_pending(self) -> None:
+        """Clear in-flight bookkeeping when its connection goes away."""
+        self.pending_app_responses = 0
+        self.pending_create_event_ids.clear()
+        self.active_app_response_ids.clear()
+
+    def has_active_app_response(self) -> bool:
+        """Whether an application-requested response may still be playing."""
+        return bool(self.active_app_response_ids)
 
     def classify(self, event: dict[str, Any]) -> EventKind:
         """Return the event kind, flagging policy violations as forbidden."""
@@ -161,16 +181,22 @@ class EventGate:
         if kind is None:
             return "ignorable"
         if kind == "error":
-            # A rejected request (e.g. an active-response conflict) never
-            # acknowledges; consume its allowance so it cannot later
-            # legitimize an autonomous response.
-            self.abandon_app_response()
+            # A rejected request never acknowledges, so its allowance must be
+            # dropped — but only when the error is attributable to one of our
+            # ``response.create`` requests (the provider echoes the causing
+            # client event id). A stale ``response.cancel`` error must never
+            # consume the allowance of the answer sent right behind it.
+            error_event_id = str(event.get("error", {}).get("event_id", "") or "")
+            if error_event_id and error_event_id in self.pending_create_event_ids:
+                self.abandon_app_response(error_event_id)
             return kind
         if event_type.startswith(_RESPONSE_PREFIX):
             response_id = str(
                 event.get("response", {}).get("id", "") or event.get("response_id", "")
             )
             if response_id and response_id in self.expected_response_ids:
+                if event_type in ("response.done", "response.cancelled"):
+                    self.active_app_response_ids.discard(response_id)
                 return kind
             if event_type == "response.created" and self.pending_app_responses > 0:
                 # The acknowledgement of a response the application itself
@@ -178,6 +204,7 @@ class EventGate:
                 self.pending_app_responses -= 1
                 if response_id:
                     self.expected_response_ids.add(response_id)
+                    self.active_app_response_ids.add(response_id)
                 return kind
             # An answer nobody asked for: the two-agent drift case.
             self.violations.append(event_type)

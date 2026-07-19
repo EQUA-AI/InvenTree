@@ -150,10 +150,19 @@ def get_workflow_root() -> RootWorkflow:
     return get_root_workflow()
 
 
-def get_turn_service() -> NormalizedTurnService:
-    """Return the normalized service used by every interactive modality."""
+_turn_service: NormalizedTurnService | None = None
 
-    return NormalizedTurnService(workflow_factory=get_workflow_root)
+
+def get_turn_service() -> NormalizedTurnService:
+    """Return the normalized service used by every interactive modality.
+
+    One shared instance per process: the service holds no per-turn state,
+    and rebuilding it per request rebuilt the router/adapter wiring too.
+    """
+    global _turn_service
+    if _turn_service is None:
+        _turn_service = NormalizedTurnService(workflow_factory=get_workflow_root)
+    return _turn_service
 
 
 def _principal() -> AIPrincipal:

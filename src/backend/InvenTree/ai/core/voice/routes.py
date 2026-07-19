@@ -7,6 +7,8 @@ payload echoes, or session configuration authority.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from typing import Any
 
@@ -34,6 +36,11 @@ _provider_channel_factory = None
 #: Companion hook: an async callable tearing down the provider channel for
 #: one ended session id. Installed beside the factory by the app lifespan.
 _provider_channel_closer = None
+
+#: Per-session turn serialization: hands-free auto-submit can deliver a new
+#: utterance while the previous turn is still processing, and the shared
+#: provider channel's speech slot must be handed over in order.
+_turn_locks: dict[str, asyncio.Lock] = {}
 
 
 def set_provider_channel_factory(factory) -> None:
@@ -223,6 +230,7 @@ async def end_voice_session(session_id: str) -> dict:
     session = await sync_to_async(
         lambda: realtime.end_session(session=session), thread_sensitive=True
     )()
+    _turn_locks.pop(str(session.id), None)
     if _provider_channel_closer is not None:
         try:
             await _provider_channel_closer(str(session.id))
@@ -314,6 +322,8 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
     from ai.core.app import get_turn_service
     from ai.core.trusted_context import build_trusted_turn_context
     from ai.core.turn_service import IdempotencyConflict, TurnAlreadyRunning
+    from ai.core.voice import status_phrases
+    from ai.core.voice.speech import build_exact_tts_payload
     from aichat.models import TurnModality, TurnState
     from voice.models import VoiceUtteranceType
     from voice.services import realtime
@@ -330,92 +340,183 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
     def _touch():
         return realtime.touch_session(session=session, limits=_limits(settings), count_turn=True)
 
-    try:
-        await sync_to_async(_touch, thread_sensitive=True)()
-        result = await get_turn_service().process(
-            actor=principal,
-            thread_id=session.thread_id,
-            content=final.text,
-            modality=TurnModality.VOICE,
-            trusted_context=trusted_context,
-            modality_metadata=final.modality_metadata(),
-            idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
-        )
-    except realtime.VoiceSessionError as exc:
-        raise _session_error(exc) from None
-    except (IdempotencyConflict, TurnAlreadyRunning):
-        raise HTTPException(status_code=409, detail="IDEMPOTENCY_CONFLICT") from None
-    except ValueError:
-        raise HTTPException(status_code=422, detail="VOICE_TRANSCRIPT_INCOMPLETE") from None
-    except Exception:
-        logger.error("Voice turn failed", extra={"session": str(session.id)})
-        raise HTTPException(status_code=500, detail="VOICE_RESPONSE_INCOMPLETE") from None
+    channel = _provider_channel_factory(session) if _provider_channel_factory else None
+    send_control = getattr(channel, "send_control", None)
 
-    spoken: dict[str, Any] | None = None
-    speak_flag = bool((result.canonical_response or {}).get("speak", False))
-    if result.response_state == TurnState.COMPLETE and result.spoken_summary.strip() and speak_flag:
+    async def _speak_status(utterance_type: str, phrase: str) -> bool:
+        """Persist then speak one allow-listed status phrase; never raises.
 
-        def _persist():
-            return realtime.persist_utterance(
-                session=session,
-                utterance_type=VoiceUtteranceType.COMPLETED_ANSWER,
-                spoken_summary=result.spoken_summary,
-                response_id=result.turn_id,
-                turn_id=result.turn_id,
-            )
-
+        Field technicians may be unable to look at the screen, so every turn
+        outcome should be audible (§7.6). Status speech is best-effort: it can
+        never block or fail the turn itself.
+        """
+        if send_control is None or phrase not in status_phrases.ALLOWED_STATUS_PHRASES:
+            return False
         try:
-            utterance = await sync_to_async(_persist, thread_sensitive=True)()
-            spoken = {
-                "utterance_id": str(utterance.id),
-                "spoken_summary": utterance.spoken_summary,
-                "spoken_summary_hash": utterance.spoken_summary_hash,
-                "playback_state": utterance.playback_state,
-            }
-        except realtime.VoiceSessionError as exc:
-            raise _session_error(exc) from None
-
-        # Exact TTS (WS4-T8): persist-before-speak already happened above, so
-        # the payload builder can prove the text/hash pair before any speech
-        # request. A missing or failed channel leaves playback honestly
-        # pending; the visible chat answer is never blocked by TTS.
-        channel = _provider_channel_factory(session) if _provider_channel_factory else None
-        send_control = getattr(channel, "send_control", None)
-        if send_control is not None:
-            from ai.core.voice.speech import ExactSpeechViolation, build_exact_tts_payload
-            from voice.models import PlaybackState
-
-            try:
-                tts_payload = build_exact_tts_payload(
+            utterance = await sync_to_async(
+                lambda: realtime.persist_utterance(
+                    session=session,
+                    utterance_type=utterance_type,
+                    spoken_summary=phrase,
+                    policy_version=status_phrases.STATUS_PHRASE_POLICY_VERSION,
+                ),
+                thread_sensitive=True,
+            )()
+            await send_control(
+                build_exact_tts_payload(
                     persisted_text=utterance.spoken_summary,
                     persisted_hash=utterance.spoken_summary_hash,
                 )
-                await send_control(tts_payload)
-            except ExactSpeechViolation as exc:
-                raise HTTPException(status_code=409, detail="IDEMPOTENCY_CONFLICT") from exc
-            except Exception:
-                logger.warning("Exact TTS dispatch failed", extra={"session": str(session.id)})
-            else:
-                utterance = await sync_to_async(
-                    lambda: realtime.mark_playback(
-                        utterance=utterance, state=PlaybackState.REQUESTED
-                    ),
-                    thread_sensitive=True,
-                )()
-                spoken["playback_state"] = utterance.playback_state
-                logger.info(
-                    "Exact TTS dispatched",
-                    extra={"session": str(session.id), "utterance": str(utterance.id)},
+            )
+        except Exception:
+            logger.debug("Voice status phrase skipped", extra={"session": str(session.id)})
+            return False
+        return True
+
+    interim = {"spoken": False}
+
+    async def _interim_status() -> None:
+        await asyncio.sleep(status_phrases.INTERIM_STATUS_DELAY_S)
+        interim["spoken"] = await _speak_status(
+            VoiceUtteranceType.INTERIM_STATUS, status_phrases.THINKING
+        )
+
+    # One turn at a time per session: hands-free auto-submit can deliver a
+    # new utterance while the previous turn is processing, and the shared
+    # provider speech slot must be handed over in order.
+    lock = _turn_locks.setdefault(str(session.id), asyncio.Lock())
+    async with lock:
+        interim_task = asyncio.create_task(_interim_status()) if send_control is not None else None
+
+        async def _finish_interim() -> bool:
+            """Stop any pending thinking phrase; report whether one was spoken."""
+            if interim_task is None:
+                return False
+            if not interim_task.done():
+                interim_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await interim_task
+            return interim["spoken"]
+
+        async def _clear_active_speech(interim_spoken: bool) -> None:
+            """Cancel a still-playing thinking phrase before new speech.
+
+            A cancel with nothing active draws a provider error, so when the
+            channel can prove the phrase already finished, skip it entirely.
+            """
+            if not interim_spoken or send_control is None:
+                return
+            probe = getattr(channel, "has_active_app_response", None)
+            if probe is not None and not probe():
+                return
+            with contextlib.suppress(Exception):
+                await send_control({"type": "response.cancel"})
+
+        try:
+            await sync_to_async(_touch, thread_sensitive=True)()
+            result = await get_turn_service().process(
+                actor=principal,
+                thread_id=session.thread_id,
+                content=final.text,
+                modality=TurnModality.VOICE,
+                trusted_context=trusted_context,
+                modality_metadata=final.modality_metadata(),
+                idempotency_key=idempotency_key,
+                correlation_id=correlation_id,
+            )
+        except realtime.VoiceSessionError as exc:
+            await _finish_interim()
+            raise _session_error(exc) from None
+        except (IdempotencyConflict, TurnAlreadyRunning):
+            await _finish_interim()
+            raise HTTPException(status_code=409, detail="IDEMPOTENCY_CONFLICT") from None
+        except ValueError:
+            await _finish_interim()
+            raise HTTPException(status_code=422, detail="VOICE_TRANSCRIPT_INCOMPLETE") from None
+        except Exception:
+            logger.error("Voice turn failed", extra={"session": str(session.id)})
+            await _clear_active_speech(await _finish_interim())
+            await _speak_status(VoiceUtteranceType.FAILURE_STATUS, status_phrases.TURN_FAILED)
+            raise HTTPException(status_code=500, detail="VOICE_RESPONSE_INCOMPLETE") from None
+
+        interim_spoken = await _finish_interim()
+        spoken: dict[str, Any] | None = None
+        speak_flag = bool((result.canonical_response or {}).get("speak", False))
+        if (
+            result.response_state == TurnState.COMPLETE
+            and result.spoken_summary.strip()
+            and speak_flag
+        ):
+
+            def _persist():
+                return realtime.persist_utterance(
+                    session=session,
+                    utterance_type=VoiceUtteranceType.COMPLETED_ANSWER,
+                    spoken_summary=result.spoken_summary,
+                    response_id=result.turn_id,
+                    turn_id=result.turn_id,
                 )
 
-    return {
-        "session_id": str(session.id),
-        "thread_id": result.thread_id,
-        "turn_id": result.turn_id,
-        "message": result.message,
-        "workflow_used": result.workflow_used,
-        "response_state": result.response_state,
-        "replayed": result.replayed,
-        "spoken": spoken,
-    }
+            try:
+                utterance = await sync_to_async(_persist, thread_sensitive=True)()
+                spoken = {
+                    "utterance_id": str(utterance.id),
+                    "spoken_summary": utterance.spoken_summary,
+                    "spoken_summary_hash": utterance.spoken_summary_hash,
+                    "playback_state": utterance.playback_state,
+                }
+            except realtime.VoiceSessionError as exc:
+                raise _session_error(exc) from None
+
+            # Exact TTS (WS4-T8): persist-before-speak already happened above, so
+            # the payload builder can prove the text/hash pair before any speech
+            # request. A missing or failed channel leaves playback honestly
+            # pending; the visible chat answer is never blocked by TTS.
+            if send_control is not None:
+                from ai.core.voice.speech import ExactSpeechViolation
+                from voice.models import PlaybackState
+
+                await _clear_active_speech(interim_spoken)
+                try:
+                    tts_payload = build_exact_tts_payload(
+                        persisted_text=utterance.spoken_summary,
+                        persisted_hash=utterance.spoken_summary_hash,
+                    )
+                    await send_control(tts_payload)
+                except ExactSpeechViolation as exc:
+                    raise HTTPException(status_code=409, detail="IDEMPOTENCY_CONFLICT") from exc
+                except Exception:
+                    logger.warning("Exact TTS dispatch failed", extra={"session": str(session.id)})
+                else:
+                    utterance = await sync_to_async(
+                        lambda: realtime.mark_playback(
+                            utterance=utterance, state=PlaybackState.REQUESTED
+                        ),
+                        thread_sensitive=True,
+                    )()
+                    spoken["playback_state"] = utterance.playback_state
+                    logger.info(
+                        "Exact TTS dispatched",
+                        extra={"session": str(session.id), "utterance": str(utterance.id)},
+                    )
+        elif result.response_state == TurnState.COMPLETE and (result.message or "").strip():
+            # The answer completed but has no schema-valid spoken form. Say so:
+            # a silent turn forces the technician to look at the screen.
+            await _clear_active_speech(interim_spoken)
+            await _speak_status(VoiceUtteranceType.INTERIM_STATUS, status_phrases.ANSWER_IN_CHAT)
+        elif result.response_state in (TurnState.INCOMPLETE, TurnState.FAILED):
+            # Bounded-out or terminal-replayed turns return 200 without raising;
+            # an eyes-free user still needs to hear that the turn ended.
+            await _clear_active_speech(interim_spoken)
+            await _speak_status(VoiceUtteranceType.FAILURE_STATUS, status_phrases.ANSWER_INCOMPLETE)
+
+        return {
+            "session_id": str(session.id),
+            "thread_id": result.thread_id,
+            "turn_id": result.turn_id,
+            "message": result.message,
+            "workflow_used": result.workflow_used,
+            "response_state": result.response_state,
+            "replayed": result.replayed,
+            "spoken": spoken,
+        }
