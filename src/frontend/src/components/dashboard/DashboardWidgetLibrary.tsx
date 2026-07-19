@@ -4,12 +4,14 @@ import { ModelType } from '@lib/enums/ModelType';
 import { useGlobalSettingsState } from '../../states/SettingsStates';
 import { useUserState } from '../../states/UserState';
 import type { DashboardWidgetProps } from './DashboardWidget';
+import BlockedFlowWidget from './widgets/BlockedFlowWidget';
 import ColorToggleDashboardWidget from './widgets/ColorToggleWidget';
 import GetStartedWidget from './widgets/GetStartedWidget';
 import LanguageSelectDashboardWidget from './widgets/LanguageSelectWidget';
 import NewsWidget from './widgets/NewsWidget';
 import QueryCountDashboardWidget from './widgets/QueryCountDashboardWidget';
 import QueryDashboardWidget from './widgets/QueryDashboardWidget';
+import RiskRadarWidget from './widgets/RiskRadarWidget';
 import StocktakeDashboardWidget from './widgets/StocktakeDashboardWidget';
 
 /**
@@ -240,6 +242,29 @@ function BuiltinGettingStartedWidgets(): DashboardWidgetProps[] {
   ];
 }
 
+function BuiltinRiskWidgets(): DashboardWidgetProps[] {
+  return [
+    {
+      label: 'risk-radar',
+      title: t`Risk Radar`,
+      description: t`Top ranked risk findings for your authorized scope`,
+      minWidth: 4,
+      minHeight: 3,
+      icon: 'exclamation',
+      render: () => <RiskRadarWidget />
+    },
+    {
+      label: 'blocked-flow',
+      title: t`Blocked Flow`,
+      description: t`Repair packet and work order flow state counts`,
+      minWidth: 4,
+      minHeight: 3,
+      icon: 'exclamation',
+      render: () => <BlockedFlowWidget />
+    }
+  ];
+}
+
 function BuiltinSettingsWidgets(): DashboardWidgetProps[] {
   return [ColorToggleDashboardWidget(), LanguageSelectDashboardWidget()];
 }
@@ -255,6 +280,7 @@ function BuiltinActionWidgets(): DashboardWidgetProps[] {
 export default function DashboardWidgetLibrary(): DashboardWidgetProps[] {
   return [
     ...BuiltinQueryCountWidgets(),
+    ...BuiltinRiskWidgets(),
     ...BuiltinGettingStartedWidgets(),
     ...BuiltinSettingsWidgets(),
     ...BuiltinActionWidgets()

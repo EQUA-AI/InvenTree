@@ -120,6 +120,19 @@ export enum ApiEndpoints {
   safety_gate_template_list = 'repair/gate-templates/',
   safety_gate_template_detail = 'repair/gate-templates/:id/',
 
+  // Risk Radar / Command Center endpoints
+  risk_scope_list = 'repair/risk-scopes/',
+  risk_finding_list = 'repair/risk-findings/',
+  risk_finding_detail = 'repair/risk-findings/:id/',
+  risk_finding_acknowledge = 'repair/risk-findings/:id/acknowledge/',
+  risk_finding_assign = 'repair/risk-findings/:id/assign/',
+  risk_finding_snooze = 'repair/risk-findings/:id/snooze/',
+  risk_finding_dismiss = 'repair/risk-findings/:id/dismiss/',
+  risk_finding_recheck = 'repair/risk-findings/:id/recheck/',
+  risk_finding_export = 'repair/risk-findings/export/',
+  command_center_summary = 'repair/command-center/summary/',
+  risk_rule_health = 'repair/risk-rules/health/',
+
   // Asset / Equipment endpoints
   asset_machine_list = 'assets/machines/',
   asset_machine_detail = 'assets/machines/:id/',

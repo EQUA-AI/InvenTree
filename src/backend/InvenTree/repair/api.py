@@ -374,3 +374,9 @@ repair_api_urls = [
         ]),
     ),
 ]
+
+# Risk Radar / Command Center routes (Features #4 / #16); appended so the
+# module keeps one authoritative URL list for /api/repair/.
+from .risk_api import risk_api_urls
+
+repair_api_urls += risk_api_urls

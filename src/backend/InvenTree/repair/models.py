@@ -683,3 +683,7 @@ __all__ = [
     'VALID_TRANSITIONS',
     'is_valid_packet_transition',
 ]
+
+# Risk Radar / Command Center models live in their own module; importing it
+# here registers them with Django's app registry (model discovery).
+from . import risk_models  # noqa: F401

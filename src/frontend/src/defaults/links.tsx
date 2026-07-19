@@ -12,8 +12,9 @@ import {
   IconDashboard,
   IconLayoutKanban,
   IconPackages,
-  IconSitemap,
+  IconRadar,
   IconShoppingCart,
+  IconSitemap,
   IconTruckDelivery
 } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
@@ -84,6 +85,11 @@ export function getNavTabs(user: UserStateProps): NavTab[] {
       name: 'tasks',
       title: t`Tasks`,
       icon: <IconLayoutKanban />
+    },
+    {
+      name: 'command-center',
+      title: t`Command Center`,
+      icon: <IconRadar />
     }
   ];
 

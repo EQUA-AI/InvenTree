@@ -70,6 +70,10 @@ export const WorkOrderDetail = Loadable(
   lazy(() => import('./pages/tasks/workorders/WorkOrderDetail'))
 );
 
+export const CommandCenter = Loadable(
+  lazy(() => import('./pages/commandcenter/CommandCenter'))
+);
+
 export const RepairPacketIndex = Loadable(
   lazy(() => import('./pages/repair/RepairPacketIndex'))
 );
@@ -239,6 +243,7 @@ export const routes = (
         <Route path='packets/' element={<RepairPacketIndex />} />
         <Route path='packets/:id/*' element={<RepairPacketDetail />} />
       </Route>
+      <Route path='command-center/*' element={<CommandCenter />} />
       <Route path='company/:id/*' element={<CompanyDetail />} />
       <Route path='sales/'>
         <Route index element={<Navigate to='index/' />} />
