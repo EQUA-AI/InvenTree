@@ -1,0 +1,5 @@
+-r requirements-maf-migration.txt
+
+# Optional development-only server and adapters. This prerelease was validated
+# against the migration core pins above and also passed `pip check`.
+agent-framework-devui==1.0.0b260709

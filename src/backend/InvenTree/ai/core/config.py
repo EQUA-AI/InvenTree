@@ -118,6 +118,12 @@ class Settings(BaseSettings):
     feature_wf5_cpq: bool = Field(default=True, alias="FEATURE_WF5_CPQ")
     feature_wf6_incoming_docs: bool = Field(default=True, alias="FEATURE_WF6_INCOMING_DOCS")
     feature_wf8_lookup: bool = Field(default=True, alias="FEATURE_WF8_LOOKUP")
+    feature_capability_broker_shadow: bool = Field(
+        default=True, alias="FEATURE_CAPABILITY_BROKER_SHADOW"
+    )
+    feature_capability_broker_enforce: bool = Field(
+        default=False, alias="FEATURE_CAPABILITY_BROKER_ENFORCE"
+    )
     feature_reflection_middleware: bool = Field(default=True, alias="FEATURE_REFLECTION_MIDDLEWARE")
     feature_voice_live_diagnosis: bool = Field(default=False, alias="FEATURE_VOICE_LIVE_DIAGNOSIS")
 

@@ -16,16 +16,22 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent, ChatMessage, Role
+from agent_framework import ChatAgent, Role
 from agent_framework.azure import AzureOpenAIChatClient
-
 from ai.core.config import get_settings
-from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
-from ai.core.integrations.email.tools import EMAIL_TOOLS
-from ai.core.integrations.kanban_tools import KANBAN_TOOLS
 from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
+from ai.core.integrations.email.tools import EMAIL_TOOLS
+from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
+from ai.core.integrations.kanban_tools import KANBAN_TOOLS
+from ai.core.tools.invocation_guard import (
+    CapabilityInvocationMiddleware,
+    bind_capability_run,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +59,50 @@ class LookupResult:
     formatted_response: str
     execution_time_ms: float
     error: str | None = None
+
+
+def _response_usage_metrics(response: Any) -> dict[str, int]:
+    """Normalize provider usage without inferring unavailable token counts."""
+    usage = getattr(response, "usage_details", None)
+    if usage is None:
+        return {}
+    if isinstance(usage, dict):
+        counts = dict(usage)
+    elif hasattr(usage, "to_dict"):
+        counts = usage.to_dict(exclude_none=True)
+    else:
+        counts = {
+            key: getattr(usage, key, None)
+            for key in (
+                "input_token_count",
+                "output_token_count",
+                "total_token_count",
+            )
+        }
+
+    metrics = {
+        key: value
+        for key, value in counts.items()
+        if isinstance(value, int) and not isinstance(value, bool)
+    }
+    cached = next(
+        (
+            metrics[key]
+            for key in (
+                "cache_read_input_token_count",
+                "cached_input_token_count",
+                "cached_tokens",
+            )
+            if key in metrics
+        ),
+        None,
+    )
+    input_tokens = metrics.get("input_token_count")
+    if cached is not None:
+        metrics["cached_input_token_count"] = cached
+    if input_tokens is not None and cached is not None:
+        metrics["uncached_input_token_count"] = max(input_tokens - cached, 0)
+    return metrics
 
 
 class T1LookupWorkflow:
@@ -140,14 +190,32 @@ You have access to indexed technical documentation (equipment manuals, datasheet
 
 Always verify data from the tools before responding."""
 
+    #: Base toolset offered to lookups. Read-only inventory tools by design:
+    #: a lookup agent never mutates, and the smaller schema cuts prompt size
+    #: and time-to-first-token. The per-user RBAC filter subsets this list.
+    BASE_TOOLS: tuple = ()
+
+    #: A lookup needs at most a couple of tool rounds plus the answer; the
+    #: framework default of 40 iterations only makes failures slow.
+    MAX_TOOL_ITERATIONS = 6
+
     def __init__(self):
         """Initialize the T1 lookup workflow."""
         self._agent: ChatAgent | None = None
         self._inventree_client = None
+        if not T1LookupWorkflow.BASE_TOOLS:
+            T1LookupWorkflow.BASE_TOOLS = tuple(
+                INVENTORY_READ_TOOLS + EMAIL_TOOLS + KANBAN_TOOLS + DOCUMENT_SEARCH_TOOLS
+            )
         logger.info("T1LookupWorkflow initialized")
 
     async def _get_agent(self) -> ChatAgent:
-        """Get or create the lookup agent."""
+        """Get or create the lookup agent.
+
+        The agent is built WITHOUT tools: MAF unions constructor tools with
+        run-time tools, so per-user RBAC filtering only works when the
+        complete (filtered) list is supplied on each run.
+        """
         if self._agent is None:
             settings = get_settings()
 
@@ -157,17 +225,98 @@ Always verify data from the tools before responding."""
                 endpoint=settings.azure_openai_endpoint,
                 api_key=settings.azure_openai_api_key,
             )
+            invocation_config = getattr(chat_client, "function_invocation_config", None)
+            if invocation_config is not None:
+                invocation_config.max_iterations = self.MAX_TOOL_ITERATIONS
+                invocation_config.include_detailed_errors = False
 
-            # Build agent with InvenTree + email/PDF + kanban tools
             self._agent = ChatAgent(
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="T1 Lookup Agent",
                 description="Fast inventory lookups, email, PDF generation, and kanban management",
-                tools=INVENTORY_TOOLS + EMAIL_TOOLS + KANBAN_TOOLS + DOCUMENT_SEARCH_TOOLS,
+                middleware=CapabilityInvocationMiddleware(),
             )
 
         return self._agent
+
+    def _capability_selection(
+        self,
+        *,
+        query: str,
+        lookup_type: LookupType,
+        context: dict[str, Any] | None,
+        current_tools: list[Any],
+    ) -> Any | None:
+        """Compute and observe a capability selection for this run."""
+        settings = get_settings()
+        enforce = settings.feature_capability_broker_enforce
+        shadow = settings.feature_capability_broker_shadow
+        if not shadow and not enforce:
+            return
+
+        import time
+
+        from ai.core.auth import get_current_principal
+        from ai.core.tools.capabilities import (
+            CATALOG_VERSION,
+            select_capabilities,
+            serialized_contract_bytes,
+        )
+        from ai.core.tools.rbac import _permission_map_cached
+
+        started = time.perf_counter()
+        try:
+            permission_map = _permission_map_cached()
+            profile = frozenset(
+                requirement
+                for tool in current_tools
+                if (requirement := permission_map.get(tool)) is not None
+            )
+            selection = select_capabilities(
+                query,
+                lookup_type=lookup_type.value,
+                context=context,
+                profile=profile,
+                authenticated=get_current_principal() is not None,
+            )
+            current_bytes = serialized_contract_bytes(current_tools)
+            selected_bytes = serialized_contract_bytes(selection.tools)
+            reduction_pct = (
+                round((1 - selected_bytes / current_bytes) * 100, 2) if current_bytes else 0.0
+            )
+            logger.info(
+                "Capability broker selection",
+                extra={
+                    "workflow": "wf8",
+                    "selection_mode": "enforce" if enforce else "shadow",
+                    "catalog_version": CATALOG_VERSION,
+                    "pack_ids": selection.pack_ids,
+                    "selected_tool_ids": selection.tool_ids,
+                    "selected_tool_count": len(selection.tools),
+                    "current_tool_count": len(current_tools),
+                    "selected_contract_bytes": selected_bytes,
+                    "current_contract_bytes": current_bytes,
+                    "contract_reduction_pct": reduction_pct,
+                    "selection_latency_ms": round((time.perf_counter() - started) * 1000, 3),
+                    "selection_reason": selection.reason,
+                    "clarification_required": selection.clarification_required,
+                    "requires_specialist": selection.requires_specialist,
+                },
+            )
+            return selection
+        except Exception as exc:
+            logger.error(
+                "Capability broker selection failed",
+                extra={
+                    "workflow": "wf8",
+                    "lookup_type": lookup_type.value,
+                    "error_type": type(exc).__name__,
+                },
+            )
+            if enforce:
+                raise
+            return None
 
     async def execute(
         self,
@@ -203,9 +352,32 @@ Always verify data from the tools before responding."""
         try:
             agent = await self._get_agent()
 
-            # Run agent directly with the query (correct MAF API)
-            response = await agent.run(query)
-            
+            # Offer only the tools this user's InvenTree roles permit; the
+            # filtered list is memoized per permission profile and keeps a
+            # stable order so provider prompt caching stays effective.
+            from ai.core.tools.rbac import tools_for_current_user
+
+            tools = await tools_for_current_user(self.BASE_TOOLS)
+
+            selection = self._capability_selection(
+                query=query,
+                lookup_type=lookup_type,
+                context=context,
+                current_tools=tools,
+            )
+            enforce = get_settings().feature_capability_broker_enforce
+            runtime_tools = list(selection.tools) if enforce and selection is not None else tools
+
+            # NOTE: no max_tokens here — reasoning deployments (gpt-5.6-luna)
+            # reject it, demanding max_completion_tokens instead.
+            modality = (
+                "voice" if context is not None and context.get("modality") == "voice" else "text"
+            )
+            with bind_capability_run(
+                workflow="wf8", modality=modality, selected_tools=runtime_tools
+            ):
+                response = await agent.run(query, tools=runtime_tools)
+
             # Extract response text
             response_text = ""
             if hasattr(response, "text"):
@@ -220,19 +392,23 @@ Always verify data from the tools before responding."""
                         break
 
             execution_time = (time.perf_counter() - start_time) * 1000
+            usage_metrics = _response_usage_metrics(response)
 
             logger.info(
                 "T1 lookup complete",
                 extra={
                     "thread_id": thread_id,
                     "execution_time_ms": execution_time,
+                    "tool_count": len(runtime_tools),
+                    "capability_broker_enforced": enforce,
+                    **usage_metrics,
                 },
             )
 
             return LookupResult(
                 lookup_type=lookup_type,
                 success=True,
-                data={"raw_response": response_text},
+                data={"raw_response": response_text, "usage": usage_metrics},
                 formatted_response=response_text,
                 execution_time_ms=execution_time,
             )
@@ -241,10 +417,11 @@ Always verify data from the tools before responding."""
             execution_time = (time.perf_counter() - start_time) * 1000
 
             logger.error(
-                f"T1 lookup failed: {e}",
+                "T1 lookup failed",
                 extra={
                     "thread_id": thread_id,
                     "lookup_type": lookup_type.value,
+                    "error_type": type(e).__name__,
                 },
             )
 
@@ -252,9 +429,9 @@ Always verify data from the tools before responding."""
                 lookup_type=lookup_type,
                 success=False,
                 data={},
-                formatted_response=f"Unable to complete lookup: {str(e)}",
+                formatted_response="Unable to complete lookup.",
                 execution_time_ms=execution_time,
-                error=str(e),
+                error="lookup_failed",
             )
 
     async def stream_execute(
@@ -271,15 +448,33 @@ Always verify data from the tools before responding."""
         try:
             agent = await self._get_agent()
 
-            response = await agent.run(query)
+            from ai.core.tools.rbac import tools_for_current_user
+
+            tools = await tools_for_current_user(self.BASE_TOOLS)
+            selection = self._capability_selection(
+                query=query,
+                lookup_type=lookup_type,
+                context=None,
+                current_tools=tools,
+            )
+            enforce = get_settings().feature_capability_broker_enforce
+            runtime_tools = list(selection.tools) if enforce and selection is not None else tools
+            with bind_capability_run(workflow="wf8", modality="text", selected_tools=runtime_tools):
+                response = await agent.run(query, tools=runtime_tools)
             if response.messages:
                 last_msg = response.messages[-1]
-                content = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
-                yield content
+                yield last_msg.text if hasattr(last_msg, "text") else f"{last_msg!s}"
 
         except Exception as e:
-            logger.error(f"T1 lookup stream failed: {e}")
-            yield f"Error: {str(e)}"
+            logger.error(
+                "T1 lookup stream failed",
+                extra={
+                    "thread_id": thread_id,
+                    "lookup_type": lookup_type.value,
+                    "error_type": type(e).__name__,
+                },
+            )
+            yield "Unable to complete lookup."
 
 
 class T1LookupWorkflowBuilder:
@@ -297,22 +492,22 @@ class T1LookupWorkflowBuilder:
         self._timeout_ms: int = 5000
         self._model_deployment: str | None = None
 
-    def with_system_prompt(self, prompt: str) -> "T1LookupWorkflowBuilder":
+    def with_system_prompt(self, prompt: str) -> T1LookupWorkflowBuilder:
         """Set custom system prompt."""
         self._system_prompt = prompt
         return self
 
-    def with_additional_tools(self, tools: list) -> "T1LookupWorkflowBuilder":
+    def with_additional_tools(self, tools: list) -> T1LookupWorkflowBuilder:
         """Add additional tools beyond InvenTree."""
         self._tools.extend(tools)
         return self
 
-    def with_timeout(self, timeout_ms: int) -> "T1LookupWorkflowBuilder":
+    def with_timeout(self, timeout_ms: int) -> T1LookupWorkflowBuilder:
         """Set execution timeout."""
         self._timeout_ms = timeout_ms
         return self
 
-    def with_model(self, deployment: str) -> "T1LookupWorkflowBuilder":
+    def with_model(self, deployment: str) -> T1LookupWorkflowBuilder:
         """Set specific model deployment."""
         self._model_deployment = deployment
         return self
