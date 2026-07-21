@@ -55,7 +55,6 @@ import {
   RenderKanbanCard,
   RenderParameter,
   RenderParameterTemplate,
-  RenderPartVerificationSession,
   RenderProjectCode,
   RenderRepairPacket,
   RenderSelectionEntry,
@@ -123,7 +122,6 @@ export const RendererLookup: ModelRendererDict = {
   [ModelType.kanbancard]: RenderKanbanCard,
   [ModelType.assetmachine]: RenderAssetMachine,
   [ModelType.repairpacket]: RenderRepairPacket,
-  [ModelType.partverificationsession]: RenderPartVerificationSession,
   [ModelType.selectionentry]: RenderSelectionEntry,
   [ModelType.error]: RenderError,
   [ModelType.tag]: RenderTag

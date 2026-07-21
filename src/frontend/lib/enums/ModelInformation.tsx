@@ -328,14 +328,6 @@ export const ModelInformationDict: ModelDict = {
     api_endpoint: ApiEndpoints.repair_packet_list,
     icon: 'build'
   },
-  partverificationsession: {
-    label: () => t`Verification Session`,
-    label_multiple: () => t`Verification Sessions`,
-    url_overview: '/part-verification/index/',
-    url_detail: '/part-verification/:pk/',
-    api_endpoint: ApiEndpoints.part_verification_session_list,
-    icon: 'part'
-  },
   selectionentry: {
     label: () => t`Selection Entry`,
     label_multiple: () => t`Selection Entries`,

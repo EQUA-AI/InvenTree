@@ -9,11 +9,9 @@ import type { UserStateProps } from '@lib/types/User';
 import {
   IconBox,
   IconBuildingFactory2,
-  IconChecklist,
   IconDashboard,
   IconLayoutKanban,
   IconPackages,
-  IconRadar,
   IconShoppingCart,
   IconSitemap,
   IconTruckDelivery
@@ -86,16 +84,6 @@ export function getNavTabs(user: UserStateProps): NavTab[] {
       name: 'tasks',
       title: t`Tasks`,
       icon: <IconLayoutKanban />
-    },
-    {
-      name: 'part-verification',
-      title: t`Right-Part Finder`,
-      icon: <IconChecklist />
-    },
-    {
-      name: 'command-center',
-      title: t`Command Center`,
-      icon: <IconRadar />
     }
   ];
 

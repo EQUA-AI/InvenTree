@@ -1,7 +1,6 @@
 import { t } from '@lingui/core/macro';
 import {
   Alert,
-  Anchor,
   Badge,
   Group,
   Loader,
@@ -11,12 +10,10 @@ import {
   Text
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 
 import { StylishText } from '@lib/components/StylishText';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
-import { navigateToLink } from '@lib/functions/Navigation';
 import { useApi } from '../../../contexts/ApiContext';
 import { useRiskScope } from '../../../hooks/UseRiskScope';
 import {
@@ -35,7 +32,6 @@ const WIDGET_LIMIT = 8;
  */
 export default function RiskRadarWidget() {
   const api = useApi();
-  const navigate = useNavigate();
   const {
     scopes,
     scope,
@@ -147,15 +143,6 @@ export default function RiskRadarWidget() {
             </Text>
           )}
         </Stack>
-        <Anchor
-          href='#'
-          size='xs'
-          onClick={(event: any) =>
-            navigateToLink('/command-center/', navigate, event)
-          }
-        >
-          {t`View all`}
-        </Anchor>
       </Group>
     </Stack>
   );
