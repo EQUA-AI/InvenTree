@@ -30,17 +30,20 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent, ChatMessage, Role
+from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
-
 from ai.core.config import get_settings
 from ai.core.integrations.email import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
+from ai.core.workflows.rbac_run import run_with_rbac
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +66,7 @@ _TABLE_SEPARATOR_PATTERN = re.compile(r"[\|\+]{2,}")
 # ===========================================================================
 # Enums & data-classes
 # ===========================================================================
+
 
 class ExtractionMode(Enum):
     """How text was extracted from the source PDF."""
@@ -135,9 +139,7 @@ class ExtractedLineItem:
 class DocumentExtractionResult:
     """Result of document extraction."""
 
-    document_id: str = field(
-        default_factory=lambda: f"DOC-{uuid.uuid4().hex[:8].upper()}"
-    )
+    document_id: str = field(default_factory=lambda: f"DOC-{uuid.uuid4().hex[:8].upper()}")
     document_type: DocumentType = DocumentType.UNKNOWN
     status: ProcessingStatus = ProcessingStatus.RECEIVED
     source_filename: str = ""
@@ -161,9 +163,7 @@ class DocumentExtractionResult:
     azure_di_tables: list[str] = field(default_factory=list)
     validation_errors: list[str] = field(default_factory=list)
     validation_warnings: list[str] = field(default_factory=list)
-    processed_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    processed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -172,9 +172,7 @@ class DocumentExtractionResult:
             "status": self.status.value,
             "source_filename": self.source_filename,
             "document_number": self.document_number,
-            "document_date": (
-                self.document_date.isoformat() if self.document_date else None
-            ),
+            "document_date": (self.document_date.isoformat() if self.document_date else None),
             "vendor_name": self.vendor_name,
             "total_amount": self.total_amount,
             "currency": self.currency,
@@ -201,6 +199,7 @@ class DocumentProcessingResult:
 # ===========================================================================
 # Sub-agents (pipeline mode)
 # ===========================================================================
+
 
 class DocumentClassificationAgent:
     """Classify the document type (RFQ, PO, invoice, datasheet ...)."""
@@ -375,7 +374,6 @@ Report Format:
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Data Validation Agent",
-                tools=INVENTORY_TOOLS,
             )
         return self._agent
 
@@ -431,6 +429,7 @@ The document content will be provided below. Use it to answer user questions.
 # PDF text-extraction helpers
 # ===========================================================================
 
+
 @dataclass
 class _ExtractionOutcome:
     """Internal result of the multi-stage PDF text extraction."""
@@ -481,9 +480,7 @@ def _extract_text_local(pdf_bytes: bytes) -> _ExtractionOutcome:
                     mode=ExtractionMode.PYPDF,
                     page_count=len(reader.pages),
                 )
-            warnings.append(
-                f"pypdf extracted only {len(extracted.strip())} chars; trying OCR"
-            )
+            warnings.append(f"pypdf extracted only {len(extracted.strip())} chars; trying OCR")
         else:
             warnings.append("pypdf returned no text")
 
@@ -494,8 +491,8 @@ def _extract_text_local(pdf_bytes: bytes) -> _ExtractionOutcome:
 
     # -- Method 2: OCR (pdf2image + pytesseract) ---------------------------
     try:
-        from pdf2image import convert_from_bytes
         import pytesseract
+        from pdf2image import convert_from_bytes
 
         images = convert_from_bytes(pdf_bytes, dpi=200)
         ocr_parts: list[str] = []
@@ -513,9 +510,7 @@ def _extract_text_local(pdf_bytes: bytes) -> _ExtractionOutcome:
         ocr_text = "\n\n".join(ocr_parts).strip()
 
         if len(ocr_text) >= _MIN_TEXT_CHARS:
-            logger.info(
-                "OCR extracted %d chars from %d pages", len(ocr_text), len(images)
-            )
+            logger.info("OCR extracted %d chars from %d pages", len(ocr_text), len(images))
             return _ExtractionOutcome(
                 text=ocr_text,
                 mode=ExtractionMode.OCR,
@@ -523,9 +518,7 @@ def _extract_text_local(pdf_bytes: bytes) -> _ExtractionOutcome:
                 warnings=warnings,
             )
         if images:
-            warnings.append(
-                f"OCR extracted only {len(ocr_text)} chars from {len(images)} pages"
-            )
+            warnings.append(f"OCR extracted only {len(ocr_text)} chars from {len(images)} pages")
     except ImportError:
         warnings.append("OCR deps (pdf2image/pytesseract) not available")
     except Exception as exc:
@@ -535,11 +528,7 @@ def _extract_text_local(pdf_bytes: bytes) -> _ExtractionOutcome:
     try:
         raw = pdf_bytes.decode("latin-1", errors="ignore")
         paren_texts = re.findall(r"\(([^)]{2,})\)", raw)
-        parts = [
-            t.strip()
-            for t in paren_texts
-            if t.isprintable() and len(t.strip()) > 1
-        ]
+        parts = [t.strip() for t in paren_texts if t.isprintable() and len(t.strip()) > 1]
         combined = re.sub(r"\s+", " ", " ".join(parts)).strip()
 
         if len(combined) > 50:
@@ -550,9 +539,7 @@ def _extract_text_local(pdf_bytes: bytes) -> _ExtractionOutcome:
                 warnings=warnings,
             )
 
-        matches = re.findall(
-            r"[A-Za-z0-9\s.,;:!?'\"()\-/$%@#&*+=]{10,}", raw
-        )
+        matches = re.findall(r"[A-Za-z0-9\s.,;:!?'\"()\-/$%@#&*+=]{10,}", raw)
         if matches:
             fallback = re.sub(r"\s+", " ", " ".join(matches)).strip()
             if len(fallback) > 50:
@@ -619,9 +606,7 @@ def _looks_table_heavy(text: str) -> bool:
     keyword_hits = len(_TABLE_KEYWORDS.findall(text))
     separator_hits = len(_TABLE_SEPARATOR_PATTERN.findall(text))
     lines = text.splitlines()
-    short_line_ratio = (
-        sum(1 for ln in lines if 0 < len(ln.strip()) < 40) / max(len(lines), 1)
-    )
+    short_line_ratio = sum(1 for ln in lines if 0 < len(ln.strip()) < 40) / max(len(lines), 1)
     return keyword_hits >= 3 or separator_hits >= 2 or short_line_ratio > 0.55
 
 
@@ -647,15 +632,11 @@ def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> _ExtractionOutcome:
         logger.info("Escalating to Azure DI (%s)", reason)
         di_result = _extract_text_azure_di(pdf_bytes)
         if di_result is not None and len(di_result.text.strip()) > len(local.text.strip()):
-            di_result.warnings = local.warnings + [
-                f"Escalated to Azure DI: {reason}"
-            ]
+            di_result.warnings = [*local.warnings, f"Escalated to Azure DI: {reason}"]
             return di_result
         else:
             logger.info("Azure DI unavailable or no improvement; keeping local result")
-            local.warnings.append(
-                f"Attempted Azure DI escalation ({reason}) but kept local result"
-            )
+            local.warnings.append(f"Attempted Azure DI escalation ({reason}) but kept local result")
 
     return local
 
@@ -663,6 +644,7 @@ def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> _ExtractionOutcome:
 # ===========================================================================
 # Unified WF6 Document Workflow
 # ===========================================================================
+
 
 class WF6DocumentWorkflow:
     """
@@ -718,32 +700,78 @@ class WF6DocumentWorkflow:
         q = query.lower()
         conversational_cues = [
             # Questions
-            "what is", "what's", "what are", "who is", "where is",
-            "how many", "how much", "is there", "are there", "?",
+            "what is",
+            "what's",
+            "what are",
+            "who is",
+            "where is",
+            "how many",
+            "how much",
+            "is there",
+            "are there",
+            "?",
             # Natural asks
-            "tell me", "show me", "give me", "can you", "could you",
-            "i need", "i want", "let me know", "help me",
-            "describe", "summarize", "explain", "break down",
+            "tell me",
+            "show me",
+            "give me",
+            "can you",
+            "could you",
+            "i need",
+            "i want",
+            "let me know",
+            "help me",
+            "describe",
+            "summarize",
+            "explain",
+            "break down",
             # Inventory chat
-            "do we have", "in stock", "stock level", "on hand",
-            "look up", "lookup", "find", "search", "check",
+            "do we have",
+            "in stock",
+            "stock level",
+            "on hand",
+            "look up",
+            "lookup",
+            "find",
+            "search",
+            "check",
             # Actions via conversation
-            "add it", "add this", "add part", "add the",
-            "create", "save", "put it in", "enter it",
+            "add it",
+            "add this",
+            "add part",
+            "add the",
+            "create",
+            "save",
+            "put it in",
+            "enter it",
         ]
         if any(cue in q for cue in conversational_cues):
             return WorkflowMode.CONVERSATIONAL
 
         pipeline_cues = [
             # Explicit pipeline verbs
-            "process", "classify", "triage", "route", "extract",
-            "validate", "parse", "scan",
+            "process",
+            "classify",
+            "triage",
+            "route",
+            "extract",
+            "validate",
+            "parse",
+            "scan",
             # Natural equivalents
-            "run through", "go through", "handle this", "take care of",
-            "file this", "sort this", "work through",
+            "run through",
+            "go through",
+            "handle this",
+            "take care of",
+            "file this",
+            "sort this",
+            "work through",
             # Document-type triggers
-            "rfq", "purchase order", "invoice", "packing list",
-            "ship doc", "shipping doc",
+            "rfq",
+            "purchase order",
+            "invoice",
+            "packing list",
+            "ship doc",
+            "shipping doc",
         ]
         if any(cue in q for cue in pipeline_cues):
             return WorkflowMode.PIPELINE
@@ -823,7 +851,7 @@ class WF6DocumentWorkflow:
         outcome: _ExtractionOutcome | None = None
 
         # Priority 1: DevUI file attachments (in-memory bytes)
-        if "file_attachments" in context and context["file_attachments"]:
+        if context.get("file_attachments"):
             attachments = context["file_attachments"]
             logger.info("Processing %d DevUI attachment(s)", len(attachments))
 
@@ -881,7 +909,7 @@ class WF6DocumentWorkflow:
         """Run the single-agent conversational path."""
         try:
             agent = await self._get_conversational_agent(content)
-            response = await agent.run(query)
+            response = await run_with_rbac(agent, query, full_tools=INVENTORY_TOOLS)
 
             response_text = self._extract_response_text(response)
             execution_time = (time.perf_counter() - start_time) * 1000
@@ -927,11 +955,11 @@ class WF6DocumentWorkflow:
             endpoint=settings.azure_openai_endpoint,
             api_key=settings.azure_openai_api_key,
         )
+        # Tools-less: run_with_rbac supplies the per-user-filtered toolset.
         return ChatAgent(
             chat_client=chat_client,
             instructions=system_prompt,
             name="Document Processing Agent",
-            tools=INVENTORY_TOOLS,
         )
 
     # ------------------------------------------------------------------
@@ -962,13 +990,9 @@ class WF6DocumentWorkflow:
 
             classification = await self._classify_document(content)
             extraction.document_type = self._parse_document_type(classification)
-            actions.append(
-                f"Classified document as: {extraction.document_type.value}"
-            )
+            actions.append(f"Classified document as: {extraction.document_type.value}")
 
-            extracted_data = await self._extract_data(
-                content, extraction.document_type
-            )
+            extracted_data = await self._extract_data(content, extraction.document_type)
             extraction.status = ProcessingStatus.EXTRACTED
             self._parse_extraction(extracted_data, extraction)
             actions.append(
@@ -1000,8 +1024,12 @@ class WF6DocumentWorkflow:
                 extraction=extraction,
                 actions_taken=actions,
                 formatted_response=self._format_response(
-                    extraction, actions, classification,
-                    extracted_data, validation, query,
+                    extraction,
+                    actions,
+                    classification,
+                    extracted_data,
+                    validation,
+                    query,
                 ),
                 execution_time_ms=execution_time,
             )
@@ -1075,7 +1103,7 @@ class WF6DocumentWorkflow:
                 "Search for each part number in inventory and validate."
             )
 
-        response = await agent.run(prompt)
+        response = await run_with_rbac(agent, prompt, full_tools=INVENTORY_TOOLS)
         return self._extract_response_text(response)
 
     async def _route_document(self, extraction: DocumentExtractionResult) -> str:
@@ -1113,9 +1141,7 @@ class WF6DocumentWorkflow:
                 return doc_type
         return DocumentType.UNKNOWN
 
-    def _parse_extraction(
-        self, extraction_text: str, result: DocumentExtractionResult
-    ) -> None:
+    def _parse_extraction(self, extraction_text: str, result: DocumentExtractionResult) -> None:
         doc_num_match = re.search(
             r"(?:PO|Invoice|RFQ)[\s#-]*([A-Z0-9-]+)",
             extraction_text,
@@ -1124,17 +1150,13 @@ class WF6DocumentWorkflow:
         if doc_num_match:
             result.document_number = doc_num_match.group(1)
 
-        vendor_match = re.search(
-            r"(?:Vendor|Supplier|From)[\s:]*([A-Za-z0-9\s]+)", extraction_text
-        )
+        vendor_match = re.search(r"(?:Vendor|Supplier|From)[\s:]*([A-Za-z0-9\s]+)", extraction_text)
         if vendor_match:
             result.vendor_name = vendor_match.group(1).strip()
 
         result.extraction_confidence = 0.75
 
-    def _parse_validation(
-        self, validation_text: str, result: DocumentExtractionResult
-    ) -> None:
+    def _parse_validation(self, validation_text: str, result: DocumentExtractionResult) -> None:
         for line in validation_text.split("\n"):
             lower = line.lower()
             content = line.strip().lstrip("-*\u2022 ")
@@ -1159,9 +1181,8 @@ class WF6DocumentWorkflow:
         mode_badge = f"**Extraction method:** {extraction.extraction_mode.value}"
         tables_section = ""
         if extraction.azure_di_tables:
-            tables_section = (
-                "\n\n## Extracted Tables (Azure DI)\n"
-                + "\n\n".join(extraction.azure_di_tables)
+            tables_section = "\n\n## Extracted Tables (Azure DI)\n" + "\n\n".join(
+                extraction.azure_di_tables
             )
 
         if extraction.document_type == DocumentType.TECHNICAL_SPEC:
@@ -1266,15 +1287,14 @@ class WF6DocumentWorkflow:
         if hasattr(last, "text"):
             return last.text
         if hasattr(last, "contents"):
-            return "".join(
-                c.text for c in last.contents if hasattr(c, "text")
-            )
+            return "".join(c.text for c in last.contents if hasattr(c, "text"))
         return str(last)
 
 
 # ===========================================================================
 # Builder (backward-compatible)
 # ===========================================================================
+
 
 class WF6DocumentBuilder:
     """Builder for WF6 Document Workflow (supports ``.as_agent()``)."""
@@ -1284,17 +1304,15 @@ class WF6DocumentBuilder:
         self._custom_extractors: dict[DocumentType, Any] = {}
         self._mode: WorkflowMode | None = None
 
-    def with_doc_intelligence(self, client: Any) -> "WF6DocumentBuilder":
+    def with_doc_intelligence(self, client: Any) -> WF6DocumentBuilder:
         self._doc_intelligence = client
         return self
 
-    def with_mode(self, mode: WorkflowMode) -> "WF6DocumentBuilder":
+    def with_mode(self, mode: WorkflowMode) -> WF6DocumentBuilder:
         self._mode = mode
         return self
 
-    def with_custom_extractor(
-        self, doc_type: DocumentType, extractor: Any
-    ) -> "WF6DocumentBuilder":
+    def with_custom_extractor(self, doc_type: DocumentType, extractor: Any) -> WF6DocumentBuilder:
         self._custom_extractors[doc_type] = extractor
         return self
 
@@ -1342,6 +1360,7 @@ class WF6DocumentBuilder:
 # ===========================================================================
 # Factory functions (unchanged public API)
 # ===========================================================================
+
 
 def create_wf6_document_workflow(
     doc_intelligence_client: Any | None = None,

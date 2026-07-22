@@ -17,14 +17,17 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent, ChatMessage, ConcurrentBuilder, Role
+from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
-
 from ai.core.config import get_settings
 from ai.core.integrations.email import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
+from ai.core.workflows.rbac_run import run_with_rbac
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +106,6 @@ Be thorough but concise in your findings."""
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Inventory Research Agent",
-                tools=INVENTORY_TOOLS,
             )
         return self._agent
 
@@ -147,7 +149,6 @@ Focus on actionable supplier intelligence."""
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Supplier Research Agent",
-                tools=INVENTORY_TOOLS,
             )
         return self._agent
 
@@ -191,7 +192,6 @@ Focus on extracting actionable intelligence from communications."""
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Email Research Agent",
-                tools=EMAIL_TOOLS,
             )
         return self._agent
 
@@ -303,20 +303,25 @@ class T3ResearchWorkflow:
         source_name: str,
         agent_wrapper: Any,
         query: str,
+        context: dict[str, Any] | None = None,
     ) -> ResearchSource:
         """Run a single research agent."""
         try:
             agent = await agent_wrapper.get_agent()
 
-            response = await agent.run(query)
+            # Research agents may use inventory or email tools; RBAC filters per
+            # user and voice narrows to the read-only surface.
+            response = await run_with_rbac(
+                agent, query, full_tools=[*INVENTORY_TOOLS, *EMAIL_TOOLS], context=context
+            )
             response_text = ""
             if response.messages:
                 last_msg = response.messages[-1]
-                response_text = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+                response_text = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
 
             # Parse findings from response
             findings = [
-                line.strip().lstrip("-*•– ")
+                line.strip().lstrip("-*•– ")  # noqa: RUF001
                 for line in response_text.split("\n")
                 if line.strip() and line.strip().startswith(("-", "*", "•"))
             ]
@@ -372,7 +377,9 @@ class T3ResearchWorkflow:
             agents = self._get_agents_for_type(research_type)
 
             # Create parallel research tasks
-            tasks = [self._run_research_agent(name, agent, query) for name, agent in agents]
+            tasks = [
+                self._run_research_agent(name, agent, query, context) for name, agent in agents
+            ]
 
             # Run with timeout
             try:
@@ -380,7 +387,7 @@ class T3ResearchWorkflow:
                     asyncio.gather(*tasks, return_exceptions=True),
                     timeout=self.RESEARCH_TIMEOUT,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Research timeout, returning partial results")
                 sources = []
 
@@ -432,7 +439,7 @@ class T3ResearchWorkflow:
                 research_type=research_type,
                 success=False,
                 error=str(e),
-                formatted_response=f"Research failed: {str(e)}",
+                formatted_response=f"Research failed: {e!s}",
                 execution_time_ms=execution_time,
             )
 
@@ -443,13 +450,11 @@ class T3ResearchWorkflow:
     ) -> str:
         """Synthesize results from multiple sources."""
         # Build synthesis prompt
-        source_summaries = "\n\n".join(
-            [
-                f"**{source.source_name.upper()} FINDINGS:**\n"
-                + "\n".join(f"- {f}" for f in source.findings)
-                for source in sources
-            ]
-        )
+        source_summaries = "\n\n".join([
+            f"**{source.source_name.upper()} FINDINGS:**\n"
+            + "\n".join(f"- {f}" for f in source.findings)
+            for source in sources
+        ])
 
         synthesis_query = f"""Original Research Query: {original_query}
 
@@ -465,7 +470,7 @@ Please synthesize these findings into a coherent summary with recommendations.""
             response_text = ""
             if response.messages:
                 last_msg = response.messages[-1]
-                response_text = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+                response_text = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
 
             return response_text
 
@@ -493,8 +498,8 @@ Please synthesize these findings into a coherent summary with recommendations.""
             elif "finding" in lower or "summary" in lower or "key" in lower:
                 current_section = "findings"
 
-            if line.startswith(("-", "*", "•", "–")):
-                content = line.lstrip("-*•– ").strip()
+            if line.startswith(("-", "*", "•", "–")):  # noqa: RUF001
+                content = line.lstrip("-*•– ").strip()  # noqa: RUF001
                 if current_section == "recommendations":
                     recommendations.append(content)
                 else:
@@ -536,12 +541,12 @@ class T3ResearchBuilder:
         self._include_email: bool = True
         self._additional_sources: list = []
 
-    def with_timeout(self, timeout: float) -> "T3ResearchBuilder":
+    def with_timeout(self, timeout: float) -> T3ResearchBuilder:
         """Set research timeout in seconds."""
         self._timeout = timeout
         return self
 
-    def without_email(self) -> "T3ResearchBuilder":
+    def without_email(self) -> T3ResearchBuilder:
         """Disable email research source."""
         self._include_email = False
         return self
@@ -550,7 +555,7 @@ class T3ResearchBuilder:
         self,
         name: str,
         agent: Any,
-    ) -> "T3ResearchBuilder":
+    ) -> T3ResearchBuilder:
         """Add a custom research source."""
         self._additional_sources.append((name, agent))
         return self

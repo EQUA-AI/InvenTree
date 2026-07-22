@@ -37,6 +37,8 @@ def test_diagnosis_flag_on_builds_router_and_registry():
     settings = Settings(
         _env_file=None,
         FEATURE_VOICE_LIVE_DIAGNOSIS=True,
+        # direct_deployment (prompt of record = repo) needs a model endpoint.
+        AZURE_OPENAI_ENDPOINT="https://example.openai.azure.com/",
     )
     service = _service_with(settings)
     assert service.complexity_router is not None
@@ -47,6 +49,8 @@ def test_safety_tool_stays_absent_while_p0s_are_open():
     settings = Settings(
         _env_file=None,
         FEATURE_VOICE_LIVE_DIAGNOSIS=True,
+        # direct_deployment (prompt of record = repo) needs a model endpoint.
+        AZURE_OPENAI_ENDPOINT="https://example.openai.azure.com/",
     )
     service = _service_with(settings)
     names = service.diagnostic_tool_registry.names

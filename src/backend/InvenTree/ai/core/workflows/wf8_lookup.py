@@ -24,7 +24,7 @@ from ai.core.config import get_settings
 from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
-from ai.core.integrations.kanban_tools import KANBAN_TOOLS
+from ai.core.integrations.kanban_tools import KANBAN_READ_TOOLS, KANBAN_TOOLS
 from ai.core.tools.invocation_guard import (
     CapabilityInvocationMiddleware,
     bind_capability_run,
@@ -190,10 +190,36 @@ You have access to indexed technical documentation (equipment manuals, datasheet
 
 Always verify data from the tools before responding."""
 
+    #: Voice-modality Tier-1 prompt: read-only, spoken, concise. Voice turns run
+    #: under the read-only fence and are restricted to read tools, so this prompt
+    #: must never imply the assistant can change anything.
+    VOICE_SYSTEM_PROMPT = """You are the AIMMS voice assistant, answering inventory and
+manufacturing questions out loud for a hands-free technician who often cannot look at a screen.
+
+You can look up (read only): part details and specs, stock levels and availability, warehouse
+locations, bills of materials (BOM), suppliers, and purchase/sales orders. Use the provided
+read-only tools and answer only from what they return. Never invent part numbers, quantities,
+locations, prices, or statuses; if a tool returns nothing or you are unsure, say so plainly.
+
+This is a read-only conversation. You cannot create, update, delete, order, email, or change
+anything by voice, and you must never say or imply that you did. If asked to make a change, say
+it must be done on the normal authenticated screen, and offer to look up what they need.
+
+Keep spoken answers to one or two short sentences: lead with the answer, then the key detail
+(for example, "There are 42 in stock, in bin A-3 — below the reorder point."). Speak numbers and
+units clearly; do not read out IDs, URLs, or long lists. If the answer is long or list-like, give
+the headline and say the rest is in the chat. Preserve any uncertainty ("about", "as of the last
+sync") rather than rounding it away."""
+
     #: Base toolset offered to lookups. Read-only inventory tools by design:
     #: a lookup agent never mutates, and the smaller schema cuts prompt size
     #: and time-to-first-token. The per-user RBAC filter subsets this list.
     BASE_TOOLS: tuple = ()
+
+    #: Read-only subset offered to voice turns (Tier-1). Excludes EMAIL_TOOLS and
+    #: KANBAN write tools, which mutate and do not route through the InvenTree
+    #: read-only fence. Gated by feature_voice_readonly_tools.
+    VOICE_BASE_TOOLS: tuple = ()
 
     #: A lookup needs at most a couple of tool rounds plus the answer; the
     #: framework default of 40 iterations only makes failures slow.
@@ -202,43 +228,82 @@ Always verify data from the tools before responding."""
     def __init__(self):
         """Initialize the T1 lookup workflow."""
         self._agent: ChatAgent | None = None
+        self._voice_agent: ChatAgent | None = None
         self._inventree_client = None
         if not T1LookupWorkflow.BASE_TOOLS:
             T1LookupWorkflow.BASE_TOOLS = tuple(
                 INVENTORY_READ_TOOLS + EMAIL_TOOLS + KANBAN_TOOLS + DOCUMENT_SEARCH_TOOLS
             )
+        if not T1LookupWorkflow.VOICE_BASE_TOOLS:
+            # Read-only surface for hands-free voice: inventory + build/work-order
+            # reads (already in INVENTORY_READ_TOOLS), document search, and kanban
+            # reads. Mutations (email, kanban/inventory writes) are excluded until
+            # the Tier-3 confirmed-write flow (Phase 4).
+            T1LookupWorkflow.VOICE_BASE_TOOLS = tuple(
+                INVENTORY_READ_TOOLS + DOCUMENT_SEARCH_TOOLS + KANBAN_READ_TOOLS
+            )
         logger.info("T1LookupWorkflow initialized")
 
-    async def _get_agent(self) -> ChatAgent:
+    def _base_tools_for(self, *, is_voice: bool) -> tuple:
+        """Tool set for this turn.
+
+        Voice turns get the read-only subset when the safety flag is on; every
+        other turn keeps the full text toolset. The per-user RBAC filter still
+        subsets whichever list is returned here.
+        """
+        if is_voice and get_settings().feature_voice_readonly_tools:
+            return self.VOICE_BASE_TOOLS
+        return self.BASE_TOOLS
+
+    async def _get_agent(self, *, voice: bool = False) -> ChatAgent:
         """Get or create the lookup agent.
 
         The agent is built WITHOUT tools: MAF unions constructor tools with
         run-time tools, so per-user RBAC filtering only works when the
-        complete (filtered) list is supplied on each run.
+        complete (filtered) list is supplied on each run. Voice turns use a
+        separate cached agent carrying the read-only spoken prompt.
         """
-        if self._agent is None:
-            settings = get_settings()
+        cached = self._voice_agent if voice else self._agent
+        if cached is not None:
+            return cached
 
-            # Create Azure OpenAI chat client
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            invocation_config = getattr(chat_client, "function_invocation_config", None)
-            if invocation_config is not None:
-                invocation_config.max_iterations = self.MAX_TOOL_ITERATIONS
-                invocation_config.include_detailed_errors = False
+        settings = get_settings()
 
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="T1 Lookup Agent",
-                description="Fast inventory lookups, email, PDF generation, and kanban management",
-                middleware=CapabilityInvocationMiddleware(),
-            )
+        # Voice Tier-1 lookups use the fast deployment for lower latency; text
+        # keeps the standard deployment.
+        deployment = (
+            settings.azure_openai_fast_deployment if voice else settings.azure_openai_deployment
+        )
 
-        return self._agent
+        # Create Azure OpenAI chat client
+        chat_client = AzureOpenAIChatClient(
+            deployment_name=deployment,
+            endpoint=settings.azure_openai_endpoint,
+            api_key=settings.azure_openai_api_key,
+        )
+        invocation_config = getattr(chat_client, "function_invocation_config", None)
+        if invocation_config is not None:
+            invocation_config.max_iterations = self.MAX_TOOL_ITERATIONS
+            invocation_config.include_detailed_errors = False
+
+        agent = ChatAgent(
+            chat_client=chat_client,
+            instructions=self.VOICE_SYSTEM_PROMPT if voice else self.SYSTEM_PROMPT,
+            name="T1 Lookup Agent (Voice)" if voice else "T1 Lookup Agent",
+            description=(
+                "Fast read-only inventory lookups, spoken"
+                if voice
+                else "Fast inventory lookups, email, PDF generation, and kanban management"
+            ),
+            middleware=CapabilityInvocationMiddleware(),
+        )
+
+        if voice:
+            self._voice_agent = agent
+        else:
+            self._agent = agent
+
+        return agent
 
     def _capability_selection(
         self,
@@ -350,14 +415,18 @@ Always verify data from the tools before responding."""
         )
 
         try:
-            agent = await self._get_agent()
+            is_voice = context is not None and context.get("modality") == "voice"
+            voice_read_only = is_voice and get_settings().feature_voice_readonly_tools
+
+            agent = await self._get_agent(voice=voice_read_only)
 
             # Offer only the tools this user's InvenTree roles permit; the
             # filtered list is memoized per permission profile and keeps a
-            # stable order so provider prompt caching stays effective.
+            # stable order so provider prompt caching stays effective. Voice
+            # turns start from the read-only subset (Tier-1 safety).
             from ai.core.tools.rbac import tools_for_current_user
 
-            tools = await tools_for_current_user(self.BASE_TOOLS)
+            tools = await tools_for_current_user(self._base_tools_for(is_voice=is_voice))
 
             selection = self._capability_selection(
                 query=query,
@@ -370,9 +439,7 @@ Always verify data from the tools before responding."""
 
             # NOTE: no max_tokens here — reasoning deployments (gpt-5.6-luna)
             # reject it, demanding max_completion_tokens instead.
-            modality = (
-                "voice" if context is not None and context.get("modality") == "voice" else "text"
-            )
+            modality = "voice" if is_voice else "text"
             with bind_capability_run(
                 workflow="wf8", modality=modality, selected_tools=runtime_tools
             ):

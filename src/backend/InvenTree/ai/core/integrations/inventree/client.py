@@ -8,6 +8,8 @@ Async HTTP client for InvenTree API with:
 - Error classification for reflection
 """
 
+import json
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -192,9 +194,13 @@ class InvenTreeClient:
         self.base_url = (base_url or config.url).rstrip("/")
         self.token = token or config.token.get_secret_value()
         self.timeout = timeout or config.timeout
+        self.read_cache_ttl_s = config.read_cache_ttl_s
 
         self._client: httpx.AsyncClient | None = None
         self._circuit_breaker = CircuitBreaker(name="inventree")
+        # Short-TTL GET cache: {key: (stored_monotonic, value)}. Opt-in via
+        # read_cache_ttl_s; any write clears it.
+        self._read_cache: dict[str, tuple[float, Any]] = {}
 
         logger.info("InvenTreeClient initialized", base_url=self.base_url)
 
@@ -209,6 +215,14 @@ class InvenTreeClient:
                     "Content-Type": "application/json",
                 },
                 timeout=self.timeout,
+                # Keep connections warm across turns. The httpx default
+                # keepalive_expiry is 5s, so voice turns spaced further apart
+                # pay a fresh TCP/TLS handshake; 60s reuses a warm connection.
+                limits=httpx.Limits(
+                    max_keepalive_connections=20,
+                    max_connections=100,
+                    keepalive_expiry=60.0,
+                ),
             )
 
         yield self._client
@@ -218,6 +232,11 @@ class InvenTreeClient:
         if self._client:
             await self._client.aclose()
             self._client = None
+
+    @staticmethod
+    def _read_cache_key(endpoint: str, params: dict[str, Any] | None) -> str:
+        """Stable cache key for a GET (endpoint + normalized params)."""
+        return f"{endpoint}?{json.dumps(params or {}, sort_keys=True, default=str)}"
 
     def _classify_error(self, status_code: int, response_body: str) -> InvenTreeError:
         """Classify an HTTP error into the error taxonomy."""
@@ -288,19 +307,32 @@ class InvenTreeClient:
             ValidationError: For validation errors (needs reflection).
             BusinessRuleError: For business rule violations.
         """
+        method_upper = method.upper()
+
         # Voice turns run under a read-only fence (contract §0.2): speech may
         # never execute an effect, so mutating requests fail as tool errors.
-        if method.upper() != "GET":
+        if method_upper != "GET":
             from ai.core.tools.read_only import READ_ONLY_MESSAGE, read_only_tools_active
 
             if read_only_tools_active():
                 raise BusinessRuleError(READ_ONLY_MESSAGE)
+            # A write may change any read; drop the short-TTL cache.
+            self._read_cache.clear()
+
+        endpoint = endpoint.lstrip("/")
+
+        # Short-TTL read cache (opt-in): serve fresh GETs without a round-trip,
+        # even when the circuit breaker is open.
+        cache_key: str | None = None
+        if method_upper == "GET" and self.read_cache_ttl_s > 0:
+            cache_key = self._read_cache_key(endpoint, params)
+            hit = self._read_cache.get(cache_key)
+            if hit is not None and (time.monotonic() - hit[0]) < self.read_cache_ttl_s:
+                return hit[1]
 
         # Check circuit breaker
         if not self._circuit_breaker.can_execute():
             raise TransientError("Circuit breaker is open - InvenTree unavailable")
-
-        endpoint = endpoint.lstrip("/")
 
         logger.debug(
             "InvenTree request",
@@ -339,6 +371,9 @@ class InvenTreeClient:
                     status_code=response.status_code,
                     result_count=len(result) if isinstance(result, list) else 1,
                 )
+
+                if cache_key is not None:
+                    self._read_cache[cache_key] = (time.monotonic(), result)
 
                 return result
 

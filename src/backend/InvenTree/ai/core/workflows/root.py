@@ -19,6 +19,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ai.core.agents.routing import RoutingDecision, UnifiedRouter
+from ai.core.config import get_settings
 from ai.core.memory.conversation import ConversationManager
 from ai.core.streaming import EventEmitter, RunContext
 from ai.core.workflows.registry import WorkflowRegistry, get_workflow_registry
@@ -60,6 +61,29 @@ class RootWorkflow:
         self.router = router
         self.registry = registry
         self.conversation_manager = conversation_manager
+
+    async def _maybe_fast_path_answer(self, result: dict[str, Any]) -> str | None:
+        """Format a permitted fast-path result into a spoken answer, else None.
+
+        Returns None (falling through to the RBAC-enforced workflow) when there
+        is no authenticated principal or the principal lacks the required view
+        permission for this result type.
+        """
+        from ai.core.auth import get_current_principal
+        from ai.core.tools.invocation_guard import fresh_permission_profile
+        from ai.core.workflows.fast_path import (
+            fast_path_permitted,
+            format_fast_path_answer,
+        )
+
+        result_type = str(result.get("type") or "")
+        principal = get_current_principal()
+        if principal is None or getattr(principal, "user_pk", None) is None:
+            return None
+        profile = await fresh_permission_profile(principal.user_pk)
+        if not fast_path_permitted(result_type, profile):
+            return None
+        return format_fast_path_answer(result)
 
     async def run_stream(
         self,
@@ -123,15 +147,27 @@ class RootWorkflow:
                 message=message, thread_id=thread_id, context=aggregated_context
             )
 
-            # Handle fast path if the router executed it and returned a result
-            if decision.use_fast_path and decision.fast_path_result:
-                # If the router already handled it (e.g. fast path), we just stream the result
-                # Note: This depends on how the Router is implemented.
-                # If it returns a result in the decision, we use it.
-                # For now, we assume the router might return a result directly.
-                # But typically routing just picks a workflow.
-                # If fast path is a "workflow" (T1_LOOKUP), we proceed to execute it.
-                pass
+            # Deterministic fast-path answer for permitted voice lookups: skip
+            # the LLM tool loop entirely. Permission-gated because the fast path
+            # bypasses the per-tool RBAC filter (routing executed the reads).
+            if (
+                decision.use_fast_path
+                and decision.fast_path_result
+                and aggregated_context.get("modality") == "voice"
+                and get_settings().feature_voice_fast_path
+            ):
+                bypass = await self._maybe_fast_path_answer(decision.fast_path_result)
+                if bypass is not None:
+                    await run_ctx.emit_workflow_started(
+                        workflow_id="wf8-fastpath",
+                        workflow_name=decision.workflow_type.name,
+                    )
+                    await run_ctx.emit_text_start()
+                    await run_ctx.emit_text_delta(bypass)
+                    await run_ctx.emit_text_end()
+                    yield bypass
+                    await run_ctx.emit_run_finished()
+                    return
 
             # Step 3: Execute Workflow
             workflow_id = decision.get_workflow_id()

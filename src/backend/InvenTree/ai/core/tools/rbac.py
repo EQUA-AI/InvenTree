@@ -3,14 +3,15 @@
 Agents receive only the tools the requesting user's roles permit, resolved
 per run (the shared agent instances stay cached):
 
-- Each RBAC-relevant tool maps to one ``(ruleset, permission)`` pair using
-  InvenTree's native vocabulary (``users.ruleset``). Tools without a
-  mapping (email, kanban, document search, and the database tools that
-  enforce per-table RBAC themselves) are available to any authenticated
-  user.
-- A user's *permission profile* is the frozenset of granted pairs, built
-  from ``users.permissions.check_user_role`` (session-cached; superusers
-  short-circuit to everything).
+- Each RBAC-relevant tool maps to one ``(ruleset, permission)`` pair.
+  Inventory/order tools use InvenTree's native vocabulary (``users.ruleset``);
+  kanban and email use AIMMS-native capability permissions gated by a
+  dedicated Django group (see ``_AIMMS_NATIVE_GROUPS``). Only the database
+  tools (which enforce per-table RBAC themselves) stay unmapped/pass-through.
+- A user's *permission profile* is the frozenset of granted pairs: InvenTree
+  pairs from ``users.permissions.check_user_role`` plus AIMMS-native pairs
+  from group membership (session-cached; superusers short-circuit to
+  everything).
 - Filtering is memoized per (toolset, profile) and preserves the base
   ordering, so each profile presents a byte-stable tool schema — which
   keeps provider-side prompt caching effective.
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 def _tool_permission_map() -> dict[Any, tuple[str, str]]:
     """Map tool objects to their required ``(ruleset, permission)`` pair."""
     from ai.core.integrations import inventory_tools as it
+    from ai.core.tools.inventree.write import purchase_orders as po
 
     mapping: dict[Any, tuple[str, str]] = {
         # Parts
@@ -101,10 +103,54 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
         it.list_build_orders: ("build", "view"),
         it.get_build_order: ("build", "view"),
         it.get_build_order_lines: ("build", "view"),
+        # Centralized purchase-order write tools (create_purchase_order and
+        # add_po_line_item are already mapped above via inventory_tools).
+        po.issue_purchase_order: ("purchase_order", "change"),
+        po.receive_po_items: ("purchase_order", "change"),
+        po.cancel_purchase_order: ("purchase_order", "change"),
+        po.update_purchase_order: ("purchase_order", "change"),
+        po.complete_purchase_order: ("purchase_order", "change"),
+        po.delete_purchase_order: ("purchase_order", "delete"),
+        po.delete_po_line_item: ("purchase_order", "delete"),
+        # Email/kanban are gated by AIMMS-native permissions in the separate
+        # _native_tool_map (used only by the list filter, not the wf8 catalog,
+        # which keeps its own DISABLED/resource-authorizer policy for them).
         # query_database / list_database_tables are intentionally unmapped:
         # they enforce per-table RBAC internally for the same user.
     }
     return mapping
+
+
+def _native_tool_map() -> dict[Any, tuple[str, str]]:
+    """Map email/kanban tools to their AIMMS-native ``(ruleset, permission)``.
+
+    Kept separate from ``_tool_permission_map`` so the wf8 capability catalog
+    (which derives policy from that map) is undisturbed; this map only feeds the
+    per-user list filter.
+    """
+    from ai.core.integrations import kanban_tools as kt
+    from ai.core.integrations.email import tools as et
+
+    return {
+        kt.list_kanban_cards: ("kanban", "view"),
+        kt.get_kanban_card: ("kanban", "view"),
+        kt.get_kanban_summary: ("kanban", "view"),
+        kt.check_kanban_card_stock: ("kanban", "view"),
+        kt.create_kanban_card: ("kanban", "change"),
+        kt.update_kanban_card: ("kanban", "change"),
+        kt.move_kanban_card: ("kanban", "change"),
+        kt.archive_kanban_card: ("kanban", "change"),
+        kt.restore_kanban_card: ("kanban", "change"),
+        kt.delete_kanban_card: ("kanban", "change"),
+        kt.add_parts_to_kanban_card: ("kanban", "change"),
+        kt.remove_part_from_kanban_card: ("kanban", "change"),
+        et.list_emails: ("email", "view"),
+        et.get_email_details: ("email", "view"),
+        et.download_attachment: ("email", "view"),
+        et.mark_email_processed: ("email", "send"),
+        et.send_email: ("email", "send"),
+        et.generate_and_send_document: ("email", "send"),
+    }
 
 
 @lru_cache(maxsize=1)
@@ -117,6 +163,33 @@ def _all_pairs() -> frozenset[tuple[str, str]]:
     return frozenset(_permission_map_cached().values())
 
 
+# AIMMS-native capability permissions have no InvenTree RuleSet. Kanban (tasks
+# app) and email (Gmail) are gated by membership in a dedicated Django group;
+# superusers get all. Granting these to a user = adding them to the group.
+_AIMMS_NATIVE_GROUPS: dict[tuple[str, str], str] = {
+    ("kanban", "view"): "aimms.kanban.view",
+    ("kanban", "change"): "aimms.kanban.change",
+    ("email", "view"): "aimms.email.view",
+    ("email", "send"): "aimms.email.send",
+}
+
+
+def _native_pairs(user) -> frozenset[tuple[str, str]]:
+    """AIMMS-native (non-InvenTree) permission pairs granted to a user.
+
+    Fail-closed: inactive/None users and any group-lookup failure yield none.
+    """
+    if user is None or not getattr(user, "is_active", False):
+        return frozenset()
+    if getattr(user, "is_superuser", False):
+        return frozenset(_AIMMS_NATIVE_GROUPS)
+    try:
+        group_names = set(user.groups.values_list("name", flat=True))
+    except Exception:
+        return frozenset()
+    return frozenset(pair for pair, group in _AIMMS_NATIVE_GROUPS.items() if group in group_names)
+
+
 def permission_profile(user) -> frozenset[tuple[str, str]]:
     """Return the granted ``(ruleset, permission)`` pairs for one user.
 
@@ -126,16 +199,27 @@ def permission_profile(user) -> frozenset[tuple[str, str]]:
     if user is None or not getattr(user, "is_active", False):
         return frozenset()
     if getattr(user, "is_superuser", False):
-        return _all_pairs()
+        return _all_pairs() | frozenset(_AIMMS_NATIVE_GROUPS)
+
+    native = _native_pairs(user)
 
     from users.permissions import check_user_role
 
-    return frozenset(pair for pair in _all_pairs() if check_user_role(user, pair[0], pair[1]))
+    # _all_pairs() is InvenTree-only; native (email/kanban) pairs are resolved by
+    # group membership, not check_user_role.
+    inventree = frozenset(pair for pair in _all_pairs() if check_user_role(user, pair[0], pair[1]))
+    return inventree | native
+
+
+@lru_cache(maxsize=1)
+def _filter_map_cached() -> dict[Any, tuple[str, str]]:
+    """Combined map for list filtering: InvenTree + AIMMS-native (email/kanban)."""
+    return {**_permission_map_cached(), **_native_tool_map()}
 
 
 @lru_cache(maxsize=64)
 def _filter_cached(tools: tuple[Any, ...], profile: frozenset[tuple[str, str]]) -> tuple[Any, ...]:
-    mapping = _permission_map_cached()
+    mapping = _filter_map_cached()
     return tuple(
         tool
         for tool in tools

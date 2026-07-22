@@ -16,16 +16,19 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent, ChatMessage, WorkflowBuilder, Role
+from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
-
 from ai.core.config import get_settings
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
+from ai.core.workflows.rbac_run import run_with_rbac
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +80,7 @@ class ProductConfiguration:
     total_price: Decimal = Decimal("0.00")
     validation_errors: list[str] = field(default_factory=list)
     validation_warnings: list[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -115,7 +118,7 @@ class Quote:
     discount_percent: Decimal = Decimal("0.00")
     final_price: Decimal = Decimal("0.00")
     status: str = "draft"
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -190,11 +193,11 @@ When configuring:
                 endpoint=settings.azure_openai_endpoint,
                 api_key=settings.azure_openai_api_key,
             )
+            # Tools-less: run_with_rbac supplies the per-user-filtered toolset.
             self._agent = ChatAgent(
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Configurator Agent",
-                tools=INVENTORY_TOOLS,
             )
         return self._agent
 
@@ -249,7 +252,6 @@ When pricing:
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Pricing Agent",
-                tools=INVENTORY_TOOLS,
             )
         return self._agent
 
@@ -445,7 +447,7 @@ Please generate a formal quote."""
                 success=False,
                 conversation_log=conversation_log,
                 error=str(e),
-                formatted_response=f"CPQ workflow failed: {str(e)}",
+                formatted_response=f"CPQ workflow failed: {e!s}",
                 execution_time_ms=execution_time,
             )
 
@@ -453,11 +455,11 @@ Please generate a formal quote."""
         """Run configuration agent."""
         agent = await self.configurator.get_agent()
 
-        response = await agent.run(query)
+        response = await run_with_rbac(agent, query, full_tools=INVENTORY_TOOLS)
         response_text = ""
         if response.messages:
             last_msg = response.messages[-1]
-            response_text = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+            response_text = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
 
         return response_text
 
@@ -465,11 +467,11 @@ Please generate a formal quote."""
         """Run pricing agent."""
         agent = await self.pricing.get_agent()
 
-        response = await agent.run(query)
+        response = await run_with_rbac(agent, query, full_tools=INVENTORY_TOOLS)
         response_text = ""
         if response.messages:
             last_msg = response.messages[-1]
-            response_text = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+            response_text = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
 
         return response_text
 
@@ -481,7 +483,7 @@ Please generate a formal quote."""
         response_text = ""
         if response.messages:
             last_msg = response.messages[-1]
-            response_text = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+            response_text = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
 
         return response_text
 
@@ -554,18 +556,20 @@ Please generate a formal quote."""
 
         yield "🔧 **Step 1: Configuring Product**\n"
         agent = await self.configurator.get_agent()
-        response = await agent.run(query)
+        response = await run_with_rbac(agent, query, full_tools=INVENTORY_TOOLS)
         if response.messages:
             last_msg = response.messages[-1]
-            content = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+            content = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
             yield f"\n{content}\n"
 
         yield "\n---\n💰 **Step 2: Calculating Pricing**\n"
         agent = await self.pricing.get_agent()
-        response = await agent.run(f"Price this configuration: {query}")
+        response = await run_with_rbac(
+            agent, f"Price this configuration: {query}", full_tools=INVENTORY_TOOLS
+        )
         if response.messages:
             last_msg = response.messages[-1]
-            content = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+            content = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
             yield f"\n{content}\n"
 
         yield "\n---\n📄 **Step 3: Generating Quote**\n"
@@ -573,7 +577,7 @@ Please generate a formal quote."""
         response = await agent.run(f"Generate quote for: {query}")
         if response.messages:
             last_msg = response.messages[-1]
-            content = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+            content = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
             yield f"\n{content}\n"
 
         yield "\n---\n✅ CPQ process complete.\n"
@@ -594,7 +598,7 @@ class T5CPQBuilder:
     def with_configuration_rules(
         self,
         rules: list[ConfigurationRule],
-    ) -> "T5CPQBuilder":
+    ) -> T5CPQBuilder:
         """Add custom configuration rules."""
         self._custom_rules.extend(rules)
         return self
@@ -602,7 +606,7 @@ class T5CPQBuilder:
     def with_discount_rules(
         self,
         rules: dict[str, Any],
-    ) -> "T5CPQBuilder":
+    ) -> T5CPQBuilder:
         """Set discount rules."""
         self._discount_rules = rules
         return self
@@ -610,7 +614,7 @@ class T5CPQBuilder:
     def with_quote_validity(
         self,
         days: int,
-    ) -> "T5CPQBuilder":
+    ) -> T5CPQBuilder:
         """Set quote validity period."""
         self._quote_validity_days = days
         return self

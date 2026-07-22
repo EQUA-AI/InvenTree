@@ -126,6 +126,21 @@ class Settings(BaseSettings):
     )
     feature_reflection_middleware: bool = Field(default=True, alias="FEATURE_REFLECTION_MIDDLEWARE")
     feature_voice_live_diagnosis: bool = Field(default=False, alias="FEATURE_VOICE_LIVE_DIAGNOSIS")
+    # Safety tightening (Tier-1): restrict voice-modality lookups to read-only tools
+    # and a read-only spoken prompt. Defaults on because voice is contractually
+    # read-only; set false to revert voice to the full text toolset.
+    feature_voice_readonly_tools: bool = Field(default=True, alias="FEATURE_VOICE_READONLY_TOOLS")
+    # Tier-1 latency: answer pattern-matched voice lookups from the deterministic
+    # fast path (permission-gated) instead of the LLM tool loop. Off by default.
+    feature_voice_fast_path: bool = Field(default=False, alias="FEATURE_VOICE_FAST_PATH")
+    # Tier-3 writes: allow a voice-initiated write ONLY through a mandatory verbal
+    # confirmation turn (propose -> exact read-back -> explicit spoken confirm ->
+    # execute via the same RBAC-gated write tools text uses). Irreversible actions
+    # stay blocked by voice even with confirmation. Off by default: while off, the
+    # structural read-only fence stands and effect wording remains advisory only.
+    feature_voice_write_confirmation: bool = Field(
+        default=False, alias="FEATURE_VOICE_WRITE_CONFIRMATION"
+    )
 
     # -------------------------------------------------------------------------
     # WS3 Foundry reasoning adapter
@@ -133,8 +148,11 @@ class Settings(BaseSettings):
     # The owner-selected primary path references a pinned Foundry project agent.
     # Explicit aliases retain the deployment's AZURE_* setting names while the
     # rest of this settings object continues to use its AIMMS_ prefix.
+    # Prompt of record is the in-repo _DEVELOPER_INSTRUCTIONS (git-reviewed), so
+    # the reasoning path defaults to direct_deployment rather than the external
+    # Foundry portal agent. Set agent_reference to pin a Foundry agent instead.
     azure_voice_reasoning_invocation_mode: Literal["agent_reference", "direct_deployment"] = Field(
-        default="agent_reference", alias="AZURE_VOICE_REASONING_INVOCATION_MODE"
+        default="direct_deployment", alias="AZURE_VOICE_REASONING_INVOCATION_MODE"
     )
     azure_foundry_project_endpoint: str = Field(
         default="https://aimms-foundry.services.ai.azure.com/api/projects/Epcon-AIMMS",
@@ -203,9 +221,11 @@ class Settings(BaseSettings):
             version = self.azure_voice_agent_version.lower()
             if not version or version == "latest":
                 raise ValueError("AZURE_VOICE_AGENT_VERSION must be pinned")
-        elif not (self.azure_luna_endpoint or self.azure_openai_endpoint):
-            # The alternate deployment is only required when explicitly
-            # selected. Diagnosis remains feature-gated off by default.
+        elif self.feature_voice_live_diagnosis and not (
+            self.azure_luna_endpoint or self.azure_openai_endpoint
+        ):
+            # Only required when the reasoning path is actually enabled;
+            # diagnosis remains feature-gated off by default.
             raise ValueError(
                 "AZURE_LUNA_ENDPOINT or AZURE_OPENAI_ENDPOINT is required for "
                 "direct deployment invocation"
@@ -218,6 +238,12 @@ class Settings(BaseSettings):
     feature_voice_live: bool = Field(default=False, alias="FEATURE_VOICE_LIVE")
     feature_voice_live_webrtc: bool = Field(default=False, alias="FEATURE_VOICE_LIVE_WEBRTC")
     feature_voice_live_relay: bool = Field(default=False, alias="FEATURE_VOICE_LIVE_RELAY")
+    # Phase 5 (optional): move the transport to a native realtime model
+    # (gpt-realtime) with native semantic VAD for snappier turn-taking. Answers
+    # stay governed -- create_response:false, exact-TTS, no session tools, prompt
+    # of record in the repo -- so this is a transport swap, never A4/A5. Off by
+    # default; requires FEATURE_VOICE_LIVE and a gpt-realtime session model.
+    feature_voice_native_sts: bool = Field(default=False, alias="FEATURE_VOICE_NATIVE_STS")
     azure_voicelive_endpoint: str = Field(default="", alias="AZURE_VOICELIVE_ENDPOINT")
     azure_voicelive_model: str = Field(default="gpt-4.1-mini", alias="AZURE_VOICELIVE_MODEL")
     azure_voicelive_api_version: str = Field(
@@ -270,6 +296,8 @@ class Settings(BaseSettings):
             raise ValueError("FEATURE_VOICE_LIVE_WEBRTC requires FEATURE_VOICE_LIVE")
         if self.feature_voice_live_relay and not self.feature_voice_live:
             raise ValueError("FEATURE_VOICE_LIVE_RELAY requires FEATURE_VOICE_LIVE")
+        if self.feature_voice_native_sts and not self.feature_voice_live:
+            raise ValueError("FEATURE_VOICE_NATIVE_STS requires FEATURE_VOICE_LIVE")
         if not self.feature_voice_live:
             return self
         from ai.core.voice.endpoints import (
@@ -292,6 +320,13 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "azure-speech transcription cannot be paired with a gpt-realtime session model"
+            )
+        if self.feature_voice_native_sts and not session_model.startswith("gpt-realtime"):
+            # The native transport is a realtime model; the azure-speech guard
+            # above then forces a realtime-compatible transcription model.
+            raise ValueError(
+                "FEATURE_VOICE_NATIVE_STS requires a gpt-realtime session model "
+                "(set AZURE_VOICELIVE_MODEL=gpt-realtime)"
             )
         return self
 
@@ -425,6 +460,12 @@ class InvenTreeSettings(BaseSettings):
     url: str = Field(default="http://localhost:8000/api/", description="InvenTree API URL")
     token: SecretStr = Field(description="InvenTree API token")
     timeout: int = Field(default=30, description="Request timeout in seconds")
+    # Short-TTL cache for GET reads (seconds). 0 disables (default) -- caching
+    # trades freshness for latency, so it is opt-in on this accuracy-sensitive
+    # read path. Any write invalidates the cache.
+    read_cache_ttl_s: float = Field(
+        default=0.0, ge=0.0, le=300.0, description="GET read cache TTL seconds (0=off)"
+    )
 
 
 class GmailSettings(BaseSettings):

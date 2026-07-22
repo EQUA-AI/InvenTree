@@ -7,8 +7,9 @@ Procurement workflow with Human-in-the-Loop (HITL) approval:
 - Approval workflow for orders above threshold
 - Order submission and tracking
 
-Uses @ai_function with approval_mode="always_require" for actions
-that require human approval (e.g., submitting purchase orders).
+Purchase-order actions use the centralized write tools in
+ai.core.tools.inventree.write.purchase_orders (no workflow-local tool copies);
+human-in-the-loop confirmation for writes is handled by the Tier-3 flow (Phase 4).
 """
 
 from __future__ import annotations
@@ -16,15 +17,19 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, AsyncIterator, Callable
+from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent, ChatMessage, Role, ai_function
+from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
-
 from ai.core.config import get_settings
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
+from ai.core.tools.inventree.write.purchase_orders import PURCHASE_ORDER_WRITE_TOOLS
+from ai.core.workflows.rbac_run import run_with_rbac
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +81,7 @@ class PurchaseOrder:
     supplier_id: int | None = None
     supplier_name: str = ""
     line_items: list[LineItem] = field(default_factory=list)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     created_by: str = ""
     approved_by: str | None = None
     approved_at: datetime | None = None
@@ -154,188 +159,8 @@ def determine_approval_type(amount: float) -> ApprovalType:
         return ApprovalType.NONE
 
 
-# HITL-enabled procurement tools
-@ai_function(
-    description="Create a draft purchase order for parts. This creates a PO in draft status.",
-)
-def create_purchase_order(
-    supplier_id: int,
-    supplier_name: str,
-    items: list[dict[str, Any]],
-    notes: str = "",
-) -> dict[str, Any]:
-    """
-    Create a draft purchase order.
-
-    Args:
-        supplier_id: The supplier ID
-        supplier_name: The supplier name
-        items: List of items with part_id, part_name, quantity, unit_price
-        notes: Optional notes for the order
-
-    Returns:
-        The created purchase order
-    """
-    line_items = [
-        LineItem(
-            part_id=item["part_id"],
-            part_name=item["part_name"],
-            quantity=item["quantity"],
-            unit_price=item["unit_price"],
-            supplier_id=supplier_id,
-            supplier_name=supplier_name,
-        )
-        for item in items
-    ]
-
-    po = PurchaseOrder(
-        supplier_id=supplier_id,
-        supplier_name=supplier_name,
-        line_items=line_items,
-        notes=notes,
-        approval_type=determine_approval_type(sum(item.total_price for item in line_items)),
-    )
-
-    logger.info(
-        f"Created draft PO {po.order_id}",
-        extra={
-            "order_id": po.order_id,
-            "total_amount": po.total_amount,
-            "approval_type": po.approval_type.value,
-        },
-    )
-
-    return po.to_dict()
-
-
-@ai_function(
-    description="Submit a purchase order for approval. REQUIRES HUMAN APPROVAL for orders above threshold.",
-)
-def submit_purchase_order(
-    order_id: str,
-    submitted_by: str = "system",
-) -> dict[str, Any]:
-    """
-    Submit a purchase order for processing.
-
-    This function requires human approval and will not execute
-    until the user explicitly approves the action.
-
-    Args:
-        order_id: The purchase order ID
-        submitted_by: Who is submitting the order
-
-    Returns:
-        Status of the submission
-    """
-    # In production, this would:
-    # 1. Validate the PO exists
-    # 2. Send to supplier
-    # 3. Update status
-    # 4. Send notifications
-
-    logger.info(
-        f"Submitting PO {order_id}",
-        extra={
-            "order_id": order_id,
-            "submitted_by": submitted_by,
-        },
-    )
-
-    return {
-        "order_id": order_id,
-        "status": "submitted",
-        "submitted_by": submitted_by,
-        "submitted_at": datetime.now(timezone.utc).isoformat(),
-        "message": f"Purchase order {order_id} has been submitted to the supplier.",
-    }
-
-
-@ai_function(
-    description="Cancel a purchase order. REQUIRES HUMAN APPROVAL.",
-)
-def cancel_purchase_order(
-    order_id: str,
-    reason: str,
-    cancelled_by: str = "system",
-) -> dict[str, Any]:
-    """
-    Cancel a purchase order.
-
-    Args:
-        order_id: The purchase order ID
-        reason: Reason for cancellation
-        cancelled_by: Who is cancelling
-
-    Returns:
-        Cancellation status
-    """
-    logger.info(
-        f"Cancelling PO {order_id}",
-        extra={
-            "order_id": order_id,
-            "reason": reason,
-            "cancelled_by": cancelled_by,
-        },
-    )
-
-    return {
-        "order_id": order_id,
-        "status": "cancelled",
-        "reason": reason,
-        "cancelled_by": cancelled_by,
-        "cancelled_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-@ai_function(
-    description="Get quote from a supplier for specified parts. Does not require approval.",
-)
-def request_quote(
-    supplier_id: int,
-    items: list[dict[str, Any]],
-    urgency: str = "normal",
-) -> dict[str, Any]:
-    """
-    Request a quote from a supplier.
-
-    Args:
-        supplier_id: The supplier ID
-        items: List of items with part_id and quantity
-        urgency: Quote urgency (normal, urgent, critical)
-
-    Returns:
-        Quote request status
-    """
-    quote_id = f"QR-{uuid.uuid4().hex[:8].upper()}"
-
-    logger.info(
-        f"Requesting quote {quote_id}",
-        extra={
-            "quote_id": quote_id,
-            "supplier_id": supplier_id,
-            "item_count": len(items),
-        },
-    )
-
-    return {
-        "quote_id": quote_id,
-        "supplier_id": supplier_id,
-        "item_count": len(items),
-        "urgency": urgency,
-        "status": "requested",
-        "requested_at": datetime.now(timezone.utc).isoformat(),
-        "expected_response": "24-48 hours" if urgency == "normal" else "4-8 hours",
-    }
-
-
-# Collect HITL-enabled tools
-PROCUREMENT_TOOLS = [
-    create_purchase_order,
-    submit_purchase_order,
-    cancel_purchase_order,
-    request_quote,
-]
+# Procurement uses the centralized PurchaseOrder write tools
+# (ai.core.tools.inventree.write.purchase_orders) -- no workflow-local tool copies.
 
 
 class T4ProcurementWorkflow:
@@ -411,21 +236,18 @@ Format purchase orders clearly with:
         if self._agent is None:
             settings = get_settings()
 
-            # Combine InvenTree tools with procurement tools
-            all_tools = list(INVENTORY_TOOLS) + PROCUREMENT_TOOLS
-
             chat_client = AzureOpenAIChatClient(
                 deployment_name=settings.azure_openai_deployment,
                 endpoint=settings.azure_openai_endpoint,
                 api_key=settings.azure_openai_api_key,
             )
 
+            # Tools-less: run_with_rbac supplies the per-user-filtered toolset.
             self._agent = ChatAgent(
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Procurement Agent",
                 description="Handles procurement and purchase orders",
-                tools=all_tools,
             )
 
         return self._agent
@@ -464,12 +286,17 @@ Format purchase orders clearly with:
         try:
             agent = await self._get_agent()
 
-            # Run procurement agent
-            response = await agent.run(query)
+            # Run procurement agent (per-user RBAC-filtered tools; voice read-only)
+            response = await run_with_rbac(
+                agent,
+                query,
+                full_tools=[*INVENTORY_TOOLS, *PURCHASE_ORDER_WRITE_TOOLS],
+                context=context,
+            )
             response_text = ""
             if response.messages:
                 last_msg = response.messages[-1]
-                response_text = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+                response_text = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
 
             execution_time = (time.perf_counter() - start_time) * 1000
 
@@ -514,7 +341,7 @@ Format purchase orders clearly with:
             return ProcurementResult(
                 success=False,
                 error=str(e),
-                formatted_response=f"Procurement failed: {str(e)}",
+                formatted_response=f"Procurement failed: {e!s}",
                 execution_time_ms=execution_time,
             )
 
@@ -552,15 +379,16 @@ Format purchase orders clearly with:
         try:
             agent = await self._get_agent()
 
-            response = await agent.run(query)
+            response = await run_with_rbac(
+                agent, query, full_tools=[*INVENTORY_TOOLS, *PURCHASE_ORDER_WRITE_TOOLS]
+            )
             if response.messages:
                 last_msg = response.messages[-1]
-                content = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
-                yield content
+                yield last_msg.text if hasattr(last_msg, "text") else str(last_msg)
 
         except Exception as e:
             logger.error(f"T4 procurement stream failed: {e}")
-            yield f"Error: {str(e)}"
+            yield f"Error: {e!s}"
 
 
 class T4ProcurementBuilder:
@@ -578,7 +406,7 @@ class T4ProcurementBuilder:
     def with_approval_callback(
         self,
         callback: Callable[[PurchaseOrder], None],
-    ) -> "T4ProcurementBuilder":
+    ) -> T4ProcurementBuilder:
         """Set callback for approval requests."""
         self._approval_callback = callback
         return self
@@ -586,7 +414,7 @@ class T4ProcurementBuilder:
     def with_thresholds(
         self,
         thresholds: dict[ApprovalType, float],
-    ) -> "T4ProcurementBuilder":
+    ) -> T4ProcurementBuilder:
         """Set custom approval thresholds."""
         self._custom_thresholds = thresholds
         return self
@@ -594,7 +422,7 @@ class T4ProcurementBuilder:
     def with_additional_tools(
         self,
         tools: list,
-    ) -> "T4ProcurementBuilder":
+    ) -> T4ProcurementBuilder:
         """Add additional tools."""
         self._additional_tools.extend(tools)
         return self
@@ -613,7 +441,7 @@ class T4ProcurementBuilder:
         """Convert workflow to a composable agent."""
         settings = get_settings()
 
-        all_tools = list(INVENTORY_TOOLS) + PROCUREMENT_TOOLS + self._additional_tools
+        all_tools = [*INVENTORY_TOOLS, *PURCHASE_ORDER_WRITE_TOOLS, *self._additional_tools]
 
         chat_client = AzureOpenAIChatClient(
             deployment_name=settings.azure_openai_deployment,

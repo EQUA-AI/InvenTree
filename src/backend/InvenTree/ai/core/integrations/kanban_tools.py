@@ -12,9 +12,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from asgiref.sync import sync_to_async
-
 from ai.core.maf_compat import ai_function
+from asgiref.sync import sync_to_async
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +21,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _card_to_dict(card, include_parts: bool = True) -> dict[str, Any]:
     """Serialize a KanbanCard model instance to a plain dict."""
@@ -44,7 +44,9 @@ def _card_to_dict(card, include_parts: bool = True) -> dict[str, Any]:
         "updated_at": card.updated_at.isoformat() if card.updated_at else None,
     }
     if include_parts:
-        data["parts"] = [_card_part_to_dict(cp) for cp in card.card_parts.all().select_related('part')]
+        data["parts"] = [
+            _card_part_to_dict(cp) for cp in card.card_parts.all().select_related("part")
+        ]
     return data
 
 
@@ -64,18 +66,21 @@ def _card_part_to_dict(card_part) -> dict[str, Any]:
 def _get_model():
     """Lazy import to avoid Django app-not-ready errors."""
     from tasks.models import KanbanCard
+
     return KanbanCard
 
 
 def _get_card_part_model():
     """Lazy import for KanbanCardPart."""
     from tasks.models import KanbanCardPart
+
     return KanbanCardPart
 
 
 # ---------------------------------------------------------------------------
 # READ tools
 # ---------------------------------------------------------------------------
+
 
 @ai_function
 async def list_kanban_cards(
@@ -129,6 +134,7 @@ async def list_kanban_cards(
             qs = qs.filter(tags__contains=[tag])
         if search:
             from django.db.models import Q
+
             qs = qs.filter(
                 Q(title__icontains=search)
                 | Q(description__icontains=search)
@@ -174,6 +180,7 @@ async def get_kanban_card(card_id: int) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # CREATE tool
 # ---------------------------------------------------------------------------
+
 
 @ai_function
 async def create_kanban_card(
@@ -223,7 +230,9 @@ async def create_kanban_card(
     if status not in valid_statuses:
         return {"error": f"Invalid status '{status}'. Must be one of {sorted(valid_statuses)}."}
     if priority not in valid_priorities:
-        return {"error": f"Invalid priority '{priority}'. Must be one of {sorted(valid_priorities)}."}
+        return {
+            "error": f"Invalid priority '{priority}'. Must be one of {sorted(valid_priorities)}."
+        }
 
     @sync_to_async
     def _create():
@@ -264,13 +273,12 @@ async def create_kanban_card(
                 try:
                     part_obj = Part.objects.get(pk=part_id)
                 except Part.DoesNotExist:
-                    allocation_warnings.append(
-                        f"Part ID {part_id} not found — skipped."
-                    )
+                    allocation_warnings.append(f"Part ID {part_id} not found — skipped.")
                     continue
 
                 card_part, created = KanbanCardPart.objects.get_or_create(
-                    card=card, part=part_obj,
+                    card=card,
+                    part=part_obj,
                     defaults={"quantity": qty},
                 )
                 if not created:
@@ -302,6 +310,7 @@ async def create_kanban_card(
 # ---------------------------------------------------------------------------
 # UPDATE tool
 # ---------------------------------------------------------------------------
+
 
 @ai_function
 async def update_kanban_card(
@@ -349,7 +358,9 @@ async def update_kanban_card(
     if status is not None and status not in valid_statuses:
         return {"error": f"Invalid status '{status}'. Must be one of {sorted(valid_statuses)}."}
     if priority is not None and priority not in valid_priorities:
-        return {"error": f"Invalid priority '{priority}'. Must be one of {sorted(valid_priorities)}."}
+        return {
+            "error": f"Invalid priority '{priority}'. Must be one of {sorted(valid_priorities)}."
+        }
 
     @sync_to_async
     def _update():
@@ -403,6 +414,7 @@ async def update_kanban_card(
 # MOVE (status change shortcut)
 # ---------------------------------------------------------------------------
 
+
 @ai_function
 async def move_kanban_card(
     card_id: int,
@@ -431,6 +443,7 @@ async def move_kanban_card(
 # DELETE / ARCHIVE tools
 # ---------------------------------------------------------------------------
 
+
 @ai_function
 async def archive_kanban_card(card_id: int) -> dict[str, Any]:
     """
@@ -457,7 +470,10 @@ async def archive_kanban_card(card_id: int) -> dict[str, Any]:
 
         card.is_active = False
         card.save(update_fields=["is_active", "updated_at"])
-        return {"message": f"Card {card_id} ('{card.title}') archived.", "card": _card_to_dict(card)}
+        return {
+            "message": f"Card {card_id} ('{card.title}') archived.",
+            "card": _card_to_dict(card),
+        }
 
     return await _archive()
 
@@ -487,7 +503,10 @@ async def restore_kanban_card(card_id: int) -> dict[str, Any]:
 
         card.is_active = True
         card.save(update_fields=["is_active", "updated_at"])
-        return {"message": f"Card {card_id} ('{card.title}') restored.", "card": _card_to_dict(card)}
+        return {
+            "message": f"Card {card_id} ('{card.title}') restored.",
+            "card": _card_to_dict(card),
+        }
 
     return await _restore()
 
@@ -524,6 +543,7 @@ async def delete_kanban_card(card_id: int) -> dict[str, Any]:
 # PARTS & STOCK tools
 # ---------------------------------------------------------------------------
 
+
 @ai_function
 async def add_parts_to_kanban_card(
     card_id: int,
@@ -547,6 +567,7 @@ async def add_parts_to_kanban_card(
     @sync_to_async
     def _add():
         from decimal import Decimal
+
         from part.models import Part
 
         try:
@@ -568,7 +589,8 @@ async def add_parts_to_kanban_card(
                 continue
 
             card_part, created = KanbanCardPart.objects.get_or_create(
-                card=card, part=part_obj,
+                card=card,
+                part=part_obj,
                 defaults={"quantity": qty},
             )
             if not created:
@@ -696,6 +718,7 @@ async def remove_part_from_kanban_card(
 # SUMMARY tool
 # ---------------------------------------------------------------------------
 
+
 @ai_function
 async def get_kanban_summary() -> dict[str, Any]:
     """
@@ -710,6 +733,7 @@ async def get_kanban_summary() -> dict[str, Any]:
     @sync_to_async
     def _summarize():
         import datetime
+
         from django.db.models import Count
 
         active = KanbanCard.objects.filter(is_active=True)
@@ -740,6 +764,14 @@ async def get_kanban_summary() -> dict[str, Any]:
 # Export
 # ---------------------------------------------------------------------------
 
+# Read-only subset — safe for hands-free voice (Tier-1). No card mutations.
+KANBAN_READ_TOOLS = [
+    list_kanban_cards,
+    get_kanban_card,
+    get_kanban_summary,
+    check_kanban_card_stock,
+]
+
 KANBAN_TOOLS = [
     list_kanban_cards,
     get_kanban_card,
@@ -755,4 +787,4 @@ KANBAN_TOOLS = [
     remove_part_from_kanban_card,
 ]
 
-__all__ = ["KANBAN_TOOLS"]
+__all__ = ["KANBAN_READ_TOOLS", "KANBAN_TOOLS"]

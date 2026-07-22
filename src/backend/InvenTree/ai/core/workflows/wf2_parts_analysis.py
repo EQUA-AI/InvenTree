@@ -15,13 +15,16 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent, ChatMessage, Role
+from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
-
 from ai.core.config import get_settings
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
+from ai.core.workflows.rbac_run import run_with_rbac
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +98,13 @@ Format your analysis clearly with:
                 api_key=settings.azure_openai_api_key,
             )
 
+            # Built tools-less; the per-user-filtered toolset is supplied per
+            # run via run_with_rbac (MAF unions constructor + run-time tools).
             self._agent = ChatAgent(
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Parts Analysis Agent",
                 description="Analyzes part compatibility and alternatives",
-                tools=INVENTORY_TOOLS,
             )
 
         return self._agent
@@ -155,7 +159,6 @@ Provide your analysis with:
                 instructions=self.SYSTEM_PROMPT,
                 name="BOM Analysis Agent",
                 description="Analyzes and validates Bills of Materials",
-                tools=INVENTORY_TOOLS,
             )
 
         return self._agent
@@ -242,12 +245,14 @@ class T2PartsAnalysisWorkflow:
             agent_wrapper = self._get_agent_for_type(analysis_type)
             agent = await agent_wrapper.get_agent()
 
-            # Run analysis
-            response = await agent.run(query)
+            # Run analysis with per-user RBAC-filtered tools (voice read-only).
+            response = await run_with_rbac(
+                agent, query, full_tools=INVENTORY_TOOLS, context=context
+            )
             response_text = ""
             if response.messages:
                 last_msg = response.messages[-1]
-                response_text = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+                response_text = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
 
             execution_time = (time.perf_counter() - start_time) * 1000
 
@@ -287,7 +292,7 @@ class T2PartsAnalysisWorkflow:
                 analysis_type=analysis_type,
                 success=False,
                 error=str(e),
-                formatted_response=f"Analysis failed: {str(e)}",
+                formatted_response=f"Analysis failed: {e!s}",
                 execution_time_ms=execution_time,
             )
 
@@ -317,8 +322,8 @@ class T2PartsAnalysisWorkflow:
                 current_section = "findings"
 
             # Add to appropriate list
-            if line.startswith(("-", "*", "•", "–")):
-                content = line.lstrip("-*•– ").strip()
+            if line.startswith(("-", "*", "•", "–")):  # noqa: RUF001
+                content = line.lstrip("-*•– ").strip()  # noqa: RUF001
                 if current_section == "recommendations":
                     recommendations.append(content)
                 else:
@@ -337,15 +342,14 @@ class T2PartsAnalysisWorkflow:
             agent_wrapper = self._get_agent_for_type(analysis_type)
             agent = await agent_wrapper.get_agent()
 
-            response = await agent.run(query)
+            response = await run_with_rbac(agent, query, full_tools=INVENTORY_TOOLS)
             if response.messages:
                 last_msg = response.messages[-1]
-                content = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
-                yield content
+                yield last_msg.text if hasattr(last_msg, "text") else str(last_msg)
 
         except Exception as e:
             logger.error(f"T2 analysis stream failed: {e}")
-            yield f"Error: {str(e)}"
+            yield f"Error: {e!s}"
 
 
 class T2PartsAnalysisBuilder:
@@ -360,17 +364,17 @@ class T2PartsAnalysisBuilder:
         self._bom_prompt: str | None = None
         self._additional_tools: list = []
 
-    def with_parts_prompt(self, prompt: str) -> "T2PartsAnalysisBuilder":
+    def with_parts_prompt(self, prompt: str) -> T2PartsAnalysisBuilder:
         """Set custom parts analysis prompt."""
         self._parts_prompt = prompt
         return self
 
-    def with_bom_prompt(self, prompt: str) -> "T2PartsAnalysisBuilder":
+    def with_bom_prompt(self, prompt: str) -> T2PartsAnalysisBuilder:
         """Set custom BOM analysis prompt."""
         self._bom_prompt = prompt
         return self
 
-    def with_additional_tools(self, tools: list) -> "T2PartsAnalysisBuilder":
+    def with_additional_tools(self, tools: list) -> T2PartsAnalysisBuilder:
         """Add additional tools."""
         self._additional_tools.extend(tools)
         return self

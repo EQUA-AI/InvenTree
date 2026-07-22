@@ -1,0 +1,87 @@
+"""Tier-1 voice safety: read-only tools + read-only spoken prompt.
+
+Voice-modality lookups must be restricted to read-only tools (no email or
+kanban write tools, which mutate and bypass the InvenTree read-only fence) and
+must use the read-only spoken prompt. Gated by ``feature_voice_readonly_tools``
+(default on); flipping it off reverts voice to the full text toolset.
+"""
+
+from __future__ import annotations
+
+import os
+from types import SimpleNamespace
+from unittest.mock import patch
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ai.core.tests.settings")
+
+import django
+
+django.setup()
+
+from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS  # noqa: E402
+from ai.core.integrations.email.tools import send_email  # noqa: E402
+from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS  # noqa: E402
+from ai.core.integrations.kanban_tools import (  # noqa: E402
+    KANBAN_READ_TOOLS,
+    create_kanban_card,
+    list_kanban_cards,
+)
+from ai.core.workflows.wf8_lookup import T1LookupWorkflow  # noqa: E402
+from django.test import SimpleTestCase  # noqa: E402
+
+
+def _fake_settings(*, read_only: bool):
+    return SimpleNamespace(feature_voice_readonly_tools=read_only)
+
+
+class VoiceReadOnlyToolsetTests(SimpleTestCase):
+    """The voice toolset is a read-only subset; the text toolset is unchanged."""
+
+    def setUp(self):
+        self.wf = T1LookupWorkflow()
+
+    def test_voice_toolset_is_read_only(self):
+        voice = set(self.wf.VOICE_BASE_TOOLS)
+        # No mutating tools that would bypass the InvenTree read-only fence.
+        self.assertNotIn(send_email, voice)
+        self.assertNotIn(create_kanban_card, voice)
+        # Only read tools, and non-empty.
+        allowed = set(INVENTORY_READ_TOOLS) | set(DOCUMENT_SEARCH_TOOLS) | set(KANBAN_READ_TOOLS)
+        self.assertTrue(voice)
+        self.assertTrue(voice.issubset(allowed))
+        # Kanban and build/work-order reads are available to voice.
+        self.assertIn(list_kanban_cards, voice)
+
+    def test_text_toolset_keeps_full_surface(self):
+        text = set(self.wf.BASE_TOOLS)
+        self.assertIn(send_email, text)
+        self.assertIn(create_kanban_card, text)
+
+    def test_base_tools_for_gates_on_flag_and_modality(self):
+        with patch(
+            "ai.core.workflows.wf8_lookup.get_settings",
+            return_value=_fake_settings(read_only=True),
+        ):
+            # Voice + flag on -> read-only subset.
+            self.assertEqual(self.wf._base_tools_for(is_voice=True), self.wf.VOICE_BASE_TOOLS)
+            # Text is never restricted.
+            self.assertEqual(self.wf._base_tools_for(is_voice=False), self.wf.BASE_TOOLS)
+
+        with patch(
+            "ai.core.workflows.wf8_lookup.get_settings",
+            return_value=_fake_settings(read_only=False),
+        ):
+            # Flag off reverts voice to the full toolset.
+            self.assertEqual(self.wf._base_tools_for(is_voice=True), self.wf.BASE_TOOLS)
+
+
+class VoicePromptTests(SimpleTestCase):
+    """The voice prompt is read-only and distinct from the text prompt."""
+
+    def test_voice_prompt_is_read_only_and_distinct(self):
+        voice_prompt = T1LookupWorkflow.VOICE_SYSTEM_PROMPT.lower()
+        self.assertIn("read-only", voice_prompt)
+        self.assertNotEqual(T1LookupWorkflow.VOICE_SYSTEM_PROMPT, T1LookupWorkflow.SYSTEM_PROMPT)
+        # The text prompt claims write access; the voice prompt must not.
+        self.assertIn("write access", T1LookupWorkflow.SYSTEM_PROMPT.lower())
+        self.assertNotIn("write access", voice_prompt)
