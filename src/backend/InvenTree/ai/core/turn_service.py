@@ -319,6 +319,59 @@ def _canonical_advisory_intent() -> CanonicalTurnResponse:
     )
 
 
+def _canonical_voice_write(message: str) -> CanonicalTurnResponse:
+    """A spoken voice write-confirmation read-back or outcome (Phase 4).
+
+    ``message`` is always server-authored -- an exact read-back of a resolved
+    action, or a fixed outcome phrase from the confirmation allow-list. It is
+    spoken (an eyes-free technician must hear it) and the spoken summary equals
+    the visible text, so speech adds nothing the record does not show.
+    """
+    return CanonicalTurnResponse(
+        kind="voice_write_confirmation",
+        response_version=1,
+        response_state="complete",
+        detailed_response=message,
+        spoken_summary=message,
+        reasoning_summary="Voice write-confirmation gate response.",
+        confidence="high",
+        evidence=[],
+        next_questions=[],
+        recommended_actions=[],
+        safety_boundary="None",
+        speak=True,
+    )
+
+
+def _log_voice_write_confirmation_shadow(content: str, thread_id: int) -> None:
+    """Shadow-observe the Tier-3 write-confirmation contract on a voice effect turn.
+
+    Runs only when ``feature_voice_write_confirmation`` is on. It classifies the
+    effect (which the router already isolated as advisory intent) under the
+    signed-off contract and emits a bounded structured log -- no read-back, no
+    pending state, no execution, and the read-only fence is untouched. This is
+    the shadow-before-enforce step: it lets us measure how the contract would
+    classify real voice turns before any spoken read-back or write is enabled.
+    """
+    from ai.core.config import get_settings
+
+    if not get_settings().feature_voice_write_confirmation:
+        return
+    from ai.core.voice.confirmation import (
+        CONFIRMATION_POLICY_VERSION,
+        classify_write_intent,
+    )
+
+    action_class = classify_write_intent(content, effect_intent=True)
+    logger.info(
+        "voice.write_confirmation.shadow mode=shadow action_class=%s "
+        "policy_version=%s thread_id=%s",
+        action_class.value,
+        CONFIRMATION_POLICY_VERSION,
+        thread_id,
+    )
+
+
 class NormalizedTurnService:
     """Authorize, persist, execute, and finalize one normalized turn."""
 
@@ -333,6 +386,7 @@ class NormalizedTurnService:
         reasoning_adapter: Any | None = None,
         diagnostic_tool_registry: Any | None = None,
         diagnostic_context_factory: Callable[..., Any] | None = None,
+        voice_write_gate: Any | None = None,
     ) -> None:
         self.workflow_factory = workflow_factory
         self.repository_factory = repository_factory or self._default_repository
@@ -341,6 +395,10 @@ class NormalizedTurnService:
         self.reasoning_adapter = reasoning_adapter
         self.diagnostic_tool_registry = diagnostic_tool_registry
         self.diagnostic_context_factory = diagnostic_context_factory
+        # Tier-3 opt-in write path (Phase 4). None -> the feature is inert even
+        # when the flag is on; a deployment injects a VoiceWriteGate with real,
+        # RBAC-backed seams. Nothing here relaxes the read-only fence.
+        self.voice_write_gate = voice_write_gate
 
         # Preserve typed chat exactly while diagnosis is disabled.  When the
         # server flag is enabled, build the Foundry adapter lazily here so both
@@ -364,6 +422,12 @@ class NormalizedTurnService:
                 self.complexity_router = VoiceComplexityRouter()
                 self.diagnostic_tool_registry = registry
                 self.reasoning_adapter = LunaDiagnosticsAdapter(tool_registry=registry)
+                if self.diagnostic_context_factory is None:
+                    from ai.core.reasoning.diagnostic_context import (
+                        build_voice_diagnostic_context,
+                    )
+
+                    self.diagnostic_context_factory = build_voice_diagnostic_context
 
     @staticmethod
     def _default_repository(
@@ -433,6 +497,125 @@ class NormalizedTurnService:
         if inspect.isawaitable(context):
             context = await context
         return context
+
+    def _voice_write_enabled(self) -> bool:
+        """Whether the opt-in Tier-3 write path is both configured and enabled."""
+        if self.voice_write_gate is None:
+            return False
+        from ai.core.config import get_settings
+
+        return bool(get_settings().feature_voice_write_confirmation)
+
+    async def _canonical_for_voice_write(
+        self,
+        *,
+        thread_id: Any,
+        turn_id: Any,
+        spoken: str,
+        emitter: Any,
+        workflow_id: str,
+        workflow_name: str,
+    ) -> dict[str, Any]:
+        """Build and emit the canonical for a spoken write read-back or outcome."""
+        response = _canonical_voice_write(spoken)
+        await self._emit_canonical_events(
+            emitter=emitter,
+            thread_id=thread_id,
+            run_id=f"{workflow_id}:{turn_id}",
+            workflow_id=workflow_id,
+            workflow_name=workflow_name,
+            message=response.detailed_response,
+            response_state=response.response_state.value,
+        )
+        return {
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "message": response.detailed_response,
+            "agent": "voice_write_gate",
+            "workflow_used": workflow_id,
+            "response_state": response.response_state.value,
+            "canonical_response": response.model_dump(mode="json"),
+            "spoken_summary": response.spoken_summary,
+            "reasoning_provenance": None,
+            "route": None,
+        }
+
+    async def _resolve_pending_voice_write(
+        self,
+        *,
+        actor: AIPrincipal,
+        trusted_context: TrustedTurnContext,
+        content: str,
+        modality: str,
+        thread_id: Any,
+        turn_id: Any,
+        emitter: Any,
+    ) -> dict[str, Any] | None:
+        """Intercept a confirmation reply to a pending write, before routing.
+
+        A "yes"/"confirm delete" turn routes like an ordinary request, so the
+        pending confirmation must capture it here. Returns a spoken canonical
+        when this turn resolved a pending write (confirmed-and-executed,
+        cancelled, or refused), else ``None`` so normal routing proceeds.
+        """
+        if modality != TurnModality.VOICE or not self._voice_write_enabled():
+            return None
+        resolution = await self.voice_write_gate.resolve_pending(
+            content,
+            actor=actor,
+            trusted_context=trusted_context,
+            thread_id=thread_id,
+        )
+        if resolution is None:
+            return None
+        for event in resolution.audit_events:
+            logger.info("voice.write_confirmation.audit %s", event.to_dict())
+        return await self._canonical_for_voice_write(
+            thread_id=thread_id,
+            turn_id=turn_id,
+            spoken=resolution.spoken,
+            emitter=emitter,
+            workflow_id="voice_write_confirm",
+            workflow_name="VOICE_WRITE_CONFIRM",
+        )
+
+    async def _begin_voice_write(
+        self,
+        *,
+        actor: AIPrincipal,
+        trusted_context: TrustedTurnContext,
+        content: str,
+        thread_id: Any,
+        turn_id: Any,
+        emitter: Any,
+    ) -> dict[str, Any] | None:
+        """Propose a write for an effect turn (voice only), RBAC-gated.
+
+        Returns a spoken canonical (the read-back, or a refusal) when the gate's
+        resolver produced a write, else ``None`` so the caller falls through to
+        the read-only advisory response. Only called on the voice advisory path.
+        """
+        if not self._voice_write_enabled():
+            return None
+        proposal = await self.voice_write_gate.begin(
+            content,
+            actor=actor,
+            trusted_context=trusted_context,
+            thread_id=thread_id,
+            nonce=str(turn_id),
+        )
+        if proposal is None:
+            return None
+        for event in proposal.audit_events:
+            logger.info("voice.write_confirmation.audit %s", event.to_dict())
+        return await self._canonical_for_voice_write(
+            thread_id=thread_id,
+            turn_id=turn_id,
+            spoken=proposal.spoken,
+            emitter=emitter,
+            workflow_id="voice_write_propose",
+            workflow_name="VOICE_WRITE_PROPOSE",
+        )
 
     def _route_turn(
         self,
@@ -700,6 +883,18 @@ class NormalizedTurnService:
         fence_token = READ_ONLY_TOOLS.set(True) if modality == TurnModality.VOICE else None
 
         try:
+            # Before routing: a confirmation reply to a pending Tier-3 write
+            # ("yes"/"confirm delete") would otherwise route like any request,
+            # so the pending confirmation must capture this turn first.
+            write_canonical = await self._resolve_pending_voice_write(
+                actor=actor,
+                trusted_context=trusted_context,
+                content=content,
+                modality=modality,
+                thread_id=thread.pk,
+                turn_id=turn.pk,
+                emitter=isolated_emitter,
+            )
             diagnostic_context = await self._build_diagnostic_context(
                 actor=actor,
                 trusted_context=trusted_context,
@@ -716,7 +911,10 @@ class NormalizedTurnService:
             )
 
             route_mode = getattr(getattr(route, "mode", None), "value", None)
-            if route_mode == "reasoning" and self.reasoning_adapter is not None:
+            if write_canonical is not None:
+                # A pending write confirmation resolved; it supersedes routing.
+                canonical = write_canonical
+            elif route_mode == "reasoning" and self.reasoning_adapter is not None:
                 canonical = await self._reasoning_canonical(
                     actor=actor,
                     trusted_context=trusted_context,
@@ -729,29 +927,44 @@ class NormalizedTurnService:
                     emitter=isolated_emitter,
                 )
             elif route_mode == "advisory_intent":
-                response = _canonical_advisory_intent()
-                message = response.detailed_response
-                await self._emit_canonical_events(
-                    emitter=isolated_emitter,
-                    thread_id=thread.pk,
-                    run_id=f"advisory:{turn.pk}",
-                    workflow_id="advisory_intent",
-                    workflow_name="ADVISORY_INTENT",
-                    message=message,
-                    response_state=response.response_state.value,
-                )
-                canonical = {
-                    "thread_id": thread.pk,
-                    "turn_id": turn.pk,
-                    "message": message,
-                    "agent": "complexity_router",
-                    "workflow_used": "advisory_intent",
-                    "response_state": response.response_state.value,
-                    "canonical_response": response.model_dump(mode="json"),
-                    "spoken_summary": response.spoken_summary,
-                    "reasoning_provenance": None,
-                    "route": route.to_dict(),
-                }
+                canonical = None
+                if modality == TurnModality.VOICE:
+                    _log_voice_write_confirmation_shadow(content, thread.pk)
+                    # Opt-in Tier-3: try to turn this effect turn into a
+                    # confirmable write proposal (read-back). None -> stay
+                    # advisory and read-only.
+                    canonical = await self._begin_voice_write(
+                        actor=actor,
+                        trusted_context=trusted_context,
+                        content=content,
+                        thread_id=thread.pk,
+                        turn_id=turn.pk,
+                        emitter=isolated_emitter,
+                    )
+                if canonical is None:
+                    response = _canonical_advisory_intent()
+                    message = response.detailed_response
+                    await self._emit_canonical_events(
+                        emitter=isolated_emitter,
+                        thread_id=thread.pk,
+                        run_id=f"advisory:{turn.pk}",
+                        workflow_id="advisory_intent",
+                        workflow_name="ADVISORY_INTENT",
+                        message=message,
+                        response_state=response.response_state.value,
+                    )
+                    canonical = {
+                        "thread_id": thread.pk,
+                        "turn_id": turn.pk,
+                        "message": message,
+                        "agent": "complexity_router",
+                        "workflow_used": "advisory_intent",
+                        "response_state": response.response_state.value,
+                        "canonical_response": response.model_dump(mode="json"),
+                        "spoken_summary": response.spoken_summary,
+                        "reasoning_provenance": None,
+                        "route": route.to_dict(),
+                    }
             else:
                 workflow = self.workflow_factory()
                 workflow_context = dict(trusted)

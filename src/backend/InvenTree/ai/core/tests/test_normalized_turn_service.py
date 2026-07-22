@@ -57,11 +57,11 @@ class _Repository:
         self.turns: dict[str, _FakeTurn] = {}
         self.terminal_calls: list[dict[str, Any]] = []
 
-    def get_or_create(self, thread_id=None, *, title=""):  # noqa: ARG002
+    def get_or_create(self, thread_id=None, *, title=""):
         self.thread.pk = thread_id or self.thread.pk
         return self.thread, not bool(thread_id)
 
-    def begin_turn(self, thread_id, **kwargs):  # noqa: ARG002
+    def begin_turn(self, thread_id, **kwargs):
         key = kwargs["idempotency_key"]
         existing = self.turns.get(key)
         if existing:
@@ -299,13 +299,13 @@ class NormalizedTurnServiceTests(SimpleTestCase):
 
     def test_incomplete_failed_and_canceled_states_are_exactly_replayable(self) -> None:
         class IncompleteWorkflow:
-            async def run_stream(self, **kwargs):  # noqa: ARG002
+            async def run_stream(self, **kwargs):
                 if False:
                     yield ""
                 raise TurnIncomplete("bounded timeout")
 
         class FailedWorkflow:
-            async def run_stream(self, **kwargs):  # noqa: ARG002
+            async def run_stream(self, **kwargs):
                 if False:
                     yield ""
                 raise RuntimeError("provider detail must not escape")
@@ -314,7 +314,7 @@ class NormalizedTurnServiceTests(SimpleTestCase):
             def __init__(self):
                 self.started = asyncio.Event()
 
-            async def run_stream(self, **kwargs):  # noqa: ARG002
+            async def run_stream(self, **kwargs):
                 self.started.set()
                 await asyncio.Event().wait()
                 yield "unreachable"
@@ -509,7 +509,7 @@ class NormalizedTurnServiceTests(SimpleTestCase):
 
     def test_effect_wording_is_advisory_only_and_creates_no_proposal(self) -> None:
         class ForbiddenAdapter:
-            async def reason(self, **kwargs):  # noqa: ARG002
+            async def reason(self, **kwargs):
                 raise AssertionError("advisory intent must not reach the provider")
 
         async def exercise():
@@ -579,3 +579,215 @@ class NormalizedTurnServiceTests(SimpleTestCase):
         results, workflow = asyncio.run(exercise())
         self.assertEqual(workflow.calls, [])
         self.assertTrue(all(item.workflow_used == "advisory_intent" for item in results))
+
+
+class VoiceWriteConfirmationShadowTests(SimpleTestCase):
+    """Phase 4 slice 2: shadow-observe the write-confirmation contract.
+
+    The classifier is wired into the live voice advisory seam but, while the flag
+    is off (or shadowing), it only logs -- no read-back, no pending state, no
+    execution -- and the read-only fence is untouched.
+    """
+
+    _LOGGER = "ai.core.turn_service"
+
+    def _run_voice_advisory(self, content: str, *, flag: bool):
+        from unittest.mock import patch
+
+        class ForbiddenAdapter:
+            async def reason(self, **_kwargs):
+                raise AssertionError("advisory intent must not reach the provider")
+
+        async def exercise():
+            repository = _Repository()
+            service = _TestTurnService(
+                workflow_factory=lambda: (_ for _ in ()).throw(
+                    AssertionError("advisory intent must not run a legacy workflow")
+                ),
+                repository_factory=lambda actor, context: repository,  # noqa: ARG005
+                complexity_router=VoiceComplexityRouter(),
+                reasoning_adapter=ForbiddenAdapter(),
+            )
+            return await service.process(
+                actor=_principal(),
+                thread_id="thread_shadow",
+                content=content,
+                modality="voice",
+                trusted_context=_context(),
+                modality_metadata={"transcription_confidence": 0.99},
+                idempotency_key=f"shadow:{content}",
+                correlation_id=_context().correlation_id,
+            )
+
+        settings = SimpleNamespace(feature_voice_write_confirmation=flag)
+        with patch("ai.core.config.get_settings", return_value=settings):
+            return asyncio.run(exercise())
+
+    def test_flag_on_shadow_logs_classification_without_changing_behavior(self) -> None:
+        with self.assertLogs(self._LOGGER, level="INFO") as captured:
+            result = self._run_voice_advisory("Delete the card permanently", flag=True)
+        shadow = [m for m in captured.output if "voice.write_confirmation.shadow" in m]
+        self.assertEqual(len(shadow), 1)
+        self.assertIn("action_class=irreversible", shadow[0])
+        # Behavior is unchanged: still advisory, still no execution.
+        self.assertEqual(result.route["mode"], "advisory_intent")
+        self.assertFalse(result.route["action_execution_allowed"])
+
+    def test_flag_on_classifies_reversible_effect_as_confirmable(self) -> None:
+        with self.assertLogs(self._LOGGER, level="INFO") as captured:
+            self._run_voice_advisory("Please complete the work order", flag=True)
+        shadow = [m for m in captured.output if "voice.write_confirmation.shadow" in m]
+        self.assertEqual(len(shadow), 1)
+        self.assertIn("action_class=confirmable", shadow[0])
+
+    def test_flag_off_emits_no_shadow_log(self) -> None:
+        from unittest.mock import patch
+
+        from ai.core.turn_service import _log_voice_write_confirmation_shadow
+
+        settings = SimpleNamespace(feature_voice_write_confirmation=False)
+        with (
+            patch("ai.core.config.get_settings", return_value=settings),
+            self.assertNoLogs(self._LOGGER, level="INFO"),
+        ):
+            _log_voice_write_confirmation_shadow("Delete it permanently", 7)
+
+
+class VoiceWriteConfirmationEnforceTests(SimpleTestCase):
+    """Phase 4 slice 3: end-to-end propose -> confirm -> execute through the service."""
+
+    @staticmethod
+    def _gate_and_executor():
+        from ai.core.voice.confirmation import ProposedWriteAction
+        from ai.core.voice.write_gate import (
+            ExecutableWrite,
+            InMemoryPendingWriteStore,
+            ResolvedVoiceWrite,
+            VoiceWriteExecutionResult,
+            VoiceWriteGate,
+        )
+
+        class _OrderResolver:
+            async def resolve(self, content, *, actor, trusted_context):
+                if "order" not in content.lower():
+                    return None
+                return ResolvedVoiceWrite(
+                    action=ProposedWriteAction(
+                        capability="inventory.write",
+                        summary="Place a purchase order for 10 bearings",
+                    ),
+                    executable=ExecutableWrite(
+                        tool_name="create_purchase_order",
+                        capability="inventory.write",
+                        arguments={"qty": 10},
+                    ),
+                )
+
+        class _Allow:
+            def allows(self, actor, capability):
+                return True
+
+        class _Executor:
+            def __init__(self):
+                self.calls = []
+
+            async def execute(self, executable, *, actor, trusted_context):
+                self.calls.append(executable)
+                return VoiceWriteExecutionResult(ok=True)
+
+        executor = _Executor()
+        gate = VoiceWriteGate(
+            resolver=_OrderResolver(),
+            permission=_Allow(),
+            executor=executor,
+            store=InMemoryPendingWriteStore(),
+        )
+        return gate, executor
+
+    def _service(self, gate):
+        class ForbiddenAdapter:
+            async def reason(self, **_kwargs):
+                raise AssertionError("must not reach the provider")
+
+        return _TestTurnService(
+            workflow_factory=lambda: (_ for _ in ()).throw(
+                AssertionError("write path must not run a legacy workflow")
+            ),
+            repository_factory=lambda actor, context: _Repository(),  # noqa: ARG005
+            complexity_router=VoiceComplexityRouter(),
+            reasoning_adapter=ForbiddenAdapter(),
+            voice_write_gate=gate,
+        )
+
+    def test_propose_then_confirm_executes_the_resolved_write(self) -> None:
+        from unittest.mock import patch
+
+        gate, executor = self._gate_and_executor()
+
+        async def exercise():
+            # One repository shared across both turns so the thread id is stable.
+            repository = _Repository()
+            service = self._service(gate)
+            service.repository_factory = lambda actor, context: repository  # noqa: ARG005
+
+            propose = await service.process(
+                actor=_principal(),
+                thread_id="thread_write",
+                content="Order 10 replacement bearings",
+                modality="voice",
+                trusted_context=_context(),
+                modality_metadata={"transcription_confidence": 0.99},
+                idempotency_key="write:propose",
+                correlation_id=_context().correlation_id,
+            )
+            confirm = await service.process(
+                actor=_principal(),
+                thread_id="thread_write",
+                content="yes",
+                modality="voice",
+                trusted_context=_context(),
+                modality_metadata={"transcription_confidence": 0.99},
+                idempotency_key="write:confirm",
+                correlation_id=_context().correlation_id,
+            )
+            return propose, confirm
+
+        settings = SimpleNamespace(feature_voice_write_confirmation=True)
+        with patch("ai.core.config.get_settings", return_value=settings):
+            propose, confirm = asyncio.run(exercise())
+
+        # Turn 1: a spoken read-back (no execution -- proven by the single call
+        # below being the confirm turn's).
+        self.assertEqual(propose.workflow_used, "voice_write_propose")
+        self.assertIn("Place a purchase order for 10 bearings", propose.message)
+        # Turn 2: the confirmation executes exactly the resolved call, once.
+        self.assertEqual(confirm.workflow_used, "voice_write_confirm")
+        self.assertEqual(confirm.message, "Done.")
+        self.assertEqual(len(executor.calls), 1)
+        self.assertEqual(executor.calls[0].tool_name, "create_purchase_order")
+
+    def test_flag_off_keeps_effect_wording_advisory(self) -> None:
+        from unittest.mock import patch
+
+        gate, executor = self._gate_and_executor()
+
+        async def exercise():
+            service = self._service(gate)
+            return await service.process(
+                actor=_principal(),
+                thread_id="thread_write",
+                content="Order 10 replacement bearings",
+                modality="voice",
+                trusted_context=_context(),
+                modality_metadata={"transcription_confidence": 0.99},
+                idempotency_key="write:off",
+                correlation_id=_context().correlation_id,
+            )
+
+        settings = SimpleNamespace(feature_voice_write_confirmation=False)
+        with patch("ai.core.config.get_settings", return_value=settings):
+            result = asyncio.run(exercise())
+
+        # Fence stands: advisory only, nothing resolved or executed.
+        self.assertEqual(result.route["mode"], "advisory_intent")
+        self.assertEqual(executor.calls, [])
