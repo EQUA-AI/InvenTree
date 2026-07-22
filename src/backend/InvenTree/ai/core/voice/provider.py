@@ -73,6 +73,38 @@ class SessionPolicy:
     transcription_model: str = "azure-speech"
     phrase_hints: tuple[str, ...] = ()
     input_audio_sampling_rate: int = 24000
+    #: Phase 5 (A2): pair with a gpt-realtime session model using the realtime-
+    #: native semantic VAD instead of azure_semantic_vad. Governance is identical
+    #: either way -- see ``_turn_detection``.
+    native_sts: bool = False
+
+    def _turn_detection(self) -> dict[str, Any]:
+        """The VAD/turn-taking block. Governance holds in BOTH transports:
+
+        ``create_response`` is always ``False`` -- the realtime model never
+        answers; only the application requests exact TTS -- and
+        ``interrupt_response`` is always ``True`` so a technician can barge in
+        over playback. ``native_sts`` selects the realtime-native ``semantic_vad``
+        (for a gpt-realtime session model); otherwise the Azure semantic VAD.
+        """
+        if self.native_sts:
+            return {
+                "type": "semantic_vad",
+                "eagerness": "auto",
+                "create_response": False,
+                "interrupt_response": True,
+            }
+        return {
+            "type": "azure_semantic_vad",
+            "prefix_padding_ms": 420,
+            "speech_duration_ms": 80,
+            "silence_duration_ms": 550,
+            "remove_filler_words": False,
+            "languages": [self.language],
+            "create_response": False,
+            "interrupt_response": True,
+            "auto_truncate": True,
+        }
 
     def session_update_payload(self) -> dict[str, Any]:
         """Return the exact ``session.update`` body sent on connect."""
@@ -93,17 +125,7 @@ class SessionPolicy:
                     "rate": "1.0",
                 },
                 "input_audio_transcription": transcription,
-                "turn_detection": {
-                    "type": "azure_semantic_vad",
-                    "prefix_padding_ms": 420,
-                    "speech_duration_ms": 80,
-                    "silence_duration_ms": 550,
-                    "remove_filler_words": False,
-                    "languages": [self.language],
-                    "create_response": False,
-                    "interrupt_response": True,
-                    "auto_truncate": True,
-                },
+                "turn_detection": self._turn_detection(),
                 "input_audio_noise_reduction": {"type": "azure_deep_noise_suppression"},
                 "input_audio_echo_cancellation": {"type": "server_echo_cancellation"},
                 "tools": [],

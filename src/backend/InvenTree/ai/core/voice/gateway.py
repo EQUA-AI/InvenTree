@@ -143,6 +143,7 @@ class VoiceLiveChannel:
             language=settings.azure_voicelive_language,
             transcription_model=settings.azure_voicelive_transcription_model,
             phrase_hints=tuple(settings.azure_voicelive_phrase_hints),
+            native_sts=settings.feature_voice_native_sts,
         )
         return policy.session_update_payload()["session"]
 
