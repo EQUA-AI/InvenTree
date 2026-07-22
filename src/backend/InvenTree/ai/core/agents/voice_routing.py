@@ -80,6 +80,11 @@ class VoiceRoutingPolicy:
     )
     force_reasoning_on_low_confidence: bool = True
     force_reasoning_on_elevated_risk: bool = True
+    # Max-caution posture: route content matching no explicit benign
+    # (lookup/fact/social) or complex pattern to reasoning instead of the fast
+    # path. Off by default -- the fast path is itself read-only + RBAC-gated;
+    # enable per deployment to treat every unclassified turn as safety-relevant.
+    escalate_ambiguous_to_reasoning: bool = False
     diagnostic_tool_markers: tuple[str, ...] = (
         "diagnostic",
         "fault",
@@ -434,6 +439,15 @@ class VoiceComplexityRouter:
                 target_workflow_id=self.REASONING_WORKFLOW_ID,
             )
 
+        # Unclassified turn. Default: the read-only fast path. Max-caution
+        # deployments escalate ambiguity up to the governed reasoning path.
+        if context.policy.escalate_ambiguous_to_reasoning:
+            return self._decision(
+                RouteMode.REASONING,
+                ReasoningEffort.HIGH,
+                [RouteReason.GENERAL_REQUEST],
+                target_workflow_id=self.REASONING_WORKFLOW_ID,
+            )
         return self._decision(
             RouteMode.FAST_PATH,
             context.policy.default_effort,

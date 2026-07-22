@@ -161,6 +161,26 @@ def test_trusted_risk_and_confidence_change_the_same_content() -> None:
     assert uncertain.reason_codes == (RouteReason.LOW_TRANSCRIPTION_CONFIDENCE,)
 
 
+def test_ambiguous_turn_escalates_when_policy_opts_in() -> None:
+    """Max-caution policy routes an unclassified turn up to reasoning."""
+    from ai.core.agents.voice_routing import VoiceRoutingPolicy
+
+    router = VoiceComplexityRouter()
+    content = "Inspect pump seven"
+
+    # Default policy keeps the deliberate read-only fast-path behavior.
+    assert router.route(content, trusted_context()).mode is RouteMode.FAST_PATH
+
+    cautious_policy = VoiceRoutingPolicy(escalate_ambiguous_to_reasoning=True)
+    cautious = router.route(content, trusted_context(policy=cautious_policy))
+    assert cautious.mode is RouteMode.REASONING
+    assert cautious.reason_codes == (RouteReason.GENERAL_REQUEST,)
+
+    # Explicit benign lookups still take the fast lane even under max caution.
+    lookup = router.route("Show repair order 42", trusted_context(policy=cautious_policy))
+    assert lookup.mode is RouteMode.FAST_PATH
+
+
 def test_explicit_lookup_stays_fast_while_context_raises_effort() -> None:
     """Trusted risk and uncertainty do not turn a simple lookup diagnostic."""
     decision = VoiceComplexityRouter().route(

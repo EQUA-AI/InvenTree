@@ -688,6 +688,79 @@ def _diagnostic_revision(record) -> str:
     return updated_at.isoformat()
 
 
+def diagnostic_capabilities_for_actor(actor) -> frozenset[str]:
+    """Public: the diagnostic capability grants currently held by an actor."""
+    return _diagnostic_capabilities_for_actor(actor)
+
+
+def list_diagnostic_record_roots(
+    actor, *, machine_limit: int = 50, packet_limit: int = 50
+) -> list[dict]:
+    """Record roots this actor may read for a diagnostic turn.
+
+    Returns the active machines in the actor's maintenance (customer) scope plus
+    their non-terminal repair packets, each with its current optimistic-read
+    revision. Fail-closed: an unauthenticated/unscoped actor or a scope error
+    yields an empty list, so the reasoning path exposes no diagnostic tools.
+    """
+    from tasks.scope import ScopeError, scope_for_actor
+
+    from assets.models import AssetMachine
+    from repair.models import TERMINAL_PACKET_STATUSES
+
+    try:
+        scopes = scope_for_actor(actor)
+    except ScopeError:
+        return []
+    customer_ids = {
+        scope.customer_id for scope in scopes if scope.customer_id is not None
+    }
+    if not customer_ids:
+        return []
+
+    roots: list[dict] = []
+    machine_ids: list[int] = []
+    machines = (
+        AssetMachine.objects
+        .filter(customer_id__in=customer_ids, active=True)
+        .only('pk', 'updated_at')
+        .order_by('pk')[:machine_limit]
+    )
+    for machine in machines:
+        revision = _diagnostic_revision(machine)
+        if not revision:
+            continue
+        machine_ids.append(machine.pk)
+        roots.append({
+            'entity_type': 'machine',
+            'entity_id': machine.pk,
+            'expected_revision': revision,
+            'linked_machine_id': None,
+            'authorization_class': 'maintenance_scope',
+        })
+
+    if machine_ids:
+        packets = (
+            RepairPacket.objects
+            .filter(machine_id__in=machine_ids)
+            .exclude(status__in=TERMINAL_PACKET_STATUSES)
+            .only('pk', 'machine_id', 'updated_at')
+            .order_by('-updated_at')[:packet_limit]
+        )
+        for packet in packets:
+            revision = _diagnostic_revision(packet)
+            if not revision or not packet.machine_id:
+                continue
+            roots.append({
+                'entity_type': 'repair_packet',
+                'entity_id': packet.pk,
+                'expected_revision': revision,
+                'linked_machine_id': packet.machine_id,
+                'authorization_class': 'maintenance_scope',
+            })
+    return roots
+
+
 def _diagnostic_scoped_entity(actor, entity_type: str, entity_id: int):
     """Load only fields required to decide the entity ACL."""
     from tasks.scope import MaintenanceScope, ScopeError, scope_for_actor
