@@ -171,9 +171,9 @@ export function useVoiceLiveSession(
     }
   }, []);
 
-  // Server capability probe: the control renders only when the deployment
-  // flag is on AND this actor is in the pilot cohort. The probe discloses
-  // nothing beyond booleans and never errors visibly.
+  // Server capability probe: the control renders for authenticated users when
+  // the deployment flag is on. The probe discloses nothing beyond booleans and
+  // never errors visibly.
   const [serverEnabled, setServerEnabled] = useState<boolean>(false);
   useEffect(() => {
     let cancelled = false;

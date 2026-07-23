@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 
 import { expect, test } from '../baseFixtures.js';
+import { readeruser } from '../defaults.js';
 import { doCachedLogin } from '../login.js';
 
 /**
@@ -16,6 +17,15 @@ async function openChat(page: Page) {
     page.getByText('AI Assistant', { exact: true }).first()
   ).toBeVisible();
 }
+
+test('reader sees voice control when Voice is enabled', async ({ browser }) => {
+  const page = await doCachedLogin(browser, { user: readeruser, url: 'home' });
+
+  await openChat(page);
+
+  await expect(page.getByTestId('voice-session-control')).toBeVisible();
+  await expect(page.getByTestId('voice-start')).toBeVisible();
+});
 
 test('voice control is absent while the server capability is off', async ({
   browser
