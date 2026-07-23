@@ -277,11 +277,6 @@ class Settings(BaseSettings):
     voice_live_store_raw_audio: Literal[False] = Field(
         default=False, alias="VOICE_LIVE_STORE_RAW_AUDIO"
     )
-    # WS6 pilot cohort: explicit server-side user ids. Empty means no cohort,
-    # so enabling the feature flags alone can never expose voice to anyone.
-    voice_pilot_user_ids: list[int] = Field(
-        default_factory=list, alias="AIMMS_VOICE_PILOT_USER_IDS"
-    )
     # WS5 critical-term policy: transcripts below this ASR confidence are held
     # for confirmation (unknown confidence always counts as below). Served to
     # the client via the capability probe so there is one source of truth.

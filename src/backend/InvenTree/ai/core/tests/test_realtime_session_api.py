@@ -82,11 +82,10 @@ def _principal(user) -> AIPrincipal:
     )
 
 
-def _settings(pilot_ids, **over) -> Settings:
+def _settings(_legacy_pilot_ids=None, **over) -> Settings:
     aliased = {
         "FEATURE_VOICE_LIVE": True,
         "AZURE_VOICELIVE_ENDPOINT": HOST_SETTING,
-        "AIMMS_VOICE_PILOT_USER_IDS": pilot_ids,
     }
     aliased.update(over)
     return Settings(_env_file=None, **aliased)
@@ -122,16 +121,15 @@ def test_feature_flag_off_hides_every_voice_route():
     )
 
 
-def test_non_pilot_user_sees_the_same_absence():
+def test_any_authenticated_user_can_create_a_voice_session():
     user = _user()
-    settings = _settings([])  # empty cohort admits nobody
-    _expect_http(
+    settings = _settings([])
+    result = _run(
         _principal(user),
         lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
         settings,
-        404,
-        "VOICE_SESSION_UNAVAILABLE",
     )
+    assert result["state"] == "created"
 
 
 def test_create_get_end_lifecycle_and_credential_free_payload():
@@ -372,7 +370,7 @@ def test_capability_probe_reports_disabled_without_erroring():
 def test_capability_probe_reports_cohort_membership():
     user = _user()
     stranger = _user()
-    settings = _settings([user.pk], FEATURE_VOICE_LIVE_WEBRTC=True)
+    settings = _settings(FEATURE_VOICE_LIVE_WEBRTC=True)
     from ai.core.voice.routes import voice_capability
 
     member = _run(_principal(user), lambda: voice_capability(), settings)
@@ -380,7 +378,7 @@ def test_capability_probe_reports_cohort_membership():
     assert member["webrtc"] is True
     assert member["relay"] is False
     outsider = _run(_principal(stranger), lambda: voice_capability(), settings)
-    assert outsider["enabled"] is False
+    assert outsider["enabled"] is True
 
 
 def test_capability_probe_serves_configured_confidence_floor():

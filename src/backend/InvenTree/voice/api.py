@@ -9,7 +9,6 @@ listing a purpose is necessary but never sufficient (plan §rollout).
 
 from __future__ import annotations
 
-import json
 import os
 import uuid
 
@@ -30,23 +29,9 @@ def _policy_scope_key() -> str:
     return os.environ.get('AIMMS_SINGLE_SITE_POLICY_KEY', '').strip()
 
 
-def _pilot_user_ids() -> frozenset[int]:
-    """Pilot user ids."""
-    raw = os.environ.get('AIMMS_VOICE_PILOT_USER_IDS', '')
-    try:
-        values = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return frozenset()
-    if not isinstance(values, list) or any(type(value) is not int for value in values):
-        return frozenset()
-    return frozenset(values)
-
-
-def _enabled_purposes(user) -> tuple[str, ...]:
+def _enabled_purposes() -> tuple[str, ...]:
     """Enabled purposes."""
     if os.environ.get('AIMMS_VOICE_CAPTURE_ENABLED', '') != '1':
-        return ()
-    if getattr(user, 'pk', None) not in _pilot_user_ids():
         return ()
     raw = os.environ.get('AIMMS_VOICE_PURPOSES', '')
     return tuple(purpose.strip() for purpose in raw.split(',') if purpose.strip())
@@ -180,7 +165,7 @@ class CaptureListCreateView(APIView):
                         data.get('idempotency_key') or f'ui:{uuid.uuid4()}'
                     )[:128],
                     policy_version='ws8-v1',
-                    enabled_purposes=_enabled_purposes(request.user),
+                    enabled_purposes=_enabled_purposes(),
                 )
         except capture_service.CaptureError as exc:
             return _error(exc)

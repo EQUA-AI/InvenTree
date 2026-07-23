@@ -83,21 +83,9 @@ def _principal() -> AIPrincipal:
     return principal
 
 
-def is_pilot_user(settings, user_pk) -> bool:
-    """Fail-closed cohort check: an empty pilot list admits nobody."""
-    try:
-        return int(user_pk) in set(settings.voice_pilot_user_ids)
-    except (TypeError, ValueError):
-        return False
-
-
 def _require_voice_enabled():
     settings = get_settings()
     if not settings.feature_voice_live:
-        raise HTTPException(status_code=404, detail="VOICE_SESSION_UNAVAILABLE")
-    principal = _principal()
-    if not is_pilot_user(settings, principal.user_pk):
-        # Non-cohort actors see the same absence as a disabled feature.
         raise HTTPException(status_code=404, detail="VOICE_SESSION_UNAVAILABLE")
     return settings
 
@@ -164,12 +152,12 @@ async def voice_capability() -> dict:
     """Report whether this authenticated actor may use voice at all.
 
     Unlike every other voice route this never 404s: the UI uses it to hide
-    the voice control entirely for disabled deployments and non-cohort
-    users, disclosing nothing beyond a boolean.
+    the voice control entirely for disabled deployments, disclosing nothing
+    beyond capability booleans.
     """
     settings = get_settings()
-    principal = _principal()
-    enabled = settings.feature_voice_live and is_pilot_user(settings, principal.user_pk)
+    _principal()
+    enabled = settings.feature_voice_live
     return {
         "enabled": enabled,
         "webrtc": enabled and settings.feature_voice_live_webrtc,

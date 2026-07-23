@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import unittest
 from unittest.mock import patch
 
@@ -61,13 +60,6 @@ class CaptureApiTests(TestCase):
         self.client.force_login(self.tech)
         return self.client
 
-    def _env(self):
-        """Env."""
-        return {
-            **CAPTURE_ENV,
-            'AIMMS_VOICE_PILOT_USER_IDS': json.dumps([self.tech.pk]),
-        }
-
     def _create(self, client, purpose='fault_intake'):
         """Create."""
         return client.post(
@@ -90,7 +82,7 @@ class CaptureApiTests(TestCase):
 
     def test_full_review_flow_over_http(self):
         """Full review flow over http."""
-        with patch.dict(os.environ, self._env(), clear=False):
+        with patch.dict(os.environ, CAPTURE_ENV, clear=False):
             client = self._client()
             created = self._create(client)
             self.assertEqual(created.status_code, 201, created.content)
@@ -127,7 +119,7 @@ class CaptureApiTests(TestCase):
 
     def test_hash_mismatch_is_rejected_over_http(self):
         """Hash mismatch is rejected over http."""
-        with patch.dict(os.environ, self._env(), clear=False):
+        with patch.dict(os.environ, CAPTURE_ENV, clear=False):
             client = self._client()
             capture_id = self._create(client).json()['id']
             revision = client.post(
@@ -147,13 +139,13 @@ class CaptureApiTests(TestCase):
 
     def test_closeout_purpose_stays_absent(self):
         """Closeout purpose stays absent."""
-        with patch.dict(os.environ, self._env(), clear=False):
+        with patch.dict(os.environ, CAPTURE_ENV, clear=False):
             response = self._create(self._client(), purpose='closeout')
         self.assertEqual(response.status_code, 403)
 
     def test_cross_owner_is_indistinguishable_from_missing(self):
         """Cross owner is indistinguishable from missing."""
-        with patch.dict(os.environ, self._env(), clear=False):
+        with patch.dict(os.environ, CAPTURE_ENV, clear=False):
             client = self._client()
             capture_id = self._create(client).json()['id']
             stranger = get_user_model().objects.create_user(
@@ -165,11 +157,11 @@ class CaptureApiTests(TestCase):
 
     def test_scope_change_hides_existing_capture(self):
         """Scope change hides existing capture."""
-        with patch.dict(os.environ, self._env(), clear=False):
+        with patch.dict(os.environ, CAPTURE_ENV, clear=False):
             client = self._client()
             capture_id = self._create(client).json()['id']
 
-        changed_scope = {**self._env(), 'AIMMS_SINGLE_SITE_POLICY_KEY': 'other-site'}
+        changed_scope = {**CAPTURE_ENV, 'AIMMS_SINGLE_SITE_POLICY_KEY': 'other-site'}
         with patch.dict(os.environ, changed_scope, clear=False):
             detail = client.get(f'/api/voice/captures/{capture_id}/')
             listing = client.get('/api/voice/captures/')
@@ -186,7 +178,7 @@ class CaptureApiTests(TestCase):
     def test_api_token_cannot_create_capture(self):
         """Api token cannot create capture."""
         token = ApiToken.objects.create(user=self.tech, name='capture-api-token')
-        with patch.dict(os.environ, self._env(), clear=False):
+        with patch.dict(os.environ, CAPTURE_ENV, clear=False):
             response = self.client.post(
                 '/api/voice/captures/',
                 {
@@ -201,22 +193,21 @@ class CaptureApiTests(TestCase):
         self.assertIn(response.status_code, (401, 403))
         self.assertFalse(VoiceCaptureSession.objects.filter(owner=self.tech).exists())
 
-    def test_non_pilot_user_cannot_create_capture(self):
-        """Non pilot user cannot create capture."""
+    def test_any_authenticated_user_can_create_capture(self):
+        """Any authenticated user can create capture."""
         outsider = get_user_model().objects.create_user(
             username='cap-api-outsider', password='pw'
         )
         self.client.force_login(outsider)
 
-        with patch.dict(os.environ, self._env(), clear=False):
+        with patch.dict(os.environ, CAPTURE_ENV, clear=False):
             response = self._create(self.client)
 
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()['error'], 'CAPTURE_PURPOSE_UNSUPPORTED')
+        self.assertEqual(response.status_code, 201)
 
     def test_capture_target_must_exist_at_expected_version(self):
         """Capture target must exist at expected version."""
-        with patch.dict(os.environ, self._env(), clear=False):
+        with patch.dict(os.environ, CAPTURE_ENV, clear=False):
             client = self._client()
             missing = client.post(
                 '/api/voice/captures/',
