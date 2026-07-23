@@ -57,6 +57,7 @@ import { HITLApprovalCard, HITLResultBanner } from '../ai/HITLApprovalModal';
 import { VoiceContextBadge } from '../ai/VoiceContextBadge';
 import { VoiceSessionControl } from '../ai/VoiceSessionControl';
 import { VoiceTranscript } from '../ai/VoiceTranscript';
+import { MarkdownMessage } from '../aichat/MarkdownMessage';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history';
 
@@ -706,16 +707,24 @@ function ChatMessageItem({
                 : '0 1px 3px rgba(0, 0, 0, 0.08)'
             }}
           >
-            <Text
-              size='sm'
-              style={{
-                whiteSpace: 'pre-wrap',
-                lineHeight: 1.6,
-                wordBreak: 'break-word'
-              }}
-            >
-              {message.content || (message.isStreaming && <TypingIndicator />)}
-            </Text>
+            {message.content ? (
+              isUser ? (
+                <Text
+                  size='sm'
+                  style={{
+                    whiteSpace: 'pre-wrap',
+                    lineHeight: 1.6,
+                    wordBreak: 'break-word'
+                  }}
+                >
+                  {message.content}
+                </Text>
+              ) : (
+                <MarkdownMessage content={message.content} />
+              )
+            ) : (
+              message.isStreaming && <TypingIndicator />
+            )}
           </Paper>
 
           {/* Avatar for user */}
