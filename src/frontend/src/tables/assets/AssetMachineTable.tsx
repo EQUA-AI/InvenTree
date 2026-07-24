@@ -4,10 +4,10 @@ import { useMemo } from 'react';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
 import { apiUrl } from '@lib/functions/Api';
-import type { TableColumn } from '@lib/types/Tables';
 import useTable from '@lib/hooks/UseTable';
-import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 import type { AssetMachine } from '@lib/types/Assets';
+import type { TableColumn } from '@lib/types/Tables';
+import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 
 /**
  * Table component for displaying Asset Machines.

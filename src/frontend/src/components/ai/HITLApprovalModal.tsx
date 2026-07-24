@@ -516,11 +516,7 @@ export function HITLApprovalCard({
                 variant='light'
                 color='red'
                 leftSection={
-                  isSubmitting ? (
-                    <Loader size={14} />
-                  ) : (
-                    <IconX size={16} />
-                  )
+                  isSubmitting ? <Loader size={14} /> : <IconX size={16} />
                 }
                 onClick={handleReject}
                 disabled={isSubmitting}

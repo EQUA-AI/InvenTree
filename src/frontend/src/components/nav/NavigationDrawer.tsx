@@ -104,11 +104,9 @@ function DrawerContent({ closeFunc }: Readonly<{ closeFunc?: () => void }>) {
         id: 'tasks-kanban',
         title: t`Kanban`,
         link: '/tasks/kanban/',
-        hidden:
-          !(
-            user.hasViewPermission(ModelType.kanbancard) ||
-            user.isStaff()
-          ),
+        hidden: !(
+          user.hasViewPermission(ModelType.kanbancard) || user.isStaff()
+        ),
         icon: 'list'
       },
       {

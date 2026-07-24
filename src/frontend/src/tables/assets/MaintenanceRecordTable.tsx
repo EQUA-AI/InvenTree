@@ -3,9 +3,9 @@ import { useMemo } from 'react';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
-import type { TableColumn } from '@lib/types/Tables';
-import type { AssetMaintenanceRecord } from '@lib/types/Assets';
 import useTable from '@lib/hooks/UseTable';
+import type { AssetMaintenanceRecord } from '@lib/types/Assets';
+import type { TableColumn } from '@lib/types/Tables';
 import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 
 /**

@@ -3,9 +3,9 @@ import { Stack } from '@mantine/core';
 import { IconTools } from '@tabler/icons-react';
 import { useMemo } from 'react';
 
-import { PageDetail } from '../../components/nav/PageDetail';
-import type { PanelType } from '@lib/types/Panel';
 import { ModelType } from '@lib/enums/ModelType';
+import type { PanelType } from '@lib/types/Panel';
+import { PageDetail } from '../../components/nav/PageDetail';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { AssetMachineTable } from '../../tables/assets/AssetMachineTable';
 
