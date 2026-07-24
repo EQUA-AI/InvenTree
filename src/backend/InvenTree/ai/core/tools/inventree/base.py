@@ -15,19 +15,22 @@ import functools
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Callable, TypeVar
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any, TypeVar
 
-from pydantic import BaseModel
+from ai.core.maf_compat import ai_function as ai_function  # re-export for submodules
 
-from ai.core.maf_compat import ai_function  # re-export for submodules
-from ai.core.integrations.inventree.client import InvenTreeClient
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ai.core.integrations.inventree.client import InvenTreeClient
 
 logger = logging.getLogger(__name__)
 
 
-class HITLStatus(str, Enum):
+class HITLStatus(StrEnum):
     """Status of a HITL request."""
+
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
@@ -37,7 +40,7 @@ class HITLStatus(str, Enum):
 @dataclass
 class HITLContext:
     """Context for Human-in-the-Loop decisions."""
-    
+
     approved: bool = False
     status: HITLStatus = HITLStatus.PENDING
     user_id: str | None = None
@@ -48,7 +51,7 @@ class HITLContext:
 
 class HITLPendingError(Exception):
     """Raised when HITL approval is required but not yet given."""
-    
+
     def __init__(
         self,
         message: str,
@@ -69,13 +72,13 @@ def requires_hitl(
 ) -> Callable:
     """
     Decorator to mark a tool method as requiring Human-in-the-Loop approval.
-    
+
     Args:
         reason: Human-readable reason for requiring approval
         display_fields: List of input field names to show in approval UI
         condition: Optional function to determine if HITL is required
                   (receives the input data, returns bool)
-    
+
     Example:
         @requires_hitl(
             reason="Creating a new part",
@@ -84,6 +87,7 @@ def requires_hitl(
         async def execute(self, input: CreatePartInput) -> CreatePartOutput:
             ...
     """
+
     def decorator(func: Callable) -> Callable:
         # Detect whether this is decorating a standalone async function
         # (no 'self' first param) vs. a class method.  Standalone functions
@@ -91,29 +95,32 @@ def requires_hitl(
         # remain untouched so the framework can build a pydantic model from
         # the parameter names (name, category_id, …).
         import inspect
+
         sig = inspect.signature(func)
         params = list(sig.parameters.keys())
         is_standalone = not params or params[0] != "self"
 
         if is_standalone:
             # Lightweight marker — just tag metadata, don't wrap the sig
-            func._requires_hitl = True          # type: ignore[attr-defined]
-            func._hitl_reason = reason           # type: ignore[attr-defined]
+            func._requires_hitl = True  # type: ignore[attr-defined]
+            func._hitl_reason = reason  # type: ignore[attr-defined]
             func._hitl_display_fields = display_fields  # type: ignore[attr-defined]
             return func
 
         # Class-method path (original behaviour)
         @functools.wraps(func)
-        async def wrapper(self, input_data: Any, hitl_context: HITLContext | None = None, *args, **kwargs):
+        async def wrapper(
+            self, input_data: Any, hitl_context: HITLContext | None = None, *args, **kwargs
+        ):
             # Check if HITL is conditionally required
             needs_hitl = True
             if condition is not None:
                 needs_hitl = condition(input_data)
-            
+
             if not needs_hitl:
                 # HITL not required for this invocation
                 return await func(self, input_data, HITLContext(approved=True), *args, **kwargs)
-            
+
             # Check if we have approval
             if hitl_context is None or not hitl_context.approved:
                 # Extract display fields from input
@@ -123,24 +130,26 @@ def requires_hitl(
                     display_data = {k: input_dict.get(k) for k in display_fields if k in input_dict}
                 elif display_fields and isinstance(input_data, dict):
                     display_data = {k: input_data.get(k) for k in display_fields if k in input_data}
-                
+
                 raise HITLPendingError(
                     message=f"HITL approval required: {reason}",
                     tool_name=getattr(self, "name", func.__name__),
                     display_fields=display_data,
                     reason=reason,
                 )
-            
+
             # Approved - execute the function
             return await func(self, input_data, hitl_context, *args, **kwargs)
-        
+
         # Mark the function as requiring HITL
         wrapper._requires_hitl = True
         wrapper._hitl_reason = reason
         wrapper._hitl_display_fields = display_fields
-        
+
         return wrapper
+
     return decorator
+
 
 # Alias for backward compatibility — most of the codebase uses require_hitl
 require_hitl = requires_hitl
@@ -149,37 +158,42 @@ require_hitl = requires_hitl
 class BaseTool(ABC):
     """
     Abstract base class for all InvenTree tools.
-    
+
     Subclasses must implement:
     - name: Tool name for registration
     - description: Tool description for LLM context
     - execute(): The tool's main logic
     """
-    
+
     name: str
     description: str
-    
+
     def __init__(self, client: InvenTreeClient | None = None) -> None:
         """
         Initialize the tool.
-        
+
         Args:
             client: Optional InvenTree client instance.
                    If not provided, will create one when needed.
         """
         self._client = client
-    
+
     def get_inventree_client(self) -> InvenTreeClient:
         """Get or create the InvenTree client."""
         if self._client is None:
+            # Imported lazily: importing the client at module level would pull in
+            # ai.core.integrations while this module is still initialising
+            # (circular import via ai.core.integrations.inventory_tools).
+            from ai.core.integrations.inventree.client import InvenTreeClient
+
             self._client = InvenTreeClient()
         return self._client
-    
+
     @abstractmethod
     async def execute(self, *args, **kwargs) -> Any:
         """Execute the tool's main logic."""
         pass
-    
+
     async def __call__(self, *args, **kwargs) -> Any:
         """Make the tool callable."""
         return await self.execute(*args, **kwargs)
@@ -188,36 +202,36 @@ class BaseTool(ABC):
 class ReadTool(BaseTool):
     """
     Base class for read-only tools.
-    
+
     Read tools do not require HITL approval and are safe to call
     without user confirmation.
     """
-    
+
     requires_hitl: bool = False
 
 
 class WriteTool(BaseTool):
     """
     Base class for write tools (create/update/delete).
-    
+
     Write tools may require HITL approval depending on the operation.
     Use the @requires_hitl decorator on the execute method to enable
     human approval flow.
     """
-    
+
     requires_hitl: bool = True
 
 
 class OperationTool(BaseTool):
     """
     Base class for complex multi-step operation tools.
-    
+
     Operation tools handle grouped actions and typically require
     HITL approval for critical operations.
     """
-    
+
     requires_hitl: bool = True
-    
+
     @property
     @abstractmethod
     def supported_actions(self) -> list[str]:

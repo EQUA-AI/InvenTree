@@ -1,5 +1,4 @@
-"""
-AI Conversation Database Models
+"""AI Conversation Database Models.
 
 Django models for persisting AI chat conversations in PostgreSQL.
 These models integrate with Azure AI Search for semantic/vector search.
@@ -10,16 +9,15 @@ Tables:
 - AIConversationIndex: Metadata about Azure AI Search indexing
 """
 
+import uuid
+
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from django.db import models
-from django.db.models import Q
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
 
 import structlog
-import uuid
 
 import InvenTree.models
 
@@ -27,18 +25,18 @@ logger = structlog.get_logger('inventree')
 
 
 class AIConversationThread(InvenTree.models.InvenTreeMetadataModel):
-    """
-    Represents a conversation thread between a user and the AI system.
-    
+    """Represents a conversation thread between a user and the AI system.
+
     Each thread maintains:
     - User association (for access control)
     - Conversation summary (updated periodically)
     - Turn count for tracking length
     - Workflow history for context
     """
-    
+
     class Meta:
         """Metaclass options."""
+
         verbose_name = _('AI Conversation Thread')
         verbose_name_plural = _('AI Conversation Threads')
         ordering = ['-updated_at']
@@ -47,7 +45,7 @@ class AIConversationThread(InvenTree.models.InvenTreeMetadataModel):
             models.Index(fields=['thread_id']),
             models.Index(fields=['is_active', '-updated_at']),
         ]
-    
+
     # Unique thread identifier (used by frontend)
     thread_id = models.CharField(
         max_length=100,
@@ -56,7 +54,7 @@ class AIConversationThread(InvenTree.models.InvenTreeMetadataModel):
         verbose_name=_('Thread ID'),
         help_text=_('Unique identifier for this conversation thread'),
     )
-    
+
     # User who owns this thread
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -67,7 +65,7 @@ class AIConversationThread(InvenTree.models.InvenTreeMetadataModel):
         null=True,
         blank=True,
     )
-    
+
     # Thread title (auto-generated from first message or manual)
     title = models.CharField(
         max_length=255,
@@ -76,7 +74,7 @@ class AIConversationThread(InvenTree.models.InvenTreeMetadataModel):
         verbose_name=_('Title'),
         help_text=_('Title of the conversation thread'),
     )
-    
+
     # Conversation summary (updated periodically for long conversations)
     summary = models.TextField(
         blank=True,
@@ -84,21 +82,21 @@ class AIConversationThread(InvenTree.models.InvenTreeMetadataModel):
         verbose_name=_('Summary'),
         help_text=_('AI-generated summary of the conversation'),
     )
-    
+
     # Turn count (number of user-assistant exchanges)
     turn_count = models.PositiveIntegerField(
         default=0,
         verbose_name=_('Turn Count'),
         help_text=_('Number of conversation turns'),
     )
-    
+
     # Turn at which last summary was generated
     summary_turn = models.PositiveIntegerField(
         default=0,
         verbose_name=_('Summary Turn'),
         help_text=_('Turn count when summary was last updated'),
     )
-    
+
     # Last workflow used in this thread
     last_workflow = models.CharField(
         max_length=100,
@@ -107,7 +105,7 @@ class AIConversationThread(InvenTree.models.InvenTreeMetadataModel):
         verbose_name=_('Last Workflow'),
         help_text=_('ID of the last workflow used'),
     )
-    
+
     # Whether there's a pending handoff
     pending_handoff = models.CharField(
         max_length=100,
@@ -116,43 +114,36 @@ class AIConversationThread(InvenTree.models.InvenTreeMetadataModel):
         verbose_name=_('Pending Handoff'),
         help_text=_('Workflow ID for pending handoff'),
     )
-    
+
     # Whether thread is active
     is_active = models.BooleanField(
         default=True,
         verbose_name=_('Active'),
         help_text=_('Whether this thread is active'),
     )
-    
+
     # Timestamps
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name=_('Created'),
-    )
-    
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        verbose_name=_('Updated'),
-    )
-    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_('Created'))
+
+    updated_at = models.DateTimeField(auto_now=True, verbose_name=_('Updated'))
+
     def __str__(self):
         """String representation."""
-        return f"Thread {self.thread_id}: {self.title or 'Untitled'}"
-    
+        return f'Thread {self.thread_id}: {self.title or "Untitled"}'
+
     def get_recent_messages(self, limit: int = 20):
         """Get the most recent messages in this thread."""
         return self.messages.order_by('-created_at')[:limit][::-1]
-    
+
     def needs_summarization(self, threshold: int = 10) -> bool:
         """Check if this thread needs a new summary."""
         return (self.turn_count - self.summary_turn) >= threshold
-    
+
     @classmethod
     def get_or_create_for_user(cls, thread_id: str, user=None):
         """Get existing thread or create a new one."""
         thread, created = cls.objects.get_or_create(
-            thread_id=thread_id,
-            defaults={'user': user},
+            thread_id=thread_id, defaults={'user': user}
         )
         if not created and user and not thread.user:
             thread.user = user
@@ -161,18 +152,18 @@ class AIConversationThread(InvenTree.models.InvenTreeMetadataModel):
 
 
 class AIConversationMessage(InvenTree.models.InvenTreeModel):
-    """
-    Represents a single message in an AI conversation.
-    
+    """Represents a single message in an AI conversation.
+
     Stores:
     - Message content and role (user/assistant/system/tool)
     - Workflow association
     - Metadata for context
     - Embedding vector reference (stored in Azure AI Search)
     """
-    
+
     class Meta:
         """Metaclass options."""
+
         verbose_name = _('AI Conversation Message')
         verbose_name_plural = _('AI Conversation Messages')
         ordering = ['created_at']
@@ -181,14 +172,16 @@ class AIConversationMessage(InvenTree.models.InvenTreeModel):
             models.Index(fields=['role', 'created_at']),
             models.Index(fields=['message_id']),
         ]
-    
+
     # Message role choices
     class Role(models.TextChoices):
+        """Author role of a conversation message."""
+
         USER = 'user', _('User')
         ASSISTANT = 'assistant', _('Assistant')
         SYSTEM = 'system', _('System')
         TOOL = 'tool', _('Tool')
-    
+
     # Unique message identifier
     message_id = models.CharField(
         max_length=100,
@@ -197,7 +190,7 @@ class AIConversationMessage(InvenTree.models.InvenTreeModel):
         default=uuid.uuid4,
         verbose_name=_('Message ID'),
     )
-    
+
     # Parent thread
     thread = models.ForeignKey(
         AIConversationThread,
@@ -205,43 +198,29 @@ class AIConversationMessage(InvenTree.models.InvenTreeModel):
         related_name='messages',
         verbose_name=_('Thread'),
     )
-    
+
     # Message role
-    role = models.CharField(
-        max_length=20,
-        choices=Role.choices,
-        verbose_name=_('Role'),
-    )
-    
+    role = models.CharField(max_length=20, choices=Role.choices, verbose_name=_('Role'))
+
     # Message content
     content = models.TextField(
-        verbose_name=_('Content'),
-        help_text=_('Message content'),
+        verbose_name=_('Content'), help_text=_('Message content')
     )
-    
+
     # Workflow that generated/processed this message
     workflow_id = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        verbose_name=_('Workflow ID'),
+        max_length=100, blank=True, null=True, verbose_name=_('Workflow ID')
     )
-    
+
     # Tool call information (for tool messages)
     tool_call_id = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        verbose_name=_('Tool Call ID'),
+        max_length=100, blank=True, null=True, verbose_name=_('Tool Call ID')
     )
-    
+
     tool_name = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        verbose_name=_('Tool Name'),
+        max_length=100, blank=True, null=True, verbose_name=_('Tool Name')
     )
-    
+
     # Metadata (JSON field for flexible storage)
     message_metadata = models.JSONField(
         default=dict,
@@ -249,21 +228,21 @@ class AIConversationMessage(InvenTree.models.InvenTreeModel):
         verbose_name=_('Metadata'),
         help_text=_('Additional message metadata'),
     )
-    
+
     # Token count (for cost tracking)
     token_count = models.PositiveIntegerField(
         default=0,
         verbose_name=_('Token Count'),
         help_text=_('Estimated token count for this message'),
     )
-    
+
     # Whether this message has been indexed in Azure AI Search
     is_indexed = models.BooleanField(
         default=False,
         verbose_name=_('Indexed'),
         help_text=_('Whether this message is indexed in Azure AI Search'),
     )
-    
+
     # Azure AI Search document ID (for updating/deleting)
     search_document_id = models.CharField(
         max_length=100,
@@ -272,18 +251,15 @@ class AIConversationMessage(InvenTree.models.InvenTreeModel):
         verbose_name=_('Search Document ID'),
         help_text=_('Document ID in Azure AI Search index'),
     )
-    
+
     # Timestamp
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name=_('Created'),
-    )
-    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_('Created'))
+
     def __str__(self):
         """String representation."""
         preview = self.content[:50] + '...' if len(self.content) > 50 else self.content
-        return f"[{self.role}] {preview}"
-    
+        return f'[{self.role}] {preview}'
+
     def to_dict(self):
         """Convert to dictionary for serialization."""
         return {
@@ -297,11 +273,10 @@ class AIConversationMessage(InvenTree.models.InvenTreeModel):
             'token_count': self.token_count,
             'created_at': self.created_at.isoformat(),
         }
-    
+
     def to_search_document(self):
-        """
-        Convert to Azure AI Search document format.
-        
+        """Convert to Azure AI Search document format.
+
         Returns a dict ready for indexing in Azure AI Search.
         """
         return {
@@ -319,66 +294,60 @@ class AIConversationMessage(InvenTree.models.InvenTreeModel):
 
 
 class AISearchIndexStatus(InvenTree.models.InvenTreeModel):
-    """
-    Tracks the status of Azure AI Search indexing for conversation data.
-    
+    """Tracks the status of Azure AI Search indexing for conversation data.
+
     Used to:
     - Track last sync time
     - Monitor indexing errors
     - Enable incremental updates
     """
-    
+
     class Meta:
         """Metaclass options."""
+
         verbose_name = _('AI Search Index Status')
         verbose_name_plural = _('AI Search Index Statuses')
-    
+
     # Index name in Azure AI Search
     index_name = models.CharField(
-        max_length=100,
-        unique=True,
-        verbose_name=_('Index Name'),
+        max_length=100, unique=True, verbose_name=_('Index Name')
     )
-    
+
     # Last successful sync timestamp
     last_sync_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name=_('Last Sync'),
+        null=True, blank=True, verbose_name=_('Last Sync')
     )
-    
+
     # Number of documents indexed
     document_count = models.PositiveIntegerField(
-        default=0,
-        verbose_name=_('Document Count'),
+        default=0, verbose_name=_('Document Count')
     )
-    
+
     # Last error message (if any)
-    last_error = models.TextField(
-        blank=True,
-        default='',
-        verbose_name=_('Last Error'),
-    )
-    
+    last_error = models.TextField(blank=True, default='', verbose_name=_('Last Error'))
+
     # Status
     class Status(models.TextChoices):
+        """Synchronisation state of the search index."""
+
         IDLE = 'idle', _('Idle')
         SYNCING = 'syncing', _('Syncing')
         ERROR = 'error', _('Error')
-    
+
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
         default=Status.IDLE,
         verbose_name=_('Status'),
     )
-    
+
     def __str__(self):
         """String representation."""
-        return f"Index: {self.index_name} ({self.status})"
+        return f'Index: {self.index_name} ({self.status})'
 
 
 # ===== Signals for Azure AI Search Integration =====
+
 
 @receiver(post_save, sender=AIConversationMessage)
 def queue_message_for_indexing(sender, instance, created, **kwargs):

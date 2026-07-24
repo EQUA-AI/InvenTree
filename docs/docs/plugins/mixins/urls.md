@@ -10,11 +10,14 @@ The array has to contain valid URL patterns as defined in the [django documentat
 
 ``` python
 class MyUrlsPlugin(UrlsMixin, InvenTreePlugin):
-
-    NAME = "UrlsMixin"
+    NAME = 'UrlsMixin'
 
     URLS = [
-        re_path(r'increase/(?P<location>\d+)/(?P<pk>\d+)/', self.view_increase, name='increase-level'),
+        re_path(
+            r'increase/(?P<location>\d+)/(?P<pk>\d+)/',
+            self.view_increase,
+            name='increase-level',
+        )
     ]
 ```
 
@@ -37,10 +40,9 @@ Example in context (inside the main plugin python file):
 def view_test(self, request):
     return render(request, 'test.html', context)
 
+
 def setup_urls(self):
-    return [
-        path('test/', self.view_test, name='test')
-    ]
+    return [path('test/', self.view_test, name='test')]
 ```
 
 

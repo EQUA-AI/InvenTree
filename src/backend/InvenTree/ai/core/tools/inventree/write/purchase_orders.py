@@ -9,9 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ai.core.maf_compat import ai_function
-
 from ai.core.integrations.data_provider import get_data_provider
+from ai.core.maf_compat import ai_function
 from ai.core.tools.inventree.base import require_hitl
 
 logger = logging.getLogger(__name__)
@@ -30,10 +29,10 @@ async def create_purchase_order(
 ) -> dict[str, Any]:
     """
     Create a new purchase order.
-    
+
     Creates a purchase order for a supplier. Line items can be
     added after creation using add_po_line_item.
-    
+
     Args:
         supplier_id: The supplier company ID (required)
         reference: PO reference number (auto-generated if not provided)
@@ -42,10 +41,10 @@ async def create_purchase_order(
         link: External link (e.g., supplier portal URL)
         contact_id: Supplier contact person ID
         project_code: Project code for cost tracking
-    
+
     Returns:
         Created purchase order data
-    
+
     Example:
         # Create a PO for a supplier
         po = await create_purchase_order(
@@ -60,13 +59,13 @@ async def create_purchase_order(
     supplier = next((s for s in suppliers if s.get("pk") == supplier_id), None)
     if not supplier:
         raise ValueError(f"Supplier with ID {supplier_id} not found")
-    
+
     logger.info(f"Creating purchase order for supplier {supplier_id}")
-    
+
     data: dict[str, Any] = {
         "supplier": supplier_id,
     }
-    
+
     if reference:
         data["reference"] = reference
     if description:
@@ -79,19 +78,20 @@ async def create_purchase_order(
         data["contact"] = contact_id
     if project_code:
         data["project_code"] = project_code
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", "/order/po/", json_data=data)
-        
+
         if isinstance(result, dict):
             logger.info(f"Created purchase order pk={result.get('pk')}")
             return result
-        
+
         return {"error": "Unexpected response format"}
-        
+
     except Exception as e:
         logger.error(f"Failed to create purchase order: {e}")
         raise
@@ -111,9 +111,9 @@ async def add_po_line_item(
 ) -> dict[str, Any]:
     """
     Add a line item to a purchase order.
-    
+
     Adds a part to an existing purchase order with specified quantity.
-    
+
     Args:
         order_id: The purchase order ID (required)
         part_id: The part to order (required)
@@ -123,10 +123,10 @@ async def add_po_line_item(
         reference: Line item reference
         notes: Notes for this line
         destination_id: Stock location for received items
-    
+
     Returns:
         Created line item data
-    
+
     Example:
         # Add 100 resistors to the PO
         line = await add_po_line_item(
@@ -138,13 +138,13 @@ async def add_po_line_item(
         )
     """
     logger.info(f"Adding line item to PO {order_id}: part {part_id} x {quantity}")
-    
+
     data: dict[str, Any] = {
         "order": order_id,
         "part": part_id,
         "quantity": quantity,
     }
-    
+
     if supplier_part_id:
         data["supplier_part"] = supplier_part_id
     if purchase_price is not None:
@@ -155,19 +155,20 @@ async def add_po_line_item(
         data["notes"] = notes
     if destination_id:
         data["destination"] = destination_id
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", "/order/po-line/", json_data=data)
-        
+
         if isinstance(result, dict):
             logger.info(f"Added PO line item pk={result.get('pk')}")
             return result
-        
+
         return {"error": "Unexpected response format"}
-        
+
     except Exception as e:
         logger.error(f"Failed to add PO line item: {e}")
         raise
@@ -180,38 +181,35 @@ async def issue_purchase_order(
 ) -> dict[str, Any]:
     """
     Issue a purchase order to the supplier.
-    
+
     Changes the PO status from 'Pending' to 'Placed'. This indicates
     the order has been sent to the supplier.
-    
+
     Args:
         order_id: The purchase order ID to issue (required)
-    
+
     Returns:
         Updated purchase order data
-    
+
     Example:
         # Issue a PO to the supplier
         result = await issue_purchase_order(order_id=10)
     """
     logger.info(f"Issuing purchase order {order_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "POST", 
-            f"/order/po/{order_id}/issue/",
-            json_data={}
-        )
-        
+
+        result = await client._request("POST", f"/order/po/{order_id}/issue/", json_data={})
+
         if isinstance(result, dict):
             logger.info(f"Issued purchase order {order_id}")
             return result
-        
+
         return {"success": True, "order_id": order_id, "status": "Placed"}
-        
+
     except Exception as e:
         logger.error(f"Failed to issue purchase order: {e}")
         raise
@@ -230,9 +228,9 @@ async def receive_po_items(
 ) -> dict[str, Any]:
     """
     Receive items from a purchase order line.
-    
+
     Records receipt of items against a PO line, creating stock entries.
-    
+
     Args:
         order_id: The purchase order ID (required)
         line_item_id: The PO line item ID (required)
@@ -241,10 +239,10 @@ async def receive_po_items(
         serial_numbers: Comma-separated serial numbers for serialized parts
         batch_code: Batch/lot code
         barcode: Barcode for the received items
-    
+
     Returns:
         Receipt confirmation with stock item IDs
-    
+
     Example:
         # Receive 50 of 100 ordered items
         result = await receive_po_items(
@@ -256,41 +254,38 @@ async def receive_po_items(
         )
     """
     logger.info(f"Receiving {quantity} items for PO {order_id} line {line_item_id}")
-    
+
     item_data: dict[str, Any] = {
         "line_item": line_item_id,
         "quantity": quantity,
         "location": location_id,
     }
-    
+
     if serial_numbers:
         item_data["serial_numbers"] = serial_numbers
     if batch_code:
         item_data["batch_code"] = batch_code
     if barcode:
         item_data["barcode"] = barcode
-    
+
     data: dict[str, Any] = {
         "items": [item_data],
         "location": location_id,
     }
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "POST", 
-            f"/order/po/{order_id}/receive/",
-            json_data=data
-        )
-        
+
+        result = await client._request("POST", f"/order/po/{order_id}/receive/", json_data=data)
+
         if isinstance(result, dict):
             logger.info(f"Received items for PO {order_id}")
             return result
-        
+
         return {"success": True, "received_quantity": quantity}
-        
+
     except Exception as e:
         logger.error(f"Failed to receive PO items: {e}")
         raise
@@ -303,38 +298,35 @@ async def cancel_purchase_order(
 ) -> dict[str, Any]:
     """
     Cancel a purchase order.
-    
+
     Cancels an open purchase order. Cannot cancel orders that
     have already been fully received.
-    
+
     Args:
         order_id: The purchase order ID to cancel (required)
-    
+
     Returns:
         Cancellation confirmation
-    
+
     Example:
         # Cancel an unwanted PO
         result = await cancel_purchase_order(order_id=10)
     """
     logger.info(f"Cancelling purchase order {order_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "POST", 
-            f"/order/po/{order_id}/cancel/",
-            json_data={}
-        )
-        
+
+        result = await client._request("POST", f"/order/po/{order_id}/cancel/", json_data={})
+
         if isinstance(result, dict):
             logger.info(f"Cancelled purchase order {order_id}")
             return result
-        
+
         return {"success": True, "order_id": order_id, "status": "Cancelled"}
-        
+
     except Exception as e:
         logger.error(f"Failed to cancel purchase order: {e}")
         raise
@@ -356,7 +348,7 @@ async def update_purchase_order(
 ) -> dict[str, Any]:
     """
     Update a purchase order.
-    
+
     Args:
         purchase_order_id: The purchase order ID to update (required)
         supplier_id: Supplier company ID
@@ -368,12 +360,12 @@ async def update_purchase_order(
         link: External link
         contact_id: Contact person ID
         project_code: Project code ID
-    
+
     Returns:
         Updated purchase order data
     """
     logger.info(f"Updating purchase order {purchase_order_id}")
-    
+
     data: dict[str, Any] = {}
     if supplier_id:
         data["supplier"] = supplier_id
@@ -393,22 +385,19 @@ async def update_purchase_order(
         data["contact"] = contact_id
     if project_code:
         data["project_code"] = project_code
-        
+
     if not data:
         raise ValueError("No fields to update provided")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "PATCH", 
-            f"/order/po/{purchase_order_id}/", 
-            json_data=data
-        )
+
+        result = await client._request("PATCH", f"/order/po/{purchase_order_id}/", json_data=data)
         logger.info(f"Updated purchase order {purchase_order_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to update purchase order: {e}")
         raise
@@ -422,28 +411,29 @@ async def complete_purchase_order(
 ) -> dict[str, Any]:
     """
     Complete a purchase order.
-    
+
     Args:
         order_id: The purchase order ID
         accept_incomplete: Accept incomplete order
-        
+
     Returns:
         Completion result
     """
     logger.info(f"Completing purchase order {order_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request(
-            "POST", 
+            "POST",
             f"/order/po/{order_id}/complete/",
-            json_data={"accept_incomplete": accept_incomplete}
+            json_data={"accept_incomplete": accept_incomplete},
         )
         logger.info(f"Completed purchase order {order_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to complete purchase order: {e}")
         raise
@@ -456,24 +446,25 @@ async def delete_purchase_order(
 ) -> dict[str, Any]:
     """
     Delete a purchase order.
-    
+
     Args:
         order_id: The purchase order ID to delete
-        
+
     Returns:
         Success confirmation
     """
     logger.info(f"Deleting purchase order {order_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         await client._request("DELETE", f"/order/po/{order_id}/")
-        
+
         logger.info(f"Deleted purchase order {order_id}")
         return {"success": True, "order_id": order_id}
-        
+
     except Exception as e:
         logger.error(f"Failed to delete purchase order: {e}")
         raise
@@ -486,24 +477,25 @@ async def delete_po_line_item(
 ) -> dict[str, Any]:
     """
     Delete a purchase order line item.
-    
+
     Args:
         line_item_id: The line item ID to delete
-        
+
     Returns:
         Success confirmation
     """
     logger.info(f"Deleting PO line item {line_item_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         await client._request("DELETE", f"/order/po-line/{line_item_id}/")
-        
+
         logger.info(f"Deleted PO line item {line_item_id}")
         return {"success": True, "line_item_id": line_item_id}
-        
+
     except Exception as e:
         logger.error(f"Failed to delete PO line item: {e}")
         raise
@@ -523,14 +515,14 @@ PURCHASE_ORDER_WRITE_TOOLS = [
 ]
 
 __all__ = [
-    "create_purchase_order",
+    "PURCHASE_ORDER_WRITE_TOOLS",
     "add_po_line_item",
+    "cancel_purchase_order",
+    "complete_purchase_order",
+    "create_purchase_order",
+    "delete_po_line_item",
+    "delete_purchase_order",
     "issue_purchase_order",
     "receive_po_items",
-    "cancel_purchase_order",
     "update_purchase_order",
-    "complete_purchase_order",
-    "delete_purchase_order",
-    "delete_po_line_item",
-    "PURCHASE_ORDER_WRITE_TOOLS",
 ]

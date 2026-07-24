@@ -877,7 +877,7 @@ def confirm_proposal(
     """
     from tasks.services import work_orders as wo_commands
 
-    try:  # noqa: PLW0717
+    try:
         with transaction.atomic():
             proposal = (
                 ChatActionProposal.objects

@@ -3,6 +3,7 @@
 import json
 
 from django.db import IntegrityError
+
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -21,7 +22,6 @@ from .models import (
 )
 from .sanitizers import sanitize_payload
 
-
 # ---------------------------------------------------------------------------
 # Read-only / list serializers
 # ---------------------------------------------------------------------------
@@ -31,6 +31,8 @@ class ApprovalEventSerializer(InvenTreeModelSerializer):
     """Serializer for ApprovalEvent (read-only audit log)."""
 
     class Meta:
+        """Metaclass defining serializer fields."""
+
         model = ApprovalEvent
         fields = [
             'id',
@@ -47,6 +49,8 @@ class ApprovalRevisionSerializer(InvenTreeModelSerializer):
     """Serializer for ApprovalRevision (read-only revision history)."""
 
     class Meta:
+        """Metaclass defining serializer fields."""
+
         model = ApprovalRevision
         fields = [
             'id',
@@ -64,6 +68,8 @@ class ExecutedEffectSerializer(InvenTreeModelSerializer):
     """Serializer for ExecutedEffect (idempotency ledger)."""
 
     class Meta:
+        """Metaclass defining serializer fields."""
+
         model = ExecutedEffect
         fields = [
             'idempotency_key',
@@ -87,6 +93,8 @@ class ApprovalListSerializer(InvenTreeModelSerializer):
     is_lock_active = serializers.BooleanField(read_only=True)
 
     class Meta:
+        """Metaclass defining serializer fields."""
+
         model = Approval
         fields = [
             'id',
@@ -119,6 +127,8 @@ class ApprovalDetailSerializer(InvenTreeModelSerializer):
     latest_revision = serializers.SerializerMethodField()
 
     class Meta:
+        """Metaclass defining serializer fields."""
+
         model = Approval
         fields = [
             'id',
@@ -209,19 +219,19 @@ class ApprovalCreateSerializer(serializers.Serializer):
         attrs['risk_tier'] = 2
 
         # Compute expires_at
-        from django.utils import timezone
         import datetime
+
+        from django.utils import timezone
 
         expiry_days = get_default_expiry_days()
         attrs['expires_at'] = timezone.now() + datetime.timedelta(days=expiry_days)
 
         # Sanitize payload (D-5)
-        attrs['payload'] = sanitize_payload(
-            attrs['payload'], attrs['action_type']
-        )
+        attrs['payload'] = sanitize_payload(attrs['payload'], attrs['action_type'])
 
         # Executor validation (E-3): surface warnings from executor.validate()
         from .executors import registry
+
         if registry.has(attrs['action_type']):
             executor = registry.get(attrs['action_type'])
             warnings = executor.validate(attrs['payload'])
@@ -250,7 +260,6 @@ class ApprovalCreateSerializer(serializers.Serializer):
         """
         from django.contrib.auth import get_user_model
         from django.db import transaction
-        from django.utils import timezone
 
         User = get_user_model()
 
@@ -280,7 +289,9 @@ class ApprovalCreateSerializer(serializers.Serializer):
                     action_type=validated_data['action_type'],
                     summary=validated_data['summary'],
                     payload=validated_data['payload'],
-                    payload_schema_version=validated_data.get('payload_schema_version', 1),
+                    payload_schema_version=validated_data.get(
+                        'payload_schema_version', 1
+                    ),
                     source_chat_id=validated_data.get('source_chat_id', ''),
                     agent_run_id=validated_data['agent_run_id'],
                     agent_checkpoint_id=validated_data['agent_checkpoint_id'],
@@ -390,13 +401,9 @@ class CardPackageSerializer(serializers.Serializer):
 class OpenApprovalSerializer(serializers.Serializer):
     """Serializer for POST /open (no body required)."""
 
-    pass
-
 
 class ConfirmViewedSerializer(serializers.Serializer):
     """Serializer for POST /confirm-viewed (no body required)."""
-
-    pass
 
 
 class RequestChangesSerializer(serializers.Serializer):
@@ -407,8 +414,6 @@ class RequestChangesSerializer(serializers.Serializer):
 
 class ApproveSerializer(serializers.Serializer):
     """Serializer for POST /approve (no body required)."""
-
-    pass
 
 
 class DenySerializer(serializers.Serializer):
@@ -436,22 +441,16 @@ class ReviseSerializer(serializers.Serializer):
         max_bytes = 50 * 1024 * 1024  # 50 MB
         payload_size = len(json.dumps(value))
         if payload_size > max_bytes:
-            raise serializers.ValidationError(
-                f'Payload exceeds {max_bytes} bytes'
-            )
+            raise serializers.ValidationError(f'Payload exceeds {max_bytes} bytes')
         return value
 
 
 class AcquireModifyLockSerializer(serializers.Serializer):
     """Serializer for POST /acquire-modify-lock (no body required)."""
 
-    pass
-
 
 class ReleaseModifyLockSerializer(serializers.Serializer):
     """Serializer for POST /release-modify-lock (no body required)."""
-
-    pass
 
 
 # ---------------------------------------------------------------------------

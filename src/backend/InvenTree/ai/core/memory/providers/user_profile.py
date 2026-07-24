@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-
 from ai.core.config import get_settings
 
 logger = structlog.get_logger(__name__)
@@ -19,11 +18,11 @@ logger = structlog.get_logger(__name__)
 class UserProfileProvider:
     """
     Context provider for user profile information.
-    
+
     Implements MAF ContextProvider interface:
     - invoking(messages, **kwargs) -> Context
     - invoked(request_messages, response_messages, invoke_exception, **kwargs)
-    
+
     User profile includes:
     - Preferred units (metric/imperial)
     - Preferred suppliers
@@ -31,11 +30,11 @@ class UserProfileProvider:
     - Language preferences
     - Recent interaction history
     """
-    
+
     def __init__(self, profiles_dir: Path | None = None) -> None:
         """
         Initialize the user profile provider.
-        
+
         Args:
             profiles_dir: Directory for user profile files.
         """
@@ -43,32 +42,32 @@ class UserProfileProvider:
         self.profiles_dir = profiles_dir or (settings.data_dir / "profiles")
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
         logger.info("UserProfileProvider initialized", profiles_dir=str(self.profiles_dir))
-    
+
     def _get_profile_path(self, user_id: str) -> Path:
         """Get the file path for a user profile."""
         return self.profiles_dir / f"{user_id}.json"
-    
+
     async def get_profile(self, user_id: str) -> dict[str, Any]:
         """
         Get a user's profile.
-        
+
         Args:
             user_id: The user identifier.
-            
+
         Returns:
             User profile data or default profile.
         """
         profile_path = self._get_profile_path(user_id)
-        
+
         if profile_path.exists():
             try:
-                with open(profile_path) as f:
+                with Path(profile_path).open() as f:
                     return json.load(f)
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning("Failed to load user profile", user_id=user_id, error=str(e))
-        
+
         return self._default_profile(user_id)
-    
+
     async def update_profile(
         self,
         user_id: str,
@@ -76,24 +75,24 @@ class UserProfileProvider:
     ) -> dict[str, Any]:
         """
         Update a user's profile.
-        
+
         Args:
             user_id: The user identifier.
             updates: Fields to update.
-            
+
         Returns:
             Updated profile.
         """
         profile = await self.get_profile(user_id)
         profile.update(updates)
-        
+
         profile_path = self._get_profile_path(user_id)
-        with open(profile_path, "w") as f:
+        with Path(profile_path).open("w") as f:
             json.dump(profile, f, indent=2)
-        
+
         logger.debug("User profile updated", user_id=user_id, fields=list(updates.keys()))
         return profile
-    
+
     def _default_profile(self, user_id: str) -> dict[str, Any]:
         """Create a default user profile."""
         return {
@@ -120,7 +119,7 @@ class UserProfileProvider:
                 "interaction_count": 0,
             },
         }
-    
+
     async def invoking(
         self,
         messages: list[dict[str, Any]],
@@ -128,50 +127,50 @@ class UserProfileProvider:
     ) -> dict[str, Any]:
         """
         Called before agent invocation.
-        
+
         Retrieves and formats user context for injection into the prompt.
-        
+
         Args:
             messages: The conversation messages.
             **kwargs: Additional context including user_id.
-            
+
         Returns:
             Context dictionary with user profile information.
         """
         user_id = kwargs.get("user_id", "default")
         profile = await self.get_profile(user_id)
-        
+
         # Format context for LLM consumption
         context = {
             "user_preferences": f"""
 User Profile Context:
-- Preferred units: {profile['preferences']['units']}
-- Language: {profile['preferences']['language']}
-- Currency: {profile['preferences']['currency']}
+- Preferred units: {profile["preferences"]["units"]}
+- Language: {profile["preferences"]["language"]}
+- Currency: {profile["preferences"]["currency"]}
 
 User Defaults:
-- Preferred suppliers: {', '.join(profile['defaults']['preferred_suppliers']) or 'None set'}
-- Preferred categories: {', '.join(profile['defaults']['preferred_categories']) or 'None set'}
+- Preferred suppliers: {", ".join(profile["defaults"]["preferred_suppliers"]) or "None set"}
+- Preferred categories: {", ".join(profile["defaults"]["preferred_categories"]) or "None set"}
 
 User Settings:
-- Show low stock alerts: {profile['settings']['show_low_stock_alerts']}
-- Auto-approve threshold: ${profile['settings']['auto_approve_threshold']} (0 = no auto-approve)
+- Show low stock alerts: {profile["settings"]["show_low_stock_alerts"]}
+- Auto-approve threshold: ${profile["settings"]["auto_approve_threshold"]} (0 = no auto-approve)
 
 Interaction History:
-- Recent parts viewed: {', '.join(profile['history']['recent_parts'][-5:]) or 'None'}
-- Total interactions: {profile['history']['interaction_count']}
+- Recent parts viewed: {", ".join(profile["history"]["recent_parts"][-5:]) or "None"}
+- Total interactions: {profile["history"]["interaction_count"]}
 """.strip(),
             "raw_profile": profile,
         }
-        
+
         logger.debug(
             "UserProfileProvider.invoking",
             user_id=user_id,
             interaction_count=profile["history"]["interaction_count"],
         )
-        
+
         return context
-    
+
     async def invoked(
         self,
         request_messages: list[dict[str, Any]],
@@ -181,9 +180,9 @@ Interaction History:
     ) -> None:
         """
         Called after agent invocation.
-        
+
         Updates user profile with interaction history.
-        
+
         Args:
             request_messages: The original request messages.
             response_messages: The response messages.
@@ -193,15 +192,13 @@ Interaction History:
         if invoke_exception:
             # Don't update history on error
             return
-        
+
         user_id = kwargs.get("user_id", "default")
         profile = await self.get_profile(user_id)
-        
+
         # Increment interaction count
-        profile["history"]["interaction_count"] = (
-            profile["history"].get("interaction_count", 0) + 1
-        )
-        
+        profile["history"]["interaction_count"] = profile["history"].get("interaction_count", 0) + 1
+
         # Extract any part references from response for history
         parts_mentioned = kwargs.get("parts_mentioned", [])
         if parts_mentioned:
@@ -210,9 +207,9 @@ Interaction History:
                 if part_ipn not in recent_parts:
                     recent_parts.insert(0, part_ipn)
             profile["history"]["recent_parts"] = recent_parts[:20]  # Keep last 20
-        
+
         await self.update_profile(user_id, profile)
-        
+
         logger.debug(
             "UserProfileProvider.invoked",
             user_id=user_id,

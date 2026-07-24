@@ -20,7 +20,14 @@ class AssetMachineAdmin(admin.ModelAdmin):
         'updated_at',
     )
     list_filter = ('active', 'manufacturer')
-    search_fields = ('name', 'description', 'location', 'manufacturer', 'model', 'serial')
+    search_fields = (
+        'name',
+        'description',
+        'location',
+        'manufacturer',
+        'model',
+        'serial',
+    )
     ordering = ('name',)
 
 

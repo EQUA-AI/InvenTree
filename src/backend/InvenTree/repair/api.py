@@ -13,11 +13,17 @@ from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
 from . import services
-from .models import LockoutPoint, PacketStatus, RepairPacket, RepairPacketGate, SafetyGateTemplate
+from .models import (
+    LockoutPoint,
+    PacketStatus,
+    RepairPacket,
+    RepairPacketGate,
+    SafetyGateTemplate,
+)
 from .serializers import (
     LockoutPointSerializer,
-    RepairPacketGenerationRunSerializer,
     RepairPacketGateSerializer,
+    RepairPacketGenerationRunSerializer,
     RepairPacketSerializer,
     SafetyEvidenceProofSerializer,
     SafetyGateTemplateSerializer,
@@ -86,6 +92,7 @@ class RepairPacketGenerate(APIView):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk):
+        """Run generation for the packet, offloading to a background task if requested."""
         packet = get_object_or_404(RepairPacket, pk=pk)
         params = dict(request.data or {})
         if request.user.is_authenticated:
@@ -110,9 +117,7 @@ class RepairPacketGenerate(APIView):
             packet.save(update_fields=['generation_status', 'updated_at'])
             params.pop('async', None)
             return bool(
-                offload_task(
-                    'repair.services.run_generation_by_id', packet.pk, params
-                )
+                offload_task('repair.services.run_generation_by_id', packet.pk, params)
             )
         except Exception:
             return False
@@ -124,17 +129,16 @@ class RepairPacketGenerationStatus(APIView):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def get(self, request, pk):
+        """Return the packet's generation status and its latest generation run."""
         packet = get_object_or_404(RepairPacket, pk=pk)
         run = packet.generation_runs.first()
-        return Response(
-            {
-                'generation_status': packet.generation_status,
-                'status': packet.status,
-                'latest_generation_run': (
-                    RepairPacketGenerationRunSerializer(run).data if run else None
-                ),
-            }
-        )
+        return Response({
+            'generation_status': packet.generation_status,
+            'status': packet.status,
+            'latest_generation_run': (
+                RepairPacketGenerationRunSerializer(run).data if run else None
+            ),
+        })
 
 
 class RepairPacketResolveGates(APIView):
@@ -143,6 +147,7 @@ class RepairPacketResolveGates(APIView):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk):
+        """Resolve applicable safety gate templates onto the packet."""
         packet = get_object_or_404(RepairPacket, pk=pk)
         created = services.resolve_safety_gates(packet, actor=_request_user(request))
         data = RepairPacketSerializer(packet).data
@@ -156,6 +161,7 @@ class RepairPacketGateList(APIView):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def get(self, request, pk):
+        """Return the packet's safety gates ordered by sequence."""
         packet = get_object_or_404(RepairPacket, pk=pk)
         gates = packet.gates.order_by('sequence', 'created_at')
         return Response(RepairPacketGateSerializer(gates, many=True).data)
@@ -167,11 +173,10 @@ class RepairPacketGateConfirm(APIView):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk, gate_pk):
+        """Confirm the gate as completed by the requesting user."""
         gate = _get_gate(pk, gate_pk)
         ok, detail = services.confirm_gate(
-            gate,
-            user=_request_user(request),
-            note=request.data.get('note', ''),
+            gate, user=_request_user(request), note=request.data.get('note', '')
         )
         return _gate_response(gate, ok, detail)
 
@@ -182,11 +187,10 @@ class RepairPacketGateVerify(APIView):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk, gate_pk):
+        """Record second-person verification of the gate."""
         gate = _get_gate(pk, gate_pk)
         ok, detail = services.verify_gate(
-            gate,
-            user=_request_user(request),
-            note=request.data.get('note', ''),
+            gate, user=_request_user(request), note=request.data.get('note', '')
         )
         return _gate_response(gate, ok, detail)
 
@@ -197,6 +201,7 @@ class RepairPacketGateWaive(APIView):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk, gate_pk):
+        """Waive the gate, recording the reason and approving authority."""
         gate = _get_gate(pk, gate_pk)
         ok, detail = services.waive_gate(
             gate,
@@ -213,13 +218,12 @@ class RepairPacketGateProof(APIView):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk, gate_pk):
+        """Attach a structured evidence proof to the gate."""
         gate = _get_gate(pk, gate_pk)
         lockout_point = None
         if request.data.get('lockout_point'):
             lockout_point = get_object_or_404(
-                LockoutPoint,
-                pk=request.data['lockout_point'],
-                gate=gate,
+                LockoutPoint, pk=request.data['lockout_point'], gate=gate
             )
         proof = services.add_gate_proof(
             gate,
@@ -237,11 +241,10 @@ class RepairPacketGateLockout(APIView):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk, gate_pk):
+        """Create or update a LOTO energy-control point for the gate."""
         gate = _get_gate(pk, gate_pk)
         point = services.upsert_lockout_point(
-            gate,
-            dict(request.data or {}),
-            user=_request_user(request),
+            gate, dict(request.data or {}), user=_request_user(request)
         )
         return Response(LockoutPointSerializer(point).data)
 
@@ -252,6 +255,7 @@ class RepairPacketAdvance(APIView):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk):
+        """Attempt to advance the packet to the requested lifecycle status."""
         packet = get_object_or_404(RepairPacket, pk=pk)
         to = request.data.get('to')
         reason = request.data.get('reason', '')
@@ -270,6 +274,7 @@ class RepairPacketCancel(APIView):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk):
+        """Cancel the packet, recording the supplied reason."""
         packet = get_object_or_404(RepairPacket, pk=pk)
         reason = request.data.get('reason', '')
         ok, detail = services.advance_packet(
@@ -304,7 +309,9 @@ repair_api_urls = [
                 SafetyGateTemplateDetail.as_view(),
                 name='safety-gate-template-detail',
             ),
-            path('', SafetyGateTemplateList.as_view(), name='safety-gate-template-list'),
+            path(
+                '', SafetyGateTemplateList.as_view(), name='safety-gate-template-list'
+            ),
         ]),
     ),
     path(
@@ -366,9 +373,7 @@ repair_api_urls = [
                 name='repair-packet-cancel',
             ),
             path(
-                '<int:pk>/',
-                RepairPacketDetail.as_view(),
-                name='repair-packet-detail',
+                '<int:pk>/', RepairPacketDetail.as_view(), name='repair-packet-detail'
             ),
             path('', RepairPacketList.as_view(), name='repair-packet-list'),
         ]),

@@ -235,7 +235,7 @@ def run_repair_packet_workflow(
         'user_id': params.get('user_id'),
     }
 
-    try:  # noqa: PLW0717
+    try:
         generator = get_generator(params.get('generator'))
         result = generator.generate(fault_summary=fault, context=context)
         validate_diagnosis(result.diagnosis)

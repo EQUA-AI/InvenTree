@@ -18,7 +18,6 @@ from email.mime.text import MIMEText
 from typing import Any
 
 import structlog
-
 from ai.core.integrations.email.gmail import GmailError, get_gmail_client
 from ai.core.integrations.email.provider import EmailQuery
 from ai.core.maf_compat import ai_function
@@ -37,10 +36,10 @@ async def list_emails(
 ) -> dict[str, Any]:
     """
     List emails from the parts inbox (parts@equa.work).
-    
+
     Use this tool to search for and list emails, especially those with
     attachments like invoices, purchase orders, or technical documents.
-    
+
     Args:
         is_unread: Filter for unread messages only. Set to True for new emails.
         has_attachment: Filter for emails with attachments. Set to True for
@@ -52,7 +51,7 @@ async def list_emails(
         after_date: Only return emails after this date (YYYY-MM-DD format).
                    Example: "2024-01-15"
         max_results: Maximum number of emails to return (default 25).
-    
+
     Returns:
         A dictionary containing:
         - success: bool - Whether the query succeeded
@@ -67,7 +66,7 @@ async def list_emails(
             - attachment_count: Number of attachments
         - count: int - Number of emails returned
         - error: str - Error message if query failed
-    
+
     Example:
         >>> result = await list_emails(is_unread=True, has_attachment=True)
         >>> for email in result["emails"]:
@@ -75,7 +74,7 @@ async def list_emails(
     """
     try:
         client = get_gmail_client()
-        
+
         # Build query
         query = EmailQuery(
             is_unread=is_unread,
@@ -84,7 +83,7 @@ async def list_emails(
             subject=subject_contains,
             max_results=max_results,
         )
-        
+
         if after_date:
             try:
                 query.after_date = datetime.strptime(after_date, "%Y-%m-%d")
@@ -96,9 +95,9 @@ async def list_emails(
                     "error": f"Invalid date format: {after_date}. Use YYYY-MM-DD.",
                     "error_type": "VALIDATION",
                 }
-        
+
         messages = await client.list_messages(query)
-        
+
         simplified = [
             {
                 "message_id": msg.message_id,
@@ -113,15 +112,15 @@ async def list_emails(
             }
             for msg in messages
         ]
-        
+
         logger.info("Listed emails", count=len(simplified))
-        
+
         return {
             "success": True,
             "emails": simplified,
             "count": len(simplified),
         }
-        
+
     except GmailError as e:
         logger.error("Email list failed", error=str(e))
         return {
@@ -129,7 +128,9 @@ async def list_emails(
             "emails": [],
             "count": 0,
             "error": str(e),
-            "error_type": "TRANSIENT_INFRA" if e.status_code and e.status_code >= 500 else "BUSINESS_RULE",
+            "error_type": "TRANSIENT_INFRA"
+            if e.status_code and e.status_code >= 500
+            else "BUSINESS_RULE",
         }
     except Exception as e:
         logger.exception("Unexpected error listing emails")
@@ -149,14 +150,14 @@ async def get_email_details(
 ) -> dict[str, Any]:
     """
     Get full details of a specific email including body and attachments.
-    
+
     Use this tool when you need the complete content of an email,
     including the full body text and list of attachments to process.
-    
+
     Args:
         message_id: The message ID from list_emails result.
         include_body: Whether to include the full email body (default True).
-    
+
     Returns:
         A dictionary containing:
         - success: bool - Whether the query succeeded
@@ -177,7 +178,7 @@ async def get_email_details(
                 - size: Size in bytes
             - is_read: Whether email has been read
         - error: str - Error message if query failed
-    
+
     Example:
         >>> result = await get_email_details("abc123")
         >>> if result["success"]:
@@ -187,9 +188,9 @@ async def get_email_details(
     """
     try:
         client = get_gmail_client()
-        
+
         message = await client.get_message(message_id, include_body=include_body)
-        
+
         if message is None:
             return {
                 "success": False,
@@ -197,7 +198,7 @@ async def get_email_details(
                 "error": f"Email not found: {message_id}",
                 "error_type": "BUSINESS_RULE",
             }
-        
+
         email_data = {
             "message_id": message.message_id,
             "thread_id": message.thread_id,
@@ -219,25 +220,27 @@ async def get_email_details(
             ],
             "is_read": message.is_read,
         }
-        
+
         logger.info(
             "Retrieved email details",
             message_id=message_id,
             attachment_count=len(message.attachments),
         )
-        
+
         return {
             "success": True,
             "email": email_data,
         }
-        
+
     except GmailError as e:
         logger.error("Email get failed", error=str(e))
         return {
             "success": False,
             "email": None,
             "error": str(e),
-            "error_type": "TRANSIENT_INFRA" if e.status_code and e.status_code >= 500 else "BUSINESS_RULE",
+            "error_type": "TRANSIENT_INFRA"
+            if e.status_code and e.status_code >= 500
+            else "BUSINESS_RULE",
         }
     except Exception as e:
         logger.exception("Unexpected error getting email")
@@ -256,14 +259,14 @@ async def download_attachment(
 ) -> dict[str, Any]:
     """
     Download an email attachment.
-    
+
     Use this tool to get the actual content of an attachment for processing.
     The data is returned as base64 encoded for transport.
-    
+
     Args:
         message_id: The message ID containing the attachment.
         attachment_id: The attachment ID from get_email_details result.
-    
+
     Returns:
         A dictionary containing:
         - success: bool - Whether the download succeeded
@@ -274,7 +277,7 @@ async def download_attachment(
             - size: Size in bytes
             - data_base64: Base64 encoded file content
         - error: str - Error message if download failed
-    
+
     Example:
         >>> result = await download_attachment("msg123", "att456")
         >>> if result["success"]:
@@ -285,11 +288,11 @@ async def download_attachment(
     """
     try:
         import base64 as b64
-        
+
         client = get_gmail_client()
-        
+
         attachment = await client.get_attachment(message_id, attachment_id)
-        
+
         if attachment is None:
             return {
                 "success": False,
@@ -297,10 +300,10 @@ async def download_attachment(
                 "error": f"Attachment not found: {attachment_id}",
                 "error_type": "BUSINESS_RULE",
             }
-        
+
         # Encode data for transport
         data_base64 = b64.b64encode(attachment.data or b"").decode("utf-8")
-        
+
         logger.info(
             "Downloaded attachment",
             message_id=message_id,
@@ -308,7 +311,7 @@ async def download_attachment(
             filename=attachment.filename,
             size=attachment.size,
         )
-        
+
         return {
             "success": True,
             "attachment": {
@@ -319,14 +322,16 @@ async def download_attachment(
                 "data_base64": data_base64,
             },
         }
-        
+
     except GmailError as e:
         logger.error("Attachment download failed", error=str(e))
         return {
             "success": False,
             "attachment": None,
             "error": str(e),
-            "error_type": "TRANSIENT_INFRA" if e.status_code and e.status_code >= 500 else "BUSINESS_RULE",
+            "error_type": "TRANSIENT_INFRA"
+            if e.status_code and e.status_code >= 500
+            else "BUSINESS_RULE",
         }
     except Exception as e:
         logger.exception("Unexpected error downloading attachment")
@@ -345,19 +350,19 @@ async def mark_email_processed(
 ) -> dict[str, Any]:
     """
     Mark an email as processed by AIMMS.
-    
+
     Use this tool after successfully processing an email and its attachments.
     Marks the email as read and adds a label for tracking.
-    
+
     Args:
         message_id: The message ID to mark as processed.
         add_label: Label to add (default "AIMMS-Processed").
-    
+
     Returns:
         A dictionary containing:
         - success: bool - Whether the operation succeeded
         - error: str - Error message if operation failed
-    
+
     Example:
         >>> result = await mark_email_processed("msg123")
         >>> if result["success"]:
@@ -365,27 +370,29 @@ async def mark_email_processed(
     """
     try:
         client = get_gmail_client()
-        
+
         # Mark as read
         await client.mark_as_read(message_id)
-        
+
         # Add processed label
         await client.add_label(message_id, add_label)
-        
+
         logger.info(
             "Marked email as processed",
             message_id=message_id,
             label=add_label,
         )
-        
+
         return {"success": True}
-        
+
     except GmailError as e:
         logger.error("Mark processed failed", error=str(e))
         return {
             "success": False,
             "error": str(e),
-            "error_type": "TRANSIENT_INFRA" if e.status_code and e.status_code >= 500 else "BUSINESS_RULE",
+            "error_type": "TRANSIENT_INFRA"
+            if e.status_code and e.status_code >= 500
+            else "BUSINESS_RULE",
         }
     except Exception as e:
         logger.exception("Unexpected error marking email")
@@ -400,8 +407,9 @@ async def mark_email_processed(
 # New tools: send_email  &  generate_and_send_document
 # ---------------------------------------------------------------------------
 
+
 @ai_function
-async def send_email(
+async def send_email(  # noqa: RUF029 - async is the tool-call contract; awaited directly by generate_and_send_document
     to: str | list[str],
     subject: str,
     body: str,
@@ -467,12 +475,7 @@ async def send_email(
 
         # ── Send via Gmail API ──────────────────────────────────────
         raw = _b64_mod.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
-        result = (
-            service.users()
-            .messages()
-            .send(userId="me", body={"raw": raw})
-            .execute()
-        )
+        result = service.users().messages().send(userId="me", body={"raw": raw}).execute()
 
         logger.info("Email sent", message_id=result["id"], to=to)
         return {"success": True, "message_id": result["id"]}
@@ -491,11 +494,39 @@ def _build_sample_data(document_type: str) -> dict[str, Any]:
 
     today = date.today()
 
-    _sample_lines = [
-        {"part_name": "Widget A",  "part_ipn": "WDG-001", "description": "Standard widget",       "quantity": 10, "unit_price": 25.50,  "total_price": 255.00},
-        {"part_name": "Gizmo B",   "part_ipn": "GZM-002", "description": "Premium gizmo",          "quantity": 5,  "unit_price": 42.00,  "total_price": 210.00},
-        {"part_name": "Bolt M8x20", "part_ipn": "BLT-008", "description": "Hex head bolt, M8×20",  "quantity": 100,"unit_price": 0.35,   "total_price": 35.00},
-        {"part_name": "Sensor X",  "part_ipn": "SNS-010", "description": "Temperature sensor 0-200°C","quantity": 3, "unit_price": 89.99, "total_price": 269.97},
+    sample_lines = [
+        {
+            "part_name": "Widget A",
+            "part_ipn": "WDG-001",
+            "description": "Standard widget",
+            "quantity": 10,
+            "unit_price": 25.50,
+            "total_price": 255.00,
+        },
+        {
+            "part_name": "Gizmo B",
+            "part_ipn": "GZM-002",
+            "description": "Premium gizmo",
+            "quantity": 5,
+            "unit_price": 42.00,
+            "total_price": 210.00,
+        },
+        {
+            "part_name": "Bolt M8x20",
+            "part_ipn": "BLT-008",
+            "description": "Hex head bolt, M8x20",
+            "quantity": 100,
+            "unit_price": 0.35,
+            "total_price": 35.00,
+        },
+        {
+            "part_name": "Sensor X",
+            "part_ipn": "SNS-010",
+            "description": "Temperature sensor 0-200°C",
+            "quantity": 3,
+            "unit_price": 89.99,
+            "total_price": 269.97,
+        },
     ]
 
     if document_type == "purchase_order":
@@ -508,7 +539,7 @@ def _build_sample_data(document_type: str) -> dict[str, Any]:
             "supplier_address": "123 Factory Rd, Houston TX 77001",
             "supplier_email": "orders@acme-industrial.example",
             "currency_symbol": "$",
-            "lines": _sample_lines,
+            "lines": sample_lines,
             "subtotal": 769.97,
             "tax_rate": "8.25%",
             "tax": 63.52,
@@ -527,7 +558,7 @@ def _build_sample_data(document_type: str) -> dict[str, Any]:
             "customer_address": "456 Innovation Blvd, Austin TX 78701",
             "customer_email": "purchasing@greenfield.example",
             "currency_symbol": "$",
-            "lines": _sample_lines,
+            "lines": sample_lines,
             "subtotal": 769.97,
             "tax_rate": "8.25%",
             "tax": 63.52,
@@ -538,11 +569,46 @@ def _build_sample_data(document_type: str) -> dict[str, Any]:
 
     if document_type == "bom":
         bom_lines = [
-            {"part_name": "Widget A",   "part_ipn": "WDG-001", "reference": "R1,R2",  "quantity": 2, "units": "pcs", "optional": False},
-            {"part_name": "Gizmo B",    "part_ipn": "GZM-002", "reference": "U1",     "quantity": 1, "units": "pcs", "optional": False},
-            {"part_name": "Bolt M8x20", "part_ipn": "BLT-008", "reference": "",       "quantity": 8, "units": "pcs", "optional": False},
-            {"part_name": "Sensor X",   "part_ipn": "SNS-010", "reference": "J1",     "quantity": 1, "units": "pcs", "optional": True},
-            {"part_name": "PCB Rev-C",  "part_ipn": "PCB-003", "reference": "",       "quantity": 1, "units": "pcs", "optional": False},
+            {
+                "part_name": "Widget A",
+                "part_ipn": "WDG-001",
+                "reference": "R1,R2",
+                "quantity": 2,
+                "units": "pcs",
+                "optional": False,
+            },
+            {
+                "part_name": "Gizmo B",
+                "part_ipn": "GZM-002",
+                "reference": "U1",
+                "quantity": 1,
+                "units": "pcs",
+                "optional": False,
+            },
+            {
+                "part_name": "Bolt M8x20",
+                "part_ipn": "BLT-008",
+                "reference": "",
+                "quantity": 8,
+                "units": "pcs",
+                "optional": False,
+            },
+            {
+                "part_name": "Sensor X",
+                "part_ipn": "SNS-010",
+                "reference": "J1",
+                "quantity": 1,
+                "units": "pcs",
+                "optional": True,
+            },
+            {
+                "part_name": "PCB Rev-C",
+                "part_ipn": "PCB-003",
+                "reference": "",
+                "quantity": 1,
+                "units": "pcs",
+                "optional": False,
+            },
         ]
         return {
             "part_name": "Controller Assembly v2",
@@ -564,7 +630,7 @@ def _build_sample_data(document_type: str) -> dict[str, Any]:
             "contact_address": "456 Innovation Blvd, Austin TX 78701",
             "contact_email": "rfq@greenfield.example",
             "currency_symbol": "$",
-            "lines": _sample_lines,
+            "lines": sample_lines,
             "subtotal": 769.97,
             "tax_rate": "8.25%",
             "tax": 63.52,
@@ -576,9 +642,36 @@ def _build_sample_data(document_type: str) -> dict[str, Any]:
 
     if document_type == "rfq":
         rfq_lines = [
-            {"part_name": "Widget A",   "part_ipn": "WDG-001", "description": "Standard widget",             "quantity": 50,  "target_price": 22.00, "your_price": None, "lead_time": "", "total_price": None},
-            {"part_name": "Gizmo B",    "part_ipn": "GZM-002", "description": "Premium gizmo",               "quantity": 20,  "target_price": 38.00, "your_price": None, "lead_time": "", "total_price": None},
-            {"part_name": "Sensor X",   "part_ipn": "SNS-010", "description": "Temperature sensor 0-200°C",  "quantity": 10,  "target_price": 80.00, "your_price": None, "lead_time": "", "total_price": None},
+            {
+                "part_name": "Widget A",
+                "part_ipn": "WDG-001",
+                "description": "Standard widget",
+                "quantity": 50,
+                "target_price": 22.00,
+                "your_price": None,
+                "lead_time": "",
+                "total_price": None,
+            },
+            {
+                "part_name": "Gizmo B",
+                "part_ipn": "GZM-002",
+                "description": "Premium gizmo",
+                "quantity": 20,
+                "target_price": 38.00,
+                "your_price": None,
+                "lead_time": "",
+                "total_price": None,
+            },
+            {
+                "part_name": "Sensor X",
+                "part_ipn": "SNS-010",
+                "description": "Temperature sensor 0-200°C",
+                "quantity": 10,
+                "target_price": 80.00,
+                "your_price": None,
+                "lead_time": "",
+                "total_price": None,
+            },
         ]
         return {
             "reference": "RFQ-2026-0008",
@@ -603,9 +696,27 @@ def _build_sample_data(document_type: str) -> dict[str, Any]:
 
     if document_type == "work_order":
         wo_items = [
-            {"name": "Disassemble unit",   "description": "Remove casing and inspect internals", "quantity": 1, "unit_price": 75.00,  "total": 75.00},
-            {"name": "Replace Sensor X",   "description": "Swap faulty temperature sensor",     "quantity": 1, "unit_price": 89.99,  "total": 89.99},
-            {"name": "Calibrate & test",   "description": "Full calibration cycle + QA test",    "quantity": 1, "unit_price": 120.00, "total": 120.00},
+            {
+                "name": "Disassemble unit",
+                "description": "Remove casing and inspect internals",
+                "quantity": 1,
+                "unit_price": 75.00,
+                "total": 75.00,
+            },
+            {
+                "name": "Replace Sensor X",
+                "description": "Swap faulty temperature sensor",
+                "quantity": 1,
+                "unit_price": 89.99,
+                "total": 89.99,
+            },
+            {
+                "name": "Calibrate & test",
+                "description": "Full calibration cycle + QA test",
+                "quantity": 1,
+                "unit_price": 120.00,
+                "total": 120.00,
+            },
         ]
         return {
             "reference": "WO-2026-0005",
@@ -691,9 +802,7 @@ async def generate_and_send_document(
 
     # 1) Generate PDF ────────────────────────────────────────────────
     try:
-        pdf_bytes = pdf_service.generate_pdf(
-            TEMPLATE_MAP[document_type], document_data
-        )
+        pdf_bytes = pdf_service.generate_pdf(TEMPLATE_MAP[document_type], document_data)
     except Exception as e:
         logger.exception("PDF generation failed", document_type=document_type)
         return {"success": False, "error": f"PDF generation failed: {e}"}
@@ -744,4 +853,3 @@ EMAIL_TOOLS = [
     send_email,
     generate_and_send_document,
 ]
-

@@ -92,10 +92,8 @@ $.ajax({
 import requests
 
 token = 'MY-TOKEN-VALUE-HERE'
-data = { ... }
-headers = {
-    'AUTHORIZATION': f'Token {token}'
-}
+data = {...}
+headers = {'AUTHORIZATION': f'Token {token}'}
 response = request.get('http://localhost:8080/api/part/', data=data, headers=headers)
 ```
 

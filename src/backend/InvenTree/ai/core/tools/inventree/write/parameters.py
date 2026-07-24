@@ -119,9 +119,7 @@ async def update_parameter_template(
         if not data:
             return tool.error_response("No fields provided to update.")
 
-        result = await client.patch(
-            f"part/parameter/template/{template_id}/", json=data
-        )
+        result = await client.patch(f"part/parameter/template/{template_id}/", json=data)
 
         logger.info(f"Updated parameter template {template_id}")
         return tool.success_response(
@@ -161,9 +159,7 @@ async def delete_parameter_template(
 
         await client.delete(f"part/parameter/template/{template_id}/")
 
-        logger.info(
-            f"Deleted parameter template {template_id} ({template.get('name')})"
-        )
+        logger.info(f"Deleted parameter template {template_id} ({template.get('name')})")
         return tool.success_response(
             data={
                 "template_id": template_id,
@@ -250,9 +246,7 @@ async def bulk_set_parameters(
                     "error": str(param_error),
                 })
 
-        logger.info(
-            f"Bulk set {len(results)} parameters for part {part_id}, {len(errors)} errors"
-        )
+        logger.info(f"Bulk set {len(results)} parameters for part {part_id}, {len(errors)} errors")
         return tool.success_response(
             data={
                 "part_id": part_id,
@@ -351,9 +345,7 @@ async def copy_parameters(
                 )
                 copied += 1
 
-        logger.info(
-            f"Copied {copied} parameters from part {source_part_id} to {target_part_id}"
-        )
+        logger.info(f"Copied {copied} parameters from part {source_part_id} to {target_part_id}")
         return tool.success_response(
             data={
                 "source_part_id": source_part_id,
@@ -365,9 +357,7 @@ async def copy_parameters(
         )
 
     except Exception as e:
-        logger.error(
-            f"Failed to copy parameters from {source_part_id} to {target_part_id}: {e}"
-        )
+        logger.error(f"Failed to copy parameters from {source_part_id} to {target_part_id}: {e}")
         return tool.error_response(str(e))
 
 

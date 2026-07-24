@@ -24,14 +24,14 @@ async def get_report_templates(
 ) -> list[dict[str, Any]]:
     """
     Get a list of report templates.
-    
+
     Args:
         model_type: Filter by model type (e.g., 'build', 'part', 'purchaseorder', etc.)
         enabled: Filter by enabled status (default: True)
         limit: Max results
         offset: Pagination offset
         search: Search term (name/description)
-        
+
     Returns:
         List of report templates
     """
@@ -39,7 +39,7 @@ async def get_report_templates(
         "limit": limit,
         "offset": offset,
     }
-    
+
     if model_type:
         params["model_type"] = model_type
     if enabled is not None:
@@ -49,10 +49,11 @@ async def get_report_templates(
 
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         response = await client._request("GET", "/report/template/", params=params)
-        
+
         if isinstance(response, dict) and "results" in response:
             return response["results"]
         elif isinstance(response, list):
@@ -70,17 +71,18 @@ async def get_report_template_detail(
 ) -> dict[str, Any]:
     """
     Get details for a specific report template.
-    
+
     Args:
         template_id: The template ID (required)
-        
+
     Returns:
         Template details
     """
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         return await client._request("GET", f"/report/template/{template_id}/")
 
     except Exception as e:
@@ -95,7 +97,7 @@ REPORT_READ_TOOLS = [
 ]
 
 __all__ = [
-    "get_report_templates",
-    "get_report_template_detail",
     "REPORT_READ_TOOLS",
+    "get_report_template_detail",
+    "get_report_templates",
 ]

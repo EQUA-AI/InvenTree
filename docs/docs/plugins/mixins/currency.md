@@ -26,9 +26,9 @@ The default builtin plugin for handling currency exchange rates is the `InvenTre
 A simple example is shown below (with fake data).
 
 ```python
-
 from plugin import InvenTreePlugin
 from plugin.mixins import CurrencyExchangeMixin
+
 
 class MyFirstCurrencyExchangePlugin(CurrencyExchangeMixin, InvenTreePlugin):
     """Sample currency exchange plugin"""
@@ -51,9 +51,7 @@ class MyFirstCurrencyExchangePlugin(CurrencyExchangeMixin, InvenTreePlugin):
             Can raise any exception if the update fails
         """
 
-        rates = {
-            'base_currency': 1.00
-        }
+        rates = {'base_currency': 1.00}
 
         for sym in symbols:
             rates[sym] = random.randrange(5, 15) * 0.1

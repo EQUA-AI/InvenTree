@@ -657,7 +657,7 @@ class ConversationPersistence:
         query: str,
         user_id: str | None = None,
         exclude_thread_id: str | None = None,
-        workflow_id: str | None = None,  # noqa: ARG002
+        workflow_id: str | None = None,
         top_k: int = 5,
     ) -> list[SearchResult]:
         """

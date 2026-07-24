@@ -56,7 +56,6 @@ class TemplateTagTest(InvenTreeTestCase):
 
     def test_spa_bundle_static_root_fallback(self):
         """Manifest lookup falls back to STATIC_ROOT when packaged assets are missing."""
-
         manifest_file = Path(__file__).parent.joinpath('static/web/.vite/manifest.json')
 
         with TemporaryDirectory() as tmp_dir:

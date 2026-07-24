@@ -1,7 +1,7 @@
 # Azure Resource Inventory & Monthly Cost Breakdown
 
-**Generated:** December 16, 2025  
-**Resource Group:** EpconChat  
+**Generated:** December 16, 2025
+**Resource Group:** EpconChat
 **Region:** East US 2
 
 ---
@@ -488,7 +488,7 @@ Sweden Central is the best choice for a European secondary region because it has
    - West Europe: ❌ Limited availability
    - UK South: ✅ Available (alternative)
 
-4. **Embeddings (text-embedding-3-large)**: 
+4. **Embeddings (text-embedding-3-large)**:
    - Sweden Central: ✅ Available
    - Some European regions: ❌ Not available
 

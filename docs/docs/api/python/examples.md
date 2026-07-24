@@ -16,22 +16,23 @@ from inventree.stock import StockItem
 
 ## Create a new PartCategory object,
 ## underneath the existing category with pk 7. Leave the parent empty for a top level category
-furniture = PartCategory.create(api, {
-    'name': 'Furniture',
-    'description': 'Chairs, tables, etc',
-    'parent': 7,
-})
+furniture = PartCategory.create(
+    api, {'name': 'Furniture', 'description': 'Chairs, tables, etc', 'parent': 7}
+)
 
 ## Create a new Part
 ## Use the pk (primary-key) of the newly created category
-couch = Part.create(api, {
-    'name': 'Couch',
-    'description': 'Long thing for sitting on',
-    'category': furniture.pk,
-    'active': True,
-    'virtual': False,
-    ## Note - You do not have to fill out *all* fields
-})
+couch = Part.create(
+    api,
+    {
+        'name': 'Couch',
+        'description': 'Long thing for sitting on',
+        'category': furniture.pk,
+        'active': True,
+        'virtual': False,
+        ## Note - You do not have to fill out *all* fields
+    },
+)
 ```
 
 ### Updating Attributes
@@ -48,18 +49,15 @@ api = InvenTreeAPI(host='http://localhost:8000', username='admin', password='inv
 part = Part(api, pk=1)
 
 # Update specified part parameters
-part.save(data={
-    "description": "New part description",
-    "minimum_stock": 250,
-})
+part.save(data={'description': 'New part description', 'minimum_stock': 250})
 
 # Reload data from remote server
 part.reload()
 
 # Display updated data
-print("Part Name:", part.name)
-print("Description:", part.description)
-print("Minimum stock:", part.minimum_stock)
+print('Part Name:', part.name)
+print('Description:', part.description)
+print('Minimum stock:', part.minimum_stock)
 ```
 
 !!! info "Read Only Fields"
@@ -73,11 +71,15 @@ Each [part](../../part/index.md) can have multiple [parameters](../../concepts/p
 from inventree.part import Parameter
 from inventree.part import ParameterTemplate
 
-LengthTemplate = ParameterTemplate.create(api, { 'name' : 'Length', 'units' : 'Meters' })
-WeightTemplate = ParameterTemplate.create(api, { 'name' : 'Weight', 'units' : 'kg' })
+LengthTemplate = ParameterTemplate.create(api, {'name': 'Length', 'units': 'Meters'})
+WeightTemplate = ParameterTemplate.create(api, {'name': 'Weight', 'units': 'kg'})
 
-ParameterLength = Parameter.create(api, { 'part': couch.pk, 'template': LengthTemplate.pk, 'data' : 2 })
-ParameterWeight = Parameter.create(api, { 'part': couch.pk, 'template': WeightTemplate.pk, 'data' : 60 })
+ParameterLength = Parameter.create(
+    api, {'part': couch.pk, 'template': LengthTemplate.pk, 'data': 2}
+)
+ParameterWeight = Parameter.create(
+    api, {'part': couch.pk, 'template': WeightTemplate.pk, 'data': 60}
+)
 ```
 These parameter templates need to be defined only once and can be used for all other parts. Lets finally add a picture.
 
@@ -126,22 +128,28 @@ from inventree.company import Company
 
 ...
 
-acme = Company.create(api, {
-    'name' : 'ACME',
-    'description':'A Company that makes everything',
-    'website':'https://www.acme.bla',
-    'is_customer':0,
-    'is_manufacturer':1,
-    'is_supplier':0
-})
-xstore = Company.create(api, {
-    'name' : 'X-Store',
-    'description':'A really cool online store',
-    'website':'https://www.xst.bla',
-    'is_customer':0,
-    'is_manufacturer':0,
-    'is_supplier':1
-})
+acme = Company.create(
+    api,
+    {
+        'name': 'ACME',
+        'description': 'A Company that makes everything',
+        'website': 'https://www.acme.bla',
+        'is_customer': 0,
+        'is_manufacturer': 1,
+        'is_supplier': 0,
+    },
+)
+xstore = Company.create(
+    api,
+    {
+        'name': 'X-Store',
+        'description': 'A really cool online store',
+        'website': 'https://www.xst.bla',
+        'is_customer': 0,
+        'is_manufacturer': 0,
+        'is_supplier': 1,
+    },
+)
 ```
 
 Please recognize the different flag settings for is_supplier and is_manufacturer. Now lets add those to our couch:
@@ -151,17 +159,19 @@ from inventree.company import SupplierPart
 
 ...
 
-SupplierPart.create(api,{
-    'part':couch.pk,
-    'supplier':xstore.pk,
-    'SKU':'some_code',
-    'link':'https://www.xst.bla/products/stock?...'
-})
-ManufacturerPart.create(api,{
-    'part':couch.pk,
-    'manufacturer':acme.pk,
-    'MPN':'Part code of the manufacturer'
-})
+SupplierPart.create(
+    api,
+    {
+        'part': couch.pk,
+        'supplier': xstore.pk,
+        'SKU': 'some_code',
+        'link': 'https://www.xst.bla/products/stock?...',
+    },
+)
+ManufacturerPart.create(
+    api,
+    {'part': couch.pk, 'manufacturer': acme.pk, 'MPN': 'Part code of the manufacturer'},
+)
 ```
 
 ### Stock Adjustments
@@ -247,9 +257,21 @@ and the component which is being used (the *sub_part*).
 BOM Items can be created using the Python API interface as follows:
 
 ```python
-BomItem.create(api, data={'part':sofa_id, 'sub_part':back_id, 'quantity':1, 'reference':'p1'})
-BomItem.create(api, data={'part':sofa_id, 'sub_part':seat_id, 'quantity':1, 'reference':'p2'})
-BomItem.create(api, data={'part':sofa_id, 'sub_part':armrest_id, 'quantity':2, 'reference':'p3, p4'})
+BomItem.create(
+    api, data={'part': sofa_id, 'sub_part': back_id, 'quantity': 1, 'reference': 'p1'}
+)
+BomItem.create(
+    api, data={'part': sofa_id, 'sub_part': seat_id, 'quantity': 1, 'reference': 'p2'}
+)
+BomItem.create(
+    api,
+    data={
+        'part': sofa_id,
+        'sub_part': armrest_id,
+        'quantity': 2,
+        'reference': 'p3, p4',
+    },
+)
 ```
 
 Now you have three BOM items that make the BOM for the sofa. The `id` values are the primary keys of the

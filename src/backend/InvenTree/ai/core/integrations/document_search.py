@@ -92,8 +92,9 @@ def _embed_query(text: str) -> list[float] | None:
 # AI Tool
 # ---------------------------------------------------------------------------
 
+
 @ai_function
-async def search_part_documents(
+async def search_part_documents(  # noqa: RUF029 - async is the tool-call contract; sync would move execution to a thread
     query: str,
     top_k: int = 5,
 ) -> dict[str, Any]:

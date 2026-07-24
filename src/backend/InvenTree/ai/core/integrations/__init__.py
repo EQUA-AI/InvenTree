@@ -11,6 +11,19 @@ Contains external service integrations:
 - Foundry: Azure AI Foundry services (TODO)
 """
 
+from ai.core.integrations.data_provider import (
+    DemoDataProviderAsync,
+    LiveDataProviderAsync,
+    data_provider,
+    get_data_provider,
+    get_mode_status,
+    is_demo_mode,
+    reset_provider,
+)
+from ai.core.integrations.demo_dataset import (
+    DemoDatasetProvider,
+    get_demo_provider,
+)
 from ai.core.integrations.email import (
     EMAIL_TOOLS,
     EmailAttachment,
@@ -21,63 +34,50 @@ from ai.core.integrations.email import (
     GmailError,
     get_gmail_client,
 )
+from ai.core.integrations.inventory_tools import (
+    INVENTORY_TOOLS,
+)
 from ai.core.integrations.inventree import (
     INVENTREE_TOOLS,
+    BusinessRuleError,
     InvenTreeClient,
     InvenTreeError,
     TransientError,
     ValidationError,
-    BusinessRuleError,
     get_inventree_client,
     inventree_client,
 )
-from ai.core.integrations.demo_dataset import (
-    DemoDatasetProvider,
-    get_demo_provider,
-)
-from ai.core.integrations.data_provider import (
-    get_data_provider,
-    data_provider,
-    is_demo_mode,
-    get_mode_status,
-    reset_provider,
-    DemoDataProviderAsync,
-    LiveDataProviderAsync,
-)
-from ai.core.integrations.inventory_tools import (
-    INVENTORY_TOOLS,
-)
 
 __all__ = [
-    # InvenTree
-    "InvenTreeClient",
-    "InvenTreeError",
-    "TransientError",
-    "ValidationError",
-    "BusinessRuleError",
-    "get_inventree_client",
-    "inventree_client",
+    "EMAIL_TOOLS",
+    # Unified Inventory Tools (works with demo/live)
+    "INVENTORY_TOOLS",
     "INVENTREE_TOOLS",
+    "BusinessRuleError",
+    "DemoDataProviderAsync",
+    # Demo Dataset
+    "DemoDatasetProvider",
+    "EmailAttachment",
+    "EmailMessage",
+    "EmailProvider",
+    "EmailQuery",
     # Email
     "GmailClient",
     "GmailError",
-    "get_gmail_client",
-    "EmailProvider",
-    "EmailMessage",
-    "EmailAttachment",
-    "EmailQuery",
-    "EMAIL_TOOLS",
-    # Demo Dataset
-    "DemoDatasetProvider",
-    "get_demo_provider",
+    # InvenTree
+    "InvenTreeClient",
+    "InvenTreeError",
+    "LiveDataProviderAsync",
+    "TransientError",
+    "ValidationError",
+    "data_provider",
     # Unified Data Provider (switches between demo/live)
     "get_data_provider",
-    "data_provider",
-    "is_demo_mode",
+    "get_demo_provider",
+    "get_gmail_client",
+    "get_inventree_client",
     "get_mode_status",
+    "inventree_client",
+    "is_demo_mode",
     "reset_provider",
-    "DemoDataProviderAsync",
-    "LiveDataProviderAsync",
-    # Unified Inventory Tools (works with demo/live)
-    "INVENTORY_TOOLS",
 ]

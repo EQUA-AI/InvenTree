@@ -77,8 +77,7 @@ Below is a simple example of how a plugin can implement settings:
 
 ``` python
 class PluginWithSettings(SettingsMixin, InvenTreePlugin):
-
-    NAME = "PluginWithSettings"
+    NAME = 'PluginWithSettings'
 
     SETTINGS = {
         'API_ENABLE': {
@@ -101,38 +100,36 @@ class PluginWithSettings(SettingsMixin, InvenTreePlugin):
         'CONNECTION': {
             'name': _('Printer Interface'),
             'description': _('Select local or network printer'),
-            'choices': [('local','Local printer e.g. USB'),('network','Network printer with IP address')],
+            'choices': [
+                ('local', 'Local printer e.g. USB'),
+                ('network', 'Network printer with IP address'),
+            ],
             'default': 'local',
         },
         'NUMBER': {
             'name': _('A Name'),
             'description': _('Describe me here'),
             'default': 6,
-            'validator': [
-                int,
-                MinValueValidator(2),
-                MaxValueValidator(25)
-            ]
+            'validator': [int, MinValueValidator(2), MaxValueValidator(25)],
         },
         'ASSEMBLY': {
             'name': _('Assembled Part'),
             'description': _('Settings can point to internal database models'),
             'model': 'part.part',
-            'model_filters': {
-                'active': True,
-                'assembly': True
-            }
+            'model_filters': {'active': True, 'assembly': True},
         },
         'GROUP': {
             'name': _('User Group'),
             'description': _('Select a group of users'),
-            'model': 'auth.group'
+            'model': 'auth.group',
         },
         'HIDDEN_SETTING': {
             'name': _('Hidden Setting'),
-            'description': _('This setting is hidden from the automatically generated plugin settings page'),
+            'description': _(
+                'This setting is hidden from the automatically generated plugin settings page'
+            ),
             'hidden': True,
-        }
+        },
     }
 ```
 
@@ -145,7 +142,7 @@ class PluginWithSettings(SettingsMixin, InvenTreePlugin):
 This mixin defines the helper functions `plugin.get_setting`, `plugin.set_setting` and `plugin.check_settings` to access all plugin specific settings. The `plugin.check_settings` function can be used to check if all settings marked with `'required': True` are defined and not equal to `''`. Note that these methods cannot be used in the `__init__` function of your plugin.
 
 ```python
-api_url = self.get_setting('API_URL', cache = False)
+api_url = self.get_setting('API_URL', cache=False)
 self.set_setting('API_URL', 'some value')
 is_valid, missing_settings = self.check_settings()
 ```

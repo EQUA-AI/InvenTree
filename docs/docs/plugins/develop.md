@@ -65,14 +65,14 @@ General classes and mechanisms are provided under the `plugin` [namespaces]({{ s
 
 ```python
 # Management objects
-registry                    # Object that manages all plugin states and integrations
+registry  # Object that manages all plugin states and integrations
 
 # Base classes
-InvenTreePlugin             # Base class for all plugins
+InvenTreePlugin  # Base class for all plugins
 
 # Errors
-MixinImplementationError    # Is raised if a mixin is implemented wrong (default not overwritten for example)
-MixinNotImplementedError    # Is raised if a mixin was not implemented (core mechanisms are missing from the plugin)
+MixinImplementationError  # Is raised if a mixin is implemented wrong (default not overwritten for example)
+MixinNotImplementedError  # Is raised if a mixin was not implemented (core mechanisms are missing from the plugin)
 ```
 
 #### Mixins
@@ -94,13 +94,17 @@ If you need to react to state changes please use the [EventMixin](./mixins/event
 Some metadata options can be defined as constants in the plugins class.
 
 ``` python
-NAME = '' # Used as a general reference to the plugin
+NAME = ''  # Used as a general reference to the plugin
 SLUG = None  # Used in URLs, setting-names etc. when a unique slug as a reference is needed -> the plugin name is used if not set
 TITLE = None  # A nice human friendly name for the plugin -> used in titles, as plugin name etc.
 
 AUTHOR = None  # Author of the plugin, git commit information is used if not present
-PUBLISH_DATE = None  # Publishing date of the plugin, git commit information is used if not present
-WEBSITE = None  # Website for the plugin, developer etc. -> is shown in plugin overview if set
+PUBLISH_DATE = (
+    None  # Publishing date of the plugin, git commit information is used if not present
+)
+WEBSITE = (
+    None  # Website for the plugin, developer etc. -> is shown in plugin overview if set
+)
 
 VERSION = None  # Version of the plugin
 MIN_VERSION = None  # Lowest InvenTree version number that is supported by the plugin
@@ -249,6 +253,7 @@ This example adds a new action under `/api/action/sample` using the ActionMixin.
 ``` py
 # -*- coding: utf-8 -*-
 """sample implementation for ActionPlugin"""
+
 from plugin import InvenTreePlugin
 from plugin.mixins import ActionMixin
 
@@ -256,26 +261,23 @@ from plugin.mixins import ActionMixin
 class SampleActionPlugin(ActionMixin, InvenTreePlugin):
     """Use docstrings for everything."""
 
-    NAME = "SampleActionPlugin"
-    ACTION_NAME = "sample"
+    NAME = 'SampleActionPlugin'
+    ACTION_NAME = 'sample'
 
     # metadata
-    AUTHOR = "Sample Author"
-    DESCRIPTION = "A very basic plugin with one mixin"
-    PUBLISH_DATE = "2222-02-22"
-    VERSION = "1.2.3"  # We recommend semver and increase the major version with each new major release of InvenTree
-    WEBSITE = "https://example.com/"
-    LICENSE = "MIT"  # use what you want - OSI approved is &hearts;
+    AUTHOR = 'Sample Author'
+    DESCRIPTION = 'A very basic plugin with one mixin'
+    PUBLISH_DATE = '2222-02-22'
+    VERSION = '1.2.3'  # We recommend semver and increase the major version with each new major release of InvenTree
+    WEBSITE = 'https://example.com/'
+    LICENSE = 'MIT'  # use what you want - OSI approved is &hearts;
 
     # Everything form here is for the ActionMixin
     def perform_action(self):
-        print("Action plugin in action!")
+        print('Action plugin in action!')
 
     def get_info(self):
-        return {
-            "user": self.user.username,
-            "hello": "world",
-        }
+        return {'user': self.user.username, 'hello': 'world'}
 
     def get_result(self):
         return True  # This is returned to the client

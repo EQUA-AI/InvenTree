@@ -31,15 +31,12 @@ For example, the built-in `InvenTreeLabelPlugin` plugin generates a PDF file whi
 
 ```python
 # Save the generated file to the database
-output = LabelOutput.objects.create(
-    label=output_file,
-    user=request.user
-)
+output = LabelOutput.objects.create(label=output_file, user=request.user)
 
 return JsonResponse({
     'file': output.label.url,
     'success': True,
-    'message': f'{len(items)} labels generated'
+    'message': f'{len(items)} labels generated',
 })
 ```
 
@@ -71,17 +68,17 @@ The following simple example shows how to implement an orientation select. For m
 ```py
 from rest_framework import serializers
 
+
 class MyLabelPrinter(LabelPrintingMixin, InvenTreePlugin):
     ...
 
     class PrintingOptionsSerializer(serializers.Serializer):
-        orientation = serializers.ChoiceField(choices=[
-            ("landscape", "Landscape"),
-            ("portrait", "Portrait"),
-        ])
+        orientation = serializers.ChoiceField(
+            choices=[('landscape', 'Landscape'), ('portrait', 'Portrait')]
+        )
 
     def print_label(self, **kwargs):
-        print(kwargs["printing_options"]) # -> {"orientation": "landscape"}
+        print(kwargs['printing_options'])  # -> {"orientation": "landscape"}
         ...
 ```
 
@@ -127,6 +124,7 @@ Plugins which implement the `LabelPrintingMixin` mixin class can be implemented 
 ```python
 from dummy_printer import printer_backend
 
+
 class MyLabelPrinter(LabelPrintingMixin, InvenTreePlugin):
     """
     A simple example plugin which provides support for a dummy printer.
@@ -134,9 +132,9 @@ class MyLabelPrinter(LabelPrintingMixin, InvenTreePlugin):
     A more complex plugin would communicate with an actual printer!
     """
 
-    NAME = "MyLabelPrinter"
-    SLUG = "mylabel"
-    TITLE = "A dummy printer"
+    NAME = 'MyLabelPrinter'
+    SLUG = 'mylabel'
+    TITLE = 'A dummy printer'
 
     # Set BLOCKING_PRINT to false to return immediately
     BLOCKING_PRINT = False

@@ -46,18 +46,18 @@ from plugin import InvenTreePlugin
 from plugin.mixins import BarcodeMixin
 from part.models import Part
 
-class InvenTreeBarcodePlugin(BarcodeMixin, InvenTreePlugin):
 
-    NAME = "MyBarcode"
-    TITLE = "My Barcodes"
-    DESCRIPTION = "support for barcodes"
-    VERSION = "0.0.1"
-    AUTHOR = "Michael"
+class InvenTreeBarcodePlugin(BarcodeMixin, InvenTreePlugin):
+    NAME = 'MyBarcode'
+    TITLE = 'My Barcodes'
+    DESCRIPTION = 'support for barcodes'
+    VERSION = '0.0.1'
+    AUTHOR = 'Michael'
 
     def scan(self, barcode_data, user, **kwargs):
-        if barcode_data.startswith("PART-"):
+        if barcode_data.startswith('PART-'):
             try:
-                pk = int(barcode_data.split("PART-")[1])
+                pk = int(barcode_data.split('PART-')[1])
                 instance = Part.objects.get(pk=pk)
                 label = Part.barcode_model_type()
 
@@ -77,12 +77,13 @@ from InvenTree.models import InvenTreeBarcodeMixin
 from plugin import InvenTreePlugin
 from plugin.mixins import BarcodeMixin
 
+
 class InvenTreeBarcodePlugin(BarcodeMixin, InvenTreePlugin):
-    NAME = "MyInternalBarcode"
-    TITLE = "My Internal Barcodes"
-    DESCRIPTION = "support for custom internal barcodes"
-    VERSION = "0.0.1"
-    AUTHOR = "InvenTree contributors"
+    NAME = 'MyInternalBarcode'
+    TITLE = 'My Internal Barcodes'
+    DESCRIPTION = 'support for custom internal barcodes'
+    VERSION = '0.0.1'
+    AUTHOR = 'InvenTree contributors'
 
     def generate(self, model_instance: InvenTreeBarcodeMixin):
         return f'{model_instance.barcode_model_type()}: {model_instance.pk}'

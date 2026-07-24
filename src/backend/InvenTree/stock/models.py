@@ -3,7 +3,6 @@
 # EQUA fork note: this is an upstream InvenTree file; the pre-existing
 # docstring/try-block style predates the preview lint rules. Suppressed
 # file-wide to keep the diff against upstream minimal.
-# ruff: noqa: D421, PLW0717
 
 from __future__ import annotations
 

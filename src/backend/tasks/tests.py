@@ -16,13 +16,11 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
 
     def setUp(self):
         """Ensure a clean slate for each test."""
-
         super().setUp()
         KanbanCard.objects.all().delete()
 
     def _create_card(self, **overrides):
         """Helper to create a card with sensible defaults."""
-
         data = {
             'title': 'Test card',
             'description': 'Initial description',
@@ -41,7 +39,6 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
 
     def test_create_card(self):
         """Cards can be created through the API."""
-
         url = reverse('kanban-card-list')
         payload = {
             'title': 'Persisted Card',
@@ -66,7 +63,6 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
 
     def test_list_excludes_inactive(self):
         """Inactive cards are hidden from the default listing."""
-
         active = self._create_card(title='Active Card')
         inactive = self._create_card(title='Inactive Card', is_active=False)
 
@@ -80,7 +76,6 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
 
     def test_soft_delete(self):
         """Deleting a card toggles the active flag instead of removing it."""
-
         card = self._create_card()
         url = reverse('kanban-card-detail', kwargs={'pk': card.pk})
 
@@ -92,7 +87,6 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
 
     def test_restore_card(self):
         """Soft deleted cards can be restored via the dedicated endpoint."""
-
         card = self._create_card(is_active=False)
         url = reverse('kanban-card-restore', kwargs={'pk': card.pk})
 
@@ -105,7 +99,6 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
 
     def test_tag_filter(self):
         """Filtering by a tag returns matching cards."""
-
         card = self._create_card(tags=['priority', 'backend'])
         self._create_card(title='Other Card', tags=['frontend'])
 

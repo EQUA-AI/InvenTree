@@ -660,22 +660,29 @@ async def send_email(
         msg.attach(MIMEText(body, "plain"))
 
         # Attach files
-        for att in (attachments or []):
+        for att in attachments or []:
             mime = att.get("mime_type", "application/pdf")
             maintype, subtype = mime.split("/", 1)
             part = MIMEApplication(att["data_bytes"], _subtype=subtype)
             part.add_header(
-                "Content-Disposition", "attachment",
+                "Content-Disposition",
+                "attachment",
                 filename=att["filename"],
             )
             msg.attach(part)
 
         # Encode and send
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
-        result = service.users().messages().send(
-            userId="me",
-            body={"raw": raw},
-        ).execute()
+        result = (
+            service
+            .users()
+            .messages()
+            .send(
+                userId="me",
+                body={"raw": raw},
+            )
+            .execute()
+        )
 
         logger.info("Email sent", message_id=result["id"], to=to)
         return {"success": True, "message_id": result["id"]}
@@ -738,15 +745,13 @@ async def generate_and_send_document(
         return {
             "success": False,
             "error": f"Unknown document_type '{document_type}'. "
-                     f"Must be one of: {list(TEMPLATE_MAP.keys())}",
+            f"Must be one of: {list(TEMPLATE_MAP.keys())}",
         }
 
     pdf_service = get_pdf_service()
 
     # 1. Generate PDF
-    pdf_bytes = pdf_service.generate_pdf(
-        TEMPLATE_MAP[document_type], document_data
-    )
+    pdf_bytes = pdf_service.generate_pdf(TEMPLATE_MAP[document_type], document_data)
 
     ref = document_data.get("reference", document_type)
     filename = f"{ref}.pdf"
@@ -767,11 +772,13 @@ async def generate_and_send_document(
         subject=subject,
         body=body,
         cc=cc,
-        attachments=[{
-            "filename": filename,
-            "data_bytes": pdf_bytes,
-            "mime_type": "application/pdf",
-        }],
+        attachments=[
+            {
+                "filename": filename,
+                "data_bytes": pdf_bytes,
+                "mime_type": "application/pdf",
+            }
+        ],
     )
 
     if result.get("success"):

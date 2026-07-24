@@ -9,7 +9,7 @@ Imports here preserve backward compatibility for:
 - Any other code that imported from ``wf6_documents_v2``
 """
 
-from ai.core.workflows.wf6_documents import (  # noqa: F401
+from ai.core.workflows.wf6_documents import (
     DocumentExtractionResult,
     DocumentProcessingResult,
     DocumentType,

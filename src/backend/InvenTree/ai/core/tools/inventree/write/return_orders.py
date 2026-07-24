@@ -10,7 +10,6 @@ import logging
 from typing import Any
 
 from ai.core.maf_compat import ai_function
-
 from ai.core.tools.inventree.base import require_hitl
 
 logger = logging.getLogger(__name__)
@@ -29,10 +28,10 @@ async def create_return_order(
 ) -> dict[str, Any]:
     """
     Create a new return order.
-    
+
     Creates a return order for receiving goods back from a customer.
     Line items can be added after creation.
-    
+
     Args:
         customer_id: The customer company ID (required)
         reference: Return order reference (auto-generated if not provided)
@@ -41,10 +40,10 @@ async def create_return_order(
         link: External link (e.g., RMA reference)
         contact_id: Customer contact person ID
         project_code: Project code for tracking
-    
+
     Returns:
         Created return order data
-    
+
     Example:
         # Create a return order for a customer
         ro = await create_return_order(
@@ -54,11 +53,11 @@ async def create_return_order(
         )
     """
     logger.info(f"Creating return order for customer {customer_id}")
-    
+
     data: dict[str, Any] = {
         "customer": customer_id,
     }
-    
+
     if reference:
         data["reference"] = reference
     if description:
@@ -71,19 +70,20 @@ async def create_return_order(
         data["contact"] = contact_id
     if project_code:
         data["project_code"] = project_code
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", "/order/ro/", json_data=data)
-        
+
         if isinstance(result, dict):
             logger.info(f"Created return order pk={result.get('pk')}")
             return result
-        
+
         return {"error": "Unexpected response format"}
-        
+
     except Exception as e:
         logger.error(f"Failed to create return order: {e}")
         raise
@@ -101,9 +101,9 @@ async def add_ro_line_item(
 ) -> dict[str, Any]:
     """
     Add a line item to a return order.
-    
+
     Adds a part expected to be returned to an existing return order.
-    
+
     Args:
         order_id: The return order ID (required)
         part_id: The part being returned (required)
@@ -111,10 +111,10 @@ async def add_ro_line_item(
         reference: Line item reference (e.g., original SO reference)
         notes: Notes for this line
         outcome: Expected outcome code (10=Return, 20=Repair, etc.)
-    
+
     Returns:
         Created line item data
-    
+
     Example:
         # Add 5 defective widgets to return order
         line = await add_ro_line_item(
@@ -126,32 +126,33 @@ async def add_ro_line_item(
         )
     """
     logger.info(f"Adding line item to RO {order_id}: part {part_id} x {quantity}")
-    
+
     data: dict[str, Any] = {
         "order": order_id,
         "part": part_id,
         "quantity": quantity,
     }
-    
+
     if reference:
         data["reference"] = reference
     if notes:
         data["notes"] = notes
     if outcome is not None:
         data["outcome"] = outcome
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", "/order/ro-line/", json_data=data)
-        
+
         if isinstance(result, dict):
             logger.info(f"Added RO line item pk={result.get('pk')}")
             return result
-        
+
         return {"error": "Unexpected response format"}
-        
+
     except Exception as e:
         logger.error(f"Failed to add RO line item: {e}")
         raise
@@ -164,38 +165,35 @@ async def issue_return_order(
 ) -> dict[str, Any]:
     """
     Issue a return order.
-    
+
     Changes the RO status from 'Pending' to 'In Progress'.
     This indicates the return is expected/authorized.
-    
+
     Args:
         order_id: The return order ID to issue (required)
-    
+
     Returns:
         Updated return order data
-    
+
     Example:
         # Authorize a return order
         result = await issue_return_order(order_id=5)
     """
     logger.info(f"Issuing return order {order_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "POST", 
-            f"/order/ro/{order_id}/issue/",
-            json_data={}
-        )
-        
+
+        result = await client._request("POST", f"/order/ro/{order_id}/issue/", json_data={})
+
         if isinstance(result, dict):
             logger.info(f"Issued return order {order_id}")
             return result
-        
+
         return {"success": True, "order_id": order_id, "status": "In Progress"}
-        
+
     except Exception as e:
         logger.error(f"Failed to issue return order: {e}")
         raise
@@ -212,19 +210,19 @@ async def receive_ro_items(
 ) -> dict[str, Any]:
     """
     Receive items from a return order.
-    
+
     Records receipt of returned items, creating stock entries.
-    
+
     Args:
         order_id: The return order ID (required)
         line_item_id: The RO line item ID (required)
         quantity: Quantity received (required)
         location_id: Stock location for received items (required)
         notes: Notes about the received items
-    
+
     Returns:
         Receipt result with created stock items
-    
+
     Example:
         # Receive 3 of 5 expected returns
         result = await receive_ro_items(
@@ -236,37 +234,34 @@ async def receive_ro_items(
         )
     """
     logger.info(f"Receiving {quantity} items for RO {order_id} line {line_item_id}")
-    
+
     item_data: dict[str, Any] = {
         "line_item": line_item_id,
         "quantity": quantity,
         "location": location_id,
     }
-    
+
     data: dict[str, Any] = {
         "items": [item_data],
         "location": location_id,
     }
-    
+
     if notes:
         data["notes"] = notes
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "POST", 
-            f"/order/ro/{order_id}/receive/",
-            json_data=data
-        )
-        
+
+        result = await client._request("POST", f"/order/ro/{order_id}/receive/", json_data=data)
+
         if isinstance(result, dict):
             logger.info(f"Received items for RO {order_id}")
             return result
-        
+
         return {"success": True, "received_quantity": quantity}
-        
+
     except Exception as e:
         logger.error(f"Failed to receive RO items: {e}")
         raise
@@ -280,21 +275,21 @@ async def complete_return_order(
 ) -> dict[str, Any]:
     """
     Complete a return order.
-    
+
     Marks the return order as complete. All expected items
     should be received before completing.
-    
+
     Args:
         order_id: The return order ID to complete (required)
         accept_incomplete: If True, complete even with unreceived items
-    
+
     Returns:
         Updated return order data
-    
+
     Example:
         # Complete a fully received return
         result = await complete_return_order(order_id=5)
-        
+
         # Complete with partial receipt
         result = await complete_return_order(
             order_id=5,
@@ -302,27 +297,24 @@ async def complete_return_order(
         )
     """
     logger.info(f"Completing return order {order_id}")
-    
+
     data: dict[str, Any] = {}
     if accept_incomplete:
         data["accept_incomplete"] = True
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "POST", 
-            f"/order/ro/{order_id}/complete/",
-            json_data=data
-        )
-        
+
+        result = await client._request("POST", f"/order/ro/{order_id}/complete/", json_data=data)
+
         if isinstance(result, dict):
             logger.info(f"Completed return order {order_id}")
             return result
-        
+
         return {"success": True, "order_id": order_id, "status": "Complete"}
-        
+
     except Exception as e:
         logger.error(f"Failed to complete return order: {e}")
         raise
@@ -343,7 +335,7 @@ async def update_return_order(
 ) -> dict[str, Any]:
     """
     Update a return order.
-    
+
     Args:
         return_order_id: The return order ID to update (required)
         customer_id: Customer company ID
@@ -354,12 +346,12 @@ async def update_return_order(
         link: External link
         contact_id: Contact person ID
         project_code: Project code ID
-    
+
     Returns:
         Updated return order data
     """
     logger.info(f"Updating return order {return_order_id}")
-    
+
     data: dict[str, Any] = {}
     if customer_id:
         data["customer"] = customer_id
@@ -377,18 +369,19 @@ async def update_return_order(
         data["contact"] = contact_id
     if project_code:
         data["project_code"] = project_code
-        
+
     if not data:
         raise ValueError("No fields to update provided")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("PATCH", f"/order/ro/{return_order_id}/", json_data=data)
         logger.info(f"Updated return order {return_order_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to update return order: {e}")
         raise
@@ -401,27 +394,24 @@ async def cancel_return_order(
 ) -> dict[str, Any]:
     """
     Cancel a return order.
-    
+
     Args:
         return_order_id: The return order ID to cancel
-        
+
     Returns:
         Cancellation confirmation
     """
     logger.info(f"Cancelling return order {return_order_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "POST", 
-            f"/order/ro/{return_order_id}/cancel/",
-            json_data={}
-        )
+
+        result = await client._request("POST", f"/order/ro/{return_order_id}/cancel/", json_data={})
         logger.info(f"Cancelled return order {return_order_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to cancel return order: {e}")
         raise
@@ -434,24 +424,25 @@ async def delete_return_order(
 ) -> dict[str, Any]:
     """
     Delete a return order.
-    
+
     Args:
         return_order_id: The return order ID to delete
-        
+
     Returns:
         Success confirmation
     """
     logger.info(f"Deleting return order {return_order_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         await client._request("DELETE", f"/order/ro/{return_order_id}/")
-        
+
         logger.info(f"Deleted return order {return_order_id}")
         return {"success": True, "return_order_id": return_order_id}
-        
+
     except Exception as e:
         logger.error(f"Failed to delete return order: {e}")
         raise
@@ -464,24 +455,25 @@ async def delete_ro_line_item(
 ) -> dict[str, Any]:
     """
     Delete a return order line item.
-    
+
     Args:
         line_item_id: The line item ID to delete
-        
+
     Returns:
         Success confirmation
     """
     logger.info(f"Deleting RO line item {line_item_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         await client._request("DELETE", f"/order/ro-line/{line_item_id}/")
-        
+
         logger.info(f"Deleted RO line item {line_item_id}")
         return {"success": True, "line_item_id": line_item_id}
-        
+
     except Exception as e:
         logger.error(f"Failed to delete RO line item: {e}")
         raise
@@ -501,14 +493,14 @@ RETURN_ORDER_WRITE_TOOLS = [
 ]
 
 __all__ = [
-    "create_return_order",
+    "RETURN_ORDER_WRITE_TOOLS",
     "add_ro_line_item",
-    "issue_return_order",
-    "receive_ro_items",
-    "complete_return_order",
-    "update_return_order",
     "cancel_return_order",
+    "complete_return_order",
+    "create_return_order",
     "delete_return_order",
     "delete_ro_line_item",
-    "RETURN_ORDER_WRITE_TOOLS",
+    "issue_return_order",
+    "receive_ro_items",
+    "update_return_order",
 ]

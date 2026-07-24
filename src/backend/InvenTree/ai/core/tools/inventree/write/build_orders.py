@@ -9,9 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ai.core.maf_compat import ai_function
-
 from ai.core.integrations.data_provider import get_data_provider
+from ai.core.maf_compat import ai_function
 from ai.core.tools.inventree.base import require_hitl
 
 logger = logging.getLogger(__name__)
@@ -34,10 +33,10 @@ async def create_build_order(
 ) -> dict[str, Any]:
     """
     Create a new build order for manufacturing.
-    
+
     Creates a build order to manufacture a specified quantity of a part.
     The part must be an assembly with a valid BOM.
-    
+
     Args:
         part_id: The part to build (must be an assembly) (required)
         quantity: Quantity to build (required)
@@ -50,10 +49,10 @@ async def create_build_order(
         destination_id: Stock location for completed items
         link: External link
         project_code: Project code for tracking
-    
+
     Returns:
         Created build order data
-    
+
     Example:
         # Create a build order for 50 assemblies
         build = await create_build_order(
@@ -71,14 +70,14 @@ async def create_build_order(
         raise ValueError(f"Part with ID {part_id} not found")
     if not part.get("assembly"):
         raise ValueError(f"Part {part_id} is not an assembly (cannot be built)")
-    
+
     logger.info(f"Creating build order for part {part_id} x {quantity}")
-    
+
     data: dict[str, Any] = {
         "part": part_id,
         "quantity": quantity,
     }
-    
+
     if reference:
         data["reference"] = reference
     if title:
@@ -97,19 +96,20 @@ async def create_build_order(
         data["link"] = link
     if project_code:
         data["project_code"] = project_code
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", "/build/", json_data=data)
-        
+
         if isinstance(result, dict):
             logger.info(f"Created build order pk={result.get('pk')}")
             return result
-        
+
         return {"error": "Unexpected response format"}
-        
+
     except Exception as e:
         logger.error(f"Failed to create build order: {e}")
         raise
@@ -122,38 +122,35 @@ async def issue_build_order(
 ) -> dict[str, Any]:
     """
     Issue a build order to start production.
-    
+
     Changes build status from 'Pending' to 'Production'.
     Stock can be allocated and consumed after issuing.
-    
+
     Args:
         build_id: The build order ID to issue (required)
-    
+
     Returns:
         Updated build order data
-    
+
     Example:
         # Start production on a build order
         result = await issue_build_order(build_id=25)
     """
     logger.info(f"Issuing build order {build_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "POST", 
-            f"/build/{build_id}/issue/",
-            json_data={}
-        )
-        
+
+        result = await client._request("POST", f"/build/{build_id}/issue/", json_data={})
+
         if isinstance(result, dict):
             logger.info(f"Issued build order {build_id}")
             return result
-        
+
         return {"success": True, "build_id": build_id, "status": "Production"}
-        
+
     except Exception as e:
         logger.error(f"Failed to issue build order: {e}")
         raise
@@ -169,18 +166,18 @@ async def allocate_build_stock(
 ) -> dict[str, Any]:
     """
     Allocate stock to a build order line.
-    
+
     Reserves stock items for consumption in a build order.
-    
+
     Args:
         build_id: The build order ID (required)
         bom_item_id: The BOM item to allocate for (required)
         stock_item_id: The stock item to allocate (required)
         quantity: Quantity to allocate (required)
-    
+
     Returns:
         Created allocation data
-    
+
     Example:
         # Allocate 50 resistors to a build
         allocation = await allocate_build_stock(
@@ -191,26 +188,27 @@ async def allocate_build_stock(
         )
     """
     logger.info(f"Allocating {quantity} from stock {stock_item_id} to build {build_id}")
-    
+
     data: dict[str, Any] = {
         "build": build_id,
         "bom_item": bom_item_id,
         "stock_item": stock_item_id,
         "quantity": quantity,
     }
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", "/build/item/", json_data=data)
-        
+
         if isinstance(result, dict):
             logger.info(f"Created build allocation pk={result.get('pk')}")
             return result
-        
+
         return {"error": "Unexpected response format"}
-        
+
     except Exception as e:
         logger.error(f"Failed to allocate build stock: {e}")
         raise
@@ -228,10 +226,10 @@ async def complete_build_output(
 ) -> dict[str, Any]:
     """
     Complete build output (create finished goods).
-    
+
     Records completion of built items, creating new stock entries
     for the finished assemblies.
-    
+
     Args:
         build_id: The build order ID (required)
         quantity: Quantity completed (required)
@@ -239,10 +237,10 @@ async def complete_build_output(
         serial_numbers: Comma-separated serial numbers (for serialized parts)
         batch_code: Batch code for completed items
         notes: Notes about completion
-    
+
     Returns:
         Completion result with created stock items
-    
+
     Example:
         # Complete 25 units from a build order
         result = await complete_build_output(
@@ -253,41 +251,38 @@ async def complete_build_output(
         )
     """
     logger.info(f"Completing {quantity} outputs for build {build_id}")
-    
+
     output_data: dict[str, Any] = {
         "quantity": quantity,
     }
-    
+
     if serial_numbers:
         output_data["serial_numbers"] = serial_numbers
     if batch_code:
         output_data["batch_code"] = batch_code
-    
+
     data: dict[str, Any] = {
         "outputs": [output_data],
         "location": location_id,
         "status": 10,  # OK status
     }
-    
+
     if notes:
         data["notes"] = notes
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "POST", 
-            f"/build/{build_id}/complete/",
-            json_data=data
-        )
-        
+
+        result = await client._request("POST", f"/build/{build_id}/complete/", json_data=data)
+
         if isinstance(result, dict):
             logger.info(f"Completed build output for {build_id}")
             return result
-        
+
         return {"success": True, "completed_quantity": quantity}
-        
+
     except Exception as e:
         logger.error(f"Failed to complete build output: {e}")
         raise
@@ -300,38 +295,35 @@ async def cancel_build_order(
 ) -> dict[str, Any]:
     """
     Cancel a build order.
-    
+
     Cancels an active build order. Any allocated stock will be
     released. Cannot cancel builds with completed outputs.
-    
+
     Args:
         build_id: The build order ID to cancel (required)
-    
+
     Returns:
         Cancellation confirmation
-    
+
     Example:
         # Cancel an unwanted build order
         result = await cancel_build_order(build_id=25)
     """
     logger.info(f"Cancelling build order {build_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "POST", 
-            f"/build/{build_id}/cancel/",
-            json_data={}
-        )
-        
+
+        result = await client._request("POST", f"/build/{build_id}/cancel/", json_data={})
+
         if isinstance(result, dict):
             logger.info(f"Cancelled build order {build_id}")
             return result
-        
+
         return {"success": True, "build_id": build_id, "status": "Cancelled"}
-        
+
     except Exception as e:
         logger.error(f"Failed to cancel build order: {e}")
         raise
@@ -350,7 +342,7 @@ async def update_build_order(
 ) -> dict[str, Any]:
     """
     Update an existing build order.
-    
+
     Args:
         build_id: The build order ID to update (required)
         title: New title
@@ -359,12 +351,12 @@ async def update_build_order(
         priority: New priority level
         project_code: New project code ID
         reference: New reference string
-    
+
     Returns:
         Updated build order data
     """
     logger.info(f"Updating build order {build_id}")
-    
+
     data: dict[str, Any] = {}
     if title:
         data["title"] = title
@@ -378,18 +370,19 @@ async def update_build_order(
         data["project_code"] = project_code
     if reference:
         data["reference"] = reference
-        
+
     if not data:
         raise ValueError("No fields to update provided")
-        
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("PATCH", f"/build/{build_id}/", json_data=data)
         logger.info(f"Updated build order {build_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to update build order: {e}")
         raise
@@ -402,24 +395,25 @@ async def delete_build_order(
 ) -> dict[str, Any]:
     """
     Delete a build order.
-    
+
     Args:
         build_id: The build order ID to delete
-    
+
     Returns:
         Success confirmation
     """
     logger.info(f"Deleting build order {build_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         await client._request("DELETE", f"/build/{build_id}/")
-        
+
         logger.info(f"Deleted build order {build_id}")
         return {"success": True, "build_id": build_id}
-        
+
     except Exception as e:
         logger.error(f"Failed to delete build order: {e}")
         raise
@@ -434,32 +428,33 @@ async def finish_build_order(
 ) -> dict[str, Any]:
     """
     Finish a build order.
-    
+
     Marks the build order as complete.
-    
+
     Args:
         build_id: The build order ID to finish
         accept_incomplete: Accept incomplete allocations
         accept_unallocated: Accept unallocated items
-        
+
     Returns:
         Result of the finish operation
     """
     logger.info(f"Finishing build order {build_id}")
-    
+
     data = {
         "accept_incomplete": accept_incomplete,
         "accept_unallocated": accept_unallocated,
     }
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", f"/build/{build_id}/finish/", json_data=data)
         logger.info(f"Finished build order {build_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to finish build order: {e}")
         raise
@@ -476,37 +471,38 @@ async def auto_allocate_build(
 ) -> dict[str, Any]:
     """
     Auto-allocate stock to a build order.
-    
+
     Args:
         build_id: The build order ID
         location_id: Source location ID
         exclude_location_id: Location ID to exclude
         interchangeable: Allow interchangeable parts
         substitutes: Allow substitute parts
-        
+
     Returns:
         Result of allocation
     """
     logger.info(f"Auto-allocating build {build_id}")
-    
+
     data: dict[str, Any] = {
         "interchangeable": interchangeable,
         "substitutes": substitutes,
     }
-    
+
     if location_id:
         data["location"] = location_id
     if exclude_location_id:
         data["exclude_location"] = exclude_location_id
-        
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", f"/build/{build_id}/auto-allocate/", json_data=data)
         logger.info(f"Auto-allocated build {build_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to auto-allocate build: {e}")
         raise
@@ -519,24 +515,25 @@ async def delete_build_allocation(
 ) -> dict[str, Any]:
     """
     Delete a build allocation (unallocate stock).
-    
+
     Args:
         allocation_id: The allocation ID (from allocate_build_stock)
-        
+
     Returns:
         Success confirmation
     """
     logger.info(f"Deleting build allocation {allocation_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         await client._request("DELETE", f"/build/item/{allocation_id}/")
-        
+
         logger.info(f"Deleted build allocation {allocation_id}")
         return {"success": True, "allocation_id": allocation_id}
-        
+
     except Exception as e:
         logger.error(f"Failed to delete build allocation: {e}")
         raise
@@ -557,15 +554,15 @@ BUILD_ORDER_WRITE_TOOLS = [
 ]
 
 __all__ = [
-    "create_build_order",
-    "issue_build_order",
+    "BUILD_ORDER_WRITE_TOOLS",
     "allocate_build_stock",
-    "complete_build_output",
+    "auto_allocate_build",
     "cancel_build_order",
-    "update_build_order",
+    "complete_build_output",
+    "create_build_order",
+    "delete_build_allocation",
     "delete_build_order",
     "finish_build_order",
-    "auto_allocate_build",
-    "delete_build_allocation",
-    "BUILD_ORDER_WRITE_TOOLS",
+    "issue_build_order",
+    "update_build_order",
 ]

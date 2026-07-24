@@ -161,18 +161,14 @@ async def create_notification(
     tool = WriteTool("create_notification")
 
     if not target_user_id and not target_group_id:
-        return tool.error_response(
-            "Either target_user_id or target_group_id is required."
-        )
+        return tool.error_response("Either target_user_id or target_group_id is required.")
 
     if not name:
         return tool.error_response("Notification name is required.")
 
     valid_categories = ["info", "warning", "error", "success"]
     if category not in valid_categories:
-        return tool.error_response(
-            f"Invalid category. Must be one of: {valid_categories}"
-        )
+        return tool.error_response(f"Invalid category. Must be one of: {valid_categories}")
 
     try:
         client = await tool.get_client()
@@ -230,9 +226,7 @@ async def send_stock_alert(
 
     valid_alert_types = ["low_stock", "out_of_stock", "overstock", "expiring"]
     if alert_type not in valid_alert_types:
-        return tool.error_response(
-            f"Invalid alert_type. Must be one of: {valid_alert_types}"
-        )
+        return tool.error_response(f"Invalid alert_type. Must be one of: {valid_alert_types}")
 
     try:
         client = await tool.get_client()
@@ -269,7 +263,7 @@ async def send_stock_alert(
                 notifications_created += 1
         else:
             # Create a general notification (system will route based on settings)
-            result = await client.post(
+            await client.post(
                 "notifications/",
                 json={
                     "name": alert_name,

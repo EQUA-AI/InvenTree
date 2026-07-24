@@ -103,14 +103,14 @@ class _GoldenRepository:
         self.thread = SimpleNamespace(pk="thread-golden")
         self.turn = _GoldenTurn()
 
-    def get_or_create(self, thread_id=None, *, title=""):  # noqa: ARG002
+    def get_or_create(self, thread_id=None, *, title=""):
         self.thread.pk = thread_id or self.thread.pk
         return self.thread, False
 
-    def begin_turn(self, thread_id, **kwargs):  # noqa: ARG002
+    def begin_turn(self, thread_id, **kwargs):
         return BeginTurnResult(self.turn, False)
 
-    def terminal(self, turn_id, **kwargs):  # noqa: ARG002
+    def terminal(self, turn_id, **kwargs):
         self.turn.is_terminal = True
         self.turn.canonical_result = kwargs["canonical_result"]
         return self.turn

@@ -11,20 +11,23 @@ Provides middleware components for agent execution:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import inspect
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Callable, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
-from agent_framework import ChatAgent, ChatMessage, Role
+from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
-
 from ai.core.config import get_settings
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +54,12 @@ class ExecutionContext:
     workflow_id: str = ""
     agent_name: str = ""
     tool_name: str = ""
-    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def elapsed_ms(self) -> float:
         """Get elapsed time in milliseconds."""
-        return (datetime.now(timezone.utc) - self.start_time).total_seconds() * 1000
+        return (datetime.now(UTC) - self.start_time).total_seconds() * 1000
 
 
 @dataclass
@@ -244,7 +247,7 @@ CORRECTED_ARGUMENTS: [JSON or "N/A"]"""
             response_text = ""
             if response.messages:
                 last_msg = response.messages[-1]
-                response_text = last_msg.text if hasattr(last_msg, 'text') else str(last_msg)
+                response_text = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
 
             # Parse response
             return self._parse_reflection_response(response_text)
@@ -273,10 +276,8 @@ CORRECTED_ARGUMENTS: [JSON or "N/A"]"""
 
             if line.startswith("CATEGORY:"):
                 cat_str = line.replace("CATEGORY:", "").strip().upper()
-                try:
+                with contextlib.suppress(KeyError):
                     result["category"] = ErrorCategory[cat_str]
-                except KeyError:
-                    pass
 
             elif line.startswith("ROOT_CAUSE:"):
                 result["root_cause"] = line.replace("ROOT_CAUSE:", "").strip()
@@ -574,16 +575,14 @@ class MetricsMiddleware:
         retries: int = 0,
     ) -> None:
         """Record an execution."""
-        self._executions.append(
-            {
-                "tool_name": tool_name,
-                "success": success,
-                "execution_time_ms": execution_time_ms,
-                "error_category": error_category.value if error_category else None,
-                "retries": retries,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-        )
+        self._executions.append({
+            "tool_name": tool_name,
+            "success": success,
+            "execution_time_ms": execution_time_ms,
+            "error_category": error_category.value if error_category else None,
+            "retries": retries,
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
 
         # Trim history
         if len(self._executions) > self._max_history:

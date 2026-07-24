@@ -2164,7 +2164,7 @@ def frontend_build(c):
         path.write_text(content, encoding='utf-8')
 
     # Write version marker
-    try:  # noqa: PLW0717
+    try:
         import src.backend.InvenTree.InvenTree.version as InvenTreeVersion  # type: ignore[import]
 
         if version_hash := InvenTreeVersion.inventreeCommitHash():

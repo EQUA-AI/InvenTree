@@ -54,6 +54,7 @@ from django.utils.translation import gettext_lazy as _
 from generic.states import ColorEnum
 from plugin.machine import BaseDriver, BaseMachineType, MachineStatus
 
+
 class ABCBaseDriver(BaseDriver):
     """Base xyz driver."""
 
@@ -61,13 +62,16 @@ class ABCBaseDriver(BaseDriver):
 
     def my_custom_required_method(self):
         """This function must be overridden."""
-        raise NotImplementedError('The `my_custom_required_method` function must be overridden!')
+        raise NotImplementedError(
+            'The `my_custom_required_method` function must be overridden!'
+        )
 
     def my_custom_method(self):
         """This function can be overridden."""
         raise NotImplementedError('The `my_custom_method` function can be overridden!')
 
     required_overrides = [my_custom_required_method]
+
 
 class ABCMachine(BaseMachineType):
     SLUG = 'abc'
@@ -130,16 +134,14 @@ class XYZDriver(ABCBaseDriver):
 
 
 class MyXyzAbcDriverPlugin(MachineDriverMixin, InvenTreePlugin):
-    NAME = "XyzAbcDriver"
-    SLUG = "xyz-driver"
-    TITLE = "Xyz Abc Driver"
+    NAME = 'XyzAbcDriver'
+    SLUG = 'xyz-driver'
+    TITLE = 'Xyz Abc Driver'
     # ...
 
     def get_machine_drivers(self):
         """Return a list of machine drivers for this plugin."""
         return [XYZDriver]
-
-
 ```
 
 #### Driver API
@@ -186,10 +188,12 @@ Each machine type has a set of status codes defined that can be set for each mac
 ```py
 from plugin.machine import MachineStatus, BaseMachineType
 
+
 class XYZStatus(MachineStatus):
     CONNECTED = 100, _('Connected'), 'success'
     STANDBY = 101, _('Standby'), 'success'
     DISCONNECTED = 400, _('Disconnected'), 'danger'
+
 
 class XYZMachineType(BaseMachineType):
     # ...
@@ -224,7 +228,7 @@ class MyXYZDriver(ABCBaseDriver):
     # ...
     def init_machine(self, machine):
         # ... do some init stuff here
-        machine.set_status_text("Paper missing")
+        machine.set_status_text('Paper missing')
 ```
 
 ### Machine Properties
@@ -236,14 +240,12 @@ To achieve this, use the `machine.set_properties` function to set the desired pr
 ```py
 from plugin.machine import MachineProperty
 
+
 class MyXYZDriver(ABCBaseDriver):
     # ...
     def ping_machines(self):
         for machine in self.get_machines():
             # ... fetch machine info
-            props: list[MachineProperty] = [
-                { 'key': 'Model', 'value': 'ABC' },
-            ]
+            props: list[MachineProperty] = [{'key': 'Model', 'value': 'ABC'}]
             machine.set_properties(props)
-
 ```

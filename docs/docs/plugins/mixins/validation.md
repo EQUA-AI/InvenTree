@@ -85,7 +85,7 @@ class MyValidationMixin(ValidationMixin, InvenTreePlugin):
             if category := instance.category:
                 if category.name[0] != part.name[0]:
                     self.raise_error({
-                        "name": "Part name and category name must start with the same letter"
+                        'name': 'Part name and category name must start with the same letter'
                     })
 
         if isinstance(instance, part.models.PartCategory):
@@ -94,10 +94,7 @@ class MyValidationMixin(ValidationMixin, InvenTreePlugin):
                 d_old = deltas['description']['old']
 
                 if len(d_new) < len(d_old):
-                    self.raise_error({
-                        "description": "Description cannot be shortened"
-                    })
-
+                    self.raise_error({'description': 'Description cannot be shortened'})
 ```
 
 ## Field Validation
@@ -221,7 +218,7 @@ def validate_serial_number(self, serial: str, part: Part, stock_item: StockItem 
         # Attempt integer conversion
         int(serial, 16)
     except ValueError:
-        raise ValidationError("Serial number must be a valid hex value")
+        raise ValidationError('Serial number must be a valid hex value')
 ```
 
 #### Serial Number Sorting

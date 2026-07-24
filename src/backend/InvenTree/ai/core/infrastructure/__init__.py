@@ -7,6 +7,10 @@ Contains core infrastructure components:
 - IdempotencyStore: Idempotent operation tracking
 """
 
+from ai.core.infrastructure.checkpoints import FileCheckpointStorage
+from ai.core.infrastructure.idempotency import IdempotencyStore
+from ai.core.infrastructure.message_store import FileChatMessageStore
+
 __all__ = [
     "FileChatMessageStore",
     "FileCheckpointStorage",

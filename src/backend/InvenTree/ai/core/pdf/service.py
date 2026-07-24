@@ -85,15 +85,13 @@ class PDFService:
 
     def render_html(self, template_name: str, context: dict[str, Any]) -> str:
         """Render a Jinja2 template to an HTML string."""
-        context.setdefault(
-            "generated_date", datetime.now().strftime("%Y-%m-%d %H:%M")
-        )
+        context.setdefault("generated_date", datetime.now().strftime("%Y-%m-%d %H:%M"))
         template = self.env.get_template(template_name)
         return template.render(**context)
 
     def generate_pdf(self, template_name: str, context: dict[str, Any]) -> bytes:
         """Render *template_name* with *context* and return PDF bytes."""
-        from weasyprint import HTML  # lazy import – heavy C deps
+        from weasyprint import HTML  # lazy import - heavy C deps
 
         html_string = self.render_html(template_name, context)
         pdf_buffer = io.BytesIO()

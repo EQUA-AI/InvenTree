@@ -101,8 +101,24 @@ def get_generator_mode() -> str:
 # --------------------------------------------------------------------------- #
 # Heuristic (offline) provider
 # --------------------------------------------------------------------------- #
-_ELECTRICAL_HINTS = ('motor', 'contactor', 'breaker', 'coil', 'voltage', 'vfd', 'wiring')
-_ROTATING_HINTS = ('bearing', 'pump', 'fan', 'shaft', 'gearbox', 'coupling', 'vibration')
+_ELECTRICAL_HINTS = (
+    'motor',
+    'contactor',
+    'breaker',
+    'coil',
+    'voltage',
+    'vfd',
+    'wiring',
+)
+_ROTATING_HINTS = (
+    'bearing',
+    'pump',
+    'fan',
+    'shaft',
+    'gearbox',
+    'coupling',
+    'vibration',
+)
 
 
 class HeuristicGenerator:
@@ -113,6 +129,7 @@ class HeuristicGenerator:
     def generate(
         self, *, fault_summary: str, context: dict[str, Any]
     ) -> GenerationResult:
+        """Derive a diagnosis, part lines and safety gates from keyword heuristics."""
         text = (fault_summary or '').strip()
         lowered = text.lower()
 
@@ -135,7 +152,9 @@ class HeuristicGenerator:
                 )
             )
         if any(h in lowered for h in _ROTATING_HINTS):
-            confirm_tests.append('Check alignment / lubrication and take vibration readings.')
+            confirm_tests.append(
+                'Check alignment / lubrication and take vibration readings.'
+            )
             gates.append(
                 GeneratedSafetyGate(
                     name='Isolate and confirm zero rotational energy',
@@ -145,19 +164,17 @@ class HeuristicGenerator:
             )
 
         confidence = 0.3 if text else 0.0
-        diagnosis = coerce_diagnosis(
-            {
-                'likely_cause': likely_cause,
-                'confidence': confidence,
-                'confidence_label': confidence_label(confidence),
-                'alternatives': [],
-                'evidence': [],
-                'confirm_tests': confirm_tests,
-                'failure_mode': None,
-                'generated_from': text,
-                'generator': self.name,
-            }
-        )
+        diagnosis = coerce_diagnosis({
+            'likely_cause': likely_cause,
+            'confidence': confidence,
+            'confidence_label': confidence_label(confidence),
+            'alternatives': [],
+            'evidence': [],
+            'confirm_tests': confirm_tests,
+            'failure_mode': None,
+            'generated_from': text,
+            'generator': self.name,
+        })
         return GenerationResult(
             diagnosis=diagnosis,
             parts=[],
@@ -170,7 +187,7 @@ class HeuristicGenerator:
 # --------------------------------------------------------------------------- #
 # AI-service (forward-path) provider
 # --------------------------------------------------------------------------- #
-class AIServiceUnavailable(RuntimeError):
+class AIServiceUnavailableError(RuntimeError):
     """Raised when the AI service cannot be reached or returns no usable data."""
 
 
@@ -180,7 +197,7 @@ class AIServiceGenerator:
     The AI service is expected to return a structured ``repair_packet`` payload
     embedded in its response (either as a top-level ``data`` object or a fenced
     JSON block in the assistant message). If no structured payload is present
-    (e.g. ``wf7`` not yet deployed), this raises :class:`AIServiceUnavailable`
+    (e.g. ``wf7`` not yet deployed), this raises :class:`AIServiceUnavailableError`
     so ``auto`` mode can fall back to the heuristic provider.
     """
 
@@ -189,10 +206,11 @@ class AIServiceGenerator:
     def generate(
         self, *, fault_summary: str, context: dict[str, Any]
     ) -> GenerationResult:
+        """Request a structured repair packet from the AI service over HTTP."""
         try:
             import httpx
         except ImportError as exc:  # pragma: no cover - httpx ships with InvenTree
-            raise AIServiceUnavailable('httpx is not installed') from exc
+            raise AIServiceUnavailableError('httpx is not installed') from exc
 
         url = f'{get_ai_base_url()}/chat'
         payload = {
@@ -210,11 +228,13 @@ class AIServiceGenerator:
             body = response.json()
         except Exception as exc:  # network / decode / status errors
             logger.warning('ai_service_generate_failed', error=str(exc), url=url)
-            raise AIServiceUnavailable(str(exc)) from exc
+            raise AIServiceUnavailableError(str(exc)) from exc
 
         structured = self._extract_structured(body)
         if not structured:
-            raise AIServiceUnavailable('AI response contained no repair_packet payload')
+            raise AIServiceUnavailableError(
+                'AI response contained no repair_packet payload'
+            )
 
         return self._to_result(structured)
 
@@ -281,12 +301,14 @@ class AutoGenerator:
     name = 'auto'
 
     def __init__(self) -> None:
+        """Instantiate the AI-service and heuristic providers."""
         self._ai = AIServiceGenerator()
         self._heuristic = HeuristicGenerator()
 
     def generate(
         self, *, fault_summary: str, context: dict[str, Any]
     ) -> GenerationResult:
+        """Generate via the AI service, falling back to heuristics on any error."""
         try:
             return self._ai.generate(fault_summary=fault_summary, context=context)
         except Exception as exc:
@@ -309,7 +331,7 @@ def get_generator(mode: str | None = None) -> RepairPacketGenerator:
 __all__ = [
     'DIAGNOSIS_SCHEMA_VERSION',
     'AIServiceGenerator',
-    'AIServiceUnavailable',
+    'AIServiceUnavailableError',
     'AutoGenerator',
     'GeneratedPartLine',
     'GeneratedSafetyGate',

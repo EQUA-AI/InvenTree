@@ -15,35 +15,35 @@ The index schema is designed to support:
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, AsyncIterator
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
+from ai.core.config import get_azure_openai_settings, get_settings
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.aio import SearchClient as AsyncSearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
-    SearchIndex,
+    AzureOpenAIVectorizer,
+    AzureOpenAIVectorizerParameters,
+    HnswAlgorithmConfiguration,
+    SearchableField,
     SearchField,
     SearchFieldDataType,
-    SimpleField,
-    SearchableField,
+    SearchIndex,
     SemanticConfiguration,
     SemanticField,
     SemanticPrioritizedFields,
     SemanticSearch,
+    SimpleField,
     VectorSearch,
     VectorSearchProfile,
-    HnswAlgorithmConfiguration,
-    AzureOpenAIVectorizer,
-    AzureOpenAIVectorizerParameters,
 )
 from azure.search.documents.models import VectorizedQuery
 
-from ai.core.config import get_settings, get_azure_openai_settings
+if TYPE_CHECKING:
+    from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ INDEX_FIELDS = [
 @dataclass
 class SearchResult:
     """Result from a search query."""
-    
+
     message_id: str
     thread_id: str
     user_id: str
@@ -131,9 +131,9 @@ class SearchResult:
     created_at: datetime
     score: float
     reranker_score: float | None = None
-    
+
     @classmethod
-    def from_document(cls, doc: dict[str, Any], score: float = 0.0) -> "SearchResult":
+    def from_document(cls, doc: dict[str, Any], score: float = 0.0) -> SearchResult:
         """Create from search document."""
         return cls(
             message_id=doc.get("id", ""),
@@ -152,14 +152,14 @@ class SearchResult:
 class AzureAISearchService:
     """
     Service for managing Azure AI Search index and documents.
-    
+
     Provides:
     - Index lifecycle management
     - Document CRUD operations
     - Semantic and vector search
     - Batch operations for efficiency
     """
-    
+
     def __init__(
         self,
         endpoint: str | None = None,
@@ -168,32 +168,32 @@ class AzureAISearchService:
     ):
         """
         Initialize the Azure AI Search service.
-        
+
         Args:
             endpoint: Azure AI Search endpoint (defaults to env var)
             api_key: API key (defaults to env var)
             index_name: Name of the search index
         """
         settings = get_settings()
-        
+
         # Get credentials from env if not provided
         self._endpoint = endpoint or settings.azure_search_endpoint
         self._api_key = api_key or settings.azure_search_api_key
         self._index_name = index_name
-        
+
         if not self._endpoint or not self._api_key:
             raise ValueError(
                 "Azure AI Search credentials not configured. "
                 "Set AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_API_KEY."
             )
-        
+
         self._credential = AzureKeyCredential(self._api_key)
-        
+
         # Clients are created lazily
         self._index_client: SearchIndexClient | None = None
         self._search_client: SearchClient | None = None
         self._async_search_client: AsyncSearchClient | None = None
-    
+
     @property
     def index_client(self) -> SearchIndexClient:
         """Get or create the index management client."""
@@ -203,7 +203,7 @@ class AzureAISearchService:
                 credential=self._credential,
             )
         return self._index_client
-    
+
     @property
     def search_client(self) -> SearchClient:
         """Get or create the search client."""
@@ -214,7 +214,7 @@ class AzureAISearchService:
                 credential=self._credential,
             )
         return self._search_client
-    
+
     @property
     def async_search_client(self) -> AsyncSearchClient:
         """Get or create the async search client."""
@@ -225,20 +225,20 @@ class AzureAISearchService:
                 credential=self._credential,
             )
         return self._async_search_client
-    
+
     # ===== Index Management =====
-    
+
     def create_or_update_index(self) -> SearchIndex:
         """
         Create or update the conversation search index.
-        
+
         Sets up:
         - Full-text search fields
         - Semantic search configuration
         - Vector search for embeddings
         """
         openai_settings = get_azure_openai_settings()
-        
+
         # Vector search configuration
         vector_search = VectorSearch(
             algorithms=[
@@ -271,7 +271,7 @@ class AzureAISearchService:
                 ),
             ],
         )
-        
+
         # Semantic search configuration
         semantic_config = SemanticConfiguration(
             name="conversation-semantic-config",
@@ -280,12 +280,12 @@ class AzureAISearchService:
                 title_field=SemanticField(field_name="thread_title"),
             ),
         )
-        
+
         semantic_search = SemanticSearch(
             configurations=[semantic_config],
             default_configuration_name="conversation-semantic-config",
         )
-        
+
         # Create index
         index = SearchIndex(
             name=self._index_name,
@@ -293,16 +293,16 @@ class AzureAISearchService:
             vector_search=vector_search,
             semantic_search=semantic_search,
         )
-        
+
         result = self.index_client.create_or_update_index(index)
         logger.info(f"Index '{result.name}' created/updated successfully")
         return result
-    
+
     def delete_index(self) -> None:
         """Delete the search index."""
         self.index_client.delete_index(self._index_name)
         logger.info(f"Index '{self._index_name}' deleted")
-    
+
     def index_exists(self) -> bool:
         """Check if the index exists."""
         try:
@@ -310,22 +310,22 @@ class AzureAISearchService:
             return True
         except Exception:
             return False
-    
+
     # ===== Document Operations =====
-    
+
     def index_document(self, document: dict[str, Any]) -> dict[str, Any]:
         """
         Index a single document.
-        
+
         Args:
             document: Document to index (must have 'id' field)
-            
+
         Returns:
             Indexing result
         """
         result = self.search_client.upload_documents(documents=[document])
         return result[0].as_dict()
-    
+
     def index_documents(
         self,
         documents: list[dict[str, Any]],
@@ -333,37 +333,35 @@ class AzureAISearchService:
     ) -> list[dict[str, Any]]:
         """
         Index multiple documents in batches.
-        
+
         Args:
             documents: Documents to index
             batch_size: Number of documents per batch
-            
+
         Returns:
             List of indexing results
         """
         results = []
         for i in range(0, len(documents), batch_size):
-            batch = documents[i:i + batch_size]
+            batch = documents[i : i + batch_size]
             batch_results = self.search_client.upload_documents(documents=batch)
             results.extend([r.as_dict() for r in batch_results])
         return results
-    
+
     async def index_document_async(self, document: dict[str, Any]) -> dict[str, Any]:
         """Async version of index_document."""
         result = await self.async_search_client.upload_documents(documents=[document])
         return result[0].as_dict()
-    
+
     def delete_document(self, document_id: str) -> dict[str, Any]:
         """Delete a document by ID."""
-        result = self.search_client.delete_documents(
-            documents=[{"id": document_id}]
-        )
+        result = self.search_client.delete_documents(documents=[{"id": document_id}])
         return result[0].as_dict()
-    
+
     def delete_documents_by_thread(self, thread_id: str) -> int:
         """
         Delete all documents in a thread.
-        
+
         Returns the number of documents deleted.
         """
         # First, find all documents in the thread
@@ -373,16 +371,16 @@ class AzureAISearchService:
             select=["id"],
             top=1000,
         )
-        
+
         doc_ids = [{"id": doc["id"]} for doc in results]
-        
+
         if doc_ids:
             self.search_client.delete_documents(documents=doc_ids)
-        
+
         return len(doc_ids)
-    
+
     # ===== Search Operations =====
-    
+
     def search(
         self,
         query: str,
@@ -394,7 +392,7 @@ class AzureAISearchService:
     ) -> list[SearchResult]:
         """
         Search conversation history.
-        
+
         Args:
             query: Search query text
             user_id: Filter by user ID
@@ -402,7 +400,7 @@ class AzureAISearchService:
             role: Filter by message role
             top: Maximum number of results
             use_semantic: Use semantic ranking
-            
+
         Returns:
             List of search results
         """
@@ -414,9 +412,9 @@ class AzureAISearchService:
             filters.append(f"thread_id eq '{thread_id}'")
         if role:
             filters.append(f"role eq '{role}'")
-        
+
         filter_expr = " and ".join(filters) if filters else None
-        
+
         # Execute search
         results = self.search_client.search(
             search_text=query,
@@ -424,14 +422,20 @@ class AzureAISearchService:
             top=top,
             query_type="semantic" if use_semantic else "simple",
             semantic_configuration_name="conversation-semantic-config" if use_semantic else None,
-            select=["id", "thread_id", "user_id", "role", "content", "workflow_id", "thread_title", "created_at"],
+            select=[
+                "id",
+                "thread_id",
+                "user_id",
+                "role",
+                "content",
+                "workflow_id",
+                "thread_title",
+                "created_at",
+            ],
         )
-        
-        return [
-            SearchResult.from_document(doc, doc.get("@search.score", 0.0))
-            for doc in results
-        ]
-    
+
+        return [SearchResult.from_document(doc, doc.get("@search.score", 0.0)) for doc in results]
+
     async def search_async(
         self,
         query: str,
@@ -449,23 +453,31 @@ class AzureAISearchService:
             filters.append(f"thread_id eq '{thread_id}'")
         if role:
             filters.append(f"role eq '{role}'")
-        
+
         filter_expr = " and ".join(filters) if filters else None
-        
+
         results = await self.async_search_client.search(
             search_text=query,
             filter=filter_expr,
             top=top,
             query_type="semantic" if use_semantic else "simple",
             semantic_configuration_name="conversation-semantic-config" if use_semantic else None,
-            select=["id", "thread_id", "user_id", "role", "content", "workflow_id", "thread_title", "created_at"],
+            select=[
+                "id",
+                "thread_id",
+                "user_id",
+                "role",
+                "content",
+                "workflow_id",
+                "thread_title",
+                "created_at",
+            ],
         )
-        
+
         return [
-            SearchResult.from_document(doc, doc.get("@search.score", 0.0))
-            async for doc in results
+            SearchResult.from_document(doc, doc.get("@search.score", 0.0)) async for doc in results
         ]
-    
+
     def vector_search(
         self,
         query_vector: list[float],
@@ -475,13 +487,13 @@ class AzureAISearchService:
     ) -> list[SearchResult]:
         """
         Perform vector similarity search.
-        
+
         Args:
             query_vector: Embedding vector for the query
             user_id: Filter by user ID
             thread_id: Filter by thread ID
             top: Maximum number of results
-            
+
         Returns:
             List of search results ordered by similarity
         """
@@ -490,28 +502,34 @@ class AzureAISearchService:
             filters.append(f"user_id eq '{user_id}'")
         if thread_id:
             filters.append(f"thread_id eq '{thread_id}'")
-        
+
         filter_expr = " and ".join(filters) if filters else None
-        
+
         vector_query = VectorizedQuery(
             vector=query_vector,
             k_nearest_neighbors=top,
             fields="content_vector",
         )
-        
+
         results = self.search_client.search(
             search_text=None,
             vector_queries=[vector_query],
             filter=filter_expr,
             top=top,
-            select=["id", "thread_id", "user_id", "role", "content", "workflow_id", "thread_title", "created_at"],
+            select=[
+                "id",
+                "thread_id",
+                "user_id",
+                "role",
+                "content",
+                "workflow_id",
+                "thread_title",
+                "created_at",
+            ],
         )
-        
-        return [
-            SearchResult.from_document(doc, doc.get("@search.score", 0.0))
-            for doc in results
-        ]
-    
+
+        return [SearchResult.from_document(doc, doc.get("@search.score", 0.0)) for doc in results]
+
     def hybrid_search(
         self,
         query: str,
@@ -522,19 +540,19 @@ class AzureAISearchService:
     ) -> list[SearchResult]:
         """
         Perform hybrid search (text + vector + semantic).
-        
+
         Combines:
         - Full-text search on content
         - Vector similarity (if vector provided)
         - Semantic reranking
-        
+
         Args:
             query: Search query text
             query_vector: Optional embedding vector
             user_id: Filter by user ID
             thread_id: Filter by thread ID
             top: Maximum number of results
-            
+
         Returns:
             List of search results
         """
@@ -543,9 +561,9 @@ class AzureAISearchService:
             filters.append(f"user_id eq '{user_id}'")
         if thread_id:
             filters.append(f"thread_id eq '{thread_id}'")
-        
+
         filter_expr = " and ".join(filters) if filters else None
-        
+
         vector_queries = None
         if query_vector:
             vector_queries = [
@@ -555,7 +573,7 @@ class AzureAISearchService:
                     fields="content_vector",
                 )
             ]
-        
+
         results = self.search_client.search(
             search_text=query,
             vector_queries=vector_queries,
@@ -563,16 +581,22 @@ class AzureAISearchService:
             top=top,
             query_type="semantic",
             semantic_configuration_name="conversation-semantic-config",
-            select=["id", "thread_id", "user_id", "role", "content", "workflow_id", "thread_title", "created_at"],
+            select=[
+                "id",
+                "thread_id",
+                "user_id",
+                "role",
+                "content",
+                "workflow_id",
+                "thread_title",
+                "created_at",
+            ],
         )
-        
-        return [
-            SearchResult.from_document(doc, doc.get("@search.score", 0.0))
-            for doc in results
-        ]
-    
+
+        return [SearchResult.from_document(doc, doc.get("@search.score", 0.0)) for doc in results]
+
     # ===== Utility Methods =====
-    
+
     def get_document_count(self) -> int:
         """Get the total number of documents in the index."""
         results = self.search_client.search(
@@ -581,7 +605,7 @@ class AzureAISearchService:
             include_total_count=True,
         )
         return results.get_count() or 0
-    
+
     def get_stats(self) -> dict[str, Any]:
         """Get index statistics."""
         index = self.index_client.get_index(self._index_name)
@@ -608,7 +632,7 @@ def get_search_service() -> AzureAISearchService:
 # Export all symbols
 __all__ = [
     "INDEX_NAME",
-    "SearchResult",
     "AzureAISearchService",
+    "SearchResult",
     "get_search_service",
 ]

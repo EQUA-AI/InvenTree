@@ -16,8 +16,9 @@ from django.urls import reverse
 
 from InvenTree.unit_test import InvenTreeAPITestCase
 
+from . import services
 from .generation import (
-    AIServiceUnavailable,
+    AIServiceUnavailableError,
     GeneratedPartLine,
     GeneratedSafetyGate,
     GenerationResult,
@@ -35,7 +36,6 @@ from .schema import (
     empty_diagnosis,
     validate_diagnosis,
 )
-from . import services
 
 
 def _stub_generator(result=None, *, raises=None, name='ai_service'):
@@ -53,15 +53,18 @@ class DiagnosisSchemaTest(TestCase):
     """Unit tests for the versioned diagnosis schema."""
 
     def test_empty_diagnosis_is_valid(self):
+        """An empty diagnosis payload passes schema validation."""
         validate_diagnosis(empty_diagnosis())
 
     def test_coerce_clamps_confidence_and_versions(self):
+        """Coercion clamps confidence to [0, 1] and stamps the schema version."""
         d = coerce_diagnosis({'likely_cause': 'x', 'confidence': 5})
         self.assertEqual(d['confidence'], 1.0)
         self.assertEqual(d['schema_version'], DIAGNOSIS_SCHEMA_VERSION)
         self.assertEqual(d['confidence_label'], 'high')
 
     def test_validate_rejects_bad_shapes(self):
+        """Validation rejects payloads with missing keys or wrong types."""
         with self.assertRaises(ValidationError):
             validate_diagnosis({'likely_cause': 'x'})  # missing keys
         with self.assertRaises(ValidationError):
@@ -72,6 +75,7 @@ class HeuristicGenerationTest(TestCase):
     """The offline heuristic provider produces a valid, persisted diagnosis."""
 
     def test_generate_populates_and_advances(self):
+        """Heuristic generation stores a valid diagnosis and advances the packet."""
         packet = RepairPacket.objects.create(fault_summary='Bearing vibration high')
         services.run_repair_packet_workflow(packet, {'generator': 'heuristic'})
         packet.refresh_from_db()
@@ -92,6 +96,7 @@ class HeuristicGenerationTest(TestCase):
         )
 
     def test_electrical_fault_creates_loto_gate(self):
+        """An electrical fault summary yields a LOTO safety gate."""
         packet = RepairPacket.objects.create(
             fault_summary='Motor contactor coil failed, no voltage'
         )
@@ -103,6 +108,7 @@ class GenerationIdempotencyTest(TestCase):
     """Re-running generation with the same agent_run_id is a no-op."""
 
     def test_same_run_id_does_not_duplicate(self):
+        """Replaying the same agent_run_id creates only one generation run."""
         packet = RepairPacket.objects.create(fault_summary='pump seal leak')
         run_id = uuid.uuid4().hex
         services.run_repair_packet_workflow(
@@ -120,6 +126,7 @@ class AIProviderGenerationTest(TestCase):
     """A (mocked) AI provider result materialises parts + gates onto the packet."""
 
     def test_ai_result_creates_work_order_parts_and_gates(self):
+        """An AI provider result creates the work order, part lines and gates."""
         from part.models import Part
 
         part = Part.objects.create(
@@ -129,9 +136,10 @@ class AIProviderGenerationTest(TestCase):
             purchaseable=True,
         )
         result = GenerationResult(
-            diagnosis=coerce_diagnosis(
-                {'likely_cause': 'Contactor failed', 'confidence': 0.9}
-            ),
+            diagnosis=coerce_diagnosis({
+                'likely_cause': 'Contactor failed',
+                'confidence': 0.9,
+            }),
             parts=[GeneratedPartLine(name=part.name, part_id=part.pk, quantity=2)],
             safety_gates=[
                 GeneratedSafetyGate(name='LOTO', gate_type='loto', requires_photo=True)
@@ -157,10 +165,11 @@ class GenerationFallbackTest(TestCase):
     """Auto mode falls back to the heuristic provider when the AI service errors."""
 
     def test_auto_falls_back_to_heuristic(self):
+        """Auto mode succeeds via the heuristic provider when the AI service fails."""
         packet = RepairPacket.objects.create(fault_summary='fan not starting')
         with mock.patch(
             'repair.generation.AIServiceGenerator.generate',
-            side_effect=AIServiceUnavailable('down'),
+            side_effect=AIServiceUnavailableError('down'),
         ):
             services.run_repair_packet_workflow(packet, {'generator': 'auto'})
         packet.refresh_from_db()
@@ -172,6 +181,7 @@ class GenerationFailureTest(TestCase):
     """Generation failures are recorded and leave the packet re-generatable."""
 
     def test_generator_exception_records_failure(self):
+        """A provider exception marks the run failed and leaves the packet in draft."""
         packet = RepairPacket.objects.create(fault_summary='x')
         with mock.patch.object(
             services,
@@ -192,6 +202,7 @@ class GenerationFailureTest(TestCase):
         )
 
     def test_invalid_diagnosis_is_rejected(self):
+        """A provider result with an invalid diagnosis fails generation."""
         bad = GenerationResult(diagnosis={'nonsense': True}, provider='ai_service')
         packet = RepairPacket.objects.create(fault_summary='x')
         with mock.patch.object(
@@ -206,6 +217,7 @@ class AdvanceAuditTest(TestCase):
     """Lifecycle transitions record an audit event with actor + reason."""
 
     def test_advance_records_event(self):
+        """Advancing a packet records an ADVANCED event with the reason."""
         packet = RepairPacket.objects.create(
             fault_summary='x', status=PacketStatus.DIAGNOSED
         )
@@ -222,6 +234,7 @@ class AdvanceAuditTest(TestCase):
         self.assertEqual(event.reason, 'looks good')
 
     def test_cancel_records_canceled_event(self):
+        """Cancelling a packet records a CANCELED event."""
         packet = RepairPacket.objects.create(fault_summary='x')
         ok, _ = services.advance_packet(
             packet, PacketStatus.CANCELED, reason='duplicate'
@@ -240,10 +253,12 @@ class RepairPacketNewEndpointsTest(InvenTreeAPITestCase):
     roles = 'all'
 
     def setUp(self):
+        """Reset repair packets before each test."""
         super().setUp()
         RepairPacket.objects.all().delete()
 
     def test_cancel_endpoint(self):
+        """The cancel endpoint cancels the packet and reports ok."""
         packet = RepairPacket.objects.create(fault_summary='x')
         url = reverse('repair-packet-cancel', kwargs={'pk': packet.pk})
         resp = self.post(url, {'reason': 'not needed'}, expected_code=200)
@@ -251,6 +266,7 @@ class RepairPacketNewEndpointsTest(InvenTreeAPITestCase):
         self.assertEqual(resp.data['status'], PacketStatus.CANCELED)
 
     def test_generation_status_endpoint(self):
+        """The generation-status endpoint reports status and the latest run."""
         packet = RepairPacket.objects.create(fault_summary='x')
         services.run_repair_packet_workflow(packet, {'generator': 'heuristic'})
         url = reverse('repair-packet-generation-status', kwargs={'pk': packet.pk})
@@ -259,6 +275,7 @@ class RepairPacketNewEndpointsTest(InvenTreeAPITestCase):
         self.assertIsNotNone(resp.data['latest_generation_run'])
 
     def test_detail_exposes_events_and_generation_fields(self):
+        """The detail payload includes events and generation fields."""
         packet = RepairPacket.objects.create(fault_summary='x')
         services.run_repair_packet_workflow(packet, {'generator': 'heuristic'})
         url = reverse('repair-packet-detail', kwargs={'pk': packet.pk})
@@ -269,6 +286,7 @@ class RepairPacketNewEndpointsTest(InvenTreeAPITestCase):
         self.assertGreaterEqual(len(resp.data['events']), 1)
 
     def test_generate_via_api_uses_heuristic_when_ai_down(self):
+        """The generate endpoint succeeds with the heuristic provider forced."""
         packet = RepairPacket.objects.create(fault_summary='overheating gearbox')
         url = reverse('repair-packet-generate', kwargs={'pk': packet.pk})
         with mock.patch.dict(os.environ, {'AIMMS_REPAIR_GENERATOR': 'heuristic'}):

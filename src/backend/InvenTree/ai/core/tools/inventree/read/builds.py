@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ai.core.maf_compat import ai_function
 from ai.core.integrations.data_provider import get_data_provider
+from ai.core.maf_compat import ai_function
 
 logger = logging.getLogger(__name__)
 
@@ -23,21 +23,22 @@ async def get_build_orders(
 ) -> list[dict[str, Any]]:
     """
     Get build orders.
-    
+
     Args:
         part_id: Filter by part ID being built
         status: Filter by status code (10: Pending, 20: In Production, 40: Complete, 50: Cancelled)
         limit: Maximum orders to return
-        
+
     Returns:
         List of build orders
     """
     logger.info(f"Getting build orders, part={part_id}, status={status}")
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
         orders = await client.list_build_orders(part_id=part_id, status=status, limit=limit)
-        
+
         # Enrich with status text if not present
         status_map = {
             10: "Pending",
@@ -49,7 +50,7 @@ async def get_build_orders(
         for order in orders:
             if "status_text" not in order:
                 order["status_text"] = status_map.get(order.get("status"), "Unknown")
-        
+
         return orders
     except Exception as e:
         logger.error(f"Error getting build orders: {e}")
@@ -63,10 +64,10 @@ async def get_build_order_lines(
     """
     Get the line items (allocations) for a build order.
     These are the parts consumed to build the order.
-    
+
     Args:
         order_id: The build order ID
-        
+
     Returns:
         List of build order allocations
     """
@@ -74,23 +75,26 @@ async def get_build_order_lines(
     provider = get_data_provider()
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
         lines = await client.get_build_order_allocations(order_id)
-        
+
         # Enrich with part names if needed
         for line in lines:
-            part_id = line.get("part") or line.get("sub_part") # Allocation might have 'part' as the stock item's part
+            part_id = line.get("part") or line.get(
+                "sub_part"
+            )  # Allocation might have 'part' as the stock item's part
             # Actually allocations usually point to a stock item or a bom item.
             # Let's try to find part ID.
             if not part_id and "stock_item_detail" in line:
-                 part_id = line["stock_item_detail"].get("part")
-            
+                part_id = line["stock_item_detail"].get("part")
+
             if part_id and "part_name" not in line:
                 part = await provider.get_part(part_id)
                 if part:
                     line["part_name"] = part.get("name")
                     line["part_ipn"] = part.get("IPN")
-        
+
         return lines
     except Exception as e:
         logger.error(f"Error getting BO lines: {e}")
@@ -103,26 +107,27 @@ async def get_build_order(
 ) -> dict[str, Any]:
     """
     Get detailed information about a build order, including line items (allocations).
-    
+
     Args:
         order_id: The build order ID
-        
+
     Returns:
         Dictionary containing build order details and 'lines' (allocations).
     """
     logger.info(f"Getting build order {order_id}")
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         order = await client.get_build_order(order_id)
         if not order:
             return {"error": "Build Order not found"}
-            
+
         lines = await get_build_order_lines(order_id)
         order["lines"] = lines
         return order
-        
+
     except Exception as e:
         logger.error(f"Error getting build order {order_id}: {e}")
         return {"error": str(e)}
@@ -135,8 +140,8 @@ BUILD_READ_TOOLS = [
 ]
 
 __all__ = [
-    "get_build_orders",
+    "BUILD_READ_TOOLS",
     "get_build_order",
     "get_build_order_lines",
-    "BUILD_READ_TOOLS",
+    "get_build_orders",
 ]

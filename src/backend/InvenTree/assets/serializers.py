@@ -13,6 +13,8 @@ class AssetMachineSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
+        """Metaclass defining serializer fields."""
+
         model = AssetMachine
         fields = (
             'pk',
@@ -37,15 +39,10 @@ class MachinePartSerializer(serializers.ModelSerializer):
     part_name = serializers.CharField(source='part.name', read_only=True)
 
     class Meta:
+        """Metaclass defining serializer fields."""
+
         model = MachinePart
-        fields = (
-            'pk',
-            'machine',
-            'part',
-            'part_name',
-            'quantity',
-            'notes',
-        )
+        fields = ('pk', 'machine', 'part', 'part_name', 'quantity', 'notes')
         read_only_fields = ('pk',)
 
 
@@ -57,6 +54,8 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
+        """Metaclass defining serializer fields."""
+
         model = AssetMaintenanceRecord
         fields = (
             'pk',

@@ -400,7 +400,7 @@ class T6DiagnosticsWorkflow:
         self,
         query: str,
         thread_id: str = "",
-        context: dict[str, Any] | None = None,  # noqa: ARG002
+        context: dict[str, Any] | None = None,
     ) -> DiagnosticsResult:
         """
         Execute diagnostics workflow.
@@ -671,7 +671,7 @@ Recommend practical solutions to address the identified root causes."""
     async def stream_execute(
         self,
         query: str,
-        thread_id: str = "",  # noqa: ARG002
+        thread_id: str = "",
     ) -> AsyncIterator[str]:
         """Execute with streaming response."""
         yield "🔍 **Starting Diagnostic Analysis**\n\n"

@@ -472,7 +472,7 @@ class ProcedureArchive(ProcedureEnabledMixin, APIView):
         revision = get_object_or_404(_revision_queryset(request.user), pk=pk)
         serializer = ArchiveProcedureRevisionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        try:  # noqa: PLW0717 - established archive guard block
+        try:
             require_permission(request.user, PUBLISH_PROCEDURE)
             if revision.status not in {
                 ProcedureRevisionStatus.PUBLISHED,

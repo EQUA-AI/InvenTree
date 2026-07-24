@@ -8,12 +8,11 @@ of the codebase doesn't need to know about credential wiring.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Lazy SDK import – the package is optional at dev-time
+# Lazy SDK import - the package is optional at dev-time
 # ---------------------------------------------------------------------------
 _SDK_AVAILABLE = False
 
@@ -65,7 +64,7 @@ class DocIntelligenceClient:
         pdf_bytes: bytes,
         *,
         model_id: str = "prebuilt-layout",
-    ) -> "AnalyzeResult":
+    ) -> AnalyzeResult:
         """
         Send *pdf_bytes* to Azure Document Intelligence and return the
         ``AnalyzeResult``.
@@ -85,7 +84,7 @@ class DocIntelligenceClient:
         )
         result = poller.result()
         logger.info(
-            "DI analysis complete – %d pages, %d tables, %d chars",
+            "DI analysis complete - %d pages, %d tables, %d chars",
             len(result.pages) if result.pages else 0,
             len(result.tables) if result.tables else 0,
             len(result.content) if result.content else 0,
@@ -109,9 +108,7 @@ class DocIntelligenceClient:
         for table in result.tables or []:
             rows: dict[int, dict[int, str]] = {}
             for cell in table.cells or []:
-                rows.setdefault(cell.row_index, {})[cell.column_index] = (
-                    cell.content or ""
-                )
+                rows.setdefault(cell.row_index, {})[cell.column_index] = cell.content or ""
 
             if not rows:
                 continue
@@ -141,7 +138,7 @@ def get_doc_intelligence_client() -> DocIntelligenceClient | None:
     not configured.
     """
     if not _SDK_AVAILABLE:
-        logger.info("Azure DI SDK not installed – DI fallback disabled")
+        logger.info("Azure DI SDK not installed - DI fallback disabled")
         return None
 
     try:

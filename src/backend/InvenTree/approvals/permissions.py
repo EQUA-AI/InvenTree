@@ -5,7 +5,7 @@ Implements:
 - D-4: Per-user rate limiting per spec §15
 """
 
-from rest_framework.permissions import BasePermission, SAFE_METHODS
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.throttling import UserRateThrottle
 
 
@@ -19,6 +19,7 @@ class HasApprovalReviewPermission(BasePermission):
     """
 
     def has_permission(self, request, view):
+        """Allow authenticated reads; require review permission for writes."""
         if not request.user or not request.user.is_authenticated:
             return False
         if request.method in SAFE_METHODS:

@@ -16,7 +16,7 @@ Usage:
     @with_retry(max_attempts=3, base_delay=1.0)
     async def call_azure_openai():
         ...
-    
+
     # As context manager
     async with RetryContext(max_attempts=3) as ctx:
         result = await risky_operation()
@@ -29,10 +29,12 @@ import functools
 import logging
 import random
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Callable, Coroutine, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import httpx
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
 
 logger = logging.getLogger(__name__)
 
@@ -66,44 +68,44 @@ RETRYABLE_EXCEPTIONS = (
 def is_retryable_error(error: Exception) -> bool:
     """
     Determine if an error is retryable.
-    
+
     Args:
         error: The exception to classify
-        
+
     Returns:
         True if the error is transient and worth retrying
     """
     # Check exception types
     if isinstance(error, RETRYABLE_EXCEPTIONS):
         return True
-    
+
     # Check HTTP status codes from httpx responses
     if isinstance(error, httpx.HTTPStatusError):
         return error.response.status_code in RETRYABLE_STATUS_CODES
-    
+
     # Check for Azure OpenAI specific errors
     error_message = str(error).lower()
-    if any(keyword in error_message for keyword in [
-        "rate limit",
-        "throttl",
-        "capacity",
-        "overloaded",
-        "timeout",
-        "temporarily unavailable",
-        "service unavailable",
-        "connection reset",
-    ]):
-        return True
-    
-    return False
+    return any(
+        keyword in error_message
+        for keyword in [
+            "rate limit",
+            "throttl",
+            "capacity",
+            "overloaded",
+            "timeout",
+            "temporarily unavailable",
+            "service unavailable",
+            "connection reset",
+        ]
+    )
 
 
 def extract_retry_after(error: Exception) -> float | None:
     """
     Extract Retry-After header from an error response.
-    
+
     Azure OpenAI often includes this header when rate limiting.
-    
+
     Returns:
         Seconds to wait, or None if not available
     """
@@ -119,36 +121,37 @@ def extract_retry_after(error: Exception) -> float | None:
 
 # ===== Retry Configuration =====
 
+
 @dataclass
 class RetryConfig:
     """Configuration for retry behavior."""
-    
+
     max_attempts: int = 3
     base_delay: float = 1.0  # seconds
     max_delay: float = 30.0  # seconds
     exponential_base: float = 2.0
     jitter: bool = True  # Add randomness to prevent thundering herd
     jitter_factor: float = 0.1  # ±10% of delay
-    
+
     def calculate_delay(self, attempt: int, retry_after: float | None = None) -> float:
         """
         Calculate delay before next retry.
-        
+
         Uses exponential backoff with optional jitter:
         delay = min(base_delay * (exponential_base ^ attempt), max_delay)
-        
+
         If Retry-After header is provided, respects that instead.
         """
         if retry_after is not None:
             return min(retry_after, self.max_delay)
-        
-        delay = self.base_delay * (self.exponential_base ** attempt)
+
+        delay = self.base_delay * (self.exponential_base**attempt)
         delay = min(delay, self.max_delay)
-        
+
         if self.jitter:
             jitter_range = delay * self.jitter_factor
             delay += random.uniform(-jitter_range, jitter_range)
-        
+
         return max(0.1, delay)  # Minimum 100ms delay
 
 
@@ -164,10 +167,11 @@ AZURE_OPENAI_RETRY_CONFIG = RetryConfig(
 
 # ===== Retry Statistics =====
 
+
 @dataclass
 class RetryStats:
     """Statistics about retry attempts."""
-    
+
     total_attempts: int = 0
     successful_attempts: int = 0
     failed_attempts: int = 0
@@ -175,13 +179,15 @@ class RetryStats:
     total_retry_delay: float = 0.0
     last_error: str | None = None
     errors_by_type: dict[str, int] = field(default_factory=dict)
-    
-    def record_attempt(self, success: bool, retries: int, delay: float, error: Exception | None = None) -> None:
+
+    def record_attempt(
+        self, success: bool, retries: int, delay: float, error: Exception | None = None
+    ) -> None:
         """Record the outcome of an operation."""
         self.total_attempts += 1
         self.retries_performed += retries
         self.total_retry_delay += delay
-        
+
         if success:
             self.successful_attempts += 1
         else:
@@ -190,7 +196,7 @@ class RetryStats:
                 self.last_error = str(error)
                 error_type = type(error).__name__
                 self.errors_by_type[error_type] = self.errors_by_type.get(error_type, 0) + 1
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -200,7 +206,9 @@ class RetryStats:
             "retries_performed": self.retries_performed,
             "total_retry_delay_seconds": round(self.total_retry_delay, 2),
             "success_rate": round(self.successful_attempts / max(1, self.total_attempts), 3),
-            "avg_retries_per_attempt": round(self.retries_performed / max(1, self.total_attempts), 2),
+            "avg_retries_per_attempt": round(
+                self.retries_performed / max(1, self.total_attempts), 2
+            ),
             "errors_by_type": self.errors_by_type,
             "last_error": self.last_error,
         }
@@ -217,67 +225,70 @@ def get_retry_stats() -> RetryStats:
 
 # ===== Retry Implementation =====
 
-async def retry_async(
+
+async def retry_async[T](
     func: Callable[[], Coroutine[Any, Any, T]],
     config: RetryConfig | None = None,
     on_retry: Callable[[int, Exception, float], None] | None = None,
 ) -> T:
     """
     Execute an async function with retry logic.
-    
+
     Args:
         func: Async callable to execute
         config: Retry configuration (uses Azure OpenAI defaults if None)
         on_retry: Optional callback when retry occurs (attempt, error, delay)
-        
+
     Returns:
         Result of the function call
-        
+
     Raises:
         Last exception if all retries fail
     """
     config = config or AZURE_OPENAI_RETRY_CONFIG
     last_error: Exception | None = None
     total_delay = 0.0
-    
+
     for attempt in range(config.max_attempts):
         try:
             result = await func()
             _retry_stats.record_attempt(True, attempt, total_delay)
             return result
-            
+
         except Exception as e:
             last_error = e
-            
+
             # Check if error is retryable
             if not is_retryable_error(e):
-                logger.warning(f"Non-retryable error on attempt {attempt + 1}: {type(e).__name__}: {e}")
+                logger.warning(
+                    f"Non-retryable error on attempt {attempt + 1}: {type(e).__name__}: {e}"
+                )
                 _retry_stats.record_attempt(False, attempt, total_delay, e)
                 raise
-            
+
             # Check if we have retries left
             if attempt + 1 >= config.max_attempts:
                 logger.error(f"All {config.max_attempts} retry attempts exhausted: {e}")
                 _retry_stats.record_attempt(False, attempt + 1, total_delay, e)
                 raise
-            
+
             # Calculate delay
             retry_after = extract_retry_after(e)
             delay = config.calculate_delay(attempt, retry_after)
             total_delay += delay
-            
+
             logger.warning(
                 f"Retryable error on attempt {attempt + 1}/{config.max_attempts}: "
                 f"{type(e).__name__}: {e}. Retrying in {delay:.2f}s"
             )
-            
+
             # Call retry callback if provided
             if on_retry:
                 on_retry(attempt + 1, e, delay)
-            
+
             # Wait before retry
             await asyncio.sleep(delay)
-    
+
     # Should not reach here, but just in case
     _retry_stats.record_attempt(False, config.max_attempts, total_delay, last_error)
     raise last_error or RuntimeError("Retry loop completed without result")
@@ -289,12 +300,12 @@ def with_retry(
 ) -> Callable[[Callable[..., Coroutine[Any, Any, T]]], Callable[..., Coroutine[Any, Any, T]]]:
     """
     Decorator to add retry logic to async functions.
-    
+
     Usage:
         @with_retry(max_attempts=3, base_delay=1.0)
         async def call_azure():
             ...
-        
+
         @with_retry()  # Uses defaults
         async def call_azure():
             ...
@@ -303,30 +314,33 @@ def with_retry(
         config = RetryConfig(**config_kwargs)
     elif config is None:
         config = AZURE_OPENAI_RETRY_CONFIG
-    
-    def decorator(func: Callable[..., Coroutine[Any, Any, T]]) -> Callable[..., Coroutine[Any, Any, T]]:
+
+    def decorator(
+        func: Callable[..., Coroutine[Any, Any, T]],
+    ) -> Callable[..., Coroutine[Any, Any, T]]:
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> T:
             return await retry_async(
                 lambda: func(*args, **kwargs),
                 config=config,
             )
+
         return wrapper
-    
+
     return decorator
 
 
 class RetryContext:
     """
     Async context manager for retry blocks.
-    
+
     Usage:
         async with RetryContext(max_attempts=3) as ctx:
             result = await risky_operation()
-            
+
         print(f"Succeeded after {ctx.attempts} attempts")
     """
-    
+
     def __init__(
         self,
         config: RetryConfig | None = None,
@@ -339,62 +353,63 @@ class RetryContext:
             self.config = AZURE_OPENAI_RETRY_CONFIG
         else:
             self.config = config
-        
+
         self.attempts = 0
         self.total_delay = 0.0
         self.last_error: Exception | None = None
-    
-    async def __aenter__(self) -> "RetryContext":
+
+    async def __aenter__(self) -> RetryContext:
         """Enter context."""
         return self
-    
+
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
         """
         Handle exceptions and decide whether to retry.
-        
+
         Returns True to suppress the exception (retry), False to propagate.
         """
         if exc_val is None:
             # No exception, success
             _retry_stats.record_attempt(True, self.attempts, self.total_delay)
             return False
-        
+
         self.last_error = exc_val
-        
+
         # Check if retryable
         if not is_retryable_error(exc_val):
             _retry_stats.record_attempt(False, self.attempts, self.total_delay, exc_val)
             return False  # Propagate non-retryable errors
-        
+
         # Check if retries remain
         if self.attempts + 1 >= self.config.max_attempts:
             _retry_stats.record_attempt(False, self.attempts + 1, self.total_delay, exc_val)
             return False  # Exhausted retries
-        
+
         # Calculate delay
         retry_after = extract_retry_after(exc_val)
         delay = self.config.calculate_delay(self.attempts, retry_after)
         self.total_delay += delay
         self.attempts += 1
-        
+
         logger.warning(
             f"Retry context: attempt {self.attempts}/{self.config.max_attempts} "
             f"after {type(exc_val).__name__}: {exc_val}. Waiting {delay:.2f}s"
         )
-        
+
         await asyncio.sleep(delay)
         return True  # Suppress exception, will retry
 
 
 # ===== Specialized Retry Functions =====
 
-async def retry_azure_openai_call(
+
+async def retry_azure_openai_call[T](
     func: Callable[[], Coroutine[Any, Any, T]],
     on_retry: Callable[[int, Exception, float], None] | None = None,
 ) -> T:
     """
     Retry wrapper specifically for Azure OpenAI calls.
-    
+
     Uses configuration optimized for Azure OpenAI rate limits:
     - 5 max attempts
     - 1-60 second delays
@@ -404,19 +419,19 @@ async def retry_azure_openai_call(
     return await retry_async(func, config=AZURE_OPENAI_RETRY_CONFIG, on_retry=on_retry)
 
 
-async def retry_with_fallback(
+async def retry_with_fallback[T](
     primary: Callable[[], Coroutine[Any, Any, T]],
     fallback: Callable[[], Coroutine[Any, Any, T]],
     primary_config: RetryConfig | None = None,
 ) -> tuple[T, bool]:
     """
     Try primary function with retries, fall back if exhausted.
-    
+
     Args:
         primary: Primary async function to try
         fallback: Fallback function if primary fails
         primary_config: Retry config for primary (uses defaults if None)
-        
+
     Returns:
         Tuple of (result, used_fallback)
     """
@@ -431,22 +446,22 @@ async def retry_with_fallback(
 
 # Export all symbols
 __all__ = [
-    # Error classification
-    "is_retryable_error",
-    "extract_retry_after",
-    "RETRYABLE_STATUS_CODES",
+    "AZURE_OPENAI_RETRY_CONFIG",
     "RETRYABLE_EXCEPTIONS",
+    "RETRYABLE_STATUS_CODES",
     # Configuration
     "RetryConfig",
-    "AZURE_OPENAI_RETRY_CONFIG",
+    "RetryContext",
     # Statistics
     "RetryStats",
+    "extract_retry_after",
     "get_retry_stats",
+    # Error classification
+    "is_retryable_error",
     # Core retry functions
     "retry_async",
-    "with_retry",
-    "RetryContext",
     # Specialized functions
     "retry_azure_openai_call",
     "retry_with_fallback",
+    "with_retry",
 ]

@@ -244,7 +244,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await devui.start()
         logger.info(f"DevUI available at {devui.url}")
 
-    yield  # noqa: RUF075
+    yield
 
     # Cleanup
     if settings.feature_voice_live:

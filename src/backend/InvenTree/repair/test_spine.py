@@ -12,10 +12,10 @@ from decimal import Decimal
 from django.test import TestCase
 from django.urls import reverse
 
-from InvenTree.unit_test import InvenTreeAPITestCase
+from tasks.models import KanbanCard, KanbanCardPart
 
 from approvals.models import ActionType, Approval, ApprovalStatus
-from tasks.models import KanbanCard, KanbanCardPart
+from InvenTree.unit_test import InvenTreeAPITestCase
 
 from .models import (
     GateStatus,
@@ -192,9 +192,7 @@ class RepairPacketRevalidationTest(TestCase):
             status=KanbanCard.STATUS_IN_PROGRESS,
             priority=KanbanCard.PRIORITY_MEDIUM,
         )
-        KanbanCardPart.objects.create(
-            card=card, part=part, quantity=Decimal(needed)
-        )
+        KanbanCardPart.objects.create(card=card, part=part, quantity=Decimal(needed))
         return RepairPacket.objects.create(
             fault_summary='x', status=PacketStatus.APPROVED, work_order=card
         )

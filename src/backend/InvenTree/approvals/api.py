@@ -499,7 +499,7 @@ class ApprovalApproveView(CreateAPI):
         executor = None
         if executor_registry.has(approval.action_type):
             executor = executor_registry.get(approval.action_type)
-            try:  # noqa: PLW0717 - established drift-check block
+            try:
                 drift_report = executor.check_preconditions(
                     approval.payload, approval.baseline_context
                 )

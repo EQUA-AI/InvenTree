@@ -203,9 +203,7 @@ async def delete_manufacturer_part(
         client = await tool.get_client()
 
         # Get manufacturer part details first
-        mfr_part = await client.get(
-            f"company/part/manufacturer/{manufacturer_part_id}/"
-        )
+        mfr_part = await client.get(f"company/part/manufacturer/{manufacturer_part_id}/")
 
         await client.delete(f"company/part/manufacturer/{manufacturer_part_id}/")
 
@@ -220,9 +218,7 @@ async def delete_manufacturer_part(
         )
 
     except Exception as e:
-        logger.error(
-            f"Failed to delete manufacturer part {manufacturer_part_id}: {e}"
-        )
+        logger.error(f"Failed to delete manufacturer part {manufacturer_part_id}: {e}")
         return tool.error_response(str(e))
 
 
@@ -279,9 +275,7 @@ async def add_supplier_price_break(
         )
 
     except Exception as e:
-        logger.error(
-            f"Failed to add price break for supplier part {supplier_part_id}: {e}"
-        )
+        logger.error(f"Failed to add price break for supplier part {supplier_part_id}: {e}")
         return tool.error_response(str(e))
 
 

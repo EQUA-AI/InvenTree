@@ -121,7 +121,7 @@ The available model attributes are determined by introspecting [API metadata](..
 from inventree.api import InvenTreeAPI
 from inventree.part import Part
 
-api = InvenTreeAPI("http://localhost:8000", username="admin", password="inventree")
+api = InvenTreeAPI('http://localhost:8000', username='admin', password='inventree')
 
 fields = Part.fieldNames(api)
 
@@ -155,7 +155,9 @@ Some classes also have helper functions for performing certain actions, such as 
 
 ```python
 stock_item = StockItem(api, 1001)
-stock_item.uploadTestResult("Firmware", True, value="0x12345678", attachment="device_firmware.bin")
+stock_item.uploadTestResult(
+    'Firmware', True, value='0x12345678', attachment='device_firmware.bin'
+)
 ```
 
 #### Discovering Methods

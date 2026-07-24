@@ -32,7 +32,7 @@ async def generate_report(
     Generate a report.
 
     Args:
-        report_type: Type of report - 'part', 'stock', 'build', 'purchase_order', 
+        report_type: Type of report - 'part', 'stock', 'build', 'purchase_order',
                      'sales_order', 'return_order', 'bom', 'test_report'
         output_format: Output format - 'pdf', 'csv', 'xlsx'
         filters: Dictionary of filters to apply (e.g., {"category": 1, "active": True})
@@ -54,15 +54,11 @@ async def generate_report(
         "test_report",
     ]
     if report_type not in valid_report_types:
-        return tool.error_response(
-            f"Invalid report_type. Must be one of: {valid_report_types}"
-        )
+        return tool.error_response(f"Invalid report_type. Must be one of: {valid_report_types}")
 
     valid_formats = ["pdf", "csv", "xlsx"]
     if output_format not in valid_formats:
-        return tool.error_response(
-            f"Invalid output_format. Must be one of: {valid_formats}"
-        )
+        return tool.error_response(f"Invalid output_format. Must be one of: {valid_formats}")
 
     try:
         client = await tool.get_client()
@@ -97,9 +93,7 @@ async def generate_report(
 
         # Check if result contains report data or a task ID for async generation
         if isinstance(result, dict) and "task_id" in result:
-            logger.info(
-                f"Report generation started for {report_type}, task: {result['task_id']}"
-            )
+            logger.info(f"Report generation started for {report_type}, task: {result['task_id']}")
             return tool.success_response(
                 data={
                     "report_type": report_type,
@@ -165,9 +159,7 @@ async def run_scheduled_task(
     ]
 
     if task_name not in valid_tasks:
-        return tool.error_response(
-            f"Invalid task_name. Must be one of: {valid_tasks}"
-        )
+        return tool.error_response(f"Invalid task_name. Must be one of: {valid_tasks}")
 
     try:
         client = await tool.get_client()

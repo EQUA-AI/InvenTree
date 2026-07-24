@@ -46,17 +46,13 @@ async def add_part_attachment(
     tool = WriteTool("add_part_attachment")
 
     if attachment_type not in ["file", "link"]:
-        return tool.error_response(
-            "Invalid attachment_type. Must be 'file' or 'link'."
-        )
+        return tool.error_response("Invalid attachment_type. Must be 'file' or 'link'.")
 
     if attachment_type == "link" and not link:
         return tool.error_response("Link URL is required for link attachments.")
 
     if attachment_type == "file" and (not file_name or not file_content_base64):
-        return tool.error_response(
-            "File name and content are required for file attachments."
-        )
+        return tool.error_response("File name and content are required for file attachments.")
 
     try:
         client = await tool.get_client()
@@ -172,17 +168,13 @@ async def add_stock_attachment(
     tool = WriteTool("add_stock_attachment")
 
     if attachment_type not in ["file", "link"]:
-        return tool.error_response(
-            "Invalid attachment_type. Must be 'file' or 'link'."
-        )
+        return tool.error_response("Invalid attachment_type. Must be 'file' or 'link'.")
 
     if attachment_type == "link" and not link:
         return tool.error_response("Link URL is required for link attachments.")
 
     if attachment_type == "file" and (not file_name or not file_content_base64):
-        return tool.error_response(
-            "File name and content are required for file attachments."
-        )
+        return tool.error_response("File name and content are required for file attachments.")
 
     try:
         client = await tool.get_client()
@@ -206,9 +198,7 @@ async def add_stock_attachment(
                 files=files,
             )
 
-        logger.info(
-            f"Added attachment to stock item {stock_item_id}: {result.get('pk')}"
-        )
+        logger.info(f"Added attachment to stock item {stock_item_id}: {result.get('pk')}")
         return tool.success_response(
             data=result,
             message=f"Successfully added {attachment_type} attachment to stock item {stock_item_id}",
@@ -248,9 +238,7 @@ async def print_label(
 
     valid_types = ["part", "stock", "location", "build"]
     if item_type not in valid_types:
-        return tool.error_response(
-            f"Invalid item_type. Must be one of: {valid_types}"
-        )
+        return tool.error_response(f"Invalid item_type. Must be one of: {valid_types}")
 
     if quantity < 1:
         return tool.error_response("Quantity must be at least 1.")
@@ -323,9 +311,7 @@ async def create_label_template(
 
     valid_types = ["part", "stock", "location", "build"]
     if label_type not in valid_types:
-        return tool.error_response(
-            f"Invalid label_type. Must be one of: {valid_types}"
-        )
+        return tool.error_response(f"Invalid label_type. Must be one of: {valid_types}")
 
     if not name:
         return tool.error_response("Template name is required.")

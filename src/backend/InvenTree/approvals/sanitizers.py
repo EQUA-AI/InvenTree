@@ -7,7 +7,6 @@ Implements:
 
 import re
 
-
 # Patterns that might indicate sensitive data
 _SENSITIVE_PATTERNS = [
     re.compile(
@@ -31,29 +30,21 @@ def sanitize_email_html(html_content: str) -> str:
 
     # Strip script/style tags and their contents
     html_content = re.sub(
-        r'<script[^>]*>.*?</script>', '', html_content,
-        flags=re.DOTALL | re.IGNORECASE,
+        r'<script[^>]*>.*?</script>', '', html_content, flags=re.DOTALL | re.IGNORECASE
     )
     html_content = re.sub(
-        r'<style[^>]*>.*?</style>', '', html_content,
-        flags=re.DOTALL | re.IGNORECASE,
+        r'<style[^>]*>.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE
     )
 
     # Strip event handler attributes (on*)
     html_content = re.sub(
-        r'\s+on\w+\s*=\s*["\'][^"\']*["\']', '', html_content,
-        flags=re.IGNORECASE,
+        r'\s+on\w+\s*=\s*["\'][^"\']*["\']', '', html_content, flags=re.IGNORECASE
     )
-    html_content = re.sub(
-        r'\s+on\w+\s*=\s*\S+', '', html_content,
-        flags=re.IGNORECASE,
-    )
+    html_content = re.sub(r'\s+on\w+\s*=\s*\S+', '', html_content, flags=re.IGNORECASE)
 
     # Strip javascript: URIs
     html_content = re.sub(
-        r'(?i)(href|src|action)\s*=\s*["\']?\s*javascript:',
-        r'\1="',
-        html_content,
+        r'(?i)(href|src|action)\s*=\s*["\']?\s*javascript:', r'\1="', html_content
     )
 
     return html_content

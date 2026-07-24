@@ -183,6 +183,7 @@ class RepairPacket(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         verbose_name_plural = _('Repair Packets')
 
     def __str__(self) -> str:
+        """Return the packet reference, or a pk-based placeholder."""
         return self.reference or f'RepairPacket #{self.pk}'
 
     def save(self, *args, **kwargs):
@@ -211,7 +212,9 @@ class RepairPacket(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         intentionally conservative: ambiguous gate state blocks progression.
         """
         bad: list[tuple[object, str]] = []
-        for gate in self.gates.filter(is_blocking=True).order_by('sequence', 'created_at'):
+        for gate in self.gates.filter(is_blocking=True).order_by(
+            'sequence', 'created_at'
+        ):
             reason = gate.unsatisfied_reason()
             if reason:
                 bad.append((gate, reason))
@@ -230,8 +233,7 @@ class RepairPacket(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     def can_return_to_service(self) -> tuple[bool, str]:
         """Guard closeout / return-to-service while lockout points are active."""
         active = LockoutPoint.objects.filter(
-            gate__packet=self,
-            gate__gate_type='loto',
+            gate__packet=self, gate__gate_type='loto'
         ).exclude(status=LockoutPoint.PointStatus.RESTORED)
         if active.exists():
             point = active.first()
@@ -316,6 +318,7 @@ class RepairPacketGate(models.Model):
         ordering = ['created_at']
 
     def __str__(self) -> str:
+        """Return the gate name and its current status."""
         return f'{self.name} ({self.status})'
 
     @property
@@ -327,7 +330,9 @@ class RepairPacketGate(models.Model):
         """Whether the gate has a photo proof when one is required."""
         if not self.requires_photo:
             return True
-        return self.proofs.filter(proof_type=SafetyEvidenceProof.ProofType.PHOTO).exists()
+        return self.proofs.filter(
+            proof_type=SafetyEvidenceProof.ProofType.PHOTO
+        ).exists()
 
     def unsatisfied_reason(self) -> str:
         """Explain why this gate is not satisfied, or return an empty string."""
@@ -417,6 +422,7 @@ class RepairPacketEvidence(models.Model):
         ordering = ['created_at']
 
     def __str__(self) -> str:
+        """Return the checklist item kind and label."""
         return f'{self.kind}: {self.label}'
 
 
@@ -446,6 +452,7 @@ class SafetyGateTemplate(models.Model):
         ordering = ['default_sequence', 'name']
 
     def __str__(self) -> str:
+        """Return the template name."""
         return self.name
 
 
@@ -453,6 +460,8 @@ class LockoutPoint(models.Model):
     """Physical energy-control point associated with a LOTO gate."""
 
     class EnergySource(models.TextChoices):
+        """Hazardous energy source categories for a lockout point."""
+
         ELECTRICAL = 'electrical', _('Electrical')
         HYDRAULIC = 'hydraulic', _('Hydraulic')
         PNEUMATIC = 'pneumatic', _('Pneumatic')
@@ -463,6 +472,8 @@ class LockoutPoint(models.Model):
         OTHER = 'other', _('Other')
 
     class PointStatus(models.TextChoices):
+        """LOTO progression states of a lockout point."""
+
         IDENTIFIED = 'identified', _('Identified')
         ISOLATED = 'isolated', _('Isolated')
         LOCKED = 'locked', _('Locked')
@@ -507,6 +518,7 @@ class LockoutPoint(models.Model):
         ordering = ['created_at']
 
     def __str__(self) -> str:
+        """Return the energy source, isolation device and status."""
         return f'{self.energy_source}: {self.isolation_device} ({self.status})'
 
 
@@ -514,6 +526,8 @@ class SafetyEvidenceProof(models.Model):
     """Structured proof that a safety gate action happened in the field."""
 
     class ProofType(models.TextChoices):
+        """Kinds of field evidence that can back a safety gate."""
+
         PHOTO = 'photo', _('Photo')
         SCAN = 'scan', _('Scan')
         READING = 'reading', _('Reading')
@@ -547,6 +561,7 @@ class SafetyEvidenceProof(models.Model):
         ordering = ['captured_at']
 
     def __str__(self) -> str:
+        """Return the proof type and its parent gate id."""
         return f'{self.proof_type} proof for gate {self.gate_id}'
 
 
@@ -568,9 +583,7 @@ class RepairPacketApprovalLink(models.Model):
         on_delete=models.CASCADE,
         related_name='repair_packet_links',
     )
-    purpose = models.CharField(
-        max_length=32, choices=PURPOSE_CHOICES, default='spend'
-    )
+    purpose = models.CharField(max_length=32, choices=PURPOSE_CHOICES, default='spend')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -579,6 +592,7 @@ class RepairPacketApprovalLink(models.Model):
         ordering = ['created_at']
 
     def __str__(self) -> str:
+        """Return the linked packet and the approval purpose."""
         return f'{self.packet} <- {self.purpose}'
 
 
@@ -590,6 +604,8 @@ class RepairPacketEvent(models.Model):
     """
 
     class EventType(models.TextChoices):
+        """Lifecycle event categories recorded for a packet."""
+
         CREATED = 'created', _('Created')
         GENERATED = 'generated', _('Generated')
         GENERATION_FAILED = 'generation_failed', _('Generation Failed')
@@ -625,7 +641,10 @@ class RepairPacketEvent(models.Model):
         ordering = ['-created_at']
 
     def __str__(self) -> str:
-        return f'{self.packet_id}: {self.event_type} {self.from_status}->{self.to_status}'
+        """Return the packet id, event type and status transition."""
+        return (
+            f'{self.packet_id}: {self.event_type} {self.from_status}->{self.to_status}'
+        )
 
 
 class RepairPacketGenerationRun(models.Model):
@@ -637,6 +656,8 @@ class RepairPacketGenerationRun(models.Model):
     """
 
     class RunStatus(models.TextChoices):
+        """Terminal and in-flight states of a generation run."""
+
         RUNNING = 'running', _('Running')
         SUCCEEDED = 'succeeded', _('Succeeded')
         FAILED = 'failed', _('Failed')
@@ -660,6 +681,7 @@ class RepairPacketGenerationRun(models.Model):
         ordering = ['-started_at']
 
     def __str__(self) -> str:
+        """Return the agent run id and run status."""
         return f'{self.agent_run_id} ({self.status})'
 
 
@@ -667,8 +689,11 @@ class RepairPacketGenerationRun(models.Model):
 __all__ = [
     'CRITICALITY_CHOICES',
     'DIAGNOSIS_SCHEMA_VERSION',
+    'TERMINAL_PACKET_STATUSES',
+    'VALID_TRANSITIONS',
     'GateStatus',
     'GenerationStatus',
+    'LockoutPoint',
     'PacketStatus',
     'RepairPacket',
     'RepairPacketApprovalLink',
@@ -677,10 +702,7 @@ __all__ = [
     'RepairPacketGate',
     'RepairPacketGenerationRun',
     'SafetyEvidenceProof',
-    'LockoutPoint',
     'SafetyGateTemplate',
-    'TERMINAL_PACKET_STATUSES',
-    'VALID_TRANSITIONS',
     'is_valid_packet_transition',
 ]
 

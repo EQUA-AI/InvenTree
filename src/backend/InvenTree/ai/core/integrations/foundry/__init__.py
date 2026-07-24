@@ -1,13 +1,9 @@
 """
 Azure AI Foundry Integration Module
 
-Provides Azure AI Foundry service integrations:
-- FoundryClient: Base client for Foundry services
-- Memory Store integration for long-term memory
-- Model inference client
+Placeholder package for Azure AI Foundry service integrations
+(Memory Store for long-term memory, model inference client).
+No client implementation is currently provided.
 """
 
-__all__ = [
-    "FoundryClient",
-    "get_foundry_client",
-]
+__all__: list[str] = []

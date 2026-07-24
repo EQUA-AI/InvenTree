@@ -253,7 +253,7 @@ It may be useful during development to profile parts of the backend code to see 
 ```python
 from InvenTree.helpers import count_queries
 
-with count_queries("My code block"):
+with count_queries('My code block'):
     # Code block to profile
     ...
 ```

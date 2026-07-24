@@ -31,23 +31,23 @@ from ai.core.integrations.inventree.tools import (
 )
 
 __all__ = [
+    # Tools
+    "INVENTREE_TOOLS",
+    "BusinessRuleError",
+    "CircuitState",
     # Client
     "InvenTreeClient",
     "InvenTreeError",
     "TransientError",
     "ValidationError",
-    "BusinessRuleError",
-    "CircuitState",
+    "check_low_stock",
+    "get_bom",
     "get_inventree_client",
-    "inventree_client",
-    # Tools
-    "INVENTREE_TOOLS",
-    "search_parts",
     "get_part_details",
     "get_stock_levels",
-    "get_bom",
+    "get_supplier_parts",
+    "inventree_client",
     "list_categories",
     "list_suppliers",
-    "get_supplier_parts",
-    "check_low_stock",
+    "search_parts",
 ]

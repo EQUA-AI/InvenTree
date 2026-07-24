@@ -9,14 +9,13 @@ The array must contain at least one dict that at least define a name and a link 
 
 ``` python
 class MyNavigationPlugin(NavigationMixin, InvenTreePlugin):
-
-    NAME = "NavigationPlugin"
+    NAME = 'NavigationPlugin'
 
     NAVIGATION = [
-        {'name': 'SampleIntegration', 'link': 'plugin:sample:hi', 'icon': 'ti ti-box'},
+        {'name': 'SampleIntegration', 'link': 'plugin:sample:hi', 'icon': 'ti ti-box'}
     ]
 
-    NAVIGATION_TAB_NAME = "Sample Nav"
+    NAVIGATION_TAB_NAME = 'Sample Nav'
     NAVIGATION_TAB_ICON = 'ti ti-plus-circle'
 ```
 

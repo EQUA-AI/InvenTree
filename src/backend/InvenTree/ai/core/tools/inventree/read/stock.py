@@ -9,9 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ai.core.maf_compat import ai_function
-
 from ai.core.integrations.data_provider import get_data_provider
+from ai.core.maf_compat import ai_function
 
 logger = logging.getLogger(__name__)
 
@@ -24,18 +23,18 @@ async def get_stock_level(
 ) -> dict[str, Any]:
     """
     Get the current stock level for a specific part.
-    
+
     Returns aggregated stock quantity across all locations or for a specific
     location. Use this to quickly check if a part is in stock without
     retrieving all individual stock items.
-    
+
     Args:
         part_id: The part ID to check stock for
         location_id: Optional location ID to check stock at a specific location.
                     If None, returns total stock across all locations.
         include_sublocation: If True, include stock from sub-locations when
                            location_id is specified (default True)
-    
+
     Returns:
         Stock level information including:
         - part_id: The part ID
@@ -47,45 +46,42 @@ async def get_stock_level(
         - is_low_stock: True if quantity < minimum_stock
         - stock_items_count: Number of individual stock items
         - unit: Unit of measure
-    
+
     Example:
         # Check total stock for a part
         stock = await get_stock_level(part_id=42)
         print(f"Total in stock: {stock['quantity']} {stock['unit']}")
-        
+
         # Check stock at a specific location
         stock = await get_stock_level(part_id=42, location_id=5)
         print(f"Stock at {stock['location_name']}: {stock['quantity']}")
     """
     provider = get_data_provider()
-    
+
     logger.info(f"Getting stock level for part_id={part_id}, location_id={location_id}")
-    
+
     # Get part info
     part = await provider.get_part(part_id)
     if not part:
         raise ValueError(f"Part with ID {part_id} not found")
-    
+
     # Get stock items for this part
     stock_items = await provider.get_stock_items(part_id=part_id)
-    
+
     # Filter by location if specified
     if location_id is not None:
         if include_sublocation:
             # Get location hierarchy to include sub-locations
             locations = await provider.get_locations()
             location_ids = _get_location_with_children(locations, location_id)
-            stock_items = [
-                s for s in stock_items 
-                if s.get("location") in location_ids
-            ]
+            stock_items = [s for s in stock_items if s.get("location") in location_ids]
         else:
             stock_items = [s for s in stock_items if s.get("location") == location_id]
-    
+
     # Calculate total quantity
     total_quantity = sum(item.get("quantity", 0) for item in stock_items)
     minimum_stock = part.get("minimum_stock") or 0
-    
+
     # Get location name if specified
     location_name = None
     if location_id is not None:
@@ -94,7 +90,7 @@ async def get_stock_level(
             if loc.get("pk") == location_id:
                 location_name = loc.get("name")
                 break
-    
+
     result = {
         "part_id": part_id,
         "part_name": part.get("name"),
@@ -106,9 +102,9 @@ async def get_stock_level(
         "stock_items_count": len(stock_items),
         "unit": part.get("units") or "units",
     }
-    
+
     logger.info(f"Stock level for part {part_id}: {total_quantity}")
-    
+
     return result
 
 
@@ -118,17 +114,17 @@ def _get_location_with_children(
 ) -> set[int]:
     """Get a location ID and all its child location IDs."""
     result = {parent_id}
-    
+
     for loc in locations:
         if loc.get("parent") in result:
             result.add(loc.get("pk"))
-    
+
     # Repeat to catch nested children (simple approach for shallow hierarchies)
     for _ in range(3):
         for loc in locations:
             if loc.get("parent") in result:
                 result.add(loc.get("pk"))
-    
+
     return result
 
 
@@ -139,15 +135,15 @@ async def get_stock_item(
 ) -> dict[str, Any] | None:
     """
     Get detailed information about a specific stock item.
-    
+
     A stock item represents a quantity of a specific part at a specific location,
     with optional serial number or batch tracking.
-    
+
     Args:
         stock_id: The stock item ID to retrieve
         include_history: If True, include stock movement history (transfers,
                         adjustments, etc.)
-    
+
     Returns:
         Stock item details including:
         - pk: Stock item ID
@@ -166,9 +162,9 @@ async def get_stock_item(
         - notes: Notes about the stock item
         - link: External reference URL
         - history: List of stock movements (if include_history=True)
-        
+
         Returns None if stock item not found.
-    
+
     Example:
         stock = await get_stock_item(stock_id=123)
         print(f"Part: {stock['part_name']}")
@@ -177,25 +173,25 @@ async def get_stock_item(
             print(f"Serial: {stock['serial']}")
     """
     provider = get_data_provider()
-    
+
     logger.info(f"Getting stock item {stock_id}")
-    
+
     # Get all stock items and find the one we need
     # Note: The provider may not support direct stock item lookup
     all_stock = await provider.get_stock_items()
     stock_item = next((s for s in all_stock if s.get("pk") == stock_id), None)
-    
+
     if not stock_item:
         logger.info(f"Stock item {stock_id} not found")
         return None
-    
+
     # Enrich with part name
     part_id = stock_item.get("part")
     if part_id:
         part = await provider.get_part(part_id)
         if part:
             stock_item["part_name"] = part.get("name")
-    
+
     # Enrich with location name
     location_id = stock_item.get("location")
     if location_id:
@@ -204,7 +200,7 @@ async def get_stock_item(
             if loc.get("pk") == location_id:
                 stock_item["location_name"] = loc.get("name")
                 break
-    
+
     # Add stock status text
     status = stock_item.get("status")
     status_map = {
@@ -217,15 +213,15 @@ async def get_stock_item(
         85: "Returned",
     }
     stock_item["status_text"] = status_map.get(status, "Unknown")
-    
+
     if include_history:
         # Stock tracking history would require additional API calls
         # For now, return empty list - can be enhanced
         stock_item["history"] = []
         logger.info("Stock history not yet implemented in data provider")
-    
+
     logger.info(f"Found stock item {stock_id}: {stock_item.get('quantity')} units")
-    
+
     return stock_item
 
 
@@ -237,17 +233,17 @@ async def get_stock_locations(
 ) -> list[dict[str, Any]]:
     """
     Get a list of stock locations.
-    
+
     Stock locations organize where physical inventory is stored. Locations
     can be nested in a hierarchy (warehouse -> aisle -> shelf -> bin).
-    
+
     Args:
         parent_id: Filter by parent location ID. If None, returns top-level
                   locations (or all locations if include_children=True).
         include_children: If True, recursively include all child locations
         include_stock_count: If True, include count of stock items at each
                            location (default True)
-    
+
     Returns:
         List of locations, each containing:
         - pk: Location ID
@@ -260,21 +256,21 @@ async def get_stock_locations(
         - stock_items_count: Number of stock items at this location
         - sublocations_count: Number of child locations
         - icon: Custom icon identifier
-    
+
     Example:
         # Get all top-level locations
         locations = await get_stock_locations()
-        
+
         # Get children of a warehouse
         locations = await get_stock_locations(parent_id=1, include_children=True)
     """
     provider = get_data_provider()
-    
+
     logger.info(f"Getting stock locations, parent_id={parent_id}")
-    
+
     # Get all locations
     all_locations = await provider.get_locations()
-    
+
     if parent_id is not None:
         if include_children:
             # Get parent and all descendants
@@ -289,7 +285,7 @@ async def get_stock_locations(
             locations = [loc for loc in all_locations if loc.get("parent") is None]
         else:
             locations = all_locations
-    
+
     if include_stock_count:
         # Get stock counts per location
         all_stock = await provider.get_stock_items()
@@ -298,18 +294,18 @@ async def get_stock_locations(
             loc_id = stock.get("location")
             if loc_id:
                 stock_by_location[loc_id] = stock_by_location.get(loc_id, 0) + 1
-        
+
         for loc in locations:
             loc["stock_items_count"] = stock_by_location.get(loc.get("pk"), 0)
-        
+
         # Count sublocations
         for loc in locations:
             loc["sublocations_count"] = sum(
-                1 for l in all_locations if l.get("parent") == loc.get("pk")
+                1 for sub in all_locations if sub.get("parent") == loc.get("pk")
             )
-    
+
     logger.info(f"Found {len(locations)} locations")
-    
+
     return locations
 
 
@@ -322,10 +318,10 @@ async def get_stock_at_location(
 ) -> list[dict[str, Any]]:
     """
     Get all stock items at a specific location.
-    
+
     Returns a list of all stock items stored at the specified location,
     optionally including items in sub-locations.
-    
+
     Args:
         location_id: The location ID to get stock for
         include_sublocation: If True, include stock from all sub-locations
@@ -333,7 +329,7 @@ async def get_stock_at_location(
         in_stock_only: If True, only return items with quantity > 0
                       (default True)
         limit: Maximum number of items to return (default 100)
-    
+
     Returns:
         List of stock items, each containing:
         - pk: Stock item ID
@@ -347,7 +343,7 @@ async def get_stock_at_location(
         - batch: Batch code if applicable
         - status: Stock status code
         - status_text: Human-readable status
-    
+
     Example:
         # Get all stock in Warehouse A
         stock = await get_stock_at_location(location_id=1)
@@ -355,32 +351,32 @@ async def get_stock_at_location(
             print(f"{item['part_name']}: {item['quantity']} units")
     """
     provider = get_data_provider()
-    
+
     logger.info(f"Getting stock at location {location_id}")
-    
+
     # Get stock at this location
     stock_items = await provider.get_stock_at_location(location_id)
-    
+
     if include_sublocation:
         # Get all locations and find children
         all_locations = await provider.get_locations()
         child_ids = _get_location_with_children(all_locations, location_id)
         child_ids.discard(location_id)  # Already have parent's stock
-        
+
         # Get stock from child locations
         for child_id in child_ids:
             child_stock = await provider.get_stock_at_location(child_id)
             stock_items.extend(child_stock)
-    
+
     # Filter for in-stock only
     if in_stock_only:
         stock_items = [s for s in stock_items if (s.get("quantity") or 0) > 0]
-    
+
     # Enrich with part and location names
     parts_cache: dict[int, dict] = {}
     locations = await provider.get_locations()
     location_map = {loc.get("pk"): loc.get("name") for loc in locations}
-    
+
     status_map = {
         10: "OK",
         50: "Attention needed",
@@ -390,27 +386,27 @@ async def get_stock_at_location(
         70: "Lost",
         85: "Returned",
     }
-    
+
     for stock in stock_items:
         # Add location name
         stock["location_name"] = location_map.get(stock.get("location"), "Unknown")
-        
+
         # Add part info
         part_id = stock.get("part")
         if part_id:
             if part_id not in parts_cache:
                 part = await provider.get_part(part_id)
                 parts_cache[part_id] = part or {}
-            
+
             part = parts_cache[part_id]
             stock["part_name"] = part.get("name", "Unknown")
             stock["part_ipn"] = part.get("IPN", "")
-        
+
         # Add status text
         stock["status_text"] = status_map.get(stock.get("status"), "Unknown")
-    
+
     logger.info(f"Found {len(stock_items)} stock items at location {location_id}")
-    
+
     return stock_items[:limit]
 
 
@@ -421,11 +417,11 @@ async def get_stock_items(
 ) -> list[dict[str, Any]]:
     """
     Get all stock items for a specific part across all locations.
-    
+
     Args:
         part_id: The part ID to find stock for
         limit: Maximum number of items to return (default 100)
-        
+
     Returns:
         List of stock items
     """
@@ -443,10 +439,10 @@ async def get_bom(
 ) -> dict[str, Any]:
     """
     Get the Bill of Materials (BOM) for an assembly.
-    
+
     Returns the list of components needed to build the assembly, with optional
     current stock information and recursive expansion.
-    
+
     Args:
         part_id: The assembly part ID
         include_inherited: Include BOM items inherited from parent templates
@@ -455,7 +451,7 @@ async def get_bom(
                   components at all levels (default False)
         include_stock: Include current stock levels for each component
                       (default True)
-    
+
     Returns:
         BOM information including:
         - part_id: The assembly part ID
@@ -479,7 +475,7 @@ async def get_bom(
             - sub_bom: Nested BOM items (if recursive=True and component is assembly)
         - total_items: Total number of unique components
         - buildable_quantity: How many assemblies can be built with current stock
-    
+
     Example:
         # Get flat BOM with stock levels
         bom = await get_bom(part_id=100)
@@ -489,14 +485,14 @@ async def get_bom(
             print(f"  {item['sub_part_name']} x{item['quantity']} (stock: {item['in_stock']})")
     """
     provider = get_data_provider()
-    
+
     logger.info(f"Getting BOM for part {part_id}, recursive={recursive}")
-    
+
     # Get part info
     part = await provider.get_part(part_id)
     if not part:
         raise ValueError(f"Part with ID {part_id} not found")
-    
+
     if not part.get("assembly"):
         return {
             "part_id": part_id,
@@ -507,17 +503,17 @@ async def get_bom(
             "buildable_quantity": None,
             "message": "This part is not an assembly and has no BOM",
         }
-    
+
     # Get BOM items
     bom_items = await provider.get_bom_items(part_id)
-    
+
     # Filter inherited if requested
     if not include_inherited:
         bom_items = [b for b in bom_items if not b.get("inherited", False)]
-    
+
     # Track minimum buildable quantity
     min_buildable: float | None = None
-    
+
     # Enrich each BOM item
     for item in bom_items:
         sub_part_id = item.get("sub_part")
@@ -526,11 +522,11 @@ async def get_bom(
             if sub_part:
                 item["sub_part_name"] = sub_part.get("name")
                 item["sub_part_ipn"] = sub_part.get("IPN")
-                
+
                 if include_stock:
                     stock_qty = await provider.get_stock_quantity(sub_part_id)
                     item["in_stock"] = stock_qty
-                    
+
                     # Calculate how many assemblies can be built with this component
                     required_qty = item.get("quantity") or 1
                     if required_qty > 0 and not item.get("optional", False):
@@ -538,7 +534,7 @@ async def get_bom(
                         item["can_build"] = can_build
                         if min_buildable is None or can_build < min_buildable:
                             min_buildable = can_build
-                
+
                 # Recursive expansion
                 if recursive and sub_part.get("assembly"):
                     sub_bom = await get_bom(
@@ -548,7 +544,7 @@ async def get_bom(
                         include_stock=include_stock,
                     )
                     item["sub_bom"] = sub_bom.get("items", [])
-    
+
     result = {
         "part_id": part_id,
         "part_name": part.get("name"),
@@ -557,9 +553,9 @@ async def get_bom(
         "total_items": len(bom_items),
         "buildable_quantity": int(min_buildable) if min_buildable is not None else None,
     }
-    
+
     logger.info(f"BOM for part {part_id}: {len(bom_items)} items")
-    
+
     return result
 
 
@@ -571,15 +567,15 @@ async def get_stock_history(
 ) -> list[dict[str, Any]]:
     """
     Get the history of a stock item.
-    
+
     Returns a list of tracking events for a specific stock item, showing
     creation, movements, quantity changes, and other events.
-    
+
     Args:
         stock_id: The stock item ID to get history for
         limit: Maximum number of events to return (default 50)
         offset: Pagination offset
-    
+
     Returns:
         List of tracking events, each containing:
         - pk: Tracking entry ID
@@ -589,7 +585,7 @@ async def get_stock_history(
         - tracking_type: Type of tracking event
         - user: User ID who performed the action
         - user_detail: Detailed user info
-    
+
     Example:
         # Get history for a stock item
         history = await get_stock_history(stock_id=123)
@@ -597,24 +593,25 @@ async def get_stock_history(
             print(f"{event['date']}: {event['label']}")
     """
     logger.info(f"Getting history for stock item {stock_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         # InvenTree stores history in the 'stock/track' endpoint
         # Filter by the 'item' field (which is the stock_id)
         events = await client._request(
-            "GET", 
-            "/stock/track/", 
+            "GET",
+            "/stock/track/",
             params={
                 "item": stock_id,
                 "limit": limit,
                 "offset": offset,
-                "ordering": "-date", # Newest first
-            }
+                "ordering": "-date",  # Newest first
+            },
         )
-        
+
         # The API returns a pagination object {count, next, previous, results}
         if isinstance(events, dict) and "results" in events:
             return events["results"]
@@ -622,7 +619,7 @@ async def get_stock_history(
             return events
         else:
             return []
-            
+
     except Exception as e:
         logger.error(f"Failed to get stock history: {e}")
         return []
@@ -639,11 +636,11 @@ STOCK_READ_TOOLS = [
 ]
 
 __all__ = [
-    "get_stock_level",
-    "get_stock_item",
-    "get_stock_locations",
-    "get_stock_at_location",
-    "get_bom",
-    "get_stock_history",
     "STOCK_READ_TOOLS",
+    "get_bom",
+    "get_stock_at_location",
+    "get_stock_history",
+    "get_stock_item",
+    "get_stock_level",
+    "get_stock_locations",
 ]

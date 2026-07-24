@@ -146,9 +146,7 @@ async def delete_project_code(
 
         await client.delete(f"project-code/{project_code_id}/")
 
-        logger.info(
-            f"Deleted project code {project_code_id} ({project_code.get('code')})"
-        )
+        logger.info(f"Deleted project code {project_code_id} ({project_code.get('code')})")
         return tool.success_response(
             data={
                 "project_code_id": project_code_id,
@@ -207,9 +205,7 @@ async def assign_project_code(
             json={"project_code": project_code_id},
         )
 
-        logger.info(
-            f"Assigned project code {project_code_id} to {order_type} order {order_id}"
-        )
+        logger.info(f"Assigned project code {project_code_id} to {order_type} order {order_id}")
         return tool.success_response(
             data=result,
             message=f"Successfully assigned project code to {order_type} order {order_id}",
@@ -271,9 +267,7 @@ async def remove_project_code(
         )
 
     except Exception as e:
-        logger.error(
-            f"Failed to remove project code from {order_type} order {order_id}: {e}"
-        )
+        logger.error(f"Failed to remove project code from {order_type} order {order_id}: {e}")
         return tool.error_response(str(e))
 
 

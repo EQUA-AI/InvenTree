@@ -424,7 +424,7 @@ class SafetyGateExecutor(ApprovalExecutor):
 
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
         """Execute."""
-        try:  # noqa: PLW0717 - established executor effect block
+        try:
             from repair.models import RepairPacketEvent, RepairPacketGate
 
             gate = RepairPacketGate.objects.get(pk=payload['gate_id'])

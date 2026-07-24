@@ -134,15 +134,11 @@ async def create_custom_state(
 
     valid_models = ["stock", "build", "purchaseorder", "salesorder", "returnorder"]
     if model not in valid_models:
-        return tool.error_response(
-            f"Invalid model. Must be one of: {valid_models}"
-        )
+        return tool.error_response(f"Invalid model. Must be one of: {valid_models}")
 
     valid_colors = ["primary", "secondary", "success", "danger", "warning", "info"]
     if color not in valid_colors:
-        return tool.error_response(
-            f"Invalid color. Must be one of: {valid_colors}"
-        )
+        return tool.error_response(f"Invalid color. Must be one of: {valid_colors}")
 
     try:
         client = await tool.get_client()
@@ -206,9 +202,7 @@ async def update_custom_state(
         if color is not None:
             valid_colors = ["primary", "secondary", "success", "danger", "warning", "info"]
             if color not in valid_colors:
-                return tool.error_response(
-                    f"Invalid color. Must be one of: {valid_colors}"
-                )
+                return tool.error_response(f"Invalid color. Must be one of: {valid_colors}")
             data["color"] = color
         if logical_key is not None:
             data["logical_key"] = logical_key

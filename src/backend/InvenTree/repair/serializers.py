@@ -2,7 +2,6 @@
 
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
-
 from tasks.serializers import KanbanCardPartSerializer
 
 from .models import (
@@ -267,9 +266,7 @@ class RepairPacketSerializer(serializers.ModelSerializer):
         """Return the parts path via the linked work order's card parts."""
         if not obj.work_order_id:
             return []
-        return KanbanCardPartSerializer(
-            obj.work_order.card_parts.all(), many=True
-        ).data
+        return KanbanCardPartSerializer(obj.work_order.card_parts.all(), many=True).data
 
     def get_approvals(self, obj) -> list:
         """Return a compact view of approvals linked to this packet."""

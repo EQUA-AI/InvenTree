@@ -30,22 +30,22 @@ from ai.core.integrations.email.tools import (
 )
 
 __all__ = [
+    # Tools
+    "EMAIL_TOOLS",
+    "EmailAttachment",
+    "EmailMessage",
     # Provider protocol
     "EmailProvider",
-    "EmailMessage",
-    "EmailAttachment",
     "EmailQuery",
-    "build_gmail_query",
     # Gmail client
     "GmailClient",
     "GmailError",
-    "get_gmail_client",
-    # Tools
-    "EMAIL_TOOLS",
-    "list_emails",
-    "get_email_details",
+    "build_gmail_query",
     "download_attachment",
+    "generate_and_send_document",
+    "get_email_details",
+    "get_gmail_client",
+    "list_emails",
     "mark_email_processed",
     "send_email",
-    "generate_and_send_document",
 ]

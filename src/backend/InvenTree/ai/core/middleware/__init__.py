@@ -10,73 +10,71 @@ Contains middleware components for cross-cutting concerns:
 - Error taxonomy and execution context
 """
 
-from ai.core.middleware.reflection import (
-    ErrorCategory,
-    ExecutionContext,
-    ToolExecutionResult,
-    ReflectionFunctionMiddleware,
-    LoggingMiddleware,
-    MetricsMiddleware,
-    MetricsSummary,
-    get_reflection_middleware,
-    get_logging_middleware,
-    get_metrics_middleware,
-)
-
-from ai.core.middleware.retry import (
-    RetryConfig,
-    RetryStats,
-    RetryContext,
-    is_retryable_error,
-    retry_async,
-    with_retry,
-    retry_azure_openai_call,
-    retry_with_fallback,
-    get_retry_stats,
-    AZURE_OPENAI_RETRY_CONFIG,
-)
-
 from ai.core.middleware.rate_limit import (
     RateLimitConfig,
     RateLimiter,
+    RateLimitMiddleware,
     RateLimitResult,
     RateLimitStats,
-    RateLimitMiddleware,
-    rate_limit,
     get_rate_limiter,
+    rate_limit,
+)
+from ai.core.middleware.reflection import (
+    ErrorCategory,
+    ExecutionContext,
+    LoggingMiddleware,
+    MetricsMiddleware,
+    MetricsSummary,
+    ReflectionFunctionMiddleware,
+    ToolExecutionResult,
+    get_logging_middleware,
+    get_metrics_middleware,
+    get_reflection_middleware,
+)
+from ai.core.middleware.retry import (
+    AZURE_OPENAI_RETRY_CONFIG,
+    RetryConfig,
+    RetryContext,
+    RetryStats,
+    get_retry_stats,
+    is_retryable_error,
+    retry_async,
+    retry_azure_openai_call,
+    retry_with_fallback,
+    with_retry,
 )
 
 __all__ = [
+    "AZURE_OPENAI_RETRY_CONFIG",
     # Error handling
     "ErrorCategory",
     "ExecutionContext",
-    "ToolExecutionResult",
-    # Middleware classes
-    "ReflectionFunctionMiddleware",
     "LoggingMiddleware",
     "MetricsMiddleware",
     "MetricsSummary",
-    # Factory functions
-    "get_reflection_middleware",
-    "get_logging_middleware",
-    "get_metrics_middleware",
-    # Retry utilities
-    "RetryConfig",
-    "RetryStats",
-    "RetryContext",
-    "is_retryable_error",
-    "retry_async",
-    "with_retry",
-    "retry_azure_openai_call",
-    "retry_with_fallback",
-    "get_retry_stats",
-    "AZURE_OPENAI_RETRY_CONFIG",
     # Rate limiting
     "RateLimitConfig",
-    "RateLimiter",
+    "RateLimitMiddleware",
     "RateLimitResult",
     "RateLimitStats",
-    "RateLimitMiddleware",
-    "rate_limit",
+    "RateLimiter",
+    # Middleware classes
+    "ReflectionFunctionMiddleware",
+    # Retry utilities
+    "RetryConfig",
+    "RetryContext",
+    "RetryStats",
+    "ToolExecutionResult",
+    "get_logging_middleware",
+    "get_metrics_middleware",
     "get_rate_limiter",
+    # Factory functions
+    "get_reflection_middleware",
+    "get_retry_stats",
+    "is_retryable_error",
+    "rate_limit",
+    "retry_async",
+    "retry_azure_openai_call",
+    "retry_with_fallback",
+    "with_retry",
 ]

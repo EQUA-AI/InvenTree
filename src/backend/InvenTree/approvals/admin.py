@@ -55,7 +55,13 @@ class ApprovalEventAdmin(admin.ModelAdmin):
 class ApprovalRevisionAdmin(admin.ModelAdmin):
     """Admin for ApprovalRevision model."""
 
-    list_display = ['id', 'approval', 'revision_number', 'created_at', 'created_by_user']
+    list_display = [
+        'id',
+        'approval',
+        'revision_number',
+        'created_at',
+        'created_by_user',
+    ]
     search_fields = ['approval__id']
     readonly_fields = ['id', 'created_at']
     raw_id_fields = ['approval', 'created_by_user']
@@ -66,7 +72,13 @@ class ApprovalRevisionAdmin(admin.ModelAdmin):
 class ExecutedEffectAdmin(admin.ModelAdmin):
     """Admin for ExecutedEffect model."""
 
-    list_display = ['idempotency_key', 'approval', 'effect_type', 'effect_ref', 'created_at']
+    list_display = [
+        'idempotency_key',
+        'approval',
+        'effect_type',
+        'effect_ref',
+        'created_at',
+    ]
     search_fields = ['idempotency_key', 'approval__id', 'effect_type']
     readonly_fields = ['created_at']
     raw_id_fields = ['approval']

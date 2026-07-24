@@ -63,9 +63,7 @@ async def create_test_template(
 
         result = await client.post("part/test-template/", json=data)
 
-        logger.info(
-            f"Created test template '{test_name}' for part {part_id}: {result.get('pk')}"
-        )
+        logger.info(f"Created test template '{test_name}' for part {part_id}: {result.get('pk')}")
         return tool.success_response(
             data=result,
             message=f"Successfully created test template '{test_name}' for part {part_id}",
@@ -163,9 +161,7 @@ async def delete_test_template(
 
         await client.delete(f"part/test-template/{template_id}/")
 
-        logger.info(
-            f"Deleted test template {template_id} ({template.get('test_name')})"
-        )
+        logger.info(f"Deleted test template {template_id} ({template.get('test_name')})")
         return tool.success_response(
             data={
                 "template_id": template_id,

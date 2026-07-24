@@ -9,14 +9,13 @@ no-op decorator so the application can still start.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
-F = TypeVar("F", bound=Callable[..., Any])
-
-
-def _noop_tool(func: F | None = None, **_: Any):
+def _noop_tool[F: Callable[..., Any]](func: F | None = None, **_: Any):
     def decorator(f: F) -> F:
         return f
 

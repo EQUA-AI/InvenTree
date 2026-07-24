@@ -10,8 +10,6 @@ import logging
 from typing import Any
 
 from ai.core.maf_compat import ai_function
-
-from ai.core.integrations.data_provider import get_data_provider
 from ai.core.tools.inventree.base import require_hitl
 
 logger = logging.getLogger(__name__)
@@ -30,10 +28,10 @@ async def create_sales_order(
 ) -> dict[str, Any]:
     """
     Create a new sales order.
-    
+
     Creates a sales order for a customer. Line items can be
     added after creation using add_so_line_item.
-    
+
     Args:
         customer_id: The customer company ID (required)
         reference: SO reference number (auto-generated if not provided)
@@ -42,10 +40,10 @@ async def create_sales_order(
         link: External link (e.g., customer PO reference)
         contact_id: Customer contact person ID
         project_code: Project code for tracking
-    
+
     Returns:
         Created sales order data
-    
+
     Example:
         # Create a SO for a customer
         so = await create_sales_order(
@@ -55,11 +53,11 @@ async def create_sales_order(
         )
     """
     logger.info(f"Creating sales order for customer {customer_id}")
-    
+
     data: dict[str, Any] = {
         "customer": customer_id,
     }
-    
+
     if reference:
         data["reference"] = reference
     if description:
@@ -72,19 +70,20 @@ async def create_sales_order(
         data["contact"] = contact_id
     if project_code:
         data["project_code"] = project_code
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", "/order/so/", json_data=data)
-        
+
         if isinstance(result, dict):
             logger.info(f"Created sales order pk={result.get('pk')}")
             return result
-        
+
         return {"error": "Unexpected response format"}
-        
+
     except Exception as e:
         logger.error(f"Failed to create sales order: {e}")
         raise
@@ -103,9 +102,9 @@ async def add_so_line_item(
 ) -> dict[str, Any]:
     """
     Add a line item to a sales order.
-    
+
     Adds a part to an existing sales order with specified quantity.
-    
+
     Args:
         order_id: The sales order ID (required)
         part_id: The part to sell (required)
@@ -114,10 +113,10 @@ async def add_so_line_item(
         reference: Line item reference
         notes: Notes for this line
         target_date: Delivery date for this line
-    
+
     Returns:
         Created line item data
-    
+
     Example:
         # Add 50 widgets to the SO
         line = await add_so_line_item(
@@ -128,13 +127,13 @@ async def add_so_line_item(
         )
     """
     logger.info(f"Adding line item to SO {order_id}: part {part_id} x {quantity}")
-    
+
     data: dict[str, Any] = {
         "order": order_id,
         "part": part_id,
         "quantity": quantity,
     }
-    
+
     if sale_price is not None:
         data["sale_price"] = sale_price
     if reference:
@@ -143,19 +142,20 @@ async def add_so_line_item(
         data["notes"] = notes
     if target_date:
         data["target_date"] = target_date
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", "/order/so-line/", json_data=data)
-        
+
         if isinstance(result, dict):
             logger.info(f"Added SO line item pk={result.get('pk')}")
             return result
-        
+
         return {"error": "Unexpected response format"}
-        
+
     except Exception as e:
         logger.error(f"Failed to add SO line item: {e}")
         raise
@@ -168,38 +168,35 @@ async def issue_sales_order(
 ) -> dict[str, Any]:
     """
     Issue a sales order.
-    
+
     Changes the SO status from 'Pending' to 'In Progress'.
     This indicates the order is being processed.
-    
+
     Args:
         order_id: The sales order ID to issue (required)
-    
+
     Returns:
         Updated sales order data
-    
+
     Example:
         # Start processing a sales order
         result = await issue_sales_order(order_id=15)
     """
     logger.info(f"Issuing sales order {order_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
-        result = await client._request(
-            "POST", 
-            f"/order/so/{order_id}/issue/",
-            json_data={}
-        )
-        
+
+        result = await client._request("POST", f"/order/so/{order_id}/issue/", json_data={})
+
         if isinstance(result, dict):
             logger.info(f"Issued sales order {order_id}")
             return result
-        
+
         return {"success": True, "order_id": order_id, "status": "In Progress"}
-        
+
     except Exception as e:
         logger.error(f"Failed to issue sales order: {e}")
         raise
@@ -217,10 +214,10 @@ async def create_so_shipment(
 ) -> dict[str, Any]:
     """
     Create a shipment for a sales order.
-    
+
     Creates a new shipment record that can have stock items
     allocated to it for shipping.
-    
+
     Args:
         order_id: The sales order ID (required)
         reference: Shipment reference number
@@ -228,10 +225,10 @@ async def create_so_shipment(
         invoice_number: Invoice number
         link: External link (tracking URL, etc.)
         notes: Shipment notes
-    
+
     Returns:
         Created shipment data
-    
+
     Example:
         # Create a shipment for partial order
         shipment = await create_so_shipment(
@@ -241,11 +238,11 @@ async def create_so_shipment(
         )
     """
     logger.info(f"Creating shipment for sales order {order_id}")
-    
+
     data: dict[str, Any] = {
         "order": order_id,
     }
-    
+
     if reference:
         data["reference"] = reference
     if tracking_number:
@@ -256,19 +253,20 @@ async def create_so_shipment(
         data["link"] = link
     if notes:
         data["notes"] = notes
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", "/order/so/shipment/", json_data=data)
-        
+
         if isinstance(result, dict):
             logger.info(f"Created shipment pk={result.get('pk')}")
             return result
-        
+
         return {"error": "Unexpected response format"}
-        
+
     except Exception as e:
         logger.error(f"Failed to create shipment: {e}")
         raise
@@ -284,19 +282,19 @@ async def allocate_so_stock(
 ) -> dict[str, Any]:
     """
     Allocate stock to a sales order line item.
-    
+
     Reserves specific stock items for a sales order line.
     Allocated stock is held for this order.
-    
+
     Args:
         line_item_id: The SO line item ID (required)
         stock_item_id: The stock item to allocate (required)
         quantity: Quantity to allocate (required)
         shipment_id: Shipment to associate allocation with
-    
+
     Returns:
         Created allocation data
-    
+
     Example:
         # Allocate 25 items from stock to an order line
         allocation = await allocate_so_stock(
@@ -307,28 +305,29 @@ async def allocate_so_stock(
         )
     """
     logger.info(f"Allocating {quantity} from stock {stock_item_id} to SO line {line_item_id}")
-    
+
     data: dict[str, Any] = {
         "line": line_item_id,
         "item": stock_item_id,
         "quantity": quantity,
     }
-    
+
     if shipment_id:
         data["shipment"] = shipment_id
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", "/order/so-allocation/", json_data=data)
-        
+
         if isinstance(result, dict):
             logger.info(f"Created SO allocation pk={result.get('pk')}")
             return result
-        
+
         return {"error": "Unexpected response format"}
-        
+
     except Exception as e:
         logger.error(f"Failed to allocate stock: {e}")
         raise
@@ -349,7 +348,7 @@ async def update_sales_order(
 ) -> dict[str, Any]:
     """
     Update a sales order.
-    
+
     Args:
         sales_order_id: The sales order ID to update (required)
         customer_id: Customer company ID
@@ -360,12 +359,12 @@ async def update_sales_order(
         link: External link
         contact_id: Contact person ID
         project_code: Project code ID
-    
+
     Returns:
         Updated sales order data
     """
     logger.info(f"Updating sales order {sales_order_id}")
-    
+
     data: dict[str, Any] = {}
     if customer_id:
         data["customer"] = customer_id
@@ -383,18 +382,19 @@ async def update_sales_order(
         data["contact"] = contact_id
     if project_code:
         data["project_code"] = project_code
-        
+
     if not data:
         raise ValueError("No fields to update provided")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("PATCH", f"/order/so/{sales_order_id}/", json_data=data)
         logger.info(f"Updated sales order {sales_order_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to update sales order: {e}")
         raise
@@ -407,23 +407,24 @@ async def cancel_sales_order(
 ) -> dict[str, Any]:
     """
     Cancel a sales order.
-    
+
     Args:
         sales_order_id: The sales order ID to cancel
-        
+
     Returns:
         Cancellation confirmation
     """
     logger.info(f"Cancelling sales order {sales_order_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request("POST", f"/order/so/{sales_order_id}/cancel/", json_data={})
         logger.info(f"Cancelled sales order {sales_order_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to cancel sales order: {e}")
         raise
@@ -436,24 +437,25 @@ async def delete_sales_order(
 ) -> dict[str, Any]:
     """
     Delete a sales order.
-    
+
     Args:
         sales_order_id: The sales order ID to delete
-        
+
     Returns:
         Success confirmation
     """
     logger.info(f"Deleting sales order {sales_order_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         await client._request("DELETE", f"/order/so/{sales_order_id}/")
-        
+
         logger.info(f"Deleted sales order {sales_order_id}")
         return {"success": True, "sales_order_id": sales_order_id}
-        
+
     except Exception as e:
         logger.error(f"Failed to delete sales order: {e}")
         raise
@@ -467,28 +469,29 @@ async def complete_sales_order(
 ) -> dict[str, Any]:
     """
     Complete a sales order.
-    
+
     Args:
         sales_order_id: The sales order ID to complete
         accept_incomplete: Accept incomplete order (allow un-shipped items)
-        
+
     Returns:
         Completion result
     """
     logger.info(f"Completing sales order {sales_order_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         result = await client._request(
-            "POST", 
+            "POST",
             f"/order/so/{sales_order_id}/complete/",
-            json_data={"accept_incomplete": accept_incomplete}
+            json_data={"accept_incomplete": accept_incomplete},
         )
         logger.info(f"Completed sales order {sales_order_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to complete sales order: {e}")
         raise
@@ -501,24 +504,25 @@ async def delete_so_line_item(
 ) -> dict[str, Any]:
     """
     Delete a sales order line item.
-    
+
     Args:
         line_item_id: The line item ID to delete
-        
+
     Returns:
         Success confirmation
     """
     logger.info(f"Deleting SO line item {line_item_id}")
-    
+
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
+
         client = get_inventree_client()
-        
+
         await client._request("DELETE", f"/order/so-line/{line_item_id}/")
-        
+
         logger.info(f"Deleted SO line item {line_item_id}")
         return {"success": True, "line_item_id": line_item_id}
-        
+
     except Exception as e:
         logger.error(f"Failed to delete SO line item: {e}")
         raise
@@ -539,15 +543,15 @@ SALES_ORDER_WRITE_TOOLS = [
 ]
 
 __all__ = [
-    "create_sales_order",
-    "add_so_line_item",
-    "issue_sales_order",
-    "create_so_shipment",
-    "allocate_so_stock",
-    "update_sales_order",
-    "cancel_sales_order",
-    "delete_sales_order",
-    "complete_sales_order",
-    "delete_so_line_item",
     "SALES_ORDER_WRITE_TOOLS",
+    "add_so_line_item",
+    "allocate_so_stock",
+    "cancel_sales_order",
+    "complete_sales_order",
+    "create_sales_order",
+    "create_so_shipment",
+    "delete_sales_order",
+    "delete_so_line_item",
+    "issue_sales_order",
+    "update_sales_order",
 ]
