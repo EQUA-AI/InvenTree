@@ -312,6 +312,41 @@ _WITHHELD_TOOLS: dict[str, str] = {
 }
 
 
+#: The direct-ORM kanban write tools. When governed writes are enabled these are
+#: withheld from the agent so the ONLY AI path that mutates a board card is the
+#: governed proposal rail (``aichat.services.proposals``): the model proposes, a
+#: deterministic command computes the effect, and a separate authenticated
+#: confirmation dispatches the canonical ``tasks.services`` command (permission,
+#: customer scope, expected-version, audit event, exactly-once receipt). Off by
+#: default, so a deployment that has not adopted the proposal rail is unchanged.
+_GOVERNED_KANBAN_WRITE_TOOLS: frozenset[str] = frozenset({
+    "create_kanban_card",
+    "update_kanban_card",
+    "move_kanban_card",
+    "archive_kanban_card",
+    "restore_kanban_card",
+    "add_parts_to_kanban_card",
+    "remove_part_from_kanban_card",
+})
+
+#: Reason surfaced when a governed-write tool is denied. Kept short and stable so
+#: the catalog manifest digest is deterministic under the flag.
+_GOVERNED_WRITE_REASON = (
+    "Direct AI board writes are governed: propose the change through the chat "
+    "proposal rail, which dispatches the canonical work-order command on confirm"
+)
+
+
+def _governed_kanban_writes_enabled() -> bool:
+    """Whether the direct-ORM kanban write bypass is retired (deploy setting).
+
+    Read at catalog-build time; ``capability_catalog.cache_clear()`` re-reads it.
+    """
+    from django.conf import settings
+
+    return bool(getattr(settings, "AIMMS_GOVERNED_KANBAN_WRITES", False))
+
+
 def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
     from ai.core.tools.rbac import tool_requirement
 
@@ -321,6 +356,10 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
         # Checked before the RBAC map so a mapped-but-withheld tool cannot fall
         # through to NATIVE_PERMISSION and become exposed again.
         return AuthorizationPolicy(kind=PolicyKind.DISABLED, reason=withheld_reason)
+    if tool_id in _GOVERNED_KANBAN_WRITE_TOOLS and _governed_kanban_writes_enabled():
+        # Same guarantee as _WITHHELD_TOOLS, but policy-driven: the direct-ORM
+        # write is retired in favour of the proposal rail when governance is on.
+        return AuthorizationPolicy(kind=PolicyKind.DISABLED, reason=_GOVERNED_WRITE_REASON)
     if tool_id == "get_part_attachments":
         return AuthorizationPolicy(
             kind=PolicyKind.RESOURCE_AUTHORIZER,
