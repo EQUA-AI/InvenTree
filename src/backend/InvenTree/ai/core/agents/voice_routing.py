@@ -250,9 +250,10 @@ class VoiceComplexityRouter:
 
     _EFFECT_VERB = (
         r"(?:add|allocate|approve|archive|assign|attach|build|cancel|change|close|"
-        r"complete|consume|create|delete|dispatch|edit|email|hold|issue|mark|move|"
-        r"open|order|procure|publish|purchase|receive|release|remove|reorder|reserve|"
-        r"restore|resume|schedule|send|set|start|submit|transfer|unassign|update|upload)"
+        r"complete|consume|convert|count|create|deactivate|delete|dispatch|edit|email|"
+        r"generate|hold|install|issue|mark|merge|move|open|order|procure|publish|"
+        r"purchase|receive|release|remove|reorder|reserve|restore|resume|return|schedule|"
+        r"send|serialize|set|split|start|submit|transfer|unassign|uninstall|update|upload)"
     )
     _EFFECT_PATTERNS: ClassVar[tuple[re.Pattern[str], ...]] = tuple(
         re.compile(pattern, re.IGNORECASE)

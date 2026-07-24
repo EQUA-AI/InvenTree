@@ -25,6 +25,7 @@ confirmed, resolved, and re-authorized call.
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -42,6 +43,8 @@ from ai.core.voice.confirmation import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
     from ai.core.auth import AIPrincipal
 
 
@@ -114,7 +117,7 @@ class VoiceWriteResolver(Protocol):
 class VoiceWritePermission(Protocol):
     """The RBAC decision for a capability -- the SAME authority text uses."""
 
-    def allows(self, actor: AIPrincipal, capability: str) -> bool: ...
+    def allows(self, actor: AIPrincipal, capability: str) -> bool | Awaitable[bool]: ...
 
 
 @runtime_checkable
@@ -210,6 +213,12 @@ class VoiceWriteGate:
     executor: VoiceWriteExecutor = field(default_factory=_UnavailableExecutor)
     store: PendingVoiceWriteStore = field(default_factory=InMemoryPendingWriteStore)
 
+    async def _allows(self, actor: AIPrincipal, capability: str) -> bool:
+        decision = self.permission.allows(actor, capability)
+        if inspect.isawaitable(decision):
+            decision = await decision
+        return bool(decision)
+
     async def begin(
         self,
         content: str,
@@ -231,7 +240,7 @@ class VoiceWriteGate:
         )
         if resolved is None:
             return None
-        has_permission = bool(self.permission.allows(actor, resolved.action.capability))
+        has_permission = await self._allows(actor, resolved.action.capability)
         pending, spoken, audit = propose(
             resolved.action,
             thread_id=thread_id,
@@ -273,7 +282,7 @@ class VoiceWriteGate:
                 spoken=outcome.spoken, executed=False, audit_events=tuple(events)
             )
         # Re-authorize at execution time: a grant may have changed since propose.
-        if not self.permission.allows(actor, stored.executable.capability):
+        if not await self._allows(actor, stored.executable.capability):
             events.append(
                 _event(
                     VoiceWriteAuditEventType.NOT_AUTHORIZED,

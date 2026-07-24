@@ -772,6 +772,17 @@ KANBAN_READ_TOOLS = [
     check_kanban_card_stock,
 ]
 
+# ``delete_kanban_card`` is deliberately absent. It hard-deletes a work order, and
+# ``KanbanCard`` cascades to ``WorkOrderEvent``, ``WorkOrderCommand``,
+# ``WorkOrderCloseout``, ``WorkOrderDeviation``, ``CloseoutPartUsage`` and
+# ``CloseoutReading`` -- so one call destroys the governance and closeout history of
+# completed work. The tool also applies no customer scope, unlike the REST
+# work-order surface. It stays defined (and admin/ORM deletion is unaffected) but is
+# withheld from the agent until deletion returns as a governed command carrying
+# permission, scope, expected-version and a durable audit record.
+# ``archive_kanban_card`` is the correct soft-delete and remains available.
+# ``ai.core.tools.capabilities._WITHHELD_TOOLS`` is the fail-closed backstop: if this
+# tool is ever re-added here, it is still denied exposure and invocation.
 KANBAN_TOOLS = [
     list_kanban_cards,
     get_kanban_card,
@@ -780,7 +791,6 @@ KANBAN_TOOLS = [
     move_kanban_card,
     archive_kanban_card,
     restore_kanban_card,
-    delete_kanban_card,
     get_kanban_summary,
     add_parts_to_kanban_card,
     check_kanban_card_stock,

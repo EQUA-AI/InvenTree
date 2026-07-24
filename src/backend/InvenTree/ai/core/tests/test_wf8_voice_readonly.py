@@ -18,14 +18,12 @@ import django
 
 django.setup()
 
-from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS  # noqa: E402
-from ai.core.integrations.email.tools import send_email  # noqa: E402
-from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS  # noqa: E402
+from ai.core.integrations.email.tools import list_emails, send_email  # noqa: E402
 from ai.core.integrations.kanban_tools import (  # noqa: E402
-    KANBAN_READ_TOOLS,
     create_kanban_card,
     list_kanban_cards,
 )
+from ai.core.tools.rbac import read_tools  # noqa: E402
 from ai.core.workflows.wf8_lookup import T1LookupWorkflow  # noqa: E402
 from django.test import SimpleTestCase  # noqa: E402
 
@@ -45,11 +43,11 @@ class VoiceReadOnlyToolsetTests(SimpleTestCase):
         # No mutating tools that would bypass the InvenTree read-only fence.
         self.assertNotIn(send_email, voice)
         self.assertNotIn(create_kanban_card, voice)
-        # Only read tools, and non-empty.
-        allowed = set(INVENTORY_READ_TOOLS) | set(DOCUMENT_SEARCH_TOOLS) | set(KANBAN_READ_TOOLS)
+        # Every text-chat read tool remains available, including email reads.
+        allowed = set(read_tools(self.wf.BASE_TOOLS))
         self.assertTrue(voice)
-        self.assertTrue(voice.issubset(allowed))
-        # Kanban and build/work-order reads are available to voice.
+        self.assertEqual(voice, allowed)
+        self.assertIn(list_emails, voice)
         self.assertIn(list_kanban_cards, voice)
 
     def test_text_toolset_keeps_full_surface(self):

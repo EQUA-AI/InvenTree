@@ -166,7 +166,9 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
             "move_kanban_card",
             "archive_kanban_card",
             "restore_kanban_card",
-            "delete_kanban_card",
+            # "delete_kanban_card" is withheld -- see _WITHHELD_TOOLS. The catalog
+            # rejects packs referencing unregistered tools, so this entry must stay
+            # removed for as long as the tool is absent from KANBAN_TOOLS.
             "add_parts_to_kanban_card",
             "remove_part_from_kanban_card",
         ),
@@ -203,8 +205,10 @@ _ADJACENT_PACKS: dict[str, frozenset[str]] = {
 }
 
 _WRITE_PATTERN = re.compile(
-    r"\b(add|archive|assign|create|delete|generate|mark|merge|move|remove|"
-    r"restore|return|send|set|split|transfer|uninstall|update)\b",
+    r"\b(add|allocate|approve|archive|assign|attach|cancel|change|complete|convert|"
+    r"count|create|deactivate|delete|email|generate|install|issue|mark|merge|move|"
+    r"order|purchase|receive|remove|restore|return|send|serialize|set|split|transfer|"
+    r"uninstall|update)\b",
     re.IGNORECASE,
 )
 
@@ -288,10 +292,35 @@ def _pack_index() -> dict[str, tuple[str, ToolEffect, tuple[str, ...]]]:
     return index
 
 
-def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
-    from ai.core.tools.rbac import _permission_map_cached
+#: Tools that remain defined and RBAC-mapped but are withheld from the model-visible
+#: catalog and denied at invocation. Each entry needs an explicit reason: a disabled
+#: tool is a deliberate policy decision, not an oversight.
+_WITHHELD_TOOLS: dict[str, str] = {
+    # ``delete_kanban_card`` hard-deletes a work order. ``KanbanCard`` cascades to
+    # ``WorkOrderEvent``, ``WorkOrderCommand``, ``WorkOrderCloseout``,
+    # ``WorkOrderDeviation``, ``CloseoutPartUsage`` and ``CloseoutReading``, so a
+    # single call destroys the governance and closeout history of completed work.
+    # The tool is additionally scope-free: ``aimms.kanban.change`` is a flat group,
+    # unlike the REST work-order surface which applies ``scope_for_actor``.
+    # Deletion returns as a governed command (permission, customer scope, expected
+    # version, strict confirmation, durable audit record); until then it is withheld.
+    # ``archive_kanban_card`` remains available and is the correct soft-delete.
+    "delete_kanban_card": (
+        "Hard delete cascades away work-order audit and closeout history, and the "
+        "tool applies no customer scope; withheld pending a governed delete command"
+    ),
+}
 
-    requirement = _permission_map_cached().get(tool)
+
+def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
+    from ai.core.tools.rbac import tool_requirement
+
+    requirement = tool_requirement(tool)
+    withheld_reason = _WITHHELD_TOOLS.get(tool_id)
+    if withheld_reason is not None:
+        # Checked before the RBAC map so a mapped-but-withheld tool cannot fall
+        # through to NATIVE_PERMISSION and become exposed again.
+        return AuthorizationPolicy(kind=PolicyKind.DISABLED, reason=withheld_reason)
     if tool_id == "get_part_attachments":
         return AuthorizationPolicy(
             kind=PolicyKind.RESOURCE_AUTHORIZER,

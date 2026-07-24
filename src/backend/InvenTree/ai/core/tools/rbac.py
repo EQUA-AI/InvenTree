@@ -211,10 +211,55 @@ def permission_profile(user) -> frozenset[tuple[str, str]]:
     return inventree | native
 
 
+def _permission_profile_for_user_pk_sync(user_pk: str) -> frozenset[tuple[str, str]]:
+    """Resolve a fresh text-chat permission profile for one actor id."""
+    from django.contrib.auth import get_user_model
+
+    user_model = get_user_model()
+    try:
+        user = user_model.objects.get(pk=int(user_pk))
+    except (OverflowError, TypeError, ValueError, user_model.DoesNotExist):
+        return frozenset()
+    return permission_profile(user)
+
+
+async def permission_profile_for_user_pk(
+    user_pk: str,
+) -> frozenset[tuple[str, str]]:
+    """Async-safe fresh profile used at voice proposal and execution time."""
+    return await sync_to_async(
+        _permission_profile_for_user_pk_sync,
+        thread_sensitive=True,
+    )(user_pk)
+
+
 @lru_cache(maxsize=1)
 def _filter_map_cached() -> dict[Any, tuple[str, str]]:
     """Combined map for list filtering: InvenTree + AIMMS-native (email/kanban)."""
     return {**_permission_map_cached(), **_native_tool_map()}
+
+
+def tool_requirement(tool: Any) -> tuple[str, str] | None:
+    """Return the same RBAC requirement used by text-chat tool filtering."""
+    return _filter_map_cached().get(tool)
+
+
+def is_action_tool(tool: Any) -> bool:
+    """Whether a tool performs an effect and therefore requires confirmation."""
+    requirement = tool_requirement(tool)
+    if requirement is not None:
+        return requirement[1] != "view"
+    return bool(getattr(tool, "_requires_hitl", False))
+
+
+def read_tools(tools: Sequence[Any]) -> tuple[Any, ...]:
+    """Return the order-stable read projection of a text-chat toolset."""
+    return tuple(tool for tool in tools if not is_action_tool(tool))
+
+
+def action_tools(tools: Sequence[Any]) -> tuple[Any, ...]:
+    """Return the order-stable confirmed-action projection of a toolset."""
+    return tuple(tool for tool in tools if is_action_tool(tool))
 
 
 @lru_cache(maxsize=64)

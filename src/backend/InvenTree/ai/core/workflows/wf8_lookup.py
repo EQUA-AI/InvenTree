@@ -24,11 +24,12 @@ from ai.core.config import get_settings
 from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
-from ai.core.integrations.kanban_tools import KANBAN_READ_TOOLS, KANBAN_TOOLS
+from ai.core.integrations.kanban_tools import KANBAN_TOOLS
 from ai.core.tools.invocation_guard import (
     CapabilityInvocationMiddleware,
     bind_capability_run,
 )
+from ai.core.tools.rbac import read_tools
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -176,7 +177,6 @@ You also have Kanban board tools:
 - move_kanban_card: Move a card to a different status column
 - archive_kanban_card: Soft-delete (archive) a card
 - restore_kanban_card: Restore an archived card
-- delete_kanban_card: Permanently delete a card (prefer archive)
 - get_kanban_summary: Get board overview with counts and overdue cards
 
 Kanban statuses are: backlog, in-progress, review, done
@@ -189,6 +189,12 @@ You have access to indexed technical documentation (equipment manuals, datasheet
 - When diagnosing faults, search for the error code AND the symptom description
 
 Always verify data from the tools before responding."""
+
+    READ_SYSTEM_PROMPT = """You are the AIMMS manufacturing assistant.
+For factual inventory, order, email, Kanban, or document questions, answer only from the
+provided read tools and never invent data. Call the minimum tools needed. Never repeat a
+tool call with the same arguments; after a successful result, answer immediately. For a
+conversational request that needs no business data, answer directly. Be concise and factual."""
 
     #: Voice-modality Tier-1 prompt: read-only, spoken, concise. Voice turns run
     #: under the read-only fence and are restricted to read tools, so this prompt
@@ -228,6 +234,7 @@ sync") rather than rounding it away."""
     def __init__(self):
         """Initialize the T1 lookup workflow."""
         self._agent: ChatAgent | None = None
+        self._read_agent: ChatAgent | None = None
         self._voice_agent: ChatAgent | None = None
         self._inventree_client = None
         if not T1LookupWorkflow.BASE_TOOLS:
@@ -235,13 +242,7 @@ sync") rather than rounding it away."""
                 INVENTORY_READ_TOOLS + EMAIL_TOOLS + KANBAN_TOOLS + DOCUMENT_SEARCH_TOOLS
             )
         if not T1LookupWorkflow.VOICE_BASE_TOOLS:
-            # Read-only surface for hands-free voice: inventory + build/work-order
-            # reads (already in INVENTORY_READ_TOOLS), document search, and kanban
-            # reads. Mutations (email, kanban/inventory writes) are excluded until
-            # the Tier-3 confirmed-write flow (Phase 4).
-            T1LookupWorkflow.VOICE_BASE_TOOLS = tuple(
-                INVENTORY_READ_TOOLS + DOCUMENT_SEARCH_TOOLS + KANBAN_READ_TOOLS
-            )
+            T1LookupWorkflow.VOICE_BASE_TOOLS = read_tools(T1LookupWorkflow.BASE_TOOLS)
         logger.info("T1LookupWorkflow initialized")
 
     def _base_tools_for(self, *, is_voice: bool) -> tuple:
@@ -255,7 +256,7 @@ sync") rather than rounding it away."""
             return self.VOICE_BASE_TOOLS
         return self.BASE_TOOLS
 
-    async def _get_agent(self, *, voice: bool = False) -> ChatAgent:
+    async def _get_agent(self, *, voice: bool = False, read_only: bool = False) -> ChatAgent:
         """Get or create the lookup agent.
 
         The agent is built WITHOUT tools: MAF unions constructor tools with
@@ -263,7 +264,7 @@ sync") rather than rounding it away."""
         complete (filtered) list is supplied on each run. Voice turns use a
         separate cached agent carrying the read-only spoken prompt.
         """
-        cached = self._voice_agent if voice else self._agent
+        cached = self._voice_agent if voice else self._read_agent if read_only else self._agent
         if cached is not None:
             return cached
 
@@ -288,8 +289,20 @@ sync") rather than rounding it away."""
 
         agent = ChatAgent(
             chat_client=chat_client,
-            instructions=self.VOICE_SYSTEM_PROMPT if voice else self.SYSTEM_PROMPT,
-            name="T1 Lookup Agent (Voice)" if voice else "T1 Lookup Agent",
+            instructions=(
+                self.VOICE_SYSTEM_PROMPT
+                if voice
+                else self.READ_SYSTEM_PROMPT
+                if read_only
+                else self.SYSTEM_PROMPT
+            ),
+            name=(
+                "T1 Lookup Agent (Voice)"
+                if voice
+                else "T1 Read Agent"
+                if read_only
+                else "T1 Lookup Agent"
+            ),
             description=(
                 "Fast read-only inventory lookups, spoken"
                 if voice
@@ -300,6 +313,8 @@ sync") rather than rounding it away."""
 
         if voice:
             self._voice_agent = agent
+        elif read_only:
+            self._read_agent = agent
         else:
             self._agent = agent
 
@@ -328,15 +343,14 @@ sync") rather than rounding it away."""
             select_capabilities,
             serialized_contract_bytes,
         )
-        from ai.core.tools.rbac import _permission_map_cached
+        from ai.core.tools.rbac import tool_requirement
 
         started = time.perf_counter()
         try:
-            permission_map = _permission_map_cached()
             profile = frozenset(
                 requirement
                 for tool in current_tools
-                if (requirement := permission_map.get(tool)) is not None
+                if (requirement := tool_requirement(tool)) is not None
             )
             selection = select_capabilities(
                 query,
@@ -418,8 +432,6 @@ sync") rather than rounding it away."""
             is_voice = context is not None and context.get("modality") == "voice"
             voice_read_only = is_voice and get_settings().feature_voice_readonly_tools
 
-            agent = await self._get_agent(voice=voice_read_only)
-
             # Offer only the tools this user's InvenTree roles permit; the
             # filtered list is memoized per permission profile and keeps a
             # stable order so provider prompt caching stays effective. Voice
@@ -435,7 +447,14 @@ sync") rather than rounding it away."""
                 current_tools=tools,
             )
             enforce = get_settings().feature_capability_broker_enforce
-            runtime_tools = list(selection.tools) if enforce and selection is not None else tools
+            enforce_selection = (
+                enforce and selection is not None and not selection.requires_specialist
+            )
+            runtime_tools = list(selection.tools) if enforce_selection else tools
+            agent = await self._get_agent(
+                voice=voice_read_only,
+                read_only=enforce_selection and not voice_read_only,
+            )
 
             # NOTE: no max_tokens here — reasoning deployments (gpt-5.6-luna)
             # reject it, demanding max_completion_tokens instead.
@@ -513,8 +532,6 @@ sync") rather than rounding it away."""
         Yields response chunks as they're generated.
         """
         try:
-            agent = await self._get_agent()
-
             from ai.core.tools.rbac import tools_for_current_user
 
             tools = await tools_for_current_user(self.BASE_TOOLS)
@@ -525,7 +542,11 @@ sync") rather than rounding it away."""
                 current_tools=tools,
             )
             enforce = get_settings().feature_capability_broker_enforce
-            runtime_tools = list(selection.tools) if enforce and selection is not None else tools
+            enforce_selection = (
+                enforce and selection is not None and not selection.requires_specialist
+            )
+            runtime_tools = list(selection.tools) if enforce_selection else tools
+            agent = await self._get_agent(read_only=enforce_selection)
             with bind_capability_run(workflow="wf8", modality="text", selected_tools=runtime_tools):
                 response = await agent.run(query, tools=runtime_tools)
             if response.messages:

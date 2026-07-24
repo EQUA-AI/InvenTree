@@ -23,21 +23,31 @@ def modality_of(context: dict[str, Any] | None) -> str:
     return "voice" if context and context.get("modality") == "voice" else "text"
 
 
-def voice_read_tools() -> tuple:
-    """Read-only tool surface for hands-free voice, shared with wf8."""
-    from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
-    from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
-    from ai.core.integrations.kanban_tools import KANBAN_READ_TOOLS
+def voice_read_tools(full_tools: Any | None = None) -> tuple:
+    """Read projection of the workflow's text tools for direct voice execution."""
+    from ai.core.tools.rbac import read_tools
 
-    return tuple(INVENTORY_READ_TOOLS + DOCUMENT_SEARCH_TOOLS + KANBAN_READ_TOOLS)
+    if full_tools is None:
+        from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
+        from ai.core.integrations.email.tools import EMAIL_TOOLS
+        from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
+        from ai.core.integrations.kanban_tools import KANBAN_TOOLS
+
+        full_tools = (
+            *INVENTORY_READ_TOOLS,
+            *EMAIL_TOOLS,
+            *KANBAN_TOOLS,
+            *DOCUMENT_SEARCH_TOOLS,
+        )
+    return read_tools(tuple(full_tools))
 
 
 def rbac_base_tools(full_tools: Any, context: dict[str, Any] | None) -> tuple:
-    """Base tool set before the per-user filter: read-only for voice, else full."""
+    """Base tool set before RBAC: workflow reads for voice, full set for text."""
     from ai.core.config import get_settings
 
     if modality_of(context) == "voice" and get_settings().feature_voice_readonly_tools:
-        return voice_read_tools()
+        return voice_read_tools(full_tools)
     return tuple(full_tools)
 
 

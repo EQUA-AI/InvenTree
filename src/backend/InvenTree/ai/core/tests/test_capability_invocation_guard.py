@@ -148,7 +148,7 @@ async def test_unselected_tool_is_denied(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_disabled_tool_is_denied_even_when_selected(monkeypatch):
+async def test_native_tool_requires_its_fresh_permission(monkeypatch):
     _profile(monkeypatch, ("part", "view"))
     token = principal_context.set(_principal())
     try:
@@ -167,7 +167,24 @@ async def test_disabled_tool_is_denied_even_when_selected(monkeypatch):
     finally:
         principal_context.reset(token)
 
-    assert error.value.reason_code == "policy_disabled"
+    assert error.value.reason_code == "required_permission_missing"
+
+    _profile(monkeypatch, ("email", "send"))
+    token = principal_context.set(_principal())
+    try:
+        with bind_capability_run(
+            workflow="wf8",
+            modality="text",
+            selected_tools=[_tool("send_email")],
+        ):
+            entry = await authorize_invocation(
+                "send_email",
+                {"to": "recipient@example.com", "subject": "x", "body": "y"},
+            )
+    finally:
+        principal_context.reset(token)
+
+    assert entry.tool is _tool("send_email")
 
 
 @pytest.mark.asyncio

@@ -79,7 +79,7 @@ def _catalog_by_id() -> dict[str, CapabilityEntry]:
 
 
 def _fresh_permission_profile_sync(user_pk: str) -> frozenset[tuple[str, str]]:
-    from ai.core.tools.rbac import _all_pairs
+    from ai.core.tools.rbac import _all_pairs, _native_pairs
     from django.contrib.auth import get_user_model
     from users.permissions import prefetch_rule_sets
 
@@ -92,7 +92,7 @@ def _fresh_permission_profile_sync(user_pk: str) -> frozenset[tuple[str, str]]:
     if not user.is_active:
         return frozenset()
     if user.is_superuser:
-        return _all_pairs()
+        return _all_pairs() | _native_pairs(user)
 
     groups = prefetch_rule_sets(user)
     granted: set[tuple[str, str]] = set()
@@ -101,7 +101,7 @@ def _fresh_permission_profile_sync(user_pk: str) -> frozenset[tuple[str, str]]:
             for role, permission in _all_pairs():
                 if rule.name == role and getattr(rule, f"can_{permission}", False):
                     granted.add((role, permission))
-    return frozenset(granted)
+    return frozenset(granted) | _native_pairs(user)
 
 
 async def fresh_permission_profile(user_pk: str) -> frozenset[tuple[str, str]]:

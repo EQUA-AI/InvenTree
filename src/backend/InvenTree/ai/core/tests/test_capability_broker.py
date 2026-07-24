@@ -10,7 +10,7 @@ import pytest
 from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
-from ai.core.integrations.kanban_tools import KANBAN_TOOLS
+from ai.core.integrations.kanban_tools import KANBAN_READ_TOOLS, KANBAN_TOOLS
 from ai.core.tools.capabilities import (
     MAX_INITIAL_TOOLS,
     PolicyKind,
@@ -19,6 +19,7 @@ from ai.core.tools.capabilities import (
     catalog_manifest,
     manifest_json,
     select_capabilities,
+    tool_name,
 )
 
 ALL_VIEW_PROFILE = frozenset({
@@ -36,7 +37,9 @@ def test_catalog_covers_wf8_once_in_canonical_order():
     expected = tuple(INVENTORY_READ_TOOLS + EMAIL_TOOLS + KANBAN_TOOLS + DOCUMENT_SEARCH_TOOLS)
     catalog = capability_catalog()
 
-    assert len(catalog) == len(expected) == 47
+    # 46, not 47: delete_kanban_card is withheld from KANBAN_TOOLS (see
+    # test_delete_kanban_card_is_withheld_from_the_agent).
+    assert len(catalog) == len(expected) == 46
     assert tuple(entry.tool for entry in catalog) == expected
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
     assert all(entry.tool is expected[index] for index, entry in enumerate(catalog))
@@ -57,21 +60,30 @@ def test_catalog_has_expected_stable_pack_shapes():
         "email.read": 3,
         "email.write": 3,
         "kanban.read": 4,
-        "kanban.write": 8,
+        # 7, not 8: delete_kanban_card is withheld, though it remains listed in
+        # the kanban.write pack spec so a re-add still resolves to a pack.
+        "kanban.write": 7,
     }
 
 
 def test_every_catalog_entry_has_an_explicit_policy():
     catalog = capability_catalog()
-    disabled = {
-        entry.tool_id for entry in catalog if entry.authorization.kind is PolicyKind.DISABLED
-    }
+    policies = {entry.tool_id: entry.authorization for entry in catalog}
 
     assert all(entry.authorization.kind in PolicyKind for entry in catalog)
-    assert disabled == {
-        *(getattr(tool, "__name__", "") for tool in EMAIL_TOOLS),
-        *(getattr(tool, "__name__", "") for tool in KANBAN_TOOLS),
+    assert not {
+        entry.tool_id for entry in catalog if entry.authorization.kind is PolicyKind.DISABLED
     }
+    for tool in EMAIL_TOOLS:
+        permission = "view" if tool in EMAIL_TOOLS[:3] else "send"
+        policy = policies[tool.__name__]
+        assert policy.kind is PolicyKind.NATIVE_PERMISSION
+        assert policy.all_of == (("email", permission),)
+    for tool in KANBAN_TOOLS:
+        permission = "view" if tool in KANBAN_READ_TOOLS else "change"
+        policy = policies[tool.__name__]
+        assert policy.kind is PolicyKind.NATIVE_PERMISSION
+        assert policy.all_of == (("kanban", permission),)
     assert all(
         entry.authorization.reason
         for entry in catalog
@@ -102,7 +114,7 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    assert len(first) == 47
+    assert len(first) == 46
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)
@@ -170,7 +182,7 @@ def test_sql_requires_at_least_one_view_permission_for_exposure():
     assert "list_database_tables" not in selected.tool_ids
 
 
-def test_disabled_capabilities_are_never_exposed():
+def test_native_read_capabilities_require_their_explicit_profile():
     selected = select_capabilities(
         "List emails in the inbox",
         profile=ALL_VIEW_PROFILE,
@@ -180,6 +192,29 @@ def test_disabled_capabilities_are_never_exposed():
     assert selected.pack_ids == ("email.read",)
     assert selected.tools == ()
     assert selected.tool_ids == ()
+
+    email = select_capabilities(
+        "List emails in the inbox",
+        profile=ALL_VIEW_PROFILE | frozenset({("email", "view")}),
+        authenticated=True,
+    )
+    kanban = select_capabilities(
+        "List kanban cards on the board",
+        profile=ALL_VIEW_PROFILE | frozenset({("kanban", "view")}),
+        authenticated=True,
+    )
+
+    assert email.tool_ids == (
+        "list_emails",
+        "get_email_details",
+        "download_attachment",
+    )
+    assert kanban.tool_ids == (
+        "list_kanban_cards",
+        "get_kanban_card",
+        "get_kanban_summary",
+        "check_kanban_card_stock",
+    )
 
 
 def test_write_intent_routes_to_a_specialist_without_tools():
@@ -192,6 +227,21 @@ def test_write_intent_routes_to_a_specialist_without_tools():
     assert selected.requires_specialist is True
     assert selected.pack_ids == ()
     assert selected.tools == ()
+
+
+def test_every_text_action_name_routes_to_specialist_fallback():
+    from ai.core.voice.tool_actions import text_chat_action_tools
+
+    missed = [
+        tool_name(tool)
+        for tool in text_chat_action_tools()
+        if not select_capabilities(
+            tool_name(tool).replace("_", " "),
+            authenticated=True,
+        ).requires_specialist
+    ]
+
+    assert missed == []
 
 
 def test_ambiguous_prompt_requires_clarification_without_broad_fallback():
@@ -357,6 +407,23 @@ async def test_wf8_enforcement_passes_only_selected_pack_tools(monkeypatch):
         "list_database_tables",
         "query_database",
     )
+
+
+@pytest.mark.asyncio
+async def test_wf8_enforcement_preserves_full_authorized_tools_for_specialist(
+    monkeypatch,
+):
+    authorized_tools = list(EMAIL_TOOLS)
+    workflow, agent = _configure_fake_workflow(
+        monkeypatch,
+        authorized_tools,
+        enforce=True,
+    )
+
+    result = await workflow.execute("Send an email to the supplier")
+
+    assert result.success is True
+    assert agent.calls[0]["tools"] is authorized_tools
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,8 @@ construction here uses the deployment environment-variable names.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from ai.core.config import Settings
 from pydantic import ValidationError
@@ -17,12 +19,22 @@ def _settings(**aliased: object) -> Settings:
     return Settings(_env_file=None, **aliased)
 
 
+def test_local_env_file_is_anchored_to_ai_package():
+    env_file = Path(Settings.model_config["env_file"])
+
+    assert env_file.is_absolute()
+    assert env_file == Path(__file__).resolve().parents[2] / ".env"
+
+
 def test_voice_live_is_off_by_default():
     settings = _settings()
     assert settings.feature_voice_live is False
     assert settings.feature_voice_live_webrtc is False
     assert settings.feature_voice_live_relay is False
     assert settings.voice_live_store_raw_audio is False
+    assert settings.feature_capability_broker_enforce is True
+    assert settings.feature_voice_fast_path is False
+    assert settings.feature_voice_write_confirmation is True
 
 
 def test_enabled_voice_live_with_valid_transport():

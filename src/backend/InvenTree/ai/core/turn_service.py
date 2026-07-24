@@ -297,25 +297,41 @@ def _canonical_terminal_response(state: str, message: str) -> CanonicalTurnRespo
     )
 
 
-def _canonical_advisory_intent() -> CanonicalTurnResponse:
+def _canonical_advisory_intent(
+    *, voice: bool = False, action_available: bool = False
+) -> CanonicalTurnResponse:
     """Explain effect wording without creating a proposal or executable action."""
+    safety_boundary = "This response does not change or confirm any safety status."
+    message = (
+        (
+            "I could not prepare that action from the details provided. Say it again with "
+            f"the required record, quantity, and destination. {safety_boundary}"
+            if action_available
+            else (
+                "I can help look up the details, but I do not create or change records by voice. "
+                f"Use the normal authenticated screen. {safety_boundary}"
+            )
+        )
+        if voice
+        else (
+            "I can discuss that requested change, but this turn cannot create a "
+            "proposal or perform an effect. Use the normal authenticated action "
+            "surface for an allow-listed operation."
+        )
+    )
     return CanonicalTurnResponse(
         kind="advisory_intent",
         response_version=1,
         response_state="complete",
-        detailed_response=(
-            "I can discuss that requested change, but this turn cannot create a "
-            "proposal or perform an effect. Use the normal authenticated action "
-            "surface for an allow-listed operation."
-        ),
-        spoken_summary="",
+        detailed_response=message,
+        spoken_summary=message if voice else "",
         reasoning_summary=("Effect-shaped wording was isolated as advisory intent only."),
         confidence="high",
         evidence=[],
-        next_questions=["Would you like read-only guidance about the normal action surface?"],
+        next_questions=["What details would you like me to look up first?"],
         recommended_actions=[],
-        safety_boundary=("This response does not change or confirm any safety status."),
-        speak=False,
+        safety_boundary=safety_boundary,
+        speak=voice,
     )
 
 
@@ -399,6 +415,7 @@ class NormalizedTurnService:
         # when the flag is on; a deployment injects a VoiceWriteGate with real,
         # RBAC-backed seams. Nothing here relaxes the read-only fence.
         self.voice_write_gate = voice_write_gate
+        self._voice_action_router: Any | None = None
 
         # Preserve typed chat exactly while diagnosis is disabled.  When the
         # server flag is enabled, build the Foundry adapter lazily here so both
@@ -628,7 +645,14 @@ class NormalizedTurnService:
         diagnostic_context: Any | None,
     ) -> Any | None:
         """Apply the explicit policy using only server-owned routing inputs."""
-        if self.complexity_router is None:
+        router = self.complexity_router
+        if router is None and modality == TurnModality.VOICE and self._voice_write_enabled():
+            from ai.core.agents.voice_routing import VoiceComplexityRouter
+
+            if self._voice_action_router is None:
+                self._voice_action_router = VoiceComplexityRouter()
+            router = self._voice_action_router
+        if router is None:
             return None
         from ai.core.agents.voice_routing import (
             RiskLevel,
@@ -671,9 +695,7 @@ class NormalizedTurnService:
         )
         # Authority-shaped browser fields are intentionally never copied into
         # the request. The router receives final content only.
-        return self.complexity_router.route(
-            VoiceRoutingRequest(final_content=content), routing_context
-        )
+        return router.route(VoiceRoutingRequest(final_content=content), routing_context)
 
     @staticmethod
     async def _emit_canonical_events(
@@ -942,7 +964,12 @@ class NormalizedTurnService:
                         emitter=isolated_emitter,
                     )
                 if canonical is None:
-                    response = _canonical_advisory_intent()
+                    response = _canonical_advisory_intent(
+                        voice=modality == TurnModality.VOICE,
+                        action_available=(
+                            modality == TurnModality.VOICE and self._voice_write_enabled()
+                        ),
+                    )
                     message = response.detailed_response
                     await self._emit_canonical_events(
                         emitter=isolated_emitter,

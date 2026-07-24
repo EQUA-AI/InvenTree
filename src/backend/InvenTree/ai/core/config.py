@@ -12,6 +12,8 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_AI_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+
 
 class Settings(BaseSettings):
     """
@@ -23,7 +25,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="AIMMS_",
-        env_file=".env",
+        env_file=_AI_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -122,7 +124,7 @@ class Settings(BaseSettings):
         default=True, alias="FEATURE_CAPABILITY_BROKER_SHADOW"
     )
     feature_capability_broker_enforce: bool = Field(
-        default=False, alias="FEATURE_CAPABILITY_BROKER_ENFORCE"
+        default=True, alias="FEATURE_CAPABILITY_BROKER_ENFORCE"
     )
     feature_reflection_middleware: bool = Field(default=True, alias="FEATURE_REFLECTION_MIDDLEWARE")
     feature_voice_live_diagnosis: bool = Field(default=False, alias="FEATURE_VOICE_LIVE_DIAGNOSIS")
@@ -133,13 +135,13 @@ class Settings(BaseSettings):
     # Tier-1 latency: answer pattern-matched voice lookups from the deterministic
     # fast path (permission-gated) instead of the LLM tool loop. Off by default.
     feature_voice_fast_path: bool = Field(default=False, alias="FEATURE_VOICE_FAST_PATH")
-    # Tier-3 writes: allow a voice-initiated write ONLY through a mandatory verbal
+    # Confirmed actions: allow a voice-initiated write ONLY through a mandatory verbal
     # confirmation turn (propose -> exact read-back -> explicit spoken confirm ->
-    # execute via the same RBAC-gated write tools text uses). Irreversible actions
-    # stay blocked by voice even with confirmation. Off by default: while off, the
-    # structural read-only fence stands and effect wording remains advisory only.
+    # execute via the same RBAC-gated write tools text uses). Destructive actions
+    # require a strict server-authored phrase. This remains a kill switch: while
+    # disabled, the structural read-only fence keeps effect wording advisory only.
     feature_voice_write_confirmation: bool = Field(
-        default=False, alias="FEATURE_VOICE_WRITE_CONFIRMATION"
+        default=True, alias="FEATURE_VOICE_WRITE_CONFIRMATION"
     )
 
     # -------------------------------------------------------------------------

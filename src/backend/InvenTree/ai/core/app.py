@@ -161,7 +161,12 @@ def get_turn_service() -> NormalizedTurnService:
     """
     global _turn_service
     if _turn_service is None:
-        _turn_service = NormalizedTurnService(workflow_factory=get_workflow_root)
+        from ai.core.voice.tool_actions import get_voice_write_gate
+
+        _turn_service = NormalizedTurnService(
+            workflow_factory=get_workflow_root,
+            voice_write_gate=get_voice_write_gate(),
+        )
     return _turn_service
 
 

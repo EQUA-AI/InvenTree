@@ -525,7 +525,7 @@ class NormalizedTurnServiceTests(SimpleTestCase):
             result = await service.process(
                 actor=_principal(),
                 thread_id="thread_normalized",
-                content="Please complete the work order",
+                content="Create an RFQ for ten bearings",
                 modality="voice",
                 trusted_context=_context(),
                 modality_metadata={"transcription_confidence": 0.99},
@@ -539,6 +539,9 @@ class NormalizedTurnServiceTests(SimpleTestCase):
         self.assertFalse(result.route["proposal_creation_allowed"])
         self.assertFalse(result.route["action_execution_allowed"])
         self.assertEqual(result.canonical_response["recommended_actions"], [])
+        self.assertTrue(result.canonical_response["speak"])
+        self.assertEqual(result.spoken_summary, result.message)
+        self.assertIn("do not create or change records by voice", result.message)
         self.assertNotIn("proposal_id", repository.terminal_calls[0]["canonical_result"])
 
     def test_broader_effect_commands_never_reach_legacy_or_reasoning_paths(self) -> None:
@@ -765,6 +768,78 @@ class VoiceWriteConfirmationEnforceTests(SimpleTestCase):
         self.assertEqual(confirm.message, "Done.")
         self.assertEqual(len(executor.calls), 1)
         self.assertEqual(executor.calls[0].tool_name, "create_purchase_order")
+
+    def test_voice_action_router_does_not_require_live_diagnosis(self) -> None:
+        from unittest.mock import patch
+
+        gate, executor = self._gate_and_executor()
+
+        async def exercise():
+            repository = _Repository()
+            service = _TestTurnService(
+                workflow_factory=lambda: (_ for _ in ()).throw(
+                    AssertionError("voice action must not run a legacy workflow")
+                ),
+                repository_factory=lambda actor, context: repository,  # noqa: ARG005
+                voice_write_gate=gate,
+            )
+            return await service.process(
+                actor=_principal(),
+                thread_id="thread_write",
+                content="Order 10 replacement bearings",
+                modality="voice",
+                trusted_context=_context(),
+                modality_metadata={"transcription_confidence": 0.99},
+                idempotency_key="write:no-diagnosis-router",
+                correlation_id=_context().correlation_id,
+            )
+
+        settings = SimpleNamespace(
+            feature_voice_live_diagnosis=False,
+            feature_voice_write_confirmation=True,
+        )
+        with patch("ai.core.config.get_settings", return_value=settings):
+            result = asyncio.run(exercise())
+
+        self.assertEqual(result.workflow_used, "voice_write_propose")
+        self.assertTrue(result.canonical_response["speak"])
+        self.assertEqual(executor.calls, [])
+
+    def test_unresolved_voice_action_requests_required_details(self) -> None:
+        from unittest.mock import patch
+
+        from ai.core.voice.write_gate import VoiceWriteGate
+
+        async def exercise():
+            repository = _Repository()
+            service = _TestTurnService(
+                workflow_factory=lambda: (_ for _ in ()).throw(
+                    AssertionError("unresolved action must not run a legacy workflow")
+                ),
+                repository_factory=lambda actor, context: repository,  # noqa: ARG005
+                voice_write_gate=VoiceWriteGate(),
+            )
+            return await service.process(
+                actor=_principal(),
+                thread_id="thread_write",
+                content="Create an RFQ",
+                modality="voice",
+                trusted_context=_context(),
+                modality_metadata={"transcription_confidence": 0.99},
+                idempotency_key="write:missing-details",
+                correlation_id=_context().correlation_id,
+            )
+
+        settings = SimpleNamespace(
+            feature_voice_live_diagnosis=False,
+            feature_voice_write_confirmation=True,
+        )
+        with patch("ai.core.config.get_settings", return_value=settings):
+            result = asyncio.run(exercise())
+
+        self.assertEqual(result.workflow_used, "advisory_intent")
+        self.assertIn("could not prepare that action", result.message)
+        self.assertTrue(result.canonical_response["speak"])
 
     def test_flag_off_keeps_effect_wording_advisory(self) -> None:
         from unittest.mock import patch
