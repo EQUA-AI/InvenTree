@@ -65,6 +65,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git gettext libldap2 wget curl ssh \
     # Weasyprint requirements : https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#alpine-3-12
     weasyprint libpango-1.0-0 libcairo2 poppler-utils \
+    # XML security runtime
+    libxmlsec1t64-openssl \
     # Database client libraries
     postgresql-client mariadb-client \
     # font support
@@ -108,7 +110,7 @@ COPY tasks.py ${INVENTREE_HOME}/tasks.py
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config build-essential \
     libldap2-dev libsasl2-dev libssl-dev \
-    libmariadb-dev \
+    libmariadb-dev libxmlsec1-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
