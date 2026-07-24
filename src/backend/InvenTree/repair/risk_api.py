@@ -18,6 +18,7 @@ from django.http import Http404, HttpResponse
 from django.urls import include, path
 from django.utils import timezone
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -198,6 +199,7 @@ class RiskFindingList(RiskRadarEnabledMixin, APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(operation_id='repair_risk_findings_list')
     def get(self, request):
         """Return the ranked findings for the requested scope."""
         correlation_id = str(uuid.uuid4())

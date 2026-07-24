@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
 {# ── Page header (printed on every page) ─────────────────────── #}
-{% block page_header_left %}Work Order{% endblock %}
-{% block page_header_right %}{{ reference | default("—") }}{% endblock %}
+{% block page_header_left %}Work Order{% endblock page_header_left %}
+{% block page_header_right %}{{ reference | default("—") }}{% endblock page_header_right %}
 
 {# ── Document header ─────────────────────────────────────────── #}
-{% block title %}Work Order{% endblock %}
-{% block subtitle %}{{ reference | default("") }}{% endblock %}
+{% block title %}Work Order{% endblock title %}
+{% block subtitle %}{{ reference | default("") }}{% endblock subtitle %}
 
 {# ── Body ────────────────────────────────────────────────────── #}
 {% block content %}
@@ -221,4 +221,4 @@
   </div>
   {% endif %}
 
-{% endblock %}
+{% endblock content %}

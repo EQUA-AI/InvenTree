@@ -40,11 +40,11 @@ from .services.work_orders import (
 )
 from .workorder_serializers import (
     AssignCommandSerializer,
-    CancelCommandSerializer,
     CompleteCommandSerializer,
     HoldCommandSerializer,
     ResumeCommandSerializer,
     TransitionCommandSerializer,
+    WorkOrderCancelCommandSerializer,
     WorkOrderEventSerializer,
     WorkOrderReadinessSerializer,
     WorkOrderSerializer,
@@ -300,7 +300,7 @@ class WorkOrderResume(WorkOrderCommandView):
 class WorkOrderCancel(WorkOrderCommandView):
     """Cancel standalone work."""
 
-    serializer_class = CancelCommandSerializer
+    serializer_class = WorkOrderCancelCommandSerializer
     service = staticmethod(cancel_work_order)
 
 

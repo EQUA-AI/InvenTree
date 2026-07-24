@@ -6,7 +6,7 @@ from ai.core.config import Settings
 
 
 def _settings(**aliased):
-    return Settings(_env_file=None, **aliased)
+    return Settings(_env_file=None, **aliased)  # ty: ignore[unknown-argument]  # pydantic-settings runtime kwarg
 
 
 def test_voice_feature_is_not_limited_to_named_users():

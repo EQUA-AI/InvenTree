@@ -14,6 +14,7 @@ import uuid
 
 from django.db import transaction
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -118,6 +119,7 @@ class CaptureListCreateView(APIView):
     authentication_classes = [SessionAuthentication]
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(operation_id='voice_captures_list')
     def get(self, request):
         """Get."""
         scope_key = _policy_scope_key()

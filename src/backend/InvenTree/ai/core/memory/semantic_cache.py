@@ -186,7 +186,10 @@ class LocalEmbeddingProvider:
         """Lazy initialization of sentence transformer model."""
         if self._model is None:
             try:
-                from sentence_transformers import SentenceTransformer
+                # Optional dev/test dependency; guarded by the ImportError handler
+                from sentence_transformers import (  # ty: ignore[unresolved-import]
+                    SentenceTransformer,
+                )
                 self._model = SentenceTransformer(self.model_name)
             except ImportError:
                 raise RuntimeError("sentence-transformers package required for LocalEmbeddingProvider")

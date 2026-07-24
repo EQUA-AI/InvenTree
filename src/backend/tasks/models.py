@@ -3,7 +3,6 @@
 from decimal import Decimal
 
 from django.conf import settings
-from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -57,9 +56,7 @@ class KanbanCard(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     priority = models.CharField(max_length=16, choices=PRIORITY_CHOICES, db_index=True)
     due_date = models.DateField(null=True, blank=True)
     assignee = models.CharField(max_length=120, blank=True)
-    tags = ArrayField(
-        base_field=models.CharField(max_length=32), default=list, blank=True
-    )
+    tags = models.JSONField(default=list, blank=True)
     company = models.CharField(max_length=120, blank=True)
     company_contact_name = models.CharField(max_length=120, blank=True)
     company_contact_phone = models.CharField(max_length=64, blank=True)

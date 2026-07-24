@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block page_header_left %}Request for Quote{% endblock %}
-{% block page_header_right %}{{ reference }}{% endblock %}
+{% block page_header_left %}Request for Quote{% endblock page_header_left %}
+{% block page_header_right %}{{ reference }}{% endblock page_header_right %}
 
-{% block title %}Request for Quote{% endblock %}
-{% block subtitle %}{{ reference }}{% endblock %}
+{% block title %}Request for Quote{% endblock title %}
+{% block subtitle %}{{ reference }}{% endblock subtitle %}
 
 {% block content %}
 <!-- ── RFQ meta ───────────────────────────────────────────────── -->
@@ -126,4 +126,4 @@
     </div>
   </div>
 </div>
-{% endblock %}
+{% endblock content %}

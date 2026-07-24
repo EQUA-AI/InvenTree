@@ -99,8 +99,11 @@ def policy_hash(definition: dict) -> str:
     return hash_canonical(HashDomains.POLICY, definition)
 
 
-def _validate_requirement(entry: dict, index: int):
-    """Validate one policy requirement entry against the closed vocabulary."""
+def _validate_requirement(entry: dict, index: int) -> str:
+    """Validate one policy requirement entry against the closed vocabulary.
+
+    Returns the entry's validated requirement key.
+    """
     prefix = f'requirements[{index}]'
 
     if not isinstance(entry, dict):
@@ -180,6 +183,8 @@ def _validate_requirement(entry: dict, index: int):
         ):
             raise PolicyError(f'{prefix}.candidate_sources[{si}] has unsupported field')
 
+    return key
+
 
 def validate_definition(definition: dict):
     """Validate a policy definition document against the closed vocabulary.
@@ -203,10 +208,10 @@ def validate_definition(definition: dict):
 
     seen_keys = set()
     for index, entry in enumerate(requirements):
-        _validate_requirement(entry, index)
-        if entry['key'] in seen_keys:
-            raise PolicyError(f'Duplicate requirement key: {entry["key"]}')
-        seen_keys.add(entry['key'])
+        key = _validate_requirement(entry, index)
+        if key in seen_keys:
+            raise PolicyError(f'Duplicate requirement key: {key}')
+        seen_keys.add(key)
 
     retrieval = definition.get('retrieval', {})
     if not isinstance(retrieval, dict):

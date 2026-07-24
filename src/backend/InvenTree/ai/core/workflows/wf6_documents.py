@@ -491,7 +491,8 @@ def _extract_text_local(pdf_bytes: bytes) -> _ExtractionOutcome:
 
     # -- Method 2: OCR (pdf2image + pytesseract) ---------------------------
     try:
-        import pytesseract
+        # Optional OCR dependency; guarded by the ImportError handler below
+        import pytesseract  # ty: ignore[unresolved-import]
         from pdf2image import convert_from_bytes
 
         images = convert_from_bytes(pdf_bytes, dpi=200)

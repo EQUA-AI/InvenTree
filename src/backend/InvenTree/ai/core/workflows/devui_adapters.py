@@ -14,7 +14,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterable
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
+from typing import Any, Never, TYPE_CHECKING
 
 from agent_framework import (
     Executor,
@@ -28,7 +28,8 @@ from agent_framework import (
 )
 
 if TYPE_CHECKING:
-    from ai.core.workflows.wf1_diagnostics import T6DiagnosticsWorkflow
+    from agent_framework import Workflow, WorkflowAgent
+    from ai.core.workflows.wf1_diagnostics import DiagnosticsResult, T6DiagnosticsWorkflow
     from ai.core.workflows.wf2_parts_analysis import T2PartsAnalysisWorkflow
     from ai.core.workflows.wf3_research import T3ResearchWorkflow
     from ai.core.workflows.wf4_procurement import T4ProcurementWorkflow

@@ -525,25 +525,33 @@ def get_settings() -> Settings:
 @lru_cache
 def get_azure_openai_settings() -> AzureOpenAISettings:
     """Get cached Azure OpenAI settings."""
-    return AzureOpenAISettings()
+    # Required fields are supplied via environment variables at runtime;
+    # pydantic-settings raises a ValidationError if they are missing.
+    return AzureOpenAISettings()  # ty: ignore[missing-argument]
 
 
 @lru_cache
 def get_azure_doc_intelligence_settings() -> AzureDocIntelligenceSettings:
     """Get cached Document Intelligence settings."""
-    return AzureDocIntelligenceSettings()
+    # Required fields are supplied via environment variables at runtime;
+    # pydantic-settings raises a ValidationError if they are missing.
+    return AzureDocIntelligenceSettings()  # ty: ignore[missing-argument]
 
 
 @lru_cache
 def get_azure_foundry_memory_settings() -> AzureFoundryMemorySettings:
     """Get cached Foundry Memory Store settings."""
-    return AzureFoundryMemorySettings()
+    # Required fields are supplied via environment variables at runtime;
+    # pydantic-settings raises a ValidationError if they are missing.
+    return AzureFoundryMemorySettings()  # ty: ignore[missing-argument]
 
 
 @lru_cache
 def get_inventree_settings() -> InvenTreeSettings:
     """Get cached InvenTree settings."""
-    return InvenTreeSettings()
+    # Required fields are supplied via environment variables at runtime;
+    # pydantic-settings raises a ValidationError if they are missing.
+    return InvenTreeSettings()  # ty: ignore[missing-argument]
 
 
 @lru_cache

@@ -191,6 +191,7 @@ class TypedChatGoldenTests(SimpleTestCase):
         self.assertEqual(request.message, "Inspect the pump")
         self.assertEqual(request.thread_id, "thread-golden")
         self.assertEqual(request.user_id, "legacy-client-claim")
+        assert request.context is not None
         self.assertEqual(request.context["workflow_hint"], "wf7")
         self.assertEqual(request.file_ids, ["thread-golden/manual.pdf"])
 
@@ -252,9 +253,11 @@ class TypedChatGoldenTests(SimpleTestCase):
                 "workflow_used": "wf1",
             },
         )
-        self.assertIsNotNone(workflow.call)
-        context = workflow.call["context"]
-        self.assertEqual(workflow.call["user_id"], "1")
+        call = workflow.call
+        assert call is not None
+        context = call["context"]
+        assert isinstance(context, dict)
+        self.assertEqual(call["user_id"], "1")
         self.assertEqual(context["actor"], "user:1")
         self.assertEqual(context["allowed_capabilities"], ["chat.unscoped.read"])
         self.assertNotIn("display_preference", context)

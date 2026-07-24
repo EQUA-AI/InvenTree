@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from django_filters.rest_framework import FilterSet, filters
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -332,6 +333,7 @@ class KanbanCardPartList(APIView):
     ]
     role_required = 'work_order'
 
+    @extend_schema(operation_id='kanban_cards_parts_list')
     def get(self, request, card_pk):
         """List all parts for a card."""
         card = get_object_or_404(KanbanCard, pk=card_pk)

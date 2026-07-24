@@ -21,7 +21,7 @@ VALID_HOST = "aimms-foundry.services.ai.azure.com"
 
 
 def _settings(**aliased: object) -> Settings:
-    return Settings(_env_file=None, **aliased)
+    return Settings(_env_file=None, **aliased)  # ty: ignore[unknown-argument]  # pydantic-settings runtime kwarg
 
 
 # --------------------------------------------------------------------------- #

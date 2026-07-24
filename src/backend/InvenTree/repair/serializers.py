@@ -1,5 +1,6 @@
 """Serializers for the Repair Packet application."""
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from tasks.serializers import KanbanCardPartSerializer
@@ -281,6 +282,7 @@ class RepairPacketSerializer(serializers.ModelSerializer):
             for link in obj.approval_links.select_related('approval').all()
         ]
 
+    @extend_schema_field(RepairPacketGenerationRunSerializer(allow_null=True))
     def get_latest_generation_run(self, obj):
         """Return the most recent generation run (provenance) if any."""
         run = obj.generation_runs.first()

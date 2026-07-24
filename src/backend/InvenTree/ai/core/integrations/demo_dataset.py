@@ -210,10 +210,13 @@ class DemoDatasetProvider:
             **kwargs,
         }
         
-        # Add to the data
-        if "part" not in self._data:
-            self._data["part"] = []
-        self._data["part"].append(new_part)
+        # Add to the data (get_parts() above ensured the dataset is loaded)
+        data = self._data
+        if data is None:
+            raise RuntimeError("Demo dataset failed to load")
+        if "part" not in data:
+            data["part"] = []
+        data["part"].append(new_part)
         
         logger.info(f"Created new part in demo dataset: pk={new_pk}, name={name}")
         

@@ -7,7 +7,7 @@ Thread messages are stored as JSON files in the configured threads directory.
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -72,8 +72,8 @@ class FileChatMessageStore:
 
         thread_data = {
             "thread_id": thread_id,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
             "messages": [],
             "metadata": metadata or {},
         }
@@ -180,13 +180,13 @@ class FileChatMessageStore:
 
             enriched_msg = {
                 "id": msg_id,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
                 **msg,
             }
             existing_messages.append(enriched_msg)
 
         thread_data["messages"] = existing_messages
-        thread_data["updated_at"] = datetime.utcnow().isoformat()
+        thread_data["updated_at"] = datetime.now(UTC).isoformat()
 
         await self._write_thread(thread_id, thread_data)
 
@@ -243,7 +243,7 @@ class FileChatMessageStore:
         existing_metadata = thread_data.get("metadata", {})
         existing_metadata.update(metadata)
         thread_data["metadata"] = existing_metadata
-        thread_data["updated_at"] = datetime.utcnow().isoformat()
+        thread_data["updated_at"] = datetime.now(UTC).isoformat()
 
         await self._write_thread(thread_id, thread_data)
         logger.debug("Thread metadata updated", thread_id=thread_id)

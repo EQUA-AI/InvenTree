@@ -61,6 +61,7 @@ class ActionLinkTest(TestCase):
     def test_known_targets_build_links(self):
         """Existing routes produce deep links."""
         link = make_action_link('Open packet', 'repair_packet', 7)
+        assert link is not None
         self.assertEqual(link['route'], '/repair/packets/7/')
 
     def test_unknown_targets_are_suppressed(self):

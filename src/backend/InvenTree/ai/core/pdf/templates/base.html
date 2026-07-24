@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<title>{% block document_title %}Document{% endblock document_title %}</title>
 <style>
   /* ── Page layout ───────────────────────────────────────────────── */
   @page {
@@ -9,12 +10,12 @@
     margin: 2cm 1.8cm;
 
     @top-left {
-      content: "{% block page_header_left %}{% endblock %}";
+      content: "{% block page_header_left %}{% endblock page_header_left %}";
       font-size: 8px;
       color: #999;
     }
     @top-right {
-      content: "{% block page_header_right %}{% endblock %}";
+      content: "{% block page_header_right %}{% endblock page_header_right %}";
       font-size: 8px;
       color: #999;
     }
@@ -162,13 +163,13 @@
       {% endif %}
     </div>
     <div class="title-block">
-      <h1>{% block title %}Document{% endblock %}</h1>
-      <h2>{% block subtitle %}{% endblock %}</h2>
+      <h1>{% block title %}Document{% endblock title %}</h1>
+      <h2>{% block subtitle %}{% endblock subtitle %}</h2>
     </div>
   </div>
 
   <!-- ── Body content (overridden by child templates) ──────────── -->
-  {% block content %}{% endblock %}
+  {% block content %}{% endblock content %}
 
   <!-- ── Notes ─────────────────────────────────────────────────── -->
   {% if notes %}
@@ -179,7 +180,7 @@
   {% endif %}
 
   <!-- ── Footer slot ───────────────────────────────────────────── -->
-  {% block footer %}{% endblock %}
+  {% block footer %}{% endblock footer %}
 
 </body>
 </html>

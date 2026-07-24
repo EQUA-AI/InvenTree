@@ -6,7 +6,7 @@ Retrieves relevant past solutions for similar problems.
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -134,7 +134,7 @@ class ProblemSolutionProvider:
             "problem": problem,
             "solution": solution,
             "metadata": metadata or {},
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "usage_count": 0,
         }
         

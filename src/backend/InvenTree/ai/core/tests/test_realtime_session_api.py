@@ -88,7 +88,7 @@ def _settings(_legacy_pilot_ids=None, **over) -> Settings:
         "AZURE_VOICELIVE_ENDPOINT": HOST_SETTING,
     }
     aliased.update(over)
-    return Settings(_env_file=None, **aliased)
+    return Settings(_env_file=None, **aliased)  # ty: ignore[unknown-argument]  # pydantic-settings runtime kwarg
 
 
 def _run(principal, coroutine_factory, settings):

@@ -16,7 +16,7 @@ VALID_HOST = "aimms-foundry.services.ai.azure.com"
 
 
 def _settings(**aliased: object) -> Settings:
-    return Settings(_env_file=None, **aliased)
+    return Settings(_env_file=None, **aliased)  # ty: ignore[unknown-argument]  # pydantic-settings runtime kwarg
 
 
 def test_local_env_file_is_anchored_to_ai_package():

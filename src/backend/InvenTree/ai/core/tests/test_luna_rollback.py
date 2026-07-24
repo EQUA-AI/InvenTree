@@ -27,7 +27,8 @@ def _service_with(settings: Settings) -> NormalizedTurnService:
 
 
 def test_diagnosis_flag_off_builds_no_reasoning_components():
-    service = _service_with(Settings(_env_file=None))
+    settings = Settings(_env_file=None)  # ty: ignore[unknown-argument]  # pydantic-settings runtime kwarg
+    service = _service_with(settings)
     assert service.complexity_router is None
     assert service.reasoning_adapter is None
     assert service.diagnostic_tool_registry is None
@@ -35,7 +36,7 @@ def test_diagnosis_flag_off_builds_no_reasoning_components():
 
 def test_diagnosis_flag_on_builds_router_and_registry():
     settings = Settings(
-        _env_file=None,
+        _env_file=None,  # ty: ignore[unknown-argument]  # pydantic-settings runtime kwarg
         FEATURE_VOICE_LIVE_DIAGNOSIS=True,
         # direct_deployment (prompt of record = repo) needs a model endpoint.
         AZURE_OPENAI_ENDPOINT="https://example.openai.azure.com/",
@@ -47,7 +48,7 @@ def test_diagnosis_flag_on_builds_router_and_registry():
 
 def test_safety_tool_stays_absent_while_p0s_are_open():
     settings = Settings(
-        _env_file=None,
+        _env_file=None,  # ty: ignore[unknown-argument]  # pydantic-settings runtime kwarg
         FEATURE_VOICE_LIVE_DIAGNOSIS=True,
         # direct_deployment (prompt of record = repo) needs a model endpoint.
         AZURE_OPENAI_ENDPOINT="https://example.openai.azure.com/",

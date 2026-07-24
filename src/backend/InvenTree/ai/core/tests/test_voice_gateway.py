@@ -21,7 +21,7 @@ from ai.core.voice.signaling import SignalingError, TransportUnavailable
 
 
 def _settings() -> Settings:
-    return Settings(_env_file=None)
+    return Settings(_env_file=None)  # ty: ignore[unknown-argument]  # pydantic-settings runtime kwarg
 
 
 class FakeWs:

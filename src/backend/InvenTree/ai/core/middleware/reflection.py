@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import inspect
 import logging
 import time
 import uuid
@@ -455,7 +456,9 @@ class LoggingMiddleware:
             )
 
             try:
-                result = await func(*args, **kwargs)
+                result = func(*args, **kwargs)
+                if inspect.isawaitable(result):
+                    result = await result
 
                 elapsed = (time.perf_counter() - start) * 1000
                 self.logger.info(

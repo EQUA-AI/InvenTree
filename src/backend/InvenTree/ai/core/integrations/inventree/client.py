@@ -12,7 +12,7 @@ import json
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -76,7 +76,7 @@ class CircuitBreaker:
         if self.state == CircuitState.OPEN:
             # Check if recovery timeout has passed
             if self.last_failure_time:
-                elapsed = datetime.utcnow() - self.last_failure_time
+                elapsed = datetime.now(UTC) - self.last_failure_time
                 if elapsed > timedelta(seconds=self.recovery_timeout):
                     self.state = CircuitState.HALF_OPEN
                     self.success_count = 0
@@ -104,7 +104,7 @@ class CircuitBreaker:
     def record_failure(self) -> None:
         """Record a failed request."""
         self.failure_count += 1
-        self.last_failure_time = datetime.utcnow()
+        self.last_failure_time = datetime.now(UTC)
 
         if self.state == CircuitState.HALF_OPEN:
             self.state = CircuitState.OPEN

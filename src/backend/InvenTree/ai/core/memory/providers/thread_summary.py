@@ -6,7 +6,7 @@ Maintains and provides concise summaries of long conversations.
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -250,7 +250,7 @@ Parts/Items Referenced:
             "open_questions": [],  # Would be extracted by LLM
             "parts_referenced": parts_referenced[:20],
             "message_count": len(messages),
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
         }
     
     def _format_list(self, items: list[str]) -> str:

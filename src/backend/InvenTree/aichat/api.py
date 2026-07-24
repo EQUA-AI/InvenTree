@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -94,6 +95,7 @@ class ProposalListCreateView(APIView):
     authentication_classes = [SessionAuthentication]
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(operation_id='aichat_proposals_list')
     def get(self, request):
         """Get."""
         try:
@@ -296,6 +298,7 @@ class ConversationListCreateView(APIView):
     authentication_classes = [SessionAuthentication]
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(operation_id='aichat_conversations_list')
     def get(self, request):
         """List own conversations, optionally filtered to one record."""
         try:

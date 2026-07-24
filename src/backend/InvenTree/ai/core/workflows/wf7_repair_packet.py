@@ -161,7 +161,7 @@ class WF7RepairPacketWorkflow:
             diag = await self.diagnostics.execute(query=query, thread_id=thread_id)
         except Exception as exc:  # degrade gracefully; the packet still forms
             logger.warning('wf7 diagnostics failed: %s', exc)
-            diag = DiagnosticsResult()
+            diag = DiagnosticsResult(success=False, error=str(exc))
 
         diagnosis, confidence = self._diagnosis_from(diag, query)
         return RepairPacketResult(

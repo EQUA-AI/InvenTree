@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block page_header_left %}Purchase Order{% endblock %}
-{% block page_header_right %}{{ reference }}{% endblock %}
+{% block page_header_left %}Purchase Order{% endblock page_header_left %}
+{% block page_header_right %}{{ reference }}{% endblock page_header_right %}
 
-{% block title %}Purchase Order{% endblock %}
-{% block subtitle %}{{ reference }}{% endblock %}
+{% block title %}Purchase Order{% endblock title %}
+{% block subtitle %}{{ reference }}{% endblock subtitle %}
 
 {% block content %}
 <!-- ── Order meta ──────────────────────────────────────────────── -->
@@ -99,4 +99,4 @@
   <div class="text-sm text-muted">{{ payment_terms }}</div>
 </div>
 {% endif %}
-{% endblock %}
+{% endblock content %}

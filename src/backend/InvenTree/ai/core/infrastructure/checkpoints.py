@@ -9,7 +9,7 @@ Supports the three checkpoint types defined in AIMMS v2.3:
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -65,7 +65,7 @@ class CheckpointData:
         self.step_name = step_name
         self.state = state
         self.metadata = metadata or {}
-        self.created_at = datetime.utcnow().isoformat()
+        self.created_at = datetime.now(UTC).isoformat()
     
     def to_dict(self) -> dict[str, Any]:
         """Serialize checkpoint to dictionary."""
@@ -328,7 +328,16 @@ class FileCheckpointStorage:
                 data = await self._read_checkpoint(checkpoint_file)
                 if data:
                     created_at = datetime.fromisoformat(data.get("created_at", ""))
-                    if created_at >= before:
+                    # Legacy checkpoints stored naive UTC timestamps; normalize
+                    # both sides so aware/naive values compare safely.
+                    if created_at.tzinfo is None:
+                        created_at = created_at.replace(tzinfo=UTC)
+                    cutoff = (
+                        before
+                        if before.tzinfo is not None
+                        else before.replace(tzinfo=UTC)
+                    )
+                    if created_at >= cutoff:
                         continue
             
             checkpoint_file.unlink()

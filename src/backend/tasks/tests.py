@@ -4,7 +4,9 @@ from django.urls import reverse
 
 from InvenTree.unit_test import InvenTreeAPITestCase
 
-from .models import KanbanCard
+# Absolute import: the sibling ``tests/`` package shadows this module's
+# ``tasks.tests`` name, which breaks relative import resolution here.
+from tasks.models import KanbanCard
 
 
 class KanbanCardAPITest(InvenTreeAPITestCase):

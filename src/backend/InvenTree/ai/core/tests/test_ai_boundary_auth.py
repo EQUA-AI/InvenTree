@@ -6,6 +6,7 @@ import asyncio
 import os
 from dataclasses import replace
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ai.core.tests.settings")
@@ -85,9 +86,11 @@ def _scope(
     return scope
 
 
-async def _run(scope: dict[str, object], policy: AIBoundaryPolicy) -> tuple[list[dict], object]:
+async def _run(
+    scope: dict[str, object], policy: AIBoundaryPolicy
+) -> tuple[list[dict], tuple[Any, Any] | None]:
     messages: list[dict] = []
-    observed: object = None
+    observed: tuple[Any, Any] | None = None
 
     async def app(inner_scope, _receive, send):
         nonlocal observed
@@ -113,7 +116,9 @@ async def _run(scope: dict[str, object], policy: AIBoundaryPolicy) -> tuple[list
     return messages, observed
 
 
-def _execute(scope: dict[str, object], policy: AIBoundaryPolicy) -> tuple[list[dict], object]:
+def _execute(
+    scope: dict[str, object], policy: AIBoundaryPolicy
+) -> tuple[list[dict], tuple[Any, Any] | None]:
     with patch("ai.core.auth.get_user_model", return_value=TestUserModel):
         return asyncio.run(_run(scope, policy))
 
@@ -143,6 +148,7 @@ class AIBoundaryAuthTests(SimpleTestCase):
         )
 
         self.assertEqual(_status(messages), 200)
+        assert observed is not None
         principal, contextual = observed
         self.assertEqual(principal, contextual)
         self.assertEqual(principal.user_pk, str(self.user.pk))
@@ -162,6 +168,7 @@ class AIBoundaryAuthTests(SimpleTestCase):
         )
 
         self.assertEqual(_status(messages), 200)
+        assert observed is not None
         self.assertEqual(observed[0].authentication_method, "signed_subject")
 
     def test_signed_subject_expired_is_rejected(self) -> None:
@@ -295,6 +302,7 @@ class AIBoundaryAuthTests(SimpleTestCase):
         scope["query_string"] = f"user_id={self.other.pk}".encode()
         messages, observed = _execute(scope, self.policy)
         self.assertEqual(_status(messages), 200)
+        assert observed is not None
         self.assertEqual(observed[0].user_pk, str(self.user.pk))
         self.assertEqual(
             get_identity_anomaly_counts(),

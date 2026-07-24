@@ -61,7 +61,8 @@ def _extract_text_ocr(
         ) from exc
 
     try:
-        import pytesseract
+        # Optional OCR dependency; guarded by the ImportError handler below
+        import pytesseract  # ty: ignore[unresolved-import]
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             'OCR fallback requires pytesseract to be installed.'

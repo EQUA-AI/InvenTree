@@ -6,7 +6,7 @@ Essential for HITL workflows and recovery scenarios.
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -17,6 +17,19 @@ import structlog
 from ai.core.config import settings
 
 logger = structlog.get_logger(__name__)
+
+
+def _utcnow() -> datetime:
+    """Return the current time as an aware UTC datetime."""
+    return datetime.now(UTC)
+
+
+def _parse_stored_timestamp(value: str) -> datetime:
+    """Parse a stored timestamp, treating legacy naive values as UTC."""
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 class IdempotencyRecord:
@@ -50,10 +63,10 @@ class IdempotencyRecord:
         self.status = status
         self.result = result
         self.error = error
-        self.created_at = created_at or datetime.utcnow().isoformat()
+        self.created_at = created_at or _utcnow().isoformat()
         self.completed_at = completed_at
         self.expires_at = (
-            datetime.utcnow() + timedelta(hours=ttl_hours)
+            _utcnow() + timedelta(hours=ttl_hours)
         ).isoformat()
     
     def to_dict(self) -> dict[str, Any]:
@@ -85,8 +98,8 @@ class IdempotencyRecord:
     @property
     def is_expired(self) -> bool:
         """Check if the record has expired."""
-        expires_at = datetime.fromisoformat(self.expires_at)
-        return datetime.utcnow() > expires_at
+        expires_at = _parse_stored_timestamp(self.expires_at)
+        return _utcnow() > expires_at
 
 
 class IdempotencyStore:
@@ -196,8 +209,8 @@ class IdempotencyStore:
                 raise ValueError(f"Operation already completed: {idempotency_key}")
             if existing.status == "pending":
                 # Could be a stale pending - check if it's old enough to retry
-                created = datetime.fromisoformat(existing.created_at)
-                if datetime.utcnow() - created < timedelta(minutes=5):
+                created = _parse_stored_timestamp(existing.created_at)
+                if _utcnow() - created < timedelta(minutes=5):
                     raise ValueError(f"Operation already in progress: {idempotency_key}")
                 # Stale pending, allow retry
         
@@ -243,7 +256,7 @@ class IdempotencyStore:
         
         record.status = "completed"
         record.result = result
-        record.completed_at = datetime.utcnow().isoformat()
+        record.completed_at = _utcnow().isoformat()
         
         await self._write_record(record)
         
@@ -278,7 +291,7 @@ class IdempotencyStore:
         
         record.status = "failed"
         record.error = error
-        record.completed_at = datetime.utcnow().isoformat()
+        record.completed_at = _utcnow().isoformat()
         
         await self._write_record(record)
         

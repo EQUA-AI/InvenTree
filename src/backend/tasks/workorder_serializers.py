@@ -124,7 +124,7 @@ class ResumeCommandSerializer(BaseCommandSerializer):
     """Validate resume intent."""
 
 
-class CancelCommandSerializer(BaseCommandSerializer):
+class WorkOrderCancelCommandSerializer(BaseCommandSerializer):
     """Validate cancellation intent; cancellations require a reason."""
 
     reason = serializers.CharField(allow_blank=False, required=True)

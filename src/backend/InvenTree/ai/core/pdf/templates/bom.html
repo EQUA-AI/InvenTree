@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block page_header_left %}Bill of Materials{% endblock %}
-{% block page_header_right %}{{ part_name }}{% endblock %}
+{% block page_header_left %}Bill of Materials{% endblock page_header_left %}
+{% block page_header_right %}{{ part_name }}{% endblock page_header_right %}
 
-{% block title %}Bill of Materials{% endblock %}
-{% block subtitle %}{{ part_name }}{% if part_ipn %} ({{ part_ipn }}){% endif %}{% endblock %}
+{% block title %}Bill of Materials{% endblock title %}
+{% block subtitle %}{{ part_name }}{% if part_ipn %} ({{ part_ipn }}){% endif %}{% endblock subtitle %}
 
 {% block content %}
 <style>
@@ -68,7 +68,7 @@
   {% endif %}
 </div>
 
-{% endblock %}
+{% endblock content %}
 
 {% block footer %}
 {% if revision %}
@@ -76,4 +76,4 @@
   BOM revision {{ revision }} — {{ generated_date }}
 </div>
 {% endif %}
-{% endblock %}
+{% endblock footer %}

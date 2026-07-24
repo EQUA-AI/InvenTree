@@ -69,6 +69,7 @@ def test_write_tool_is_disabled_when_governed(tool_id):
     with GOVERNED:
         policy = _authorization_policy(tool, tool_id)
     assert policy.kind is PolicyKind.DISABLED
+    assert policy.reason is not None
     assert "proposal" in policy.reason
 
 

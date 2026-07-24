@@ -42,7 +42,9 @@ class InventoryProvider(Protocol):
         """Get a single part by ID."""
         ...
 
-    async def get_stock_items(self, part_id: int | None = None) -> list[dict[str, Any]]:
+    async def get_stock_items(
+        self, part_id: int | None = None, limit: int | None = None
+    ) -> list[dict[str, Any]]:
         """Get stock items, optionally filtered by part."""
         ...
 
@@ -194,9 +196,12 @@ class DemoDataProviderAsync:
         """Get a single part by ID."""
         return self._provider.get_part(part_id)
 
-    async def get_stock_items(self, part_id: int | None = None) -> list[dict[str, Any]]:
+    async def get_stock_items(
+        self, part_id: int | None = None, limit: int | None = None
+    ) -> list[dict[str, Any]]:
         """Get stock items."""
-        return self._provider.get_stock_items(part_id=part_id)
+        items = self._provider.get_stock_items(part_id=part_id)
+        return items[:limit] if limit is not None else items
 
     async def get_stock_quantity(self, part_id: int) -> float:
         """Get stock quantity for a part."""
@@ -397,8 +402,12 @@ class LiveDataProviderAsync:
         """Get a single part by ID."""
         return await self._client.get_part(part_id)
 
-    async def get_stock_items(self, part_id: int | None = None) -> list[dict[str, Any]]:
+    async def get_stock_items(
+        self, part_id: int | None = None, limit: int | None = None
+    ) -> list[dict[str, Any]]:
         """Get stock items via API."""
+        if limit is not None:
+            return await self._client.get_stock(part_id=part_id, limit=limit)
         return await self._client.get_stock(part_id=part_id)
 
     async def get_stock_quantity(self, part_id: int) -> float:
@@ -432,7 +441,7 @@ class LiveDataProviderAsync:
 
     async def get_stock_at_location(self, location_id: int) -> list[dict[str, Any]]:
         """Get stock at a location via API."""
-        return await self._client.get_stock(location_id=location_id)
+        return await self._client.get_stock(location=location_id)
 
     async def get_where_used(self, part_id: int) -> list[dict[str, Any]]:
         """Get where a part is used via API."""

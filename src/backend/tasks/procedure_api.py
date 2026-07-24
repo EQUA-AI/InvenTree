@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.http import Http404
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import IsAuthenticated
@@ -105,6 +106,7 @@ class ProcedureList(ProcedureEnabledMixin, APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(operation_id='tasks_procedures_list')
     def get(self, request):
         """Handle GET requests."""
         rows = _procedure_queryset(request.user).order_by('code', 'pk')

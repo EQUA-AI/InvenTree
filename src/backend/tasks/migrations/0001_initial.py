@@ -1,5 +1,4 @@
 from django.db import migrations, models
-import django.contrib.postgres.fields
 
 
 class Migration(migrations.Migration):
@@ -26,12 +25,7 @@ class Migration(migrations.Migration):
                 ),
                 ('due_date', models.DateField(blank=True, null=True)),
                 ('assignee', models.CharField(blank=True, max_length=120)),
-                (
-                    'tags',
-                    django.contrib.postgres.fields.ArrayField(
-                        base_field=models.CharField(max_length=32), blank=True, default=list, size=None
-                    ),
-                ),
+                ('tags', models.JSONField(blank=True, default=list)),
                 ('company', models.CharField(blank=True, max_length=120)),
                 ('company_contact_name', models.CharField(blank=True, max_length=120)),
                 ('company_contact_phone', models.CharField(blank=True, max_length=64)),

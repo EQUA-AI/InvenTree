@@ -282,6 +282,41 @@ class QueueEventHandler:
         await self.queue.put(event)
 
 
+class EventCollector:
+    """Event handler that collects events in memory.
+
+    Useful for tests and diagnostics where emitted events need to be
+    inspected after the fact.
+    """
+
+    def __init__(self, thread_id: str | None = None):
+        self.thread_id = thread_id
+        self._events: list[AGUIEvent] = []
+
+    async def handle(self, event: AGUIEvent) -> None:
+        """Handle event by recording it."""
+        # Filter by thread_id if specified
+        if self.thread_id and event.thread_id and event.thread_id != self.thread_id:
+            return
+
+        self._events.append(event)
+
+    @property
+    def events(self) -> list[AGUIEvent]:
+        """All collected events, in emission order."""
+        return list(self._events)
+
+    def get_events(self, event_type: EventType | None = None) -> list[AGUIEvent]:
+        """Return collected events, optionally filtered by type."""
+        if event_type is None:
+            return list(self._events)
+        return [e for e in self._events if e.event_type == event_type]
+
+    def clear(self) -> None:
+        """Discard all collected events."""
+        self._events.clear()
+
+
 class RunContext:
     """
     Context manager for a single agent run.

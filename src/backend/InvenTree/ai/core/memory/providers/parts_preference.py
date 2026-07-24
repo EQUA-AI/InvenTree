@@ -6,7 +6,7 @@ Learns and applies user preferences for parts and suppliers.
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -85,7 +85,7 @@ class PartsPreferenceProvider:
         """
         prefs = await self.get_preferences(user_id)
         self._deep_merge(prefs, updates)
-        prefs["updated_at"] = datetime.utcnow().isoformat()
+        prefs["updated_at"] = datetime.now(UTC).isoformat()
         
         pref_path = self._get_preference_path(user_id)
         with open(pref_path, "w") as f:
@@ -98,8 +98,8 @@ class PartsPreferenceProvider:
         """Create default parts preferences."""
         return {
             "user_id": user_id,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
             "part_preferences": {
                 # Maps use case to preferred part IPNs
                 # Example: {"decoupling_capacitor": ["CAP-100NF-0402", "CAP-100NF-0603"]}

@@ -3,6 +3,7 @@
 import json
 
 from django.db import IntegrityError
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from InvenTree.serializers import InvenTreeModelSerializer
@@ -159,11 +160,13 @@ class ApprovalDetailSerializer(InvenTreeModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(ApprovalEventSerializer(many=True))
     def get_latest_events(self, obj):
         """Return the 10 most recent events."""
         events = obj.events.order_by('-timestamp')[:10]
         return ApprovalEventSerializer(events, many=True).data
 
+    @extend_schema_field(ApprovalRevisionSerializer(allow_null=True))
     def get_latest_revision(self, obj):
         """Return the latest revision."""
         revision = obj.revisions.order_by('-revision_number').first()
@@ -350,6 +353,7 @@ class CardPackageSerializer(serializers.Serializer):
     latest_diff_summary = serializers.SerializerMethodField()
     validation_warnings = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.JSONField(allow_null=True))
     def get_latest_diff_summary(self, obj):
         """Return the diff_summary from the latest revision."""
         latest = obj.revisions.order_by('-revision_number').first()
@@ -357,6 +361,7 @@ class CardPackageSerializer(serializers.Serializer):
             return latest.diff_summary
         return None
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_validation_warnings(self, obj):
         """Return validation warnings (placeholder for future revalidation)."""
         warnings = []

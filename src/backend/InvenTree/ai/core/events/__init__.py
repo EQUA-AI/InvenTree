@@ -7,6 +7,7 @@ Re-exports from ai.core.streaming for backward compatibility.
 from ai.core.streaming import (
     EventType,
     AGUIEvent,
+    EventCollector,
     EventEmitter,
     InMemoryEventEmitter,
     SSEEventStream,

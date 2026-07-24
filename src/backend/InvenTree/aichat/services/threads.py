@@ -7,6 +7,7 @@ boundary before resolving a caller-supplied identifier. Async callers must use
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import json
 from collections.abc import Mapping
@@ -189,8 +190,10 @@ class ThreadRepository:
 
         return thread, True
 
-    def list(self) -> list[ChatThread]:
+    def list(self) -> builtins.list[ChatThread]:
         """Return materialized threads within the complete boundary."""
+        # ``builtins.list``: in annotations here ``list`` would otherwise
+        # resolve to this method, which shadows the builtin in the class body.
         return list(self._threads())
 
     def get(self, thread_id: str) -> ChatThread:
@@ -486,7 +489,7 @@ class ThreadRepository:
             )
         return turn
 
-    def messages(self, thread_id: str) -> list[ChatMessage]:
+    def messages(self, thread_id: str) -> builtins.list[ChatMessage]:
         """Return a materialized, ordered transcript inside the boundary."""
         thread = self._get_thread(thread_id)
         return list(ChatMessage.objects.filter(thread=thread))

@@ -13,6 +13,7 @@ from django.db.models import Q
 from django.http import Http404
 from django.urls import include, path
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import IsAuthenticated
@@ -117,6 +118,7 @@ class SessionList(RPFEnabledMixin, APIView):
     permission_classes = [IsAuthenticated]
     serializer_class = CreateSessionSerializer
 
+    @extend_schema(operation_id='part_verification_sessions_list')
     def get(self, request):
         """Return scoped sessions with simple attribute filters."""
         queryset = _scoped_sessions(request.user).order_by('-pk')
@@ -363,6 +365,7 @@ class SessionCandidateList(RPFEnabledMixin, APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(operation_id='part_verification_sessions_candidates_list')
     def get(self, request, pk):
         """Return candidate evaluations for the current revision."""
         session = _scoped_session_or_404(request, pk)

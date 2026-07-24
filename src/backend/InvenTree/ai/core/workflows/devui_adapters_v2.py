@@ -135,9 +135,10 @@ class DevUICompatibleWorkflow:
         
         if isinstance(messages, list):
             for msg in messages:
-                if hasattr(msg, 'contents') and msg.contents:
-                    logger.debug(f"Processing message with {len(msg.contents)} contents")
-                    for content in msg.contents:
+                contents = getattr(msg, 'contents', None)
+                if contents:
+                    logger.debug(f"Processing message with {len(contents)} contents")
+                    for content in contents:
                         content_type = type(content).__name__
                         logger.debug(f"  Content type: {content_type}")
                         if content_type == 'DataContent':
@@ -290,9 +291,9 @@ class DevUICompatibleWorkflow:
                 msg = msg[0]
             if hasattr(msg, 'content'):
                 response_text = msg.content
-            elif hasattr(msg, 'contents') and msg.contents:
+            elif (contents := getattr(msg, 'contents', None)):
                 text_parts = []
-                for c in msg.contents:
+                for c in contents:
                     if hasattr(c, 'text'):
                         text_parts.append(str(c.text))
                 response_text = ' '.join(text_parts) if text_parts else str(msg)
