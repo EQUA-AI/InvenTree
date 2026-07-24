@@ -5,27 +5,60 @@
  * user confirm or reject them. Confirmation is this explicit visual action —
  * never speech, transcripts, or model output — and the card shows the real
  * command receipt or failure code afterwards.
+ *
+ * Every governed action is rendered here, not just hold/resume: the card reads
+ * the server-derived preview (never model text) and, for an irreversible action,
+ * demands the exact strict phrase before Confirm is enabled — the same tier the
+ * voice rail enforces verbally (§5.3).
  */
 
-import { Alert, Badge, Button, Card, Group, Stack, Text } from '@mantine/core';
-import { IconClockPause, IconPlayerPlay } from '@tabler/icons-react';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Group,
+  Stack,
+  Text,
+  TextInput
+} from '@mantine/core';
+import {
+  IconBolt,
+  IconClockPause,
+  IconPlayerPlay,
+  IconTrash
+} from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { api } from '../../App';
+
+export interface ChatActionProposalPreview {
+  action?: string;
+  reference?: string;
+  title?: string;
+  current_status?: string;
+  resulting_status?: string;
+  warning?: string;
+  irreversible?: boolean;
+  confirm_phrase?: string;
+  proposed_start?: string | null;
+  proposed_end?: string | null;
+  proposed_estimated_minutes?: number | null;
+  proposed_assigned_to_id?: number | null;
+  proposed_title?: string;
+  candidate_count?: number;
+  to_status?: string;
+  [key: string]: unknown;
+}
 
 export interface ChatActionProposalPayload {
   id: string;
   action_type: string;
   state: string;
-  work_order_id: number;
-  target_version: number;
-  preview: {
-    reference?: string;
-    title?: string;
-    current_status?: string;
-    resulting_status?: string;
-    warning?: string;
-  };
+  work_order_id: number | null;
+  target_version: number | null;
+  intent?: Record<string, unknown>;
+  preview: ChatActionProposalPreview;
   reason: string;
   expires_at: string;
   receipt: Record<string, unknown> | null;
@@ -42,8 +75,79 @@ const STATE_COLORS: Record<string, string> = {
 
 const ACTION_LABELS: Record<string, string> = {
   'work_order.hold': 'Hold work order',
-  'work_order.resume': 'Resume work order'
+  'work_order.resume': 'Resume work order',
+  'work_order.schedule': 'Reschedule work order',
+  'work_order.resize': 'Change work order duration',
+  'work_order.update': 'Update work order plan',
+  'work_order.assign': 'Reassign work order',
+  'work_order.delete': 'Delete work order',
+  'work_order.cancel': 'Cancel work order',
+  'work_order.transition': 'Change work order lifecycle',
+  'work_order.create': 'Create work order',
+  'work_order.create_child': 'Create child work order',
+  'work_order.generate_procurement': 'Generate procurement child',
+  'dependency.create': 'Add dependency',
+  'dependency.delete': 'Remove dependency',
+  'schedule.optimize': 'Auto-schedule (bulk)'
 };
+
+function actionIcon(actionType: string) {
+  if (actionType === 'work_order.hold') return <IconClockPause size={16} />;
+  if (actionType === 'work_order.resume') return <IconPlayerPlay size={16} />;
+  if (
+    actionType === 'work_order.delete' ||
+    actionType === 'dependency.delete'
+  ) {
+    return <IconTrash size={16} />;
+  }
+  return <IconBolt size={16} />;
+}
+
+/** A short, server-derived summary of what the proposal will do. */
+function previewSummary(proposal: ChatActionProposalPayload): string | null {
+  const p = proposal.preview;
+  switch (proposal.action_type) {
+    case 'work_order.schedule':
+      return `${p.proposed_start ?? '—'} → ${p.proposed_end ?? '—'}`;
+    case 'work_order.resize':
+      return p.proposed_estimated_minutes != null
+        ? `${p.proposed_estimated_minutes} min`
+        : null;
+    case 'work_order.assign':
+      return `assignee → ${p.proposed_assigned_to_id ?? 'unassigned'}`;
+    case 'work_order.create':
+    case 'work_order.create_child':
+      return p.proposed_title ? `“${p.proposed_title}”` : null;
+    case 'schedule.optimize':
+      return `${p.candidate_count ?? 0} work orders`;
+    default:
+      if (p.current_status && p.resulting_status) {
+        return `${p.current_status} → ${p.resulting_status}`;
+      }
+      return p.resulting_status ?? null;
+  }
+}
+
+/** A short, human line describing the recorded receipt of an executed action. */
+function receiptSummary(receipt: Record<string, unknown>): string {
+  const command = String(receipt.command ?? 'done');
+  if (receipt.lifecycle_status != null) {
+    return `${command} → ${String(receipt.lifecycle_status)} (event #${String(receipt.event_id)})`;
+  }
+  if (receipt.deletion_record_id != null) {
+    return `${command} (record #${String(receipt.deletion_record_id)})`;
+  }
+  if (receipt.dependency_id != null) {
+    return `${command} (dependency #${String(receipt.dependency_id)})`;
+  }
+  if (receipt.child_id != null) {
+    return `${command} (child #${String(receipt.child_id)})`;
+  }
+  if (Array.isArray(receipt.applied)) {
+    return `${command} (${receipt.applied.length} scheduled)`;
+  }
+  return command;
+}
 
 export function ProposalCard({
   proposal,
@@ -54,13 +158,25 @@ export function ProposalCard({
 }>) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phrase, setPhrase] = useState('');
+
+  const requiredPhrase = proposal.preview.confirm_phrase ?? '';
+  const irreversible =
+    Boolean(proposal.preview.irreversible) || requiredPhrase !== '';
+  const phraseSatisfied =
+    !irreversible ||
+    phrase.trim().toLowerCase() === requiredPhrase.trim().toLowerCase();
 
   const act = useCallback(
     async (verb: 'confirm' | 'reject') => {
       setBusy(true);
       setError(null);
       try {
-        await api.post(`/api/aichat/proposals/${proposal.id}/${verb}/`);
+        const body =
+          verb === 'confirm' && irreversible
+            ? { confirm_phrase: phrase }
+            : undefined;
+        await api.post(`/api/aichat/proposals/${proposal.id}/${verb}/`, body);
       } catch (err: any) {
         setError(err?.response?.data?.error ?? 'PROPOSAL_REQUEST_FAILED');
       } finally {
@@ -68,23 +184,24 @@ export function ProposalCard({
         onChanged();
       }
     },
-    [proposal.id, onChanged]
+    [proposal.id, onChanged, irreversible, phrase]
   );
 
   const pending = proposal.state === 'proposed';
   const label = ACTION_LABELS[proposal.action_type] ?? proposal.action_type;
-  const target = proposal.preview.reference || `WO-${proposal.work_order_id}`;
+  const target =
+    proposal.preview.reference ||
+    (proposal.work_order_id
+      ? `WO-${proposal.work_order_id}`
+      : 'new work order');
+  const summary = previewSummary(proposal);
 
   return (
     <Card withBorder radius='md' p='sm' data-testid='chat-action-proposal'>
       <Stack gap={6}>
         <Group justify='space-between' wrap='nowrap'>
           <Group gap='xs' wrap='nowrap'>
-            {proposal.action_type === 'work_order.hold' ? (
-              <IconClockPause size={16} />
-            ) : (
-              <IconPlayerPlay size={16} />
-            )}
+            {actionIcon(proposal.action_type)}
             <Text fw={600} size='sm'>
               {label}: {target}?
             </Text>
@@ -95,8 +212,12 @@ export function ProposalCard({
         </Group>
         {proposal.preview.title && (
           <Text size='xs' c='dimmed'>
-            {proposal.preview.title} — {proposal.preview.current_status} →{' '}
-            {proposal.preview.resulting_status}
+            {proposal.preview.title}
+          </Text>
+        )}
+        {summary && (
+          <Text size='xs' c='dimmed'>
+            {summary}
           </Text>
         )}
         {proposal.reason && (
@@ -104,41 +225,58 @@ export function ProposalCard({
             “{proposal.reason}”
           </Text>
         )}
+        {irreversible && pending && (
+          <Alert color='red' p={6}>
+            <Text size='xs' fw={600}>
+              This is irreversible. Type “{requiredPhrase}” to confirm.
+            </Text>
+          </Alert>
+        )}
         <Text size='xs' c='orange'>
           {proposal.preview.warning ??
             'This does not change any safety status.'}
         </Text>
         {pending && (
-          <Group gap='xs'>
-            <Button
-              size='xs'
-              color='teal'
-              loading={busy}
-              onClick={() => void act('confirm')}
-              data-testid='proposal-confirm'
-            >
-              Confirm
-            </Button>
-            <Button
-              size='xs'
-              variant='light'
-              color='gray'
-              disabled={busy}
-              onClick={() => void act('reject')}
-              data-testid='proposal-reject'
-            >
-              Dismiss
-            </Button>
-            <Text size='xs' c='dimmed'>
-              expires {new Date(proposal.expires_at).toLocaleTimeString()}
-            </Text>
-          </Group>
+          <Stack gap={6}>
+            {irreversible && (
+              <TextInput
+                size='xs'
+                value={phrase}
+                onChange={(event) => setPhrase(event.currentTarget.value)}
+                placeholder={requiredPhrase}
+                data-testid='proposal-confirm-phrase'
+              />
+            )}
+            <Group gap='xs'>
+              <Button
+                size='xs'
+                color='teal'
+                loading={busy}
+                disabled={!phraseSatisfied}
+                onClick={() => void act('confirm')}
+                data-testid='proposal-confirm'
+              >
+                Confirm
+              </Button>
+              <Button
+                size='xs'
+                variant='light'
+                color='gray'
+                disabled={busy}
+                onClick={() => void act('reject')}
+                data-testid='proposal-reject'
+              >
+                Dismiss
+              </Button>
+              <Text size='xs' c='dimmed'>
+                expires {new Date(proposal.expires_at).toLocaleTimeString()}
+              </Text>
+            </Group>
+          </Stack>
         )}
         {proposal.state === 'executed' && proposal.receipt && (
           <Text size='xs' c='teal'>
-            Executed: {String(proposal.receipt.command)} →{' '}
-            {String(proposal.receipt.lifecycle_status)} (event #
-            {String(proposal.receipt.event_id)})
+            Executed: {receiptSummary(proposal.receipt)}
           </Text>
         )}
         {proposal.failure_code && (
