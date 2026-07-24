@@ -87,6 +87,25 @@ _EVALUATABLE_STATES = frozenset({
 })
 
 
+def _is_past(moment) -> bool:
+    """Return True if a stored datetime is at or before the current time.
+
+    Handles naive/aware mismatches: with USE_TZ disabled (test mode) the
+    PostgreSQL ``timestamptz`` columns still return timezone-aware values, while
+    ``timezone.now()`` is naive. Normalize both to the same awareness before
+    comparing so the check is correct on every database backend.
+    """
+    if moment is None:
+        return False
+
+    now = timezone.now()
+    if timezone.is_aware(moment) and timezone.is_naive(now):
+        moment = timezone.make_naive(moment, timezone.utc)
+    elif timezone.is_naive(moment) and timezone.is_aware(now):
+        moment = timezone.make_aware(moment, timezone.utc)
+    return moment <= now
+
+
 def _require_enabled(flag: str | None = None):
     """Fail closed unless the feature (and optional capability flag) is on."""
     if not getattr(settings, 'AIMMS_RPF_ENABLED', False):
@@ -1073,7 +1092,7 @@ def _confirm_candidate_locked(
         )
     if not reason:
         raise VerificationContextInvalid('A confirmation rationale is required')
-    if session.expires_at is not None and session.expires_at <= timezone.now():
+    if _is_past(session.expires_at):
         raise VerificationSessionExpired('The evaluation validity window has passed')
 
     evaluation = (
@@ -1207,7 +1226,7 @@ def _mark_no_safe_match_locked(
         )
     if not reason:
         raise VerificationContextInvalid('A no-safe-match rationale is required')
-    if session.expires_at is not None and session.expires_at <= timezone.now():
+    if _is_past(session.expires_at):
         raise VerificationSessionExpired('The evaluation validity window has passed')
 
     if not session.universe_complete:
@@ -1519,7 +1538,7 @@ def _validate_and_bind_use_locked(
             code=ConsumerCodes.PART_VERIFICATION_NOT_CONFIRMED,
         )
 
-    if decision.valid_until is not None and decision.valid_until <= timezone.now():
+    if _is_past(decision.valid_until):
         raise VerificationUseError(
             'The verification decision has expired',
             code=ConsumerCodes.PART_VERIFICATION_EXPIRED,

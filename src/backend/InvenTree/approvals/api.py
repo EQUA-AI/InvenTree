@@ -6,6 +6,7 @@ Implements all endpoints from spec Sections 7.0 - 7.4.
 import uuid as _uuid
 
 from django.db import transaction
+from django.db.models import Q
 from django.urls import include, path
 from django.utils import timezone
 
@@ -146,12 +147,16 @@ class ApprovalList(ListCreateAPI):
             s for s in ApprovalStatus.values if s not in TERMINAL_STATUSES
         ]
 
-        # Build JSON containment query for overlapping entity_refs
+        # Superset match on the (flat) entity_refs dict. JSONField __contains is
+        # unsupported on SQLite, so AND key-transform lookups emulate containment
+        # portably with identical semantics for flat scalar dicts.
+        refs_query = Q()
+        for key, ref_value in entity_refs.items():
+            refs_query &= Q(**{f'payload__entity_refs__{key}': ref_value})
+
         return (
             Approval.objects
-            .filter(
-                status__in=active_statuses, payload__entity_refs__contains=entity_refs
-            )
+            .filter(refs_query, status__in=active_statuses)
             .exclude(pk=exclude_pk)
             .first()
         )

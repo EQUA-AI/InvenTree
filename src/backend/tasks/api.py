@@ -22,6 +22,7 @@ import InvenTree.helpers
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
+from tasks.json_lookups import filter_json_array_contains
 
 from .closeout_api import (
     CloseoutAmendmentDecide,
@@ -195,7 +196,7 @@ class KanbanCardFilter(FilterSet):
         tags = [tag.strip() for tag in value.split(',') if tag.strip()]
 
         for tag in tags:
-            queryset = queryset.filter(tags__contains=[tag])
+            queryset = filter_json_array_contains(queryset, 'tags', tag)
 
         return queryset
 

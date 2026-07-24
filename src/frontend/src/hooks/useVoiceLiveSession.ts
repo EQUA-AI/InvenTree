@@ -237,6 +237,12 @@ export function useVoiceLiveSession(
   const fail = useCallback(
     (code: VoiceErrorCode, detail?: string) => {
       releaseMedia();
+      // Clear the session handle so a subsequent start() is not blocked by the
+      // `sessionRef.current` guard. Several failure paths reach fail() without
+      // going through endInternal(), which would otherwise leave the control
+      // permanently unable to reconnect. The server session expires on its own.
+      sessionRef.current = null;
+      setSession(null);
       setError({ code, detail });
       setState('error');
     },

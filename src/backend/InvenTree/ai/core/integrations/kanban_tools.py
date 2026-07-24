@@ -131,7 +131,9 @@ async def list_kanban_cards(
         if job_number:
             qs = qs.filter(job_number__icontains=job_number)
         if tag:
-            qs = qs.filter(tags__contains=[tag])
+            from tasks.json_lookups import filter_json_array_contains
+
+            qs = filter_json_array_contains(qs, "tags", tag)
         if search:
             from django.db.models import Q
 
@@ -237,7 +239,9 @@ async def create_kanban_card(
     @sync_to_async
     def _create():
         import datetime
-        from decimal import Decimal
+        from decimal import Decimal, InvalidOperation
+
+        from django.db import transaction
 
         parsed_due = None
         if due_date:
@@ -246,58 +250,75 @@ async def create_kanban_card(
             except ValueError:
                 return {"error": f"Invalid due_date format '{due_date}'. Use YYYY-MM-DD."}
 
-        card = KanbanCard.objects.create(
-            title=title,
-            status=status,
-            priority=priority,
-            description=description,
-            assignee=assignee,
-            due_date=parsed_due,
-            tags=tags or [],
-            company=company,
-            company_contact_name=company_contact_name,
-            company_contact_phone=company_contact_phone,
-            job_number=job_number,
-            service_quote=service_quote,
-        )
-
-        allocation_warnings = []
-
-        if parts:
-            from part.models import Part
-
-            for part_entry in parts:
-                part_id = part_entry.get("part_id")
+        # Validate the parts payload up front - the model may pass malformed
+        # entries, and failing after the card row is committed would leave an
+        # orphan card behind
+        normalized_parts = []
+        for part_entry in parts or []:
+            if not isinstance(part_entry, dict):
+                return {
+                    "error": f"Invalid parts entry {part_entry!r}: expected an object with part_id/quantity."
+                }
+            try:
                 qty = Decimal(str(part_entry.get("quantity", 1)))
+            except InvalidOperation:
+                return {
+                    "error": f"Invalid quantity {part_entry.get('quantity')!r} for part {part_entry.get('part_id')!r}."
+                }
+            normalized_parts.append((part_entry.get("part_id"), qty))
 
-                try:
-                    part_obj = Part.objects.get(pk=part_id)
-                except Part.DoesNotExist:
-                    allocation_warnings.append(f"Part ID {part_id} not found — skipped.")
-                    continue
+        # Card + part links commit together - a failure while linking parts
+        # must not leave an orphan card behind
+        with transaction.atomic():
+            card = KanbanCard.objects.create(
+                title=title,
+                status=status,
+                priority=priority,
+                description=description,
+                assignee=assignee,
+                due_date=parsed_due,
+                tags=tags or [],
+                company=company,
+                company_contact_name=company_contact_name,
+                company_contact_phone=company_contact_phone,
+                job_number=job_number,
+                service_quote=service_quote,
+            )
 
-                card_part, created = KanbanCardPart.objects.get_or_create(
-                    card=card,
-                    part=part_obj,
-                    defaults={"quantity": qty},
-                )
-                if not created:
-                    card_part.quantity = qty
-                    card_part.save(update_fields=["quantity", "updated_at"])
+            allocation_warnings = []
 
-                result = card_part.check_and_allocate()
+            if normalized_parts:
+                from part.models import Part
 
-                if result["allocation_status"] == "insufficient":
-                    allocation_warnings.append(
-                        f"⚠ Part '{result['part_name']}' (ID {part_id}): "
-                        f"need {result['quantity_needed']}, NO stock available"
+                for part_id, qty in normalized_parts:
+                    try:
+                        part_obj = Part.objects.get(pk=part_id)
+                    except Part.DoesNotExist:
+                        allocation_warnings.append(f"Part ID {part_id} not found — skipped.")
+                        continue
+
+                    card_part, created = KanbanCardPart.objects.get_or_create(
+                        card=card,
+                        part=part_obj,
+                        defaults={"quantity": qty},
                     )
-                elif result["allocation_status"] == "partial":
-                    allocation_warnings.append(
-                        f"⚠ Part '{result['part_name']}' (ID {part_id}): "
-                        f"only {result['quantity_available']} of "
-                        f"{result['quantity_needed']} available"
-                    )
+                    if not created:
+                        card_part.quantity = qty
+                        card_part.save(update_fields=["quantity", "updated_at"])
+
+                    result = card_part.check_and_allocate()
+
+                    if result["allocation_status"] == "insufficient":
+                        allocation_warnings.append(
+                            f"⚠ Part '{result['part_name']}' (ID {part_id}): "
+                            f"need {result['quantity_needed']}, NO stock available"
+                        )
+                    elif result["allocation_status"] == "partial":
+                        allocation_warnings.append(
+                            f"⚠ Part '{result['part_name']}' (ID {part_id}): "
+                            f"only {result['quantity_available']} of "
+                            f"{result['quantity_needed']} available"
+                        )
 
         result = _card_to_dict(card)
         if allocation_warnings:
@@ -658,7 +679,9 @@ async def check_kanban_card_stock(card_id: int) -> dict[str, Any]:
         warnings = []
 
         for cp in card_parts:
-            alloc = cp.check_and_allocate()
+            # Compute-only: this tool is registered read-only (voice Tier-1
+            # lane, kanban.read pack), so it must not persist allocation state
+            alloc = cp.check_and_allocate(persist=False)
             results.append(alloc)
 
             if alloc["allocation_status"] == "insufficient":

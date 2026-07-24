@@ -79,6 +79,11 @@ xmlsec==1.3.14  # 2025-06-02 pinned to avoid issues with builds - see https://gi
 # agent_framework (+ .azure / .devui); the devui distribution provides agent_framework_devui.
 agent-framework-core==1.0.0b251120
 agent-framework-devui==1.0.0b251120
+aiofiles                                # Async file IO (ai infrastructure stores)
+numpy                                   # Embedding math (ai agents/semantic cache)
+google-api-python-client                # Gmail integration (ai email tools)
+google-auth                             # Gmail integration auth
+tenacity                                # Retry policies (ai InvenTree client)
 azure-ai-documentintelligence>=1.0.0    # Azure Document Intelligence
 azure-identity>=1.15.0                  # Azure Identity
 openai>=1.12.0                          # OpenAI SDK

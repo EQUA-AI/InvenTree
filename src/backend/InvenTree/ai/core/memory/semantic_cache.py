@@ -418,6 +418,15 @@ class SemanticCache:
         Returns:
             CacheResult with hit status and entry if found
         """
+
+        def _visible(entry: CachedEntry) -> bool:
+            """Cache entries are scoped: responses may embed permission-dependent
+            data, so a hit is only valid for the same user and workflow context
+            that stored it (unscoped legacy entries stay shared)."""
+            if entry.user_id and entry.user_id != user_id:
+                return False
+            return not (entry.workflow_id and entry.workflow_id != workflow_id)
+
         # Try exact match first
         if self.config.use_exact_matching:
             query_hash = self._query_hash(query)
@@ -425,7 +434,7 @@ class SemanticCache:
                 entry_key = self._hash_index[query_hash]
                 if entry_key in self._cache:
                     entry = self._cache[entry_key]
-                    if not entry.is_expired:
+                    if not entry.is_expired and _visible(entry):
                         entry.touch()
                         logger.debug(f"Cache exact hit: {query[:50]}...")
                         return CacheResult(
@@ -434,7 +443,7 @@ class SemanticCache:
                             similarity=1.0,
                             from_exact_match=True,
                         )
-                    else:
+                    elif entry.is_expired:
                         # Remove expired entry
                         self._remove_entry(entry_key)
 
@@ -445,7 +454,7 @@ class SemanticCache:
         best_similarity = 0.0
 
         for entry in self._cache.values():
-            if entry.is_expired:
+            if entry.is_expired or not _visible(entry):
                 continue
 
             similarity = cosine_similarity(query_embedding, entry.embedding)

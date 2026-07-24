@@ -347,6 +347,16 @@ def _governed_kanban_writes_enabled() -> bool:
     return bool(getattr(settings, "AIMMS_GOVERNED_KANBAN_WRITES", False))
 
 
+def governed_kanban_writes_enabled() -> bool:
+    """Public accessor for the governance flag (voice gate consults it too)."""
+    return _governed_kanban_writes_enabled()
+
+
+def governed_kanban_write_tool_ids() -> frozenset[str]:
+    """The direct-ORM kanban write tools retired by the governance flag."""
+    return _GOVERNED_KANBAN_WRITE_TOOLS
+
+
 def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
     from ai.core.tools.rbac import tool_requirement
 

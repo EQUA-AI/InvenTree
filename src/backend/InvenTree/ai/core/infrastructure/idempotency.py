@@ -54,6 +54,7 @@ class IdempotencyRecord:
         error: str | None = None,
         created_at: str | None = None,
         completed_at: str | None = None,
+        expires_at: str | None = None,
         ttl_hours: int = 24,
     ) -> None:
         self.idempotency_key = idempotency_key
@@ -63,7 +64,9 @@ class IdempotencyRecord:
         self.error = error
         self.created_at = created_at or _utcnow().isoformat()
         self.completed_at = completed_at
-        self.expires_at = (_utcnow() + timedelta(hours=ttl_hours)).isoformat()
+        # Preserve the stored expiry on reload; only derive a fresh window when
+        # a record is first created (otherwise records would never expire).
+        self.expires_at = expires_at or (_utcnow() + timedelta(hours=ttl_hours)).isoformat()
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize record to dictionary."""
@@ -89,6 +92,7 @@ class IdempotencyRecord:
             error=data.get("error"),
             created_at=data.get("created_at"),
             completed_at=data.get("completed_at"),
+            expires_at=data.get("expires_at"),
         )
 
     @property
@@ -217,7 +221,18 @@ class IdempotencyStore:
             ttl_hours=ttl_hours,
         )
 
-        await self._write_record(record)
+        if existing is None:
+            # Atomic claim: O_EXCL create closes the check-then-write race, so
+            # two concurrent start() calls cannot both proceed to the external
+            # side effect - the loser sees FileExistsError here.
+            try:
+                self._get_record_path(idempotency_key).parent.mkdir(parents=True, exist_ok=True)
+                with Path(self._get_record_path(idempotency_key)).open("x", encoding="utf-8") as handle:
+                    json.dump(record.to_dict(), handle, indent=2)
+            except FileExistsError:
+                raise ValueError(f"Operation already in progress: {idempotency_key}") from None
+        else:
+            await self._write_record(record)
 
         logger.info(
             "Idempotent operation started",

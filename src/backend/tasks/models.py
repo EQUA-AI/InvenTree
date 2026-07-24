@@ -452,8 +452,13 @@ class KanbanCardPart(models.Model):
         """Readable identity for admin and logs."""
         return f'{self.card.title} - {self.part.name} x{self.quantity}'
 
-    def check_and_allocate(self):
+    def check_and_allocate(self, persist: bool = True):
         """Check stock availability and allocate if possible.
+
+        Args:
+            persist: When False, compute the allocation result without saving -
+                used by read-only callers (e.g. voice Tier-1 stock checks) that
+                must not mutate the database.
 
         Returns a dict with the allocation result.
         """
@@ -486,7 +491,8 @@ class KanbanCardPart(models.Model):
             self.allocation_status = self.ALLOCATION_INSUFFICIENT
             self.allocation_note = f'No stock available. Need {needed}'
 
-        self.save()
+        if persist:
+            self.save()
 
         return {
             'part_id': self.part.pk,

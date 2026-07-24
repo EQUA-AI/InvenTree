@@ -1053,6 +1053,21 @@ export default function Kanban() {
     }
 
     const fallbackId = columns[columnIndex - 1].id;
+    const record = columnsQuery.data?.find((column) => column.key === columnId);
+
+    // The server refuses to delete a default (seeded) column. Detect that up
+    // front so we do NOT mass-reassign the column's cards for a deletion that
+    // is guaranteed to fail - which would scramble the board while leaving the
+    // column in place.
+    if (record?.is_default) {
+      showApiErrorMessage({
+        error: new Error(t`Default columns cannot be deleted.`),
+        title: t`Could not delete column`
+      });
+      setColumnDeletionContext(null);
+      return;
+    }
+
     const affectedTasks = tasks.filter((task) => task.status === columnId);
 
     // Reassign the column's cards to the fallback first: the server refuses to
@@ -1063,8 +1078,6 @@ export default function Kanban() {
         handleStatusChange(task.id, fallbackId as KanbanStatus)
       )
     );
-
-    const record = columnsQuery.data?.find((column) => column.key === columnId);
 
     try {
       if (record) {

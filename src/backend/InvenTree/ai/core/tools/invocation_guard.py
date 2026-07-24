@@ -6,7 +6,6 @@ import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from agent_framework import FunctionInvocationContext, FunctionMiddleware
@@ -73,9 +72,21 @@ def bind_capability_run(
         capability_run_context.reset(token)
 
 
-@lru_cache(maxsize=1)
+_catalog_index: tuple[int, dict[str, CapabilityEntry]] | None = None
+
+
 def _catalog_by_id() -> dict[str, CapabilityEntry]:
-    return {entry.tool_id: entry for entry in capability_catalog()}
+    """Index the capability catalog by tool id.
+
+    Keyed on the identity of the (lru-cached) catalog tuple rather than a
+    separate lru_cache, so ``capability_catalog.cache_clear()`` (used by tests
+    and governance-flag changes) automatically invalidates this index too.
+    """
+    global _catalog_index
+    catalog = capability_catalog()
+    if _catalog_index is None or _catalog_index[0] != id(catalog):
+        _catalog_index = (id(catalog), {entry.tool_id: entry for entry in catalog})
+    return _catalog_index[1]
 
 
 def _fresh_permission_profile_sync(user_pk: str) -> frozenset[tuple[str, str]]:

@@ -128,6 +128,10 @@ class TokenBucket:
             wait_time = tokens_needed / self.refill_rate
             return False, wait_time
 
+    def refund(self, tokens: float = 1.0) -> None:
+        """Return previously consumed tokens (used when a later check rejects)."""
+        self.tokens = min(self.capacity, self.tokens + tokens)
+
     @classmethod
     def create_for_rate(
         cls, requests_per_period: int, period_seconds: int, burst_multiplier: float = 1.5
@@ -196,6 +200,10 @@ class RateLimiter:
             # Check per-user limit
             user_result = await self._check_user_limit(user_id, endpoint, tokens)
             if not user_result.allowed:
+                # Refund the already-consumed global token: a single user
+                # hammering past their own limit must not drain the shared
+                # global bucket for everyone else.
+                self._global_buckets[endpoint].refund(tokens)
                 self._stats.record_rejected("user", endpoint)
                 return user_result
 

@@ -8,7 +8,6 @@ Features:
 - Exponential backoff with jitter
 - Configurable retry counts and delays
 - Error classification (retryable vs fatal)
-- Async context manager for retry blocks
 - Decorator for easy function wrapping
 
 Usage:
@@ -16,10 +15,6 @@ Usage:
     @with_retry(max_attempts=3, base_delay=1.0)
     async def call_azure_openai():
         ...
-
-    # As context manager
-    async with RetryContext(max_attempts=3) as ctx:
-        result = await risky_operation()
 """
 
 from __future__ import annotations
@@ -330,76 +325,6 @@ def with_retry(
     return decorator
 
 
-class RetryContext:
-    """
-    Async context manager for retry blocks.
-
-    Usage:
-        async with RetryContext(max_attempts=3) as ctx:
-            result = await risky_operation()
-
-        print(f"Succeeded after {ctx.attempts} attempts")
-    """
-
-    def __init__(
-        self,
-        config: RetryConfig | None = None,
-        **config_kwargs: Any,
-    ):
-        """Initialize retry context."""
-        if config is None and config_kwargs:
-            self.config = RetryConfig(**config_kwargs)
-        elif config is None:
-            self.config = AZURE_OPENAI_RETRY_CONFIG
-        else:
-            self.config = config
-
-        self.attempts = 0
-        self.total_delay = 0.0
-        self.last_error: Exception | None = None
-
-    async def __aenter__(self) -> RetryContext:
-        """Enter context."""
-        return self
-
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
-        """
-        Handle exceptions and decide whether to retry.
-
-        Returns True to suppress the exception (retry), False to propagate.
-        """
-        if exc_val is None:
-            # No exception, success
-            _retry_stats.record_attempt(True, self.attempts, self.total_delay)
-            return False
-
-        self.last_error = exc_val
-
-        # Check if retryable
-        if not is_retryable_error(exc_val):
-            _retry_stats.record_attempt(False, self.attempts, self.total_delay, exc_val)
-            return False  # Propagate non-retryable errors
-
-        # Check if retries remain
-        if self.attempts + 1 >= self.config.max_attempts:
-            _retry_stats.record_attempt(False, self.attempts + 1, self.total_delay, exc_val)
-            return False  # Exhausted retries
-
-        # Calculate delay
-        retry_after = extract_retry_after(exc_val)
-        delay = self.config.calculate_delay(self.attempts, retry_after)
-        self.total_delay += delay
-        self.attempts += 1
-
-        logger.warning(
-            f"Retry context: attempt {self.attempts}/{self.config.max_attempts} "
-            f"after {type(exc_val).__name__}: {exc_val}. Waiting {delay:.2f}s"
-        )
-
-        await asyncio.sleep(delay)
-        return True  # Suppress exception, will retry
-
-
 # ===== Specialized Retry Functions =====
 
 
@@ -451,7 +376,6 @@ __all__ = [
     "RETRYABLE_STATUS_CODES",
     # Configuration
     "RetryConfig",
-    "RetryContext",
     # Statistics
     "RetryStats",
     "extract_retry_after",

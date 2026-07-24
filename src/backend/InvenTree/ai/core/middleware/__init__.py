@@ -34,7 +34,6 @@ from ai.core.middleware.reflection import (
 from ai.core.middleware.retry import (
     AZURE_OPENAI_RETRY_CONFIG,
     RetryConfig,
-    RetryContext,
     RetryStats,
     get_retry_stats,
     is_retryable_error,
@@ -62,7 +61,6 @@ __all__ = [
     "ReflectionFunctionMiddleware",
     # Retry utilities
     "RetryConfig",
-    "RetryContext",
     "RetryStats",
     "ToolExecutionResult",
     "get_logging_middleware",

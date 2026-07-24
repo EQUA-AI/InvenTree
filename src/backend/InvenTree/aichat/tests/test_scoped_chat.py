@@ -324,6 +324,16 @@ class ConversationBoundaryTests(ScopedChatTestCase):
 class ScopedToolTests(ScopedChatTestCase):
     """FR-SCH-004/005: per-call authorization, typed args, audit rows."""
 
+    @staticmethod
+    def _utc_dt(hour):
+        """Build a schedule datetime respecting USE_TZ (False under test on sqlite)."""
+        from datetime import datetime, timezone as dt_timezone
+
+        from django.conf import settings
+
+        value = datetime(2026, 8, 3, hour, tzinfo=dt_timezone.utc)
+        return value if settings.USE_TZ else value.replace(tzinfo=None)
+
     def _invoke(self, tool, arguments=None, *, user=None, turn='turn-1'):
         """Invoke one tool for the fixture conversation."""
         if not hasattr(self, 'conversation'):
@@ -355,14 +365,8 @@ class ScopedToolTests(ScopedChatTestCase):
 
     def test_schedule_tool_returns_the_pinned_window_and_version(self):
         """The schedule read tool exposes the card's own schedule, scoped."""
-        from datetime import datetime, timezone as dt_timezone
-
-        self.work_order.scheduled_start = datetime(
-            2026, 8, 3, 9, tzinfo=dt_timezone.utc
-        )
-        self.work_order.scheduled_end = datetime(
-            2026, 8, 3, 13, tzinfo=dt_timezone.utc
-        )
+        self.work_order.scheduled_start = self._utc_dt(9)
+        self.work_order.scheduled_end = self._utc_dt(13)
         self.work_order.estimated_minutes = 240
         self.work_order.save()
 
@@ -379,10 +383,7 @@ class ScopedToolTests(ScopedChatTestCase):
 
     def test_conflicts_tool_flags_a_same_machine_overlap(self):
         """The conflicts tool reports overlaps that involve the pinned card."""
-        from datetime import datetime, timezone as dt_timezone
-
-        def _utc(h):
-            return datetime(2026, 8, 3, h, tzinfo=dt_timezone.utc)
+        _utc = self._utc_dt
 
         self.work_order.scheduled_start = _utc(9)
         self.work_order.scheduled_end = _utc(12)

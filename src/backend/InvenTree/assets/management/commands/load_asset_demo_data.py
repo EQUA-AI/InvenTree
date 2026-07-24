@@ -6,6 +6,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
+from django.db.models import Q
 
 from tasks.models import KanbanCard, WorkOrderLifecycle
 
@@ -297,13 +298,21 @@ class Command(BaseCommand):
         deleted_count = 0
 
         for record in records['machine_parts']:
+            # An empty revision in the record matches both '' and NULL - parts
+            # created without an explicit revision store NULL
+            revision = record['part_revision']
+            revision_filter = (
+                Q(part__revision=revision)
+                if revision
+                else (Q(part__revision='') | Q(part__revision__isnull=True))
+            )
             candidates = (
                 MachinePart.objects
                 .select_related('machine', 'part')
                 .filter(
+                    revision_filter,
                     machine__name__iexact=record['machine'],
                     part__IPN__iexact=record['ipn'],
-                    part__revision=record['part_revision'],
                     quantity=record['quantity'],
                 )
                 .order_by('pk')
@@ -314,7 +323,7 @@ class Command(BaseCommand):
                 if link.machine.name == record['machine']
                 and record['ipn'] == link.part.IPN
                 and link.part.name == record['part_name']
-                and link.part.revision == record['part_revision']
+                and (link.part.revision or '') == (record['part_revision'] or '')
                 and link.notes == record['notes']
             ]
             if len(matches) > 1:
