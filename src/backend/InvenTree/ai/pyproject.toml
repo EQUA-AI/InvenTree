@@ -80,6 +80,11 @@ Source = "https://github.com/aimms/aimms-backend"
 [tool.hatch.build.targets.wheel]
 packages = ["aimms_backend"]
 
+# djlint resolves its config from the linted files' nearest pyproject.toml, so
+# the CI hook needs the repo-root ignore list mirrored here for ai/ templates
+[tool.djlint]
+ignore = "D018,H006,H008,H020,H021,H023,H025,H030,H031,T002"
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100

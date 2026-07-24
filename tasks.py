@@ -546,7 +546,11 @@ def installed_apps(c) -> list[str]:
     if not match:
         raise ValueError(f"Unexpected output from 'list_apps' command: {output}")
 
-    return match[0].split(',')
+    apps = match[0].split(',')
+
+    # Ignore apps which are only conditionally installed depending on the active
+    # database engine (they carry no models, so data portability is unaffected)
+    return [app for app in apps if app != 'django.contrib.postgres']
 
 
 def run_install(
