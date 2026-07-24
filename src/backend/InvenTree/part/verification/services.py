@@ -10,6 +10,7 @@ owns confirmation and no-safe-match. AI participates nowhere in this module.
 """
 
 from datetime import timedelta
+from datetime import timezone as datetime_timezone
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -100,9 +101,9 @@ def _is_past(moment) -> bool:
 
     now = timezone.now()
     if timezone.is_aware(moment) and timezone.is_naive(now):
-        moment = timezone.make_naive(moment, timezone.utc)
+        moment = timezone.make_naive(moment, datetime_timezone.utc)
     elif timezone.is_naive(moment) and timezone.is_aware(now):
-        moment = timezone.make_aware(moment, timezone.utc)
+        moment = timezone.make_aware(moment, datetime_timezone.utc)
     return moment <= now
 
 
