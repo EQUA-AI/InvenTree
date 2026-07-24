@@ -252,7 +252,9 @@ click==8.4.2 \
     --hash=sha256:9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6 \
     --hash=sha256:e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76
     # via
+    #   -c src/backend/requirements-3.14.txt
     #   -c src/backend/requirements-dev.txt
+    #   -c src/backend/requirements.txt
     #   pip-tools
 coverage[toml]==7.14.3 \
     --hash=sha256:0096fd7559178f0cc9cf088f2dbd2a02ef85bacaa69732c633517286b4494610 \

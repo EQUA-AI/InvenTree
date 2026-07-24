@@ -23,9 +23,9 @@ gunicorn==26.0.0 \
     # via
     #   -c src/backend/requirements.txt
     #   -r contrib/container/requirements.in
-invoke==3.0.3 \
-    --hash=sha256:437b6a622223824380bfb4e64f612711a6b648c795f565efc8625af66fb57f0c \
-    --hash=sha256:f11327165e5cbb89b2ad1d88d3292b5113332c43b8553b494da435d6ec6f5053
+invoke==2.2.1 \
+    --hash=sha256:2413bc441b376e5cd3f55bb5d364f973ad8bdd7bf87e53c79de3c11bf3feecc8 \
+    --hash=sha256:515bf49b4a48932b79b024590348da22f39c4942dff991ad1fb8b8baea1be707
     # via
     #   -c src/backend/requirements.txt
     #   -r contrib/container/requirements.in
@@ -126,16 +126,19 @@ psycopg-pool==3.3.1 \
     --hash=sha256:2af5b432941c4c9ad5c87b3fa410aec910ec8f7c122855897983a06c45f2e4b5 \
     --hash=sha256:b10b10b7a175d5cc1592147dc5b7eec8a9e0834eb3ed2c4a92c858e2f51eb63c
     # via psycopg
-pyasn1==0.6.3 \
-    --hash=sha256:697a8ecd6d98891189184ca1fa05d1bb00e2f84b5977c481452050549c8a72cf \
-    --hash=sha256:a80184d120f0864a52a073acc6fc642847d0be408e7c7252f31390c0f4eadcde
+pyasn1==0.6.4 \
+    --hash=sha256:9c447d8431c947fe4c8febc4ed9e760bc29011a5b01e5c74b67025bd9fb8ce81 \
+    --hash=sha256:deda9277cfd454080ec40b207fb6df82206a3a2688735233cdcd8d3d565f088b
     # via
+    #   -c src/backend/requirements.txt
     #   pyasn1-modules
     #   python-ldap
 pyasn1-modules==0.4.2 \
     --hash=sha256:29253a9207ce32b64c3ac6600edc75368f98473906e8fd1043bd6b5b1de2c14a \
     --hash=sha256:677091de870a80aae844b1ca6134f54652fa2c8c5a52aa396440ac3106e941e6
-    # via python-ldap
+    # via
+    #   -c src/backend/requirements.txt
+    #   python-ldap
 python-ldap==3.4.7 \
     --hash=sha256:bacd9fb680d20263d8570ade1cf234d90d281149a8beb4f079dd8f33f7613dc8
     # via
