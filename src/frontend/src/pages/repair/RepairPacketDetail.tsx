@@ -1,5 +1,5 @@
 import { t } from '@lingui/core/macro';
-import { Button, Code, Grid, Group, Stack, Table, Text } from '@mantine/core';
+import { Button, Code, Group, Stack, Table, Text } from '@mantine/core';
 import {
   IconBan,
   IconBox,
@@ -16,6 +16,7 @@ import { useParams } from 'react-router-dom';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
 import { apiUrl } from '@lib/functions/Api';
+import type { PanelType } from '@lib/types/Panel';
 import type { RepairPacket } from '@lib/types/Repair';
 import {
   type DetailsField,
@@ -24,7 +25,6 @@ import {
 import { ItemDetailsGrid } from '../../components/details/ItemDetails';
 import InstanceDetail from '../../components/nav/InstanceDetail';
 import { PageDetail } from '../../components/nav/PageDetail';
-import type { PanelType } from '@lib/types/Panel';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useApi } from '../../contexts/ApiContext';
 import { useInstance } from '../../hooks/UseInstance';
@@ -161,14 +161,8 @@ export default function RepairPacketDetail() {
         icon: <IconInfoCircle />,
         content: packet?.pk ? (
           <ItemDetailsGrid>
-            <Grid grow>
-              <Grid.Col span={6}>
-                <DetailsTable fields={detailsLeft} item={packet} />
-              </Grid.Col>
-              <Grid.Col span={6}>
-                <DetailsTable fields={detailsRight} item={packet} />
-              </Grid.Col>
-            </Grid>
+            <DetailsTable fields={detailsLeft} item={packet} />
+            <DetailsTable fields={detailsRight} item={packet} />
           </ItemDetailsGrid>
         ) : null
       },
