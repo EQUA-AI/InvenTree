@@ -493,3 +493,23 @@ class ThreadRepository:
         """Return a materialized, ordered transcript inside the boundary."""
         thread = self._get_thread(thread_id)
         return list(ChatMessage.objects.filter(thread=thread))
+
+    def recent_messages(
+        self, thread_id: str, limit: int, *, exclude_latest: int = 0
+    ) -> builtins.list[ChatMessage]:
+        """Return the newest `limit` messages, skipping the last `exclude_latest`.
+
+        Bounded in SQL and returned oldest-first. A lookup turn replays only a
+        short tail of the thread, so materializing the whole transcript to slice
+        it in Python would grow with the age of the conversation.
+        """
+        if limit <= 0:
+            return []
+        thread = self._get_thread(thread_id)
+        window = list(
+            ChatMessage.objects.filter(thread=thread).order_by('-sequence')[
+                exclude_latest : exclude_latest + limit
+            ]
+        )
+        window.reverse()
+        return window

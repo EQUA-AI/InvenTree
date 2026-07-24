@@ -126,6 +126,19 @@ class Settings(BaseSettings):
     feature_capability_broker_enforce: bool = Field(
         default=True, alias="FEATURE_CAPABILITY_BROKER_ENFORCE"
     )
+    # Capability selection v2: score the aggregation/threshold *shape* of a question
+    # instead of a superlative keyword whitelist, keep the read-only SQL pack
+    # attached to every read selection, and allow a second adjacent pack. Without
+    # it, "how many X are over N" reaches no tool that can express the question.
+    # Kill switch reverts to keyword-only selection.
+    feature_capability_selection_v2: bool = Field(
+        default=True, alias="FEATURE_CAPABILITY_SELECTION_V2"
+    )
+    # Derive selection terms from live PartCategory names so deployment-specific
+    # taxonomy ("Fasteners", "O-Rings") routes to the parts pack without a
+    # hand-maintained synonym list. Separate flag: this is the only selection
+    # input that touches the database and cache.
+    feature_category_lexicon: bool = Field(default=True, alias="FEATURE_CATEGORY_LEXICON")
     feature_reflection_middleware: bool = Field(default=True, alias="FEATURE_REFLECTION_MIDDLEWARE")
     feature_voice_live_diagnosis: bool = Field(default=False, alias="FEATURE_VOICE_LIVE_DIAGNOSIS")
     # Safety tightening (Tier-1): restrict voice-modality lookups to read-only tools
@@ -143,6 +156,11 @@ class Settings(BaseSettings):
     feature_voice_write_confirmation: bool = Field(
         default=True, alias="FEATURE_VOICE_WRITE_CONFIRMATION"
     )
+    # Prior thread messages replayed into a lookup turn so a follow-up ("just the
+    # ones over 2000") resolves against what was already said. Bounded because the
+    # transcript is prompt payload: every message is re-sent on every turn. 0
+    # disables replay and restores single-message turns.
+    chat_history_turns: int = Field(default=6, alias="CHAT_HISTORY_TURNS", ge=0, le=50)
 
     # -------------------------------------------------------------------------
     # WS3 Foundry reasoning adapter

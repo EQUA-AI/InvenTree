@@ -866,3 +866,74 @@ class VoiceWriteConfirmationEnforceTests(SimpleTestCase):
         # Fence stands: advisory only, nothing resolved or executed.
         self.assertEqual(result.route["mode"], "advisory_intent")
         self.assertEqual(executor.calls, [])
+
+
+class ConversationHistoryTests(SimpleTestCase):
+    """The transcript a lookup turn replays, and the bounds on it."""
+
+    def test_history_excludes_the_current_turn_and_bounds_the_window(self) -> None:
+        from unittest.mock import patch
+
+        calls: list[Any] = []
+
+        class _Repository:
+            def recent_messages(self, thread_id, limit, *, exclude_latest=0):
+                calls.append((thread_id, limit, exclude_latest))
+                return [
+                    SimpleNamespace(
+                        role="user", content="How many fasteners are in stock?"
+                    ),
+                    SimpleNamespace(role="assistant", content="Four parts carry them."),
+                    SimpleNamespace(role="user", content="   "),
+                ]
+
+        service = _TestTurnService(workflow_factory=lambda: None)
+        settings = SimpleNamespace(chat_history_turns=6)
+        with patch("ai.core.config.get_settings", return_value=settings):
+            history = asyncio.run(
+                service._conversation_history(_Repository(), "thread_history")
+            )
+
+        # begin_turn has already stored this turn's question, so the newest row is
+        # excluded rather than replayed back at the agent as if it were context.
+        self.assertEqual(calls, [("thread_history", 6, 1)])
+        self.assertEqual(
+            history,
+            [
+                {"role": "user", "content": "How many fasteners are in stock?"},
+                {"role": "assistant", "content": "Four parts carry them."},
+            ],
+        )
+
+    def test_history_is_disabled_by_a_zero_budget(self) -> None:
+        from unittest.mock import patch
+
+        class _Repository:
+            def recent_messages(self, *args, **kwargs):
+                raise AssertionError("must not query when replay is disabled")
+
+        service = _TestTurnService(workflow_factory=lambda: None)
+        settings = SimpleNamespace(chat_history_turns=0)
+        with patch("ai.core.config.get_settings", return_value=settings):
+            history = asyncio.run(
+                service._conversation_history(_Repository(), "thread_history")
+            )
+
+        self.assertEqual(history, [])
+
+    def test_history_failure_degrades_to_no_context(self) -> None:
+        from unittest.mock import patch
+
+        class _Repository:
+            def recent_messages(self, *args, **kwargs):
+                raise RuntimeError("transcript unavailable")
+
+        service = _TestTurnService(workflow_factory=lambda: None)
+        settings = SimpleNamespace(chat_history_turns=6)
+        with patch("ai.core.config.get_settings", return_value=settings):
+            history = asyncio.run(
+                service._conversation_history(_Repository(), "thread_history")
+            )
+
+        # A lookup answered without context beats a turn that fails outright.
+        self.assertEqual(history, [])

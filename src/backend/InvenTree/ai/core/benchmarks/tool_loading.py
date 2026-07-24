@@ -184,7 +184,7 @@ def run_offline_benchmark(
     max_tool_count = max(tool_counts)
     gates = {
         "contract_reduction_at_least_65_pct": median_reduction >= 65,
-        "ordinary_tool_count_at_most_12": max_tool_count <= MAX_INITIAL_TOOLS,
+        "ordinary_tool_count_within_budget": max_tool_count <= MAX_INITIAL_TOOLS,
         "selector_p95_at_most_10_ms": selector_p95_ms <= 10,
     }
 

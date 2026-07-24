@@ -463,6 +463,39 @@ class NormalizedTurnService:
     async def _call_sync(function: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         return await sync_to_async(function, thread_sensitive=True)(*args, **kwargs)
 
+    async def _conversation_history(self, repository: Any, thread_id: str) -> list[dict[str, str]]:
+        """Return the recent transcript preceding this turn, oldest first.
+
+        Read through the scoped repository, which is the only authorized chat
+        persistence API, so owner and namespace checks still apply. `begin_turn`
+        has already persisted this turn's user message, so the newest row is the
+        question the agent is about to answer and is excluded -- replaying it
+        would duplicate the query.
+
+        Failure degrades to no history: a lookup answered without context beats a
+        turn that fails outright.
+        """
+        from ai.core.config import get_settings
+
+        try:
+            limit = int(get_settings().chat_history_turns)
+        except Exception:
+            return []
+        if limit <= 0:
+            return []
+        try:
+            recent = await self._call_sync(
+                repository.recent_messages, thread_id, limit, exclude_latest=1
+            )
+        except Exception:
+            logger.warning("Conversation history unavailable for this turn")
+            return []
+        return [
+            {"role": str(message.role), "content": str(message.content)}
+            for message in recent
+            if str(message.content).strip()
+        ]
+
     async def _emit_replay(
         self, emitter: EventEmitter | None, canonical_result: dict[str, Any]
     ) -> None:
@@ -1004,6 +1037,12 @@ class NormalizedTurnService:
                 uploaded_files = metadata.get("uploaded_files")
                 if isinstance(uploaded_files, list):
                     workflow_context["uploaded_files"] = uploaded_files
+                # Server-derived (owner-scoped rows from our own store), so it sits
+                # alongside the other trusted fields. Its *content* is still
+                # user-authored text and must be read as data, never instructions.
+                history = await self._conversation_history(repository, thread.pk)
+                if history:
+                    workflow_context["conversation_history"] = history
 
                 async for chunk in workflow.run_stream(
                     message=content,

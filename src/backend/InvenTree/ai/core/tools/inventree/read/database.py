@@ -249,12 +249,26 @@ def _list_tables() -> dict[str, Any]:
 async def query_database(sql: str) -> dict[str, Any]:
     """Run one read-only SQL SELECT against the InvenTree PostgreSQL database.
 
-    Use this for aggregations, rankings, and joins the other read tools
-    cannot express (for example: which part has the highest total stock).
-    Every table the query touches is checked against the current user's
-    InvenTree role permissions, and the query runs read-only with a row
-    limit and timeout. Use list_database_tables first to see the tables
-    and columns available to you.
+    Use this for aggregations, thresholds, rankings, and joins the other read
+    tools cannot express (for example: which part has the highest total stock,
+    or which parts hold more than 2000 units). Every table the query touches is
+    checked against the current user's InvenTree role permissions, and the query
+    runs read-only with a row limit and timeout. Use list_database_tables first
+    to see the tables and columns available to you.
+
+    Stock quantities live on individual stock items, not on the part. A part's
+    total stock is the SUM of its stock item quantities, so aggregate and filter
+    on the aggregate::
+
+        SELECT p.name, SUM(s.quantity) AS total_stock
+        FROM part_part p
+        JOIN stock_stockitem s ON s.part_id = p.id
+        GROUP BY p.id, p.name
+        HAVING SUM(s.quantity) > 2000
+
+    Comparing ``s.quantity`` directly against a threshold is a common mistake: it
+    silently omits every part whose stock is split across locations or batches,
+    which reads as "no results" rather than as the wrong query.
 
     Args:
         sql: A single PostgreSQL SELECT statement. No semicolons, no writes.

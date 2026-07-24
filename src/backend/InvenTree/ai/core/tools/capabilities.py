@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import logging
 import re
 from dataclasses import dataclass
 from enum import StrEnum
@@ -14,8 +15,14 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
+logger = logging.getLogger(__name__)
+
 CATALOG_VERSION = "1"
-MAX_INITIAL_TOOLS = 12
+#: Ceiling on one run's model-visible schema. A primary pack plus two adjacent
+#: packs plus the SQL escape hatch is 15 tools at worst (parts 5 + stock 6 +
+#: bom-or-documents 2 + analytics 2), so this leaves headroom while staying
+#: well under the full read surface (28 tools).
+MAX_INITIAL_TOOLS = 16
 
 
 class ToolEffect(StrEnum):
@@ -71,6 +78,10 @@ class CapabilitySelection:
     reason: str
     clarification_required: bool = False
     requires_specialist: bool = False
+    #: Which widening inputs fired ("shape", "lexicon", "sql_escape_hatch").
+    #: Logged per turn so a future mis-selection is diagnosable from logs alone,
+    #: which is what this class of bug previously lacked.
+    signals: tuple[str, ...] = ()
 
 
 _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
@@ -211,6 +222,89 @@ _WRITE_PATTERN = re.compile(
     r"uninstall|update)\b",
     re.IGNORECASE,
 )
+
+#: Write verbs that are also ordinary read vocabulary. "count the fasteners over
+#: 2000" is a question; "count stock in bin A-3" is a stocktake. Only these verbs
+#: are eligible to be re-read as questions, and only on an explicit read signal
+#: that is not the verb itself.
+_AMBIGUOUS_WRITE_VERBS = frozenset({"count"})
+
+#: A verb immediately followed by "of" is being used as a noun ("count of parts").
+_NOUN_USE_RE = re.compile(r"\s+of\b", re.IGNORECASE)
+
+#: Compound nouns whose head word is also a write verb. "Show build order lines"
+#: and "List supplier purchase orders" are read requests, but "order" and
+#: "purchase" match the write pattern, so both currently route to a specialist
+#: and reach no tools at all. Masking the phrase leaves a genuine imperative
+#: ("create a purchase order") still matching on its own verb.
+_NOUN_PHRASE_RE = re.compile(
+    r"\b(?:purchase|sales|build|work|return)\s+orders?\b"
+    r"|\border\s+(?:lines?|status|number)\b",
+    re.IGNORECASE,
+)
+
+
+def _mask_noun_phrases(text: str) -> str:
+    """Blank compound nouns, preserving offsets so match positions stay valid."""
+    return _NOUN_PHRASE_RE.sub(lambda match: " " * (match.end() - match.start()), text)
+
+
+#: The grammar of an aggregate, threshold, ranking, or grouping question,
+#: independent of which nouns it happens to use. Users vary domain nouns far more
+#: than they vary question shape, so this generalizes where a term whitelist
+#: cannot: "over 2000", "how many", "per location" all read as analytics work.
+_AGGREGATION_SHAPE_RE = re.compile(
+    r"\b(?:how many|how much|number of|count|total|sum|average|mean|highest|lowest|"
+    r"most|least|top|bottom|rank|ranking|compare|comparison|breakdown|each|per|every|all)\b"
+    r"|\b(?:over|above|under|below|more than|greater than|less than|fewer than|"
+    r"at least|at most|exceeds?|exceeding|between)\b"
+    r"|[<>]=?\s*\d",
+    re.IGNORECASE,
+)
+
+#: The subset of read shapes strong enough to overrule an ambiguous write verb.
+#: Bare determiners ("all", "each", "any") are deliberately excluded: "count
+#: stock in every bin" is still a stocktake.
+_STRICT_READ_SHAPE_RE = re.compile(
+    r"\b(?:how many|how much|number of|total|sum|average|mean|highest|lowest|"
+    r"most|least|top|bottom|rank|ranking|compare|comparison|breakdown)\b"
+    r"|\b(?:over|above|under|below|more than|greater than|less than|fewer than|"
+    r"at least|at most|exceeds?|exceeding|between)\b"
+    r"|[<>]=?\s*\d",
+    re.IGNORECASE,
+)
+
+#: Weight for a shape match. Above a single term hit so an unmistakably
+#: analytical question outranks an incidental noun, below two so a question that
+#: names its domain still leads with the domain pack.
+_SHAPE_SCORE = 2
+
+#: Packs paired with the SQL escape hatch when nothing else scores, so the model
+#: is never handed `query_database` as its only way to reach inventory data.
+_DEFAULT_READ_PACKS = ("parts.read", "stock.read")
+
+
+def _write_intent(text: str) -> str | None:
+    """Return the write verb routing this query to a specialist, else ``None``.
+
+    Misclassification here is asymmetric. Selection already restricts to
+    READ-effect packs, so a write mistaken for a read merely offers read tools,
+    while a read mistaken for a write offers nothing at all and the turn dies.
+    Ambiguous verbs therefore resolve toward read -- but only on evidence.
+    """
+    text = _mask_noun_phrases(text)
+    matches = list(_WRITE_PATTERN.finditer(text))
+    if not matches:
+        return None
+    decisive = [match for match in matches if match.group(0).lower() not in _AMBIGUOUS_WRITE_VERBS]
+    if decisive:
+        return decisive[0].group(0).lower()
+    for match in matches:
+        trailing = text[match.end() :]
+        residual = f"{text[: match.start()]} {trailing}"
+        if _NOUN_USE_RE.match(trailing) or _STRICT_READ_SHAPE_RE.search(residual):
+            return None
+    return matches[0].group(0).lower()
 
 
 def tool_name(tool: Any) -> str:
@@ -484,6 +578,131 @@ def exposure_authorized(
     return True
 
 
+def _ai_setting(name: str, default: Any) -> Any:
+    """Read one AI setting, falling back when AI configuration is absent.
+
+    Selection must keep working in deployments (and tests) that never configure
+    the AI settings object, so a missing config yields the shipped default rather
+    than failing the turn.
+    """
+    try:
+        from ai.core.config import get_settings
+
+        return getattr(get_settings(), name, default)
+    except Exception:
+        return default
+
+
+def selection_v2_enabled() -> bool:
+    """Whether shape-based selection and the always-on SQL pack are active."""
+    return bool(_ai_setting("feature_capability_selection_v2", True))
+
+
+def category_lexicon_enabled() -> bool:
+    """Whether live part category names contribute selection terms."""
+    return bool(_ai_setting("feature_category_lexicon", True))
+
+
+#: Category names below this length, or in this stop list, are too collision-prone
+#: to be evidence: a category called "Misc" or "Parts" would fire on any sentence.
+_LEXICON_MIN_LENGTH = 4
+_LEXICON_STOPWORDS = frozenset(
+    {
+        "assemblies",
+        "assembly",
+        "component",
+        "components",
+        "general",
+        "item",
+        "items",
+        "material",
+        "materials",
+        "misc",
+        "other",
+        "part",
+        "parts",
+        "product",
+        "products",
+        "spare",
+        "spares",
+        "stock",
+        "supplies",
+        "tools",
+    }
+)
+_CATEGORY_LEXICON_CACHE_KEY = "aimms:capability:category_lexicon:v1"
+_CATEGORY_LEXICON_TTL_SECONDS = 600
+
+
+def _lexicon_variants(name: str) -> set[str]:
+    """Return the casefolded singular/plural forms of one category name."""
+    cleaned = " ".join(str(name or "").casefold().split())
+    # Reject on the name itself, before deriving forms. Filtering only the
+    # derived set would let a rejected "Misc" back in as "miscs".
+    if len(cleaned) < _LEXICON_MIN_LENGTH or cleaned in _LEXICON_STOPWORDS:
+        return set()
+    variants = {cleaned}
+    if cleaned.endswith("ies") and len(cleaned) > 4:
+        variants.add(f"{cleaned[:-3]}y")
+    elif cleaned.endswith("es") and len(cleaned) > 3:
+        variants.add(cleaned[:-2])
+    elif cleaned.endswith("s") and not cleaned.endswith(("ss", "is")):
+        variants.add(cleaned[:-1])
+    elif not cleaned.endswith("s"):
+        # Names already ending in -s ("glass", "analysis") gain no bogus +s form.
+        variants.add(f"{cleaned}s")
+    return {
+        variant
+        for variant in variants
+        if len(variant) >= _LEXICON_MIN_LENGTH and variant not in _LEXICON_STOPWORDS
+    }
+
+
+def _build_category_lexicon() -> frozenset[str]:
+    from part.models import PartCategory
+
+    terms: set[str] = set()
+    for name in PartCategory.objects.values_list("name", flat=True):
+        terms |= _lexicon_variants(name)
+    return frozenset(terms)
+
+
+def category_lexicon() -> frozenset[str]:
+    """Return selection terms derived from live part category names.
+
+    This is a routing hint, never a source of truth. Category names are resolved
+    against live data at answer time by ``get_categories`` and ``query_database``,
+    so a stale lexicon can only under-select tools -- it can never produce a wrong
+    answer. Any failure degrades to an empty lexicon, which is safe because these
+    terms only ever add score.
+    """
+    try:
+        from django.core.cache import cache
+
+        cached = cache.get(_CATEGORY_LEXICON_CACHE_KEY)
+        if cached is not None:
+            return frozenset(cached)
+        terms = _build_category_lexicon()
+        cache.set(_CATEGORY_LEXICON_CACHE_KEY, sorted(terms), _CATEGORY_LEXICON_TTL_SECONDS)
+        return terms
+    except Exception as exc:
+        logger.info("Category lexicon unavailable", extra={"error_type": type(exc).__name__})
+        return frozenset()
+
+
+def invalidate_category_lexicon(**_kwargs: Any) -> None:
+    """Drop the cached lexicon so a category change is picked up on the next turn."""
+    try:
+        from django.core.cache import cache
+
+        cache.delete(_CATEGORY_LEXICON_CACHE_KEY)
+    except Exception as exc:
+        logger.info(
+            "Category lexicon invalidation failed",
+            extra={"error_type": type(exc).__name__},
+        )
+
+
 def _contains_term(text: str, term: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text) is not None
 
@@ -499,16 +718,63 @@ def _pack_scores(text: str) -> dict[str, int]:
     return scores
 
 
-def _ordered_pack_ids(primary: str, scores: Mapping[str, int]) -> tuple[str, ...]:
+def _matches_lexicon(text: str, lexicon: Iterable[str]) -> bool:
+    """Whether any live category name appears in the query.
+
+    A single point regardless of how many variants match: "fasteners" also hits
+    the stored singular form and must not score twice.
+    """
+    return any(_contains_term(text, term) for term in lexicon)
+
+
+def _ordered_pack_ids(
+    primary: str,
+    scores: Mapping[str, int],
+    *,
+    max_adjacent: int = 1,
+) -> tuple[str, ...]:
     candidates = [
         pack_id
         for pack_id in _ADJACENT_PACKS.get(primary, frozenset())
         if scores.get(pack_id, 0) > 0
     ]
     candidates.sort(key=lambda pack_id: (-scores[pack_id], pack_id))
-    if not candidates:
-        return (primary,)
-    return (primary, candidates[0])
+    return (primary, *candidates[:max_adjacent])
+
+
+def _with_sql_escape_hatch(pack_ids: tuple[str, ...]) -> tuple[str, ...]:
+    """Attach the read-only SQL pack to an InvenTree data selection.
+
+    Keyword and shape matching cannot anticipate every phrasing, so the two SQL
+    tools ride along as the universal fallback for questions the specific tools
+    cannot express. Packs outside the InvenTree data graph (email, kanban) are
+    left alone: SQL is not a fallback for a mailbox. This widens exposure, not
+    access -- ``exposure_authorized`` still requires a view permission and
+    ``_run_query`` re-checks every relation the plan touches per invocation.
+    """
+    if pack_ids[0] not in _ADJACENT_PACKS:
+        return pack_ids
+    if "analytics.read" not in pack_ids:
+        pack_ids = (*pack_ids, "analytics.read")
+    if pack_ids == ("analytics.read",):
+        # SQL alone would force every answer through hand-written aggregates when
+        # a cheaper, better-typed read tool exists.
+        pack_ids = (*pack_ids, *_DEFAULT_READ_PACKS)
+    return pack_ids
+
+
+def _authorized_read_entries(
+    pack_ids: Iterable[str],
+    profile: frozenset[tuple[str, str]],
+    *,
+    authenticated: bool,
+) -> tuple[CapabilityEntry, ...]:
+    return tuple(
+        entry
+        for entry in entries_for_packs(pack_ids)
+        if entry.effect is ToolEffect.READ
+        and exposure_authorized(entry, profile, authenticated=authenticated)
+    )
 
 
 def select_capabilities(
@@ -519,9 +785,15 @@ def select_capabilities(
     profile: frozenset[tuple[str, str]] = frozenset(),
     authenticated: bool = False,
 ) -> CapabilitySelection:
-    """Select one stable read pack and at most one reviewed adjacent pack."""
+    """Select one stable read pack plus the reviewed adjacent packs.
+
+    Scoring reads the current message only. Follow-ups are resolved from the
+    replayed transcript inside the agent turn rather than here, so a message
+    carrying no signal of its own still asks for clarification instead of
+    guessing at a subject.
+    """
     normalized = " ".join(query.casefold().split())
-    if _WRITE_PATTERN.search(normalized):
+    if _write_intent(normalized) is not None:
         return CapabilitySelection(
             pack_ids=(),
             tool_ids=(),
@@ -530,7 +802,17 @@ def select_capabilities(
             requires_specialist=True,
         )
 
+    widened = selection_v2_enabled()
+    lexicon = category_lexicon() if widened and category_lexicon_enabled() else frozenset()
+    signals: list[str] = []
     scores = _pack_scores(normalized)
+    if _matches_lexicon(normalized, lexicon):
+        scores["parts.read"] = scores.get("parts.read", 0) + 1
+        signals.append("lexicon")
+    if widened and _AGGREGATION_SHAPE_RE.search(normalized):
+        scores["analytics.read"] = scores.get("analytics.read", 0) + _SHAPE_SCORE
+        signals.append("shape")
+
     primary = _LOOKUP_PACKS.get(lookup_type or "")
     if primary is None and scores:
         primary = sorted(
@@ -544,31 +826,42 @@ def select_capabilities(
             tools=(),
             reason="no_capability_match",
             clarification_required=True,
+            signals=tuple(signals),
         )
 
-    pack_ids = _ordered_pack_ids(primary, scores)
-    entries = tuple(
-        entry
-        for entry in entries_for_packs(pack_ids)
-        if entry.effect is ToolEffect.READ
-        and exposure_authorized(entry, profile, authenticated=authenticated)
-    )
-    if len(entries) > MAX_INITIAL_TOOLS and len(pack_ids) > 1:
-        pack_ids = (primary,)
-        entries = tuple(
-            entry
-            for entry in entries_for_packs(pack_ids)
-            if entry.effect is ToolEffect.READ
-            and exposure_authorized(entry, profile, authenticated=authenticated)
+    pack_ids = _ordered_pack_ids(primary, scores, max_adjacent=2 if widened else 1)
+    if widened:
+        with_hatch = _with_sql_escape_hatch(pack_ids)
+        if with_hatch != pack_ids:
+            signals.append("sql_escape_hatch")
+        pack_ids = with_hatch
+
+    entries = _authorized_read_entries(pack_ids, profile, authenticated=authenticated)
+    # Trim the weakest adjacent pack rather than collapsing to the primary: the
+    # old collapse silently discarded exactly the pack that made a question
+    # answerable, and the old ValueError surfaced as a failed turn.
+    while len(entries) > MAX_INITIAL_TOOLS and len(pack_ids) > 1:
+        dropped = min(pack_ids[1:], key=lambda pack_id: (scores.get(pack_id, 0), pack_id))
+        pack_ids = tuple(pack_id for pack_id in pack_ids if pack_id != dropped)
+        entries = _authorized_read_entries(pack_ids, profile, authenticated=authenticated)
+        logger.info(
+            "Capability selection trimmed to fit the tool budget",
+            extra={"dropped_pack": dropped, "pack_ids": pack_ids, "limit": MAX_INITIAL_TOOLS},
         )
     if len(entries) > MAX_INITIAL_TOOLS:
-        raise ValueError(f"Capability selection exceeds {MAX_INITIAL_TOOLS} tools")
+        # A single pack outgrew the budget. Answering with an oversized schema
+        # beats failing the turn, but the drift needs to be visible.
+        logger.warning(
+            "Capability pack exceeds the tool budget on its own",
+            extra={"pack_ids": pack_ids, "tool_count": len(entries), "limit": MAX_INITIAL_TOOLS},
+        )
 
     return CapabilitySelection(
         pack_ids=pack_ids,
         tool_ids=tuple(entry.tool_id for entry in entries),
         tools=tuple(entry.tool for entry in entries),
         reason="selected",
+        signals=tuple(signals),
     )
 
 
@@ -587,11 +880,15 @@ __all__ = [
     "ToolEffect",
     "capability_catalog",
     "catalog_manifest",
+    "category_lexicon",
+    "category_lexicon_enabled",
     "contract_digest",
     "entries_for_packs",
     "exposure_authorized",
+    "invalidate_category_lexicon",
     "manifest_json",
     "select_capabilities",
+    "selection_v2_enabled",
     "serialized_contract_bytes",
     "tool_contract",
     "tool_name",
