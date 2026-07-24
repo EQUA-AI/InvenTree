@@ -227,7 +227,9 @@ class IdempotencyStore:
             # side effect - the loser sees FileExistsError here.
             try:
                 self._get_record_path(idempotency_key).parent.mkdir(parents=True, exist_ok=True)
-                with Path(self._get_record_path(idempotency_key)).open("x", encoding="utf-8") as handle:
+                with Path(self._get_record_path(idempotency_key)).open(
+                    "x", encoding="utf-8"
+                ) as handle:
                     json.dump(record.to_dict(), handle, indent=2)
             except FileExistsError:
                 raise ValueError(f"Operation already in progress: {idempotency_key}") from None

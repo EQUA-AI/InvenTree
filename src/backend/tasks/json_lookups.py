@@ -19,8 +19,8 @@ def filter_json_array_contains(queryset, field: str, value: str):
     """
     if connection.vendor == 'sqlite':
         annotation = f'_{field}_json_text'
-        return queryset.annotate(**{
-            annotation: Cast(field, TextField())
-        }).filter(**{f'{annotation}__contains': f'"{value}"'})
+        return queryset.annotate(**{annotation: Cast(field, TextField())}).filter(**{
+            f'{annotation}__contains': f'"{value}"'
+        })
 
     return queryset.filter(**{f'{field}__contains': [value]})
