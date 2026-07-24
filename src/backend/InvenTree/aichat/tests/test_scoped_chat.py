@@ -341,14 +341,88 @@ class ScopedToolTests(ScopedChatTestCase):
         self.assertEqual(
             tool_service.tools_for_context('work_order'),
             (
+                'schedule_conflicts',
+                'schedule_preview',
                 'work_order_events_page',
                 'work_order_kit_status',
                 'work_order_readiness',
+                'work_order_schedule',
                 'work_order_steps',
                 'work_order_summary',
             ),
         )
         self.assertEqual(tool_service.tools_for_context('asset'), ())
+
+    def test_schedule_tool_returns_the_pinned_window_and_version(self):
+        """The schedule read tool exposes the card's own schedule, scoped."""
+        from datetime import datetime, timezone as dt_timezone
+
+        self.work_order.scheduled_start = datetime(
+            2026, 8, 3, 9, tzinfo=dt_timezone.utc
+        )
+        self.work_order.scheduled_end = datetime(
+            2026, 8, 3, 13, tzinfo=dt_timezone.utc
+        )
+        self.work_order.estimated_minutes = 240
+        self.work_order.save()
+
+        envelope = self._invoke('work_order_schedule')
+        self.assertTrue(envelope['authorized'])
+        result = envelope['result']
+        self.assertEqual(result['work_order_id'], self.work_order.pk)
+        self.assertEqual(result['estimated_minutes'], 240)
+        self.assertEqual(result['machine_name'], 'Lathe 3')
+        self.assertEqual(
+            result['lifecycle_version'], self.work_order.lifecycle_version
+        )
+        self.assertIsNotNone(result['scheduled_start'])
+
+    def test_conflicts_tool_flags_a_same_machine_overlap(self):
+        """The conflicts tool reports overlaps that involve the pinned card."""
+        from datetime import datetime, timezone as dt_timezone
+
+        def _utc(h):
+            return datetime(2026, 8, 3, h, tzinfo=dt_timezone.utc)
+
+        self.work_order.scheduled_start = _utc(9)
+        self.work_order.scheduled_end = _utc(12)
+        self.work_order.save()
+        # Another card on the same machine overlapping the pinned window.
+        KanbanCard.objects.create(
+            title='Overlapper', status='backlog', priority='low',
+            customer=self.customer, machine=self.machine,
+            scheduled_start=_utc(11), scheduled_end=_utc(14),
+        )
+
+        envelope = self._invoke('schedule_conflicts')
+        self.assertTrue(envelope['authorized'])
+        conflicts = envelope['result']['conflicts']
+        self.assertEqual(len(conflicts), 1)
+        self.assertIn(self.work_order.pk, conflicts[0]['card_ids'])
+
+    def test_conflicts_tool_is_empty_for_an_unscheduled_card(self):
+        """An unscheduled card cannot clash; the tool says so rather than erroring."""
+        envelope = self._invoke('schedule_conflicts')
+        self.assertTrue(envelope['authorized'])
+        self.assertEqual(envelope['result']['conflicts'], [])
+
+    @override_settings(USE_TZ=True, **SCOPED_FLAGS)
+    def test_preview_tool_returns_planner_operations_without_writing(self):
+        """The preview tool runs the planner read-only; nothing is persisted."""
+        self.work_order.estimated_minutes = 120
+        self.work_order.scheduled_start = None
+        self.work_order.scheduled_end = None
+        self.work_order.save()
+
+        envelope = self._invoke('schedule_preview')
+        self.assertTrue(envelope['authorized'])
+        result = envelope['result']
+        self.assertTrue(
+            any(op['card_id'] == self.work_order.pk for op in result['operations'])
+        )
+        # No write: the card is still unscheduled after a preview.
+        self.work_order.refresh_from_db()
+        self.assertIsNone(self.work_order.scheduled_start)
 
     def test_summary_tool_returns_snapshot_with_citation_and_audit(self):
         """A successful call stamps a citation and an allowed audit row."""

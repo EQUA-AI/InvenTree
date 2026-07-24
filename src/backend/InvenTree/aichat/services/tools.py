@@ -29,7 +29,8 @@ from aichat.models import (
 )
 from aichat.services import context as context_service
 
-TOOL_REGISTRY_VERSION = '1'
+# Bumped to '2' when the scheduling read tools (Phase 6a) were added.
+TOOL_REGISTRY_VERSION = '2'
 
 #: Actions the readiness tool may evaluate (mirrors the evaluator's map).
 _READINESS_ACTIONS = frozenset({
@@ -241,6 +242,128 @@ def _work_order_events_page(work_order, args: dict[str, Any], user) -> dict[str,
     return {'events': page, 'total': total, 'truncated': offset + limit < total}
 
 
+# ── Scheduling read tools (Phase 6a) ─────────────────────────────────────────
+# Read-only, scoped to the pinned work order and its directly related cards
+# (same machine / assignee for conflicts, dependency neighbours for the
+# preview). They surface the schedule and let the model *preview* what the
+# deterministic planner would propose — but they never write; a change still
+# requires a governed proposal and a separate confirmation.
+
+
+def _conflicts_arguments(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the optional conflict-window size (in days)."""
+    extra = set(arguments) - {'window_days'}
+    if extra:
+        raise ToolArgumentsInvalid('unknown arguments supplied')
+    return {
+        'window_days': _int_argument(
+            arguments, 'window_days', default=30, minimum=1, maximum=365
+        )
+    }
+
+
+def _work_order_schedule(work_order, args: dict[str, Any], user) -> dict[str, Any]:
+    """Return the pinned work order's own schedule and version."""
+    machine = getattr(work_order, 'machine', None)
+    return {
+        'work_order_id': work_order.pk,
+        'reference': getattr(work_order, 'reference', '') or '',
+        'title': work_order.title,
+        'scheduled_start': (
+            work_order.scheduled_start.isoformat()
+            if work_order.scheduled_start
+            else None
+        ),
+        'scheduled_end': (
+            work_order.scheduled_end.isoformat() if work_order.scheduled_end else None
+        ),
+        'estimated_minutes': work_order.estimated_minutes,
+        'machine_id': work_order.machine_id,
+        'machine_name': machine.name if machine else None,
+        'assigned_to_id': work_order.assigned_to_id,
+        'lifecycle_status': work_order.lifecycle_status,
+        'lifecycle_version': work_order.lifecycle_version,
+        'source_revision': context_service.source_revision_for(work_order),
+    }
+
+
+def _schedule_conflicts(work_order, args: dict[str, Any], user) -> dict[str, Any]:
+    """Return scheduling overlaps that involve the pinned work order.
+
+    Bounded to a window around the card and to cards sharing its machine or
+    assignee — the resources it could actually clash on. Only conflict metadata
+    (ids + times) is returned, never other cards' full content.
+    """
+    from datetime import timedelta
+
+    from django.db.models import Q
+
+    from tasks.models import KanbanCard
+    from tasks.services.conflicts import detect_conflicts
+
+    if not work_order.scheduled_start or not work_order.scheduled_end:
+        return {'conflicts': [], 'note': 'work order is not scheduled'}
+
+    window = timedelta(days=args['window_days'])
+    lower = work_order.scheduled_start - window
+    upper = work_order.scheduled_end + window
+
+    resource = Q(machine_id=work_order.machine_id)
+    if work_order.assigned_to_id:
+        resource |= Q(assigned_to_id=work_order.assigned_to_id)
+
+    nearby = (
+        KanbanCard.objects
+        .filter(is_active=True)
+        .filter(scheduled_start__isnull=False, scheduled_end__isnull=False)
+        .filter(resource)
+        .filter(scheduled_start__lte=upper, scheduled_end__gte=lower)
+    )
+
+    conflicts = [
+        warning
+        for warning in detect_conflicts(list(nearby))
+        if work_order.pk in warning['card_ids']
+    ]
+    return {'conflicts': conflicts, 'count': len(conflicts)}
+
+
+def _schedule_preview(work_order, args: dict[str, Any], user) -> dict[str, Any]:
+    """Preview what the deterministic planner would propose (no write).
+
+    Considers the pinned card and its direct dependency neighbours so the
+    proposed placement respects the immediate constraint graph. The planner —
+    not the model — decides the times; this only shows the result.
+    """
+    from django.db.models import Q
+
+    from tasks.models import KanbanCardDependency
+    from tasks.services.schedule_planner import PlanRequest, plan_schedule
+
+    neighbours = {work_order.pk}
+    for dep in KanbanCardDependency.objects.filter(
+        Q(from_card_id=work_order.pk) | Q(to_card_id=work_order.pk)
+    ):
+        neighbours.add(dep.from_card_id)
+        neighbours.add(dep.to_card_id)
+
+    result = plan_schedule(
+        PlanRequest(candidate_ids=sorted(neighbours), horizon_start=timezone.now())
+    )
+    return {
+        'operations': [
+            {
+                'card_id': op.card_id,
+                'new_start': op.new_start.isoformat(),
+                'new_end': op.new_end.isoformat(),
+            }
+            for op in result.operations
+        ],
+        'warnings': result.warnings,
+        'unscheduled': result.unscheduled,
+    }
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     """One registered read-only tool: typed args, version, and handler."""
@@ -289,6 +412,27 @@ _WORK_ORDER_TOOLS: dict[str, ToolSpec] = {
             description='Bounded page of work-order command events',
             validate=_events_arguments,
             handler=_work_order_events_page,
+        ),
+        ToolSpec(
+            name='work_order_schedule',
+            version='1',
+            description="The pinned work order's schedule window and version",
+            validate=_no_arguments,
+            handler=_work_order_schedule,
+        ),
+        ToolSpec(
+            name='schedule_conflicts',
+            version='1',
+            description='Scheduling overlaps involving the pinned work order',
+            validate=_conflicts_arguments,
+            handler=_schedule_conflicts,
+        ),
+        ToolSpec(
+            name='schedule_preview',
+            version='1',
+            description='Planner-proposed placement for this card (no write)',
+            validate=_no_arguments,
+            handler=_schedule_preview,
         ),
     )
 }
