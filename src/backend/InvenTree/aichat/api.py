@@ -48,6 +48,7 @@ def _payload(proposal: ChatActionProposal) -> dict:
         'state': proposal.state,
         'work_order_id': proposal.target_work_order_id,
         'target_version': proposal.target_version,
+        'intent': proposal.intent,
         'preview': proposal.preview,
         'reason': proposal.reason,
         'expires_at': proposal.expires_at.isoformat(),
@@ -67,6 +68,7 @@ _ERROR_STATUS = {
     'PROPOSAL_STATE_CONFLICT': status.HTTP_409_CONFLICT,
     'PROPOSAL_REVALIDATION_FAILED': status.HTTP_409_CONFLICT,
     'PROPOSAL_INVALID': status.HTTP_403_FORBIDDEN,
+    'STRICT_CONFIRMATION_REQUIRED': status.HTTP_400_BAD_REQUEST,
 }
 
 
@@ -116,6 +118,15 @@ class ProposalListCreateView(APIView):
                 {'error': 'PROPOSAL_INVALID', 'detail': 'work_order_id required'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Optional action parameters (schedule window, assignee, plan fields).
+        # Untrusted display data: the service re-derives and the command
+        # re-validates it at confirmation; here we only enforce the shape.
+        intent = data.get('intent', {})
+        if not isinstance(intent, dict):
+            return Response(
+                {'error': 'PROPOSAL_INVALID', 'detail': 'intent must be an object'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             scope_key, scope_hash = _scope_strings(request.user)
             proposal = proposal_service.create_proposal(
@@ -127,6 +138,7 @@ class ProposalListCreateView(APIView):
                 reason=reason,
                 idempotency_key=idempotency_key,
                 policy_version='ws7-v1',
+                intent=intent,
                 thread_id=str(data.get('thread_id', ''))[:255],
                 source_turn_id=str(data.get('source_turn_id', ''))[:64],
             )
@@ -161,10 +173,16 @@ class ProposalConfirmView(APIView):
 
     def post(self, request, proposal_id):
         """Post."""
+        # Irreversible actions require an exact strict phrase (§5.3); the client
+        # reads the required phrase from the proposal preview.
+        confirm_phrase = str((request.data or {}).get('confirm_phrase', ''))
         try:
             scope_hash = _object_scope_hash(request.user)
             proposal = proposal_service.confirm_proposal(
-                owner=request.user, scope_hash=scope_hash, proposal_id=proposal_id
+                owner=request.user,
+                scope_hash=scope_hash,
+                proposal_id=proposal_id,
+                confirm_phrase=confirm_phrase,
             )
         except proposal_service.ProposalError as exc:
             return _error(exc)

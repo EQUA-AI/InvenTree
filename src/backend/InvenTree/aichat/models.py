@@ -442,10 +442,34 @@ class ChatToolInvocation(models.Model):
 
 
 class ProposalAction(models.TextChoices):
-    """The verified executable allow-list (WS7); nothing else may execute."""
+    """The verified executable allow-list (WS7); nothing else may execute.
+
+    Each action maps to exactly one canonical command dispatched at confirmation
+    (see ``aichat.services.proposals``). Adding one requires that mapping and a
+    security review.
+    """
 
     WORK_ORDER_HOLD = 'work_order.hold', 'Hold work order'
     WORK_ORDER_RESUME = 'work_order.resume', 'Resume work order'
+    # Scheduling actions (Phase 6c). All single-target and version-checked; each
+    # dispatches a tasks.services.scheduling command at confirmation.
+    WORK_ORDER_SCHEDULE = 'work_order.schedule', 'Schedule work order'
+    WORK_ORDER_RESIZE = 'work_order.resize', 'Resize work order'
+    WORK_ORDER_UPDATE = 'work_order.update', 'Update work order plan'
+    WORK_ORDER_ASSIGN = 'work_order.assign', 'Assign work order'
+    WORK_ORDER_DELETE = 'work_order.delete', 'Delete work order'
+    WORK_ORDER_CANCEL = 'work_order.cancel', 'Cancel work order'
+    WORK_ORDER_TRANSITION = 'work_order.transition', 'Transition work order lifecycle'
+    WORK_ORDER_CREATE = 'work_order.create', 'Create work order'
+    WORK_ORDER_CREATE_CHILD = 'work_order.create_child', 'Create child work order'
+    # Longest value (31 chars) — action_type max_length stays 32.
+    WORK_ORDER_GENERATE_PROCUREMENT = (
+        'work_order.generate_procurement',
+        'Generate procurement child',
+    )
+    DEPENDENCY_CREATE = 'dependency.create', 'Create dependency'
+    DEPENDENCY_DELETE = 'dependency.delete', 'Delete dependency'
+    SCHEDULE_OPTIMIZE = 'schedule.optimize', 'Optimize schedule (bulk)'
 
 
 class ProposalState(models.TextChoices):
@@ -486,8 +510,13 @@ class ChatActionProposal(models.Model):
     thread_id = models.CharField(max_length=255, blank=True)
     source_turn_id = models.CharField(max_length=64, blank=True)
     action_type = models.CharField(max_length=32, choices=ProposalAction.choices)
-    target_work_order_id = models.PositiveIntegerField()
-    target_version = models.PositiveIntegerField()
+    # Nullable so future non-single-target actions (dependency pairs, bulk plans)
+    # can share the rail; every AI-2 action still binds exactly one target.
+    target_work_order_id = models.PositiveIntegerField(null=True, blank=True)
+    target_version = models.PositiveIntegerField(null=True, blank=True)
+    # Server-validated action parameters (schedule window, assignee, plan fields).
+    # Never trusted from the model: re-derived/re-checked at confirmation.
+    intent = models.JSONField(default=dict, blank=True)
     preview = models.JSONField(default=dict, blank=True)
     reason = models.TextField(blank=True)
     state = models.CharField(
