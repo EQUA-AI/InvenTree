@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import uuid
+
+from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.urls import include, path
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from django_filters.rest_framework import FilterSet, filters
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -51,7 +58,7 @@ from .jobkit_api import (
     JobKitSubstitutionDecide,
     JobKitSubstitutionPropose,
 )
-from .models import KanbanCard, KanbanCardPart
+from .models import KanbanCard, KanbanCardDependency, KanbanCardPart, KanbanColumn
 from .procedure_api import (
     ProcedureArchive,
     ProcedureBlockers,
@@ -77,7 +84,14 @@ from .procedure_execution_api import (
     StepExecutionReopen,
     WorkOrderDeviationList,
 )
-from .serializers import KanbanCardPartSerializer, KanbanCardSerializer
+from .serializers import (
+    KanbanCardDependencySerializer,
+    KanbanCardPartSerializer,
+    KanbanCardSerializer,
+    KanbanColumnSerializer,
+)
+from .services import schedule_planner, scheduling
+from .services.conflicts import detect_conflicts
 from .workorder_api import (
     WorkOrderAssign,
     WorkOrderCancel,
@@ -93,9 +107,30 @@ from .workorder_api import (
 
 
 class KanbanCardFilter(FilterSet):
-    """Filter set for Kanban cards."""
+    """Filter set for Kanban cards.
+
+    ``min_date`` / ``max_date`` bound a calendar or timeline viewport. A card is in
+    the window when its scheduled range *overlaps* that window -- not when it is
+    contained by it -- so a job running across the whole of a viewed month is
+    returned even though neither endpoint falls inside it.
+
+    Cards with no schedule fall back to ``due_date``, which keeps unscheduled work
+    visible on the date it is due. A card with no schedule and no due date has no
+    position in time and is excluded from a windowed query; it remains visible on
+    the board, which is unwindowed.
+
+    The two filters are deliberately independent and complementary: ``min_date``
+    discards work that finished before the window, ``max_date`` discards work
+    starting after it, and applying both yields the overlap.
+    """
 
     tags = filters.CharFilter(method='filter_tags')
+    min_date = filters.DateFilter(
+        method='filter_min_date', label='Window start (inclusive)'
+    )
+    max_date = filters.DateFilter(
+        method='filter_max_date', label='Window end (inclusive)'
+    )
 
     class Meta:
         """Filter metadata."""
@@ -108,6 +143,47 @@ class KanbanCardFilter(FilterSet):
             'job_number',
             'service_quote',
             'company',
+            'machine',
+            'assigned_to',
+            'lifecycle_status',
+            'work_order_type',
+        )
+
+    #: True for a card carrying neither schedule endpoint.
+    _UNSCHEDULED = Q(scheduled_start__isnull=True, scheduled_end__isnull=True)
+
+    def filter_min_date(self, queryset, name, value):
+        """Keep cards whose schedule ends on or after ``value``.
+
+        A card with only a start is treated as ending at its start, so a
+        zero-length placement still registers on its own day.
+        """
+        if not value:
+            return queryset
+
+        ends_after = Q(scheduled_end__date__gte=value) | Q(
+            scheduled_end__isnull=True, scheduled_start__date__gte=value
+        )
+
+        return queryset.filter(
+            ends_after | (self._UNSCHEDULED & Q(due_date__gte=value))
+        )
+
+    def filter_max_date(self, queryset, name, value):
+        """Keep cards whose schedule starts on or before ``value``.
+
+        A card with only an end is treated as starting at its end, mirroring
+        ``filter_min_date``.
+        """
+        if not value:
+            return queryset
+
+        starts_before = Q(scheduled_start__date__lte=value) | Q(
+            scheduled_start__isnull=True, scheduled_end__date__lte=value
+        )
+
+        return queryset.filter(
+            starts_before | (self._UNSCHEDULED & Q(due_date__lte=value))
         )
 
     def filter_tags(self, queryset, name, value):
@@ -128,7 +204,11 @@ class KanbanCardList(ListCreateAPI):
 
     queryset = KanbanCard.objects.all()
     serializer_class = KanbanCardSerializer
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
     filter_backends = SEARCH_ORDER_FILTER
     filterset_class = KanbanCardFilter
     search_fields = [
@@ -139,13 +219,32 @@ class KanbanCardList(ListCreateAPI):
         'service_quote',
         'company',
     ]
-    ordering_fields = ['created_at', 'updated_at', 'priority', 'due_date']
+    ordering_fields = [
+        'created_at',
+        'updated_at',
+        'priority',
+        'due_date',
+        'scheduled_start',
+        'scheduled_end',
+    ]
     ordering = '-created_at'
+    # Deliberately unpaginated: the board reads ``response.data`` directly, with no
+    # results envelope. Do not add pagination here without updating that client.
     pagination_class = None
 
     def get_queryset(self):
         """Filter the card collection by activity flag."""
-        queryset = super().get_queryset()
+        # select_related keeps the serializer's machine/assignee labels from
+        # issuing a query per card -- the list is unpaginated, so an N+1 here
+        # scales with the whole board. prefetch_related covers the nested parts
+        # serializer, which was already issuing one query per card before the
+        # scheduling fields were added.
+        queryset = (
+            super()
+            .get_queryset()
+            .select_related('machine', 'assigned_to')
+            .prefetch_related('card_parts__part')
+        )
 
         include_inactive = InvenTree.helpers.str2bool(
             self.request.query_params.get('include_inactive', False)
@@ -162,7 +261,11 @@ class KanbanCardDetail(RetrieveUpdateDestroyAPI):
 
     queryset = KanbanCard.objects.all()
     serializer_class = KanbanCardSerializer
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
 
     def perform_destroy(self, instance):
         """Archive (soft-delete) rather than remove the card."""
@@ -174,7 +277,11 @@ class KanbanCardDetail(RetrieveUpdateDestroyAPI):
 class KanbanCardRestore(APIView):
     """Restore a previously archived Kanban card."""
 
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order.change'
     serializer_class = KanbanCardSerializer
 
     def post(self, request, pk):
@@ -189,10 +296,41 @@ class KanbanCardRestore(APIView):
         return Response(serializer.data)
 
 
-class KanbanCardPartList(APIView):
-    """List and add parts for a Kanban card."""
+def _allocation_summary(card):
+    """Serialize a card's parts and collect any stock-shortage warnings.
 
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    Shared by the allocate-parts action and the reconcile PUT so both report
+    allocation identically. Reads ``card.card_parts`` fresh, so callers should
+    have run ``check_and_allocate`` on the affected parts first.
+    """
+    results = []
+    warnings = []
+
+    for cp in card.card_parts.all().select_related('part'):
+        results.append(KanbanCardPartSerializer(cp).data)
+
+        if cp.allocation_status == KanbanCardPart.ALLOCATION_INSUFFICIENT:
+            warnings.append(
+                f"Part '{cp.part.name}' (ID {cp.part.pk}): "
+                f'need {cp.quantity}, only {cp.allocated_quantity} available'
+            )
+        elif cp.allocation_status == KanbanCardPart.ALLOCATION_PARTIAL:
+            warnings.append(
+                f"Part '{cp.part.name}' (ID {cp.part.pk}): "
+                f'partial allocation - {cp.allocated_quantity} of {cp.quantity}'
+            )
+
+    return {'parts': results, 'warnings': warnings, 'all_allocated': len(warnings) == 0}
+
+
+class KanbanCardPartList(APIView):
+    """List, add, or reconcile the parts for a Kanban card."""
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
 
     def get(self, request, card_pk):
         """List all parts for a card."""
@@ -218,11 +356,68 @@ class KanbanCardPartList(APIView):
             KanbanCardPartSerializer(card_part).data, status=status.HTTP_201_CREATED
         )
 
+    def put(self, request, card_pk):
+        """Reconcile the card's whole parts list in one transaction.
+
+        The body is the *desired* full set of parts (``[{"part": id,
+        "quantity": n}, ...]``); anything not listed is removed. This replaces a
+        per-part POST loop on the client that had two data-loss bugs: it never
+        deleted a removed part (its delete loop was empty), and re-POSTing an
+        existing part hit the ``unique_together(card, part)`` constraint and
+        raised a 500 the client swallowed, so quantity edits to existing parts
+        were silently dropped. Reconciling server-side removes both failure modes
+        and makes the save atomic.
+        """
+        card = get_object_or_404(KanbanCard, pk=card_pk)
+        payload = request.data
+
+        if not isinstance(payload, list):
+            raise ValidationError({'detail': 'Expected a list of parts.'})
+
+        desired = {}
+        for item in payload:
+            serializer = KanbanCardPartSerializer(data=item)
+            serializer.is_valid(raise_exception=True)
+            part = serializer.validated_data['part']
+
+            if part.pk in desired:
+                raise ValidationError({
+                    'detail': f'Part {part.pk} is listed more than once.'
+                })
+
+            desired[part.pk] = serializer.validated_data.get('quantity', 1)
+
+        with transaction.atomic():
+            existing = {cp.part_id: cp for cp in card.card_parts.select_related('part')}
+
+            for part_id, cp in existing.items():
+                if part_id not in desired:
+                    cp.delete()
+
+            for part_id, quantity in desired.items():
+                cp = existing.get(part_id)
+
+                if cp is None:
+                    cp = KanbanCardPart.objects.create(
+                        card=card, part_id=part_id, quantity=quantity
+                    )
+                elif cp.quantity != quantity:
+                    cp.quantity = quantity
+                    cp.save(update_fields=['quantity', 'updated_at'])
+
+                cp.check_and_allocate()
+
+        return Response(_allocation_summary(card))
+
 
 class KanbanCardPartDetail(APIView):
     """Retrieve, update, or remove a part from a Kanban card."""
 
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
 
     def get(self, request, card_pk, pk):
         """Return one card part."""
@@ -252,40 +447,636 @@ class KanbanCardAllocateParts(APIView):
     Returns allocation results with warnings for any insufficient stock.
     """
 
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order.change'
 
     def post(self, request, card_pk):
         """Check and allocate stock for every card part."""
         card = get_object_or_404(KanbanCard, pk=card_pk)
-        card_parts = card.card_parts.all().select_related('part')
 
-        results = []
-        warnings = []
-
-        for cp in card_parts:
+        for cp in card.card_parts.all().select_related('part'):
             cp.check_and_allocate()
-            result = KanbanCardPartSerializer(cp).data
-            results.append(result)
 
-            if cp.allocation_status == 'insufficient':
-                warnings.append(
-                    f"Part '{cp.part.name}' (ID {cp.part.pk}): "
-                    f'need {cp.quantity}, only {cp.allocated_quantity} available'
+        return Response(_allocation_summary(card))
+
+
+class KanbanColumnList(ListCreateAPI):
+    """List all board columns or create a new one."""
+
+    queryset = KanbanColumn.objects.all()
+    serializer_class = KanbanColumnSerializer
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+    # A board has a handful of columns; returning them all in one list keeps the
+    # frontend simple and matches the unpaginated card list.
+    pagination_class = None
+
+    def perform_create(self, serializer):
+        """Append new columns to the right of the board by default."""
+        if serializer.validated_data.get('order') is None:
+            last = KanbanColumn.objects.order_by('-order').first()
+            serializer.validated_data['order'] = (last.order + 1) if last else 0
+
+        serializer.save()
+
+
+class KanbanColumnDetail(RetrieveUpdateDestroyAPI):
+    """Retrieve, relabel, recolor or delete a single board column."""
+
+    queryset = KanbanColumn.objects.all()
+    serializer_class = KanbanColumnSerializer
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+
+    def perform_destroy(self, instance):
+        """Refuse to delete a seeded column or one that still holds cards.
+
+        A column key is stored on every card in the column, so deleting a
+        non-empty column would strand those cards with a status matching no
+        column. The client must reassign the cards first. Seeded columns are
+        protected outright so the board always has its original lanes.
+        """
+        if instance.is_default:
+            raise ValidationError({'detail': 'Default columns cannot be deleted.'})
+
+        active_cards = instance.card_count(active_only=True)
+
+        if active_cards:
+            raise ValidationError({
+                'detail': (
+                    f'This column still holds {active_cards} card(s). Move them '
+                    'to another column before deleting it.'
                 )
-            elif cp.allocation_status == 'partial':
-                warnings.append(
-                    f"Part '{cp.part.name}' (ID {cp.part.pk}): "
-                    f'partial allocation - {cp.allocated_quantity} of {cp.quantity}'
+            })
+
+        instance.delete()
+
+
+class KanbanColumnReorder(APIView):
+    """Persist a new left-to-right ordering of the board columns."""
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order.change'
+    serializer_class = KanbanColumnSerializer
+
+    def post(self, request):
+        """Assign ``order`` from the index of each key in the supplied list.
+
+        Expects ``{"order": ["backlog", "in-progress", ...]}``. The list must be
+        a permutation of exactly the existing column keys -- a partial or unknown
+        list is rejected rather than silently reordering a subset, which would
+        leave the board in a state the client did not intend.
+        """
+        keys = request.data.get('order')
+
+        if not isinstance(keys, list) or not all(isinstance(key, str) for key in keys):
+            raise ValidationError({'order': 'Expected a list of column keys.'})
+
+        existing = set(KanbanColumn.objects.values_list('key', flat=True))
+
+        if set(keys) != existing or len(keys) != len(existing):
+            raise ValidationError({
+                'order': (
+                    'The supplied keys must be exactly the current set of '
+                    'column keys, each listed once.'
                 )
+            })
+
+        columns = {c.key: c for c in KanbanColumn.objects.all()}
+
+        with transaction.atomic():
+            for index, key in enumerate(keys):
+                column = columns[key]
+                if column.order != index:
+                    column.order = index
+                    column.save(update_fields=['order', 'updated_at'])
+
+        ordered = KanbanColumn.objects.all()
+        return Response(KanbanColumnSerializer(ordered, many=True).data)
+
+
+# ── Scheduling command endpoints ─────────────────────────────────────────────
+# Unflagged adapters over ``tasks.services.scheduling``, used by the board /
+# calendar / timeline. Gated by the work_order ruleset per action (add / change /
+# delete). The service enforces expected_version, validation and audit; these
+# views translate its typed errors to HTTP responses.
+
+
+def _command_error_response(exc):
+    """Map a WorkOrderCommandError to an HTTP response with its stable code."""
+    conflict = (
+        scheduling.StaleVersion,
+        scheduling.IdempotencyConflict,
+        scheduling.NotMutable,
+        scheduling.ProtectedWorkOrder,
+        scheduling.DependencyCycle,
+    )
+    code = getattr(exc, 'code', 'COMMAND_ERROR')
+    http_status = (
+        status.HTTP_409_CONFLICT
+        if isinstance(exc, conflict)
+        else status.HTTP_400_BAD_REQUEST
+    )
+    return Response({'code': code, 'detail': str(exc)}, status=http_status)
+
+
+def _idempotency_key(request):
+    """Use the caller's key, or mint one so a missing key still executes once."""
+    return request.data.get('idempotency_key') or uuid.uuid4().hex
+
+
+def _parse_dt(value, field):
+    """Parse an ISO datetime string (or None); reject anything unparsable."""
+    if value is None:
+        return None
+    parsed = parse_datetime(value)
+    if parsed is None:
+        raise ValidationError({field: 'Expected an ISO 8601 datetime or null.'})
+    return parsed
+
+
+def _require_version_arg(request):
+    version = request.data.get('expected_version')
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise ValidationError({
+            'expected_version': 'An integer expected_version is required.'
+        })
+    return version
+
+
+class _CommandView(APIView):
+    """Common permission wiring for scheduling command endpoints."""
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+
+    def _card_payload(self, work_order_id):
+        card = get_object_or_404(KanbanCard, pk=work_order_id)
+        return KanbanCardSerializer(card).data
+
+
+class WorkOrderCreateCommand(_CommandView):
+    """Create a work order through the command service."""
+
+    role_required = 'work_order.add'
+
+    def post(self, request):
+        """Create a card, requiring a machine and recording a CREATED event."""
+        data = dict(request.data)
+        machine_id = data.get('machine') or data.get('machine_id')
+
+        if not machine_id:
+            raise ValidationError({'machine': 'A machine is required.'})
+
+        allowed = {
+            key: data[key]
+            for key in (
+                'description',
+                'priority',
+                'work_order_type',
+                'assignee',
+                'due_date',
+            )
+            if key in data
+        }
+
+        try:
+            result = scheduling.create_work_order(
+                actor=request.user,
+                idempotency_key=_idempotency_key(request),
+                title=data.get('title', ''),
+                machine_id=machine_id,
+                **allowed,
+            )
+        except scheduling.WorkOrderCommandError as exc:
+            return _command_error_response(exc)
+
+        return Response(
+            self._card_payload(result.work_order_id), status=status.HTTP_201_CREATED
+        )
+
+
+class WorkOrderUpdateCommand(_CommandView):
+    """Update planning metadata for a work order."""
+
+    role_required = 'work_order.change'
+
+    def post(self, request, pk):
+        """Apply a versioned planning update."""
+        fields = request.data.get('fields', {})
+
+        # Accept ``machine`` as an alias for ``machine_id``.
+        if 'machine' in fields and 'machine_id' not in fields:
+            fields['machine_id'] = fields.pop('machine')
+
+        try:
+            scheduling.update_work_order_plan(
+                work_order_id=pk,
+                actor=request.user,
+                expected_version=_require_version_arg(request),
+                idempotency_key=_idempotency_key(request),
+                fields=fields,
+            )
+        except scheduling.WorkOrderCommandError as exc:
+            return _command_error_response(exc)
+
+        return Response(self._card_payload(pk))
+
+
+class WorkOrderScheduleCommand(_CommandView):
+    """Move a work order to a new scheduled window."""
+
+    role_required = 'work_order.change'
+
+    def post(self, request, pk):
+        """Set the scheduled window (a move; duration handled by resize)."""
+        try:
+            scheduling.schedule_work_order(
+                work_order_id=pk,
+                actor=request.user,
+                expected_version=_require_version_arg(request),
+                idempotency_key=_idempotency_key(request),
+                scheduled_start=_parse_dt(
+                    request.data.get('scheduled_start'), 'scheduled_start'
+                ),
+                scheduled_end=_parse_dt(
+                    request.data.get('scheduled_end'), 'scheduled_end'
+                ),
+            )
+        except scheduling.WorkOrderCommandError as exc:
+            return _command_error_response(exc)
+
+        return Response(self._card_payload(pk))
+
+
+class WorkOrderResizeCommand(_CommandView):
+    """Change a work order's duration."""
+
+    role_required = 'work_order.change'
+
+    def post(self, request, pk):
+        """Set estimated_minutes and/or move the end."""
+        try:
+            scheduling.resize_work_order(
+                work_order_id=pk,
+                actor=request.user,
+                expected_version=_require_version_arg(request),
+                idempotency_key=_idempotency_key(request),
+                estimated_minutes=request.data.get('estimated_minutes'),
+                scheduled_end=_parse_dt(
+                    request.data.get('scheduled_end'), 'scheduled_end'
+                ),
+            )
+        except scheduling.WorkOrderCommandError as exc:
+            return _command_error_response(exc)
+
+        return Response(self._card_payload(pk))
+
+
+class WorkOrderDeleteCommand(_CommandView):
+    """Governed hard delete of a work order."""
+
+    role_required = 'work_order.delete'
+
+    def post(self, request, pk):
+        """Delete the card, leaving a durable deletion record."""
+        try:
+            result = scheduling.delete_work_order(
+                work_order_id=pk,
+                actor=request.user,
+                expected_version=_require_version_arg(request),
+                idempotency_key=_idempotency_key(request),
+                reason=request.data.get('reason', ''),
+            )
+        except scheduling.WorkOrderCommandError as exc:
+            return _command_error_response(exc)
 
         return Response({
-            'parts': results,
-            'warnings': warnings,
-            'all_allocated': len(warnings) == 0,
+            'deleted': True,
+            'work_order_id': result.work_order_id,
+            'deletion_record_id': result.deletion_record_id,
+            'reference': result.reference,
         })
 
 
+class WorkOrderCreateChildCommand(_CommandView):
+    """Create a child card under a work order."""
+
+    role_required = 'work_order.add'
+
+    def post(self, request, pk):
+        """Create a subtask/procurement child inheriting machine + customer."""
+        try:
+            result = scheduling.create_child(
+                parent_id=pk,
+                actor=request.user,
+                idempotency_key=_idempotency_key(request),
+                title=request.data.get('title', ''),
+                card_kind=request.data.get('card_kind', 'subtask'),
+            )
+        except scheduling.WorkOrderCommandError as exc:
+            return _command_error_response(exc)
+
+        return Response(
+            self._card_payload(result.work_order_id), status=status.HTTP_201_CREATED
+        )
+
+
+class WorkOrderGenerateProcurementCommand(_CommandView):
+    """Raise a procurement child from a work order's parts shortfall."""
+
+    role_required = 'work_order.add'
+
+    def post(self, request, pk):
+        """Create/refresh the procurement child, or 200 with none if no shortfall."""
+        try:
+            child = scheduling.generate_procurement_child(
+                parent_id=pk, actor=request.user
+            )
+        except scheduling.WorkOrderCommandError as exc:
+            return _command_error_response(exc)
+
+        if child is None:
+            return Response({'generated': False, 'detail': 'No parts shortfall.'})
+
+        return Response(
+            {'generated': True, 'child': self._card_payload(child.pk)},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class WorkOrderScheduleBatchCommand(_CommandView):
+    """Apply many schedule moves atomically."""
+
+    role_required = 'work_order.change'
+
+    def post(self, request):
+        """All operations succeed or none do."""
+        operations = request.data.get('operations')
+
+        if not isinstance(operations, list):
+            raise ValidationError({'operations': 'Expected a list of operations.'})
+
+        parsed = []
+        for op in operations:
+            parsed.append({
+                'card_id': op.get('card_id'),
+                'expected_version': op.get('expected_version'),
+                'scheduled_start': _parse_dt(
+                    op.get('scheduled_start'), 'scheduled_start'
+                ),
+                'scheduled_end': _parse_dt(op.get('scheduled_end'), 'scheduled_end'),
+            })
+
+        try:
+            results = scheduling.apply_schedule_batch(
+                actor=request.user,
+                idempotency_key=_idempotency_key(request),
+                operations=parsed,
+            )
+        except scheduling.WorkOrderCommandError as exc:
+            return _command_error_response(exc)
+
+        return Response({
+            'applied': [
+                {
+                    'work_order_id': r.work_order_id,
+                    'lifecycle_version': r.lifecycle_version,
+                }
+                for r in results
+            ]
+        })
+
+
+def _parse_plan_request(request):
+    """Build a PlanRequest from the request body, validating types."""
+    candidate_ids = request.data.get('candidate_ids')
+    if not isinstance(candidate_ids, list) or not all(
+        isinstance(i, int) for i in candidate_ids
+    ):
+        raise ValidationError({'candidate_ids': 'Expected a list of card ids.'})
+
+    horizon = request.data.get('horizon_start')
+    horizon_start = _parse_dt(horizon, 'horizon_start') or timezone.now()
+
+    locked = request.data.get('locked_ids', [])
+    if not isinstance(locked, list):
+        raise ValidationError({'locked_ids': 'Expected a list of card ids.'})
+
+    return schedule_planner.PlanRequest(
+        candidate_ids=candidate_ids,
+        horizon_start=horizon_start,
+        locked_ids=frozenset(locked),
+        allow_move_existing=bool(request.data.get('allow_move_existing', True)),
+        check_assignee=bool(request.data.get('check_assignee', False)),
+    )
+
+
+def _serialize_plan(result):
+    """Serialize a PlanResult for the API."""
+    return {
+        'operations': [
+            {
+                'card_id': op.card_id,
+                'old_start': op.old_start.isoformat() if op.old_start else None,
+                'old_end': op.old_end.isoformat() if op.old_end else None,
+                'new_start': op.new_start.isoformat(),
+                'new_end': op.new_end.isoformat(),
+            }
+            for op in result.operations
+        ],
+        'warnings': result.warnings,
+        'unscheduled': result.unscheduled,
+    }
+
+
+class WorkOrderSchedulePlan(APIView):
+    """Compute a proposed schedule without saving (preview / dry-run).
+
+    The deterministic planner decides the times; the caller only supplies which
+    cards to consider and the constraints. Read-shaped, so gated on view.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+
+    def post(self, request):
+        """Return {operations, warnings, unscheduled} for the candidate cards."""
+        result = schedule_planner.plan_schedule(_parse_plan_request(request))
+        return Response(_serialize_plan(result))
+
+
+class WorkOrderScheduleOptimize(APIView):
+    """Compute and atomically apply a schedule (auto-schedule).
+
+    Runs the planner, then applies its operations through the command service in
+    one all-or-nothing batch, using each card's current ``lifecycle_version``.
+    A concurrent change to any affected card fails the whole apply.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order.change'
+
+    def post(self, request):
+        """Plan, then apply atomically; returns the plan and applied versions."""
+        plan = schedule_planner.plan_schedule(_parse_plan_request(request))
+
+        if not plan.operations:
+            return Response({'plan': _serialize_plan(plan), 'applied': []})
+
+        versions = dict(
+            KanbanCard.objects.filter(
+                id__in=[op.card_id for op in plan.operations]
+            ).values_list('id', 'lifecycle_version')
+        )
+        operations = [
+            {
+                'card_id': op.card_id,
+                'expected_version': versions[op.card_id],
+                'scheduled_start': op.new_start,
+                'scheduled_end': op.new_end,
+            }
+            for op in plan.operations
+        ]
+
+        try:
+            results = scheduling.apply_schedule_batch(
+                actor=request.user,
+                idempotency_key=_idempotency_key(request),
+                operations=operations,
+            )
+        except scheduling.WorkOrderCommandError as exc:
+            return _command_error_response(exc)
+
+        return Response({
+            'plan': _serialize_plan(plan),
+            'applied': [
+                {
+                    'work_order_id': r.work_order_id,
+                    'lifecycle_version': r.lifecycle_version,
+                }
+                for r in results
+            ],
+        })
+
+
+class WorkOrderScheduleWindow(APIView):
+    """Windowed read for the calendar and timeline.
+
+    Returns the cards overlapping ``[min_date, max_date]`` (same overlap
+    semantics as the board list filter), the dependencies among them, and any
+    conflict warnings. ``warnings`` is empty until S6 conflict detection lands;
+    the shape is stable so the client can rely on it now.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+
+    def get(self, request):
+        """Return {cards, dependencies, warnings} for the requested window."""
+        queryset = (
+            KanbanCard.objects
+            .filter(is_active=True)
+            .select_related('machine', 'assigned_to')
+            .prefetch_related('card_parts__part')
+        )
+
+        card_filter = KanbanCardFilter(request.query_params, queryset=queryset)
+        cards = list(
+            card_filter.qs.order_by('scheduled_start', 'due_date', '-created_at')
+        )
+        card_ids = [card.pk for card in cards]
+
+        # Dependencies where both endpoints are inside the window, so the client
+        # never has to resolve an edge to a card it did not receive.
+        dependencies = KanbanCardDependency.objects.filter(
+            from_card_id__in=card_ids, to_card_id__in=card_ids
+        )
+
+        return Response({
+            'cards': KanbanCardSerializer(cards, many=True).data,
+            'dependencies': KanbanCardDependencySerializer(
+                dependencies, many=True
+            ).data,
+            'warnings': detect_conflicts(cards),
+        })
+
+
+class WorkOrderDependencyCommand(_CommandView):
+    """Create a scheduling dependency between two work orders."""
+
+    role_required = 'work_order.change'
+
+    def post(self, request):
+        """Create ``from_card -> to_card``, rejecting self-loops and cycles."""
+        try:
+            dependency = scheduling.create_dependency(
+                from_card_id=request.data.get('from_card'),
+                to_card_id=request.data.get('to_card'),
+                actor=request.user,
+                dependency_type=request.data.get('dependency_type', 'FS'),
+                lag_minutes=request.data.get('lag_minutes', 0),
+            )
+        except scheduling.WorkOrderCommandError as exc:
+            return _command_error_response(exc)
+
+        return Response(
+            KanbanCardDependencySerializer(dependency).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class WorkOrderDependencyDetailCommand(_CommandView):
+    """Delete a scheduling dependency by id."""
+
+    role_required = 'work_order.change'
+
+    def delete(self, request, pk):
+        """Remove the dependency; 404 if it does not exist."""
+        removed = scheduling.delete_dependency(dependency_id=pk, actor=request.user)
+
+        if not removed:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 kanban_api_urls = [
+    path(
+        'columns/',
+        include([
+            path('', KanbanColumnList.as_view(), name='kanban-column-list'),
+            path(
+                'reorder/', KanbanColumnReorder.as_view(), name='kanban-column-reorder'
+            ),
+            path(
+                '<int:pk>/', KanbanColumnDetail.as_view(), name='kanban-column-detail'
+            ),
+        ]),
+    ),
     path(
         'cards/',
         include([
@@ -311,8 +1102,75 @@ kanban_api_urls = [
                 KanbanCardAllocateParts.as_view(),
                 name='kanban-card-allocate',
             ),
+            path(
+                'commands/create/',
+                WorkOrderCreateCommand.as_view(),
+                name='kanban-command-create',
+            ),
+            path(
+                '<int:pk>/commands/update/',
+                WorkOrderUpdateCommand.as_view(),
+                name='kanban-command-update',
+            ),
+            path(
+                '<int:pk>/commands/schedule/',
+                WorkOrderScheduleCommand.as_view(),
+                name='kanban-command-schedule',
+            ),
+            path(
+                '<int:pk>/commands/resize/',
+                WorkOrderResizeCommand.as_view(),
+                name='kanban-command-resize',
+            ),
+            path(
+                '<int:pk>/commands/delete/',
+                WorkOrderDeleteCommand.as_view(),
+                name='kanban-command-delete',
+            ),
+            path(
+                '<int:pk>/commands/create-child/',
+                WorkOrderCreateChildCommand.as_view(),
+                name='kanban-command-create-child',
+            ),
+            path(
+                '<int:pk>/commands/generate-procurement/',
+                WorkOrderGenerateProcurementCommand.as_view(),
+                name='kanban-command-generate-procurement',
+            ),
         ]),
-    )
+    ),
+    path(
+        'schedule/',
+        include([
+            path('', WorkOrderScheduleWindow.as_view(), name='kanban-schedule-window'),
+            path(
+                'apply/',
+                WorkOrderScheduleBatchCommand.as_view(),
+                name='kanban-schedule-apply',
+            ),
+            path('plan/', WorkOrderSchedulePlan.as_view(), name='kanban-schedule-plan'),
+            path(
+                'optimize/',
+                WorkOrderScheduleOptimize.as_view(),
+                name='kanban-schedule-optimize',
+            ),
+        ]),
+    ),
+    path(
+        'dependencies/',
+        include([
+            path(
+                '',
+                WorkOrderDependencyCommand.as_view(),
+                name='kanban-dependency-create',
+            ),
+            path(
+                '<int:pk>/',
+                WorkOrderDependencyDetailCommand.as_view(),
+                name='kanban-dependency-detail',
+            ),
+        ]),
+    ),
 ]
 
 

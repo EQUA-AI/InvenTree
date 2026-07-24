@@ -204,6 +204,22 @@ def complete_work_order(
     _require_no_packet(work_order)
     _validate_transition(work_order.lifecycle_status, WorkOrderLifecycle.COMPLETED)
 
+    # A parent cannot be closed out while a child card is still open (§5.10): the
+    # child (e.g. a procurement task for missing parts) is part of the work.
+    incomplete = [
+        child.pk
+        for child in work_order.children.exclude(
+            lifecycle_status__in=[
+                WorkOrderLifecycle.COMPLETED,
+                WorkOrderLifecycle.CANCELED,
+            ]
+        )
+    ]
+    if incomplete:
+        raise CloseoutError(
+            f'Cannot close out while child work orders are open: {incomplete}'
+        )
+
     missing = [
         name
         for name in REQUIRED_CLOSEOUT_FIELDS
@@ -262,14 +278,25 @@ def complete_work_order(
     work_order.lifecycle_status = WorkOrderLifecycle.COMPLETED
     work_order.actual_completed_at = now
     work_order.lifecycle_version = work_order.lifecycle_version + 1
-    work_order.save(
-        update_fields=[
-            'lifecycle_status',
-            'actual_completed_at',
-            'lifecycle_version',
-            'updated_at',
-        ]
-    )
+
+    save_fields = [
+        'lifecycle_status',
+        'actual_completed_at',
+        'lifecycle_version',
+        'updated_at',
+    ]
+
+    # Closeout is the *only* path that moves a card into the board's terminal
+    # (done) column (§5.8), so the board can never show open work that is
+    # actually closed out. Done in the same transaction as completion.
+    from tasks.models import KanbanColumn
+
+    terminal_key = KanbanColumn.terminal_key()
+    if terminal_key and work_order.status != terminal_key:
+        work_order.status = terminal_key
+        save_fields.append('status')
+
+    work_order.save(update_fields=save_fields)
 
     return _append_result(
         work_order=work_order,

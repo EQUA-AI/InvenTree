@@ -275,8 +275,21 @@ class WorkOrderAPITest(TestCase):
         self.assertEqual(card.lifecycle_version, 1)
         self.assertFalse(card.events.exists())
 
-    def test_legacy_kanban_list_shape_is_unchanged(self):
-        """The additive API must not expose typed fields through legacy Kanban."""
+    def test_kanban_list_exposes_the_unified_card_shape(self):
+        """Kanban and the canonical API now share one card shape.
+
+        This test previously asserted the inverse -- that typed work-order fields
+        must *not* appear here -- to stop the flag-gated canonical API leaking
+        through an unflagged surface. That boundary was retired deliberately once
+        it was established there are no external clients of this API: the board,
+        calendar and timeline all read this one endpoint, so maintaining a second,
+        narrower shape bought nothing and cost a reconciliation.
+
+        What survives from the old boundary is the read/write split, asserted in
+        ``test_typed_fields_are_read_only_through_kanban`` below: exposing
+        lifecycle state for reading is not the same as letting a board edit drive
+        it.
+        """
         card = self.make_card(
             title='Legacy shape card',
             assignee='Legacy Technician',
@@ -310,9 +323,57 @@ class WorkOrderAPITest(TestCase):
                 'created_at',
                 'updated_at',
                 'parts',
+                # Planning metadata, added for the scheduling views. These are
+                # inert scalars the board can place on a calendar; they carry no
+                # lifecycle semantics and do not depend on the canonical API being
+                # enabled.
+                'machine',
+                'machine_name',
+                'machine_location',
+                'assigned_to',
+                'assigned_to_username',
+                'assigned_to_name',
+                'scheduled_start',
+                'scheduled_end',
+                'estimated_minutes',
+                'work_order_type',
+                'reference',
+                'lifecycle_status',
+                'lifecycle_version',
+                'actual_started_at',
+                'actual_completed_at',
+                # Composition (§5.10): parent link and card kind.
+                'parent',
+                'card_kind',
             },
         )
         self.assertEqual(payload[0]['id'], card.pk)
         self.assertEqual(payload[0]['status'], KanbanCard.STATUS_BACKLOG)
-        self.assertNotIn('lifecycle_status', payload[0])
-        self.assertNotIn('lifecycle_version', payload[0])
+        self.assertEqual(payload[0]['lifecycle_status'], WorkOrderLifecycle.DRAFT)
+        # lifecycle_version is published because Phase 3 uses it as the
+        # expected_version optimistic-concurrency token.
+        self.assertEqual(payload[0]['lifecycle_version'], 1)
+        # Still withheld: internal fields with no board meaning.
+        for internal_field in ('requested_by', 'hold_reason'):
+            self.assertNotIn(internal_field, payload[0])
+
+    def test_typed_fields_are_read_only_through_kanban(self):
+        """Reading lifecycle state is not the same as being able to drive it."""
+        card = self.make_card(title='Read-only typed fields')
+
+        response = self.client.patch(
+            f'/api/kanban/cards/{card.pk}/',
+            data={
+                'lifecycle_status': WorkOrderLifecycle.COMPLETED,
+                'lifecycle_version': 99,
+                'reference': 'WO-FORGED',
+                'actual_completed_at': '2026-08-01T00:00:00Z',
+            },
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        card.refresh_from_db()
+        self.assertEqual(card.lifecycle_status, WorkOrderLifecycle.DRAFT)
+        self.assertEqual(card.lifecycle_version, 1)
+        self.assertIsNone(card.actual_completed_at)

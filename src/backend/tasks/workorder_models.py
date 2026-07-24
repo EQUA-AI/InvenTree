@@ -131,3 +131,61 @@ class WorkOrderCommand(models.Model):
         """Model metadata."""
 
         unique_together = [('work_order', 'idempotency_key')]
+
+
+class WorkOrderDeletionRecord(models.Model):
+    """Durable audit of a deleted work order.
+
+    A ``KanbanCard`` cascades to its ``WorkOrderEvent`` / ``WorkOrderCommand`` /
+    closeout rows, so once a card is deleted its governance history goes with it.
+    This record is deliberately *not* linked to the card by FK: it snapshots the
+    identity of what was removed, who removed it and why, so that after deletion
+    it is still possible to answer "what happened to WO-123 and who deleted it".
+
+    The machine link is ``SET_NULL`` rather than a hard FK so the record outlives
+    the machine too, mirroring how ``AssetMaintenanceRecord`` already survives
+    card deletion. ``snapshot`` carries a serialized copy of the card for full
+    forensic recovery.
+    """
+
+    work_order_pk = models.PositiveIntegerField(
+        db_index=True, help_text='Primary key of the deleted KanbanCard'
+    )
+    reference = models.CharField(max_length=32, blank=True, db_index=True)
+    title = models.CharField(max_length=200, blank=True)
+    lifecycle_status = models.CharField(max_length=20, blank=True)
+    machine = models.ForeignKey(
+        'assets.AssetMachine',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='deleted_work_orders',
+    )
+    customer = models.ForeignKey(
+        'company.Company',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='deleted_work_orders',
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name='deleted_work_orders',
+    )
+    reason = models.TextField(blank=True)
+    correlation_id = models.UUIDField(db_index=True)
+    idempotency_key = models.CharField(max_length=128, blank=True, db_index=True)
+    snapshot = models.JSONField(default=dict, blank=True)
+    deleted_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        """Model metadata."""
+
+        ordering = ['-deleted_at']
+        verbose_name = 'Work Order Deletion Record'
+
+    def __str__(self) -> str:
+        """Readable identity for admin and logs."""
+        return f'Deleted WO {self.work_order_pk} ({self.reference or self.title})'

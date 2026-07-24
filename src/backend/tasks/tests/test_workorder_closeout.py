@@ -80,6 +80,28 @@ class CompleteWorkOrderTest(TestCase):
         self.assertEqual(record.machine, self.machine)
         self.assertIn('Replaced filter', record.details)
 
+    def test_completion_moves_card_to_terminal_column(self):
+        # S6c: closeout is the only path into the done column.
+        from tasks.models import KanbanColumn
+
+        self.complete()
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.status, KanbanColumn.terminal_key())
+
+    def test_completion_blocked_by_incomplete_child(self):
+        # S6d: a parent cannot close out while a child is still open.
+        KanbanCard.objects.create(
+            title='open child', status='backlog', priority='low',
+            machine=self.machine, parent=self.work_order,
+        )
+        with self.assertRaises(CloseoutError):
+            self.complete()
+
+        self.work_order.refresh_from_db()
+        self.assertEqual(
+            self.work_order.lifecycle_status, WorkOrderLifecycle.VERIFYING
+        )
+
     def test_missing_required_closeout_fields_fail(self):
         with self.assertRaises(CloseoutError):
             self.complete(closeout={'action': 'only action'})

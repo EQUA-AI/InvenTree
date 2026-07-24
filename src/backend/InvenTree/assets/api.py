@@ -17,7 +17,6 @@ from .serializers import (
     MachinePartSerializer,
 )
 
-
 # ---- Filters ----------------------------------------------------------------
 
 
@@ -27,6 +26,8 @@ class AssetMachineFilter(FilterSet):
     active = filters.BooleanFilter()
 
     class Meta:
+        """Filter configuration for AssetMachine."""
+
         model = AssetMachine
         fields = ('active', 'location', 'customer', 'manufacturer')
 
@@ -35,6 +36,8 @@ class MachinePartFilter(FilterSet):
     """Filter set for MachinePart."""
 
     class Meta:
+        """Filter configuration for MachinePart."""
+
         model = MachinePart
         fields = ('machine', 'part')
 
@@ -43,6 +46,8 @@ class AssetMaintenanceRecordFilter(FilterSet):
     """Filter set for AssetMaintenanceRecord."""
 
     class Meta:
+        """Filter configuration for AssetMaintenanceRecord."""
+
         model = AssetMaintenanceRecord
         fields = ('machine', 'work_order')
 
@@ -55,10 +60,21 @@ class AssetMachineList(ListCreateAPI):
 
     queryset = AssetMachine.objects.all()
     serializer_class = AssetMachineSerializer
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
     filter_backends = SEARCH_ORDER_FILTER
     filterset_class = AssetMachineFilter
-    search_fields = ['name', 'description', 'location', 'manufacturer', 'model', 'serial']
+    search_fields = [
+        'name',
+        'description',
+        'location',
+        'manufacturer',
+        'model',
+        'serial',
+    ]
     ordering_fields = ['name', 'location', 'manufacturer', 'created_at', 'updated_at']
     ordering = 'name'
 
@@ -68,7 +84,11 @@ class AssetMachineDetail(RetrieveUpdateDestroyAPI):
 
     queryset = AssetMachine.objects.all()
     serializer_class = AssetMachineSerializer
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
 
 
 class MachinePartList(ListCreateAPI):
@@ -76,7 +96,11 @@ class MachinePartList(ListCreateAPI):
 
     queryset = MachinePart.objects.select_related('part').all()
     serializer_class = MachinePartSerializer
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
     filter_backends = SEARCH_ORDER_FILTER
     filterset_class = MachinePartFilter
     search_fields = ['part__name', 'notes']
@@ -89,7 +113,11 @@ class MachinePartDetail(RetrieveUpdateDestroyAPI):
 
     queryset = MachinePart.objects.all()
     serializer_class = MachinePartSerializer
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
 
 
 class AssetMaintenanceRecordList(ListCreateAPI):
@@ -97,7 +125,11 @@ class AssetMaintenanceRecordList(ListCreateAPI):
 
     queryset = AssetMaintenanceRecord.objects.select_related('work_order').all()
     serializer_class = AssetMaintenanceRecordSerializer
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
     filter_backends = SEARCH_ORDER_FILTER
     filterset_class = AssetMaintenanceRecordFilter
     search_fields = ['summary', 'details', 'performed_by']
@@ -110,7 +142,11 @@ class AssetMaintenanceRecordDetail(RetrieveUpdateDestroyAPI):
 
     queryset = AssetMaintenanceRecord.objects.all()
     serializer_class = AssetMaintenanceRecordSerializer
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
 
 
 # ---- URL patterns -----------------------------------------------------------
@@ -121,7 +157,9 @@ assets_api_urls = [
         'machines/',
         include([
             path('', AssetMachineList.as_view(), name='asset-machine-list'),
-            path('<int:pk>/', AssetMachineDetail.as_view(), name='asset-machine-detail'),
+            path(
+                '<int:pk>/', AssetMachineDetail.as_view(), name='asset-machine-detail'
+            ),
         ]),
     ),
     path(
@@ -134,8 +172,14 @@ assets_api_urls = [
     path(
         'maintenance/',
         include([
-            path('', AssetMaintenanceRecordList.as_view(), name='maintenance-record-list'),
-            path('<int:pk>/', AssetMaintenanceRecordDetail.as_view(), name='maintenance-record-detail'),
+            path(
+                '', AssetMaintenanceRecordList.as_view(), name='maintenance-record-list'
+            ),
+            path(
+                '<int:pk>/',
+                AssetMaintenanceRecordDetail.as_view(),
+                name='maintenance-record-detail',
+            ),
         ]),
     ),
 ]

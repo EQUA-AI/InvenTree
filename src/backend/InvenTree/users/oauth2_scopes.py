@@ -21,6 +21,7 @@ _roles = {
     'sales_order': 'Role Sales Orders',
     'return_order': 'Role Return Orders',
     'transfer_order': 'Role Transfer Orders',
+    'work_order': 'Role Work Orders',
 }
 _methods = {'view': 'GET', 'add': 'POST', 'change': 'PUT / PATCH', 'delete': 'DELETE'}
 

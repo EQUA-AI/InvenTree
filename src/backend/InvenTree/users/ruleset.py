@@ -20,6 +20,7 @@ class RuleSetEnum(StringEnum):
     SALES_ORDER = 'sales_order'
     RETURN_ORDER = 'return_order'
     TRANSFER_ORDER = 'transfer_order'
+    WORK_ORDER = 'work_order'
 
 
 # This is a list of all the ruleset choices available in the system.
@@ -36,6 +37,7 @@ RULESET_CHOICES = [
     (RuleSetEnum.SALES_ORDER, _('Sales Orders')),
     (RuleSetEnum.RETURN_ORDER, _('Return Orders')),
     (RuleSetEnum.TRANSFER_ORDER, _('Transfer Orders')),
+    (RuleSetEnum.WORK_ORDER, _('Work Orders')),
 ]
 
 # Ruleset names available in the system.
@@ -167,6 +169,20 @@ def get_ruleset_models() -> dict:
             'order_transferorder',
             'order_transferorderallocation',
             'order_transferorderlineitem',
+        ],
+        # Maintenance work orders (the Kanban board) and the equipment assets they
+        # are performed against. Before this ruleset existed, these endpoints
+        # guarded only with IsAuthenticatedOrReadScope -- any authenticated user
+        # could create, edit, move and archive any card, on any customer's machine.
+        #
+        # 'change' is what gates schedule editing: dragging a bar on the calendar
+        # or timeline is a change to the work order, not a distinct capability.
+        RuleSetEnum.WORK_ORDER: [
+            'tasks_kanbancard',
+            'tasks_kanbancardpart',
+            'assets_assetmachine',
+            'assets_assetmaintenancerecord',
+            'assets_machinepart',
         ],
     }
 

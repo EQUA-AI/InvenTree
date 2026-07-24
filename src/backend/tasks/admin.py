@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from .models import KanbanCard
+from .models import KanbanCard, KanbanColumn
 
 
 @admin.register(KanbanCard)
@@ -28,3 +28,12 @@ class KanbanCardAdmin(admin.ModelAdmin):
         'service_quote',
     )
     ordering = ('-updated_at',)
+
+
+@admin.register(KanbanColumn)
+class KanbanColumnAdmin(admin.ModelAdmin):
+    """Admin interface for board columns."""
+
+    list_display = ('label', 'key', 'color', 'order', 'is_default')
+    list_editable = ('order',)
+    ordering = ('order', 'key')

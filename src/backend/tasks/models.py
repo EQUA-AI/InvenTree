@@ -119,6 +119,26 @@ class KanbanCard(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     lifecycle_version = models.PositiveIntegerField(default=1)
     hold_reason = models.TextField(blank=True)
 
+    KIND_WORK_ORDER = 'work_order'
+    KIND_SUBTASK = 'subtask'
+    KIND_PROCUREMENT = 'procurement'
+    KIND_CHOICES = [
+        (KIND_WORK_ORDER, 'Work Order'),
+        (KIND_SUBTASK, 'Subtask'),
+        (KIND_PROCUREMENT, 'Procurement'),
+    ]
+
+    # A work order can fan out into child cards (§5.10), one of which may be a
+    # procurement task raised from a parts shortfall. Depth is exactly one: a
+    # child cannot itself have children (enforced in the command service). PROTECT
+    # so a parent with children cannot be deleted out from under them.
+    parent = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.PROTECT, related_name='children'
+    )
+    card_kind = models.CharField(
+        max_length=16, choices=KIND_CHOICES, default=KIND_WORK_ORDER, db_index=True
+    )
+
     class Meta:
         """Model metadata."""
 
@@ -138,6 +158,246 @@ class KanbanCard(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     def __str__(self) -> str:
         """Readable identity for admin and logs."""
         return self.title
+
+
+class KanbanColumn(models.Model):
+    """A persisted board column (work-order status lane).
+
+    Board columns used to live only in frontend ``useState``: adding, reordering
+    or deleting a column never reached the server, so a refresh reset the board to
+    four hardcoded defaults and any card whose ``status`` pointed at a custom
+    column silently vanished (its status string matched no rendered column).
+
+    Persisting them here fixes that. ``KanbanCard.status`` remains a free-text
+    field that stores this column's ``key``; the seed migration creates the four
+    original columns under their existing keys so every stored ``status`` keeps
+    resolving. There is deliberately no FK from ``KanbanCard.status`` to this
+    model yet -- that is a heavier migration tracked separately -- so nothing
+    enforces referential integrity at the database level, and code that maps a
+    card to its column must tolerate an unmatched key.
+    """
+
+    key = models.SlugField(
+        max_length=32,
+        unique=True,
+        verbose_name=_('Key'),
+        help_text=_('Stable identifier stored in KanbanCard.status'),
+    )
+    label = models.CharField(max_length=64, verbose_name=_('Label'))
+    color = models.CharField(
+        max_length=32,
+        default='gray',
+        blank=True,
+        verbose_name=_('Color'),
+        help_text=_('Mantine color name used for the column badge'),
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        db_index=True,
+        verbose_name=_('Order'),
+        help_text=_('Left-to-right position on the board'),
+    )
+    is_default = models.BooleanField(
+        default=False,
+        verbose_name=_('Default'),
+        help_text=_('Seeded system column; protected from deletion'),
+    )
+    is_terminal = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name=_('Terminal'),
+        help_text=_('The "done" column; a card enters it only via closeout'),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model metadata."""
+
+        ordering = ['order', 'key']
+        verbose_name = _('Kanban Column')
+        verbose_name_plural = _('Kanban Columns')
+
+    def __str__(self) -> str:
+        """Readable identity for admin and logs."""
+        return f'{self.label} ({self.key})'
+
+    @classmethod
+    def terminal_key(cls) -> str | None:
+        """Return the key of the terminal (done) column, or None if unset."""
+        terminal = (
+            cls.objects.filter(is_terminal=True).values_list('key', flat=True).first()
+        )
+        return terminal
+
+    def card_count(self, *, active_only: bool = True) -> int:
+        """Return the number of cards currently in this column."""
+        cards = KanbanCard.objects.filter(status=self.key)
+
+        if active_only:
+            cards = cards.filter(is_active=True)
+
+        return cards.count()
+
+
+def _default_windows() -> dict:
+    """Mon-Fri 09:00-17:00, the previous implicit assumption made explicit."""
+    return {str(day): [['09:00', '17:00']] for day in range(5)}
+
+
+class WorkingCalendar(models.Model):
+    """A named working-time definition for scheduling (S6, plan §5.5/§5.11).
+
+    Holds a per-day shift definition, a holiday exception list and an IANA
+    timezone. It answers *when is work possible*, which is separate from *what
+    clock a user reads times in* (that is a per-user display preference).
+
+    A calendar may be scoped to a machine, to a customer, or be the system
+    default. A card resolves to exactly one via machine → customer → default (see
+    ``tasks.services.calendars``). ``windows`` maps a weekday index as a *string*
+    ("0"=Monday … "6"=Sunday) to a list of ``["HH:MM", "HH:MM"]`` pairs, allowing
+    split shifts. ``holidays`` is a list of ISO date strings.
+    """
+
+    name = models.CharField(max_length=120, unique=True, verbose_name=_('Name'))
+    timezone = models.CharField(
+        max_length=64,
+        default='UTC',
+        verbose_name=_('Timezone'),
+        help_text=_('IANA timezone name, e.g. "America/New_York"'),
+    )
+    windows = models.JSONField(
+        default=_default_windows,
+        blank=True,
+        help_text=_('Weekday (0=Mon..6=Sun) to list of [open, close] time pairs'),
+    )
+    holidays = models.JSONField(
+        default=list, blank=True, help_text=_('List of ISO date strings')
+    )
+    is_default = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name=_('Default'),
+        help_text=_('The fallback calendar when nothing more specific matches'),
+    )
+    machine = models.ForeignKey(
+        'assets.AssetMachine',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='working_calendars',
+    )
+    customer = models.ForeignKey(
+        'company.Company',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='working_calendars',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model metadata."""
+
+        ordering = ['name']
+        verbose_name = _('Working Calendar')
+
+    def __str__(self) -> str:
+        """Readable identity for admin and logs."""
+        return f'{self.name} ({self.timezone})'
+
+    def clean(self):
+        """Validate the timezone and window structure before saving."""
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        from django.core.exceptions import ValidationError
+
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValidationError({
+                'timezone': f'Unknown timezone: {self.timezone}'
+            }) from exc
+
+        for key, pairs in (self.windows or {}).items():
+            if str(key) not in {str(d) for d in range(7)}:
+                raise ValidationError({'windows': f'Invalid weekday key: {key!r}'})
+            for pair in pairs:
+                if len(pair) != 2:
+                    raise ValidationError({
+                        'windows': f'Each window must be [open, close]: {pair!r}'
+                    })
+
+    def to_spec(self):
+        """Build the pure ``CalendarSpec`` the working_time helpers consume."""
+        from datetime import date, time
+
+        from tasks.services.working_time import CalendarSpec
+
+        def _time(value: str) -> time:
+            hour, minute = value.split(':')
+            return time(int(hour), int(minute))
+
+        windows = {
+            int(day): tuple(
+                (_time(open_str), _time(close_str)) for open_str, close_str in pairs
+            )
+            for day, pairs in (self.windows or {}).items()
+        }
+        holidays = frozenset(
+            date.fromisoformat(value) for value in (self.holidays or [])
+        )
+        return CalendarSpec(tzname=self.timezone, windows=windows, holidays=holidays)
+
+
+class KanbanCardDependency(models.Model):
+    """A scheduling dependency between two work orders (S6, plan §5.10).
+
+    The edge points from predecessor (``from_card``) to successor (``to_card``):
+    for the default finish-to-start type, ``from_card`` must finish before
+    ``to_card`` starts. ``lag_minutes`` is working-time slack applied after the
+    constraint (negative values are leads). The graph is kept acyclic by
+    service-level validation on creation.
+    """
+
+    TYPE_FS = 'FS'
+    TYPE_SS = 'SS'
+    TYPE_FF = 'FF'
+    TYPE_SF = 'SF'
+    TYPE_CHOICES = [
+        (TYPE_FS, 'Finish-to-Start'),
+        (TYPE_SS, 'Start-to-Start'),
+        (TYPE_FF, 'Finish-to-Finish'),
+        (TYPE_SF, 'Start-to-Finish'),
+    ]
+
+    from_card = models.ForeignKey(
+        KanbanCard, on_delete=models.CASCADE, related_name='dependencies_out'
+    )
+    to_card = models.ForeignKey(
+        KanbanCard, on_delete=models.CASCADE, related_name='dependencies_in'
+    )
+    dependency_type = models.CharField(
+        max_length=2, choices=TYPE_CHOICES, default=TYPE_FS
+    )
+    lag_minutes = models.IntegerField(
+        default=0, help_text='Working-time slack after the constraint (may be negative)'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model metadata."""
+
+        unique_together = [('from_card', 'to_card', 'dependency_type')]
+        ordering = ['created_at']
+        verbose_name = _('Work Order Dependency')
+        verbose_name_plural = _('Work Order Dependencies')
+
+    def __str__(self) -> str:
+        """Readable identity for admin and logs."""
+        return f'{self.from_card_id} {self.dependency_type} {self.to_card_id}'
 
 
 class KanbanCardPart(models.Model):
@@ -298,6 +558,7 @@ from tasks.procedure_models import (  # noqa: F401
 from tasks.workorder_models import (  # noqa: F401
     WorkOrderCloseout,
     WorkOrderCommand,
+    WorkOrderDeletionRecord,
     WorkOrderDeviation,
     WorkOrderEvent,
 )
