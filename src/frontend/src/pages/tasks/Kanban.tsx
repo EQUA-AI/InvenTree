@@ -21,7 +21,7 @@ import {
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
-import { useDebouncedValue } from '@mantine/hooks';
+import { useDebouncedValue, useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowLeft,
@@ -52,6 +52,7 @@ import type {
   AllocationStatus,
   KanbanCard,
   KanbanCardPart,
+  KanbanColumnRecord,
   KanbanPriority,
   KanbanStatus
 } from '@lib/types/Tasks';
@@ -82,6 +83,8 @@ interface Task {
   priority: KanbanPriority;
   dueDate: string | null;
   assignee: string;
+  machine: number | null;
+  machineName: string | null;
   tags: string[];
   company: string;
   companyContactName: string;
@@ -105,6 +108,7 @@ interface TaskFormValues {
   status: KanbanStatus;
   priority: KanbanPriority;
   assignee: string;
+  machine: string | null;
   tags: string[];
   dueDate: Date | null;
   company: string;
@@ -191,6 +195,8 @@ const convertCardToTask = (card: KanbanCard): Task => ({
   priority: card.priority as KanbanPriority,
   dueDate: card.due_date,
   assignee: card.assignee ?? '',
+  machine: card.machine ?? null,
+  machineName: card.machine_name ?? null,
   tags: card.tags ?? [],
   company: card.company ?? '',
   companyContactName: card.company_contact_name ?? '',
@@ -216,6 +222,7 @@ const formValuesToPayload = (values: TaskFormValues) => ({
   priority: values.priority,
   due_date: values.dueDate ? dayjs(values.dueDate).format('YYYY-MM-DD') : null,
   assignee: values.assignee,
+  machine: values.machine ? Number(values.machine) : null,
   tags: values.tags,
   company: values.company,
   company_contact_name: values.companyContactName,
@@ -228,6 +235,12 @@ export default function Kanban() {
   const api = useApi();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Below Mantine's `sm` breakpoint the size='lg' modals are unusable; go
+  // full-screen so forms are reachable on a phone. HTML5 drag between columns
+  // does not fire on touch anyway, so the per-card status Select remains the
+  // touch fallback for moving cards.
+  const isSmallScreen = useMediaQuery('(max-width: 48em)');
 
   const defaultColumns = useMemo<Column[]>(
     () => [
@@ -359,6 +372,75 @@ export default function Kanban() {
     setTasks(mapped);
   }, [cardsQuery.data]);
 
+  // Board columns are persisted server-side (kanban/columns/). Previously they
+  // lived only in useState, so add/reorder/delete never survived a refresh and a
+  // card in a custom column vanished. defaultColumns remains only as the initial
+  // render before this query resolves.
+  const columnsQuery = useQuery<
+    KanbanColumnRecord[],
+    Error,
+    KanbanColumnRecord[],
+    ['kanban-columns']
+  >({
+    queryKey: ['kanban-columns'],
+    queryFn: async () => {
+      try {
+        const response = await api.get<KanbanColumnRecord[]>(
+          apiUrl(ApiEndpoints.kanban_column_list)
+        );
+        return response.data ?? [];
+      } catch (error) {
+        showApiErrorMessage({
+          error,
+          title: t`Could not load board columns`
+        });
+        throw error;
+      }
+    }
+  });
+
+  useEffect(() => {
+    // Do not clobber an in-progress reorder with a server refetch; the reorder
+    // is persisted on save, after which this effect re-syncs to the server truth.
+    if (isReordering || !columnsQuery.data || columnsQuery.data.length === 0) {
+      return;
+    }
+
+    setColumns(
+      columnsQuery.data.map((column) => ({
+        id: column.key,
+        label: column.label,
+        color: column.color || 'gray'
+      }))
+    );
+  }, [columnsQuery.data, isReordering]);
+
+  // Machines to populate the (required) machine picker. There are few machines,
+  // so the whole list is fetched once rather than searched.
+  const machinesQuery = useQuery<
+    { pk: number; name: string; location: string }[],
+    Error,
+    { pk: number; name: string; location: string }[],
+    ['asset-machines']
+  >({
+    queryKey: ['asset-machines'],
+    queryFn: async () => {
+      const response = await api.get(apiUrl(ApiEndpoints.asset_machine_list));
+      return response.data ?? [];
+    }
+  });
+
+  const machineOptions = useMemo(
+    () =>
+      (machinesQuery.data ?? []).map((machine) => ({
+        value: String(machine.pk),
+        label: machine.location
+          ? `${machine.name} — ${machine.location}`
+          : machine.name
+      })),
+    [machinesQuery.data]
+  );
+
   useEffect(() => {
     const serverTags = Array.from(
       new Set(
@@ -401,6 +483,7 @@ export default function Kanban() {
       status: 'backlog',
       priority: 'medium',
       assignee: '',
+      machine: null,
       tags: [],
       dueDate: null,
       company: '',
@@ -414,7 +497,9 @@ export default function Kanban() {
         value.trim().length === 0
           ? t`Give the task a descriptive title.`
           : null,
-      status: (value) => (value ? null : t`Choose a column for this task.`)
+      status: (value) => (value ? null : t`Choose a column for this task.`),
+      // Every work order is anchored to a machine (backend enforces this too).
+      machine: (value) => (value ? null : t`Select the machine for this work.`)
     }
   });
 
@@ -638,6 +723,7 @@ export default function Kanban() {
       status: firstColumn as KanbanStatus,
       priority: 'medium',
       assignee: '',
+      machine: null,
       tags: [],
       dueDate: null,
       company: '',
@@ -659,6 +745,7 @@ export default function Kanban() {
       status: task.status,
       priority: task.priority,
       assignee: task.assignee,
+      machine: task.machine ? String(task.machine) : null,
       tags: task.tags,
       dueDate: task.dueDate ? dayjs(task.dueDate).toDate() : null,
       company: task.company,
@@ -726,56 +813,21 @@ export default function Kanban() {
         });
       }
 
-      /* ── Sync parts for the card ─────────────────── */
-      if (formParts.length > 0) {
-        const partsUrl = apiUrl(ApiEndpoints.kanban_card_parts).replace(
-          ':id',
-          String(cardId)
-        );
+      /* ── Reconcile the card's parts in one request ──────────────
+       * A single PUT sends the desired full set; the server creates new
+       * parts, updates changed quantities, deletes removed ones and returns
+       * the allocation summary. This replaces a per-part POST loop that could
+       * neither delete a removed part nor update an existing quantity. Always
+       * sent (even when empty) on edit, so clearing the last part persists. */
+      const shouldSyncParts = formParts.length > 0 || Boolean(editingTask);
 
-        // If editing, remove existing parts that were removed in the form
-        if (editingTask) {
-          const existingPartIds = (editingTask.parts ?? []).map(
-            (p) => p.partId
-          );
-          const formPartIds = formParts.map((p) => p.partId);
-          const removedPartIds = existingPartIds.filter(
-            (pid) => !formPartIds.includes(pid)
-          );
-
-          for (const removedPartId of removedPartIds) {
-            try {
-              const detailUrl = `${partsUrl}${removedPartId}/`;
-              // We need to find the KanbanCardPart id, but our API uses card_pk/parts/pk
-              // Actually the part detail URL uses <int:pk> where pk is the KanbanCardPart id
-              // We don't have that id, so we'll delete by fetching first
-              // For simplicity, let's just re-POST all parts — backend has unique_together
-            } catch {
-              // ignore cleanup errors
-            }
-          }
-        }
-
-        // Add/update each part
-        for (const fp of formParts) {
-          try {
-            await api.post(partsUrl, {
-              part: fp.partId,
-              quantity: fp.quantity
-            });
-          } catch {
-            // If already exists (unique constraint), try PATCH
-            // For now the backend get_or_create handles this
-          }
-        }
-
-        // Trigger allocation check
+      if (shouldSyncParts) {
         try {
-          const allocateUrl = apiUrl(ApiEndpoints.kanban_card_allocate).replace(
-            ':id',
-            String(cardId)
+          const partsUrl = apiUrl(ApiEndpoints.kanban_card_parts, cardId);
+          const allocResponse = await api.put(
+            partsUrl,
+            formParts.map((fp) => ({ part: fp.partId, quantity: fp.quantity }))
           );
-          const allocResponse = await api.post(allocateUrl);
           const allocData = allocResponse.data as {
             parts: KanbanCardPart[];
             warnings: string[];
@@ -797,8 +849,11 @@ export default function Kanban() {
               icon: <IconCircleCheck size={16} />
             });
           }
-        } catch {
-          // allocation check failed — non-critical
+        } catch (error) {
+          showApiErrorMessage({
+            error,
+            title: t`Could not save the parts for this task`
+          });
         }
       }
 
@@ -1000,22 +1055,34 @@ export default function Kanban() {
     const fallbackId = columns[columnIndex - 1].id;
     const affectedTasks = tasks.filter((task) => task.status === columnId);
 
+    // Reassign the column's cards to the fallback first: the server refuses to
+    // delete a column that still holds cards, so this is a precondition, not
+    // just tidy-up.
     await Promise.all(
       affectedTasks.map((task) =>
         handleStatusChange(task.id, fallbackId as KanbanStatus)
       )
     );
 
-    setColumns((currentColumns) =>
-      currentColumns.filter((column) => column.id !== columnId)
-    );
+    const record = columnsQuery.data?.find((column) => column.key === columnId);
 
-    setFilters((currentFilters) => ({
-      ...currentFilters,
-      column: currentFilters.column === columnId ? 'all' : currentFilters.column
-    }));
+    try {
+      if (record) {
+        await api.delete(apiUrl(ApiEndpoints.kanban_column_detail, record.id));
+      }
 
-    setColumnDeletionContext(null);
+      await queryClient.invalidateQueries({ queryKey: ['kanban-columns'] });
+
+      setFilters((currentFilters) => ({
+        ...currentFilters,
+        column:
+          currentFilters.column === columnId ? 'all' : currentFilters.column
+      }));
+
+      setColumnDeletionContext(null);
+    } catch (error) {
+      showApiErrorMessage({ error, title: t`Could not delete column` });
+    }
   };
 
   const closeDeleteColumnModal = () => {
@@ -1033,7 +1100,7 @@ export default function Kanban() {
     columnForm.reset();
   };
 
-  const handleColumnSubmit = columnForm.onSubmit((values) => {
+  const handleColumnSubmit = columnForm.onSubmit(async (values) => {
     const nextSlug = slugify(values.label);
 
     if (columns.some((column) => column.id === nextSlug)) {
@@ -1041,16 +1108,18 @@ export default function Kanban() {
       return;
     }
 
-    setColumns((current) => [
-      ...current,
-      {
-        id: nextSlug,
+    try {
+      await api.post(apiUrl(ApiEndpoints.kanban_column_list), {
+        key: nextSlug,
         label: values.label,
         color: values.color
-      }
-    ]);
+      });
 
-    closeColumnModal();
+      await queryClient.invalidateQueries({ queryKey: ['kanban-columns'] });
+      closeColumnModal();
+    } catch (error) {
+      showApiErrorMessage({ error, title: t`Could not create column` });
+    }
   });
 
   const renderPriorityLabel = (priority: KanbanPriority) => {
@@ -1075,9 +1144,18 @@ export default function Kanban() {
     setIsReordering(false);
   };
 
-  const saveColumnOrder = () => {
-    setColumns([...pendingColumnOrder]);
-    setIsReordering(false);
+  const saveColumnOrder = async () => {
+    const order = pendingColumnOrder.map((column) => column.id);
+
+    try {
+      await api.post(apiUrl(ApiEndpoints.kanban_column_reorder), { order });
+
+      setColumns([...pendingColumnOrder]);
+      setIsReordering(false);
+      await queryClient.invalidateQueries({ queryKey: ['kanban-columns'] });
+    } catch (error) {
+      showApiErrorMessage({ error, title: t`Could not save column order` });
+    }
   };
 
   const moveColumn = (index: number, direction: number) => {
@@ -1483,6 +1561,11 @@ export default function Kanban() {
                               )}
 
                               <Stack gap={2}>
+                                {task.machineName && (
+                                  <Text size='sm'>
+                                    {t`Machine`}: {task.machineName}
+                                  </Text>
+                                )}
                                 {task.company && (
                                   <Text size='sm'>
                                     {t`Company`}: {task.company}
@@ -1591,6 +1674,7 @@ export default function Kanban() {
         onClose={closeDeleteColumnModal}
         title={t`Delete column`}
         size='sm'
+        fullScreen={isSmallScreen}
       >
         {columnDeletionContext && (
           <Stack gap='md'>
@@ -1624,6 +1708,7 @@ export default function Kanban() {
         onClose={closeTaskModal}
         title={editingTask ? t`Edit task` : t`New task`}
         size='lg'
+        fullScreen={isSmallScreen}
       >
         <form onSubmit={handleTaskSubmit}>
           <Stack gap='md'>
@@ -1646,6 +1731,20 @@ export default function Kanban() {
               placeholder={t`What needs to get done?`}
               minRows={3}
               {...taskForm.getInputProps('description')}
+            />
+            <Select
+              label={t`Machine`}
+              placeholder={
+                machinesQuery.isLoading
+                  ? t`Loading machines…`
+                  : t`Select the machine this work is for`
+              }
+              data={machineOptions}
+              searchable
+              withAsterisk
+              nothingFoundMessage={t`No machines found`}
+              disabled={machinesQuery.isLoading}
+              {...taskForm.getInputProps('machine')}
             />
             <Group align='flex-end' gap='md'>
               <Select
@@ -1852,6 +1951,7 @@ export default function Kanban() {
         onClose={closeColumnModal}
         title={t`Add column`}
         size='sm'
+        fullScreen={isSmallScreen}
       >
         <form onSubmit={handleColumnSubmit}>
           <Stack gap='md'>

@@ -64,7 +64,9 @@ export const BuildDetail = Loadable(
   lazy(() => import('./pages/build/BuildDetail'))
 );
 
-export const TasksKanban = Loadable(lazy(() => import('./pages/tasks/Kanban')));
+export const TasksKanban = Loadable(
+  lazy(() => import('./pages/tasks/TasksIndex'))
+);
 
 export const WorkOrderDetail = Loadable(
   lazy(() => import('./pages/tasks/workorders/WorkOrderDetail'))

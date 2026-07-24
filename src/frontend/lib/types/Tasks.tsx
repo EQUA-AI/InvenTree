@@ -26,6 +26,23 @@ export interface KanbanCard {
   priority: KanbanPriority;
   due_date: string | null;
   assignee: string;
+  machine: number | null;
+  machine_name: string | null;
+  machine_location: string | null;
+  assigned_to: number | null;
+  assigned_to_username: string | null;
+  assigned_to_name: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  estimated_minutes: number | null;
+  work_order_type: string;
+  reference: string | null;
+  lifecycle_status: string;
+  lifecycle_version: number;
+  actual_started_at: string | null;
+  actual_completed_at: string | null;
+  parent: number | null;
+  card_kind: string;
   tags: string[];
   company: string;
   company_contact_name: string;
@@ -42,3 +59,15 @@ export type KanbanCardPayload = Omit<
   KanbanCard,
   'id' | 'created_at' | 'updated_at' | 'is_active' | 'parts'
 >;
+
+export interface KanbanColumnRecord {
+  id: number;
+  key: string;
+  label: string;
+  color: string;
+  order: number;
+  is_default: boolean;
+  card_count: number;
+  created_at: string;
+  updated_at: string;
+}

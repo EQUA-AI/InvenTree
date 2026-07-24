@@ -1,16 +1,13 @@
 import { t } from '@lingui/core/macro';
-import { Grid, Stack } from '@mantine/core';
-import {
-  IconInfoCircle,
-  IconListCheck,
-  IconTool
-} from '@tabler/icons-react';
-import AttachmentPanel from '../../components/panels/AttachmentPanel';
+import { Stack, Text } from '@mantine/core';
+import { IconInfoCircle, IconListCheck, IconTool } from '@tabler/icons-react';
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
+import AttachmentPanel from '../../components/panels/AttachmentPanel';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
+import type { PanelType } from '@lib/types/Panel';
 import {
   type DetailsField,
   DetailsTable
@@ -18,7 +15,6 @@ import {
 import { ItemDetailsGrid } from '../../components/details/ItemDetails';
 import InstanceDetail from '../../components/nav/InstanceDetail';
 import { PageDetail } from '../../components/nav/PageDetail';
-import type { PanelType } from '@lib/types/Panel';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useInstance } from '../../hooks/UseInstance';
 import { MachinePartTable } from '../../tables/assets/MachinePartTable';
@@ -27,10 +23,7 @@ import { MaintenanceRecordTable } from '../../tables/assets/MaintenanceRecordTab
 export default function MachineDetail() {
   const { id } = useParams();
 
-  const {
-    instance: machine,
-    instanceQuery
-  } = useInstance({
+  const { instance: machine, instanceQuery } = useInstance({
     endpoint: ApiEndpoints.asset_machine_list,
     pk: id,
     params: {}
@@ -43,11 +36,6 @@ export default function MachineDetail() {
         name: 'name',
         type: 'text',
         label: t`Name`
-      },
-      {
-        name: 'description',
-        type: 'text',
-        label: t`Description`
       },
       {
         name: 'active',
@@ -90,6 +78,31 @@ export default function MachineDetail() {
     []
   );
 
+  // Description is a free-text field: render it across the full panel width,
+  // wrapping on word boundaries rather than mid-word.
+  const detailsDescription: DetailsField[] = useMemo(
+    () => [
+      {
+        name: 'description',
+        type: 'text',
+        label: t`Description`,
+        value_formatter: () => (
+          <Text
+            size='sm'
+            style={{
+              whiteSpace: 'pre-wrap',
+              lineBreak: 'auto',
+              wordBreak: 'break-word'
+            }}
+          >
+            {machine?.description}
+          </Text>
+        )
+      }
+    ],
+    [machine?.description]
+  );
+
   const machinePanels: PanelType[] = useMemo(() => {
     return [
       {
@@ -98,14 +111,13 @@ export default function MachineDetail() {
         icon: <IconInfoCircle />,
         content: machine?.pk ? (
           <ItemDetailsGrid>
-            <Grid grow>
-              <Grid.Col span={6}>
-                <DetailsTable fields={detailsLeft} item={machine} />
-              </Grid.Col>
-              <Grid.Col span={6}>
-                <DetailsTable fields={detailsRight} item={machine} />
-              </Grid.Col>
-            </Grid>
+            <DetailsTable fields={detailsLeft} item={machine} />
+            <DetailsTable fields={detailsRight} item={machine} />
+            {!!machine.description && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <DetailsTable fields={detailsDescription} item={machine} />
+              </div>
+            )}
           </ItemDetailsGrid>
         ) : null
       },
@@ -130,18 +142,14 @@ export default function MachineDetail() {
         model_id: machine?.pk
       })
     ];
-  }, [machine, detailsLeft, detailsRight]);
+  }, [machine, detailsLeft, detailsRight, detailsDescription]);
 
   return (
-    <InstanceDetail
-      query={instanceQuery}
-    >
+    <InstanceDetail query={instanceQuery}>
       <Stack>
         <PageDetail
           title={machine?.name ?? t`Machine Detail`}
-          breadcrumbs={[
-            { name: t`Machines`, url: '/machines/index/' }
-          ]}
+          breadcrumbs={[{ name: t`Machines`, url: '/machines/index/' }]}
           actions={[]}
         />
         <PanelGroup
