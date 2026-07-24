@@ -29,9 +29,30 @@ authenticated_ai_app = AIBoundaryAuthMiddleware(ai_app)
 
 @asynccontextmanager
 async def lifespan(_: Starlette) -> AsyncIterator[None]:
-    """Run the mounted AIMMS application's startup and shutdown handlers."""
-    async with ai_app.router.lifespan_context(ai_app):
+    """Run the mounted AIMMS application's startup and shutdown handlers.
+
+    AI features are optional: a missing or invalid AI configuration (e.g. no
+    Azure OpenAI environment in CI or a bare deployment) must degrade to a
+    working InvenTree server with the AI mount unavailable, not kill the
+    whole ASGI application at startup.
+    """
+    import logging
+
+    context = ai_app.router.lifespan_context(ai_app)
+    started = False
+    try:
+        await context.__aenter__()
+        started = True
+    except Exception:
+        logging.getLogger('inventree').exception(
+            'AIMMS startup failed - continuing without AI features'
+        )
+
+    try:
         yield
+    finally:
+        if started:
+            await context.__aexit__(None, None, None)
 
 
 # Mount the FastAPI app under /api/ai
