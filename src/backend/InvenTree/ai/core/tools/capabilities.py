@@ -7,6 +7,7 @@ import inspect
 import json
 import logging
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import lru_cache
@@ -234,19 +235,175 @@ _NOUN_USE_RE = re.compile(r"\s+of\b", re.IGNORECASE)
 
 #: Compound nouns whose head word is also a write verb. "Show build order lines"
 #: and "List supplier purchase orders" are read requests, but "order" and
-#: "purchase" match the write pattern, so both currently route to a specialist
-#: and reach no tools at all. Masking the phrase leaves a genuine imperative
-#: ("create a purchase order") still matching on its own verb.
+#: "purchase" match the write pattern, so both would route to a specialist and
+#: misdirect the question. Whether a phrase is nominal is decided positionally
+#: in ``_mask_noun_phrases``: a clause-initial compound is verbal ("Return
+#: orders 4512 and 4513 to the supplier"), and an order-reference is nominal
+#: only at clause start or after a noun-context token ("show order so-100" vs
+#: "place order po-100").
 _NOUN_PHRASE_RE = re.compile(
     r"\b(?:purchase|sales|build|work|return)\s+orders?\b"
-    r"|\border\s+(?:lines?|status|number)\b",
+    r"|\border\s+(?:lines?|status|number)\b"
+    r"|\borders?\s+(?:#\d+|(?:po|so|wo|bo|mo|rma)-?\d+)\b",
+    re.IGNORECASE,
+)
+_ORDER_REF_RE = re.compile(r"\borders?\s+(?:#\d+|(?:po|so|wo|bo|mo|rma)-?\d+)\b", re.IGNORECASE)
+_ORDER_PART_RE = re.compile(r"\border\s+(?:lines?|status|number)\b", re.IGNORECASE)
+
+#: Light-verb writes whose action word is not itself in ``_WRITE_PATTERN``:
+#: "place an order", "process a return", "an order placed". Treated as write
+#: matches subject to question/request protection, so "was the order placed
+#: yesterday?" still reads.
+_LIGHT_VERB_WRITE_RE = re.compile(
+    r"\b(?:place|put\s+in|raise|submit|process|book|log|file)"
+    r"\s+(?:an?\s+|the\s+)?(?:orders?|returns?|purchases?)\b"
+    r"|\b(?:orders?|returns?|purchases?)\s+(?:placed|raised|submitted|processed|booked|logged|filed)\b",
     re.IGNORECASE,
 )
 
+#: R1 noun-context: an English imperative verb can never directly follow these
+#: tokens, so a write-pattern word right after one is a noun, adjective, or
+#: participle ("the return", "was marked", "show the transfer history").
+#: 'get' is deliberately absent (causative "get the order cancelled" is a write
+#: request) and so are 'first'/'next' (sentence-initial imperative adverbs:
+#: "first order 50 units" is an instruction).
+_NOUN_CONTEXT_TOKENS = frozenset(
+    "the a an any some no this that these those each every "  # noqa: SIM905 - grouped, format-stable
+    "my our your their its his her "
+    "of in on for from per about regarding "
+    "is are was were been being be "
+    "marked flagged "
+    "last latest recent previous open pending current "
+    "show list display view find check see".split()
+)
+#: 'as' is noun-context only after a state participle: "is po-100 marked as
+#: complete?" reads, while "record po-100 as complete" stays an instruction.
+_AS_PARTICIPLES = frozenset({"marked", "flagged", "listed", "shown", "recorded", "set"})
+_READ_LOOKUP_VERBS = frozenset({"show", "list", "display", "view", "find", "check", "see"})
+_SUBJECT_PRONOUNS = frozenset({"we", "i", "you", "they", "anyone", "anybody", "someone"})
 
-def _mask_noun_phrases(text: str) -> str:
-    """Blank compound nouns, preserving offsets so match positions stay valid."""
-    return _NOUN_PHRASE_RE.sub(lambda match: " " * (match.end() - match.start()), text)
+#: R3 clause machinery. Clauses split on sentence punctuation, dashes, and the
+#: comma-splice shapes that jam an imperative onto a question ("what's low,
+#: just order 50 more"); an appositive comma never splits because participles
+#: like 'marked' cannot match the base-form verb list.
+_CLAUSE_SPLIT_RE = re.compile(
+    r"[.!?;:]"
+    r"|\s+[-–—]+\s+|[–—]"  # noqa: RUF001 - literal en/em dashes are clause boundaries
+    r"|,\s*(?=(?:and|then|but|so|also|please)\b)"
+    r"|,\s*(?=(?:[\w']+\s+){0,2}(?:add|allocate|approve|archive|assign|attach|cancel|"
+    r"change|complete|convert|count|create|deactivate|delete|email|generate|install|"
+    r"issue|mark|merge|move|order|purchase|receive|remove|restore|return|send|"
+    r"serialize|set|split|transfer|uninstall|update)\b)",
+    re.IGNORECASE,
+)
+#: A clause is interrogative when it opens with a question shape, tolerating a
+#: short greeting/discourse prefix ("hey claude, did we receive ...").
+_INTERROGATIVE_RE = re.compile(
+    r"^\s*(?:(?:hi|hey|hello|ok|okay|hmm|so|and|but|also|btw|sorry|thanks|right|claude)\b[,\s]*){0,3}"
+    r"(?:"
+    r"what|which|who|whose|whom|"
+    r"was|were|did|does|is|are|am|has|"
+    r"(?:do|have)\s+(?:we|i|you|they|there|anyone|anybody)|"
+    r"how\s+(?:many|much|long|often|old|far|do|does|did|is|are|was|were|has|have|can|could|should|would|will)|"
+    r"(?:when|where|why)\s+(?:is|are|was|were|do|does|did|has|have|had|will|would|can|could|should)"
+    r")\b",
+    re.IGNORECASE,
+)
+#: Direct and indirect request forms. A request phrased as a question is still
+#: a request ("can you...", "is it possible to..."), so question protection is
+#: disabled for the whole message when one is present.
+_REQUEST_FORM_RE = re.compile(
+    r"\bplease\b|\b(?:can|could|will|would)\s+(?:you|u|someone|somebody)\b"
+    r"|\bare\s+you\s+able\b|\bis\s+it\s+possible\b|\bis\s+there\s+(?:a|any)\s+way\b"
+    r"|\bwould\s+it\s+be\s+possible\b|\bany\s+chance\b",
+    re.IGNORECASE,
+)
+#: A verb followed by a bare quantity reads as an imperative tail ("order 50
+#: more") -- used to detect imperatives spliced into questions without
+#: punctuation, and reorder requests on an order reference.
+_IMPERATIVE_TAIL_RE = re.compile(r"\s+\d|\s+(?:more|another)\b", re.IGNORECASE)
+
+
+def _preceding_token(text: str, pos: int) -> str | None:
+    """The whitespace-separated token immediately before ``pos``, or ``None``."""
+    end = pos
+    while end > 0 and text[end - 1].isspace():
+        end -= 1
+    if end == pos:  # no whitespace between the token and the match position
+        return None
+    begin = end
+    while begin > 0 and not text[begin - 1].isspace():
+        begin -= 1
+    return text[begin:end] if begin < end else None
+
+
+def _noun_context_before(text: str, pos: int) -> bool:
+    """R1: whether grammar forbids an imperative at ``pos`` (O(1) per match)."""
+    token = _preceding_token(text, pos)
+    if token is None:
+        return False
+    if token in _NOUN_CONTEXT_TOKENS:
+        return True
+    if token == "as":
+        idx = text.rfind(token, 0, pos)
+        return _preceding_token(text, idx) in _AS_PARTICIPLES
+    return False
+
+
+def _clause_spans(text: str) -> list[tuple[int, int]]:
+    """Non-empty clause spans of ``text`` in order."""
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for boundary in _CLAUSE_SPLIT_RE.finditer(text):
+        if boundary.start() > start:
+            spans.append((start, boundary.start()))
+        start = boundary.end()
+    if start < len(text):
+        spans.append((start, len(text)))
+    return spans or [(0, len(text))]
+
+
+def _first_token(text: str, span: tuple[int, int]) -> str:
+    clause = text[span[0] : span[1]].lstrip()
+    head = clause.split(" ", 1)[0] if clause else ""
+    return head.strip(",")
+
+
+def _mask_noun_phrases(text: str, clauses: list[tuple[int, int]] | None = None) -> str:
+    """Blank nominal compounds only, preserving offsets.
+
+    Verbal uses keep their write signal: a clause-initial compound ("Return
+    orders 4512 ... to the supplier") and an order-reference in verb position
+    ("place order po-100", "ship order so-100") are not masked.
+    """
+    if clauses is None:
+        clauses = _clause_spans(text)
+    starts = [span[0] for span in clauses]
+    question = [bool(_INTERROGATIVE_RE.match(text[a:b])) for a, b in clauses]
+    read_led = [_first_token(text, span) in _READ_LOOKUP_VERBS for span in clauses]
+
+    def clause_index(pos: int) -> int:
+        return max(0, bisect_right(starts, pos) - 1)
+
+    def replace(match: re.Match) -> str:
+        blank = " " * (match.end() - match.start())
+        idx = clause_index(match.start())
+        phrase = match.group(0)
+        if _ORDER_PART_RE.fullmatch(phrase):
+            return blank  # 'order lines/status/number' is always nominal
+        if _ORDER_REF_RE.fullmatch(phrase):
+            tail = text[match.end() :]
+            if _IMPERATIVE_TAIL_RE.match(tail) or re.match(r"\s+again\b", tail, re.IGNORECASE):
+                return phrase  # reorder request: "order po-100 again"
+            lead = text[clauses[idx][0] : match.start()]
+            if not lead.strip() or _noun_context_before(text, match.start()):
+                return blank  # elliptical lookup: "order so-100", "show order so-100"
+            return phrase
+        if question[idx] or read_led[idx] or _noun_context_before(text, match.start()):
+            return blank
+        return phrase
+
+    return _NOUN_PHRASE_RE.sub(replace, text)
 
 
 #: The grammar of an aggregate, threshold, ranking, or grouping question,
@@ -289,22 +446,65 @@ def _write_intent(text: str) -> str | None:
 
     Misclassification here is asymmetric. Selection already restricts to
     READ-effect packs, so a write mistaken for a read merely offers read tools,
-    while a read mistaken for a write offers nothing at all and the turn dies.
-    Ambiguous verbs therefore resolve toward read -- but only on evidence.
+    while a read mistaken for a write is misrouted to a specialist (under wf8
+    enforce, a leaked imperative with no scoring domain term additionally lands
+    on a zero-tool clarify agent rather than the full-toolset specialist).
+    Ambiguous and grammar-context matches therefore resolve toward read -- but
+    only on evidence: a noun context (R1), a nominal compound (the positional
+    mask), or an interrogative clause that is not a request form (R3).
     """
-    text = _mask_noun_phrases(text)
-    matches = list(_WRITE_PATTERN.finditer(text))
-    if not matches:
+    clauses = _clause_spans(text)
+    masked = _mask_noun_phrases(text, clauses)
+
+    matches = list(_WRITE_PATTERN.finditer(masked))
+    light = list(_LIGHT_VERB_WRITE_RE.finditer(masked))
+    if not matches and not light:
         return None
-    decisive = [match for match in matches if match.group(0).lower() not in _AMBIGUOUS_WRITE_VERBS]
+
+    if _REQUEST_FORM_RE.search(masked) is not None:
+        question_spans: list[tuple[int, int]] = []
+    else:
+        question_spans = [
+            span for span in clauses if _INTERROGATIVE_RE.match(masked[span[0] : span[1]])
+        ]
+    question_starts = [span[0] for span in question_spans]
+
+    def in_question_span(pos: int) -> bool:
+        idx = bisect_right(question_starts, pos) - 1
+        return idx >= 0 and pos < question_spans[idx][1]
+
+    def protected(match: re.Match, *, noun_context: bool = True) -> bool:
+        if noun_context and _noun_context_before(masked, match.start()):  # R1
+            return True
+        if in_question_span(match.start()):  # R3
+            if _IMPERATIVE_TAIL_RE.match(masked[match.end() :]):
+                # "which parts are low order 50 of each" splices an imperative
+                # into a question; "did we order 500 units?" continues it.
+                return _preceding_token(masked, match.start()) in _SUBJECT_PRONOUNS
+            return True
+        return False
+
+    # Light-verb matches skip R1: the reversed form ("an order placed") is
+    # inherently determiner-preceded; only a question protects it.
+    surviving_light = [m for m in light if not protected(m, noun_context=False)]
+    if surviving_light:
+        return surviving_light[0].group(0).lower().split()[0]
+
+    verb_matches = [m for m in matches if not protected(m)]
+    if not verb_matches:
+        return None
+    decisive = [m for m in verb_matches if m.group(0).lower() not in _AMBIGUOUS_WRITE_VERBS]
     if decisive:
         return decisive[0].group(0).lower()
-    for match in matches:
-        trailing = text[match.end() :]
-        residual = f"{text[: match.start()]} {trailing}"
-        if _NOUN_USE_RE.match(trailing) or _STRICT_READ_SHAPE_RE.search(residual):
+    # Ambiguous verbs yield to one explicit read signal. The strict-shape search
+    # runs once over the whole masked text: its vocabulary is disjoint from the
+    # verb list, so excluding the match span is unnecessary (the old per-match
+    # residual rebuild was quadratic on verb-dense input).
+    strict_shape = _STRICT_READ_SHAPE_RE.search(masked) is not None
+    for m in verb_matches:
+        if _NOUN_USE_RE.match(masked[m.end() :]) or strict_shape:
             return None
-    return matches[0].group(0).lower()
+    return verb_matches[0].group(0).lower()
 
 
 def tool_name(tool: Any) -> str:

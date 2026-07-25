@@ -250,8 +250,152 @@ def test_compound_order_nouns_are_not_write_intent():
         assert not select_capabilities(query, authenticated=True).requires_specialist, query
 
     # The imperative still routes to a specialist on its own verb.
-    for query in ("create a purchase order", "order 10 units of ABC-123", "return stock"):
+    for query in (
+        "create a purchase order",
+        "order 10 units of ABC-123",
+        "return stock",
+        "receive the shipment",
+        "issue parts to the build",
+        "complete the work order",
+    ):
         assert select_capabilities(query, authenticated=True).requires_specialist, query
+
+
+#: Noun/participle uses of write-pattern words and questions about actions.
+#: Every phrasing here used to die to a specialist; each must now reach tools
+#: or, lacking any domain term, a clarification -- never requires_specialist.
+READ_PHRASINGS_WITH_WRITE_WORDS = (
+    # review residuals
+    "what's the status of order 42",
+    "How many parts did we receive this week?",
+    "was PO-100 marked complete?",
+    "items in order SO-100",
+    # noun uses
+    "any update on po-100?",
+    "is there an issue with the bom?",
+    "show the transfer history for part 42",
+    "show the email from acme",
+    "show me the return orders",
+    "what's the purchase order status",
+    "the purchase order for acme",
+    "show the last order",
+    "last purchase price for part 42",
+    # questions about actions
+    "is the build complete?",
+    "did we receive the shipment yesterday?",
+    "when did we receive po-100?",
+    "was stock split into batches?",
+    "is the location set to bin a?",
+    "who marked po-100 complete",
+    "how many did we order last month",
+    "did we order 500 units last month?",
+    "is po-100 marked as complete?",
+    "was po-100, the big one, marked complete?",
+    "was the order placed yesterday?",
+    # discourse-prefixed questions
+    "hey claude, did we receive the shipment?",
+    "and how many parts did we receive this week?",
+    "so did we order more m3 screws?",
+    "ok, was po-100 marked complete?",
+    # gated order references (nominal position)
+    "show order so-100",
+    "order so-100",
+)
+
+#: Imperatives -- including request forms, splices, discourse prefixes, light
+#: verbs, and the compound phrasings the earlier blind mask regressed -- that
+#: must always route to a specialist.
+IMPERATIVE_WRITE_PHRASINGS = (
+    # request forms, direct and indirect
+    "can you receive the shipment?",
+    "could you complete the work order for me",
+    "please order 10 units of M3 screws",
+    "can you cancel po-100",
+    "are you able to cancel po-100?",
+    "is it possible to order 100 more units of part 42?",
+    "is there any way to receive this shipment today?",
+    "would it be possible to cancel po-100",
+    "any chance you can order more m4 bolts",
+    # imperatives spliced onto questions
+    "what's low on stock, and order more",
+    "what's low, order more",
+    "what's low, just order 50 more",
+    "what's low - order 50 more",
+    "what's low — order 50 more",
+    "what's low on stock order 50 more",
+    "which parts are low order 50 of each",
+    "how many m3 screws do we have order 100 more",
+    "what needs restocking? also, order more m3 screws",
+    # discourse-prefixed imperatives
+    "so order more m3 screws",
+    "hey claude, receive the shipment",
+    "first order 50 units of M3 screws",
+    "next order 50 units",
+    # light verbs and verb-position order references
+    "place an order for 50 m3 screws",
+    "place order po-100",
+    "please place order po-100 with the supplier",
+    "ship order so-100",
+    "can you get order po-100 cancelled",
+    "process a return",
+    "i'd like an order placed",
+    "order po-100 again",
+    # verbal compounds (regressed by the earlier blind mask; restored)
+    "Return orders 4512 and 4513 to the supplier",
+    "return orders to the supplier",
+    "ship sales order 55",
+    "Purchase order 500 units of M3 screws from Acme",
+    "build order 300 more fasteners",
+    # participle-anchored 'as' stays write in verb position
+    "record po-100 as complete",
+    "flag part 5 as complete",
+    "Would you mind cancelling sales order 88?",
+)
+
+
+@pytest.mark.parametrize("query", READ_PHRASINGS_WITH_WRITE_WORDS)
+def test_noun_and_question_uses_of_write_words_are_not_write_intent(query):
+    profile = ALL_VIEW_PROFILE | frozenset({("email", "view")})
+    selected = select_capabilities(query, profile=profile, authenticated=True)
+
+    assert not selected.requires_specialist, (query, selected.reason)
+    assert selected.tools or selected.clarification_required, query
+
+
+@pytest.mark.parametrize("query", IMPERATIVE_WRITE_PHRASINGS)
+def test_request_forms_and_spliced_imperatives_stay_specialist(query):
+    selected = select_capabilities(query, profile=ALL_VIEW_PROFILE, authenticated=True)
+
+    assert selected.requires_specialist, (query, selected.pack_ids)
+
+
+def test_bare_order_reference_asks_for_clarification():
+    # No pack term matches a bare numeric order id; the order type is genuinely
+    # unknown, so asking beats both dying to a specialist and guessing.
+    selected = select_capabilities(
+        "what's the status of order 42", profile=ALL_VIEW_PROFILE, authenticated=True
+    )
+
+    assert not selected.requires_specialist
+    assert selected.clarification_required
+
+
+def test_write_intent_is_linear_on_pathological_input():
+    """The classifier must not stall the async turn path on pasted walls of text.
+
+    The old per-match residual rebuild was quadratic ('count '*1667 took
+    seconds); the reworked rules complete in milliseconds.
+    """
+    import time
+
+    from ai.core.tools.capabilities import _write_intent
+
+    for payload in ("add " * 2500, "count " * 1667, "did order? " * 910):
+        normalized = " ".join(payload.casefold().split())
+        started = time.perf_counter()
+        _write_intent(normalized)
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        assert elapsed_ms < 100, elapsed_ms
 
 
 def test_sql_is_never_the_only_inventory_tool():
