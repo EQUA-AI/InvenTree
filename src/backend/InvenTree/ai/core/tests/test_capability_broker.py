@@ -201,7 +201,7 @@ AGGREGATE_PHRASINGS = (
     "Which fastener has the highest stock?",
     "How much stock do we have per location?",
     "Sum the stock quantity for all fasteners",
-    "how many fastners over 2000",
+    "how many fastners over 2000",  # codespell:ignore fastners
     "qty > 2000 fastenrs",
     "anything over 2000?",
 )
@@ -237,9 +237,7 @@ def test_no_ordinary_question_is_left_without_tools(query):
 def test_count_reads_as_a_question_only_on_an_explicit_read_signal():
     # "count" is genuinely both: the stocktake verb and the counting question.
     assert select_capabilities("count stock", authenticated=True).requires_specialist
-    assert select_capabilities(
-        "count stock in every bin", authenticated=True
-    ).requires_specialist
+    assert select_capabilities("count stock in every bin", authenticated=True).requires_specialist
 
     for query in ("count the fasteners with stock over 2000", "count of fasteners"):
         assert not select_capabilities(query, authenticated=True).requires_specialist, query
@@ -401,7 +399,9 @@ def test_write_intent_is_linear_on_pathological_input():
 def test_sql_is_never_the_only_inventory_tool():
     # Only the shape matched, so analytics would otherwise be selected alone and
     # every answer would have to be hand-written SQL.
-    selected = select_capabilities("anything over 2000?", profile=ALL_VIEW_PROFILE, authenticated=True)
+    selected = select_capabilities(
+        "anything over 2000?", profile=ALL_VIEW_PROFILE, authenticated=True
+    )
 
     assert "query_database" in selected.tool_ids
     assert {"search_parts", "get_stock_levels"} <= set(selected.tool_ids)
@@ -444,7 +444,7 @@ def test_lexicon_variants_reject_collision_prone_names_before_deriving_forms():
     assert _lexicon_variants("Hydraulic Seals") == {"hydraulic seals", "hydraulic seal"}
 
     # Rejected on the name itself. Filtering only the derived forms would let a
-    # stop-listed "Misc" back in as "miscs", and a too-short "Box" as "boxs".
+    # stop-listed "Misc" back in as "miscs", and a too-short "Box" as "boxs".  # codespell:ignore boxs
     assert _lexicon_variants("Misc") == set()
     assert _lexicon_variants("Parts") == set()
     assert _lexicon_variants("Box") == set()
@@ -613,9 +613,7 @@ def test_tool_budget_holds_for_every_selectable_pack_combination():
     """
     from itertools import combinations
 
-    sizes = {
-        pack_id: len(spec[1]) for pack_id, spec in capabilities._PACK_SPECS.items()
-    }
+    sizes = {pack_id: len(spec[1]) for pack_id, spec in capabilities._PACK_SPECS.items()}
     worst = 0
     for primary, adjacent in capabilities._ADJACENT_PACKS.items():
         for width in range(min(2, len(adjacent)) + 1):

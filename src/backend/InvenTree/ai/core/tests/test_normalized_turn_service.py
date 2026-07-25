@@ -880,9 +880,7 @@ class ConversationHistoryTests(SimpleTestCase):
             def recent_messages(self, thread_id, limit, *, exclude_latest=0):
                 calls.append((thread_id, limit, exclude_latest))
                 return [
-                    SimpleNamespace(
-                        role="user", content="How many fasteners are in stock?"
-                    ),
+                    SimpleNamespace(role="user", content="How many fasteners are in stock?"),
                     SimpleNamespace(role="assistant", content="Four parts carry them."),
                     SimpleNamespace(role="user", content="   "),
                 ]
@@ -890,9 +888,7 @@ class ConversationHistoryTests(SimpleTestCase):
         service = _TestTurnService(workflow_factory=lambda: None)
         settings = SimpleNamespace(chat_history_turns=6)
         with patch("ai.core.config.get_settings", return_value=settings):
-            history = asyncio.run(
-                service._conversation_history(_Repository(), "thread_history")
-            )
+            history = asyncio.run(service._conversation_history(_Repository(), "thread_history"))
 
         # begin_turn has already stored this turn's question, so the newest row is
         # excluded rather than replayed back at the agent as if it were context.
@@ -915,9 +911,7 @@ class ConversationHistoryTests(SimpleTestCase):
         service = _TestTurnService(workflow_factory=lambda: None)
         settings = SimpleNamespace(chat_history_turns=0)
         with patch("ai.core.config.get_settings", return_value=settings):
-            history = asyncio.run(
-                service._conversation_history(_Repository(), "thread_history")
-            )
+            history = asyncio.run(service._conversation_history(_Repository(), "thread_history"))
 
         self.assertEqual(history, [])
 
@@ -931,9 +925,7 @@ class ConversationHistoryTests(SimpleTestCase):
         service = _TestTurnService(workflow_factory=lambda: None)
         settings = SimpleNamespace(chat_history_turns=6)
         with patch("ai.core.config.get_settings", return_value=settings):
-            history = asyncio.run(
-                service._conversation_history(_Repository(), "thread_history")
-            )
+            history = asyncio.run(service._conversation_history(_Repository(), "thread_history"))
 
         # A lookup answered without context beats a turn that fails outright.
         self.assertEqual(history, [])

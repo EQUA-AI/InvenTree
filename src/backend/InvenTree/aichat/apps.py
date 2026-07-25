@@ -38,7 +38,10 @@ class AIChatConfig(AppConfig):
                 sender=PartCategory,
                 dispatch_uid='aichat.capability_category_lexicon',
             )
-        except (ImportError, RuntimeError) as exc:  # pragma: no cover - part app absent in AI-only settings
+        except (
+            ImportError,
+            RuntimeError,
+        ) as exc:  # pragma: no cover - part app absent in AI-only settings
             # Expected in AI-only deployments/tests where the part app is not
             # installed; the lexicon fails open, so this is informational.
             logger.info(

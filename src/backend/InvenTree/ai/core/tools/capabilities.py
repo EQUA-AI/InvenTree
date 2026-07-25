@@ -806,30 +806,28 @@ def category_lexicon_enabled() -> bool:
 #: Category names below this length, or in this stop list, are too collision-prone
 #: to be evidence: a category called "Misc" or "Parts" would fire on any sentence.
 _LEXICON_MIN_LENGTH = 4
-_LEXICON_STOPWORDS = frozenset(
-    {
-        "assemblies",
-        "assembly",
-        "component",
-        "components",
-        "general",
-        "item",
-        "items",
-        "material",
-        "materials",
-        "misc",
-        "other",
-        "part",
-        "parts",
-        "product",
-        "products",
-        "spare",
-        "spares",
-        "stock",
-        "supplies",
-        "tools",
-    }
-)
+_LEXICON_STOPWORDS = frozenset({
+    "assemblies",
+    "assembly",
+    "component",
+    "components",
+    "general",
+    "item",
+    "items",
+    "material",
+    "materials",
+    "misc",
+    "other",
+    "part",
+    "parts",
+    "product",
+    "products",
+    "spare",
+    "spares",
+    "stock",
+    "supplies",
+    "tools",
+})
 _CATEGORY_LEXICON_CACHE_KEY = "aimms:capability:category_lexicon:v1"
 _CATEGORY_LEXICON_TTL_SECONDS = 600
 
