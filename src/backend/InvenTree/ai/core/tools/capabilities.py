@@ -216,11 +216,21 @@ _ADJACENT_PACKS: dict[str, frozenset[str]] = {
     }),
 }
 
+#: Base verb forms plus gerunds: request shells take gerund complements
+#: ("would you mind archiving card 12?"), which carry the same write intent.
+#: Plural/-ed forms are deliberately absent -- "-s" forms are usually nouns
+#: ("returns", "orders") and "-ed" forms are usually participles in questions
+#: ("was the stock count updated?").
 _WRITE_PATTERN = re.compile(
     r"\b(add|allocate|approve|archive|assign|attach|cancel|change|complete|convert|"
     r"count|create|deactivate|delete|email|generate|install|issue|mark|merge|move|"
     r"order|purchase|receive|remove|restore|return|send|serialize|set|split|transfer|"
-    r"uninstall|update)\b",
+    r"uninstall|update|"
+    r"adding|allocating|approving|archiving|assigning|attaching|cancelling|canceling|changing|"
+    r"completing|converting|counting|creating|deactivating|deleting|emailing|"
+    r"generating|installing|issuing|marking|merging|moving|ordering|purchasing|"
+    r"receiving|removing|restoring|returning|sending|serializing|setting|splitting|"
+    r"transferring|uninstalling|updating)\b",
     re.IGNORECASE,
 )
 
@@ -228,7 +238,7 @@ _WRITE_PATTERN = re.compile(
 #: 2000" is a question; "count stock in bin A-3" is a stocktake. Only these verbs
 #: are eligible to be re-read as questions, and only on an explicit read signal
 #: that is not the verb itself.
-_AMBIGUOUS_WRITE_VERBS = frozenset({"count"})
+_AMBIGUOUS_WRITE_VERBS = frozenset({"count", "counting"})
 
 #: A verb immediately followed by "of" is being used as a noun ("count of parts").
 _NOUN_USE_RE = re.compile(r"\s+of\b", re.IGNORECASE)
@@ -255,8 +265,9 @@ _ORDER_PART_RE = re.compile(r"\border\s+(?:lines?|status|number)\b", re.IGNORECA
 #: matches subject to question/request protection, so "was the order placed
 #: yesterday?" still reads.
 _LIGHT_VERB_WRITE_RE = re.compile(
-    r"\b(?:place|put\s+in|raise|submit|process|book|log|file)"
-    r"\s+(?:an?\s+|the\s+)?(?:orders?|returns?|purchases?)\b"
+    r"\b(?:place|put\s+in|raise|submit|process|book|log|file|start|begin|initiate)"
+    r"\s+(?:an?\s+|the\s+)?(?:purchase\s+|sales\s+)?(?:orders?|returns?|purchases?)\b"
+    r"|\bput\s+(?:an?\s+|the\s+)?(?:purchase\s+|sales\s+)?(?:orders?|returns?)\s+in\b"
     r"|\b(?:orders?|returns?|purchases?)\s+(?:placed|raised|submitted|processed|booked|logged|filed)\b",
     re.IGNORECASE,
 )
@@ -274,6 +285,7 @@ _NOUN_CONTEXT_TOKENS = frozenset(
     "is are was were been being be "
     "marked flagged "
     "last latest recent previous open pending current "
+    "average total sum highest lowest maximum minimum "
     "show list display view find check see".split()
 )
 #: 'as' is noun-context only after a state participle: "is po-100 marked as
@@ -292,6 +304,12 @@ _CLAUSE_SPLIT_RE = re.compile(
     r"|,\s*(?=(?:and|then|but|so|also|please)\b)"
     r"|,\s*(?=(?:[\w']+\s+){0,2}(?:add|allocate|approve|archive|assign|attach|cancel|"
     r"change|complete|convert|count|create|deactivate|delete|email|generate|install|"
+    r"issue|mark|merge|move|order|purchase|receive|remove|restore|return|send|"
+    r"serialize|set|split|transfer|uninstall|update)\b)"
+    # A bare 'and'/'then' directly before a write verb or verbal compound starts
+    # a new clause ("check stock then return orders 4512 to acme").
+    r"|\s+(?:and|then)\s+(?=(?:add|allocate|approve|archive|assign|attach|cancel|"
+    r"change|complete|convert|create|deactivate|delete|email|generate|install|"
     r"issue|mark|merge|move|order|purchase|receive|remove|restore|return|send|"
     r"serialize|set|split|transfer|uninstall|update)\b)",
     re.IGNORECASE,
@@ -318,10 +336,40 @@ _REQUEST_FORM_RE = re.compile(
     r"|\bwould\s+it\s+be\s+possible\b|\bany\s+chance\b",
     re.IGNORECASE,
 )
-#: A verb followed by a bare quantity reads as an imperative tail ("order 50
-#: more") -- used to detect imperatives spliced into questions without
-#: punctuation, and reorder requests on an order reference.
-_IMPERATIVE_TAIL_RE = re.compile(r"\s+\d|\s+(?:more|another)\b", re.IGNORECASE)
+#: An order reference followed by a quantity or urgency tail is a reorder or
+#: submit request, not an elliptical lookup ("order po-100 again", "order
+#: po-100 asap").
+_ORDER_REF_ACTION_TAIL_RE = re.compile(
+    r"\s+\d|\s+(?:more|another|again|now|asap|today|immediately|urgently)\b",
+    re.IGNORECASE,
+)
+#: Do-support and modal auxiliaries demand a following bare verb, so inside a
+#: question "did <subject> <verb>" the verb belongs to the question ("did the
+#: warehouse transfer 200 units?"). Be-forms do not: "which bins are empty move
+#: stock there" completes at 'empty', making 'move' a spliced imperative.
+_DO_MODAL_AUX = frozenset(
+    "do does did will would can could should shall must may might".split()  # noqa: SIM905
+)
+#: Tokens that read as verbs when standing between an auxiliary and a match --
+#: if one intervenes, the auxiliary's verb slot is already taken and the match
+#: is a spliced imperative ("how many m3 screws do we have order 100 more").
+_INTERVENING_VERB_TOKENS = frozenset(
+    "have has had be been being get got make made take took is are was were".split()  # noqa: SIM905
+)
+#: A tail beginning with a preposition/particle or a temporal adverb marks a
+#: participle or question continuation ("was stock split INTO batches?", "was
+#: the order placed YESTERDAY?") rather than an imperative object.
+_PROTECT_TAIL_RE = re.compile(
+    r"\s+(?:into|to|in|on|at|from|by|with|as|of|off|up|out|back|over|under|per|for|"
+    r"aside|down|away|"
+    r"yesterday|today|tomorrow|this|last|earlier|recently|already|then|"
+    r"correctly|properly|successfully|"
+    r"\w+ed)\b",  # a participle tail marks a noun use: "was the stock count updated?"
+    re.IGNORECASE,
+)
+#: "any chance OF cancelling po-100" is a request: 'of' after these heads does
+#: not shield a gerund the way a plain preposition shields a noun.
+_REQUEST_OF_HEADS = frozenset({"chance", "mind", "way", "possibility", "instead"})
 
 
 def _preceding_token(text: str, pos: int) -> str | None:
@@ -393,13 +441,19 @@ def _mask_noun_phrases(text: str, clauses: list[tuple[int, int]] | None = None) 
             return blank  # 'order lines/status/number' is always nominal
         if _ORDER_REF_RE.fullmatch(phrase):
             tail = text[match.end() :]
-            if _IMPERATIVE_TAIL_RE.match(tail) or re.match(r"\s+again\b", tail, re.IGNORECASE):
-                return phrase  # reorder request: "order po-100 again"
+            if _ORDER_REF_ACTION_TAIL_RE.match(tail):
+                return phrase  # reorder/submit request: "order po-100 again/asap"
             lead = text[clauses[idx][0] : match.start()]
             if not lead.strip() or _noun_context_before(text, match.start()):
                 return blank  # elliptical lookup: "order so-100", "show order so-100"
             return phrase
         if question[idx] or read_led[idx] or _noun_context_before(text, match.start()):
+            return blank
+        # A verbal compound needs an object tail within its clause ("Return
+        # orders 4512 ... to the supplier"); a clause-final compound is a plain
+        # noun ("list parts and purchase orders").
+        clause_tail = text[match.end() : clauses[idx][1]]
+        if not clause_tail.strip():
             return blank
         return phrase
 
@@ -457,7 +511,10 @@ def _write_intent(text: str) -> str | None:
     masked = _mask_noun_phrases(text, clauses)
 
     matches = list(_WRITE_PATTERN.finditer(masked))
-    light = list(_LIGHT_VERB_WRITE_RE.finditer(masked))
+    # Light verbs match the unmasked text: "put a purchase order in" masks its
+    # compound, but the surrounding construction is still a write request.
+    # Offsets stay valid because masking only blanks in place.
+    light = list(_LIGHT_VERB_WRITE_RE.finditer(text))
     if not matches and not light:
         return None
 
@@ -469,20 +526,53 @@ def _write_intent(text: str) -> str | None:
         ]
     question_starts = [span[0] for span in question_spans]
 
-    def in_question_span(pos: int) -> bool:
+    def in_question_span(pos: int) -> int:
         idx = bisect_right(question_starts, pos) - 1
-        return idx >= 0 and pos < question_spans[idx][1]
+        if idx >= 0 and pos < question_spans[idx][1]:
+            return idx
+        return -1
+
+    def question_protects(match: re.Match) -> bool:
+        """Whether the question owns this verb, or it is a spliced imperative.
+
+        The verb belongs to the question when (a) a subject pronoun precedes it
+        ("did we order 500 units?"), (b) the nearest do/modal auxiliary in the
+        span still owes a bare verb ("did the warehouse transfer 200 units?"),
+        or (c) its tail opens with a preposition/temporal ("was stock split
+        into batches?") or the clause ends ("is the build complete?"). Anything
+        else after a complete predicate is a splice ("which bins are empty move
+        stock there").
+        """
+        idx = in_question_span(match.start())
+        if idx < 0:
+            return False
+        if _preceding_token(masked, match.start()) in _SUBJECT_PRONOUNS:
+            return True
+        span_start = question_spans[idx][0]
+        between = masked[span_start : match.start()].split()
+        for position in range(len(between) - 1, -1, -1):
+            token = between[position].strip(",.?!").lower()
+            if token in _DO_MODAL_AUX:
+                after_aux = between[position + 1 :]
+                return not any(
+                    _WRITE_PATTERN.fullmatch(candidate.strip(",.?!"))
+                    or candidate.strip(",.?!").lower() in _INTERVENING_VERB_TOKENS
+                    for candidate in after_aux
+                )
+        tail = masked[match.end() : question_spans[idx][1]]
+        return not tail.strip() or _PROTECT_TAIL_RE.match(tail) is not None
 
     def protected(match: re.Match, *, noun_context: bool = True) -> bool:
         if noun_context and _noun_context_before(masked, match.start()):  # R1
+            # Exception: "any chance of cancelling po-100" -- 'of' after a
+            # request head does not make a gerund nominal.
+            token = _preceding_token(masked, match.start())
+            if token == "of" and match.group(0).lower().endswith("ing"):
+                of_idx = masked.rfind(token, 0, match.start())
+                if _preceding_token(masked, of_idx) in _REQUEST_OF_HEADS:
+                    return question_protects(match)
             return True
-        if in_question_span(match.start()):  # R3
-            if _IMPERATIVE_TAIL_RE.match(masked[match.end() :]):
-                # "which parts are low order 50 of each" splices an imperative
-                # into a question; "did we order 500 units?" continues it.
-                return _preceding_token(masked, match.start()) in _SUBJECT_PRONOUNS
-            return True
-        return False
+        return question_protects(match)  # R3
 
     # Light-verb matches skip R1: the reversed form ("an order placed") is
     # inherently determiner-preceded; only a question protects it.
@@ -920,9 +1010,11 @@ def _matches_lexicon(text: str, lexicon: Iterable[str]) -> bool:
     """Whether any live category name appears in the query.
 
     A single point regardless of how many variants match: "fasteners" also hits
-    the stored singular form and must not score twice.
+    the stored singular form and must not score twice. Uses the compiled
+    alternation -- the per-term scan cost 400ms/turn at 5000 categories.
     """
-    return any(_contains_term(text, term) for term in lexicon)
+    pattern = _lexicon_pattern(frozenset(lexicon))
+    return pattern is not None and pattern.search(text) is not None
 
 
 @lru_cache(maxsize=8)
@@ -954,9 +1046,13 @@ def matched_category_terms(query: str, history: Iterable[Any] | None = None) -> 
     if pattern is None:
         return ()
 
+    if not isinstance(history, (list, tuple)):
+        history = ()
     texts = [" ".join(str(query or "").casefold().split())[:_HINT_CONTENT_CAP]]
-    for entry in history or ():
-        if isinstance(entry, dict):
+    for entry in history:
+        # Only conversational rows feed the hint, mirroring _run_input: a tool
+        # result mentioning a category must not steer the next turn.
+        if isinstance(entry, dict) and entry.get("role") in ("user", "assistant"):
             content = str(entry.get("content") or "")
             texts.append(" ".join(content.casefold().split())[:_HINT_CONTENT_CAP])
 

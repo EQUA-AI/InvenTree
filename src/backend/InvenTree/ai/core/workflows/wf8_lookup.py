@@ -334,8 +334,9 @@ figure from an earlier turn as if you had just verified it."""
     CATEGORY_HINT_TEMPLATE = (
         "[inventory context] {terms} match part category names in this inventory. "
         "Parts belong to categories (part_part.category_id -> part_partcategory); "
-        "resolve the category id first (get_categories) and include child "
-        "categories, rather than free-text matching part names."
+        "resolve the category first (get_categories if available, otherwise the "
+        "part_partcategory table via query_database) and include child categories, "
+        "rather than free-text matching part names."
     )
 
     @classmethod
@@ -500,7 +501,11 @@ figure from an earlier turn as if you had just verified it."""
                     # context to resolve against. Without these a wrong selection
                     # can only be reproduced by guessing at the phrasing.
                     "selection_signals": selection.signals,
-                    "history_messages": len((context or {}).get("conversation_history") or []),
+                    "history_messages": (
+                        len(history)
+                        if isinstance(history := (context or {}).get("conversation_history"), list)
+                        else 0
+                    ),
                 },
             )
             return selection

@@ -298,6 +298,25 @@ READ_PHRASINGS_WITH_WRITE_WORDS = (
     # gated order references (nominal position)
     "show order so-100",
     "order so-100",
+    # round-2: questions with non-pronoun subjects and numeric tails
+    "did the warehouse transfer 200 units to bin B?",
+    "did acme return 50 units last week?",
+    "did the supplier send 3 shipments this month?",
+    "did the night shift move 40 pallets?",
+    # round-2: participle-tail noun uses and telegraphic aggregates
+    "was the stock count updated this morning?",
+    "average order value for acme this quarter",
+    "what's on order for part 42?",
+    # round-2: clause-final compounds after 'and' stay nominal
+    "list parts and purchase orders",
+    "show stock levels and purchase orders",
+    # round-2: phrasal-particle participles and novel spot-checks
+    "was anything set aside for order so-9?",
+    "did the morning shift count the fasteners?",
+    "was the transfer completed by bob?",
+    "total order count for this month",
+    "did production issue 40 kits last week?",
+    "show orders and returns for acme",
 )
 
 #: Imperatives -- including request forms, splices, discourse prefixes, light
@@ -348,6 +367,54 @@ IMPERATIVE_WRITE_PHRASINGS = (
     "record po-100 as complete",
     "flag part 5 as complete",
     "Would you mind cancelling sales order 88?",
+    # round-2 verification probes: splices with non-quantity tails
+    "which parts are low order them all today",
+    "which bins are empty move stock there",
+    "how many screws are left order a fresh batch",
+    "did we receive po-100 if not receive it now",
+    "what's low order replacements",
+    "what's low ok order some more",
+    # bare and/then boundaries before a verbal compound
+    "check stock then return orders 4512 to acme",
+    "see below and return orders 8501 to the vendor",
+    # particle-shifted and initiation light verbs
+    "put a purchase order in for the screws",
+    "put an order in for 50 m3 screws",
+    "start a return for part 42",
+    "start a return for order 88",
+    # order-reference urgency tails
+    "order po-100 now",
+    "order po-100 asap",
+    "order po-100 today",
+    "order po-100 immediately",
+    # gerund complements of request shells
+    "would you mind moving card 7 to the done column",
+    "would you mind archiving card 12?",
+    "would you mind canceling po-100",
+    "any chance of cancelling po-100",
+    "mind archiving po-100 for me?",
+    # assorted round-2 clean probes worth pinning
+    "let's cancel po-100",
+    "go ahead and cancel po-100",
+    "kindly cancel order po-100",
+    "resubmit order po-100",
+    "expedite order po-100",
+    "show order po-100 and cancel it",
+    "immediately return orders 7001 and 7002 to acme",
+    "work order 20 more fasteners for line 2",
+    "thanks, cancel po-100",
+    "btw cancel po-100",
+    "right then, order 50 more m3 screws",
+    "ok now archive the completed cards",
+    "order po-100 again please",
+    "raise a return for the damaged screws",
+    "log a return against po-100",
+    "get an order placed for 50 screws",
+    "what's low, and order more m4 nuts",
+    "what's low on stock order more asap",
+    "is there a way to merge these two parts",
+    "would someone receive this delivery",
+    "can u cancel the po",
 )
 
 
@@ -883,6 +950,24 @@ def test_matched_category_terms_scans_query_and_history(monkeypatch):
     # Empty lexicon degrades to no terms.
     monkeypatch.setattr(capabilities, "category_lexicon", frozenset)
     assert matched_category_terms("fasteners", history) == ()
+
+
+def test_matched_category_terms_ignores_machine_roles_and_bad_history(monkeypatch):
+    """Tool/system rows never steer the hint, and a non-list history is inert."""
+    from ai.core.tools.capabilities import matched_category_terms
+
+    monkeypatch.setattr(
+        capabilities, "category_lexicon", lambda: frozenset({"fasteners", "fastener"})
+    )
+
+    machine_rows = [
+        {"role": "tool", "content": '{"result": "fasteners"}'},
+        {"role": "system", "content": "fasteners are relevant"},
+    ]
+    assert matched_category_terms("Just the ones over 2000.", machine_rows) == ()
+    # A malformed history (wrong type) degrades to query-only scanning.
+    assert matched_category_terms("Just the ones over 2000.", 42) == ()
+    assert matched_category_terms("fasteners please", 42) == ("fasteners",)
 
 
 def test_matched_category_terms_caps_reported_terms(monkeypatch):
