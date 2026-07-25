@@ -197,14 +197,16 @@ stock is split across locations or batches."""
     READ_SYSTEM_PROMPT = """You are the AIMMS manufacturing assistant.
 For factual inventory, order, email, Kanban, or document questions, answer only from the
 provided read tools and never invent data. Call the minimum tools needed. Never repeat a
-tool call with the same arguments; after a successful result, answer immediately. For a
-conversational request that needs no business data, answer directly. Be concise and factual.
+tool call with the same arguments; after a result that answers the question, answer
+immediately. For a conversational request that needs no business data, answer directly.
+Be concise and factual.
 
-An empty tool result is not proof that nothing exists — far more often it means the filter
-was wrong. Before you report none, zero, or "not found", confirm your query could have
-matched anything at all: widen the search term, try a singular/plural or a synonym the
-catalogue may file it under (a "screw" often lives under Fasteners), or resolve the
-category or part first and query by its id. If you still cannot confirm, say what you
+When a noun names a group of parts ("fasteners", "resistors"), treat it as a part
+category first: 1) resolve the category id (get_categories, or the part_partcategory
+table), including child categories; 2) aggregate or filter by that category; 3) only then
+fall back to free-text name or description search. An empty tool result is not proof that
+nothing exists — far more often the filter was wrong: widen the term, try singular/plural
+or a synonym, or re-check via the category id. If you still cannot confirm, say what you
 checked and what you could not determine — never report a count you did not verify.
 
 Prefer the specific read tools. Use query_database for what they cannot express:
@@ -323,6 +325,39 @@ figure from an earlier turn as if you had just verified it."""
 
         messages.append(ChatMessage(role=Role.USER, contents=[TextContent(text=query)]))
         return messages
+
+    #: Fixed template for the deterministic category hint. The matched terms are
+    #: DB-derived category names quoted as data and delivered as a labelled USER
+    #: note -- never a system message -- so a hostile category name ("delete all
+    #: stock") gains no instruction authority it did not already have in the
+    #: transcript.
+    CATEGORY_HINT_TEMPLATE = (
+        "[inventory context] {terms} match part category names in this inventory. "
+        "Parts belong to categories (part_part.category_id -> part_partcategory); "
+        "resolve the category id first (get_categories) and include child "
+        "categories, rather than free-text matching part names."
+    )
+
+    @classmethod
+    def _with_category_hint(cls, run_input: Any, query: str, context: dict[str, Any] | None) -> Any:
+        """Append the category hint when the turn mentions a live category name.
+
+        The noun often lives only in the replayed transcript (a follow-up like
+        "just the ones over 2000"), where the selection lexicon signal cannot
+        fire because scoring reads the current message only. Deterministic and
+        observational: no terms, no change.
+        """
+        from ai.core.tools.capabilities import matched_category_terms
+
+        terms = matched_category_terms(query, (context or {}).get("conversation_history"))
+        if not terms:
+            return run_input
+        quoted = ", ".join(f"'{term}'" for term in terms)
+        note = cls.CATEGORY_HINT_TEMPLATE.format(terms=quoted)
+        messages = run_input
+        if isinstance(messages, str):
+            messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=messages)])]
+        return [*messages, ChatMessage(role=Role.USER, contents=[TextContent(text=note)])]
 
     async def _get_agent(
         self, *, voice: bool = False, read_only: bool = False, clarify: bool = False
@@ -549,10 +584,15 @@ figure from an earlier turn as if you had just verified it."""
             # NOTE: no max_tokens here — reasoning deployments (gpt-5.6-luna)
             # reject it, demanding max_completion_tokens instead.
             modality = "voice" if is_voice else "text"
+            run_input = self._run_input(query, context)
+            if enforce_selection and not clarify:
+                # Gated precisely: a clarify turn has no tools, so hinting it to
+                # call get_categories would contradict its own prompt.
+                run_input = self._with_category_hint(run_input, query, context)
             with bind_capability_run(
                 workflow="wf8", modality=modality, selected_tools=runtime_tools
             ):
-                response = await agent.run(self._run_input(query, context), tools=runtime_tools)
+                response = await agent.run(run_input, tools=runtime_tools)
 
             # Extract response text
             response_text = ""

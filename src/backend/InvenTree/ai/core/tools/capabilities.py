@@ -927,6 +927,54 @@ def _matches_lexicon(text: str, lexicon: Iterable[str]) -> bool:
     return any(_contains_term(text, term) for term in lexicon)
 
 
+@lru_cache(maxsize=8)
+def _lexicon_pattern(lexicon: frozenset[str]) -> re.Pattern[str] | None:
+    """One compiled alternation per lexicon; the naive per-term scan is O(n*m)."""
+    if not lexicon:
+        return None
+    alternation = "|".join(re.escape(term) for term in sorted(lexicon, key=len, reverse=True))
+    return re.compile(rf"(?<!\w)(?:{alternation})(?!\w)")
+
+
+#: Per-message cap on hint scanning. The transcript window is already bounded,
+#: but a single pasted wall of text must not stall the turn.
+_HINT_CONTENT_CAP = 2000
+
+
+def matched_category_terms(query: str, history: Iterable[Any] | None = None) -> tuple[str, ...]:
+    """Live category names mentioned in this turn or its replayed transcript.
+
+    Powers the deterministic category hint on lookup turns: on a follow-up
+    ("just the ones over 2000") the noun lives in the *history*, where the
+    selection lexicon signal cannot fire because scoring reads the current
+    message only. Purely observational -- never contributes to pack scoring or
+    write-intent -- and fail-open: no lexicon means no terms. Singular/plural
+    families collapse to one reported term, capped at three.
+    """
+    lexicon = category_lexicon() if category_lexicon_enabled() else frozenset()
+    pattern = _lexicon_pattern(lexicon)
+    if pattern is None:
+        return ()
+
+    texts = [" ".join(str(query or "").casefold().split())[:_HINT_CONTENT_CAP]]
+    for entry in history or ():
+        if isinstance(entry, dict):
+            content = str(entry.get("content") or "")
+            texts.append(" ".join(content.casefold().split())[:_HINT_CONTENT_CAP])
+
+    found: set[str] = set()
+    for text in texts:
+        for match in pattern.finditer(text):
+            found.add(match.group(0))
+    collapsed = {
+        term
+        for term in found
+        if not (term.endswith("s") and term[:-1] in found)
+        and not (term.endswith("ies") and f"{term[:-3]}y" in found)
+    }
+    return tuple(sorted(collapsed))[:3]
+
+
 def _ordered_pack_ids(
     primary: str,
     scores: Mapping[str, int],
@@ -1087,6 +1135,7 @@ __all__ = [
     "exposure_authorized",
     "invalidate_category_lexicon",
     "manifest_json",
+    "matched_category_terms",
     "select_capabilities",
     "selection_v2_enabled",
     "serialized_contract_bytes",

@@ -270,6 +270,21 @@ async def query_database(sql: str) -> dict[str, Any]:
     silently omits every part whose stock is split across locations or batches,
     which reads as "no results" rather than as the wrong query.
 
+    To find parts belonging to a named group ("fasteners"), do not filter part
+    name or description with LIKE -- membership lives in the category tree
+    (part_part.category_id -> part_partcategory), and a name-equality join
+    misses child categories. Include the subtree::
+
+        SELECT p.name, SUM(s.quantity) AS total_stock
+        FROM part_partcategory root
+        JOIN part_partcategory c ON c.tree_id = root.tree_id
+         AND c.lft >= root.lft AND c.rght <= root.rght
+        JOIN part_part p ON p.category_id = c.id
+        JOIN stock_stockitem s ON s.part_id = p.id
+        WHERE root.name ILIKE 'fasteners'
+        GROUP BY p.id, p.name
+        HAVING SUM(s.quantity) > 2000
+
     Args:
         sql: A single PostgreSQL SELECT statement. No semicolons, no writes.
 

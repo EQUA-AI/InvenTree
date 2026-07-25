@@ -860,6 +860,150 @@ def test_wf8_run_input_degrades_to_bare_query_when_history_is_all_machine_rows()
     assert replayed == "Show stock"
 
 
+# --------------------------------------------------------------------------- #
+# Deterministic category hint (matched_category_terms + wf8 injection)        #
+# --------------------------------------------------------------------------- #
+def test_matched_category_terms_scans_query_and_history(monkeypatch):
+    from ai.core.tools.capabilities import matched_category_terms
+
+    monkeypatch.setattr(
+        capabilities, "category_lexicon", lambda: frozenset({"fasteners", "fastener"})
+    )
+
+    # Word-boundary safety: a substring hit is not a mention.
+    assert matched_category_terms("fastenering the panel") == ()
+    # Casefold; the reported term is the form that matched (the category name).
+    assert matched_category_terms("How many Fasteners are in stock?") == ("fasteners",)
+    # When both family forms appear, they collapse to one reported term.
+    assert matched_category_terms("a fastener or several fasteners") == ("fastener",)
+    # History-only match: the noun lives in the transcript, not the query.
+    history = [
+        {"role": "user", "content": "How many fasteners are in stock?"},
+        {"role": "assistant", "content": "Four parts carry them."},
+    ]
+    assert matched_category_terms("Just the ones over 2000.", history) == ("fasteners",)
+    # Empty lexicon degrades to no terms.
+    monkeypatch.setattr(capabilities, "category_lexicon", frozenset)
+    assert matched_category_terms("fasteners", history) == ()
+
+
+def test_matched_category_terms_caps_reported_terms(monkeypatch):
+    from ai.core.tools.capabilities import matched_category_terms
+
+    monkeypatch.setattr(
+        capabilities,
+        "category_lexicon",
+        lambda: frozenset({"gaskets", "bearings", "washers", "grommets"}),
+    )
+
+    terms = matched_category_terms("gaskets bearings washers grommets")
+    assert len(terms) == 3
+
+
+def test_category_hint_never_contributes_to_selection(monkeypatch):
+    """The hint layer is observational: selection output is unchanged by it."""
+    monkeypatch.setattr(
+        capabilities, "category_lexicon", lambda: frozenset({"fasteners", "fastener"})
+    )
+
+    selected = select_capabilities(
+        "Just the ones over 2000.", profile=ALL_VIEW_PROFILE, authenticated=True
+    )
+
+    assert "shape" in selected.signals
+    assert not selected.requires_specialist
+
+
+@pytest.mark.asyncio
+async def test_wf8_enforced_turn_carries_the_category_hint(monkeypatch):
+    monkeypatch.setattr(
+        capabilities, "category_lexicon", lambda: frozenset({"fasteners", "fastener"})
+    )
+    workflow, agent = _configure_fake_workflow(
+        monkeypatch, list(INVENTORY_READ_TOOLS), enforce=True
+    )
+
+    await workflow.execute(
+        "Just the ones with a quantity over 2000.",
+        context={
+            "conversation_history": [
+                {"role": "user", "content": "How many fasteners are in stock?"},
+                {"role": "assistant", "content": "Fasteners are stocked across four parts."},
+            ]
+        },
+    )
+
+    replayed = agent.calls[0]["query"]
+    assert isinstance(replayed, list)
+    note = replayed[-1].text
+    assert "[inventory context]" in note
+    assert "'fasteners'" in note
+    assert "part_partcategory" in note
+
+
+@pytest.mark.asyncio
+async def test_wf8_bare_turn_mentioning_a_category_still_gets_the_hint(monkeypatch):
+    # No history: _run_input returns a plain string, which must be wrapped, not
+    # crashed into the broad except.
+    monkeypatch.setattr(
+        capabilities, "category_lexicon", lambda: frozenset({"fasteners", "fastener"})
+    )
+    workflow, agent = _configure_fake_workflow(
+        monkeypatch, list(INVENTORY_READ_TOOLS), enforce=True
+    )
+
+    result = await workflow.execute("List all fasteners with stock above 2000")
+
+    assert result.success is True
+    replayed = agent.calls[0]["query"]
+    assert isinstance(replayed, list)
+    assert replayed[0].text == "List all fasteners with stock above 2000"
+    assert "[inventory context]" in replayed[-1].text
+
+
+@pytest.mark.asyncio
+async def test_wf8_clarify_and_specialist_turns_never_get_the_hint(monkeypatch):
+    monkeypatch.setattr(
+        capabilities, "category_lexicon", lambda: frozenset({"fasteners", "fastener"})
+    )
+    history = {
+        "conversation_history": [
+            {"role": "user", "content": "How many fasteners are in stock?"},
+        ]
+    }
+
+    # Clarify turn: no tools, so hinting a tool call would contradict its prompt.
+    workflow, agent = _configure_fake_workflow(
+        monkeypatch, list(INVENTORY_READ_TOOLS), enforce=True
+    )
+    await workflow.execute("What about that one?", context=history)
+    replayed = agent.calls[0]["query"]
+    texts = [m.text for m in replayed] if isinstance(replayed, list) else [replayed]
+    assert all("[inventory context]" not in text for text in texts)
+
+    # Specialist turn: enforcement is off for it, and the hint must not attach.
+    workflow, agent = _configure_fake_workflow(
+        monkeypatch, list(INVENTORY_READ_TOOLS), enforce=True
+    )
+    await workflow.execute("receive the shipment", context=history)
+    replayed = agent.calls[0]["query"]
+    texts = [m.text for m in replayed] if isinstance(replayed, list) else [replayed]
+    assert all("[inventory context]" not in text for text in texts)
+
+
+def test_query_database_docstring_keeps_the_category_subtree_example():
+    from ai.core.tools.inventree.read.database import query_database
+
+    assert "part_partcategory" in query_database.__doc__
+    assert "lft" in query_database.__doc__
+
+
+def test_read_prompt_answers_only_on_a_result_that_answers():
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+
+    assert "after a result that answers the question" in T1LookupWorkflow.READ_SYSTEM_PROMPT
+
+
 @pytest.mark.asyncio
 async def test_wf8_asks_for_clarification_instead_of_answering_toolless(monkeypatch):
     workflow, agent = _configure_fake_workflow(
