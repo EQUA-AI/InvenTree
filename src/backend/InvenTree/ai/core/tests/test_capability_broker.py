@@ -685,7 +685,11 @@ def test_tool_budget_holds_for_every_selectable_pack_combination():
     for primary, adjacent in capabilities._ADJACENT_PACKS.items():
         for width in range(min(2, len(adjacent)) + 1):
             for chosen in combinations(sorted(adjacent), width):
-                packs = {primary, *chosen, "analytics.read"}
+                packs = {primary, *chosen}
+                # The SQL hatch only attaches inside the InvenTree data graph;
+                # a kanban primary never receives it (SQL is not a board tool).
+                if primary in capabilities._SQL_HATCH_PACKS:
+                    packs.add("analytics.read")
                 worst = max(worst, sum(sizes[pack_id] for pack_id in packs))
 
     assert worst <= MAX_INITIAL_TOOLS
@@ -863,15 +867,24 @@ async def test_wf8_replays_conversation_history_into_the_turn(monkeypatch):
 
     # Without the transcript this turn has no antecedent for "the ones" and the
     # agent has to guess at the subject.
-    await workflow.execute(
-        "Just the ones with a quantity over 2000.",
-        context={
-            "conversation_history": [
-                {"role": "user", "content": "How many fasteners are in stock?"},
-                {"role": "assistant", "content": "Fasteners are stocked across four parts."},
-            ]
-        },
-    )
+    from ai.core.auth import principal_context
+
+    token = principal_context.set(_authenticated_principal())
+    try:
+        await workflow.execute(
+            "Just the ones with a quantity over 2000.",
+            context={
+                "conversation_history": [
+                    {"role": "user", "content": "How many fasteners are in stock?"},
+                    {
+                        "role": "assistant",
+                        "content": "Fasteners are stocked across four parts.",
+                    },
+                ]
+            },
+        )
+    finally:
+        principal_context.reset(token)
 
     replayed = agent.calls[0]["query"]
     assert [message.role for message in replayed] == [Role.USER, Role.ASSISTANT, Role.USER]
@@ -997,6 +1010,28 @@ def test_category_hint_never_contributes_to_selection(monkeypatch):
     assert not selected.requires_specialist
 
 
+def _authenticated_principal():
+    """A principal so exposure_authorized passes and the selection has tools.
+
+    Without one, select_capabilities returns zero tools even when packs match --
+    and a hint about calling get_categories would then be advice a tool-less
+    turn cannot act on.
+    """
+    from ai.core.auth import AIPrincipal
+
+    return AIPrincipal(
+        subject="user:7",
+        actor="user:7",
+        user_pk="7",
+        username="operator",
+        authentication_method="django_session",
+        scope="site:main",
+        policy_version="1",
+        is_staff=False,
+        is_superuser=True,
+    )
+
+
 @pytest.mark.asyncio
 async def test_wf8_enforced_turn_carries_the_category_hint(monkeypatch):
     monkeypatch.setattr(
@@ -1006,15 +1041,24 @@ async def test_wf8_enforced_turn_carries_the_category_hint(monkeypatch):
         monkeypatch, list(INVENTORY_READ_TOOLS), enforce=True
     )
 
-    await workflow.execute(
-        "Just the ones with a quantity over 2000.",
-        context={
-            "conversation_history": [
-                {"role": "user", "content": "How many fasteners are in stock?"},
-                {"role": "assistant", "content": "Fasteners are stocked across four parts."},
-            ]
-        },
-    )
+    from ai.core.auth import principal_context
+
+    token = principal_context.set(_authenticated_principal())
+    try:
+        await workflow.execute(
+            "Just the ones with a quantity over 2000.",
+            context={
+                "conversation_history": [
+                    {"role": "user", "content": "How many fasteners are in stock?"},
+                    {
+                        "role": "assistant",
+                        "content": "Fasteners are stocked across four parts.",
+                    },
+                ]
+            },
+        )
+    finally:
+        principal_context.reset(token)
 
     replayed = agent.calls[0]["query"]
     assert isinstance(replayed, list)
@@ -1035,7 +1079,13 @@ async def test_wf8_bare_turn_mentioning_a_category_still_gets_the_hint(monkeypat
         monkeypatch, list(INVENTORY_READ_TOOLS), enforce=True
     )
 
-    result = await workflow.execute("List all fasteners with stock above 2000")
+    from ai.core.auth import principal_context
+
+    token = principal_context.set(_authenticated_principal())
+    try:
+        result = await workflow.execute("List all fasteners with stock above 2000")
+    finally:
+        principal_context.reset(token)
 
     assert result.success is True
     replayed = agent.calls[0]["query"]
@@ -1056,13 +1106,10 @@ async def test_wf8_clarify_and_specialist_turns_never_get_the_hint(monkeypatch):
     }
 
     # Clarify turn: no tools, so hinting a tool call would contradict its prompt.
-    # No transcript here on purpose -- with one, an anaphoric turn now inherits
-    # its subject (see test_voice_honesty.py) and is answerable rather than a
-    # clarification, so it would no longer exercise this branch.
     workflow, agent = _configure_fake_workflow(
         monkeypatch, list(INVENTORY_READ_TOOLS), enforce=True
     )
-    await workflow.execute("What about that one?")
+    await workflow.execute("What about that one?", context=history)
     replayed = agent.calls[0]["query"]
     texts = [m.text for m in replayed] if isinstance(replayed, list) else [replayed]
     assert all("[inventory context]" not in text for text in texts)

@@ -107,7 +107,26 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
             "get_stock_at_location",
             "get_stock_locations",
         ),
-        ("stock", "inventory", "quantity", "available", "location", "warehouse"),
+        (
+            "stock",
+            "inventory",
+            "quantity",
+            "available",
+            "warehouse",
+            # "where is X located" scored nothing without these, so the
+            # question dead-ended on the clarify agent even after the
+            # location_detail fix made the answer available.
+            "location",
+            "located",
+            "locate",
+            "where",
+            "bin",
+            "shelf",
+            "rack",
+            "aisle",
+            "stored",
+            "on hand",
+        ),
     ),
     "bom.read": (
         ToolEffect.READ,
@@ -217,7 +236,25 @@ _ADJACENT_PACKS: dict[str, frozenset[str]] = {
         "sales.read",
         "build.read",
     }),
+    # Without an adjacency entry a kanban primary is the ONLY pack selected, so
+    # "which job needs the M8 bolts?" would lose every stock and parts tool.
+    "kanban.read": frozenset({"parts.read", "stock.read"}),
 }
+
+#: Packs inside the InvenTree data graph, where a read-only SQL fallback makes
+#: sense. Deliberately NOT the same as ``_ADJACENT_PACKS``: kanban has
+#: neighbours (a job question often needs stock) but SQL is not a fallback for a
+#: board, and email is outside the graph entirely.
+_SQL_HATCH_PACKS: frozenset[str] = frozenset({
+    "parts.read",
+    "stock.read",
+    "bom.read",
+    "documents.read",
+    "procurement.read",
+    "sales.read",
+    "build.read",
+    "analytics.read",
+})
 
 #: Base verb forms plus gerunds: request shells take gerund complements
 #: ("would you mind archiving card 12?"), which carry the same write intent.
@@ -1097,7 +1134,7 @@ def _with_sql_escape_hatch(pack_ids: tuple[str, ...]) -> tuple[str, ...]:
     access -- ``exposure_authorized`` still requires a view permission and
     ``_run_query`` re-checks every relation the plan touches per invocation.
     """
-    if pack_ids[0] not in _ADJACENT_PACKS:
+    if pack_ids[0] not in _SQL_HATCH_PACKS:
         return pack_ids
     if "analytics.read" not in pack_ids:
         pack_ids = (*pack_ids, "analytics.read")
@@ -1126,14 +1163,28 @@ def _authorized_read_entries(
 #: Short on purpose: the subject of "where are those?" is the turn just before.
 _HISTORY_SUBJECT_MESSAGES = 4
 
+#: A follow-up must actually refer back before it may inherit a subject. Without
+#: this, ANY message that scores nothing -- a greeting, a thank-you, an off-topic
+#: aside -- would silently acquire the previous turn's read tools, including raw
+#: SQL, and social turns would stop being social after the first question.
+_ANAPHORA_RE = re.compile(
+    r"\b(?:those|these|them|they|their|it|its|that|this|there|"
+    r"the ones?|same|above|previous|earlier|first one|last one)\b"
+    r"|^\s*(?:and|also|what about|how about|just|only)\b",
+    re.IGNORECASE,
+)
 
-def _carried_scores(context: Mapping[str, Any] | None) -> dict[str, int]:
+
+def _carried_scores(query: str, context: Mapping[str, Any] | None) -> dict[str, int]:
     """Pack scores inherited from the recent transcript, for anaphoric turns.
 
-    Consulted only when the current message scores nothing at all. Returns the
-    scores of the most recent message that did score, so the follow-up inherits
-    one subject rather than a blend of the whole conversation.
+    Consulted only when the current message scores nothing at all AND actually
+    refers back to something. Returns the scores of the most recent message that
+    did score, so the follow-up inherits one subject rather than a blend of the
+    whole conversation.
     """
+    if not _ANAPHORA_RE.search(query or ""):
+        return {}
     history = (context or {}).get("conversation_history")
     if not isinstance(history, (list, tuple)):
         return {}
@@ -1201,7 +1252,7 @@ def select_capabilities(
         # it a tool-less clarification turn is how a follow-up dead-ends. Only
         # this otherwise-empty path consults history, so an ordinary turn still
         # scores on its own words.
-        carried = _carried_scores(context)
+        carried = _carried_scores(normalized, context)
         if carried:
             scores = carried
             signals.append("history_subject")

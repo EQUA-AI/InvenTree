@@ -48,8 +48,13 @@ def _pinned_lexicon(monkeypatch):
 # V12: anaphoric follow-ups inherit their subject                              #
 # --------------------------------------------------------------------------- #
 def test_anaphoric_follow_up_inherits_the_subject_from_history():
+    """A follow-up carrying no domain word of its own inherits the subject.
+
+    ("where are those located?" no longer needs this path -- 'located' now scores
+    stock.read directly -- so this uses a phrasing that truly carries nothing.)
+    """
     selected = capabilities.select_capabilities(
-        "and where are those located?",
+        "and what about those?",
         context={"conversation_history": FASTENER_HISTORY},
         profile=ALL_VIEW,
         authenticated=True,
@@ -64,7 +69,7 @@ def test_anaphoric_follow_up_inherits_the_subject_from_history():
 def test_the_same_follow_up_without_history_still_asks():
     """Fail-closed: no transcript means no subject to inherit."""
     selected = capabilities.select_capabilities(
-        "and where are those located?", profile=ALL_VIEW, authenticated=True
+        "and what about those?", profile=ALL_VIEW, authenticated=True
     )
 
     assert selected.clarification_required is True
@@ -86,7 +91,7 @@ def test_history_is_only_consulted_when_the_message_scores_nothing():
 
 def test_machine_history_rows_are_ignored():
     selected = capabilities.select_capabilities(
-        "and where are those located?",
+        "and what about those?",
         context={
             "conversation_history": [
                 {"role": "tool", "content": "stock inventory quantity"},
@@ -103,7 +108,7 @@ def test_machine_history_rows_are_ignored():
 def test_malformed_history_is_inert():
     for bad in (42, "not a list", {"conversation_history": None}, []):
         selected = capabilities.select_capabilities(
-            "and where are those located?",
+            "and what about those?",
             context={"conversation_history": bad},
             profile=ALL_VIEW,
             authenticated=True,

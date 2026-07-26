@@ -40,11 +40,51 @@ logger = logging.getLogger(__name__)
 #: where it cost 4-6 s and a filler). Local to this decision: it only controls
 #: whether a turn is handed the tool-less clarification agent, never routing.
 _SIGN_OFF_PATTERN = re.compile(
-    r"\s*(?:ok(?:ay)?|thanks?|thank you|cheers|great|perfect|got it)"
+    r"\s*(?:ok(?:ay)?|alright|thanks?|thank you|thanks so much|cheers|great|perfect|got it)?"
     r"[,!.\s]*(?:that'?s (?:all|it|everything)|we'?re done|i'?m done|"
-    r"no(?:thing)? (?:more|else)|bye|goodbye)[!.\s]*",
+    r"no(?:thing)? (?:more|else)|bye|goodbye)[!.\s]*"
+    r"|\s*thanks?(?:\s+(?:so\s+much|a\s+lot|very\s+much|again))?[!.\s]*",
     re.IGNORECASE,
 )
+
+
+#: Fixed, server-authored replies for turns that need no data at all. Answering
+#: these from a constant is the point: the live test measured 4-6 s and a "Let
+#: me check that" filler for "Hello.", all of it spent reaching a model that had
+#: no tools and nothing to look up.
+_SOCIAL_REPLIES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"\s*(?:help|help me|what can you do|how can you help)[?.! ]*\s*", re.I),
+        "I can look up parts, stock levels, locations, bills of materials, "
+        "suppliers, orders, and the production board. What would you like to check?",
+    ),
+    (
+        re.compile(
+            r"\s*(?:hi|hello|hey|good\s+)?(?:morning|afternoon|evening)?[!. ,]*"
+            r"|(?:hi|hello|hey)(?:\s+(?:there|everyone|all|claude))?[!. ,]*\s*",
+            re.I,
+        ),
+        "Hello. What would you like me to look up?",
+    ),
+)
+_SOCIAL_SIGN_OFF_REPLY = "You're welcome. Just ask whenever you need something checked."
+
+
+def _social_reply(query: str) -> str | None:
+    """A fixed answer for a social turn, or ``None`` if this is a real question."""
+    normalized = " ".join(str(query or "").casefold().split())
+    if not normalized:
+        return None
+    for pattern, reply in _SOCIAL_REPLIES:
+        if pattern.fullmatch(normalized):
+            return reply
+    from ai.core.agents.voice_routing import VoiceComplexityRouter
+
+    if _SIGN_OFF_PATTERN.fullmatch(normalized) or VoiceComplexityRouter._ACK_PATTERN.fullmatch(
+        normalized
+    ):
+        return _SOCIAL_SIGN_OFF_REPLY
+    return None
 
 
 def _is_social_turn(query: str) -> bool:
@@ -593,6 +633,19 @@ figure from an earlier turn as if you had just verified it."""
 
         start_time = time.perf_counter()
 
+        # A greeting, thanks, or "what can you do" needs no data, so it needs no
+        # model round trip either. Answering from a fixed string is what makes
+        # these turns instant instead of the measured 4-6 s with a filler.
+        social = _social_reply(query)
+        if social is not None:
+            return LookupResult(
+                lookup_type=lookup_type,
+                success=True,
+                data={"social": True},
+                formatted_response=social,
+                execution_time_ms=(time.perf_counter() - start_time) * 1000,
+            )
+
         logger.info(
             "Executing T1 lookup",
             extra={
@@ -646,9 +699,13 @@ figure from an earlier turn as if you had just verified it."""
             # reject it, demanding max_completion_tokens instead.
             modality = "voice" if is_voice else "text"
             run_input = self._run_input(query, context)
-            if enforce_selection and not clarify:
-                # Gated precisely: a clarify turn has no tools, so hinting it to
-                # call get_categories would contradict its own prompt.
+            if enforce_selection and runtime_tools:
+                # Gate on the tools actually being passed, which is the real
+                # invariant: telling a turn to "resolve the category first" is
+                # only coherent if it has something to resolve it with. Gating
+                # on `clarify` instead let a social turn (V18) and a
+                # history-inheriting turn (V12) receive the hint with an empty
+                # toolset.
                 run_input = self._with_category_hint(run_input, query, context)
             with bind_capability_run(
                 workflow="wf8", modality=modality, selected_tools=runtime_tools

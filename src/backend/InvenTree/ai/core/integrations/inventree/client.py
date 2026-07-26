@@ -162,23 +162,34 @@ class BusinessRuleError(InvenTreeError):
 #: the ceramic capacitor") arrives with several of them attached.
 _SEARCH_STOPWORDS = frozenset(
     "a an the of for in on at to is are was were do does did what which who "  # noqa: SIM905
-    "what's "
+    "whats hand any all some need want looking there "  # codespell:ignore whats
     "how many much where when why we our us i you it its this that these those "
     "have has had get show list find check see tell me about please can could "
     "stock level levels quantity qty on-hand onhand available inventory part parts "
     "number no numbers item items".split()
 )
 
+#: Below this length a query is treated as a literal name, never as a spoken
+#: question. "check valve" and "level switch" are real products whose words are
+#: also scaffolding; stripping them would turn an exact hit into a wrong match.
+_SEARCH_LITERAL_MAX_TOKENS = 3
+
 
 def _search_terms(query: str) -> str:
     """Reduce a spoken question to the tokens worth searching on.
 
     DRF's SearchFilter ANDs every token, so one stray article or filler word
-    zeroes an otherwise good query. Keeps the original text when stripping would
-    leave nothing to search for.
+    zeroes an otherwise good query. Short queries are passed through untouched
+    (they are names, not questions), and stripping never returns nothing.
     """
     tokens = [token for token in str(query or "").split() if token]
-    kept = [token for token in tokens if token.strip(".,?!").casefold() not in _SEARCH_STOPWORDS]
+    if len(tokens) <= _SEARCH_LITERAL_MAX_TOKENS:
+        return " ".join(tokens)
+    kept = [
+        token
+        for token in tokens
+        if token.strip(".,?!").replace("'", "").casefold() not in _SEARCH_STOPWORDS
+    ]
     return " ".join(kept) if kept else " ".join(tokens)
 
 

@@ -43,20 +43,39 @@ _PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
         # "ignore/disregard/forget your previous instructions"
-        rf"\b(?:ignore|disregard|forget|discard|override|bypass|skip)\b[^.?!]{{0,40}}\b{_DIRECTIVE_NOUN}\b",
+        rf"\b(?:ignore|disregard|forget|discard|override|bypass|skip|drop|cancel|replace)\b"
+        rf"[^.?!]{{0,40}}\b{_DIRECTIVE_NOUN}\b",
         # "your new instructions are ...", "from now on your rules are ..."
         rf"\b(?:new|updated|revised)\s+{_DIRECTIVE_NOUN}\b",
-        # explicit role reassignment
-        r"\byou\s+are\s+(?:now|no\s+longer)\b",
+        rf"\byour\s+{_DIRECTIVE_NOUN}\s+(?:have|has)\s+changed\b",
+        # Explicit role reassignment. Anchored on a role/capability so ordinary
+        # status speech ("you are now looking at the day shift") is untouched.
+        r"\byou\s+(?:are|will\s+be)\s+(?:now\s+|no\s+longer\s+)?(?:an?|the)\s+"
+        r"\w+(?:\s+\w+)?\s*(?:agent|assistant|bot|model|system|admin(?:istrator)?|user)\b",
+        r"\byou\s+(?:are|will\s+be)\s+no\s+longer\s+(?:read[- ]only|restricted|limited)\b",
+        r"\b(?:from\s+(?:this\s+point|now)\s+(?:forward|on)|going\s+forward)\b[^.?!]{0,40}"
+        r"\byou\s+(?:are|will|now)\b",
+        r"\byour\s+role\s+(?:has\s+changed|is\s+now)\b",
         r"\bpretend\s+(?:to\s+be|you\s+are)\b",
+        r"\bsimulate\s+(?:a\s+)?(?:version\s+of\s+)?yourself\b",
         r"\bact\s+as\s+(?:if|though|a\s+different)\b",
-        # developer/system-message spoofing
-        r"\b(?:system|developer|admin(?:istrator)?)\s*(?:message|mode|override|prompt)\b",
+        # developer/system-message spoofing. Requires the phrase to open the
+        # utterance or introduce a directive, so "is there a system message on
+        # the board?" -- an ordinary question -- is not refused.
+        r"^\s*(?:system|developer|admin(?:istrator)?)\s*(?:message|mode|override|prompt)\b",
+        r"\b(?:system|developer|admin(?:istrator)?)\s*(?:message|mode|override|prompt)\s*:",
         r"\b(?:enable|enter|switch\s+to)\s+(?:developer|debug|god|admin(?:istrator)?)\s+mode\b",
-        # attempts to lift the read-only/permission posture by assertion
+        # Attempts to lift the read-only posture by assertion. Second person and
+        # possessive only: "our permissions were changed last week" is a fact
+        # about the speaker's account, not an instruction to the assistant.
         r"\byou\s+(?:are\s+)?(?:now\s+)?(?:allowed|permitted|authori[sz]ed)\s+to\b",
-        r"\b(?:permissions?|restrictions?|limits?)\s+(?:have\s+been|are\s+now|were)\s+"
-        r"(?:lifted|removed|disabled|changed)\b",
+        r"\byour\s+(?:permissions?|restrictions?|limits?|guidelines?)\s+"
+        r"(?:have\s+been|are\s+now|were)\s+(?:lifted|removed|disabled|changed)\b",
+        r"\b(?:you\s+have\s+)?no\s+(?:guidelines|restrictions|limits|rules)\b",
+        # "forget everything you were told", "start over" -- an override that
+        # names no directive noun but is unmistakably about the assistant's own
+        # prior context.
+        r"\b(?:forget|ignore|disregard|clear)\s+(?:about\s+)?everything\b",
         # prompt exfiltration
         rf"\b(?:repeat|reveal|show|print|output|tell\s+me)\b[^.?!]{{0,30}}\byour\s+{_DIRECTIVE_NOUN}\b",
     )

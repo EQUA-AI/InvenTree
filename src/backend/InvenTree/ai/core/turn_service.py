@@ -627,6 +627,32 @@ class NormalizedTurnService:
             workflow_name="INJECTION_REFUSED",
         )
 
+    def _abandon_pending_voice_write(self, *, modality: str, thread_id: Any) -> None:
+        """Close the confirmation window without confirming anything.
+
+        Used when a turn is refused outright: the proposal must not survive to
+        be confirmed by a later bare "yes", which would make the refusal a way
+        around the one-turn window instead of a stop.
+        """
+        if modality != TurnModality.VOICE or not self._voice_write_enabled():
+            return
+        try:
+            stored = self.voice_write_gate.store.take(thread_id)
+        except Exception:  # a bookkeeping failure must not fail the turn
+            logger.warning("voice.write_confirmation.abandon_failed thread_id=%s", thread_id)
+            return
+        if stored is not None:
+            logger.info(
+                "voice.write_confirmation.audit %s",
+                {
+                    "event": "cancelled",
+                    "thread_id": thread_id,
+                    "capability": stored.pending.action.capability,
+                    "summary": stored.pending.action.summary,
+                    "reason": "abandoned_by_refused_turn",
+                },
+            )
+
     async def _resolve_pending_voice_write(
         self,
         *,
@@ -1009,10 +1035,16 @@ class NormalizedTurnService:
             # Before routing: a confirmation reply to a pending Tier-3 write
             # ("yes"/"confirm delete") would otherwise route like any request,
             # so the pending confirmation must capture this turn first.
-            write_canonical = (
-                None
-                if injection_canonical
-                else await self._resolve_pending_voice_write(
+            if injection_canonical is not None:
+                # A refused turn must still CLOSE the confirmation window. Merely
+                # skipping resolution left the proposal armed, so a bare "yes"
+                # one turn later executed it -- the injection would have been a
+                # way to step over the one-turn window rather than be stopped by
+                # it.
+                self._abandon_pending_voice_write(modality=modality, thread_id=thread.pk)
+                write_canonical = None
+            else:
+                write_canonical = await self._resolve_pending_voice_write(
                     actor=actor,
                     trusted_context=trusted_context,
                     content=content,
@@ -1021,7 +1053,6 @@ class NormalizedTurnService:
                     turn_id=turn.pk,
                     emitter=isolated_emitter,
                 )
-            )
             diagnostic_context = await self._build_diagnostic_context(
                 actor=actor,
                 trusted_context=trusted_context,
