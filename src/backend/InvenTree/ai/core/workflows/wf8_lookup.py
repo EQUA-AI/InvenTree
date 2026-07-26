@@ -282,7 +282,10 @@ units clearly; do not read out IDs, URLs, or long lists.
 If the answer is a list, name the first few items and say how many more there are — the spoken
 answer and the written one are the same text, so never promise details "in the chat" that you
 have not just said. Only describe data as approximate or out of date if the tool result actually
-says so; do not add hedges of your own."""
+says so; do not add hedges of your own.
+
+Answer in the language the technician used. Keep part numbers, IPNs, location names, and status
+values exactly as they appear in the data — never translate an identifier."""
 
     #: Used when capability selection found nothing to work with. The turn runs
     #: with no tools at all, so the one useful thing the agent can do is ask. It

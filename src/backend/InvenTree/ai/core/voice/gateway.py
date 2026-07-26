@@ -244,7 +244,15 @@ class VoiceLiveChannel:
                 except ValueError:
                     continue
                 if self._gate.classify(event) == "forbidden":
-                    logger.warning("Voice Live policy violation on session %s", self.session_id)
+                    # Name the event. Without its type these were 138 identical
+                    # warnings in one 20-minute session -- 89% of all log output
+                    # -- and none of them said what had actually been rejected.
+                    logger.warning(
+                        "voice.policy_violation session=%s event_type=%s response_id=%s",
+                        self.session_id,
+                        str(event.get("type") or "unknown")[:64],
+                        str(event.get("response_id") or event.get("event_id") or "")[:64],
+                    )
         except Exception:  # pragma: no cover - connection teardown races
             pass
 

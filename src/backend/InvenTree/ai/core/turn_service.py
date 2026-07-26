@@ -13,6 +13,7 @@ import inspect
 import json
 import logging
 import re
+import time
 import unicodedata
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime
@@ -990,6 +991,7 @@ class NormalizedTurnService:
         # Hands-free voice has no visible confirmation step, so speech must be
         # structurally unable to execute an effect (contract §0.2): the fence
         # makes every write tool fail closed for the whole voice execution.
+        turn_started = time.perf_counter()
         fence_token = READ_ONLY_TOOLS.set(True) if modality == TurnModality.VOICE else None
 
         try:
@@ -1169,6 +1171,21 @@ class NormalizedTurnService:
                     "spoken_summary": str(canonical.get("spoken_summary") or ""),
                 },
                 workflow_id=capture.workflow_id or "",
+            )
+            # One rendered line per turn. Fields go in the message, not extra={},
+            # because stdlib logging discards extra entirely -- which is why the
+            # 2026-07-26 session left only 2 of 36 turns attributable, and both
+            # only because they crashed. No transcript or PII, by construction.
+            logger.info(
+                "voice.turn modality=%s workflow=%s route=%s state=%s "
+                "duration_ms=%d thread_id=%s turn_id=%s",
+                modality,
+                canonical.get("workflow_used") or capture.workflow_id or "unknown",
+                (canonical.get("route") or {}).get("mode", "none"),
+                response_state,
+                int((time.perf_counter() - turn_started) * 1000),
+                thread.pk,
+                turn.pk,
             )
             return self._result_from_canonical(thread.pk, finalized.pk, canonical, replayed=False)
         except asyncio.CancelledError:

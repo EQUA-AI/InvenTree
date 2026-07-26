@@ -156,6 +156,32 @@ class BusinessRuleError(InvenTreeError):
         super().__init__(message, status_code, "BUSINESS_RULE")
 
 
+#: Words that carry no selectivity in a part search but, because DRF's search
+#: filter requires EVERY whitespace-separated token to match, are enough on
+#: their own to return nothing. A spoken question ("what is the stock level for
+#: the ceramic capacitor") arrives with several of them attached.
+_SEARCH_STOPWORDS = frozenset(
+    "a an the of for in on at to is are was were do does did what which who "  # noqa: SIM905
+    "what's "
+    "how many much where when why we our us i you it its this that these those "
+    "have has had get show list find check see tell me about please can could "
+    "stock level levels quantity qty on-hand onhand available inventory part parts "
+    "number no numbers item items".split()
+)
+
+
+def _search_terms(query: str) -> str:
+    """Reduce a spoken question to the tokens worth searching on.
+
+    DRF's SearchFilter ANDs every token, so one stray article or filler word
+    zeroes an otherwise good query. Keeps the original text when stripping would
+    leave nothing to search for.
+    """
+    tokens = [token for token in str(query or "").split() if token]
+    kept = [token for token in tokens if token.strip(".,?!").casefold() not in _SEARCH_STOPWORDS]
+    return " ".join(kept) if kept else " ".join(tokens)
+
+
 class InvenTreeClient:
     """
     Async HTTP client for InvenTree API.
@@ -418,7 +444,7 @@ class InvenTreeClient:
         }
 
         if query:
-            params["search"] = query
+            params["search"] = _search_terms(query)
         if category:
             params["category"] = category
         if ipn:

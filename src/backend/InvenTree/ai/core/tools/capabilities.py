@@ -168,7 +168,10 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
             "get_kanban_summary",
             "check_kanban_card_stock",
         ),
-        ("kanban", "board", "card", "backlog"),
+        # "job"/"task" are what the floor calls these; without them "Check for
+        # all jobs" scored no kanban pack and the assistant claimed it could not
+        # access job details -- right after summarising the board.
+        ("kanban", "board", "card", "backlog", "job", "jobs", "task", "tasks"),
     ),
     "kanban.write": (
         ToolEffect.WRITE,
