@@ -172,6 +172,21 @@ class RootWorkflow:
             # Step 3: Execute Workflow
             workflow_id = decision.get_workflow_id()
 
+            # A server-owned pin wins over this router's own choice. Voice turns
+            # are classified upstream by the deterministic VoiceComplexityRouter;
+            # re-deriving the workflow here let an injection-prefixed imperative
+            # land on wf4 procurement (a write tier) even though the voice router
+            # had selected wf8. The pin is set only in trusted server context and
+            # is never readable from client-supplied fields.
+            pinned = aggregated_context.get("pinned_workflow_id")
+            if pinned:
+                if pinned != workflow_id:
+                    logger.info(
+                        "Honouring server workflow pin",
+                        extra={"pinned": pinned, "router_choice": workflow_id},
+                    )
+                workflow_id = pinned
+
             if not workflow_id:
                 # Fallback to general conversation if no specific workflow
                 workflow_id = "general"  # Or handle gracefully

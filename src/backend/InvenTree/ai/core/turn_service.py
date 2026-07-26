@@ -590,6 +590,42 @@ class NormalizedTurnService:
             "route": None,
         }
 
+    async def _refuse_instruction_override(
+        self,
+        *,
+        content: str,
+        modality: str,
+        thread_id: Any,
+        turn_id: Any,
+        emitter: Any,
+    ) -> dict[str, Any] | None:
+        """Refuse a turn that tries to rewrite the assistant's instructions.
+
+        Returns a spoken refusal canonical, or ``None`` to continue normally.
+        Called before pending-write resolution and before routing: an injected
+        turn must not be able to confirm a stored write or reach a workflow.
+        Content-only -- no permission or tool state is consulted.
+        """
+        if modality != TurnModality.VOICE:
+            return None
+        from ai.core.voice.injection import (
+            INJECTION_REFUSAL_PHRASE,
+            has_instruction_override,
+        )
+
+        if not has_instruction_override(content):
+            return None
+        # Bounded and transcript-free: the refused text is never echoed back.
+        logger.warning("voice.injection.refused thread_id=%s turn_id=%s", thread_id, turn_id)
+        return await self._canonical_for_voice_write(
+            thread_id=thread_id,
+            turn_id=turn_id,
+            spoken=INJECTION_REFUSAL_PHRASE,
+            emitter=emitter,
+            workflow_id="injection_refused",
+            workflow_name="INJECTION_REFUSED",
+        )
+
     async def _resolve_pending_voice_write(
         self,
         *,
@@ -938,17 +974,32 @@ class NormalizedTurnService:
         fence_token = READ_ONLY_TOOLS.set(True) if modality == TurnModality.VOICE else None
 
         try:
-            # Before routing: a confirmation reply to a pending Tier-3 write
-            # ("yes"/"confirm delete") would otherwise route like any request,
-            # so the pending confirmation must capture this turn first.
-            write_canonical = await self._resolve_pending_voice_write(
-                actor=actor,
-                trusted_context=trusted_context,
+            # First of all: an attempt to rewrite the assistant's instructions is
+            # refused outright. This must precede BOTH the pending-write
+            # resolution and routing -- an injected turn may neither confirm a
+            # stored write nor reach a workflow. Ordering is the control here.
+            injection_canonical = await self._refuse_instruction_override(
                 content=content,
                 modality=modality,
                 thread_id=thread.pk,
                 turn_id=turn.pk,
                 emitter=isolated_emitter,
+            )
+            # Before routing: a confirmation reply to a pending Tier-3 write
+            # ("yes"/"confirm delete") would otherwise route like any request,
+            # so the pending confirmation must capture this turn first.
+            write_canonical = (
+                None
+                if injection_canonical
+                else await self._resolve_pending_voice_write(
+                    actor=actor,
+                    trusted_context=trusted_context,
+                    content=content,
+                    modality=modality,
+                    thread_id=thread.pk,
+                    turn_id=turn.pk,
+                    emitter=isolated_emitter,
+                )
             )
             diagnostic_context = await self._build_diagnostic_context(
                 actor=actor,
@@ -966,7 +1017,10 @@ class NormalizedTurnService:
             )
 
             route_mode = getattr(getattr(route, "mode", None), "value", None)
-            if write_canonical is not None:
+            if injection_canonical is not None:
+                # Refusal wins over every other branch, including a pending write.
+                canonical = injection_canonical
+            elif write_canonical is not None:
                 # A pending write confirmation resolved; it supersedes routing.
                 canonical = write_canonical
             elif route_mode == "reasoning" and self.reasoning_adapter is not None:
@@ -1029,6 +1083,13 @@ class NormalizedTurnService:
                 workflow = self.workflow_factory()
                 workflow_context = dict(trusted)
                 workflow_context["modality"] = modality
+                if modality == TurnModality.VOICE:
+                    # Pin the workflow the voice router already chose. Without
+                    # this the legacy router re-decides from scratch and can pick
+                    # a write-tier workflow for a voice turn (observed: wf4
+                    # procurement). Voice may only land on read workflows.
+                    pinned = getattr(route, "target_workflow_id", None) or "wf8"
+                    workflow_context["pinned_workflow_id"] = pinned
                 # Client hints remain visibly and semantically untrusted. They
                 # are nested so no caller value can overwrite a server field.
                 untrusted_context = metadata.get("untrusted_client_context")
