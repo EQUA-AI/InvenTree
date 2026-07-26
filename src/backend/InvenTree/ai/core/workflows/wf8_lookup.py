@@ -14,6 +14,7 @@ Uses ChatAgent with AzureOpenAIChatClient for minimal agent involvement.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -32,6 +33,40 @@ from ai.core.tools.invocation_guard import (
 from ai.core.tools.rbac import read_tools
 
 logger = logging.getLogger(__name__)
+
+
+#: Sign-offs, which the router's acknowledgement pattern does not cover because
+#: they carry a trailing clause ("Thanks, that's all." -- from the live test,
+#: where it cost 4-6 s and a filler). Local to this decision: it only controls
+#: whether a turn is handed the tool-less clarification agent, never routing.
+_SIGN_OFF_PATTERN = re.compile(
+    r"\s*(?:ok(?:ay)?|thanks?|thank you|cheers|great|perfect|got it)"
+    r"[,!.\s]*(?:that'?s (?:all|it|everything)|we'?re done|i'?m done|"
+    r"no(?:thing)? (?:more|else)|bye|goodbye)[!.\s]*",
+    re.IGNORECASE,
+)
+
+
+def _is_social_turn(query: str) -> bool:
+    """Whether this turn is a greeting, thanks, sign-off, or capability question.
+
+    These match no capability pack by nature, so selection reports "nothing to
+    work with" and the turn would otherwise be handed to the tool-less
+    clarification agent -- which is why "Hello." came back asking which part or
+    order to look at. Reuses the voice router's own patterns so the two
+    classifications cannot drift apart.
+    """
+    from ai.core.agents.voice_routing import VoiceComplexityRouter
+
+    normalized = " ".join(str(query or "").casefold().split())
+    if not normalized:
+        return False
+    return bool(
+        VoiceComplexityRouter._GREETING_PATTERN.fullmatch(normalized)
+        or VoiceComplexityRouter._ACK_PATTERN.fullmatch(normalized)
+        or VoiceComplexityRouter._HELP_PATTERN.fullmatch(normalized)
+        or _SIGN_OFF_PATTERN.fullmatch(normalized)
+    )
 
 
 class LookupType(Enum):
@@ -588,8 +623,16 @@ figure from an earlier turn as if you had just verified it."""
             runtime_tools = list(selection.tools) if enforce_selection else tools
             # A selection that matched nothing yields no tools. Answering anyway
             # is how an empty tool result becomes a confident wrong figure, so the
-            # turn switches to asking instead.
-            clarify = enforce_selection and selection.clarification_required
+            # turn switches to asking instead -- except for social turns, which
+            # match no capability by nature. "Hello." was reaching the clarify
+            # agent and coming back as "What would you like me to check -- such
+            # as a part, order, category...", after 4-6s and a "Let me check
+            # that" filler, because a greeting scores no pack.
+            clarify = (
+                enforce_selection
+                and selection.clarification_required
+                and not _is_social_turn(query)
+            )
             agent = await self._get_agent(
                 voice=voice_read_only and not clarify,
                 read_only=enforce_selection and not voice_read_only and not clarify,

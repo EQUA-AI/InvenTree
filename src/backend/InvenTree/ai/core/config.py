@@ -160,6 +160,12 @@ class Settings(BaseSettings):
     feature_voice_write_confirmation: bool = Field(
         default=False, alias="FEATURE_VOICE_WRITE_CONFIRMATION"
     )
+    # Ceiling on the voice action planner. It resolves one tool call through an
+    # agent loop; past this the turn degrades to the same advisory refusal it
+    # would have produced anyway, instead of leaving the speaker in silence.
+    voice_write_plan_timeout_s: float = Field(
+        default=8.0, ge=1.0, le=60.0, alias="VOICE_WRITE_PLAN_TIMEOUT_S"
+    )
     # Prior thread messages replayed into a lookup turn so a follow-up ("just the
     # ones over 2000") resolves against what was already said. Bounded because the
     # transcript is prompt payload: every message is re-sent on every turn. 0

@@ -346,8 +346,15 @@ Only output the JSON object, no other text."""
         if self._agent is None:
             settings = get_settings()
 
+            # Classification is a short JSON label, not reasoning. Running it on
+            # the main deployment (a reasoning model in this deployment) put a
+            # slow round trip in front of every turn the regex and semantic
+            # routers missed; the fast deployment answers the same question.
             chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
+                deployment_name=(
+                    getattr(settings, "azure_openai_fast_deployment", "")
+                    or settings.azure_openai_deployment
+                ),
                 endpoint=settings.azure_openai_endpoint,
                 api_key=settings.azure_openai_api_key,
             )

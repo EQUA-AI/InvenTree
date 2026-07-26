@@ -683,13 +683,32 @@ class NormalizedTurnService:
         """
         if not self._voice_write_enabled():
             return None
-        proposal = await self.voice_write_gate.begin(
-            content,
-            actor=actor,
-            trusted_context=trusted_context,
-            thread_id=thread_id,
-            nonce=str(turn_id),
-        )
+        # Bounded: the planner resolves ids through an agent loop, and an
+        # under-specified request used to keep it running for ~95 seconds before
+        # producing a fixed refusal. A timeout here degrades to exactly the same
+        # refusal, just promptly.
+        from ai.core.config import get_settings as _get_settings
+
+        timeout_s = getattr(_get_settings(), "voice_write_plan_timeout_s", 8.0)
+        try:
+            proposal = await asyncio.wait_for(
+                self.voice_write_gate.begin(
+                    content,
+                    actor=actor,
+                    trusted_context=trusted_context,
+                    thread_id=thread_id,
+                    nonce=str(turn_id),
+                ),
+                timeout=timeout_s,
+            )
+        except TimeoutError:
+            logger.warning(
+                "voice.write_plan.timeout thread_id=%s turn_id=%s seconds=%s",
+                thread_id,
+                turn_id,
+                timeout_s,
+            )
+            return None
         if proposal is None:
             return None
         for event in proposal.audit_events:

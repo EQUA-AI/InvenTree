@@ -382,7 +382,11 @@ class VoiceToolActionResolver:
         )
         invocation_config = getattr(chat_client, "function_invocation_config", None)
         if invocation_config is not None:
-            invocation_config.max_iterations = 8
+            # 3, not 8: this planner resolves ids for ONE tool call. Eight
+            # iterations mostly bought retries of failing lookups (the live test
+            # hit "Maximum consecutive function call errors reached (3)" after
+            # ~26 s of them) on a path whose output is a fixed refusal string.
+            invocation_config.max_iterations = 3
             invocation_config.include_detailed_errors = False
         self._agent = ChatAgent(
             chat_client=chat_client,
@@ -431,15 +435,18 @@ class VoiceToolActionResolver:
                         tools=[*authorized_reads, *action_proxies],
                     )
             if not captured and authorized_actions != all_actions:
+                # The domain shortlist can be wrong -- "Email the requested part
+                # change" shortlists email when the action is create_part -- so
+                # one widening pass over every authorized action is kept.
                 all_action_proxies = [_capture_proxy(tool, captured) for tool in all_actions]
                 await agent.run(content, tools=all_action_proxies)
-                if not captured:
-                    all_reads = [tool for tool in authorized if not is_action_tool(tool)]
-                    if all_reads:
-                        await agent.run(
-                            content,
-                            tools=[*all_reads, *all_action_proxies],
-                        )
+            # The fourth pass (every action plus every read) is deliberately
+            # gone. It was the most expensive rung and the least likely to bind
+            # anything the previous three could not; together with four loops at
+            # eight iterations it is how a refusal for "Order 50 more M3 screws"
+            # took ~95 seconds to produce a constant, pre-decided string. If the
+            # request is under-specified, saying so promptly is the better answer
+            # -- and the caller now bounds this whole path with a timeout.
         except Exception as exc:
             logger.error("Voice action planning failed (error_type=%s)", type(exc).__name__)
             return None

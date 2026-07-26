@@ -28,7 +28,12 @@ ANSWER_INCOMPLETE = "I could not finish that answer. Please try again."
 
 #: Seconds of processing before the thinking phrase is spoken. Short turns
 #: finish first and are never preceded by filler.
-INTERIM_STATUS_DELAY_S = 2.5
+#: Raised from 2.5 s after measurement: 30 of 32 turns in the 2026-07-26 test
+#: crossed that threshold, so "Let me check that" was the default experience
+#: rather than a signal that something was taking unusually long. Social turns
+#: and the bounded planner (see wf8 _is_social_turn and
+#: voice_write_plan_timeout_s) now finish below this.
+INTERIM_STATUS_DELAY_S = 4.0
 
 #: The complete allow-list; anything not present here is not a status phrase.
 ALLOWED_STATUS_PHRASES = frozenset({
