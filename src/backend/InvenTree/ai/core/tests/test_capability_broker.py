@@ -91,11 +91,20 @@ def test_every_catalog_entry_has_an_explicit_policy():
         policy = policies[tool.__name__]
         assert policy.kind is PolicyKind.NATIVE_PERMISSION
         assert policy.all_of == (("email", permission),)
+    # Kanban cards ARE work orders -- InvenTree governs tasks_kanbancard with the
+    # WORK_ORDER ruleset -- so that is the pair the catalog must declare. This
+    # previously asserted an AIMMS-native ("kanban", ...) capability, which no
+    # ruleset backed and no migration granted.
     for tool in KANBAN_TOOLS:
-        permission = "view" if tool in KANBAN_READ_TOOLS else "change"
+        if tool in KANBAN_READ_TOOLS:
+            permission = "view"
+        elif tool.__name__ == "create_kanban_card":
+            permission = "add"
+        else:
+            permission = "change"
         policy = policies[tool.__name__]
         assert policy.kind is PolicyKind.NATIVE_PERMISSION
-        assert policy.all_of == (("kanban", permission),)
+        assert policy.all_of == (("work_order", permission),)
     assert all(
         entry.authorization.reason
         for entry in catalog
@@ -483,7 +492,7 @@ def test_sql_hatch_is_not_attached_outside_the_inventree_data_graph():
     )
     kanban = select_capabilities(
         "show my kanban board",
-        profile=ALL_VIEW_PROFILE | frozenset({("kanban", "view")}),
+        profile=ALL_VIEW_PROFILE | frozenset({("work_order", "view")}),
         authenticated=True,
     )
 
@@ -578,7 +587,7 @@ def test_native_read_capabilities_require_their_explicit_profile():
     )
     kanban = select_capabilities(
         "List kanban cards on the board",
-        profile=ALL_VIEW_PROFILE | frozenset({("kanban", "view")}),
+        profile=ALL_VIEW_PROFILE | frozenset({("work_order", "view")}),
         authenticated=True,
     )
 

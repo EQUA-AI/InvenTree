@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 def _tool_permission_map() -> dict[Any, tuple[str, str]]:
     """Map tool objects to their required ``(ruleset, permission)`` pair."""
     from ai.core.integrations import inventory_tools as it
+    from ai.core.integrations import kanban_tools as kt
     from ai.core.tools.inventree.write import purchase_orders as po
 
     mapping: dict[Any, tuple[str, str]] = {
@@ -116,9 +117,28 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
         po.complete_purchase_order: ("purchase_order", "change"),
         po.delete_purchase_order: ("purchase_order", "delete"),
         po.delete_po_line_item: ("purchase_order", "delete"),
-        # Email/kanban are gated by AIMMS-native permissions in the separate
-        # _native_tool_map (used only by the list filter, not the wf8 catalog,
-        # which keeps its own DISABLED/resource-authorizer policy for them).
+        # Kanban cards ARE work orders. InvenTree governs tasks_kanbancard and
+        # tasks_kanbancardpart with the WORK_ORDER ruleset (users/ruleset.py:180),
+        # so that is the permission the AI must check -- not an AIMMS-native
+        # group. Gating these on an invented "kanban" capability meant a user
+        # holding work_order rights could manage cards in the UI but not through
+        # the AI, and the aimms.kanban.* groups it looked for are created by no
+        # migration, so in practice only superusers ever reached these tools.
+        kt.list_kanban_cards: ("work_order", "view"),
+        kt.get_kanban_card: ("work_order", "view"),
+        kt.get_kanban_summary: ("work_order", "view"),
+        kt.check_kanban_card_stock: ("work_order", "view"),
+        kt.create_kanban_card: ("work_order", "add"),
+        kt.update_kanban_card: ("work_order", "change"),
+        kt.move_kanban_card: ("work_order", "change"),
+        kt.archive_kanban_card: ("work_order", "change"),
+        kt.restore_kanban_card: ("work_order", "change"),
+        kt.add_parts_to_kanban_card: ("work_order", "change"),
+        kt.remove_part_from_kanban_card: ("work_order", "change"),
+        # Hard-deletes the card and cascades to its parts: delete, not change.
+        kt.delete_kanban_card: ("work_order", "delete"),
+        # Email stays AIMMS-native (_native_tool_map): Gmail is not an InvenTree
+        # model and has no ruleset to map onto.
         # query_database / list_database_tables are intentionally unmapped:
         # they enforce per-table RBAC internally for the same user.
     }
@@ -126,28 +146,17 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
 
 
 def _native_tool_map() -> dict[Any, tuple[str, str]]:
-    """Map email/kanban tools to their AIMMS-native ``(ruleset, permission)``.
+    """Map email tools to their AIMMS-native ``(ruleset, permission)``.
 
-    Kept separate from ``_tool_permission_map`` so the wf8 capability catalog
-    (which derives policy from that map) is undisturbed; this map only feeds the
-    per-user list filter.
+    Kept separate from ``_tool_permission_map`` because these pairs are resolved
+    by Django group membership rather than ``check_user_role``. Only email
+    belongs here: it has no InvenTree model and therefore no ruleset. Kanban
+    used to live here and does not -- its cards are work orders, governed by the
+    WORK_ORDER ruleset, so it is mapped in ``_tool_permission_map`` instead.
     """
-    from ai.core.integrations import kanban_tools as kt
     from ai.core.integrations.email import tools as et
 
     return {
-        kt.list_kanban_cards: ("kanban", "view"),
-        kt.get_kanban_card: ("kanban", "view"),
-        kt.get_kanban_summary: ("kanban", "view"),
-        kt.check_kanban_card_stock: ("kanban", "view"),
-        kt.create_kanban_card: ("kanban", "change"),
-        kt.update_kanban_card: ("kanban", "change"),
-        kt.move_kanban_card: ("kanban", "change"),
-        kt.archive_kanban_card: ("kanban", "change"),
-        kt.restore_kanban_card: ("kanban", "change"),
-        kt.delete_kanban_card: ("kanban", "change"),
-        kt.add_parts_to_kanban_card: ("kanban", "change"),
-        kt.remove_part_from_kanban_card: ("kanban", "change"),
         et.list_emails: ("email", "view"),
         et.get_email_details: ("email", "view"),
         et.download_attachment: ("email", "view"),
@@ -167,12 +176,14 @@ def _all_pairs() -> frozenset[tuple[str, str]]:
     return frozenset(_permission_map_cached().values())
 
 
-# AIMMS-native capability permissions have no InvenTree RuleSet. Kanban (tasks
-# app) and email (Gmail) are gated by membership in a dedicated Django group;
-# superusers get all. Granting these to a user = adding them to the group.
+# AIMMS-native capability permissions have no InvenTree RuleSet. Email (Gmail)
+# is gated by membership in a dedicated Django group; superusers get all.
+# Granting these to a user = adding them to the group.
+#
+# Kanban was here too, on aimms.kanban.view/change. It was wrong twice over: no
+# migration creates those groups, so only superusers ever passed, and kanban
+# cards are InvenTree work orders with a real ruleset of their own.
 _AIMMS_NATIVE_GROUPS: dict[tuple[str, str], str] = {
-    ("kanban", "view"): "aimms.kanban.view",
-    ("kanban", "change"): "aimms.kanban.change",
     ("email", "view"): "aimms.email.view",
     ("email", "send"): "aimms.email.send",
 }

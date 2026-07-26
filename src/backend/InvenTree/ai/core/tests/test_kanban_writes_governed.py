@@ -42,7 +42,13 @@ from django.test import override_settings
 GOVERNED = override_settings(AIMMS_GOVERNED_KANBAN_WRITES=True)
 
 #: The most privileged non-superuser kanban profile the exposure filter can see.
-FULL_KANBAN_PROFILE = frozenset({("kanban", "view"), ("kanban", "change")})
+# Kanban cards are work orders: the WORK_ORDER ruleset governs them.
+FULL_KANBAN_PROFILE = frozenset({
+    ("work_order", "view"),
+    ("work_order", "add"),
+    ("work_order", "change"),
+    ("work_order", "delete"),
+})
 
 WRITE_TOOL_IDS = sorted(_GOVERNED_KANBAN_WRITE_TOOLS)
 READ_TOOL_IDS = ["list_kanban_cards", "get_kanban_card"]

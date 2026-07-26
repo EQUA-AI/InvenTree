@@ -153,12 +153,22 @@ class Settings(BaseSettings):
     # execute via the same RBAC-gated write tools text uses). Destructive actions
     # require a strict server-authored phrase. This remains a kill switch: while
     # disabled, the structural read-only fence keeps effect wording advisory only.
-    # OFF by default and deliberately so: enabling voice-initiated writes is a
-    # per-deployment safety decision that must be made explicitly, not inherited.
-    # (This default was flipped to True in 7779b5720 without review; a live test
-    # then found voice offering to execute a kanban write.)
+    #
+    # ON by default: RBAC decides who may write, not the modality. A user with
+    # write permissions holds them on every surface, so leaving this off made
+    # voice arbitrarily weaker than text chat for the same person.
+    #
+    # It was forced off as an incident mitigation, because 7779b5720 turned it on
+    # while the gate behind it was unsound -- severity was classified from the
+    # user's utterance rather than the resolved tool, the read-only fence did not
+    # cover the kanban/email tools (they bypass the REST client it lives in), and
+    # an injected turn could reach the router before it was refused. Those are the
+    # reasons the flag was the safety boundary; all three are now fixed, so the
+    # boundary is back where it belongs: permission_profile() + a mandatory
+    # confirmation turn. Set FEATURE_VOICE_WRITE_CONFIRMATION=false to re-arm the
+    # kill switch for a deployment that wants voice to stay strictly read-only.
     feature_voice_write_confirmation: bool = Field(
-        default=False, alias="FEATURE_VOICE_WRITE_CONFIRMATION"
+        default=True, alias="FEATURE_VOICE_WRITE_CONFIRMATION"
     )
     # Ceiling on the voice action planner. It resolves one tool call through an
     # agent loop; past this the turn degrades to the same advisory refusal it

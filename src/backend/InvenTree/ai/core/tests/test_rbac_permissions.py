@@ -1,8 +1,10 @@
-"""Phase 2: permission-map completeness + AIMMS-native (kanban/email) RBAC.
+"""Phase 2: permission-map completeness + AIMMS-native (email) RBAC.
 
 Every tool any workflow exposes must be mapped (no silent pass-through) except
-the database tools that self-enforce. Kanban/email use group-gated AIMMS-native
-permissions; superusers get everything, ungrouped users get nothing (fail-closed).
+the database tools that self-enforce. Email uses a group-gated AIMMS-native
+permission because Gmail has no InvenTree model; superusers get everything,
+ungrouped users get nothing (fail-closed). Kanban is NOT native -- its cards are
+work orders, governed by the InvenTree WORK_ORDER ruleset.
 """
 
 from __future__ import annotations
@@ -78,16 +80,22 @@ class NativePermissionTests(SimpleTestCase):
         self.assertEqual(_native_pairs(_fake_user(active=False)), frozenset())
 
     def test_group_membership_grants_only_that_pair(self):
-        pairs = _native_pairs(_fake_user(groups=["aimms.kanban.view"]))
-        self.assertIn(("kanban", "view"), pairs)
-        self.assertNotIn(("kanban", "change"), pairs)
+        pairs = _native_pairs(_fake_user(groups=["aimms.email.view"]))
+        self.assertIn(("email", "view"), pairs)
         self.assertNotIn(("email", "send"), pairs)
+
+    def test_kanban_is_not_an_aimms_native_capability(self):
+        """Kanban cards are InvenTree work orders, governed by the WORK_ORDER
+        ruleset -- not by an aimms.kanban.* group that no migration creates."""
+        self.assertNotIn(("kanban", "view"), _AIMMS_NATIVE_GROUPS)
+        self.assertNotIn(("kanban", "change"), _AIMMS_NATIVE_GROUPS)
+        self.assertEqual(_native_pairs(_fake_user(groups=["aimms.kanban.view"])), frozenset())
 
 
 class FilterWithNativeTests(SimpleTestCase):
     def test_superuser_keeps_kanban_and_email(self):
         profile = permission_profile(_fake_user(superuser=True))
-        self.assertIn(("kanban", "view"), profile)
+        self.assertIn(("work_order", "view"), profile)
         self.assertIn(("email", "send"), profile)
         kept = filter_tools([list_kanban_cards, send_email], profile)
         self.assertIn(list_kanban_cards, kept)

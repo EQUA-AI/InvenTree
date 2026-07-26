@@ -34,10 +34,25 @@ def test_voice_live_is_off_by_default():
     assert settings.voice_live_store_raw_audio is False
     assert settings.feature_capability_broker_enforce is True
     assert settings.feature_voice_fast_path is False
-    # Voice-initiated writes are a per-deployment safety decision. This assertion
-    # is a guard, not a preference: it previously read `is True` and that flipped
-    # default reached production, where voice offered to execute a kanban write.
-    assert settings.feature_voice_write_confirmation is False
+
+
+def test_voice_writes_are_governed_by_rbac_not_by_the_modality():
+    """CONTRACT CHANGE: the write flag defaults ON again, deliberately this time.
+
+    It shipped True in 7779b5720 while the gate behind it was unsound, so it was
+    forced False as an incident mitigation and this assertion was inverted to
+    hold that line. The three defects that made the flag load-bearing are fixed
+    -- severity now comes from the resolved tool, the read-only fence covers the
+    direct-ORM kanban/email writes, and injected turns are refused before
+    routing -- so the boundary returns to where it belongs: a user's permissions
+    decide what they may do, on voice exactly as on text.
+
+    The kill switch is unchanged and still explicit.
+    """
+    assert _settings().feature_voice_write_confirmation is True
+    assert _settings(FEATURE_VOICE_WRITE_CONFIRMATION=False).feature_voice_write_confirmation is (
+        False
+    )
 
 
 def test_enabled_voice_live_with_valid_transport():

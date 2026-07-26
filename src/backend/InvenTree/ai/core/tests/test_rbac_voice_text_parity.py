@@ -96,7 +96,7 @@ def test_privileges_are_scoped_not_blanket():
 
     assert "create_part" not in voice_allowed  # needs part:add
     assert "send_email" not in voice_allowed  # needs email:send
-    assert "archive_kanban_card" not in voice_allowed  # needs kanban:change
+    assert "archive_kanban_card" not in voice_allowed  # needs work_order:change
 
 
 def test_a_planner_gets_procurement_writes_and_no_stock_writes():
@@ -147,6 +147,53 @@ def test_a_part_editor_without_bom_rights_cannot_change_the_bom():
 
     assert "update_part" in voice_allowed  # they really can edit parts
     assert "add_bom_item" not in voice_allowed  # ...but not the BOM
+
+
+#: The live 'reader' account: view on most rulesets, write only on work orders.
+WORK_ORDER_CREW = frozenset({
+    ("part", "view"),
+    ("stock", "view"),
+    ("work_order", "view"),
+    ("work_order", "add"),
+    ("work_order", "change"),
+})
+
+
+def test_a_work_order_role_reaches_the_kanban_tools():
+    """Kanban cards are work orders, so the WORK_ORDER ruleset must open them.
+
+    Found against the live deployment: 'reader' holds work_order add/change/
+    delete in InvenTree and can manage cards in the UI, but the AI offered it
+    zero kanban tools -- they were gated on an invented 'kanban' capability
+    backed by aimms.kanban.* Django groups that no migration ever creates. Only
+    superusers passed, so in practice the whole surface was unreachable.
+    """
+    text_allowed = {tool_name(tool) for tool in filter_tools(text_chat_tools(), WORK_ORDER_CREW)}
+
+    assert "list_kanban_cards" in text_allowed  # view
+    assert "create_kanban_card" in text_allowed  # add
+    assert "move_kanban_card" in text_allowed  # change
+
+
+def test_work_order_writes_are_granular_not_blanket():
+    """view alone must not confer add or change on work orders."""
+    viewer = frozenset({("part", "view"), ("work_order", "view")})
+
+    voice_allowed = {
+        tool_name(tool) for tool in text_chat_action_tools() if _voice_allows(tool, viewer)
+    }
+
+    assert voice_allowed == set()
+
+    #: delete is its own permission -- holding change must not grant it.
+    assert tool_requirement(_kanban_tool("delete_kanban_card")) == ("work_order", "delete")
+    assert not _voice_allows(_kanban_tool("delete_kanban_card"), WORK_ORDER_CREW)
+
+
+def _kanban_tool(name: str):
+    from ai.core.integrations import kanban_tools
+
+    return getattr(kanban_tools, name)
 
 
 def test_every_action_tool_states_a_capability():

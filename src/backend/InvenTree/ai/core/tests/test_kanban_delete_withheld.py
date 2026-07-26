@@ -32,9 +32,15 @@ from ai.core.tools.rbac import _filter_map_cached, filter_tools
 
 DELETE_TOOL_ID = "delete_kanban_card"
 
-#: A profile holding every AIMMS-native kanban permission -- the most privileged
-#: non-superuser case the list filter can see.
-FULL_KANBAN_PROFILE = frozenset({("kanban", "view"), ("kanban", "change")})
+#: A profile holding every work-order permission -- the most privileged
+#: non-superuser case the list filter can see. Kanban cards are work orders, so
+#: these are the InvenTree WORK_ORDER ruleset pairs, not an AIMMS-native group.
+FULL_KANBAN_PROFILE = frozenset({
+    ("work_order", "view"),
+    ("work_order", "add"),
+    ("work_order", "change"),
+    ("work_order", "delete"),
+})
 
 
 def test_delete_kanban_card_is_withheld_from_the_agent():
@@ -92,7 +98,7 @@ def test_pack_spec_does_not_reference_the_withheld_tool():
 
 def test_rbac_mapping_is_retained():
     """The permission mapping stays, so the tool is not silently unmapped later."""
-    assert _filter_map_cached()[kanban_tools.delete_kanban_card] == ("kanban", "change")
+    assert _filter_map_cached()[kanban_tools.delete_kanban_card] == ("work_order", "delete")
 
 
 def test_the_agent_prompt_does_not_advertise_delete():
