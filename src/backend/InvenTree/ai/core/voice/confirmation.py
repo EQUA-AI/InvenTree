@@ -152,6 +152,13 @@ CONFIRM_INSTRUCTION = "To confirm, say yes or confirm. To cancel, say cancel."
 NOT_AUTHORIZED_PHRASE = "You are not allowed to perform that action."
 BLOCKED_UNKNOWN_PHRASE = "I can't make that change by voice."
 CANCELLED_PHRASE = "Cancelled. No change was made."
+#: Spoken when the reply was clearly an attempt to agree ("yes", "ok") but the
+#: action required its exact phrase. Saying only "Cancelled" would read as if the
+#: assistant had ignored them.
+STRICT_PHRASE_REQUIRED_PHRASE = (
+    "That one needs its exact confirmation phrase, so nothing was changed. "
+    "Ask again if you still want it."
+)
 CONFIRMED_PHRASE = "Confirmed."
 DONE_PHRASE = "Done."
 EXECUTION_FAILED_PHRASE = "Sorry, that change did not go through. Nothing was changed."
@@ -165,6 +172,7 @@ ALLOWED_CONFIRMATION_PHRASES = frozenset({
     CONFIRMED_PHRASE,
     DONE_PHRASE,
     EXECUTION_FAILED_PHRASE,
+    STRICT_PHRASE_REQUIRED_PHRASE,
 })
 
 

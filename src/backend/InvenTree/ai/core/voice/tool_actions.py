@@ -232,6 +232,56 @@ def _display_value(key: str, value: Any) -> str | None:
     return "provided"
 
 
+#: Argument names that carry a record id, mapped to a resolver that turns the id
+#: into something a technician can actually verify. A read-back naming only
+#: "card id 127" cannot be checked before saying yes -- the speaker has no way to
+#: tell a correct resolution from a wrong one, which is the whole point of
+#: reading it back.
+_RECORD_LABELERS: dict[str, tuple[str, str]] = {
+    "card_id": ("ai.core.integrations.kanban_tools", "get_kanban_card"),
+    "part_id": ("ai.core.tools.inventree.read.parts", "get_part"),
+    "order_id": ("ai.core.tools.inventree.read.purchasing", "get_purchase_order"),
+    "po_id": ("ai.core.tools.inventree.read.purchasing", "get_purchase_order"),
+}
+#: Fields to read a human label from, in preference order.
+_LABEL_FIELDS = ("title", "name", "reference", "IPN", "description")
+
+
+async def _record_label(key: str, value: Any) -> str | None:
+    """Best-effort human label for one record id. Never raises, never blocks long."""
+    target = _RECORD_LABELERS.get(key)
+    if target is None or isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None
+    module_path, function_name = target
+    try:
+        module = __import__(module_path, fromlist=[function_name])
+        resolver = getattr(module, function_name, None)
+        if resolver is None:
+            return None
+        record = resolver(**{key if key != "po_id" else "order_id": value})
+        if inspect.isawaitable(record):
+            record = await record
+    except Exception:  # a missing label must never block the confirmation
+        return None
+    if not isinstance(record, dict):
+        return None
+    for field_name in _LABEL_FIELDS:
+        label = record.get(field_name)
+        if isinstance(label, str) and label.strip():
+            return " ".join(label.split())[:64]
+    return None
+
+
+async def _action_summary_async(tool: Any, arguments: dict[str, Any]) -> str:
+    """Read-back naming the record, falling back to the id-only form."""
+    summary = _action_summary(tool, arguments)
+    for key, value in arguments.items():
+        label = await _record_label(str(key), value)
+        if label:
+            return f'{summary} ("{label}")'
+    return summary
+
+
 def _action_summary(tool: Any, arguments: dict[str, Any]) -> str:
     label = tool_name(tool).replace("_", " ")
     details: list[str] = []
@@ -402,7 +452,7 @@ class VoiceToolActionResolver:
         return ResolvedVoiceWrite(
             action=ProposedWriteAction(
                 capability=capability,
-                summary=_action_summary(proposal.tool, proposal.arguments),
+                summary=await _action_summary_async(proposal.tool, proposal.arguments),
                 action_class=action_class,
                 confirm_phrase=confirm_phrase,
             ),

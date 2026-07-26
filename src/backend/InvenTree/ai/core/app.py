@@ -61,12 +61,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-# Configure logging
+# Configure logging.
+#
+# InvenTree/settings.py calls logging.basicConfig() during django.setup(), which
+# runs before this module is imported (InvenTree/asgi.py builds the Django app
+# first). A second basicConfig() is then a documented no-op, so this block used
+# to leave the root logger at WARNING and every logger.info() in ai/core was
+# discarded in production -- including the voice write-confirmation audit trail,
+# which had zero records for the entire 2026-07-26 test session.
+#
+# Set the level on our own namespace instead of trying to reconfigure the root:
+# records still reach the handler Django installed, and InvenTree's own logging
+# is left alone.
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
+logging.getLogger("ai").setLevel(os.getenv("AIMMS_LOG_LEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 
 

@@ -26,6 +26,7 @@ confirmed, resolved, and re-authorized call.
 from __future__ import annotations
 
 import inspect
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -34,10 +35,14 @@ from ai.core.voice.confirmation import (
     DONE_PHRASE,
     EXECUTION_FAILED_PHRASE,
     NOT_AUTHORIZED_PHRASE,
+    STRICT_PHRASE_REQUIRED_PHRASE,
+    ConfirmationReason,
+    ConfirmationReply,
     PendingVoiceConfirmation,
     ProposedWriteAction,
     VoiceWriteAuditEvent,
     VoiceWriteAuditEventType,
+    interpret_confirmation_reply,
     propose,
     resolve,
 )
@@ -46,6 +51,9 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable
 
     from ai.core.auth import AIPrincipal
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,6 +286,22 @@ class VoiceWriteGate:
         outcome, decision_audit = resolve(stored.pending, content)
         events: list[VoiceWriteAuditEvent] = [decision_audit]
         if not outcome.confirmed:
+            if outcome.reason is ConfirmationReason.NOT_CONFIRMED:
+                logger.info("voice.write_confirmation.audit %s", decision_audit.to_dict())
+                if interpret_confirmation_reply(content) is ConfirmationReply.AFFIRM:
+                    # They did agree -- just not with the exact phrase a strict
+                    # action requires. Say so, rather than a bare "Cancelled"
+                    # that reads as if they had been ignored.
+                    return WriteResolutionResult(
+                        spoken=STRICT_PHRASE_REQUIRED_PHRASE,
+                        executed=False,
+                        audit_events=tuple(events),
+                    )
+                # Otherwise the speaker moved on. The proposal is abandoned
+                # (consumed above, so it can never be confirmed later), but the
+                # turn is theirs: returning "Cancelled." here would swallow a
+                # real question and leave it unanswered. Route it normally.
+                return None
             return WriteResolutionResult(
                 spoken=outcome.spoken, executed=False, audit_events=tuple(events)
             )
