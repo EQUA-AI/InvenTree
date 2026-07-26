@@ -117,6 +117,38 @@ def test_read_only_accounts_get_no_writes_on_either_surface(profile):
     assert voice_allowed == []
 
 
+def test_the_ai_is_never_more_permissive_than_inventree():
+    """A tool must require the ruleset InvenTree itself governs the model with.
+
+    Found against the live deployment: the 'allaccess' account holds no BOM
+    access at all (roles API returns bom: null) yet the AI allowed it to add BOM
+    items, because add_bom_item was mapped to part:change. InvenTree governs
+    part_bomitem with the BOM ruleset (users/ruleset.py), so the AI was more
+    permissive than the UI it fronts.
+    """
+    from ai.core.integrations import inventory_tools
+
+    assert tool_requirement(inventory_tools.add_bom_item) == ("bom", "add")
+
+
+def test_a_part_editor_without_bom_rights_cannot_change_the_bom():
+    """The live 'allaccess' shape: broad part/stock writes, no BOM ruleset."""
+    part_editor = frozenset({
+        ("part", "view"),
+        ("part", "add"),
+        ("part", "change"),
+        ("stock", "view"),
+        ("stock", "change"),
+    })
+
+    voice_allowed = {
+        tool_name(tool) for tool in text_chat_action_tools() if _voice_allows(tool, part_editor)
+    }
+
+    assert "update_part" in voice_allowed  # they really can edit parts
+    assert "add_bom_item" not in voice_allowed  # ...but not the BOM
+
+
 def test_every_action_tool_states_a_capability():
     """No write may be reachable without a permission to check against."""
     unmapped = []

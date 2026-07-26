@@ -80,7 +80,11 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
         # BOM
         it.get_bom: ("part", "view"),
         it.get_where_used: ("part", "view"),
-        it.add_bom_item: ("part", "change"),
+        # InvenTree governs part_bomitem with the BOM ruleset (users/ruleset.py:103),
+        # not the part ruleset. Mapping this to part:change let an account with
+        # no BOM access at all add BOM items through the AI that it could not add
+        # in the UI -- the AI must never be more permissive than the app it fronts.
+        it.add_bom_item: ("bom", "add"),
         # Purchasing / companies / suppliers
         it.list_suppliers: ("purchase_order", "view"),
         it.get_supplier_parts: ("purchase_order", "view"),
