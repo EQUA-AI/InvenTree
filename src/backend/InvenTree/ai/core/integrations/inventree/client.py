@@ -550,6 +550,10 @@ class InvenTreeClient:
         params: dict[str, Any] = {
             "limit": limit,
             "offset": offset,
+            # Without this the serializer returns a bare location id and leaves
+            # ``location_name`` null, so no caller can say where stock actually
+            # is. The detail block carries name + pathstring in the same request.
+            "location_detail": "true",
         }
 
         if part_id:

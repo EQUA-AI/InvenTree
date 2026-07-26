@@ -11,7 +11,9 @@ under the fence fails as a normal tool error the agent can relay.
 from __future__ import annotations
 
 import contextvars
+import inspect
 from contextlib import contextmanager
+from functools import wraps
 
 READ_ONLY_TOOLS: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "aimms_read_only_tools", default=False
@@ -37,6 +39,35 @@ def read_only_tool_fence():
         yield
     finally:
         READ_ONLY_TOOLS.reset(token)
+
+
+def guard_write_tool(func):
+    """Enforce the read-only fence on one mutating tool.
+
+    The fence was originally checked only at the InvenTree REST client, on the
+    premise that "every live write tool ultimately calls it". That is false for
+    the AIMMS-native tools: kanban and email write through the Django ORM and
+    the mail backend, so they never pass the funnel -- verified in production,
+    where an archive reached the ORM with the fence active. Decorating the tool
+    itself makes the guarantee independent of which transport it happens to use.
+    """
+    if inspect.iscoroutinefunction(func):
+
+        @wraps(func)
+        async def async_guarded(*args, **kwargs):
+            if read_only_tools_active():
+                raise PermissionError(READ_ONLY_MESSAGE)
+            return await func(*args, **kwargs)
+
+        return async_guarded
+
+    @wraps(func)
+    def guarded(*args, **kwargs):
+        if read_only_tools_active():
+            raise PermissionError(READ_ONLY_MESSAGE)
+        return func(*args, **kwargs)
+
+    return guarded
 
 
 @contextmanager

@@ -34,7 +34,10 @@ def test_voice_live_is_off_by_default():
     assert settings.voice_live_store_raw_audio is False
     assert settings.feature_capability_broker_enforce is True
     assert settings.feature_voice_fast_path is False
-    assert settings.feature_voice_write_confirmation is True
+    # Voice-initiated writes are a per-deployment safety decision. This assertion
+    # is a guard, not a preference: it previously read `is True` and that flipped
+    # default reached production, where voice offered to execute a kanban write.
+    assert settings.feature_voice_write_confirmation is False
 
 
 def test_enabled_voice_live_with_valid_transport():

@@ -74,6 +74,7 @@ from ai.core.tools.inventree.read.stock import (
     get_stock_item,
     get_stock_items,
     get_stock_level,
+    summarize_stock_items,
 )
 from ai.core.tools.inventree.read.stock import (
     get_stock_locations as list_locations,
@@ -145,23 +146,46 @@ logger = logging.getLogger(__name__)
 async def get_stock_levels(
     part_id: int | None = None,
     location_id: int | None = None,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any] | list[dict[str, Any]]:
     """
-    Get stock levels for parts or locations.
+    Get the total stock held for a part, broken down by location.
+
+    For a part this returns the answer directly -- the summed total plus a
+    per-location breakdown -- so there is no need to add up individual stock
+    rows. A part that exists but holds nothing returns total_in_stock 0 with
+    resolved true: that means zero on hand, NOT "part not found".
 
     Args:
-        part_id: Filter by part ID. Returns all stock items for this part.
-        location_id: Filter by location ID. Returns all stock items at this location.
+        part_id: The part ID to report stock for.
+        location_id: Alternatively, report the stock items held at a location.
 
     Returns:
-        List of stock items with quantities and locations
+        For a part: {part_id, part_name, part_ipn, description, units,
+        total_in_stock, item_count, locations: [{name, quantity}], resolved}.
+        For a location: the list of stock items held there.
+        When neither argument is given: {"resolved": false, "error": ...}.
     """
     if location_id is not None:
         return await get_stock_at_location(location_id=location_id)
-    elif part_id is not None:
-        return await get_stock_items(part_id=part_id)
-    else:
-        return []
+    if part_id is None:
+        return {
+            "resolved": False,
+            "error": "part_id or location_id is required to report stock levels",
+        }
+
+    items = await get_stock_items(part_id=part_id)
+    part: dict[str, Any] = {}
+    try:
+        part = await get_part_details(part_id=part_id) or {}
+    except Exception:  # the location breakdown is still worth returning
+        logger.warning("Could not resolve part %s for the stock summary", part_id)
+    if not part and not items:
+        return {
+            "resolved": False,
+            "part_id": part_id,
+            "error": f"No part found with id {part_id}",
+        }
+    return summarize_stock_items(items, part=part, part_id=part_id)
 
 
 @ai_function

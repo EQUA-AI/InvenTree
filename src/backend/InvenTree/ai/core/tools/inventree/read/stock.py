@@ -430,6 +430,76 @@ async def get_stock_items(
     return await provider.get_stock_items(part_id=part_id, limit=limit)
 
 
+def stock_location_label(item: dict[str, Any]) -> str:
+    """Human-readable location for one stock row.
+
+    Prefers the full path ("Electronics Lab/Loose Parts") so a spoken answer is
+    unambiguous across same-named bins.
+    """
+    detail = item.get("location_detail") or {}
+    label = detail.get("pathstring") or detail.get("name") or item.get("location_name")
+    if label:
+        return str(label)
+    location_id = item.get("location")
+    return f"Location {location_id}" if location_id else "Unassigned"
+
+
+def summarize_stock_items(
+    items: list[dict[str, Any]],
+    *,
+    part: dict[str, Any] | None = None,
+    part_id: int | None = None,
+) -> dict[str, Any]:
+    """Reduce raw stock rows to the answer a stock question actually asks for.
+
+    The InvenTree stock serializer returns ~42 fields per row (barcode hashes,
+    installed items, supplier part references...). Handing that to a model as
+    the answer to "what is the stock level" costs ~13 KB for eight rows, buries
+    the quantities, and -- observed in production -- gets reported as "I
+    couldn't find any stock information" for a part holding 8,902 units. So the
+    total is computed here and the payload is projected to the fields that
+    answer the question.
+
+    ``total_in_stock`` prefers the part record's own figure (InvenTree's
+    authority, which accounts for rows beyond ``limit``) and falls back to
+    summing the returned rows.
+    """
+    part = part or {}
+    quantities: dict[str, float] = {}
+    for item in items:
+        try:
+            quantity = float(item.get("quantity") or 0)
+        except (TypeError, ValueError):
+            continue
+        quantities[stock_location_label(item)] = (
+            quantities.get(stock_location_label(item), 0.0) + quantity
+        )
+
+    summed = sum(quantities.values())
+    reported = part.get("in_stock", part.get("total_in_stock"))
+    try:
+        total = float(reported) if reported is not None else summed
+    except (TypeError, ValueError):
+        total = summed
+
+    return {
+        "part_id": part.get("pk", part_id),
+        "part_name": part.get("name"),
+        "part_ipn": part.get("IPN"),
+        "description": part.get("description"),
+        "units": part.get("units") or "units",
+        "total_in_stock": total,
+        "item_count": len(items),
+        "locations": [
+            {"name": name, "quantity": quantity}
+            for name, quantity in sorted(quantities.items(), key=lambda pair: -pair[1])
+        ],
+        # Explicitly distinguishes "this part exists and holds zero" from
+        # "no such part" -- an empty list alone reads as not-found.
+        "resolved": True,
+    }
+
+
 @ai_function
 async def get_bom(
     part_id: int,

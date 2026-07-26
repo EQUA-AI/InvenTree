@@ -21,6 +21,7 @@ import structlog
 from ai.core.integrations.email.gmail import GmailError, get_gmail_client
 from ai.core.integrations.email.provider import EmailQuery
 from ai.core.maf_compat import ai_function
+from ai.core.tools.read_only import guard_write_tool
 
 logger = structlog.get_logger(__name__)
 
@@ -344,6 +345,7 @@ async def download_attachment(
 
 
 @ai_function
+@guard_write_tool
 async def mark_email_processed(
     message_id: str,
     add_label: str = "AIMMS-Processed",
@@ -409,6 +411,7 @@ async def mark_email_processed(
 
 
 @ai_function
+@guard_write_tool
 async def send_email(  # noqa: RUF029 - async is the tool-call contract; awaited directly by generate_and_send_document
     to: str | list[str],
     subject: str,
@@ -749,6 +752,7 @@ def _build_sample_data(document_type: str) -> dict[str, Any]:
 
 
 @ai_function
+@guard_write_tool
 async def generate_and_send_document(
     document_type: str,
     to: str | list[str],

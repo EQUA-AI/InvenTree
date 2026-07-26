@@ -21,6 +21,12 @@ from ai.core.tools.rbac import (
     tool_requirement,
     tools_for_current_user,
 )
+from ai.core.voice.action_severity import (
+    WriteSeverity,
+    action_class_for_severity,
+    confirm_phrase_for_tool_name,
+    severity_for_tool_name,
+)
 from ai.core.voice.confirmation import (
     ProposedWriteAction,
     WriteActionClass,
@@ -246,17 +252,33 @@ def _action_summary(tool: Any, arguments: dict[str, Any]) -> str:
 
 
 def _action_class(tool: Any, content: str) -> tuple[WriteActionClass, str]:
+    """Confirmation bar for the action that will actually run.
+
+    The resolved tool is the authority (``action_severity``); the utterance may
+    only RAISE the bar, never lower it. Deriving the class from the transcript
+    announced "this cannot be undone" for a reversible archive, and -- far worse
+    -- left send_email/cancel_purchase_order/merge_stock on the lenient bare-yes
+    bar whenever the request happened to avoid a destructive verb.
+    """
     name = tool_name(tool).lower()
+    severity = severity_for_tool_name(name)
     requirement = tool_requirement(tool)
-    action_class = classify_write_intent(content, effect_intent=True)
     if requirement is not None and requirement[1] == "delete":
+        severity = WriteSeverity.IRREVERSIBLE
+
+    action_class = action_class_for_severity(severity)
+    if (
+        action_class is WriteActionClass.CONFIRMABLE
+        and classify_write_intent(content, effect_intent=True) is WriteActionClass.IRREVERSIBLE
+    ):
+        # The speaker asked for something destructive. Even if the resolved tool
+        # is reversible, hold them to the strict phrase rather than silently
+        # accepting a bare "yes" for an action they may have mis-described.
         action_class = WriteActionClass.IRREVERSIBLE
+
     if action_class is not WriteActionClass.IRREVERSIBLE:
         return action_class, ""
-    for verb in ("delete", "cancel", "remove", "deactivate", "destroy", "erase"):
-        if verb in name or verb in content.lower():
-            return action_class, f"confirm {verb}"
-    return action_class, "confirm action"
+    return action_class, confirm_phrase_for_tool_name(name)
 
 
 def _action_candidates(content: str, actions: Sequence[Any]) -> tuple[Any, ...]:

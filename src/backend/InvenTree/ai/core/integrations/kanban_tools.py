@@ -13,6 +13,7 @@ import logging
 from typing import Any
 
 from ai.core.maf_compat import ai_function
+from ai.core.tools.read_only import guard_write_tool
 from asgiref.sync import sync_to_async
 
 logger = logging.getLogger(__name__)
@@ -185,6 +186,7 @@ async def get_kanban_card(card_id: int) -> dict[str, Any]:
 
 
 @ai_function
+@guard_write_tool
 async def create_kanban_card(
     title: str,
     status: str = "backlog",
@@ -334,6 +336,7 @@ async def create_kanban_card(
 
 
 @ai_function
+@guard_write_tool
 async def update_kanban_card(
     card_id: int,
     title: str | None = None,
@@ -437,6 +440,7 @@ async def update_kanban_card(
 
 
 @ai_function
+@guard_write_tool
 async def move_kanban_card(
     card_id: int,
     new_status: str,
@@ -466,6 +470,7 @@ async def move_kanban_card(
 
 
 @ai_function
+@guard_write_tool
 async def archive_kanban_card(card_id: int) -> dict[str, Any]:
     """
     Archive (soft-delete) a Kanban card. The card is marked inactive
@@ -500,6 +505,7 @@ async def archive_kanban_card(card_id: int) -> dict[str, Any]:
 
 
 @ai_function
+@guard_write_tool
 async def restore_kanban_card(card_id: int) -> dict[str, Any]:
     """
     Restore a previously archived Kanban card, making it active again.
@@ -533,6 +539,7 @@ async def restore_kanban_card(card_id: int) -> dict[str, Any]:
 
 
 @ai_function
+@guard_write_tool
 async def delete_kanban_card(card_id: int) -> dict[str, Any]:
     """
     Permanently delete a Kanban card. This cannot be undone.
@@ -566,6 +573,7 @@ async def delete_kanban_card(card_id: int) -> dict[str, Any]:
 
 
 @ai_function
+@guard_write_tool
 async def add_parts_to_kanban_card(
     card_id: int,
     parts: list[dict],
@@ -707,6 +715,7 @@ async def check_kanban_card_stock(card_id: int) -> dict[str, Any]:
 
 
 @ai_function
+@guard_write_tool
 async def remove_part_from_kanban_card(
     card_id: int,
     part_id: int,

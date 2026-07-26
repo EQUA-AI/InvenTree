@@ -153,8 +153,12 @@ class Settings(BaseSettings):
     # execute via the same RBAC-gated write tools text uses). Destructive actions
     # require a strict server-authored phrase. This remains a kill switch: while
     # disabled, the structural read-only fence keeps effect wording advisory only.
+    # OFF by default and deliberately so: enabling voice-initiated writes is a
+    # per-deployment safety decision that must be made explicitly, not inherited.
+    # (This default was flipped to True in 7779b5720 without review; a live test
+    # then found voice offering to execute a kanban write.)
     feature_voice_write_confirmation: bool = Field(
-        default=True, alias="FEATURE_VOICE_WRITE_CONFIRMATION"
+        default=False, alias="FEATURE_VOICE_WRITE_CONFIRMATION"
     )
     # Prior thread messages replayed into a lookup turn so a follow-up ("just the
     # ones over 2000") resolves against what was already said. Bounded because the
