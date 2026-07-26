@@ -33,8 +33,20 @@ export interface AssetMaintenanceRecord {
   summary: string;
   details: string;
   performed_by: string;
+  /**
+   * Linked completed work order. Null for genuinely unowned legacy history, and
+   * also when the caller may read the machine history but not the work order -
+   * the id is withheld rather than rendered as a dead link.
+   */
   work_order: number | null;
+  work_order_reference: string | null;
   work_order_title: string | null;
+  work_order_type: string | null;
+  lifecycle_status: string | null;
+  actual_completed_at: string | null;
+  downtime_minutes: number | null;
+  verified: boolean;
+  follow_up_required: boolean;
   created_at: string;
   updated_at: string;
 }

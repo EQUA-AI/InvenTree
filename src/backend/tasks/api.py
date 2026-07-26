@@ -88,6 +88,7 @@ from .procedure_execution_api import (
 )
 from .serializers import (
     KanbanCardDependencySerializer,
+    KanbanCardOverviewSerializer,
     KanbanCardPartSerializer,
     KanbanCardSerializer,
     KanbanColumnSerializer,
@@ -274,6 +275,42 @@ class KanbanCardDetail(RetrieveUpdateDestroyAPI):
         if instance.is_active:
             instance.is_active = False
             instance.save(update_fields=['is_active', 'updated_at'])
+
+
+class KanbanCardOverview(APIView):
+    """Return complete work-order context from the stable Kanban surface."""
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+    serializer_class = KanbanCardOverviewSerializer
+
+    def get(self, request, pk):
+        """Return one card with its hierarchy, execution, and repair context."""
+        queryset = KanbanCard.objects.select_related(
+            'machine',
+            'assigned_to',
+            'requested_by',
+            'parent__machine',
+            'parent__assigned_to',
+            'repair_packet',
+            'maintenance_record',
+            'structured_closeout',
+        ).prefetch_related(
+            'card_parts__part',
+            'children__machine',
+            'children__assigned_to',
+            'dependencies_in__from_card__machine',
+            'dependencies_in__from_card__assigned_to',
+            'dependencies_out__to_card__machine',
+            'dependencies_out__to_card__assigned_to',
+            'events__actor',
+            'repair_packet__gates',
+        )
+        card = get_object_or_404(queryset, pk=pk)
+        return Response(self.serializer_class(card, context={'request': request}).data)
 
 
 class KanbanCardRestore(APIView):
@@ -1084,6 +1121,11 @@ kanban_api_urls = [
         'cards/',
         include([
             path('', KanbanCardList.as_view(), name='kanban-card-list'),
+            path(
+                '<int:pk>/overview/',
+                KanbanCardOverview.as_view(),
+                name='kanban-card-overview',
+            ),
             path('<int:pk>/', KanbanCardDetail.as_view(), name='kanban-card-detail'),
             path(
                 '<int:pk>/restore/',

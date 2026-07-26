@@ -1,5 +1,7 @@
 """Serializers for the tasks application."""
 
+from django.conf import settings
+
 from rest_framework import serializers
 
 from .models import KanbanCard, KanbanCardDependency, KanbanCardPart, KanbanColumn
@@ -296,3 +298,194 @@ class KanbanCardSerializer(serializers.ModelSerializer):
                 filtered.append(tag)
 
         return filtered
+
+
+class KanbanCardSummarySerializer(serializers.ModelSerializer):
+    """Compact card identity for hierarchy and dependency rows."""
+
+    machine_name = serializers.CharField(
+        source='machine.name', read_only=True, default=None
+    )
+    assigned_to_name = serializers.SerializerMethodField()
+
+    class Meta:
+        """Serializer configuration."""
+
+        model = KanbanCard
+        fields = (
+            'id',
+            'reference',
+            'title',
+            'description',
+            'status',
+            'priority',
+            'lifecycle_status',
+            'work_order_type',
+            'card_kind',
+            'parent',
+            'machine',
+            'machine_name',
+            'assigned_to',
+            'assigned_to_name',
+            'scheduled_start',
+            'scheduled_end',
+            'estimated_minutes',
+            'is_active',
+        )
+        read_only_fields = fields
+
+    def get_assigned_to_name(self, obj) -> str | None:
+        """Return the assignee display name."""
+        user = obj.assigned_to
+        if user is None:
+            return None
+        return user.get_full_name().strip() or user.get_username()
+
+
+class KanbanCardOverviewSerializer(KanbanCardSerializer):
+    """Complete read-only work-order context for the detail page."""
+
+    parent_detail = serializers.SerializerMethodField()
+    children = serializers.SerializerMethodField()
+    dependencies = serializers.SerializerMethodField()
+    events = serializers.SerializerMethodField()
+    repair_packet = serializers.SerializerMethodField()
+    maintenance_record = serializers.SerializerMethodField()
+    structured_closeout = serializers.SerializerMethodField()
+    canonical_commands_enabled = serializers.SerializerMethodField()
+
+    class Meta(KanbanCardSerializer.Meta):
+        """Extend the card fields with work-order relationships."""
+
+        fields = (
+            *KanbanCardSerializer.Meta.fields,
+            'parent_detail',
+            'children',
+            'dependencies',
+            'events',
+            'repair_packet',
+            'maintenance_record',
+            'structured_closeout',
+            'canonical_commands_enabled',
+        )
+        read_only_fields = fields
+
+    @staticmethod
+    def _summary(card):
+        """Serialize one related card without recursing."""
+        if card is None:
+            return None
+        return KanbanCardSummarySerializer(card).data
+
+    def get_parent_detail(self, obj):
+        """Return the parent work order for a child card."""
+        return self._summary(obj.parent)
+
+    @staticmethod
+    def get_children(obj):
+        """Return direct jobs/tasks under this work order."""
+        return KanbanCardSummarySerializer(
+            obj.children.all().order_by('scheduled_start', 'created_at'), many=True
+        ).data
+
+    def get_dependencies(self, obj):
+        """Return predecessor and successor relationships."""
+        incoming = [
+            {
+                'id': dependency.pk,
+                'direction': 'predecessor',
+                'dependency_type': dependency.dependency_type,
+                'lag_minutes': dependency.lag_minutes,
+                'card': self._summary(dependency.from_card),
+            }
+            for dependency in obj.dependencies_in.all()
+        ]
+        outgoing = [
+            {
+                'id': dependency.pk,
+                'direction': 'successor',
+                'dependency_type': dependency.dependency_type,
+                'lag_minutes': dependency.lag_minutes,
+                'card': self._summary(dependency.to_card),
+            }
+            for dependency in obj.dependencies_out.all()
+        ]
+        return [*incoming, *outgoing]
+
+    @staticmethod
+    def get_events(obj):
+        """Return append-only lifecycle audit events."""
+        from .workorder_serializers import WorkOrderEventSerializer
+
+        return WorkOrderEventSerializer(
+            obj.events.all().order_by('-created_at'), many=True
+        ).data
+
+    @staticmethod
+    def get_repair_packet(obj):
+        """Return repair diagnosis and safety context when present."""
+        packet = getattr(obj, 'repair_packet', None)
+        if packet is None:
+            return None
+        return {
+            'id': packet.pk,
+            'reference': packet.reference,
+            'status': packet.status,
+            'criticality': packet.criticality,
+            'fault_summary': packet.fault_summary,
+            'symptom': packet.symptom,
+            'production_impact': packet.production_impact,
+            'generation_status': packet.generation_status,
+            'diagnosis': packet.diagnosis,
+            'gates': [
+                {
+                    'id': gate.pk,
+                    'name': gate.name,
+                    'gate_type': gate.gate_type,
+                    'status': gate.status,
+                    'is_blocking': gate.is_blocking,
+                    'is_mandatory': gate.is_mandatory,
+                    'requires_photo': gate.requires_photo,
+                    'requires_second_person': gate.requires_second_person,
+                }
+                for gate in packet.gates.all().order_by('sequence', 'created_at')
+            ],
+        }
+
+    @staticmethod
+    def get_maintenance_record(obj):
+        """Return maintenance history produced by this work order."""
+        record = getattr(obj, 'maintenance_record', None)
+        if record is None:
+            return None
+        return {
+            'id': record.pk,
+            'date': record.date,
+            'summary': record.summary,
+            'details': record.details,
+            'performed_by': record.performed_by,
+        }
+
+    @staticmethod
+    def get_structured_closeout(obj):
+        """Return the immutable structured closeout when completed."""
+        closeout = getattr(obj, 'structured_closeout', None)
+        if closeout is None:
+            return None
+        return {
+            'id': closeout.pk,
+            'cause': closeout.cause,
+            'action': closeout.action,
+            'result': closeout.result,
+            'verification_summary': closeout.verification_summary,
+            'downtime_minutes': closeout.downtime_minutes,
+            'follow_up_required': closeout.follow_up_required,
+            'follow_up': closeout.follow_up,
+            'completed_at': closeout.completed_at,
+            'verified_at': closeout.verified_at,
+        }
+
+    @staticmethod
+    def get_canonical_commands_enabled(obj) -> bool:
+        """Report whether the feature-gated command surface is enabled."""
+        return bool(getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False))

@@ -4,11 +4,12 @@ import { allaccessuser } from './defaults';
 import { doCachedLogin } from './login';
 
 /**
- * E2E coverage for the task / work-order board (slices S0–S4):
- * - the Board / Calendar / Timeline panel scaffold,
+ * E2E coverage for the Maintenance workspace:
+ * - the Board / Calendar / Timeline panel scaffold and its deep links,
+ * - the pre-rename /tasks/* URLs still resolving,
  * - persisted board columns seeded under their original keys,
  * - machine required when creating a work order,
- * - the create → appears-on-board flow.
+ * - the create → appears-on-board flow through the work-package command.
  */
 
 const taskApi = () =>
@@ -54,34 +55,45 @@ const seedScheduledCard = async (title: string, machineName: string) => {
   return title;
 };
 
-test('Tasks - board loads with panels and persisted columns', async ({
+test('Maintenance - board loads with panels and persisted columns', async ({
   browser
 }) => {
   const page = await doCachedLogin(browser, {
     user: allaccessuser,
-    url: 'tasks/kanban'
+    url: 'maintenance/board'
   });
 
-  // The panel scaffold (S4).
+  // The panel scaffold.
   await page.getByRole('tab', { name: 'Board', exact: true }).waitFor();
   await page.getByRole('tab', { name: 'Calendar', exact: true }).waitFor();
   await page.getByRole('tab', { name: 'Timeline', exact: true }).waitFor();
 
-  // The four seeded columns (S3a) render on the board.
+  // The four seeded columns render on the board.
   await page.getByText('Backlog').first().waitFor();
   await page.getByText('In Progress').first().waitFor();
   await page.getByText('In Review').first().waitFor();
   await page.getByText('Done').first().waitFor();
 
-  await page.getByRole('button', { name: 'Add task' }).waitFor();
+  await page.getByRole('button', { name: 'New work order' }).waitFor();
 });
 
-test('Tasks - Timeline view renders the gantt controls', async ({
+test('Maintenance - old /tasks/ links still resolve', async ({ browser }) => {
+  // Bookmarks captured before the rename must keep working, preserving the view.
+  const page = await doCachedLogin(browser, {
+    user: allaccessuser,
+    url: 'tasks/kanban/timeline'
+  });
+
+  await expect(page).toHaveURL(/\/maintenance\/timeline\/?$/);
+  await page.getByRole('tab', { name: 'Timeline', exact: true }).waitFor();
+});
+
+test('Maintenance - Timeline view renders the gantt controls', async ({
   browser
 }) => {
   const page = await doCachedLogin(browser, {
     user: allaccessuser,
-    url: 'tasks/kanban'
+    url: 'maintenance/board'
   });
 
   await page.getByRole('tab', { name: 'Timeline', exact: true }).click();
@@ -93,10 +105,10 @@ test('Tasks - Timeline view renders the gantt controls', async ({
 
   // Back to the board.
   await page.getByRole('tab', { name: 'Board', exact: true }).click();
-  await page.getByRole('button', { name: 'Add task' }).waitFor();
+  await page.getByRole('button', { name: 'New work order' }).waitFor();
 });
 
-test('Tasks - a scheduled work order appears on the timeline', async ({
+test('Maintenance - a scheduled work order appears on the timeline', async ({
   browser
 }) => {
   const title = await seedScheduledCard(
@@ -106,31 +118,27 @@ test('Tasks - a scheduled work order appears on the timeline', async ({
 
   const page = await doCachedLogin(browser, {
     user: allaccessuser,
-    url: 'tasks/kanban'
+    url: 'maintenance/timeline'
   });
-
-  await page.getByRole('tab', { name: 'Timeline', exact: true }).click();
 
   // The card scheduled today renders as a bar on the timeline.
   await expect(page.getByText(title).first()).toBeVisible({ timeout: 15000 });
 });
 
-test('Tasks - Calendar view renders the calendar shell', async ({
+test('Maintenance - Calendar view renders the calendar shell', async ({
   browser
 }) => {
   const page = await doCachedLogin(browser, {
     user: allaccessuser,
-    url: 'tasks/kanban'
+    url: 'maintenance/calendar'
   });
-
-  await page.getByRole('tab', { name: 'Calendar', exact: true }).click();
 
   // The shared Calendar shell mounted (month navigation), not the placeholder.
   await page.getByRole('button', { name: 'calendar-select-month' }).waitFor();
   await expect(page.getByText('This view is coming soon.')).toHaveCount(0);
 });
 
-test('Tasks - a scheduled work order appears on the calendar', async ({
+test('Maintenance - a scheduled work order appears on the calendar', async ({
   browser
 }) => {
   const title = await seedScheduledCard(
@@ -140,36 +148,34 @@ test('Tasks - a scheduled work order appears on the calendar', async ({
 
   const page = await doCachedLogin(browser, {
     user: allaccessuser,
-    url: 'tasks/kanban'
+    url: 'maintenance/calendar'
   });
-
-  await page.getByRole('tab', { name: 'Calendar', exact: true }).click();
 
   // The event for the card scheduled today is rendered on the month grid.
   await expect(page.getByText(title)).toBeVisible({ timeout: 15000 });
 });
 
-test('Tasks - creating a work order requires a machine', async ({
+test('Maintenance - creating a work order requires a machine', async ({
   browser
 }) => {
   await seedMachine(`PW Required ${Date.now()}`);
 
   const page = await doCachedLogin(browser, {
     user: allaccessuser,
-    url: 'tasks/kanban'
+    url: 'maintenance/board'
   });
 
-  await page.getByRole('button', { name: 'Add task' }).click();
+  await page.getByRole('button', { name: 'New work order' }).click();
 
-  // The modal exposes a required Machine field (S3c).
+  // The modal exposes a required Machine field.
   await page.getByRole('textbox', { name: 'Title' }).fill('WO without machine');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: 'Create work order' }).click();
 
   // Form validation blocks the submit and names the machine field.
   await page.getByText('Select the machine for this work.').waitFor();
 });
 
-test('Tasks - create a work order and see it on the board', async ({
+test('Maintenance - create a work order and see it on the board', async ({
   browser
 }) => {
   const machineName = await seedMachine(`PW Create ${Date.now()}`);
@@ -177,17 +183,23 @@ test('Tasks - create a work order and see it on the board', async ({
 
   const page = await doCachedLogin(browser, {
     user: allaccessuser,
-    url: 'tasks/kanban'
+    url: 'maintenance/board'
   });
 
-  await page.getByRole('button', { name: 'Add task' }).click();
+  await page.getByRole('button', { name: 'New work order' }).click();
   await page.getByRole('textbox', { name: 'Title' }).fill(cardTitle);
 
   // Pick the seeded machine from the required picker.
   await page.getByRole('combobox', { name: 'Machine' }).click();
   await page.getByRole('option', { name: machineName }).click();
 
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: 'Create work order' }).click();
+
+  // The receipt names the created work order and offers both links; creating
+  // plans the work, it does not start it.
+  await page.getByText('It is planned, not started.').waitFor();
+  await page.getByRole('button', { name: 'Open repair packet' }).waitFor();
+  await page.getByRole('button', { name: 'Stay on the board' }).click();
 
   // The new card is visible on the board, showing its machine.
   await page.getByText(cardTitle).waitFor();

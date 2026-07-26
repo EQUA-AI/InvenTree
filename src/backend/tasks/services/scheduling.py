@@ -22,9 +22,11 @@ that completed/canceled work is not moved.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
@@ -59,6 +61,8 @@ from tasks.services.work_orders import (
 )
 from tasks.services.working_time import add_working_minutes, working_minutes_between
 
+logger = logging.getLogger('inventree')
+
 __all__ = [
     'CommandResult',
     'DeletionResult',
@@ -80,6 +84,7 @@ __all__ = [
     'delete_work_order',
     'generate_procurement_child',
     'incomplete_children',
+    'materialise_required_parts',
     'resize_work_order',
     'schedule_work_order',
     'update_work_order_plan',
@@ -902,3 +907,64 @@ def incomplete_children(parent_id: int):
     return KanbanCard.objects.filter(parent_id=parent_id).exclude(
         lifecycle_status__in=[WorkOrderLifecycle.COMPLETED, WorkOrderLifecycle.CANCELED]
     )
+
+
+def materialise_required_parts(
+    *, work_order_id: int, lines, allocate: bool = True
+) -> list[KanbanCardPart]:
+    """Add required-part lines to a work order, idempotently.
+
+    ``lines`` is an iterable of ``(part_id, quantity)`` pairs. Existing lines for
+    the same part are left at their current quantity rather than being reset, so
+    a replayed caller (AI generation, an approved work package) never silently
+    shrinks a technician's edit. Quantities are validated up front so a bad line
+    fails the whole call instead of writing a partial set.
+
+    ``allocate`` runs the stock check for each line. Allocation is advisory here:
+    a stock failure records the shortfall on the line and never rolls back the
+    requirement itself.
+    """
+    validated: list[tuple[int, Any]] = []
+    seen: set[int] = set()
+
+    for part_id, quantity in lines:
+        if not part_id:
+            continue
+        if part_id in seen:
+            continue
+        try:
+            amount = Decimal(str(quantity))
+        except (ArithmeticError, TypeError, ValueError) as exc:
+            raise WorkOrderCommandError(
+                f'Required-part quantity for part {part_id} is not a number.'
+            ) from exc
+        if amount <= 0:
+            raise WorkOrderCommandError(
+                f'Required-part quantity for part {part_id} must be positive.'
+            )
+        seen.add(part_id)
+        validated.append((part_id, amount))
+
+    if not validated:
+        return []
+
+    created: list[KanbanCardPart] = []
+
+    for part_id, amount in validated:
+        line, _ = KanbanCardPart.objects.get_or_create(
+            card_id=work_order_id, part_id=part_id, defaults={'quantity': amount}
+        )
+        created.append(line)
+
+        if allocate:
+            try:
+                line.check_and_allocate()
+            except Exception:
+                logger.warning(
+                    'Stock allocation failed for work order %s part %s',
+                    work_order_id,
+                    part_id,
+                    exc_info=True,
+                )
+
+    return created

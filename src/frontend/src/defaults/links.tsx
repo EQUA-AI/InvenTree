@@ -81,8 +81,8 @@ export function getNavTabs(user: UserStateProps): NavTab[] {
           user.hasViewRole(UserRoles.return_order))
     },
     {
-      name: 'tasks',
-      title: t`Tasks`,
+      name: 'maintenance',
+      title: t`Maintenance`,
       icon: <IconLayoutKanban />
     }
   ];

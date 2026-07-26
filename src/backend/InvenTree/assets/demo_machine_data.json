@@ -314,6 +314,714 @@
       "ipn": "EQ-LAB-ESD-MON",
       "name": "Dual-Operator ESD Monitor",
       "description": "Continuous wrist-strap and work-surface monitor for Electronics Bench 1."
+    },
+    {
+      "ipn": "EQ-INF-PMP-0750",
+      "name": "Submersible influent pump, 75 kW",
+      "description": "Dry-pit submersible influent pump, 75 kW, with a non-clog impeller. Ragging and hard clogs are the dominant failure; normal running current is 118-131 A.",
+      "category_path": "Pumps/Submersible",
+      "link": "https://www.xylem.com/en-us/products--services/pumps-packaged-pump-systems/pumps/submersible-pumps/wastewater-pumps/n-technology-pumps/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Ragging and hard clogs are the dominant asset-event class.",
+        "reference_label": "Flygt N-technology",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-INF-SEL-0080",
+      "name": "Cartridge mechanical seal, 80 mm",
+      "description": "Cartridge mechanical seal for the influent pump. Seal leakage and selecting the wrong revision make this the classic wrong-part demo case.",
+      "category_path": "Pumps/Seals",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Seal leakage; the wrong revision is the classic wrong-part case.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-INF-IMP-CHP",
+      "name": "Chopper impeller, hardened iron",
+      "description": "Hardened-iron chopper impeller for influent service, selected to handle long fibres and heavy solids.",
+      "category_path": "Pumps/Impellers",
+      "link": "https://www.xylem.com/en-us/products--services/pumps-packaged-pump-systems/pumps/submersible-pumps/wastewater-pumps/chopper-pumps/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Long fibres and heavy solids obstruct the impeller.",
+        "reference_label": "Flygt chopper pumps",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-INF-WRG-0250",
+      "name": "Wear ring set, 250 mm",
+      "description": "Matched 250 mm influent-pump wear-ring set. Clearance loss drives cavitation and low-flow symptoms.",
+      "category_path": "Pumps/Wear parts",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Clearance loss, cavitation, and low flow.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-RAS-PMP-0300",
+      "name": "RAS pump, 30 kW dry-pit",
+      "description": "Dry-pit 30 kW return-activated-sludge pump. Bearing failure presents as vibration and low output.",
+      "category_path": "Pumps/Dry-pit",
+      "link": "https://www.xylem.com/en-us/products--services/pumps-packaged-pump-systems/pumps/submersible-pumps/wastewater-pumps/n-technology-pumps/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Bearing failure and low output.",
+        "reference_label": "Flygt N-technology",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-INF-VFD-0750",
+      "name": "VFD, 75 kW, IP54",
+      "description": "IP54 variable-frequency drive for a 75 kW wastewater pump. Drive faults and overtemperature trips stop influent service.",
+      "category_path": "Drives/VFD",
+      "link": "https://www.abb.com/global/en/areas/motion/drives/low-voltage-ac-drives/water-wastewater-drives/acq580",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Drive fault or overtemperature trip.",
+        "reference_label": "ABB ACQ580",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-INF-VFN-KIT",
+      "name": "VFD cooling fan kit",
+      "description": "Replacement cooling-fan kit for the influent-pump VFD. A low-cost fan failure causes a thermal trip and disproportionate downtime.",
+      "category_path": "Drives/Cooling",
+      "link": "https://www.abb.com/global/en/areas/motion/drives/low-voltage-ac-drives/water-wastewater-drives/acq580",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Fan failure causes a thermal trip; cheap part, long downtime.",
+        "reference_label": "ABB ACQ580",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-INF-BRG-6316",
+      "name": "Motor bearing set, 6316/6216 C3",
+      "description": "C3-clearance 6316/6216 motor-bearing set for severe-duty pump service. Wear is detected through rising vibration.",
+      "category_path": "Motors/Bearings",
+      "link": "https://www.abb.com/global/en/areas/motion/motors-generators/low-voltage-motors/nema-ac-motors-portfolio/severe-duty-motors/ieee-841xl-motors",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Vibration and bearing wear.",
+        "reference_label": "ABB Baldor IEEE 841XL",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-BLW-FLT-INL",
+      "name": "Turbo blower inlet filter element, G4",
+      "description": "G4 inlet-filter element for a high-speed turbo blower. Fouling reduces airflow and can push the blower toward surge.",
+      "category_path": "Blowers/Filtration",
+      "link": "https://www.aerzen.com/us/products/modifications-and-accessories",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Filter fouling causes low airflow and surge risk.",
+        "reference_label": "Aerzen accessories",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-BLW-CPL-ELM",
+      "name": "Blower coupling element",
+      "description": "Flexible coupling element for the aeration turbo blower. Wear or misalignment presents as elevated vibration.",
+      "category_path": "Blowers/Couplings",
+      "link": "https://www.aerzen.com/us/products/turbo-blowers",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Vibration and misalignment.",
+        "reference_label": "Aerzen turbo blowers",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-BLW-DIF-0090",
+      "name": "Fine-bubble diffuser membrane, 9 in",
+      "description": "Nine-inch fine-bubble diffuser membrane. Fouling raises blower pressure and degrades dissolved-oxygen response in an energy-intensive process.",
+      "category_path": "Aeration/Diffusers",
+      "link": "https://www.xylem.com/en-us/products--services/treatment-products-systems/aeration-equipment/fine-bubble-aeration/silver-series-ii-membrane-disc-diffusers/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Fouling and dissolved-oxygen response loss; aeration uses 25-60% of plant energy.",
+        "reference_label": "Sanitaire Silver Series II",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-BLW-CHK-0200",
+      "name": "Blower check valve, 200 mm",
+      "description": "Two-hundred-millimetre aeration-blower check valve. Failure permits backflow during a trip and increases surge risk.",
+      "category_path": "Aeration/Valves",
+      "link": "https://www.dezurik.com/products/industry/sewage-treatment/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Backflow on trip and surge risk.",
+        "reference_label": "DeZURIK sewage treatment",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-BLW-SEN-DOX",
+      "name": "Dissolved oxygen sensor",
+      "description": "Dissolved-oxygen sensor for aeration control. Drift and fouling can drive incorrect blower commands.",
+      "category_path": "Instrumentation/Sensors",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Sensor drift and fouling.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-SCR-CHN-LNK",
+      "name": "Screen rake chain link, stainless",
+      "description": "Stainless replacement link for a travelling bar-screen rake chain. A failed link stops screenings removal and can jam the channel.",
+      "category_path": "Headworks/Screens",
+      "link": "https://www.huber-se.com/en-us/products/detail/huber-multi-rake-bar-screen-rakemax-hf-high-flow/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Chain failure and screen jam.",
+        "reference_label": "HUBER RakeMax",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-SCR-GBX-0150",
+      "name": "Screen drive gearbox, 1.5 kW",
+      "description": "1.5 kW drive gearbox for a mechanical bar screen. Overload or gearbox failure stops rake travel.",
+      "category_path": "Headworks/Gearboxes",
+      "link": "https://www.huber-se.com/products/screens-and-fine-screens/bar-screens/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Overload and gearbox fault.",
+        "reference_label": "HUBER bar screens",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-SCR-TRQ-LIM",
+      "name": "Screen torque limiter",
+      "description": "Mechanical torque limiter protecting the bar-screen drive. Diagnosis must distinguish nuisance trips from genuine jams.",
+      "category_path": "Headworks/Protection",
+      "link": "https://vulcanindustries.com/products/screening/model-vkr-knuckle-rake-bar-screen/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Nuisance trip versus genuine jam.",
+        "reference_label": "Vulcan VKR knuckle-rake",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-GRT-SCW-CLS",
+      "name": "Grit classifier screw",
+      "description": "Replacement screw for the headworks grit classifier. Abrasive grit progressively removes flight material and capacity.",
+      "category_path": "Headworks/Grit",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Abrasive wear.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-CFG-TIL-SCR",
+      "name": "Centrifuge scroll wear tile set",
+      "description": "Matched wear-tile set for a dewatering-centrifuge scroll. Abrasion can create imbalance and high vibration.",
+      "category_path": "Dewatering/Wear parts",
+      "link": "https://www.alfalaval.com/products/separation/centrifugal-separators/decanters/aldec-g3/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Abrasion, imbalance, and vibration.",
+        "reference_label": "Alfa Laval ALDEC G3",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-CFG-BRG-MAIN",
+      "name": "Centrifuge main bearing",
+      "description": "OEM-dependent main bearing for a sludge-dewatering centrifuge. Vibration signals failure, and replacement has a long lead time.",
+      "category_path": "Dewatering/Bearings",
+      "link": "https://www.alfalaval.us/products/separation/centrifugal-separators/decanters/aldec/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Vibration; OEM-dependent replacement with a long lead time.",
+        "reference_label": "Alfa Laval ALDEC",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-CFG-PMP-STA",
+      "name": "Progressive cavity pump stator",
+      "description": "Elastomer stator for the centrifuge-feed progressive-cavity pump. Wear reduces feed rate and dewatering throughput.",
+      "category_path": "Dewatering/Pumps",
+      "link": "https://pumps-systems.netzsch.com/en-US/products-and-accessories/nemo-progressing-cavity-pumps",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Stator wear and loss of feed.",
+        "reference_label": "NETZSCH NEMO",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-CLR-GBX-DRV",
+      "name": "Clarifier drive gearbox",
+      "description": "Drive gearbox for a secondary clarifier. Torque overload and internal wear threaten sludge-collection movement.",
+      "category_path": "Clarifiers/Drives",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Torque overload and gearbox wear.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-CLR-SWT-TRQ",
+      "name": "Clarifier torque overload switch",
+      "description": "Torque-overload switch for the clarifier drive. Troubleshooting must separate a false trip from a mechanical obstruction.",
+      "category_path": "Clarifiers/Protection",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "False trips versus mechanical obstruction.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-UVD-LMP-STD",
+      "name": "UV lamp, low-pressure high-output",
+      "description": "Low-pressure high-output lamp for municipal UV disinfection. Lamp failure or intensity loss creates permit exposure.",
+      "category_path": "Disinfection/UV",
+      "link": "https://www.trojantechnologies.com/en/products/municipal/systems/trojanuv3000plus",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Lamp failure and intensity loss.",
+        "reference_label": "TrojanUV3000Plus",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-UVD-SLV-QTZ",
+      "name": "UV quartz sleeve",
+      "description": "Quartz sleeve protecting a municipal UV lamp. Fouling blocks dose delivery, while breakage takes a module out of service.",
+      "category_path": "Disinfection/UV",
+      "link": "https://uswatersystems.com/collections/trojan-uv-parts",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Fouling and breakage.",
+        "reference_label": "TrojanUV parts",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-UVD-BAL-STD",
+      "name": "UV ballast, variable output",
+      "description": "Variable-output ballast for a municipal UV disinfection module. Ballast failure removes lamp output and available dose.",
+      "category_path": "Disinfection/UV",
+      "link": "https://www.trojantechnologies.com/products/trojanuv/trojanuvsigna",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "municipal_wastewater",
+        "failure_mode": "Ballast failure.",
+        "reference_label": "TrojanUVSigna",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-ROX-MEM-8040",
+      "name": "RO membrane element, 8040",
+      "description": "Synthetic 8040 reverse-osmosis membrane element for industrial process water. Scaling causes permeate loss and direct production risk.",
+      "category_path": "Membranes/RO",
+      "link": "https://www.dupont.com/brands/filmtec.html",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Scaling and permeate loss; relevant to Koch Nitrogen and Calgon workflows.",
+        "reference_label": "DuPont FilmTec",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-UFX-MOD-STD",
+      "name": "UF module",
+      "description": "Ultrafiltration module upstream of the RO train. High differential pressure or fibre damage reduces pretreatment performance.",
+      "category_path": "Membranes/UF",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "High differential pressure and fibre damage.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-ROX-PMP-HPX",
+      "name": "High-pressure RO feed pump",
+      "description": "High-pressure feed pump for the industrial RO train. Pump faults immediately threaten process-water production.",
+      "category_path": "Pumps/High-pressure",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Pump fault with direct production risk.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-ROX-SEL-HPX",
+      "name": "HP pump seal kit",
+      "description": "Mechanical-seal kit for the high-pressure RO feed pump. Failure produces leakage under operating pressure.",
+      "category_path": "Pumps/Seals",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Leakage under pressure.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-ROX-CTF-0050",
+      "name": "Cartridge filter, 5 micron",
+      "description": "Five-micron cartridge filter protecting the RO train. Plugging appears as elevated differential pressure and restricted feed.",
+      "category_path": "Filtration/Cartridges",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Plugging and high differential pressure.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-ROX-HTR-CIP",
+      "name": "CIP heater element",
+      "description": "Heater element for membrane clean-in-place service. A failed clean can leave deposits in place and damage the membrane train.",
+      "category_path": "Cleaning/CIP",
+      "link": "https://www.dupont.com/content/dam/water/amer/us/en/water/public/documents/en/RO-NF-FilmTec-Manual-45-D01504-en.pdf",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Failed clean leading to membrane damage.",
+        "reference_label": "FilmTec technical manual",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-CLG-GBX-FAN",
+      "name": "Cooling tower fan gearbox",
+      "description": "Fan gearbox for an induced-draft cooling tower. Failure removes heat-rejection capacity and creates direct production risk.",
+      "category_path": "Cooling/Drives",
+      "link": "https://spxcooling.com/cooling-tower-parts/gearboxes-motors-and-drives/geareducer-m-series/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Gearbox failure causing heat-transfer loss.",
+        "reference_label": "Marley Geareducer M series",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-CLG-DFT-ELM",
+      "name": "Drift eliminator section",
+      "description": "Replacement drift-eliminator section for a cooling tower. Fouling reduces air-water performance and operating efficiency.",
+      "category_path": "Cooling/Tower internals",
+      "link": "https://spxcooling.com/cooling-tower-parts/fill-and-drift-eliminators/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Fouling and efficiency loss.",
+        "reference_label": "Marley fill and drift eliminators",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-CLG-GSK-PHE",
+      "name": "Plate heat exchanger gasket set",
+      "description": "Matched gasket set for the cooling-water plate heat exchanger. Failure causes leakage and possible cross-contamination.",
+      "category_path": "Cooling/Heat exchange",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Leakage and cross-contamination.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-CLG-SEL-PMP",
+      "name": "Cooling water pump mechanical seal",
+      "description": "Mechanical seal for a cooling-water circulation pump. Leakage threatens a direct production dependency.",
+      "category_path": "Pumps/Seals",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Leakage with direct production dependency.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-BLR-RSN-CAT",
+      "name": "Cation exchange resin, 1 ft³",
+      "description": "One-cubic-foot charge of cation-exchange resin for industrial demineralization. Exhaustion degrades treated-water quality.",
+      "category_path": "Demineralization/Media",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Resin exhaustion and poor water quality.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-BLR-SEN-CND",
+      "name": "Conductivity sensor",
+      "description": "Conductivity analyzer sensor for boiler-makeup quality. Drift produces a false quality reading and incorrect process response.",
+      "category_path": "Instrumentation/Analyzers",
+      "link": "https://www.us.endress.com/en/field-instruments-overview/level-measurement/Hydrostatic-level-measurement",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Sensor drift causing false quality readings.",
+        "reference_label": "E+H instrumentation",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-BLR-HED-DOS",
+      "name": "Antiscalant dosing pump head",
+      "description": "Replacement metering head for antiscalant dosing. Loss of chemical feed accelerates membrane scaling.",
+      "category_path": "Chemical feed/Metering",
+      "link": "https://product-selection.grundfos.com/us/categories/chemical-dosing-pumps-and-solutions",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "industrial_water",
+        "failure_mode": "Loss of chemical feed leading to scaling.",
+        "reference_label": "Grundfos dosing pumps",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-LFT-PMP-GRN",
+      "name": "Submersible grinder pump, 7.5 kW",
+      "description": "7.5 kW submersible grinder pump for remote lift-station service. Clogging drives urgent field response and repeat visits.",
+      "category_path": "Pumps/Grinder",
+      "link": "https://www.xylem.com/en-us/products--services/pumps-packaged-pump-systems/pumps/submersible-pumps/wastewater-pumps/chopper-pumps/",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "Clogging; relevant to MMSD and NEW Water workflows.",
+        "reference_label": "Flygt chopper pumps",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-LFT-BRK-RAI",
+      "name": "Guide rail bracket set",
+      "description": "Guide-rail bracket set for removing and reinstalling a submersible lift-station pump. Damage causes seating failure on reinstall.",
+      "category_path": "Lift station/Mechanical",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "Pump seating failure on reinstall.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-LFT-GSK-ELB",
+      "name": "Discharge elbow gasket",
+      "description": "Discharge-elbow gasket for a wet-well pump connection. Failure causes leakage at the lift-station discharge joint.",
+      "category_path": "Lift station/Sealing",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "Leakage at the wet-well discharge.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-LFT-SEN-LVL",
+      "name": "Submersible level transducer",
+      "description": "Submersible hydrostatic level transducer for lift-station control. A false level can create a high-level alarm or bad pump command.",
+      "category_path": "Instrumentation/Level",
+      "link": "https://www.endress.com/en/field-instruments-overview/pressure/Hydrostatic-level-Waterpilot-FMX21",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "False level causing a high-level alarm.",
+        "reference_label": "E+H Waterpilot FMX21",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-LFT-SWT-FLT",
+      "name": "Float switch, sewage duty",
+      "description": "Sewage-duty float switch providing backup lift-station level control. Failure removes the independent high-level safeguard.",
+      "category_path": "Instrumentation/Level",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "Backup level-control failure.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-GEN-CTL-ATS",
+      "name": "ATS controller",
+      "description": "Automatic-transfer-switch controller for lift-station emergency power. Transfer failure is a high-ranked distributed-system event.",
+      "category_path": "Emergency power/ATS",
+      "link": "https://www.cummins.com/generators/related-products-and-services/transfer-switches/otec-transfer-switch",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "Emergency-power transfer failure.",
+        "reference_label": "Cummins OTEC transfer switch",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-GEN-BAT-STR",
+      "name": "Generator starting battery",
+      "description": "Starting battery for the remote lift-station generator. A failed start is a leading field callout during utility outages.",
+      "category_path": "Emergency power/Batteries",
+      "link": "https://www.cummins.com/generators/transfer-switches/gtec-transfer-switch",
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "Generator start failure; a top field callout.",
+        "reference_label": "Cummins GTEC transfer switch",
+        "reference_scope": "equipment_family",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-GEN-HTR-BLK",
+      "name": "Generator block heater",
+      "description": "Engine block heater for the lift-station standby generator. Heater failure creates cold-start risk.",
+      "category_path": "Emergency power/Heating",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "Cold-start failure.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-ELE-CON-0090",
+      "name": "MCC contactor, 90 A",
+      "description": "90 A motor-control-centre contactor for a lift-station pump feeder. Contact failure or overload removes a pump from service.",
+      "category_path": "Electrical/MCC",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "Contactor failure and overload.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-ELE-MCP-0100",
+      "name": "Motor circuit protector, 100 A",
+      "description": "100 A motor-circuit protector for a remote pump feeder. A trip can indicate a breaker fault or upstream phase problem.",
+      "category_path": "Electrical/Protection",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "Breaker trip or phase problem.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-TEL-MDM-LTE",
+      "name": "RTU cellular modem",
+      "description": "LTE cellular modem for remote lift-station telemetry. Diagnosis must distinguish lost communications from a real process fault.",
+      "category_path": "Telemetry/Comms",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "Lost communications versus a genuine process fault.",
+        "synthetic_demo_record": true
+      }
+    },
+    {
+      "ipn": "EQ-TEL-SPD-DIN",
+      "name": "DIN-rail surge protector",
+      "description": "DIN-rail surge protector for RTU power and signal circuits. Storm transients can damage telemetry inputs.",
+      "category_path": "Telemetry/Protection",
+      "link": null,
+      "demo_metadata": {
+        "dataset": "water_wastewater",
+        "segment": "distributed_pumping",
+        "failure_mode": "Storm damage to RTU inputs.",
+        "synthetic_demo_record": true
+      }
     }
   ],
   "machines": [
@@ -452,7 +1160,11 @@
           "summary": "Quarterly infrared inspection",
           "details": "Scanned the closed cubicle at 78% feeder load. Maximum phase-to-phase temperature delta was 2.4 C at the upper stabs, below the 10 C alert threshold. No abnormal heating was found at control-power terminals.",
           "performed_by": "Electrical Reliability Team",
-          "work_order": null
+          "work_order": {
+            "reference": "WO-DEMO-250820-001",
+            "type": "inspection",
+            "priority": "medium"
+          }
         },
         {
           "date": "2025-12-12",
@@ -569,7 +1281,11 @@
           "summary": "Cleaned condensate drain and verified zero-loss cycle",
           "details": "A slow drain cycle was reported during the weekly route. Removed rust scale from the inlet strainer, flushed the valve, and completed ten demand cycles with no compressed-air loss. No production interruption was required.",
           "performed_by": "Utilities Operator - Shift B",
-          "work_order": null
+          "work_order": {
+            "reference": "WO-DEMO-260602-001",
+            "type": "corrective",
+            "priority": "low"
+          }
         }
       ]
     },
@@ -620,7 +1336,11 @@
           "summary": "Quarterly vibration and standby-start check",
           "details": "Completed automatic failover from Pump A and ran Pump B for 30 minutes at 39 m3/hour. Peak vibration was 2.7 mm/s RMS at the motor drive end and seal leakage was below one drop per minute. Start permissives and low-suction trip passed.",
           "performed_by": "Utilities Reliability Route",
-          "work_order": null
+          "work_order": {
+            "reference": "WO-DEMO-251119-001",
+            "type": "inspection",
+            "priority": "high"
+          }
         },
         {
           "date": "2026-02-10",
@@ -715,7 +1435,11 @@
           "summary": "Remote troubleshooting for intermittent false failures",
           "details": "Review of 312 test logs isolated 17 false failures to contact bounce on fixture input DI-27. Increased the validated debounce from 20 ms to 45 ms, issued recipe version 3.8.2, and monitored the next 150 units with zero repeat failures.",
           "performed_by": "EQUA Support - R. Shah",
-          "work_order": null
+          "work_order": {
+            "reference": "WO-DEMO-260207-001",
+            "type": "corrective",
+            "priority": "medium"
+          }
         },
         {
           "date": "2026-04-16",
@@ -793,7 +1517,11 @@
           "summary": "Monthly ESD control verification",
           "details": "Tested both wrist-strap channels, the common point ground, and dissipative work surface. Point-to-ground resistance measured 3.2 and 3.5 Mohm at the two operator positions. Replaced one damaged coil cord and recorded passing results in ESD log E01.",
           "performed_by": "K. Morgan",
-          "work_order": null
+          "work_order": {
+            "reference": "WO-DEMO-251103-001",
+            "type": "inspection",
+            "priority": "medium"
+          }
         },
         {
           "date": "2026-01-22",
@@ -822,9 +1550,394 @@
           "summary": "Updated diagnostic image and fixture baselines",
           "details": "Updated the bench controller to diagnostic image 4.2, TB1 firmware to 2.6.1, and archived prior checksums. Revalidated voltage, communications, relay, and fault-injection sequences against three golden boards with no deviations.",
           "performed_by": "Engineering Lab - K. Morgan",
-          "work_order": null
+          "work_order": {
+            "reference": "WO-DEMO-260613-001",
+            "type": "preventive",
+            "priority": "medium"
+          }
         }
       ]
+      },
+      {
+        "name": "Influent Pump Station No. 1",
+        "description": "Three-pump influent station, 75 kW each, in duty/assist/standby service, rated 19 MGD conventional and 172 MGD wet-weather. Ragging is the dominant failure mode. Commissioned 2022-03-11; owner: Operations; criticality: High; PM cadence: monthly inspection and annual seal service. Isolate MCC-HW-01 and confirm wet-well level before entry.",
+        "active": true,
+        "location": "Tomahawk Creek WRF / Headworks / Influent Gallery",
+        "customer": null,
+        "manufacturer": "Xylem Flygt",
+        "model": "NP 3301 MT",
+        "serial": "TC-INF-PS1-001",
+        "legacy_identity": {
+          "manufacturer": "Xylem Flygt",
+          "model": "NP 3301 MT",
+          "serial": "TC-INF-PS1-001"
+        },
+        "installed_parts": [
+          {
+            "ipn": "EQ-INF-PMP-0750",
+            "quantity": 3,
+            "notes": "Duty/assist/standby; normal current 118-131 A."
+          },
+          {
+            "ipn": "EQ-INF-SEL-0080",
+            "quantity": 3
+          },
+          {
+            "ipn": "EQ-INF-IMP-CHP",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-INF-WRG-0250",
+            "quantity": 3
+          },
+          {
+            "ipn": "EQ-INF-VFD-0750",
+            "quantity": 3
+          },
+          {
+            "ipn": "EQ-INF-VFN-KIT",
+            "quantity": 3
+          },
+          {
+            "ipn": "EQ-INF-BRG-6316",
+            "quantity": 3
+          }
+        ],
+        "maintenance": []
+      },
+      {
+        "name": "Aeration Blower No. 2",
+        "description": "High-speed turbo blower serving basins 3 and 4. Aeration consumes 25-60% of plant energy, so airflow loss is both a treatment and cost event. Commissioned 2022-06-02; criticality: High; PM cadence: quarterly filter check and annual coupling inspection. Isolate MCC-AER-02 and allow 15 minutes for spin-down.",
+        "active": true,
+        "location": "Tomahawk Creek WRF / Aeration / Blower Building",
+        "customer": null,
+        "manufacturer": "Aerzen",
+        "model": "Turbo Generation 5",
+        "serial": "TC-AER-BLW-002",
+        "legacy_identity": {
+          "manufacturer": "Aerzen",
+          "model": "Turbo Generation 5",
+          "serial": "TC-AER-BLW-002"
+        },
+        "installed_parts": [
+          {
+            "ipn": "EQ-BLW-FLT-INL",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-BLW-CPL-ELM",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-BLW-CHK-0200",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-BLW-SEN-DOX",
+            "quantity": 2
+          }
+        ],
+        "maintenance": []
+      },
+      {
+        "name": "Aeration Basin No. 3 Diffuser Grid",
+        "description": "Fine-bubble membrane disc grid with 1,240 diffusers. Membrane fouling appears as rising blower discharge pressure before dissolved oxygen drops. Criticality: Medium; PM cadence: annual oxygen-transfer test and membrane replacement on a seven-year cycle.",
+        "active": true,
+        "location": "Tomahawk Creek WRF / Aeration / Basin 3",
+        "customer": null,
+        "manufacturer": "Xylem Sanitaire",
+        "model": "Silver Series II",
+        "serial": "TC-AER-DIF-003",
+        "legacy_identity": {
+          "manufacturer": "Xylem Sanitaire",
+          "model": "Silver Series II",
+          "serial": "TC-AER-DIF-003"
+        },
+        "installed_parts": [
+          {
+            "ipn": "EQ-BLW-DIF-0090",
+            "quantity": 1240
+          }
+        ],
+        "maintenance": []
+      },
+      {
+        "name": "Mechanical Bar Screen No. 1",
+        "description": "Multi-rake travelling bar screen with 6 mm bar spacing. Jams and chain failures are frequent, bounded, and parts-intensive. Commissioned 2022-02-18; criticality: High; PM cadence: weekly inspection and quarterly chain tension. Isolate MCC-HW-03 and lock the channel gate before entry.",
+        "active": true,
+        "location": "Tomahawk Creek WRF / Headworks / Screen Channel 1",
+        "customer": null,
+        "manufacturer": "HUBER",
+        "model": "RakeMax HF",
+        "serial": "TC-HW-SCR-001",
+        "legacy_identity": {
+          "manufacturer": "HUBER",
+          "model": "RakeMax HF",
+          "serial": "TC-HW-SCR-001"
+        },
+        "installed_parts": [
+          {
+            "ipn": "EQ-SCR-CHN-LNK",
+            "quantity": 88
+          },
+          {
+            "ipn": "EQ-SCR-GBX-0150",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-SCR-TRQ-LIM",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-GRT-SCW-CLS",
+            "quantity": 1
+          }
+        ],
+        "maintenance": []
+      },
+      {
+        "name": "Dewatering Centrifuge No. 2",
+        "description": "Decanter centrifuge for sludge dewatering. Scroll wear and main-bearing failure are OEM-dependent with long lead times, making this a critical-spares workflow. Commissioned 2021-11-30; criticality: High; PM cadence: 2,000-hour vibration survey and annual scroll inspection.",
+        "active": true,
+        "location": "Tomahawk Creek WRF / Solids / Dewatering Building",
+        "customer": null,
+        "manufacturer": "Alfa Laval",
+        "model": "ALDEC G3",
+        "serial": "TC-SLD-CFG-002",
+        "legacy_identity": {
+          "manufacturer": "Alfa Laval",
+          "model": "ALDEC G3",
+          "serial": "TC-SLD-CFG-002"
+        },
+        "installed_parts": [
+          {
+            "ipn": "EQ-CFG-TIL-SCR",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-CFG-BRG-MAIN",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-CFG-PMP-STA",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-BLR-HED-DOS",
+            "quantity": 1
+          }
+        ],
+        "maintenance": []
+      },
+      {
+        "name": "Secondary Clarifier No. 4",
+        "description": "Forty-metre circular chain-and-flight clarifier. Event frequency is low but consequence is high; a torque overload usually indicates an obstruction rather than a drive fault. Criticality: Medium; PM cadence: monthly torque log and annual gearbox oil sample.",
+        "active": true,
+        "location": "Tomahawk Creek WRF / Secondary / Clarifier 4",
+        "customer": null,
+        "manufacturer": "Ovivo",
+        "model": "Chain and flight",
+        "serial": "TC-SEC-CLR-004",
+        "legacy_identity": {
+          "manufacturer": "Ovivo",
+          "model": "Chain and flight",
+          "serial": "TC-SEC-CLR-004"
+        },
+        "installed_parts": [
+          {
+            "ipn": "EQ-CLR-GBX-DRV",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-CLR-SWT-TRQ",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-RAS-PMP-0300",
+            "quantity": 2
+          }
+        ],
+        "maintenance": []
+      },
+      {
+        "name": "UV Disinfection Channel No. 1",
+        "description": "Open-channel UV system with six banks of twelve modules. Lamp and ballast failures are structured and OEM-specific. Intensity loss is permit-relevant compliance exposure, so process staff own the discharge decision. Criticality: High; PM cadence: annual lamp replacement and quarterly sleeve cleaning.",
+        "active": true,
+        "location": "Tomahawk Creek WRF / Disinfection / UV Channel 1",
+        "customer": null,
+        "manufacturer": "Trojan Technologies",
+        "model": "TrojanUV3000Plus",
+        "serial": "TC-DIS-UVD-001",
+        "legacy_identity": {
+          "manufacturer": "Trojan Technologies",
+          "model": "TrojanUV3000Plus",
+          "serial": "TC-DIS-UVD-001"
+        },
+        "installed_parts": [
+          {
+            "ipn": "EQ-UVD-LMP-STD",
+            "quantity": 72
+          },
+          {
+            "ipn": "EQ-UVD-SLV-QTZ",
+            "quantity": 72
+          },
+          {
+            "ipn": "EQ-UVD-BAL-STD",
+            "quantity": 36
+          }
+        ],
+        "maintenance": []
+      },
+      {
+        "name": "UF/RO Skid No. 1",
+        "description": "Two-pass UF/RO skid producing boiler-makeup and process water. A water fault here becomes a production fault, making this the highest-dollar industrial workflow. Commissioned 2023-04-20; criticality: Critical; PM cadence: CIP on differential-pressure trigger and annual membrane autopsy. Production sign-off is required before isolation.",
+        "active": true,
+        "location": "Industrial Water Plant / Treatment Bay 1",
+        "customer": null,
+        "manufacturer": "DuPont",
+        "model": "FilmTec 8040 train",
+        "serial": "IW-ROX-SKD-001",
+        "legacy_identity": {
+          "manufacturer": "DuPont",
+          "model": "FilmTec 8040 train",
+          "serial": "IW-ROX-SKD-001"
+        },
+        "installed_parts": [
+          {
+            "ipn": "EQ-ROX-MEM-8040",
+            "quantity": 42
+          },
+          {
+            "ipn": "EQ-UFX-MOD-STD",
+            "quantity": 12
+          },
+          {
+            "ipn": "EQ-ROX-PMP-HPX",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-ROX-SEL-HPX",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-ROX-CTF-0050",
+            "quantity": 20
+          },
+          {
+            "ipn": "EQ-ROX-HTR-CIP",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-BLR-RSN-CAT",
+            "quantity": 6
+          },
+          {
+            "ipn": "EQ-BLR-SEN-CND",
+            "quantity": 3
+          }
+        ],
+        "maintenance": []
+      },
+      {
+        "name": "Cooling Water Train A",
+        "description": "Two-cell induced-draft cooling tower with circulating pumps and plate exchangers. Fan-gearbox failure drives heat-rejection loss and direct production risk. Criticality: Critical; PM cadence: monthly vibration, annual gearbox oil change, and seasonal drift-eliminator inspection.",
+        "active": true,
+        "location": "Industrial Water Plant / Cooling Yard",
+        "customer": null,
+        "manufacturer": "SPX Marley",
+        "model": "NC series",
+        "serial": "IW-CLG-TWR-A01",
+        "legacy_identity": {
+          "manufacturer": "SPX Marley",
+          "model": "NC series",
+          "serial": "IW-CLG-TWR-A01"
+        },
+        "installed_parts": [
+          {
+            "ipn": "EQ-CLG-GBX-FAN",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-CLG-DFT-ELM",
+            "quantity": 24
+          },
+          {
+            "ipn": "EQ-CLG-GSK-PHE",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-CLG-SEL-PMP",
+            "quantity": 3
+          }
+        ],
+        "maintenance": []
+      },
+      {
+        "name": "Remote Lift Station 14 — Blue River",
+        "description": "Duplex submersible grinder station with standby generator and cellular RTU. It is 22 minutes from the plant, so first-visit failure is expensive. No permanent site-power backup exists beyond the generator. Criticality: High; PM cadence: quarterly wet-well cleaning and monthly generator exercise.",
+        "active": true,
+        "location": "Collection System / Basin 4 / Blue River",
+        "customer": null,
+        "manufacturer": "Xylem Flygt",
+        "model": "NP 3202 grinder",
+        "serial": "LS-014-BLU-001",
+        "legacy_identity": {
+          "manufacturer": "Xylem Flygt",
+          "model": "NP 3202 grinder",
+          "serial": "LS-014-BLU-001"
+        },
+        "installed_parts": [
+          {
+            "ipn": "EQ-LFT-PMP-GRN",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-LFT-BRK-RAI",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-LFT-GSK-ELB",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-LFT-SEN-LVL",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-LFT-SWT-FLT",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-GEN-CTL-ATS",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-GEN-BAT-STR",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-GEN-HTR-BLK",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-ELE-CON-0090",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-ELE-MCP-0100",
+            "quantity": 2
+          },
+          {
+            "ipn": "EQ-TEL-MDM-LTE",
+            "quantity": 1
+          },
+          {
+            "ipn": "EQ-TEL-SPD-DIN",
+            "quantity": 3
+          }
+        ],
+        "maintenance": []
     }
   ]
 }

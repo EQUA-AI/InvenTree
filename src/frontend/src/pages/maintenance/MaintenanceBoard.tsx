@@ -58,9 +58,12 @@ import type {
 } from '@lib/types/Tasks';
 
 import { ScopedChatButton } from '../../components/aichat/ScopedChatButton';
-import PageTitle from '../../components/nav/PageTitle';
 import { useApi } from '../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../functions/notifications';
+import {
+  WorkOrderCreateModal,
+  type WorkPackageResult
+} from './components/WorkOrderCreateModal';
 
 type PriorityFilterValue = KanbanPriority | 'all';
 
@@ -231,7 +234,15 @@ const formValuesToPayload = (values: TaskFormValues) => ({
   service_quote: values.serviceQuote
 });
 
-export default function Kanban() {
+/**
+ * Maintenance board: the Board panel of the Maintenance workspace.
+ *
+ * Creating work goes through the audited work-package command via
+ * {@link WorkOrderCreateModal}; the board never POSTs a raw Kanban card. The
+ * in-place edit modal below still uses the generic card endpoint and migrates to
+ * versioned update commands in a later phase.
+ */
+export default function MaintenanceBoard() {
   const api = useApi();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -255,6 +266,9 @@ export default function Kanban() {
   const [columns, setColumns] = useState<Column[]>(defaultColumns);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createdWorkPackage, setCreatedWorkPackage] =
+    useState<WorkPackageResult | null>(null);
   const [columnModalOpen, setColumnModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [tagOptions, setTagOptions] = useState<string[]>(DEFAULT_TAG_OPTIONS);
@@ -495,9 +509,10 @@ export default function Kanban() {
     validate: {
       title: (value) =>
         value.trim().length === 0
-          ? t`Give the task a descriptive title.`
+          ? t`Give the work order a descriptive title.`
           : null,
-      status: (value) => (value ? null : t`Choose a column for this task.`),
+      status: (value) =>
+        value ? null : t`Choose a column for this work order.`,
       // Every work order is anchored to a machine (backend enforces this too).
       machine: (value) => (value ? null : t`Select the machine for this work.`)
     }
@@ -712,29 +727,25 @@ export default function Kanban() {
     });
   };
 
-  const openCreateTaskModal = () => {
-    const firstColumn = columns[0]?.id ?? 'backlog';
+  const handleWorkPackageCreated = useCallback(
+    async (result: WorkPackageResult) => {
+      // Board, Calendar and Timeline all read the same card collection.
+      await queryClient.invalidateQueries({ queryKey: ['kanban-cards'] });
 
-    setEditingTask(null);
-    setFormParts([]);
-    taskForm.setValues({
-      title: '',
-      description: '',
-      status: firstColumn as KanbanStatus,
-      priority: 'medium',
-      assignee: '',
-      machine: null,
-      tags: [],
-      dueDate: null,
-      company: '',
-      companyContactName: '',
-      companyContactPhone: '',
-      jobNumber: '',
-      serviceQuote: ''
-    });
-    taskForm.resetDirty();
-    setTaskModalOpen(true);
-  };
+      notifications.show({
+        title: t`Work order created`,
+        message: result.repair_packet_reference
+          ? t`${result.work_order_reference} was created with repair packet ${result.repair_packet_reference}.`
+          : t`${result.work_order_reference} was created.`,
+        color: 'green',
+        icon: <IconCircleCheck size={16} />,
+        autoClose: 8000
+      });
+
+      setCreatedWorkPackage(result);
+    },
+    [queryClient]
+  );
 
   const openEditTaskModal = (task: Task) => {
     setEditingTask(task);
@@ -769,101 +780,73 @@ export default function Kanban() {
     setSavingTask(false);
   };
 
+  // Editing only. Creation is not reachable from this form: a new work order is
+  // an audited compound command, not a generic card POST.
   const handleTaskSubmit = taskForm.onSubmit(async (values) => {
+    if (!editingTask) {
+      return;
+    }
+
     const payload = formValuesToPayload(values);
 
     setSavingTask(true);
 
     try {
-      let cardId: number;
+      const response = await api.put(
+        apiUrl(ApiEndpoints.kanban_card_detail, editingTask.id),
+        payload
+      );
+      const updated = convertCardToTask(response.data);
+      const cardId = updated.id;
 
-      if (editingTask) {
-        const response = await api.put(
-          apiUrl(ApiEndpoints.kanban_card_detail, editingTask.id),
-          payload
+      setTasks((current) =>
+        current.map((task) => (task.id === updated.id ? updated : task))
+      );
+
+      notifications.show({
+        title: t`Work order updated`,
+        message: t`Changes saved successfully.`,
+        color: 'green',
+        icon: <IconCircleCheck size={16} />
+      });
+      try {
+        const partsUrl = apiUrl(ApiEndpoints.kanban_card_parts, cardId);
+        const allocResponse = await api.put(
+          partsUrl,
+          formParts.map((fp) => ({ part: fp.partId, quantity: fp.quantity }))
         );
-        const updated = convertCardToTask(response.data);
-        cardId = updated.id;
+        const allocData = allocResponse.data as {
+          parts: KanbanCardPart[];
+          warnings: string[];
+          all_allocated: boolean;
+        };
 
-        setTasks((current) =>
-          current.map((task) => (task.id === updated.id ? updated : task))
-        );
-
-        notifications.show({
-          title: t`Task updated`,
-          message: t`Changes saved successfully.`,
-          color: 'green',
-          icon: <IconCircleCheck size={16} />
-        });
-      } else {
-        const response = await api.post(
-          apiUrl(ApiEndpoints.kanban_card_list),
-          payload
-        );
-        const created = convertCardToTask(response.data);
-        cardId = created.id;
-
-        setTasks((current) => [...current, created]);
-
-        notifications.show({
-          title: t`Task created`,
-          message: t`The card was added to the board.`,
-          color: 'green',
-          icon: <IconCircleCheck size={16} />
-        });
-      }
-
-      /* ── Reconcile the card's parts in one request ──────────────
-       * A single PUT sends the desired full set; the server creates new
-       * parts, updates changed quantities, deletes removed ones and returns
-       * the allocation summary. This replaces a per-part POST loop that could
-       * neither delete a removed part nor update an existing quantity. Always
-       * sent (even when empty) on edit, so clearing the last part persists. */
-      const shouldSyncParts = formParts.length > 0 || Boolean(editingTask);
-
-      if (shouldSyncParts) {
-        try {
-          const partsUrl = apiUrl(ApiEndpoints.kanban_card_parts, cardId);
-          const allocResponse = await api.put(
-            partsUrl,
-            formParts.map((fp) => ({ part: fp.partId, quantity: fp.quantity }))
-          );
-          const allocData = allocResponse.data as {
-            parts: KanbanCardPart[];
-            warnings: string[];
-            all_allocated: boolean;
-          };
-
-          if (!allocData.all_allocated && allocData.warnings.length > 0) {
-            notifications.show({
-              title: t`Stock warning`,
-              message: allocData.warnings.join('\n'),
-              color: 'orange',
-              autoClose: 10000
-            });
-          } else if (allocData.all_allocated && allocData.parts.length > 0) {
-            notifications.show({
-              title: t`Stock allocated`,
-              message: t`All required parts have sufficient stock.`,
-              color: 'green',
-              icon: <IconCircleCheck size={16} />
-            });
-          }
-        } catch (error) {
-          showApiErrorMessage({
-            error,
-            title: t`Could not save the parts for this task`
+        if (!allocData.all_allocated && allocData.warnings.length > 0) {
+          notifications.show({
+            title: t`Stock warning`,
+            message: allocData.warnings.join('\n'),
+            color: 'orange',
+            autoClose: 10000
+          });
+        } else if (allocData.all_allocated && allocData.parts.length > 0) {
+          notifications.show({
+            title: t`Stock allocated`,
+            message: t`All required parts have sufficient stock.`,
+            color: 'green',
+            icon: <IconCircleCheck size={16} />
           });
         }
+      } catch (error) {
+        showApiErrorMessage({
+          error,
+          title: t`Could not save the parts for this work order`
+        });
       }
 
       await queryClient.invalidateQueries({ queryKey: ['kanban-cards'] });
       closeTaskModal();
     } catch (error) {
-      showApiErrorMessage({
-        error,
-        title: editingTask ? t`Could not update task` : t`Could not create task`
-      });
+      showApiErrorMessage({ error, title: t`Could not update work order` });
       setSavingTask(false);
     }
   });
@@ -923,7 +906,7 @@ export default function Kanban() {
       setTasks((current) => current.filter((task) => task.id !== taskId));
 
       notifications.show({
-        title: t`Task archived`,
+        title: t`Work order archived`,
         message: t`The card is no longer visible on the board.`,
         color: 'green',
         icon: <IconCircleCheck size={16} />
@@ -933,7 +916,7 @@ export default function Kanban() {
     } catch (error) {
       showApiErrorMessage({
         error,
-        title: t`Could not delete task`
+        title: t`Could not delete work order`
       });
     } finally {
       setDeletingTaskId(null);
@@ -1187,15 +1170,14 @@ export default function Kanban() {
 
   return (
     <Stack gap='lg'>
-      <PageTitle title={t`Kanban`} />
-      <Text>{t`Use this board to group tasks by stage, keep ownership visible, and iterate quickly.`}</Text>
+      <Text>{t`Track maintenance work by stage, keep ownership visible, and open any work order for its full detail.`}</Text>
       <Group justify='space-between' align='flex-start'>
         <Group gap='sm'>
           <Button
             leftSection={<IconPlus size={16} />}
-            onClick={openCreateTaskModal}
+            onClick={() => setCreateModalOpen(true)}
           >
-            {t`Add task`}
+            {t`New work order`}
           </Button>
           <Button
             variant='subtle'
@@ -1505,7 +1487,9 @@ export default function Kanban() {
                                     variant='subtle'
                                     aria-label={t`Open work order detail`}
                                     onClick={() =>
-                                      navigate(`/tasks/work-orders/${task.id}/`)
+                                      navigate(
+                                        `/maintenance/work-orders/${task.id}/`
+                                      )
                                     }
                                     disabled={isDeleting}
                                   >
@@ -1514,7 +1498,7 @@ export default function Kanban() {
                                   <ActionIcon
                                     size='sm'
                                     variant='subtle'
-                                    aria-label={t`Edit task`}
+                                    aria-label={t`Edit work order`}
                                     onClick={() => openEditTaskModal(task)}
                                     disabled={isDeleting}
                                   >
@@ -1524,7 +1508,7 @@ export default function Kanban() {
                                     size='sm'
                                     variant='subtle'
                                     color='red'
-                                    aria-label={t`Delete task`}
+                                    aria-label={t`Delete work order`}
                                     onClick={() => handleDeleteTask(task.id)}
                                     disabled={isDeleting}
                                   >
@@ -1716,10 +1700,65 @@ export default function Kanban() {
         )}
       </Modal>
 
+      <WorkOrderCreateModal
+        opened={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        origin='manual'
+        onCreated={handleWorkPackageCreated}
+      />
+
+      <Modal
+        opened={createdWorkPackage !== null}
+        onClose={() => setCreatedWorkPackage(null)}
+        title={t`Work order created`}
+        size='sm'
+        fullScreen={isSmallScreen}
+      >
+        {createdWorkPackage && (
+          <Stack gap='md'>
+            <Text>
+              {t`Created ${createdWorkPackage.work_order_reference}. It is planned, not started.`}
+            </Text>
+            <Group justify='flex-end'>
+              <Button
+                variant='default'
+                type='button'
+                onClick={() => setCreatedWorkPackage(null)}
+              >
+                {t`Stay on the board`}
+              </Button>
+              {createdWorkPackage.repair_packet_id && (
+                <Button
+                  variant='light'
+                  type='button'
+                  onClick={() =>
+                    navigate(
+                      `/repair/packets/${createdWorkPackage.repair_packet_id}/`
+                    )
+                  }
+                >
+                  {t`Open repair packet`}
+                </Button>
+              )}
+              <Button
+                type='button'
+                onClick={() =>
+                  navigate(
+                    `/maintenance/work-orders/${createdWorkPackage.work_order_id}/`
+                  )
+                }
+              >
+                {t`Open work order`}
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
+
       <Modal
         opened={taskModalOpen}
         onClose={closeTaskModal}
-        title={editingTask ? t`Edit task` : t`New task`}
+        title={t`Edit work order`}
         size='lg'
         fullScreen={isSmallScreen}
       >
@@ -1735,7 +1774,7 @@ export default function Kanban() {
             )}
             <TextInput
               label={t`Title`}
-              placeholder={t`Add a concise task name`}
+              placeholder={t`Summarize the work in one line`}
               withAsterisk
               {...taskForm.getInputProps('title')}
             />
@@ -1952,7 +1991,7 @@ export default function Kanban() {
                 {t`Cancel`}
               </Button>
               <Button type='submit' loading={savingTask}>
-                {editingTask ? t`Save changes` : t`Create task`}
+                {t`Save changes`}
               </Button>
             </Group>
           </Stack>

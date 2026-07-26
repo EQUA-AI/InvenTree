@@ -101,9 +101,9 @@ function DrawerContent({ closeFunc }: Readonly<{ closeFunc?: () => void }>) {
         icon: 'sales_orders'
       },
       {
-        id: 'tasks-kanban',
-        title: t`Kanban`,
-        link: '/tasks/kanban/',
+        id: 'maintenance',
+        title: t`Maintenance`,
+        link: '/maintenance/',
         hidden: !(
           user.hasViewPermission(ModelType.kanbancard) || user.isStaff()
         ),

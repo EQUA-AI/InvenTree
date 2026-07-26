@@ -4,15 +4,17 @@ import datetime
 import json
 from pathlib import Path
 
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from django.db.models import Q
 
 from tasks.models import KanbanCard, WorkOrderLifecycle
 
+from assets.demo_history import normalize_completed_history_card
 from assets.models import AssetMachine, AssetMaintenanceRecord, MachinePart
 from company.models import Company
-from part.models import Part
+from part.models import Part, PartCategory
 
 DATA_FILE = Path(__file__).resolve().parents[2] / 'demo_machine_data.json'
 DEMO_METADATA_KEY = 'asset_demo_data'
@@ -25,6 +27,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         """Register command-line arguments."""
+        parser.add_argument(
+            '--dry-run',
+            action='store_true',
+            help='Validate and load the manifest, then roll back all changes',
+        )
         parser.add_argument(
             '--prune',
             action='store_true',
@@ -40,7 +47,8 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             customers = self._load_customers(data['customers'])
-            parts = self._load_parts(data['parts'])
+            categories = self._load_categories(data['parts'])
+            parts = self._load_parts(data['parts'], categories=categories)
 
             machine_count = 0
             part_link_count = 0
@@ -62,10 +70,15 @@ class Command(BaseCommand):
             if options['prune']:
                 pruned_count = self._prune_legacy_records(data['legacy_records'])
 
+            if options['dry_run']:
+                transaction.set_rollback(True)
+
+        action = 'Validated' if options['dry_run'] else 'Loaded'
         self.stdout.write(
             self.style.SUCCESS(
-                'Loaded '
+                f'{action} '
                 f'{machine_count} machines, {len(parts)} catalog parts, '
+                f'{len(categories)} part categories, '
                 f'{part_link_count} installed-part links, '
                 f'{maintenance_count} maintenance records, and '
                 f'{work_order_count} linked work orders; '
@@ -96,7 +109,49 @@ class Command(BaseCommand):
                     f'Machine demo legacy_records must contain a {key} list'
                 )
 
+        self._validate_maintenance_history(data['machines'])
+
         return data
+
+    @staticmethod
+    def _validate_maintenance_history(machines):
+        """Require completed work-order metadata on every owned history row.
+
+        A dataset-owned maintenance row without a work order would render in the
+        machine Maintenance blade as an unlinked legacy record. That presentation
+        exists only for genuinely unowned history, so a missing declaration here
+        is an import error rather than a frontend empty state.
+        """
+        references = {}
+
+        for machine in machines:
+            for record in machine.get('maintenance', []):
+                label = f'{machine["name"]!r} on {record.get("date")}'
+                work_order = record.get('work_order')
+
+                if not isinstance(work_order, dict):
+                    raise CommandError(
+                        f'Demo maintenance record for {label} must declare a '
+                        'completed work order'
+                    )
+
+                missing = [
+                    key
+                    for key in ('reference', 'type', 'priority')
+                    if not work_order.get(key)
+                ]
+                if missing:
+                    raise CommandError(
+                        f'Demo work order for {label} is missing: ' + ', '.join(missing)
+                    )
+
+                reference = work_order['reference']
+                if reference in references:
+                    raise CommandError(
+                        f'Demo work-order reference {reference!r} is declared '
+                        f'twice ({references[reference]} and {label})'
+                    )
+                references[reference] = label
 
     def _load_customers(self, records):
         """Upsert demo customers and return them by name."""
@@ -148,12 +203,113 @@ class Command(BaseCommand):
 
         return customers
 
-    def _load_parts(self, records):
+    @staticmethod
+    def _normalize_category_path(value):
+        """Return a normalized slash-separated category path."""
+        if not isinstance(value, str):
+            raise CommandError('Demo part category_path must be a string')
+
+        components = [component.strip() for component in value.split('/')]
+        if not components or any(not component for component in components):
+            raise CommandError(f'Invalid demo part category path {value!r}')
+
+        return '/'.join(components)
+
+    @staticmethod
+    def _metadata_marker(kind, record=None):
+        """Return an ownership marker with optional dataset metadata."""
+        extra = record.get('demo_metadata', {}) if record else {}
+        if not isinstance(extra, dict):
+            raise CommandError('Demo record demo_metadata must be an object')
+        marker = dict(extra)
+        marker.update({'kind': kind, 'schema_version': 1})
+        return marker
+
+    def _load_categories(self, part_records):
+        """Create managed category paths requested by demo parts."""
+        requested_paths = {
+            self._normalize_category_path(record['category_path'])
+            for record in part_records
+            if record.get('category_path')
+        }
+        categories = {}
+
+        for path in sorted(
+            requested_paths, key=lambda value: (value.count('/'), value.casefold())
+        ):
+            parent = None
+            components = path.split('/')
+
+            for index, name in enumerate(components):
+                current_path = '/'.join(components[: index + 1])
+                if current_path in categories:
+                    parent = categories[current_path]
+                    continue
+
+                matches = PartCategory.objects.filter(
+                    parent=parent, name__iexact=name
+                ).order_by('pk')
+                if matches.count() > 1:
+                    raise CommandError(
+                        f'Multiple part categories match demo path {current_path!r}'
+                    )
+
+                category = matches.first()
+                structural = index < len(components) - 1
+                if category is None:
+                    category = PartCategory.objects.create(
+                        name=name,
+                        parent=parent,
+                        structural=structural,
+                        metadata={
+                            DEMO_METADATA_KEY: self._metadata_marker('part_category')
+                        },
+                    )
+                else:
+                    marker = category.get_metadata(DEMO_METADATA_KEY, {})
+                    if (
+                        not isinstance(marker, dict)
+                        or marker.get('kind') != 'part_category'
+                    ):
+                        raise CommandError(
+                            f'Demo category path {current_path!r} is already used by '
+                            'a record not owned by the machine demo dataset'
+                        )
+                    if structural and not category.structural:
+                        category.structural = True
+                        category.save(update_fields=['structural'])
+
+                categories[current_path] = category
+                parent = category
+
+        return categories
+
+    def _load_parts(self, records, *, categories):
         """Upsert demo catalog parts and return them by IPN."""
         parts = {}
 
         for record in records:
             ipn = record['ipn']
+            category_path = record.get('category_path')
+            category = None
+            if category_path:
+                category_path = self._normalize_category_path(category_path)
+                category = categories[category_path]
+
+            values = {
+                'IPN': ipn,
+                'name': record['name'],
+                'description': record['description'],
+                'category': category,
+                'link': record.get('link') or None,
+            }
+            try:
+                Part._meta.get_field('link').clean(values['link'], None)
+            except ValidationError as exc:
+                raise CommandError(
+                    f'Invalid demo link for part {ipn!r}: {exc}'
+                ) from exc
+
             matches = Part.objects.filter(IPN__iexact=ipn).order_by('pk')
 
             if matches.count() > 1:
@@ -167,10 +323,8 @@ class Command(BaseCommand):
                         f'Required upstream demo part {ipn!r} was not found'
                     )
                 part = Part.objects.create(
-                    IPN=ipn,
-                    name=record['name'],
-                    description=record['description'],
-                    metadata={DEMO_METADATA_KEY: {'kind': 'part', 'schema_version': 1}},
+                    **values,
+                    metadata={DEMO_METADATA_KEY: self._metadata_marker('part', record)},
                 )
             elif record.get('reuse_existing'):
                 if part.name.casefold() != record['name'].casefold():
@@ -186,10 +340,12 @@ class Command(BaseCommand):
                         f'Demo IPN {ipn!r} is already used by a record not owned '
                         'by the machine demo dataset'
                     )
-                part.IPN = ipn
-                part.name = record['name']
-                part.description = record['description']
-                part.save(update_fields=['IPN', 'name', 'description'])
+                for field, value in values.items():
+                    setattr(part, field, value)
+                metadata = dict(part.metadata or {})
+                metadata[DEMO_METADATA_KEY] = self._metadata_marker('part', record)
+                part.metadata = metadata
+                part.save(update_fields=[*values, 'metadata'])
 
             parts[ipn] = part
 
@@ -237,14 +393,23 @@ class Command(BaseCommand):
                 'model': machine.model,
                 'serial': machine.serial,
             })
-            expected_identities = {
-                self._machine_identity(record),
-                self._machine_identity(record['legacy_identity']),
-            }
+            current_identity = self._machine_identity(record)
+            legacy_identity = self._machine_identity(record['legacy_identity'])
+            expected_identities = {current_identity, legacy_identity}
             if actual_identity not in expected_identities:
                 raise CommandError(
                     f'Demo machine name {record["name"]!r} is already used by '
                     'a record with a different manufacturer, model, or serial'
+                )
+
+            legacy_owned = (
+                actual_identity == legacy_identity
+                and legacy_identity != current_identity
+            )
+            if not legacy_owned and not self._machine_has_managed_part(machine, record):
+                raise CommandError(
+                    f'Demo machine name {record["name"]!r} is already used by '
+                    'a record not owned by the machine demo dataset'
                 )
 
             machine.name = record['name']
@@ -267,7 +432,7 @@ class Command(BaseCommand):
                 part=part,
                 defaults={
                     'quantity': link_data['quantity'],
-                    'notes': link_data['notes'],
+                    'notes': link_data.get('notes', ''),
                 },
             )
             link_ids.append(link.pk)
@@ -292,6 +457,23 @@ class Command(BaseCommand):
             str(values.get(field) or '').strip().casefold()
             for field in ('manufacturer', 'model', 'serial')
         )
+
+    @staticmethod
+    def _machine_has_managed_part(machine, record):
+        """Return whether the machine links to an expected managed demo part."""
+        expected_ipns = {
+            link_data['ipn'].casefold() for link_data in record['installed_parts']
+        }
+
+        for link in machine.machine_parts.select_related('part'):
+            if (link.part.IPN or '').casefold() not in expected_ipns:
+                continue
+
+            marker = link.part.get_metadata(DEMO_METADATA_KEY, {})
+            if isinstance(marker, dict) and marker.get('kind') == 'part':
+                return True
+
+        return False
 
     def _prune_legacy_records(self, records):
         """Remove only records that exactly match the old placeholder dataset."""
@@ -387,6 +569,8 @@ class Command(BaseCommand):
                 'a record not owned by the machine demo dataset'
             )
 
+        record_date = datetime.date.fromisoformat(maintenance_data['date'])
+
         work_order, _ = KanbanCard.objects.update_or_create(
             reference=reference,
             defaults={
@@ -394,7 +578,7 @@ class Command(BaseCommand):
                 'description': maintenance_data['details'],
                 'status': KanbanCard.STATUS_DONE,
                 'priority': work_order_data['priority'],
-                'due_date': datetime.date.fromisoformat(maintenance_data['date']),
+                'due_date': record_date,
                 'assignee': maintenance_data['performed_by'],
                 'tags': ['demo', 'maintenance'],
                 'company': machine.customer.name if machine.customer else '',
@@ -405,6 +589,10 @@ class Command(BaseCommand):
                 'machine': machine,
                 'customer': machine.customer,
             },
+        )
+
+        normalize_completed_history_card(
+            work_order, record_date=record_date, dataset=DEMO_METADATA_KEY
         )
 
         return work_order

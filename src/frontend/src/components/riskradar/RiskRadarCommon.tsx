@@ -287,7 +287,7 @@ export function parseRiskRuleHealthResponse(
 
 const GOVERNED_ACTION_ROUTES: Record<string, (targetId: string) => string> = {
   repair_packet: (targetId) => `/repair/packets/${targetId}/`,
-  work_order: (targetId) => `/tasks/work-orders/${targetId}`,
+  work_order: (targetId) => `/maintenance/work-orders/${targetId}`,
   purchase_order: (targetId) => `/purchasing/purchase-order/${targetId}/`,
   asset_machine: (targetId) => `/machines/machine/${targetId}/`,
   part: (targetId) => `/part/${targetId}/`

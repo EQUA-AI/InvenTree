@@ -64,8 +64,13 @@ export const BuildDetail = Loadable(
   lazy(() => import('./pages/build/BuildDetail'))
 );
 
-export const TasksKanban = Loadable(
-  lazy(() => import('./pages/tasks/TasksIndex'))
+export const MaintenanceIndex = Loadable(
+  lazy(() => import('./pages/maintenance/MaintenanceIndex'))
+);
+
+// Compatibility shim for the pre-rename /tasks/* URLs; see TasksRedirect.
+export const TasksRedirect = Loadable(
+  lazy(() => import('./pages/maintenance/TasksRedirect'))
 );
 
 export const WorkOrderDetail = Loadable(
@@ -226,11 +231,13 @@ export const routes = (
           element={<ManufacturerPartDetail />}
         />
       </Route>
-      <Route path='tasks/'>
-        <Route index element={<Navigate to='kanban/' />} />
-        <Route path='kanban/*' element={<TasksKanban />} />
+      <Route path='maintenance/'>
         <Route path='work-orders/:id/*' element={<WorkOrderDetail />} />
+        {/* The splat keeps the panel segment in the child path so PanelGroup
+            can resolve /maintenance/board|calendar|timeline/ itself. */}
+        <Route path='*' element={<MaintenanceIndex />} />
       </Route>
+      <Route path='tasks/*' element={<TasksRedirect />} />
       <Route path='machines/'>
         <Route index element={<Navigate to='index/' />} />
         <Route path='index/*' element={<MachineIndex />} />

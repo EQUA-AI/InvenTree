@@ -617,6 +617,8 @@ class RepairPacketEvent(models.Model):
         GATE_WAIVED = 'gate_waived', _('Gate Waived')
         LOCKOUT_UPDATED = 'lockout_updated', _('Lockout Updated')
         RETURN_TO_SERVICE = 'return_to_service', _('Return To Service')
+        WORK_ORDER_CREATED = 'work_order_created', _('Work Order Created')
+        WORK_ORDER_SKIPPED = 'work_order_skipped', _('Work Order Skipped')
 
     packet = models.ForeignKey(
         RepairPacket, on_delete=models.CASCADE, related_name='events'

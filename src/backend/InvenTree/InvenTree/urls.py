@@ -71,6 +71,7 @@ apipatterns = [
     path('assets/', include(assets.api.assets_api_urls)),
     path('approvals/', include(approvals.api.approvals_api_urls)),
     path('repair/', include(repair.api.repair_api_urls)),
+    path('maintenance/', include(repair.api.maintenance_api_urls)),
     path('aichat/', include('aichat.urls')),
     path('voice/', include('voice.urls')),
     path('search/', APISearchView.as_view(), name='api-search'),

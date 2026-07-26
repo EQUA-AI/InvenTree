@@ -121,9 +121,16 @@ class MachinePartDetail(RetrieveUpdateDestroyAPI):
 
 
 class AssetMaintenanceRecordList(ListCreateAPI):
-    """List and create maintenance records."""
+    """List and create maintenance records.
 
-    queryset = AssetMaintenanceRecord.objects.select_related('work_order').all()
+    The work order and its structured closeout are joined so the blade renders
+    reference, type, lifecycle, completion, downtime and verification without a
+    query per row.
+    """
+
+    queryset = AssetMaintenanceRecord.objects.select_related(
+        'work_order', 'work_order__structured_closeout'
+    ).all()
     serializer_class = AssetMaintenanceRecordSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,

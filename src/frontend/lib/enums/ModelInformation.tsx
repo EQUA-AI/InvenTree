@@ -351,7 +351,7 @@ export const ModelInformationDict: ModelDict = {
   kanbancard: {
     label: () => t`Kanban Card`,
     label_multiple: () => t`Kanban Cards`,
-    url_overview: '/tasks/kanban/',
+    url_overview: '/maintenance/',
     api_endpoint: ApiEndpoints.kanban_card_list,
     icon: 'list'
   },

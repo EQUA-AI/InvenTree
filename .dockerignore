@@ -8,6 +8,7 @@ node_modules
 .vscode
 
 # Local dev data
+/data
 /dev-db
 /dev/media
 /dev/backup

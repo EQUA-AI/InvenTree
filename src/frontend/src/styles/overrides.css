@@ -1,30 +1,56 @@
 /* fullcalendar multimonth single-column (scroll-year) overrides */
+.fc {
+	--fc-page-bg-color: var(--mantine-color-body);
+	--fc-neutral-text-color: var(--mantine-color-dimmed);
+	--fc-border-color: var(--mantine-color-default-border);
+	--fc-more-link-text-color: var(--mantine-color-text);
+	color: var(--mantine-color-text);
+}
+
+[data-mantine-color-scheme="light"] .fc {
+	--fc-neutral-bg-color: var(--mantine-color-gray-1);
+	--fc-more-link-bg-color: var(--mantine-color-gray-2);
+	--fc-non-business-color: rgba(233, 236, 239, 0.55);
+	--fc-highlight-color: rgba(34, 139, 230, 0.12);
+}
+
+[data-mantine-color-scheme="dark"] .fc {
+	--fc-neutral-bg-color: var(--mantine-color-dark-6);
+	--fc-more-link-bg-color: var(--mantine-color-dark-4);
+	--fc-non-business-color: rgba(52, 58, 64, 0.55);
+	--fc-highlight-color: rgba(51, 154, 240, 0.18);
+}
+
+.fc a {
+	color: inherit;
+}
+
 .fc-multimonth-singlecol .fc-multimonth-title {
-  padding: 0.35em 0;
+	padding: 0.35em 0;
 }
 
 /* Alternating month backgrounds in the multi-month scroll calendar view */
-[data-mantine-color-scheme='light'] .fc-day-month-odd:not(.fc-day-today) {
-  background-color: var(--mantine-color-gray-1);
+[data-mantine-color-scheme="light"] .fc-day-month-odd:not(.fc-day-today) {
+	background-color: var(--mantine-color-gray-1);
 }
-[data-mantine-color-scheme='dark'] .fc-day-month-odd:not(.fc-day-today) {
-  background-color: var(--mantine-color-dark-4);
+[data-mantine-color-scheme="dark"] .fc-day-month-odd:not(.fc-day-today) {
+	background-color: var(--mantine-color-dark-4);
 }
 
 /* Today highlight */
-[data-mantine-color-scheme='light'] .fc-day-today {
-  background-color: var(--mantine-color-blue-1) !important;
+[data-mantine-color-scheme="light"] .fc-day-today {
+	background-color: var(--mantine-color-blue-1) !important;
 }
-[data-mantine-color-scheme='dark'] .fc-day-today {
-  background-color: var(--mantine-color-blue-9) !important;
+[data-mantine-color-scheme="dark"] .fc-day-today {
+	background-color: var(--mantine-color-blue-9) !important;
 }
 
 /* mantine-datatable overrides */
 .mantine-datatable-pointer-cursor,
 .mantine-datatable-context-menu-cursor {
-  cursor: pointer;
+	cursor: pointer;
 }
 
 .mantine-datatable-resizable-columns {
-  table-layout: auto !important;
+	table-layout: auto !important;
 }

@@ -116,7 +116,7 @@ export default function TaskCalendar() {
 
   const onEventClick = useCallback(
     (info: EventClickArg) => {
-      navigate(`/tasks/work-orders/${info.event.id}/`);
+      navigate(`/maintenance/work-orders/${info.event.id}/`);
     },
     [navigate]
   );

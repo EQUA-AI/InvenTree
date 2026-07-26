@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import uuid
+
 from django.shortcuts import get_object_or_404
 from django.urls import include, path
 
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from tasks.services import scheduling
 
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
@@ -28,6 +31,7 @@ from .serializers import (
     SafetyEvidenceProofSerializer,
     SafetyGateTemplateSerializer,
 )
+from .work_packages import WorkPackageError, create_repair_work_package
 
 
 def _truthy(value) -> bool:
@@ -298,6 +302,63 @@ def _gate_response(gate, ok: bool, detail: str):
     data['ok'] = ok
     data['detail'] = detail
     return Response(data, status=200 if ok else 400)
+
+
+class RepairWorkPackageCreate(APIView):
+    """Create one machine-linked work order and optional repair packet.
+
+    The single write path for every maintenance intake entry point: the
+    Maintenance workspace button, a machine Repair action, a health anomaly and
+    (later) an approved AI proposal all post the same versioned draft here. It
+    plans work; it never starts it.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order.add'
+
+    def post(self, request):
+        """Validate the draft and execute the atomic create command."""
+        data = dict(request.data or {})
+        idempotency_key = data.pop('idempotency_key', None) or uuid.uuid4().hex
+
+        try:
+            result = create_repair_work_package(
+                actor=request.user, draft=data, idempotency_key=idempotency_key
+            )
+        except WorkPackageError as exc:
+            return Response(
+                {
+                    'code': getattr(exc, 'code', 'WORK_PACKAGE_INVALID'),
+                    'detail': str(exc),
+                },
+                status=400,
+            )
+        except scheduling.IdempotencyConflict as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=409)
+        except scheduling.WorkOrderCommandError as exc:
+            return Response(
+                {'code': getattr(exc, 'code', 'COMMAND_ERROR'), 'detail': str(exc)},
+                status=400,
+            )
+
+        return Response(result.as_dict(), status=201)
+
+
+maintenance_api_urls = [
+    path(
+        'work-packages/',
+        include([
+            path(
+                'create/',
+                RepairWorkPackageCreate.as_view(),
+                name='maintenance-work-package-create',
+            )
+        ]),
+    )
+]
 
 
 repair_api_urls = [

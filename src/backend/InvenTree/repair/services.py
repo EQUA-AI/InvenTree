@@ -63,34 +63,91 @@ def _record_event(
 # --------------------------------------------------------------------------- #
 # Generation (wf7 seam)
 # --------------------------------------------------------------------------- #
-def _ensure_work_order_with_parts(packet: RepairPacket, result: GenerationResult):
-    """Create/link a work order and materialise resolved part lines onto it."""
-    resolvable = [p for p in result.parts if p.part_id]
+
+# Packet criticality and board priority are separate vocabularies: the board has
+# no 'critical' step, so critical work lands on the highest board priority it has.
+_PACKET_PRIORITY = {
+    'low': 'low',
+    'medium': 'medium',
+    'high': 'high',
+    'critical': 'high',
+}
+
+
+def _actor_from_id(user_id):
+    """Resolve the generation actor from an offload-safe user id."""
+    if not user_id:
+        return None
+
+    from django.contrib.auth import get_user_model
+
+    return get_user_model().objects.filter(pk=user_id).first()
+
+
+def _ensure_work_order_with_parts(
+    packet: RepairPacket, result: GenerationResult, *, actor=None, run_id: str = ''
+):
+    """Create/link a work order and materialise resolved part lines onto it.
+
+    The work order is created through ``tasks.services.scheduling.create_work_order``
+    so a packet-owned card carries the same audit event, idempotency ledger entry
+    and lifecycle defaults as one raised from the board or from an approved AI
+    work package. Creating a bare ``KanbanCard`` here is not allowed: it produced
+    machineless cards that no scope, readiness or maintenance-history rule could
+    resolve.
+
+    A packet with no machine therefore cannot materialise a work order. Rather
+    than fabricating an unscoped one, the gap is recorded as a packet event and
+    the packet stays re-generatable once its asset is set - diagnosis and safety
+    gates from the same run are still persisted.
+    """
+    from tasks.services import scheduling
+
+    resolvable = [line for line in result.parts if line.part_id]
     if not resolvable and packet.work_order_id is None:
         return
 
-    from tasks.models import KanbanCard, KanbanCardPart
-
     if packet.work_order_id is None:
-        card = KanbanCard.objects.create(
-            title=f'Work order for {packet.reference or packet.pk}',
+        if packet.machine_id is None:
+            _record_event(
+                packet,
+                RepairPacketEvent.EventType.WORK_ORDER_SKIPPED,
+                to_status=packet.status,
+                actor=actor,
+                reason='Work order not created: the packet has no asset.',
+                metadata={'reason_code': 'PACKET_HAS_NO_MACHINE', 'run_id': run_id},
+            )
+            return
+
+        command = scheduling.create_work_order(
+            actor=actor,
+            idempotency_key=f'repair-packet:{packet.pk}:work-order:{run_id}',
+            title=f'Work order for {packet.reference or packet.pk}'[:200],
+            machine_id=packet.machine_id,
             description=packet.fault_summary,
-            status=KanbanCard.STATUS_IN_PROGRESS,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            priority=_PACKET_PRIORITY.get(packet.criticality, 'medium'),
+            work_order_type='corrective',
         )
-        packet.work_order = card
+
+        packet.work_order_id = command.work_order_id
         packet.save(update_fields=['work_order', 'updated_at'])
 
-    for line in resolvable:
-        cp, _ = KanbanCardPart.objects.get_or_create(
-            card=packet.work_order,
-            part_id=line.part_id,
-            defaults={'quantity': line.quantity},
+        _record_event(
+            packet,
+            RepairPacketEvent.EventType.WORK_ORDER_CREATED,
+            to_status=packet.status,
+            actor=actor,
+            metadata={
+                'work_order_id': command.work_order_id,
+                'correlation_id': str(command.correlation_id),
+                'run_id': run_id,
+            },
         )
-        try:
-            cp.check_and_allocate()
-        except Exception:  # allocation is best-effort during generation
-            pass
+
+    scheduling.materialise_required_parts(
+        work_order_id=packet.work_order_id,
+        lines=[(line.part_id, line.quantity) for line in resolvable],
+    )
 
 
 def _matches(pattern: str, value: str | None) -> bool:
@@ -249,7 +306,12 @@ def run_repair_packet_workflow(
                 packet.status = PacketStatus.DIAGNOSED
             packet.save()
 
-            _ensure_work_order_with_parts(packet, result)
+            _ensure_work_order_with_parts(
+                packet,
+                result,
+                actor=_actor_from_id(params.get('user_id')),
+                run_id=run_id,
+            )
             gates_created = _create_safety_gates(packet, result)
 
             run.status = RepairPacketGenerationRun.RunStatus.SUCCEEDED

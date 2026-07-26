@@ -1,0 +1,659 @@
+{
+  "schema_version": 1,
+  "dataset": "water_workflow_demo",
+  "default_schedule_anchor": "2026-07-27",
+  "requested_by": "admin",
+  "calendars": [
+    {
+      "name": "WW Demo - Water Maintenance Day Shift",
+      "timezone": "America/Chicago",
+      "windows": {
+        "0": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "1": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "2": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "3": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "4": [["07:00", "11:30"], ["12:00", "15:30"]]
+      },
+      "holidays": [],
+      "is_default": true,
+      "machine": null
+    },
+    {
+      "name": "WW Demo - UF/RO Saturday Shutdown",
+      "timezone": "America/Chicago",
+      "windows": {
+        "0": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "1": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "2": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "3": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "4": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "5": [["06:00", "14:00"]]
+      },
+      "holidays": [],
+      "is_default": false,
+      "machine": "UF/RO Skid No. 1"
+    },
+    {
+      "name": "WW Demo - Cooling Train Saturday Shutdown",
+      "timezone": "America/Chicago",
+      "windows": {
+        "0": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "1": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "2": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "3": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "4": [["07:00", "11:30"], ["12:00", "15:30"]],
+        "5": [["06:00", "14:00"]]
+      },
+      "holidays": [],
+      "is_default": false,
+      "machine": "Cooling Water Train A"
+    },
+    {
+      "name": "WW Demo - Lift Station Seven-Day Response",
+      "timezone": "America/Chicago",
+      "windows": {
+        "0": [["06:00", "22:00"]],
+        "1": [["06:00", "22:00"]],
+        "2": [["06:00", "22:00"]],
+        "3": [["06:00", "22:00"]],
+        "4": [["06:00", "22:00"]],
+        "5": [["06:00", "22:00"]],
+        "6": [["06:00", "22:00"]]
+      },
+      "holidays": [],
+      "is_default": false,
+      "machine": "Remote Lift Station 14 — Blue River"
+    }
+  ],
+  "safety_templates": [
+    {
+      "name": "Electrical Lockout/Tagout",
+      "managed": false,
+      "gate_type": "loto",
+      "instructions": "Isolate electrical energy, apply lock/tag, and verify zero energy before work.",
+      "applies_to": {"fault_keywords": ["motor", "contactor", "breaker", "coil", "voltage", "vfd", "wiring"]},
+      "requires_photo": true,
+      "requires_second_person": true,
+      "is_blocking": true,
+      "is_mandatory": true,
+      "risk_tier": 3,
+      "default_sequence": 10
+    },
+    {
+      "name": "WW Demo - Process/Basin Isolation",
+      "managed": true,
+      "gate_type": "isolation",
+      "instructions": "Isolate the affected process train or basin, verify bypass capacity, and confirm a stable process condition before work.",
+      "applies_to": {"dataset": "water_workflow_demo", "fault_keywords": ["basin", "channel", "wet well", "wet-well", "process water"]},
+      "requires_photo": false,
+      "requires_second_person": false,
+      "is_blocking": true,
+      "is_mandatory": true,
+      "risk_tier": 2,
+      "default_sequence": 25
+    },
+    {
+      "name": "WW Demo - Confined-Space Entry Permit",
+      "managed": true,
+      "gate_type": "permit",
+      "instructions": "Confirm confined-space permit, atmospheric testing, attendant coverage, rescue plan, and continuous monitoring before entry.",
+      "applies_to": {"dataset": "water_workflow_demo", "fault_keywords": ["wet well", "wet-well", "basin entry", "channel entry", "confined"]},
+      "requires_photo": true,
+      "requires_second_person": true,
+      "is_blocking": true,
+      "is_mandatory": true,
+      "risk_tier": 3,
+      "default_sequence": 30
+    },
+    {
+      "name": "WW Demo - UV Exposure Control",
+      "managed": true,
+      "gate_type": "ppe",
+      "instructions": "De-energize UV banks, verify shutters or covers, and confirm UV-rated eye and skin protection before opening modules.",
+      "applies_to": {"dataset": "water_workflow_demo", "fault_keywords": ["uv", "lamp", "ballast", "quartz"]},
+      "requires_photo": false,
+      "requires_second_person": false,
+      "is_blocking": true,
+      "is_mandatory": true,
+      "risk_tier": 2,
+      "default_sequence": 35
+    },
+    {
+      "name": "WW Demo - Chemical/CIP Handling",
+      "managed": true,
+      "gate_type": "ppe",
+      "instructions": "Verify SDS controls, chemical-resistant PPE, eyewash availability, drain routing, and neutralization plan before chemical or CIP work.",
+      "applies_to": {"dataset": "water_workflow_demo", "fault_keywords": ["chemical", "cip", "antiscalant", "resin"]},
+      "requires_photo": false,
+      "requires_second_person": false,
+      "is_blocking": true,
+      "is_mandatory": true,
+      "risk_tier": 2,
+      "default_sequence": 36
+    }
+  ],
+  "machines": [
+    {
+      "name": "Influent Pump Station No. 1",
+      "history": [
+        {
+          "date": "2025-08-14",
+          "summary": "Monthly influent pump inspection",
+          "details": "Inspected three pump guide systems, cleared light rag accumulation at Pump 1, and recorded 121-126 A under matched wet-well conditions. Seal leakage indicators were normal and all VFD fans passed visual inspection.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-001", "type": "inspection", "priority": "medium", "assigned_to": "engineer"}
+        },
+        {
+          "date": "2026-01-22",
+          "summary": "Annual seal and wear clearance service",
+          "details": "Isolated MCC-HW-01, serviced Pump 2 seal chamber, measured impeller wear clearance at 0.82 mm, and replaced contaminated seal oil. Post-service current stabilized at 119-123 A.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-002", "type": "preventive", "priority": "high", "assigned_to": "steven"}
+        },
+        {
+          "date": "2026-05-18",
+          "summary": "Pump 3 ragging response",
+          "details": "Removed woven debris from Pump 3 inlet, inspected the chopper edge, and completed five automatic starts. Wet-well drawdown returned to 48 mm/min with no overload events.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-003", "type": "corrective", "priority": "high", "assigned_to": "engineer"}
+        }
+      ],
+      "scenario": {
+        "reference": "WO-WW-R-001",
+        "stage": "in-progress",
+        "title": "Influent Pump 2 seal leakage and rising VFD current",
+        "description": "Investigate Pump 2 seal leakage, rag accumulation, and a 9 percent rise in VFD current before wet-weather standby capacity is reduced.",
+        "fault_summary": "Influent pump seal leakage with ragging and rising VFD current",
+        "symptom": "Seal moisture alarm and 139 A running current on Pump 2",
+        "criticality": "critical",
+        "production_impact": "Loss of Pump 2 reduces wet-weather influent capacity and removes duty/assist redundancy.",
+        "priority": "high",
+        "assigned_to": "engineer",
+        "estimated_minutes": 360,
+        "schedule": {"day_offset": 0, "start": "07:00"},
+        "required_parts": [
+          {"ipn": "EQ-INF-SEL-0080", "quantity": 1},
+          {"ipn": "EQ-INF-WRG-0250", "quantity": 1}
+        ],
+        "lockout_points": [
+          {"energy_source": "electrical", "isolation_device": "MCC-HW-01 Pump 2 feeder and local disconnect", "note": "Verify zero voltage and prevent automatic wet-well start."}
+        ]
+      }
+    },
+    {
+      "name": "Aeration Blower No. 2",
+      "history": [
+        {
+          "date": "2025-09-05",
+          "summary": "Quarterly blower filter inspection",
+          "details": "Measured inlet differential pressure at 0.7 kPa, vacuumed the intake plenum, and verified discharge temperature at 78 C under 72 percent load. No surge events were recorded.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-004", "type": "inspection", "priority": "medium", "assigned_to": "steven"}
+        },
+        {
+          "date": "2026-02-12",
+          "summary": "Annual coupling and vibration service",
+          "details": "Isolated MCC-AER-02, inspected coupling alignment, torqued foundation fasteners, and recorded 2.2 mm/s RMS vibration. The coupling element showed no cracking.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-005", "type": "preventive", "priority": "high", "assigned_to": "engineer"}
+        },
+        {
+          "date": "2026-06-08",
+          "summary": "Replaced loaded blower inlet filter",
+          "details": "Replaced a fouled inlet filter after differential pressure reached 1.9 kPa. Airflow increased from 8,420 to 9,180 scfm and discharge temperature dropped 6 C.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-006", "type": "corrective", "priority": "medium", "assigned_to": "steven"}
+        }
+      ],
+      "scenario": {
+        "reference": "WO-WW-R-002",
+        "stage": "review",
+        "title": "Blower 2 low airflow and motor thermal trips",
+        "description": "Restore basin airflow after repeated motor thermal trips, rising inlet restriction, and coupling-side vibration.",
+        "fault_summary": "Turbo blower motor thermal trips with low airflow and coupling vibration",
+        "symptom": "Two thermal trips in 48 hours and airflow 11 percent below setpoint",
+        "criticality": "high",
+        "production_impact": "Reduced aeration threatens dissolved-oxygen control in basins 3 and 4 and increases energy consumption.",
+        "priority": "high",
+        "assigned_to": "steven",
+        "estimated_minutes": 240,
+        "schedule": {"day_offset": 0, "start": "07:00"},
+        "required_parts": [
+          {"ipn": "EQ-BLW-FLT-INL", "quantity": 2},
+          {"ipn": "EQ-BLW-CPL-ELM", "quantity": 1}
+        ],
+        "lockout_points": [
+          {"energy_source": "electrical", "isolation_device": "MCC-AER-02 blower feeder", "note": "Allow 15 minute spin-down and verify DC bus discharge."}
+        ]
+      }
+    },
+    {
+      "name": "Aeration Basin No. 3 Diffuser Grid",
+      "history": [
+        {
+          "date": "2025-07-19",
+          "summary": "Annual diffuser transfer test",
+          "details": "Completed clean-water transfer comparison on the basin grid. Standard oxygen transfer efficiency was 5.8 percent below baseline, with the northeast quadrant showing the largest pressure loss.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-007", "type": "inspection", "priority": "medium", "assigned_to": "engineer"}
+        },
+        {
+          "date": "2026-01-15",
+          "summary": "Diffuser header pressure survey",
+          "details": "Mapped pressure at six header taps and confirmed a 4.2 kPa spread across the grid. Air distribution valves were balanced and basin DO response improved by 0.3 mg/L.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-008", "type": "preventive", "priority": "medium", "assigned_to": "steven"}
+        },
+        {
+          "date": "2026-04-27",
+          "summary": "Cleaned fouled diffuser sector",
+          "details": "Isolated the west air header and chemically cleaned 96 diffuser discs. Header pressure decreased 3.6 kPa and no membrane tears were observed during restart.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-009", "type": "corrective", "priority": "high", "assigned_to": "engineer"}
+        }
+      ],
+      "scenario": {
+        "reference": "WO-WW-R-003",
+        "stage": "backlog",
+        "title": "Basin 3 diffuser fouling and uneven DO response",
+        "description": "Inspect and replace the failed diffuser sector after rising blower pressure and a persistent low-DO zone near the northeast header.",
+        "fault_summary": "Aeration basin diffuser fouling with uneven dissolved oxygen response",
+        "symptom": "Header pressure up 5.1 kPa and northeast DO 0.7 mg/L below basin average",
+        "criticality": "high",
+        "production_impact": "Poor oxygen transfer increases blower energy and risks incomplete treatment during peak loading.",
+        "priority": "high",
+        "assigned_to": "engineer",
+        "estimated_minutes": 480,
+        "schedule": {"day_offset": 1, "start": "07:00"},
+        "required_parts": [
+          {"ipn": "EQ-BLW-DIF-0090", "quantity": 12}
+        ],
+        "lockout_points": []
+      }
+    },
+    {
+      "name": "Mechanical Bar Screen No. 1",
+      "history": [
+        {
+          "date": "2025-10-07",
+          "summary": "Weekly screen and rake inspection",
+          "details": "Cleaned the channel approach, inspected rake teeth and chain guides, and measured chain sag at 18 mm. Motor current remained 6.1-6.8 A through three loaded cycles.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-010", "type": "inspection", "priority": "medium", "assigned_to": "steven"}
+        },
+        {
+          "date": "2026-03-03",
+          "summary": "Quarterly chain tension service",
+          "details": "Locked the channel gate, adjusted both chain take-ups, lubricated guide rollers, and tested the torque limiter at the approved setting. Chain tracking was centered after ten cycles.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-011", "type": "preventive", "priority": "high", "assigned_to": "engineer"}
+        },
+        {
+          "date": "2026-06-16",
+          "summary": "Cleared screen jam and replaced damaged link",
+          "details": "Removed a timber obstruction, replaced one distorted chain link, and inspected the torque limiter for slip damage. The screen completed 25 automatic cycles without alarm.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-012", "type": "corrective", "priority": "high", "assigned_to": "steven"}
+        }
+      ],
+      "scenario": {
+        "reference": "WO-WW-R-004",
+        "stage": "in-progress",
+        "title": "Screen 1 chain damage and repeated torque trips",
+        "description": "Replace damaged rake-chain links and verify the torque limiter after repeated overload trips under normal debris loading.",
+        "fault_summary": "Bar screen motor torque trips with damaged chain links",
+        "symptom": "Three overload trips per shift and visible elongation at rake positions 17-20",
+        "criticality": "high",
+        "production_impact": "A screen outage reduces headworks redundancy and increases downstream rag loading.",
+        "priority": "high",
+        "assigned_to": "steven",
+        "estimated_minutes": 300,
+        "schedule": {"day_offset": 1, "start": "07:00"},
+        "required_parts": [
+          {"ipn": "EQ-SCR-CHN-LNK", "quantity": 4},
+          {"ipn": "EQ-SCR-TRQ-LIM", "quantity": 1}
+        ],
+        "lockout_points": [
+          {"energy_source": "electrical", "isolation_device": "MCC-HW-03 screen drive feeder", "note": "Lock channel gate and verify rake cannot coast or back-drive."}
+        ]
+      }
+    },
+    {
+      "name": "Dewatering Centrifuge No. 2",
+      "history": [
+        {
+          "date": "2025-08-28",
+          "summary": "Two-thousand-hour vibration survey",
+          "details": "Recorded 3.1 mm/s RMS at the main bearing and 2.4 mm/s at the gearbox. Differential speed and bowl current remained within the approved operating envelope.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-013", "type": "inspection", "priority": "high", "assigned_to": "engineer"}
+        },
+        {
+          "date": "2026-02-05",
+          "summary": "Annual scroll wear inspection",
+          "details": "Opened the bowl, measured scroll-flight wear at eight points, replaced two sacrificial tiles, and balanced the rotating assembly. Post-service vibration was 2.5 mm/s RMS.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-014", "type": "preventive", "priority": "high", "assigned_to": "steven"}
+        },
+        {
+          "date": "2026-05-29",
+          "summary": "Corrected polymer feed pulsation",
+          "details": "Replaced a worn progressive-cavity pump stator, recalibrated feed rate, and stabilized cake solids at 22.8 percent. No bowl imbalance alarms occurred after restart.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-015", "type": "corrective", "priority": "medium", "assigned_to": "engineer"}
+        }
+      ],
+      "scenario": {
+        "reference": "WO-WW-R-005",
+        "stage": "backlog",
+        "title": "Centrifuge 2 main-bearing vibration and scroll wear",
+        "description": "Inspect the centrifuge after the main-bearing trend crossed alarm and scroll wear accelerated at the solids discharge end.",
+        "fault_summary": "Centrifuge main bearing vibration with scroll wear and rotating shaft risk",
+        "symptom": "Main bearing vibration 7.2 mm/s RMS and rising bowl temperature",
+        "criticality": "critical",
+        "production_impact": "Loss of Centrifuge 2 constrains sludge throughput and increases hauling volume.",
+        "priority": "high",
+        "assigned_to": "engineer",
+        "estimated_minutes": 480,
+        "schedule": {"day_offset": 2, "start": "07:00"},
+        "required_parts": [
+          {"ipn": "EQ-CFG-BRG-MAIN", "quantity": 1},
+          {"ipn": "EQ-CFG-TIL-SCR", "quantity": 1}
+        ],
+        "lockout_points": []
+      }
+    },
+    {
+      "name": "Secondary Clarifier No. 4",
+      "history": [
+        {
+          "date": "2025-09-16",
+          "summary": "Monthly clarifier torque review",
+          "details": "Reviewed drive torque trend, inspected the skimmer and center well, and confirmed peak torque at 41 percent during sludge withdrawal. No structural interference was observed.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-016", "type": "inspection", "priority": "medium", "assigned_to": "steven"}
+        },
+        {
+          "date": "2026-01-29",
+          "summary": "Annual clarifier gearbox oil service",
+          "details": "Collected an oil sample, replaced the breather, topped the gearbox to level, and inspected drive alignment. Particle count remained below the alert threshold.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-017", "type": "preventive", "priority": "medium", "assigned_to": "engineer"}
+        },
+        {
+          "date": "2026-06-02",
+          "summary": "Investigated clarifier torque alarm",
+          "details": "Removed a lodged timber fragment from the scraper path and verified the overload switch. Running torque returned from 83 percent to 39 percent over one full revolution.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-018", "type": "corrective", "priority": "high", "assigned_to": "steven"}
+        }
+      ],
+      "scenario": {
+        "reference": "WO-WW-R-006",
+        "stage": "backlog",
+        "title": "Clarifier 4 recurring torque overload",
+        "description": "Determine whether recurring torque trips originate from a mechanical obstruction, a drifting torque switch, or gearbox deterioration.",
+        "fault_summary": "Clarifier gearbox torque overload with possible mechanical obstruction",
+        "symptom": "Torque reaches 88 percent near the north quadrant with intermittent false reset",
+        "criticality": "high",
+        "production_impact": "An extended clarifier outage reduces secondary-settling capacity and may force flow restriction.",
+        "priority": "high",
+        "assigned_to": "steven",
+        "estimated_minutes": 240,
+        "schedule": {"day_offset": 2, "start": "07:00"},
+        "required_parts": [
+          {"ipn": "EQ-CLR-SWT-TRQ", "quantity": 1},
+          {"ipn": "EQ-CLR-GBX-DRV", "quantity": 1}
+        ],
+        "lockout_points": []
+      }
+    },
+    {
+      "name": "UV Disinfection Channel No. 1",
+      "history": [
+        {
+          "date": "2025-07-30",
+          "summary": "Quarterly UV intensity inspection",
+          "details": "Compared bank intensity sensors, inspected module connectors, and cleaned two reference sleeves. Corrected intensity averaged 91 percent at design flow.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-019", "type": "inspection", "priority": "high", "assigned_to": "engineer"}
+        },
+        {
+          "date": "2025-12-18",
+          "summary": "Annual UV lamp replacement",
+          "details": "Replaced the scheduled lamp set, cleaned quartz sleeves, inspected wiper seals, and reset lamp-hour counters. All six banks passed intensity verification.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-020", "type": "preventive", "priority": "high", "assigned_to": "steven"}
+        },
+        {
+          "date": "2026-04-09",
+          "summary": "Replaced failed UV ballast",
+          "details": "Isolated Bank 4, replaced a variable-output ballast, inspected lamp leads, and completed a loaded restart. Bank intensity returned from 72 to 94 percent.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-021", "type": "corrective", "priority": "high", "assigned_to": "engineer"}
+        }
+      ],
+      "scenario": {
+        "reference": "WO-WW-R-007",
+        "stage": "review",
+        "title": "UV Channel 1 low intensity across Bank 2",
+        "description": "Restore permit margin after Bank 2 intensity declined with mixed lamp, quartz sleeve, and ballast indications.",
+        "fault_summary": "UV lamp intensity loss with ballast voltage alarms and fouled quartz sleeves",
+        "symptom": "Bank 2 corrected intensity at 68 percent with two intermittent ballast alarms",
+        "criticality": "critical",
+        "production_impact": "Low UV dose creates a discharge-compliance exposure and may require flow restriction.",
+        "priority": "high",
+        "assigned_to": "engineer",
+        "estimated_minutes": 360,
+        "schedule": {"day_offset": 3, "start": "07:00"},
+        "required_parts": [
+          {"ipn": "EQ-UVD-LMP-STD", "quantity": 6},
+          {"ipn": "EQ-UVD-SLV-QTZ", "quantity": 6},
+          {"ipn": "EQ-UVD-BAL-STD", "quantity": 2}
+        ],
+        "lockout_points": [
+          {"energy_source": "electrical", "isolation_device": "UV Bank 2 distribution panel", "note": "Verify ballast capacitors are discharged and modules are covered before opening."}
+        ]
+      }
+    },
+    {
+      "name": "UF/RO Skid No. 1",
+      "history": [
+        {
+          "date": "2025-11-06",
+          "summary": "RO performance trend review",
+          "details": "Reviewed normalized permeate flow, salt passage, and stage differential pressure. First-stage differential pressure was 0.4 bar above baseline with stable conductivity.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-022", "type": "inspection", "priority": "high", "assigned_to": "steven"}
+        },
+        {
+          "date": "2026-03-10",
+          "summary": "Triggered UF/RO clean-in-place",
+          "details": "Completed alkaline and acid CIP sequences, verified heater control, and flushed to conductivity acceptance. Normalized permeate flow recovered 8.7 percent.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-023", "type": "preventive", "priority": "high", "assigned_to": "engineer"}
+        },
+        {
+          "date": "2026-06-23",
+          "summary": "Replaced plugged cartridge filters",
+          "details": "Replaced 20 five-micron cartridges after differential pressure reached 1.2 bar. Verified no housing bypass and restored feed pressure to 4.8 bar.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-024", "type": "corrective", "priority": "high", "assigned_to": "steven"}
+        }
+      ],
+      "scenario": {
+        "reference": "WO-WW-R-008",
+        "stage": "in-progress",
+        "title": "UF/RO Skid 1 permeate decline and high differential pressure",
+        "description": "Recover boiler-makeup capacity after membrane scaling, cartridge loading, and an incomplete chemical CIP heat cycle.",
+        "fault_summary": "RO membrane scaling with high differential pressure and failed CIP chemical heater",
+        "symptom": "Normalized permeate flow down 17 percent and first-stage differential pressure up 1.4 bar",
+        "criticality": "critical",
+        "production_impact": "Loss of treated-water output directly limits boiler and process production.",
+        "priority": "high",
+        "assigned_to": "steven",
+        "estimated_minutes": 480,
+        "schedule": {"day_offset": 5, "start": "06:00"},
+        "required_parts": [
+          {"ipn": "EQ-ROX-MEM-8040", "quantity": 2},
+          {"ipn": "EQ-ROX-CTF-0050", "quantity": 4},
+          {"ipn": "EQ-ROX-HTR-CIP", "quantity": 1}
+        ],
+        "lockout_points": []
+      }
+    },
+    {
+      "name": "Cooling Water Train A",
+      "history": [
+        {
+          "date": "2025-08-21",
+          "summary": "Monthly cooling tower vibration route",
+          "details": "Recorded motor, gearbox, and fan-bearing vibration on both cells. Cell A gearbox was 2.8 mm/s RMS and oil temperature was 64 C at 83 percent load.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-025", "type": "inspection", "priority": "high", "assigned_to": "engineer"}
+        },
+        {
+          "date": "2026-02-19",
+          "summary": "Annual cooling gearbox oil service",
+          "details": "Changed Cell A and B gearbox oil, cleaned magnetic plugs, inspected driveshaft alignment, and verified fan pitch. Oil samples showed no abnormal wear metals.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-026", "type": "preventive", "priority": "high", "assigned_to": "steven"}
+        },
+        {
+          "date": "2026-05-12",
+          "summary": "Replaced leaking circulation pump seal",
+          "details": "Isolated Pump A2, replaced the mechanical seal, aligned the coupling, and pressure-tested the casing. Leakage remained zero after a two-hour loaded run.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-027", "type": "corrective", "priority": "high", "assigned_to": "engineer"}
+        }
+      ],
+      "scenario": {
+        "reference": "WO-WW-R-009",
+        "stage": "backlog",
+        "title": "Cooling Train A fan gearbox vibration",
+        "description": "Replace the Cell A fan gearbox and inspect the circulation pump seal after vibration and oil temperature crossed shutdown thresholds.",
+        "fault_summary": "Cooling tower fan motor gearbox vibration with rising oil temperature",
+        "symptom": "Gearbox vibration 8.1 mm/s RMS and oil temperature 91 C",
+        "criticality": "critical",
+        "production_impact": "Loss of one cooling cell reduces heat-rejection margin and can force a production curtailment.",
+        "priority": "high",
+        "assigned_to": "engineer",
+        "estimated_minutes": 480,
+        "schedule": {"day_offset": 5, "start": "06:00"},
+        "required_parts": [
+          {"ipn": "EQ-CLG-GBX-FAN", "quantity": 1},
+          {"ipn": "EQ-CLG-SEL-PMP", "quantity": 1}
+        ],
+        "lockout_points": [
+          {"energy_source": "electrical", "isolation_device": "Cooling Tower Cell A fan disconnect", "note": "Control fan windmilling and verify the driveshaft cannot rotate."}
+        ]
+      }
+    },
+    {
+      "name": "Remote Lift Station 14 — Blue River",
+      "history": [
+        {
+          "date": "2025-09-25",
+          "summary": "Quarterly wet-well and pump inspection",
+          "details": "Cleaned the wet well, inspected both guide rails, tested level controls, and recorded Pump 1 drawdown at 37 mm/min. No seal or discharge leakage was observed.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-028", "type": "inspection", "priority": "high", "assigned_to": "steven"}
+        },
+        {
+          "date": "2026-01-08",
+          "summary": "Monthly generator exercise and ATS test",
+          "details": "Exercised the generator under station load, verified ATS transfer in 8.4 seconds, checked battery conductance, and confirmed block-heater operation.",
+          "performed_by": "Robert Shuruncle",
+          "work_order": {"reference": "WO-WW-H-029", "type": "preventive", "priority": "high", "assigned_to": "engineer"}
+        },
+        {
+          "date": "2026-06-11",
+          "summary": "Replaced failed high-level float switch",
+          "details": "Replaced the backup float switch, cleaned the level-transducer stilling tube, and tested alarm callout through the cellular RTU. All alarm states reported correctly.",
+          "performed_by": "Steven Stafferson",
+          "work_order": {"reference": "WO-WW-H-030", "type": "corrective", "priority": "high", "assigned_to": "steven"}
+        }
+      ],
+      "scenario": {
+        "reference": "WO-WW-R-010",
+        "stage": "backlog",
+        "title": "Lift Station 14 false high-level alarm and Pump 2 current rise",
+        "description": "Resolve conflicting level signals and inspect Pump 2 before a remote alarm becomes a wet-well overflow or first-visit failure.",
+        "fault_summary": "Wet well false high-level alarm with grinder pump motor current rise",
+        "symptom": "Level transducer jumps 0.8 m while float remains normal; Pump 2 current is 14 percent high",
+        "criticality": "critical",
+        "production_impact": "A failed remote lift station can overflow the wet well and requires a 22-minute emergency dispatch.",
+        "priority": "high",
+        "assigned_to": "steven",
+        "estimated_minutes": 360,
+        "schedule": {"day_offset": 4, "start": "07:00"},
+        "required_parts": [
+          {"ipn": "EQ-LFT-SEN-LVL", "quantity": 1},
+          {"ipn": "EQ-LFT-SWT-FLT", "quantity": 2},
+          {"ipn": "EQ-LFT-PMP-GRN", "quantity": 1}
+        ],
+        "lockout_points": [
+          {"energy_source": "electrical", "isolation_device": "Lift Station 14 pump MCC and generator ATS", "note": "Disable remote auto-start and isolate normal and standby sources."}
+        ]
+      }
+    }
+  ],
+  "procurement_children": [
+    {
+      "reference": "WO-WW-P-001",
+      "stage": "in-progress",
+      "parent_reference": "WO-WW-R-005",
+      "title": "Expedite centrifuge main bearing",
+      "description": "Confirm OEM interchangeability, lead time, freight, and arrival inspection for the Centrifuge 2 main bearing.",
+      "part_ipn": "EQ-CFG-BRG-MAIN",
+      "assigned_to": "steven",
+      "priority": "high",
+      "estimated_minutes": 60,
+      "schedule": {"day_offset": 0, "start": "13:00"},
+      "dependency_type": "FS",
+      "lag_minutes": 0
+    },
+    {
+      "reference": "WO-WW-P-002",
+      "stage": "review",
+      "parent_reference": "WO-WW-R-006",
+      "title": "Source clarifier drive gearbox",
+      "description": "Validate the gearbox ratio, output flange, torque rating, and delivery commitment before approving Clarifier 4 replacement.",
+      "part_ipn": "EQ-CLR-GBX-DRV",
+      "assigned_to": "steven",
+      "priority": "high",
+      "estimated_minutes": 60,
+      "schedule": {"day_offset": 0, "start": "14:00"},
+      "dependency_type": "FS",
+      "lag_minutes": 0
+    },
+    {
+      "reference": "WO-WW-P-003",
+      "stage": "in-progress",
+      "parent_reference": "WO-WW-R-009",
+      "title": "Expedite cooling tower fan gearbox",
+      "description": "Confirm fan gearbox shaft orientation, service factor, oil package, and crane delivery window for Cooling Train A.",
+      "part_ipn": "EQ-CLG-GBX-FAN",
+      "assigned_to": "steven",
+      "priority": "high",
+      "estimated_minutes": 60,
+      "schedule": {"day_offset": 1, "start": "13:00"},
+      "dependency_type": "FS",
+      "lag_minutes": 0
+    },
+    {
+      "reference": "WO-WW-P-004",
+      "stage": "review",
+      "parent_reference": "WO-WW-R-010",
+      "title": "Confirm grinder pump emergency spare",
+      "description": "Verify the NP 3202 grinder configuration, guide-rail fit, cable length, and emergency delivery route for Lift Station 14.",
+      "part_ipn": "EQ-LFT-PMP-GRN",
+      "assigned_to": "engineer",
+      "priority": "high",
+      "estimated_minutes": 60,
+      "schedule": {"day_offset": 0, "start": "14:00"},
+      "dependency_type": "FS",
+      "lag_minutes": 0
+    }
+  ]
+}

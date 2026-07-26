@@ -1,0 +1,209 @@
+.aimms-gantt-shell {
+	height: clamp(34rem, 70vh, 50rem);
+	overflow: hidden;
+}
+
+.aimms-gantt-chart,
+.aimms-gantt-chart > div,
+.aimms-gantt-chart .wx-willow-theme,
+.aimms-gantt-chart .wx-willow-dark-theme {
+	height: 100%;
+	min-height: 0;
+}
+
+.aimms-gantt-chart .wx-willow-theme,
+.aimms-gantt-chart .wx-willow-dark-theme {
+	--wx-gantt-border: 1px solid var(--mantine-color-default-border);
+	--wx-grid-body-row-border: 1px solid var(--mantine-color-default-border);
+	--wx-timescale-border: 1px solid var(--mantine-color-default-border);
+	--wx-gantt-bar-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	font-family: inherit;
+}
+
+.aimms-gantt-chart .wx-willow-theme {
+	--wx-background: var(--mantine-color-white);
+	--wx-background-alt: var(--mantine-color-gray-0);
+	--wx-background-hover: var(--mantine-color-gray-1);
+	--wx-color-font: var(--mantine-color-dark-8);
+	--wx-color-font-alt: var(--mantine-color-gray-7);
+	--wx-gantt-icon-color: var(--mantine-color-gray-7);
+	--wx-gantt-link-color: var(--mantine-color-gray-7);
+	--wx-gantt-link-color-hovered: var(--mantine-color-blue-8);
+	--wx-gantt-link-marker-background: var(--mantine-color-gray-2);
+	--wx-gantt-link-marker-color: var(--mantine-color-gray-7);
+	--wx-gantt-select-color: var(--mantine-color-blue-0);
+	--wx-grid-body-font-color: var(--mantine-color-dark-8);
+	--wx-grid-header-font-color: var(--mantine-color-dark-7);
+	--wx-table-select-background: var(--mantine-color-blue-0);
+	--wx-timescale-font-color: var(--mantine-color-dark-7);
+	--aimms-gantt-focus-color: var(--mantine-color-blue-7);
+	--aimms-gantt-label-background: rgba(255, 255, 255, 0.96);
+	--aimms-gantt-label-border: var(--mantine-color-gray-4);
+	--aimms-gantt-label-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+	--aimms-gantt-label-text: var(--mantine-color-dark-8);
+	--aimms-gantt-progress-overlay: rgba(0, 0, 0, 0.2);
+	--aimms-gantt-stage-backlog-bg: var(--mantine-color-gray-8);
+	--aimms-gantt-stage-backlog-border: var(--mantine-color-gray-9);
+	--aimms-gantt-stage-backlog-text: var(--mantine-color-white);
+	--aimms-gantt-stage-progress-bg: var(--mantine-color-indigo-9);
+	--aimms-gantt-stage-progress-border: var(--mantine-color-indigo-9);
+	--aimms-gantt-stage-progress-text: var(--mantine-color-white);
+	--aimms-gantt-stage-review-bg: var(--mantine-color-yellow-4);
+	--aimms-gantt-stage-review-border: var(--mantine-color-yellow-8);
+	--aimms-gantt-stage-review-text: var(--mantine-color-dark-9);
+	--aimms-gantt-stage-done-bg: var(--mantine-color-teal-9);
+	--aimms-gantt-stage-done-border: var(--mantine-color-teal-9);
+	--aimms-gantt-stage-done-text: var(--mantine-color-white);
+}
+
+.aimms-gantt-chart .wx-willow-dark-theme {
+	--wx-background: var(--mantine-color-dark-7);
+	--wx-background-alt: var(--mantine-color-dark-6);
+	--wx-background-hover: var(--mantine-color-dark-5);
+	--wx-color-font: var(--mantine-color-gray-0);
+	--wx-color-font-alt: var(--mantine-color-gray-4);
+	--wx-gantt-icon-color: var(--mantine-color-gray-3);
+	--wx-gantt-link-color: var(--mantine-color-gray-3);
+	--wx-gantt-link-color-hovered: var(--mantine-color-blue-3);
+	--wx-gantt-link-marker-background: var(--mantine-color-dark-5);
+	--wx-gantt-link-marker-color: var(--mantine-color-gray-2);
+	--wx-gantt-select-color: rgba(51, 154, 240, 0.22);
+	--wx-grid-body-font-color: var(--mantine-color-gray-0);
+	--wx-grid-header-font-color: var(--mantine-color-gray-1);
+	--wx-table-select-background: rgba(51, 154, 240, 0.22);
+	--wx-timescale-font-color: var(--mantine-color-gray-1);
+	--aimms-gantt-focus-color: var(--mantine-color-blue-3);
+	--aimms-gantt-label-background: rgba(36, 36, 36, 0.96);
+	--aimms-gantt-label-border: var(--mantine-color-dark-3);
+	--aimms-gantt-label-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
+	--aimms-gantt-label-text: var(--mantine-color-gray-0);
+	--aimms-gantt-progress-overlay: rgba(0, 0, 0, 0.16);
+	--aimms-gantt-stage-backlog-bg: var(--mantine-color-gray-4);
+	--aimms-gantt-stage-backlog-border: var(--mantine-color-gray-6);
+	--aimms-gantt-stage-backlog-text: var(--mantine-color-dark-9);
+	--aimms-gantt-stage-progress-bg: var(--mantine-color-blue-4);
+	--aimms-gantt-stage-progress-border: var(--mantine-color-blue-6);
+	--aimms-gantt-stage-progress-text: var(--mantine-color-dark-9);
+	--aimms-gantt-stage-review-bg: var(--mantine-color-yellow-4);
+	--aimms-gantt-stage-review-border: var(--mantine-color-yellow-7);
+	--aimms-gantt-stage-review-text: var(--mantine-color-dark-9);
+	--aimms-gantt-stage-done-bg: var(--mantine-color-teal-4);
+	--aimms-gantt-stage-done-border: var(--mantine-color-teal-7);
+	--aimms-gantt-stage-done-text: var(--mantine-color-dark-9);
+}
+
+.aimms-gantt-bar-content {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	width: 100%;
+	min-width: 0;
+	padding: 0 0.4rem;
+	font-weight: 500;
+	letter-spacing: 0;
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+.aimms-gantt-bar-reference {
+	flex: 0 0 auto;
+	font-weight: 700;
+}
+
+.aimms-gantt-bar-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.aimms-gantt-bar-stage {
+	flex: 0 0 auto;
+	padding-left: 0.35rem;
+	border-left: 1px solid currentColor;
+	font-size: 0.68rem;
+	font-weight: 700;
+}
+
+.aimms-gantt-chart .wx-gantt .wx-bar.wx-task {
+	container-type: inline-size;
+}
+
+@container (max-width: 13rem) {
+	.aimms-gantt-bar-content {
+		position: absolute;
+		left: calc(100% + 0.3rem);
+		width: max-content;
+		max-width: 16rem;
+		height: calc(100% - 2px);
+		padding: 0 0.45rem;
+		color: var(--aimms-gantt-label-text);
+		background-color: var(--aimms-gantt-label-background);
+		border: 1px solid var(--aimms-gantt-label-border);
+		border-radius: var(--mantine-radius-xs);
+		box-shadow: var(--aimms-gantt-label-shadow);
+	}
+}
+
+.aimms-gantt-chart .wx-gantt .wx-bar.wx-task.stage-backlog {
+	color: var(--aimms-gantt-stage-backlog-text);
+	background-color: var(--aimms-gantt-stage-backlog-bg);
+	border: 1px solid var(--aimms-gantt-stage-backlog-border);
+}
+
+.aimms-gantt-chart .wx-gantt .wx-bar.wx-task.stage-in-progress {
+	color: var(--aimms-gantt-stage-progress-text);
+	background-color: var(--aimms-gantt-stage-progress-bg);
+	border: 1px solid var(--aimms-gantt-stage-progress-border);
+}
+
+.aimms-gantt-chart .wx-gantt .wx-bar.wx-task.stage-review {
+	color: var(--aimms-gantt-stage-review-text);
+	background-color: var(--aimms-gantt-stage-review-bg);
+	border: 1px solid var(--aimms-gantt-stage-review-border);
+}
+
+.aimms-gantt-chart .wx-gantt .wx-bar.wx-task.stage-done {
+	color: var(--aimms-gantt-stage-done-text);
+	background-color: var(--aimms-gantt-stage-done-bg);
+	border: 1px solid var(--aimms-gantt-stage-done-border);
+}
+
+.aimms-gantt-chart .wx-gantt .wx-bar.wx-task .wx-progress-percent {
+	background-color: var(--aimms-gantt-progress-overlay);
+}
+
+.aimms-gantt-chart .wx-gantt .wx-bar.wx-task.wx-selected,
+.aimms-gantt-chart .wx-gantt .wx-bar.wx-task:focus-visible {
+	outline: 2px solid var(--aimms-gantt-focus-color);
+	outline-offset: 2px;
+	box-shadow: var(--wx-gantt-bar-shadow);
+}
+
+.aimms-gantt-chart .wx-gantt .wx-line > .wx-line-draw {
+	stroke-width: 2.5;
+}
+
+[data-mantine-color-scheme="dark"] .aimms-weekend {
+	background-color: rgba(116, 192, 252, 0.055);
+}
+
+[data-mantine-color-scheme="light"] .aimms-weekend {
+	background-color: rgba(34, 139, 230, 0.045);
+}
+
+.aimms-today-marker {
+	color: var(--mantine-color-white);
+	background-color: var(--mantine-primary-color-filled);
+}
+
+@media (max-width: 64rem) {
+	.aimms-gantt-shell {
+		height: 38rem;
+	}
+
+	.aimms-gantt-chart {
+		min-width: 64rem;
+	}
+}

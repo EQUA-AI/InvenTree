@@ -14,6 +14,9 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 
+from tasks.models import KanbanCard, WorkOrderLifecycle, WorkOrderType
+
+from assets.models import AssetMachine
 from InvenTree.unit_test import InvenTreeAPITestCase
 
 from . import services
@@ -125,17 +128,8 @@ class GenerationIdempotencyTest(TestCase):
 class AIProviderGenerationTest(TestCase):
     """A (mocked) AI provider result materialises parts + gates onto the packet."""
 
-    def test_ai_result_creates_work_order_parts_and_gates(self):
-        """An AI provider result creates the work order, part lines and gates."""
-        from part.models import Part
-
-        part = Part.objects.create(
-            name=f'Contactor-{uuid.uuid4().hex[:6]}',
-            description='test',
-            component=True,
-            purchaseable=True,
-        )
-        result = GenerationResult(
+    def _result(self, part):
+        return GenerationResult(
             diagnosis=coerce_diagnosis({
                 'likely_cause': 'Contactor failed',
                 'confidence': 0.9,
@@ -147,9 +141,28 @@ class AIProviderGenerationTest(TestCase):
             confidence=0.9,
             provider='ai_service',
         )
-        packet = RepairPacket.objects.create(fault_summary='contactor fault')
+
+    @staticmethod
+    def _part():
+        from part.models import Part
+
+        return Part.objects.create(
+            name=f'Contactor-{uuid.uuid4().hex[:6]}',
+            description='test',
+            component=True,
+            purchaseable=True,
+        )
+
+    def test_ai_result_creates_work_order_parts_and_gates(self):
+        """An AI provider result creates the work order, part lines and gates."""
+        part = self._part()
+        machine = AssetMachine.objects.create(name=f'Panel-{uuid.uuid4().hex[:6]}')
+        packet = RepairPacket.objects.create(
+            fault_summary='contactor fault', machine=machine
+        )
+
         with mock.patch.object(
-            services, 'get_generator', return_value=_stub_generator(result)
+            services, 'get_generator', return_value=_stub_generator(self._result(part))
         ):
             services.run_repair_packet_workflow(packet, {})
         packet.refresh_from_db()
@@ -159,6 +172,57 @@ class AIProviderGenerationTest(TestCase):
         self.assertEqual(packet.work_order.card_parts.count(), 1)
         self.assertTrue(packet.gates.filter(gate_type='loto').exists())
         self.assertEqual(packet.generation_runs.first().provider, 'ai_service')
+
+    def test_packet_work_order_is_machine_linked_and_audited(self):
+        """The packet's work order carries the packet machine and a CREATED event."""
+        part = self._part()
+        machine = AssetMachine.objects.create(name=f'Pump-{uuid.uuid4().hex[:6]}')
+        packet = RepairPacket.objects.create(
+            fault_summary='seal weeping', machine=machine, criticality='critical'
+        )
+
+        with mock.patch.object(
+            services, 'get_generator', return_value=_stub_generator(self._result(part))
+        ):
+            services.run_repair_packet_workflow(packet, {})
+        packet.refresh_from_db()
+
+        work_order = packet.work_order
+        self.assertEqual(work_order.machine_id, machine.pk)
+        # Creating a repair packet plans work; it does not start it (plan 0.3).
+        self.assertEqual(work_order.lifecycle_status, WorkOrderLifecycle.DRAFT)
+        self.assertEqual(work_order.status, KanbanCard.STATUS_BACKLOG)
+        self.assertEqual(work_order.work_order_type, WorkOrderType.CORRECTIVE)
+        # 'critical' has no board equivalent and maps to the highest board step.
+        self.assertEqual(work_order.priority, KanbanCard.PRIORITY_HIGH)
+        self.assertTrue(work_order.events.filter(event_type='CREATED').exists())
+        self.assertTrue(
+            work_order.commands.filter(
+                command='create',
+                idempotency_key__startswith=f'repair-packet:{packet.pk}:work-order:',
+            ).exists()
+        )
+        self.assertTrue(packet.events.filter(event_type='work_order_created').exists())
+
+    def test_machineless_packet_creates_no_ungoverned_work_order(self):
+        """Generation records the gap instead of fabricating an unscoped card."""
+        part = self._part()
+        packet = RepairPacket.objects.create(fault_summary='unknown asset fault')
+
+        with mock.patch.object(
+            services, 'get_generator', return_value=_stub_generator(self._result(part))
+        ):
+            services.run_repair_packet_workflow(packet, {})
+        packet.refresh_from_db()
+
+        # Diagnosis and gates still land; only the work order is withheld.
+        self.assertEqual(packet.generation_status, GenerationStatus.SUCCEEDED)
+        self.assertIsNone(packet.work_order_id)
+        self.assertTrue(packet.gates.filter(gate_type='loto').exists())
+        self.assertFalse(KanbanCard.objects.filter(machine__isnull=True).exists())
+
+        event = packet.events.get(event_type='work_order_skipped')
+        self.assertEqual(event.metadata['reason_code'], 'PACKET_HAS_NO_MACHINE')
 
 
 class GenerationFallbackTest(TestCase):
