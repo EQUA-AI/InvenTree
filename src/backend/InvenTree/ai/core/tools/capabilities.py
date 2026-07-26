@@ -1119,6 +1119,36 @@ def _authorized_read_entries(
     )
 
 
+#: How many prior messages an anaphoric follow-up may inherit its subject from.
+#: Short on purpose: the subject of "where are those?" is the turn just before.
+_HISTORY_SUBJECT_MESSAGES = 4
+
+
+def _carried_scores(context: Mapping[str, Any] | None) -> dict[str, int]:
+    """Pack scores inherited from the recent transcript, for anaphoric turns.
+
+    Consulted only when the current message scores nothing at all. Returns the
+    scores of the most recent message that did score, so the follow-up inherits
+    one subject rather than a blend of the whole conversation.
+    """
+    history = (context or {}).get("conversation_history")
+    if not isinstance(history, (list, tuple)):
+        return {}
+    recent = [
+        entry
+        for entry in history
+        if isinstance(entry, dict) and entry.get("role") in ("user", "assistant")
+    ][-_HISTORY_SUBJECT_MESSAGES:]
+    for entry in reversed(recent):
+        text = " ".join(str(entry.get("content") or "").casefold().split())
+        if not text:
+            continue
+        scores = _pack_scores(text)
+        if scores:
+            return scores
+    return {}
+
+
 def select_capabilities(
     query: str,
     *,
@@ -1129,10 +1159,10 @@ def select_capabilities(
 ) -> CapabilitySelection:
     """Select one stable read pack plus the reviewed adjacent packs.
 
-    Scoring reads the current message only. Follow-ups are resolved from the
-    replayed transcript inside the agent turn rather than here, so a message
-    carrying no signal of its own still asks for clarification instead of
-    guessing at a subject.
+    Scoring reads the current message. Only when that message names no subject
+    at all does selection fall back to the replayed transcript, so an anaphoric
+    follow-up ("and where are those located?") inherits the subject of the turn
+    it refers to instead of dead-ending on a tool-less clarification.
     """
     normalized = " ".join(query.casefold().split())
     if _write_intent(normalized) is not None:
@@ -1161,6 +1191,21 @@ def select_capabilities(
             scores,
             key=lambda pack_id: (pack_id == "analytics.read", -scores[pack_id], pack_id),
         )[0]
+    if primary is None:
+        # Nothing in this message names a subject. Before giving up, inherit the
+        # subject from the replayed transcript: "and where are those located?"
+        # is a real question whose noun lives in the previous turn, and handing
+        # it a tool-less clarification turn is how a follow-up dead-ends. Only
+        # this otherwise-empty path consults history, so an ordinary turn still
+        # scores on its own words.
+        carried = _carried_scores(context)
+        if carried:
+            scores = carried
+            signals.append("history_subject")
+            primary = sorted(
+                scores,
+                key=lambda pack_id: (pack_id == "analytics.read", -scores[pack_id], pack_id),
+            )[0]
     if primary is None:
         return CapabilitySelection(
             pack_ids=(),

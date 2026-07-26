@@ -231,6 +231,18 @@ class RootWorkflow:
                     context=aggregated_context,
                 )
 
+                # A workflow that caught its own exception still failed. Reading
+                # only formatted_response laundered that into a successful turn,
+                # so "Unable to complete lookup." was spoken as if it were an
+                # answer and the audited failure phrase was never reached.
+                if getattr(result, "success", True) is False:
+                    error = getattr(result, "error", None) or "workflow_failed"
+                    logger.error(
+                        "Workflow reported failure",
+                        extra={"workflow_id": workflow_id, "error": str(error)},
+                    )
+                    raise RuntimeError(str(error))
+
                 response = str(result)
                 if hasattr(result, "formatted_response"):
                     response = result.formatted_response

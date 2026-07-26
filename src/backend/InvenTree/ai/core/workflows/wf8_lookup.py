@@ -242,9 +242,12 @@ it must be done on the normal authenticated screen, and offer to look up what th
 
 Keep spoken answers to one or two short sentences: lead with the answer, then the key detail
 (for example, "There are 42 in stock, in bin A-3 — below the reorder point."). Speak numbers and
-units clearly; do not read out IDs, URLs, or long lists. If the answer is long or list-like, give
-the headline and say the rest is in the chat. Preserve any uncertainty ("about", "as of the last
-sync") rather than rounding it away."""
+units clearly; do not read out IDs, URLs, or long lists.
+
+If the answer is a list, name the first few items and say how many more there are — the spoken
+answer and the written one are the same text, so never promise details "in the chat" that you
+have not just said. Only describe data as approximate or out of date if the tool result actually
+says so; do not add hedges of your own."""
 
     #: Used when capability selection found nothing to work with. The turn runs
     #: with no tools at all, so the one useful thing the agent can do is ask. It

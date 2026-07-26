@@ -1056,10 +1056,13 @@ async def test_wf8_clarify_and_specialist_turns_never_get_the_hint(monkeypatch):
     }
 
     # Clarify turn: no tools, so hinting a tool call would contradict its prompt.
+    # No transcript here on purpose -- with one, an anaphoric turn now inherits
+    # its subject (see test_voice_honesty.py) and is answerable rather than a
+    # clarification, so it would no longer exercise this branch.
     workflow, agent = _configure_fake_workflow(
         monkeypatch, list(INVENTORY_READ_TOOLS), enforce=True
     )
-    await workflow.execute("What about that one?", context=history)
+    await workflow.execute("What about that one?")
     replayed = agent.calls[0]["query"]
     texts = [m.text for m in replayed] if isinstance(replayed, list) else [replayed]
     assert all("[inventory context]" not in text for text in texts)
