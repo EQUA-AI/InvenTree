@@ -278,6 +278,7 @@ def _transition_locked(
     correlation_id,
     command,
     required_permission=None,
+    packet_finalization=False,
 ):
     payload = {
         'work_order_id': work_order.pk,
@@ -293,7 +294,12 @@ def _transition_locked(
     _require_version(work_order, expected_version)
     require_permission(actor, required_permission or transition_permission(to_status))
     _require_scope(actor, work_order)
-    _require_no_packet(work_order)
+    # A packet's work order transitions only through the packet's own service,
+    # which drives both aggregates together. ``packet_finalization`` is that
+    # service identifying itself; it suppresses this single check and nothing
+    # else, so safety, parts and readiness still decide the outcome.
+    if not packet_finalization:
+        _require_no_packet(work_order)
     from_status = work_order.lifecycle_status
     _validate_transition(from_status, to_status)
     readiness = evaluate_work_order_readiness(
@@ -301,6 +307,7 @@ def _transition_locked(
         action=_action_for_transition(from_status, to_status),
         actor=actor,
         expected_version=expected_version,
+        packet_finalization=packet_finalization,
     )
     if not readiness.ready:
         raise ReadinessBlocked(readiness)
@@ -348,8 +355,13 @@ def transition_work_order(
     idempotency_key: str,
     reason: str = '',
     correlation_id: uuid.UUID | None = None,
+    packet_finalization: bool = False,
 ) -> CommandResult:
-    """Apply one legal standalone lifecycle transition."""
+    """Apply one legal lifecycle transition.
+
+    ``packet_finalization`` is set only by ``repair.services``, which owns the
+    lifecycle of a packet's work order and moves both aggregates together.
+    """
     work_order = _locked_work_order(work_order_id)
     return _transition_locked(
         work_order=work_order,
@@ -360,6 +372,7 @@ def transition_work_order(
         reason=reason,
         correlation_id=correlation_id or uuid.uuid4(),
         command='transition',
+        packet_finalization=packet_finalization,
     )
 
 

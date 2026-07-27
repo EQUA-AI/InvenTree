@@ -4,6 +4,7 @@ import {
   IconActivityHeartbeat,
   IconInfoCircle,
   IconListCheck,
+  IconPlayerPlay,
   IconTool
 } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
@@ -25,12 +26,14 @@ import { useInstance } from '../../hooks/UseInstance';
 import { MachinePartTable } from '../../tables/assets/MachinePartTable';
 import { MaintenanceRecordTable } from '../../tables/assets/MaintenanceRecordTable';
 import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateModal';
+import { StartRepairModal } from './StartRepairModal';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
 
 export default function MachineDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [createRepairOpen, setCreateRepairOpen] = useState(false);
+  const [startRepairOpen, setStartRepairOpen] = useState(false);
 
   const { instance: machine, instanceQuery } = useInstance({
     endpoint: ApiEndpoints.asset_machine_list,
@@ -179,6 +182,17 @@ export default function MachineDetail() {
               disabled={!machine?.pk}
             >
               {t`Create repair`}
+            </Button>,
+            // Starting is a separate, readiness-gated transition. The modal
+            // asks the server what is startable rather than deciding here.
+            <Button
+              key='start-repair'
+              variant='light'
+              leftSection={<IconPlayerPlay size={16} />}
+              onClick={() => setStartRepairOpen(true)}
+              disabled={!machine?.pk}
+            >
+              {t`Start repair`}
             </Button>
           ]}
         />
@@ -197,6 +211,17 @@ export default function MachineDetail() {
             origin='manual'
             onCreated={(result) =>
               navigate(`/maintenance/work-orders/${result.work_order_id}/`)
+            }
+          />
+        )}
+        {machine?.pk && (
+          <StartRepairModal
+            opened={startRepairOpen}
+            onClose={() => setStartRepairOpen(false)}
+            machineId={machine.pk}
+            onStarted={(repair) =>
+              repair.work_order_id &&
+              navigate(`/maintenance/work-orders/${repair.work_order_id}/`)
             }
           />
         )}

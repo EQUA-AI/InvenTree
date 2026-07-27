@@ -18,6 +18,8 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
+from tasks.models import WorkOrderLifecycle
+
 from .generation import GenerationResult, get_generator
 from .models import (
     GenerationStatus,
@@ -682,6 +684,171 @@ class RepairCloseoutError(Exception):
     """The packet cannot be finalized as requested."""
 
     code = 'REPAIR_CLOSEOUT_INVALID'
+
+
+class RepairStartError(Exception):
+    """The repair cannot be started as requested."""
+
+    code = 'REPAIR_START_INVALID'
+
+
+def repair_start_readiness(packet, *, actor) -> dict:
+    """Explain whether this repair can be started, and what is stopping it.
+
+    Read-only, and deliberately verbose about *why*: the machine page turns
+    "Start repair" into "Review blockers" from this answer, so a technician sees
+    the unresolved LOTO point or the missing part rather than a disabled button
+    with no explanation.
+    """
+    from tasks.services.readiness import evaluate_work_order_readiness
+
+    blockers: list[dict] = []
+    work_order = packet.work_order
+
+    if work_order is None:
+        blockers.append({
+            'code': 'NO_WORK_ORDER',
+            'message': 'This packet has no work order to start.',
+            'source': 'repair_packet',
+        })
+        return {
+            'packet_id': packet.pk,
+            'packet_reference': packet.reference,
+            'packet_status': packet.status,
+            'work_order_id': None,
+            'work_order_reference': None,
+            'lifecycle_status': None,
+            'lifecycle_version': None,
+            'ready': False,
+            'blockers': blockers,
+        }
+
+    if not is_valid_packet_transition(packet.status, PacketStatus.EXECUTING):
+        blockers.append({
+            'code': 'PACKET_NOT_STARTABLE',
+            'message': (
+                f'A packet in state "{packet.get_status_display()}" cannot start '
+                'execution.'
+            ),
+            'source': 'repair_packet',
+        })
+
+    # Safety keeps precedence over everything below it.
+    can_advance, gate_message = packet.can_advance()
+    if not can_advance:
+        blockers.append({
+            'code': 'SAFETY_GATE_BLOCKED',
+            'message': gate_message,
+            'source': 'safety',
+        })
+
+    if work_order.lifecycle_status != WorkOrderLifecycle.READY:
+        blockers.append({
+            'code': 'WORK_ORDER_NOT_READY',
+            'message': (
+                f'The work order is {work_order.get_lifecycle_status_display()}; '
+                'it must be marked ready before work starts.'
+            ),
+            'source': 'work_order',
+        })
+
+    readiness = evaluate_work_order_readiness(
+        work_order,
+        action='start',
+        actor=actor,
+        expected_version=work_order.lifecycle_version,
+        packet_finalization=True,
+    )
+    blockers.extend(
+        {
+            'code': blocker.code,
+            'message': blocker.message,
+            'source': blocker.source,
+            'metadata': blocker.metadata,
+        }
+        for blocker in readiness.blockers
+    )
+
+    return {
+        'packet_id': packet.pk,
+        'packet_reference': packet.reference,
+        'packet_status': packet.status,
+        'work_order_id': work_order.pk,
+        'work_order_reference': work_order.reference,
+        'lifecycle_status': work_order.lifecycle_status,
+        'lifecycle_version': work_order.lifecycle_version,
+        'ready': not blockers,
+        'blockers': blockers,
+    }
+
+
+@transaction.atomic
+def start_repair_packet(
+    packet: RepairPacket,
+    *,
+    actor,
+    expected_version: int,
+    idempotency_key: str,
+    reason: str = '',
+):
+    """Start a packet-owned repair: work order and packet move together.
+
+    Starting is a lifecycle transition, not a board edit. The machine page never
+    reaches around this to set a card's column: doing so would start work with
+    the safety gates, parts readiness and assignment checks unevaluated.
+
+    Returns the work-order ``CommandResult``. Replaying the same
+    ``idempotency_key`` returns the original result without transitioning twice.
+    """
+    from tasks.services.work_orders import transition_work_order
+
+    locked = RepairPacket.objects.select_for_update().get(pk=packet.pk)
+
+    if locked.work_order_id is None:
+        raise RepairStartError('This packet has no work order to start.')
+
+    if locked.status != PacketStatus.EXECUTING:
+        if not is_valid_packet_transition(locked.status, PacketStatus.EXECUTING):
+            raise RepairStartError(
+                f'Illegal transition {locked.status} -> {PacketStatus.EXECUTING}'
+            )
+        ok, message = locked.can_advance()
+        if not ok:
+            raise RepairStartError(message)
+
+    from_status = locked.status
+
+    # The work-order command re-evaluates readiness itself and raises
+    # ReadinessBlocked with the authoritative blocker list, so the two aggregates
+    # cannot disagree about whether this repair was startable.
+    result = transition_work_order(
+        work_order_id=locked.work_order_id,
+        to_status=WorkOrderLifecycle.IN_PROGRESS,
+        actor=actor,
+        expected_version=expected_version,
+        idempotency_key=idempotency_key,
+        reason=reason,
+        packet_finalization=True,
+    )
+
+    if locked.status != PacketStatus.EXECUTING:
+        locked.status = PacketStatus.EXECUTING
+        locked.save(update_fields=['status', 'updated_at'])
+        _record_event(
+            locked,
+            RepairPacketEvent.EventType.ADVANCED,
+            from_status=from_status,
+            to_status=PacketStatus.EXECUTING,
+            actor=actor,
+            reason=reason,
+            metadata={
+                'work_order_id': locked.work_order_id,
+                'correlation_id': str(result.correlation_id),
+            },
+        )
+
+    packet.status = locked.status
+    return result
 
 
 @transaction.atomic

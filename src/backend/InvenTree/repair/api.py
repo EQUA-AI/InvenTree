@@ -10,7 +10,7 @@ from django.urls import include, path
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from tasks.services import scheduling
-from tasks.services.work_orders import WorkOrderCommandError
+from tasks.services.work_orders import ReadinessBlocked, WorkOrderCommandError
 
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
@@ -330,6 +330,111 @@ class RepairPacketClose(APIView):
         return Response(payload)
 
 
+class RepairPacketStart(APIView):
+    """Start a packet-owned repair through the canonical transition service.
+
+    Starting is a readiness-gated lifecycle transition. It is never a board edit:
+    moving a card into an "in progress" column cannot be allowed to start work
+    with safety gates, parts readiness and assignment unevaluated.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order.change'
+
+    def get(self, request, pk):
+        """Explain whether this repair can start, and what is blocking it."""
+        packet = get_object_or_404(RepairPacket, pk=pk)
+        return Response(services.repair_start_readiness(packet, actor=request.user))
+
+    def post(self, request, pk):
+        """Transition the packet and its work order into execution."""
+        packet = get_object_or_404(RepairPacket, pk=pk)
+        data = dict(request.data or {})
+
+        expected_version = data.get('expected_version')
+        if not isinstance(expected_version, int) or isinstance(expected_version, bool):
+            return Response(
+                {
+                    'code': 'EXPECTED_VERSION_REQUIRED',
+                    'detail': 'An integer expected_version is required.',
+                },
+                status=400,
+            )
+
+        try:
+            result = services.start_repair_packet(
+                packet,
+                actor=request.user,
+                expected_version=expected_version,
+                idempotency_key=data.get('idempotency_key') or uuid.uuid4().hex,
+                reason=data.get('reason', ''),
+            )
+        except services.RepairStartError as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=400)
+        except ReadinessBlocked as exc:
+            # The authoritative blocker list, so the UI shows the same reasons
+            # the server used to refuse rather than a generic failure.
+            return Response(
+                {
+                    'code': 'READINESS_BLOCKED',
+                    'detail': str(exc),
+                    'readiness': services.repair_start_readiness(
+                        packet, actor=request.user
+                    ),
+                },
+                status=409,
+            )
+        except WorkOrderCommandError as exc:
+            return Response(
+                {'code': getattr(exc, 'code', 'COMMAND_ERROR'), 'detail': str(exc)},
+                status=400,
+            )
+
+        payload = RepairPacketSerializer(packet).data
+        payload['ok'] = True
+        payload['work_order_id'] = result.work_order_id
+        payload['lifecycle_status'] = result.lifecycle_status
+        return Response(payload)
+
+
+class MachineOpenRepairs(APIView):
+    """Open repairs on one machine, each with its start readiness.
+
+    The machine page never guesses which repair a "Start" click meant: when more
+    than one is open it shows this list and makes the operator choose.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+
+    def get(self, request, machine_id):
+        """Return every non-terminal packet-backed repair for the machine."""
+        packets = (
+            RepairPacket.objects
+            .filter(machine_id=machine_id, work_order__isnull=False)
+            .exclude(status__in=[PacketStatus.CLOSED, PacketStatus.CANCELED])
+            .select_related('work_order')
+            .order_by('-created_at')
+        )
+
+        results = [
+            {
+                **services.repair_start_readiness(packet, actor=request.user),
+                'fault_summary': packet.fault_summary,
+                'criticality': packet.criticality,
+                'work_order_title': packet.work_order.title,
+            }
+            for packet in packets
+        ]
+        return Response({'count': len(results), 'results': results})
+
+
 class RepairPacketCancel(APIView):
     """Convenience endpoint to cancel a packet with a reason."""
 
@@ -427,6 +532,11 @@ maintenance_api_urls = [
 
 repair_api_urls = [
     path(
+        'machines/<int:machine_id>/open-repairs/',
+        MachineOpenRepairs.as_view(),
+        name='machine-open-repairs',
+    ),
+    path(
         'gate-templates/',
         include([
             path(
@@ -496,6 +606,11 @@ repair_api_urls = [
                 '<int:pk>/close/',
                 RepairPacketClose.as_view(),
                 name='repair-packet-close',
+            ),
+            path(
+                '<int:pk>/start/',
+                RepairPacketStart.as_view(),
+                name='repair-packet-start',
             ),
             path(
                 '<int:pk>/cancel/',
