@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 
 from company.models import Company
 from tasks.models import (
-    KanbanCard,
+    WorkOrder,
     Procedure,
     ProcedureRevision,
     ProcedureRevisionStatus,
@@ -44,10 +44,10 @@ class ProcedureExecutionAPITest(TestCase):
         }
         self.client = APIClient()
         self.client.force_authenticate(self.actor)
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Execute standard work',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=self.customer,
             work_order_type=WorkOrderType.PREVENTIVE,
         )
@@ -240,10 +240,10 @@ class ProcedureExecutionAPITest(TestCase):
 
     def test_cross_scope_parent_and_revision_return_not_found(self):
         """Neither parent nor revision child lookup leaks another customer."""
-        hidden_order = KanbanCard.objects.create(
+        hidden_order = WorkOrder.objects.create(
             title='Hidden work',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=self.other_customer,
         )
         parent = self.client.get(f'/api/tasks/work-orders/{hidden_order.pk}/steps/')

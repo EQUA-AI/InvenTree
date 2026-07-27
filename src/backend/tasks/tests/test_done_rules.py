@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from assets.models import AssetMachine
-from tasks.models import KanbanCard, KanbanColumn, WorkOrderLifecycle
+from tasks.models import WorkOrder, KanbanColumn, WorkOrderLifecycle
 from tasks.services import scheduling
 
 
@@ -34,46 +34,46 @@ class DoneCardImmutabilityTest(TestCase):
         self.machine = AssetMachine.objects.create(name='Done Press')
 
     def _card(self, status='backlog'):
-        return KanbanCard.objects.create(
+        return WorkOrder.objects.create(
             title='WO', status=status, priority='low', machine=self.machine
         )
 
     def test_scheduling_a_done_card_is_refused(self):
-        card = self._card(status='done')
+        work_order = self._card(status='done')
         with self.assertRaises(scheduling.NotMutable):
             scheduling.schedule_work_order(
-                work_order_id=card.pk,
+                work_order_id=work_order.pk,
                 actor=self.actor,
-                expected_version=card.lifecycle_version,
+                expected_version=work_order.lifecycle_version,
                 idempotency_key='done1',
                 scheduled_start=_utc(2026, 8, 3, 9),
                 scheduled_end=_utc(2026, 8, 3, 12),
             )
 
     def test_updating_a_done_card_is_refused(self):
-        card = self._card(status='done')
+        work_order = self._card(status='done')
         with self.assertRaises(scheduling.NotMutable):
             scheduling.update_work_order_plan(
-                work_order_id=card.pk,
+                work_order_id=work_order.pk,
                 actor=self.actor,
-                expected_version=card.lifecycle_version,
+                expected_version=work_order.lifecycle_version,
                 idempotency_key='done2',
                 fields={'title': 'Nope'},
             )
 
     def test_a_non_done_card_is_mutable(self):
-        card = self._card(status='backlog')
+        work_order = self._card(status='backlog')
         # Should not raise.
         scheduling.schedule_work_order(
-            work_order_id=card.pk,
+            work_order_id=work_order.pk,
             actor=self.actor,
-            expected_version=card.lifecycle_version,
+            expected_version=work_order.lifecycle_version,
             idempotency_key='done3',
             scheduled_start=_utc(2026, 8, 3, 9),
             scheduled_end=_utc(2026, 8, 3, 12),
         )
-        card.refresh_from_db()
-        self.assertIsNotNone(card.scheduled_start)
+        work_order.refresh_from_db()
+        self.assertIsNotNone(work_order.scheduled_start)
 
 
 class ManualDoneMoveTest(TestCase):
@@ -83,13 +83,13 @@ class ManualDoneMoveTest(TestCase):
         )
         self.client.force_login(self.user)
         self.machine = AssetMachine.objects.create(name='Move Press')
-        self.card = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Move WO', status='backlog', priority='low', machine=self.machine
         )
 
     def _patch(self, **data):
         return self.client.patch(
-            reverse('kanban-card-detail', kwargs={'pk': self.card.pk}),
+            reverse('kanban-card-detail', kwargs={'pk': self.work_order.pk}),
             data=data,
             content_type='application/json',
         )
@@ -98,20 +98,20 @@ class ManualDoneMoveTest(TestCase):
         response = self._patch(status='done')
         self.assertEqual(response.status_code, 400)
         self.assertIn('status', response.json())
-        self.card.refresh_from_db()
-        self.assertEqual(self.card.status, 'backlog')
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.status, 'backlog')
 
     def test_manual_move_to_non_terminal_column_is_allowed(self):
         response = self._patch(status='in-progress')
         self.assertEqual(response.status_code, 200)
-        self.card.refresh_from_db()
-        self.assertEqual(self.card.status, 'in-progress')
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.status, 'in-progress')
 
     def test_move_to_done_allowed_when_already_completed(self):
         # A completed work order may sit in the done column (this is what
         # closeout does); the guard only blocks the *manual* case.
-        self.card.lifecycle_status = WorkOrderLifecycle.COMPLETED
-        self.card.save(update_fields=['lifecycle_status'])
+        self.work_order.lifecycle_status = WorkOrderLifecycle.COMPLETED
+        self.work_order.save(update_fields=['lifecycle_status'])
 
         response = self._patch(status='done')
         self.assertEqual(response.status_code, 200)
@@ -129,15 +129,15 @@ class CloseoutMovesToDoneTest(TestCase):
         # Directly exercise the status move the closeout performs, without the
         # full closeout fixture: the rule is that a completed card is in 'done'.
         machine = AssetMachine.objects.create(name='CO Press')
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='CO WO', status='in-progress', priority='low', machine=machine
         )
         terminal = KanbanColumn.terminal_key()
 
         # Simulate the closeout's status move.
-        card.status = terminal
-        card.lifecycle_status = WorkOrderLifecycle.COMPLETED
-        card.save(update_fields=['status', 'lifecycle_status'])
+        work_order.status = terminal
+        work_order.lifecycle_status = WorkOrderLifecycle.COMPLETED
+        work_order.save(update_fields=['status', 'lifecycle_status'])
 
-        card.refresh_from_db()
-        self.assertEqual(card.status, 'done')
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.status, 'done')

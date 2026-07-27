@@ -14,7 +14,7 @@ from part.models import Part
 from tasks.models import (
     FulfillmentMode,
     JobKitLine,
-    KanbanCard,
+    WorkOrder,
     Procedure,
     ProcedureResourceKind,
     ProcedureResourceRequirement,
@@ -46,9 +46,9 @@ class JobKitAPITest(TestCase):
         }
         self.client = APIClient()
         self.client.force_authenticate(self.actor)
-        self.work_order = KanbanCard.objects.create(
-            title='Plan kit', status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM, customer=self.customer,
+        self.work_order = WorkOrder.objects.create(
+            title='Plan kit', status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
             work_order_type=WorkOrderType.PREVENTIVE,
         )
         self.procedure = Procedure.objects.create(
@@ -148,9 +148,9 @@ class JobKitAPITest(TestCase):
         self.assertEqual(response.data['count'], 0)
 
     def test_cross_scope_build_is_not_found(self):
-        foreign = KanbanCard.objects.create(
-            title='Foreign', status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM, customer=self.other_customer,
+        foreign = WorkOrder.objects.create(
+            title='Foreign', status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.other_customer,
             work_order_type=WorkOrderType.PREVENTIVE,
         )
         response = self.client.post(

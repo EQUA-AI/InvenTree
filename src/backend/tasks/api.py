@@ -60,7 +60,7 @@ from .jobkit_api import (
     JobKitSubstitutionDecide,
     JobKitSubstitutionPropose,
 )
-from .models import KanbanCard, KanbanCardDependency, KanbanCardPart, KanbanColumn
+from .models import KanbanColumn, WorkOrder, WorkOrderDependency, WorkOrderPart
 from .procedure_api import (
     ProcedureArchive,
     ProcedureBlockers,
@@ -87,11 +87,11 @@ from .procedure_execution_api import (
     WorkOrderDeviationList,
 )
 from .serializers import (
-    KanbanCardDependencySerializer,
-    KanbanCardOverviewSerializer,
-    KanbanCardPartSerializer,
-    KanbanCardSerializer,
     KanbanColumnSerializer,
+    WorkOrderBoardSerializer,
+    WorkOrderDependencySerializer,
+    WorkOrderOverviewSerializer,
+    WorkOrderPartSerializer,
 )
 from .services import schedule_planner, scheduling
 from .services.conflicts import detect_conflicts
@@ -109,7 +109,7 @@ from .workorder_api import (
 )
 
 
-class KanbanCardFilter(FilterSet):
+class WorkOrderBoardFilter(FilterSet):
     """Filter set for Kanban cards.
 
     ``min_date`` / ``max_date`` bound a calendar or timeline viewport. A card is in
@@ -138,7 +138,7 @@ class KanbanCardFilter(FilterSet):
     class Meta:
         """Filter metadata."""
 
-        model = KanbanCard
+        model = WorkOrder
         fields = (
             'status',
             'priority',
@@ -202,18 +202,18 @@ class KanbanCardFilter(FilterSet):
         return queryset
 
 
-class KanbanCardList(ListCreateAPI):
+class WorkOrderBoardList(ListCreateAPI):
     """List and create Kanban cards."""
 
-    queryset = KanbanCard.objects.all()
-    serializer_class = KanbanCardSerializer
+    queryset = WorkOrder.objects.all()
+    serializer_class = WorkOrderBoardSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,
         InvenTree.permissions.RolePermission,
     ]
     role_required = 'work_order'
     filter_backends = SEARCH_ORDER_FILTER
-    filterset_class = KanbanCardFilter
+    filterset_class = WorkOrderBoardFilter
     search_fields = [
         'title',
         'description',
@@ -246,7 +246,7 @@ class KanbanCardList(ListCreateAPI):
             super()
             .get_queryset()
             .select_related('machine', 'assigned_to')
-            .prefetch_related('card_parts__part')
+            .prefetch_related('work_order_parts__part')
         )
 
         include_inactive = InvenTree.helpers.str2bool(
@@ -259,11 +259,11 @@ class KanbanCardList(ListCreateAPI):
         return queryset.order_by('-created_at')
 
 
-class KanbanCardDetail(RetrieveUpdateDestroyAPI):
+class WorkOrderBoardDetail(RetrieveUpdateDestroyAPI):
     """Retrieve, update, or archive a Kanban card."""
 
-    queryset = KanbanCard.objects.all()
-    serializer_class = KanbanCardSerializer
+    queryset = WorkOrder.objects.all()
+    serializer_class = WorkOrderBoardSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,
         InvenTree.permissions.RolePermission,
@@ -277,7 +277,7 @@ class KanbanCardDetail(RetrieveUpdateDestroyAPI):
             instance.save(update_fields=['is_active', 'updated_at'])
 
 
-class KanbanCardOverview(APIView):
+class WorkOrderOverviewDetail(APIView):
     """Return complete work-order context from the stable Kanban surface."""
 
     permission_classes = [
@@ -285,11 +285,11 @@ class KanbanCardOverview(APIView):
         InvenTree.permissions.RolePermission,
     ]
     role_required = 'work_order'
-    serializer_class = KanbanCardOverviewSerializer
+    serializer_class = WorkOrderOverviewSerializer
 
     def get(self, request, pk):
         """Return one card with its hierarchy, execution, and repair context."""
-        queryset = KanbanCard.objects.select_related(
+        queryset = WorkOrder.objects.select_related(
             'machine',
             'assigned_to',
             'requested_by',
@@ -299,13 +299,13 @@ class KanbanCardOverview(APIView):
             'maintenance_record',
             'structured_closeout',
         ).prefetch_related(
-            'card_parts__part',
+            'work_order_parts__part',
             'children__machine',
             'children__assigned_to',
-            'dependencies_in__from_card__machine',
-            'dependencies_in__from_card__assigned_to',
-            'dependencies_out__to_card__machine',
-            'dependencies_out__to_card__assigned_to',
+            'dependencies_in__predecessor__machine',
+            'dependencies_in__predecessor__assigned_to',
+            'dependencies_out__successor__machine',
+            'dependencies_out__successor__assigned_to',
             'events__actor',
             'repair_packet__gates',
             # The new detail sections join here rather than issuing a request
@@ -314,11 +314,13 @@ class KanbanCardOverview(APIView):
             'repair_packet__approved_scopes',
             'anomalies__source',
         )
-        card = get_object_or_404(queryset, pk=pk)
-        return Response(self.serializer_class(card, context={'request': request}).data)
+        work_order = get_object_or_404(queryset, pk=pk)
+        return Response(
+            self.serializer_class(work_order, context={'request': request}).data
+        )
 
 
-class KanbanCardRestore(APIView):
+class WorkOrderRestore(APIView):
     """Restore a previously archived Kanban card."""
 
     permission_classes = [
@@ -326,39 +328,39 @@ class KanbanCardRestore(APIView):
         InvenTree.permissions.RolePermission,
     ]
     role_required = 'work_order.change'
-    serializer_class = KanbanCardSerializer
+    serializer_class = WorkOrderBoardSerializer
 
     def post(self, request, pk):
         """Restore an archived card."""
-        card = get_object_or_404(KanbanCard, pk=pk)
+        work_order = get_object_or_404(WorkOrder, pk=pk)
 
-        if not card.is_active:
-            card.is_active = True
-            card.save(update_fields=['is_active', 'updated_at'])
+        if not work_order.is_active:
+            work_order.is_active = True
+            work_order.save(update_fields=['is_active', 'updated_at'])
 
-        serializer = self.serializer_class(card, context={'request': request})
+        serializer = self.serializer_class(work_order, context={'request': request})
         return Response(serializer.data)
 
 
-def _allocation_summary(card):
+def _allocation_summary(work_order):
     """Serialize a card's parts and collect any stock-shortage warnings.
 
     Shared by the allocate-parts action and the reconcile PUT so both report
-    allocation identically. Reads ``card.card_parts`` fresh, so callers should
+    allocation identically. Reads ``card.work_order_parts`` fresh, so callers should
     have run ``check_and_allocate`` on the affected parts first.
     """
     results = []
     warnings = []
 
-    for cp in card.card_parts.all().select_related('part'):
-        results.append(KanbanCardPartSerializer(cp).data)
+    for cp in work_order.work_order_parts.all().select_related('part'):
+        results.append(WorkOrderPartSerializer(cp).data)
 
-        if cp.allocation_status == KanbanCardPart.ALLOCATION_INSUFFICIENT:
+        if cp.allocation_status == WorkOrderPart.ALLOCATION_INSUFFICIENT:
             warnings.append(
                 f"Part '{cp.part.name}' (ID {cp.part.pk}): "
                 f'need {cp.quantity}, only {cp.allocated_quantity} available'
             )
-        elif cp.allocation_status == KanbanCardPart.ALLOCATION_PARTIAL:
+        elif cp.allocation_status == WorkOrderPart.ALLOCATION_PARTIAL:
             warnings.append(
                 f"Part '{cp.part.name}' (ID {cp.part.pk}): "
                 f'partial allocation - {cp.allocated_quantity} of {cp.quantity}'
@@ -367,7 +369,7 @@ def _allocation_summary(card):
     return {'parts': results, 'warnings': warnings, 'all_allocated': len(warnings) == 0}
 
 
-class KanbanCardPartList(APIView):
+class WorkOrderPartList(APIView):
     """List, add, or reconcile the parts for a Kanban card."""
 
     permission_classes = [
@@ -377,31 +379,32 @@ class KanbanCardPartList(APIView):
     role_required = 'work_order'
 
     @extend_schema(operation_id='kanban_cards_parts_list')
-    def get(self, request, card_pk):
+    def get(self, request, work_order_pk):
         """List all parts for a card."""
-        card = get_object_or_404(KanbanCard, pk=card_pk)
-        parts = card.card_parts.all().select_related('part')
-        serializer = KanbanCardPartSerializer(parts, many=True)
+        work_order = get_object_or_404(WorkOrder, pk=work_order_pk)
+        parts = work_order.work_order_parts.all().select_related('part')
+        serializer = WorkOrderPartSerializer(parts, many=True)
         return Response(serializer.data)
 
-    def post(self, request, card_pk):
+    def post(self, request, work_order_pk):
         """Add a part to a card and check stock availability."""
-        card = get_object_or_404(KanbanCard, pk=card_pk)
-        serializer = KanbanCardPartSerializer(data=request.data)
+        work_order = get_object_or_404(WorkOrder, pk=work_order_pk)
+        serializer = WorkOrderPartSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        card_part = KanbanCardPart.objects.create(
-            card=card,
+        work_order_part = WorkOrderPart.objects.create(
+            work_order=work_order,
             part=serializer.validated_data['part'],
             quantity=serializer.validated_data.get('quantity', 1),
         )
-        card_part.check_and_allocate()
+        work_order_part.check_and_allocate()
 
         return Response(
-            KanbanCardPartSerializer(card_part).data, status=status.HTTP_201_CREATED
+            WorkOrderPartSerializer(work_order_part).data,
+            status=status.HTTP_201_CREATED,
         )
 
-    def put(self, request, card_pk):
+    def put(self, request, work_order_pk):
         """Reconcile the card's whole parts list in one transaction.
 
         The body is the *desired* full set of parts (``[{"part": id,
@@ -413,7 +416,7 @@ class KanbanCardPartList(APIView):
         were silently dropped. Reconciling server-side removes both failure modes
         and makes the save atomic.
         """
-        card = get_object_or_404(KanbanCard, pk=card_pk)
+        work_order = get_object_or_404(WorkOrder, pk=work_order_pk)
         payload = request.data
 
         if not isinstance(payload, list):
@@ -421,7 +424,7 @@ class KanbanCardPartList(APIView):
 
         desired = {}
         for item in payload:
-            serializer = KanbanCardPartSerializer(data=item)
+            serializer = WorkOrderPartSerializer(data=item)
             serializer.is_valid(raise_exception=True)
             part = serializer.validated_data['part']
 
@@ -433,7 +436,10 @@ class KanbanCardPartList(APIView):
             desired[part.pk] = serializer.validated_data.get('quantity', 1)
 
         with transaction.atomic():
-            existing = {cp.part_id: cp for cp in card.card_parts.select_related('part')}
+            existing = {
+                cp.part_id: cp
+                for cp in work_order.work_order_parts.select_related('part')
+            }
 
             for part_id, cp in existing.items():
                 if part_id not in desired:
@@ -443,8 +449,8 @@ class KanbanCardPartList(APIView):
                 cp = existing.get(part_id)
 
                 if cp is None:
-                    cp = KanbanCardPart.objects.create(
-                        card=card, part_id=part_id, quantity=quantity
+                    cp = WorkOrderPart.objects.create(
+                        work_order=work_order, part_id=part_id, quantity=quantity
                     )
                 elif cp.quantity != quantity:
                     cp.quantity = quantity
@@ -452,10 +458,10 @@ class KanbanCardPartList(APIView):
 
                 cp.check_and_allocate()
 
-        return Response(_allocation_summary(card))
+        return Response(_allocation_summary(work_order))
 
 
-class KanbanCardPartDetail(APIView):
+class WorkOrderPartDetail(APIView):
     """Retrieve, update, or remove a part from a Kanban card."""
 
     permission_classes = [
@@ -464,29 +470,35 @@ class KanbanCardPartDetail(APIView):
     ]
     role_required = 'work_order'
 
-    def get(self, request, card_pk, pk):
+    def get(self, request, work_order_pk, pk):
         """Return one card part."""
-        card_part = get_object_or_404(KanbanCardPart, pk=pk, card_id=card_pk)
-        return Response(KanbanCardPartSerializer(card_part).data)
+        work_order_part = get_object_or_404(
+            WorkOrderPart, pk=pk, work_order_id=work_order_pk
+        )
+        return Response(WorkOrderPartSerializer(work_order_part).data)
 
-    def patch(self, request, card_pk, pk):
+    def patch(self, request, work_order_pk, pk):
         """Update the required quantity and re-check allocation."""
-        card_part = get_object_or_404(KanbanCardPart, pk=pk, card_id=card_pk)
+        work_order_part = get_object_or_404(
+            WorkOrderPart, pk=pk, work_order_id=work_order_pk
+        )
         quantity = request.data.get('quantity')
         if quantity is not None:
-            card_part.quantity = quantity
-            card_part.save(update_fields=['quantity', 'updated_at'])
-            card_part.check_and_allocate()
-        return Response(KanbanCardPartSerializer(card_part).data)
+            work_order_part.quantity = quantity
+            work_order_part.save(update_fields=['quantity', 'updated_at'])
+            work_order_part.check_and_allocate()
+        return Response(WorkOrderPartSerializer(work_order_part).data)
 
-    def delete(self, request, card_pk, pk):
+    def delete(self, request, work_order_pk, pk):
         """Remove a part from the card."""
-        card_part = get_object_or_404(KanbanCardPart, pk=pk, card_id=card_pk)
-        card_part.delete()
+        work_order_part = get_object_or_404(
+            WorkOrderPart, pk=pk, work_order_id=work_order_pk
+        )
+        work_order_part.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class KanbanCardAllocateParts(APIView):
+class WorkOrderAllocateParts(APIView):
     """Check stock and allocate all parts for a Kanban card.
 
     Returns allocation results with warnings for any insufficient stock.
@@ -498,14 +510,14 @@ class KanbanCardAllocateParts(APIView):
     ]
     role_required = 'work_order.change'
 
-    def post(self, request, card_pk):
+    def post(self, request, work_order_pk):
         """Check and allocate stock for every card part."""
-        card = get_object_or_404(KanbanCard, pk=card_pk)
+        work_order = get_object_or_404(WorkOrder, pk=work_order_pk)
 
-        for cp in card.card_parts.all().select_related('part'):
+        for cp in work_order.work_order_parts.all().select_related('part'):
             cp.check_and_allocate()
 
-        return Response(_allocation_summary(card))
+        return Response(_allocation_summary(work_order))
 
 
 class KanbanColumnList(ListCreateAPI):
@@ -669,9 +681,9 @@ class _CommandView(APIView):
         InvenTree.permissions.RolePermission,
     ]
 
-    def _card_payload(self, work_order_id):
-        card = get_object_or_404(KanbanCard, pk=work_order_id)
-        return KanbanCardSerializer(card).data
+    def _work_order_payload(self, work_order_id):
+        work_order = get_object_or_404(WorkOrder, pk=work_order_id)
+        return WorkOrderBoardSerializer(work_order).data
 
 
 class WorkOrderCreateCommand(_CommandView):
@@ -711,7 +723,8 @@ class WorkOrderCreateCommand(_CommandView):
             return _command_error_response(exc)
 
         return Response(
-            self._card_payload(result.work_order_id), status=status.HTTP_201_CREATED
+            self._work_order_payload(result.work_order_id),
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -739,7 +752,7 @@ class WorkOrderUpdateCommand(_CommandView):
         except scheduling.WorkOrderCommandError as exc:
             return _command_error_response(exc)
 
-        return Response(self._card_payload(pk))
+        return Response(self._work_order_payload(pk))
 
 
 class WorkOrderScheduleCommand(_CommandView):
@@ -765,7 +778,7 @@ class WorkOrderScheduleCommand(_CommandView):
         except scheduling.WorkOrderCommandError as exc:
             return _command_error_response(exc)
 
-        return Response(self._card_payload(pk))
+        return Response(self._work_order_payload(pk))
 
 
 class WorkOrderResizeCommand(_CommandView):
@@ -789,7 +802,7 @@ class WorkOrderResizeCommand(_CommandView):
         except scheduling.WorkOrderCommandError as exc:
             return _command_error_response(exc)
 
-        return Response(self._card_payload(pk))
+        return Response(self._work_order_payload(pk))
 
 
 class WorkOrderDeleteCommand(_CommandView):
@@ -837,7 +850,8 @@ class WorkOrderCreateChildCommand(_CommandView):
             return _command_error_response(exc)
 
         return Response(
-            self._card_payload(result.work_order_id), status=status.HTTP_201_CREATED
+            self._work_order_payload(result.work_order_id),
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -859,7 +873,7 @@ class WorkOrderGenerateProcurementCommand(_CommandView):
             return Response({'generated': False, 'detail': 'No parts shortfall.'})
 
         return Response(
-            {'generated': True, 'child': self._card_payload(child.pk)},
+            {'generated': True, 'child': self._work_order_payload(child.pk)},
             status=status.HTTP_201_CREATED,
         )
 
@@ -936,7 +950,7 @@ def _serialize_plan(result):
     return {
         'operations': [
             {
-                'card_id': op.card_id,
+                'card_id': op.work_order_id,
                 'old_start': op.old_start.isoformat() if op.old_start else None,
                 'old_end': op.old_end.isoformat() if op.old_end else None,
                 'new_start': op.new_start.isoformat(),
@@ -990,14 +1004,14 @@ class WorkOrderScheduleOptimize(APIView):
             return Response({'plan': _serialize_plan(plan), 'applied': []})
 
         versions = dict(
-            KanbanCard.objects.filter(
-                id__in=[op.card_id for op in plan.operations]
+            WorkOrder.objects.filter(
+                id__in=[op.work_order_id for op in plan.operations]
             ).values_list('id', 'lifecycle_version')
         )
         operations = [
             {
-                'card_id': op.card_id,
-                'expected_version': versions[op.card_id],
+                'card_id': op.work_order_id,
+                'expected_version': versions[op.work_order_id],
                 'scheduled_start': op.new_start,
                 'scheduled_end': op.new_end,
             }
@@ -1043,30 +1057,30 @@ class WorkOrderScheduleWindow(APIView):
     def get(self, request):
         """Return {cards, dependencies, warnings} for the requested window."""
         queryset = (
-            KanbanCard.objects
+            WorkOrder.objects
             .filter(is_active=True)
             .select_related('machine', 'assigned_to')
-            .prefetch_related('card_parts__part')
+            .prefetch_related('work_order_parts__part')
         )
 
-        card_filter = KanbanCardFilter(request.query_params, queryset=queryset)
-        cards = list(
-            card_filter.qs.order_by('scheduled_start', 'due_date', '-created_at')
+        work_order_filter = WorkOrderBoardFilter(
+            request.query_params, queryset=queryset
         )
-        card_ids = [card.pk for card in cards]
+        work_orders = list(
+            work_order_filter.qs.order_by('scheduled_start', 'due_date', '-created_at')
+        )
+        work_order_ids = [work_order.pk for work_order in work_orders]
 
         # Dependencies where both endpoints are inside the window, so the client
         # never has to resolve an edge to a card it did not receive.
-        dependencies = KanbanCardDependency.objects.filter(
-            from_card_id__in=card_ids, to_card_id__in=card_ids
+        dependencies = WorkOrderDependency.objects.filter(
+            predecessor_id__in=work_order_ids, successor_id__in=work_order_ids
         )
 
         return Response({
-            'cards': KanbanCardSerializer(cards, many=True).data,
-            'dependencies': KanbanCardDependencySerializer(
-                dependencies, many=True
-            ).data,
-            'warnings': detect_conflicts(cards),
+            'cards': WorkOrderBoardSerializer(work_orders, many=True).data,
+            'dependencies': WorkOrderDependencySerializer(dependencies, many=True).data,
+            'warnings': detect_conflicts(work_orders),
         })
 
 
@@ -1076,11 +1090,11 @@ class WorkOrderDependencyCommand(_CommandView):
     role_required = 'work_order.change'
 
     def post(self, request):
-        """Create ``from_card -> to_card``, rejecting self-loops and cycles."""
+        """Create ``predecessor -> successor``, rejecting self-loops and cycles."""
         try:
             dependency = scheduling.create_dependency(
-                from_card_id=request.data.get('from_card'),
-                to_card_id=request.data.get('to_card'),
+                predecessor_id=request.data.get('predecessor'),
+                successor_id=request.data.get('successor'),
                 actor=request.user,
                 dependency_type=request.data.get('dependency_type', 'FS'),
                 lag_minutes=request.data.get('lag_minutes', 0),
@@ -1089,7 +1103,7 @@ class WorkOrderDependencyCommand(_CommandView):
             return _command_error_response(exc)
 
         return Response(
-            KanbanCardDependencySerializer(dependency).data,
+            WorkOrderDependencySerializer(dependency).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -1125,31 +1139,33 @@ kanban_api_urls = [
     path(
         'cards/',
         include([
-            path('', KanbanCardList.as_view(), name='kanban-card-list'),
+            path('', WorkOrderBoardList.as_view(), name='kanban-card-list'),
             path(
                 '<int:pk>/overview/',
-                KanbanCardOverview.as_view(),
+                WorkOrderOverviewDetail.as_view(),
                 name='kanban-card-overview',
             ),
-            path('<int:pk>/', KanbanCardDetail.as_view(), name='kanban-card-detail'),
+            path(
+                '<int:pk>/', WorkOrderBoardDetail.as_view(), name='kanban-card-detail'
+            ),
             path(
                 '<int:pk>/restore/',
-                KanbanCardRestore.as_view(),
+                WorkOrderRestore.as_view(),
                 name='kanban-card-restore',
             ),
             path(
-                '<int:card_pk>/parts/',
-                KanbanCardPartList.as_view(),
+                '<int:work_order_pk>/parts/',
+                WorkOrderPartList.as_view(),
                 name='kanban-card-part-list',
             ),
             path(
-                '<int:card_pk>/parts/<int:pk>/',
-                KanbanCardPartDetail.as_view(),
+                '<int:work_order_pk>/parts/<int:pk>/',
+                WorkOrderPartDetail.as_view(),
                 name='kanban-card-part-detail',
             ),
             path(
-                '<int:card_pk>/allocate-parts/',
-                KanbanCardAllocateParts.as_view(),
+                '<int:work_order_pk>/allocate-parts/',
+                WorkOrderAllocateParts.as_view(),
                 name='kanban-card-allocate',
             ),
             path(

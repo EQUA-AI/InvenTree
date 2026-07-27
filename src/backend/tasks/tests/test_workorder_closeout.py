@@ -16,7 +16,7 @@ from tasks.models import (
     JobKitAllocationStatus,
     JobKitLine,
     JobKitStatus,
-    KanbanCard,
+    WorkOrder,
     ProcedureResourceKind,
     WorkOrderCloseout,
     WorkOrderLifecycle,
@@ -42,9 +42,9 @@ class CompleteWorkOrderTest(TestCase):
         self.machine = AssetMachine.objects.create(
             name='Pump 1', customer=self.customer
         )
-        self.work_order = KanbanCard.objects.create(
-            title='Complete me', status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM, customer=self.customer,
+        self.work_order = WorkOrder.objects.create(
+            title='Complete me', status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
             machine=self.machine, assigned_to=self.actor,
             work_order_type=WorkOrderType.PREVENTIVE,
             lifecycle_status=WorkOrderLifecycle.VERIFYING,
@@ -90,7 +90,7 @@ class CompleteWorkOrderTest(TestCase):
 
     def test_completion_blocked_by_incomplete_child(self):
         # S6d: a parent cannot close out while a child is still open.
-        KanbanCard.objects.create(
+        WorkOrder.objects.create(
             title='open child', status='backlog', priority='low',
             machine=self.machine, parent=self.work_order,
         )

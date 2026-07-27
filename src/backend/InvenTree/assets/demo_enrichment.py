@@ -183,7 +183,9 @@ def validate_profile(profile, *, reference: str, card_kind: str, is_terminal: bo
 
 
 @transaction.atomic
-def apply_profile(card, profile, *, dataset: str, report: CoverageReport, actor=None):
+def apply_profile(
+    work_order, profile, *, dataset: str, report: CoverageReport, actor=None
+):
     """Apply one validated profile to an owned card.
 
     Only the enrichment boundary is written: the affected component on the card,
@@ -194,20 +196,20 @@ def apply_profile(card, profile, *, dataset: str, report: CoverageReport, actor=
 
     component = profile['affected_component']
     updates = {}
-    if component['name'] and card.affected_component != component['name']:
+    if component['name'] and work_order.affected_component != component['name']:
         updates['affected_component'] = component['name']
     if (
         component['external_id']
-        and card.affected_component_ref != component['external_id']
+        and work_order.affected_component_ref != component['external_id']
     ):
         updates['affected_component_ref'] = component['external_id']
 
     if updates:
         for name, value in updates.items():
-            setattr(card, name, value)
-        card.save(update_fields=[*updates, 'updated_at'])
+            setattr(work_order, name, value)
+        work_order.save(update_fields=[*updates, 'updated_at'])
 
-    packet = getattr(card, 'repair_packet', None)
+    packet = getattr(work_order, 'repair_packet', None)
     changed = bool(updates)
 
     if profile['findings']:
@@ -216,7 +218,7 @@ def apply_profile(card, profile, *, dataset: str, report: CoverageReport, actor=
             # cannot hold them, and inventing a packet for a completed
             # inspection would misrepresent how that work was actually governed.
             raise EnrichmentError(
-                f'{card.reference}: findings require a repair packet, and this '
+                f'{work_order.reference}: findings require a repair packet, and this '
                 'record has none.'
             )
         for sequence, entry in enumerate(profile['findings'], start=1):
@@ -239,7 +241,7 @@ def apply_profile(card, profile, *, dataset: str, report: CoverageReport, actor=
     if scope:
         if packet is None:
             raise EnrichmentError(
-                f'{card.reference}: an approved scope requires a repair packet.'
+                f'{work_order.reference}: an approved scope requires a repair packet.'
             )
         current = investigation.current_scope(packet)
         # Re-approving an identical scope would create a pointless new version

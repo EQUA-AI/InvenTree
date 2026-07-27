@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from company.models import Company
 from tasks.models import (
-    KanbanCard,
+    WorkOrder,
     Procedure,
     ProcedureRevision,
     ProcedureRevisionStatus,
@@ -49,9 +49,9 @@ class ProcedureExecutionServiceTest(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        self.work_order = KanbanCard.objects.create(
-            title='ME3 work order', status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM, customer=self.customer,
+        self.work_order = WorkOrder.objects.create(
+            title='ME3 work order', status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
             assigned_to=self.actor, work_order_type=WorkOrderType.PREVENTIVE,
         )
         self.procedure = Procedure.objects.create(
@@ -207,7 +207,7 @@ class ProcedureExecutionServiceTest(TestCase):
         self.work_order.refresh_from_db()
         self.assertEqual(self.work_order.lifecycle_status, lifecycle)
         self.assertEqual(self.work_order.lifecycle_version, version)
-        self.assertFalse(self.work_order.card_parts.exists())
+        self.assertFalse(self.work_order.work_order_parts.exists())
 
     def test_readiness_blocks_incomplete_required_steps(self):
         self.add_step()

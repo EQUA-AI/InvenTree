@@ -1,8 +1,8 @@
 """Tests for the Kanban scheduling read surface.
 
-``KanbanCard`` has carried ``scheduled_start``, ``scheduled_end``,
+``WorkOrder`` has carried ``scheduled_start``, ``scheduled_end``,
 ``estimated_minutes``, ``machine`` and ``assigned_to`` since the work-order
-foundation, but ``KanbanCardSerializer`` exposed none of them, so the board could
+foundation, but ``WorkOrderBoardSerializer`` exposed none of them, so the board could
 neither read nor write a schedule. These tests cover exposing those fields and the
 ``min_date`` / ``max_date`` viewport filter the calendar and timeline query with.
 """
@@ -17,7 +17,7 @@ from django.urls import reverse
 
 from assets.models import AssetMachine
 from company.models import Company
-from tasks.models import KanbanCard, WorkOrderLifecycle, WorkOrderType
+from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 
 
 def _utc(year, month, day, hour=9, minute=0):
@@ -41,7 +41,7 @@ class KanbanScheduleSerializerTest(TestCase):
         self.machine = AssetMachine.objects.create(
             name='Press 7', customer=self.customer, location='Bay 4'
         )
-        self.card = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Replace bearing',
             status='backlog',
             priority='medium',
@@ -54,7 +54,7 @@ class KanbanScheduleSerializerTest(TestCase):
         )
 
     def _detail_url(self):
-        return reverse('kanban-card-detail', kwargs={'pk': self.card.pk})
+        return reverse('kanban-card-detail', kwargs={'pk': self.work_order.pk})
 
     def test_scheduling_fields_are_exposed(self):
         response = self.client.get(self._detail_url())
@@ -98,7 +98,7 @@ class KanbanScheduleSerializerTest(TestCase):
         self.assertEqual(data['assigned_to_name'], 'sched-sup')
 
     def test_labels_are_null_when_relations_are_unset(self):
-        bare = KanbanCard.objects.create(
+        bare = WorkOrder.objects.create(
             title='Unassigned', status='backlog', priority='low'
         )
 
@@ -122,18 +122,18 @@ class KanbanScheduleSerializerTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.card.refresh_from_db()
-        self.assertEqual(self.card.estimated_minutes, 480)
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.estimated_minutes, 480)
         # Compared field-wise rather than against a fixed instant: this project
         # sets USE_TZ = not TESTING, so stored datetimes are naive under test and
         # aware in production. A direct == against an aware value fails here for
         # reasons that have nothing to do with the code under test.
         self.assertEqual(
-            (self.card.scheduled_start.year, self.card.scheduled_start.month),
+            (self.work_order.scheduled_start.year, self.work_order.scheduled_start.month),
             (2026, 8),
         )
-        self.assertEqual(self.card.scheduled_start.day, 10)
-        self.assertEqual(self.card.scheduled_start.hour, 8)
+        self.assertEqual(self.work_order.scheduled_start.day, 10)
+        self.assertEqual(self.work_order.scheduled_start.hour, 8)
 
     def test_end_before_start_is_rejected(self):
         response = self.client.patch(
@@ -180,8 +180,8 @@ class KanbanScheduleSerializerTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.card.refresh_from_db()
-        self.assertIsNone(self.card.scheduled_start)
+        self.work_order.refresh_from_db()
+        self.assertIsNone(self.work_order.scheduled_start)
 
     def test_lifecycle_owned_fields_cannot_be_written(self):
         """Board edits must not drive lifecycle state; commands own it.
@@ -190,9 +190,9 @@ class KanbanScheduleSerializerTest(TestCase):
         Asserted explicitly because "ignored" and "applied" look identical in a
         200 response.
         """
-        original_status = self.card.lifecycle_status
-        original_version = self.card.lifecycle_version
-        original_reference = self.card.reference
+        original_status = self.work_order.lifecycle_status
+        original_version = self.work_order.lifecycle_version
+        original_reference = self.work_order.reference
 
         response = self.client.patch(
             self._detail_url(),
@@ -206,14 +206,14 @@ class KanbanScheduleSerializerTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.card.refresh_from_db()
-        self.assertEqual(self.card.lifecycle_status, original_status)
-        self.assertEqual(self.card.lifecycle_version, original_version)
-        self.assertIsNone(self.card.actual_completed_at)
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.lifecycle_status, original_status)
+        self.assertEqual(self.work_order.lifecycle_version, original_version)
+        self.assertIsNone(self.work_order.actual_completed_at)
         # The reference is model-assigned and read-only: a board PATCH may not
         # replace it. (It used to be None here only because nothing assigned one.)
-        self.assertEqual(self.card.reference, original_reference)
-        self.assertNotEqual(self.card.reference, 'WO-HACK')
+        self.assertEqual(self.work_order.reference, original_reference)
+        self.assertNotEqual(self.work_order.reference, 'WO-HACK')
 
     def test_assigned_to_is_read_only(self):
         """Assignment goes through the canonical command, as in WorkOrderSerializer."""
@@ -227,8 +227,8 @@ class KanbanScheduleSerializerTest(TestCase):
             content_type='application/json',
         )
 
-        self.card.refresh_from_db()
-        self.assertEqual(self.card.assigned_to, self.user)
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.assigned_to, self.user)
 
 
 class KanbanWindowFilterTest(TestCase):
@@ -258,7 +258,7 @@ class KanbanWindowFilterTest(TestCase):
         )
 
     def _card(self, title, *, start=None, end=None, due=None):
-        return KanbanCard.objects.create(
+        return WorkOrder.objects.create(
             title=title,
             status='backlog',
             priority='low',
@@ -358,7 +358,7 @@ class KanbanWindowFilterTest(TestCase):
 
     def test_window_composes_with_other_filters(self):
         self._card('other-priority', start=_utc(2026, 8, 12), end=_utc(2026, 8, 13))
-        KanbanCard.objects.filter(title='other-priority').update(priority='high')
+        WorkOrder.objects.filter(title='other-priority').update(priority='high')
 
         titles = self._titles(
             min_date='2026-08-01', max_date='2026-08-31', priority='high'
@@ -391,7 +391,7 @@ class KanbanScheduleQueryCountTest(TestCase):
         self.client.force_login(self.user)
 
     def _build(self, count):
-        KanbanCard.objects.all().delete()
+        WorkOrder.objects.all().delete()
         customer = Company.objects.create(
             name=f'Count Cust {count}', is_customer=True
         )
@@ -399,7 +399,7 @@ class KanbanScheduleQueryCountTest(TestCase):
             machine = AssetMachine.objects.create(
                 name=f'M{count}-{index}', customer=customer
             )
-            KanbanCard.objects.create(
+            WorkOrder.objects.create(
                 title=f'card-{index}',
                 status='backlog',
                 priority='low',
@@ -424,7 +424,7 @@ class KanbanScheduleQueryCountTest(TestCase):
 
         Covers three relations that would each otherwise be one query per card on
         an unpaginated list: ``machine`` and ``assigned_to`` (select_related, for
-        the labels this slice adds) and ``card_parts`` (prefetch_related, which was
+        the labels this slice adds) and ``work_order_parts`` (prefetch_related, which was
         already N+1 before this change).
 
         Asserted as a comparison rather than a fixed number so unrelated
@@ -442,6 +442,6 @@ class KanbanScheduleQueryCountTest(TestCase):
             one_card,
             ten_cards,
             'query count grew with card count: one of machine, assigned_to or '
-            'card_parts is not being select_related/prefetch_related, so the '
+            'work_order_parts is not being select_related/prefetch_related, so the '
             'unpaginated list issues an N+1',
         )

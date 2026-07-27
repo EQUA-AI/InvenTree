@@ -46,7 +46,7 @@ class JobKit(models.Model):
     """Planning container for the resources required by one work order."""
 
     work_order = models.OneToOneField(
-        'tasks.KanbanCard', on_delete=models.CASCADE, related_name='job_kit'
+        'tasks.WorkOrder', on_delete=models.CASCADE, related_name='job_kit'
     )
     status = models.CharField(
         max_length=16,

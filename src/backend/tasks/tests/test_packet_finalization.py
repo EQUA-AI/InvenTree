@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 
 from company.models import Company
 from repair.models import RepairPacket
-from tasks.models import KanbanCard, WorkOrderLifecycle
+from tasks.models import WorkOrder, WorkOrderLifecycle
 from tasks.scope import MaintenanceScope
 from tasks.services.finalization import PacketFinalization, is_packet_finalization
 from tasks.services.readiness import PACKET_OWNS_LIFECYCLE
@@ -39,21 +39,21 @@ class PacketFinalizationTokenTest(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        self.card = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Packet-owned work',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_HIGH,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_HIGH,
             customer=self.customer,
         )
         self.packet = RepairPacket.objects.create(
-            work_order=self.card, created_by=self.actor
+            work_order=self.work_order, created_by=self.actor
         )
 
     def test_a_matching_token_authorizes(self):
         """The packet that owns the work order may finalize it."""
         self.assertTrue(
             is_packet_finalization(
-                PacketFinalization(packet_id=self.packet.pk), self.card
+                PacketFinalization(packet_id=self.packet.pk), self.work_order
             )
         )
 
@@ -61,30 +61,30 @@ class PacketFinalizationTokenTest(TestCase):
         """This is the shape a request-borne value would arrive in."""
         for value in (True, 1, 'true', {'packet_id': self.packet.pk}):
             with self.subTest(value=value):
-                self.assertFalse(is_packet_finalization(value, self.card))
+                self.assertFalse(is_packet_finalization(value, self.work_order))
 
     def test_a_token_for_another_packet_does_not_authorize(self):
         """A capability is scoped to the packet it was minted for."""
-        other_card = KanbanCard.objects.create(
+        other_work_order = WorkOrder.objects.create(
             title='Someone else',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_LOW,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_LOW,
             customer=self.customer,
         )
         other = RepairPacket.objects.create(
-            work_order=other_card, created_by=self.actor
+            work_order=other_work_order, created_by=self.actor
         )
 
         self.assertFalse(
-            is_packet_finalization(PacketFinalization(packet_id=other.pk), self.card)
+            is_packet_finalization(PacketFinalization(packet_id=other.pk), self.work_order)
         )
 
     def test_a_token_does_not_authorize_unowned_work(self):
         """A standalone work order has no packet to finalize on its behalf."""
-        standalone = KanbanCard.objects.create(
+        standalone = WorkOrder.objects.create(
             title='Standalone',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_LOW,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_LOW,
             customer=self.customer,
         )
 
@@ -98,7 +98,7 @@ class PacketFinalizationTokenTest(TestCase):
         """The check is enforced where it matters, not only in the helper."""
         with self.assertRaises(CommandConflict) as caught:
             transition_work_order(
-                work_order_id=self.card.pk,
+                work_order_id=self.work_order.pk,
                 to_status=WorkOrderLifecycle.PLANNED,
                 actor=self.actor,
                 expected_version=1,
@@ -107,8 +107,8 @@ class PacketFinalizationTokenTest(TestCase):
             )
 
         self.assertEqual(caught.exception.code, PACKET_OWNS_LIFECYCLE)
-        self.card.refresh_from_db()
-        self.assertEqual(self.card.lifecycle_status, WorkOrderLifecycle.DRAFT)
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.lifecycle_status, WorkOrderLifecycle.DRAFT)
 
 
 @override_settings(AIMMS_WORK_ORDERS_ENABLED=True)
@@ -129,18 +129,18 @@ class ReservedArgumentTest(TestCase):
         }
         self.client = APIClient()
         self.client.force_authenticate(self.actor)
-        self.card = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Packet-owned work',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_HIGH,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_HIGH,
             customer=self.customer,
         )
-        RepairPacket.objects.create(work_order=self.card, created_by=self.actor)
+        RepairPacket.objects.create(work_order=self.work_order, created_by=self.actor)
 
     def test_a_request_cannot_claim_packet_finalization(self):
         """Sending the flag in the body changes nothing about the answer."""
         response = self.client.post(
-            f'/api/tasks/work-orders/{self.card.pk}/transition/',
+            f'/api/tasks/work-orders/{self.work_order.pk}/transition/',
             {
                 'to_status': WorkOrderLifecycle.PLANNED,
                 'expected_version': 1,

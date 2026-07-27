@@ -20,7 +20,7 @@ from tasks.models import (
     JobKit,
     JobKitAllocation,
     JobKitLine,
-    KanbanCard,
+    WorkOrder,
     ProcedureResourceKind,
     WorkOrderType,
 )
@@ -38,9 +38,9 @@ class _AllocationFixtureMixin:
         self.stock = StockItem.objects.create(
             part=self.component, quantity=Decimal(stock_quantity)
         )
-        self.work_order = KanbanCard.objects.create(
-            title='Reserve WO', status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+        self.work_order = WorkOrder.objects.create(
+            title='Reserve WO', status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             work_order_type=WorkOrderType.PREVENTIVE,
         )
         self.kit = JobKit.objects.create(

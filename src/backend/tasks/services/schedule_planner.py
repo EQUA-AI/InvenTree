@@ -29,7 +29,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from tasks.models import KanbanCard, KanbanCardDependency, WorkOrderLifecycle
+from tasks.models import WorkOrder, WorkOrderDependency, WorkOrderLifecycle
 from tasks.services.calendars import spec_for_card
 from tasks.services.working_time import (
     add_working_minutes,
@@ -59,7 +59,7 @@ class PlanRequest:
 class PlanOperation:
     """One proposed reschedule: a card's before/after window."""
 
-    card_id: int
+    work_order_id: int
     old_start: datetime | None
     old_end: datetime | None
     new_start: datetime
@@ -75,7 +75,7 @@ class PlanResult:
     unscheduled: list[int] = field(default_factory=list)
 
 
-def _topological_order(candidate_ids, deps_in, cards):
+def _topological_order(candidate_ids, deps_in, work_orders):
     """Return candidate ids predecessors-first, ties broken by a stable rank.
 
     Kahn's algorithm over the dependency edges that lie *within* the candidate
@@ -93,9 +93,9 @@ def _topological_order(candidate_ids, deps_in, cards):
                 successors[from_id].append(to_id)
 
     def rank(cid):
-        card = cards[cid]
-        due = card.due_date.isoformat() if card.due_date else '9999-12-31'
-        return (_PRIORITY_RANK.get(card.priority, 1), due, cid)
+        work_order = work_orders[cid]
+        due = work_order.due_date.isoformat() if work_order.due_date else '9999-12-31'
+        return (_PRIORITY_RANK.get(work_order.priority, 1), due, cid)
 
     ready = sorted((c for c in candidate_ids if indegree[c] == 0), key=rank)
     order = []
@@ -122,11 +122,11 @@ def _dependency_earliest_start(spec, dtype, f_start, f_end, lag, duration):
     lag is working-time. FF/SF constrain the successor's *end*, so the start is
     derived by walking ``duration`` working minutes back from the required end.
     """
-    if dtype == KanbanCardDependency.TYPE_FS:
+    if dtype == WorkOrderDependency.TYPE_FS:
         return add_working_minutes(spec, f_end, lag)
-    if dtype == KanbanCardDependency.TYPE_SS:
+    if dtype == WorkOrderDependency.TYPE_SS:
         return add_working_minutes(spec, f_start, lag)
-    if dtype == KanbanCardDependency.TYPE_FF:
+    if dtype == WorkOrderDependency.TYPE_FF:
         required_end = add_working_minutes(spec, f_end, lag)
         return subtract_working_minutes(spec, required_end, duration)
     # SF: successor end >= predecessor start + lag.
@@ -164,67 +164,69 @@ def _place_without_conflict(spec, start, duration, intervals):
 
 def plan_schedule(request: PlanRequest) -> PlanResult:
     """Compute a deterministic, valid placement for the candidate work orders."""
-    cards = {
-        card.id: card
-        for card in KanbanCard.objects.filter(
+    work_orders = {
+        work_order.id: work_order
+        for work_order in WorkOrder.objects.filter(
             id__in=request.candidate_ids
         ).select_related('machine', 'assigned_to')
     }
 
     deps_in = defaultdict(list)
-    for dep in KanbanCardDependency.objects.filter(
-        to_card_id__in=request.candidate_ids, from_card_id__in=request.candidate_ids
+    for dep in WorkOrderDependency.objects.filter(
+        successor_id__in=request.candidate_ids, predecessor_id__in=request.candidate_ids
     ):
-        deps_in[dep.to_card_id].append((
-            dep.from_card_id,
+        deps_in[dep.successor_id].append((
+            dep.predecessor_id,
             dep.dependency_type,
             dep.lag_minutes,
         ))
 
-    order = _topological_order(list(cards.keys()), deps_in, cards)
+    order = _topological_order(list(work_orders.keys()), deps_in, work_orders)
 
     result = PlanResult()
     placed: dict[int, tuple[datetime, datetime]] = {}
     machine_intervals: dict[int, list] = defaultdict(list)
     assignee_intervals: dict[int, list] = defaultdict(list)
 
-    def register(card, start, end):
-        placed[card.id] = (start, end)
-        if card.machine_id:
-            machine_intervals[card.machine_id].append((start, end))
-        if request.check_assignee and card.assigned_to_id:
-            assignee_intervals[card.assigned_to_id].append((start, end))
+    def register(work_order, start, end):
+        placed[work_order.id] = (start, end)
+        if work_order.machine_id:
+            machine_intervals[work_order.machine_id].append((start, end))
+        if request.check_assignee and work_order.assigned_to_id:
+            assignee_intervals[work_order.assigned_to_id].append((start, end))
 
-    for card_id in order:
-        card = cards[card_id]
+    for work_order_id in order:
+        work_order = work_orders[work_order_id]
 
-        if card.lifecycle_status in _TERMINAL:
+        if work_order.lifecycle_status in _TERMINAL:
             continue
 
         # Locked or (frozen) already-scheduled cards keep their slot but still
         # occupy their resource so movable cards schedule around them.
-        frozen = card_id in request.locked_ids or (
+        frozen = work_order_id in request.locked_ids or (
             not request.allow_move_existing
-            and card.scheduled_start
-            and card.scheduled_end
+            and work_order.scheduled_start
+            and work_order.scheduled_end
         )
         if frozen:
-            if card.scheduled_start and card.scheduled_end:
-                register(card, card.scheduled_start, card.scheduled_end)
+            if work_order.scheduled_start and work_order.scheduled_end:
+                register(
+                    work_order, work_order.scheduled_start, work_order.scheduled_end
+                )
             continue
 
-        if not card.estimated_minutes:
+        if not work_order.estimated_minutes:
             result.warnings.append(
-                f'Work order {card_id} has no estimated duration; not scheduled.'
+                f'Work order {work_order_id} has no estimated duration; not scheduled.'
             )
-            result.unscheduled.append(card_id)
+            result.unscheduled.append(work_order_id)
             continue
 
-        spec = spec_for_card(card)
-        duration = card.estimated_minutes
+        spec = spec_for_card(work_order)
+        duration = work_order.estimated_minutes
 
         earliest = request.horizon_start
-        for from_id, dtype, lag in deps_in.get(card_id, ()):
+        for from_id, dtype, lag in deps_in.get(work_order_id, ()):
             if from_id in placed:
                 f_start, f_end = placed[from_id]
                 dep_start = _dependency_earliest_start(
@@ -232,20 +234,24 @@ def plan_schedule(request: PlanRequest) -> PlanResult:
                 )
                 earliest = max(earliest, dep_start)
 
-        intervals = list(machine_intervals[card.machine_id]) if card.machine_id else []
-        if request.check_assignee and card.assigned_to_id:
-            intervals += assignee_intervals[card.assigned_to_id]
+        intervals = (
+            list(machine_intervals[work_order.machine_id])
+            if work_order.machine_id
+            else []
+        )
+        if request.check_assignee and work_order.assigned_to_id:
+            intervals += assignee_intervals[work_order.assigned_to_id]
 
         start, end = _place_without_conflict(spec, earliest, duration, intervals)
-        register(card, start, end)
+        register(work_order, start, end)
 
         # Only emit an operation when the placement actually changes something.
-        if card.scheduled_start != start or card.scheduled_end != end:
+        if work_order.scheduled_start != start or work_order.scheduled_end != end:
             result.operations.append(
                 PlanOperation(
-                    card_id=card_id,
-                    old_start=card.scheduled_start,
-                    old_end=card.scheduled_end,
+                    work_order_id=work_order_id,
+                    old_start=work_order.scheduled_start,
+                    old_end=work_order.scheduled_end,
                     new_start=start,
                     new_end=end,
                 )

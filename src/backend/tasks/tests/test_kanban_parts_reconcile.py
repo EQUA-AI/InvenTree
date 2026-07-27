@@ -15,7 +15,7 @@ from django.urls import reverse
 
 from part.models import Part
 from stock.models import StockItem
-from tasks.models import KanbanCard, KanbanCardPart
+from tasks.models import WorkOrder, WorkOrderPart
 
 
 class KanbanPartsReconcileTest(TestCase):
@@ -25,7 +25,7 @@ class KanbanPartsReconcileTest(TestCase):
         )
         self.client.force_login(self.user)
 
-        self.card = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Parts WO', status='backlog', priority='low'
         )
         self.bearing = Part.objects.create(
@@ -41,7 +41,7 @@ class KanbanPartsReconcileTest(TestCase):
         StockItem.objects.create(part=self.seal, quantity=Decimal('100'))
         StockItem.objects.create(part=self.belt, quantity=Decimal('100'))
 
-        self.url = reverse('kanban-card-part-list', kwargs={'card_pk': self.card.pk})
+        self.url = reverse('kanban-card-part-list', kwargs={'work_order_pk': self.work_order.pk})
 
     def _put(self, parts):
         return self.client.put(self.url, data=parts, content_type='application/json')
@@ -49,7 +49,7 @@ class KanbanPartsReconcileTest(TestCase):
     def _quantities(self):
         return {
             cp.part_id: cp.quantity
-            for cp in KanbanCardPart.objects.filter(card=self.card)
+            for cp in WorkOrderPart.objects.filter(work_order=self.work_order)
         }
 
     def test_reconcile_creates_parts_from_empty(self):
@@ -66,8 +66,8 @@ class KanbanPartsReconcileTest(TestCase):
 
     def test_reconcile_updates_an_existing_quantity(self):
         """Doc bug 6.3: this used to be silently dropped."""
-        KanbanCardPart.objects.create(
-            card=self.card, part=self.bearing, quantity=Decimal('2')
+        WorkOrderPart.objects.create(
+            work_order=self.work_order, part=self.bearing, quantity=Decimal('2')
         )
 
         response = self._put([{'part': self.bearing.pk, 'quantity': 5}])
@@ -77,11 +77,11 @@ class KanbanPartsReconcileTest(TestCase):
 
     def test_reconcile_deletes_a_removed_part(self):
         """Doc bug 6.2: removed parts were never deleted server-side."""
-        KanbanCardPart.objects.create(
-            card=self.card, part=self.bearing, quantity=Decimal('2')
+        WorkOrderPart.objects.create(
+            work_order=self.work_order, part=self.bearing, quantity=Decimal('2')
         )
-        KanbanCardPart.objects.create(
-            card=self.card, part=self.seal, quantity=Decimal('1')
+        WorkOrderPart.objects.create(
+            work_order=self.work_order, part=self.seal, quantity=Decimal('1')
         )
 
         # Desired set omits the seal.
@@ -91,11 +91,11 @@ class KanbanPartsReconcileTest(TestCase):
         self.assertEqual(list(self._quantities()), [self.bearing.pk])
 
     def test_reconcile_does_all_three_at_once(self):
-        KanbanCardPart.objects.create(
-            card=self.card, part=self.bearing, quantity=Decimal('2')
+        WorkOrderPart.objects.create(
+            work_order=self.work_order, part=self.bearing, quantity=Decimal('2')
         )
-        KanbanCardPart.objects.create(
-            card=self.card, part=self.seal, quantity=Decimal('1')
+        WorkOrderPart.objects.create(
+            work_order=self.work_order, part=self.seal, quantity=Decimal('1')
         )
 
         # keep+change bearing, delete seal, add belt.
@@ -111,14 +111,14 @@ class KanbanPartsReconcileTest(TestCase):
         )
 
     def test_reconcile_to_empty_clears_all_parts(self):
-        KanbanCardPart.objects.create(
-            card=self.card, part=self.bearing, quantity=Decimal('2')
+        WorkOrderPart.objects.create(
+            work_order=self.work_order, part=self.bearing, quantity=Decimal('2')
         )
 
         response = self._put([])
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(KanbanCardPart.objects.filter(card=self.card).count(), 0)
+        self.assertEqual(WorkOrderPart.objects.filter(work_order=self.work_order).count(), 0)
 
     def test_response_reports_allocation(self):
         response = self._put([{'part': self.bearing.pk, 'quantity': 2}])
@@ -146,7 +146,7 @@ class KanbanPartsReconcileTest(TestCase):
         ])
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(KanbanCardPart.objects.filter(card=self.card).count(), 0)
+        self.assertEqual(WorkOrderPart.objects.filter(work_order=self.work_order).count(), 0)
 
     def test_unknown_part_is_rejected(self):
         response = self._put([{'part': 999999, 'quantity': 1}])
@@ -164,8 +164,8 @@ class KanbanPartsReconcileTest(TestCase):
 
     def test_reconcile_is_atomic_on_a_bad_item(self):
         """A validation failure must leave the existing set untouched."""
-        KanbanCardPart.objects.create(
-            card=self.card, part=self.bearing, quantity=Decimal('2')
+        WorkOrderPart.objects.create(
+            work_order=self.work_order, part=self.bearing, quantity=Decimal('2')
         )
 
         # Second item is invalid; the whole request must roll back / not apply.
@@ -208,17 +208,17 @@ class KanbanAllocatePartsStillWorksTest(TestCase):
             username='alloc-sup', email='a@example.com', password='pw'
         )
         self.client.force_login(self.user)
-        self.card = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Alloc WO', status='backlog', priority='low'
         )
         self.part = Part.objects.create(name='P', description='p', component=True)
         StockItem.objects.create(part=self.part, quantity=Decimal('50'))
-        KanbanCardPart.objects.create(
-            card=self.card, part=self.part, quantity=Decimal('5')
+        WorkOrderPart.objects.create(
+            work_order=self.work_order, part=self.part, quantity=Decimal('5')
         )
 
     def test_allocate_reports_full_allocation(self):
-        url = reverse('kanban-card-allocate', kwargs={'card_pk': self.card.pk})
+        url = reverse('kanban-card-allocate', kwargs={'work_order_pk': self.work_order.pk})
 
         response = self.client.post(url)
 

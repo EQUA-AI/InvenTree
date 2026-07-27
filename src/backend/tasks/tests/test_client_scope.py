@@ -11,7 +11,7 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from tasks.models import KanbanCard, WorkOrderType
+from tasks.models import WorkOrder, WorkOrderType
 from tasks.scope import (
     MaintenanceScope,
     ScopeError,
@@ -47,13 +47,13 @@ class ClientScopeResolutionTest(TestCase):
     def _card(self, machine, **overrides):
         values = {
             'title': 'Work',
-            'status': KanbanCard.STATUS_BACKLOG,
-            'priority': KanbanCard.PRIORITY_MEDIUM,
+            'status': WorkOrder.STATUS_BACKLOG,
+            'priority': WorkOrder.PRIORITY_MEDIUM,
             'machine': machine,
             'work_order_type': WorkOrderType.CORRECTIVE,
         }
         values.update(overrides)
-        return KanbanCard.objects.create(**values)
+        return WorkOrder.objects.create(**values)
 
     def test_internal_asset_resolves_to_its_client(self):
         """An asset nobody bought is still reachable."""
@@ -119,10 +119,10 @@ class ClientScopeAuthorizationTest(TestCase):
         )
 
     def _card(self, machine):
-        return KanbanCard.objects.create(
+        return WorkOrder.objects.create(
             title='Work',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             machine=machine,
         )
 

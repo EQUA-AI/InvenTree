@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 
 from rest_framework import serializers
 
-from .models import KanbanCard, WorkOrderEvent, WorkOrderLifecycle
+from .models import WorkOrder, WorkOrderEvent, WorkOrderLifecycle
 
 
 class WorkOrderSerializer(serializers.ModelSerializer):
@@ -17,7 +17,7 @@ class WorkOrderSerializer(serializers.ModelSerializer):
     class Meta:
         """Serializer metadata."""
 
-        model = KanbanCard
+        model = WorkOrder
         fields = (
             'id',
             'reference',

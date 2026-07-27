@@ -17,7 +17,7 @@ from tasks.models import (
     JobKitAllocation,
     JobKitLine,
     JobKitStatus,
-    KanbanCard,
+    WorkOrder,
     ProcedureResourceKind,
     WorkOrderType,
 )
@@ -38,9 +38,9 @@ class JobKitReservationAPITest(TestCase):
         }
         self.client = APIClient()
         self.client.force_authenticate(self.actor)
-        self.work_order = KanbanCard.objects.create(
-            title='Reserve API WO', status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM, customer=self.customer,
+        self.work_order = WorkOrder.objects.create(
+            title='Reserve API WO', status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
             work_order_type=WorkOrderType.PREVENTIVE,
         )
         self.kit = JobKit.objects.create(
@@ -92,9 +92,9 @@ class JobKitReservationAPITest(TestCase):
 
     def test_release_foreign_allocation_is_404(self):
         self.reserve()
-        other_wo = KanbanCard.objects.create(
-            title='Other', status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM, customer=self.customer,
+        other_wo = WorkOrder.objects.create(
+            title='Other', status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
             work_order_type=WorkOrderType.PREVENTIVE,
         )
         # Give the other work order its own kit so the failure is specifically

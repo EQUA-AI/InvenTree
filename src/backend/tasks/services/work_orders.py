@@ -9,12 +9,7 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
-from tasks.models import (
-    KanbanCard,
-    WorkOrderCommand,
-    WorkOrderEvent,
-    WorkOrderLifecycle,
-)
+from tasks.models import WorkOrder, WorkOrderCommand, WorkOrderEvent, WorkOrderLifecycle
 from tasks.permissions import (
     ASSIGN_WORKORDER,
     EXECUTE_WORKORDER,
@@ -131,11 +126,11 @@ def _canonical_hash(command: str, actor, payload: dict[str, Any]) -> str:
     ).hexdigest()
 
 
-def _locked_work_order(work_order_id: int) -> KanbanCard:
-    # Lock only the KanbanCard base row (of=('self',)); machine/assigned_to are
+def _locked_work_order(work_order_id: int) -> WorkOrder:
+    # Lock only the WorkOrder base row (of=('self',)); machine/assigned_to are
     # nullable FKs, and PostgreSQL rejects FOR UPDATE across their outer joins.
     return (
-        KanbanCard.objects
+        WorkOrder.objects
         .select_for_update(of=('self',))
         .select_related('machine', 'assigned_to')
         .get(pk=work_order_id)

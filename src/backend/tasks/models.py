@@ -32,8 +32,19 @@ class WorkOrderType(models.TextChoices):
     OTHER = 'other', _('Other')
 
 
-class KanbanCard(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
-    """Persistent representation of a Kanban card."""
+class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
+    """One maintenance job: what was authorised, and what closing it recorded.
+
+    Exactly one of these exists per maintenance job. It owns the things that
+    make the job accountable - its reference, its lifecycle and version, the
+    machine and customer it concerns, who requested it, and the structured
+    closeout that ends it.
+
+    It does not own the board. The work that gets tracked and moved around -
+    diagnose, source the part, do the repair - lives in :class:`WorkOrder`,
+    and a work order may have several. Board position is a card's property
+    precisely because one job can be in more than one state at once.
+    """
 
     STATUS_BACKLOG = 'backlog'
     STATUS_IN_PROGRESS = 'in-progress'
@@ -180,10 +191,9 @@ class KanbanCard(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
             models.Index(fields=['due_date'], name='tasks_wo_due_date'),
         ]
 
-        # The model is still called KanbanCard - renaming it would be a wide,
-        # high-risk refactor with no user value - but the table it lives in is
-        # the work-order table, and Postgres should say so.
         db_table = 'tasks_workorder'
+        verbose_name = _('Work Order')
+        verbose_name_plural = _('Work Orders')
 
     def __str__(self) -> str:
         """Readable identity for admin and logs."""
@@ -217,10 +227,10 @@ class KanbanColumn(models.Model):
     four hardcoded defaults and any card whose ``status`` pointed at a custom
     column silently vanished (its status string matched no rendered column).
 
-    Persisting them here fixes that. ``KanbanCard.status`` remains a free-text
+    Persisting them here fixes that. ``WorkOrder.status`` remains a free-text
     field that stores this column's ``key``; the seed migration creates the four
     original columns under their existing keys so every stored ``status`` keeps
-    resolving. There is deliberately no FK from ``KanbanCard.status`` to this
+    resolving. There is deliberately no FK from ``WorkOrder.status`` to this
     model yet -- that is a heavier migration tracked separately -- so nothing
     enforces referential integrity at the database level, and code that maps a
     card to its column must tolerate an unmatched key.
@@ -230,7 +240,7 @@ class KanbanColumn(models.Model):
         max_length=32,
         unique=True,
         verbose_name=_('Key'),
-        help_text=_('Stable identifier stored in KanbanCard.status'),
+        help_text=_('Stable identifier stored in the board status field'),
     )
     label = models.CharField(max_length=64, verbose_name=_('Label'))
     color = models.CharField(
@@ -281,12 +291,12 @@ class KanbanColumn(models.Model):
 
     def card_count(self, *, active_only: bool = True) -> int:
         """Return the number of cards currently in this column."""
-        cards = KanbanCard.objects.filter(status=self.key)
+        work_orders = WorkOrder.objects.filter(status=self.key)
 
         if active_only:
-            cards = cards.filter(is_active=True)
+            work_orders = work_orders.filter(is_active=True)
 
-        return cards.count()
+        return work_orders.count()
 
 
 def _default_windows() -> dict:
@@ -400,14 +410,18 @@ class WorkingCalendar(models.Model):
         return CalendarSpec(tzname=self.timezone, windows=windows, holidays=holidays)
 
 
-class KanbanCardDependency(models.Model):
-    """A scheduling dependency between two work orders (S6, plan §5.10).
+class WorkOrderDependency(models.Model):
+    """A scheduling dependency between two pieces of tracked work (S6, §5.10).
 
-    The edge points from predecessor (``from_card``) to successor (``to_card``):
-    for the default finish-to-start type, ``from_card`` must finish before
-    ``to_card`` starts. ``lag_minutes`` is working-time slack applied after the
-    constraint (negative values are leads). The graph is kept acyclic by
-    service-level validation on creation.
+    The edge points from ``predecessor`` to ``successor``: for the default
+    finish-to-start type, the predecessor must finish before the successor
+    starts. ``lag_minutes`` is working-time slack applied after the constraint
+    (negative values are leads). The graph is kept acyclic by service-level
+    validation on creation.
+
+    The endpoints were named ``predecessor``/``successor`` when a work order and a
+    board card were the same row. They are named for their role now, so the
+    edge reads the same whichever entity it eventually connects.
     """
 
     TYPE_FS = 'FS'
@@ -421,11 +435,11 @@ class KanbanCardDependency(models.Model):
         (TYPE_SF, 'Start-to-Finish'),
     ]
 
-    from_card = models.ForeignKey(
-        KanbanCard, on_delete=models.CASCADE, related_name='dependencies_out'
+    predecessor = models.ForeignKey(
+        WorkOrder, on_delete=models.CASCADE, related_name='dependencies_out'
     )
-    to_card = models.ForeignKey(
-        KanbanCard, on_delete=models.CASCADE, related_name='dependencies_in'
+    successor = models.ForeignKey(
+        WorkOrder, on_delete=models.CASCADE, related_name='dependencies_in'
     )
     dependency_type = models.CharField(
         max_length=2, choices=TYPE_CHOICES, default=TYPE_FS
@@ -439,18 +453,23 @@ class KanbanCardDependency(models.Model):
     class Meta:
         """Model metadata."""
 
-        unique_together = [('from_card', 'to_card', 'dependency_type')]
+        unique_together = [('predecessor', 'successor', 'dependency_type')]
         ordering = ['created_at']
         verbose_name = _('Work Order Dependency')
         verbose_name_plural = _('Work Order Dependencies')
 
     def __str__(self) -> str:
         """Readable identity for admin and logs."""
-        return f'{self.from_card_id} {self.dependency_type} {self.to_card_id}'
+        return f'{self.predecessor_id} {self.dependency_type} {self.successor_id}'
 
 
-class KanbanCardPart(models.Model):
-    """Links a Part to a KanbanCard with a required quantity and allocation tracking."""
+class WorkOrderPart(models.Model):
+    """Links a Part to a work order with a required quantity and allocation.
+
+    Parts are required by the *job*, not by whichever card happens to track
+    fetching them: the seal kit is needed to rebuild the pump whether the
+    sourcing shows on its own card or not.
+    """
 
     ALLOCATION_NONE = 'none'
     ALLOCATION_PARTIAL = 'partial'
@@ -464,8 +483,8 @@ class KanbanCardPart(models.Model):
         (ALLOCATION_INSUFFICIENT, 'Insufficient'),
     ]
 
-    card = models.ForeignKey(
-        KanbanCard, on_delete=models.CASCADE, related_name='card_parts'
+    work_order = models.ForeignKey(
+        WorkOrder, on_delete=models.CASCADE, related_name='work_order_parts'
     )
     part = models.ForeignKey(
         'part.Part', on_delete=models.CASCADE, related_name='kanban_allocations'
@@ -474,7 +493,7 @@ class KanbanCardPart(models.Model):
         max_digits=15,
         decimal_places=5,
         default=Decimal('1'),
-        help_text='Required quantity of this part for the card',
+        help_text='Required quantity of this part for the work order',
     )
     allocated_quantity = models.DecimalField(
         max_digits=15,
@@ -497,12 +516,12 @@ class KanbanCardPart(models.Model):
     class Meta:
         """Model metadata."""
 
-        unique_together = [('card', 'part')]
+        unique_together = [('work_order', 'part')]
         ordering = ['created_at']
 
     def __str__(self) -> str:
         """Readable identity for admin and logs."""
-        return f'{self.card.title} - {self.part.name} x{self.quantity}'
+        return f'{self.work_order.title} - {self.part.name} x{self.quantity}'
 
     def check_and_allocate(self, persist: bool = True):
         """Check stock availability and allocate if possible.

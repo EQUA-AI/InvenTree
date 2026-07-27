@@ -128,7 +128,7 @@ class RiskSourceScopeAdapter:
 
 
 class WorkOrderScopeAdapter(RiskSourceScopeAdapter):
-    """Scope adapter over ``tasks.KanbanCard`` (the AIMMS work order).
+    """Scope adapter over ``tasks.WorkOrder`` (the AIMMS work order).
 
     Mirrors the live fail-closed seam: a row is in scope when its explicit
     customer and its machine's customer agree on (or one of them names) the
@@ -140,10 +140,10 @@ class WorkOrderScopeAdapter(RiskSourceScopeAdapter):
 
     def queryset_for_scope(self, *, actor, scope: MaintenanceScope) -> QuerySet:
         """Return work orders provably owned by the scope customer."""
-        from tasks.models import KanbanCard
+        from tasks.models import WorkOrder
 
         customer_id = _require_site_unscoped(scope, self.source_kind)
-        return KanbanCard.objects.filter(
+        return WorkOrder.objects.filter(
             Q(customer_id=customer_id, machine__isnull=True)
             | Q(customer_id=customer_id, machine__customer__isnull=True)
             | Q(customer_id=customer_id, machine__customer_id=customer_id)

@@ -7,7 +7,7 @@ from django.test import TestCase
 
 from assets.models import AssetMachine
 from company.models import Company
-from tasks.models import KanbanCard, WorkingCalendar
+from tasks.models import WorkOrder, WorkingCalendar
 from tasks.services.calendars import calendar_for_card, spec_for_card
 
 
@@ -59,7 +59,7 @@ class CalendarResolutionTest(TestCase):
         self.machine = AssetMachine.objects.create(
             name='Cal Press', customer=self.customer
         )
-        self.card = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Cal WO', status='backlog', priority='low', machine=self.machine
         )
 
@@ -74,8 +74,8 @@ class CalendarResolutionTest(TestCase):
             name='Default cal', is_default=True, timezone='UTC'
         )
 
-        self.assertEqual(calendar_for_card(self.card), machine_cal)
-        self.assertEqual(spec_for_card(self.card).tzname, 'Europe/Berlin')
+        self.assertEqual(calendar_for_card(self.work_order), machine_cal)
+        self.assertEqual(spec_for_card(self.work_order).tzname, 'Europe/Berlin')
 
     def test_customer_calendar_used_when_no_machine_calendar(self):
         customer_cal = WorkingCalendar.objects.create(
@@ -83,26 +83,26 @@ class CalendarResolutionTest(TestCase):
         )
         WorkingCalendar.objects.create(name='Default cal', is_default=True)
 
-        self.assertEqual(calendar_for_card(self.card), customer_cal)
+        self.assertEqual(calendar_for_card(self.work_order), customer_cal)
 
     def test_customer_inherited_from_machine_when_card_has_none(self):
         # The card's own customer is null; it should inherit the machine's.
-        self.assertIsNone(self.card.customer_id)
+        self.assertIsNone(self.work_order.customer_id)
         customer_cal = WorkingCalendar.objects.create(
             name='Inherited', customer=self.customer
         )
 
-        self.assertEqual(calendar_for_card(self.card), customer_cal)
+        self.assertEqual(calendar_for_card(self.work_order), customer_cal)
 
     def test_default_calendar_used_when_nothing_more_specific(self):
         default_cal = WorkingCalendar.objects.create(
             name='Default cal', is_default=True, timezone='UTC'
         )
-        self.assertEqual(calendar_for_card(self.card), default_cal)
+        self.assertEqual(calendar_for_card(self.work_order), default_cal)
 
     def test_hardcoded_fallback_when_no_calendars_exist(self):
         # No WorkingCalendar rows at all: spec still resolves so scheduling works.
-        self.assertIsNone(calendar_for_card(self.card))
-        spec = spec_for_card(self.card)
+        self.assertIsNone(calendar_for_card(self.work_order))
+        spec = spec_for_card(self.work_order)
         self.assertEqual(spec.tzname, 'UTC')
         self.assertEqual(spec.windows[0], ((time(9, 0), time(17, 0)),))

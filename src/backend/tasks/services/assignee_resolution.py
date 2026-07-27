@@ -1,6 +1,6 @@
 """Best-effort resolution of free-text assignee strings to ``User`` records.
 
-``KanbanCard`` carries both a free-text ``assignee`` and an ``assigned_to`` FK.
+``WorkOrder`` carries both a free-text ``assignee`` and an ``assigned_to`` FK.
 Scheduling needs a real identity -- per-assignee overlap detection and "group by
 assignee" are wrong against free text, because two spellings of one person read
 as two people. S3b makes ``assigned_to`` authoritative by back-filling it from

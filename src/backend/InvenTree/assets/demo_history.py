@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 
-from tasks.models import KanbanCard, KanbanColumn, WorkOrderEvent, WorkOrderLifecycle
+from tasks.models import KanbanColumn, WorkOrder, WorkOrderEvent, WorkOrderLifecycle
 
 # Bump when the imported-history field set changes so a loader rerun can detect
 # and refresh cards stamped by an older profile.
@@ -51,7 +51,7 @@ def completion_instant(record_date, *, timezone_name=None):
 
 
 def normalize_completed_history_card(
-    card, *, record_date, dataset, timezone_name=None, extra_metadata=None
+    work_order, *, record_date, dataset, timezone_name=None, extra_metadata=None
 ):
     """Apply the minimum completed-history invariant to a demo work order.
 
@@ -63,18 +63,18 @@ def normalize_completed_history_card(
     Returns the completion datetime that was stored.
     """
     completed_at = completion_instant(record_date, timezone_name=timezone_name)
-    terminal_status = KanbanColumn.terminal_key() or KanbanCard.STATUS_DONE
+    terminal_status = KanbanColumn.terminal_key() or WorkOrder.STATUS_DONE
 
     fields = {
         'status': terminal_status,
         'lifecycle_status': WorkOrderLifecycle.COMPLETED,
         'is_active': False,
-        'card_kind': KanbanCard.KIND_WORK_ORDER,
+        'card_kind': WorkOrder.KIND_WORK_ORDER,
         'actual_completed_at': completed_at,
     }
     for field, value in fields.items():
-        setattr(card, field, value)
-    card.save(update_fields=[*fields, 'updated_at'])
+        setattr(work_order, field, value)
+    work_order.save(update_fields=[*fields, 'updated_at'])
 
     metadata = {
         'source': dataset,
@@ -83,18 +83,18 @@ def normalize_completed_history_card(
         **(extra_metadata or {}),
     }
     correlation_id = uuid.uuid5(
-        _CORRELATION_NAMESPACE, f'{dataset}:{card.reference or card.pk}'
+        _CORRELATION_NAMESPACE, f'{dataset}:{work_order.reference or work_order.pk}'
     )
 
     event, created = WorkOrderEvent.objects.get_or_create(
-        work_order=card,
+        work_order=work_order,
         event_type=IMPORTED_HISTORY_EVENT,
         defaults={
             'from_status': '',
             'to_status': WorkOrderLifecycle.COMPLETED,
             'reason': 'Imported demo maintenance history',
             'correlation_id': correlation_id,
-            'idempotency_key': f'{dataset}:history:{card.reference or card.pk}',
+            'idempotency_key': f'{dataset}:history:{work_order.reference or work_order.pk}',
             'metadata': metadata,
         },
     )

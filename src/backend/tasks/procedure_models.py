@@ -314,7 +314,7 @@ class WorkOrderProcedureApplication(models.Model):
     """Immutable procedure snapshot applied to a work order."""
 
     work_order = models.ForeignKey(
-        'tasks.KanbanCard',
+        'tasks.WorkOrder',
         on_delete=models.CASCADE,
         related_name='procedure_applications',
     )

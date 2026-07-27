@@ -34,14 +34,14 @@ from django.db.models import ProtectedError
 from django.utils import timezone
 
 from tasks.models import (
-    KanbanCard,
-    KanbanCardDependency,
-    KanbanCardPart,
     KanbanColumn,
+    WorkOrder,
     WorkOrderCommand,
     WorkOrderDeletionRecord,
+    WorkOrderDependency,
     WorkOrderEvent,
     WorkOrderLifecycle,
+    WorkOrderPart,
     WorkOrderType,
 )
 from tasks.services.calendars import spec_for_card
@@ -171,7 +171,7 @@ def _validate_window(start: datetime | None, end: datetime | None) -> None:
         raise InvalidSchedule('Scheduled end must not be before scheduled start.')
 
 
-def _require_mutable(work_order: KanbanCard) -> None:
+def _require_mutable(work_order: WorkOrder) -> None:
     if work_order.lifecycle_status in _TERMINAL_STATES:
         raise NotMutable(
             f'Work order {work_order.pk} is {work_order.lifecycle_status} and '
@@ -221,20 +221,20 @@ def create_work_order(
             )
         # The command is FK'd to the card it created, so the card is prior's
         # work_order — result_ref holds the event pk, not the card pk.
-        existing = KanbanCard.objects.filter(pk=prior.work_order_id).first()
+        existing = WorkOrder.objects.filter(pk=prior.work_order_id).first()
         if existing is None:
             raise WorkOrderCommandError('Stored create result cannot be replayed')
         return _result_for(existing, 'create', prior.correlation_id, idempotency_key)
 
     fields = {key: value for key, value in planning.items() if key in _PLAN_FIELDS}
-    fields.setdefault('status', KanbanCard.STATUS_BACKLOG)
-    fields.setdefault('priority', KanbanCard.PRIORITY_MEDIUM)
+    fields.setdefault('status', WorkOrder.STATUS_BACKLOG)
+    fields.setdefault('priority', WorkOrder.PRIORITY_MEDIUM)
     fields.setdefault('work_order_type', WorkOrderType.CORRECTIVE)
 
     correlation_id = _new_correlation(correlation_id)
 
     with transaction.atomic():
-        work_order = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title=title, machine_id=machine_id, **fields
         )
         return _append_result(
@@ -562,7 +562,7 @@ def delete_work_order(
         )
 
 
-def _snapshot(work_order: KanbanCard) -> dict[str, Any]:
+def _snapshot(work_order: WorkOrder) -> dict[str, Any]:
     """Serialize the durable fields of a card for forensic recovery."""
     return {
         'title': work_order.title,
@@ -611,13 +611,13 @@ def apply_schedule_batch(
 
     with transaction.atomic():
         for op in operations:
-            card_id = op['card_id']
+            work_order_id = op['card_id']
             results.append(
                 schedule_work_order(
-                    work_order_id=card_id,
+                    work_order_id=work_order_id,
                     actor=actor,
                     expected_version=op['expected_version'],
-                    idempotency_key=f'{idempotency_key}:{card_id}',
+                    idempotency_key=f'{idempotency_key}:{work_order_id}',
                     scheduled_start=op.get('scheduled_start'),
                     scheduled_end=op.get('scheduled_end'),
                     correlation_id=correlation_id,
@@ -630,26 +630,28 @@ def apply_schedule_batch(
 # ── Dependencies ─────────────────────────────────────────────────────────────
 
 
-def _would_create_cycle(from_card_id: int, to_card_id: int) -> bool:
-    """Return whether adding ``from_card -> to_card`` closes a cycle.
+def _would_create_cycle(predecessor_id: int, successor_id: int) -> bool:
+    """Return whether adding ``predecessor -> successor`` closes a cycle.
 
-    A cycle exists if ``to_card`` can already reach ``from_card`` by following
+    A cycle exists if ``successor`` can already reach ``predecessor`` by following
     existing predecessor->successor edges. Breadth-first over the existing graph;
     the edge set is small, so this stays cheap.
     """
-    if from_card_id == to_card_id:
+    if predecessor_id == successor_id:
         return True
 
     # Adjacency: predecessor -> set(successors).
     edges: dict[int, set[int]] = {}
-    for f, t in KanbanCardDependency.objects.values_list('from_card_id', 'to_card_id'):
+    for f, t in WorkOrderDependency.objects.values_list(
+        'predecessor_id', 'successor_id'
+    ):
         edges.setdefault(f, set()).add(t)
 
-    frontier = [to_card_id]
-    seen = {to_card_id}
+    frontier = [successor_id]
+    seen = {successor_id}
     while frontier:
         node = frontier.pop()
-        if node == from_card_id:
+        if node == predecessor_id:
             return True
         for nxt in edges.get(node, ()):  # successors of node
             if nxt not in seen:
@@ -661,59 +663,59 @@ def _would_create_cycle(from_card_id: int, to_card_id: int) -> bool:
 
 def create_dependency(
     *,
-    from_card_id: int,
-    to_card_id: int,
+    predecessor_id: int,
+    successor_id: int,
     actor,
-    dependency_type: str = KanbanCardDependency.TYPE_FS,
+    dependency_type: str = WorkOrderDependency.TYPE_FS,
     lag_minutes: int = 0,
     correlation_id: uuid.UUID | None = None,
-) -> KanbanCardDependency:
+) -> WorkOrderDependency:
     """Create a scheduling dependency, rejecting self-loops and cycles.
 
-    Idempotent via the ``(from_card, to_card, type)`` unique constraint: a repeat
+    Idempotent via the ``(predecessor, successor, type)`` unique constraint: a repeat
     returns the existing edge. Records a ``DEPENDENCY_ADDED`` event on the
     successor (the card that gains a predecessor).
     """
-    if dependency_type not in dict(KanbanCardDependency.TYPE_CHOICES):
+    if dependency_type not in dict(WorkOrderDependency.TYPE_CHOICES):
         raise InvalidDependency(f'Unknown dependency type: {dependency_type}')
 
-    if from_card_id == to_card_id:
+    if predecessor_id == successor_id:
         raise InvalidDependency('A work order cannot depend on itself.')
 
     with transaction.atomic():
-        if not KanbanCard.objects.filter(pk=from_card_id).exists():
-            raise UnknownWorkOrder(f'No work order {from_card_id}')
-        if not KanbanCard.objects.filter(pk=to_card_id).exists():
-            raise UnknownWorkOrder(f'No work order {to_card_id}')
+        if not WorkOrder.objects.filter(pk=predecessor_id).exists():
+            raise UnknownWorkOrder(f'No work order {predecessor_id}')
+        if not WorkOrder.objects.filter(pk=successor_id).exists():
+            raise UnknownWorkOrder(f'No work order {successor_id}')
 
-        existing = KanbanCardDependency.objects.filter(
-            from_card_id=from_card_id,
-            to_card_id=to_card_id,
+        existing = WorkOrderDependency.objects.filter(
+            predecessor_id=predecessor_id,
+            successor_id=successor_id,
             dependency_type=dependency_type,
         ).first()
         if existing is not None:
             return existing
 
-        if _would_create_cycle(from_card_id, to_card_id):
+        if _would_create_cycle(predecessor_id, successor_id):
             raise DependencyCycle(
-                f'{from_card_id} -> {to_card_id} would create a dependency cycle'
+                f'{predecessor_id} -> {successor_id} would create a dependency cycle'
             )
 
-        dependency = KanbanCardDependency.objects.create(
-            from_card_id=from_card_id,
-            to_card_id=to_card_id,
+        dependency = WorkOrderDependency.objects.create(
+            predecessor_id=predecessor_id,
+            successor_id=successor_id,
             dependency_type=dependency_type,
             lag_minutes=lag_minutes,
         )
 
         WorkOrderEvent.objects.create(
-            work_order_id=to_card_id,
+            work_order_id=successor_id,
             event_type='DEPENDENCY_ADDED',
             actor=actor if getattr(actor, 'pk', None) else None,
             correlation_id=_new_correlation(correlation_id),
             metadata={
-                'from_card': from_card_id,
-                'to_card': to_card_id,
+                'predecessor': predecessor_id,
+                'successor': successor_id,
                 'dependency_type': dependency_type,
                 'lag_minutes': lag_minutes,
             },
@@ -727,20 +729,20 @@ def delete_dependency(
 ) -> bool:
     """Delete a dependency by id. Returns whether a row was removed."""
     with transaction.atomic():
-        dependency = KanbanCardDependency.objects.filter(pk=dependency_id).first()
+        dependency = WorkOrderDependency.objects.filter(pk=dependency_id).first()
         if dependency is None:
             return False
 
-        to_card_id = dependency.to_card_id
+        successor_id = dependency.successor_id
         metadata = {
-            'from_card': dependency.from_card_id,
-            'to_card': to_card_id,
+            'predecessor': dependency.predecessor_id,
+            'successor': successor_id,
             'dependency_type': dependency.dependency_type,
         }
         dependency.delete()
 
         WorkOrderEvent.objects.create(
-            work_order_id=to_card_id,
+            work_order_id=successor_id,
             event_type='DEPENDENCY_REMOVED',
             actor=actor if getattr(actor, 'pk', None) else None,
             correlation_id=_new_correlation(correlation_id),
@@ -759,7 +761,7 @@ def create_child(
     actor,
     idempotency_key: str,
     title: str,
-    card_kind: str = KanbanCard.KIND_SUBTASK,
+    card_kind: str = WorkOrder.KIND_SUBTASK,
     correlation_id: uuid.UUID | None = None,
     **planning: Any,
 ) -> CommandResult:
@@ -769,7 +771,7 @@ def create_child(
     inherits machine and customer from its parent and cannot diverge (§5.10).
     Idempotent on ``idempotency_key`` across the ``create_child`` command.
     """
-    if card_kind not in dict(KanbanCard.KIND_CHOICES):
+    if card_kind not in dict(WorkOrder.KIND_CHOICES):
         raise InvalidChild(f'Unknown card kind: {card_kind}')
 
     payload = {'parent_id': parent_id, 'title': title, 'card_kind': card_kind}
@@ -783,7 +785,7 @@ def create_child(
             raise IdempotencyConflict(
                 'Idempotency key was reused with a different create_child request'
             )
-        existing = KanbanCard.objects.filter(pk=prior.work_order_id).first()
+        existing = WorkOrder.objects.filter(pk=prior.work_order_id).first()
         if existing is None:
             raise WorkOrderCommandError('Stored create_child result cannot be replayed')
         return _result_for(
@@ -793,7 +795,7 @@ def create_child(
     correlation_id = _new_correlation(correlation_id)
 
     with transaction.atomic():
-        parent = KanbanCard.objects.filter(pk=parent_id).first()
+        parent = WorkOrder.objects.filter(pk=parent_id).first()
         if parent is None:
             raise UnknownWorkOrder(f'No work order {parent_id}')
         if parent.parent_id is not None:
@@ -807,9 +809,9 @@ def create_child(
             if key in _PLAN_FIELDS - {'machine_id'}
         }
 
-        child = KanbanCard.objects.create(
+        child = WorkOrder.objects.create(
             title=title,
-            status=KanbanCard.STATUS_BACKLOG,
+            status=WorkOrder.STATUS_BACKLOG,
             priority=extra.pop('priority', parent.priority),
             work_order_type=extra.pop('work_order_type', parent.work_order_type),
             machine_id=parent.machine_id,
@@ -834,7 +836,7 @@ def create_child(
         )
 
 
-def generate_procurement_child(*, parent_id: int, actor) -> KanbanCard | None:
+def generate_procurement_child(*, parent_id: int, actor) -> WorkOrder | None:
     """Raise a procurement child carrying the parent's parts shortfall.
 
     Returns the procurement child, or None when the parent has no shortfall.
@@ -843,7 +845,7 @@ def generate_procurement_child(*, parent_id: int, actor) -> KanbanCard | None:
     second one.
     """
     with transaction.atomic():
-        parent = KanbanCard.objects.filter(pk=parent_id).first()
+        parent = WorkOrder.objects.filter(pk=parent_id).first()
         if parent is None:
             raise UnknownWorkOrder(f'No work order {parent_id}')
         if parent.parent_id is not None:
@@ -851,19 +853,16 @@ def generate_procurement_child(*, parent_id: int, actor) -> KanbanCard | None:
 
         shortfall = [
             cp
-            for cp in parent.card_parts.select_related('part')
+            for cp in parent.work_order_parts.select_related('part')
             if cp.allocation_status
-            in (
-                KanbanCardPart.ALLOCATION_PARTIAL,
-                KanbanCardPart.ALLOCATION_INSUFFICIENT,
-            )
+            in (WorkOrderPart.ALLOCATION_PARTIAL, WorkOrderPart.ALLOCATION_INSUFFICIENT)
         ]
         if not shortfall:
             return None
 
         child = (
             parent.children
-            .filter(card_kind=KanbanCard.KIND_PROCUREMENT)
+            .filter(card_kind=WorkOrder.KIND_PROCUREMENT)
             .exclude(
                 lifecycle_status__in=[
                     WorkOrderLifecycle.COMPLETED,
@@ -873,22 +872,22 @@ def generate_procurement_child(*, parent_id: int, actor) -> KanbanCard | None:
             .first()
         )
         if child is None:
-            child = KanbanCard.objects.create(
+            child = WorkOrder.objects.create(
                 title=f'Procurement for {parent.title}'[:200],
-                status=KanbanCard.STATUS_BACKLOG,
+                status=WorkOrder.STATUS_BACKLOG,
                 priority=parent.priority,
                 machine_id=parent.machine_id,
                 customer_id=parent.customer_id,
                 parent_id=parent_id,
-                card_kind=KanbanCard.KIND_PROCUREMENT,
+                card_kind=WorkOrder.KIND_PROCUREMENT,
             )
 
         for cp in shortfall:
             needed = cp.quantity - cp.allocated_quantity
             if needed <= 0:
                 continue
-            KanbanCardPart.objects.update_or_create(
-                card=child, part=cp.part, defaults={'quantity': needed}
+            WorkOrderPart.objects.update_or_create(
+                work_order=child, part=cp.part, defaults={'quantity': needed}
             )
 
         WorkOrderEvent.objects.create(
@@ -896,7 +895,7 @@ def generate_procurement_child(*, parent_id: int, actor) -> KanbanCard | None:
             event_type='CHILD_GENERATED',
             actor=actor if getattr(actor, 'pk', None) else None,
             correlation_id=_new_correlation(None),
-            metadata={'child_id': child.pk, 'card_kind': KanbanCard.KIND_PROCUREMENT},
+            metadata={'child_id': child.pk, 'card_kind': WorkOrder.KIND_PROCUREMENT},
         )
 
         return child
@@ -904,14 +903,14 @@ def generate_procurement_child(*, parent_id: int, actor) -> KanbanCard | None:
 
 def incomplete_children(parent_id: int):
     """Return the parent's children that are neither completed nor canceled."""
-    return KanbanCard.objects.filter(parent_id=parent_id).exclude(
+    return WorkOrder.objects.filter(parent_id=parent_id).exclude(
         lifecycle_status__in=[WorkOrderLifecycle.COMPLETED, WorkOrderLifecycle.CANCELED]
     )
 
 
 def materialise_required_parts(
     *, work_order_id: int, lines, allocate: bool = True
-) -> list[KanbanCardPart]:
+) -> list[WorkOrderPart]:
     """Add required-part lines to a work order, idempotently.
 
     ``lines`` is an iterable of ``(part_id, quantity)`` pairs. Existing lines for
@@ -948,11 +947,11 @@ def materialise_required_parts(
     if not validated:
         return []
 
-    created: list[KanbanCardPart] = []
+    created: list[WorkOrderPart] = []
 
     for part_id, amount in validated:
-        line, _ = KanbanCardPart.objects.get_or_create(
-            card_id=work_order_id, part_id=part_id, defaults={'quantity': amount}
+        line, _ = WorkOrderPart.objects.get_or_create(
+            work_order_id=work_order_id, part_id=part_id, defaults={'quantity': amount}
         )
         created.append(line)
 

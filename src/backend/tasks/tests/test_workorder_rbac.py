@@ -17,7 +17,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from assets.models import AssetMachine
-from tasks.models import KanbanCard
+from tasks.models import WorkOrder
 from users.models import RuleSet
 from users.ruleset import RULESET_NAMES, RuleSetEnum
 
@@ -48,8 +48,8 @@ class WorkOrderRulesetRegistrationTest(TestCase):
         self.assertEqual(
             set(models),
             {
-                'tasks_kanbancard',
-                'tasks_kanbancardpart',
+                'tasks_workorder',
+                'tasks_workorderpart',
                 'assets_assetmachine',
                 'assets_assetmaintenancerecord',
                 'assets_machinepart',
@@ -88,12 +88,12 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         self.client.force_login(self.user)
 
         self.machine = AssetMachine.objects.create(name='RBAC Press')
-        self.card = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='RBAC card', status='backlog', priority='low', machine=self.machine
         )
         self.list_url = reverse('kanban-card-list')
         self.detail_url = reverse(
-            'kanban-card-detail', kwargs={'pk': self.card.pk}
+            'kanban-card-detail', kwargs={'pk': self.work_order.pk}
         )
 
     def _set(self, **permissions):
@@ -121,8 +121,8 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
-        self.card.refresh_from_db()
-        self.assertIsNone(self.card.scheduled_start)
+        self.work_order.refresh_from_db()
+        self.assertIsNone(self.work_order.scheduled_start)
 
     def test_change_permission_allows_rescheduling(self):
         self._set(can_view=True, can_change=True)
@@ -134,8 +134,8 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.card.refresh_from_db()
-        self.assertIsNotNone(self.card.scheduled_start)
+        self.work_order.refresh_from_db()
+        self.assertIsNotNone(self.work_order.scheduled_start)
 
     def test_add_permission_is_required_to_create(self):
         self._set(can_view=True, can_add=False)
@@ -165,13 +165,13 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         self._set(can_view=True, can_change=True, can_delete=False)
 
         self.assertEqual(self.client.delete(self.detail_url).status_code, 403)
-        self.card.refresh_from_db()
-        self.assertTrue(self.card.is_active)
+        self.work_order.refresh_from_db()
+        self.assertTrue(self.work_order.is_active)
 
         self._set(can_view=True, can_change=True, can_delete=True)
         self.assertEqual(self.client.delete(self.detail_url).status_code, 204)
-        self.card.refresh_from_db()
-        self.assertFalse(self.card.is_active)
+        self.work_order.refresh_from_db()
+        self.assertFalse(self.work_order.is_active)
 
     def test_restore_is_gated_on_change_rather_than_add(self):
         """Restore is a POST, but it modifies an existing card rather than adding one.
@@ -183,21 +183,21 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         under ``role_required = 'work_order.change'`` they are allowed, which is the
         correct reading of what restoring a card is.
         """
-        self.card.is_active = False
-        self.card.save(update_fields=['is_active'])
-        url = reverse('kanban-card-restore', kwargs={'pk': self.card.pk})
+        self.work_order.is_active = False
+        self.work_order.save(update_fields=['is_active'])
+        url = reverse('kanban-card-restore', kwargs={'pk': self.work_order.pk})
 
         self._set(can_view=True, can_add=False, can_change=False)
         self.assertEqual(self.client.post(url).status_code, 403)
 
         self._set(can_view=True, can_add=False, can_change=True)
         self.assertEqual(self.client.post(url).status_code, 200)
-        self.card.refresh_from_db()
-        self.assertTrue(self.card.is_active)
+        self.work_order.refresh_from_db()
+        self.assertTrue(self.work_order.is_active)
 
     def test_allocate_parts_is_gated_on_change_rather_than_add(self):
         """Re-checking stock allocation edits the card; it does not create one."""
-        url = reverse('kanban-card-allocate', kwargs={'card_pk': self.card.pk})
+        url = reverse('kanban-card-allocate', kwargs={'work_order_pk': self.work_order.pk})
 
         self._set(can_view=True, can_add=False, can_change=False)
         self.assertEqual(self.client.post(url).status_code, 403)

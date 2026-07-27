@@ -13,8 +13,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
 from tasks.models import (
-    KanbanCard,
     KanbanColumn,
+    WorkOrder,
     WorkOrderCloseout,
     WorkOrderLifecycle,
     WorkOrderType,
@@ -77,10 +77,10 @@ class PacketCloseoutTest(TestCase):
         self.machine = AssetMachine.objects.create(
             name=f'Pump {suffix}', customer=self.customer
         )
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Seal and wear-ring repair',
-            status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_HIGH,
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_HIGH,
             customer=self.customer,
             machine=self.machine,
             assigned_to=self.actor,
@@ -246,10 +246,10 @@ class PacketCloseoutApiTest(InvenTreeAPITestCase):
         self.machine = AssetMachine.objects.create(
             name=f'Blower {suffix}', customer=self.customer
         )
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Bearing replacement',
-            status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_HIGH,
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_HIGH,
             customer=self.customer,
             machine=self.machine,
             assigned_to=self.user,

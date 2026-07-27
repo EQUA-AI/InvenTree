@@ -43,9 +43,10 @@ def _sample(
 def test_offline_benchmark_meets_static_selection_gates():
     report = run_offline_benchmark(iterations=3)
 
-    # 46, not 47: delete_kanban_card is withheld from the agent's tool catalog
-    # (see test_kanban_delete_withheld.py).
-    assert report["baseline"]["tool_count"] == 46
+    # 55, not 56: delete_kanban_card is withheld from the agent's tool catalog
+    # (see test_kanban_delete_withheld.py). Was 46 before the nine machine read
+    # tools joined INVENTORY_READ_TOOLS.
+    assert report["baseline"]["tool_count"] == 55
     assert report["baseline"]["measurement"] == (
         "normalized_local_contract_bytes_not_provider_tokens"
     )

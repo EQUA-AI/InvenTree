@@ -10,7 +10,7 @@ from assets.models import AssetMachine
 from company.models import Company
 from part.models import Part
 from stock.models import StockItem
-from tasks.models import KanbanCard, KanbanCardPart, WorkOrderLifecycle
+from tasks.models import WorkOrder, WorkOrderPart, WorkOrderLifecycle
 from tasks.services import scheduling
 
 
@@ -23,7 +23,7 @@ class CreateChildTest(TestCase):
         self.machine = AssetMachine.objects.create(
             name='Child Press', customer=self.customer
         )
-        self.parent = KanbanCard.objects.create(
+        self.parent = WorkOrder.objects.create(
             title='Parent WO', status='backlog', priority='high',
             machine=self.machine, customer=self.customer,
         )
@@ -39,15 +39,15 @@ class CreateChildTest(TestCase):
 
     def test_child_inherits_machine_and_customer(self):
         result = self._create_child()
-        child = KanbanCard.objects.get(pk=result.work_order_id)
+        child = WorkOrder.objects.get(pk=result.work_order_id)
 
         self.assertEqual(child.parent_id, self.parent.pk)
         self.assertEqual(child.machine_id, self.machine.pk)
         self.assertEqual(child.customer_id, self.customer.pk)
-        self.assertEqual(child.card_kind, KanbanCard.KIND_SUBTASK)
+        self.assertEqual(child.card_kind, WorkOrder.KIND_SUBTASK)
 
     def test_depth_is_limited_to_one(self):
-        child = KanbanCard.objects.get(pk=self._create_child().work_order_id)
+        child = WorkOrder.objects.get(pk=self._create_child().work_order_id)
         with self.assertRaises(scheduling.InvalidChild):
             scheduling.create_child(
                 parent_id=child.pk,
@@ -74,7 +74,7 @@ class CreateChildTest(TestCase):
         self.assertEqual(self.parent.children.count(), 1)
 
     def test_child_cannot_diverge_machine_on_update(self):
-        child = KanbanCard.objects.get(pk=self._create_child().work_order_id)
+        child = WorkOrder.objects.get(pk=self._create_child().work_order_id)
         other = AssetMachine.objects.create(name='Other Child Machine')
 
         with self.assertRaises(scheduling.InvalidChild):
@@ -93,7 +93,7 @@ class ProcurementChildTest(TestCase):
             username='proc-actor', email='p@example.com', password='pw'
         )
         self.machine = AssetMachine.objects.create(name='Proc Press')
-        self.parent = KanbanCard.objects.create(
+        self.parent = WorkOrder.objects.create(
             title='Needs parts', status='backlog', priority='low',
             machine=self.machine,
         )
@@ -107,8 +107,8 @@ class ProcurementChildTest(TestCase):
         StockItem.objects.create(part=self.ok_part, quantity=Decimal('100'))
 
     def _add_part(self, part, qty):
-        cp = KanbanCardPart.objects.create(
-            card=self.parent, part=part, quantity=Decimal(qty)
+        cp = WorkOrderPart.objects.create(
+            work_order=self.parent, part=part, quantity=Decimal(qty)
         )
         cp.check_and_allocate()
         return cp
@@ -128,11 +128,11 @@ class ProcurementChildTest(TestCase):
         )
 
         self.assertIsNotNone(child)
-        self.assertEqual(child.card_kind, KanbanCard.KIND_PROCUREMENT)
+        self.assertEqual(child.card_kind, WorkOrder.KIND_PROCUREMENT)
         self.assertEqual(child.parent_id, self.parent.pk)
         self.assertEqual(child.machine_id, self.machine.pk)
         # The child carries the shortfall (need 10, have 1 -> 9).
-        line = child.card_parts.get(part=self.short_part)
+        line = child.work_order_parts.get(part=self.short_part)
         self.assertEqual(line.quantity, Decimal('9'))
 
     def test_generation_is_idempotent(self):
@@ -146,7 +146,7 @@ class ProcurementChildTest(TestCase):
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(
             self.parent.children.filter(
-                card_kind=KanbanCard.KIND_PROCUREMENT
+                card_kind=WorkOrder.KIND_PROCUREMENT
             ).count(),
             1,
         )
@@ -157,14 +157,14 @@ class CloseoutBlockedByChildTest(TestCase):
 
     def test_incomplete_children_helper(self):
         machine = AssetMachine.objects.create(name='CB Press')
-        parent = KanbanCard.objects.create(
+        parent = WorkOrder.objects.create(
             title='P', status='backlog', priority='low', machine=machine
         )
-        KanbanCard.objects.create(
+        WorkOrder.objects.create(
             title='open child', status='backlog', priority='low',
             machine=machine, parent=parent,
         )
-        KanbanCard.objects.create(
+        WorkOrder.objects.create(
             title='done child', status='done', priority='low',
             machine=machine, parent=parent,
             lifecycle_status=WorkOrderLifecycle.COMPLETED,
@@ -181,7 +181,7 @@ class ChildCardApiTest(TestCase):
         )
         self.client.force_login(self.user)
         self.machine = AssetMachine.objects.create(name='Child API Press')
-        self.parent = KanbanCard.objects.create(
+        self.parent = WorkOrder.objects.create(
             title='Parent', status='backlog', priority='low', machine=self.machine
         )
 

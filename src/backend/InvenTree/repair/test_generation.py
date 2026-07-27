@@ -14,7 +14,7 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 
-from tasks.models import KanbanCard, WorkOrderLifecycle, WorkOrderType
+from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 
 from assets.models import AssetMachine
 from InvenTree.unit_test import InvenTreeAPITestCase
@@ -169,7 +169,7 @@ class AIProviderGenerationTest(TestCase):
 
         self.assertEqual(packet.generation_status, GenerationStatus.SUCCEEDED)
         self.assertIsNotNone(packet.work_order_id)
-        self.assertEqual(packet.work_order.card_parts.count(), 1)
+        self.assertEqual(packet.work_order.work_order_parts.count(), 1)
         self.assertTrue(packet.gates.filter(gate_type='loto').exists())
         self.assertEqual(packet.generation_runs.first().provider, 'ai_service')
 
@@ -191,10 +191,10 @@ class AIProviderGenerationTest(TestCase):
         self.assertEqual(work_order.machine_id, machine.pk)
         # Creating a repair packet plans work; it does not start it (plan 0.3).
         self.assertEqual(work_order.lifecycle_status, WorkOrderLifecycle.DRAFT)
-        self.assertEqual(work_order.status, KanbanCard.STATUS_BACKLOG)
+        self.assertEqual(work_order.status, WorkOrder.STATUS_BACKLOG)
         self.assertEqual(work_order.work_order_type, WorkOrderType.CORRECTIVE)
         # 'critical' has no board equivalent and maps to the highest board step.
-        self.assertEqual(work_order.priority, KanbanCard.PRIORITY_HIGH)
+        self.assertEqual(work_order.priority, WorkOrder.PRIORITY_HIGH)
         self.assertTrue(work_order.events.filter(event_type='CREATED').exists())
         self.assertTrue(
             work_order.commands.filter(
@@ -219,7 +219,7 @@ class AIProviderGenerationTest(TestCase):
         self.assertEqual(packet.generation_status, GenerationStatus.SUCCEEDED)
         self.assertIsNone(packet.work_order_id)
         self.assertTrue(packet.gates.filter(gate_type='loto').exists())
-        self.assertFalse(KanbanCard.objects.filter(machine__isnull=True).exists())
+        self.assertFalse(WorkOrder.objects.filter(machine__isnull=True).exists())
 
         event = packet.events.get(event_type='work_order_skipped')
         self.assertEqual(event.metadata['reason_code'], 'PACKET_HAS_NO_MACHINE')

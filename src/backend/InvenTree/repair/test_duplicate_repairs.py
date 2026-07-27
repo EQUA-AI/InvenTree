@@ -10,7 +10,7 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from tasks.models import KanbanCard
+from tasks.models import WorkOrder
 
 from assets.health_models import AnomalySeverity
 from assets.models import AssetMachine
@@ -72,7 +72,7 @@ class DuplicateDetectionTest(TestCase):
 
     def test_refusal_writes_nothing(self):
         """A refused duplicate leaves no half-created work behind."""
-        before_cards = KanbanCard.objects.count()
+        before_cards = WorkOrder.objects.count()
         before_packets = RepairPacket.objects.count()
 
         with self.assertRaises(DuplicateRepairConflict):
@@ -82,7 +82,7 @@ class DuplicateDetectionTest(TestCase):
                 idempotency_key=uuid.uuid4().hex,
             )
 
-        self.assertEqual(KanbanCard.objects.count(), before_cards)
+        self.assertEqual(WorkOrder.objects.count(), before_cards)
         self.assertEqual(RepairPacket.objects.count(), before_packets)
 
     def test_explicit_override_creates_and_records_the_reason(self):

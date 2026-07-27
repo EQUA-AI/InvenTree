@@ -25,15 +25,15 @@ def _overlaps(a_start, a_end, b_start, b_end) -> bool:
     return a_start < b_end and b_start < a_end
 
 
-def _pairwise_overlaps(cards, *, code: str, group_label: str, group_value):
+def _pairwise_overlaps(work_orders, *, code: str, group_label: str, group_value):
     """Yield warning dicts for every overlapping pair in one resource group.
 
     ``cards`` are pre-sorted by start, so once a later card starts at or after
     the current card's end, no further card can overlap the current one.
     """
     warnings = []
-    for index, first in enumerate(cards):
-        for second in cards[index + 1 :]:
+    for index, first in enumerate(work_orders):
+        for second in work_orders[index + 1 :]:
             if second.scheduled_start >= first.scheduled_end:
                 break
             if _overlaps(
@@ -54,20 +54,23 @@ def _pairwise_overlaps(cards, *, code: str, group_label: str, group_value):
     return warnings
 
 
-def detect_conflicts(cards, *, include_assignee: bool = True) -> list[dict[str, Any]]:
+def detect_conflicts(
+    work_orders, *, include_assignee: bool = True
+) -> list[dict[str, Any]]:
     """Return machine (and optionally assignee) overlap warnings for ``cards``."""
     scheduled = [
-        card
-        for card in cards
-        if card.scheduled_start is not None and card.scheduled_end is not None
+        work_order
+        for work_order in work_orders
+        if work_order.scheduled_start is not None
+        and work_order.scheduled_end is not None
     ]
 
     warnings: list[dict[str, Any]] = []
 
     by_machine: dict[int, list] = defaultdict(list)
-    for card in scheduled:
-        if card.machine_id:
-            by_machine[card.machine_id].append(card)
+    for work_order in scheduled:
+        if work_order.machine_id:
+            by_machine[work_order.machine_id].append(work_order)
     for machine_id, group in by_machine.items():
         group.sort(key=lambda c: c.scheduled_start)
         warnings.extend(
@@ -81,9 +84,9 @@ def detect_conflicts(cards, *, include_assignee: bool = True) -> list[dict[str, 
 
     if include_assignee:
         by_assignee: dict[int, list] = defaultdict(list)
-        for card in scheduled:
-            if card.assigned_to_id:
-                by_assignee[card.assigned_to_id].append(card)
+        for work_order in scheduled:
+            if work_order.assigned_to_id:
+                by_assignee[work_order.assigned_to_id].append(work_order)
         for assignee_id, group in by_assignee.items():
             group.sort(key=lambda c: c.scheduled_start)
             warnings.extend(

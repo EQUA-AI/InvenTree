@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from assets.models import AssetMachine, AssetMaintenanceRecord
 from company.models import Company
 from tasks.models import (
-    KanbanCard,
+    WorkOrder,
     WorkOrderCloseout,
     WorkOrderLifecycle,
     WorkOrderType,
@@ -34,9 +34,9 @@ class WorkOrderCompleteAPITest(TestCase):
         self.machine = AssetMachine.objects.create(
             name='Compressor', customer=self.customer
         )
-        self.work_order = KanbanCard.objects.create(
-            title='Finish work', status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM, customer=self.customer,
+        self.work_order = WorkOrder.objects.create(
+            title='Finish work', status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
             machine=self.machine, assigned_to=self.actor,
             work_order_type=WorkOrderType.PREVENTIVE,
             lifecycle_status=WorkOrderLifecycle.VERIFYING,

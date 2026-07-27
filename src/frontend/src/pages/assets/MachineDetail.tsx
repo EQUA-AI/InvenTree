@@ -5,10 +5,12 @@ import {
   IconInfoCircle,
   IconListCheck,
   IconPlayerPlay,
+  IconSparkles,
   IconTool
 } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ScopedChatPanel } from '../../components/aichat/ScopedChatPanel';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -169,7 +171,19 @@ export default function MachineDetail() {
       AttachmentPanel({
         model_type: ModelType.assetmachine,
         model_id: machine?.pk
-      })
+      }),
+      {
+        // Last, because it answers questions about the tabs before it. The
+        // panel resolves its own pinned context server-side and renders an
+        // unavailable state when the deployment has not enabled the machine
+        // context, so mounting it unconditionally is safe.
+        name: 'ask-aimms',
+        label: t`Ask AIMMS`,
+        icon: <IconSparkles />,
+        content: machine?.pk ? (
+          <ScopedChatPanel contextType='machine' objectId={machine.pk} />
+        ) : null
+      }
     ];
   }, [machine, detailsLeft, detailsRight, detailsDescription]);
 

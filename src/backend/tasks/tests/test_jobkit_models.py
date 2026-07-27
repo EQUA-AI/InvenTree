@@ -13,7 +13,7 @@ from tasks.models import (
     JobKitLine,
     JobKitShortage,
     JobKitStatus,
-    KanbanCard,
+    WorkOrder,
     Procedure,
     ProcedureResourceKind,
     ProcedureResourceRequirement,
@@ -28,10 +28,10 @@ class JobKitModelTest(TestCase):
     def setUp(self):
         """Create a work order, parts, and a procedure resource requirement."""
         self.user = get_user_model().objects.create_user(username='job-kit-planner')
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Prepare maintenance kit',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
         )
         self.requested_part = Part.objects.create(
             name='Requested bearing', description='Requested job-kit part'

@@ -10,12 +10,7 @@ read the history but not the work order never receives its id.
 from django.test import override_settings
 from django.utils import timezone
 
-from tasks.models import (
-    KanbanCard,
-    WorkOrderCloseout,
-    WorkOrderLifecycle,
-    WorkOrderType,
-)
+from tasks.models import WorkOrder, WorkOrderCloseout, WorkOrderLifecycle, WorkOrderType
 from tasks.scope import MaintenanceScope
 
 from assets.models import AssetMachine, AssetMaintenanceRecord
@@ -52,11 +47,11 @@ class MaintenanceRecordProjectionTest(InvenTreeAPITestCase):
         )
         self.completed_at = timezone.now()
 
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Influent Pump Station No. 9: seal and wear-ring repair',
             reference='WO-TEST-000001',
-            status=KanbanCard.STATUS_DONE,
-            priority=KanbanCard.PRIORITY_HIGH,
+            status=WorkOrder.STATUS_DONE,
+            priority=WorkOrder.PRIORITY_HIGH,
             machine=self.machine,
             customer=self.customer,
             work_order_type=WorkOrderType.CORRECTIVE,
@@ -143,11 +138,11 @@ class MaintenanceRecordProjectionTest(InvenTreeAPITestCase):
             fetch()
 
         for index in range(8):
-            card = KanbanCard.objects.create(
+            work_order = WorkOrder.objects.create(
                 title=f'Routine job {index}',
                 reference=f'WO-TEST-90000{index}',
-                status=KanbanCard.STATUS_DONE,
-                priority=KanbanCard.PRIORITY_LOW,
+                status=WorkOrder.STATUS_DONE,
+                priority=WorkOrder.PRIORITY_LOW,
                 machine=self.machine,
                 customer=self.customer,
                 lifecycle_status=WorkOrderLifecycle.COMPLETED,
@@ -158,7 +153,7 @@ class MaintenanceRecordProjectionTest(InvenTreeAPITestCase):
                 date=self.completed_at.date(),
                 summary=f'Routine job {index}',
                 performed_by='Route crew',
-                work_order=card,
+                work_order=work_order,
             )
 
         with self.assertNumQueriesLessThan(15):

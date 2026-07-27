@@ -12,7 +12,7 @@ from django.core.management import CommandError, call_command
 from django.db import connection
 from django.test import TestCase
 
-from tasks.models import KanbanCard, WorkOrderLifecycle, WorkOrderType
+from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 
 from assets.demo_enrichment import (
     CLASS_ACTIVE_CORRECTIVE,
@@ -145,11 +145,11 @@ class ApplyProfileTest(TestCase):
         """Create an owned active repair with a packet."""
         suffix = uuid.uuid4().hex[:6]
         self.machine = AssetMachine.objects.create(name=f'Pump station {suffix}')
-        self.card = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             reference=f'WO-WW-R-{suffix}',
             title='Seal leakage',
-            status=KanbanCard.STATUS_IN_PROGRESS,
-            priority=KanbanCard.PRIORITY_HIGH,
+            status=WorkOrder.STATUS_IN_PROGRESS,
+            priority=WorkOrder.PRIORITY_HIGH,
             machine=self.machine,
             work_order_type=WorkOrderType.CORRECTIVE,
             assignee='Route crew',
@@ -157,7 +157,7 @@ class ApplyProfileTest(TestCase):
         )
         self.packet = RepairPacket.objects.create(
             machine=self.machine,
-            work_order=self.card,
+            work_order=self.work_order,
             fault_summary='Seal leakage',
             status=PacketStatus.DIAGNOSED,
         )
@@ -166,12 +166,12 @@ class ApplyProfileTest(TestCase):
         report = report or CoverageReport()
         validated = validate_profile(
             profile or _profile(),
-            reference=self.card.reference,
-            card_kind=self.card.card_kind,
+            reference=self.work_order.reference,
+            card_kind=self.work_order.card_kind,
             is_terminal=False,
         )
         apply_profile(
-            self.card, validated, dataset='water_workflow_demo', report=report
+            self.work_order, validated, dataset='water_workflow_demo', report=report
         )
         return report
 
@@ -179,9 +179,9 @@ class ApplyProfileTest(TestCase):
         """The affected component is a field, not buried in the description."""
         self._apply()
 
-        self.card.refresh_from_db()
-        self.assertEqual(self.card.affected_component, 'Pump 2')
-        self.assertEqual(self.card.affected_component_ref, 'PU-102')
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.affected_component, 'Pump 2')
+        self.assertEqual(self.work_order.affected_component_ref, 'PU-102')
 
     def test_findings_and_scope_land_on_the_packet(self):
         """Investigation content goes to the fault-to-fix aggregate."""
@@ -242,23 +242,23 @@ class ApplyProfileTest(TestCase):
 
     def test_operator_edits_outside_the_boundary_survive(self):
         """Schedule, assignment and lifecycle belong to the operator."""
-        self.card.assignee = 'R. Shuruncle'
-        self.card.lifecycle_status = WorkOrderLifecycle.READY
-        self.card.save(update_fields=['assignee', 'lifecycle_status'])
+        self.work_order.assignee = 'R. Shuruncle'
+        self.work_order.lifecycle_status = WorkOrderLifecycle.READY
+        self.work_order.save(update_fields=['assignee', 'lifecycle_status'])
 
         self._apply()
 
-        self.card.refresh_from_db()
-        self.assertEqual(self.card.assignee, 'R. Shuruncle')
-        self.assertEqual(self.card.lifecycle_status, WorkOrderLifecycle.READY)
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.assignee, 'R. Shuruncle')
+        self.assertEqual(self.work_order.lifecycle_status, WorkOrderLifecycle.READY)
 
     def test_findings_without_a_packet_are_refused(self):
         """A completed inspection cannot hold findings, and none are invented."""
-        plain = KanbanCard.objects.create(
+        plain = WorkOrder.objects.create(
             reference=f'WO-WW-H-{uuid.uuid4().hex[:6]}',
             title='Routine inspection',
-            status=KanbanCard.STATUS_DONE,
-            priority=KanbanCard.PRIORITY_LOW,
+            status=WorkOrder.STATUS_DONE,
+            priority=WorkOrder.PRIORITY_LOW,
             machine=self.machine,
             lifecycle_status=WorkOrderLifecycle.COMPLETED,
             tags=['demo', 'water_wastewater', 'water_workflow_demo'],
@@ -347,11 +347,11 @@ class EnrichmentCommandTest(TestCase):
             self.skipTest('Demo work orders are only created on PostgreSQL')
 
         self.load()
-        KanbanCard.objects.create(
+        WorkOrder.objects.create(
             reference='WO-WW-H-999',
             title='Owned record the manifest does not describe',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_LOW,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_LOW,
             tags=['demo', 'water_wastewater', 'water_workflow_demo'],
         )
 
@@ -365,16 +365,16 @@ class EnrichmentCommandTest(TestCase):
 
         self.load(enrich_owned_work_orders=True)
 
-        repair = KanbanCard.objects.get(reference='WO-WW-R-001')
+        repair = WorkOrder.objects.get(reference='WO-WW-R-001')
         self.assertEqual(repair.affected_component, 'Influent Pump 2')
         self.assertEqual(repair.affected_component_ref, 'PU-102')
         self.assertEqual(repair.repair_packet.findings.count(), 3)
         self.assertEqual(repair.repair_packet.approved_scopes.get().version, 1)
 
-        history = KanbanCard.objects.get(reference='WO-WW-H-001')
+        history = WorkOrder.objects.get(reference='WO-WW-H-001')
         self.assertEqual(history.affected_component, 'Influent Pumps 1-3')
 
-        procurement = KanbanCard.objects.get(reference='WO-WW-P-001')
+        procurement = WorkOrder.objects.get(reference='WO-WW-P-001')
         self.assertEqual(procurement.affected_component, 'Centrifuge 2 main bearing')
 
     def test_enrichment_is_idempotent_across_reruns(self):
@@ -383,7 +383,7 @@ class EnrichmentCommandTest(TestCase):
             self.skipTest('Demo work orders are only created on PostgreSQL')
 
         self.load(enrich_owned_work_orders=True)
-        packet = KanbanCard.objects.get(reference='WO-WW-R-001').repair_packet
+        packet = WorkOrder.objects.get(reference='WO-WW-R-001').repair_packet
 
         self.load(enrich_owned_work_orders=True)
 

@@ -14,7 +14,7 @@ from tasks.models import (
     JobKit,
     JobKitLine,
     JobKitStatus,
-    KanbanCard,
+    WorkOrder,
     Procedure,
     ProcedureResourceKind,
     ProcedureResourceRequirement,
@@ -39,9 +39,9 @@ class JobKitBuilderServiceTest(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        self.work_order = KanbanCard.objects.create(
-            title='ME4 work order', status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM, customer=self.customer,
+        self.work_order = WorkOrder.objects.create(
+            title='ME4 work order', status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
             assigned_to=self.actor, work_order_type=WorkOrderType.PREVENTIVE,
         )
         self.procedure = Procedure.objects.create(

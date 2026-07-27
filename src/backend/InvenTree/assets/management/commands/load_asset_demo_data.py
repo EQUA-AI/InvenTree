@@ -9,7 +9,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from django.db.models import Q
 
-from tasks.models import KanbanCard, WorkOrderLifecycle
+from tasks.models import WorkOrder, WorkOrderLifecycle
 
 from assets.demo_history import normalize_completed_history_card
 from assets.models import AssetMachine, AssetMaintenanceRecord, MachinePart
@@ -560,7 +560,7 @@ class Command(BaseCommand):
         reference = work_order_data['reference']
         title = f'{machine.name}: {maintenance_data["summary"]}'[:200]
 
-        existing = KanbanCard.objects.filter(reference=reference).first()
+        existing = WorkOrder.objects.filter(reference=reference).first()
         if existing and (
             existing.machine_id != machine.pk or 'demo' not in (existing.tags or [])
         ):
@@ -571,12 +571,12 @@ class Command(BaseCommand):
 
         record_date = datetime.date.fromisoformat(maintenance_data['date'])
 
-        work_order, _ = KanbanCard.objects.update_or_create(
+        work_order, _ = WorkOrder.objects.update_or_create(
             reference=reference,
             defaults={
                 'title': title,
                 'description': maintenance_data['details'],
-                'status': KanbanCard.STATUS_DONE,
+                'status': WorkOrder.STATUS_DONE,
                 'priority': work_order_data['priority'],
                 'due_date': record_date,
                 'assignee': maintenance_data['performed_by'],

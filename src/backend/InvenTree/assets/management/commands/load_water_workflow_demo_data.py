@@ -12,12 +12,12 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from tasks.models import (
-    KanbanCard,
-    KanbanCardDependency,
-    KanbanCardPart,
     KanbanColumn,
     WorkingCalendar,
+    WorkOrder,
+    WorkOrderDependency,
     WorkOrderLifecycle,
+    WorkOrderPart,
     WorkOrderType,
 )
 from tasks.services.conflicts import detect_conflicts
@@ -40,9 +40,9 @@ DATA_FILE = Path(__file__).resolve().parents[2] / 'water_workflow_demo_data.json
 DATASET_TAG = 'water_workflow_demo'
 DEMO_TAGS = {'demo', 'water_wastewater', DATASET_TAG}
 CARD_STAGES = {
-    KanbanCard.STATUS_BACKLOG,
-    KanbanCard.STATUS_IN_PROGRESS,
-    KanbanCard.STATUS_REVIEW,
+    WorkOrder.STATUS_BACKLOG,
+    WorkOrder.STATUS_IN_PROGRESS,
+    WorkOrder.STATUS_REVIEW,
 }
 
 
@@ -113,7 +113,7 @@ class Command(BaseCommand):
             history_count = self._load_history(
                 data['machines'], machines=machines, users=users, calendars=calendars
             )
-            scenario_cards, packet_count, part_line_count = self._load_scenarios(
+            scenario_work_orders, packet_count, part_line_count = self._load_scenarios(
                 data['machines'],
                 anchor=anchor,
                 calendars=calendars,
@@ -126,13 +126,13 @@ class Command(BaseCommand):
                 data['procurement_children'],
                 anchor=anchor,
                 calendars=calendars,
-                scenario_cards=scenario_cards,
+                scenario_work_orders=scenario_work_orders,
                 parts=parts,
                 users=users,
                 requested_by=users[data['requested_by']],
             )
 
-            active_cards = [*scenario_cards.values(), *procurement_cards.values()]
+            active_cards = [*scenario_work_orders.values(), *procurement_cards.values()]
             self._validate_schedule(active_cards)
 
             coverage = None
@@ -152,7 +152,7 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 f'{action} {history_count} maintenance records, '
                 f'{history_count} historical work orders, '
-                f'{len(scenario_cards)} repair scenarios, '
+                f'{len(scenario_work_orders)} repair scenarios, '
                 f'{len(procurement_cards)} procurement cards, '
                 f'{packet_count} repair packets, {part_line_count} required-part '
                 f'lines, {dependency_count} dependencies, and '
@@ -174,19 +174,19 @@ class Command(BaseCommand):
         # Every ownership-tagged card, not only the ones with a profile: that is
         # what makes the coverage number honest.
         discovered = [
-            card
-            for card in KanbanCard.objects.filter(
+            work_order
+            for work_order in WorkOrder.objects.filter(
                 reference__startswith='WO-WW-'
             ).select_related('repair_packet')
-            if DEMO_TAGS.issubset(set(card.tags or []))
+            if DEMO_TAGS.issubset(set(work_order.tags or []))
         ]
         report.discovered = len(discovered)
 
-        by_reference = {card.reference: card for card in discovered}
+        by_reference = {work_order.reference: work_order for work_order in discovered}
 
         for reference, raw_profile in profiles.items():
-            card = by_reference.get(reference)
-            if card is None:
+            work_order = by_reference.get(reference)
+            if work_order is None:
                 # The manifest names a record the database does not have. That is
                 # a load ordering problem, not something to paper over.
                 raise CommandError(
@@ -196,14 +196,16 @@ class Command(BaseCommand):
             profile = validate_profile(
                 raw_profile,
                 reference=reference,
-                card_kind=card.card_kind,
-                is_terminal=card.lifecycle_status
+                card_kind=work_order.card_kind,
+                is_terminal=work_order.lifecycle_status
                 in {WorkOrderLifecycle.COMPLETED, WorkOrderLifecycle.CANCELED},
             )
-            apply_profile(card, profile, dataset=DATASET_TAG, report=report)
+            apply_profile(work_order, profile, dataset=DATASET_TAG, report=report)
 
         report.missing_profile = [
-            card.reference for card in discovered if card.reference not in profiles
+            work_order.reference
+            for work_order in discovered
+            if work_order.reference not in profiles
         ]
 
         if require_complete and not report.complete:
@@ -393,35 +395,35 @@ class Command(BaseCommand):
         return [*sorted(DEMO_TAGS), kind]
 
     @staticmethod
-    def _is_owned_card(card, kind):
+    def _is_owned_card(work_order, kind):
         """Return whether a card is owned by this dataset and kind."""
-        tags = set(card.tags or [])
+        tags = set(work_order.tags or [])
         return DEMO_TAGS.issubset(tags) and kind in tags
 
     def _owned_card(self, reference, kind, machine, *, parent=None):
         """Return an existing owned card or raise on a reference collision."""
-        matches = list(KanbanCard.objects.filter(reference=reference)[:2])
+        matches = list(WorkOrder.objects.filter(reference=reference)[:2])
         if len(matches) > 1:
             raise CommandError(f'Multiple work orders match reference {reference!r}')
         if not matches:
             return None
 
-        card = matches[0]
-        if not self._is_owned_card(card, kind):
+        work_order = matches[0]
+        if not self._is_owned_card(work_order, kind):
             raise CommandError(
                 f'Work-order reference {reference!r} is already used by a record '
                 'not owned by the water workflow dataset'
             )
-        if card.machine_id != machine.pk:
+        if work_order.machine_id != machine.pk:
             raise CommandError(
                 f'Owned work order {reference!r} is linked to a different machine'
             )
         expected_parent_id = parent.pk if parent else None
-        if card.parent_id != expected_parent_id:
+        if work_order.parent_id != expected_parent_id:
             raise CommandError(
                 f'Owned work order {reference!r} has an unexpected parent card'
             )
-        return card
+        return work_order
 
     def _reset_owned_scenarios(self, data):
         """Delete only non-terminal active scenario records owned by this dataset."""
@@ -432,14 +434,14 @@ class Command(BaseCommand):
         expected.update({
             child['reference']: 'procurement' for child in data['procurement_children']
         })
-        owned = list(KanbanCard.objects.filter(reference__in=expected))
+        owned = list(WorkOrder.objects.filter(reference__in=expected))
         if not owned:
             return
 
         unowned = [
-            card.reference
-            for card in owned
-            if not self._is_owned_card(card, expected[card.reference])
+            work_order.reference
+            for work_order in owned
+            if not self._is_owned_card(work_order, expected[work_order.reference])
         ]
         if unowned:
             raise CommandError(
@@ -447,13 +449,13 @@ class Command(BaseCommand):
                 + ', '.join(sorted(unowned))
             )
 
-        card_ids = [card.pk for card in owned]
+        work_order_ids = [work_order.pk for work_order in owned]
         completed = [
-            card.reference
-            for card in owned
-            if card.lifecycle_status
+            work_order.reference
+            for work_order in owned
+            if work_order.lifecycle_status
             in {WorkOrderLifecycle.COMPLETED, WorkOrderLifecycle.CANCELED}
-            or AssetMaintenanceRecord.objects.filter(work_order=card).exists()
+            or AssetMaintenanceRecord.objects.filter(work_order=work_order).exists()
         ]
         if completed:
             raise CommandError(
@@ -463,9 +465,9 @@ class Command(BaseCommand):
                 )
             )
 
-        RepairPacket.objects.filter(work_order_id__in=card_ids).delete()
-        KanbanCard.objects.filter(pk__in=card_ids, parent__isnull=False).delete()
-        KanbanCard.objects.filter(pk__in=card_ids).delete()
+        RepairPacket.objects.filter(work_order_id__in=work_order_ids).delete()
+        WorkOrder.objects.filter(pk__in=work_order_ids, parent__isnull=False).delete()
+        WorkOrder.objects.filter(pk__in=work_order_ids).delete()
 
     def _load_calendars(self, records, *, machines, reset):
         """Create demo calendars or adopt an existing calendar for the same scope."""
@@ -594,7 +596,7 @@ class Command(BaseCommand):
     def _load_history(self, records, *, machines, users, calendars):
         """Upsert immutable completed maintenance history and linked work orders."""
         count = 0
-        terminal_status = KanbanColumn.terminal_key() or KanbanCard.STATUS_DONE
+        terminal_status = KanbanColumn.terminal_key() or WorkOrder.STATUS_DONE
 
         for machine_data in records:
             machine = machines[machine_data['name']]
@@ -602,7 +604,7 @@ class Command(BaseCommand):
                 work_order_data = event['work_order']
                 reference = work_order_data['reference']
                 assignee = users[work_order_data['assigned_to']]
-                card = self._owned_card(
+                work_order = self._owned_card(
                     reference, 'maintenance_history', machine, parent=None
                 )
                 card_values = {
@@ -622,27 +624,29 @@ class Command(BaseCommand):
                     'customer': machine.customer,
                     'assigned_to': assignee,
                     'requested_by': assignee,
-                    'card_kind': KanbanCard.KIND_WORK_ORDER,
+                    'card_kind': WorkOrder.KIND_WORK_ORDER,
                 }
-                if card is None:
-                    card = KanbanCard.objects.create(reference=reference, **card_values)
+                if work_order is None:
+                    work_order = WorkOrder.objects.create(
+                        reference=reference, **card_values
+                    )
                 else:
                     for field, value in card_values.items():
-                        setattr(card, field, value)
-                    card.save(update_fields=[*card_values, 'updated_at'])
+                        setattr(work_order, field, value)
+                    work_order.save(update_fields=[*card_values, 'updated_at'])
 
                 record_date = datetime.date.fromisoformat(event['date'])
                 calendar = calendars['by_machine'].get(
                     machine.name, calendars['default']
                 )
                 normalize_completed_history_card(
-                    card,
+                    work_order,
                     record_date=record_date,
                     dataset=DATASET_TAG,
                     timezone_name=calendar.timezone,
                 )
                 maintenance = AssetMaintenanceRecord.objects.filter(
-                    work_order=card
+                    work_order=work_order
                 ).first()
                 if maintenance is None:
                     collision = AssetMaintenanceRecord.objects.filter(
@@ -653,7 +657,7 @@ class Command(BaseCommand):
                             f'Maintenance event {event["summary"]!r} on '
                             f'{event["date"]} collides with an unowned record'
                         )
-                    maintenance = AssetMaintenanceRecord(work_order=card)
+                    maintenance = AssetMaintenanceRecord(work_order=work_order)
 
                 maintenance.machine = machine
                 maintenance.date = record_date
@@ -706,7 +710,7 @@ class Command(BaseCommand):
         self, records, *, anchor, calendars, machines, parts, users, requested_by
     ):
         """Create active repair cards, draft packets, gates, and required parts."""
-        scenario_cards = {}
+        scenario_work_orders = {}
         packet_count = 0
         part_line_count = 0
 
@@ -723,10 +727,12 @@ class Command(BaseCommand):
                 calendars,
             )
             stage = self._stage_status(scenario)
-            card = self._owned_card(reference, 'repair_scenario', machine, parent=None)
-            created = card is None
+            work_order = self._owned_card(
+                reference, 'repair_scenario', machine, parent=None
+            )
+            created = work_order is None
             if created:
-                card = KanbanCard.objects.create(
+                work_order = WorkOrder.objects.create(
                     reference=reference,
                     title=scenario['title'],
                     description=scenario['description'],
@@ -747,10 +753,10 @@ class Command(BaseCommand):
                     scheduled_start=start,
                     scheduled_end=end,
                     estimated_minutes=scenario['estimated_minutes'],
-                    card_kind=KanbanCard.KIND_WORK_ORDER,
+                    card_kind=WorkOrder.KIND_WORK_ORDER,
                 )
 
-            packet = RepairPacket.objects.filter(work_order=card).first()
+            packet = RepairPacket.objects.filter(work_order=work_order).first()
             if packet is not None and packet.machine_id != machine.pk:
                 raise CommandError(
                     f'Repair packet for {reference!r} is linked to a different machine'
@@ -764,7 +770,7 @@ class Command(BaseCommand):
                     criticality=scenario['criticality'],
                     production_impact=scenario['production_impact'],
                     generation_status=GenerationStatus.IDLE,
-                    work_order=card,
+                    work_order=work_order,
                     created_by=requested_by,
                 )
                 packet_count += 1
@@ -791,30 +797,38 @@ class Command(BaseCommand):
 
             for line in scenario['required_parts']:
                 part = parts[line['ipn']]
-                card_part, _ = KanbanCardPart.objects.get_or_create(
-                    card=card,
+                work_order_part, _ = WorkOrderPart.objects.get_or_create(
+                    work_order=work_order,
                     part=part,
                     defaults={'quantity': Decimal(str(line['quantity']))},
                 )
-                if card_part.card_id != card.pk:
+                if work_order_part.work_order_id != work_order.pk:
                     raise CommandError(
                         f'Required part {line["ipn"]!r} is linked to another card'
                     )
                 part_line_count += 1
 
-            scenario_cards[reference] = card
+            scenario_work_orders[reference] = work_order
 
-        return scenario_cards, packet_count, part_line_count
+        return scenario_work_orders, packet_count, part_line_count
 
     def _load_procurement_children(
-        self, records, *, anchor, calendars, scenario_cards, parts, users, requested_by
+        self,
+        records,
+        *,
+        anchor,
+        calendars,
+        scenario_work_orders,
+        parts,
+        users,
+        requested_by,
     ):
         """Create scheduled procurement children and finish-to-start dependencies."""
         children = {}
         dependency_count = 0
 
         for record in records:
-            parent = scenario_cards[record['parent_reference']]
+            parent = scenario_work_orders[record['parent_reference']]
             machine = parent.machine
             assignee = users[record['assigned_to']]
             start, end = self._schedule_window(
@@ -829,7 +843,7 @@ class Command(BaseCommand):
                 record['reference'], 'procurement', machine, parent=parent
             )
             if child is None:
-                child = KanbanCard.objects.create(
+                child = WorkOrder.objects.create(
                     reference=record['reference'],
                     title=record['title'],
                     description=record['description'],
@@ -851,17 +865,19 @@ class Command(BaseCommand):
                     scheduled_end=end,
                     estimated_minutes=record['estimated_minutes'],
                     parent=parent,
-                    card_kind=KanbanCard.KIND_PROCUREMENT,
+                    card_kind=WorkOrder.KIND_PROCUREMENT,
                 )
 
-            part_line = parent.card_parts.filter(part=parts[record['part_ipn']]).first()
+            part_line = parent.work_order_parts.filter(
+                part=parts[record['part_ipn']]
+            ).first()
             if part_line is None:
                 raise CommandError(
                     f'Procurement card {record["reference"]!r} references part '
                     f'{record["part_ipn"]!r} without a parent required-part line'
                 )
-            if part_line.allocation_status == KanbanCardPart.ALLOCATION_NONE:
-                part_line.allocation_status = KanbanCardPart.ALLOCATION_INSUFFICIENT
+            if part_line.allocation_status == WorkOrderPart.ALLOCATION_NONE:
+                part_line.allocation_status = WorkOrderPart.ALLOCATION_INSUFFICIENT
                 part_line.allocation_note = (
                     f'Long-lead demo shortage tracked by {record["reference"]}.'
                 )
@@ -869,9 +885,9 @@ class Command(BaseCommand):
                     update_fields=['allocation_status', 'allocation_note', 'updated_at']
                 )
 
-            dependency, _ = KanbanCardDependency.objects.get_or_create(
-                from_card=child,
-                to_card=parent,
+            dependency, _ = WorkOrderDependency.objects.get_or_create(
+                predecessor=child,
+                successor=parent,
                 dependency_type=record['dependency_type'],
                 defaults={'lag_minutes': record['lag_minutes']},
             )
@@ -891,9 +907,9 @@ class Command(BaseCommand):
         return children, dependency_count
 
     @staticmethod
-    def _validate_schedule(cards):
+    def _validate_schedule(work_orders):
         """Reject machine or assignee overlaps in the seeded schedule."""
-        warnings = detect_conflicts(cards)
+        warnings = detect_conflicts(work_orders)
         if warnings:
             messages = '; '.join(warning['message'] for warning in warnings)
             raise CommandError(

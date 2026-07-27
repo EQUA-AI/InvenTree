@@ -12,7 +12,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from assets.models import AssetMachine
-from tasks.models import KanbanCard
+from tasks.models import WorkOrder
 
 
 class MachineRequiredOnCreateTest(TestCase):
@@ -35,14 +35,14 @@ class MachineRequiredOnCreateTest(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('machine', response.json())
-        self.assertEqual(KanbanCard.objects.count(), 0)
+        self.assertEqual(WorkOrder.objects.count(), 0)
 
     def test_create_with_a_machine_succeeds(self):
         response = self._create(machine=self.machine.pk)
 
         self.assertEqual(response.status_code, 201)
-        card = KanbanCard.objects.get()
-        self.assertEqual(card.machine, self.machine)
+        work_order = WorkOrder.objects.get()
+        self.assertEqual(work_order.machine, self.machine)
 
     def test_create_with_a_null_machine_is_rejected(self):
         response = self._create(machine=None)
@@ -62,7 +62,7 @@ class MachineRequiredOnCreateTest(TestCase):
         The requirement is on *creating* a work order, not on every edit; forcing
         the machine back through on each PATCH would break ordinary field edits.
         """
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='existing',
             status='backlog',
             priority='low',
@@ -70,18 +70,18 @@ class MachineRequiredOnCreateTest(TestCase):
         )
 
         response = self.client.patch(
-            reverse('kanban-card-detail', kwargs={'pk': card.pk}),
+            reverse('kanban-card-detail', kwargs={'pk': work_order.pk}),
             data={'title': 'renamed'},
             content_type='application/json',
         )
 
         self.assertEqual(response.status_code, 200)
-        card.refresh_from_db()
-        self.assertEqual(card.title, 'renamed')
-        self.assertEqual(card.machine, self.machine)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.title, 'renamed')
+        self.assertEqual(work_order.machine, self.machine)
 
     def test_machine_can_be_reassigned_on_patch(self):
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='movable',
             status='backlog',
             priority='low',
@@ -90,11 +90,11 @@ class MachineRequiredOnCreateTest(TestCase):
         other = AssetMachine.objects.create(name='Other Press')
 
         response = self.client.patch(
-            reverse('kanban-card-detail', kwargs={'pk': card.pk}),
+            reverse('kanban-card-detail', kwargs={'pk': work_order.pk}),
             data={'machine': other.pk},
             content_type='application/json',
         )
 
         self.assertEqual(response.status_code, 200)
-        card.refresh_from_db()
-        self.assertEqual(card.machine, other)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.machine, other)

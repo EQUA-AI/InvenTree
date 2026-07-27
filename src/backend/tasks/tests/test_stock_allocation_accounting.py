@@ -24,7 +24,7 @@ from tasks.models import (
     JobKitAllocation,
     JobKitAllocationStatus,
     JobKitLine,
-    KanbanCard,
+    WorkOrder,
     ProcedureResourceKind,
     WorkOrderType,
 )
@@ -41,9 +41,9 @@ class StockAllocationAccountingTest(TestCase):
         self.stock = StockItem.objects.create(
             part=self.component, quantity=Decimal('10')
         )
-        self.work_order = KanbanCard.objects.create(
-            title='Alloc WO', status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+        self.work_order = WorkOrder.objects.create(
+            title='Alloc WO', status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             work_order_type=WorkOrderType.PREVENTIVE,
         )
         self.kit = JobKit.objects.create(
@@ -127,15 +127,15 @@ class BuildGuardJobKitTest(BuildTestBase):
             FulfillmentMode,
             JobKit,
             JobKitLine,
-            KanbanCard,
+            WorkOrder,
             ProcedureResourceKind,
             WorkOrderType,
         )
 
         user = get_user_model().objects.get(pk=1)
-        work_order = KanbanCard.objects.create(
-            title='Guard WO', status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+        work_order = WorkOrder.objects.create(
+            title='Guard WO', status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             work_order_type=WorkOrderType.PREVENTIVE,
         )
         kit = JobKit.objects.create(work_order=work_order, created_by=user)

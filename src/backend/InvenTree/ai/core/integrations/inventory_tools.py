@@ -34,6 +34,17 @@ from ai.core.tools.inventree.read.database import (
     list_database_tables,
     query_database,
 )
+from ai.core.tools.inventree.read.machines import (
+    get_machine_anomalies,
+    get_machine_attachments,
+    get_machine_health,
+    get_machine_maintenance_history,
+    get_machine_overview,
+    get_machine_parts,
+    get_machine_signal_trend,
+    get_machine_signals,
+    search_machines,
+)
 from ai.core.tools.inventree.read.parts import (
     get_part as get_part_details,  # Alias for backward compatibility
 )
@@ -291,6 +302,16 @@ INVENTORY_TOOLS = [
     list_build_orders,  # aliased get_build_orders
     get_build_order,
     get_build_order_lines,
+    # Machines / assets (scope-authorized per call in assets.ai_read)
+    search_machines,
+    get_machine_overview,
+    get_machine_health,
+    get_machine_signals,
+    get_machine_signal_trend,
+    get_machine_anomalies,
+    get_machine_parts,
+    get_machine_maintenance_history,
+    get_machine_attachments,
     # Direct read-only SQL (RBAC-checked per table, read-only transaction)
     list_database_tables,
     query_database,
@@ -325,6 +346,18 @@ INVENTORY_READ_TOOLS = [
     list_build_orders,
     get_build_order,
     get_build_order_lines,
+    # Machines / assets. Present on the read subset because this is the list
+    # voice and the lookup agent are built from -- a machine question has no
+    # answer without them, which is what made the machine page unreachable.
+    search_machines,
+    get_machine_overview,
+    get_machine_health,
+    get_machine_signals,
+    get_machine_signal_trend,
+    get_machine_anomalies,
+    get_machine_parts,
+    get_machine_maintenance_history,
+    get_machine_attachments,
     list_database_tables,
     query_database,
 ]

@@ -26,7 +26,7 @@ from tasks.models import (
     JobKitAllocation,
     JobKitLine,
     JobKitSubstitutionStatus,
-    KanbanCard,
+    WorkOrder,
     ProcedureResourceKind,
     WorkOrderType,
 )
@@ -109,10 +109,10 @@ class JobKitVerificationTest(TestCase):
             user.verification_scopes = {
                 VerificationScope(customer_id=self.customer.pk, site_key=None)
             }
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Ver WO',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=self.customer,
             work_order_type=WorkOrderType.PREVENTIVE,
         )
@@ -333,10 +333,10 @@ class JobKitVerificationTest(TestCase):
 
     def test_other_work_order_decision_cannot_authorize_job_kit(self):
         """A verification for another work order cannot authorize this Job Kit."""
-        other_work_order = KanbanCard.objects.create(
+        other_work_order = WorkOrder.objects.create(
             title='Other Ver WO',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=self.customer,
             work_order_type=WorkOrderType.PREVENTIVE,
         )

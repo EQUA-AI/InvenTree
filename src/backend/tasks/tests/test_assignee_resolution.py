@@ -7,7 +7,7 @@ on ambiguity) and the migration's forward function applied to real cards.
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from tasks.models import KanbanCard
+from tasks.models import WorkOrder
 from tasks.services.assignee_resolution import resolve_assignee, resolve_assignees
 
 
@@ -116,18 +116,36 @@ class ResolveAssigneesReportTest(TestCase):
         self.assertIn('AMBIGUOUS', text)
 
 
+class _HistoricalApps:
+    """Resolve the model names a historical migration knows about.
+
+    Migration 0011 asks for ``KanbanCard`` because that is what the model was
+    called when it ran, and a migration must keep describing the state of its
+    own moment. This test exercises the backfill against real rows rather than
+    against historical state, so it needs today's model returned under
+    yesterday's name.
+    """
+
+    HISTORICAL_NAMES = {'kanbancard': 'workorder'}
+
+    def get_model(self, app_label, model_name):
+        """Return the live model, translating names the migration predates."""
+        from django.apps import apps
+
+        key = model_name.lower()
+        return apps.get_model(app_label, self.HISTORICAL_NAMES.get(key, key))
+
+
 class AssigneeBackfillMigrationTest(TestCase):
-    """The migration's forward function applied to real cards."""
+    """The migration's forward function applied to real work orders."""
 
     def _forward(self):
         import importlib
 
-        from django.apps import apps
-
         module = importlib.import_module(
             'tasks.migrations.0011_backfill_assigned_to'
         )
-        module.backfill_assigned_to(apps, None)
+        module.backfill_assigned_to(_HistoricalApps(), None)
 
     def setUp(self):
         User = get_user_model()
@@ -145,90 +163,90 @@ class AssigneeBackfillMigrationTest(TestCase):
         )
 
     def test_matched_card_gets_the_fk(self):
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='c', status='backlog', priority='low', assignee='ada'
         )
 
         self._forward()
 
-        card.refresh_from_db()
-        self.assertEqual(card.assigned_to, self.ada)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.assigned_to, self.ada)
         # The free-text value is retained for one release.
-        self.assertEqual(card.assignee, 'ada')
+        self.assertEqual(work_order.assignee, 'ada')
 
     def test_full_name_match_sets_the_fk(self):
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='c', status='backlog', priority='low', assignee='Ada Lovelace'
         )
 
         self._forward()
 
-        card.refresh_from_db()
-        self.assertEqual(card.assigned_to, self.ada)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.assigned_to, self.ada)
 
     def test_ambiguous_name_is_left_unassigned(self):
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='c', status='backlog', priority='low', assignee='John Smith'
         )
 
         self._forward()
 
-        card.refresh_from_db()
-        self.assertIsNone(card.assigned_to)
-        self.assertEqual(card.assignee, 'John Smith')
+        work_order.refresh_from_db()
+        self.assertIsNone(work_order.assigned_to)
+        self.assertEqual(work_order.assignee, 'John Smith')
 
     def test_unmatched_name_is_left_unassigned(self):
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='c', status='backlog', priority='low', assignee='Dave (contract)'
         )
 
         self._forward()
 
-        card.refresh_from_db()
-        self.assertIsNone(card.assigned_to)
+        work_order.refresh_from_db()
+        self.assertIsNone(work_order.assigned_to)
 
     def test_an_existing_fk_is_never_overwritten(self):
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='c', status='backlog', priority='low',
             assignee='ada', assigned_to=self.smith1,
         )
 
         self._forward()
 
-        card.refresh_from_db()
+        work_order.refresh_from_db()
         # 'ada' would resolve to self.ada, but the card already had a different
         # FK, so the back-fill must not touch it.
-        self.assertEqual(card.assigned_to, self.smith1)
+        self.assertEqual(work_order.assigned_to, self.smith1)
 
     def test_is_idempotent(self):
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='c', status='backlog', priority='low', assignee='ada'
         )
 
         self._forward()
         self._forward()
 
-        card.refresh_from_db()
-        self.assertEqual(card.assigned_to, self.ada)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.assigned_to, self.ada)
 
     def test_multiple_cards_with_the_same_assignee_all_get_linked(self):
         for index in range(3):
-            KanbanCard.objects.create(
+            WorkOrder.objects.create(
                 title=f'c{index}', status='backlog', priority='low', assignee='ada'
             )
 
         self._forward()
 
         self.assertEqual(
-            KanbanCard.objects.filter(assigned_to=self.ada).count(), 3
+            WorkOrder.objects.filter(assigned_to=self.ada).count(), 3
         )
 
     def test_blank_assignees_are_ignored(self):
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='c', status='backlog', priority='low', assignee=''
         )
 
         self._forward()
 
-        card.refresh_from_db()
-        self.assertIsNone(card.assigned_to)
+        work_order.refresh_from_db()
+        self.assertIsNone(work_order.assigned_to)

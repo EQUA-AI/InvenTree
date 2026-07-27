@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from tasks.models import KanbanCard, KanbanColumn
+from tasks.models import WorkOrder, KanbanColumn
 
 SEED_KEYS = ['backlog', 'in-progress', 'review', 'done']
 
@@ -41,10 +41,10 @@ class KanbanColumnSeedTest(TestCase):
     def test_every_card_status_resolves_to_a_seeded_column(self):
         """The whole point of freezing the keys: no card is orphaned."""
         for key in SEED_KEYS:
-            KanbanCard.objects.create(title=f'c-{key}', status=key, priority='low')
+            WorkOrder.objects.create(title=f'c-{key}', status=key, priority='low')
 
         statuses = set(
-            KanbanCard.objects.values_list('status', flat=True).distinct()
+            WorkOrder.objects.values_list('status', flat=True).distinct()
         )
         column_keys = set(KanbanColumn.objects.values_list('key', flat=True))
 
@@ -56,12 +56,12 @@ class KanbanColumnModelTest(TestCase):
 
     def test_card_count_only_counts_active_cards_in_the_column(self):
         column = KanbanColumn.objects.get(key='backlog')
-        KanbanCard.objects.create(title='a', status='backlog', priority='low')
-        KanbanCard.objects.create(title='b', status='backlog', priority='low')
-        KanbanCard.objects.create(
+        WorkOrder.objects.create(title='a', status='backlog', priority='low')
+        WorkOrder.objects.create(title='b', status='backlog', priority='low')
+        WorkOrder.objects.create(
             title='archived', status='backlog', priority='low', is_active=False
         )
-        KanbanCard.objects.create(title='elsewhere', status='done', priority='low')
+        WorkOrder.objects.create(title='elsewhere', status='done', priority='low')
 
         self.assertEqual(column.card_count(), 2)
         self.assertEqual(column.card_count(active_only=False), 3)
@@ -94,7 +94,7 @@ class KanbanColumnApiTest(TestCase):
         self.assertIsInstance(self.client.get(self.list_url).json(), list)
 
     def test_card_count_is_reported(self):
-        KanbanCard.objects.create(title='x', status='review', priority='low')
+        WorkOrder.objects.create(title='x', status='review', priority='low')
 
         rows = {c['key']: c for c in self.client.get(self.list_url).json()}
         self.assertEqual(rows['review']['card_count'], 1)
@@ -175,7 +175,7 @@ class KanbanColumnApiTest(TestCase):
 
     def test_a_column_with_cards_cannot_be_deleted(self):
         column = KanbanColumn.objects.create(key='busy', label='Busy', order=9)
-        KanbanCard.objects.create(title='held', status='busy', priority='low')
+        WorkOrder.objects.create(title='held', status='busy', priority='low')
 
         response = self.client.delete(
             reverse('kanban-column-detail', kwargs={'pk': column.pk})
@@ -186,7 +186,7 @@ class KanbanColumnApiTest(TestCase):
 
     def test_an_archived_card_does_not_block_deletion(self):
         column = KanbanColumn.objects.create(key='q', label='Q', order=9)
-        KanbanCard.objects.create(
+        WorkOrder.objects.create(
             title='gone', status='q', priority='low', is_active=False
         )
 

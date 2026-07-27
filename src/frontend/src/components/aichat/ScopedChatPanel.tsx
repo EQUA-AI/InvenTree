@@ -38,6 +38,16 @@ import {
   ProposalCard
 } from '../ai/ChatActionProposals';
 import { CitationList } from './CitationList';
+import {
+  MachineAnomaliesResult,
+  MachineAttachmentsResult,
+  MachineHealthResult,
+  MachineMaintenanceResult,
+  MachinePartsResult,
+  MachineSignalsResult,
+  MachineSummaryResult,
+  MachineTrendResult
+} from './MachineResults';
 import { ScopeChip } from './ScopeChip';
 import { ToolTraceDisclosure } from './ToolTraceDisclosure';
 
@@ -159,6 +169,41 @@ function KitResult({ result }: Readonly<{ result: Record<string, any> }>) {
   );
 }
 
+/**
+ * Grounded question buttons, per context type.
+ *
+ * The panel renders the intersection of this list and the server's `tools`
+ * array, so a tool the deployment has not registered simply does not appear —
+ * the button set is never the authority on what may be asked.
+ */
+const QUICK_QUESTIONS: Record<string, QuickQuestion[]> = {
+  work_order: [
+    { tool: 'work_order_summary', label: t`Summary` },
+    {
+      tool: 'work_order_readiness',
+      label: t`Why blocked?`,
+      arguments: { action: 'start' }
+    },
+    { tool: 'work_order_steps', label: t`Procedure steps` },
+    { tool: 'work_order_kit_status', label: t`Kit status` },
+    { tool: 'work_order_events_page', label: t`History` }
+  ],
+  machine: [
+    { tool: 'machine_summary', label: t`Details` },
+    { tool: 'machine_health', label: t`Health` },
+    { tool: 'machine_signals', label: t`Live readings` },
+    { tool: 'machine_anomalies', label: t`Open alarms` },
+    {
+      tool: 'machine_anomalies',
+      label: t`Alarm history`,
+      arguments: { include_resolved: true }
+    },
+    { tool: 'machine_installed_parts', label: t`Installed parts` },
+    { tool: 'machine_maintenance_history', label: t`Maintenance` },
+    { tool: 'machine_attachments', label: t`Documents` }
+  ]
+};
+
 function TurnResult({ turn }: Readonly<{ turn: ScopedChatTurn }>) {
   if (turn.error) {
     return (
@@ -196,6 +241,30 @@ function TurnResult({ turn }: Readonly<{ turn: ScopedChatTurn }>) {
     case 'work_order_kit_status':
       body = <KitResult result={result} />;
       break;
+    case 'machine_summary':
+      body = <MachineSummaryResult result={result} />;
+      break;
+    case 'machine_health':
+      body = <MachineHealthResult result={result} />;
+      break;
+    case 'machine_signals':
+      body = <MachineSignalsResult result={result} />;
+      break;
+    case 'machine_signal_trend':
+      body = <MachineTrendResult result={result} />;
+      break;
+    case 'machine_anomalies':
+      body = <MachineAnomaliesResult result={result} />;
+      break;
+    case 'machine_installed_parts':
+      body = <MachinePartsResult result={result} />;
+      break;
+    case 'machine_maintenance_history':
+      body = <MachineMaintenanceResult result={result} />;
+      break;
+    case 'machine_attachments':
+      body = <MachineAttachmentsResult result={result} />;
+      break;
     default:
       body = (
         <Text size='xs' style={{ whiteSpace: 'pre-wrap' }}>
@@ -213,18 +282,8 @@ function TurnResult({ turn }: Readonly<{ turn: ScopedChatTurn }>) {
   );
 }
 
-function quickQuestions(): QuickQuestion[] {
-  return [
-    { tool: 'work_order_summary', label: t`Summary` },
-    {
-      tool: 'work_order_readiness',
-      label: t`Why blocked?`,
-      arguments: { action: 'start' }
-    },
-    { tool: 'work_order_steps', label: t`Procedure steps` },
-    { tool: 'work_order_kit_status', label: t`Kit status` },
-    { tool: 'work_order_events_page', label: t`History` }
-  ];
+function quickQuestions(contextType: string): QuickQuestion[] {
+  return QUICK_QUESTIONS[contextType] ?? [];
 }
 
 export function ScopedChatPanel({
@@ -239,6 +298,14 @@ export function ScopedChatPanel({
   const [proposalError, setProposalError] = useState<string | null>(null);
 
   const refreshProposals = useCallback(async () => {
+    // Proposals are keyed by work_order_id. On any other context type the
+    // pinned objectId is a different table's primary key, so comparing the two
+    // would surface an unrelated work order's proposals whenever the ids
+    // happened to coincide. Only a work-order pin may match.
+    if (contextType !== 'work_order') {
+      setProposals([]);
+      return;
+    }
     try {
       const response = await api.get(apiUrl(ApiEndpoints.aichat_proposal_list));
       const rows: ChatActionProposalPayload[] = response.data?.results ?? [];
@@ -248,7 +315,7 @@ export function ScopedChatPanel({
     } catch {
       setProposals([]);
     }
-  }, [objectId]);
+  }, [contextType, objectId]);
 
   useEffect(() => {
     void refreshProposals();
@@ -312,18 +379,20 @@ export function ScopedChatPanel({
         </Alert>
       )}
       <Group gap='xs' wrap='wrap'>
-        {quickQuestions()
+        {quickQuestions(contextType)
           .filter((question) => context.tools.includes(question.tool))
           .map((question) => (
             <Button
-              key={question.tool}
+              key={question.label}
               size='xs'
               variant='light'
               disabled={scoped.busy}
               onClick={() =>
                 void scoped.invokeTool(question.tool, question.arguments)
               }
-              data-testid={`scoped-chat-ask-${question.tool}`}
+              data-testid={`scoped-chat-ask-${question.tool}${
+                question.arguments ? '-variant' : ''
+              }`}
             >
               {question.label}
             </Button>

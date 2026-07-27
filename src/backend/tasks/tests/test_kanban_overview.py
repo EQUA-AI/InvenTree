@@ -10,11 +10,11 @@ from assets.models import AssetMachine, AssetMaintenanceRecord
 from InvenTree.unit_test import InvenTreeAPITestCase
 from part.models import Part
 from repair.models import RepairPacket, RepairPacketGate
-from tasks.models import KanbanCard, KanbanCardDependency, KanbanCardPart
+from tasks.models import WorkOrder, WorkOrderDependency, WorkOrderPart
 from tasks.workorder_models import WorkOrderEvent
 
 
-class KanbanCardOverviewTest(InvenTreeAPITestCase):
+class WorkOrderOverviewTest(InvenTreeAPITestCase):
     """Verify the stable overview surface used by work-order details."""
 
     roles = 'all'
@@ -25,31 +25,31 @@ class KanbanCardOverviewTest(InvenTreeAPITestCase):
         self.machine = AssetMachine.objects.create(
             name='Overview Machine', location='Plant / Bay 4'
         )
-        self.parent = KanbanCard.objects.create(
+        self.parent = WorkOrder.objects.create(
             reference='WO-OVERVIEW-001',
             title='Parent repair',
             description='Replace a leaking process seal.',
-            status=KanbanCard.STATUS_IN_PROGRESS,
-            priority=KanbanCard.PRIORITY_HIGH,
+            status=WorkOrder.STATUS_IN_PROGRESS,
+            priority=WorkOrder.PRIORITY_HIGH,
             machine=self.machine,
         )
-        self.child = KanbanCard.objects.create(
+        self.child = WorkOrder.objects.create(
             reference='WO-OVERVIEW-002',
             title='Procure seal kit',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             machine=self.machine,
             parent=self.parent,
-            card_kind=KanbanCard.KIND_PROCUREMENT,
+            card_kind=WorkOrder.KIND_PROCUREMENT,
         )
         part = Part.objects.create(name='Seal kit', IPN='OV-SEAL')
-        KanbanCardPart.objects.create(
-            card=self.parent,
+        WorkOrderPart.objects.create(
+            work_order=self.parent,
             part=part,
             quantity=Decimal('2'),
-            allocation_status=KanbanCardPart.ALLOCATION_INSUFFICIENT,
+            allocation_status=WorkOrderPart.ALLOCATION_INSUFFICIENT,
         )
-        KanbanCardDependency.objects.create(from_card=self.child, to_card=self.parent)
+        WorkOrderDependency.objects.create(predecessor=self.child, successor=self.parent)
         self.packet = RepairPacket.objects.create(
             machine=self.machine,
             work_order=self.parent,
@@ -130,11 +130,11 @@ class OverviewDetailSectionsTest(InvenTreeAPITestCase):
         self.machine = AssetMachine.objects.create(
             name=f'Section machine {uuid.uuid4().hex[:6]}'
         )
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             reference=f'WO-SECT-{uuid.uuid4().hex[:6]}',
             title='Investigate vibration',
-            status=KanbanCard.STATUS_IN_PROGRESS,
-            priority=KanbanCard.PRIORITY_HIGH,
+            status=WorkOrder.STATUS_IN_PROGRESS,
+            priority=WorkOrder.PRIORITY_HIGH,
             machine=self.machine,
         )
         self.packet = RepairPacket.objects.create(
@@ -246,11 +246,11 @@ class OverviewDetailSectionsTest(InvenTreeAPITestCase):
 
     def test_work_order_without_a_packet_has_no_alert_or_packet(self):
         """A plain work order renders without the repair-only sections."""
-        plain = KanbanCard.objects.create(
+        plain = WorkOrder.objects.create(
             reference=f'WO-PLAIN-{uuid.uuid4().hex[:6]}',
             title='Routine inspection',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_LOW,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_LOW,
             machine=self.machine,
         )
 

@@ -16,7 +16,7 @@ from tasks.models import (
     JobKitLine,
     JobKitShortage,
     JobKitStatus,
-    KanbanCard,
+    WorkOrder,
     ProcedureResourceKind,
     WorkOrderType,
 )
@@ -41,9 +41,9 @@ class ReconcileJobKitTest(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        self.work_order = KanbanCard.objects.create(
-            title='Recon WO', status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM, customer=self.customer,
+        self.work_order = WorkOrder.objects.create(
+            title='Recon WO', status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
             work_order_type=WorkOrderType.PREVENTIVE,
         )
         self.kit = JobKit.objects.create(

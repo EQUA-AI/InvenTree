@@ -123,6 +123,30 @@ async def fresh_permission_profile(user_pk: str) -> frozenset[tuple[str, str]]:
     )(user_pk)
 
 
+def _has_maintenance_scope_sync() -> bool:
+    """Whether the current principal resolves to any maintenance scope."""
+    from ai.core.auth import get_current_principal
+    from django.contrib.auth import get_user_model
+
+    principal = get_current_principal()
+    if principal is None:
+        return False
+    user = get_user_model().objects.filter(pk=principal.user_pk).first()
+    if user is None:
+        return False
+    from tasks.scope import ScopeError, scope_for_actor
+
+    try:
+        return bool(scope_for_actor(user))
+    except ScopeError:
+        return False
+
+
+async def _has_maintenance_scope() -> bool:
+    """Async wrapper for the maintenance-scope precheck."""
+    return await sync_to_async(_has_maintenance_scope_sync, thread_sensitive=True)()
+
+
 def _arguments_dict(arguments: Any) -> dict[str, Any]:
     if hasattr(arguments, "model_dump"):
         return dict(arguments.model_dump())
@@ -184,6 +208,14 @@ async def authorize_invocation(tool_id: str, arguments: Any) -> CapabilityEntry:
         query = arguments_dict.get("query")
         if not isinstance(query, str) or not query.strip():
             _deny("invalid_document_query")
+    elif policy.authorizer == "machine_scope_access":
+        # An actor with no resolvable maintenance scope is authorized for no
+        # asset at all, so refuse before dispatch rather than letting every
+        # read return an empty result and read as "this machine has no data".
+        # The row-level check still happens inside assets.ai_read; this only
+        # denies the actor who could never pass it.
+        if not await _has_maintenance_scope():
+            _deny("maintenance_scope_unresolved")
     elif policy.kind is PolicyKind.RESOURCE_AUTHORIZER:
         _deny("unknown_resource_authorizer")
 

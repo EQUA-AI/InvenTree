@@ -4,7 +4,7 @@ One audited command creates a maintenance work package, whatever raised it: the
 Maintenance workspace button, a machine Repair action, a health anomaly, or an
 approved AI proposal. Every one of those paths builds the same versioned
 ``RepairWorkPackageDraft`` and calls :func:`create_repair_work_package`; none of
-them writes ``KanbanCard`` or ``RepairPacket`` directly.
+them writes ``WorkOrder`` or ``RepairPacket`` directly.
 
 The command creates a *planned* work package. Starting the repair is a separate,
 readiness-gated lifecycle transition and is deliberately not reachable from here.
@@ -23,7 +23,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 
-from tasks.models import KanbanCard, WorkOrderType
+from tasks.models import WorkOrder, WorkOrderType
 from tasks.services import scheduling
 
 from assets.models import AssetMachine
@@ -45,9 +45,9 @@ ORIGIN_CHAT = 'chat'
 VALID_ORIGINS = frozenset({ORIGIN_MANUAL, ORIGIN_ANOMALY, ORIGIN_CHAT})
 
 VALID_PRIORITIES = frozenset({
-    KanbanCard.PRIORITY_LOW,
-    KanbanCard.PRIORITY_MEDIUM,
-    KanbanCard.PRIORITY_HIGH,
+    WorkOrder.PRIORITY_LOW,
+    WorkOrder.PRIORITY_MEDIUM,
+    WorkOrder.PRIORITY_HIGH,
 })
 VALID_WORK_ORDER_TYPES = frozenset(WorkOrderType.values)
 VALID_CRITICALITIES = frozenset({'low', 'medium', 'high', 'critical'})
@@ -237,7 +237,7 @@ def validate_draft(payload) -> dict:
         'description': _text(payload, 'description'),
         'work_order_type': work_order_type,
         'priority': _choice(
-            payload, 'priority', VALID_PRIORITIES, KanbanCard.PRIORITY_MEDIUM
+            payload, 'priority', VALID_PRIORITIES, WorkOrder.PRIORITY_MEDIUM
         ),
         'create_repair_packet': bool(create_packet),
         # Proceeding past an open repair is a deliberate, attributed act.
@@ -460,7 +460,7 @@ def create_repair_work_package(
     )
     replayed = bool(command.metadata.get('replayed'))
 
-    work_order = KanbanCard.objects.get(pk=command.work_order_id)
+    work_order = WorkOrder.objects.get(pk=command.work_order_id)
 
     # The work order inherits the asset's customer so scope resolution has one
     # answer; ``estimated_minutes`` is planning metadata the create command does

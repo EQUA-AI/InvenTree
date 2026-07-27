@@ -1,6 +1,6 @@
 """Regression: the AI agent cannot hard-delete a work order.
 
-``delete_kanban_card`` performs a bare ``card.delete()``. ``KanbanCard`` cascades to
+``delete_kanban_card`` performs a bare ``card.delete()``. ``WorkOrder`` cascades to
 ``WorkOrderEvent``, ``WorkOrderCommand``, ``WorkOrderCloseout``, ``WorkOrderDeviation``,
 ``CloseoutPartUsage`` and ``CloseoutReading``, so a single call destroys the governance
 and closeout history of completed work. It also applies no customer scope, unlike the

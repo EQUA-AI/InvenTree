@@ -34,8 +34,8 @@ from ai.core.tools.read_only import (  # noqa: E402
 def _stub_tasks_models():
     """Keep the ORM out of reach: a leak must fail the test, not write data."""
     module = types.ModuleType("tasks.models")
-    module.KanbanCard = object
-    module.KanbanCardPart = object
+    module.WorkOrder = object
+    module.WorkOrderPart = object
     sys.modules.setdefault("tasks", types.ModuleType("tasks"))
     previous = sys.modules.get("tasks.models")
     sys.modules["tasks.models"] = module
@@ -105,7 +105,7 @@ def test_confirmed_write_exception_reopens_the_fence_for_one_call():
 
     with read_only_tool_fence(), confirmed_write_exception():
         try:
-            asyncio.run(_call(kanban_tools.archive_kanban_card, card_id=127))
+            asyncio.run(_call(kanban_tools.archive_kanban_card, work_order_id=127))
         except PermissionError:  # pragma: no cover - would be the defect
             pytest.fail("confirmed write was blocked by the fence")
         except Exception:

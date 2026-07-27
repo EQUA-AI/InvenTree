@@ -98,11 +98,11 @@ def _require_strict_phrase(action_type: str, confirm_phrase: str) -> None:
 
 
 def _work_order(work_order_id: int):
-    from tasks.models import KanbanCard
+    from tasks.models import WorkOrder
 
     try:
-        work_order = KanbanCard.objects.get(pk=work_order_id)
-    except KanbanCard.DoesNotExist as exc:
+        work_order = WorkOrder.objects.get(pk=work_order_id)
+    except WorkOrder.DoesNotExist as exc:
         raise ProposalNotFound('no such work order') from exc
     return work_order
 
@@ -188,10 +188,10 @@ def _authorize_and_bind(owner, action_type: str, work_order_id, intent):
         successor = _dependency_successor(owner, intent.get('dependency_id'))
         return successor.pk, successor.lifecycle_version, successor
     if action_type == ProposalAction.DEPENDENCY_CREATE.value:
-        to_card = _authorized_work_order(owner, int(work_order_id))
+        successor = _authorized_work_order(owner, int(work_order_id))
         # Both endpoints of a new edge must be in the actor's scope.
-        _authorized_work_order(owner, int(intent.get('from_card_id')))
-        return to_card.pk, to_card.lifecycle_version, to_card
+        _authorized_work_order(owner, int(intent.get('predecessor_id')))
+        return successor.pk, successor.lifecycle_version, successor
     work_order = _authorized_work_order(owner, int(work_order_id))
     return work_order.pk, work_order.lifecycle_version, work_order
 
@@ -238,14 +238,14 @@ def _authorize_machine_scope(owner, machine_id) -> None:
 
 def _dependency_successor(owner, dependency_id):
     """Resolve a dependency to its (scope-authorized) successor card."""
-    from tasks.models import KanbanCardDependency
+    from tasks.models import WorkOrderDependency
 
     if not dependency_id:
         raise ProposalError('dependency id is required')
-    dependency = KanbanCardDependency.objects.filter(pk=dependency_id).first()
+    dependency = WorkOrderDependency.objects.filter(pk=dependency_id).first()
     if dependency is None:
         raise ProposalNotFound('no such dependency')
-    return _authorized_work_order(owner, dependency.to_card_id)
+    return _authorized_work_order(owner, dependency.successor_id)
 
 
 def _iso(value: Any) -> Any:
@@ -425,12 +425,12 @@ def _preview_repair_work_package(work_order, intent: dict[str, Any]) -> dict[str
 
 
 def _preview_create_child(work_order, intent: dict[str, Any]) -> dict[str, Any]:
-    from tasks.models import KanbanCard
+    from tasks.models import WorkOrder
 
     return {
         'parent_id': work_order.pk,
         'proposed_title': intent.get('title', ''),
-        'card_kind': intent.get('card_kind', KanbanCard.KIND_SUBTASK),
+        'card_kind': intent.get('card_kind', WorkOrder.KIND_SUBTASK),
     }
 
 
@@ -442,12 +442,12 @@ def _preview_generate_procurement(work_order, intent: dict[str, Any]) -> dict[st
 
 
 def _preview_dependency_create(work_order, intent: dict[str, Any]) -> dict[str, Any]:
-    from tasks.models import KanbanCardDependency
+    from tasks.models import WorkOrderDependency
 
     return {
-        'from_card_id': intent.get('from_card_id'),
-        'to_card_id': work_order.pk,
-        'dependency_type': intent.get('dependency_type', KanbanCardDependency.TYPE_FS),
+        'predecessor_id': intent.get('predecessor_id'),
+        'successor_id': work_order.pk,
+        'dependency_type': intent.get('dependency_type', WorkOrderDependency.TYPE_FS),
         'lag_minutes': int(intent.get('lag_minutes', 0)),
     }
 
@@ -774,8 +774,8 @@ def _dependency_create_receipt(dependency) -> dict[str, Any]:
     return {
         'command': 'create_dependency',
         'dependency_id': dependency.pk,
-        'from_card_id': dependency.from_card_id,
-        'to_card_id': dependency.to_card_id,
+        'predecessor_id': dependency.predecessor_id,
+        'successor_id': dependency.successor_id,
         'dependency_type': dependency.dependency_type,
     }
 
@@ -801,7 +801,7 @@ def _dispatch_optimize(owner, intent: dict[str, Any], idem: str) -> dict[str, An
     The planner (not the model) chooses slots; ``apply_schedule_batch`` uses each
     card's *current* version so a concurrent change fails the whole apply.
     """
-    from tasks.models import KanbanCard
+    from tasks.models import WorkOrder
     from tasks.services import scheduling
     from tasks.services.schedule_planner import PlanRequest, plan_schedule
 
@@ -821,14 +821,14 @@ def _dispatch_optimize(owner, intent: dict[str, Any], idem: str) -> dict[str, An
             'warnings': list(plan.warnings),
         }
     versions = dict(
-        KanbanCard.objects.filter(
-            id__in=[op.card_id for op in plan.operations]
+        WorkOrder.objects.filter(
+            id__in=[op.work_order_id for op in plan.operations]
         ).values_list('id', 'lifecycle_version')
     )
     operations = [
         {
-            'card_id': op.card_id,
-            'expected_version': versions[op.card_id],
+            'card_id': op.work_order_id,
+            'expected_version': versions[op.work_order_id],
             'scheduled_start': op.new_start,
             'scheduled_end': op.new_end,
         }
@@ -978,7 +978,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
         )
         return {'command': 'create_repair_work_package', **result.as_dict()}
     if action == ProposalAction.WORK_ORDER_CREATE_CHILD:
-        from tasks.models import KanbanCard
+        from tasks.models import WorkOrder
 
         return _command_receipt(
             scheduling.create_child(
@@ -986,7 +986,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 actor=owner,
                 idempotency_key=idem,
                 title=intent.get('title', ''),
-                card_kind=intent.get('card_kind', KanbanCard.KIND_SUBTASK),
+                card_kind=intent.get('card_kind', WorkOrder.KIND_SUBTASK),
                 **_create_planning(intent),
             )
         )
@@ -995,15 +995,15 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
             scheduling.generate_procurement_child(parent_id=wo_id, actor=owner)
         )
     if action == ProposalAction.DEPENDENCY_CREATE:
-        from tasks.models import KanbanCardDependency
+        from tasks.models import WorkOrderDependency
 
         return _dependency_create_receipt(
             scheduling.create_dependency(
-                from_card_id=int(intent['from_card_id']),
-                to_card_id=wo_id,
+                predecessor_id=int(intent['predecessor_id']),
+                successor_id=wo_id,
                 actor=owner,
                 dependency_type=intent.get(
-                    'dependency_type', KanbanCardDependency.TYPE_FS
+                    'dependency_type', WorkOrderDependency.TYPE_FS
                 ),
                 lag_minutes=int(intent.get('lag_minutes', 0)),
             )

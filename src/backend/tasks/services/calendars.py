@@ -28,17 +28,17 @@ _FALLBACK_SPEC = CalendarSpec(
 )
 
 
-def calendar_for_card(card) -> WorkingCalendar | None:
+def calendar_for_card(work_order) -> WorkingCalendar | None:
     """Return the ``WorkingCalendar`` model governing ``card``, or None."""
-    machine_id = getattr(card, 'machine_id', None)
+    machine_id = getattr(work_order, 'machine_id', None)
     if machine_id:
         machine_cal = WorkingCalendar.objects.filter(machine_id=machine_id).first()
         if machine_cal is not None:
             return machine_cal
 
-    customer_id = getattr(card, 'customer_id', None)
+    customer_id = getattr(work_order, 'customer_id', None)
     if not customer_id and machine_id:
-        customer_id = getattr(getattr(card, 'machine', None), 'customer_id', None)
+        customer_id = getattr(getattr(work_order, 'machine', None), 'customer_id', None)
 
     if customer_id:
         customer_cal = WorkingCalendar.objects.filter(customer_id=customer_id).first()
@@ -48,7 +48,7 @@ def calendar_for_card(card) -> WorkingCalendar | None:
     return WorkingCalendar.objects.filter(is_default=True).first()
 
 
-def spec_for_card(card) -> CalendarSpec:
+def spec_for_card(work_order) -> CalendarSpec:
     """Return the ``CalendarSpec`` governing ``card``, always non-null."""
-    calendar = calendar_for_card(card)
+    calendar = calendar_for_card(work_order)
     return calendar.to_spec() if calendar is not None else _FALLBACK_SPEC

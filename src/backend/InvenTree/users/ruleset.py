@@ -178,8 +178,8 @@ def get_ruleset_models() -> dict:
         # 'change' is what gates schedule editing: dragging a bar on the calendar
         # or timeline is a change to the work order, not a distinct capability.
         RuleSetEnum.WORK_ORDER: [
-            'tasks_kanbancard',
-            'tasks_kanbancardpart',
+            'tasks_workorder',
+            'tasks_workorderpart',
             'assets_assetmachine',
             'assets_assetmaintenancerecord',
             'assets_machinepart',
@@ -290,7 +290,7 @@ def get_ruleset_ignore() -> list[str]:
         'tasks_jobkitline',
         'tasks_jobkitshortage',
         'tasks_jobkitsubstitution',
-        'tasks_kanbancarddependency',
+        'tasks_workorderdependency',
         'tasks_kanbancolumn',
         'tasks_procedure',
         'tasks_procedureapplicability',

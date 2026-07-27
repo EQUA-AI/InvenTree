@@ -188,7 +188,7 @@ class AssetMaintenanceRecord(models.Model):
     )
 
     work_order = models.OneToOneField(
-        'tasks.KanbanCard',
+        'tasks.WorkOrder',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

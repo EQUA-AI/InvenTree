@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
 from assets.models import AssetMachine
-from tasks.models import KanbanCard, KanbanCardDependency, WorkOrderLifecycle
+from tasks.models import WorkOrder, WorkOrderDependency, WorkOrderLifecycle
 from tasks.services.schedule_planner import PlanRequest, plan_schedule
 
 
@@ -29,7 +29,7 @@ class PlanScheduleTest(TestCase):
         self.m2 = AssetMachine.objects.create(name='P2')
 
     def _card(self, machine=None, minutes=120, **kw):
-        return KanbanCard.objects.create(
+        return WorkOrder.objects.create(
             title=kw.pop('title', 'WO'),
             status='backlog',
             priority=kw.pop('priority', 'medium'),
@@ -43,29 +43,29 @@ class PlanScheduleTest(TestCase):
             PlanRequest(candidate_ids=ids, horizon_start=HORIZON, **kw)
         )
 
-    def _op(self, result, card_id):
-        return next(o for o in result.operations if o.card_id == card_id)
+    def _op(self, result, work_order_id):
+        return next(o for o in result.operations if o.work_order_id == work_order_id)
 
     def test_single_card_placed_at_horizon(self):
-        card = self._card(minutes=120)
-        result = self._plan([card.id])
+        work_order = self._card(minutes=120)
+        result = self._plan([work_order.id])
 
-        op = self._op(result, card.id)
+        op = self._op(result, work_order.id)
         self.assertEqual(op.new_start, _utc(2026, 8, 3, 9))
         self.assertEqual(op.new_end, _utc(2026, 8, 3, 11))
 
     def test_card_without_duration_is_unscheduled(self):
-        card = self._card(minutes=None)
-        result = self._plan([card.id])
+        work_order = self._card(minutes=None)
+        result = self._plan([work_order.id])
 
-        self.assertIn(card.id, result.unscheduled)
+        self.assertIn(work_order.id, result.unscheduled)
         self.assertTrue(any('no estimated duration' in w for w in result.warnings))
         self.assertEqual(result.operations, [])
 
     def test_finish_to_start_dependency(self):
         a = self._card(machine=self.m1, minutes=120, title='A')
         b = self._card(machine=self.m2, minutes=120, title='B')
-        KanbanCardDependency.objects.create(from_card=a, to_card=b)
+        WorkOrderDependency.objects.create(predecessor=a, successor=b)
 
         result = self._plan([a.id, b.id])
 
@@ -78,8 +78,8 @@ class PlanScheduleTest(TestCase):
     def test_start_to_start_dependency(self):
         a = self._card(machine=self.m1, minutes=120, title='A')
         b = self._card(machine=self.m2, minutes=60, title='B')
-        KanbanCardDependency.objects.create(
-            from_card=a, to_card=b, dependency_type='SS', lag_minutes=60
+        WorkOrderDependency.objects.create(
+            predecessor=a, successor=b, dependency_type='SS', lag_minutes=60
         )
 
         result = self._plan([a.id, b.id])
@@ -132,7 +132,7 @@ class PlanScheduleTest(TestCase):
         result = self._plan([locked.id, other.id], locked_ids=frozenset({locked.id}))
 
         # The locked card produces no operation; the other schedules around it.
-        self.assertFalse(any(o.card_id == locked.id for o in result.operations))
+        self.assertFalse(any(o.work_order_id == locked.id for o in result.operations))
         self.assertGreaterEqual(
             self._op(result, other.id).new_start, _utc(2026, 8, 3, 11)
         )
@@ -156,26 +156,26 @@ class PlanScheduleTest(TestCase):
 
     def test_no_operation_when_already_in_place(self):
         # A card already sitting exactly where the planner would put it: no-op.
-        card = self._card(
+        work_order = self._card(
             machine=self.m1, minutes=120,
             scheduled_start=_utc(2026, 8, 3, 9),
             scheduled_end=_utc(2026, 8, 3, 11),
         )
-        result = self._plan([card.id])
+        result = self._plan([work_order.id])
         self.assertEqual(result.operations, [])
 
     def test_is_deterministic(self):
         a = self._card(machine=self.m1, minutes=120, title='A')
         b = self._card(machine=self.m1, minutes=90, title='B', priority='high')
         c = self._card(machine=self.m2, minutes=60, title='C')
-        KanbanCardDependency.objects.create(from_card=a, to_card=c)
+        WorkOrderDependency.objects.create(predecessor=a, successor=c)
 
         first = self._plan([a.id, b.id, c.id])
         second = self._plan([a.id, b.id, c.id])
 
         def signature(r):
             return sorted(
-                (o.card_id, o.new_start.isoformat(), o.new_end.isoformat())
+                (o.work_order_id, o.new_start.isoformat(), o.new_end.isoformat())
                 for o in r.operations
             )
 
@@ -197,7 +197,7 @@ class PlanScheduleTest(TestCase):
         )
 
         # Reset so the second plan sees them unscheduled again.
-        KanbanCard.objects.filter(id__in=[a.id, b.id]).update(
+        WorkOrder.objects.filter(id__in=[a.id, b.id]).update(
             scheduled_start=None, scheduled_end=None
         )
         with_check = self._plan([a.id, b.id], check_assignee=True)

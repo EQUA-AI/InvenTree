@@ -39,6 +39,7 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
     """Map tool objects to their required ``(ruleset, permission)`` pair."""
     from ai.core.integrations import inventory_tools as it
     from ai.core.integrations import kanban_tools as kt
+    from ai.core.tools.inventree.read import machines as mt
     from ai.core.tools.inventree.write import purchase_orders as po
 
     mapping: dict[Any, tuple[str, str]] = {
@@ -117,13 +118,14 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
         po.complete_purchase_order: ("purchase_order", "change"),
         po.delete_purchase_order: ("purchase_order", "delete"),
         po.delete_po_line_item: ("purchase_order", "delete"),
-        # Kanban cards ARE work orders. InvenTree governs tasks_kanbancard and
-        # tasks_kanbancardpart with the WORK_ORDER ruleset (users/ruleset.py:180),
-        # so that is the permission the AI must check -- not an AIMMS-native
-        # group. Gating these on an invented "kanban" capability meant a user
-        # holding work_order rights could manage cards in the UI but not through
-        # the AI, and the aimms.kanban.* groups it looked for are created by no
-        # migration, so in practice only superusers ever reached these tools.
+        # A kanban card is how a work order's tracked work shows on the board,
+        # so touching one is exercising work-order authority. InvenTree governs
+        # tasks_workorder and tasks_workorderpart with the WORK_ORDER ruleset
+        # (users/ruleset.py), so that is the permission the AI must check -- not
+        # an AIMMS-native group. Gating these on an invented "kanban" capability
+        # meant a user holding work_order rights could manage cards in the UI but
+        # not through the AI, and the aimms.kanban.* groups it looked for are
+        # created by no migration, so only superusers ever reached these tools.
         kt.list_kanban_cards: ("work_order", "view"),
         kt.get_kanban_card: ("work_order", "view"),
         kt.get_kanban_summary: ("work_order", "view"),
@@ -137,6 +139,21 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
         kt.remove_part_from_kanban_card: ("work_order", "change"),
         # Hard-deletes the card and cascades to its parts: delete, not change.
         kt.delete_kanban_card: ("work_order", "delete"),
+        # Machines / assets. AssetMachine has no ruleset of its own, and an
+        # asset is what a work order is raised against, so it borrows the
+        # WORK_ORDER ruleset the same way kanban cards do. Role visibility is
+        # explicitly not the boundary here: every one of these re-derives
+        # customer/client scope per call in assets.ai_read, because a
+        # work_order:view grant is global while asset rows belong to tenants.
+        mt.search_machines: ("work_order", "view"),
+        mt.get_machine_overview: ("work_order", "view"),
+        mt.get_machine_health: ("work_order", "view"),
+        mt.get_machine_signals: ("work_order", "view"),
+        mt.get_machine_signal_trend: ("work_order", "view"),
+        mt.get_machine_anomalies: ("work_order", "view"),
+        mt.get_machine_parts: ("work_order", "view"),
+        mt.get_machine_maintenance_history: ("work_order", "view"),
+        mt.get_machine_attachments: ("work_order", "view"),
         # Email stays AIMMS-native (_native_tool_map): Gmail is not an InvenTree
         # model and has no ruleset to map onto.
         # query_database / list_database_tables are intentionally unmapped:

@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import TestCase
 
-from tasks.models import KanbanCard
+from tasks.models import WorkOrder
 from tasks.services import scheduling
 
 from assets.models import AssetMachine
@@ -32,14 +32,14 @@ class WorkOrderReferenceTest(TestCase):
 
     def test_direct_creation_gets_a_reference(self):
         """Even a bare ORM create is identified."""
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='Direct',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_LOW,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_LOW,
             machine=self.machine,
         )
 
-        self.assertEqual(card.reference, f'WO-{card.pk:06d}')
+        self.assertEqual(work_order.reference, f'WO-{work_order.pk:06d}')
 
     def test_the_command_service_gets_a_reference(self):
         """The board's own write path is no longer the odd one out."""
@@ -50,8 +50,8 @@ class WorkOrderReferenceTest(TestCase):
             machine_id=self.machine.pk,
         )
 
-        card = KanbanCard.objects.get(pk=result.work_order_id)
-        self.assertEqual(card.reference, f'WO-{card.pk:06d}')
+        work_order = WorkOrder.objects.get(pk=result.work_order_id)
+        self.assertEqual(work_order.reference, f'WO-{work_order.pk:06d}')
 
     def test_the_work_package_command_gets_a_reference(self):
         """Maintenance intake reports a reference it did not have to invent."""
@@ -67,32 +67,32 @@ class WorkOrderReferenceTest(TestCase):
 
     def test_an_explicit_reference_is_never_overwritten(self):
         """Imported and demo records keep the identifier they were given."""
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             reference='WO-DEMO-250912-001',
             title='Imported history',
-            status=KanbanCard.STATUS_DONE,
-            priority=KanbanCard.PRIORITY_LOW,
+            status=WorkOrder.STATUS_DONE,
+            priority=WorkOrder.PRIORITY_LOW,
             machine=self.machine,
         )
-        card.title = 'Renamed'
-        card.save(update_fields=['title'])
-        card.refresh_from_db()
+        work_order.title = 'Renamed'
+        work_order.save(update_fields=['title'])
+        work_order.refresh_from_db()
 
-        self.assertEqual(card.reference, 'WO-DEMO-250912-001')
+        self.assertEqual(work_order.reference, 'WO-DEMO-250912-001')
 
     def test_references_are_unique_across_creation_paths(self):
         """Deriving from the pk makes collisions impossible by construction."""
-        cards = [
-            KanbanCard.objects.create(
+        work_orders = [
+            WorkOrder.objects.create(
                 title=f'Card {index}',
-                status=KanbanCard.STATUS_BACKLOG,
-                priority=KanbanCard.PRIORITY_LOW,
+                status=WorkOrder.STATUS_BACKLOG,
+                priority=WorkOrder.PRIORITY_LOW,
                 machine=self.machine,
             )
             for index in range(5)
         ]
 
-        references = {card.reference for card in cards}
+        references = {work_order.reference for work_order in work_orders}
         self.assertEqual(len(references), 5)
 
 
@@ -100,8 +100,9 @@ class WorkOrderTableTest(TestCase):
     """Work orders live in a table Postgres names for what it holds."""
 
     def test_table_is_named_for_work_orders(self):
-        """The model keeps its name; the table says what it stores."""
-        self.assertEqual(KanbanCard._meta.db_table, 'tasks_workorder')
+        """Model and table agree, now that the model is named for the job."""
+        self.assertEqual(WorkOrder._meta.db_table, 'tasks_workorder')
+        self.assertEqual(WorkOrder._meta.model_name, 'workorder')
 
     def test_the_table_exists_under_that_name(self):
         """The rename actually reached the database."""
@@ -112,15 +113,14 @@ class WorkOrderTableTest(TestCase):
             )
             self.assertIsNotNone(cursor.fetchone())
 
-    def test_rbac_still_maps_the_model_not_the_table(self):
-        """The work_order ruleset keys off the model, so the rename is safe."""
+    def test_rbac_follows_the_renamed_model(self):
+        """The ruleset keys on ``<app_label>_<model_name>``, so it moved too.
+
+        Renaming a model renames the permissions Django derives from it. A
+        ruleset still naming the old model would silently govern nothing.
+        """
         from users.ruleset import get_ruleset_models
 
-        # The ruleset keys on ``<app_label>_<model_name>``, which the db_table
-        # rename does not touch. That is why work-order RBAC is unaffected.
-        self.assertIn('tasks_kanbancard', get_ruleset_models()['work_order'])
-        self.assertEqual(KanbanCard._meta.model_name, 'kanbancard')
-        self.assertNotEqual(
-            KanbanCard._meta.db_table,
-            f'{KanbanCard._meta.app_label}_{KanbanCard._meta.model_name}',
-        )
+        work_order_models = get_ruleset_models()['work_order']
+        self.assertIn('tasks_workorder', work_order_models)
+        self.assertNotIn('tasks_kanbancard', work_order_models)

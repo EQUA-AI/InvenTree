@@ -12,7 +12,7 @@ from stock.models import StockItem
 from tasks.models import (
     FulfillmentMode,
     JobKitLine,
-    KanbanCard,
+    WorkOrder,
     ProcedureResourceKind,
     WorkOrderLifecycle,
     WorkOrderType,
@@ -60,10 +60,10 @@ class CloseoutEnvMixin:
         self.machine = AssetMachine.objects.create(
             name=f'Machine {username}', customer=self.customer
         )
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Closeout work',
-            status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=self.customer,
             machine=self.machine,
             assigned_to=self.actor,

@@ -19,7 +19,7 @@ if not apps.is_installed('tasks'):
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
-from tasks.models import KanbanCard
+from tasks.models import WorkOrder
 from tasks.scope import MaintenanceScope
 
 from aichat.models import ChatActionProposal
@@ -94,7 +94,7 @@ class RepairWorkPackageExecutorTest(TestCase):
 
         self.assertTrue(result.success)
         payload = _payload_of(result)
-        work_order = KanbanCard.objects.get(pk=payload['work_order_id'])
+        work_order = WorkOrder.objects.get(pk=payload['work_order_id'])
         packet = RepairPacket.objects.get(pk=payload['repair_packet_id'])
         self.assertEqual(work_order.machine_id, self.machine.pk)
         self.assertEqual(packet.work_order_id, work_order.pk)
@@ -108,7 +108,7 @@ class RepairWorkPackageExecutorTest(TestCase):
         self.assertEqual(
             _payload_of(first)['work_order_id'], _payload_of(second)['work_order_id']
         )
-        self.assertEqual(KanbanCard.objects.filter(machine=self.machine).count(), 1)
+        self.assertEqual(WorkOrder.objects.filter(machine=self.machine).count(), 1)
 
     def test_duplicate_open_repair_fails_the_effect_with_its_links(self):
         """The queue cannot bypass duplicate control either."""
@@ -203,10 +203,10 @@ class RepairAnomalyDriftTest(TestCase):
 
     def test_anomaly_claimed_by_another_repair_blocks_execution(self):
         """Somebody else already raised the work; approving would duplicate it."""
-        other = KanbanCard.objects.create(
+        other = WorkOrder.objects.create(
             title='Already raised',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_HIGH,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_HIGH,
             machine=self.machine,
         )
         self.anomaly.work_order = other
@@ -295,7 +295,7 @@ class ApprovalBridgeTest(TestCase):
                 owner=self.actor, scope_hash='c' * 64, proposal_id=proposal.id
             )
 
-        self.assertFalse(KanbanCard.objects.filter(machine=self.machine).exists())
+        self.assertFalse(WorkOrder.objects.filter(machine=self.machine).exists())
         self.assertFalse(RepairPacket.objects.filter(machine=self.machine).exists())
         proposal.refresh_from_db()
         self.assertIsNone(proposal.receipt)
@@ -305,5 +305,5 @@ class ApprovalBridgeTest(TestCase):
         """Raising an approval is a request, not an effect."""
         self._propose()
 
-        self.assertFalse(KanbanCard.objects.filter(machine=self.machine).exists())
+        self.assertFalse(WorkOrder.objects.filter(machine=self.machine).exists())
         self.assertEqual(ChatActionProposal.objects.count(), 1)

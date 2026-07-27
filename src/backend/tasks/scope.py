@@ -19,6 +19,7 @@ is never promoted into a boundary.
 from dataclasses import dataclass
 
 from django.conf import settings
+from django.db.models import Q
 from django.utils.module_loading import import_string
 
 
@@ -131,3 +132,75 @@ def require_work_order_scope(actor, work_order) -> MaintenanceScope:
     if scope not in scope_for_actor(actor):
         raise ScopeError('Actor and work-order maintenance scopes do not match')
     return scope
+
+
+def scope_for_machine(machine) -> MaintenanceScope:
+    """Resolve one asset's own boundary, independent of any work order.
+
+    Same two identities and the same precedence as ``scope_for_work_order``: a
+    customer relationship is the stronger claim because the machine sits at
+    somebody else's site, and the client owns it otherwise. A machine with
+    neither remains unresolved and therefore unreachable.
+
+    This exists because a machine is now addressable on its own -- the AI read
+    rails answer questions about an asset with no work order in sight -- and
+    deriving asset authority from a work order would make an asset reachable
+    only once somebody happened to raise a job against it.
+    """
+    if machine is None:
+        raise ScopeError('Machine scope is unresolved: no machine supplied')
+
+    customer_id = getattr(machine, 'customer_id', None)
+    client_id = getattr(machine, 'client_id', None)
+
+    if customer_id is not None:
+        # AssetMachine has no authoritative site key. Its free-text ``location``
+        # must not be promoted into a security boundary.
+        return MaintenanceScope(customer_id=customer_id, site_key=None)
+    if client_id is not None:
+        return MaintenanceScope(customer_id=None, site_key=None, client_id=client_id)
+    raise ScopeError(
+        'Machine scope is unresolved: it has neither a customer nor a client.'
+    )
+
+
+def require_machine_scope(actor, machine) -> MaintenanceScope:
+    """Require the machine's exact scope to be authorized for the actor."""
+    scope = scope_for_machine(machine)
+    if scope not in scope_for_actor(actor):
+        raise ScopeError('Actor and machine maintenance scopes do not match')
+    return scope
+
+
+def machine_scope_filter(actor) -> Q:
+    """Return a queryset predicate selecting exactly the actor's machines.
+
+    This is the set form of :func:`require_machine_scope` and must never be
+    wider than it, because listing surfaces disclose a machine's existence
+    before anything re-authorizes it row by row. Two rules keep the two in
+    agreement:
+
+    * The base predicate is ``pk__in=[]`` -- selecting nothing -- so an actor
+      whose scopes contribute no clause matches no rows. Starting from an empty
+      ``Q()`` would instead read as "everything", which is the classic
+      fail-open shape this module exists to avoid.
+    * Scopes carrying a ``site_key`` are skipped. ``scope_for_machine`` always
+      reports ``site_key=None``, and ``MaintenanceScope`` equality includes the
+      site key, so a site-qualified grant authorizes no machine under
+      ``require_machine_scope``. Letting it match here would surface machines
+      that every per-record check then denies.
+
+    Raises:
+        ScopeError: When the actor's own scope cannot be resolved.
+    """
+    predicate = Q(pk__in=[])
+    for scope in scope_for_actor(actor):
+        if scope.site_key is not None:
+            continue
+        if scope.customer_id is not None:
+            predicate |= Q(customer_id=scope.customer_id)
+        elif scope.client_id is not None:
+            # Customer wins in ``scope_for_machine``, so a client grant must not
+            # reach a machine that also names a customer.
+            predicate |= Q(customer_id__isnull=True, client_id=scope.client_id)
+    return predicate

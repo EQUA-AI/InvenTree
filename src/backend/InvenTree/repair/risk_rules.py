@@ -685,7 +685,7 @@ class _ReadinessBlockerRule(RiskRule):
                 candidates.append(
                     RiskCandidate(
                         fingerprint_parts=(str(wo.pk), blocker.code),
-                        source_model='tasks.KanbanCard',
+                        source_model='tasks.WorkOrder',
                         source_id=str(wo.pk),
                         title=f'{blocker.code}: {wo.reference or wo.pk}',
                         summary=blocker.message,
@@ -840,7 +840,7 @@ class CloseoutMissingRule(RiskRule):
             candidates.append(
                 RiskCandidate(
                     fingerprint_parts=(str(wo.pk), 'verifying'),
-                    source_model='tasks.KanbanCard',
+                    source_model='tasks.WorkOrder',
                     source_id=str(wo.pk),
                     title=f'Work order stuck in verification: {wo.reference or wo.pk}',
                     summary=(
@@ -873,7 +873,7 @@ class CloseoutMissingRule(RiskRule):
             candidates.append(
                 RiskCandidate(
                     fingerprint_parts=(str(wo.pk), 'missing_closeout'),
-                    source_model='tasks.KanbanCard',
+                    source_model='tasks.WorkOrder',
                     source_id=str(wo.pk),
                     title=(
                         f'Completed without structured closeout: '

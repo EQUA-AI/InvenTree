@@ -140,7 +140,7 @@ class RepairPacket(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
 
     # --- Wiring to other subsystems ---
     work_order = models.OneToOneField(
-        'tasks.KanbanCard',
+        'tasks.WorkOrder',
         null=True,
         blank=True,
         on_delete=models.SET_NULL,

@@ -20,7 +20,7 @@ if not apps.is_installed('tasks'):
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from tasks.models import KanbanCard
+from tasks.models import WorkOrder
 from tasks.scope import MaintenanceScope
 
 from aichat.models import ProposalState
@@ -88,13 +88,13 @@ class RepairWorkPackageProposalTest(TestCase):
 
     def test_proposing_creates_nothing(self):
         """A proposal is a request for approval, not an effect."""
-        before_cards = KanbanCard.objects.count()
+        before_cards = WorkOrder.objects.count()
         before_packets = RepairPacket.objects.count()
 
         proposal = self._propose()
 
         self.assertEqual(proposal.state, ProposalState.PROPOSED)
-        self.assertEqual(KanbanCard.objects.count(), before_cards)
+        self.assertEqual(WorkOrder.objects.count(), before_cards)
         self.assertEqual(RepairPacket.objects.count(), before_packets)
 
     def test_preview_is_derived_from_server_state(self):
@@ -138,7 +138,7 @@ class RepairWorkPackageProposalTest(TestCase):
         receipt = confirmed.receipt
         self.assertEqual(receipt['command'], 'create_repair_work_package')
 
-        work_order = KanbanCard.objects.get(pk=receipt['work_order_id'])
+        work_order = WorkOrder.objects.get(pk=receipt['work_order_id'])
         packet = RepairPacket.objects.get(pk=receipt['repair_packet_id'])
         self.assertEqual(work_order.machine_id, self.machine.pk)
         self.assertEqual(packet.machine_id, self.machine.pk)
@@ -157,7 +157,7 @@ class RepairWorkPackageProposalTest(TestCase):
 
         self.assertEqual(first.receipt, second.receipt)
         self.assertEqual(
-            KanbanCard.objects.filter(machine=self.machine).count(), 1
+            WorkOrder.objects.filter(machine=self.machine).count(), 1
         )
         self.assertEqual(
             RepairPacket.objects.filter(machine=self.machine).count(), 1
@@ -171,7 +171,7 @@ class RepairWorkPackageProposalTest(TestCase):
             owner=self.actor, scope_hash='b' * 64, proposal_id=proposal.id
         )
 
-        self.assertFalse(KanbanCard.objects.filter(machine=self.machine).exists())
+        self.assertFalse(WorkOrder.objects.filter(machine=self.machine).exists())
         self.assertFalse(RepairPacket.objects.filter(machine=self.machine).exists())
 
     def test_a_machine_outside_scope_is_not_proposable(self):
@@ -219,7 +219,7 @@ class RepairWorkPackageProposalTest(TestCase):
         with self.assertRaises(Exception):
             self._propose(title='   ')
 
-        self.assertFalse(KanbanCard.objects.filter(machine=self.machine).exists())
+        self.assertFalse(WorkOrder.objects.filter(machine=self.machine).exists())
 
     def test_permission_parity_with_the_ui_path(self):
         """Without work_order.add the proposal cannot even be raised."""

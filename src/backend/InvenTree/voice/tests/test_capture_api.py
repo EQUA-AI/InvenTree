@@ -16,7 +16,7 @@ import os
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from tasks.models import KanbanCard, WorkOrderLifecycle, WorkOrderType
+from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 
 from assets.models import AssetMachine
 from company.models import Company
@@ -45,10 +45,10 @@ class CaptureApiTests(TestCase):
         cls.machine = AssetMachine.objects.create(
             name='Capture API Machine', customer=cls.customer
         )
-        cls.work_order = KanbanCard.objects.create(
+        cls.work_order = WorkOrder.objects.create(
             title='Capture API Work Order',
-            status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=cls.customer,
             machine=cls.machine,
             work_order_type=WorkOrderType.PREVENTIVE,

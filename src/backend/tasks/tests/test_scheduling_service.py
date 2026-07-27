@@ -7,7 +7,7 @@ from django.test import TestCase
 
 from assets.models import AssetMachine
 from tasks.models import (
-    KanbanCard,
+    WorkOrder,
     WorkOrderCommand,
     WorkOrderDeletionRecord,
     WorkOrderEvent,
@@ -44,7 +44,7 @@ class SchedulingServiceTest(TestCase):
         self.machine = AssetMachine.objects.create(name='Svc Press')
 
     def _card(self, **kw):
-        return KanbanCard.objects.create(
+        return WorkOrder.objects.create(
             title=kw.pop('title', 'WO'),
             status='backlog',
             priority='low',
@@ -62,12 +62,12 @@ class SchedulingServiceTest(TestCase):
             machine_id=self.machine.pk,
         )
 
-        card = KanbanCard.objects.get(pk=result.work_order_id)
-        self.assertEqual(card.title, 'New WO')
-        self.assertEqual(card.machine, self.machine)
+        work_order = WorkOrder.objects.get(pk=result.work_order_id)
+        self.assertEqual(work_order.title, 'New WO')
+        self.assertEqual(work_order.machine, self.machine)
         self.assertTrue(
             WorkOrderEvent.objects.filter(
-                work_order=card, event_type='CREATED'
+                work_order=work_order, event_type='CREATED'
             ).exists()
         )
 
@@ -82,7 +82,7 @@ class SchedulingServiceTest(TestCase):
         )
 
         self.assertEqual(first.work_order_id, second.work_order_id)
-        self.assertEqual(KanbanCard.objects.filter(title='Once').count(), 1)
+        self.assertEqual(WorkOrder.objects.filter(title='Once').count(), 1)
 
     def test_create_idempotency_conflict_on_different_request(self):
         scheduling.create_work_order(
@@ -98,11 +98,11 @@ class SchedulingServiceTest(TestCase):
     # ── schedule (move) ───────────────────────────────────────
 
     def test_schedule_sets_the_window_and_bumps_version(self):
-        card = self._card()
-        version = card.lifecycle_version
+        work_order = self._card()
+        version = work_order.lifecycle_version
 
         result = scheduling.schedule_work_order(
-            work_order_id=card.pk,
+            work_order_id=work_order.pk,
             actor=self.actor,
             expected_version=version,
             idempotency_key='s1',
@@ -110,41 +110,41 @@ class SchedulingServiceTest(TestCase):
             scheduled_end=_utc(2026, 8, 3, 13),
         )
 
-        card.refresh_from_db()
-        self.assertTrue(_same_instant(card.scheduled_start, _utc(2026, 8, 3, 9)))
-        self.assertEqual(card.lifecycle_version, version + 1)
+        work_order.refresh_from_db()
+        self.assertTrue(_same_instant(work_order.scheduled_start, _utc(2026, 8, 3, 9)))
+        self.assertEqual(work_order.lifecycle_version, version + 1)
         self.assertEqual(result.lifecycle_version, version + 1)
 
     def test_schedule_rejects_inverted_window(self):
-        card = self._card()
+        work_order = self._card()
         with self.assertRaises(scheduling.InvalidSchedule):
             scheduling.schedule_work_order(
-                work_order_id=card.pk,
+                work_order_id=work_order.pk,
                 actor=self.actor,
-                expected_version=card.lifecycle_version,
+                expected_version=work_order.lifecycle_version,
                 idempotency_key='s2',
                 scheduled_start=_utc(2026, 8, 3, 13),
                 scheduled_end=_utc(2026, 8, 3, 9),
             )
 
     def test_schedule_rejects_stale_version(self):
-        card = self._card()
+        work_order = self._card()
         with self.assertRaises(scheduling.StaleVersion):
             scheduling.schedule_work_order(
-                work_order_id=card.pk,
+                work_order_id=work_order.pk,
                 actor=self.actor,
-                expected_version=card.lifecycle_version + 5,
+                expected_version=work_order.lifecycle_version + 5,
                 idempotency_key='s3',
                 scheduled_start=_utc(2026, 8, 3, 9),
                 scheduled_end=_utc(2026, 8, 3, 13),
             )
 
     def test_schedule_is_idempotent(self):
-        card = self._card()
+        work_order = self._card()
         args = dict(
-            work_order_id=card.pk,
+            work_order_id=work_order.pk,
             actor=self.actor,
-            expected_version=card.lifecycle_version,
+            expected_version=work_order.lifecycle_version,
             idempotency_key='s4',
             scheduled_start=_utc(2026, 8, 3, 9),
             scheduled_end=_utc(2026, 8, 3, 13),
@@ -153,17 +153,17 @@ class SchedulingServiceTest(TestCase):
         second = scheduling.schedule_work_order(**args)
 
         self.assertEqual(first.event_id, second.event_id)
-        card.refresh_from_db()
+        work_order.refresh_from_db()
         # Version bumped exactly once despite two identical calls.
-        self.assertEqual(card.lifecycle_version, 2)
+        self.assertEqual(work_order.lifecycle_version, 2)
 
     def test_schedule_refuses_completed_work(self):
-        card = self._card(lifecycle_status=WorkOrderLifecycle.COMPLETED)
+        work_order = self._card(lifecycle_status=WorkOrderLifecycle.COMPLETED)
         with self.assertRaises(scheduling.NotMutable):
             scheduling.schedule_work_order(
-                work_order_id=card.pk,
+                work_order_id=work_order.pk,
                 actor=self.actor,
-                expected_version=card.lifecycle_version,
+                expected_version=work_order.lifecycle_version,
                 idempotency_key='s5',
                 scheduled_start=_utc(2026, 8, 3, 9),
                 scheduled_end=_utc(2026, 8, 3, 13),
@@ -172,34 +172,34 @@ class SchedulingServiceTest(TestCase):
     # ── resize ────────────────────────────────────────────────
 
     def test_resize_sets_duration(self):
-        card = self._card()
+        work_order = self._card()
         scheduling.resize_work_order(
-            work_order_id=card.pk,
+            work_order_id=work_order.pk,
             actor=self.actor,
-            expected_version=card.lifecycle_version,
+            expected_version=work_order.lifecycle_version,
             idempotency_key='r1',
             estimated_minutes=240,
         )
-        card.refresh_from_db()
-        self.assertEqual(card.estimated_minutes, 240)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.estimated_minutes, 240)
 
     def test_resize_requires_something_to_change(self):
-        card = self._card()
+        work_order = self._card()
         with self.assertRaises(scheduling.WorkOrderCommandError):
             scheduling.resize_work_order(
-                work_order_id=card.pk,
+                work_order_id=work_order.pk,
                 actor=self.actor,
-                expected_version=card.lifecycle_version,
+                expected_version=work_order.lifecycle_version,
                 idempotency_key='r2',
             )
 
     def test_resize_rejects_negative_duration(self):
-        card = self._card()
+        work_order = self._card()
         with self.assertRaises(scheduling.InvalidSchedule):
             scheduling.resize_work_order(
-                work_order_id=card.pk,
+                work_order_id=work_order.pk,
                 actor=self.actor,
-                expected_version=card.lifecycle_version,
+                expected_version=work_order.lifecycle_version,
                 idempotency_key='r3',
                 estimated_minutes=-5,
             )
@@ -207,79 +207,79 @@ class SchedulingServiceTest(TestCase):
     # ── update plan ───────────────────────────────────────────
 
     def test_update_plan_changes_allowed_fields(self):
-        card = self._card()
+        work_order = self._card()
         other = AssetMachine.objects.create(name='Other Svc')
         scheduling.update_work_order_plan(
-            work_order_id=card.pk,
+            work_order_id=work_order.pk,
             actor=self.actor,
-            expected_version=card.lifecycle_version,
+            expected_version=work_order.lifecycle_version,
             idempotency_key='u1',
             fields={'title': 'Renamed', 'priority': 'high', 'machine_id': other.pk},
         )
-        card.refresh_from_db()
-        self.assertEqual(card.title, 'Renamed')
-        self.assertEqual(card.priority, 'high')
-        self.assertEqual(card.machine, other)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.title, 'Renamed')
+        self.assertEqual(work_order.priority, 'high')
+        self.assertEqual(work_order.machine, other)
 
     def test_update_plan_ignores_unknown_fields(self):
-        card = self._card()
+        work_order = self._card()
         with self.assertRaises(scheduling.WorkOrderCommandError):
             scheduling.update_work_order_plan(
-                work_order_id=card.pk,
+                work_order_id=work_order.pk,
                 actor=self.actor,
-                expected_version=card.lifecycle_version,
+                expected_version=work_order.lifecycle_version,
                 idempotency_key='u2',
                 fields={'lifecycle_status': 'completed'},
             )
-        card.refresh_from_db()
-        self.assertEqual(card.lifecycle_status, WorkOrderLifecycle.DRAFT)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.lifecycle_status, WorkOrderLifecycle.DRAFT)
 
     # ── delete (governed) ─────────────────────────────────────
 
     def test_delete_removes_card_but_keeps_audit(self):
-        card = self._card(title='To Delete')
-        card_pk = card.pk
+        work_order = self._card(title='To Delete')
+        work_order_pk = work_order.pk
 
         result = scheduling.delete_work_order(
-            work_order_id=card_pk,
+            work_order_id=work_order_pk,
             actor=self.actor,
-            expected_version=card.lifecycle_version,
+            expected_version=work_order.lifecycle_version,
             idempotency_key='d1',
             reason='obsolete',
         )
 
-        self.assertFalse(KanbanCard.objects.filter(pk=card_pk).exists())
+        self.assertFalse(WorkOrder.objects.filter(pk=work_order_pk).exists())
         record = WorkOrderDeletionRecord.objects.get(pk=result.deletion_record_id)
-        self.assertEqual(record.work_order_pk, card_pk)
+        self.assertEqual(record.work_order_pk, work_order_pk)
         self.assertEqual(record.title, 'To Delete')
         self.assertEqual(record.reason, 'obsolete')
         self.assertEqual(record.actor, self.actor)
         self.assertEqual(record.snapshot['title'], 'To Delete')
 
     def test_delete_audit_survives_and_answers_who_and_what(self):
-        card = self._card(title='Forensic')
-        card_pk = card.pk
+        work_order = self._card(title='Forensic')
+        work_order_pk = work_order.pk
         scheduling.delete_work_order(
-            work_order_id=card_pk,
+            work_order_id=work_order_pk,
             actor=self.actor,
-            expected_version=card.lifecycle_version,
+            expected_version=work_order.lifecycle_version,
             idempotency_key='d2',
             reason='mistake',
         )
         # The machine outlives the card too (SET_NULL, not cascade).
-        record = WorkOrderDeletionRecord.objects.get(work_order_pk=card_pk)
+        record = WorkOrderDeletionRecord.objects.get(work_order_pk=work_order_pk)
         self.assertEqual(record.machine, self.machine)
 
     def test_delete_rejects_stale_version(self):
-        card = self._card()
+        work_order = self._card()
         with self.assertRaises(scheduling.StaleVersion):
             scheduling.delete_work_order(
-                work_order_id=card.pk,
+                work_order_id=work_order.pk,
                 actor=self.actor,
-                expected_version=card.lifecycle_version + 9,
+                expected_version=work_order.lifecycle_version + 9,
                 idempotency_key='d3',
             )
-        self.assertTrue(KanbanCard.objects.filter(pk=card.pk).exists())
+        self.assertTrue(WorkOrder.objects.filter(pk=work_order.pk).exists())
 
     # ── batch ─────────────────────────────────────────────────
 
@@ -351,18 +351,18 @@ class SchedulingDeleteProtectedTest(TestCase):
             username='prot-actor', email='p@example.com', password='pw'
         )
         machine = AssetMachine.objects.create(name='Prot Press')
-        card = KanbanCard.objects.create(
+        work_order = WorkOrder.objects.create(
             title='Protected', status='backlog', priority='low', machine=machine
         )
         # CloseoutCapture.work_order is on_delete=PROTECT.
-        CloseoutCapture.objects.create(work_order=card, created_by=actor)
+        CloseoutCapture.objects.create(work_order=work_order, created_by=actor)
 
         with self.assertRaises(scheduling.ProtectedWorkOrder):
             scheduling.delete_work_order(
-                work_order_id=card.pk,
+                work_order_id=work_order.pk,
                 actor=actor,
-                expected_version=card.lifecycle_version,
+                expected_version=work_order.lifecycle_version,
                 idempotency_key='dp1',
             )
 
-        self.assertTrue(KanbanCard.objects.filter(pk=card.pk).exists())
+        self.assertTrue(WorkOrder.objects.filter(pk=work_order.pk).exists())

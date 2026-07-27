@@ -49,9 +49,10 @@ def test_catalog_covers_wf8_once_in_canonical_order():
     expected = tuple(INVENTORY_READ_TOOLS + EMAIL_TOOLS + KANBAN_TOOLS + DOCUMENT_SEARCH_TOOLS)
     catalog = capability_catalog()
 
-    # 46, not 47: delete_kanban_card is withheld from KANBAN_TOOLS (see
-    # test_delete_kanban_card_is_withheld_from_the_agent).
-    assert len(catalog) == len(expected) == 46
+    # 55, not 56: delete_kanban_card is withheld from KANBAN_TOOLS (see
+    # test_delete_kanban_card_is_withheld_from_the_agent). Was 46 before the
+    # nine machine read tools joined INVENTORY_READ_TOOLS.
+    assert len(catalog) == len(expected) == 55
     assert tuple(entry.tool for entry in catalog) == expected
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
     assert all(entry.tool is expected[index] for index, entry in enumerate(catalog))
@@ -69,6 +70,9 @@ def test_catalog_has_expected_stable_pack_shapes():
         "sales.read": 4,
         "build.read": 3,
         "analytics.read": 2,
+        # Every machine-page tab, plus search (spoken-name resolution) and the
+        # signal trend: the machine detail page is unreachable without them.
+        "machines.read": 9,
         "email.read": 3,
         "email.write": 3,
         "kanban.read": 4,
@@ -91,10 +95,11 @@ def test_every_catalog_entry_has_an_explicit_policy():
         policy = policies[tool.__name__]
         assert policy.kind is PolicyKind.NATIVE_PERMISSION
         assert policy.all_of == (("email", permission),)
-    # Kanban cards ARE work orders -- InvenTree governs tasks_kanbancard with the
-    # WORK_ORDER ruleset -- so that is the pair the catalog must declare. This
-    # previously asserted an AIMMS-native ("kanban", ...) capability, which no
-    # ruleset backed and no migration granted.
+    # A kanban card is a work order's tracked work on the board, and InvenTree
+    # governs tasks_workorder with the WORK_ORDER ruleset -- so that is the pair
+    # the catalog must declare. This previously asserted an AIMMS-native
+    # ("kanban", ...) capability, which no ruleset backed and no migration
+    # granted.
     for tool in KANBAN_TOOLS:
         if tool in KANBAN_READ_TOOLS:
             permission = "view"
@@ -124,9 +129,24 @@ def test_protected_resource_tools_have_resource_authorizers():
         "list_database_tables",
         "query_database",
         "search_part_documents",
+        # Machine reads are tenant-scoped, not role-scoped: a work_order:view
+        # grant is global while asset rows belong to a customer or client, so
+        # the role can only ever say "may read assets", never "may read this
+        # one". Plain NATIVE_PERMISSION would be the wrong shape here.
+        "search_machines",
+        "get_machine_overview",
+        "get_machine_health",
+        "get_machine_signals",
+        "get_machine_signal_trend",
+        "get_machine_anomalies",
+        "get_machine_parts",
+        "get_machine_maintenance_history",
+        "get_machine_attachments",
     }
     assert policies["query_database"].authorizer == "database_relation_access"
     assert policies["get_part_attachments"].all_of == (("part", "view"),)
+    assert policies["get_machine_health"].authorizer == "machine_scope_access"
+    assert policies["get_machine_health"].all_of == (("work_order", "view"),)
 
 
 def test_contract_manifest_is_stable_and_complete():
@@ -135,7 +155,7 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    assert len(first) == 46
+    assert len(first) == 55
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)

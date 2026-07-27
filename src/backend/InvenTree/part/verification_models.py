@@ -194,7 +194,7 @@ class PartVerificationSession(models.Model):
     )
 
     work_order = models.ForeignKey(
-        'tasks.KanbanCard',
+        'tasks.WorkOrder',
         null=True,
         blank=True,
         on_delete=models.PROTECT,

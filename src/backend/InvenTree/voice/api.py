@@ -96,16 +96,16 @@ def _error(exc: capture_service.CaptureError) -> Response:
 
 def _lock_capture_target(work_order_id: int, expected_version: int) -> None:
     """Lock capture target."""
-    from tasks.models import KanbanCard
+    from tasks.models import WorkOrder
 
     try:
         work_order = (
-            KanbanCard.objects
+            WorkOrder.objects
             .select_for_update()
             .only('lifecycle_version')
             .get(pk=work_order_id)
         )
-    except KanbanCard.DoesNotExist as exc:
+    except WorkOrder.DoesNotExist as exc:
         raise capture_service.CaptureTargetInvalid(
             'capture target unavailable'
         ) from exc

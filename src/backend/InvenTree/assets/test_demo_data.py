@@ -8,7 +8,7 @@ from django.db import connection
 from django.db.models import Sum
 from django.test import TestCase
 
-from tasks.models import KanbanCard, WorkOrderLifecycle
+from tasks.models import WorkOrder, WorkOrderLifecycle
 
 from assets.management.commands.load_asset_demo_data import Command
 from assets.models import AssetMachine, AssetMaintenanceRecord, MachinePart
@@ -78,7 +78,7 @@ class AssetDemoDataTest(TestCase):
         self.assertEqual(MachinePart.objects.count(), 81)
         self.assertEqual(AssetMaintenanceRecord.objects.count(), 24)
         self.assertEqual(
-            KanbanCard.objects.filter(reference__startswith='WO-DEMO-').count(),
+            WorkOrder.objects.filter(reference__startswith='WO-DEMO-').count(),
             self.expected_work_order_count,
         )
         self.assertEqual(
@@ -129,7 +129,7 @@ class AssetDemoDataTest(TestCase):
             with self.subTest(record=record.summary):
                 work_order = record.work_order
                 self.assertEqual(work_order.machine_id, record.machine_id)
-                self.assertEqual(work_order.card_kind, KanbanCard.KIND_WORK_ORDER)
+                self.assertEqual(work_order.card_kind, WorkOrder.KIND_WORK_ORDER)
                 self.assertEqual(
                     work_order.lifecycle_status, WorkOrderLifecycle.COMPLETED
                 )
@@ -180,7 +180,7 @@ class AssetDemoDataTest(TestCase):
 
         for reference, (machine_name, wo_type, priority) in backfilled.items():
             with self.subTest(reference=reference):
-                work_order = KanbanCard.objects.get(reference=reference)
+                work_order = WorkOrder.objects.get(reference=reference)
                 record = work_order.maintenance_record
                 self.assertEqual(record.machine.name, machine_name)
                 self.assertEqual(work_order.work_order_type, wo_type)
@@ -274,7 +274,7 @@ class AssetDemoDataTest(TestCase):
             'machines': AssetMachine.objects.count(),
             'links': MachinePart.objects.count(),
             'maintenance': AssetMaintenanceRecord.objects.count(),
-            'work_orders': KanbanCard.objects.count(),
+            'work_orders': WorkOrder.objects.count(),
         }
 
         self.load_demo_data(dry_run=True)
@@ -286,7 +286,7 @@ class AssetDemoDataTest(TestCase):
         self.assertEqual(
             AssetMaintenanceRecord.objects.count(), initial_counts['maintenance']
         )
-        self.assertEqual(KanbanCard.objects.count(), initial_counts['work_orders'])
+        self.assertEqual(WorkOrder.objects.count(), initial_counts['work_orders'])
 
     def test_loader_is_idempotent(self):
         """Reloading updates natural-keyed records without duplicating them."""
@@ -298,7 +298,7 @@ class AssetDemoDataTest(TestCase):
         self.assertEqual(PartCategory.objects.count(), 65)
         self.assertEqual(AssetMaintenanceRecord.objects.count(), 24)
         self.assertEqual(
-            KanbanCard.objects.filter(reference__startswith='WO-DEMO-').count(),
+            WorkOrder.objects.filter(reference__startswith='WO-DEMO-').count(),
             self.expected_work_order_count,
         )
 
@@ -507,10 +507,10 @@ class AssetDemoDataTest(TestCase):
         if connection.vendor != 'postgresql':
             self.skipTest('Demo work orders are only created on PostgreSQL')
 
-        KanbanCard.objects.create(
+        WorkOrder.objects.create(
             title='Unrelated production work order',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_LOW,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_LOW,
             reference='WO-DEMO-250912-001',
         )
 

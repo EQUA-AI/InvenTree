@@ -8,13 +8,13 @@ imported". Moving it into the package fixes both.
 
 from django.urls import reverse
 
-from tasks.models import KanbanCard
+from tasks.models import WorkOrder
 
 from assets.models import AssetMachine
 from InvenTree.unit_test import InvenTreeAPITestCase
 
 
-class KanbanCardAPITest(InvenTreeAPITestCase):
+class WorkOrderBoardAPITest(InvenTreeAPITestCase):
     """API behaviour for Kanban cards."""
 
     # Named explicitly rather than 'all': upstream's assignRole(assign_all=True)
@@ -29,7 +29,7 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
     def setUp(self):
         """Ensure a clean slate for each test."""
         super().setUp()
-        KanbanCard.objects.all().delete()
+        WorkOrder.objects.all().delete()
         self.machine = AssetMachine.objects.create(name='Kanban API machine')
 
     def _create_card(self, **overrides):
@@ -37,8 +37,8 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
         data = {
             'title': 'Test card',
             'description': 'Initial description',
-            'status': KanbanCard.STATUS_BACKLOG,
-            'priority': KanbanCard.PRIORITY_MEDIUM,
+            'status': WorkOrder.STATUS_BACKLOG,
+            'priority': WorkOrder.PRIORITY_MEDIUM,
             'assignee': 'Jordan Example',
             'tags': ['alpha', 'beta'],
             'company': 'Example Co',
@@ -49,7 +49,7 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
             'machine': self.machine,
         }
         data.update(overrides)
-        return KanbanCard.objects.create(**data)
+        return WorkOrder.objects.create(**data)
 
     def test_create_card(self):
         """Cards can be created through the API."""
@@ -57,8 +57,8 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
         payload = {
             'title': 'Persisted Card',
             'description': 'Created through the API',
-            'status': KanbanCard.STATUS_IN_PROGRESS,
-            'priority': KanbanCard.PRIORITY_HIGH,
+            'status': WorkOrder.STATUS_IN_PROGRESS,
+            'priority': WorkOrder.PRIORITY_HIGH,
             'due_date': '2025-01-05',
             'assignee': 'Taylor Example',
             'tags': ['urgent', 'backend'],
@@ -75,7 +75,7 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
 
         self.assertEqual(response.data['title'], payload['title'])
         self.assertTrue(response.data['is_active'])
-        self.assertEqual(KanbanCard.objects.count(), 1)
+        self.assertEqual(WorkOrder.objects.count(), 1)
 
     def test_list_excludes_inactive(self):
         """Inactive cards are hidden from the default listing."""
@@ -92,38 +92,38 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
 
     def test_soft_delete(self):
         """Deleting a card toggles the active flag instead of removing it."""
-        card = self._create_card()
-        url = reverse('kanban-card-detail', kwargs={'pk': card.pk})
+        work_order = self._create_card()
+        url = reverse('kanban-card-detail', kwargs={'pk': work_order.pk})
 
         self.delete(url, expected_code=204)
 
-        card.refresh_from_db()
+        work_order.refresh_from_db()
 
-        self.assertFalse(card.is_active)
+        self.assertFalse(work_order.is_active)
 
     def test_restore_card(self):
         """Soft deleted cards can be restored via the dedicated endpoint."""
-        card = self._create_card(is_active=False)
-        url = reverse('kanban-card-restore', kwargs={'pk': card.pk})
+        work_order = self._create_card(is_active=False)
+        url = reverse('kanban-card-restore', kwargs={'pk': work_order.pk})
 
         response = self.post(url, expected_code=200)
 
-        card.refresh_from_db()
+        work_order.refresh_from_db()
 
-        self.assertTrue(card.is_active)
-        self.assertEqual(response.data['id'], card.pk)
+        self.assertTrue(work_order.is_active)
+        self.assertEqual(response.data['id'], work_order.pk)
 
     def test_tag_filter(self):
         """Filtering by a tag returns matching cards."""
-        card = self._create_card(tags=['priority', 'backend'])
+        work_order = self._create_card(tags=['priority', 'backend'])
         self._create_card(title='Other Card', tags=['frontend'])
 
         url = reverse('kanban-card-list')
         response = self.get(url, {'tags': 'backend'}, expected_code=200)
 
         ids = [entry['id'] for entry in response.data]
-        self.assertIn(card.pk, ids)
+        self.assertIn(work_order.pk, ids)
 
         response = self.get(url, {'tags': 'frontend'}, expected_code=200)
         ids = [entry['id'] for entry in response.data]
-        self.assertNotIn(card.pk, ids)
+        self.assertNotIn(work_order.pk, ids)

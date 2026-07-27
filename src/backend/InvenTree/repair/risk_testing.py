@@ -208,10 +208,10 @@ class RiskEnvMixin:
         assigned_to=None,
         title='WO',
     ):
-        """Create a minimal work order (KanbanCard)."""
-        from tasks.models import KanbanCard
+        """Create a minimal work order (WorkOrder)."""
+        from tasks.models import WorkOrder
 
-        return KanbanCard.objects.create(
+        return WorkOrder.objects.create(
             title=title,
             status='backlog',
             priority='medium',

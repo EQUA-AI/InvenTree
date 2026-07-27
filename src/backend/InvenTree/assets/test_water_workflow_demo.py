@@ -9,11 +9,11 @@ from django.test import TestCase
 from django.utils import timezone
 
 from tasks.models import (
-    KanbanCard,
-    KanbanCardDependency,
-    KanbanCardPart,
     WorkingCalendar,
+    WorkOrder,
+    WorkOrderDependency,
     WorkOrderLifecycle,
+    WorkOrderPart,
 )
 from tasks.services.conflicts import detect_conflicts
 
@@ -106,14 +106,18 @@ class WaterWorkflowFixture(TestCase):
     @staticmethod
     def workflow_cards(kind=None):
         """Return cards tagged as belonging to this workflow dataset."""
-        cards = [
-            card
-            for card in KanbanCard.objects.all()
-            if DATASET_TAG in set(card.tags or [])
+        work_orders = [
+            work_order
+            for work_order in WorkOrder.objects.all()
+            if DATASET_TAG in set(work_order.tags or [])
         ]
         if kind:
-            cards = [card for card in cards if kind in set(card.tags or [])]
-        return cards
+            work_orders = [
+                work_order
+                for work_order in work_orders
+                if kind in set(work_order.tags or [])
+            ]
+        return work_orders
 
 
 class WaterWorkflowDemoTest(WaterWorkflowFixture):
@@ -124,9 +128,9 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
         self.load_workflow()
 
         history_cards = self.workflow_cards('maintenance_history')
-        scenario_cards = self.workflow_cards('repair_scenario')
+        scenario_work_orders = self.workflow_cards('repair_scenario')
         procurement_cards = self.workflow_cards('procurement')
-        active_cards = [*scenario_cards, *procurement_cards]
+        active_cards = [*scenario_work_orders, *procurement_cards]
         water_history = AssetMaintenanceRecord.objects.filter(
             machine__name__in=WATER_MACHINE_NAMES
         )
@@ -140,37 +144,39 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
                     water_history.filter(machine__name=machine_name).count(), 3
                 )
 
-        self.assertEqual(len(scenario_cards), 10)
+        self.assertEqual(len(scenario_work_orders), 10)
         self.assertEqual(len(procurement_cards), 4)
         self.assertEqual(len(active_cards), 14)
         self.assertTrue(
             all(
-                card.is_active
-                and card.scheduled_start is not None
-                and card.scheduled_end is not None
-                for card in active_cards
+                work_order.is_active
+                and work_order.scheduled_start is not None
+                and work_order.scheduled_end is not None
+                for work_order in active_cards
             )
         )
         stage_counts = {
-            status: sum(card.status == status for card in active_cards)
+            status: sum(work_order.status == status for work_order in active_cards)
             for status in (
-                KanbanCard.STATUS_BACKLOG,
-                KanbanCard.STATUS_IN_PROGRESS,
-                KanbanCard.STATUS_REVIEW,
+                WorkOrder.STATUS_BACKLOG,
+                WorkOrder.STATUS_IN_PROGRESS,
+                WorkOrder.STATUS_REVIEW,
             )
         }
         self.assertEqual(
             stage_counts,
             {
-                KanbanCard.STATUS_BACKLOG: 5,
-                KanbanCard.STATUS_IN_PROGRESS: 5,
-                KanbanCard.STATUS_REVIEW: 4,
+                WorkOrder.STATUS_BACKLOG: 5,
+                WorkOrder.STATUS_IN_PROGRESS: 5,
+                WorkOrder.STATUS_REVIEW: 4,
             },
         )
-        for card in active_cards:
-            with self.subTest(stage=card.status, reference=card.reference):
-                self.assertEqual(card.lifecycle_status, WorkOrderLifecycle.PLANNED)
-                self.assertIsNone(card.actual_started_at)
+        for work_order in active_cards:
+            with self.subTest(stage=work_order.status, reference=work_order.reference):
+                self.assertEqual(
+                    work_order.lifecycle_status, WorkOrderLifecycle.PLANNED
+                )
+                self.assertIsNone(work_order.actual_started_at)
         self.assertEqual(detect_conflicts(active_cards), [])
 
         self.assertEqual(WorkingCalendar.objects.count(), 4)
@@ -184,7 +190,7 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
         self.assertEqual(packets.filter(status=PacketStatus.DRAFT).count(), 10)
         self.assertEqual(
             {packet.work_order_id for packet in packets},
-            {card.pk for card in scenario_cards},
+            {work_order.pk for work_order in scenario_work_orders},
         )
         self.assertTrue(all(packet.gates.exists() for packet in packets))
         self.assertFalse(
@@ -198,33 +204,36 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
         )
 
         self.assertEqual(
-            KanbanCardPart.objects.filter(card__in=scenario_cards).count(), 22
+            WorkOrderPart.objects.filter(work_order__in=scenario_work_orders).count(),
+            22,
         )
         self.assertEqual(
-            KanbanCardPart.objects.filter(
-                card__in=scenario_cards,
-                allocation_status=KanbanCardPart.ALLOCATION_INSUFFICIENT,
+            WorkOrderPart.objects.filter(
+                work_order__in=scenario_work_orders,
+                allocation_status=WorkOrderPart.ALLOCATION_INSUFFICIENT,
             ).count(),
             4,
         )
-        dependencies = KanbanCardDependency.objects.select_related(
-            'from_card', 'to_card'
+        dependencies = WorkOrderDependency.objects.select_related(
+            'predecessor', 'successor'
         )
         self.assertEqual(dependencies.count(), 4)
         for dependency in dependencies:
             with self.subTest(dependency=dependency.pk):
                 self.assertEqual(dependency.dependency_type, 'FS')
-                self.assertEqual(dependency.from_card.parent_id, dependency.to_card_id)
+                self.assertEqual(
+                    dependency.predecessor.parent_id, dependency.successor_id
+                )
                 self.assertLessEqual(
-                    dependency.from_card.scheduled_end,
-                    dependency.to_card.scheduled_start,
+                    dependency.predecessor.scheduled_end,
+                    dependency.successor.scheduled_start,
                 )
 
     def test_dry_run_rolls_back_all_records(self):
         """Dry-run executes the complete loader without retaining writes."""
         initial = {
             'maintenance': AssetMaintenanceRecord.objects.count(),
-            'cards': KanbanCard.objects.count(),
+            'cards': WorkOrder.objects.count(),
             'packets': RepairPacket.objects.count(),
             'calendars': WorkingCalendar.objects.count(),
             'templates': SafetyGateTemplate.objects.count(),
@@ -233,7 +242,7 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
         self.load_workflow(dry_run=True)
 
         self.assertEqual(AssetMaintenanceRecord.objects.count(), initial['maintenance'])
-        self.assertEqual(KanbanCard.objects.count(), initial['cards'])
+        self.assertEqual(WorkOrder.objects.count(), initial['cards'])
         self.assertEqual(RepairPacket.objects.count(), initial['packets'])
         self.assertEqual(WorkingCalendar.objects.count(), initial['calendars'])
         self.assertEqual(SafetyGateTemplate.objects.count(), initial['templates'])
@@ -243,12 +252,12 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
         self.load_workflow()
         counts = {
             'maintenance': AssetMaintenanceRecord.objects.count(),
-            'cards': KanbanCard.objects.count(),
+            'cards': WorkOrder.objects.count(),
             'packets': RepairPacket.objects.count(),
             'gates': RepairPacketGate.objects.count(),
             'lockouts': LockoutPoint.objects.count(),
-            'parts': KanbanCardPart.objects.count(),
-            'dependencies': KanbanCardDependency.objects.count(),
+            'parts': WorkOrderPart.objects.count(),
+            'dependencies': WorkOrderDependency.objects.count(),
             'calendars': WorkingCalendar.objects.count(),
             'templates': SafetyGateTemplate.objects.count(),
         }
@@ -256,28 +265,28 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
         self.load_workflow()
 
         self.assertEqual(AssetMaintenanceRecord.objects.count(), counts['maintenance'])
-        self.assertEqual(KanbanCard.objects.count(), counts['cards'])
+        self.assertEqual(WorkOrder.objects.count(), counts['cards'])
         self.assertEqual(RepairPacket.objects.count(), counts['packets'])
         self.assertEqual(RepairPacketGate.objects.count(), counts['gates'])
         self.assertEqual(LockoutPoint.objects.count(), counts['lockouts'])
-        self.assertEqual(KanbanCardPart.objects.count(), counts['parts'])
-        self.assertEqual(KanbanCardDependency.objects.count(), counts['dependencies'])
+        self.assertEqual(WorkOrderPart.objects.count(), counts['parts'])
+        self.assertEqual(WorkOrderDependency.objects.count(), counts['dependencies'])
         self.assertEqual(WorkingCalendar.objects.count(), counts['calendars'])
         self.assertEqual(SafetyGateTemplate.objects.count(), counts['templates'])
 
     def test_normal_rerun_preserves_operator_edits(self):
         """Normal reruns do not overwrite active schedule, state, assignment, or gate edits."""
         self.load_workflow()
-        card = KanbanCard.objects.get(reference='WO-WW-R-003')
+        work_order = WorkOrder.objects.get(reference='WO-WW-R-003')
         steven = get_user_model().objects.get(username='steven')
-        edited_start = card.scheduled_start + datetime.timedelta(days=9)
-        edited_end = card.scheduled_end + datetime.timedelta(days=9)
-        card.scheduled_start = edited_start
-        card.scheduled_end = edited_end
-        card.lifecycle_status = WorkOrderLifecycle.IN_PROGRESS
-        card.status = KanbanCard.STATUS_IN_PROGRESS
-        card.assigned_to = steven
-        card.save(
+        edited_start = work_order.scheduled_start + datetime.timedelta(days=9)
+        edited_end = work_order.scheduled_end + datetime.timedelta(days=9)
+        work_order.scheduled_start = edited_start
+        work_order.scheduled_end = edited_end
+        work_order.lifecycle_status = WorkOrderLifecycle.IN_PROGRESS
+        work_order.status = WorkOrder.STATUS_IN_PROGRESS
+        work_order.assigned_to = steven
+        work_order.save(
             update_fields=[
                 'scheduled_start',
                 'scheduled_end',
@@ -286,7 +295,7 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
                 'assigned_to',
             ]
         )
-        gate = card.repair_packet.gates.first()
+        gate = work_order.repair_packet.gates.first()
         gate.status = GateStatus.WAIVED
         gate.waived_by = steven
         gate.waived_at = timezone.now()
@@ -304,13 +313,13 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
 
         self.load_workflow()
 
-        card.refresh_from_db()
+        work_order.refresh_from_db()
         gate.refresh_from_db()
-        self.assertEqual(card.scheduled_start, edited_start)
-        self.assertEqual(card.scheduled_end, edited_end)
-        self.assertEqual(card.lifecycle_status, WorkOrderLifecycle.IN_PROGRESS)
-        self.assertEqual(card.status, KanbanCard.STATUS_IN_PROGRESS)
-        self.assertEqual(card.assigned_to, steven)
+        self.assertEqual(work_order.scheduled_start, edited_start)
+        self.assertEqual(work_order.scheduled_end, edited_end)
+        self.assertEqual(work_order.lifecycle_status, WorkOrderLifecycle.IN_PROGRESS)
+        self.assertEqual(work_order.status, WorkOrder.STATUS_IN_PROGRESS)
+        self.assertEqual(work_order.assigned_to, steven)
         self.assertEqual(gate.status, GateStatus.WAIVED)
         self.assertEqual(gate.waiver_reason, 'Operator-entered training waiver')
 
@@ -321,30 +330,30 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
             work_order__reference='WO-WW-H-001'
         )
         original_history_pk = history.pk
-        card = KanbanCard.objects.get(reference='WO-WW-R-001')
-        original_card_pk = card.pk
-        card.scheduled_start += datetime.timedelta(days=9)
-        card.scheduled_end += datetime.timedelta(days=9)
-        card.save(update_fields=['scheduled_start', 'scheduled_end'])
+        work_order = WorkOrder.objects.get(reference='WO-WW-R-001')
+        original_work_order_pk = work_order.pk
+        work_order.scheduled_start += datetime.timedelta(days=9)
+        work_order.scheduled_end += datetime.timedelta(days=9)
+        work_order.save(update_fields=['scheduled_start', 'scheduled_end'])
 
         self.load_workflow(reset=True)
 
         history.refresh_from_db()
-        card = KanbanCard.objects.get(reference='WO-WW-R-001')
+        work_order = WorkOrder.objects.get(reference='WO-WW-R-001')
         self.assertEqual(history.pk, original_history_pk)
-        self.assertNotEqual(card.pk, original_card_pk)
-        self.assertEqual(card.lifecycle_status, WorkOrderLifecycle.PLANNED)
-        self.assertEqual(card.status, KanbanCard.STATUS_IN_PROGRESS)
+        self.assertNotEqual(work_order.pk, original_work_order_pk)
+        self.assertEqual(work_order.lifecycle_status, WorkOrderLifecycle.PLANNED)
+        self.assertEqual(work_order.status, WorkOrder.STATUS_IN_PROGRESS)
         self.assertEqual(len(self.workflow_cards('repair_scenario')), 10)
         self.assertEqual(len(self.workflow_cards('procurement')), 4)
 
     def test_refuses_unowned_reference_collision(self):
         """An existing unrelated card cannot be adopted by reference."""
-        KanbanCard.objects.create(
+        WorkOrder.objects.create(
             reference='WO-WW-R-001',
             title='Technician-authored card',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
         )
 
         with self.assertRaisesMessage(CommandError, 'not owned'):
@@ -390,18 +399,18 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
 
     def test_reset_ignores_tagged_cards_outside_manifest_namespace(self):
         """Reset never treats tags alone as authority to delete another card."""
-        foreign = KanbanCard.objects.create(
+        foreign = WorkOrder.objects.create(
             reference='USER-WW-TRAINING',
             title='Operator-authored training card',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             tags=['demo', 'water_wastewater', DATASET_TAG, 'repair_scenario'],
         )
         self.load_workflow()
 
         self.load_workflow(reset=True)
 
-        self.assertTrue(KanbanCard.objects.filter(pk=foreign.pk).exists())
+        self.assertTrue(WorkOrder.objects.filter(pk=foreign.pk).exists())
 
     def test_refuses_same_name_unowned_safety_template(self):
         """A same-name template without the dataset marker is never adopted."""
@@ -432,10 +441,12 @@ class WaterWorkflowProfileCoverageTest(WaterWorkflowFixture):
         """No owned card is left without a profile."""
         self.load_workflow(enrich=True, require_complete=True)
 
-        cards = self.workflow_cards()
-        self.assertEqual(len(cards), 44)
+        work_orders = self.workflow_cards()
+        self.assertEqual(len(work_orders), 44)
         without_component = [
-            card.reference for card in cards if not card.affected_component
+            work_order.reference
+            for work_order in work_orders
+            if not work_order.affected_component
         ]
         self.assertEqual(without_component, [])
 
@@ -443,24 +454,26 @@ class WaterWorkflowProfileCoverageTest(WaterWorkflowFixture):
         """A profile may only assert what its record's class supports."""
         self.load_workflow(enrich=True, require_complete=True)
 
-        for card in self.workflow_cards('repair_scenario'):
-            with self.subTest(card=card.reference):
-                self.assertTrue(card.repair_packet.findings.exists())
+        for work_order in self.workflow_cards('repair_scenario'):
+            with self.subTest(work_order=work_order.reference):
+                self.assertTrue(work_order.repair_packet.findings.exists())
 
-        for card in self.workflow_cards('maintenance_history'):
-            with self.subTest(card=card.reference):
-                self.assertFalse(hasattr(card, 'repair_packet'))
+        for work_order in self.workflow_cards('maintenance_history'):
+            with self.subTest(work_order=work_order.reference):
+                self.assertFalse(hasattr(work_order, 'repair_packet'))
 
     def test_approved_scope_only_where_work_was_agreed(self):
         """A backlog repair has observations, not an approved scope."""
         self.load_workflow(enrich=True, require_complete=True)
 
-        for card in self.workflow_cards('repair_scenario'):
-            approved = card.repair_packet.approved_scopes.filter(
+        for work_order in self.workflow_cards('repair_scenario'):
+            approved = work_order.repair_packet.approved_scopes.filter(
                 superseded_at__isnull=True
             ).exists()
-            with self.subTest(card=card.reference):
-                self.assertEqual(approved, card.status != KanbanCard.STATUS_BACKLOG)
+            with self.subTest(work_order=work_order.reference):
+                self.assertEqual(
+                    approved, work_order.status != WorkOrder.STATUS_BACKLOG
+                )
 
     def test_enrichment_rerun_writes_nothing_new(self):
         """A second pass updates in place rather than duplicating."""
@@ -477,11 +490,11 @@ class WaterWorkflowProfileCoverageTest(WaterWorkflowFixture):
 
     def test_a_record_without_a_profile_fails_the_load(self):
         """The completeness gate is what keeps the manifest honest."""
-        KanbanCard.objects.create(
+        WorkOrder.objects.create(
             reference='WO-WW-R-999',
             title='Unprofiled owned record',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             tags=['demo', 'water_wastewater', DATASET_TAG, 'repair_scenario'],
         )
 

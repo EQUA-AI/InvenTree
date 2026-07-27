@@ -2,11 +2,11 @@
 
 from django.contrib import admin
 
-from .models import KanbanCard, KanbanColumn
+from .models import KanbanColumn, WorkOrder
 
 
-@admin.register(KanbanCard)
-class KanbanCardAdmin(admin.ModelAdmin):
+@admin.register(WorkOrder)
+class WorkOrderAdmin(admin.ModelAdmin):
     """Admin interface for Kanban cards."""
 
     list_display = (

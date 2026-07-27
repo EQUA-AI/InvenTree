@@ -8,7 +8,7 @@ class WorkOrderEvent(models.Model):
     """Append-only audit event associated with a work order."""
 
     work_order = models.ForeignKey(
-        'tasks.KanbanCard', on_delete=models.CASCADE, related_name='events'
+        'tasks.WorkOrder', on_delete=models.CASCADE, related_name='events'
     )
     event_type = models.CharField(max_length=40, db_index=True)
     from_status = models.CharField(max_length=20, blank=True)
@@ -59,7 +59,7 @@ class WorkOrderCloseout(models.Model):
         super().save(*args, **kwargs)
 
     work_order = models.OneToOneField(
-        'tasks.KanbanCard', on_delete=models.CASCADE, related_name='structured_closeout'
+        'tasks.WorkOrder', on_delete=models.CASCADE, related_name='structured_closeout'
     )
     cause = models.TextField(blank=True)
     action = models.TextField()
@@ -86,7 +86,7 @@ class WorkOrderDeviation(models.Model):
     """Recorded departure from expected work-order procedure execution."""
 
     work_order = models.ForeignKey(
-        'tasks.KanbanCard', on_delete=models.CASCADE, related_name='deviations'
+        'tasks.WorkOrder', on_delete=models.CASCADE, related_name='deviations'
     )
     category = models.CharField(max_length=40, db_index=True)
     application_key = models.CharField(max_length=128, blank=True)
@@ -117,7 +117,7 @@ class WorkOrderCommand(models.Model):
     """Durable idempotency ledger for work-order commands."""
 
     work_order = models.ForeignKey(
-        'tasks.KanbanCard', on_delete=models.CASCADE, related_name='commands'
+        'tasks.WorkOrder', on_delete=models.CASCADE, related_name='commands'
     )
     command = models.CharField(max_length=64)
     idempotency_key = models.CharField(max_length=128)
@@ -136,7 +136,7 @@ class WorkOrderCommand(models.Model):
 class WorkOrderDeletionRecord(models.Model):
     """Durable audit of a deleted work order.
 
-    A ``KanbanCard`` cascades to its ``WorkOrderEvent`` / ``WorkOrderCommand`` /
+    A ``WorkOrder`` cascades to its ``WorkOrderEvent`` / ``WorkOrderCommand`` /
     closeout rows, so once a card is deleted its governance history goes with it.
     This record is deliberately *not* linked to the card by FK: it snapshots the
     identity of what was removed, who removed it and why, so that after deletion
@@ -149,7 +149,7 @@ class WorkOrderDeletionRecord(models.Model):
     """
 
     work_order_pk = models.PositiveIntegerField(
-        db_index=True, help_text='Primary key of the deleted KanbanCard'
+        db_index=True, help_text='Primary key of the deleted WorkOrder'
     )
     reference = models.CharField(max_length=32, blank=True, db_index=True)
     title = models.CharField(max_length=200, blank=True)

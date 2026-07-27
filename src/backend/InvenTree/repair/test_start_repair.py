@@ -10,7 +10,7 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
-from tasks.models import KanbanCard, WorkOrderLifecycle, WorkOrderType
+from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 from tasks.scope import MaintenanceScope
 from tasks.services.work_orders import IllegalTransition
 
@@ -54,10 +54,10 @@ class StartRepairTest(TestCase):
         self.machine = AssetMachine.objects.create(
             name=f'Blower {suffix}', customer=self.customer
         )
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Bearing replacement',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_HIGH,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_HIGH,
             customer=self.customer,
             machine=self.machine,
             assigned_to=self.actor,
@@ -194,10 +194,10 @@ class StartRepairApiTest(InvenTreeAPITestCase):
         self.machine = AssetMachine.objects.create(
             name=f'Screen {suffix}', customer=self.customer
         )
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Chain replacement',
-            status=KanbanCard.STATUS_BACKLOG,
-            priority=KanbanCard.PRIORITY_HIGH,
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_HIGH,
             customer=self.customer,
             machine=self.machine,
             assigned_to=self.user,

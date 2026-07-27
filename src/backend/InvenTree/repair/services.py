@@ -94,7 +94,7 @@ def _ensure_work_order_with_parts(
     The work order is created through ``tasks.services.scheduling.create_work_order``
     so a packet-owned card carries the same audit event, idempotency ledger entry
     and lifecycle defaults as one raised from the board or from an approved AI
-    work package. Creating a bare ``KanbanCard`` here is not allowed: it produced
+    work package. Creating a bare ``WorkOrder`` here is not allowed: it produced
     machineless cards that no scope, readiness or maintenance-history rule could
     resolve.
 
@@ -578,7 +578,7 @@ def _revalidate_parts(packet: RepairPacket) -> tuple[bool, str]:
         return True, ''
 
     shortages: list[str] = []
-    for cp in wo.card_parts.all():
+    for cp in wo.work_order_parts.all():
         try:
             cp.check_and_allocate()
         except Exception:

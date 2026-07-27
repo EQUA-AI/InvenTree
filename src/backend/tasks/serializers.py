@@ -5,20 +5,20 @@ from django.conf import settings
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .models import KanbanCard, KanbanCardDependency, KanbanCardPart, KanbanColumn
+from .models import KanbanColumn, WorkOrder, WorkOrderDependency, WorkOrderPart
 
 
-class KanbanCardDependencySerializer(serializers.ModelSerializer):
+class WorkOrderDependencySerializer(serializers.ModelSerializer):
     """Serializer for scheduling dependencies between work orders."""
 
     class Meta:
         """Serializer metadata."""
 
-        model = KanbanCardDependency
+        model = WorkOrderDependency
         fields = (
             'id',
-            'from_card',
-            'to_card',
+            'predecessor',
+            'successor',
             'dependency_type',
             'lag_minutes',
             'created_at',
@@ -81,17 +81,17 @@ class KanbanColumnSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
-class KanbanCardPartSerializer(serializers.ModelSerializer):
-    """Serializer for KanbanCardPart instances."""
+class WorkOrderPartSerializer(serializers.ModelSerializer):
+    """Serializer for WorkOrderPart instances."""
 
     part_name = serializers.CharField(source='part.name', read_only=True)
     part_ipn = serializers.CharField(source='part.IPN', read_only=True, default='')
     part_thumbnail = serializers.SerializerMethodField()
 
     class Meta:
-        """Serializer configuration for KanbanCardPart."""
+        """Serializer configuration for WorkOrderPart."""
 
-        model = KanbanCardPart
+        model = WorkOrderPart
         fields = (
             'id',
             'part',
@@ -121,8 +121,8 @@ class KanbanCardPartSerializer(serializers.ModelSerializer):
         return None
 
 
-class KanbanCardSerializer(serializers.ModelSerializer):
-    """Serializer for KanbanCard instances."""
+class WorkOrderBoardSerializer(serializers.ModelSerializer):
+    """Serializer for WorkOrder instances."""
 
     tags = serializers.ListField(
         child=serializers.CharField(max_length=32), allow_empty=True, required=False
@@ -137,16 +137,18 @@ class KanbanCardSerializer(serializers.ModelSerializer):
     # is not enforced on a partial update, so an existing card can still be
     # PATCHed without re-sending the machine.
     machine = serializers.PrimaryKeyRelatedField(
-        queryset=KanbanCard._meta.get_field('machine').related_model.objects.all(),
+        queryset=WorkOrder._meta.get_field('machine').related_model.objects.all(),
         required=True,
         allow_null=False,
         help_text='Machine this work order is performed on',
     )
 
-    parts = KanbanCardPartSerializer(source='card_parts', many=True, read_only=True)
+    parts = WorkOrderPartSerializer(
+        source='work_order_parts', many=True, read_only=True
+    )
 
     # Denormalized machine/assignee labels so the calendar and timeline can group
-    # and label rows without a request per card. ``KanbanCardList`` select_relates
+    # and label rows without a request per card. ``WorkOrderBoardList`` select_relates
     # both relations; without that these would be N+1 on an unpaginated list.
     machine_name = serializers.CharField(
         source='machine.name', read_only=True, default=None
@@ -160,9 +162,9 @@ class KanbanCardSerializer(serializers.ModelSerializer):
     assigned_to_name = serializers.SerializerMethodField()
 
     class Meta:
-        """Serializer configuration for KanbanCard."""
+        """Serializer configuration for WorkOrder."""
 
-        model = KanbanCard
+        model = WorkOrder
         fields = (
             'id',
             'title',
@@ -301,7 +303,7 @@ class KanbanCardSerializer(serializers.ModelSerializer):
         return filtered
 
 
-class KanbanCardSummarySerializer(serializers.ModelSerializer):
+class WorkOrderSummarySerializer(serializers.ModelSerializer):
     """Compact card identity for hierarchy and dependency rows."""
 
     machine_name = serializers.CharField(
@@ -312,7 +314,7 @@ class KanbanCardSummarySerializer(serializers.ModelSerializer):
     class Meta:
         """Serializer configuration."""
 
-        model = KanbanCard
+        model = WorkOrder
         fields = (
             'id',
             'reference',
@@ -368,7 +370,7 @@ def _approved_scope_projection(packet) -> dict | None:
     }
 
 
-class KanbanCardOverviewSerializer(KanbanCardSerializer):
+class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
     """Complete read-only work-order context for the detail page."""
 
     parent_detail = serializers.SerializerMethodField()
@@ -381,11 +383,11 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
     canonical_commands_enabled = serializers.SerializerMethodField()
     source_alert = serializers.SerializerMethodField()
 
-    class Meta(KanbanCardSerializer.Meta):
+    class Meta(WorkOrderBoardSerializer.Meta):
         """Extend the card fields with work-order relationships."""
 
         fields = (
-            *KanbanCardSerializer.Meta.fields,
+            *WorkOrderBoardSerializer.Meta.fields,
             'parent_detail',
             'children',
             'dependencies',
@@ -399,22 +401,22 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
         read_only_fields = fields
 
     @staticmethod
-    def _summary(card):
+    def _summary(work_order):
         """Serialize one related card without recursing."""
-        if card is None:
+        if work_order is None:
             return None
-        return KanbanCardSummarySerializer(card).data
+        return WorkOrderSummarySerializer(work_order).data
 
-    @extend_schema_field(KanbanCardSummarySerializer(allow_null=True))
+    @extend_schema_field(WorkOrderSummarySerializer(allow_null=True))
     def get_parent_detail(self, obj) -> dict | None:
         """Return the parent work order for a child card."""
         return self._summary(obj.parent)
 
     @staticmethod
-    @extend_schema_field(KanbanCardSummarySerializer(many=True))
+    @extend_schema_field(WorkOrderSummarySerializer(many=True))
     def get_children(obj) -> list:
         """Return direct jobs/tasks under this work order."""
-        return KanbanCardSummarySerializer(
+        return WorkOrderSummarySerializer(
             obj.children.all().order_by('scheduled_start', 'created_at'), many=True
         ).data
 
@@ -426,7 +428,7 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
                 'direction': 'predecessor',
                 'dependency_type': dependency.dependency_type,
                 'lag_minutes': dependency.lag_minutes,
-                'card': self._summary(dependency.from_card),
+                'card': self._summary(dependency.predecessor),
             }
             for dependency in obj.dependencies_in.all()
         ]
@@ -436,7 +438,7 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
                 'direction': 'successor',
                 'dependency_type': dependency.dependency_type,
                 'lag_minutes': dependency.lag_minutes,
-                'card': self._summary(dependency.to_card),
+                'card': self._summary(dependency.successor),
             }
             for dependency in obj.dependencies_out.all()
         ]

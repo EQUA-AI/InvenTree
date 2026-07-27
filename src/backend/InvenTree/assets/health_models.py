@@ -433,7 +433,7 @@ class MachineAnomaly(models.Model):
     resolution_note = models.TextField(blank=True)
 
     work_order = models.ForeignKey(
-        'tasks.KanbanCard',
+        'tasks.WorkOrder',
         null=True,
         blank=True,
         on_delete=models.SET_NULL,

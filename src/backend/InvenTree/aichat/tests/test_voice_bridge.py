@@ -21,7 +21,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from asgiref.sync import async_to_sync
-from tasks.models import KanbanCard, WorkOrderLifecycle, WorkOrderType
+from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 from tasks.scope import MaintenanceScope
 
 from ai.core.auth import AIPrincipal
@@ -81,10 +81,10 @@ class VoiceBridgeTests(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Voice job',
-            status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=self.customer,
             machine=self.machine,
             assigned_to=self.actor,
@@ -204,10 +204,10 @@ class VoiceProposeSideTests(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Voice propose job',
-            status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=self.customer,
             machine=self.machine,
             assigned_to=self.actor,
@@ -280,4 +280,4 @@ class VoiceProposeSideTests(TestCase):
         )
         self.assertTrue(result.ok)
         self.assertEqual(result.detail, 'delete')
-        self.assertFalse(KanbanCard.objects.filter(pk=self.work_order.pk).exists())
+        self.assertFalse(WorkOrder.objects.filter(pk=self.work_order.pk).exists())

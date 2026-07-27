@@ -340,7 +340,7 @@ def create_session(
 ):
     """Create one scoped verification session for one precise purpose."""
     from tasks.jobkit_models import JobKitLine
-    from tasks.models import KanbanCard
+    from tasks.models import WorkOrder
 
     from assets.models import AssetMachine, MachinePart
     from part.models import BomItem, Part
@@ -355,7 +355,7 @@ def create_session(
     machine = _load_context(AssetMachine, machine_id, 'machine')
     machine_part = _load_context(MachinePart, machine_part_id, 'installed part row')
     bom_item = _load_context(BomItem, bom_item_id, 'BOM line')
-    work_order = _load_context(KanbanCard, work_order_id, 'work order')
+    work_order = _load_context(WorkOrder, work_order_id, 'work order')
     job_kit_line = _load_context(JobKitLine, job_kit_line_id, 'Job Kit line')
     requested_part = _load_context(Part, requested_part_id, 'part')
 

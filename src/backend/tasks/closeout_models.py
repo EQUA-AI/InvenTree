@@ -49,7 +49,7 @@ class CloseoutCapture(models.Model):
     """Source envelope for one closeout narrative; never truth by itself."""
 
     work_order = models.ForeignKey(
-        'tasks.KanbanCard', on_delete=models.PROTECT, related_name='closeout_captures'
+        'tasks.WorkOrder', on_delete=models.PROTECT, related_name='closeout_captures'
     )
     status = models.CharField(
         max_length=16,
@@ -247,7 +247,7 @@ class CloseoutPartUsage(models.Model):
     """Reconciliation view of actual part usage; custody stays authoritative."""
 
     work_order = models.ForeignKey(
-        'tasks.KanbanCard', on_delete=models.CASCADE, related_name='closeout_part_usage'
+        'tasks.WorkOrder', on_delete=models.CASCADE, related_name='closeout_part_usage'
     )
     allocation = models.ForeignKey(
         'tasks.JobKitAllocation', null=True, blank=True, on_delete=models.PROTECT
@@ -321,7 +321,7 @@ class CloseoutReading(models.Model):
     """A closeout-level measurement with raw text and normalized value."""
 
     work_order = models.ForeignKey(
-        'tasks.KanbanCard', on_delete=models.CASCADE, related_name='closeout_readings'
+        'tasks.WorkOrder', on_delete=models.CASCADE, related_name='closeout_readings'
     )
     step_execution = models.ForeignKey(
         'tasks.WorkOrderStepExecution', null=True, blank=True, on_delete=models.PROTECT

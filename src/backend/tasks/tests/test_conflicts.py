@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from assets.models import AssetMachine
-from tasks.models import KanbanCard
+from tasks.models import WorkOrder
 from tasks.services.conflicts import detect_conflicts
 
 
@@ -24,7 +24,7 @@ class DetectConflictsTest(TestCase):
         self.m2 = AssetMachine.objects.create(name='M2')
 
     def _card(self, machine, start, end, assignee=None):
-        return KanbanCard.objects.create(
+        return WorkOrder.objects.create(
             title='WO',
             status='backlog',
             priority='low',
@@ -110,7 +110,7 @@ class ScheduleWindowConflictApiTest(TestCase):
 
     def test_window_surfaces_machine_conflict_as_warning(self):
         for start, end in [(9, 12), (11, 14)]:
-            KanbanCard.objects.create(
+            WorkOrder.objects.create(
                 title='WO', status='backlog', priority='low',
                 machine=self.machine,
                 scheduled_start=_utc(2026, 8, 3, start),

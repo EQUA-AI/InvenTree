@@ -19,7 +19,7 @@ from rest_framework.views import APIView
 
 from InvenTree.mixins import ListAPI, ListCreateAPI, RetrieveUpdateAPI
 
-from .models import KanbanCard, WorkOrderEvent
+from .models import WorkOrder, WorkOrderEvent
 from .permissions import PLAN_WORKORDER, VIEW_WORKORDER_AUDIT, require_permission
 from .scope import ScopeError, require_work_order_scope, scope_for_actor
 from .services.closeout import complete_work_order
@@ -87,11 +87,11 @@ def _scoped_work_orders(actor):
             if scope.site_key is None
         ]
     except ScopeError:
-        return KanbanCard.objects.none()
+        return WorkOrder.objects.none()
 
     # An explicit customer must agree with the asset customer. Orders without an
     # explicit customer inherit scope only from the asset's customer.
-    return KanbanCard.objects.filter(
+    return WorkOrder.objects.filter(
         Q(customer_id__in=customer_ids, machine__customer_id__isnull=True)
         | Q(customer_id__in=customer_ids, machine__customer_id__in=customer_ids)
         | Q(customer__isnull=True, machine__customer_id__in=customer_ids)
@@ -119,14 +119,14 @@ class WorkOrderList(WorkOrderEnabledMixin, ListCreateAPI):
     def perform_create(self, serializer):
         """Require planning authority and prove scope before persistence."""
         require_permission(self.request.user, PLAN_WORKORDER)
-        candidate = KanbanCard(
+        candidate = WorkOrder(
             requested_by=self.request.user, **serializer.validated_data
         )
         try:
             require_work_order_scope(self.request.user, candidate)
         except ScopeError as exc:
             raise Http404 from exc
-        # The reference is assigned by KanbanCard.save(), so every creation path
+        # The reference is assigned by WorkOrder.save(), so every creation path
         # produces the same identifier.
         serializer.save(requested_by=self.request.user)
 
@@ -283,7 +283,7 @@ class WorkOrderCommandView(WorkOrderEnabledMixin, APIView):
 
 def _current_version(work_order_id):
     """Read the current optimistic concurrency token after a rollback."""
-    return KanbanCard.objects.values_list('lifecycle_version', flat=True).get(
+    return WorkOrder.objects.values_list('lifecycle_version', flat=True).get(
         pk=work_order_id
     )
 

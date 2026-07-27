@@ -13,7 +13,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from tasks.models import KanbanCard, KanbanCardPart, WorkOrderLifecycle, WorkOrderType
+from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderPart, WorkOrderType
 
 from assets.models import AssetMachine
 from InvenTree.unit_test import InvenTreeAPITestCase
@@ -149,7 +149,7 @@ class CreateWorkPackageTest(TestCase):
             parts=[{'part_id': self.part.pk, 'quantity': 2}],
         )
 
-        work_order = KanbanCard.objects.get(pk=result.work_order_id)
+        work_order = WorkOrder.objects.get(pk=result.work_order_id)
         packet = RepairPacket.objects.get(pk=result.repair_packet_id)
 
         self.assertEqual(work_order.machine_id, self.machine.pk)
@@ -160,17 +160,18 @@ class CreateWorkPackageTest(TestCase):
         self.assertTrue(result.work_order_reference)
         self.assertTrue(result.repair_packet_reference.startswith('RP-'))
         self.assertEqual(
-            KanbanCardPart.objects.filter(card=work_order, part=self.part).count(), 1
+            WorkOrderPart.objects.filter(work_order=work_order, part=self.part).count(),
+            1,
         )
         self.assertTrue(work_order.events.filter(event_type='CREATED').exists())
 
     def test_creates_a_planned_work_order_not_a_started_one(self):
         """Create repair plans work; starting it is a separate transition."""
         result = self._create()
-        work_order = KanbanCard.objects.get(pk=result.work_order_id)
+        work_order = WorkOrder.objects.get(pk=result.work_order_id)
 
         self.assertEqual(work_order.lifecycle_status, WorkOrderLifecycle.DRAFT)
-        self.assertEqual(work_order.status, KanbanCard.STATUS_BACKLOG)
+        self.assertEqual(work_order.status, WorkOrder.STATUS_BACKLOG)
         self.assertIsNone(work_order.actual_started_at)
 
     def test_replay_returns_the_same_aggregate(self):
@@ -187,30 +188,30 @@ class CreateWorkPackageTest(TestCase):
 
         self.assertEqual(first.work_order_id, second.work_order_id)
         self.assertTrue(second.replayed)
-        self.assertEqual(KanbanCard.objects.filter(machine=self.machine).count(), 1)
+        self.assertEqual(WorkOrder.objects.filter(machine=self.machine).count(), 1)
         self.assertEqual(RepairPacket.objects.filter(machine=self.machine).count(), 1)
         self.assertIn('already existed', ' '.join(second.warnings))
 
     def test_unknown_machine_creates_nothing(self):
         """An unknown machine fails before any write."""
-        before = KanbanCard.objects.count()
+        before = WorkOrder.objects.count()
         with self.assertRaises(UnknownMachine):
             create_repair_work_package(
                 actor=self.actor,
                 draft=_draft(machine_id=987654),
                 idempotency_key=uuid.uuid4().hex,
             )
-        self.assertEqual(KanbanCard.objects.count(), before)
+        self.assertEqual(WorkOrder.objects.count(), before)
 
     def test_unknown_part_rolls_back_the_whole_package(self):
         """A bad part line leaves no work order and no packet behind."""
-        before_cards = KanbanCard.objects.count()
+        before_cards = WorkOrder.objects.count()
         before_packets = RepairPacket.objects.count()
 
         with self.assertRaises(UnknownPart):
             self._create(parts=[{'part_id': 987654, 'quantity': 1}])
 
-        self.assertEqual(KanbanCard.objects.count(), before_cards)
+        self.assertEqual(WorkOrder.objects.count(), before_cards)
         self.assertEqual(RepairPacket.objects.count(), before_packets)
 
     def test_no_packet_when_not_requested(self):
@@ -282,7 +283,7 @@ class WorkPackagePermissionTest(InvenTreeAPITestCase):
     def test_view_only_actor_cannot_create_a_work_package(self):
         """Without work_order.add the request is refused and nothing is written."""
         machine = AssetMachine.objects.create(name=f'Screen-{uuid.uuid4().hex[:6]}')
-        before = KanbanCard.objects.count()
+        before = WorkOrder.objects.count()
 
         self.post(
             self.url,
@@ -290,4 +291,4 @@ class WorkPackagePermissionTest(InvenTreeAPITestCase):
             expected_code=403,
         )
 
-        self.assertEqual(KanbanCard.objects.count(), before)
+        self.assertEqual(WorkOrder.objects.count(), before)

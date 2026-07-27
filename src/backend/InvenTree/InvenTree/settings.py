@@ -1190,8 +1190,8 @@ SPECTACULAR_SETTINGS = spectacular.get_spectacular_settings()
 SPECTACULAR_SETTINGS['ENUM_NAME_OVERRIDES'].update({
     # 'status' fields on ApprovalList/ApprovalDetail (auto-named StatusFaaEnum)
     'ApprovalStatusEnum': 'approvals.models.ApprovalStatus',
-    # 'priority' fields on KanbanCard/WorkOrder serializers (auto-named Priority3cdEnum)
-    'KanbanCardPriorityEnum': 'tasks.models.KanbanCard.PRIORITY_CHOICES',
+    # 'priority' fields on WorkOrder/WorkOrder serializers (auto-named Priority3cdEnum)
+    'WorkOrderPriorityEnum': 'tasks.models.WorkOrder.PRIORITY_CHOICES',
     # lifecycle choice set used as both 'lifecycle_status' and 'to_status' (auto-named ToStatusEnum)
     'WorkOrderLifecycleEnum': 'tasks.models.WorkOrderLifecycle',
 })

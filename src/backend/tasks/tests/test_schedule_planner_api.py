@@ -6,7 +6,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from assets.models import AssetMachine
-from tasks.models import KanbanCard
+from tasks.models import WorkOrder
 from users.models import RuleSet
 from users.ruleset import RuleSetEnum
 
@@ -21,7 +21,7 @@ class SchedulePlanApiTest(TestCase):
         self.machine = AssetMachine.objects.create(name='Plan Press')
 
     def _card(self, minutes=120, **kw):
-        return KanbanCard.objects.create(
+        return WorkOrder.objects.create(
             title=kw.pop('title', 'WO'),
             status='backlog',
             priority='medium',
@@ -51,14 +51,14 @@ class SchedulePlanApiTest(TestCase):
         self.assertIsNone(a.scheduled_start)
 
     def test_plan_reports_unscheduled_for_missing_duration(self):
-        card = self._card(minutes=None)
+        work_order = self._card(minutes=None)
         response = self.client.post(
             reverse('kanban-schedule-plan'),
-            data={'candidate_ids': [card.id]},
+            data={'candidate_ids': [work_order.id]},
             content_type='application/json',
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn(card.id, response.json()['unscheduled'])
+        self.assertIn(work_order.id, response.json()['unscheduled'])
 
     def test_plan_rejects_bad_candidate_ids(self):
         response = self.client.post(
@@ -113,7 +113,7 @@ class SchedulePlanPermissionTest(TestCase):
         self.user.groups.add(self.group)
         self.client.force_login(self.user)
         self.machine = AssetMachine.objects.create(name='Plan Perm Press')
-        self.card = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='WO', status='backlog', priority='low',
             machine=self.machine, estimated_minutes=120,
         )
@@ -130,7 +130,7 @@ class SchedulePlanPermissionTest(TestCase):
         self._set(can_view=False)
         response = self.client.post(
             reverse('kanban-schedule-plan'),
-            data={'candidate_ids': [self.card.id]},
+            data={'candidate_ids': [self.work_order.id]},
             content_type='application/json',
         )
         self.assertEqual(response.status_code, 403)
@@ -139,7 +139,7 @@ class SchedulePlanPermissionTest(TestCase):
         self._set(can_view=True, can_change=False)
         response = self.client.post(
             reverse('kanban-schedule-optimize'),
-            data={'candidate_ids': [self.card.id]},
+            data={'candidate_ids': [self.work_order.id]},
             content_type='application/json',
         )
         self.assertEqual(response.status_code, 403)

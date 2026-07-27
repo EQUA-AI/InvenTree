@@ -19,7 +19,7 @@ if not apps.is_installed('tasks'):
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
-from tasks.models import KanbanCard, WorkOrderLifecycle, WorkOrderType
+from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 from tasks.scope import MaintenanceScope
 from tasks.workorder_models import WorkOrderEvent
 
@@ -92,10 +92,10 @@ class ScopedChatTestCase(TestCase):
         _SCOPES['scoped-outsider'] = {
             MaintenanceScope(customer_id=self.other_customer.pk, site_key=None)
         }
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Inspect spindle',
-            status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=self.customer,
             machine=self.machine,
             assigned_to=self.actor,
@@ -389,7 +389,7 @@ class ScopedToolTests(ScopedChatTestCase):
         self.work_order.scheduled_end = _utc(12)
         self.work_order.save()
         # Another card on the same machine overlapping the pinned window.
-        KanbanCard.objects.create(
+        WorkOrder.objects.create(
             title='Overlapper', status='backlog', priority='low',
             customer=self.customer, machine=self.machine,
             scheduled_start=_utc(11), scheduled_end=_utc(14),
@@ -641,10 +641,10 @@ class ScopedChatApiTests(ScopedChatTestCase):
     def test_invoke_rejects_a_token_for_a_different_record(self):
         """The token must bind to the conversation's exact record."""
         conversation = self._conversation()
-        other_order = KanbanCard.objects.create(
+        other_order = WorkOrder.objects.create(
             title='Different order',
-            status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=self.customer,
             machine=self.machine,
             lifecycle_status=WorkOrderLifecycle.IN_PROGRESS,

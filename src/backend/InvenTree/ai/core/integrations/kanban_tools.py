@@ -24,58 +24,59 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _card_to_dict(card, include_parts: bool = True) -> dict[str, Any]:
-    """Serialize a KanbanCard model instance to a plain dict."""
+def _card_to_dict(work_order, include_parts: bool = True) -> dict[str, Any]:
+    """Serialize a WorkOrder model instance to a plain dict."""
     data = {
-        "id": card.id,
-        "title": card.title,
-        "description": card.description,
-        "status": card.status,
-        "priority": card.priority,
-        "due_date": card.due_date.isoformat() if card.due_date else None,
-        "assignee": card.assignee,
-        "tags": list(card.tags) if card.tags else [],
-        "company": card.company,
-        "company_contact_name": card.company_contact_name,
-        "company_contact_phone": card.company_contact_phone,
-        "job_number": card.job_number,
-        "service_quote": card.service_quote,
-        "is_active": card.is_active,
-        "created_at": card.created_at.isoformat() if card.created_at else None,
-        "updated_at": card.updated_at.isoformat() if card.updated_at else None,
+        "id": work_order.id,
+        "title": work_order.title,
+        "description": work_order.description,
+        "status": work_order.status,
+        "priority": work_order.priority,
+        "due_date": work_order.due_date.isoformat() if work_order.due_date else None,
+        "assignee": work_order.assignee,
+        "tags": list(work_order.tags) if work_order.tags else [],
+        "company": work_order.company,
+        "company_contact_name": work_order.company_contact_name,
+        "company_contact_phone": work_order.company_contact_phone,
+        "job_number": work_order.job_number,
+        "service_quote": work_order.service_quote,
+        "is_active": work_order.is_active,
+        "created_at": work_order.created_at.isoformat() if work_order.created_at else None,
+        "updated_at": work_order.updated_at.isoformat() if work_order.updated_at else None,
     }
     if include_parts:
         data["parts"] = [
-            _card_part_to_dict(cp) for cp in card.card_parts.all().select_related("part")
+            _card_part_to_dict(cp)
+            for cp in work_order.work_order_parts.all().select_related("part")
         ]
     return data
 
 
-def _card_part_to_dict(card_part) -> dict[str, Any]:
-    """Serialize a KanbanCardPart to a plain dict."""
+def _card_part_to_dict(work_order_part) -> dict[str, Any]:
+    """Serialize a WorkOrderPart to a plain dict."""
     return {
-        "id": card_part.id,
-        "part_id": card_part.part_id,
-        "part_name": card_part.part.name if card_part.part else "",
-        "quantity": float(card_part.quantity),
-        "allocated_quantity": float(card_part.allocated_quantity),
-        "allocation_status": card_part.allocation_status,
-        "allocation_note": card_part.allocation_note,
+        "id": work_order_part.id,
+        "part_id": work_order_part.part_id,
+        "part_name": work_order_part.part.name if work_order_part.part else "",
+        "quantity": float(work_order_part.quantity),
+        "allocated_quantity": float(work_order_part.allocated_quantity),
+        "allocation_status": work_order_part.allocation_status,
+        "allocation_note": work_order_part.allocation_note,
     }
 
 
 def _get_model():
     """Lazy import to avoid Django app-not-ready errors."""
-    from tasks.models import KanbanCard
+    from tasks.models import WorkOrder
 
-    return KanbanCard
+    return WorkOrder
 
 
 def _get_card_part_model():
-    """Lazy import for KanbanCardPart."""
-    from tasks.models import KanbanCardPart
+    """Lazy import for WorkOrderPart."""
+    from tasks.models import WorkOrderPart
 
-    return KanbanCardPart
+    return WorkOrderPart
 
 
 # ---------------------------------------------------------------------------
@@ -112,11 +113,11 @@ async def list_kanban_cards(
     Returns:
       Dictionary with 'count' and 'cards' list.
     """
-    KanbanCard = _get_model()
+    WorkOrder = _get_model()
 
     @sync_to_async
     def _query():
-        qs = KanbanCard.objects.all()
+        qs = WorkOrder.objects.all()
 
         if not include_archived:
             qs = qs.filter(is_active=True)
@@ -149,12 +150,12 @@ async def list_kanban_cards(
         qs = qs.order_by("-created_at")[:limit]
         return [_card_to_dict(c) for c in qs]
 
-    cards = await _query()
-    return {"count": len(cards), "cards": cards}
+    work_orders = await _query()
+    return {"count": len(work_orders), "cards": work_orders}
 
 
 @ai_function
-async def get_kanban_card(card_id: int) -> dict[str, Any]:
+async def get_kanban_card(work_order_id: int) -> dict[str, Any]:
     """
     Get full details of a single Kanban card by its ID.
 
@@ -164,20 +165,20 @@ async def get_kanban_card(card_id: int) -> dict[str, Any]:
     Returns:
       Card details dict, or error if not found.
     """
-    KanbanCard = _get_model()
+    WorkOrder = _get_model()
 
     @sync_to_async
     def _fetch():
         try:
-            card = KanbanCard.objects.get(pk=card_id)
-            return _card_to_dict(card)
-        except KanbanCard.DoesNotExist:
+            work_order = WorkOrder.objects.get(pk=work_order_id)
+            return _card_to_dict(work_order)
+        except WorkOrder.DoesNotExist:
             return None
 
-    card = await _fetch()
-    if card is None:
-        return {"error": f"Kanban card {card_id} not found."}
-    return card
+    work_order = await _fetch()
+    if work_order is None:
+        return {"error": f"Kanban card {work_order_id} not found."}
+    return work_order
 
 
 # ---------------------------------------------------------------------------
@@ -226,8 +227,8 @@ async def create_kanban_card(
       The newly created card as a dict, including parts allocation results
       and any stock warnings.
     """
-    KanbanCard = _get_model()
-    KanbanCardPart = _get_card_part_model()
+    WorkOrder = _get_model()
+    WorkOrderPart = _get_card_part_model()
     valid_statuses = {"backlog", "in-progress", "review", "done"}
     valid_priorities = {"low", "medium", "high"}
 
@@ -272,7 +273,7 @@ async def create_kanban_card(
         # Card + part links commit together - a failure while linking parts
         # must not leave an orphan card behind
         with transaction.atomic():
-            card = KanbanCard.objects.create(
+            work_order = WorkOrder.objects.create(
                 title=title,
                 status=status,
                 priority=priority,
@@ -299,16 +300,16 @@ async def create_kanban_card(
                         allocation_warnings.append(f"Part ID {part_id} not found — skipped.")
                         continue
 
-                    card_part, created = KanbanCardPart.objects.get_or_create(
-                        card=card,
+                    work_order_part, created = WorkOrderPart.objects.get_or_create(
+                        work_order=work_order,
                         part=part_obj,
                         defaults={"quantity": qty},
                     )
                     if not created:
-                        card_part.quantity = qty
-                        card_part.save(update_fields=["quantity", "updated_at"])
+                        work_order_part.quantity = qty
+                        work_order_part.save(update_fields=["quantity", "updated_at"])
 
-                    result = card_part.check_and_allocate()
+                    result = work_order_part.check_and_allocate()
 
                     if result["allocation_status"] == "insufficient":
                         allocation_warnings.append(
@@ -322,7 +323,7 @@ async def create_kanban_card(
                             f"{result['quantity_needed']} available"
                         )
 
-        result = _card_to_dict(card)
+        result = _card_to_dict(work_order)
         if allocation_warnings:
             result["stock_warnings"] = allocation_warnings
         return result
@@ -338,7 +339,7 @@ async def create_kanban_card(
 @ai_function
 @guard_write_tool
 async def update_kanban_card(
-    card_id: int,
+    work_order_id: int,
     title: str | None = None,
     description: str | None = None,
     status: str | None = None,
@@ -375,7 +376,7 @@ async def update_kanban_card(
     Returns:
       The updated card as a dict, or error.
     """
-    KanbanCard = _get_model()
+    WorkOrder = _get_model()
     valid_statuses = {"backlog", "in-progress", "review", "done"}
     valid_priorities = {"low", "medium", "high"}
 
@@ -391,45 +392,45 @@ async def update_kanban_card(
         import datetime
 
         try:
-            card = KanbanCard.objects.get(pk=card_id)
-        except KanbanCard.DoesNotExist:
-            return {"error": f"Kanban card {card_id} not found."}
+            work_order = WorkOrder.objects.get(pk=work_order_id)
+        except WorkOrder.DoesNotExist:
+            return {"error": f"Kanban card {work_order_id} not found."}
 
         if title is not None:
-            card.title = title
+            work_order.title = title
         if description is not None:
-            card.description = description
+            work_order.description = description
         if status is not None:
-            card.status = status
+            work_order.status = status
         if priority is not None:
-            card.priority = priority
+            work_order.priority = priority
         if assignee is not None:
-            card.assignee = assignee
+            work_order.assignee = assignee
         if due_date is not None:
             if due_date == "":
-                card.due_date = None
+                work_order.due_date = None
             else:
                 try:
-                    card.due_date = datetime.date.fromisoformat(due_date)
+                    work_order.due_date = datetime.date.fromisoformat(due_date)
                 except ValueError:
                     return {"error": f"Invalid due_date format '{due_date}'. Use YYYY-MM-DD."}
         if tags is not None:
             # De-duplicate while preserving order
             seen = set()
-            card.tags = [t for t in tags if not (t in seen or seen.add(t))]
+            work_order.tags = [t for t in tags if not (t in seen or seen.add(t))]
         if company is not None:
-            card.company = company
+            work_order.company = company
         if company_contact_name is not None:
-            card.company_contact_name = company_contact_name
+            work_order.company_contact_name = company_contact_name
         if company_contact_phone is not None:
-            card.company_contact_phone = company_contact_phone
+            work_order.company_contact_phone = company_contact_phone
         if job_number is not None:
-            card.job_number = job_number
+            work_order.job_number = job_number
         if service_quote is not None:
-            card.service_quote = service_quote
+            work_order.service_quote = service_quote
 
-        card.save()
-        return _card_to_dict(card)
+        work_order.save()
+        return _card_to_dict(work_order)
 
     return await _update()
 
@@ -442,7 +443,7 @@ async def update_kanban_card(
 @ai_function
 @guard_write_tool
 async def move_kanban_card(
-    card_id: int,
+    work_order_id: int,
     new_status: str,
 ) -> dict[str, Any]:
     """
@@ -461,7 +462,7 @@ async def move_kanban_card(
     if new_status not in valid:
         return {"error": f"Invalid status '{new_status}'. Must be one of {sorted(valid)}."}
 
-    return await update_kanban_card(card_id=card_id, status=new_status)
+    return await update_kanban_card(work_order_id=work_order_id, status=new_status)
 
 
 # ---------------------------------------------------------------------------
@@ -471,7 +472,7 @@ async def move_kanban_card(
 
 @ai_function
 @guard_write_tool
-async def archive_kanban_card(card_id: int) -> dict[str, Any]:
+async def archive_kanban_card(work_order_id: int) -> dict[str, Any]:
     """
     Archive (soft-delete) a Kanban card. The card is marked inactive
     and hidden from the default board view but can be restored later.
@@ -482,23 +483,26 @@ async def archive_kanban_card(card_id: int) -> dict[str, Any]:
     Returns:
       Confirmation dict or error.
     """
-    KanbanCard = _get_model()
+    WorkOrder = _get_model()
 
     @sync_to_async
     def _archive():
         try:
-            card = KanbanCard.objects.get(pk=card_id)
-        except KanbanCard.DoesNotExist:
-            return {"error": f"Kanban card {card_id} not found."}
+            work_order = WorkOrder.objects.get(pk=work_order_id)
+        except WorkOrder.DoesNotExist:
+            return {"error": f"Kanban card {work_order_id} not found."}
 
-        if not card.is_active:
-            return {"message": f"Card {card_id} is already archived.", "card": _card_to_dict(card)}
+        if not work_order.is_active:
+            return {
+                "message": f"Card {work_order_id} is already archived.",
+                "card": _card_to_dict(work_order),
+            }
 
-        card.is_active = False
-        card.save(update_fields=["is_active", "updated_at"])
+        work_order.is_active = False
+        work_order.save(update_fields=["is_active", "updated_at"])
         return {
-            "message": f"Card {card_id} ('{card.title}') archived.",
-            "card": _card_to_dict(card),
+            "message": f"Card {work_order_id} ('{work_order.title}') archived.",
+            "card": _card_to_dict(work_order),
         }
 
     return await _archive()
@@ -506,7 +510,7 @@ async def archive_kanban_card(card_id: int) -> dict[str, Any]:
 
 @ai_function
 @guard_write_tool
-async def restore_kanban_card(card_id: int) -> dict[str, Any]:
+async def restore_kanban_card(work_order_id: int) -> dict[str, Any]:
     """
     Restore a previously archived Kanban card, making it active again.
 
@@ -516,23 +520,26 @@ async def restore_kanban_card(card_id: int) -> dict[str, Any]:
     Returns:
       The restored card dict or error.
     """
-    KanbanCard = _get_model()
+    WorkOrder = _get_model()
 
     @sync_to_async
     def _restore():
         try:
-            card = KanbanCard.objects.get(pk=card_id)
-        except KanbanCard.DoesNotExist:
-            return {"error": f"Kanban card {card_id} not found."}
+            work_order = WorkOrder.objects.get(pk=work_order_id)
+        except WorkOrder.DoesNotExist:
+            return {"error": f"Kanban card {work_order_id} not found."}
 
-        if card.is_active:
-            return {"message": f"Card {card_id} is already active.", "card": _card_to_dict(card)}
+        if work_order.is_active:
+            return {
+                "message": f"Card {work_order_id} is already active.",
+                "card": _card_to_dict(work_order),
+            }
 
-        card.is_active = True
-        card.save(update_fields=["is_active", "updated_at"])
+        work_order.is_active = True
+        work_order.save(update_fields=["is_active", "updated_at"])
         return {
-            "message": f"Card {card_id} ('{card.title}') restored.",
-            "card": _card_to_dict(card),
+            "message": f"Card {work_order_id} ('{work_order.title}') restored.",
+            "card": _card_to_dict(work_order),
         }
 
     return await _restore()
@@ -540,7 +547,7 @@ async def restore_kanban_card(card_id: int) -> dict[str, Any]:
 
 @ai_function
 @guard_write_tool
-async def delete_kanban_card(card_id: int) -> dict[str, Any]:
+async def delete_kanban_card(work_order_id: int) -> dict[str, Any]:
     """
     Permanently delete a Kanban card. This cannot be undone.
     Prefer archive_kanban_card for soft-deletion.
@@ -551,18 +558,18 @@ async def delete_kanban_card(card_id: int) -> dict[str, Any]:
     Returns:
       Confirmation dict or error.
     """
-    KanbanCard = _get_model()
+    WorkOrder = _get_model()
 
     @sync_to_async
     def _delete():
         try:
-            card = KanbanCard.objects.get(pk=card_id)
-        except KanbanCard.DoesNotExist:
-            return {"error": f"Kanban card {card_id} not found."}
+            work_order = WorkOrder.objects.get(pk=work_order_id)
+        except WorkOrder.DoesNotExist:
+            return {"error": f"Kanban card {work_order_id} not found."}
 
-        title = card.title
-        card.delete()
-        return {"message": f"Card {card_id} ('{title}') permanently deleted."}
+        title = work_order.title
+        work_order.delete()
+        return {"message": f"Card {work_order_id} ('{title}') permanently deleted."}
 
     return await _delete()
 
@@ -575,7 +582,7 @@ async def delete_kanban_card(card_id: int) -> dict[str, Any]:
 @ai_function
 @guard_write_tool
 async def add_parts_to_kanban_card(
-    card_id: int,
+    work_order_id: int,
     parts: list[dict],
 ) -> dict[str, Any]:
     """
@@ -590,8 +597,8 @@ async def add_parts_to_kanban_card(
     Returns:
       Dict with added parts, allocation results, and any warnings.
     """
-    KanbanCard = _get_model()
-    KanbanCardPart = _get_card_part_model()
+    WorkOrder = _get_model()
+    WorkOrderPart = _get_card_part_model()
 
     @sync_to_async
     def _add():
@@ -600,9 +607,9 @@ async def add_parts_to_kanban_card(
         from part.models import Part
 
         try:
-            card = KanbanCard.objects.get(pk=card_id)
-        except KanbanCard.DoesNotExist:
-            return {"error": f"Kanban card {card_id} not found."}
+            work_order = WorkOrder.objects.get(pk=work_order_id)
+        except WorkOrder.DoesNotExist:
+            return {"error": f"Kanban card {work_order_id} not found."}
 
         results = []
         warnings = []
@@ -617,16 +624,16 @@ async def add_parts_to_kanban_card(
                 warnings.append(f"Part ID {part_id} not found — skipped.")
                 continue
 
-            card_part, created = KanbanCardPart.objects.get_or_create(
-                card=card,
+            work_order_part, created = WorkOrderPart.objects.get_or_create(
+                work_order=work_order,
                 part=part_obj,
                 defaults={"quantity": qty},
             )
             if not created:
-                card_part.quantity = qty
-                card_part.save(update_fields=["quantity", "updated_at"])
+                work_order_part.quantity = qty
+                work_order_part.save(update_fields=["quantity", "updated_at"])
 
-            alloc = card_part.check_and_allocate()
+            alloc = work_order_part.check_and_allocate()
             results.append(alloc)
 
             if alloc["allocation_status"] == "insufficient":
@@ -642,7 +649,7 @@ async def add_parts_to_kanban_card(
                 )
 
         return {
-            "card_id": card_id,
+            "card_id": work_order_id,
             "parts_added": len(results),
             "allocation_results": results,
             "warnings": warnings,
@@ -653,7 +660,7 @@ async def add_parts_to_kanban_card(
 
 
 @ai_function
-async def check_kanban_card_stock(card_id: int) -> dict[str, Any]:
+async def check_kanban_card_stock(work_order_id: int) -> dict[str, Any]:
     """
     Re-check stock availability for all parts on a Kanban card.
 
@@ -665,19 +672,19 @@ async def check_kanban_card_stock(card_id: int) -> dict[str, Any]:
     Returns:
       Dict with allocation results per part and any warnings.
     """
-    KanbanCard = _get_model()
+    WorkOrder = _get_model()
 
     @sync_to_async
     def _check():
         try:
-            card = KanbanCard.objects.get(pk=card_id)
-        except KanbanCard.DoesNotExist:
-            return {"error": f"Kanban card {card_id} not found."}
+            work_order = WorkOrder.objects.get(pk=work_order_id)
+        except WorkOrder.DoesNotExist:
+            return {"error": f"Kanban card {work_order_id} not found."}
 
-        card_parts = card.card_parts.all().select_related("part")
-        if not card_parts.exists():
+        work_order_parts = work_order.work_order_parts.all().select_related("part")
+        if not work_order_parts.exists():
             return {
-                "card_id": card_id,
+                "card_id": work_order_id,
                 "message": "No parts attached to this card.",
                 "parts": [],
                 "warnings": [],
@@ -686,7 +693,7 @@ async def check_kanban_card_stock(card_id: int) -> dict[str, Any]:
         results = []
         warnings = []
 
-        for cp in card_parts:
+        for cp in work_order_parts:
             # Compute-only: this tool is registered read-only (voice Tier-1
             # lane, kanban.read pack), so it must not persist allocation state
             alloc = cp.check_and_allocate(persist=False)
@@ -705,7 +712,7 @@ async def check_kanban_card_stock(card_id: int) -> dict[str, Any]:
                 )
 
         return {
-            "card_id": card_id,
+            "card_id": work_order_id,
             "parts": results,
             "warnings": warnings,
             "all_allocated": len(warnings) == 0,
@@ -717,7 +724,7 @@ async def check_kanban_card_stock(card_id: int) -> dict[str, Any]:
 @ai_function
 @guard_write_tool
 async def remove_part_from_kanban_card(
-    card_id: int,
+    work_order_id: int,
     part_id: int,
 ) -> dict[str, Any]:
     """
@@ -730,18 +737,18 @@ async def remove_part_from_kanban_card(
     Returns:
       Confirmation or error.
     """
-    KanbanCardPart = _get_card_part_model()
+    WorkOrderPart = _get_card_part_model()
 
     @sync_to_async
     def _remove():
         try:
-            cp = KanbanCardPart.objects.get(card_id=card_id, part_id=part_id)
-        except KanbanCardPart.DoesNotExist:
-            return {"error": f"Part {part_id} is not attached to card {card_id}."}
+            cp = WorkOrderPart.objects.get(work_order_id=work_order_id, part_id=part_id)
+        except WorkOrderPart.DoesNotExist:
+            return {"error": f"Part {part_id} is not attached to card {work_order_id}."}
 
         part_name = cp.part.name
         cp.delete()
-        return {"message": f"Part '{part_name}' (ID {part_id}) removed from card {card_id}."}
+        return {"message": f"Part '{part_name}' (ID {part_id}) removed from card {work_order_id}."}
 
     return await _remove()
 
@@ -760,7 +767,7 @@ async def get_kanban_summary() -> dict[str, Any]:
     Returns:
       Dictionary with status_counts, priority_counts, total_active, and overdue_cards.
     """
-    KanbanCard = _get_model()
+    WorkOrder = _get_model()
 
     @sync_to_async
     def _summarize():
@@ -768,7 +775,7 @@ async def get_kanban_summary() -> dict[str, Any]:
 
         from django.db.models import Count
 
-        active = KanbanCard.objects.filter(is_active=True)
+        active = WorkOrder.objects.filter(is_active=True)
 
         status_counts = dict(
             active.values_list("status").annotate(c=Count("id")).values_list("status", "c")
@@ -805,7 +812,7 @@ KANBAN_READ_TOOLS = [
 ]
 
 # ``delete_kanban_card`` is deliberately absent. It hard-deletes a work order, and
-# ``KanbanCard`` cascades to ``WorkOrderEvent``, ``WorkOrderCommand``,
+# ``WorkOrder`` cascades to ``WorkOrderEvent``, ``WorkOrderCommand``,
 # ``WorkOrderCloseout``, ``WorkOrderDeviation``, ``CloseoutPartUsage`` and
 # ``CloseoutReading`` -- so one call destroys the governance and closeout history of
 # completed work. The tool also applies no customer scope, unlike the REST

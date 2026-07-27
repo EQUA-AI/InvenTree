@@ -99,7 +99,7 @@ def _blocker(
         code=code,
         message=message,
         source='work_order',
-        object_type='KanbanCard',
+        object_type='WorkOrder',
         object_id=str(context.work_order.pk),
         blocking=blocking,
         metadata=metadata or {},

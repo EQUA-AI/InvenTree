@@ -19,7 +19,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from tasks.models import KanbanCard, WorkOrderLifecycle, WorkOrderType
+from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 from tasks.scope import MaintenanceScope
 
 from aichat.models import ChatActionProposal, ProposalState
@@ -50,10 +50,10 @@ class ProposalRailTestCase(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        self.work_order = KanbanCard.objects.create(
+        self.work_order = WorkOrder.objects.create(
             title='Hold me',
-            status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=self.customer,
             machine=self.machine,
             assigned_to=self.actor,
@@ -338,17 +338,17 @@ class SchedulingProposalTests(ProposalRailTestCase):
             action='work_order.update',
             key='update-1',
             reason='Spoken request: bump the priority.',
-            intent={'fields': {'priority': KanbanCard.PRIORITY_HIGH}},
+            intent={'fields': {'priority': WorkOrder.PRIORITY_HIGH}},
         )
         self.assertEqual(
-            proposal.preview['changes']['priority']['to'], KanbanCard.PRIORITY_HIGH
+            proposal.preview['changes']['priority']['to'], WorkOrder.PRIORITY_HIGH
         )
         confirmed = svc.confirm_proposal(
             owner=self.actor, scope_hash=proposal.scope_hash, proposal_id=proposal.id
         )
         self.assertEqual(confirmed.receipt['command'], 'update_plan')
         self.work_order.refresh_from_db()
-        self.assertEqual(self.work_order.priority, KanbanCard.PRIORITY_HIGH)
+        self.assertEqual(self.work_order.priority, WorkOrder.PRIORITY_HIGH)
 
     def test_assign_action_reassigns_through_the_rail(self):
         """An assign proposal dispatches the canonical assign command."""
@@ -385,14 +385,14 @@ class SchedulingProposalTests(ProposalRailTestCase):
                 owner=self.actor, scope_hash=proposal.scope_hash,
                 proposal_id=proposal.id,
             )
-        self.assertTrue(KanbanCard.objects.filter(pk=work_order_id).exists())
+        self.assertTrue(WorkOrder.objects.filter(pk=work_order_id).exists())
         confirmed = svc.confirm_proposal(
             owner=self.actor, scope_hash=proposal.scope_hash, proposal_id=proposal.id,
             confirm_phrase='confirm delete',
         )
         self.assertEqual(confirmed.state, ProposalState.EXECUTED)
         self.assertEqual(confirmed.receipt['command'], 'delete')
-        self.assertFalse(KanbanCard.objects.filter(pk=work_order_id).exists())
+        self.assertFalse(WorkOrder.objects.filter(pk=work_order_id).exists())
         self.assertTrue(
             WorkOrderDeletionRecord.objects.filter(work_order_pk=work_order_id).exists()
         )
@@ -507,7 +507,7 @@ class GapClosingProposalTests(ProposalRailTestCase):
 
     def test_create_action_creates_a_card_through_the_rail(self):
         """A create proposal has no target and creates a fresh card on confirm."""
-        before = KanbanCard.objects.count()
+        before = WorkOrder.objects.count()
         proposal = self._create(
             action='work_order.create',
             key='create-1',
@@ -516,15 +516,15 @@ class GapClosingProposalTests(ProposalRailTestCase):
                 'title': 'Fresh WO',
                 'machine_id': self.machine.pk,
                 'work_order_type': WorkOrderType.CORRECTIVE,
-                'priority': KanbanCard.PRIORITY_LOW,
+                'priority': WorkOrder.PRIORITY_LOW,
             },
         )
         self.assertIsNone(proposal.target_work_order_id)
         self.assertEqual(proposal.preview['proposed_title'], 'Fresh WO')
         confirmed = self._confirm(proposal)
         self.assertEqual(confirmed.receipt['command'], 'create')
-        self.assertEqual(KanbanCard.objects.count(), before + 1)
-        created = KanbanCard.objects.get(pk=confirmed.receipt['work_order_id'])
+        self.assertEqual(WorkOrder.objects.count(), before + 1)
+        created = WorkOrder.objects.get(pk=confirmed.receipt['work_order_id'])
         self.assertEqual(created.title, 'Fresh WO')
         self.assertEqual(created.machine_id, self.machine.pk)
 
@@ -544,11 +544,11 @@ class GapClosingProposalTests(ProposalRailTestCase):
         proposal = self._create(
             action='work_order.create_child',
             key='child-1',
-            intent={'title': 'Subtask A', 'card_kind': KanbanCard.KIND_SUBTASK},
+            intent={'title': 'Subtask A', 'card_kind': WorkOrder.KIND_SUBTASK},
         )
         self.assertEqual(proposal.preview['parent_id'], self.work_order.pk)
         confirmed = self._confirm(proposal)
-        child = KanbanCard.objects.get(pk=confirmed.receipt['work_order_id'])
+        child = WorkOrder.objects.get(pk=confirmed.receipt['work_order_id'])
         self.assertEqual(child.parent_id, self.work_order.pk)
         self.assertEqual(child.title, 'Subtask A')
 
@@ -563,22 +563,22 @@ class GapClosingProposalTests(ProposalRailTestCase):
 
     def test_dependency_create_and_delete_actions(self):
         """Dependency create then delete both route the governed rail."""
-        from tasks.models import KanbanCardDependency
+        from tasks.models import WorkOrderDependency
 
-        successor = KanbanCard.objects.create(
-            title='Successor', status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM, customer=self.customer,
+        successor = WorkOrder.objects.create(
+            title='Successor', status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
             machine=self.machine, lifecycle_status=WorkOrderLifecycle.IN_PROGRESS,
         )
         create = self._create(
             action='dependency.create',
             key='dep-create',
             work_order_id=successor.pk,
-            intent={'from_card_id': self.work_order.pk, 'dependency_type': 'FS'},
+            intent={'predecessor_id': self.work_order.pk, 'dependency_type': 'FS'},
         )
         confirmed = self._confirm(create)
         dep_id = confirmed.receipt['dependency_id']
-        self.assertTrue(KanbanCardDependency.objects.filter(pk=dep_id).exists())
+        self.assertTrue(WorkOrderDependency.objects.filter(pk=dep_id).exists())
 
         delete = self._create(
             action='dependency.delete',
@@ -588,7 +588,7 @@ class GapClosingProposalTests(ProposalRailTestCase):
         )
         removed = self._confirm(delete)
         self.assertTrue(removed.receipt['removed'])
-        self.assertFalse(KanbanCardDependency.objects.filter(pk=dep_id).exists())
+        self.assertFalse(WorkOrderDependency.objects.filter(pk=dep_id).exists())
 
     @override_settings(USE_TZ=True)
     def test_optimize_action_plans_and_applies_atomically(self):
@@ -597,9 +597,9 @@ class GapClosingProposalTests(ProposalRailTestCase):
         self.work_order.scheduled_start = None
         self.work_order.scheduled_end = None
         self.work_order.save()
-        second = KanbanCard.objects.create(
-            title='Second', status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM, customer=self.customer,
+        second = WorkOrder.objects.create(
+            title='Second', status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
             machine=self.machine, estimated_minutes=60,
             lifecycle_status=WorkOrderLifecycle.IN_PROGRESS,
         )
@@ -681,7 +681,7 @@ class StrictConfirmationTests(ProposalRailTestCase):
                 owner=self.actor, scope_hash=proposal.scope_hash,
                 proposal_id=proposal.id, confirm_phrase='yes',
             )
-        self.assertTrue(KanbanCard.objects.filter(pk=self.work_order.pk).exists())
+        self.assertTrue(WorkOrder.objects.filter(pk=self.work_order.pk).exists())
         proposal.refresh_from_db()
         self.assertEqual(proposal.state, ProposalState.PROPOSED)
 
@@ -775,7 +775,7 @@ class ProposalApiTests(ProposalRailTestCase):
             self.assertEqual(
                 missing.json()['error'], 'STRICT_CONFIRMATION_REQUIRED'
             )
-            self.assertTrue(KanbanCard.objects.filter(pk=self.work_order.pk).exists())
+            self.assertTrue(WorkOrder.objects.filter(pk=self.work_order.pk).exists())
 
             ok = client.post(
                 f'/api/aichat/proposals/{pid}/confirm/',
@@ -783,7 +783,7 @@ class ProposalApiTests(ProposalRailTestCase):
                 content_type='application/json',
             )
             self.assertEqual(ok.status_code, 200, ok.content)
-            self.assertFalse(KanbanCard.objects.filter(pk=self.work_order.pk).exists())
+            self.assertFalse(WorkOrder.objects.filter(pk=self.work_order.pk).exists())
 
     def test_schedule_proposal_carries_intent_over_http(self):
         """The create view accepts a scheduling intent and confirmation dispatches it."""
@@ -864,10 +864,10 @@ class ProposalApiTests(ProposalRailTestCase):
         other_machine = AssetMachine.objects.create(
             name='Secret press', customer=other_customer
         )
-        other_work_order = KanbanCard.objects.create(
+        other_work_order = WorkOrder.objects.create(
             title='Secret work order',
-            status=KanbanCard.STATUS_REVIEW,
-            priority=KanbanCard.PRIORITY_MEDIUM,
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM,
             customer=other_customer,
             machine=other_machine,
             work_order_type=WorkOrderType.PREVENTIVE,
