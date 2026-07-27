@@ -25,6 +25,7 @@ import company.api
 import importer.api
 import InvenTree.logging  # noqa: F401 - ensure logging handlers are registered
 import machine.api
+import machine_health.api
 import order.api
 import part.api
 import plugin.api
@@ -72,6 +73,7 @@ apipatterns = [
     path('approvals/', include(approvals.api.approvals_api_urls)),
     path('repair/', include(repair.api.repair_api_urls)),
     path('maintenance/', include(repair.api.maintenance_api_urls)),
+    path('machine-health/', include(machine_health.api.machine_health_api_urls)),
     path('aichat/', include('aichat.urls')),
     path('voice/', include('voice.urls')),
     path('search/', APISearchView.as_view(), name='api-search'),

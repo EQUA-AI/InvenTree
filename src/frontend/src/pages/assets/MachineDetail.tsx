@@ -1,6 +1,11 @@
 import { t } from '@lingui/core/macro';
 import { Stack, Text } from '@mantine/core';
-import { IconInfoCircle, IconListCheck, IconTool } from '@tabler/icons-react';
+import {
+  IconActivityHeartbeat,
+  IconInfoCircle,
+  IconListCheck,
+  IconTool
+} from '@tabler/icons-react';
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
@@ -19,6 +24,7 @@ import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useInstance } from '../../hooks/UseInstance';
 import { MachinePartTable } from '../../tables/assets/MachinePartTable';
 import { MaintenanceRecordTable } from '../../tables/assets/MaintenanceRecordTable';
+import { MachineHealthPanel } from './health/MachineHealthPanel';
 
 export default function MachineDetail() {
   const { id } = useParams();
@@ -119,6 +125,16 @@ export default function MachineDetail() {
               </div>
             )}
           </ItemDetailsGrid>
+        ) : null
+      },
+      {
+        // Health sits immediately after Details: an operator opening a machine
+        // asks how it is doing before asking what it is made of.
+        name: 'health',
+        label: t`Health`,
+        icon: <IconActivityHeartbeat />,
+        content: machine?.pk ? (
+          <MachineHealthPanel machineId={machine.pk} />
         ) : null
       },
       {

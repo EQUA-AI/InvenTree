@@ -327,6 +327,7 @@ INSTALLED_APPS = [
     'assets.apps.AssetsConfig',
     'approvals.apps.ApprovalsConfig',
     'repair.apps.RepairConfig',
+    'machine_health.apps.MachineHealthConfig',
     'aichat.apps.AIChatConfig',
     'voice.apps.VoiceConfig',
     'users.apps.UsersConfig',

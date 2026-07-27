@@ -51,6 +51,17 @@ export interface WorkOrderCreateModalProps {
   machineId?: number;
   /** Where this draft came from; recorded as work-package provenance. */
   origin?: 'manual' | 'anomaly' | 'chat';
+  /**
+   * Health anomaly this repair answers. The server links it to the created work
+   * order and packet and freezes its signals as evidence, so the decision stays
+   * reconstructable after the live values move on.
+   */
+  anomalyId?: number;
+  /** Anomaly-derived starting points. The user may amend any of them; editing
+   * the text never mutates the underlying evidence snapshot. */
+  initialTitle?: string;
+  initialFaultSummary?: string;
+  initialCriticality?: string;
   onCreated?: (result: WorkPackageResult) => void;
 }
 
@@ -107,6 +118,10 @@ export function WorkOrderCreateModal({
   onClose,
   machineId,
   origin = 'manual',
+  anomalyId,
+  initialTitle,
+  initialFaultSummary,
+  initialCriticality,
   onCreated
 }: Readonly<WorkOrderCreateModalProps>) {
   const api = useApi();
@@ -132,13 +147,13 @@ export function WorkOrderCreateModal({
   const form = useForm<FormValues>({
     initialValues: {
       machine: machineId ? String(machineId) : null,
-      title: '',
+      title: initialTitle ?? '',
       workOrderType: 'corrective',
-      priority: 'medium',
-      faultSummary: '',
+      priority: initialCriticality === 'critical' ? 'high' : 'medium',
+      faultSummary: initialFaultSummary ?? '',
       symptom: '',
       productionImpact: '',
-      criticality: 'medium',
+      criticality: initialCriticality ?? 'medium',
       assignee: '',
       dueDate: null,
       estimatedMinutes: '',
@@ -176,6 +191,33 @@ export function WorkOrderCreateModal({
       })),
     [machinesQuery.data]
   );
+
+  // The modal stays mounted while `opened` toggles, so a second anomaly would
+  // otherwise inherit the first one's prefilled text. Re-seed on each open.
+  const setFormValues = form.setValues;
+  const resetFormDirty = form.resetDirty;
+  useEffect(() => {
+    if (!opened) {
+      return;
+    }
+    setFormValues((current) => ({
+      ...current,
+      machine: machineId ? String(machineId) : current.machine,
+      title: initialTitle ?? '',
+      faultSummary: initialFaultSummary ?? '',
+      criticality: initialCriticality ?? 'medium',
+      priority: initialCriticality === 'critical' ? 'high' : 'medium'
+    }));
+    resetFormDirty();
+  }, [
+    opened,
+    machineId,
+    initialTitle,
+    initialFaultSummary,
+    initialCriticality,
+    setFormValues,
+    resetFormDirty
+  ]);
 
   // Keep the packet toggle aligned with the work-order type until the user
   // overrides it: corrective work needs a fault-to-fix aggregate, planning and
@@ -264,6 +306,7 @@ export function WorkOrderCreateModal({
         part_id: part.partId,
         quantity: part.quantity
       })),
+      source: anomalyId ? { anomaly_id: anomalyId } : {},
       planning: {
         assignee: values.assignee.trim(),
         due_date: values.dueDate

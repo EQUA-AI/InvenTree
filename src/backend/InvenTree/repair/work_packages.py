@@ -247,6 +247,46 @@ def _packet_reference(packet) -> str:
     return packet.reference if packet else ''
 
 
+def _link_anomaly(anomaly_id, *, machine, work_order, packet, actor) -> str:
+    """Link the originating health anomaly and capture its evidence.
+
+    Cross-machine evidence is refused: an anomaly from another asset can never
+    justify this repair, so the mismatch is reported as a warning and the link is
+    not made rather than silently attaching foreign telemetry.
+
+    Returns a warning string, or '' when there was nothing to do.
+    """
+    if not anomaly_id:
+        return ''
+
+    # Imported here so ``repair`` does not take a module-level dependency on the
+    # health app; the FK the other way is declared as a string reference.
+    from machine_health.models import MachineAnomaly, SnapshotReason
+    from machine_health.services.snapshots import capture_anomaly_evidence
+
+    anomaly = MachineAnomaly.objects.filter(pk=anomaly_id).first()
+    if anomaly is None:
+        return f'Anomaly {anomaly_id} no longer exists; it was not linked.'
+
+    if anomaly.machine_id != machine.pk:
+        return (
+            f'Anomaly {anomaly_id} belongs to a different machine; it was not linked.'
+        )
+
+    updates = {'work_order': work_order}
+    if packet is not None:
+        updates['repair_packet'] = packet
+    for field_name, value in updates.items():
+        setattr(anomaly, field_name, value)
+    anomaly.save(update_fields=[*updates, 'updated_at'])
+
+    # Freeze what the signals read at the moment the repair was authorized, so
+    # the decision stays reconstructable after the live values move on.
+    capture_anomaly_evidence(anomaly, reason=SnapshotReason.ANOMALY_REPAIR, actor=actor)
+
+    return ''
+
+
 @transaction.atomic
 def create_repair_work_package(
     *, actor, draft, idempotency_key: str, correlation_id: uuid.UUID | None = None
@@ -350,6 +390,16 @@ def create_repair_work_package(
             resolve_safety_gates(packet, actor)
         else:
             warnings.append('A repair packet already existed for this work order.')
+
+    anomaly_warning = _link_anomaly(
+        draft['source'].get('anomaly_id'),
+        machine=machine,
+        work_order=work_order,
+        packet=packet,
+        actor=actor,
+    )
+    if anomaly_warning:
+        warnings.append(anomaly_warning)
 
     return WorkPackageResult(
         work_order_id=work_order.pk,
