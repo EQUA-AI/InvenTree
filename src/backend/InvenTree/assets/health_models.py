@@ -488,8 +488,12 @@ class HealthEvidenceSnapshot(models.Model):
     A snapshot is the citation behind every preliminary result and every
     evidence-backed repair. It never changes after creation: amendments are new
     snapshots, so what a technician or an approver saw stays reconstructable.
-    Retention must preserve snapshots referenced by a repair even if the live
-    source or anomaly is later removed.
+
+    Retention: kept for as long as the client remains a customer. Deleting a
+    source or resolving an anomaly nulls the foreign keys and leaves the
+    evidence; nothing expires these rows on a timer. A deployment that needs one
+    has to reckon with the repair records citing the rows it would remove. See
+    ``docs/docs/aimms/machine-health-data.md``.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
