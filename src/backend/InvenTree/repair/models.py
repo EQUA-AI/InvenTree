@@ -426,6 +426,83 @@ class RepairPacketEvidence(models.Model):
         return f'{self.kind}: {self.label}'
 
 
+class RepairPacketHealthEvidence(models.Model):
+    """Typed, immutable link from a packet to a health evidence snapshot.
+
+    The diagnosis JSON also carries snapshot ids, but a JSON field is not a
+    relationship: it cannot be joined, constrained or protected from deletion.
+    This table is the authority on which immutable observations a repair decision
+    actually rested on, and it is what keeps those snapshots reachable after the
+    live signal, its binding or the anomaly has moved on.
+
+    Rows are append-only. A revised reading is a new snapshot and a new link, so
+    the evidence set behind an approval stays exactly what the approver saw.
+    """
+
+    RELATION_SUPPORTS = 'supports'
+    RELATION_CONTRADICTS = 'contradicts'
+    RELATION_UNKNOWN = 'unknown'
+    RELATION_CHOICES = [
+        (RELATION_SUPPORTS, _('Supports')),
+        (RELATION_CONTRADICTS, _('Contradicts')),
+        (RELATION_UNKNOWN, _('Unknown')),
+    ]
+
+    packet = models.ForeignKey(
+        RepairPacket, on_delete=models.CASCADE, related_name='health_evidence'
+    )
+
+    # PROTECT: a snapshot cited by a repair may not be deleted out from under it.
+    snapshot = models.ForeignKey(
+        'machine_health.HealthEvidenceSnapshot',
+        on_delete=models.PROTECT,
+        related_name='packet_links',
+        verbose_name=_('Evidence Snapshot'),
+    )
+
+    relation = models.CharField(
+        max_length=16,
+        choices=RELATION_CHOICES,
+        default=RELATION_UNKNOWN,
+        verbose_name=_('Relation'),
+    )
+
+    observation = models.TextField(blank=True, verbose_name=_('Observation'))
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+
+    class Meta:
+        """Model metadata."""
+
+        ordering = ['created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['packet', 'snapshot'], name='repair_packet_snapshot_unique'
+            )
+        ]
+        verbose_name = _('Repair Packet Health Evidence')
+        verbose_name_plural = _('Repair Packet Health Evidence')
+
+    def __str__(self) -> str:
+        """Readable identity for admin and logs."""
+        return f'{self.packet} <- {self.snapshot_id} ({self.relation})'
+
+    def save(self, *args, **kwargs):
+        """Reject edits: a citation is a record of what was seen, not a note."""
+        if not self._state.adding:
+            raise ValueError(
+                'Repair packet evidence links are immutable; add a new link instead'
+            )
+        super().save(*args, **kwargs)
+
+
 class SafetyGateTemplate(models.Model):
     """Reusable safety gate rule that can be resolved onto repair packets."""
 

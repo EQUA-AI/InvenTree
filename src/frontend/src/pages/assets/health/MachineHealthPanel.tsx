@@ -19,7 +19,8 @@ import { apiUrl } from '@lib/functions/Api';
 import type {
   MachineAnomaly,
   MachineHealthSummary,
-  MachineSignal
+  MachineSignal,
+  PreliminaryResults
 } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
@@ -52,6 +53,12 @@ export function MachineHealthPanel({
   const [acknowledging, setAcknowledging] = useState<number | null>(null);
   const [repairAnomaly, setRepairAnomaly] = useState<MachineAnomaly | null>(
     null
+  );
+  const [analyzing, setAnalyzing] = useState<number | null>(null);
+  // Preliminary results are generated on request, so they live in view state
+  // rather than being cached and re-shown as if they were current.
+  const [results, setResults] = useState<Record<number, PreliminaryResults>>(
+    {}
   );
 
   const summaryQuery = useQuery<MachineHealthSummary>({
@@ -112,6 +119,33 @@ export function MachineHealthPanel({
       }
     },
     [api, machineId, refreshAll]
+  );
+
+  const handleAnalyze = useCallback(
+    async (anomaly: MachineAnomaly) => {
+      setAnalyzing(anomaly.pk);
+      try {
+        const response = await api.post(
+          apiUrl(
+            ApiEndpoints.machine_health_anomaly_analysis,
+            machineId
+          ).replace(':anomalyId', String(anomaly.pk)),
+          {}
+        );
+        setResults((current) => ({
+          ...current,
+          [anomaly.pk]: response.data.preliminary_results
+        }));
+      } catch (error) {
+        showApiErrorMessage({
+          error,
+          title: t`Could not analyze the anomaly`
+        });
+      } finally {
+        setAnalyzing(null);
+      }
+    },
+    [api, machineId]
   );
 
   const isLoading =
@@ -182,8 +216,11 @@ export function MachineHealthPanel({
         <AnomalyList
           anomalies={anomalies}
           acknowledging={acknowledging}
+          analyzing={analyzing}
+          results={results}
           onAcknowledge={handleAcknowledge}
           onCreateRepair={setRepairAnomaly}
+          onAnalyze={handleAnalyze}
         />
       </Stack>
 

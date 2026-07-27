@@ -143,3 +143,51 @@ export interface HealthEvidenceSnapshot {
   content_hash: string;
   system_actor: string;
 }
+
+export type AnalysisStatus =
+  | 'available'
+  | 'unavailable'
+  | 'stale'
+  | 'insufficient';
+
+export type EvidenceRelation = 'supports' | 'contradicts' | 'unknown';
+
+export interface PreliminaryEvidence {
+  snapshot_id: string | null;
+  observation: string;
+  relation: EvidenceRelation;
+  signal_label?: string;
+  unit?: string;
+  observed_at?: string | null;
+  quality?: SignalQuality;
+  stale?: boolean;
+}
+
+/**
+ * Diagnosis schema v2. Preliminary until `verified_by_user` is true - the UI
+ * must label it "Preliminary results" up to that point, never "Diagnosis".
+ */
+export interface PreliminaryResults {
+  status: AnalysisStatus;
+  likely_cause: string;
+  failure_mode: string | null;
+  confidence: number;
+  confidence_label: string;
+  alternatives: string[];
+  evidence: PreliminaryEvidence[];
+  confirm_tests: string[];
+  data_window: {
+    start: string | null;
+    end: string | null;
+    snapshot_count: number;
+  };
+  freshness: { stale: boolean; stale_signal_count: number };
+  quality: { summary: string; bad_signal_count: number };
+  provider: string;
+  model_or_rule_version: string;
+  generated_at: string | null;
+  verified_by_user: boolean;
+  verified_at: string | null;
+  amendments: unknown[];
+  schema_version: number;
+}

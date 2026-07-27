@@ -9,12 +9,21 @@ import {
   Text,
   Tooltip
 } from '@mantine/core';
-import { IconCheck, IconExternalLink, IconTool } from '@tabler/icons-react';
+import {
+  IconCheck,
+  IconExternalLink,
+  IconStethoscope,
+  IconTool
+} from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import { Link } from 'react-router-dom';
 
-import type { MachineAnomaly } from '@lib/types/MachineHealth';
+import type {
+  MachineAnomaly,
+  PreliminaryResults
+} from '@lib/types/MachineHealth';
 
+import { PreliminaryResultsPanel } from './PreliminaryResults';
 import { SeverityBadge, SourceTypeBadge } from './common';
 
 function statusLabel(status: MachineAnomaly['status']): string {
@@ -42,12 +51,18 @@ export function AnomalyList({
   anomalies,
   onAcknowledge,
   onCreateRepair,
-  acknowledging
+  onAnalyze,
+  acknowledging,
+  analyzing,
+  results
 }: Readonly<{
   anomalies: MachineAnomaly[];
   onAcknowledge: (anomaly: MachineAnomaly) => void;
   onCreateRepair: (anomaly: MachineAnomaly) => void;
+  onAnalyze: (anomaly: MachineAnomaly) => void;
   acknowledging: number | null;
+  analyzing: number | null;
+  results: Record<number, PreliminaryResults>;
 }>) {
   if (anomalies.length === 0) {
     return (
@@ -85,6 +100,15 @@ export function AnomalyList({
               </Stack>
 
               <Group gap='xs' wrap='nowrap'>
+                <Button
+                  size='xs'
+                  variant='subtle'
+                  leftSection={<IconStethoscope size={14} />}
+                  loading={analyzing === anomaly.pk}
+                  onClick={() => onAnalyze(anomaly)}
+                >
+                  {t`Analyze`}
+                </Button>
                 {anomaly.status === 'open' && (
                   <Button
                     size='xs'
@@ -156,6 +180,10 @@ export function AnomalyList({
                 </Stack>
               )}
             </Group>
+
+            {results[anomaly.pk] && (
+              <PreliminaryResultsPanel results={results[anomaly.pk]} />
+            )}
 
             {anomaly.acknowledged_by_name && (
               <Text size='xs' c='dimmed'>

@@ -1,13 +1,13 @@
 import { t } from '@lingui/core/macro';
-import { Stack, Text } from '@mantine/core';
+import { Button, Stack, Text } from '@mantine/core';
 import {
   IconActivityHeartbeat,
   IconInfoCircle,
   IconListCheck,
   IconTool
 } from '@tabler/icons-react';
-import { useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -24,10 +24,13 @@ import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useInstance } from '../../hooks/UseInstance';
 import { MachinePartTable } from '../../tables/assets/MachinePartTable';
 import { MaintenanceRecordTable } from '../../tables/assets/MaintenanceRecordTable';
+import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateModal';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
 
 export default function MachineDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const [createRepairOpen, setCreateRepairOpen] = useState(false);
 
   const { instance: machine, instanceQuery } = useInstance({
     endpoint: ApiEndpoints.asset_machine_list,
@@ -166,7 +169,18 @@ export default function MachineDetail() {
         <PageDetail
           title={machine?.name ?? t`Machine Detail`}
           breadcrumbs={[{ name: t`Machines`, url: '/machines/index/' }]}
-          actions={[]}
+          actions={[
+            // Create repair plans work for this asset. Starting it is a
+            // separate, readiness-gated transition and is not offered here.
+            <Button
+              key='create-repair'
+              leftSection={<IconTool size={16} />}
+              onClick={() => setCreateRepairOpen(true)}
+              disabled={!machine?.pk}
+            >
+              {t`Create repair`}
+            </Button>
+          ]}
         />
         <PanelGroup
           pageKey='asset-machine-detail'
@@ -175,6 +189,17 @@ export default function MachineDetail() {
           model={ModelType.assetmachine}
           id={machine?.pk ?? null}
         />
+        {machine?.pk && (
+          <WorkOrderCreateModal
+            opened={createRepairOpen}
+            onClose={() => setCreateRepairOpen(false)}
+            machineId={machine.pk}
+            origin='manual'
+            onCreated={(result) =>
+              navigate(`/maintenance/work-orders/${result.work_order_id}/`)
+            }
+          />
+        )}
       </Stack>
     </InstanceDetail>
   );

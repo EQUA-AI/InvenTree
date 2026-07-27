@@ -41,6 +41,7 @@ from .serializers import (
 from .services import anomalies as anomaly_services
 from .services import snapshots as snapshot_services
 from .services.ingestion import IngestionError, coerce_datetime, ingest_readings
+from .services.preliminary import analyze_anomaly
 from .services.summary import health_summary, signal_rows
 
 #: Anomaly lists are bounded; the blade shows the active set, not a history dump.
@@ -197,6 +198,30 @@ class MachineAnomalyEvidence(APIView):
         )
 
 
+class MachineAnomalyPreliminaryAnalysis(APIView):
+    """Produce an evidence-cited preliminary result for one anomaly.
+
+    Preliminary, always: the response restates measurements with their citations
+    and is never a verified diagnosis. It is generated on request rather than
+    automatically, so an operator chooses when to spend the analysis and knows
+    exactly which instant it describes.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order.change'
+
+    def post(self, request, pk, anomaly_pk):
+        """Analyze the anomaly's current evidence and return the result."""
+        machine = _machine(pk)
+        anomaly = get_object_or_404(MachineAnomaly, pk=anomaly_pk, machine=machine)
+
+        result = analyze_anomaly(anomaly, actor=request.user)
+        return Response({'anomaly': anomaly.pk, 'preliminary_results': result})
+
+
 class MachineSignalBindingList(ListAPI):
     """Administrative view of tag mappings.
 
@@ -344,6 +369,11 @@ machine_health_api_urls = [
                 'anomalies/<int:anomaly_pk>/evidence/',
                 MachineAnomalyEvidence.as_view(),
                 name='machine-health-anomaly-evidence',
+            ),
+            path(
+                'anomalies/<int:anomaly_pk>/preliminary-analysis/',
+                MachineAnomalyPreliminaryAnalysis.as_view(),
+                name='machine-health-anomaly-preliminary-analysis',
             ),
             path(
                 'snapshots/',

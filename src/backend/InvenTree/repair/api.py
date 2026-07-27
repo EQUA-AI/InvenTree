@@ -32,7 +32,11 @@ from .serializers import (
     SafetyEvidenceProofSerializer,
     SafetyGateTemplateSerializer,
 )
-from .work_packages import WorkPackageError, create_repair_work_package
+from .work_packages import (
+    DuplicateRepairConflict,
+    WorkPackageError,
+    create_repair_work_package,
+)
 
 
 def _truthy(value) -> bool:
@@ -381,6 +385,12 @@ class RepairWorkPackageCreate(APIView):
         try:
             result = create_repair_work_package(
                 actor=request.user, draft=data, idempotency_key=idempotency_key
+            )
+        except DuplicateRepairConflict as exc:
+            # 409, not 400: the request is well-formed, the world disagrees.
+            return Response(
+                {'code': exc.code, 'detail': str(exc), 'duplicates': exc.duplicates},
+                status=409,
             )
         except WorkPackageError as exc:
             return Response(

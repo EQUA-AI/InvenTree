@@ -1,5 +1,7 @@
 import { t } from '@lingui/core/macro';
 import {
+  Alert,
+  Anchor,
   Badge,
   Button,
   CloseButton,
@@ -18,9 +20,11 @@ import {
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue, useMediaQuery } from '@mantine/hooks';
+import { IconAlertTriangle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -33,6 +37,15 @@ interface DraftPart {
   partId: number;
   partName: string;
   quantity: number;
+}
+
+export interface DuplicateRepair {
+  reason: string;
+  work_order_id: number;
+  work_order_reference: string;
+  repair_packet_id: number | null;
+  repair_packet_reference?: string;
+  anomaly_id?: number;
 }
 
 export interface WorkPackageResult {
@@ -131,6 +144,10 @@ export function WorkOrderCreateModal({
   const isSmallScreen = useMediaQuery('(max-width: 48em)');
 
   const [saving, setSaving] = useState(false);
+  // Non-null once the server has reported existing open repairs; submitting
+  // again then carries an explicit override plus the reason typed below.
+  const [duplicates, setDuplicates] = useState<DuplicateRepair[] | null>(null);
+  const [overrideReason, setOverrideReason] = useState('');
   const [parts, setParts] = useState<DraftPart[]>([]);
   const [partSearch, setPartSearch] = useState('');
   const [debouncedPartSearch] = useDebouncedValue(partSearch, 300);
@@ -277,6 +294,8 @@ export function WorkOrderCreateModal({
     setParts([]);
     setPartSearch('');
     setPartResults([]);
+    setDuplicates(null);
+    setOverrideReason('');
     setSaving(false);
     onClose();
     // form is stable for the lifetime of the modal
@@ -307,6 +326,8 @@ export function WorkOrderCreateModal({
         quantity: part.quantity
       })),
       source: anomalyId ? { anomaly_id: anomalyId } : {},
+      duplicate_override: duplicates !== null,
+      duplicate_override_reason: overrideReason.trim(),
       planning: {
         assignee: values.assignee.trim(),
         due_date: values.dueDate
@@ -327,7 +348,15 @@ export function WorkOrderCreateModal({
       setIdempotencyKey(newIdempotencyKey());
       onCreated?.(response.data as WorkPackageResult);
       handleClose();
-    } catch (error) {
+    } catch (error: any) {
+      // 409 is not a malformed request: this machine already has open repair
+      // work. Show what exists and make proceeding a deliberate, stated choice
+      // rather than a retry the user does not realise is a second work order.
+      if (error?.response?.status === 409) {
+        setDuplicates(error.response.data?.duplicates ?? []);
+        setSaving(false);
+        return;
+      }
       showApiErrorMessage({
         error,
         title: t`Could not create the work order`
@@ -520,6 +549,40 @@ export function WorkOrderCreateModal({
             ))}
           </Stack>
 
+          {duplicates !== null && (
+            <Alert
+              color='orange'
+              variant='light'
+              icon={<IconAlertTriangle size={16} />}
+              title={t`This machine already has open repair work`}
+            >
+              <Stack gap='xs'>
+                {duplicates.map((duplicate) => (
+                  <Anchor
+                    key={duplicate.work_order_id}
+                    component={Link}
+                    to={`/maintenance/work-orders/${duplicate.work_order_id}/`}
+                    size='sm'
+                  >
+                    {duplicate.work_order_reference ||
+                      t`Work order ${duplicate.work_order_id}`}
+                  </Anchor>
+                ))}
+                <Text size='sm'>
+                  {t`Open the existing repair instead, or say why a second one is needed.`}
+                </Text>
+                <TextInput
+                  label={t`Reason for a second repair`}
+                  placeholder={t`e.g. separate fault on a different subsystem`}
+                  value={overrideReason}
+                  onChange={(event) =>
+                    setOverrideReason(event.currentTarget.value)
+                  }
+                />
+              </Stack>
+            </Alert>
+          )}
+
           <Switch
             label={t`Create a repair packet`}
             description={t`Adds the fault-to-fix aggregate: diagnosis, required parts and safety gates. Creating it plans the repair; it does not start it.`}
@@ -538,8 +601,13 @@ export function WorkOrderCreateModal({
               <Button variant='default' type='button' onClick={handleClose}>
                 {t`Cancel`}
               </Button>
-              <Button type='submit' loading={saving}>
-                {t`Create work order`}
+              <Button
+                type='submit'
+                loading={saving}
+                color={duplicates === null ? undefined : 'orange'}
+                disabled={duplicates !== null && !overrideReason.trim()}
+              >
+                {duplicates === null ? t`Create work order` : t`Create anyway`}
               </Button>
             </Group>
           </Group>

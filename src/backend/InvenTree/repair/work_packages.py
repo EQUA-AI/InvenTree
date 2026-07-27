@@ -9,12 +9,10 @@ them writes ``KanbanCard`` or ``RepairPacket`` directly.
 The command creates a *planned* work package. Starting the repair is a separate,
 readiness-gated lifecycle transition and is deliberately not reachable from here.
 
-Scope note: this is Phase 1 of the plan in
-``LocalDocs/MaintenanceHealthRepairWorkflowPlan.md``. The draft fields that
-depend on the machine-health read model (anomaly id, evidence snapshot ids,
-preliminary results) are accepted and validated structurally but are not yet
-resolved against health records - those arrive with the Health blade. The
-provenance they carry is persisted so nothing is lost in the meantime.
+Before anything is written the command checks for open repair work on the same
+asset. Two work orders for one fault split the technician's attention, the parts
+reservation and the audit trail, so the default is to stop and show what already
+exists; proceeding anyway requires an explicit, attributed override.
 """
 
 from __future__ import annotations
@@ -31,7 +29,12 @@ from tasks.services import scheduling
 from assets.models import AssetMachine
 from part.models import Part
 
-from .models import PacketStatus, RepairPacket, RepairPacketEvent
+from .models import (
+    PacketStatus,
+    RepairPacket,
+    RepairPacketEvent,
+    RepairPacketHealthEvidence,
+)
 from .services import resolve_safety_gates
 
 DRAFT_SCHEMA_VERSION = 1
@@ -70,6 +73,21 @@ class UnknownPart(WorkPackageError):  # noqa: N818 - matches sibling error names
     """The draft names a part that does not exist."""
 
     code = 'UNKNOWN_PART'
+
+
+class DuplicateRepairConflict(WorkPackageError):  # noqa: N818 - matches sibling error names
+    """Open repair work already exists for this machine.
+
+    Carries the existing links so the caller can show what is already open
+    instead of just refusing.
+    """
+
+    code = 'DUPLICATE_OPEN_REPAIR'
+
+    def __init__(self, message: str, *, duplicates):
+        """Record the conflicting repairs alongside the message."""
+        super().__init__(message)
+        self.duplicates = duplicates
 
 
 @dataclass(frozen=True)
@@ -222,6 +240,11 @@ def validate_draft(payload) -> dict:
             payload, 'priority', VALID_PRIORITIES, KanbanCard.PRIORITY_MEDIUM
         ),
         'create_repair_packet': bool(create_packet),
+        # Proceeding past an open repair is a deliberate, attributed act.
+        'duplicate_override': bool(payload.get('duplicate_override', False)),
+        'duplicate_override_reason': _text(
+            payload, 'duplicate_override_reason', limit=500
+        ),
         'fault': {
             'summary': _text(fault, 'summary'),
             'symptom': _text(fault, 'symptom', limit=255),
@@ -282,9 +305,90 @@ def _link_anomaly(anomaly_id, *, machine, work_order, packet, actor) -> str:
 
     # Freeze what the signals read at the moment the repair was authorized, so
     # the decision stays reconstructable after the live values move on.
-    capture_anomaly_evidence(anomaly, reason=SnapshotReason.ANOMALY_REPAIR, actor=actor)
+    snapshots = capture_anomaly_evidence(
+        anomaly, reason=SnapshotReason.ANOMALY_REPAIR, actor=actor
+    )
+
+    if packet is not None:
+        # A typed link, not just ids in the diagnosis JSON: this is what keeps
+        # the cited snapshots joinable and protected from deletion.
+        for snapshot in snapshots:
+            RepairPacketHealthEvidence.objects.get_or_create(
+                packet=packet,
+                snapshot=snapshot,
+                defaults={
+                    'relation': RepairPacketHealthEvidence.RELATION_UNKNOWN,
+                    'observation': (
+                        f'Captured when the repair was raised from anomaly '
+                        f'{anomaly.pk}.'
+                    ),
+                    'created_by': actor if getattr(actor, 'pk', None) else None,
+                },
+            )
 
     return ''
+
+
+def _prior_command_work_order(idempotency_key: str):
+    """Return the work-order id a previous create under this key produced.
+
+    ``None`` means this is a first attempt. Used to tell a retry apart from a
+    genuinely new request before duplicate control runs.
+    """
+    from tasks.models import WorkOrderCommand
+
+    prior = WorkOrderCommand.objects.filter(
+        command='create', idempotency_key=idempotency_key
+    ).first()
+    return prior.work_order_id if prior else None
+
+
+def find_duplicate_repairs(machine, *, anomaly_id=None, exclude_work_order_id=None):
+    """Return open repairs on this machine that a new one may be duplicating.
+
+    Two work orders for the same fault split a technician's attention, the parts
+    reservation and the audit trail. The server checks before creating rather
+    than leaving it to whoever notices second: same anomaly first, then any other
+    open packet-backed repair on the asset.
+    """
+    from machine_health.models import MachineAnomaly
+
+    candidates = []
+
+    if anomaly_id:
+        linked = (
+            MachineAnomaly.objects
+            .filter(pk=anomaly_id, machine=machine)
+            .exclude(work_order__isnull=True)
+            .select_related('work_order', 'repair_packet')
+            .first()
+        )
+        if linked and linked.work_order_id != exclude_work_order_id:
+            candidates.append({
+                'reason': 'ANOMALY_ALREADY_LINKED',
+                'work_order_id': linked.work_order_id,
+                'work_order_reference': linked.work_order.reference or '',
+                'repair_packet_id': linked.repair_packet_id,
+                'anomaly_id': linked.pk,
+            })
+
+    open_packets = (
+        RepairPacket.objects
+        .filter(machine=machine, work_order__isnull=False)
+        .exclude(status__in=[PacketStatus.CLOSED, PacketStatus.CANCELED])
+        .exclude(work_order_id=exclude_work_order_id)
+        .select_related('work_order')
+    )
+    for packet in open_packets:
+        candidates.append({
+            'reason': 'OPEN_REPAIR_ON_MACHINE',
+            'work_order_id': packet.work_order_id,
+            'work_order_reference': packet.work_order.reference or '',
+            'repair_packet_id': packet.pk,
+            'repair_packet_reference': packet.reference,
+        })
+
+    return candidates
 
 
 @transaction.atomic
@@ -317,6 +421,28 @@ def create_repair_work_package(
         if missing:
             raise UnknownPart(
                 'Unknown part ids: ' + ', '.join(str(pk) for pk in missing)
+            )
+
+    # A retry of a request that already succeeded is not a duplicate - it is the
+    # same repair. Checking the idempotency ledger first is what keeps a dropped
+    # response from turning into a conflict the caller cannot resolve.
+    is_replay_of = _prior_command_work_order(idempotency_key)
+
+    # Duplicate control runs before anything is written. An authorized user may
+    # still proceed, but only by saying so explicitly with a reason - the default
+    # is to stop and show them the repair that already exists.
+    if is_replay_of is None:
+        duplicates = find_duplicate_repairs(
+            machine, anomaly_id=draft['source'].get('anomaly_id')
+        )
+        if duplicates and not draft['duplicate_override']:
+            raise DuplicateRepairConflict(
+                'This machine already has open repair work.', duplicates=duplicates
+            )
+        if duplicates:
+            warnings.append(
+                f'Created alongside {len(duplicates)} existing open repair(s): '
+                f'{draft["duplicate_override_reason"] or "no reason given"}'
             )
 
     planning = draft['planning']
