@@ -108,3 +108,156 @@ class KanbanCardOverviewTest(InvenTreeAPITestCase):
 
         self.assertEqual(response.data['parent_detail']['id'], self.parent.pk)
         self.assertEqual(response.data['parent_detail']['reference'], 'WO-OVERVIEW-001')
+
+
+class OverviewDetailSectionsTest(InvenTreeAPITestCase):
+    """The detail page renders every applicable section from one read.
+
+    Also pins the labelling rule the plan is explicit about: an unverified
+    diagnosis blob is reported as preliminary, and only explicit human
+    verification flips it.
+    """
+
+    roles = 'all'
+
+    def setUp(self):
+        """Create a packet-owned work order raised from a health anomaly."""
+        super().setUp()
+        from machine_health.models import AnomalySeverity, HealthSource, SourceType
+        from machine_health.services.anomalies import fingerprint_for, record_anomaly
+        from repair import investigation
+
+        self.machine = AssetMachine.objects.create(
+            name=f'Section machine {uuid.uuid4().hex[:6]}'
+        )
+        self.work_order = KanbanCard.objects.create(
+            reference=f'WO-SECT-{uuid.uuid4().hex[:6]}',
+            title='Investigate vibration',
+            status=KanbanCard.STATUS_IN_PROGRESS,
+            priority=KanbanCard.PRIORITY_HIGH,
+            machine=self.machine,
+        )
+        self.packet = RepairPacket.objects.create(
+            machine=self.machine,
+            work_order=self.work_order,
+            fault_summary='Vibration climbing across runs',
+            symptom='1x amplitude rising',
+            production_impact='Throughput reduced 15%',
+            criticality='high',
+            diagnosis={
+                'likely_cause': 'Drive-end bearing wear',
+                'confidence': 0.6,
+                'alternatives': [],
+                'evidence': [],
+                'confirm_tests': [],
+                'status': 'available',
+                'data_window': {},
+                'provider': 'test',
+                'verified_by_user': False,
+                'amendments': [],
+                'schema_version': 2,
+            },
+        )
+        RepairPacketGate.objects.create(
+            packet=self.packet,
+            name='LOTO',
+            gate_type='loto',
+            status='pending',
+            is_blocking=True,
+        )
+        investigation.record_finding(
+            self.packet,
+            finding_key='F-01',
+            observation='Vibration measured 9.4 mm/s at the drive end',
+            category='measurement',
+            value=9.4,
+            unit='mm/s',
+        )
+        investigation.approve_repair_scope(
+            self.packet,
+            scope_lines=['Isolate', 'Replace bearing'],
+            verified_cause='Drive-end bearing wear',
+        )
+
+        source = HealthSource.objects.create(
+            name=f'SCADA {uuid.uuid4().hex[:6]}', source_type=SourceType.SCADA
+        )
+        anomaly, _ = record_anomaly(
+            machine=self.machine,
+            fingerprint=fingerprint_for('overview', 'vib'),
+            title='Vibration above limit',
+            severity=AnomalySeverity.CRITICAL,
+            source=source,
+            detector='threshold',
+            detector_version='1',
+            alarm_code='VIB-HI',
+        )
+        anomaly.work_order = self.work_order
+        anomaly.save(update_fields=['work_order'])
+
+        self.url = reverse(
+            'kanban-card-overview', kwargs={'pk': self.work_order.pk}
+        )
+
+    def test_source_alert_is_projected(self):
+        """The alert that raised the work order is on the page."""
+        data = self.get(self.url, expected_code=200).data
+
+        alert = data['source_alert']
+        self.assertEqual(alert['title'], 'Vibration above limit')
+        self.assertEqual(alert['alarm_code'], 'VIB-HI')
+        self.assertEqual(alert['detector'], 'threshold')
+        self.assertEqual(alert['machine_id'], self.machine.pk)
+
+    def test_findings_and_approved_scope_are_projected(self):
+        """Both render without a second request."""
+        data = self.get(self.url, expected_code=200).data
+
+        packet = data['repair_packet']
+        [finding] = packet['findings']
+        self.assertEqual(finding['finding_key'], 'F-01')
+        self.assertEqual(finding['value'], 9.4)
+        self.assertEqual(packet['approved_scope']['version'], 1)
+        self.assertEqual(len(packet['approved_scope']['scope_lines']), 2)
+
+    def test_unverified_diagnosis_is_reported_as_preliminary(self):
+        """The page must not label an unverified model output a diagnosis."""
+        data = self.get(self.url, expected_code=200).data
+
+        self.assertTrue(data['repair_packet']['diagnosis_is_preliminary'])
+        self.assertEqual(data['repair_packet']['diagnosis_status'], 'available')
+
+    def test_human_verification_flips_the_label(self):
+        """Only explicit verification promotes it to a diagnosis."""
+        self.packet.diagnosis = {**self.packet.diagnosis, 'verified_by_user': True}
+        self.packet.save(update_fields=['diagnosis'])
+
+        data = self.get(self.url, expected_code=200).data
+
+        self.assertFalse(data['repair_packet']['diagnosis_is_preliminary'])
+
+    def test_blocking_gate_is_visible_on_the_page(self):
+        """Safety state is readable from the work order, not just the packet."""
+        data = self.get(self.url, expected_code=200).data
+
+        [gate] = data['repair_packet']['gates']
+        self.assertTrue(gate['is_blocking'])
+        self.assertEqual(gate['status'], 'pending')
+
+    def test_work_order_without_a_packet_has_no_alert_or_packet(self):
+        """A plain work order renders without the repair-only sections."""
+        plain = KanbanCard.objects.create(
+            reference=f'WO-PLAIN-{uuid.uuid4().hex[:6]}',
+            title='Routine inspection',
+            status=KanbanCard.STATUS_BACKLOG,
+            priority=KanbanCard.PRIORITY_LOW,
+            machine=self.machine,
+        )
+
+        data = self.get(
+            reverse('kanban-card-overview', kwargs={'pk': plain.pk}),
+            expected_code=200,
+        ).data
+
+        self.assertIsNone(data['repair_packet'])
+        self.assertIsNone(data['source_alert'])

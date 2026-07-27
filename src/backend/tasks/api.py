@@ -308,6 +308,11 @@ class KanbanCardOverview(APIView):
             'dependencies_out__to_card__assigned_to',
             'events__actor',
             'repair_packet__gates',
+            # The new detail sections join here rather than issuing a request
+            # per section: the page renders from one read.
+            'repair_packet__findings__snapshot',
+            'repair_packet__approved_scopes',
+            'anomalies__source',
         )
         card = get_object_or_404(queryset, pk=pk)
         return Response(self.serializer_class(card, context={'request': request}).data)

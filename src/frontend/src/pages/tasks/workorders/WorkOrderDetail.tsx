@@ -32,103 +32,25 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
-import type { KanbanCard, KanbanCardPart } from '@lib/types/Tasks';
+import type { KanbanCardPart } from '@lib/types/Tasks';
 
+import type {
+  MaintenanceRecordOverview,
+  RepairPacketOverview,
+  StructuredCloseoutOverview,
+  WorkOrderDependency,
+  WorkOrderEvent,
+  WorkOrderOverview,
+  WorkOrderSummary
+} from '@lib/types/WorkOrderOverview';
 import PageTitle from '../../../components/nav/PageTitle';
+
 import { useApi } from '../../../contexts/ApiContext';
+import { InvestigationSection } from '../../maintenance/workorders/components/InvestigationSection';
+import { WorkOrderAlertContext } from '../../maintenance/workorders/components/WorkOrderAlertContext';
+import { WorkOrderProblemPanel } from '../../maintenance/workorders/components/WorkOrderProblemPanel';
+import { WorkOrderSafetyReadiness } from '../../maintenance/workorders/components/WorkOrderSafetyReadiness';
 import { CloseoutPanel, type CloseoutWorkOrder } from './CloseoutPanel';
-
-interface WorkOrderSummary {
-  id: number;
-  reference: string | null;
-  title: string;
-  description: string;
-  status: string;
-  priority: string;
-  lifecycle_status: string;
-  work_order_type: string;
-  card_kind: string;
-  parent: number | null;
-  machine_name: string | null;
-  assigned_to_name: string | null;
-  scheduled_start: string | null;
-  scheduled_end: string | null;
-  estimated_minutes: number | null;
-  is_active: boolean;
-}
-
-interface WorkOrderDependency {
-  id: number;
-  direction: 'predecessor' | 'successor';
-  dependency_type: string;
-  lag_minutes: number;
-  card: WorkOrderSummary;
-}
-
-interface WorkOrderEvent {
-  id: number;
-  event_type: string;
-  from_status: string;
-  to_status: string;
-  reason: string;
-  created_at: string;
-}
-
-interface RepairGate {
-  id: number;
-  name: string;
-  gate_type: string;
-  status: string;
-  is_blocking: boolean;
-  is_mandatory: boolean;
-  requires_photo: boolean;
-  requires_second_person: boolean;
-}
-
-interface RepairPacketOverview {
-  id: number;
-  reference: string;
-  status: string;
-  criticality: string;
-  fault_summary: string;
-  symptom: string;
-  production_impact: string;
-  generation_status: string;
-  diagnosis: Record<string, unknown>;
-  gates: RepairGate[];
-}
-
-interface MaintenanceRecordOverview {
-  id: number;
-  date: string;
-  summary: string;
-  details: string;
-  performed_by: string;
-}
-
-interface StructuredCloseoutOverview {
-  id: number;
-  cause: string;
-  action: string;
-  result: string;
-  verification_summary: string;
-  downtime_minutes: number | null;
-  follow_up_required: boolean;
-  follow_up: string;
-  completed_at: string;
-  verified_at: string | null;
-}
-
-interface WorkOrderOverview extends KanbanCard {
-  parent_detail: WorkOrderSummary | null;
-  children: WorkOrderSummary[];
-  dependencies: WorkOrderDependency[];
-  events: WorkOrderEvent[];
-  repair_packet: RepairPacketOverview | null;
-  maintenance_record: MaintenanceRecordOverview | null;
-  structured_closeout: StructuredCloseoutOverview | null;
-  canonical_commands_enabled: boolean;
-}
 
 const LIFECYCLE_COLORS: Record<string, string> = {
   draft: 'gray',
@@ -227,6 +149,10 @@ export default function WorkOrderDetail() {
         </Group>
       </Group>
 
+      {workOrder.source_alert && (
+        <WorkOrderAlertContext alert={workOrder.source_alert} />
+      )}
+
       {workOrder.parent_detail && (
         <Alert color='blue' icon={<IconGitBranch size={16} />}>
           {t`This task belongs to`}{' '}
@@ -291,6 +217,21 @@ export default function WorkOrderDetail() {
           </SimpleGrid>
         </Stack>
       </Card>
+
+      {workOrder.repair_packet && (
+        <WorkOrderProblemPanel packet={workOrder.repair_packet} />
+      )}
+
+      {workOrder.repair_packet && (
+        <InvestigationSection
+          findings={workOrder.repair_packet.findings}
+          approvedScope={workOrder.repair_packet.approved_scope}
+        />
+      )}
+
+      {workOrder.repair_packet && (
+        <WorkOrderSafetyReadiness gates={workOrder.repair_packet.gates} />
+      )}
 
       <SectionCard title={t`Jobs and tasks`} icon={<IconTools size={18} />}>
         <WorkOrderTable

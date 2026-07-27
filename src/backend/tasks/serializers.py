@@ -342,6 +342,31 @@ class KanbanCardSummarySerializer(serializers.ModelSerializer):
         return user.get_full_name().strip() or user.get_username()
 
 
+def _is_preliminary(diagnosis) -> bool:
+    """Whether a diagnosis blob must still be presented as preliminary."""
+    from repair.schema import is_preliminary
+
+    return is_preliminary(diagnosis)
+
+
+def _approved_scope_projection(packet) -> dict | None:
+    """Return the approved scope currently in force for a packet."""
+    scope = packet.approved_scopes.filter(superseded_at__isnull=True).first()
+    if scope is None:
+        return None
+    return {
+        'id': scope.pk,
+        'version': scope.version,
+        'verified_cause': scope.verified_cause,
+        'scope_lines': scope.scope_lines,
+        'failure_codes': scope.failure_codes,
+        'crew_size': scope.crew_size,
+        'planned_elapsed_minutes': scope.planned_elapsed_minutes,
+        'approved_at': scope.approved_at,
+        'approval_note': scope.approval_note,
+    }
+
+
 class KanbanCardOverviewSerializer(KanbanCardSerializer):
     """Complete read-only work-order context for the detail page."""
 
@@ -353,6 +378,7 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
     maintenance_record = serializers.SerializerMethodField()
     structured_closeout = serializers.SerializerMethodField()
     canonical_commands_enabled = serializers.SerializerMethodField()
+    source_alert = serializers.SerializerMethodField()
 
     class Meta(KanbanCardSerializer.Meta):
         """Extend the card fields with work-order relationships."""
@@ -367,6 +393,7 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
             'maintenance_record',
             'structured_closeout',
             'canonical_commands_enabled',
+            'source_alert',
         )
         read_only_fields = fields
 
@@ -437,6 +464,28 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
             'production_impact': packet.production_impact,
             'generation_status': packet.generation_status,
             'diagnosis': packet.diagnosis,
+            # Until a human verifies it, the diagnosis blob is preliminary and
+            # the page must label it that way rather than as a finding.
+            'diagnosis_is_preliminary': _is_preliminary(packet.diagnosis),
+            'diagnosis_status': (packet.diagnosis or {}).get('status'),
+            'findings': [
+                {
+                    'id': finding.pk,
+                    'finding_key': finding.finding_key,
+                    'category': finding.category,
+                    'observation': finding.observation,
+                    'value': finding.value,
+                    'unit': finding.unit,
+                    'evidence_source': finding.evidence_source,
+                    'snapshot_id': (
+                        str(finding.snapshot_id) if finding.snapshot_id else None
+                    ),
+                    'observed_at': finding.observed_at,
+                    'verification': finding.verification,
+                }
+                for finding in packet.findings.all()
+            ],
+            'approved_scope': _approved_scope_projection(packet),
             'gates': [
                 {
                     'id': gate.pk,
@@ -450,6 +499,35 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
                 }
                 for gate in packet.gates.all().order_by('sequence', 'created_at')
             ],
+        }
+
+    @staticmethod
+    def get_source_alert(obj) -> dict | None:
+        """Return the health anomaly this work order answers, if any.
+
+        The alert is what a technician opens the page to understand, so it is
+        projected here rather than left a click away. External alert and alarm
+        identifiers are retained as human references; links still use internal
+        keys.
+        """
+        anomaly = obj.anomalies.select_related('source').order_by('pk').first()
+        if anomaly is None:
+            return None
+        return {
+            'id': anomaly.pk,
+            'title': anomaly.title,
+            'severity': anomaly.severity,
+            'status': anomaly.status,
+            'alarm_code': anomaly.alarm_code,
+            'external_id': anomaly.external_id,
+            'detector': anomaly.detector,
+            'detector_version': anomaly.detector_version,
+            'evidence_summary': anomaly.evidence_summary,
+            'first_observed_at': anomaly.first_observed_at,
+            'last_observed_at': anomaly.last_observed_at,
+            'source_name': anomaly.source.name if anomaly.source else None,
+            'source_type': anomaly.source.source_type if anomaly.source else None,
+            'machine_id': anomaly.machine_id,
         }
 
     @staticmethod
