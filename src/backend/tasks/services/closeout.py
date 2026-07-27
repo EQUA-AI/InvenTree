@@ -25,6 +25,7 @@ from tasks.jobkit_models import (
 )
 from tasks.models import WorkOrderCloseout, WorkOrderLifecycle
 from tasks.permissions import COMPLETE_WORKORDER, require_permission
+from tasks.services.finalization import is_packet_finalization
 from tasks.services.readiness import evaluate_work_order_readiness
 from tasks.services.work_orders import (
     ReadinessBlocked,
@@ -179,7 +180,7 @@ def complete_work_order(
     closeout,
     capture_id=None,
     correlation_id=None,
-    packet_finalization=False,
+    packet_finalization=None,
 ):
     """Complete a work order with structured closeout and asset-history writeback.
 
@@ -191,7 +192,12 @@ def complete_work_order(
     what stops closing a packet from bypassing structured closeout, parts
     reconciliation, readings and machine-history creation.
 
-    ``packet_finalization`` suppresses exactly one check - packet ownership.
+    ``packet_finalization`` is a capability token naming the packet it speaks
+    for, not a flag - a request-borne value cannot satisfy it, and a token
+    minted for one packet cannot finalize another's work order. See
+    :mod:`tasks.services.finalization`.
+
+    It suppresses exactly one check - packet ownership.
     Permission, scope, version, readiness, open children and the required
     closeout fields are enforced identically on both paths.
     """
@@ -215,7 +221,7 @@ def complete_work_order(
     _require_version(work_order, expected_version)
     require_permission(actor, COMPLETE_WORKORDER)
     _require_scope(actor, work_order)
-    if not packet_finalization:
+    if not is_packet_finalization(packet_finalization, work_order):
         _require_no_packet(work_order)
     _validate_transition(work_order.lifecycle_status, WorkOrderLifecycle.COMPLETED)
 

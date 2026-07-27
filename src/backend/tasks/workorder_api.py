@@ -182,6 +182,20 @@ def _error_body(*, code, detail, correlation_id, current_version, blockers=None)
     return body
 
 
+#: Service arguments the HTTP adapter supplies itself, or that name a caller's
+#: authority rather than its intent. ``post`` splats validated data into the
+#: service, so anything a serializer happened to declare under one of these
+#: names would arrive as if the request had claimed it. Stripped rather than
+#: rejected: a request cannot legitimately mean any of them, and dropping the
+#: key leaves the service on its own default, which is the safe one.
+RESERVED_SERVICE_ARGUMENTS = frozenset({
+    'actor',
+    'correlation_id',
+    'packet_finalization',
+    'work_order_id',
+})
+
+
 class WorkOrderCommandView(WorkOrderEnabledMixin, APIView):
     """Shared adapter from validated command intent to domain services."""
 
@@ -199,7 +213,13 @@ class WorkOrderCommandView(WorkOrderEnabledMixin, APIView):
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
         correlation_id = uuid.uuid4()
-        arguments = self.service_arguments(dict(serializer.validated_data))
+        arguments = {
+            name: value
+            for name, value in self.service_arguments(
+                dict(serializer.validated_data)
+            ).items()
+            if name not in RESERVED_SERVICE_ARGUMENTS
+        }
         try:
             result = self.service(
                 work_order_id=work_order.pk,

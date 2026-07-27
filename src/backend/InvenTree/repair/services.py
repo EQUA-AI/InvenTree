@@ -700,6 +700,7 @@ def repair_start_readiness(packet, *, actor) -> dict:
     the unresolved LOTO point or the missing part rather than a disabled button
     with no explanation.
     """
+    from tasks.services.finalization import PacketFinalization
     from tasks.services.readiness import evaluate_work_order_readiness
 
     blockers: list[dict] = []
@@ -757,7 +758,10 @@ def repair_start_readiness(packet, *, actor) -> dict:
         action='start',
         actor=actor,
         expected_version=work_order.lifecycle_version,
-        packet_finalization=True,
+        # This packet owns the work order, so it is the path that may start it.
+        # The preview must evaluate the same way the command will, or the button
+        # would offer work the command then refuses.
+        packet_finalization=PacketFinalization(packet_id=packet.pk),
     )
     blockers.extend(
         {
@@ -800,6 +804,7 @@ def start_repair_packet(
     Returns the work-order ``CommandResult``. Replaying the same
     ``idempotency_key`` returns the original result without transitioning twice.
     """
+    from tasks.services.finalization import PacketFinalization
     from tasks.services.work_orders import transition_work_order
 
     locked = RepairPacket.objects.select_for_update().get(pk=packet.pk)
@@ -828,7 +833,7 @@ def start_repair_packet(
         expected_version=expected_version,
         idempotency_key=idempotency_key,
         reason=reason,
-        packet_finalization=True,
+        packet_finalization=PacketFinalization(packet_id=locked.pk),
     )
 
     if locked.status != PacketStatus.EXECUTING:
@@ -875,6 +880,7 @@ def close_repair_packet(
     ``idempotency_key`` returns the original result without writing again.
     """
     from tasks.services.closeout import complete_work_order
+    from tasks.services.finalization import PacketFinalization
 
     locked = RepairPacket.objects.select_for_update().get(pk=packet.pk)
     from_status = locked.status
@@ -904,7 +910,7 @@ def close_repair_packet(
         expected_version=expected_version,
         idempotency_key=idempotency_key,
         closeout=closeout,
-        packet_finalization=True,
+        packet_finalization=PacketFinalization(packet_id=locked.pk),
     )
 
     if locked.status != PacketStatus.CLOSED:

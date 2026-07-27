@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from tasks.models import WorkOrderLifecycle
 from tasks.scope import ScopeError, require_work_order_scope, scope_for_work_order
+from tasks.services.finalization import PacketFinalization, is_packet_finalization
 
 SCOPE_UNRESOLVED = 'SCOPE_UNRESOLVED'
 SCOPE_MISMATCH = 'SCOPE_MISMATCH'
@@ -82,7 +83,10 @@ class _ReadinessContext:
     # packet's work order is allowed to complete through. It suppresses the
     # packet-ownership blocker and nothing else - every other readiness check
     # still applies, so safety, parts and verification are not weakened.
-    packet_finalization: bool = False
+    #
+    # A PacketFinalization token rather than a flag, so a request-borne value
+    # cannot satisfy it; see tasks.services.finalization.
+    packet_finalization: PacketFinalization | None = None
 
 
 ReadinessCheck = Callable[[_ReadinessContext], list[ReadinessBlocker]]
@@ -113,7 +117,7 @@ def _scope_check(context):
 
 
 def _packet_ownership_check(context):
-    if context.packet_finalization:
+    if is_packet_finalization(context.packet_finalization, context.work_order):
         return []
     if hasattr(context.work_order, 'repair_packet'):
         return [
@@ -471,7 +475,7 @@ def evaluate_work_order_readiness(
     action: str,
     actor,
     expected_version: int | None = None,
-    packet_finalization: bool = False,
+    packet_finalization: PacketFinalization | None = None,
 ) -> WorkOrderReadiness:
     """Evaluate all registered checks, converting unknown failures to blockers."""
     context = _ReadinessContext(

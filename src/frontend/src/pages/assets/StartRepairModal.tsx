@@ -15,7 +15,7 @@ import {
 import { useMediaQuery } from '@mantine/hooks';
 import { IconAlertTriangle, IconExternalLink } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -72,6 +72,11 @@ export function StartRepairModal({
   const isSmallScreen = useMediaQuery('(max-width: 48em)');
   const [starting, setStarting] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
+  // One key per start attempt, held until that attempt succeeds. A retry after
+  // an ambiguous failure (the request landed, the response did not) then
+  // replays the original command instead of racing a second one, which the
+  // server would reject as an illegal transition out of "in progress".
+  const attemptKeys = useRef<Map<number, string>>(new Map());
 
   const repairsQuery = useQuery<OpenRepair[]>({
     queryKey: ['machine-open-repairs', machineId],
@@ -86,17 +91,29 @@ export function StartRepairModal({
 
   const handleStart = async (repair: OpenRepair) => {
     setStarting(repair.packet_id);
+    let attemptKey = attemptKeys.current.get(repair.packet_id);
+    if (!attemptKey) {
+      attemptKey = crypto.randomUUID();
+      attemptKeys.current.set(repair.packet_id, attemptKey);
+    }
     try {
       await api.post(
         apiUrl(ApiEndpoints.repair_packet_start, repair.packet_id),
-        { expected_version: repair.lifecycle_version }
+        {
+          expected_version: repair.lifecycle_version,
+          idempotency_key: attemptKey
+        }
       );
+      attemptKeys.current.delete(repair.packet_id);
       onStarted?.(repair);
       onClose();
     } catch (error: any) {
       // A 409 means readiness changed since the list was fetched. Refetch so the
       // operator sees the current blockers rather than a stale "ready".
       if (error?.response?.status === 409) {
+        // Readiness changed since the list was fetched, so this attempt is over
+        // - a retry is a new decision against new blockers, not a replay.
+        attemptKeys.current.delete(repair.packet_id);
         repairsQuery.refetch();
       }
       showApiErrorMessage({ error, title: t`Could not start the repair` });

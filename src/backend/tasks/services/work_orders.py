@@ -23,6 +23,7 @@ from tasks.permissions import (
     transition_permission,
 )
 from tasks.scope import ScopeError, require_work_order_scope
+from tasks.services.finalization import PacketFinalization, is_packet_finalization
 from tasks.services.readiness import (
     PACKET_OWNS_LIFECYCLE,
     WorkOrderReadiness,
@@ -278,7 +279,7 @@ def _transition_locked(
     correlation_id,
     command,
     required_permission=None,
-    packet_finalization=False,
+    packet_finalization=None,
 ):
     payload = {
         'work_order_id': work_order.pk,
@@ -296,9 +297,10 @@ def _transition_locked(
     _require_scope(actor, work_order)
     # A packet's work order transitions only through the packet's own service,
     # which drives both aggregates together. ``packet_finalization`` is that
-    # service identifying itself; it suppresses this single check and nothing
-    # else, so safety, parts and readiness still decide the outcome.
-    if not packet_finalization:
+    # service identifying itself with a token only it can mint; it suppresses
+    # this single check and nothing else, so safety, parts and readiness still
+    # decide the outcome.
+    if not is_packet_finalization(packet_finalization, work_order):
         _require_no_packet(work_order)
     from_status = work_order.lifecycle_status
     _validate_transition(from_status, to_status)
@@ -355,12 +357,14 @@ def transition_work_order(
     idempotency_key: str,
     reason: str = '',
     correlation_id: uuid.UUID | None = None,
-    packet_finalization: bool = False,
+    packet_finalization: PacketFinalization | None = None,
 ) -> CommandResult:
     """Apply one legal lifecycle transition.
 
-    ``packet_finalization`` is set only by ``repair.services``, which owns the
-    lifecycle of a packet's work order and moves both aggregates together.
+    ``packet_finalization`` is a capability token minted only by
+    ``repair.services``, which owns the lifecycle of a packet's work order and
+    moves both aggregates together. It is not a flag a caller can assert - see
+    :mod:`tasks.services.finalization`.
     """
     work_order = _locked_work_order(work_order_id)
     return _transition_locked(
