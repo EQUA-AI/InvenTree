@@ -180,6 +180,9 @@ def get_ruleset_models() -> dict:
         RuleSetEnum.WORK_ORDER: [
             'tasks_workorder',
             'tasks_workorderpart',
+            # A card is how a work order's tracked work appears on the board,
+            # so moving one exercises work-order authority, not a separate one.
+            'tasks_kanbancard',
             'assets_assetmachine',
             'assets_assetmaintenancerecord',
             'assets_machinepart',

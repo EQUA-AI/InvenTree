@@ -50,6 +50,9 @@ class WorkOrderRulesetRegistrationTest(TestCase):
             {
                 'tasks_workorder',
                 'tasks_workorderpart',
+                # Moving a card is progressing the job it belongs to, so the
+                # board is governed by work-order authority rather than its own.
+                'tasks_kanbancard',
                 'assets_assetmachine',
                 'assets_assetmaintenancerecord',
                 'assets_machinepart',

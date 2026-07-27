@@ -122,5 +122,9 @@ class WorkOrderTableTest(TestCase):
         from users.ruleset import get_ruleset_models
 
         work_order_models = get_ruleset_models()['work_order']
-        self.assertIn('tasks_workorder', work_order_models)
-        self.assertNotIn('tasks_kanbancard', work_order_models)
+        table_name = (
+            f'{WorkOrder._meta.app_label}_{WorkOrder._meta.model_name}'
+        )
+
+        self.assertEqual(table_name, 'tasks_workorder')
+        self.assertIn(table_name, work_order_models)

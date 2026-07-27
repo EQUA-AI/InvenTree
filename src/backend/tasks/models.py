@@ -41,7 +41,7 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     closeout that ends it.
 
     It does not own the board. The work that gets tracked and moved around -
-    diagnose, source the part, do the repair - lives in :class:`WorkOrder`,
+    diagnose, source the part, do the repair - lives in :class:`KanbanCard`,
     and a work order may have several. Board position is a card's property
     precisely because one job can be in more than one state at once.
     """
@@ -200,7 +200,7 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         return self.title
 
     def save(self, *args, **kwargs):
-        """Persist, then lazily assign a reference derived from the pk.
+        """Persist, then give a new job its reference and its tracking card.
 
         Reference generation used to live in whichever caller happened to
         remember it, so a work order created through the board or through packet
@@ -208,15 +208,163 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         the canonical API got one. Deriving it here means every path produces the
         same identifier, and the pk makes it collision-free by construction.
 
-        The follow-up ``update`` only runs on first insert and touches only this
-        row, so it cannot race another writer.
+        The card is created for the same reason: the board renders cards, so a
+        job whose creation path forgot to make one would simply not appear.
+        Doing it here means no path can forget. Both steps run on first insert
+        only and touch only this job's rows, so neither can race another writer.
         """
+        creating = self._state.adding
+
         super().save(*args, **kwargs)
 
         if not self.reference:
             reference = f'WO-{self.pk:06d}'
             type(self).objects.filter(pk=self.pk).update(reference=reference)
             self.reference = reference
+
+        if creating:
+            KanbanCard.objects.create(
+                work_order=self,
+                card_kind=self.card_kind or KanbanCard.KIND_WORK_ORDER,
+                status=self.status,
+                title=self.title,
+                description=self.description,
+                assigned_to=self.assigned_to,
+                assignee=self.assignee,
+                scheduled_start=self.scheduled_start,
+                scheduled_end=self.scheduled_end,
+                estimated_minutes=self.estimated_minutes,
+                is_active=self.is_active,
+            )
+
+    @property
+    def primary_card(self):
+        """The card that tracks the job itself, rather than a piece of it.
+
+        Every work order has one, created with it. It is what the board shows
+        for a job that has not been broken down, and what a caller means by
+        "the card" when it has not said which.
+        """
+        return (
+            self.cards
+            .filter(card_kind=KanbanCard.KIND_WORK_ORDER)
+            .order_by('pk')
+            .first()
+        )
+
+
+class KanbanCard(models.Model):
+    """One trackable piece of a work order, as it appears on the board.
+
+    A maintenance job is authorised once - one :class:`WorkOrder` - but the
+    work of it is rarely one move on a board. Diagnosing the fault, sourcing
+    the seal kit and doing the rebuild progress independently, get picked up by
+    different people on different days, and sit in different columns at the
+    same time. Each is a card; all of them belong to the one work order.
+
+    So a card owns execution tracking - where it sits on the board, what it is
+    called, who is doing that piece and when - while the work order keeps
+    everything that makes the job accountable: its reference, its lifecycle,
+    the machine, and the closeout that ends it. A card cannot be completed,
+    approved or closed out; those are decisions about the job.
+
+    ``assigned_to`` and the schedule are deliberately nullable. Unset means
+    "whatever the job says", not "unassigned" - only a card that genuinely
+    diverges from the work order needs to carry its own answer.
+    """
+
+    #: The card tracking the job itself. Created with every work order, so the
+    #: board never has a job with nothing on it.
+    KIND_WORK_ORDER = 'work_order'
+    KIND_SUBTASK = 'subtask'
+    KIND_PROCUREMENT = 'procurement'
+    KIND_CHOICES = [
+        (KIND_WORK_ORDER, 'Work Order'),
+        (KIND_SUBTASK, 'Subtask'),
+        (KIND_PROCUREMENT, 'Procurement'),
+    ]
+
+    work_order = models.ForeignKey(
+        WorkOrder,
+        on_delete=models.CASCADE,
+        related_name='cards',
+        verbose_name=_('Work Order'),
+    )
+
+    card_kind = models.CharField(
+        max_length=16,
+        choices=KIND_CHOICES,
+        default=KIND_WORK_ORDER,
+        db_index=True,
+        verbose_name=_('Card Kind'),
+    )
+
+    #: Board column key. Free text holding a :class:`KanbanColumn` key, for the
+    #: same reason the work order's was: a column can be renamed or removed and
+    #: an unmatched key must degrade rather than break the board.
+    status = models.CharField(max_length=32, db_index=True, verbose_name=_('Status'))
+
+    board_order = models.PositiveIntegerField(
+        default=0,
+        db_index=True,
+        verbose_name=_('Board Order'),
+        help_text=_('Position within the column'),
+    )
+
+    title = models.CharField(max_length=200, verbose_name=_('Title'))
+    description = models.TextField(blank=True, verbose_name=_('Description'))
+
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assigned_cards',
+        verbose_name=_('Assigned To'),
+        help_text=_('Who does this piece; unset means the work order assignee'),
+    )
+    #: Free-text assignee retained from imported and pre-typed data, exactly as
+    #: the work order retains its own. Never used for authorization.
+    assignee = models.CharField(max_length=120, blank=True)
+
+    scheduled_start = models.DateTimeField(null=True, blank=True)
+    scheduled_end = models.DateTimeField(null=True, blank=True)
+    estimated_minutes = models.PositiveIntegerField(null=True, blank=True)
+
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model metadata."""
+
+        ordering = ['board_order', 'created_at']
+        indexes = [
+            models.Index(fields=['work_order', 'status'], name='tasks_card_wo_status'),
+            models.Index(fields=['status', 'board_order'], name='tasks_card_column'),
+        ]
+        verbose_name = _('Kanban Card')
+        verbose_name_plural = _('Kanban Cards')
+
+    def __str__(self) -> str:
+        """Readable identity for admin and logs."""
+        return f'{self.work_order.reference or self.work_order_id}: {self.title}'
+
+    @property
+    def effective_assignee(self):
+        """Who is doing this piece, falling back to the job's assignee."""
+        return self.assigned_to or self.work_order.assigned_to
+
+    @property
+    def effective_start(self):
+        """When this piece starts, falling back to the job's window."""
+        return self.scheduled_start or self.work_order.scheduled_start
+
+    @property
+    def effective_end(self):
+        """When this piece ends, falling back to the job's window."""
+        return self.scheduled_end or self.work_order.scheduled_end
 
 
 class KanbanColumn(models.Model):
@@ -290,13 +438,18 @@ class KanbanColumn(models.Model):
         return terminal
 
     def card_count(self, *, active_only: bool = True) -> int:
-        """Return the number of cards currently in this column."""
-        work_orders = WorkOrder.objects.filter(status=self.key)
+        """Return the number of cards currently in this column.
+
+        Counts cards, not work orders: a job broken into several cards can
+        occupy this column more than once, and deleting the column would
+        strand each of them.
+        """
+        cards = KanbanCard.objects.filter(status=self.key)
 
         if active_only:
-            work_orders = work_orders.filter(is_active=True)
+            cards = cards.filter(is_active=True)
 
-        return work_orders.count()
+        return cards.count()
 
 
 def _default_windows() -> dict:
