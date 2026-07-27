@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 MACHINE_READ_CAPABILITY = "diagnostics.machine.read"
 PACKET_READ_CAPABILITY = "diagnostics.packet.read"
 MAINTENANCE_READ_CAPABILITY = "diagnostics.maintenance.read"
+HEALTH_READ_CAPABILITY = "diagnostics.health.read"
 MANUAL_READ_CAPABILITY = "diagnostics.manuals.read"
 PLAYBOOK_READ_CAPABILITY = "diagnostics.playbooks.read"
 PARTS_READ_CAPABILITY = "diagnostics.parts.read"
@@ -33,6 +34,8 @@ BASE_DIAGNOSTIC_TOOL_NAMES = (
     "get_machine_context",
     "get_repair_packet",
     "get_recent_maintenance_history",
+    "get_machine_health_summary",
+    "get_machine_health_anomalies",
     "search_approved_manuals",
     "find_published_repair_playbooks",
     "get_parts_availability",
@@ -48,6 +51,7 @@ _KNOWN_CAPABILITIES = frozenset({
     MACHINE_READ_CAPABILITY,
     PACKET_READ_CAPABILITY,
     MAINTENANCE_READ_CAPABILITY,
+    HEALTH_READ_CAPABILITY,
     MANUAL_READ_CAPABILITY,
     PLAYBOOK_READ_CAPABILITY,
     PARTS_READ_CAPABILITY,
@@ -101,6 +105,21 @@ class GetRepairPacketArguments(_StrictArguments):
 
 class GetRecentMaintenanceHistoryArguments(_StrictArguments):
     """Arguments for recent authorized maintenance records."""
+
+    machine_id: StrictPositiveInt
+    expected_revision: StrictRevision
+    limit: Annotated[int, Field(default=10, strict=True, ge=1, le=25)] = 10
+
+
+class GetMachineHealthSummaryArguments(_StrictArguments):
+    """Arguments for the current normalized machine condition."""
+
+    machine_id: StrictPositiveInt
+    expected_revision: StrictRevision
+
+
+class GetMachineHealthAnomaliesArguments(_StrictArguments):
+    """Arguments for the machine's active anomalies."""
 
     machine_id: StrictPositiveInt
     expected_revision: StrictRevision
@@ -359,6 +378,20 @@ _BASE_DEFINITIONS = (
         "machine_id",
     ),
     DiagnosticToolDefinition(
+        "get_machine_health_summary",
+        GetMachineHealthSummaryArguments,
+        HEALTH_READ_CAPABILITY,
+        "machine",
+        "machine_id",
+    ),
+    DiagnosticToolDefinition(
+        "get_machine_health_anomalies",
+        GetMachineHealthAnomaliesArguments,
+        HEALTH_READ_CAPABILITY,
+        "machine",
+        "machine_id",
+    ),
+    DiagnosticToolDefinition(
         "search_approved_manuals",
         SearchApprovedManualsArguments,
         MANUAL_READ_CAPABILITY,
@@ -393,6 +426,14 @@ _TOOL_DESCRIPTIONS = {
     "get_machine_context": "Read current authorized machine context.",
     "get_repair_packet": "Read a current authorized and safety-redacted repair packet.",
     "get_recent_maintenance_history": "Read recent authorized maintenance history.",
+    "get_machine_health_summary": (
+        "Read a machine's current normalized condition, including data freshness "
+        "and quality. Stale telemetry must never be reported as current."
+    ),
+    "get_machine_health_anomalies": (
+        "Read a machine's active anomalies with the rule or alarm that raised "
+        "them. Reading cannot raise, escalate or clear a condition."
+    ),
     "search_approved_manuals": "Search explicitly approved manuals for an authorized machine.",
     "find_published_repair_playbooks": "Find governed published repair playbooks.",
     "get_parts_availability": "Observe current linked-part availability without reserving stock.",
@@ -463,6 +504,8 @@ class ProductionDiagnosticReader:
             "get_machine_context": "read_diagnostic_machine_context",
             "get_repair_packet": "read_diagnostic_repair_packet",
             "get_recent_maintenance_history": "read_diagnostic_maintenance_history",
+            "get_machine_health_summary": "read_diagnostic_health_summary",
+            "get_machine_health_anomalies": "read_diagnostic_health_anomalies",
             "search_approved_manuals": "read_diagnostic_approved_manuals",
             "find_published_repair_playbooks": "read_diagnostic_published_playbooks",
             "get_parts_availability": "read_diagnostic_parts_availability",

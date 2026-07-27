@@ -952,9 +952,15 @@ _DIAGNOSTIC_CAPABILITIES = frozenset({
     'diagnostics.playbooks.read',
     'diagnostics.parts.read',
     'diagnostics.safety_p0.read',
+    # Machine health is its own grant: reading a machine's dossier and reading
+    # its live industrial telemetry are different levels of access, and a
+    # deployment must be able to grant one without the other.
+    'diagnostics.health.read',
 })
 _DIAGNOSTIC_ABSTENTION = 'No authorized citation-ready evidence was available.'
 _DIAGNOSTIC_SAFETY_ROW_LIMIT = 100
+#: One health read returns a bounded view, not a historian dump.
+_DIAGNOSTIC_HEALTH_SIGNAL_LIMIT = 50
 _DIAGNOSTIC_PLAYBOOK_STEP_LIMIT = 50
 
 
@@ -1363,6 +1369,151 @@ def read_diagnostic_maintenance_history(
                 untrusted=True,
             )
         )
+    return _diagnostic_result(*evidence, reason=_DIAGNOSTIC_ABSTENTION)
+
+
+def read_diagnostic_health_summary(
+    *, actor, authorization, machine_id: int, expected_revision: str
+) -> dict[str, Any]:
+    """Read the machine's current normalized condition.
+
+    Every claim carries the freshness and quality of the data behind it, and a
+    stale or unmapped machine is reported as such. A model summarising this must
+    not be able to present hours-old telemetry as the current state, so the
+    staleness travels with the observation rather than being left implicit.
+    """
+    if (
+        authorization.entity_type != 'machine'
+        or authorization.entity_id != machine_id
+        or not _diagnostic_reauthorize(actor, authorization, expected_revision)
+    ):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+
+    from assets.models import AssetMachine
+    from machine_health.services.summary import health_summary, signal_rows
+
+    machine = AssetMachine.objects.filter(pk=machine_id).first()
+    if machine is None:
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+
+    summary = health_summary(machine)
+    now = timezone.now()
+
+    claim = json.dumps(
+        {
+            'state': summary['state'],
+            'configured': summary['configured'],
+            'signal_count': summary['signal_count'],
+            'stale_signal_count': summary['stale_signal_count'],
+            'degraded_data': summary['degraded_data'],
+            'active_anomaly_count': summary['active_anomaly_count'],
+            'last_observed_at': (
+                summary['last_observed_at'].isoformat()
+                if summary['last_observed_at']
+                else None
+            ),
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+    )
+    evidence = [
+        _diagnostic_evidence(
+            source_type='machine_health_summary',
+            source_id=machine_id,
+            revision=_diagnostic_revision(machine),
+            locator=f'/machines/{machine_id}/health/',
+            as_of=now,
+            claim=claim,
+            untrusted=False,
+        )
+    ]
+
+    for row in signal_rows(machine, now=now)[:_DIAGNOSTIC_HEALTH_SIGNAL_LIMIT]:
+        signal_claim = json.dumps(
+            {
+                'signal': row['display_name'],
+                'value': row['value'],
+                'unit': row['unit'],
+                'quality': row['quality'],
+                'stale': row['stale'],
+                'state': row['state'],
+                'observed_at': (
+                    row['observed_at'].isoformat() if row['observed_at'] else None
+                ),
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        )
+        evidence.append(
+            _diagnostic_evidence(
+                source_type='machine_signal_state',
+                source_id=row['binding_id'],
+                revision=(row['observed_at'].isoformat() if row['observed_at'] else ''),
+                locator=f'/machines/{machine_id}/health/signals/{row["binding_id"]}',
+                as_of=row['observed_at'] or now,
+                claim=signal_claim,
+                # Values originate in an external control system; treat their
+                # labels as untrusted content, not instructions.
+                untrusted=True,
+            )
+        )
+
+    return _diagnostic_result(*evidence, reason=_DIAGNOSTIC_ABSTENTION)
+
+
+def read_diagnostic_health_anomalies(
+    *, actor, authorization, machine_id: int, expected_revision: str, limit: int
+) -> dict[str, Any]:
+    """Read the machine's active anomalies with their detector provenance.
+
+    The detector and its version travel with each anomaly so a summary can say
+    *what* raised it. Detection is deterministic elsewhere; nothing read here
+    lets a model raise, escalate or clear a condition.
+    """
+    if (
+        authorization.entity_type != 'machine'
+        or authorization.entity_id != machine_id
+        or not _diagnostic_reauthorize(actor, authorization, expected_revision)
+    ):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+
+    from machine_health.models import ACTIVE_ANOMALY_STATUSES, MachineAnomaly
+
+    anomalies = MachineAnomaly.objects.filter(
+        machine_id=machine_id,
+        status__in=[status.value for status in ACTIVE_ANOMALY_STATUSES],
+    ).order_by('-last_observed_at')[:limit]
+
+    evidence = []
+    for anomaly in anomalies:
+        claim = json.dumps(
+            {
+                'title': anomaly.title,
+                'severity': anomaly.severity,
+                'status': anomaly.status,
+                'alarm_code': anomaly.alarm_code,
+                'detector': anomaly.detector,
+                'detector_version': anomaly.detector_version,
+                'evidence_summary': anomaly.evidence_summary,
+                'first_observed_at': anomaly.first_observed_at.isoformat(),
+                'last_observed_at': anomaly.last_observed_at.isoformat(),
+                'work_order_id': anomaly.work_order_id,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        )
+        evidence.append(
+            _diagnostic_evidence(
+                source_type='machine_anomaly',
+                source_id=anomaly.pk,
+                revision=_diagnostic_revision(anomaly),
+                locator=f'/machines/{machine_id}/health/anomalies/{anomaly.pk}',
+                as_of=anomaly.updated_at,
+                claim=claim,
+                untrusted=True,
+            )
+        )
+
     return _diagnostic_result(*evidence, reason=_DIAGNOSTIC_ABSTENTION)
 
 
