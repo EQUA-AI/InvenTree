@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("machine_health", "0001_initial"),
+        ("assets", "0007_healthsource_machinesignalbinding_machineanomaly_and_more"),
         ("repair", "0007_repairpackethealthevidence"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
@@ -188,7 +188,7 @@ class Migration(migrations.Migration):
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="findings",
-                        to="machine_health.healthevidencesnapshot",
+                        to="assets.healthevidencesnapshot",
                         verbose_name="Evidence Snapshot",
                     ),
                 ),

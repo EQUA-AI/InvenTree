@@ -210,3 +210,21 @@ class AssetMaintenanceRecord(models.Model):
     def __str__(self) -> str:
         """Readable identity for admin and logs."""
         return f'{self.machine.name} — {self.summary} ({self.date})'
+
+
+# Machine health models live in their own module for readability but belong to
+# this app; importing them here is what registers them.
+from .health_models import (  # noqa: F401
+    ACTIVE_ANOMALY_STATUSES,
+    AnomalySeverity,
+    AnomalyStatus,
+    HealthEvidenceSnapshot,
+    HealthSource,
+    HealthState,
+    MachineAnomaly,
+    MachineSignalBinding,
+    MachineSignalState,
+    SignalQuality,
+    SnapshotReason,
+    SourceType,
+)

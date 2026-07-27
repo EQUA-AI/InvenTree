@@ -21,7 +21,7 @@ import hashlib
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from machine_health.models import (
+from assets.health_models import (
     ACTIVE_ANOMALY_STATUSES,
     AnomalySeverity,
     AnomalyStatus,

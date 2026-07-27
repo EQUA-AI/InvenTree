@@ -10,7 +10,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 from machine_health.connectors.webhook import expected_signature
-from machine_health.models import (
+from assets.health_models import (
     AnomalySeverity,
     AnomalyStatus,
     HealthEvidenceSnapshot,

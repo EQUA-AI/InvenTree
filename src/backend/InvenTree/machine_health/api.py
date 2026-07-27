@@ -19,11 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 import InvenTree.permissions
-from assets.models import AssetMachine
-from InvenTree.mixins import ListAPI
-
-from .connectors.webhook import WebhookAuthError, verify_delivery
-from .models import (
+from assets.health_models import (
     ACTIVE_ANOMALY_STATUSES,
     AnomalyStatus,
     HealthSource,
@@ -31,6 +27,10 @@ from .models import (
     MachineSignalBinding,
     SnapshotReason,
 )
+from assets.models import AssetMachine
+from InvenTree.mixins import ListAPI
+
+from .connectors.webhook import WebhookAuthError, verify_delivery
 from .serializers import (
     HealthEvidenceSnapshotSerializer,
     MachineAnomalySerializer,

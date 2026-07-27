@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from django.utils import timezone
 
-from machine_health.models import AnomalySeverity, SignalQuality, SnapshotReason
+from assets.health_models import AnomalySeverity, SignalQuality, SnapshotReason
 from repair.schema import (
     RELATION_SUPPORTS,
     RELATION_UNKNOWN,

@@ -11,14 +11,14 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from assets.models import AssetMachine
-from InvenTree.unit_test import InvenTreeAPITestCase
-from machine_health.models import (
+from assets.health_models import (
     HealthSource,
     MachineSignalBinding,
     MachineSignalState,
     SourceType,
 )
+from assets.models import AssetMachine
+from InvenTree.unit_test import InvenTreeAPITestCase
 from machine_health.services.snapshots import capture_current_signal
 
 from . import investigation

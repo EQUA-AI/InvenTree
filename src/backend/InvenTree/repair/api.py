@@ -365,7 +365,7 @@ class RepairPacketFindings(APIView):
         snapshot = None
         snapshot_id = data.get('snapshot_id')
         if snapshot_id:
-            from machine_health.models import HealthEvidenceSnapshot
+            from assets.health_models import HealthEvidenceSnapshot
 
             snapshot = get_object_or_404(HealthEvidenceSnapshot, pk=snapshot_id)
 

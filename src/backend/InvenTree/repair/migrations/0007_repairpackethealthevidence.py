@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("machine_health", "0001_initial"),
+        ("assets", "0007_healthsource_machinesignalbinding_machineanomaly_and_more"),
         ("repair", "0006_alter_repairpacketevent_event_type"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
@@ -67,7 +67,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
                         related_name="packet_links",
-                        to="machine_health.healthevidencesnapshot",
+                        to="assets.healthevidencesnapshot",
                         verbose_name="Evidence Snapshot",
                     ),
                 ),

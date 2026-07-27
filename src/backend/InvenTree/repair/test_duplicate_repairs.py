@@ -12,9 +12,9 @@ from django.test import TestCase
 
 from tasks.models import KanbanCard
 
+from assets.health_models import AnomalySeverity
 from assets.models import AssetMachine
 from InvenTree.unit_test import InvenTreeAPITestCase
-from machine_health.models import AnomalySeverity
 from machine_health.services.anomalies import fingerprint_for, record_anomaly
 
 from .models import PacketStatus, RepairPacket, RepairPacketHealthEvidence
@@ -152,7 +152,7 @@ class AnomalyEvidenceLinkTest(TestCase):
 
     def setUp(self):
         """Create an actor, a machine, an anomaly and its mapped signal."""
-        from machine_health.models import (
+        from assets.health_models import (
             HealthSource,
             MachineSignalBinding,
             MachineSignalState,

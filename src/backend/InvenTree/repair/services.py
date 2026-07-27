@@ -1477,7 +1477,7 @@ def read_diagnostic_health_anomalies(
     ):
         return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
 
-    from machine_health.models import ACTIVE_ANOMALY_STATUSES, MachineAnomaly
+    from assets.health_models import ACTIVE_ANOMALY_STATUSES, MachineAnomaly
 
     anomalies = MachineAnomaly.objects.filter(
         machine_id=machine_id,

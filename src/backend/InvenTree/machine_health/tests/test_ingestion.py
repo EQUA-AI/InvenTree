@@ -5,7 +5,7 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
-from machine_health.models import MachineSignalBinding, MachineSignalState, SignalQuality
+from assets.health_models import MachineSignalBinding, MachineSignalState, SignalQuality
 from machine_health.services.ingestion import (
     MAX_READINGS_PER_BATCH,
     IngestionError,

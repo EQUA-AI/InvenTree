@@ -23,13 +23,13 @@ import logging
 
 from django.utils import timezone
 
+from assets.health_models import MachineSignalBinding
 from machine_health.connectors.base import (
     MAX_TREND_SAMPLES,
     MAX_TREND_WINDOW_SECONDS,
     bounded_window,
     get_connector,
 )
-from machine_health.models import MachineSignalBinding
 
 logger = logging.getLogger('inventree')
 

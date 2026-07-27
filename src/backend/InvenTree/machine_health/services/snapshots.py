@@ -13,7 +13,7 @@ import json
 
 from django.utils import timezone
 
-from machine_health.models import (
+from assets.health_models import (
     HealthEvidenceSnapshot,
     MachineSignalBinding,
     SignalQuality,

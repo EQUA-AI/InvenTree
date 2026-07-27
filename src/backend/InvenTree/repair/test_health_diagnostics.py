@@ -15,9 +15,7 @@ from django.utils import timezone
 
 from tasks.scope import MaintenanceScope
 
-from assets.models import AssetMachine
-from company.models import Company
-from machine_health.models import (
+from assets.health_models import (
     AnomalySeverity,
     HealthSource,
     MachineSignalBinding,
@@ -25,6 +23,8 @@ from machine_health.models import (
     SignalQuality,
     SourceType,
 )
+from assets.models import AssetMachine
+from company.models import Company
 from machine_health.services.anomalies import fingerprint_for, record_anomaly
 
 from . import services

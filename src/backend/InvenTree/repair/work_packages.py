@@ -284,7 +284,7 @@ def _link_anomaly(anomaly_id, *, machine, work_order, packet, actor) -> str:
 
     # Imported here so ``repair`` does not take a module-level dependency on the
     # health app; the FK the other way is declared as a string reference.
-    from machine_health.models import MachineAnomaly, SnapshotReason
+    from assets.health_models import MachineAnomaly, SnapshotReason
     from machine_health.services.snapshots import capture_anomaly_evidence
 
     anomaly = MachineAnomaly.objects.filter(pk=anomaly_id).first()
@@ -351,7 +351,7 @@ def find_duplicate_repairs(machine, *, anomaly_id=None, exclude_work_order_id=No
     than leaving it to whoever notices second: same anomaly first, then any other
     open packet-backed repair on the asset.
     """
-    from machine_health.models import MachineAnomaly
+    from assets.health_models import MachineAnomaly
 
     candidates = []
 

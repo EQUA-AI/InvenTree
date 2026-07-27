@@ -519,7 +519,7 @@ class RepairWorkPackageExecutor(ApprovalExecutor):
         anomaly_id = (payload.get('source') or {}).get('anomaly_id')
         anomaly_state = None
         if anomaly_id:
-            from machine_health.models import MachineAnomaly
+            from assets.health_models import MachineAnomaly
 
             anomaly = MachineAnomaly.objects.filter(pk=anomaly_id).first()
             if anomaly is not None:
@@ -569,7 +569,7 @@ class RepairWorkPackageExecutor(ApprovalExecutor):
         baseline_anomaly = baseline_context.get('anomaly') or {}
 
         if anomaly_id:
-            from machine_health.models import ACTIVE_ANOMALY_STATUSES, MachineAnomaly
+            from assets.health_models import ACTIVE_ANOMALY_STATUSES, MachineAnomaly
 
             anomaly = MachineAnomaly.objects.filter(pk=anomaly_id).first()
             if anomaly is None:

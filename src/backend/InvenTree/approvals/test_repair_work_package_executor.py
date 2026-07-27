@@ -31,9 +31,9 @@ from approvals.executors import (
     registry,
 )
 from approvals.models import ActionType
+from assets.health_models import AnomalyStatus, SourceType
 from assets.models import AssetMachine
 from company.models import Company
-from machine_health.models import AnomalyStatus, SourceType
 from repair.models import RepairPacket
 
 
@@ -156,7 +156,7 @@ class RepairAnomalyDriftTest(TestCase):
 
     def setUp(self):
         """Create a machine with one open anomaly and a matching payload."""
-        from machine_health.models import HealthSource
+        from assets.health_models import HealthSource
         from machine_health.services.anomalies import fingerprint_for, record_anomaly
 
         suffix = uuid.uuid4().hex[:8]

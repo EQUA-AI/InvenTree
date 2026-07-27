@@ -123,7 +123,7 @@ class OverviewDetailSectionsTest(InvenTreeAPITestCase):
     def setUp(self):
         """Create a packet-owned work order raised from a health anomaly."""
         super().setUp()
-        from machine_health.models import AnomalySeverity, HealthSource, SourceType
+        from assets.health_models import AnomalySeverity, HealthSource, SourceType
         from machine_health.services.anomalies import fingerprint_for, record_anomaly
         from repair import investigation
 

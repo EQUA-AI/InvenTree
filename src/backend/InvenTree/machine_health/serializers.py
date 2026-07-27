@@ -7,7 +7,11 @@ must not be able to type a machine back to normal.
 
 from rest_framework import serializers
 
-from .models import HealthEvidenceSnapshot, MachineAnomaly, MachineSignalBinding
+from assets.health_models import (
+    HealthEvidenceSnapshot,
+    MachineAnomaly,
+    MachineSignalBinding,
+)
 
 
 class MachineSignalSerializer(serializers.Serializer):

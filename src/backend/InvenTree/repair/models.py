@@ -488,7 +488,7 @@ class RepairInvestigationFinding(models.Model):
     )
 
     snapshot = models.ForeignKey(
-        'machine_health.HealthEvidenceSnapshot',
+        'assets.HealthEvidenceSnapshot',
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -650,7 +650,7 @@ class RepairPacketHealthEvidence(models.Model):
 
     # PROTECT: a snapshot cited by a repair may not be deleted out from under it.
     snapshot = models.ForeignKey(
-        'machine_health.HealthEvidenceSnapshot',
+        'assets.HealthEvidenceSnapshot',
         on_delete=models.PROTECT,
         related_name='packet_links',
         verbose_name=_('Evidence Snapshot'),

@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from assets.models import AssetMachine
 from company.models import Company
-from machine_health.models import (
+from assets.health_models import (
     HealthSource,
     MachineSignalBinding,
     MachineSignalState,

@@ -1,5 +1,11 @@
 """Database models for normalized machine health.
 
+Kept in the ``assets`` app rather than a separate one: health is a property of a
+machine, and the first implementation is deliberately small. Connectors,
+ingestion and the API live in the ``machine_health`` package alongside, so the
+split can be reversed into its own app later without moving the domain logic.
+
+
 AIMMS federates industrial data; it does not replace the historian. SCADA, PLC,
 DCS, MES, BAS/BMS, EMS and IIoT platforms remain the systems of record for raw,
 high-frequency telemetry. What is stored here is deliberately bounded:

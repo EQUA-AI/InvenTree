@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from django.utils import timezone
 
-from machine_health.models import (
+from assets.health_models import (
     ACTIVE_ANOMALY_STATUSES,
     AnomalySeverity,
     HealthState,

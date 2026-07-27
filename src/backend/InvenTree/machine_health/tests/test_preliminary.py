@@ -20,7 +20,7 @@ from repair.schema import (
     validate_diagnosis,
 )
 
-from machine_health.models import AnomalySeverity, SignalQuality
+from assets.health_models import AnomalySeverity, SignalQuality
 from machine_health.services.anomalies import fingerprint_for, record_anomaly
 from machine_health.services.preliminary import analyze_anomaly
 
