@@ -37,6 +37,17 @@ from machine_health.models import AnomalyStatus, SourceType
 from repair.models import RepairPacket
 
 
+def _payload_of(result) -> dict:
+    """Return an EffectResult's payload, failing loudly when it has none.
+
+    ``result_payload`` is optional on the interface, so unwrapping it here keeps
+    a missing payload an explicit assertion rather than an AttributeError three
+    lines later.
+    """
+    assert result.result_payload is not None, 'executor returned no result payload'
+    return result.result_payload
+
+
 class RepairWorkPackageExecutorTest(TestCase):
     """The executor delegates to the canonical command and detects drift."""
 
@@ -82,8 +93,9 @@ class RepairWorkPackageExecutorTest(TestCase):
         result = self.executor.execute(self._payload(), uuid.uuid4().hex)
 
         self.assertTrue(result.success)
-        work_order = KanbanCard.objects.get(pk=result.result_payload['work_order_id'])
-        packet = RepairPacket.objects.get(pk=result.result_payload['repair_packet_id'])
+        payload = _payload_of(result)
+        work_order = KanbanCard.objects.get(pk=payload['work_order_id'])
+        packet = RepairPacket.objects.get(pk=payload['repair_packet_id'])
         self.assertEqual(work_order.machine_id, self.machine.pk)
         self.assertEqual(packet.work_order_id, work_order.pk)
 
@@ -94,8 +106,7 @@ class RepairWorkPackageExecutorTest(TestCase):
         second = self.executor.execute(self._payload(), key)
 
         self.assertEqual(
-            first.result_payload['work_order_id'],
-            second.result_payload['work_order_id'],
+            _payload_of(first)['work_order_id'], _payload_of(second)['work_order_id']
         )
         self.assertEqual(KanbanCard.objects.filter(machine=self.machine).count(), 1)
 
@@ -108,7 +119,7 @@ class RepairWorkPackageExecutorTest(TestCase):
         )
 
         self.assertFalse(blocked.success)
-        self.assertTrue(blocked.result_payload['duplicates'])
+        self.assertTrue(_payload_of(blocked)['duplicates'])
 
     def test_risk_tier_rises_with_criticality(self):
         """A critical fault warrants the higher review tier."""
