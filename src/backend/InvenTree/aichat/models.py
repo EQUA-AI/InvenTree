@@ -534,6 +534,17 @@ class ChatActionProposal(models.Model):
     confirmed_at = models.DateTimeField(null=True, blank=True)
     receipt = models.JSONField(null=True, blank=True)
     failure_code = models.CharField(max_length=64, blank=True)
+    # Exactly one execution authority per proposal. When this is set the global
+    # approval queue owns execution and this row is only the chat-side preview:
+    # confirming here points at the approval instead of dispatching, so the two
+    # rails can never both run the same effect.
+    approval = models.ForeignKey(
+        'approvals.Approval',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='chat_proposals',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

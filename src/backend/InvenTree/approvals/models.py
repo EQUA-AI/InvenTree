@@ -61,6 +61,7 @@ class ActionType(models.TextChoices):
     SAFETY_GATE = 'safety_gate', _('Safety Gate')
     PROCEDURE_PUBLISH = 'procedure_publish', _('Publish Procedure')
     JOB_KIT_SUBSTITUTION = ('job_kit_substitution', _('Approve Job Kit Substitution'))
+    REPAIR_WORK_PACKAGE = ('repair_work_package', _('Create Repair Work Package'))
 
 
 class EventType(models.TextChoices):

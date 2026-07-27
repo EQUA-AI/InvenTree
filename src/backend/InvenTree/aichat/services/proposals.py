@@ -61,6 +61,16 @@ class ProposalRevalidationFailed(ProposalError):  # noqa: N818
     code = 'PROPOSAL_REVALIDATION_FAILED'
 
 
+class ApprovalOwnsExecution(ProposalError):  # noqa: N818
+    """The linked global approval, not this rail, executes this proposal.
+
+    Raised so a bridged proposal can never dual-execute: chat holds the
+    contextual preview, the approval queue holds the authority.
+    """
+
+    code = 'APPROVAL_OWNS_EXECUTION'
+
+
 class StrictConfirmationRequired(ProposalError):  # noqa: N818
     """An irreversible action needs its exact strict confirm phrase."""
 
@@ -555,7 +565,7 @@ def create_proposal(
     preview = _preview(work_order, action_type, intent)
     try:
         with transaction.atomic():
-            return ChatActionProposal.objects.create(
+            proposal = ChatActionProposal.objects.create(
                 owner=owner,
                 scope_key=scope_key,
                 scope_hash=scope_hash,
@@ -571,6 +581,9 @@ def create_proposal(
                 idempotency_key=idempotency_key,
                 expires_at=timezone.now() + timedelta(seconds=expiry_seconds),
             )
+            if _approval_queue_owns_execution(action_type):
+                _bridge_to_approval(proposal, owner)
+            return proposal
     except IntegrityError:
         existing = ChatActionProposal.objects.get(
             owner=owner, idempotency_key=idempotency_key
@@ -590,6 +603,71 @@ def create_proposal(
                 'a different intent already uses this key'
             ) from None
         return existing
+
+
+#: Actions bridged to the global approval queue when it owns execution. Kept
+#: narrow on purpose: a bridged action must have a registered executor, and the
+#: queue must be able to describe it well enough to decide without the chat.
+_BRIDGED_ACTIONS = frozenset({ProposalAction.REPAIR_WORK_PACKAGE_CREATE.value})
+
+
+def _approval_queue_owns_execution(action_type: str) -> bool:
+    """Whether the global approval queue is the executor for this action.
+
+    Off by default. A deployment turns it on once its approval inbox is staffed;
+    until then the chat rail executes as before, and nothing is bridged.
+    """
+    from django.conf import settings
+
+    if action_type not in _BRIDGED_ACTIONS:
+        return False
+    return bool(getattr(settings, 'AIMMS_APPROVAL_QUEUE_OWNS_REPAIRS', False))
+
+
+def _bridge_to_approval(proposal: ChatActionProposal, owner) -> None:
+    """Create the approval row that will execute this proposal, and link it.
+
+    After this the chat proposal is a preview only: :func:`confirm_proposal`
+    refuses to dispatch it, so there is exactly one place the effect can happen.
+    The executor is required to exist - a missing registration fails here rather
+    than at approve time, when a reviewer has already committed to the decision.
+    """
+    from approvals.executors import registry
+    from approvals.models import ActionType, Approval
+
+    action = ActionType.REPAIR_WORK_PACKAGE
+    if not registry.has(action):
+        raise ProposalError(f'no executor is registered for {action}')
+
+    executor = registry.get(action)
+    payload = dict(proposal.intent or {})
+    # The command re-checks permission and scope for this actor; naming them here
+    # records who asked, it does not widen what they may do.
+    payload['actor_id'] = owner.pk
+
+    warnings = executor.validate(payload)
+    if warnings:
+        raise ProposalError('; '.join(warnings))
+
+    machine_name = proposal.preview.get('machine_name') or 'the machine'
+    approval = Approval.objects.create(
+        action_type=action,
+        summary=f'Create repair work package for {machine_name}: {proposal.preview.get("proposed_title", "")}'[
+            :500
+        ],
+        payload=payload,
+        risk_tier=executor.compute_risk_tier(payload),
+        baseline_context=executor.compute_baseline(payload),
+        source_chat_id=proposal.thread_id,
+        agent_run_id=str(proposal.id),
+        agent_checkpoint_id=proposal.source_turn_id or str(proposal.id),
+        tool_call_id=f'chat-proposal:{proposal.id}',
+        idempotency_key=f'chat-proposal:{proposal.id}',
+        assigned_to_user=owner,
+    )
+
+    proposal.approval = approval
+    proposal.save(update_fields=['approval', 'updated_at'])
 
 
 def get_owned_proposal(*, owner, scope_hash: str, proposal_id) -> ChatActionProposal:
@@ -973,6 +1051,15 @@ def confirm_proposal(
             # Re-check the RBAC role at execution time: a grant may have been
             # revoked between propose and confirm (§5.3 defense in depth).
             _require_role(owner, proposal.action_type)
+
+            # Exactly one execution authority. When this proposal was bridged to
+            # the global approval queue, that queue is the executor and this rail
+            # must not dispatch: doing both would run the effect twice.
+            if proposal.approval_id is not None:
+                raise ApprovalOwnsExecution(
+                    'This action is executed from the approval queue; '
+                    'open the linked approval to decide it.'
+                )
 
             proposal.state = ProposalState.EXECUTED
             proposal.confirmed_at = timezone.now()

@@ -21,6 +21,10 @@ logger = structlog.get_logger('approvals.executors')
 EXECUTOR_REQUIRED_ACTIONS = frozenset({
     ActionType.PROCEDURE_PUBLISH,
     ActionType.JOB_KIT_SUBSTITUTION,
+    # Creating a repair commits parts, a machine and a safety aggregate. If its
+    # executor were ever unregistered, approving must fail loudly rather than
+    # silently succeeding with no effect.
+    ActionType.REPAIR_WORK_PACKAGE,
 })
 
 
@@ -469,6 +473,204 @@ class SafetyGateExecutor(ApprovalExecutor):
             return EffectResult(success=False, error_message=str(exc))
 
 
+class RepairWorkPackageExecutor(ApprovalExecutor):
+    """Executor for an approved repair work package.
+
+    Approving one creates a machine-linked work order and its Repair Packet. The
+    executor owns none of that logic: it delegates to
+    ``repair.work_packages.create_repair_work_package``, the same audited command
+    the Maintenance button, the machine page and the Health blade call. Approving
+    through this queue therefore cannot do anything a planner could not do by
+    hand, and cannot skip a check the manual path applies.
+
+    Creating a repair plans work. It does not start it, satisfy a safety gate or
+    mark readiness - none of which this executor can reach.
+    """
+
+    action_type = ActionType.REPAIR_WORK_PACKAGE
+
+    def validate(self, payload: dict) -> list[str]:
+        """Validate the draft against the canonical work-package schema."""
+        from repair.work_packages import WorkPackageError, validate_draft
+
+        try:
+            validate_draft(payload)
+        except WorkPackageError as exc:
+            return [str(exc)]
+        return []
+
+    def compute_baseline(self, payload: dict) -> dict:
+        """Snapshot what the approver is deciding against.
+
+        Records the machine, the open repairs at the time of the request and the
+        anomaly's condition. Drift is judged against this, so a repair approved
+        days later cannot quietly answer a fault that has since been fixed or
+        superseded.
+        """
+        from assets.models import AssetMachine
+        from repair.work_packages import find_duplicate_repairs
+
+        machine = AssetMachine.objects.filter(
+            pk=payload.get('machine_id') or payload.get('machine')
+        ).first()
+        if machine is None:
+            return {'machine_exists': False}
+
+        anomaly_id = (payload.get('source') or {}).get('anomaly_id')
+        anomaly_state = None
+        if anomaly_id:
+            from machine_health.models import MachineAnomaly
+
+            anomaly = MachineAnomaly.objects.filter(pk=anomaly_id).first()
+            if anomaly is not None:
+                anomaly_state = {
+                    'id': anomaly.pk,
+                    'status': anomaly.status,
+                    'severity': anomaly.severity,
+                    'machine_id': anomaly.machine_id,
+                    'work_order_id': anomaly.work_order_id,
+                }
+
+        return {
+            'machine_exists': True,
+            'machine_id': machine.pk,
+            'machine_name': machine.name,
+            'open_repair_work_order_ids': sorted(
+                item['work_order_id']
+                for item in find_duplicate_repairs(machine, anomaly_id=anomaly_id)
+            ),
+            'anomaly': anomaly_state,
+        }
+
+    def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
+        """Re-read live state at approve time and report what moved."""
+        from assets.models import AssetMachine
+        from repair.work_packages import find_duplicate_repairs
+
+        machine = AssetMachine.objects.filter(
+            pk=payload.get('machine_id') or payload.get('machine')
+        ).first()
+        if machine is None:
+            return DriftReport(
+                has_drift=True,
+                failed=[
+                    {
+                        'check': 'machine_exists',
+                        'reason': 'The machine no longer exists',
+                    }
+                ],
+            )
+
+        passed = [{'check': 'machine_exists'}]
+        failed = []
+        warnings = []
+
+        anomaly_id = (payload.get('source') or {}).get('anomaly_id')
+        baseline_anomaly = baseline_context.get('anomaly') or {}
+
+        if anomaly_id:
+            from machine_health.models import ACTIVE_ANOMALY_STATUSES, MachineAnomaly
+
+            anomaly = MachineAnomaly.objects.filter(pk=anomaly_id).first()
+            if anomaly is None:
+                failed.append({
+                    'check': 'anomaly_exists',
+                    'reason': 'The anomaly this repair answers no longer exists',
+                })
+            elif anomaly.machine_id != machine.pk:
+                failed.append({
+                    'check': 'anomaly_machine',
+                    'reason': 'The anomaly belongs to a different machine',
+                })
+            elif anomaly.status not in {s.value for s in ACTIVE_ANOMALY_STATUSES}:
+                # The condition resolved while the request waited. Approving now
+                # would raise a repair for a fault nobody currently has.
+                failed.append({
+                    'check': 'anomaly_active',
+                    'reason': (
+                        f'The anomaly is now {anomaly.get_status_display().lower()}'
+                    ),
+                })
+            elif (
+                anomaly.work_order_id
+                and anomaly.work_order_id != baseline_anomaly.get('work_order_id')
+            ):
+                failed.append({
+                    'check': 'anomaly_unclaimed',
+                    'reason': 'Another repair has since been raised for this anomaly',
+                })
+            else:
+                passed.append({'check': 'anomaly_active'})
+
+        current_open = sorted(
+            item['work_order_id']
+            for item in find_duplicate_repairs(machine, anomaly_id=anomaly_id)
+        )
+        baseline_open = sorted(baseline_context.get('open_repair_work_order_ids') or [])
+        new_open = [wo for wo in current_open if wo not in baseline_open]
+        if new_open:
+            # Not fatal on its own: a second repair may be legitimate. It is
+            # surfaced so the approver decides knowingly.
+            warnings.append(
+                f'{len(new_open)} repair(s) were opened on this machine since the '
+                'request was raised'
+            )
+
+        return DriftReport(
+            has_drift=bool(failed), passed=passed, failed=failed, warnings=warnings
+        )
+
+    def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
+        """Create the work package through the canonical command."""
+        from repair.work_packages import (
+            DuplicateRepairConflict,
+            WorkPackageError,
+            create_repair_work_package,
+        )
+
+        actor = self._actor_for(payload)
+
+        try:
+            result = create_repair_work_package(
+                actor=actor, draft=payload, idempotency_key=idempotency_key
+            )
+        except DuplicateRepairConflict as exc:
+            return EffectResult(
+                success=False,
+                error_message=str(exc),
+                result_payload={'duplicates': exc.duplicates},
+            )
+        except WorkPackageError as exc:
+            return EffectResult(success=False, error_message=str(exc))
+
+        return EffectResult(
+            success=True,
+            effect_ref=f'work-order-{result.work_order_id}',
+            result_payload=result.as_dict(),
+        )
+
+    @staticmethod
+    def _actor_for(payload: dict):
+        """Resolve the actor the command runs as.
+
+        The command re-checks permission and scope for whoever this is, so a
+        payload naming a user it should not have does not widen authority - the
+        command refuses.
+        """
+        actor_id = payload.get('actor_id')
+        if not actor_id:
+            return None
+
+        from django.contrib.auth import get_user_model
+
+        return get_user_model().objects.filter(pk=actor_id, is_active=True).first()
+
+    def compute_risk_tier(self, payload: dict) -> int:
+        """Critical faults warrant the higher review tier."""
+        criticality = (payload.get('fault') or {}).get('criticality')
+        return 3 if criticality == 'critical' else 2
+
+
 # ---------------------------------------------------------------------------
 # Register all Phase 1 stub executors
 # ---------------------------------------------------------------------------
@@ -484,6 +686,7 @@ def register_default_executors():
         WorkflowExecutor(),
         NotificationExecutor(),
         SafetyGateExecutor(),
+        RepairWorkPackageExecutor(),
     ]
     for executor in executors:
         if not registry.has(executor.action_type):

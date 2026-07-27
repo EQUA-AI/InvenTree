@@ -1072,7 +1072,11 @@ class ExecutorRegistryTests(TestCase):
 
     def test_executor_required_actions(self):
         """Only maintenance effect actions require executors."""
-        required = {ActionType.PROCEDURE_PUBLISH, ActionType.JOB_KIT_SUBSTITUTION}
+        required = {
+            ActionType.PROCEDURE_PUBLISH,
+            ActionType.JOB_KIT_SUBSTITUTION,
+            ActionType.REPAIR_WORK_PACKAGE,
+        }
         for action_type in ActionType.values:
             self.assertEqual(is_executor_required(action_type), action_type in required)
 
