@@ -192,6 +192,7 @@ class KanbanScheduleSerializerTest(TestCase):
         """
         original_status = self.card.lifecycle_status
         original_version = self.card.lifecycle_version
+        original_reference = self.card.reference
 
         response = self.client.patch(
             self._detail_url(),
@@ -209,7 +210,10 @@ class KanbanScheduleSerializerTest(TestCase):
         self.assertEqual(self.card.lifecycle_status, original_status)
         self.assertEqual(self.card.lifecycle_version, original_version)
         self.assertIsNone(self.card.actual_completed_at)
-        self.assertIsNone(self.card.reference)
+        # The reference is model-assigned and read-only: a board PATCH may not
+        # replace it. (It used to be None here only because nothing assigned one.)
+        self.assertEqual(self.card.reference, original_reference)
+        self.assertNotEqual(self.card.reference, 'WO-HACK')
 
     def test_assigned_to_is_read_only(self):
         """Assignment goes through the canonical command, as in WorkOrderSerializer."""

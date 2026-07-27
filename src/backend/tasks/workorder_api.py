@@ -126,10 +126,9 @@ class WorkOrderList(WorkOrderEnabledMixin, ListCreateAPI):
             require_work_order_scope(self.request.user, candidate)
         except ScopeError as exc:
             raise Http404 from exc
-        work_order = serializer.save(requested_by=self.request.user)
-        if not work_order.reference:
-            work_order.reference = f'WO-{work_order.pk:06d}'
-            work_order.save(update_fields=['reference', 'updated_at'])
+        # The reference is assigned by KanbanCard.save(), so every creation path
+        # produces the same identifier.
+        serializer.save(requested_by=self.request.user)
 
 
 class WorkOrderDetail(WorkOrderEnabledMixin, RetrieveUpdateAPI):

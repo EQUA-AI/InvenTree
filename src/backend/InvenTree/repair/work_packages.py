@@ -475,10 +475,6 @@ def create_repair_work_package(
             setattr(work_order, field_name, value)
         work_order.save(update_fields=[*updates, 'updated_at'])
 
-    if not work_order.reference:
-        work_order.reference = f'WO-{work_order.pk:06d}'
-        work_order.save(update_fields=['reference', 'updated_at'])
-
     scheduling.materialise_required_parts(
         work_order_id=work_order.pk,
         lines=[(line['part_id'], line['quantity']) for line in draft['parts']],

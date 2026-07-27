@@ -180,9 +180,33 @@ class KanbanCard(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
             models.Index(fields=['due_date'], name='tasks_wo_due_date'),
         ]
 
+        # The model is still called KanbanCard - renaming it would be a wide,
+        # high-risk refactor with no user value - but the table it lives in is
+        # the work-order table, and Postgres should say so.
+        db_table = 'tasks_workorder'
+
     def __str__(self) -> str:
         """Readable identity for admin and logs."""
         return self.title
+
+    def save(self, *args, **kwargs):
+        """Persist, then lazily assign a reference derived from the pk.
+
+        Reference generation used to live in whichever caller happened to
+        remember it, so a work order created through the board or through packet
+        generation came out with no reference at all while one created through
+        the canonical API got one. Deriving it here means every path produces the
+        same identifier, and the pk makes it collision-free by construction.
+
+        The follow-up ``update`` only runs on first insert and touches only this
+        row, so it cannot race another writer.
+        """
+        super().save(*args, **kwargs)
+
+        if not self.reference:
+            reference = f'WO-{self.pk:06d}'
+            type(self).objects.filter(pk=self.pk).update(reference=reference)
+            self.reference = reference
 
 
 class KanbanColumn(models.Model):
