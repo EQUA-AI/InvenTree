@@ -3,6 +3,7 @@ import { Group, Paper, Stack, Table, Text } from '@mantine/core';
 
 import type { MachineSignal } from '@lib/types/MachineHealth';
 
+import { SignalTrendSparkline } from './SignalTrend';
 import {
   HealthStateBadge,
   ObservedAt,
@@ -41,8 +42,9 @@ function formatLimits(signal: MachineSignal): string {
  * mistaken for a healthy machine.
  */
 export function SignalTable({
-  signals
-}: Readonly<{ signals: MachineSignal[] }>) {
+  signals,
+  machineId
+}: Readonly<{ signals: MachineSignal[]; machineId: number }>) {
   if (signals.length === 0) {
     return (
       <Paper withBorder radius='md' p='md'>
@@ -60,6 +62,7 @@ export function SignalTable({
             <Table.Th>{t`Value`}</Table.Th>
             <Table.Th>{t`State`}</Table.Th>
             <Table.Th>{t`Observed`}</Table.Th>
+            <Table.Th>{t`Trend`}</Table.Th>
             <Table.Th>{t`Quality`}</Table.Th>
             <Table.Th>{t`Source`}</Table.Th>
             <Table.Th>{t`Limits`}</Table.Th>
@@ -90,6 +93,12 @@ export function SignalTable({
                 <ObservedAt
                   observedAt={signal.observed_at}
                   stale={signal.stale}
+                />
+              </Table.Td>
+              <Table.Td>
+                <SignalTrendSparkline
+                  machineId={machineId}
+                  bindingId={signal.binding_id}
                 />
               </Table.Td>
               <Table.Td>

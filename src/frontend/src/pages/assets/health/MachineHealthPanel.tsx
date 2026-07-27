@@ -226,7 +226,7 @@ export function MachineHealthPanel({
 
       <Stack gap='sm'>
         <Title order={4}>{t`Signals`}</Title>
-        <SignalTable signals={signals} />
+        <SignalTable signals={signals} machineId={machineId} />
       </Stack>
 
       <Stack gap='sm'>

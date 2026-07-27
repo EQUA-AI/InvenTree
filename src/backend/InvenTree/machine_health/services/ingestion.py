@@ -81,7 +81,10 @@ def coerce_datetime(value):
     comparison - freshness, replay ordering, skew - on one side of that line.
     """
     if isinstance(value, str):
-        value = datetime.fromisoformat(value)
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise IngestionError(f'{value!r} is not an ISO-8601 datetime.') from exc
     if not isinstance(value, datetime):
         raise IngestionError('Expected an ISO-8601 datetime.')
 

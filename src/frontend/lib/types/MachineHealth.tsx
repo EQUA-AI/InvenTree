@@ -191,3 +191,34 @@ export interface PreliminaryResults {
   amendments: unknown[];
   schema_version: number;
 }
+
+export interface TrendSample {
+  observed_at: string;
+  value: number | string | boolean | null;
+  quality: SignalQuality;
+}
+
+/**
+ * A federated, bounded read from the source historian.
+ *
+ * `available: false` is a first-class answer: a source that cannot serve history
+ * gets no sparkline rather than a line synthesized from its current value.
+ */
+export interface SignalTrend {
+  binding_id: number;
+  display_name: string;
+  unit: string;
+  signal_kind: string;
+  source_id: number;
+  source_name: string;
+  source_type: HealthSourceType;
+  window_start: string;
+  window_end: string;
+  max_samples: number;
+  limits: { max_window_seconds: number; max_samples: number };
+  available: boolean;
+  reason?: string;
+  detail?: string;
+  truncated?: boolean;
+  samples: TrendSample[];
+}

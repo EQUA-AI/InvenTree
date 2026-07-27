@@ -43,6 +43,7 @@ from .services import snapshots as snapshot_services
 from .services.ingestion import IngestionError, coerce_datetime, ingest_readings
 from .services.preliminary import analyze_anomaly
 from .services.summary import health_summary, signal_rows
+from .services.trends import TrendError, read_trend
 
 #: Anomaly lists are bounded; the blade shows the active set, not a history dump.
 MAX_ANOMALY_PAGE = 200
@@ -124,6 +125,60 @@ class MachineHealthAnomalies(_MachineHealthView):
             'count': len(queryset),
             'results': MachineAnomalySerializer(queryset, many=True).data,
         })
+
+
+class MachineHealthTrend(_MachineHealthView):
+    """A bounded historical window for one mapped signal.
+
+    The caller names a *binding*, never an external tag: the tag comes from the
+    mapping row, so a client cannot reach an arbitrary point in the source system
+    by supplying its name.
+    """
+
+    def get(self, request, pk):
+        """Read a bounded trend, or say plainly why one is unavailable."""
+        machine = _machine(pk)
+
+        binding_id = request.query_params.get('binding')
+        if not binding_id or not str(binding_id).isdigit():
+            return Response(
+                {
+                    'code': 'BINDING_REQUIRED',
+                    'detail': 'A numeric binding id is required.',
+                },
+                status=400,
+            )
+
+        try:
+            start = (
+                coerce_datetime(request.query_params['from'])
+                if request.query_params.get('from')
+                else None
+            )
+            end = (
+                coerce_datetime(request.query_params['to'])
+                if request.query_params.get('to')
+                else None
+            )
+        except IngestionError as exc:
+            return Response({'code': 'INVALID_WINDOW', 'detail': str(exc)}, status=400)
+
+        max_samples = request.query_params.get('max_samples')
+        try:
+            result = read_trend(
+                machine,
+                binding_id=int(binding_id),
+                start=start,
+                end=end,
+                max_samples=int(max_samples) if max_samples else None,
+            )
+        except (TrendError, ValueError) as exc:
+            return Response(
+                {'code': getattr(exc, 'code', 'TREND_INVALID'), 'detail': str(exc)},
+                status=400,
+            )
+
+        return Response(result)
 
 
 class MachineHealthSnapshots(_MachineHealthView):
@@ -375,6 +430,7 @@ machine_health_api_urls = [
                 MachineAnomalyPreliminaryAnalysis.as_view(),
                 name='machine-health-anomaly-preliminary-analysis',
             ),
+            path('trend/', MachineHealthTrend.as_view(), name='machine-health-trend'),
             path(
                 'snapshots/',
                 MachineHealthSnapshots.as_view(),
