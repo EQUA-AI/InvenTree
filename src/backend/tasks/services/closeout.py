@@ -179,8 +179,22 @@ def complete_work_order(
     closeout,
     capture_id=None,
     correlation_id=None,
+    packet_finalization=False,
 ):
-    """Complete a standalone work order with structured closeout and writeback."""
+    """Complete a work order with structured closeout and asset-history writeback.
+
+    This is the one finalization path for *both* standalone and Repair
+    Packet-owned work. A packet's work order normally refuses to complete here
+    (``PACKET_OWNS_LIFECYCLE``); ``packet_finalization`` is set only by
+    ``repair.services.close_repair_packet``, which drives this function and the
+    packet's return-to-service transition inside a single transaction. That is
+    what stops closing a packet from bypassing structured closeout, parts
+    reconciliation, readings and machine-history creation.
+
+    ``packet_finalization`` suppresses exactly one check - packet ownership.
+    Permission, scope, version, readiness, open children and the required
+    closeout fields are enforced identically on both paths.
+    """
     work_order = _locked_work_order(work_order_id)
     closeout = dict(closeout or {})
     closeout_hash = _closeout_hash(closeout)
@@ -201,7 +215,8 @@ def complete_work_order(
     _require_version(work_order, expected_version)
     require_permission(actor, COMPLETE_WORKORDER)
     _require_scope(actor, work_order)
-    _require_no_packet(work_order)
+    if not packet_finalization:
+        _require_no_packet(work_order)
     _validate_transition(work_order.lifecycle_status, WorkOrderLifecycle.COMPLETED)
 
     # A parent cannot be closed out while a child card is still open (§5.10): the
@@ -229,7 +244,11 @@ def complete_work_order(
         raise CloseoutError(f'Closeout requires: {", ".join(missing)}')
 
     readiness = evaluate_work_order_readiness(
-        work_order, action='complete', actor=actor, expected_version=expected_version
+        work_order,
+        action='complete',
+        actor=actor,
+        expected_version=expected_version,
+        packet_finalization=packet_finalization,
     )
     if not readiness.ready:
         raise ReadinessBlocked(readiness)

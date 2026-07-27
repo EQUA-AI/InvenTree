@@ -10,7 +10,7 @@ import {
   IconShieldLock,
   IconStethoscope
 } from '@tabler/icons-react';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -28,6 +28,7 @@ import { PageDetail } from '../../components/nav/PageDetail';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useApi } from '../../contexts/ApiContext';
 import { useInstance } from '../../hooks/UseInstance';
+import { PacketCloseoutModal } from './components/PacketCloseoutModal';
 import { SafetyPanel } from './components/safety/SafetyPanel';
 
 /** Renders a structured JSON blob (diagnosis / closeout). */
@@ -79,6 +80,14 @@ export default function RepairPacketDetail() {
     []
   );
 
+  const [closeoutOpen, setCloseoutOpen] = useState(false);
+
+  // Closing a packet that owns a work order is a structured closeout, not a bare
+  // status change: the server refuses the plain advance path for those packets.
+  const ownsWorkOrder = Boolean(
+    (packet as RepairPacket | undefined)?.work_order
+  );
+
   // Lifecycle: map current status -> next transition offered in the UI.
   const nextTransition = useMemo(() => {
     switch (packet?.status) {
@@ -87,11 +96,11 @@ export default function RepairPacketDetail() {
       case 'approved':
         return { to: 'executing', label: t`Start Work` };
       case 'executing':
-        return { to: 'closed', label: t`Close Packet` };
+        return ownsWorkOrder ? null : { to: 'closed', label: t`Close Packet` };
       default:
         return null;
     }
-  }, [packet?.status]);
+  }, [packet?.status, ownsWorkOrder]);
 
   const runAction = (endpoint: ApiEndpoints, body: object = {}) => {
     if (!packet?.pk) {
@@ -130,6 +139,18 @@ export default function RepairPacketDetail() {
         </Button>
       );
     }
+    if (packet?.status === 'executing' && ownsWorkOrder) {
+      items.push(
+        <Button
+          key='closeout'
+          variant='light'
+          leftSection={<IconFlagCheck size={16} />}
+          onClick={() => setCloseoutOpen(true)}
+        >
+          {t`Close Repair`}
+        </Button>
+      );
+    }
     if (
       packet?.pk &&
       packet.status !== 'closed' &&
@@ -149,7 +170,7 @@ export default function RepairPacketDetail() {
     }
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [packet?.status, nextTransition]);
+  }, [packet?.status, nextTransition, ownsWorkOrder]);
 
   const packetData = packet as RepairPacket | undefined;
 
@@ -286,6 +307,16 @@ export default function RepairPacketDetail() {
           model={ModelType.repairpacket}
           id={packet?.pk ?? null}
         />
+        {packet?.pk && (
+          <PacketCloseoutModal
+            opened={closeoutOpen}
+            onClose={() => setCloseoutOpen(false)}
+            packetId={packet.pk}
+            workOrderVersion={packetData?.work_order_lifecycle_version ?? null}
+            workOrderReference={packetData?.work_order_reference ?? null}
+            onClosed={() => instanceQuery.refetch?.()}
+          />
+        )}
       </Stack>
     </InstanceDetail>
   );

@@ -128,6 +128,9 @@ export interface RepairPacket {
   diagnosis_schema_version: number;
   generation_status: string;
   work_order: number | null;
+  work_order_reference: string | null;
+  /** Optimistic-concurrency token the close command must echo back. */
+  work_order_lifecycle_version: number | null;
   parts: RepairPacketPart[];
   gates: RepairPacketGate[];
   unsatisfied_safety_gates: Array<{ pk: number; name: string; reason: string }>;

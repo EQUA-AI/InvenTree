@@ -78,6 +78,11 @@ class _ReadinessContext:
     action: str
     actor: Any
     expected_version: int | None
+    # Set only by the packet-owned finalization service, which is *the* path a
+    # packet's work order is allowed to complete through. It suppresses the
+    # packet-ownership blocker and nothing else - every other readiness check
+    # still applies, so safety, parts and verification are not weakened.
+    packet_finalization: bool = False
 
 
 ReadinessCheck = Callable[[_ReadinessContext], list[ReadinessBlocker]]
@@ -108,6 +113,8 @@ def _scope_check(context):
 
 
 def _packet_ownership_check(context):
+    if context.packet_finalization:
+        return []
     if hasattr(context.work_order, 'repair_packet'):
         return [
             _blocker(
@@ -459,10 +466,17 @@ READINESS_CHECKS.extend([
 
 
 def evaluate_work_order_readiness(
-    work_order, *, action: str, actor, expected_version: int | None = None
+    work_order,
+    *,
+    action: str,
+    actor,
+    expected_version: int | None = None,
+    packet_finalization: bool = False,
 ) -> WorkOrderReadiness:
     """Evaluate all registered checks, converting unknown failures to blockers."""
-    context = _ReadinessContext(work_order, action, actor, expected_version)
+    context = _ReadinessContext(
+        work_order, action, actor, expected_version, packet_finalization
+    )
     blockers: list[ReadinessBlocker] = []
     for check in READINESS_CHECKS:
         try:

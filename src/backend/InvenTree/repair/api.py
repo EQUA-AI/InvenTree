@@ -10,6 +10,7 @@ from django.urls import include, path
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from tasks.services import scheduling
+from tasks.services.work_orders import WorkOrderCommandError
 
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
@@ -272,6 +273,59 @@ class RepairPacketAdvance(APIView):
         return Response(data, status=200 if ok else 400)
 
 
+class RepairPacketClose(APIView):
+    """Finalize a packet-owned repair through the shared closeout service.
+
+    Requires work-order completion authority, not merely packet access: this
+    writes the structured closeout, the terminal work-order transition and the
+    machine maintenance-history row in one transaction.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order.change'
+
+    def post(self, request, pk):
+        """Close the packet and complete its work order atomically."""
+        packet = get_object_or_404(RepairPacket, pk=pk)
+        data = dict(request.data or {})
+
+        expected_version = data.get('expected_version')
+        if not isinstance(expected_version, int) or isinstance(expected_version, bool):
+            return Response(
+                {
+                    'code': 'EXPECTED_VERSION_REQUIRED',
+                    'detail': 'An integer expected_version is required.',
+                },
+                status=400,
+            )
+
+        try:
+            result = services.close_repair_packet(
+                packet,
+                actor=request.user,
+                closeout=data.get('closeout') or {},
+                expected_version=expected_version,
+                idempotency_key=data.get('idempotency_key') or uuid.uuid4().hex,
+                reason=data.get('reason', ''),
+            )
+        except services.RepairCloseoutError as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=400)
+        except WorkOrderCommandError as exc:
+            return Response(
+                {'code': getattr(exc, 'code', 'COMMAND_ERROR'), 'detail': str(exc)},
+                status=400,
+            )
+
+        payload = RepairPacketSerializer(packet).data
+        payload['ok'] = True
+        payload['work_order_id'] = result.work_order_id
+        payload['lifecycle_status'] = result.lifecycle_status
+        return Response(payload)
+
+
 class RepairPacketCancel(APIView):
     """Convenience endpoint to cancel a packet with a reason."""
 
@@ -427,6 +481,11 @@ repair_api_urls = [
                 '<int:pk>/advance/',
                 RepairPacketAdvance.as_view(),
                 name='repair-packet-advance',
+            ),
+            path(
+                '<int:pk>/close/',
+                RepairPacketClose.as_view(),
+                name='repair-packet-close',
             ),
             path(
                 '<int:pk>/cancel/',

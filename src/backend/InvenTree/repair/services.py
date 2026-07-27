@@ -644,6 +644,18 @@ def advance_packet(
             if not ok:
                 return False, msg
 
+            # Closing a packet that owns a work order must not bypass structured
+            # work-order closeout, parts reconciliation, readings or machine
+            # maintenance history. Those callers use close_repair_packet(),
+            # which drives both aggregates in one transaction.
+            if locked.work_order_id is not None:
+                return (
+                    False,
+                    'This packet owns a work order; close it through the '
+                    'repair closeout so the work order and machine history are '
+                    'written in the same transaction.',
+                )
+
         locked.status = to
         locked.save(update_fields=['status', 'updated_at'])
 
@@ -664,6 +676,89 @@ def advance_packet(
     # Reflect the new state on the caller's instance.
     packet.status = to
     return True, ''
+
+
+class RepairCloseoutError(Exception):
+    """The packet cannot be finalized as requested."""
+
+    code = 'REPAIR_CLOSEOUT_INVALID'
+
+
+@transaction.atomic
+def close_repair_packet(
+    packet: RepairPacket,
+    *,
+    actor,
+    closeout: dict[str, Any],
+    expected_version: int,
+    idempotency_key: str,
+    reason: str = '',
+):
+    """Finalize a packet-owned repair: one closeout, one history row, one commit.
+
+    Standalone work orders complete through
+    ``tasks.services.closeout.complete_work_order``. Packet-owned work must reach
+    the same place, or a repair would close with no structured closeout, no parts
+    reconciliation, no acceptance readings and no row in the machine's
+    Maintenance blade. This function is that shared path: it drives the canonical
+    work-order completion *and* the packet's return-to-service transition inside
+    a single transaction, so the two aggregates can never disagree.
+
+    Returns the work-order ``CommandResult``. Replaying the same
+    ``idempotency_key`` returns the original result without writing again.
+    """
+    from tasks.services.closeout import complete_work_order
+
+    locked = RepairPacket.objects.select_for_update().get(pk=packet.pk)
+    from_status = locked.status
+
+    if locked.work_order_id is None:
+        raise RepairCloseoutError(
+            'This packet has no work order, so it cannot create maintenance '
+            'history. Link or generate one first.'
+        )
+
+    if locked.status == PacketStatus.CLOSED:
+        # Already returned to service; fall through to the work-order command so
+        # its idempotency ledger decides whether this is a replay or a conflict.
+        pass
+    elif not is_valid_packet_transition(from_status, PacketStatus.CLOSED):
+        raise RepairCloseoutError(
+            f'Illegal transition {from_status} -> {PacketStatus.CLOSED}'
+        )
+
+    ok, message = locked.can_return_to_service()
+    if not ok:
+        raise RepairCloseoutError(message)
+
+    result = complete_work_order(
+        work_order_id=locked.work_order_id,
+        actor=actor,
+        expected_version=expected_version,
+        idempotency_key=idempotency_key,
+        closeout=closeout,
+        packet_finalization=True,
+    )
+
+    if locked.status != PacketStatus.CLOSED:
+        locked.status = PacketStatus.CLOSED
+        locked.save(update_fields=['status', 'updated_at'])
+        _record_event(
+            locked,
+            RepairPacketEvent.EventType.RETURN_TO_SERVICE,
+            from_status=from_status,
+            to_status=PacketStatus.CLOSED,
+            actor=actor,
+            reason=reason,
+            metadata={
+                'work_order_id': locked.work_order_id,
+                'correlation_id': str(result.correlation_id),
+            },
+        )
+
+    # Reflect the new state on the caller's instance.
+    packet.status = locked.status
+    return result
 
 
 def run_generation_by_id(packet_id: int, params: dict[str, Any] | None = None) -> None:

@@ -215,6 +215,14 @@ class RepairPacketSerializer(serializers.ModelSerializer):
     approvals = serializers.SerializerMethodField()
     latest_generation_run = serializers.SerializerMethodField()
     unsatisfied_safety_gates = serializers.SerializerMethodField()
+    work_order_reference = serializers.CharField(
+        source='work_order.reference', read_only=True, default=None
+    )
+    # Finalization is version-checked against the work order, so the client needs
+    # the token it must echo back to /close/.
+    work_order_lifecycle_version = serializers.IntegerField(
+        source='work_order.lifecycle_version', read_only=True, default=None
+    )
 
     class Meta:
         """Serializer metadata."""
@@ -235,6 +243,8 @@ class RepairPacketSerializer(serializers.ModelSerializer):
             'diagnosis_schema_version',
             'generation_status',
             'work_order',
+            'work_order_reference',
+            'work_order_lifecycle_version',
             'parts',
             'gates',
             'unsatisfied_safety_gates',
