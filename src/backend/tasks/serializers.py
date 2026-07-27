@@ -2,6 +2,7 @@
 
 from django.conf import settings
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import KanbanCard, KanbanCardDependency, KanbanCardPart, KanbanColumn
@@ -404,18 +405,20 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
             return None
         return KanbanCardSummarySerializer(card).data
 
-    def get_parent_detail(self, obj):
+    @extend_schema_field(KanbanCardSummarySerializer(allow_null=True))
+    def get_parent_detail(self, obj) -> dict | None:
         """Return the parent work order for a child card."""
         return self._summary(obj.parent)
 
     @staticmethod
-    def get_children(obj):
+    @extend_schema_field(KanbanCardSummarySerializer(many=True))
+    def get_children(obj) -> list:
         """Return direct jobs/tasks under this work order."""
         return KanbanCardSummarySerializer(
             obj.children.all().order_by('scheduled_start', 'created_at'), many=True
         ).data
 
-    def get_dependencies(self, obj):
+    def get_dependencies(self, obj) -> list:
         """Return predecessor and successor relationships."""
         incoming = [
             {
@@ -440,7 +443,7 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
         return [*incoming, *outgoing]
 
     @staticmethod
-    def get_events(obj):
+    def get_events(obj) -> list:
         """Return append-only lifecycle audit events."""
         from .workorder_serializers import WorkOrderEventSerializer
 
@@ -449,7 +452,7 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
         ).data
 
     @staticmethod
-    def get_repair_packet(obj):
+    def get_repair_packet(obj) -> dict | None:
         """Return repair diagnosis and safety context when present."""
         packet = getattr(obj, 'repair_packet', None)
         if packet is None:
@@ -531,7 +534,7 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
         }
 
     @staticmethod
-    def get_maintenance_record(obj):
+    def get_maintenance_record(obj) -> dict | None:
         """Return maintenance history produced by this work order."""
         record = getattr(obj, 'maintenance_record', None)
         if record is None:
@@ -545,7 +548,7 @@ class KanbanCardOverviewSerializer(KanbanCardSerializer):
         }
 
     @staticmethod
-    def get_structured_closeout(obj):
+    def get_structured_closeout(obj) -> dict | None:
         """Return the immutable structured closeout when completed."""
         closeout = getattr(obj, 'structured_closeout', None)
         if closeout is None:

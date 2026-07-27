@@ -1242,6 +1242,10 @@ OAUTH2_CHECK_EXCLUDED = [  # This setting mutes schema checks for these rule/met
     '/api/approvals/{id}/revise/:post',
     '/api/approvals/{id}/revisions/:get',
     '/api/approvals/count/:get',
+    # Machine-to-machine, and permanently so: the caller is a gateway, not a
+    # user, and the authentication boundary is the HMAC signature over the raw
+    # body. There is no user session to attach an oauth2 scope to.
+    '/api/machine-health/ingest/{source_id}/:post',
     '/api/part/verification/decisions/{did}/:get',
     '/api/part/verification/decisions/{did}/uses/:get',
     '/api/part/verification/sessions/:get',

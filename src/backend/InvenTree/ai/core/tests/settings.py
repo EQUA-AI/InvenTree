@@ -11,6 +11,11 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
+    # ``aichat`` links a proposal to the approval that executes it, so its
+    # migrations reference this app. Leaving it out makes the graph
+    # inconsistent and every test that builds a database error out before it
+    # runs. ``approvals`` itself depends on nothing but the user model.
+    "approvals.apps.ApprovalsConfig",
     "aichat.apps.AIChatConfig",
     "voice.apps.VoiceConfig",
 ]

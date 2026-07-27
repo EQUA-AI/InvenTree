@@ -370,7 +370,7 @@ class LunaDiagnosticsAdapter:
         config = self.provider_config
         if config.invocation_mode == "agent_reference":
             try:
-                from azure.ai.projects import AIProjectClient  # ty: ignore[unresolved-import]
+                from azure.ai.projects import AIProjectClient
             except ImportError as exc:  # pragma: no cover - optional production SDK
                 raise ProviderConfigurationError(
                     "azure-ai-projects is required for Foundry agent invocation"
