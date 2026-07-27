@@ -136,6 +136,34 @@ class KanbanCard(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         max_length=16, choices=KIND_CHOICES, default=KIND_WORK_ORDER, db_index=True
     )
 
+    # The maintainable asset owns maintenance history, but a fault usually
+    # concerns one part of it: a pump, a lamp bank, a rake chain, a membrane
+    # train. Until a governed asset hierarchy exists, the component is recorded
+    # alongside the machine rather than buried in free-text description, where
+    # it could be neither filtered nor trusted.
+    affected_component = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name=_('Affected Component'),
+        help_text=_('The part of the asset this work concerns'),
+    )
+    affected_component_ref = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+        verbose_name=_('Affected Component Reference'),
+        help_text=_('External/human identifier for the component'),
+    )
+    installed_part = models.ForeignKey(
+        'assets.MachinePart',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='work_orders',
+        verbose_name=_('Installed Part'),
+        help_text=_('Installed part this work concerns, when one is mapped'),
+    )
+
     class Meta:
         """Model metadata."""
 

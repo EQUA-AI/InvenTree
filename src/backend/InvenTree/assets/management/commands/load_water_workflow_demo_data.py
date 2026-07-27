@@ -23,6 +23,7 @@ from tasks.models import (
 from tasks.services.conflicts import detect_conflicts
 from tasks.services.working_time import add_working_minutes, next_working_instant
 
+from assets.demo_enrichment import CoverageReport, apply_profile, validate_profile
 from assets.demo_history import normalize_completed_history_card
 from assets.models import AssetMachine, AssetMaintenanceRecord
 from part.models import Part
@@ -59,6 +60,22 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--schedule-anchor', help='Local schedule anchor date in YYYY-MM-DD form'
+        )
+        parser.add_argument(
+            '--enrich-owned-work-orders',
+            action='store_true',
+            help=(
+                'Apply detail profiles to every owned card, including records '
+                'already present in the database'
+            ),
+        )
+        parser.add_argument(
+            '--require-complete-profiles',
+            action='store_true',
+            help=(
+                'Fail the transaction if any owned work order lacks a detail '
+                'profile; turn this on once every record is authored'
+            ),
         )
         parser.add_argument(
             '--reset-owned-scenarios',
@@ -118,8 +135,17 @@ class Command(BaseCommand):
             active_cards = [*scenario_cards.values(), *procurement_cards.values()]
             self._validate_schedule(active_cards)
 
+            coverage = None
+            if options['enrich_owned_work_orders']:
+                coverage = self._enrich_owned_work_orders(
+                    data, require_complete=options['require_complete_profiles']
+                )
+
             if options['dry_run']:
                 transaction.set_rollback(True)
+
+        if coverage is not None:
+            self._report_coverage(coverage)
 
         action = 'Validated' if options['dry_run'] else 'Loaded'
         self.stdout.write(
@@ -134,6 +160,101 @@ class Command(BaseCommand):
                 f'schedule anchor {anchor.isoformat()}.'
             )
         )
+
+    def _enrich_owned_work_orders(self, data, *, require_complete: bool):
+        """Apply detail profiles to every card this dataset owns.
+
+        Discovery is by ownership tag, not by a hardcoded list: a record added to
+        the manifest later is picked up automatically rather than silently
+        skipped.
+        """
+        report = CoverageReport()
+        profiles = self._collect_profiles(data)
+
+        # Every ownership-tagged card, not only the ones with a profile: that is
+        # what makes the coverage number honest.
+        discovered = [
+            card
+            for card in KanbanCard.objects.filter(
+                reference__startswith='WO-WW-'
+            ).select_related('repair_packet')
+            if DEMO_TAGS.issubset(set(card.tags or []))
+        ]
+        report.discovered = len(discovered)
+
+        by_reference = {card.reference: card for card in discovered}
+
+        for reference, raw_profile in profiles.items():
+            card = by_reference.get(reference)
+            if card is None:
+                # The manifest names a record the database does not have. That is
+                # a load ordering problem, not something to paper over.
+                raise CommandError(
+                    f'Profile references unknown owned work order {reference!r}'
+                )
+
+            profile = validate_profile(
+                raw_profile,
+                reference=reference,
+                card_kind=card.card_kind,
+                is_terminal=card.lifecycle_status
+                in {WorkOrderLifecycle.COMPLETED, WorkOrderLifecycle.CANCELED},
+            )
+            apply_profile(card, profile, dataset=DATASET_TAG, report=report)
+
+        report.missing_profile = [
+            card.reference for card in discovered if card.reference not in profiles
+        ]
+
+        if require_complete and not report.complete:
+            raise CommandError(
+                'Owned work orders without a detail profile: '
+                + ', '.join(report.missing_profile)
+            )
+
+        return report
+
+    @staticmethod
+    def _collect_profiles(data) -> dict:
+        """Return every declared detail profile keyed by work-order reference."""
+        profiles = {}
+
+        for machine in data['machines']:
+            for event in machine.get('history', []):
+                profile = event.get('detail_profile')
+                if profile is not None:
+                    profiles[event['work_order']['reference']] = profile
+
+            scenario = machine.get('scenario') or {}
+            if scenario.get('detail_profile') is not None:
+                profiles[scenario['reference']] = scenario['detail_profile']
+
+        for child in data.get('procurement_children', []):
+            if child.get('detail_profile') is not None:
+                profiles[child['reference']] = child['detail_profile']
+
+        return profiles
+
+    def _report_coverage(self, report):
+        """Print the coverage report the plan asks for before commit."""
+        summary = report.as_dict()
+        self.stdout.write(
+            'Enrichment coverage: '
+            f'{summary["discovered"]} owned cards discovered, '
+            f'{summary["enriched"]} enriched, '
+            f'{summary["unchanged"]} already current, '
+            f'{summary["findings_written"]} findings, '
+            f'{summary["scopes_written"]} approved scopes.'
+        )
+        if summary['by_class']:
+            self.stdout.write(f'  By class: {summary["by_class"]}')
+        if summary['missing_profile']:
+            self.stdout.write(
+                self.style.WARNING(
+                    f'  {len(summary["missing_profile"])} owned card(s) have no '
+                    f'detail profile: {", ".join(summary["missing_profile"])}'
+                )
+            )
 
     def _read_data(self):
         """Read and minimally validate the bundled workflow manifest."""
