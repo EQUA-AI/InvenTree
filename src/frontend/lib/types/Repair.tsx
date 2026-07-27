@@ -131,6 +131,9 @@ export interface RepairPacket {
   work_order_reference: string | null;
   /** Optimistic-concurrency token the close command must echo back. */
   work_order_lifecycle_version: number | null;
+  findings: RepairInvestigationFinding[];
+  /** The scope currently in force; superseded versions are read separately. */
+  approved_scope: ApprovedRepairScope | null;
   parts: RepairPacketPart[];
   gates: RepairPacketGate[];
   unsatisfied_safety_gates: Array<{ pk: number; name: string; reason: string }>;
@@ -143,4 +146,53 @@ export interface RepairPacket {
   created_by: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export type FindingCategory =
+  | 'telemetry'
+  | 'measurement'
+  | 'inspection'
+  | 'operator'
+  | 'test'
+  | 'other';
+
+export type FindingVerification = 'unverified' | 'verified' | 'disputed';
+
+export interface RepairInvestigationFinding {
+  pk: number;
+  finding_key: string;
+  sequence: number;
+  category: FindingCategory;
+  observation: string;
+  value: number | null;
+  unit: string;
+  evidence_source: string;
+  /** Immutable health snapshot this observation came from, when telemetry. */
+  snapshot: string | null;
+  observed_at: string | null;
+  verification: FindingVerification;
+  recorded_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApprovedScopeLine {
+  sequence: number;
+  action: string;
+}
+
+export interface ApprovedRepairScope {
+  pk: number;
+  version: number;
+  verified_cause: string;
+  scope_lines: ApprovedScopeLine[];
+  failure_codes: string[];
+  crew_size: number | null;
+  planned_elapsed_minutes: number | null;
+  approved_by_name: string | null;
+  approved_at: string;
+  approval_note: string;
+  superseded_at: string | null;
+  is_current: boolean;
+  created_at: string;
 }

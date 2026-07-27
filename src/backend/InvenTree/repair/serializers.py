@@ -5,7 +5,9 @@ from rest_framework import serializers
 from tasks.serializers import KanbanCardPartSerializer
 
 from .models import (
+    ApprovedRepairScope,
     LockoutPoint,
+    RepairInvestigationFinding,
     RepairPacket,
     RepairPacketEvent,
     RepairPacketEvidence,
@@ -201,6 +203,76 @@ class RepairPacketGenerationRunSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class RepairInvestigationFindingSerializer(serializers.ModelSerializer):
+    """One typed observation from the investigation."""
+
+    recorded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        """Serializer metadata."""
+
+        model = RepairInvestigationFinding
+        fields = (
+            'pk',
+            'finding_key',
+            'sequence',
+            'category',
+            'observation',
+            'value',
+            'unit',
+            'evidence_source',
+            'snapshot',
+            'observed_at',
+            'verification',
+            'recorded_by_name',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = fields
+
+    def get_recorded_by_name(self, finding) -> str | None:
+        """Return who recorded the finding, if anyone is attributed."""
+        actor = finding.recorded_by
+        if actor is None:
+            return None
+        return actor.get_full_name() or actor.get_username()
+
+
+class ApprovedRepairScopeSerializer(serializers.ModelSerializer):
+    """A frozen, versioned record of what was approved."""
+
+    approved_by_name = serializers.SerializerMethodField()
+    is_current = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        """Serializer metadata."""
+
+        model = ApprovedRepairScope
+        fields = (
+            'pk',
+            'version',
+            'verified_cause',
+            'scope_lines',
+            'failure_codes',
+            'crew_size',
+            'planned_elapsed_minutes',
+            'approved_by_name',
+            'approved_at',
+            'approval_note',
+            'superseded_at',
+            'is_current',
+            'created_at',
+        )
+        read_only_fields = fields
+
+    def get_approved_by_name(self, scope) -> str | None:
+        """Return the approver, if one is attributed."""
+        actor = scope.approved_by
+        if actor is None:
+            return None
+        return actor.get_full_name() or actor.get_username()
+
+
 class RepairPacketSerializer(serializers.ModelSerializer):
     """Serializer for RepairPacket instances with nested read-only sections."""
 
@@ -218,6 +290,8 @@ class RepairPacketSerializer(serializers.ModelSerializer):
     work_order_reference = serializers.CharField(
         source='work_order.reference', read_only=True, default=None
     )
+    findings = RepairInvestigationFindingSerializer(many=True, read_only=True)
+    approved_scope = serializers.SerializerMethodField()
     # Finalization is version-checked against the work order, so the client needs
     # the token it must echo back to /close/.
     work_order_lifecycle_version = serializers.IntegerField(
@@ -245,6 +319,8 @@ class RepairPacketSerializer(serializers.ModelSerializer):
             'work_order',
             'work_order_reference',
             'work_order_lifecycle_version',
+            'findings',
+            'approved_scope',
             'parts',
             'gates',
             'unsatisfied_safety_gates',
@@ -271,6 +347,11 @@ class RepairPacketSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         )
+
+    def get_approved_scope(self, obj) -> dict | None:
+        """Return the approved scope currently in force, if one exists."""
+        scope = obj.approved_scopes.filter(superseded_at__isnull=True).first()
+        return ApprovedRepairScopeSerializer(scope).data if scope else None
 
     def get_parts(self, obj) -> list:
         """Return the parts path via the linked work order's card parts."""

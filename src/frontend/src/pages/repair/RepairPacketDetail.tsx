@@ -7,6 +7,7 @@ import {
   IconFlagCheck,
   IconHistory,
   IconInfoCircle,
+  IconListSearch,
   IconShieldLock,
   IconStethoscope
 } from '@tabler/icons-react';
@@ -28,6 +29,7 @@ import { PageDetail } from '../../components/nav/PageDetail';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useApi } from '../../contexts/ApiContext';
 import { useInstance } from '../../hooks/UseInstance';
+import { InvestigationPanel } from './components/InvestigationPanel';
 import { PacketCloseoutModal } from './components/PacketCloseoutModal';
 import { SafetyPanel } from './components/safety/SafetyPanel';
 
@@ -192,6 +194,17 @@ export default function RepairPacketDetail() {
         label: t`Diagnosis`,
         icon: <IconStethoscope />,
         content: <JsonPanel data={packetData?.diagnosis} />
+      },
+      {
+        name: 'investigation',
+        label: t`Investigation`,
+        icon: <IconListSearch />,
+        content: (
+          <InvestigationPanel
+            findings={packetData?.findings ?? []}
+            approvedScope={packetData?.approved_scope ?? null}
+          />
+        )
       },
       {
         name: 'safety',

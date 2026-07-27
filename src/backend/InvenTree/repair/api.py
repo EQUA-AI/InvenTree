@@ -16,16 +16,19 @@ import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
-from . import services
+from . import investigation, services
 from .models import (
     LockoutPoint,
     PacketStatus,
+    RepairInvestigationFinding,
     RepairPacket,
     RepairPacketGate,
     SafetyGateTemplate,
 )
 from .serializers import (
+    ApprovedRepairScopeSerializer,
     LockoutPointSerializer,
+    RepairInvestigationFindingSerializer,
     RepairPacketGateSerializer,
     RepairPacketGenerationRunSerializer,
     RepairPacketSerializer,
@@ -330,6 +333,113 @@ class RepairPacketClose(APIView):
         return Response(payload)
 
 
+class RepairPacketFindings(APIView):
+    """Typed investigation findings for one packet.
+
+    Findings are rows, not prose: recording one keeps its category, unit and
+    verification state, so the page can distinguish a SCADA reading from a
+    technician's measurement rather than flattening both into a description.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+    rolemap = {'POST': 'change'}
+
+    def get(self, request, pk):
+        """Return the packet's findings in recorded order."""
+        packet = get_object_or_404(RepairPacket, pk=pk)
+        findings = packet.findings.select_related('snapshot').all()
+        return Response({
+            'count': findings.count(),
+            'results': RepairInvestigationFindingSerializer(findings, many=True).data,
+        })
+
+    def post(self, request, pk):
+        """Record or update one finding, keyed stably within the packet."""
+        packet = get_object_or_404(RepairPacket, pk=pk)
+        data = dict(request.data or {})
+
+        snapshot = None
+        snapshot_id = data.get('snapshot_id')
+        if snapshot_id:
+            from machine_health.models import HealthEvidenceSnapshot
+
+            snapshot = get_object_or_404(HealthEvidenceSnapshot, pk=snapshot_id)
+
+        try:
+            finding, created = investigation.record_finding(
+                packet,
+                finding_key=str(data.get('finding_key') or '')[:64],
+                observation=str(data.get('observation') or ''),
+                category=data.get('category')
+                or RepairInvestigationFinding.Category.OTHER,
+                value=data.get('value'),
+                unit=str(data.get('unit') or ''),
+                evidence_source=str(data.get('evidence_source') or ''),
+                snapshot=snapshot,
+                observed_at=data.get('observed_at') or None,
+                verification=data.get('verification')
+                or RepairInvestigationFinding.Verification.UNVERIFIED,
+                actor=_request_user(request),
+            )
+        except investigation.InvestigationError as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=400)
+
+        return Response(
+            RepairInvestigationFindingSerializer(finding).data,
+            status=201 if created else 200,
+        )
+
+
+class RepairPacketApprovedScope(APIView):
+    """The versioned scope that was approved for one packet.
+
+    Approving freezes a version. A later AI regeneration produces new preliminary
+    content but cannot rewrite what an approver signed off, so what was agreed
+    stays reconstructable.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+    rolemap = {'POST': 'change'}
+
+    def get(self, request, pk):
+        """Return every approved version, newest first."""
+        packet = get_object_or_404(RepairPacket, pk=pk)
+        scopes = packet.approved_scopes.all()
+        return Response({
+            'count': scopes.count(),
+            'results': ApprovedRepairScopeSerializer(scopes, many=True).data,
+        })
+
+    def post(self, request, pk):
+        """Approve a scope, superseding any previous version."""
+        packet = get_object_or_404(RepairPacket, pk=pk)
+        data = dict(request.data or {})
+
+        try:
+            scope = investigation.approve_repair_scope(
+                packet,
+                scope_lines=data.get('scope_lines'),
+                verified_cause=str(data.get('verified_cause') or ''),
+                failure_codes=data.get('failure_codes'),
+                crew_size=data.get('crew_size'),
+                planned_elapsed_minutes=data.get('planned_elapsed_minutes'),
+                actor=_request_user(request),
+                note=str(data.get('note') or ''),
+            )
+        except investigation.InvestigationError as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=400)
+
+        return Response(ApprovedRepairScopeSerializer(scope).data, status=201)
+
+
 class RepairPacketStart(APIView):
     """Start a packet-owned repair through the canonical transition service.
 
@@ -611,6 +721,16 @@ repair_api_urls = [
                 '<int:pk>/start/',
                 RepairPacketStart.as_view(),
                 name='repair-packet-start',
+            ),
+            path(
+                '<int:pk>/findings/',
+                RepairPacketFindings.as_view(),
+                name='repair-packet-findings',
+            ),
+            path(
+                '<int:pk>/approved-scope/',
+                RepairPacketApprovedScope.as_view(),
+                name='repair-packet-approved-scope',
             ),
             path(
                 '<int:pk>/cancel/',

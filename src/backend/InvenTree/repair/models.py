@@ -426,6 +426,202 @@ class RepairPacketEvidence(models.Model):
         return f'{self.kind}: {self.label}'
 
 
+class RepairInvestigationFinding(models.Model):
+    """One typed observation recorded while investigating a fault.
+
+    Findings are the difference between "the description mentions vibration" and
+    "vibration measured 7.4 mm/s at the drive end on the 14th, unverified". They
+    are kept as rows rather than flattened into description prose so a reader can
+    tell a SCADA reading from a technician's measurement, see its units, and know
+    whether anyone has checked it.
+
+    ``finding_key`` is stable per packet, which is what lets a demo loader or an
+    external import re-run without duplicating what it wrote last time.
+    """
+
+    class Category(models.TextChoices):
+        """What kind of observation this is."""
+
+        TELEMETRY = 'telemetry', _('Telemetry')
+        MEASUREMENT = 'measurement', _('Measurement')
+        INSPECTION = 'inspection', _('Visual inspection')
+        OPERATOR = 'operator', _('Operator report')
+        TEST = 'test', _('Functional test')
+        OTHER = 'other', _('Other')
+
+    class Verification(models.TextChoices):
+        """How much weight this observation can carry."""
+
+        UNVERIFIED = 'unverified', _('Unverified')
+        VERIFIED = 'verified', _('Verified')
+        DISPUTED = 'disputed', _('Disputed')
+
+    packet = models.ForeignKey(
+        RepairPacket, on_delete=models.CASCADE, related_name='findings'
+    )
+
+    #: Stable within a packet; the natural key for idempotent writes.
+    finding_key = models.CharField(max_length=64, verbose_name=_('Finding Key'))
+
+    sequence = models.PositiveIntegerField(default=0)
+
+    category = models.CharField(
+        max_length=16,
+        choices=Category.choices,
+        default=Category.OTHER,
+        db_index=True,
+        verbose_name=_('Category'),
+    )
+
+    observation = models.TextField(verbose_name=_('Observation'))
+
+    #: Normalized value and unit where the observation is a measurement. Kept
+    #: separate from the prose so it can be compared, charted and unit-checked.
+    value = models.FloatField(null=True, blank=True, verbose_name=_('Value'))
+    unit = models.CharField(max_length=32, blank=True, verbose_name=_('Unit'))
+
+    #: Free-text provenance for non-telemetry findings ("technician", "SCADA
+    #: historian", "vendor report"). Telemetry findings additionally cite a
+    #: snapshot below.
+    evidence_source = models.CharField(
+        max_length=200, blank=True, verbose_name=_('Evidence Source')
+    )
+
+    snapshot = models.ForeignKey(
+        'machine_health.HealthEvidenceSnapshot',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='findings',
+        verbose_name=_('Evidence Snapshot'),
+    )
+
+    observed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name=_('Observed At')
+    )
+
+    verification = models.CharField(
+        max_length=12,
+        choices=Verification.choices,
+        default=Verification.UNVERIFIED,
+        db_index=True,
+        verbose_name=_('Verification'),
+    )
+
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model metadata."""
+
+        ordering = ['sequence', 'created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['packet', 'finding_key'], name='repair_finding_key_unique'
+            )
+        ]
+        verbose_name = _('Repair Investigation Finding')
+        verbose_name_plural = _('Repair Investigation Findings')
+
+    def __str__(self) -> str:
+        """Readable identity for admin and logs."""
+        return f'{self.finding_key}: {self.observation[:60]}'
+
+
+class ApprovedRepairScope(models.Model):
+    """A versioned snapshot of the repair scope that was approved.
+
+    Approval is a decision about a specific plan. Letting a later AI regeneration
+    overwrite that plan in place would mean nobody could reconstruct what was
+    actually agreed - so approving creates a new immutable version here, and the
+    preliminary content the packet carries stays free to change independently.
+
+    Superseding is explicit: a revised scope is a new row with the next version
+    number, and the previous one remains readable.
+    """
+
+    packet = models.ForeignKey(
+        RepairPacket, on_delete=models.CASCADE, related_name='approved_scopes'
+    )
+
+    version = models.PositiveIntegerField(verbose_name=_('Version'))
+
+    verified_cause = models.TextField(blank=True, verbose_name=_('Verified Cause'))
+
+    #: Ordered scope lines, each ``{"sequence": n, "action": "..."}``. A list
+    #: because the order is part of what was approved.
+    scope_lines = models.JSONField(default=list, blank=True, verbose_name=_('Scope'))
+
+    failure_codes = models.JSONField(
+        default=list, blank=True, verbose_name=_('Failure Codes')
+    )
+
+    crew_size = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name=_('Crew Size')
+    )
+    planned_elapsed_minutes = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name=_('Planned Elapsed Minutes')
+    )
+
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    approved_at = models.DateTimeField(default=timezone.now)
+    approval_note = models.TextField(blank=True)
+
+    #: Set when a later version replaces this one; never deleted.
+    superseded_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Model metadata."""
+
+        ordering = ['-version']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['packet', 'version'], name='repair_approved_scope_version'
+            )
+        ]
+        verbose_name = _('Approved Repair Scope')
+        verbose_name_plural = _('Approved Repair Scopes')
+
+    def __str__(self) -> str:
+        """Readable identity for admin and logs."""
+        return f'{self.packet} scope v{self.version}'
+
+    @property
+    def is_current(self) -> bool:
+        """Whether this is the scope currently in force."""
+        return self.superseded_at is None
+
+    def save(self, *args, **kwargs):
+        """Allow only supersession after creation.
+
+        An approved scope is the record of a decision. The one field that may
+        change is the marker saying a later version replaced it.
+        """
+        if not self._state.adding:
+            update_fields = kwargs.get('update_fields')
+            if update_fields is None or set(update_fields) - {'superseded_at'}:
+                raise ValueError(
+                    'Approved repair scopes are immutable; approve a new version'
+                )
+        super().save(*args, **kwargs)
+
+
 class RepairPacketHealthEvidence(models.Model):
     """Typed, immutable link from a packet to a health evidence snapshot.
 
