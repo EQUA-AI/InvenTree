@@ -523,6 +523,16 @@
             "type": "inspection",
             "priority": "medium",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_inspection",
+            "affected_component": {
+              "name": "Blower 2 inlet filter and plenum",
+              "external_id": "BL-202-FLT"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -535,6 +545,16 @@
             "type": "preventive",
             "priority": "high",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_preventive",
+            "affected_component": {
+              "name": "Blower 2 coupling and baseplate",
+              "external_id": "BL-202-CPL"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -547,6 +567,16 @@
             "type": "corrective",
             "priority": "medium",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_corrective",
+            "affected_component": {
+              "name": "Blower 2 inlet filter",
+              "external_id": "BL-202-FLT"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         }
       ],
@@ -582,7 +612,57 @@
             "isolation_device": "MCC-AER-02 blower feeder",
             "note": "Allow 15 minute spin-down and verify DC bus discharge."
           }
-        ]
+        ],
+        "detail_profile": {
+          "profile_version": 1,
+          "class": "active_corrective",
+          "affected_component": {
+            "name": "Aeration Blower 2",
+            "external_id": "BL-202"
+          },
+          "findings": [
+            {
+              "key": "F-01",
+              "category": "telemetry",
+              "observation": "Blower 2 tripped on motor thermal twice within 48 hours.",
+              "value": 2.0,
+              "unit": "trips",
+              "evidence_source": "Aeration SCADA",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-02",
+              "category": "measurement",
+              "observation": "Basin airflow is running 11 percent below setpoint at the same blower command.",
+              "value": 11.0,
+              "unit": "%",
+              "evidence_source": "Aeration SCADA",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-03",
+              "category": "measurement",
+              "observation": "Coupling-side vibration is elevated against the 2.2 mm/s RMS recorded at the last annual service.",
+              "evidence_source": "Vibration route",
+              "verification": "unverified"
+            }
+          ],
+          "approved_scope": {
+            "verified_cause": "Inlet restriction from a loaded filter, with a degraded coupling element adding vibration.",
+            "lines": [
+              "Isolate the MCC-AER-02 blower feeder and prove zero energy",
+              "Replace the inlet filter and clean the intake plenum",
+              "Replace the coupling element and recheck alignment",
+              "Restart and confirm airflow and discharge temperature at setpoint"
+            ],
+            "failure_codes": [
+              "FLT-LOAD",
+              "CPL-WEAR"
+            ],
+            "crew_size": 2,
+            "planned_elapsed_minutes": 240
+          }
+        }
       }
     },
     {
@@ -598,6 +678,16 @@
             "type": "inspection",
             "priority": "medium",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_inspection",
+            "affected_component": {
+              "name": "Basin 3 diffuser grid",
+              "external_id": "AB-303-GRD"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -610,6 +700,16 @@
             "type": "preventive",
             "priority": "medium",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_preventive",
+            "affected_component": {
+              "name": "Basin 3 air header and balance valves",
+              "external_id": "AB-303-HDR"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -622,6 +722,16 @@
             "type": "corrective",
             "priority": "high",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_corrective",
+            "affected_component": {
+              "name": "Basin 3 west diffuser sector",
+              "external_id": "AB-303-W"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         }
       ],
@@ -647,7 +757,43 @@
             "quantity": 12
           }
         ],
-        "lockout_points": []
+        "lockout_points": [],
+        "detail_profile": {
+          "profile_version": 1,
+          "class": "active_corrective",
+          "affected_component": {
+            "name": "Basin 3 northeast diffuser sector",
+            "external_id": "AB-303-NE"
+          },
+          "findings": [
+            {
+              "key": "F-01",
+              "category": "telemetry",
+              "observation": "Air header pressure has risen 5.1 kPa above the post-cleaning baseline.",
+              "value": 5.1,
+              "unit": "kPa",
+              "evidence_source": "Aeration SCADA",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-02",
+              "category": "measurement",
+              "observation": "Northeast dissolved oxygen reads 0.7 mg/L below the basin average at the same air flow.",
+              "value": 0.7,
+              "unit": "mg/L",
+              "evidence_source": "Basin DO probes",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-03",
+              "category": "inspection",
+              "observation": "The annual transfer test already showed the northeast quadrant with the largest pressure loss.",
+              "evidence_source": "WO-WW-H-007 transfer test",
+              "verification": "unverified"
+            }
+          ],
+          "approved_scope": null
+        }
       }
     },
     {
@@ -663,6 +809,16 @@
             "type": "inspection",
             "priority": "medium",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_inspection",
+            "affected_component": {
+              "name": "Screen 1 rake and chain guides",
+              "external_id": "SC-101-RKE"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -675,6 +831,16 @@
             "type": "preventive",
             "priority": "high",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_preventive",
+            "affected_component": {
+              "name": "Screen 1 rake chain and take-ups",
+              "external_id": "SC-101-CHN"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -687,6 +853,16 @@
             "type": "corrective",
             "priority": "high",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_corrective",
+            "affected_component": {
+              "name": "Screen 1 rake chain",
+              "external_id": "SC-101-CHN"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         }
       ],
@@ -722,7 +898,55 @@
             "isolation_device": "MCC-HW-03 screen drive feeder",
             "note": "Lock channel gate and verify rake cannot coast or back-drive."
           }
-        ]
+        ],
+        "detail_profile": {
+          "profile_version": 1,
+          "class": "active_corrective",
+          "affected_component": {
+            "name": "Screen 1 rake chain and torque limiter",
+            "external_id": "SC-101-CHN"
+          },
+          "findings": [
+            {
+              "key": "F-01",
+              "category": "telemetry",
+              "observation": "The screen drive is recording three overload trips per shift under normal debris loading.",
+              "value": 3.0,
+              "unit": "trips/shift",
+              "evidence_source": "Headworks SCADA",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-02",
+              "category": "inspection",
+              "observation": "Visible link elongation at rake positions 17-20.",
+              "evidence_source": "Channel inspection",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-03",
+              "category": "operator",
+              "observation": "Operators report the torque limiter resetting without an obstruction being found.",
+              "evidence_source": "Shift log",
+              "verification": "unverified"
+            }
+          ],
+          "approved_scope": {
+            "verified_cause": "Elongated rake-chain links loading the drive, with a torque limiter that no longer holds its setting.",
+            "lines": [
+              "Lock the channel gate and isolate the MCC-HW-03 screen drive feeder",
+              "Replace the damaged chain links at rake positions 17-20",
+              "Replace the torque limiter and set it to the approved value",
+              "Run 25 automatic cycles and confirm no overload trips"
+            ],
+            "failure_codes": [
+              "CHN-ELONG",
+              "TRQ-DRIFT"
+            ],
+            "crew_size": 2,
+            "planned_elapsed_minutes": 300
+          }
+        }
       }
     },
     {
@@ -738,6 +962,16 @@
             "type": "inspection",
             "priority": "high",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_inspection",
+            "affected_component": {
+              "name": "Centrifuge 2 main bearing and gearbox",
+              "external_id": "CF-202-BRG"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -750,6 +984,16 @@
             "type": "preventive",
             "priority": "high",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_preventive",
+            "affected_component": {
+              "name": "Centrifuge 2 scroll and bowl assembly",
+              "external_id": "CF-202-SCR"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -762,6 +1006,16 @@
             "type": "corrective",
             "priority": "medium",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_corrective",
+            "affected_component": {
+              "name": "Centrifuge 2 polymer feed pump",
+              "external_id": "CF-202-PLY"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         }
       ],
@@ -791,7 +1045,41 @@
             "quantity": 1
           }
         ],
-        "lockout_points": []
+        "lockout_points": [],
+        "detail_profile": {
+          "profile_version": 1,
+          "class": "active_corrective",
+          "affected_component": {
+            "name": "Centrifuge 2 main bearing",
+            "external_id": "CF-202-BRG"
+          },
+          "findings": [
+            {
+              "key": "F-01",
+              "category": "telemetry",
+              "observation": "Main bearing vibration reached 7.2 mm/s RMS against 3.1 mm/s at the last survey.",
+              "value": 7.2,
+              "unit": "mm/s RMS",
+              "evidence_source": "Machine monitoring",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-02",
+              "category": "telemetry",
+              "observation": "Bowl temperature is trending up at unchanged feed rate.",
+              "evidence_source": "Dewatering SCADA",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-03",
+              "category": "inspection",
+              "observation": "Scroll wear at the solids discharge end has accelerated since the annual inspection.",
+              "evidence_source": "WO-WW-H-014 wear measurements",
+              "verification": "unverified"
+            }
+          ],
+          "approved_scope": null
+        }
       }
     },
     {
@@ -807,6 +1095,16 @@
             "type": "inspection",
             "priority": "medium",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_inspection",
+            "affected_component": {
+              "name": "Clarifier 4 drive and skimmer",
+              "external_id": "CL-404-DRV"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -819,6 +1117,16 @@
             "type": "preventive",
             "priority": "medium",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_preventive",
+            "affected_component": {
+              "name": "Clarifier 4 drive gearbox",
+              "external_id": "CL-404-GBX"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -831,6 +1139,16 @@
             "type": "corrective",
             "priority": "high",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_corrective",
+            "affected_component": {
+              "name": "Clarifier 4 scraper path and overload switch",
+              "external_id": "CL-404-SWT"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         }
       ],
@@ -860,7 +1178,41 @@
             "quantity": 1
           }
         ],
-        "lockout_points": []
+        "lockout_points": [],
+        "detail_profile": {
+          "profile_version": 1,
+          "class": "active_corrective",
+          "affected_component": {
+            "name": "Clarifier 4 drive gearbox",
+            "external_id": "CL-404-GBX"
+          },
+          "findings": [
+            {
+              "key": "F-01",
+              "category": "telemetry",
+              "observation": "Drive torque reaches 88 percent near the north quadrant, against a 41 percent monthly peak.",
+              "value": 88.0,
+              "unit": "%",
+              "evidence_source": "Clarifier drive panel",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-02",
+              "category": "operator",
+              "observation": "The overload resets intermittently without an operator clearing an obstruction.",
+              "evidence_source": "Shift log",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-03",
+              "category": "inspection",
+              "observation": "A previous torque alarm on this unit was a lodged timber fragment, so an obstruction is not yet ruled out.",
+              "evidence_source": "WO-WW-H-018 closeout",
+              "verification": "unverified"
+            }
+          ],
+          "approved_scope": null
+        }
       }
     },
     {
@@ -876,6 +1228,16 @@
             "type": "inspection",
             "priority": "high",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_inspection",
+            "affected_component": {
+              "name": "UV Channel 1 intensity sensors",
+              "external_id": "UV-101-SEN"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -888,6 +1250,16 @@
             "type": "preventive",
             "priority": "high",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_preventive",
+            "affected_component": {
+              "name": "UV Channel 1 lamp set and quartz sleeves",
+              "external_id": "UV-101-LMP"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -900,6 +1272,16 @@
             "type": "corrective",
             "priority": "high",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_corrective",
+            "affected_component": {
+              "name": "UV Channel 1 Bank 4 ballast",
+              "external_id": "UV-101-B4"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         }
       ],
@@ -939,7 +1321,58 @@
             "isolation_device": "UV Bank 2 distribution panel",
             "note": "Verify ballast capacitors are discharged and modules are covered before opening."
           }
-        ]
+        ],
+        "detail_profile": {
+          "profile_version": 1,
+          "class": "active_corrective",
+          "affected_component": {
+            "name": "UV Channel 1 Bank 2",
+            "external_id": "UV-101-B2"
+          },
+          "findings": [
+            {
+              "key": "F-01",
+              "category": "telemetry",
+              "observation": "Bank 2 corrected intensity is 68 percent, against 91 percent measured across banks at the quarterly inspection.",
+              "value": 68.0,
+              "unit": "%",
+              "evidence_source": "UV controller",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-02",
+              "category": "telemetry",
+              "observation": "Two intermittent ballast voltage alarms on Bank 2.",
+              "value": 2.0,
+              "unit": "alarms",
+              "evidence_source": "UV controller",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-03",
+              "category": "inspection",
+              "observation": "Quartz sleeves in Bank 2 show fouling not present at the last lamp replacement.",
+              "evidence_source": "Channel inspection",
+              "verification": "unverified"
+            }
+          ],
+          "approved_scope": {
+            "verified_cause": "Combined lamp end-of-life, quartz sleeve fouling and one failing ballast on Bank 2.",
+            "lines": [
+              "Isolate the UV Bank 2 distribution panel and prove zero energy",
+              "Replace the Bank 2 lamp set and clean or replace the quartz sleeves",
+              "Replace the failing ballast and inspect the lamp leads",
+              "Return Bank 2 to service and verify corrected intensity at design flow"
+            ],
+            "failure_codes": [
+              "LMP-EOL",
+              "SLV-FOUL",
+              "BAL-FAIL"
+            ],
+            "crew_size": 2,
+            "planned_elapsed_minutes": 360
+          }
+        }
       }
     },
     {
@@ -955,6 +1388,16 @@
             "type": "inspection",
             "priority": "high",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_inspection",
+            "affected_component": {
+              "name": "RO Skid 1 first stage",
+              "external_id": "RO-101-S1"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -967,6 +1410,16 @@
             "type": "preventive",
             "priority": "high",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_preventive",
+            "affected_component": {
+              "name": "UF/RO Skid 1 CIP system",
+              "external_id": "RO-101-CIP"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -979,6 +1432,16 @@
             "type": "corrective",
             "priority": "high",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_corrective",
+            "affected_component": {
+              "name": "RO Skid 1 cartridge filter housings",
+              "external_id": "RO-101-CTF"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         }
       ],
@@ -1012,7 +1475,57 @@
             "quantity": 1
           }
         ],
-        "lockout_points": []
+        "lockout_points": [],
+        "detail_profile": {
+          "profile_version": 1,
+          "class": "active_corrective",
+          "affected_component": {
+            "name": "RO Skid 1 first stage",
+            "external_id": "RO-101-S1"
+          },
+          "findings": [
+            {
+              "key": "F-01",
+              "category": "telemetry",
+              "observation": "Normalized permeate flow is down 17 percent.",
+              "value": 17.0,
+              "unit": "%",
+              "evidence_source": "RO skid PLC",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-02",
+              "category": "telemetry",
+              "observation": "First-stage differential pressure is 1.4 bar above baseline.",
+              "value": 1.4,
+              "unit": "bar",
+              "evidence_source": "RO skid PLC",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-03",
+              "category": "test",
+              "observation": "The last CIP did not hold its chemical temperature, so the clean was incomplete.",
+              "evidence_source": "CIP batch record",
+              "verification": "unverified"
+            }
+          ],
+          "approved_scope": {
+            "verified_cause": "First-stage membrane scaling left in place by a CIP that could not reach chemical temperature.",
+            "lines": [
+              "Replace the CIP chemical heater and verify temperature control",
+              "Replace the loaded cartridge filters and check the housings for bypass",
+              "Replace the scaled first-stage membrane elements",
+              "Run a full CIP and confirm normalized permeate flow and differential pressure"
+            ],
+            "failure_codes": [
+              "MEM-SCALE",
+              "HTR-FAIL"
+            ],
+            "crew_size": 2,
+            "planned_elapsed_minutes": 480
+          }
+        }
       }
     },
     {
@@ -1028,6 +1541,16 @@
             "type": "inspection",
             "priority": "high",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_inspection",
+            "affected_component": {
+              "name": "Cooling Train A fan drives, Cells A and B",
+              "external_id": "CT-A-FAN"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -1040,6 +1563,16 @@
             "type": "preventive",
             "priority": "high",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_preventive",
+            "affected_component": {
+              "name": "Cooling Train A fan gearboxes, Cells A and B",
+              "external_id": "CT-A-GBX"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -1052,6 +1585,16 @@
             "type": "corrective",
             "priority": "high",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_corrective",
+            "affected_component": {
+              "name": "Cooling circulation pump A2",
+              "external_id": "CP-A2"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         }
       ],
@@ -1087,7 +1630,43 @@
             "isolation_device": "Cooling Tower Cell A fan disconnect",
             "note": "Control fan windmilling and verify the driveshaft cannot rotate."
           }
-        ]
+        ],
+        "detail_profile": {
+          "profile_version": 1,
+          "class": "active_corrective",
+          "affected_component": {
+            "name": "Cooling Train A Cell A fan gearbox",
+            "external_id": "CT-A1-GBX"
+          },
+          "findings": [
+            {
+              "key": "F-01",
+              "category": "telemetry",
+              "observation": "Cell A gearbox vibration reached 8.1 mm/s RMS, against 2.8 mm/s on the monthly route.",
+              "value": 8.1,
+              "unit": "mm/s RMS",
+              "evidence_source": "Vibration route",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-02",
+              "category": "telemetry",
+              "observation": "Gearbox oil temperature reached 91 C, against 64 C at 83 percent load.",
+              "value": 91.0,
+              "unit": "C",
+              "evidence_source": "Cooling tower panel",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-03",
+              "category": "inspection",
+              "observation": "The annual oil service found no abnormal wear metals, so the change is recent.",
+              "evidence_source": "WO-WW-H-026 oil sample",
+              "verification": "unverified"
+            }
+          ],
+          "approved_scope": null
+        }
       }
     },
     {
@@ -1103,6 +1682,16 @@
             "type": "inspection",
             "priority": "high",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_inspection",
+            "affected_component": {
+              "name": "Lift Station 14 wet well and guide rails",
+              "external_id": "LS-014-WW"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -1115,6 +1704,16 @@
             "type": "preventive",
             "priority": "high",
             "assigned_to": "engineer"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_preventive",
+            "affected_component": {
+              "name": "Lift Station 14 generator and ATS",
+              "external_id": "LS-014-GEN"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         },
         {
@@ -1127,6 +1726,16 @@
             "type": "corrective",
             "priority": "high",
             "assigned_to": "steven"
+          },
+          "detail_profile": {
+            "profile_version": 1,
+            "class": "historical_corrective",
+            "affected_component": {
+              "name": "Lift Station 14 high-level float switch",
+              "external_id": "LS-014-FS"
+            },
+            "findings": [],
+            "approved_scope": null
           }
         }
       ],
@@ -1166,7 +1775,43 @@
             "isolation_device": "Lift Station 14 pump MCC and generator ATS",
             "note": "Disable remote auto-start and isolate normal and standby sources."
           }
-        ]
+        ],
+        "detail_profile": {
+          "profile_version": 1,
+          "class": "active_corrective",
+          "affected_component": {
+            "name": "Lift Station 14 level instruments and Pump 2",
+            "external_id": "LS-014-LT"
+          },
+          "findings": [
+            {
+              "key": "F-01",
+              "category": "telemetry",
+              "observation": "The level transducer jumps 0.8 m while the float switch stays in its normal state.",
+              "value": 0.8,
+              "unit": "m",
+              "evidence_source": "Station RTU",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-02",
+              "category": "telemetry",
+              "observation": "Pump 2 running current is 14 percent above its matched-condition baseline.",
+              "value": 14.0,
+              "unit": "%",
+              "evidence_source": "Station RTU",
+              "verification": "unverified"
+            },
+            {
+              "key": "F-03",
+              "category": "operator",
+              "observation": "The high-level callout has been received with no corresponding wet-well condition on arrival.",
+              "evidence_source": "After-hours callout log",
+              "verification": "unverified"
+            }
+          ],
+          "approved_scope": null
+        }
       }
     }
   ],
@@ -1213,7 +1858,17 @@
         "start": "14:00"
       },
       "dependency_type": "FS",
-      "lag_minutes": 0
+      "lag_minutes": 0,
+      "detail_profile": {
+        "profile_version": 1,
+        "class": "procurement",
+        "affected_component": {
+          "name": "Clarifier 4 drive gearbox",
+          "external_id": "CL-404-GBX"
+        },
+        "findings": [],
+        "approved_scope": null
+      }
     },
     {
       "reference": "WO-WW-P-003",
@@ -1230,7 +1885,17 @@
         "start": "13:00"
       },
       "dependency_type": "FS",
-      "lag_minutes": 0
+      "lag_minutes": 0,
+      "detail_profile": {
+        "profile_version": 1,
+        "class": "procurement",
+        "affected_component": {
+          "name": "Cooling Train A Cell A fan gearbox",
+          "external_id": "CT-A1-GBX"
+        },
+        "findings": [],
+        "approved_scope": null
+      }
     },
     {
       "reference": "WO-WW-P-004",
@@ -1247,7 +1912,17 @@
         "start": "14:00"
       },
       "dependency_type": "FS",
-      "lag_minutes": 0
+      "lag_minutes": 0,
+      "detail_profile": {
+        "profile_version": 1,
+        "class": "procurement",
+        "affected_component": {
+          "name": "Lift Station 14 grinder pump",
+          "external_id": "LS-014-P2"
+        },
+        "findings": [],
+        "approved_scope": null
+      }
     }
   ]
 }

@@ -312,24 +312,48 @@ class EnrichmentCommandTest(TestCase):
         call_command('load_water_workflow_demo_data', stdout=out, **options)
         return out.getvalue()
 
-    def test_coverage_report_names_unauthored_records(self):
-        """The report is honest about what still has no profile."""
+    def test_coverage_report_accounts_for_every_owned_card(self):
+        """The report is honest about what it found and what it wrote."""
         if connection.vendor != 'postgresql':
             self.skipTest('Demo work orders are only created on PostgreSQL')
 
         output = self.load(enrich_owned_work_orders=True)
 
         self.assertIn('Enrichment coverage:', output)
-        self.assertIn('owned cards discovered', output)
-        # The authored subset covers all five classes; the rest are reported.
-        self.assertIn('have no', output)
+        self.assertIn('44 owned cards discovered', output)
+        # Nothing is left unaccounted for now that the manifest is complete.
+        self.assertNotIn('have no', output)
+        for record_class in (
+            'active_corrective',
+            'historical_corrective',
+            'historical_inspection',
+            'historical_preventive',
+            'procurement',
+        ):
+            with self.subTest(record_class=record_class):
+                self.assertIn(record_class, output)
 
-    def test_require_complete_profiles_fails_while_records_are_unauthored(self):
-        """The strict gate is available and refuses an incomplete dataset."""
+    def test_require_complete_profiles_passes_on_the_authored_manifest(self):
+        """The strict gate is on because every record is authored."""
         if connection.vendor != 'postgresql':
             self.skipTest('Demo work orders are only created on PostgreSQL')
 
         self.load()
+        self.load(enrich_owned_work_orders=True, require_complete_profiles=True)
+
+    def test_require_complete_profiles_still_catches_an_unauthored_record(self):
+        """The gate has to be able to fail, or it is not a gate."""
+        if connection.vendor != 'postgresql':
+            self.skipTest('Demo work orders are only created on PostgreSQL')
+
+        self.load()
+        KanbanCard.objects.create(
+            reference='WO-WW-H-999',
+            title='Owned record the manifest does not describe',
+            status=KanbanCard.STATUS_BACKLOG,
+            priority=KanbanCard.PRIORITY_LOW,
+            tags=['demo', 'water_wastewater', 'water_workflow_demo'],
+        )
 
         with self.assertRaisesMessage(CommandError, 'without a detail profile'):
             self.load(enrich_owned_work_orders=True, require_complete_profiles=True)

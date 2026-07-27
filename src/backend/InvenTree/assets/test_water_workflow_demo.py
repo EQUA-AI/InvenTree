@@ -43,8 +43,12 @@ WATER_MACHINE_NAMES = (
 )
 
 
-class WaterWorkflowDemoTest(TestCase):
-    """Verify deterministic maintenance, repair, and scheduling demo records."""
+class WaterWorkflowFixture(TestCase):
+    """Shared catalog, users and loader helper for the workflow demo suites.
+
+    Carries no tests of its own: subclasses that inherited from a populated test
+    class would re-run every one of its cases.
+    """
 
     @classmethod
     def setUpTestData(cls):
@@ -79,13 +83,23 @@ class WaterWorkflowDemoTest(TestCase):
 
         call_command('load_asset_demo_data', stdout=StringIO())
 
-    def load_workflow(self, *, dry_run=False, reset=False, anchor='2026-07-27'):
+    def load_workflow(
+        self,
+        *,
+        dry_run=False,
+        reset=False,
+        anchor='2026-07-27',
+        enrich=False,
+        require_complete=False,
+    ):
         """Load workflow records while keeping command output out of test logs."""
         call_command(
             'load_water_workflow_demo_data',
             dry_run=dry_run,
             reset_owned_scenarios=reset,
             schedule_anchor=anchor,
+            enrich_owned_work_orders=enrich,
+            require_complete_profiles=require_complete,
             stdout=StringIO(),
         )
 
@@ -100,6 +114,10 @@ class WaterWorkflowDemoTest(TestCase):
         if kind:
             cards = [card for card in cards if kind in set(card.tags or [])]
         return cards
+
+
+class WaterWorkflowDemoTest(WaterWorkflowFixture):
+    """Verify deterministic maintenance, repair, and scheduling demo records."""
 
     def test_loads_complete_workflow_dataset(self):
         """All machines receive history, repair packets, cards, and schedules."""
@@ -400,3 +418,72 @@ class WaterWorkflowDemoTest(TestCase):
         """Schedule anchors must use an unambiguous ISO date."""
         with self.assertRaisesMessage(CommandError, 'Invalid schedule anchor'):
             self.load_workflow(anchor='07/27/2026')
+
+
+class WaterWorkflowProfileCoverageTest(WaterWorkflowFixture):
+    """Every owned record carries a detail profile, and enrichment applies it.
+
+    The manifest is now complete, so ``--require-complete-profiles`` is a
+    falsifiable statement rather than an aspiration: adding a record without a
+    profile fails the load instead of quietly shipping a blank detail page.
+    """
+
+    def test_every_owned_record_is_enriched(self):
+        """No owned card is left without a profile."""
+        self.load_workflow(enrich=True, require_complete=True)
+
+        cards = self.workflow_cards()
+        self.assertEqual(len(cards), 44)
+        without_component = [
+            card.reference for card in cards if not card.affected_component
+        ]
+        self.assertEqual(without_component, [])
+
+    def test_active_repairs_carry_findings_and_history_does_not(self):
+        """A profile may only assert what its record's class supports."""
+        self.load_workflow(enrich=True, require_complete=True)
+
+        for card in self.workflow_cards('repair_scenario'):
+            with self.subTest(card=card.reference):
+                self.assertTrue(card.repair_packet.findings.exists())
+
+        for card in self.workflow_cards('maintenance_history'):
+            with self.subTest(card=card.reference):
+                self.assertFalse(hasattr(card, 'repair_packet'))
+
+    def test_approved_scope_only_where_work_was_agreed(self):
+        """A backlog repair has observations, not an approved scope."""
+        self.load_workflow(enrich=True, require_complete=True)
+
+        for card in self.workflow_cards('repair_scenario'):
+            approved = card.repair_packet.approved_scopes.filter(
+                superseded_at__isnull=True
+            ).exists()
+            with self.subTest(card=card.reference):
+                self.assertEqual(approved, card.status != KanbanCard.STATUS_BACKLOG)
+
+    def test_enrichment_rerun_writes_nothing_new(self):
+        """A second pass updates in place rather than duplicating."""
+        self.load_workflow(enrich=True, require_complete=True)
+        packet = self.workflow_cards('repair_scenario')[0].repair_packet
+        findings = packet.findings.count()
+        scopes = packet.approved_scopes.count()
+
+        self.load_workflow(enrich=True, require_complete=True)
+
+        packet.refresh_from_db()
+        self.assertEqual(packet.findings.count(), findings)
+        self.assertEqual(packet.approved_scopes.count(), scopes)
+
+    def test_a_record_without_a_profile_fails_the_load(self):
+        """The completeness gate is what keeps the manifest honest."""
+        KanbanCard.objects.create(
+            reference='WO-WW-R-999',
+            title='Unprofiled owned record',
+            status=KanbanCard.STATUS_BACKLOG,
+            priority=KanbanCard.PRIORITY_MEDIUM,
+            tags=['demo', 'water_wastewater', DATASET_TAG, 'repair_scenario'],
+        )
+
+        with self.assertRaisesMessage(CommandError, 'WO-WW-R-999'):
+            self.load_workflow(enrich=True, require_complete=True)
