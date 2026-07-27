@@ -1,23 +1,36 @@
-"""Tests for the tasks application."""
+"""API behaviour for the generic Kanban card surface.
+
+Previously ``tasks/tests.py``, a sibling of the ``tasks/tests/`` package. Python
+prefers the package, so this module was unreachable *and* it made
+``manage.py test tasks`` fail outright with "'tests' module incorrectly
+imported". Moving it into the package fixes both.
+"""
 
 from django.urls import reverse
 
-from InvenTree.unit_test import InvenTreeAPITestCase
-
-# Absolute import: the sibling ``tests/`` package shadows this module's
-# ``tasks.tests`` name, which breaks relative import resolution here.
 from tasks.models import KanbanCard
+
+from assets.models import AssetMachine
+from InvenTree.unit_test import InvenTreeAPITestCase
 
 
 class KanbanCardAPITest(InvenTreeAPITestCase):
     """API behaviour for Kanban cards."""
 
-    roles = 'all'
+    # Named explicitly rather than 'all': upstream's assignRole(assign_all=True)
+    # only sets can_view, so 'all' silently leaves every write forbidden.
+    roles = [
+        'work_order.view',
+        'work_order.add',
+        'work_order.change',
+        'work_order.delete',
+    ]
 
     def setUp(self):
         """Ensure a clean slate for each test."""
         super().setUp()
         KanbanCard.objects.all().delete()
+        self.machine = AssetMachine.objects.create(name='Kanban API machine')
 
     def _create_card(self, **overrides):
         """Helper to create a card with sensible defaults."""
@@ -33,6 +46,7 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
             'company_contact_phone': '+1 555 0100',
             'job_number': 'JOB-1234',
             'service_quote': 'SQ-9876',
+            'machine': self.machine,
         }
         data.update(overrides)
         return KanbanCard.objects.create(**data)
@@ -53,6 +67,8 @@ class KanbanCardAPITest(InvenTreeAPITestCase):
             'company_contact_phone': '+1 555 0101',
             'job_number': 'J-0091',
             'service_quote': 'SQ-001',
+            # Every work order is anchored to a machine; the API enforces it.
+            'machine': self.machine.pk,
         }
 
         response = self.post(url, payload, expected_code=201)

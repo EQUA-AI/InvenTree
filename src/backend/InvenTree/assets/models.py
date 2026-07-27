@@ -6,6 +6,46 @@ from django.utils.translation import gettext_lazy as _
 import InvenTree.models
 
 
+class Client(models.Model):
+    """A client of this software - the tenant an internal asset belongs to.
+
+    Deliberately not ``company.Company``. A Company is a sales relationship:
+    somebody we manufacture for, buy from or sell to. A Client is who *uses this
+    deployment*, and an internal plant asset has one even though nobody bought
+    it. Conflating the two is what previously left internal machines with no
+    resolvable scope at all, so chat and the canonical API refused to touch them.
+    """
+
+    name = models.CharField(
+        max_length=255, unique=True, verbose_name=_('Name'), help_text=_('Client name')
+    )
+
+    #: Stable external identifier used in scope tokens and integrations. Unique
+    #: and immutable in practice: it is what an actor's granted scope names.
+    code = models.SlugField(
+        max_length=64,
+        unique=True,
+        verbose_name=_('Client Code'),
+        help_text=_('Stable identifier used for scope and integrations'),
+    )
+
+    active = models.BooleanField(default=True, db_index=True, verbose_name=_('Active'))
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model metadata."""
+
+        ordering = ['name']
+        verbose_name = _('Client')
+        verbose_name_plural = _('Clients')
+
+    def __str__(self) -> str:
+        """Readable identity for admin and logs."""
+        return self.name
+
+
 class AssetMachine(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     """An equipment asset / machine installed at a facility or customer site.
 
@@ -50,6 +90,20 @@ class AssetMachine(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         related_name='asset_machines',
         verbose_name=_('Customer'),
         help_text=_('Customer company using this machine (for external installs)'),
+    )
+
+    # Internal plant assets have no sales customer but always belong to a client
+    # of this software. One of ``customer`` or ``client`` is what makes a machine
+    # scope-resolvable; a machine with neither is deliberately unreachable.
+    client = models.ForeignKey(
+        Client,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        db_index=True,
+        related_name='machines',
+        verbose_name=_('Client'),
+        help_text=_('Client this internal asset belongs to'),
     )
 
     manufacturer = models.CharField(

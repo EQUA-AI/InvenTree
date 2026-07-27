@@ -85,6 +85,13 @@ export default function MachineDetail() {
         name: 'customer_name',
         type: 'text',
         label: t`Customer`
+      },
+      {
+        // Internal assets have no sales customer; the client is what makes them
+        // scope-resolvable, so it is shown alongside rather than instead.
+        name: 'client_name',
+        type: 'text',
+        label: t`Client`
       }
     ],
     []

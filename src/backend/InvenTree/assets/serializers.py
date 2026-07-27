@@ -5,7 +5,7 @@ from django.conf import settings
 from rest_framework import serializers
 from tasks.scope import ScopeError, require_work_order_scope
 
-from .models import AssetMachine, AssetMaintenanceRecord, MachinePart
+from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
 
 
 class AssetMachineSerializer(serializers.ModelSerializer):
@@ -13,6 +13,12 @@ class AssetMachineSerializer(serializers.ModelSerializer):
 
     customer_name = serializers.CharField(
         source='customer.name', read_only=True, default=None
+    )
+    client_name = serializers.CharField(
+        source='client.name', read_only=True, default=None
+    )
+    client_code = serializers.CharField(
+        source='client.code', read_only=True, default=None
     )
 
     class Meta:
@@ -27,6 +33,9 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'location',
             'customer',
             'customer_name',
+            'client',
+            'client_name',
+            'client_code',
             'manufacturer',
             'model',
             'serial',
@@ -184,3 +193,24 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
         """Whether the closeout raised follow-up work."""
         closeout = self._closeout(self._visible_work_order(record))
         return bool(closeout and closeout.follow_up_required)
+
+
+class ClientSerializer(serializers.ModelSerializer):
+    """Serializer for Client instances - the tenants of this software."""
+
+    machine_count = serializers.IntegerField(source='machines.count', read_only=True)
+
+    class Meta:
+        """Metaclass defining serializer fields."""
+
+        model = Client
+        fields = (
+            'pk',
+            'name',
+            'code',
+            'active',
+            'machine_count',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = ('pk', 'created_at', 'updated_at')

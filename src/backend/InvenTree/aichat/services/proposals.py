@@ -197,7 +197,16 @@ def _authorize_and_bind(owner, action_type: str, work_order_id, intent):
 
 
 def _authorize_machine_scope(owner, machine_id) -> None:
-    """Authorize creation: the machine's customer must be in the actor's scope."""
+    """Authorize creation against the machine's own scope identity.
+
+    A machine is reachable through its sales customer *or*, for internal plant
+    assets, through the client that owns it. A machine with neither identity is
+    still refused: that is an unscoped record, and guessing a boundary for it
+    would be worse than declining.
+
+    Failures are reported as "no such machine" rather than distinguishing "exists
+    but not yours", so a caller cannot enumerate other tenants' assets.
+    """
     from tasks.scope import MaintenanceScope, ScopeError, scope_for_actor
 
     from assets.models import AssetMachine
@@ -207,13 +216,23 @@ def _authorize_machine_scope(owner, machine_id) -> None:
     machine = AssetMachine.objects.filter(pk=machine_id).first()
     if machine is None:
         raise ProposalNotFound('no such machine')
-    if machine.customer_id is None:
-        raise ProposalError('machine has no customer scope')
+
+    if machine.customer_id is not None:
+        required = MaintenanceScope(customer_id=machine.customer_id, site_key=None)
+    elif machine.client_id is not None:
+        required = MaintenanceScope(
+            customer_id=None, site_key=None, client_id=machine.client_id
+        )
+    else:
+        raise ProposalError(
+            'machine has neither a customer nor a client, so it has no scope'
+        )
+
     try:
         scopes = scope_for_actor(owner)
     except ScopeError as exc:
         raise ProposalNotFound('no such machine') from exc
-    if MaintenanceScope(customer_id=machine.customer_id, site_key=None) not in scopes:
+    if required not in scopes:
         raise ProposalNotFound('no such machine')
 
 

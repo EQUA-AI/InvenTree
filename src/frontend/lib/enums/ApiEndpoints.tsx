@@ -167,6 +167,8 @@ export enum ApiEndpoints {
   part_verification_session_decisions = 'part/verification/sessions/:id/decisions/',
 
   // Asset / Equipment endpoints
+  asset_client_list = 'assets/clients/',
+  asset_client_detail = 'assets/clients/:id/',
   asset_machine_list = 'assets/machines/',
   asset_machine_detail = 'assets/machines/:id/',
   asset_machine_part_list = 'assets/parts/',

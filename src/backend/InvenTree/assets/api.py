@@ -10,10 +10,11 @@ import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
-from .models import AssetMachine, AssetMaintenanceRecord, MachinePart
+from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
 from .serializers import (
     AssetMachineSerializer,
     AssetMaintenanceRecordSerializer,
+    ClientSerializer,
     MachinePartSerializer,
 )
 
@@ -29,7 +30,7 @@ class AssetMachineFilter(FilterSet):
         """Filter configuration for AssetMachine."""
 
         model = AssetMachine
-        fields = ('active', 'location', 'customer', 'manufacturer')
+        fields = ('active', 'location', 'customer', 'client', 'manufacturer')
 
 
 class MachinePartFilter(FilterSet):
@@ -55,10 +56,42 @@ class AssetMaintenanceRecordFilter(FilterSet):
 # ---- Views -------------------------------------------------------------------
 
 
+class ClientList(ListCreateAPI):
+    """List and create software clients.
+
+    A Client is the tenant an internal asset belongs to, and is what makes such
+    an asset scope-resolvable. It is deliberately separate from a sales customer.
+    """
+
+    queryset = Client.objects.all()
+    serializer_class = ClientSerializer
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'admin'
+    filter_backends = SEARCH_ORDER_FILTER
+    search_fields = ['name', 'code']
+    ordering_fields = ['name', 'code', 'created_at']
+    ordering = 'name'
+
+
+class ClientDetail(RetrieveUpdateDestroyAPI):
+    """Retrieve, update, or delete a client."""
+
+    queryset = Client.objects.all()
+    serializer_class = ClientSerializer
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'admin'
+
+
 class AssetMachineList(ListCreateAPI):
     """List and create asset machines."""
 
-    queryset = AssetMachine.objects.all()
+    queryset = AssetMachine.objects.select_related('customer', 'client').all()
     serializer_class = AssetMachineSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,
@@ -160,6 +193,13 @@ class AssetMaintenanceRecordDetail(RetrieveUpdateDestroyAPI):
 
 
 assets_api_urls = [
+    path(
+        'clients/',
+        include([
+            path('', ClientList.as_view(), name='asset-client-list'),
+            path('<int:pk>/', ClientDetail.as_view(), name='asset-client-detail'),
+        ]),
+    ),
     path(
         'machines/',
         include([

@@ -10,6 +10,10 @@ export interface AssetMachine {
   location: string;
   customer: number | null;
   customer_name: string | null;
+  /** Tenant of this software; how an internal asset resolves its scope. */
+  client: number | null;
+  client_name: string | null;
+  client_code: string | null;
   manufacturer: string;
   model: string;
   serial: string;
@@ -47,6 +51,16 @@ export interface AssetMaintenanceRecord {
   downtime_minutes: number | null;
   verified: boolean;
   follow_up_required: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetClient {
+  pk: number;
+  name: string;
+  code: string;
+  active: boolean;
+  machine_count: number;
   created_at: string;
   updated_at: string;
 }

@@ -25,7 +25,7 @@ from tasks.scope import MaintenanceScope
 
 from aichat.models import ProposalState
 from aichat.services import proposals as svc
-from assets.models import AssetMachine
+from assets.models import AssetMachine, Client
 from company.models import Company
 from part.models import Part
 from repair.models import RepairPacket
@@ -186,18 +186,33 @@ class RepairWorkPackageProposalTest(TestCase):
         with self.assertRaises(svc.ProposalNotFound):
             self._propose(machine_id=other_machine.pk)
 
-    def test_customerless_machine_fails_explicitly(self):
-        """An internal asset fails closed rather than bypassing scope.
+    def test_internal_client_asset_is_proposable(self):
+        """An asset nobody bought is reachable through its client.
 
-        The plan's interim rule until a governed site/deployment identity exists:
-        refuse, visibly, rather than let a machine with no scope through.
+        This is the gap the client identity closes: before it, an internal plant
+        machine had no scope at all and chat refused to touch it.
         """
+        suffix = uuid.uuid4().hex[:6]
+        client = Client.objects.create(name=f'Plant {suffix}', code=f'plant-{suffix}')
         internal = AssetMachine.objects.create(
-            name=f'Internal {uuid.uuid4().hex[:6]}'
+            name=f'Internal {suffix}', client=client
         )
+        self.actor.maintenance_scopes = {
+            MaintenanceScope(customer_id=None, site_key=None, client_id=client.pk)
+        }
 
-        with self.assertRaises(svc.ProposalError):
-            self._propose(machine_id=internal.pk)
+        proposal = self._propose(machine_id=internal.pk)
+
+        self.assertEqual(proposal.preview['machine_name'], internal.name)
+
+    def test_machine_with_no_scope_identity_still_fails_closed(self):
+        """A boundary is never guessed for an unscoped record."""
+        orphan = AssetMachine.objects.create(name=f'Orphan {uuid.uuid4().hex[:6]}')
+
+        with self.assertRaisesMessage(
+            svc.ProposalError, 'neither a customer nor a client'
+        ):
+            self._propose(machine_id=orphan.pk)
 
     def test_invalid_draft_is_refused_before_any_row_is_written(self):
         """A malformed draft never becomes a pending proposal."""
