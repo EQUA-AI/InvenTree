@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 import {
   IconAlertTriangle,
+  IconBroadcast,
   IconCircleCheck,
   IconCircleX,
   IconHelpCircle
@@ -68,12 +69,22 @@ function relationVisual(relation: EvidenceRelation) {
  * snapshot it came from and whether it supports the stated cause, so nobody has
  * to take the conclusion on trust; where the data was missing or stale, that is
  * shown as the finding rather than hidden.
+ *
+ * One thing here is not hedged: when the source system declared the alarm
+ * itself, the boundaries it was raised against are configured in that hub, and
+ * whether the machine is outside them is that system's call. The panel says so
+ * plainly instead of presenting it as our inference - while still labelling the
+ * *cause* preliminary, because that part is ours and remains unverified.
  */
 export function PreliminaryResultsPanel({
   results
 }: Readonly<{ results: PreliminaryResults }>) {
   const status = statusVisual(results.status);
   const provisional = !results.verified_by_user;
+  // Named rather than a boolean so the source name narrows to a string wherever
+  // it is interpolated below.
+  const declaredBy =
+    results.authority === 'source_declared' ? results.authority_source : null;
 
   return (
     <Card withBorder radius='md' p='md'>
@@ -86,9 +97,26 @@ export function PreliminaryResultsPanel({
             <Badge color={status.color} variant='light'>
               {status.label}
             </Badge>
-            {results.status === 'available' && (
+            {declaredBy && (
               <Tooltip
-                label={t`Confidence reflects only how usable the data was, not how well the failure is understood.`}
+                label={t`${declaredBy} raised this alarm against limits configured in that system. Whether the machine is outside them is its determination, not an inference made here.`}
+              >
+                <Badge
+                  color='blue'
+                  variant='light'
+                  leftSection={<IconBroadcast size={14} />}
+                >
+                  {t`Declared by ${declaredBy}`}
+                </Badge>
+              </Tooltip>
+            )}
+            {(results.status === 'available' || !!declaredBy) && (
+              <Tooltip
+                label={
+                  declaredBy
+                    ? t`Confidence reflects the source system's own declaration and how usable the supporting data was - not how well the failure is understood.`
+                    : t`Confidence reflects only how usable the data was, not how well the failure is understood.`
+                }
               >
                 <Badge variant='outline' color='gray'>
                   {t`Confidence ${Math.round(results.confidence * 100)}%`}
@@ -109,7 +137,9 @@ export function PreliminaryResultsPanel({
             variant='light'
             icon={<IconAlertTriangle size={16} />}
           >
-            {t`Preliminary — not technician verified. This restates what the telemetry shows; it is not a confirmed cause and it authorizes nothing.`}
+            {declaredBy
+              ? t`Preliminary — not technician verified. The alarm is ${declaredBy}'s own determination, but the cause below is not confirmed and it authorizes nothing.`
+              : t`Preliminary — not technician verified. This restates what the telemetry shows; it is not a confirmed cause and it authorizes nothing.`}
           </Alert>
         )}
 

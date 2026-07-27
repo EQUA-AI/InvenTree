@@ -4,7 +4,7 @@ What this produces is explicitly *preliminary*: an evidence-backed reading of
 what the telemetry currently shows, not a diagnosis. It becomes a diagnosis only
 when a technician verifies it.
 
-Two rules shape everything here:
+Three rules shape everything here:
 
 * **Every claim cites a snapshot.** The analysis runs over immutable
   :class:`HealthEvidenceSnapshot` rows, and each observation it emits carries the
@@ -15,6 +15,13 @@ Two rules shape everything here:
   guess, and it degrades its own confidence when the data behind it is old or of
   poor quality - a confident-looking cause built on hours-old telemetry is the
   failure mode this exists to prevent.
+* **The hub that set the boundaries is authoritative about them.** When the
+  source system declares its own alarm, whether the machine is out of limits is
+  that system's determination, made against limits configured there. This report
+  says so and stops hedging about it. When we inferred the condition from a
+  threshold configured here, it says that instead. The distinction is confined
+  to this report: an authoritative alarm still cannot satisfy a safety gate,
+  mark a repair ready or count as a verified diagnosis.
 
 Detection stays deterministic elsewhere; this only summarizes what has already
 been observed. It cannot raise an alarm, satisfy a safety gate or mark a repair
@@ -27,6 +34,8 @@ from django.utils import timezone
 
 from assets.health_models import AnomalySeverity, SignalQuality, SnapshotReason
 from repair.schema import (
+    AUTHORITY_DERIVED,
+    AUTHORITY_SOURCE_DECLARED,
     RELATION_SUPPORTS,
     RELATION_UNKNOWN,
     STATUS_AVAILABLE,
@@ -36,15 +45,28 @@ from repair.schema import (
     coerce_diagnosis,
 )
 
+from .anomalies import SOURCE_ALARM_DETECTOR
 from .snapshots import capture_anomaly_evidence
 
 PROVIDER = 'machine_health.preliminary'
-RULE_VERSION = '1'
+RULE_VERSION = '2'
 
 #: Confidence ceilings by data condition. These are deliberately modest: this
 #: analysis restates measurements, it does not reason about failure physics.
 _CONFIDENCE_CLEAN = 0.6
 _CONFIDENCE_DEGRADED = 0.3
+
+#: Ceilings for an alarm the source system declared itself. Higher, because the
+#: report is restating a determination the hub made against its own configured
+#: boundaries rather than inferring one from a raw measurement. Still short of
+#: the 'high' band: what caused the alarm remains unverified.
+_CONFIDENCE_DECLARED = 0.75
+_CONFIDENCE_DECLARED_DEGRADED = 0.45
+
+#: A declared alarm with no usable telemetry of our own. The declaration is
+#: still a fact - deliberately above ``_CONFIDENCE_DEGRADED``, because the hub
+#: saying so outweighs an inference of ours drawn from bad data.
+_CONFIDENCE_DECLARED_ONLY = 0.4
 
 
 def _observation_text(snapshot) -> str:
@@ -75,7 +97,24 @@ def _relation_for(snapshot) -> str:
     return RELATION_SUPPORTS
 
 
-def _confirm_tests(anomaly, snapshots) -> list[str]:
+def _authority_for(anomaly) -> tuple[str, str | None]:
+    """Who decided this machine is outside its limits, and where they set them.
+
+    A source-declared alarm carries the source system's own determination: the
+    boundaries live in the hub the data comes from, and that hub owns the asset.
+    Anything else is our threshold rule reading a number, which is an inference.
+
+    An alarm whose source record is gone degrades to ``derived``. Without the
+    hub we cannot name whose boundaries were applied, and an unattributable
+    claim of authority is worth less than an honest inference.
+    """
+    if anomaly.detector != SOURCE_ALARM_DETECTOR or anomaly.source is None:
+        return AUTHORITY_DERIVED, None
+
+    return AUTHORITY_SOURCE_DECLARED, anomaly.source.name
+
+
+def _confirm_tests(anomaly, snapshots, *, authority_source: str | None) -> list[str]:
     """Suggest checks a technician can run to confirm or rule out the cause.
 
     These are proposals for a human, never actions: nothing here is performed,
@@ -98,10 +137,20 @@ def _confirm_tests(anomaly, snapshots) -> list[str]:
         )
 
     if not snapshots:
-        tests.append(
-            'Map this machine to a health source, or record a manual measurement, '
-            'before relying on telemetry for this fault.'
-        )
+        if authority_source:
+            # The source is known - it declared the alarm. What is missing is a
+            # local signal binding, so telling the technician to map a source
+            # would point them at the wrong gap.
+            alarm = anomaly.alarm_code or anomaly.title
+            tests.append(
+                f'Read {alarm} directly in {authority_source}; no signal here is '
+                'bound to it, so this system holds no measurement of its own.'
+            )
+        else:
+            tests.append(
+                'Map this machine to a health source, or record a manual '
+                'measurement, before relying on telemetry for this fault.'
+            )
 
     for binding in anomaly.bindings.all():
         if binding.signal_kind:
@@ -175,12 +224,28 @@ def analyze_anomaly(anomaly, *, actor=None, capture=True, now=None) -> dict:
     else:
         status = STATUS_AVAILABLE
 
-    degraded = bool(stale_count or bad_count)
-    confidence = 0.0
-    if status == STATUS_AVAILABLE:
-        confidence = _CONFIDENCE_DEGRADED if degraded else _CONFIDENCE_CLEAN
+    authority, authority_source = _authority_for(anomaly)
+    declared = authority == AUTHORITY_SOURCE_DECLARED
 
-    likely_cause = _likely_cause(anomaly, status, usable)
+    degraded = bool(stale_count or bad_count)
+    if status == STATUS_AVAILABLE:
+        if declared:
+            confidence = (
+                _CONFIDENCE_DECLARED_DEGRADED if degraded else _CONFIDENCE_DECLARED
+            )
+        else:
+            confidence = _CONFIDENCE_DEGRADED if degraded else _CONFIDENCE_CLEAN
+    elif declared:
+        # Our own telemetry is missing, stale or unusable - but the hub declared
+        # the alarm against its own boundaries, and that has not stopped being
+        # true. Reporting 0.0 here would read as "nothing is known".
+        confidence = _CONFIDENCE_DECLARED_ONLY
+    else:
+        confidence = 0.0
+
+    likely_cause = _likely_cause(
+        anomaly, status, usable, declared=declared, authority_source=authority_source
+    )
 
     window_start = min((s.window_start for s in snapshots), default=None)
     window_end = max((s.window_end for s in snapshots), default=None)
@@ -189,10 +254,14 @@ def analyze_anomaly(anomaly, *, actor=None, capture=True, now=None) -> dict:
         'likely_cause': likely_cause,
         'failure_mode': anomaly.alarm_code or None,
         'confidence': confidence,
-        'alternatives': _alternatives(anomaly, status),
+        'alternatives': _alternatives(anomaly, status, declared=declared),
         'evidence': evidence,
-        'confirm_tests': _confirm_tests(anomaly, snapshots),
+        'confirm_tests': _confirm_tests(
+            anomaly, snapshots, authority_source=authority_source
+        ),
         'status': status,
+        'authority': authority,
+        'authority_source': authority_source,
         'data_window': {
             'start': window_start.isoformat() if window_start else None,
             'end': window_end.isoformat() if window_end else None,
@@ -211,8 +280,50 @@ def analyze_anomaly(anomaly, *, actor=None, capture=True, now=None) -> dict:
     })
 
 
-def _likely_cause(anomaly, status: str, usable) -> str:
+def _declared_cause(anomaly, status: str, usable, authority_source: str) -> str:
+    """State the source system's own alarm, and what we can add to it.
+
+    The declaration is reported as fact, because it is one. Only our corrobora-
+    ting telemetry is hedged - and its absence never downgrades the alarm to a
+    maybe, because the boundaries it was raised against are configured in the
+    hub, not here.
+    """
+    alarm = anomaly.alarm_code or anomaly.title
+    lead = f'{authority_source} declared {alarm} on this machine.'
+
+    if status == STATUS_AVAILABLE:
+        labels = ', '.join(snapshot.signal_label for snapshot in usable)
+        corroboration = f'The readings held here ({labels}) are consistent with it.'
+    elif status == STATUS_STALE:
+        corroboration = (
+            'The readings held here are stale, so the alarm stands on the source '
+            "system's determination alone."
+        )
+    elif status == STATUS_INSUFFICIENT:
+        corroboration = (
+            'The readings held here are not good enough to corroborate it, so the '
+            "alarm stands on the source system's determination alone."
+        )
+    else:
+        corroboration = (
+            'No reading for it has reached this system, so the alarm stands on the '
+            "source system's determination alone."
+        )
+
+    return (
+        f'{lead} {corroboration} Whether the machine is outside its limits is that '
+        "system's call - the boundaries are configured there. What caused the "
+        'condition is not established here.'
+    )
+
+
+def _likely_cause(
+    anomaly, status: str, usable, *, declared: bool, authority_source: str | None
+) -> str:
     """State what the data shows, and say plainly when it shows nothing."""
+    if declared and authority_source:
+        return _declared_cause(anomaly, status, usable, authority_source)
+
     if status == STATUS_UNAVAILABLE:
         return (
             f'No telemetry evidence is available for "{anomaly.title}". '
@@ -239,15 +350,33 @@ def _likely_cause(anomaly, status: str, usable) -> str:
     )
 
 
-def _alternatives(anomaly, status: str) -> list[str]:
-    """List explanations a technician should rule out before committing."""
-    if status != STATUS_AVAILABLE:
+def _alternatives(anomaly, status: str, *, declared: bool) -> list[str]:
+    """List explanations a technician should rule out before committing.
+
+    A declared alarm gets these even with no local telemetry: there is a stated
+    condition to explain either way. A derived one does not - with no usable
+    data we have not established that anything is wrong, and listing reasons it
+    might be would invent a finding.
+    """
+    if not declared and status != STATUS_AVAILABLE:
         return []
 
-    return [
+    alternatives = [
         'Instrumentation fault: the sensor or its wiring, rather than the machine.',
         'Process condition: an upstream change moved the machine outside its '
         'configured limits without a mechanical defect.',
-        'Threshold configuration: the limit may no longer match how this machine '
-        'is operated.',
     ]
+
+    if declared:
+        alternatives.append(
+            'Threshold configuration in the source system: the limit it alarms on '
+            'may no longer match how this machine is operated. Changing it is a '
+            'change there, not here.'
+        )
+    else:
+        alternatives.append(
+            'Threshold configuration: the limit may no longer match how this '
+            'machine is operated.'
+        )
+
+    return alternatives

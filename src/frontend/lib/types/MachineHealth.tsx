@@ -152,6 +152,16 @@ export type AnalysisStatus =
 
 export type EvidenceRelation = 'supports' | 'contradicts' | 'unknown';
 
+/**
+ * Who decided the machine is outside its limits.
+ *
+ * `source_declared` means the source system raised the alarm itself, against
+ * boundaries configured in that hub - it is authoritative about that, and the
+ * UI must not present it as our guess. `derived` means we inferred it from a
+ * threshold configured here.
+ */
+export type AnalysisAuthority = 'source_declared' | 'derived';
+
 export interface PreliminaryEvidence {
   snapshot_id: string | null;
   observation: string;
@@ -169,6 +179,9 @@ export interface PreliminaryEvidence {
  */
 export interface PreliminaryResults {
   status: AnalysisStatus;
+  authority: AnalysisAuthority;
+  /** Name of the hub whose boundaries were applied; null when derived here. */
+  authority_source: string | null;
   likely_cause: string;
   failure_mode: string | null;
   confidence: number;

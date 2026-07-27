@@ -15,6 +15,13 @@ Schema v2 adds the provenance a preliminary result needs to be trusted:
 * ``data_window``, ``freshness`` and ``quality`` describe what the analysis
   actually saw, so a confident-looking cause built on hours-old telemetry reads
   as exactly that;
+* ``authority`` says *who decided the machine is out of limits*. A source system
+  that declares its own alarm is authoritative about that - the boundaries are
+  configured in the hub the data comes from, and it is the system that owns the
+  asset. A condition we inferred from a threshold configured here is
+  ``derived``. The distinction only affects how this report reads: an
+  authoritative alarm still cannot satisfy a safety gate, mark a repair ready or
+  count as a verified diagnosis;
 * ``provider`` and ``model_or_rule_version`` identify who produced it.
 
 Until a human confirms it, the whole blob is *preliminary*: ``verified_by_user``
@@ -56,6 +63,15 @@ RELATION_UNKNOWN = 'unknown'
 
 EVIDENCE_RELATIONS = (RELATION_SUPPORTS, RELATION_CONTRADICTS, RELATION_UNKNOWN)
 
+# --- Who decided the condition is abnormal ---------------------------------- #
+#: The source system declared the alarm itself, against boundaries configured in
+#: that system. Whether the machine is out of limits is its call, not ours.
+AUTHORITY_SOURCE_DECLARED = 'source_declared'
+#: We inferred the condition from a threshold configured here.
+AUTHORITY_DERIVED = 'derived'
+
+ANALYSIS_AUTHORITIES = (AUTHORITY_SOURCE_DECLARED, AUTHORITY_DERIVED)
+
 # key -> accepted python type(s)
 _REQUIRED_FIELDS: dict[str, type | tuple[type, ...]] = {
     'likely_cause': str,
@@ -86,6 +102,8 @@ def empty_diagnosis() -> dict[str, Any]:
         'failure_mode': None,
         # v2 provenance
         'status': STATUS_UNAVAILABLE,
+        'authority': AUTHORITY_DERIVED,
+        'authority_source': None,
         'data_window': {'start': None, 'end': None, 'snapshot_count': 0},
         'freshness': {'stale': False, 'stale_signal_count': 0},
         'quality': {'summary': 'unknown', 'bad_signal_count': 0},
@@ -193,6 +211,15 @@ def coerce_diagnosis(data: dict[str, Any] | None) -> dict[str, Any]:
             # A v1 blob with a cause had, by construction, something to say.
             result['status'] = STATUS_AVAILABLE
 
+        # Unrecognised authority falls back to 'derived'. Claiming a source
+        # declared something it did not is the expensive direction to be wrong
+        # in, so an unreadable value must never promote a blob to authoritative.
+        authority = data.get('authority')
+        if authority in ANALYSIS_AUTHORITIES:
+            result['authority'] = authority
+        if data.get('authority_source') is not None:
+            result['authority_source'] = str(data['authority_source'])
+
         result['verified_by_user'] = bool(data.get('verified_by_user', False))
 
         raw_conf = data.get('confidence', 0.0)
@@ -293,6 +320,13 @@ def validate_diagnosis(data: Any) -> None:
     if data['status'] not in ANALYSIS_STATUSES:
         raise ValidationError(
             f'Diagnosis status must be one of: {", ".join(ANALYSIS_STATUSES)}.'
+        )
+
+    # Checked only when present: v2 blobs written before authority existed are
+    # still valid, and coercion reads them as 'derived'.
+    if 'authority' in data and data['authority'] not in ANALYSIS_AUTHORITIES:
+        raise ValidationError(
+            f'Diagnosis authority must be one of: {", ".join(ANALYSIS_AUTHORITIES)}.'
         )
 
     for index, item in enumerate(data['evidence']):
