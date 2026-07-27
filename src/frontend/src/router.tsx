@@ -232,6 +232,12 @@ export const routes = (
         />
       </Route>
       <Route path='maintenance/'>
+        {/* A splat child does NOT match an empty remainder, so `/maintenance/`
+            would fall through to this parent - which has no element and renders
+            an empty Outlet. The index route is what serves the bare URL that
+            the nav, the drawer and the /tasks/ redirect all point at; it lets
+            PanelGroup pick the user's last panel. */}
+        <Route index element={<MaintenanceIndex />} />
         <Route path='work-orders/:id/*' element={<WorkOrderDetail />} />
         {/* The splat keeps the panel segment in the child path so PanelGroup
             can resolve /maintenance/board|calendar|timeline/ itself. */}

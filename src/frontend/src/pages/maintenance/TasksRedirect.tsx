@@ -21,8 +21,9 @@ export default function TasksRedirect() {
   const rest = (params['*'] ?? '').replace(/^\/+/, '');
 
   // `/tasks/kanban` was the board host; its panel segment is now the first
-  // segment under `/maintenance/`.
-  const target = rest.replace(/^kanban\/?/, '');
+  // segment under `/maintenance/`. Match on a whole segment so a path that
+  // merely starts with those letters is not truncated into a bogus target.
+  const target = rest.replace(/^kanban(\/|$)/, '');
 
   return <Navigate to={`/maintenance/${target}${search}${hash}`} replace />;
 }

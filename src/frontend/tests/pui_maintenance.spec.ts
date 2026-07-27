@@ -77,6 +77,34 @@ test('Maintenance - board loads with panels and persisted columns', async ({
   await page.getByRole('button', { name: 'New work order' }).waitFor();
 });
 
+test('Maintenance - the bare /maintenance/ URL renders a panel', async ({
+  browser
+}) => {
+  // This is what the nav tab, the navigation drawer and the kanbancard model
+  // overview all point at. A splat child route does not match an empty
+  // remainder, so without an index route this URL rendered an empty page.
+  const page = await doCachedLogin(browser, {
+    user: allaccessuser,
+    url: 'maintenance'
+  });
+
+  await expect(page).toHaveURL(/\/maintenance\/(board|calendar|timeline)\/?$/);
+  await page.getByRole('tab', { name: 'Board', exact: true }).waitFor();
+});
+
+test('Maintenance - the old /tasks/ root resolves to a panel', async ({
+  browser
+}) => {
+  // /tasks/ redirects to the bare /maintenance/, so it regresses with it.
+  const page = await doCachedLogin(browser, {
+    user: allaccessuser,
+    url: 'tasks'
+  });
+
+  await expect(page).toHaveURL(/\/maintenance\/(board|calendar|timeline)\/?$/);
+  await page.getByRole('tab', { name: 'Board', exact: true }).waitFor();
+});
+
 test('Maintenance - old /tasks/ links still resolve', async ({ browser }) => {
   // Bookmarks captured before the rename must keep working, preserving the view.
   const page = await doCachedLogin(browser, {
