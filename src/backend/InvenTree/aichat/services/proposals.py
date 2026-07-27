@@ -123,6 +123,7 @@ _REQUIRED_ROLE: dict[str, tuple[str, str]] = {
     ProposalAction.WORK_ORDER_DELETE.value: ('work_order', 'delete'),
     ProposalAction.WORK_ORDER_CREATE.value: ('work_order', 'add'),
     ProposalAction.WORK_ORDER_CREATE_CHILD.value: ('work_order', 'add'),
+    ProposalAction.REPAIR_WORK_PACKAGE_CREATE.value: ('work_order', 'add'),
     ProposalAction.WORK_ORDER_GENERATE_PROCUREMENT.value: ('work_order', 'add'),
     ProposalAction.DEPENDENCY_CREATE.value: ('work_order', 'change'),
     ProposalAction.DEPENDENCY_DELETE.value: ('work_order', 'change'),
@@ -133,6 +134,7 @@ _REQUIRED_ROLE: dict[str, tuple[str, str]] = {
 #: ``expected_version`` — authorization comes from the intent, not a pinned card.
 _TARGETLESS_ACTIONS = frozenset({
     ProposalAction.WORK_ORDER_CREATE.value,
+    ProposalAction.REPAIR_WORK_PACKAGE_CREATE.value,
     ProposalAction.SCHEDULE_OPTIMIZE.value,
 })
 
@@ -159,7 +161,10 @@ def _authorize_and_bind(owner, action_type: str, work_order_id, intent):
     creating actions the target is ``None``; scope is checked against the
     machine (create) or every candidate card (optimize) named in the intent.
     """
-    if action_type == ProposalAction.WORK_ORDER_CREATE.value:
+    if action_type in {
+        ProposalAction.WORK_ORDER_CREATE.value,
+        ProposalAction.REPAIR_WORK_PACKAGE_CREATE.value,
+    }:
         _authorize_machine_scope(owner, intent.get('machine_id'))
         return None, None, None
     if action_type == ProposalAction.SCHEDULE_OPTIMIZE.value:
@@ -332,6 +337,64 @@ def _preview_create(work_order, intent: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _preview_repair_work_package(work_order, intent: dict[str, Any]) -> dict[str, Any]:
+    """Build the repair work-package preview from server state, not model claims.
+
+    The model supplies a draft; everything shown to the approver is re-derived
+    here. Part names, the machine name, the safety line and the duplicate warning
+    all come from the database, so a model cannot describe the package as
+    something other than what confirming it would create.
+    """
+    from assets.models import AssetMachine
+    from part.models import Part
+    from repair.work_packages import find_duplicate_repairs, validate_draft
+
+    draft = validate_draft(intent)
+    machine = AssetMachine.objects.filter(pk=draft['machine_id']).first()
+
+    part_names = dict(
+        Part.objects.filter(
+            pk__in=[line['part_id'] for line in draft['parts']]
+        ).values_list('pk', 'name')
+    )
+
+    duplicates = (
+        find_duplicate_repairs(machine, anomaly_id=draft['source'].get('anomaly_id'))
+        if machine
+        else []
+    )
+
+    return {
+        'machine_id': draft['machine_id'],
+        'machine_name': machine.name if machine else None,
+        'proposed_title': draft['title'],
+        'work_order_type': draft['work_order_type'],
+        'priority': draft['priority'],
+        'creates_repair_packet': draft['create_repair_packet'],
+        'fault': draft['fault'],
+        'parts': [
+            {
+                'part_id': line['part_id'],
+                'name': part_names.get(line['part_id'], 'Unknown part'),
+                'quantity': str(line['quantity']),
+                'reason': line['reason'],
+            }
+            for line in draft['parts']
+        ],
+        'planning': draft['planning'],
+        'origin': draft['origin'],
+        'source': draft['source'],
+        # Shown before approval so an approver is never surprised by a second
+        # work order for a fault somebody is already working.
+        'duplicate_open_repairs': duplicates,
+        'creates_planned_work_only': True,
+        'note': (
+            'Creates a planned work order and repair packet. It does not start '
+            'the repair and satisfies no safety gate.'
+        ),
+    }
+
+
 def _preview_create_child(work_order, intent: dict[str, Any]) -> dict[str, Any]:
     from tasks.models import KanbanCard
 
@@ -386,6 +449,7 @@ _PREVIEW_BUILDERS = {
     ProposalAction.WORK_ORDER_CANCEL.value: _preview_cancel,
     ProposalAction.WORK_ORDER_TRANSITION.value: _preview_transition,
     ProposalAction.WORK_ORDER_CREATE.value: _preview_create,
+    ProposalAction.REPAIR_WORK_PACKAGE_CREATE.value: _preview_repair_work_package,
     ProposalAction.WORK_ORDER_CREATE_CHILD.value: _preview_create_child,
     ProposalAction.WORK_ORDER_GENERATE_PROCUREMENT.value: _preview_generate_procurement,
     ProposalAction.DEPENDENCY_CREATE.value: _preview_dependency_create,
@@ -435,6 +499,7 @@ ACTION_COMMAND: dict[str, str] = {
     ProposalAction.WORK_ORDER_CANCEL.value: 'cancel_work_order',
     ProposalAction.WORK_ORDER_TRANSITION.value: 'transition_work_order',
     ProposalAction.WORK_ORDER_CREATE.value: 'create_work_order',
+    ProposalAction.REPAIR_WORK_PACKAGE_CREATE.value: 'create_repair_work_package',
     ProposalAction.WORK_ORDER_CREATE_CHILD.value: 'create_child',
     ProposalAction.WORK_ORDER_GENERATE_PROCUREMENT.value: 'generate_procurement_child',
     ProposalAction.DEPENDENCY_CREATE.value: 'create_dependency',
@@ -808,6 +873,13 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 **_create_planning(intent),
             )
         )
+    if action == ProposalAction.REPAIR_WORK_PACKAGE_CREATE:
+        from repair.work_packages import create_repair_work_package
+
+        result = create_repair_work_package(
+            actor=owner, draft=intent, idempotency_key=idem
+        )
+        return {'command': 'create_repair_work_package', **result.as_dict()}
     if action == ProposalAction.WORK_ORDER_CREATE_CHILD:
         from tasks.models import KanbanCard
 

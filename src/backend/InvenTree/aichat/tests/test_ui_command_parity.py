@@ -35,8 +35,8 @@ from django.test import SimpleTestCase
 from aichat.models import ProposalAction
 from aichat.services import proposals
 
-#: Every canonical mutation command reachable from the task page's REST surface,
-#: with its dispatching endpoint. Keep this list in lockstep with the API: a new
+#: Every canonical mutation command reachable from the Maintenance workspace,
+#: the machine page and the repair surfaces, with its dispatching endpoint. Keep this list in lockstep with the API: a new
 #: mutation endpoint must add its command here (and then either govern it or add
 #: it to _NOT_YET_GOVERNED), or the partition assertion below fails.
 UI_MUTATION_COMMANDS = {
@@ -58,6 +58,10 @@ UI_MUTATION_COMMANDS = {
     'resume_work_order',            # WorkOrderResume
     'cancel_work_order',            # WorkOrderCancel
     'complete_work_order',          # WorkOrderComplete
+    # repair/api.py — maintenance intake and packet-owned lifecycle
+    'create_repair_work_package',   # RepairWorkPackageCreate (maintenance intake)
+    'start_repair_packet',          # RepairPacketStart
+    'close_repair_packet',          # RepairPacketClose
 }
 
 #: UI mutations that do not yet have a governed ``ProposalAction``. Each entry
@@ -72,6 +76,12 @@ _NOT_YET_GOVERNED: dict[str, str] = {}
 #: so it is excluded from parity by design rather than left as a pending gap.
 _UI_ONLY_COMMANDS = {
     'complete_work_order': 'completion requires a UI-authored closeout capture',
+    'close_repair_packet': 'closeout requires a UI-authored structured closeout',
+    # Not a gap and never to be governed: the plan is explicit that AI may not
+    # start a repair, confirm LOTO, waive a gate or mark readiness. Listing it
+    # here makes that rule falsifiable - adding a proposal action for it would
+    # break this test rather than pass unnoticed.
+    'start_repair_packet': 'AI may not start work; starting is readiness-gated',
 }
 
 
@@ -106,12 +116,25 @@ class UiCommandParityInvariant(SimpleTestCase):
         )
 
     def test_governed_command_names_resolve_to_callable_services(self):
-        """Each governed command is a real ``tasks.services`` callable, not a typo."""
+        """Each governed command is a real command-service callable, not a typo."""
         from tasks.services import scheduling
         from tasks.services import work_orders as wo
 
+        from repair import work_packages
+
+        # The canonical command modules. A governed action must dispatch into
+        # one of these; nothing else is a write path AI may reach.
+        modules = (scheduling, wo, work_packages)
+
         for command in proposals.ACTION_COMMAND.values():
-            resolved = getattr(scheduling, command, None) or getattr(wo, command, None)
+            resolved = next(
+                (
+                    getattr(module, command)
+                    for module in modules
+                    if callable(getattr(module, command, None))
+                ),
+                None,
+            )
             self.assertTrue(
                 callable(resolved), f'{command} is not a callable command service'
             )

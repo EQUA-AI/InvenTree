@@ -462,6 +462,12 @@ class ProposalAction(models.TextChoices):
     WORK_ORDER_TRANSITION = 'work_order.transition', 'Transition work order lifecycle'
     WORK_ORDER_CREATE = 'work_order.create', 'Create work order'
     WORK_ORDER_CREATE_CHILD = 'work_order.create_child', 'Create child work order'
+    # One compound action, not a work order followed by a packet: partial
+    # approval of half a repair aggregate would leave an unowned work order.
+    REPAIR_WORK_PACKAGE_CREATE = (
+        'repair_work_package.create',
+        'Create repair work package',
+    )
     # Longest value (31 chars) — action_type max_length stays 32.
     WORK_ORDER_GENERATE_PROCUREMENT = (
         'work_order.generate_procurement',

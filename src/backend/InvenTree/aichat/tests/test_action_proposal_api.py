@@ -86,6 +86,7 @@ class ProposalServiceTests(ProposalRailTestCase):
             (
                 'dependency.create',
                 'dependency.delete',
+                'repair_work_package.create',
                 'schedule.optimize',
                 'work_order.assign',
                 'work_order.cancel',
