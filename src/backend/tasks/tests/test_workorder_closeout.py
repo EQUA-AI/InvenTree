@@ -12,6 +12,7 @@ from stock.models import StockItem
 from tasks.models import (
     FulfillmentMode,
     JobKit,
+    KanbanCard,
     JobKitAllocation,
     JobKitAllocationStatus,
     JobKitLine,
@@ -89,10 +90,12 @@ class CompleteWorkOrderTest(TestCase):
         self.assertEqual(self.work_order.status, KanbanColumn.terminal_key())
 
     def test_completion_blocked_by_incomplete_child(self):
-        # S6d: a parent cannot close out while a child is still open.
-        WorkOrder.objects.create(
-            title='open child', status='backlog', priority='low',
-            machine=self.machine, parent=self.work_order,
+        # S6d: a job cannot close out while a piece of its work is still open.
+        # That piece is a card now, not a second work order.
+        self.work_order.cards.create(
+            title='open child',
+            card_kind=KanbanCard.KIND_SUBTASK,
+            status='backlog',
         )
         with self.assertRaises(CloseoutError):
             self.complete()

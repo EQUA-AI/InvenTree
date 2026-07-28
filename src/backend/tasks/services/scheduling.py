@@ -34,6 +34,7 @@ from django.db.models import ProtectedError
 from django.utils import timezone
 
 from tasks.models import (
+    KanbanCard,
     KanbanColumn,
     WorkOrder,
     WorkOrderCommand,
@@ -336,16 +337,6 @@ def update_work_order_plan(
         raise WorkOrderCommandError('No updatable planning fields supplied.')
 
     def apply(work_order):
-        # A child inherits its parent's machine and cannot diverge (§5.10).
-        if (
-            work_order.parent_id
-            and 'machine_id' in allowed
-            and allowed['machine_id'] != work_order.parent.machine_id
-        ):
-            raise InvalidChild(
-                'A child work order cannot use a different machine from its parent.'
-            )
-
         for key, value in allowed.items():
             setattr(work_order, key, value)
         return {'updated_fields': sorted(allowed)}, list(allowed)
@@ -761,95 +752,78 @@ def create_child(
     actor,
     idempotency_key: str,
     title: str,
-    card_kind: str = WorkOrder.KIND_SUBTASK,
+    card_kind: str = KanbanCard.KIND_SUBTASK,
     correlation_id: uuid.UUID | None = None,
     **planning: Any,
 ) -> CommandResult:
-    """Create a child card under ``parent_id``.
+    """Add a tracked piece of work to the job ``parent_id``.
 
-    Depth is exactly one: the parent must not itself be a child. The child
-    inherits machine and customer from its parent and cannot diverge (§5.10).
+    This used to mint a second work order with its own reference, so breaking a
+    job down produced more jobs. It creates a card instead: the job stays one
+    authorised, closeable thing, and the board gains a piece to move.
+
     Idempotent on ``idempotency_key`` across the ``create_child`` command.
     """
-    if card_kind not in dict(WorkOrder.KIND_CHOICES):
+    if card_kind not in dict(KanbanCard.KIND_CHOICES):
         raise InvalidChild(f'Unknown card kind: {card_kind}')
 
     payload = {'parent_id': parent_id, 'title': title, 'card_kind': card_kind}
     request_hash = _canonical_hash('create_child', actor, payload)
 
-    prior = WorkOrderCommand.objects.filter(
-        command='create_child', idempotency_key=idempotency_key
-    ).first()
-    if prior is not None:
-        if prior.request_hash != request_hash:
-            raise IdempotencyConflict(
-                'Idempotency key was reused with a different create_child request'
-            )
-        existing = WorkOrder.objects.filter(pk=prior.work_order_id).first()
-        if existing is None:
-            raise WorkOrderCommandError('Stored create_child result cannot be replayed')
-        return _result_for(
-            existing, 'create_child', prior.correlation_id, idempotency_key
-        )
-
     correlation_id = _new_correlation(correlation_id)
 
     with transaction.atomic():
-        parent = WorkOrder.objects.filter(pk=parent_id).first()
-        if parent is None:
-            raise UnknownWorkOrder(f'No work order {parent_id}')
-        if parent.parent_id is not None:
-            raise InvalidChild(
-                'A child cannot itself have children; depth is exactly one.'
-            )
+        try:
+            parent = _locked_work_order(parent_id)
+        except WorkOrder.DoesNotExist as exc:
+            raise UnknownWorkOrder(f'No work order {parent_id}') from exc
 
-        extra = {
-            key: value
-            for key, value in planning.items()
-            if key in _PLAN_FIELDS - {'machine_id'}
-        }
+        replay = _replay_or_none(parent, idempotency_key, request_hash)
+        if replay:
+            return replay
 
-        child = WorkOrder.objects.create(
+        # Only the fields a card can answer for. Priority, type, machine and
+        # customer describe the job, and the card inherits them by belonging
+        # to it rather than by copying them.
+        card = KanbanCard.objects.create(
+            work_order=parent,
             title=title,
-            status=WorkOrder.STATUS_BACKLOG,
-            priority=extra.pop('priority', parent.priority),
-            work_order_type=extra.pop('work_order_type', parent.work_order_type),
-            machine_id=parent.machine_id,
-            customer_id=parent.customer_id,
-            parent_id=parent_id,
             card_kind=card_kind,
-            **extra,
+            status=WorkOrder.STATUS_BACKLOG,
+            scheduled_start=planning.get('scheduled_start'),
+            scheduled_end=planning.get('scheduled_end'),
+            estimated_minutes=planning.get('estimated_minutes'),
         )
 
         return _append_result(
-            work_order=child,
+            work_order=parent,
             actor=actor,
             command='create_child',
-            event_type='CREATED',
+            event_type='CARD_CREATED',
             from_status='',
-            to_status=child.lifecycle_status,
+            to_status=parent.lifecycle_status,
             reason='',
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             request_hash=request_hash,
-            result_metadata={'parent_id': parent_id, 'card_kind': card_kind},
+            result_metadata={'card_id': card.pk, 'card_kind': card_kind},
         )
 
 
-def generate_procurement_child(*, parent_id: int, actor) -> WorkOrder | None:
-    """Raise a procurement child carrying the parent's parts shortfall.
+def generate_procurement_child(*, parent_id: int, actor) -> KanbanCard | None:
+    """Raise a procurement card for the job's parts shortfall.
 
-    Returns the procurement child, or None when the parent has no shortfall.
-    Idempotent: if an open procurement child already exists for the parent, its
-    shortfall lines are refreshed and it is returned rather than creating a
-    second one.
+    Returns the procurement card, or None when there is no shortfall.
+    Idempotent: an open procurement card is reused rather than duplicated.
+
+    The card no longer carries copies of the shortfall lines. Parts are required
+    by the job and already recorded there; duplicating them onto a second record
+    was how one job came to hold two sets of the same requirement.
     """
     with transaction.atomic():
         parent = WorkOrder.objects.filter(pk=parent_id).first()
         if parent is None:
             raise UnknownWorkOrder(f'No work order {parent_id}')
-        if parent.parent_id is not None:
-            raise InvalidChild('Only a top-level work order can raise procurement.')
 
         shortfall = [
             cp
@@ -860,34 +834,18 @@ def generate_procurement_child(*, parent_id: int, actor) -> WorkOrder | None:
         if not shortfall:
             return None
 
-        child = (
-            parent.children
-            .filter(card_kind=WorkOrder.KIND_PROCUREMENT)
-            .exclude(
-                lifecycle_status__in=[
-                    WorkOrderLifecycle.COMPLETED,
-                    WorkOrderLifecycle.CANCELED,
-                ]
-            )
+        card = (
+            parent.cards
+            .filter(card_kind=KanbanCard.KIND_PROCUREMENT, is_active=True)
+            .order_by('pk')
             .first()
         )
-        if child is None:
-            child = WorkOrder.objects.create(
+        if card is None:
+            card = KanbanCard.objects.create(
+                work_order=parent,
                 title=f'Procurement for {parent.title}'[:200],
+                card_kind=KanbanCard.KIND_PROCUREMENT,
                 status=WorkOrder.STATUS_BACKLOG,
-                priority=parent.priority,
-                machine_id=parent.machine_id,
-                customer_id=parent.customer_id,
-                parent_id=parent_id,
-                card_kind=WorkOrder.KIND_PROCUREMENT,
-            )
-
-        for cp in shortfall:
-            needed = cp.quantity - cp.allocated_quantity
-            if needed <= 0:
-                continue
-            WorkOrderPart.objects.update_or_create(
-                work_order=child, part=cp.part, defaults={'quantity': needed}
             )
 
         WorkOrderEvent.objects.create(
@@ -895,17 +853,30 @@ def generate_procurement_child(*, parent_id: int, actor) -> WorkOrder | None:
             event_type='CHILD_GENERATED',
             actor=actor if getattr(actor, 'pk', None) else None,
             correlation_id=_new_correlation(None),
-            metadata={'child_id': child.pk, 'card_kind': WorkOrder.KIND_PROCUREMENT},
+            metadata={
+                'card_id': card.pk,
+                'card_kind': KanbanCard.KIND_PROCUREMENT,
+                'shortfall_parts': sorted(cp.part_id for cp in shortfall),
+            },
         )
 
-        return child
+        return card
 
 
 def incomplete_children(parent_id: int):
-    """Return the parent's children that are neither completed nor canceled."""
-    return WorkOrder.objects.filter(parent_id=parent_id).exclude(
-        lifecycle_status__in=[WorkOrderLifecycle.COMPLETED, WorkOrderLifecycle.CANCELED]
+    """Return the job's cards that have not reached a terminal column.
+
+    A card has no lifecycle of its own - it is a piece of work on a board - so
+    "still open" means active and not yet in a column marked terminal. That is
+    the same question the old child-work-order check was asking.
+    """
+    terminal_keys = list(
+        KanbanColumn.objects.filter(is_terminal=True).values_list('key', flat=True)
     )
+    cards = KanbanCard.objects.filter(work_order_id=parent_id, is_active=True)
+    if terminal_keys:
+        cards = cards.exclude(status__in=terminal_keys)
+    return cards.exclude(card_kind=KanbanCard.KIND_WORK_ORDER)
 
 
 def materialise_required_parts(

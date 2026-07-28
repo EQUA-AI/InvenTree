@@ -1,4 +1,4 @@
-"""Child-card composition: subtasks, procurement, closeout blocking (S6d, §5.10)."""
+"""Board-card composition: subtasks, procurement, and closeout blocking."""
 
 from decimal import Decimal
 
@@ -10,11 +10,13 @@ from assets.models import AssetMachine
 from company.models import Company
 from part.models import Part
 from stock.models import StockItem
-from tasks.models import WorkOrder, WorkOrderPart, WorkOrderLifecycle
+from tasks.models import KanbanCard, KanbanColumn, WorkOrder, WorkOrderPart
 from tasks.services import scheduling
 
 
 class CreateChildTest(TestCase):
+    """A child is a board card on one job, never another work order."""
+
     def setUp(self):
         self.actor = get_user_model().objects.create_user(
             username='child-actor', email='c@example.com', password='pw'
@@ -24,43 +26,40 @@ class CreateChildTest(TestCase):
             name='Child Press', customer=self.customer
         )
         self.parent = WorkOrder.objects.create(
-            title='Parent WO', status='backlog', priority='high',
-            machine=self.machine, customer=self.customer,
+            title='Parent WO',
+            status='backlog',
+            priority='high',
+            machine=self.machine,
+            customer=self.customer,
         )
 
-    def _create_child(self, **kw):
+    def _create_child(self, **kwargs):
         return scheduling.create_child(
             parent_id=self.parent.pk,
             actor=self.actor,
-            idempotency_key=kw.pop('idempotency_key', 'ch1'),
-            title=kw.pop('title', 'Child'),
-            **kw,
+            idempotency_key=kwargs.pop('idempotency_key', 'ch1'),
+            title=kwargs.pop('title', 'Child'),
+            **kwargs,
         )
 
-    def test_child_inherits_machine_and_customer(self):
+    def test_child_belongs_to_the_existing_work_order(self):
+        before = WorkOrder.objects.count()
         result = self._create_child()
-        child = WorkOrder.objects.get(pk=result.work_order_id)
+        child = KanbanCard.objects.get(pk=result.metadata['card_id'])
 
-        self.assertEqual(child.parent_id, self.parent.pk)
-        self.assertEqual(child.machine_id, self.machine.pk)
-        self.assertEqual(child.customer_id, self.customer.pk)
-        self.assertEqual(child.card_kind, WorkOrder.KIND_SUBTASK)
-
-    def test_depth_is_limited_to_one(self):
-        child = WorkOrder.objects.get(pk=self._create_child().work_order_id)
-        with self.assertRaises(scheduling.InvalidChild):
-            scheduling.create_child(
-                parent_id=child.pk,
-                actor=self.actor,
-                idempotency_key='ch2',
-                title='Grandchild',
-            )
+        self.assertEqual(WorkOrder.objects.count(), before)
+        self.assertEqual(child.work_order_id, self.parent.pk)
+        self.assertEqual(child.card_kind, KanbanCard.KIND_SUBTASK)
+        self.assertEqual(child.work_order.machine_id, self.machine.pk)
+        self.assertEqual(child.work_order.customer_id, self.customer.pk)
 
     def test_unknown_parent_is_rejected(self):
         with self.assertRaises(scheduling.UnknownWorkOrder):
             scheduling.create_child(
-                parent_id=999999, actor=self.actor,
-                idempotency_key='ch3', title='Orphan',
+                parent_id=999999,
+                actor=self.actor,
+                idempotency_key='ch3',
+                title='Orphan',
             )
 
     def test_unknown_kind_is_rejected(self):
@@ -70,21 +69,11 @@ class CreateChildTest(TestCase):
     def test_create_child_is_idempotent(self):
         first = self._create_child(idempotency_key='ch4')
         second = self._create_child(idempotency_key='ch4')
-        self.assertEqual(first.work_order_id, second.work_order_id)
-        self.assertEqual(self.parent.children.count(), 1)
 
-    def test_child_cannot_diverge_machine_on_update(self):
-        child = WorkOrder.objects.get(pk=self._create_child().work_order_id)
-        other = AssetMachine.objects.create(name='Other Child Machine')
-
-        with self.assertRaises(scheduling.InvalidChild):
-            scheduling.update_work_order_plan(
-                work_order_id=child.pk,
-                actor=self.actor,
-                expected_version=child.lifecycle_version,
-                idempotency_key='ch5',
-                fields={'machine_id': other.pk},
-            )
+        self.assertEqual(first.metadata['card_id'], second.metadata['card_id'])
+        self.assertEqual(
+            self.parent.cards.filter(card_kind=KanbanCard.KIND_SUBTASK).count(), 1
+        )
 
 
 class ProcurementChildTest(TestCase):
@@ -94,7 +83,9 @@ class ProcurementChildTest(TestCase):
         )
         self.machine = AssetMachine.objects.create(name='Proc Press')
         self.parent = WorkOrder.objects.create(
-            title='Needs parts', status='backlog', priority='low',
+            title='Needs parts',
+            status='backlog',
+            priority='low',
             machine=self.machine,
         )
         self.short_part = Part.objects.create(
@@ -106,34 +97,32 @@ class ProcurementChildTest(TestCase):
         )
         StockItem.objects.create(part=self.ok_part, quantity=Decimal('100'))
 
-    def _add_part(self, part, qty):
-        cp = WorkOrderPart.objects.create(
-            work_order=self.parent, part=part, quantity=Decimal(qty)
+    def _add_part(self, part, quantity):
+        line = WorkOrderPart.objects.create(
+            work_order=self.parent, part=part, quantity=Decimal(quantity)
         )
-        cp.check_and_allocate()
-        return cp
+        line.check_and_allocate()
+        return line
 
     def test_no_shortfall_generates_nothing(self):
         self._add_part(self.ok_part, 5)
-        result = scheduling.generate_procurement_child(
-            parent_id=self.parent.pk, actor=self.actor
+        self.assertIsNone(
+            scheduling.generate_procurement_child(
+                parent_id=self.parent.pk, actor=self.actor
+            )
         )
-        self.assertIsNone(result)
 
-    def test_shortfall_generates_a_procurement_child(self):
-        self._add_part(self.short_part, 10)  # only 1 in stock
-
+    def test_shortfall_generates_a_procurement_card(self):
+        line = self._add_part(self.short_part, 10)
         child = scheduling.generate_procurement_child(
             parent_id=self.parent.pk, actor=self.actor
         )
 
         self.assertIsNotNone(child)
-        self.assertEqual(child.card_kind, WorkOrder.KIND_PROCUREMENT)
-        self.assertEqual(child.parent_id, self.parent.pk)
-        self.assertEqual(child.machine_id, self.machine.pk)
-        # The child carries the shortfall (need 10, have 1 -> 9).
-        line = child.work_order_parts.get(part=self.short_part)
-        self.assertEqual(line.quantity, Decimal('9'))
+        self.assertEqual(child.card_kind, KanbanCard.KIND_PROCUREMENT)
+        self.assertEqual(child.work_order_id, self.parent.pk)
+        self.assertEqual(line.quantity, Decimal('10'))
+        self.assertEqual(self.parent.work_order_parts.count(), 1)
 
     def test_generation_is_idempotent(self):
         self._add_part(self.short_part, 10)
@@ -143,35 +132,49 @@ class ProcurementChildTest(TestCase):
         second = scheduling.generate_procurement_child(
             parent_id=self.parent.pk, actor=self.actor
         )
+
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(
-            self.parent.children.filter(
-                card_kind=WorkOrder.KIND_PROCUREMENT
+            self.parent.cards.filter(
+                card_kind=KanbanCard.KIND_PROCUREMENT
             ).count(),
             1,
         )
 
 
 class CloseoutBlockedByChildTest(TestCase):
-    """A parent cannot close out while a child is still open."""
+    """A work order cannot close while one of its child cards is open."""
 
     def test_incomplete_children_helper(self):
         machine = AssetMachine.objects.create(name='CB Press')
-        parent = WorkOrder.objects.create(
+        work_order = WorkOrder.objects.create(
             title='P', status='backlog', priority='low', machine=machine
         )
-        WorkOrder.objects.create(
-            title='open child', status='backlog', priority='low',
-            machine=machine, parent=parent,
+        KanbanColumn.objects.update_or_create(
+            key='done',
+            defaults={
+                'label': 'Done',
+                'color': 'green',
+                'order': 3,
+                'is_terminal': True,
+            },
         )
-        WorkOrder.objects.create(
-            title='done child', status='done', priority='low',
-            machine=machine, parent=parent,
-            lifecycle_status=WorkOrderLifecycle.COMPLETED,
+        KanbanCard.objects.create(
+            work_order=work_order,
+            title='open child',
+            status='backlog',
+            card_kind=KanbanCard.KIND_SUBTASK,
+        )
+        KanbanCard.objects.create(
+            work_order=work_order,
+            title='done child',
+            status='done',
+            card_kind=KanbanCard.KIND_SUBTASK,
         )
 
-        incomplete = scheduling.incomplete_children(parent.pk)
+        incomplete = scheduling.incomplete_children(work_order.pk)
         self.assertEqual(incomplete.count(), 1)
+        self.assertEqual(incomplete.get().title, 'open child')
 
 
 class ChildCardApiTest(TestCase):
@@ -191,10 +194,12 @@ class ChildCardApiTest(TestCase):
             data={'title': 'Subtask', 'card_kind': 'subtask'},
             content_type='application/json',
         )
+
         self.assertEqual(response.status_code, 201)
         body = response.json()
-        self.assertEqual(body['parent'], self.parent.pk)
-        self.assertEqual(body['card_kind'], 'subtask')
+        self.assertEqual(body['work_order'], self.parent.pk)
+        self.assertEqual(body['card_kind'], KanbanCard.KIND_SUBTASK)
+        self.assertEqual(body['title'], 'Subtask')
 
     def test_generate_procurement_via_api_with_no_shortfall(self):
         response = self.client.post(

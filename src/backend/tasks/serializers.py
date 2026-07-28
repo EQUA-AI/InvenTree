@@ -215,10 +215,6 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
             'lifecycle_version',
             'actual_started_at',
             'actual_completed_at',
-            # Composition (§5.10). ``parent`` and ``card_kind`` are set at
-            # creation through the command service and read-only here.
-            'parent',
-            'card_kind',
         )
         # The read/write split is the part of the old boundary that still matters,
         # and it matches ``WorkOrderSerializer``: lifecycle state, assignment,
@@ -237,8 +233,6 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
             'lifecycle_version',
             'actual_started_at',
             'actual_completed_at',
-            'parent',
-            'card_kind',
         )
 
     def get_assigned_to_name(self, obj) -> str | None:
@@ -429,8 +423,6 @@ class WorkOrderSummarySerializer(serializers.ModelSerializer):
             'priority',
             'lifecycle_status',
             'work_order_type',
-            'card_kind',
-            'parent',
             'machine',
             'machine_name',
             'assigned_to',
@@ -479,8 +471,6 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
     """Complete read-only work-order context for the detail page."""
 
     cards = serializers.SerializerMethodField()
-    parent_detail = serializers.SerializerMethodField()
-    children = serializers.SerializerMethodField()
     dependencies = serializers.SerializerMethodField()
     events = serializers.SerializerMethodField()
     repair_packet = serializers.SerializerMethodField()
@@ -495,8 +485,6 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
         fields = (
             *WorkOrderBoardSerializer.Meta.fields,
             'cards',
-            'parent_detail',
-            'children',
             'dependencies',
             'events',
             'repair_packet',
@@ -527,19 +515,6 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
         if work_order is None:
             return None
         return WorkOrderSummarySerializer(work_order).data
-
-    @extend_schema_field(WorkOrderSummarySerializer(allow_null=True))
-    def get_parent_detail(self, obj) -> dict | None:
-        """Return the parent work order for a child card."""
-        return self._summary(obj.parent)
-
-    @staticmethod
-    @extend_schema_field(WorkOrderSummarySerializer(many=True))
-    def get_children(obj) -> list:
-        """Return direct jobs/tasks under this work order."""
-        return WorkOrderSummarySerializer(
-            obj.children.all().order_by('scheduled_start', 'created_at'), many=True
-        ).data
 
     def get_dependencies(self, obj) -> list:
         """Return predecessor and successor relationships."""

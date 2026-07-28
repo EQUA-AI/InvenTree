@@ -167,7 +167,7 @@ class ApplyProfileTest(TestCase):
         validated = validate_profile(
             profile or _profile(),
             reference=self.work_order.reference,
-            card_kind=self.work_order.card_kind,
+            card_kind=self.work_order.primary_card.card_kind,
             is_terminal=False,
         )
         apply_profile(
@@ -269,7 +269,7 @@ class ApplyProfileTest(TestCase):
                 findings=[{'key': 'F-01', 'observation': 'x'}],
             ),
             reference=plain.reference,
-            card_kind=plain.card_kind,
+            card_kind=plain.primary_card.card_kind,
             is_terminal=True,
         )
 
@@ -320,7 +320,9 @@ class EnrichmentCommandTest(TestCase):
         output = self.load(enrich_owned_work_orders=True)
 
         self.assertIn('Enrichment coverage:', output)
-        self.assertIn('44 owned cards discovered', output)
+        # 30 history jobs + 10 active repairs; procurement is now four
+        # cards on those repairs rather than four more work orders.
+        self.assertIn('40 owned cards discovered', output)
         # Nothing is left unaccounted for now that the manifest is complete.
         self.assertNotIn('have no', output)
         for record_class in (
@@ -328,7 +330,6 @@ class EnrichmentCommandTest(TestCase):
             'historical_corrective',
             'historical_inspection',
             'historical_preventive',
-            'procurement',
         ):
             with self.subTest(record_class=record_class):
                 self.assertIn(record_class, output)
@@ -374,8 +375,15 @@ class EnrichmentCommandTest(TestCase):
         history = WorkOrder.objects.get(reference='WO-WW-H-001')
         self.assertEqual(history.affected_component, 'Influent Pumps 1-3')
 
-        procurement = WorkOrder.objects.get(reference='WO-WW-P-001')
-        self.assertEqual(procurement.affected_component, 'Centrifuge 2 main bearing')
+        # Procurement is a card on its parent job now, not a work order of its
+        # own, so there is no separate record to enrich - only a card to find.
+        parent = WorkOrder.objects.get(reference='WO-WW-R-005')
+        self.assertTrue(
+            parent.cards.filter(
+                card_kind='procurement', title__icontains='centrifuge'
+            ).exists()
+        )
+        self.assertFalse(WorkOrder.objects.filter(reference='WO-WW-P-001').exists())
 
     def test_enrichment_is_idempotent_across_reruns(self):
         """A second enrichment pass changes nothing."""

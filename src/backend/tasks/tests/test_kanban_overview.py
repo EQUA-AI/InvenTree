@@ -10,7 +10,7 @@ from assets.models import AssetMachine, AssetMaintenanceRecord
 from InvenTree.unit_test import InvenTreeAPITestCase
 from part.models import Part
 from repair.models import RepairPacket, RepairPacketGate
-from tasks.models import WorkOrder, WorkOrderDependency, WorkOrderPart
+from tasks.models import KanbanCard, WorkOrder, WorkOrderDependency, WorkOrderPart
 from tasks.workorder_models import WorkOrderEvent
 
 
@@ -20,12 +20,12 @@ class WorkOrderOverviewTest(InvenTreeAPITestCase):
     roles = 'all'
 
     def setUp(self):
-        """Create a parent work order and its complete related context."""
+        """Create one job with cards, dependency, parts, repair, and history."""
         super().setUp()
         self.machine = AssetMachine.objects.create(
             name='Overview Machine', location='Plant / Bay 4'
         )
-        self.parent = WorkOrder.objects.create(
+        self.work_order = WorkOrder.objects.create(
             reference='WO-OVERVIEW-001',
             title='Parent repair',
             description='Replace a leaking process seal.',
@@ -33,26 +33,32 @@ class WorkOrderOverviewTest(InvenTreeAPITestCase):
             priority=WorkOrder.PRIORITY_HIGH,
             machine=self.machine,
         )
-        self.child = WorkOrder.objects.create(
-            reference='WO-OVERVIEW-002',
+        self.procurement_card = KanbanCard.objects.create(
+            work_order=self.work_order,
             title='Procure seal kit',
             status=WorkOrder.STATUS_BACKLOG,
+            card_kind=KanbanCard.KIND_PROCUREMENT,
+        )
+        self.predecessor = WorkOrder.objects.create(
+            reference='WO-OVERVIEW-002',
+            title='Isolate upstream process',
+            status=WorkOrder.STATUS_REVIEW,
             priority=WorkOrder.PRIORITY_MEDIUM,
             machine=self.machine,
-            parent=self.parent,
-            card_kind=WorkOrder.KIND_PROCUREMENT,
         )
         part = Part.objects.create(name='Seal kit', IPN='OV-SEAL')
         WorkOrderPart.objects.create(
-            work_order=self.parent,
+            work_order=self.work_order,
             part=part,
             quantity=Decimal('2'),
             allocation_status=WorkOrderPart.ALLOCATION_INSUFFICIENT,
         )
-        WorkOrderDependency.objects.create(predecessor=self.child, successor=self.parent)
+        WorkOrderDependency.objects.create(
+            predecessor=self.predecessor, successor=self.work_order
+        )
         self.packet = RepairPacket.objects.create(
             machine=self.machine,
-            work_order=self.parent,
+            work_order=self.work_order,
             fault_summary='Seal leakage',
             symptom='Visible process-water leak',
             criticality='high',
@@ -62,14 +68,14 @@ class WorkOrderOverviewTest(InvenTreeAPITestCase):
         )
         AssetMaintenanceRecord.objects.create(
             machine=self.machine,
-            work_order=self.parent,
+            work_order=self.work_order,
             date=datetime.date(2026, 7, 26),
             summary='Repair completed',
             details='Seal replaced and leak checked.',
             performed_by='Jordan Example',
         )
         WorkOrderEvent.objects.create(
-            work_order=self.parent,
+            work_order=self.work_order,
             event_type='CREATED',
             from_status='',
             to_status='planned',
@@ -77,19 +83,25 @@ class WorkOrderOverviewTest(InvenTreeAPITestCase):
         )
 
     def test_overview_includes_complete_context(self):
-        """Overview returns hierarchy, parts, repair, history, and audit data."""
+        """Overview returns cards, parts, dependencies, repair, and audit data."""
         response = self.get(
-            reverse('kanban-card-overview', kwargs={'pk': self.parent.pk}),
+            reverse('kanban-card-overview', kwargs={'pk': self.work_order.pk}),
             expected_code=200,
         )
 
-        self.assertEqual(response.data['id'], self.parent.pk)
+        self.assertEqual(response.data['id'], self.work_order.pk)
         self.assertEqual(response.data['machine_name'], self.machine.name)
-        self.assertEqual(response.data['children'][0]['id'], self.child.pk)
-        self.assertEqual(response.data['children'][0]['status'], self.child.status)
+        procurement = next(
+            card
+            for card in response.data['cards']
+            if card['card_kind'] == KanbanCard.KIND_PROCUREMENT
+        )
+        self.assertEqual(procurement['id'], self.procurement_card.pk)
         self.assertEqual(response.data['parts'][0]['part_ipn'], 'OV-SEAL')
         self.assertEqual(response.data['parts'][0]['allocation_status'], 'insufficient')
-        self.assertEqual(response.data['dependencies'][0]['card']['id'], self.child.pk)
+        self.assertEqual(
+            response.data['dependencies'][0]['card']['id'], self.predecessor.pk
+        )
         self.assertEqual(response.data['repair_packet']['id'], self.packet.pk)
         self.assertEqual(
             response.data['repair_packet']['gates'][0]['status'], 'pending'
@@ -98,16 +110,6 @@ class WorkOrderOverviewTest(InvenTreeAPITestCase):
             response.data['maintenance_record']['summary'], 'Repair completed'
         )
         self.assertEqual(response.data['events'][0]['event_type'], 'CREATED')
-
-    def test_child_overview_includes_parent(self):
-        """A child task links back to its parent work order."""
-        response = self.get(
-            reverse('kanban-card-overview', kwargs={'pk': self.child.pk}),
-            expected_code=200,
-        )
-
-        self.assertEqual(response.data['parent_detail']['id'], self.parent.pk)
-        self.assertEqual(response.data['parent_detail']['reference'], 'WO-OVERVIEW-001')
 
 
 class OverviewDetailSectionsTest(InvenTreeAPITestCase):

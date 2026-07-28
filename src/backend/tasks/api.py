@@ -377,15 +377,12 @@ class WorkOrderOverviewDetail(APIView):
             'machine',
             'assigned_to',
             'requested_by',
-            'parent__machine',
-            'parent__assigned_to',
             'repair_packet',
             'maintenance_record',
             'structured_closeout',
         ).prefetch_related(
             'work_order_parts__part',
-            'children__machine',
-            'children__assigned_to',
+            'cards__assigned_to',
             'dependencies_in__predecessor__machine',
             'dependencies_in__predecessor__assigned_to',
             'dependencies_out__successor__machine',
@@ -769,6 +766,15 @@ class _CommandView(APIView):
         work_order = get_object_or_404(WorkOrder, pk=work_order_id)
         return WorkOrderBoardSerializer(work_order).data
 
+    def _card_payload(self, card_id):
+        card = get_object_or_404(
+            KanbanCard.objects.select_related(
+                'work_order', 'work_order__machine', 'work_order__assigned_to'
+            ),
+            pk=card_id,
+        )
+        return KanbanCardSerializer(card).data
+
 
 class WorkOrderCreateCommand(_CommandView):
     """Create a work order through the command service."""
@@ -934,7 +940,7 @@ class WorkOrderCreateChildCommand(_CommandView):
             return _command_error_response(exc)
 
         return Response(
-            self._work_order_payload(result.work_order_id),
+            self._card_payload(result.metadata['card_id']),
             status=status.HTTP_201_CREATED,
         )
 
@@ -957,7 +963,7 @@ class WorkOrderGenerateProcurementCommand(_CommandView):
             return Response({'generated': False, 'detail': 'No parts shortfall.'})
 
         return Response(
-            {'generated': True, 'child': self._work_order_payload(child.pk)},
+            {'generated': True, 'child': self._card_payload(child.pk)},
             status=status.HTTP_201_CREATED,
         )
 

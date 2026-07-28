@@ -1831,17 +1831,7 @@
         "start": "13:00"
       },
       "dependency_type": "FS",
-      "lag_minutes": 0,
-      "detail_profile": {
-        "profile_version": 1,
-        "class": "procurement",
-        "affected_component": {
-          "name": "Centrifuge 2 main bearing",
-          "external_id": "CF-202-BRG"
-        },
-        "findings": [],
-        "approved_scope": null
-      }
+      "lag_minutes": 0
     },
     {
       "reference": "WO-WW-P-002",
@@ -1858,17 +1848,7 @@
         "start": "14:00"
       },
       "dependency_type": "FS",
-      "lag_minutes": 0,
-      "detail_profile": {
-        "profile_version": 1,
-        "class": "procurement",
-        "affected_component": {
-          "name": "Clarifier 4 drive gearbox",
-          "external_id": "CL-404-GBX"
-        },
-        "findings": [],
-        "approved_scope": null
-      }
+      "lag_minutes": 0
     },
     {
       "reference": "WO-WW-P-003",
@@ -1885,17 +1865,7 @@
         "start": "13:00"
       },
       "dependency_type": "FS",
-      "lag_minutes": 0,
-      "detail_profile": {
-        "profile_version": 1,
-        "class": "procurement",
-        "affected_component": {
-          "name": "Cooling Train A Cell A fan gearbox",
-          "external_id": "CT-A1-GBX"
-        },
-        "findings": [],
-        "approved_scope": null
-      }
+      "lag_minutes": 0
     },
     {
       "reference": "WO-WW-P-004",
@@ -1912,17 +1882,7 @@
         "start": "14:00"
       },
       "dependency_type": "FS",
-      "lag_minutes": 0,
-      "detail_profile": {
-        "profile_version": 1,
-        "class": "procurement",
-        "affected_component": {
-          "name": "Lift Station 14 grinder pump",
-          "external_id": "LS-014-P2"
-        },
-        "findings": [],
-        "approved_scope": null
-      }
+      "lag_minutes": 0
     }
   ]
 }

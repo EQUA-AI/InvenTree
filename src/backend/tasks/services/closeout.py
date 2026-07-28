@@ -227,18 +227,12 @@ def complete_work_order(
 
     # A parent cannot be closed out while a child card is still open (§5.10): the
     # child (e.g. a procurement task for missing parts) is part of the work.
-    incomplete = [
-        child.pk
-        for child in work_order.children.exclude(
-            lifecycle_status__in=[
-                WorkOrderLifecycle.COMPLETED,
-                WorkOrderLifecycle.CANCELED,
-            ]
-        )
-    ]
+    from tasks.services.scheduling import incomplete_children
+
+    incomplete = list(incomplete_children(work_order.pk).values_list('pk', flat=True))
     if incomplete:
         raise CloseoutError(
-            f'Cannot close out while child work orders are open: {incomplete}'
+            f'Cannot close out while child cards are open: {incomplete}'
         )
 
     missing = [

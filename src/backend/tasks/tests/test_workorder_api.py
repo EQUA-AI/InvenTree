@@ -345,8 +345,6 @@ class WorkOrderAPITest(TestCase):
                 'actual_started_at',
                 'actual_completed_at',
                 # Composition (§5.10): parent link and card kind.
-                'parent',
-                'card_kind',
             },
         )
         self.assertEqual(payload[0]['id'], work_order.pk)

@@ -127,25 +127,10 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     lifecycle_version = models.PositiveIntegerField(default=1)
     hold_reason = models.TextField(blank=True)
 
-    KIND_WORK_ORDER = 'work_order'
-    KIND_SUBTASK = 'subtask'
-    KIND_PROCUREMENT = 'procurement'
-    KIND_CHOICES = [
-        (KIND_WORK_ORDER, 'Work Order'),
-        (KIND_SUBTASK, 'Subtask'),
-        (KIND_PROCUREMENT, 'Procurement'),
-    ]
-
-    # A work order can fan out into child cards (§5.10), one of which may be a
-    # procurement task raised from a parts shortfall. Depth is exactly one: a
-    # child cannot itself have children (enforced in the command service). PROTECT
-    # so a parent with children cannot be deleted out from under them.
-    parent = models.ForeignKey(
-        'self', null=True, blank=True, on_delete=models.PROTECT, related_name='children'
-    )
-    card_kind = models.CharField(
-        max_length=16, choices=KIND_CHOICES, default=KIND_WORK_ORDER, db_index=True
-    )
+    # ``parent`` and ``card_kind`` used to live here, so a subtask or a
+    # procurement task was a second work order with its own WO- number for what
+    # is one maintenance job. They are properties of a :class:`KanbanCard` now:
+    # a job fans out into cards, not into more jobs.
 
     # The maintainable asset owns maintenance history, but a fault usually
     # concerns one part of it: a pump, a lamp bank, a rake chain, a membrane
@@ -225,7 +210,7 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         if creating:
             KanbanCard.objects.create(
                 work_order=self,
-                card_kind=self.card_kind or KanbanCard.KIND_WORK_ORDER,
+                card_kind=KanbanCard.KIND_WORK_ORDER,
                 status=self.status,
                 title=self.title,
                 description=self.description,

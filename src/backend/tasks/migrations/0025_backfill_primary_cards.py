@@ -42,7 +42,7 @@ def create_primary_cards(apps, schema_editor):
                 work_order_id=work_order.pk,
                 # A child's kind describes what that piece of work is; a
                 # standalone job's card tracks the job itself.
-                card_kind=work_order.card_kind or 'work_order',
+                card_kind=getattr(work_order, 'card_kind', None) or 'work_order',
                 status=work_order.status,
                 board_order=0,
                 title=work_order.title,

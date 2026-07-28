@@ -8,7 +8,7 @@ from django.db import connection
 from django.db.models import Sum
 from django.test import TestCase
 
-from tasks.models import WorkOrder, WorkOrderLifecycle
+from tasks.models import KanbanCard, WorkOrder, WorkOrderLifecycle
 
 from assets.management.commands.load_asset_demo_data import Command
 from assets.models import AssetMachine, AssetMaintenanceRecord, MachinePart
@@ -129,7 +129,11 @@ class AssetDemoDataTest(TestCase):
             with self.subTest(record=record.summary):
                 work_order = record.work_order
                 self.assertEqual(work_order.machine_id, record.machine_id)
-                self.assertEqual(work_order.card_kind, WorkOrder.KIND_WORK_ORDER)
+                # The job's own tracking card; history rows are never a piece
+                # of some other job's work.
+                self.assertEqual(
+                    work_order.primary_card.card_kind, KanbanCard.KIND_WORK_ORDER
+                )
                 self.assertEqual(
                     work_order.lifecycle_status, WorkOrderLifecycle.COMPLETED
                 )

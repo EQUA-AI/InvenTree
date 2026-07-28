@@ -69,7 +69,6 @@ def normalize_completed_history_card(
         'status': terminal_status,
         'lifecycle_status': WorkOrderLifecycle.COMPLETED,
         'is_active': False,
-        'card_kind': WorkOrder.KIND_WORK_ORDER,
         'actual_completed_at': completed_at,
     }
     for field, value in fields.items():

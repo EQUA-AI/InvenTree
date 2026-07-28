@@ -9,6 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from tasks.models import (
+    KanbanCard,
     WorkingCalendar,
     WorkOrder,
     WorkOrderDependency,
@@ -129,8 +130,12 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
 
         history_cards = self.workflow_cards('maintenance_history')
         scenario_work_orders = self.workflow_cards('repair_scenario')
-        procurement_cards = self.workflow_cards('procurement')
-        active_cards = [*scenario_work_orders, *procurement_cards]
+        # Procurement is a card on the job it serves, not a work order of its
+        # own - that is the whole point of one work order per maintenance job.
+        procurement_cards = KanbanCard.objects.filter(
+            card_kind=KanbanCard.KIND_PROCUREMENT, work_order__in=scenario_work_orders
+        )
+        active_cards = list(scenario_work_orders)
         water_history = AssetMaintenanceRecord.objects.filter(
             machine__name__in=WATER_MACHINE_NAMES
         )
@@ -145,8 +150,8 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
                 )
 
         self.assertEqual(len(scenario_work_orders), 10)
-        self.assertEqual(len(procurement_cards), 4)
-        self.assertEqual(len(active_cards), 14)
+        self.assertEqual(procurement_cards.count(), 4)
+        self.assertEqual(len(active_cards), 10)
         self.assertTrue(
             all(
                 work_order.is_active
@@ -167,8 +172,10 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
             stage_counts,
             {
                 WorkOrder.STATUS_BACKLOG: 5,
-                WorkOrder.STATUS_IN_PROGRESS: 5,
-                WorkOrder.STATUS_REVIEW: 4,
+                # Down from 5 and 4: the procurement records that used to add
+                # one apiece are cards on these jobs now.
+                WorkOrder.STATUS_IN_PROGRESS: 3,
+                WorkOrder.STATUS_REVIEW: 2,
             },
         )
         for work_order in active_cards:
@@ -214,20 +221,23 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
             ).count(),
             4,
         )
+        # The dataset's only dependency edges ran from each procurement record
+        # to the repair waiting on it. Both ends are the same job now, and a
+        # work-order dependency orders two *jobs* - so there is nothing left for
+        # it to say here. Ordering within a job is carried by its cards' own
+        # schedules; a card-level edge is the natural follow-up.
         dependencies = WorkOrderDependency.objects.select_related(
             'predecessor', 'successor'
         )
-        self.assertEqual(dependencies.count(), 4)
-        for dependency in dependencies:
-            with self.subTest(dependency=dependency.pk):
-                self.assertEqual(dependency.dependency_type, 'FS')
-                self.assertEqual(
-                    dependency.predecessor.parent_id, dependency.successor_id
-                )
-                self.assertLessEqual(
-                    dependency.predecessor.scheduled_end,
-                    dependency.successor.scheduled_start,
-                )
+        self.assertEqual(dependencies.count(), 0)
+
+        # What replaced them: each repair that needed sourcing carries a
+        # procurement card, scheduled before the repair it feeds.
+        for work_order in scenario_work_orders:
+            for card in work_order.cards.filter(card_kind=KanbanCard.KIND_PROCUREMENT):
+                with self.subTest(card=card.pk):
+                    self.assertEqual(card.work_order_id, work_order.pk)
+                    self.assertIsNotNone(card.scheduled_start)
 
     def test_dry_run_rolls_back_all_records(self):
         """Dry-run executes the complete loader without retaining writes."""
@@ -345,7 +355,13 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
         self.assertEqual(work_order.lifecycle_status, WorkOrderLifecycle.PLANNED)
         self.assertEqual(work_order.status, WorkOrder.STATUS_IN_PROGRESS)
         self.assertEqual(len(self.workflow_cards('repair_scenario')), 10)
-        self.assertEqual(len(self.workflow_cards('procurement')), 4)
+        self.assertEqual(
+            KanbanCard.objects.filter(
+                card_kind=KanbanCard.KIND_PROCUREMENT,
+                work_order__in=self.workflow_cards('repair_scenario'),
+            ).count(),
+            4,
+        )
 
     def test_refuses_unowned_reference_collision(self):
         """An existing unrelated card cannot be adopted by reference."""
@@ -442,7 +458,9 @@ class WaterWorkflowProfileCoverageTest(WaterWorkflowFixture):
         self.load_workflow(enrich=True, require_complete=True)
 
         work_orders = self.workflow_cards()
-        self.assertEqual(len(work_orders), 44)
+        # 30 history jobs + 10 active repairs. The four procurement records are
+        # cards on those repairs now, not work orders of their own.
+        self.assertEqual(len(work_orders), 40)
         without_component = [
             work_order.reference
             for work_order in work_orders

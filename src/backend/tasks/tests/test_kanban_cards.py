@@ -203,7 +203,6 @@ class BackfillMigrationTest(TestCase):
             'description': '',
             'status': WorkOrder.STATUS_REVIEW,
             'priority': WorkOrder.PRIORITY_MEDIUM,
-            'card_kind': KanbanCard.KIND_WORK_ORDER,
             'is_active': True,
         }
         values.update(overrides)
@@ -237,7 +236,6 @@ class BackfillMigrationTest(TestCase):
             scheduled_start=start,
             scheduled_end=start + timezone.timedelta(hours=2),
             estimated_minutes=120,
-            card_kind=KanbanCard.KIND_PROCUREMENT,
         )
 
         self._run_backfill()
@@ -247,7 +245,7 @@ class BackfillMigrationTest(TestCase):
         self.assertEqual(card.assignee, 'Legacy Name')
         self.assertEqual(card.scheduled_start, start)
         self.assertEqual(card.estimated_minutes, 120)
-        self.assertEqual(card.card_kind, KanbanCard.KIND_PROCUREMENT)
+        self.assertEqual(card.card_kind, KanbanCard.KIND_WORK_ORDER)
 
     def test_rerunning_creates_no_duplicates(self):
         """A partial apply must be safe to repeat."""

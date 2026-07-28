@@ -12,10 +12,10 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from tasks.models import (
+    KanbanCard,
     KanbanColumn,
     WorkingCalendar,
     WorkOrder,
-    WorkOrderDependency,
     WorkOrderLifecycle,
     WorkOrderPart,
     WorkOrderType,
@@ -132,8 +132,7 @@ class Command(BaseCommand):
                 requested_by=users[data['requested_by']],
             )
 
-            active_cards = [*scenario_work_orders.values(), *procurement_cards.values()]
-            self._validate_schedule(active_cards)
+            self._validate_schedule(list(scenario_work_orders.values()))
 
             coverage = None
             if options['enrich_owned_work_orders']:
@@ -196,7 +195,7 @@ class Command(BaseCommand):
             profile = validate_profile(
                 raw_profile,
                 reference=reference,
-                card_kind=work_order.card_kind,
+                card_kind=KanbanCard.KIND_WORK_ORDER,
                 is_terminal=work_order.lifecycle_status
                 in {WorkOrderLifecycle.COMPLETED, WorkOrderLifecycle.CANCELED},
             )
@@ -230,10 +229,6 @@ class Command(BaseCommand):
             scenario = machine.get('scenario') or {}
             if scenario.get('detail_profile') is not None:
                 profiles[scenario['reference']] = scenario['detail_profile']
-
-        for child in data.get('procurement_children', []):
-            if child.get('detail_profile') is not None:
-                profiles[child['reference']] = child['detail_profile']
 
         return profiles
 
@@ -401,7 +396,7 @@ class Command(BaseCommand):
         return DEMO_TAGS.issubset(tags) and kind in tags
 
     def _owned_card(self, reference, kind, machine, *, parent=None):
-        """Return an existing owned card or raise on a reference collision."""
+        """Return an existing owned work order or raise on a collision."""
         matches = list(WorkOrder.objects.filter(reference=reference)[:2])
         if len(matches) > 1:
             raise CommandError(f'Multiple work orders match reference {reference!r}')
@@ -418,10 +413,9 @@ class Command(BaseCommand):
             raise CommandError(
                 f'Owned work order {reference!r} is linked to a different machine'
             )
-        expected_parent_id = parent.pk if parent else None
-        if work_order.parent_id != expected_parent_id:
+        if parent is not None:
             raise CommandError(
-                f'Owned work order {reference!r} has an unexpected parent card'
+                'Child work is represented by Kanban cards, not work orders'
             )
         return work_order
 
@@ -431,9 +425,6 @@ class Command(BaseCommand):
             machine_data['scenario']['reference']: 'repair_scenario'
             for machine_data in data['machines']
         }
-        expected.update({
-            child['reference']: 'procurement' for child in data['procurement_children']
-        })
         owned = list(WorkOrder.objects.filter(reference__in=expected))
         if not owned:
             return
@@ -466,7 +457,9 @@ class Command(BaseCommand):
             )
 
         RepairPacket.objects.filter(work_order_id__in=work_order_ids).delete()
-        WorkOrder.objects.filter(pk__in=work_order_ids, parent__isnull=False).delete()
+        KanbanCard.objects.filter(
+            work_order_id__in=work_order_ids, card_kind=KanbanCard.KIND_PROCUREMENT
+        ).delete()
         WorkOrder.objects.filter(pk__in=work_order_ids).delete()
 
     def _load_calendars(self, records, *, machines, reset):
@@ -624,7 +617,6 @@ class Command(BaseCommand):
                     'customer': machine.customer,
                     'assigned_to': assignee,
                     'requested_by': assignee,
-                    'card_kind': WorkOrder.KIND_WORK_ORDER,
                 }
                 if work_order is None:
                     work_order = WorkOrder.objects.create(
@@ -753,7 +745,6 @@ class Command(BaseCommand):
                     scheduled_start=start,
                     scheduled_end=end,
                     estimated_minutes=scenario['estimated_minutes'],
-                    card_kind=WorkOrder.KIND_WORK_ORDER,
                 )
 
             packet = RepairPacket.objects.filter(work_order=work_order).first()
@@ -823,13 +814,15 @@ class Command(BaseCommand):
         users,
         requested_by,
     ):
-        """Create scheduled procurement children and finish-to-start dependencies."""
+        """Create scheduled procurement cards on their repair work orders."""
+        del (
+            requested_by
+        )  # The card records its assigned owner; the job owns request provenance.
         children = {}
-        dependency_count = 0
 
         for record in records:
-            parent = scenario_work_orders[record['parent_reference']]
-            machine = parent.machine
+            work_order = scenario_work_orders[record['parent_reference']]
+            machine = work_order.machine
             assignee = users[record['assigned_to']]
             start, end = self._schedule_window(
                 machine,
@@ -839,42 +832,43 @@ class Command(BaseCommand):
                 calendars,
             )
             stage = self._stage_status(record)
-            child = self._owned_card(
-                record['reference'], 'procurement', machine, parent=parent
-            )
-            if child is None:
-                child = WorkOrder.objects.create(
-                    reference=record['reference'],
-                    title=record['title'],
-                    description=record['description'],
-                    status=stage,
-                    priority=record['priority'],
-                    due_date=end.date(),
-                    assignee=self._user_label(assignee),
-                    tags=self._owned_tags('procurement'),
-                    company=machine.customer.name if machine.customer else '',
-                    job_number=record['reference'],
-                    is_active=True,
-                    lifecycle_status=WorkOrderLifecycle.PLANNED,
-                    work_order_type=WorkOrderType.OTHER,
-                    machine=machine,
-                    customer=machine.customer,
-                    assigned_to=assignee,
-                    requested_by=requested_by,
-                    scheduled_start=start,
-                    scheduled_end=end,
-                    estimated_minutes=record['estimated_minutes'],
-                    parent=parent,
-                    card_kind=WorkOrder.KIND_PROCUREMENT,
+            matches = work_order.cards.filter(
+                card_kind=KanbanCard.KIND_PROCUREMENT, title=record['title']
+            ).order_by('pk')
+            if matches.count() > 1:
+                raise CommandError(
+                    f'Multiple procurement cards match {record["reference"]!r}'
                 )
+            child = matches.first()
+            values = {
+                'title': record['title'],
+                'description': f'{record["reference"]}: {record["description"]}',
+                'status': stage,
+                'assigned_to': assignee,
+                'assignee': self._user_label(assignee),
+                'scheduled_start': start,
+                'scheduled_end': end,
+                'estimated_minutes': record['estimated_minutes'],
+                'is_active': True,
+            }
+            if child is None:
+                child = KanbanCard.objects.create(
+                    work_order=work_order,
+                    card_kind=KanbanCard.KIND_PROCUREMENT,
+                    **values,
+                )
+            else:
+                for field, value in values.items():
+                    setattr(child, field, value)
+                child.save(update_fields=[*values, 'updated_at'])
 
-            part_line = parent.work_order_parts.filter(
+            part_line = work_order.work_order_parts.filter(
                 part=parts[record['part_ipn']]
             ).first()
             if part_line is None:
                 raise CommandError(
                     f'Procurement card {record["reference"]!r} references part '
-                    f'{record["part_ipn"]!r} without a parent required-part line'
+                    f'{record["part_ipn"]!r} without a required-part line'
                 )
             if part_line.allocation_status == WorkOrderPart.ALLOCATION_NONE:
                 part_line.allocation_status = WorkOrderPart.ALLOCATION_INSUFFICIENT
@@ -885,26 +879,14 @@ class Command(BaseCommand):
                     update_fields=['allocation_status', 'allocation_note', 'updated_at']
                 )
 
-            dependency, _ = WorkOrderDependency.objects.get_or_create(
-                predecessor=child,
-                successor=parent,
-                dependency_type=record['dependency_type'],
-                defaults={'lag_minutes': record['lag_minutes']},
-            )
-            if dependency.lag_minutes != record['lag_minutes']:
-                raise CommandError(
-                    f'Dependency for {record["reference"]!r} has unexpected lag'
-                )
-            if child.scheduled_end > parent.scheduled_start:
+            if child.scheduled_end > work_order.scheduled_start:
                 raise CommandError(
                     f'Procurement card {record["reference"]!r} finishes after its '
-                    'dependent repair starts'
+                    'repair starts'
                 )
-
-            dependency_count += 1
             children[record['reference']] = child
 
-        return children, dependency_count
+        return children, 0
 
     @staticmethod
     def _validate_schedule(work_orders):
