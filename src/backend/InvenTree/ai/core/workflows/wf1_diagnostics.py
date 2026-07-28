@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
@@ -142,7 +142,13 @@ Format your analysis as:
 **Affected Components:**
 - [component 1]
 - [component 2]
-**Initial Assessment:** [brief summary]"""
+**Initial Assessment:** [brief summary]
+
+If the description gives you nothing concrete to analyze - no named equipment,
+no observed symptom, no data - do NOT produce the format above. Reply with a
+single line starting with exactly:
+INSUFFICIENT_EVIDENCE: [one sentence naming what is missing]
+Never invent symptoms, components or causes to fill the format."""
 
     def __init__(self):
         self._agent: ChatAgent | None = None
@@ -438,6 +444,23 @@ class T6DiagnosticsWorkflow:
             )
             steps.append(analysis_step)
 
+            # No grounding, no report. Running two more agents on an admitted
+            # absence of information produced report-shaped artifacts whose
+            # sections explained that there was nothing to report.
+            if self._analysis_lacks_evidence(analysis_response):
+                logger.info(
+                    "T6 diagnostics degraded: no evidence to diagnose",
+                    extra={"thread_id": thread_id},
+                )
+                return DiagnosticsResult(
+                    success=True,
+                    problem_category=ProblemCategory.UNKNOWN,
+                    diagnosis_steps=steps,
+                    formatted_response=self._no_evidence_response(analysis_response),
+                    cache_hit=False,
+                    execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                )
+
             # Determine problem category from analysis
             category = self._determine_category(analysis_response)
 
@@ -626,6 +649,51 @@ Recommend practical solutions to address the identified root causes."""
                     break
 
         return solutions
+
+    #: The analysis agent's structured admission that it has nothing to work
+    #: with (see its system prompt), plus the phrasings models fall into when
+    #: they admit it in prose anyway.
+    _NO_EVIDENCE_MARKERS: ClassVar[tuple[str, ...]] = (
+        "insufficient_evidence:",
+        "insufficient information",
+        "insufficient data",
+        "not enough information",
+        "no information available",
+        "cannot determine whether a problem exists",
+        "unable to determine whether a problem exists",
+    )
+
+    @classmethod
+    def _analysis_lacks_evidence(cls, analysis: str) -> bool:
+        """Whether the problem analysis admits it has nothing to diagnose."""
+        lowered = analysis.lower()
+        return any(marker in lowered for marker in cls._NO_EVIDENCE_MARKERS)
+
+    @staticmethod
+    def _no_evidence_response(analysis: str) -> str:
+        """An honest refusal, shaped like a sentence rather than a report.
+
+        A "Diagnostic Report" with Root Cause sections whose content is "no
+        information is available" reads as authority wrapped around an
+        absence. When there is nothing to diagnose, the assistant says so,
+        says what it lacked, and stops - no headings, no report skeleton.
+        """
+        reason = ""
+        for line in analysis.splitlines():
+            stripped = line.strip()
+            if stripped.upper().startswith("INSUFFICIENT_EVIDENCE:"):
+                reason = stripped.split(":", 1)[1].strip()
+                break
+
+        base = (
+            "I can't run a diagnosis on this - I don't have enough information "
+            "to determine whether a problem exists."
+        )
+        if reason:
+            base += f" What's missing: {reason}"
+        return base + (
+            " If you can tell me which machine or symptom you're seeing, I can look at its records."
+        )
 
     def _compile_response(
         self,

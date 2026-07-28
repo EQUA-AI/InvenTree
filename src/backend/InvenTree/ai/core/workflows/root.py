@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from ai.core.agents.routing import RoutingDecision, UnifiedRouter
 from ai.core.config import get_settings
+from ai.core.faults import fault_location
 from ai.core.memory.conversation import ConversationManager
 from ai.core.streaming import EventEmitter, RunContext
 from ai.core.workflows.registry import WorkflowRegistry, get_workflow_registry
@@ -123,12 +124,18 @@ class RootWorkflow:
             agent_name="root_workflow",
         )
 
+        # Which pipeline phase was active when a failure surfaced. Logged on
+        # the redacted error path, where it is often the only clue that places
+        # an outage without correlating timestamps against the source.
+        stage = "start"
+
         try:
             # Emit run started
             await run_ctx.emit_run_started()
 
             # Step 1: Gather context
             # We gather context before routing to help the router make better decisions
+            stage = "context"
             await run_ctx.emit_thinking("Gathering context...")
 
             aggregated_context = await self.conversation_manager.gather_context(
@@ -141,6 +148,7 @@ class RootWorkflow:
                 aggregated_context.update(context)
 
             # Step 2: Route
+            stage = "routing"
             await run_ctx.emit_thinking("Routing request...")
 
             decision = await self.router.route(
@@ -170,6 +178,7 @@ class RootWorkflow:
                     return
 
             # Step 3: Execute Workflow
+            stage = "workflow_execution"
             workflow_id = decision.get_workflow_id()
 
             # A server-owned pin wins over this router's own choice. Voice turns
@@ -261,7 +270,19 @@ class RootWorkflow:
             # Provider failures may contain credentials or customer content.
             # Let NormalizedTurnService persist the honest failed lifecycle;
             # do not turn the exception into a successful assistant answer.
-            logger.error("Root workflow failed (error_type=%s)", type(exc).__name__)
+            #
+            # The class name alone once left an outage diagnosable only by its
+            # timing signature; the pipeline stage and the code coordinates of
+            # the raise are logged too. fault_location() never reads the
+            # exception's message or args, so the redaction holds.
+            location = fault_location(exc)
+            logger.error(
+                "Root workflow failed (stage=%s error_type=%s raised_at=%s via=%s)",
+                stage,
+                location["error_type"],
+                location["raised_at"],
+                location["via"],
+            )
             await run_ctx.emit_error("AI turn failed")
             raise
 

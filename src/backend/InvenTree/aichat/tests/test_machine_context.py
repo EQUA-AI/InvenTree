@@ -220,6 +220,9 @@ class MachineToolTests(TestCase):
                 'machine_installed_parts',  # Installed Parts tab
                 'machine_maintenance_history',  # Maintenance tab
                 'machine_attachments',  # Attachments tab
+                # A selected controlled document rides the pin, whichever
+                # record type the pin is - same tool the work-order pin has.
+                'search_selected_controlled_document',
             },
         )
 
@@ -231,6 +234,11 @@ class MachineToolTests(TestCase):
     def test_each_tool_returns_an_authorized_cited_envelope(self):
         """Every answer carries a citation and an as-of time."""
         for tool in tool_service.tools_for_context('machine'):
+            if tool == 'search_selected_controlled_document':
+                # The one tool whose success needs a conversation-level
+                # document selection; its no-selection refusal is pinned in
+                # its own test below.
+                continue
             arguments = {'binding_id': 1} if tool == 'machine_signal_trend' else None
             with self.subTest(tool=tool):
                 envelope = self._invoke(tool, arguments)
@@ -240,6 +248,19 @@ class MachineToolTests(TestCase):
                 self.assertTrue(
                     ChatCitation.objects.filter(pk=envelope['citation_id']).exists()
                 )
+
+    def test_selected_document_tool_refuses_without_a_selection(self):
+        """With no document selected, the envelope is a governed refusal.
+
+        Mirrors the work-order pin's behaviour: the machine pin gets the same
+        tool and the same fail-closed answer, not a different rule.
+        """
+        envelope = self._invoke(
+            'search_selected_controlled_document', {'query': 'impeller wear'}
+        )
+
+        self.assertFalse(envelope['authorized'])
+        self.assertEqual(envelope['error'], 'CONTROLLED_DOCUMENT_UNAVAILABLE')
 
     def test_arguments_are_typed_and_unknown_keys_refused(self):
         """A typed schema is what keeps a model from widening a read."""

@@ -24,6 +24,7 @@ import numpy as np
 from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
 from ai.core.config import get_settings
+from ai.core.faults import log_fault
 from ai.core.integrations.data_provider import get_data_provider
 from openai import AsyncAzureOpenAI
 
@@ -274,10 +275,7 @@ class FastPathRouter:
                     }
 
         except Exception as e:
-            logger.warning(
-                f"Fast-path execution failed: {e}",
-                extra={"category": category, "entity": entity},
-            )
+            log_fault(logger, "Fast-path execution failed", e, stage="routing")
 
         return None
 
@@ -418,11 +416,13 @@ Only output the JSON object, no other text."""
             )
 
         except Exception as e:
-            logger.error(f"Classification error: {e}")
+            # The reasoning field travels into telemetry; a provider error's
+            # text has no place there, only its type.
+            log_fault(logger, "Intent classification failed", e, stage="routing")
             return RoutingDecision(
                 workflow_type=WorkflowType.GENERAL,
                 confidence=0.2,
-                reasoning=f"Classification error: {e!s}",
+                reasoning=f"Classification error ({type(e).__name__}), defaulting to general",
             )
 
 
@@ -597,25 +597,31 @@ class SemanticRouter:
         return self._client
 
     async def initialize(self):
-        """Build the embedding index."""
+        """Build the embedding index. Never raises: this router is optional.
+
+        Everything - including client construction - sits inside the guard.
+        The 2026-07-28 outage came from the one line that did not: with Azure
+        config missing, ``AzureOpenAIEmbeddingClient`` raised in its
+        constructor, above the old try, and a router whose own comment
+        promised "fallback to other routers" instead failed every turn.
+        """
         if self._initialized:
             return
 
-        client = await self._get_client()
-
-        # Flatten routes for batch embedding
-        all_texts = []
-        mapping = []  # (workflow_type, index_in_list)
-
-        for wf_type, examples in self.ROUTES.items():
-            for example in examples:
-                all_texts.append(example)
-                mapping.append(wf_type)
-
-        # Generate embeddings in batches
         try:
-            # Note: Agent Framework embedding client might return different formats
-            # We assume it returns a list of embeddings or similar
+            client = await self._get_client()
+
+            # Flatten routes for batch embedding
+            all_texts = []
+            mapping = []  # (workflow_type, index_in_list)
+
+            for wf_type, examples in self.ROUTES.items():
+                for example in examples:
+                    all_texts.append(example)
+                    mapping.append(wf_type)
+
+            # Note: Agent Framework embedding client might return different
+            # formats. We assume it returns a list of embeddings or similar.
             embeddings = await client.embed(all_texts)
 
             # Organize into index
@@ -629,8 +635,8 @@ class SemanticRouter:
             logger.info("Semantic router initialized with %d examples", len(all_texts))
 
         except Exception as e:
-            logger.error(f"Failed to initialize semantic router: {e}")
-            # We don't raise here to allow fallback to other routers
+            # Message-free on purpose: provider errors can carry credentials.
+            log_fault(logger, "Semantic router initialization failed", e, stage="routing")
 
     async def route(self, query: str, threshold: float = 0.82) -> RoutingDecision | None:
         """
@@ -643,12 +649,12 @@ class SemanticRouter:
         Returns:
             RoutingDecision if match found above threshold, else None
         """
-        if not self._initialized:
-            await self.initialize()
-            if not self._initialized:
-                return None
-
         try:
+            if not self._initialized:
+                await self.initialize()
+                if not self._initialized:
+                    return None
+
             client = await self._get_client()
             query_embedding = (await client.embed([query]))[0]
 
@@ -682,7 +688,7 @@ class SemanticRouter:
                 )
 
         except Exception as e:
-            logger.warning(f"Semantic routing failed: {e}")
+            log_fault(logger, "Semantic routing failed", e, stage="routing")
 
         return None
 
@@ -705,24 +711,41 @@ class UnifiedRouter:
     async def route(
         self, message: str, thread_id: str, context: dict[str, Any] | None = None
     ) -> RoutingDecision:
-        """
-        Route a message to a workflow.
-        """
-        # 1. Fast Path
-        fast_result = await self.fast_path.try_fast_path(message, thread_id)
-        if fast_result:
-            return fast_result
+        """Route a message to a workflow.
 
-        # 2. Semantic Routing
-        # We use a high threshold to avoid false positives
-        semantic_result = await self.semantic.route(message, threshold=0.85)
-        if semantic_result:
-            return semantic_result
+        The first two strategies are optimisations, not dependencies: each is
+        guarded so its failure degrades to the next rather than failing the
+        turn. The routers guard themselves too, but this boundary is what makes
+        the property structural instead of a habit every router must remember.
+        """
+        # 1. Fast Path (regex)
+        try:
+            fast_result = await self.fast_path.try_fast_path(message, thread_id)
+            if fast_result:
+                return fast_result
+        except Exception as e:
+            log_fault(logger, "Fast-path routing failed", e, stage="routing")
 
-        # 3. LLM Classification
-        # Fallback to LLM
-        return await self.classifier.classify(
-            query=message,
-            user_context=str(context) if context else "",
-            conversation_summary=context.get("summary", "") if context else "",
-        )
+        # 2. Semantic Routing (embeddings; high threshold to avoid false positives)
+        try:
+            semantic_result = await self.semantic.route(message, threshold=0.85)
+            if semantic_result:
+                return semantic_result
+        except Exception as e:
+            log_fault(logger, "Semantic routing failed", e, stage="routing")
+
+        # 3. LLM Classification. classify() answers GENERAL on its own
+        # failures; this guard exists so routing as a whole can never raise.
+        try:
+            return await self.classifier.classify(
+                query=message,
+                user_context=str(context) if context else "",
+                conversation_summary=context.get("summary", "") if context else "",
+            )
+        except Exception as e:
+            log_fault(logger, "Intent classification failed", e, stage="routing")
+            return RoutingDecision(
+                workflow_type=WorkflowType.GENERAL,
+                confidence=0.0,
+                reasoning="All routing strategies failed; defaulting to general",
+            )
