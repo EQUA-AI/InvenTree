@@ -20,7 +20,7 @@ from django.core import signing
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
 
-SCOPED_CONTEXT_TOKEN_VERSION = 1
+SCOPED_CONTEXT_TOKEN_VERSION = 2
 SCOPED_CONTEXT_TOKEN_SALT = 'aimms.aichat.scoped-context.v1'
 SCOPED_CONTEXT_TOKEN_PURPOSE = 'aimms.scoped-chat'
 
@@ -39,6 +39,9 @@ _TOKEN_CLAIMS = frozenset({
     'scope_hash',
     'revision',
     'capabilities',
+    'selected_document_id',
+    'selected_document_revision',
+    'selected_document_source_sha256',
 })
 
 
@@ -86,6 +89,7 @@ class ChatContext:
     as_of: datetime
     snapshot: dict[str, Any]
     token: str
+    selected_document: Any | None = None
 
 
 def scoped_chat_enabled() -> bool:
@@ -133,10 +137,25 @@ def actor_scope_strings(user) -> tuple[str, str]:
     return key, hashlib.sha256(key.encode('utf-8')).hexdigest()
 
 
-def source_revision_for(work_order) -> str:
-    """Return a compact revision fingerprint for a work order."""
-    basis = f'{work_order.lifecycle_version}:{work_order.updated_at.isoformat()}'
-    return f'v{work_order.lifecycle_version}:{hashlib.sha256(basis.encode()).hexdigest()[:16]}'
+def source_revision_for(record) -> str:
+    """Return a compact revision fingerprint for any pinned record.
+
+    Dispatches on the record rather than assuming a work order. The tool rail
+    calls this generically on whatever ``reauthorize_context`` returned, and it
+    does so *after* authorization has already succeeded -- so an unhandled
+    record type would fail at the worst possible moment, past every gate and
+    inside a request that was about to succeed. ``AssetMachine`` has no
+    ``lifecycle_version``; a machine falls back to its ``updated_at`` clock,
+    which is what actually changes when the asset does.
+    """
+    lifecycle_version = getattr(record, 'lifecycle_version', None)
+    updated_at = getattr(record, 'updated_at', None)
+    stamp = updated_at.isoformat() if updated_at else ''
+    if lifecycle_version is None:
+        basis = f'{record.__class__.__name__}:{record.pk}:{stamp}'
+        return f'u:{hashlib.sha256(basis.encode()).hexdigest()[:16]}'
+    basis = f'{lifecycle_version}:{stamp}'
+    return f'v{lifecycle_version}:{hashlib.sha256(basis.encode()).hexdigest()[:16]}'
 
 
 def work_order_snapshot(work_order) -> dict[str, Any]:
@@ -170,7 +189,7 @@ def work_order_snapshot(work_order) -> dict[str, Any]:
 
 def _authorized_work_order(user, object_id: str):
     """Load one work order scope-safely; denial never discloses existence."""
-    from tasks.models import KanbanCard
+    from tasks.models import WorkOrder
     from tasks.scope import ScopeError, require_work_order_scope
 
     try:
@@ -178,10 +197,7 @@ def _authorized_work_order(user, object_id: str):
     except (TypeError, ValueError) as exc:
         raise ContextForbidden('context unavailable') from exc
     work_order = (
-        KanbanCard.objects
-        .filter(pk=pk)
-        .select_related('machine', 'assigned_to')
-        .first()
+        WorkOrder.objects.filter(pk=pk).select_related('machine', 'assigned_to').first()
     )
     if work_order is None:
         raise ContextForbidden('context unavailable')
@@ -203,6 +219,111 @@ def _work_order_capabilities(user) -> tuple[str, ...]:
     return tuple(capabilities)
 
 
+def machine_snapshot(machine) -> dict[str, Any]:
+    """Build the reviewed, allow-listed prompt snapshot for a machine.
+
+    Deliberately identity only, mirroring ``work_order_snapshot``'s exclusion of
+    free text: the pin tells the model *which* asset it is looking at, and the
+    fenced free-text fields arrive through tool results that carry a citation
+    and an as-of time. Customer/client identity is excluded here for the same
+    reason the work-order snapshot omits its own -- a pin is not a data feed.
+    """
+    return {
+        'name': machine.name,
+        'active': machine.active,
+        'manufacturer': machine.manufacturer or None,
+        'model': machine.model or None,
+        'serial': machine.serial or None,
+    }
+
+
+def _authorized_machine(user, object_id: str):
+    """Load one machine scope-safely; denial never discloses existence."""
+    from tasks.scope import ScopeError, require_machine_scope
+
+    from assets.models import AssetMachine
+
+    try:
+        pk = int(object_id)
+    except (TypeError, ValueError) as exc:
+        raise ContextForbidden('context unavailable') from exc
+    machine = (
+        AssetMachine.objects.filter(pk=pk).select_related('customer', 'client').first()
+    )
+    if machine is None:
+        raise ContextForbidden('context unavailable')
+    try:
+        require_machine_scope(user, machine)
+    except ScopeError as exc:
+        raise ContextForbidden('context unavailable') from exc
+    return machine
+
+
+def _machine_capabilities(user) -> tuple[str, ...]:
+    """Resolve the actor's scoped-chat capability set for a machine.
+
+    Q&A only. Machine action proposals are not offered: the proposal API
+    requires an integer ``work_order_id`` in its request body, so advertising
+    ``propose_*`` on a machine context would produce a panel that posts a
+    machine pk into a work-order field.
+    """
+    return (CAPABILITY_QA,)
+
+
+def _machine_enabled() -> bool:
+    """Whether the assets context type is switched on for this deployment."""
+    return bool(getattr(settings, 'AIMMS_ASSETS_ENABLED', False))
+
+
+@dataclass(frozen=True)
+class _ContextAdapter:
+    """Everything one scoped context type must supply to be reachable.
+
+    Registration is a table rather than a chain of ``if context_type != ...``
+    checks because that shape previously lived in two places -- resolution and
+    per-call re-authorization -- and a type added to one but missed in the
+    other would authorize a pin whose tools then failed, or worse. One table,
+    both call sites.
+    """
+
+    enabled: Any
+    authorize: Any
+    capabilities: Any
+    snapshot: Any
+    label: Any
+
+
+_CONTEXT_ADAPTERS: dict[str, _ContextAdapter] = {
+    'work_order': _ContextAdapter(
+        enabled=lambda: bool(getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False)),
+        authorize=_authorized_work_order,
+        capabilities=_work_order_capabilities,
+        snapshot=work_order_snapshot,
+        label=lambda wo: f'{wo.reference or f"WO-{wo.pk}"}: {wo.title}',
+    ),
+    'machine': _ContextAdapter(
+        enabled=_machine_enabled,
+        authorize=_authorized_machine,
+        capabilities=_machine_capabilities,
+        snapshot=machine_snapshot,
+        label=lambda machine: machine.name,
+    ),
+}
+
+
+def _adapter_for(context_type: str) -> _ContextAdapter:
+    """Return the registered adapter, or refuse non-enumeratingly.
+
+    A type listed in ``AIMMS_SCOPED_CHAT_CONTEXTS`` but absent from the table
+    stays unknown: the deployment switch can only narrow what the code already
+    supports, never conjure a context type into existence.
+    """
+    adapter = _CONTEXT_ADAPTERS.get(context_type)
+    if adapter is None:
+        raise ContextTypeUnknown('context type is not enabled')
+    return adapter
+
+
 def mint_context_token(
     user,
     *,
@@ -211,8 +332,10 @@ def mint_context_token(
     scope_hash: str,
     source_revision: str,
     capabilities: tuple[str, ...],
+    selected_document: Any | None = None,
 ) -> str:
     """Sign the short-lived context token bound to user, session, and record."""
+    selected = selected_document.document if selected_document is not None else None
     claims = {
         'v': SCOPED_CONTEXT_TOKEN_VERSION,
         'purpose': SCOPED_CONTEXT_TOKEN_PURPOSE,
@@ -223,6 +346,9 @@ def mint_context_token(
         'scope_hash': scope_hash,
         'revision': source_revision,
         'capabilities': sorted(capabilities),
+        'selected_document_id': str(selected.selection_id) if selected else '',
+        'selected_document_revision': selected.revision if selected else '',
+        'selected_document_source_sha256': selected.source_sha256 if selected else '',
     }
     return signing.dumps(claims, salt=SCOPED_CONTEXT_TOKEN_SALT, compress=True)
 
@@ -279,7 +405,9 @@ def validate_context_token(
     return claims
 
 
-def resolve_context(user, *, context_type: str, object_id: str) -> ChatContext:
+def resolve_context(
+    user, *, context_type: str, object_id: str, selected_document_id: str = ''
+) -> ChatContext:
     """Resolve one record into a signed, capability-bearing chat context.
 
     Resolution is fail-closed: the feature flags, the actor scope, and the
@@ -293,39 +421,49 @@ def resolve_context(user, *, context_type: str, object_id: str) -> ChatContext:
         raise ContextTypeUnknown('scoped chat is not enabled')
     if context_type not in enabled_context_types():
         raise ContextTypeUnknown('context type is not enabled')
-    if context_type != 'work_order':
-        # Asset and packet contexts remain gated on their scope hardening
-        # prerequisites (guide §2.4 SC-ADR-008); nothing else is registered.
-        raise ContextTypeUnknown('context type is not enabled')
+    adapter = _adapter_for(context_type)
     if not getattr(user, 'is_authenticated', False):
         raise ContextForbidden('context unavailable')
-    if not getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False):
+    if not adapter.enabled():
         raise ContextTypeUnknown('context type is not enabled')
 
     scope_key, scope_hash = actor_scope_strings(user)
-    work_order = _authorized_work_order(user, object_id)
-    capabilities = _work_order_capabilities(user)
-    revision = source_revision_for(work_order)
+    record = adapter.authorize(user, object_id)
+    capabilities = adapter.capabilities(user)
+    revision = source_revision_for(record)
+    selected_document = None
+    if selected_document_id:
+        from aichat.services.controlled_document_selection import (
+            resolve_selected_document,
+        )
+
+        selected_document = resolve_selected_document(
+            selection_id=selected_document_id,
+            scope_key=scope_key,
+            scope_hash=scope_hash,
+            record=record,
+        )
     token = mint_context_token(
         user,
         context_type=context_type,
-        object_id=str(work_order.pk),
+        object_id=str(record.pk),
         scope_hash=scope_hash,
         source_revision=revision,
         capabilities=capabilities,
+        selected_document=selected_document,
     )
-    label = work_order.reference or f'WO-{work_order.pk}'
     return ChatContext(
         context_type=context_type,
-        object_id=str(work_order.pk),
+        object_id=str(record.pk),
         scope_key=scope_key,
         scope_hash=scope_hash,
-        display_label=f'{label}: {work_order.title}',
+        display_label=adapter.label(record),
         capabilities=capabilities,
         source_revision=revision,
         as_of=timezone.now(),
-        snapshot=work_order_snapshot(work_order),
+        snapshot=adapter.snapshot(record),
         token=token,
+        selected_document=selected_document,
     )
 
 
@@ -336,9 +474,12 @@ def reauthorize_context(user, *, context_type: str, object_id: str):
     primitive used by tools and render-time citation checks; it never uses
     cached authority.
     """
-    if context_type != 'work_order':
-        raise ContextTypeUnknown('context type is not enabled')
+    adapter = _adapter_for(context_type)
     if not getattr(user, 'is_authenticated', False):
         raise ContextForbidden('context unavailable')
+    if not adapter.enabled():
+        # A context type switched off mid-conversation stops answering, rather
+        # than serving an already-pinned record on yesterday's authority.
+        raise ContextTypeUnknown('context type is not enabled')
     actor_scope_strings(user)
-    return _authorized_work_order(user, object_id)
+    return adapter.authorize(user, object_id)

@@ -425,12 +425,12 @@ def _preview_repair_work_package(work_order, intent: dict[str, Any]) -> dict[str
 
 
 def _preview_create_child(work_order, intent: dict[str, Any]) -> dict[str, Any]:
-    from tasks.models import WorkOrder
+    from tasks.models import KanbanCard
 
     return {
-        'parent_id': work_order.pk,
+        'work_order_id': work_order.pk,
         'proposed_title': intent.get('title', ''),
-        'card_kind': intent.get('card_kind', WorkOrder.KIND_SUBTASK),
+        'card_kind': intent.get('card_kind', KanbanCard.KIND_SUBTASK),
     }
 
 
@@ -753,6 +753,20 @@ def _deletion_receipt(result) -> dict[str, Any]:
     }
 
 
+def _created_card_receipt(result) -> dict[str, Any]:
+    """Serialize a create-card command result into a durable receipt."""
+    metadata = result.metadata or {}
+    return {
+        'command': 'create_child',
+        'work_order_id': result.work_order_id,
+        'card_id': metadata.get('card_id'),
+        'card_kind': metadata.get('card_kind'),
+        'event_id': result.event_id,
+        'correlation_id': str(result.correlation_id),
+        'idempotency_key': result.idempotency_key,
+    }
+
+
 def _child_receipt(child) -> dict[str, Any]:
     """Receipt for ``generate_procurement_child`` (returns a card or None)."""
     if child is None:
@@ -764,8 +778,8 @@ def _child_receipt(child) -> dict[str, Any]:
     return {
         'command': 'generate_procurement',
         'child_id': child.pk,
-        'parent_id': child.parent_id,
-        'reference': child.reference or '',
+        'work_order_id': child.work_order_id,
+        'card_kind': child.card_kind,
     }
 
 
@@ -978,15 +992,15 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
         )
         return {'command': 'create_repair_work_package', **result.as_dict()}
     if action == ProposalAction.WORK_ORDER_CREATE_CHILD:
-        from tasks.models import WorkOrder
+        from tasks.models import KanbanCard
 
-        return _command_receipt(
+        return _created_card_receipt(
             scheduling.create_child(
                 parent_id=wo_id,
                 actor=owner,
                 idempotency_key=idem,
                 title=intent.get('title', ''),
-                card_kind=intent.get('card_kind', WorkOrder.KIND_SUBTASK),
+                card_kind=intent.get('card_kind', KanbanCard.KIND_SUBTASK),
                 **_create_planning(intent),
             )
         )

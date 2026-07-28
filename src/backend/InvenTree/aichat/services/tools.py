@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -28,9 +29,12 @@ from aichat.models import (
     ToolAuthorizationResult,
 )
 from aichat.services import context as context_service
+from assets import ai_read
 
-# Bumped to '2' when the scheduling read tools (Phase 6a) were added.
-TOOL_REGISTRY_VERSION = '2'
+logger = logging.getLogger('inventree')
+
+# Bumped to '4' when selected controlled-document retrieval was added.
+TOOL_REGISTRY_VERSION = '4'
 
 #: Actions the readiness tool may evaluate (mirrors the evaluator's map).
 _READINESS_ACTIONS = frozenset({
@@ -76,6 +80,18 @@ class ToolBudgetExceeded(ToolError):  # noqa: N818
     """The per-turn tool budget is exhausted."""
 
     code = 'CHAT_RATE_LIMITED'
+
+
+class ControlledDocumentUnavailable(ToolError):  # noqa: N818
+    """No selected document remains authorized for this conversation."""
+
+    code = 'CONTROLLED_DOCUMENT_UNAVAILABLE'
+
+
+class ControlledDocumentSearchUnavailable(ToolError):  # noqa: N818
+    """The selected-document Search projection cannot answer safely."""
+
+    code = 'CONTROLLED_DOCUMENT_SEARCH_UNAVAILABLE'
 
 
 def _int_argument(
@@ -128,6 +144,22 @@ def _events_arguments(arguments: Mapping[str, Any]) -> dict[str, Any]:
         'offset': _int_argument(
             arguments, 'offset', default=0, minimum=0, maximum=10000
         ),
+    }
+
+
+def _selected_document_search_arguments(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate selected-document query text without accepting source coordinates."""
+    extra = set(arguments) - {'query', 'top_k'}
+    if extra:
+        raise ToolArgumentsInvalid('unknown arguments supplied')
+    query = arguments.get('query')
+    if not isinstance(query, str) or not query.strip() or len(query) > 4000:
+        raise ToolArgumentsInvalid(
+            'query must be a non-empty string up to 4000 characters'
+        )
+    return {
+        'query': query.strip(),
+        'top_k': _int_argument(arguments, 'top_k', default=5, minimum=1, maximum=5),
     }
 
 
@@ -242,6 +274,42 @@ def _work_order_events_page(work_order, args: dict[str, Any], user) -> dict[str,
     return {'events': page, 'total': total, 'truncated': offset + limit < total}
 
 
+def _selected_document_search(
+    record, args: dict[str, Any], user, conversation: ScopedConversation
+) -> dict[str, Any]:
+    """Search only the conversation's still-authorized controlled document."""
+    if not conversation.selected_document_id:
+        raise ControlledDocumentUnavailable('controlled document unavailable')
+    from ai.core.integrations.controlled_document_search import (
+        ControlledDocumentSearchError,
+        search_selected_document,
+    )
+    from aichat.services.controlled_document_selection import (
+        ControlledDocumentUnavailable as SelectionUnavailable,
+    )
+    from aichat.services.controlled_document_selection import (
+        reauthorize_selected_document,
+    )
+
+    try:
+        selected = reauthorize_selected_document(
+            user=user,
+            context_type=conversation.context_type,
+            object_id=conversation.object_id,
+            selection_id=str(conversation.selected_document.selection_id),
+        )
+    except SelectionUnavailable as exc:
+        raise ControlledDocumentUnavailable('controlled document unavailable') from exc
+    try:
+        return search_selected_document(
+            document=selected.document, query=args['query'], top_k=args['top_k']
+        )
+    except ControlledDocumentSearchError as exc:
+        raise ControlledDocumentSearchUnavailable(
+            'controlled document unavailable'
+        ) from exc
+
+
 # ── Scheduling read tools (Phase 6a) ─────────────────────────────────────────
 # Read-only, scoped to the pinned work order and its directly related cards
 # (same machine / assignee for conflicts, dependency neighbours for the
@@ -298,7 +366,7 @@ def _schedule_conflicts(work_order, args: dict[str, Any], user) -> dict[str, Any
 
     from django.db.models import Q
 
-    from tasks.models import KanbanCard
+    from tasks.models import WorkOrder
     from tasks.services.conflicts import detect_conflicts
 
     if not work_order.scheduled_start or not work_order.scheduled_end:
@@ -313,7 +381,7 @@ def _schedule_conflicts(work_order, args: dict[str, Any], user) -> dict[str, Any
         resource |= Q(assigned_to_id=work_order.assigned_to_id)
 
     nearby = (
-        KanbanCard.objects
+        WorkOrder.objects
         .filter(is_active=True)
         .filter(scheduled_start__isnull=False, scheduled_end__isnull=False)
         .filter(resource)
@@ -337,15 +405,15 @@ def _schedule_preview(work_order, args: dict[str, Any], user) -> dict[str, Any]:
     """
     from django.db.models import Q
 
-    from tasks.models import KanbanCardDependency
+    from tasks.models import WorkOrderDependency
     from tasks.services.schedule_planner import PlanRequest, plan_schedule
 
     neighbours = {work_order.pk}
-    for dep in KanbanCardDependency.objects.filter(
-        Q(from_card_id=work_order.pk) | Q(to_card_id=work_order.pk)
+    for dep in WorkOrderDependency.objects.filter(
+        Q(predecessor_id=work_order.pk) | Q(successor_id=work_order.pk)
     ):
-        neighbours.add(dep.from_card_id)
-        neighbours.add(dep.to_card_id)
+        neighbours.add(dep.predecessor_id)
+        neighbours.add(dep.successor_id)
 
     result = plan_schedule(
         PlanRequest(candidate_ids=sorted(neighbours), horizon_start=timezone.now())
@@ -353,7 +421,7 @@ def _schedule_preview(work_order, args: dict[str, Any], user) -> dict[str, Any]:
     return {
         'operations': [
             {
-                'card_id': op.card_id,
+                'card_id': op.work_order_id,
                 'new_start': op.new_start.isoformat(),
                 'new_end': op.new_end.isoformat(),
             }
@@ -372,7 +440,8 @@ class ToolSpec:
     version: str
     description: str
     validate: Callable[[Mapping[str, Any]], dict[str, Any]]
-    handler: Callable[[Any, dict[str, Any], Any], dict[str, Any]]
+    handler: Callable[..., dict[str, Any]]
+    requires_selected_document: bool = False
 
 
 _WORK_ORDER_TOOLS: dict[str, ToolSpec] = {
@@ -437,7 +506,188 @@ _WORK_ORDER_TOOLS: dict[str, ToolSpec] = {
     )
 }
 
-_REGISTRY: dict[str, dict[str, ToolSpec]] = {'work_order': _WORK_ORDER_TOOLS}
+
+def _limit_arguments(
+    arguments: Mapping[str, Any], *, default: int, maximum: int
+) -> dict[str, Any]:
+    """Validate a lone bounded ``limit`` argument."""
+    extra = set(arguments) - {'limit'}
+    if extra:
+        raise ToolArgumentsInvalid('unknown arguments supplied')
+    return {
+        'limit': _int_argument(
+            arguments, 'limit', default=default, minimum=1, maximum=maximum
+        )
+    }
+
+
+def _anomaly_arguments(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the anomaly page size and the resolved-history opt-in."""
+    extra = set(arguments) - {'limit', 'include_resolved'}
+    if extra:
+        raise ToolArgumentsInvalid('unknown arguments supplied')
+    include_resolved = arguments.get('include_resolved', False)
+    if not isinstance(include_resolved, bool):
+        raise ToolArgumentsInvalid('include_resolved must be a boolean')
+    return {
+        'limit': _int_argument(
+            arguments, 'limit', default=10, minimum=1, maximum=ai_read.MAX_ANOMALIES
+        ),
+        'include_resolved': include_resolved,
+    }
+
+
+def _trend_arguments(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate a trend request: which mapped signal, and how far back."""
+    extra = set(arguments) - {'binding_id', 'hours'}
+    if extra:
+        raise ToolArgumentsInvalid('unknown arguments supplied')
+    if 'binding_id' not in arguments:
+        raise ToolArgumentsInvalid('binding_id is required')
+    return {
+        'binding_id': _int_argument(
+            arguments, 'binding_id', default=0, minimum=1, maximum=2**31 - 1
+        ),
+        'hours': _int_argument(arguments, 'hours', default=24, minimum=1, maximum=168),
+    }
+
+
+# Machine tool handlers. Each receives the already-re-authorized machine that
+# ``invoke_tool`` resolved through ``reauthorize_context`` on this very call,
+# so none of them re-derives authority -- and none of them may write.
+def _machine_summary(machine, args: dict[str, Any], user) -> dict[str, Any]:
+    """Identity, location and description for the pinned machine."""
+    return {'summary': ai_read.machine_identity(machine)}
+
+
+def _machine_health(machine, args: dict[str, Any], user) -> dict[str, Any]:
+    """Current condition, data freshness and per-source connection status."""
+    return ai_read.machine_health(machine)
+
+
+def _machine_signals(machine, args: dict[str, Any], user) -> dict[str, Any]:
+    """Every mapped signal with its value, limits, quality and staleness."""
+    return ai_read.machine_signals(machine)
+
+
+def _machine_signal_trend(machine, args: dict[str, Any], user) -> dict[str, Any]:
+    """A bounded history window for one of this machine's mapped signals."""
+    return ai_read.machine_signal_trend(
+        machine, binding_id=args['binding_id'], hours=args['hours']
+    )
+
+
+def _machine_anomalies(machine, args: dict[str, Any], user) -> dict[str, Any]:
+    """Open alarms, and resolved history when explicitly asked for."""
+    return ai_read.machine_anomalies(
+        machine, include_resolved=args['include_resolved'], limit=args['limit']
+    )
+
+
+def _machine_installed_parts(machine, args: dict[str, Any], user) -> dict[str, Any]:
+    """Installed parts with ids, so the answer can chain into parts/stock."""
+    return ai_read.machine_installed_parts(machine, limit=args['limit'])
+
+
+def _machine_maintenance_history(machine, args: dict[str, Any], user) -> dict[str, Any]:
+    """Service history, with each linked work order re-authorized per row."""
+    return ai_read.machine_maintenance_history(user, machine, limit=args['limit'])
+
+
+def _machine_attachments(machine, args: dict[str, Any], user) -> dict[str, Any]:
+    """What documentation exists for this machine -- labels, never bodies."""
+    return ai_read.machine_attachments(machine, limit=args['limit'])
+
+
+_MACHINE_TOOLS: dict[str, ToolSpec] = {
+    spec.name: spec
+    for spec in (
+        ToolSpec(
+            name='machine_summary',
+            version='1',
+            description='Allow-listed identity snapshot of the pinned machine',
+            validate=_no_arguments,
+            handler=_machine_summary,
+        ),
+        ToolSpec(
+            name='machine_health',
+            version='1',
+            description='Current condition, freshness and source connection health',
+            validate=_no_arguments,
+            handler=_machine_health,
+        ),
+        ToolSpec(
+            name='machine_signals',
+            version='1',
+            description='Mapped signal readings with limits, quality and staleness',
+            validate=_no_arguments,
+            handler=_machine_signals,
+        ),
+        ToolSpec(
+            name='machine_signal_trend',
+            version='1',
+            description='Bounded history window for one mapped signal',
+            validate=_trend_arguments,
+            handler=_machine_signal_trend,
+        ),
+        ToolSpec(
+            name='machine_anomalies',
+            version='1',
+            description='Active anomalies, optionally including resolved history',
+            validate=_anomaly_arguments,
+            handler=_machine_anomalies,
+        ),
+        ToolSpec(
+            name='machine_installed_parts',
+            version='1',
+            description='Parts installed on this machine with quantities',
+            validate=lambda args: _limit_arguments(
+                args, default=ai_read.MAX_PARTS, maximum=ai_read.MAX_PARTS
+            ),
+            handler=_machine_installed_parts,
+        ),
+        ToolSpec(
+            name='machine_maintenance_history',
+            version='1',
+            description='Recorded maintenance events for this machine',
+            validate=lambda args: _limit_arguments(
+                args,
+                default=ai_read.MAX_MAINTENANCE_RECORDS,
+                maximum=ai_read.MAX_MAINTENANCE_RECORDS,
+            ),
+            handler=_machine_maintenance_history,
+        ),
+        ToolSpec(
+            name='machine_attachments',
+            version='1',
+            description='Documentation attached to this machine (labels only)',
+            validate=lambda args: _limit_arguments(
+                args, default=ai_read.MAX_ATTACHMENTS, maximum=ai_read.MAX_ATTACHMENTS
+            ),
+            handler=_machine_attachments,
+        ),
+    )
+}
+
+_SELECTED_DOCUMENT_TOOL = ToolSpec(
+    name='search_selected_controlled_document',
+    version='1',
+    description='Search only the current selected controlled document',
+    validate=_selected_document_search_arguments,
+    handler=_selected_document_search,
+    requires_selected_document=True,
+)
+
+_REGISTRY: dict[str, dict[str, ToolSpec]] = {
+    'work_order': {
+        **_WORK_ORDER_TOOLS,
+        _SELECTED_DOCUMENT_TOOL.name: _SELECTED_DOCUMENT_TOOL,
+    },
+    'machine': {
+        **_MACHINE_TOOLS,
+        _SELECTED_DOCUMENT_TOOL.name: _SELECTED_DOCUMENT_TOOL,
+    },
+}
 
 
 def tools_for_context(context_type: str) -> tuple[str, ...]:
@@ -550,10 +800,62 @@ def invoke_tool(
             'citation_id': None,
         }
 
-    result = spec.handler(record, args, user)
+    try:
+        if spec.requires_selected_document:
+            result = spec.handler(record, args, user, conversation)
+        else:
+            result = spec.handler(record, args, user)
+        revision = context_service.source_revision_for(record)
+    except ToolError as exc:
+        _log_invocation(
+            conversation,
+            turn_key=turn_key,
+            tool=spec.name,
+            tool_version=spec.version,
+            arguments=args,
+            authorized=False,
+            started=started,
+        )
+        return {
+            'tool': spec.name,
+            'tool_version': spec.version,
+            'authorized': False,
+            'error': exc.code,
+            'as_of': as_of.isoformat(),
+            'result': None,
+            'citation_id': None,
+        }
+    except Exception:
+        # A handler that raises must not become a 500 with a traceback: the DRF
+        # view only catches ToolError, and this point is past authorization, so
+        # an unhandled read error would surface as a server fault on a request
+        # that was otherwise fine. Report it as an unavailable tool result using
+        # the same non-enumerating shape as the authorization denial, and log it
+        # as an unauthorized-shaped invocation so the audit trail still has the
+        # call. Totality is enforced here rather than trusted to every handler.
+        logger.exception(
+            'aichat.tool_failed conversation=%s tool=%s', conversation.pk, spec.name
+        )
+        _log_invocation(
+            conversation,
+            turn_key=turn_key,
+            tool=spec.name,
+            tool_version=spec.version,
+            arguments=args,
+            authorized=False,
+            started=started,
+        )
+        return {
+            'tool': spec.name,
+            'tool_version': spec.version,
+            'authorized': True,
+            'error': 'tool unavailable',
+            'as_of': as_of.isoformat(),
+            'result': None,
+            'citation_id': None,
+        }
 
     output_hash = _output_hash(result)
-    revision = context_service.source_revision_for(record)
     invocation = _log_invocation(
         conversation,
         turn_key=turn_key,
@@ -564,17 +866,51 @@ def invoke_tool(
         output_hash=output_hash,
         started=started,
     )
-    citation = ChatCitation.objects.create(
-        conversation=conversation,
-        turn_key=turn_key,
-        source_type='tool_result',
-        source_id=f'{conversation.context_type}:{conversation.object_id}',
-        source_revision=revision,
-        locator={'tool': spec.name, 'arguments': args},
-        excerpt_hash=output_hash,
-        authorization_class='record_scope',
-        as_of=as_of,
-    )
+    citations = []
+    if spec.requires_selected_document:
+        for chunk in result.get('chunks', []):
+            citation_data = chunk.get('citation', {})
+            citations.append(
+                ChatCitation.objects.create(
+                    conversation=conversation,
+                    turn_key=turn_key,
+                    source_type='controlled_document',
+                    source_id=str(citation_data.get('document_id', '')),
+                    source_revision=str(citation_data.get('revision', '')),
+                    locator={
+                        'tool': spec.name,
+                        'selection_id': str(
+                            conversation.selected_document.selection_id
+                        ),
+                        'source_sha256_prefix': citation_data.get(
+                            'source_sha256_prefix', ''
+                        ),
+                        'source_file_name': citation_data.get('source_file_name', ''),
+                        'section_id': citation_data.get('section_id', ''),
+                        'section_path': citation_data.get('section_path', ''),
+                        'chunk_id': citation_data.get('chunk_id', ''),
+                    },
+                    excerpt_hash=str(citation_data.get('excerpt_hash', '')),
+                    authorization_class=str(
+                        citation_data.get('authorization_class', '')
+                    ),
+                    as_of=as_of,
+                )
+            )
+    else:
+        citations.append(
+            ChatCitation.objects.create(
+                conversation=conversation,
+                turn_key=turn_key,
+                source_type='tool_result',
+                source_id=f'{conversation.context_type}:{conversation.object_id}',
+                source_revision=revision,
+                locator={'tool': spec.name, 'arguments': args},
+                excerpt_hash=output_hash,
+                authorization_class='record_scope',
+                as_of=as_of,
+            )
+        )
     return {
         'tool': spec.name,
         'tool_version': spec.version,
@@ -583,6 +919,7 @@ def invoke_tool(
         'as_of': as_of.isoformat(),
         'source_revision': revision,
         'result': result,
-        'citation_id': citation.pk,
+        'citation_id': citations[0].pk if citations else None,
+        'citation_ids': [citation.pk for citation in citations],
         'invocation_id': invocation.pk,
     }

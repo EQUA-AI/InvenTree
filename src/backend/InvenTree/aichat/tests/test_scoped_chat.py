@@ -27,8 +27,9 @@ from aichat.models import (
     ChatCitation,
     ChatThread,
     ChatToolInvocation,
+    ControlledDocument,
+    ControlledDocumentState,
     ConversationStatus,
-    ScopedConversation,
     ThreadNamespace,
 )
 from aichat.services import ScopedThreadRejected, ThreadRepository
@@ -77,7 +78,7 @@ class ScopedChatTestCase(TestCase):
             username='scoped-viewer', email='sv@example.com', password='pw'
         )
         cls.machine = AssetMachine.objects.create(
-            name='Lathe 3', customer=cls.customer
+            name='Lathe 3', customer=cls.customer, serial='TC-INF-PS1-001'
         )
 
     def setUp(self):
@@ -117,6 +118,27 @@ class ScopedChatTestCase(TestCase):
         user = user or self.actor
         return conversation_service.create_conversation(
             owner=user, context=self._resolve(user)
+        )
+
+    def _selected_document(self):
+        """Create a current indexed source attached to this fixture's Pump Station."""
+        scope_key, scope_hash = context_service.actor_scope_strings(self.actor)
+        return ControlledDocument.objects.create(
+            document_id='aimms-tc-inf-ps1-manual',
+            revision='2.0',
+            title='Influent Pump Station No. 1 Technical Manual',
+            document_class='technical_manual',
+            scope_key=scope_key,
+            scope_hash=scope_hash,
+            access_class='maintenance_authorized',
+            source_filename='pump-station-manual.md',
+            source_location='/controlled/pump-station-manual.md',
+            source_sha256='a' * 64,
+            asset_id=self.machine.serial,
+            work_order_id=self.work_order.reference,
+            state=ControlledDocumentState.INDEXED,
+            is_current=True,
+            search_index_name='eaits-manuals-v4a',
         )
 
 
@@ -193,6 +215,26 @@ class ContextResolverTests(ScopedChatTestCase):
             self.assertIn('propose_hold', self._resolve().capabilities)
             # A plain user without tasks.transition_workorder stays read-only.
             self.assertEqual(self._resolve(self.viewer).capabilities, ('qa',))
+
+    def test_resolution_binds_an_authorized_selected_document(self):
+        """The context token retains exact source coordinates, not browser claims."""
+        document = self._selected_document()
+        context = context_service.resolve_context(
+            self.actor,
+            context_type='work_order',
+            object_id=str(self.work_order.pk),
+            selected_document_id=str(document.selection_id),
+        )
+        claims = context_service.validate_context_token(self.actor, context.token)
+        conversation = conversation_service.create_conversation(
+            owner=self.actor, context=context
+        )
+
+        self.assertEqual(context.selected_document.document.pk, document.pk)
+        self.assertEqual(claims['selected_document_id'], str(document.selection_id))
+        self.assertEqual(claims['selected_document_revision'], document.revision)
+        self.assertEqual(claims['selected_document_source_sha256'], document.source_sha256)
+        self.assertEqual(conversation.selected_document_id, document.pk)
 
 
 class ContextTokenTests(ScopedChatTestCase):
@@ -327,7 +369,8 @@ class ScopedToolTests(ScopedChatTestCase):
     @staticmethod
     def _utc_dt(hour):
         """Build a schedule datetime respecting USE_TZ (False under test on sqlite)."""
-        from datetime import datetime, timezone as dt_timezone
+        from datetime import datetime
+        from datetime import timezone as dt_timezone
 
         from django.conf import settings
 
@@ -353,6 +396,7 @@ class ScopedToolTests(ScopedChatTestCase):
             (
                 'schedule_conflicts',
                 'schedule_preview',
+                'search_selected_controlled_document',
                 'work_order_events_page',
                 'work_order_kit_status',
                 'work_order_readiness',
@@ -436,6 +480,63 @@ class ScopedToolTests(ScopedChatTestCase):
         invocation = ChatToolInvocation.objects.get(pk=envelope['invocation_id'])
         self.assertEqual(invocation.authorization_result, 'allowed')
         self.assertEqual(invocation.tool, 'work_order_summary')
+
+    @mock.patch('ai.core.integrations.controlled_document_search.search_selected_document')
+    def test_selected_document_tool_reauthorizes_and_stamps_chunk_citations(
+        self, search_selected_document
+    ):
+        """Retrieval uses the conversation selection and cites each returned chunk."""
+        document = self._selected_document()
+        context = context_service.resolve_context(
+            self.actor,
+            context_type='work_order',
+            object_id=str(self.work_order.pk),
+            selected_document_id=str(document.selection_id),
+        )
+        self.conversation = conversation_service.create_conversation(
+            owner=self.actor, context=context
+        )
+        search_selected_document.return_value = {
+            'chunks': [
+                {
+                    'chunk': 'Pump 2 tripped after rising current.',
+                    'citation': {
+                        'document_id': document.document_id,
+                        'revision': document.revision,
+                        'source_sha256_prefix': document.source_sha256[:12],
+                        'source_file_name': document.source_filename,
+                        'section_id': '16',
+                        'section_path': 'Diagnostic Reasoning Framework',
+                        'chunk_id': '16:0000',
+                        'authorization_class': document.access_class,
+                        'excerpt_hash': 'c' * 64,
+                    },
+                }
+            ],
+            'total': 1,
+        }
+
+        envelope = self._invoke(
+            'search_selected_controlled_document',
+            {'query': 'Why did Pump 2 trip?', 'top_k': 1},
+        )
+
+        self.assertTrue(envelope['authorized'])
+        search_selected_document.assert_called_once()
+        citation = ChatCitation.objects.get(pk=envelope['citation_id'])
+        self.assertEqual(citation.source_type, 'controlled_document')
+        self.assertEqual(citation.source_id, document.document_id)
+        self.assertEqual(citation.locator['section_id'], '16')
+        self.assertEqual(citation.authorization_class, document.access_class)
+
+    def test_selected_document_tool_refuses_without_a_conversation_selection(self):
+        """No selected-document lookup falls back to the generic document index."""
+        envelope = self._invoke(
+            'search_selected_controlled_document', {'query': 'Why did Pump 2 trip?'}
+        )
+
+        self.assertFalse(envelope['authorized'])
+        self.assertEqual(envelope['error'], 'CONTROLLED_DOCUMENT_UNAVAILABLE')
 
     def test_readiness_tool_reports_the_live_evaluator_envelope(self):
         """The readiness tool passes the evaluator through unchanged."""

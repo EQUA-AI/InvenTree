@@ -19,7 +19,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
+from tasks.models import KanbanCard, WorkOrder, WorkOrderLifecycle, WorkOrderType
 from tasks.scope import MaintenanceScope
 
 from aichat.models import ChatActionProposal, ProposalState
@@ -544,12 +544,12 @@ class GapClosingProposalTests(ProposalRailTestCase):
         proposal = self._create(
             action='work_order.create_child',
             key='child-1',
-            intent={'title': 'Subtask A', 'card_kind': WorkOrder.KIND_SUBTASK},
+            intent={'title': 'Subtask A', 'card_kind': KanbanCard.KIND_SUBTASK},
         )
-        self.assertEqual(proposal.preview['parent_id'], self.work_order.pk)
+        self.assertEqual(proposal.preview['work_order_id'], self.work_order.pk)
         confirmed = self._confirm(proposal)
-        child = WorkOrder.objects.get(pk=confirmed.receipt['work_order_id'])
-        self.assertEqual(child.parent_id, self.work_order.pk)
+        child = KanbanCard.objects.get(pk=confirmed.receipt['card_id'])
+        self.assertEqual(child.work_order_id, self.work_order.pk)
         self.assertEqual(child.title, 'Subtask A')
 
     def test_generate_procurement_action_with_no_parts_is_a_noop_child(self):

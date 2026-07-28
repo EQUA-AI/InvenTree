@@ -179,6 +179,54 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
         ("mark_email_processed", "send_email", "generate_and_send_document"),
         ("send email", "mark email", "email document"),
     ),
+    "machines.read": (
+        ToolEffect.READ,
+        (
+            "search_machines",
+            "get_machine_overview",
+            "get_machine_health",
+            "get_machine_signals",
+            "get_machine_signal_trend",
+            "get_machine_anomalies",
+            "get_machine_parts",
+            "get_machine_maintenance_history",
+            "get_machine_attachments",
+        ),
+        # Floor vocabulary, not schema vocabulary. Without these terms a
+        # machine question scored no pack at all and dead-ended on the clarify
+        # agent -- the assistant asking what was meant while standing on the
+        # machine's own page. "asset"/"equipment" are what the records are
+        # called; the rest is what an operator actually says out loud.
+        (
+            # Deliberately NO bare equipment nouns ("pump", "motor", "valve").
+            # Spares are named after the kit they belong to, so "grinder pump
+            # seal kit" is a stock question that a "pump" term would hijack --
+            # the noun is evidence of neither pack. Real asset names are
+            # covered by machine_lexicon() instead, which is the only mechanism
+            # that can know what a given plant actually calls its equipment.
+            "machine",
+            "machines",
+            "asset",
+            "assets",
+            "equipment",
+            "health",
+            "alarm",
+            "alarms",
+            "anomaly",
+            "anomalies",
+            "fault",
+            "faults",
+            "downtime",
+            # "breakdown" is deliberately absent: "give me a breakdown of stock
+            # by category" is an analytics question, not a failed asset.
+            "serviced",
+            "commissioned",
+            "sensor",
+            "telemetry",
+            "vibration",
+            "serial number",
+        ),
+    ),
     "kanban.read": (
         ToolEffect.READ,
         (
@@ -720,7 +768,7 @@ def _pack_index() -> dict[str, tuple[str, ToolEffect, tuple[str, ...]]]:
 #: catalog and denied at invocation. Each entry needs an explicit reason: a disabled
 #: tool is a deliberate policy decision, not an oversight.
 _WITHHELD_TOOLS: dict[str, str] = {
-    # ``delete_kanban_card`` hard-deletes a work order. ``KanbanCard`` cascades to
+    # ``delete_kanban_card`` hard-deletes a work order. ``WorkOrder`` cascades to
     # ``WorkOrderEvent``, ``WorkOrderCommand``, ``WorkOrderCloseout``,
     # ``WorkOrderDeviation``, ``CloseoutPartUsage`` and ``CloseoutReading``, so a
     # single call destroys the governance and closeout history of completed work.
@@ -781,6 +829,21 @@ def governed_kanban_write_tool_ids() -> frozenset[str]:
     return _GOVERNED_KANBAN_WRITE_TOOLS
 
 
+#: Tools whose authority is tenant-scoped rather than role-scoped. Kept as a
+#: literal id set so the policy branch does not depend on import order.
+_MACHINE_READ_TOOL_IDS = frozenset({
+    "search_machines",
+    "get_machine_overview",
+    "get_machine_health",
+    "get_machine_signals",
+    "get_machine_signal_trend",
+    "get_machine_anomalies",
+    "get_machine_parts",
+    "get_machine_maintenance_history",
+    "get_machine_attachments",
+})
+
+
 def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
     from ai.core.tools.rbac import tool_requirement
 
@@ -799,6 +862,17 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
             kind=PolicyKind.RESOURCE_AUTHORIZER,
             all_of=(("part", "view"),),
             authorizer="part_attachment_access",
+        )
+    if tool_id in _MACHINE_READ_TOOL_IDS:
+        # Deliberately NOT plain NATIVE_PERMISSION. A work_order:view grant is
+        # global, while asset rows belong to a customer or a client -- so the
+        # role says "may read assets", never "may read *this* asset". The
+        # resource authorizer additionally requires a resolvable maintenance
+        # scope, and assets.ai_read then re-checks the row itself on every call.
+        return AuthorizationPolicy(
+            kind=PolicyKind.RESOURCE_AUTHORIZER,
+            all_of=(("work_order", "view"),),
+            authorizer="machine_scope_access",
         )
     if requirement is not None:
         return AuthorizationPolicy(
@@ -993,6 +1067,105 @@ def _build_category_lexicon() -> frozenset[str]:
     for name in PartCategory.objects.values_list("name", flat=True):
         terms |= _lexicon_variants(name)
     return frozenset(terms)
+
+
+_MACHINE_LEXICON_CACHE_KEY = "aimms:capability:machine_lexicon:v1"
+#: Machine names churn far less than part categories, but a newly commissioned
+#: asset should still become askable within a shift rather than a deploy.
+_MACHINE_LEXICON_TTL_SECONDS = 600
+#: Asset names are frequently bare model numbers, so the length floor is lower
+#: than the category one; the stop list still rejects the generic ones.
+_MACHINE_LEXICON_MIN_LENGTH = 3
+_MACHINE_LEXICON_STOPWORDS = frozenset({
+    "asset",
+    "assets",
+    "line",
+    "machine",
+    "machines",
+    "plant",
+    "spare",
+    "test",
+    "unit",
+    "units",
+})
+
+
+def machine_lexicon_enabled() -> bool:
+    """Whether live machine names contribute selection terms."""
+    return bool(_ai_setting("feature_machine_lexicon", True))
+
+
+def _machine_lexicon_variants(name: str) -> set[str]:
+    """Return the casefolded terms one machine name contributes.
+
+    Both the whole name and its individual words are offered, because an
+    operator says "how is the feed pump doing" far more often than they say the
+    asset's full registered name.
+    """
+    cleaned = " ".join(str(name or "").casefold().split())
+    if not cleaned:
+        return set()
+    candidates = {cleaned}
+    candidates.update(cleaned.split())
+    return {
+        term
+        for term in candidates
+        if len(term) >= _MACHINE_LEXICON_MIN_LENGTH
+        and term not in _MACHINE_LEXICON_STOPWORDS
+        and not term.isdigit()
+    }
+
+
+def _build_machine_lexicon() -> frozenset[str]:
+    from assets.models import AssetMachine
+
+    terms: set[str] = set()
+    rows = AssetMachine.objects.values_list("name", "manufacturer", "model")
+    for name, manufacturer, model in rows[:500]:
+        terms |= _machine_lexicon_variants(name)
+        terms |= _machine_lexicon_variants(manufacturer)
+        terms |= _machine_lexicon_variants(model)
+    return frozenset(terms)
+
+
+def machine_lexicon() -> frozenset[str]:
+    """Return selection terms derived from live machine names.
+
+    A routing hint only, exactly like ``category_lexicon``: it decides which
+    tools are offered, never what any of them return. Every machine tool
+    re-derives the actor's scope per call, so a name here that the asker cannot
+    reach still yields nothing -- the lexicon is deliberately unscoped because
+    scoping it would make tool selection itself an asset-existence oracle.
+
+    A hard-coded noun list can never cover what a site actually calls its
+    equipment; this is why "is there a manual for the chiller" routes correctly
+    without "chiller" appearing anywhere in the pack spec.
+    """
+    try:
+        from django.core.cache import cache
+
+        cached = cache.get(_MACHINE_LEXICON_CACHE_KEY)
+        if cached is not None:
+            return frozenset(cached)
+        terms = _build_machine_lexicon()
+        cache.set(_MACHINE_LEXICON_CACHE_KEY, sorted(terms), _MACHINE_LEXICON_TTL_SECONDS)
+        return terms
+    except Exception as exc:
+        logger.info("Machine lexicon unavailable", extra={"error_type": type(exc).__name__})
+        return frozenset()
+
+
+def invalidate_machine_lexicon(**_kwargs: Any) -> None:
+    """Drop the cached machine lexicon so a new asset is askable next turn."""
+    try:
+        from django.core.cache import cache
+
+        cache.delete(_MACHINE_LEXICON_CACHE_KEY)
+    except Exception as exc:
+        logger.info(
+            "Machine lexicon invalidation failed",
+            extra={"error_type": type(exc).__name__},
+        )
 
 
 def category_lexicon() -> frozenset[str]:
@@ -1235,6 +1408,12 @@ def select_capabilities(
     if _matches_lexicon(normalized, lexicon):
         scores["parts.read"] = scores.get("parts.read", 0) + 1
         signals.append("lexicon")
+    machine_terms = machine_lexicon() if widened and machine_lexicon_enabled() else frozenset()
+    if _matches_lexicon(normalized, machine_terms):
+        # Naming an actual asset is strong evidence, and it is the case a fixed
+        # noun list cannot cover: sites call their equipment whatever they like.
+        scores["machines.read"] = scores.get("machines.read", 0) + 1
+        signals.append("machine_lexicon")
     if widened and _AGGREGATION_SHAPE_RE.search(normalized):
         scores["analytics.read"] = scores.get("analytics.read", 0) + _SHAPE_SCORE
         signals.append("shape")

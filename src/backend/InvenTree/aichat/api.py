@@ -225,6 +225,8 @@ _SCOPED_ERROR_STATUS = {
     'TOOL_NOT_AVAILABLE': status.HTTP_404_NOT_FOUND,
     'TOOL_ARGUMENTS_INVALID': status.HTTP_400_BAD_REQUEST,
     'CHAT_RATE_LIMITED': status.HTTP_429_TOO_MANY_REQUESTS,
+    'CONTROLLED_DOCUMENT_UNAVAILABLE': status.HTTP_404_NOT_FOUND,
+    'CONTROLLED_DOCUMENT_SEARCH_UNAVAILABLE': status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 
 
@@ -249,6 +251,11 @@ def _context_payload(context: context_service.ChatContext) -> dict:
         'token': context.token,
         'expires_in_s': context_service.token_ttl_seconds(),
         'tools': list(tool_service.tools_for_context(context.context_type)),
+        'selected_document': (
+            context.selected_document.payload()
+            if context.selected_document is not None
+            else None
+        ),
     }
 
 
@@ -266,6 +273,16 @@ def _conversation_payload(
         'last_context_revision': conversation.last_context_revision,
         'created_at': conversation.created_at.isoformat(),
         'updated_at': conversation.updated_at.isoformat(),
+        'selected_document': (
+            {
+                'selection_id': str(conversation.selected_document.selection_id),
+                'title': conversation.selected_document.title,
+                'document_id': conversation.selected_document.document_id,
+                'revision': conversation.selected_document.revision,
+            }
+            if conversation.selected_document_id
+            else None
+        ),
     }
     if context_state is not None:
         payload['context_state'] = context_state
@@ -286,6 +303,7 @@ class ContextResolveView(APIView):
                 request.user,
                 context_type=str(data.get('context_type', '')),
                 object_id=str(data.get('object_id', '')),
+                selected_document_id=str(data.get('selected_document_id', '') or ''),
             )
         except context_service.ContextError as exc:
             return _scoped_error(exc)
@@ -323,6 +341,7 @@ class ConversationListCreateView(APIView):
                 request.user,
                 context_type=str(claims['context_type']),
                 object_id=str(claims['object_id']),
+                selected_document_id=str(claims['selected_document_id']),
             )
             conversation = conversation_service.create_conversation(
                 owner=request.user,

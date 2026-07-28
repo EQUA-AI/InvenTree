@@ -55,6 +55,11 @@ def create_conversation(
             object_id=context.object_id,
             scope_key=context.scope_key,
             scope_hash=context.scope_hash,
+            selected_document=(
+                context.selected_document.document
+                if context.selected_document is not None
+                else None
+            ),
             title=label,
             ai_thread_id=thread.pk,
             last_context_revision=context.source_revision,
