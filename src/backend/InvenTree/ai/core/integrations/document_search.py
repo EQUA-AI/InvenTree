@@ -94,7 +94,7 @@ def _embed_query(text: str) -> list[float] | None:
 
 
 @ai_function
-async def search_part_documents(  # noqa: RUF029 - async is the tool-call contract; sync would move execution to a thread
+async def search_part_documents(  # noqa: RUF029 - async is the tool-call contract
     query: str,
     top_k: int = 5,
 ) -> dict[str, Any]:
@@ -146,7 +146,7 @@ async def search_part_documents(  # noqa: RUF029 - async is the tool-call contra
                 VectorizedQuery(
                     vector=vector,
                     k_nearest_neighbors=top_k * 2,
-                    fields="content_vector",
+                    fields="text_vector",
                 )
             ]
         except ImportError:
@@ -161,8 +161,8 @@ async def search_part_documents(  # noqa: RUF029 - async is the tool-call contra
             chunk: dict[str, Any] = {}
             # Foundry "Add your data" index field names
             chunk["content"] = r.get("content") or r.get("chunk") or ""
-            chunk["title"] = r.get("title") or r.get("filename") or ""
-            chunk["filepath"] = r.get("filepath") or r.get("url") or ""
+            chunk["title"] = r.get("title") or r.get("source_file_name") or r.get("filename") or ""
+            chunk["filepath"] = r.get("filepath") or r.get("source_blob_path") or r.get("url") or ""
             chunk["chunk_id"] = r.get("chunk_id") or r.get("id") or ""
             chunk["score"] = r.get("@search.score", 0)
             chunks.append(chunk)

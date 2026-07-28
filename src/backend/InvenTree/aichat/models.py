@@ -288,6 +288,13 @@ class ScopedConversation(models.Model):
     object_id = models.CharField(max_length=64, db_index=True)
     scope_key = models.CharField(max_length=255)
     scope_hash = models.CharField(max_length=64, db_index=True)
+    selected_document = models.ForeignKey(
+        'ControlledDocument',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='scoped_conversations',
+    )
     title = models.CharField(max_length=255, blank=True, default='')
     status = models.CharField(
         max_length=16,
@@ -337,6 +344,120 @@ class GrantAccess(models.TextChoices):
 
     READ = 'read', 'Read'
     EXPORT = 'export', 'Export'
+
+
+class ControlledDocumentState(models.TextChoices):
+    """Lifecycle states for a governed document revision."""
+
+    DRAFT = 'draft', 'Draft'
+    INDEXING = 'indexing', 'Indexing'
+    INDEXED = 'indexed', 'Indexed'
+    FAILED = 'failed', 'Failed'
+    SUPERSEDED = 'superseded', 'Superseded'
+    ARCHIVED = 'archived', 'Archived'
+
+
+class ControlledDocument(models.Model):
+    """A scope-bound, immutable source revision for AI document retrieval."""
+
+    selection_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    document_id = models.CharField(max_length=128)
+    revision = models.CharField(max_length=64)
+    title = models.CharField(max_length=255)
+    document_class = models.CharField(max_length=128)
+    scope_key = models.CharField(max_length=255)
+    scope_hash = models.CharField(max_length=64)
+    access_class = models.CharField(max_length=64)
+    source_filename = models.CharField(max_length=255)
+    source_location = models.CharField(max_length=1024)
+    source_sha256 = models.CharField(max_length=64, blank=True, default='')
+    revision_date = models.DateField(null=True, blank=True)
+    facility = models.CharField(max_length=255, blank=True, default='')
+    process_area = models.CharField(max_length=255, blank=True, default='')
+    asset_id = models.CharField(max_length=64, blank=True, default='')
+    child_asset_id = models.CharField(max_length=64, blank=True, default='')
+    work_order_id = models.CharField(max_length=64, blank=True, default='')
+    repair_packet_id = models.CharField(max_length=64, blank=True, default='')
+    state = models.CharField(
+        max_length=16,
+        choices=ControlledDocumentState.choices,
+        default=ControlledDocumentState.DRAFT,
+        db_index=True,
+    )
+    is_current = models.BooleanField(default=False)
+    search_index_name = models.CharField(max_length=128, blank=True, default='')
+    indexed_at = models.DateTimeField(null=True, blank=True)
+    indexing_error_code = models.CharField(max_length=64, blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='controlled_documents_created',
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='controlled_documents_approved',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Registry uniqueness, indexes, and lifecycle guards."""
+
+        ordering = ['scope_key', 'document_id', '-created_at']
+        indexes = [
+            models.Index(
+                fields=['scope_hash', 'document_id', 'state'],
+                name='aichat_ctrl_doc_scope_idx',
+            ),
+            models.Index(
+                fields=['asset_id', 'state'], name='aichat_ctrl_doc_asset_idx'
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['scope_key', 'document_id', 'revision'],
+                name='aichat_ctrl_doc_revision_uniq',
+            ),
+            models.UniqueConstraint(
+                fields=['scope_key', 'document_id'],
+                condition=Q(is_current=True),
+                name='aichat_ctrl_doc_current_uniq',
+            ),
+            models.CheckConstraint(
+                condition=~Q(document_id=''), name='aichat_ctrl_doc_id_not_empty'
+            ),
+            models.CheckConstraint(
+                condition=~Q(revision=''), name='aichat_ctrl_doc_revision_not_empty'
+            ),
+            models.CheckConstraint(
+                condition=~Q(scope_key=''), name='aichat_ctrl_doc_scope_not_empty'
+            ),
+            models.CheckConstraint(
+                condition=~Q(scope_hash=''), name='aichat_ctrl_doc_hash_not_empty'
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(is_current=True) | Q(state=ControlledDocumentState.INDEXED)
+                ),
+                name='aichat_ctrl_doc_current_indexed',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(state=ControlledDocumentState.INDEXED)
+                    | (~Q(source_sha256='') & ~Q(search_index_name=''))
+                ),
+                name='aichat_ctrl_doc_indexed_source',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'{self.document_id} revision {self.revision}'
 
 
 class ScopedConversationGrant(models.Model):

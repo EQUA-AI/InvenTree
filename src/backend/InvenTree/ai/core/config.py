@@ -423,6 +423,18 @@ class Settings(BaseSettings):
         default="inventree-ai-conversations", alias="AZURE_SEARCH_INDEX_NAME"
     )
     azure_search_documents_index: str = Field(default="", alias="AZURE_SEARCH_DOCUMENTS_INDEX")
+    azure_search_controlled_documents_index: str = Field(
+        default="", alias="AZURE_SEARCH_CONTROLLED_DOCUMENTS_INDEX"
+    )
+    controlled_documents_root: Path = Field(
+        default=Path("/home/inventree/data/media/ai/controlled-documents"),
+        alias="CONTROLLED_DOCUMENTS_ROOT",
+    )
+    controlled_document_embedding_dimensions: int = Field(
+        default=3072,
+        ge=1,
+        alias="CONTROLLED_DOCUMENT_EMBEDDING_DIMENSIONS",
+    )
 
     # -------------------------------------------------------------------------
     # Conversation Persistence Configuration
