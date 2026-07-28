@@ -1,6 +1,6 @@
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
-import type { KanbanCard } from '@lib/types/Tasks';
+import type { WorkOrder } from '@lib/types/Tasks';
 import { t } from '@lingui/core/macro';
 import { notifications } from '@mantine/notifications';
 import { IconCircleCheck } from '@tabler/icons-react';
@@ -39,7 +39,7 @@ export function useTaskSchedule() {
    * duration is preserved exactly as the user positioned it.
    */
   const moveWorkOrder = useCallback(
-    async (card: KanbanCard, start: Date, end: Date | null) => {
+    async (card: WorkOrder, start: Date, end: Date | null) => {
       await api.post(apiUrl(ApiEndpoints.kanban_command_schedule, card.id), {
         expected_version: card.lifecycle_version,
         scheduled_start: start.toISOString(),
@@ -56,7 +56,7 @@ export function useTaskSchedule() {
    * the new duration from the working-time span.
    */
   const resizeWorkOrder = useCallback(
-    async (card: KanbanCard, end: Date) => {
+    async (card: WorkOrder, end: Date) => {
       await api.post(apiUrl(ApiEndpoints.kanban_command_resize, card.id), {
         expected_version: card.lifecycle_version,
         scheduled_end: end.toISOString(),

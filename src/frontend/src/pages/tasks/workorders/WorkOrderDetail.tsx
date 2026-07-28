@@ -21,6 +21,7 @@ import {
   IconCalendarClock,
   IconGitBranch,
   IconHistory,
+  IconLayoutKanban,
   IconPackage,
   IconShieldCheck,
   IconTools
@@ -32,7 +33,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
-import type { KanbanCardPart } from '@lib/types/Tasks';
+import type { BoardCard, WorkOrderPart } from '@lib/types/Tasks';
 
 import type {
   MaintenanceRecordOverview,
@@ -233,6 +234,10 @@ export default function WorkOrderDetail() {
         <WorkOrderSafetyReadiness gates={workOrder.repair_packet.gates} />
       )}
 
+      <SectionCard title={t`Board cards`} icon={<IconLayoutKanban size={18} />}>
+        <CardsTable cards={workOrder.cards ?? []} />
+      </SectionCard>
+
       <SectionCard title={t`Jobs and tasks`} icon={<IconTools size={18} />}>
         <WorkOrderTable
           rows={workOrder.children}
@@ -369,7 +374,61 @@ function WorkOrderTable({
   );
 }
 
-function PartsTable({ parts }: Readonly<{ parts: KanbanCardPart[] }>) {
+/**
+ * The pieces this job is being worked through.
+ *
+ * A job with one card is the ordinary case and says so plainly; a job broken
+ * down shows each piece and the column it currently sits in, which is the whole
+ * reason cards and work orders are separate.
+ */
+function CardsTable({ cards }: Readonly<{ cards: BoardCard[] }>) {
+  if (cards.length === 0) {
+    return (
+      <Text size='sm' c='dimmed'>
+        {t`No cards on the board for this work order.`}
+      </Text>
+    );
+  }
+
+  return (
+    <Table striped highlightOnHover>
+      <Table.Thead>
+        <Table.Tr>
+          <Table.Th>{t`Card`}</Table.Th>
+          <Table.Th>{t`Kind`}</Table.Th>
+          <Table.Th>{t`Column`}</Table.Th>
+          <Table.Th>{t`Scheduled`}</Table.Th>
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
+        {cards.map((card) => (
+          <Table.Tr key={card.id}>
+            <Table.Td>
+              <Text size='sm'>{card.title}</Text>
+            </Table.Td>
+            <Table.Td>
+              <Badge variant='light' color='gray'>
+                {card.card_kind}
+              </Badge>
+            </Table.Td>
+            <Table.Td>
+              <Badge variant='light'>{card.status}</Badge>
+            </Table.Td>
+            <Table.Td>
+              <Text size='sm' c={card.effective_start ? undefined : 'dimmed'}>
+                {card.effective_start
+                  ? dayjs(card.effective_start).format('MMM D, HH:mm')
+                  : t`Unscheduled`}
+              </Text>
+            </Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
+  );
+}
+
+function PartsTable({ parts }: Readonly<{ parts: WorkOrderPart[] }>) {
   if (parts.length === 0)
     return <Text c='dimmed'>{t`No required parts.`}</Text>;
 

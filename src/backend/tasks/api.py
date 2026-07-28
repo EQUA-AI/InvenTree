@@ -60,7 +60,13 @@ from .jobkit_api import (
     JobKitSubstitutionDecide,
     JobKitSubstitutionPropose,
 )
-from .models import KanbanColumn, WorkOrder, WorkOrderDependency, WorkOrderPart
+from .models import (
+    KanbanCard,
+    KanbanColumn,
+    WorkOrder,
+    WorkOrderDependency,
+    WorkOrderPart,
+)
 from .procedure_api import (
     ProcedureArchive,
     ProcedureBlockers,
@@ -87,6 +93,7 @@ from .procedure_execution_api import (
     WorkOrderDeviationList,
 )
 from .serializers import (
+    KanbanCardSerializer,
     KanbanColumnSerializer,
     WorkOrderBoardSerializer,
     WorkOrderDependencySerializer,
@@ -202,8 +209,85 @@ class WorkOrderBoardFilter(FilterSet):
         return queryset
 
 
+class KanbanCardList(ListCreateAPI):
+    """List and create the cards a work order is tracked by.
+
+    Unpaginated for the same reason the work-order board is: the board renders
+    every card it is given, with no results envelope.
+    """
+
+    queryset = KanbanCard.objects.all()
+    serializer_class = KanbanCardSerializer
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+    filter_backends = SEARCH_ORDER_FILTER
+    filterset_fields = ['work_order', 'status', 'card_kind', 'is_active']
+    search_fields = ['title', 'description', 'assignee']
+    ordering_fields = ['board_order', 'created_at', 'updated_at', 'scheduled_start']
+    ordering = 'board_order'
+    pagination_class = None
+
+    def get_queryset(self):
+        """Return active cards with the job context the serializer reads."""
+        queryset = (
+            super()
+            .get_queryset()
+            .select_related(
+                'work_order',
+                'work_order__machine',
+                'assigned_to',
+                'work_order__assigned_to',
+            )
+        )
+
+        include_inactive = InvenTree.helpers.str2bool(
+            self.request.query_params.get('include_inactive', False)
+        )
+        if not include_inactive:
+            queryset = queryset.filter(is_active=True)
+
+        return queryset.order_by('board_order', 'created_at')
+
+
+class KanbanCardDetail(RetrieveUpdateDestroyAPI):
+    """Retrieve, move, or archive one card.
+
+    Moving a card between columns is a PATCH of ``status`` here. It changes
+    where a piece of work sits on the board and nothing else - the job's
+    lifecycle is moved by its own commands, which evaluate readiness.
+    """
+
+    queryset = KanbanCard.objects.all()
+    serializer_class = KanbanCardSerializer
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+
+    def perform_destroy(self, instance):
+        """Archive rather than remove, matching the work-order board.
+
+        The card tracking the job itself is never archived away: a work order
+        with no card would vanish from the board while still being open.
+        """
+        if instance.card_kind == KanbanCard.KIND_WORK_ORDER:
+            raise ValidationError({
+                'card_kind': [
+                    'The card tracking the work order itself cannot be archived; '
+                    'archive the work order instead.'
+                ]
+            })
+        if instance.is_active:
+            instance.is_active = False
+            instance.save(update_fields=['is_active', 'updated_at'])
+
+
 class WorkOrderBoardList(ListCreateAPI):
-    """List and create Kanban cards."""
+    """List and create work orders as the board sees them."""
 
     queryset = WorkOrder.objects.all()
     serializer_class = WorkOrderBoardSerializer
@@ -1138,6 +1222,18 @@ kanban_api_urls = [
     ),
     path(
         'cards/',
+        include([
+            path('', KanbanCardList.as_view(), name='kanban-board-card-list'),
+            path(
+                '<int:pk>/', KanbanCardDetail.as_view(), name='kanban-board-card-detail'
+            ),
+        ]),
+    ),
+    # Everything below concerns the *job*, not a card on the board. The route
+    # said 'cards/' from when a work order and its card were one row; the URL
+    # names are unchanged so existing reverse() callers keep resolving.
+    path(
+        'work-orders/',
         include([
             path('', WorkOrderBoardList.as_view(), name='kanban-card-list'),
             path(

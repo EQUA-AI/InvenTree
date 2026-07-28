@@ -25,7 +25,7 @@ import MaintenanceBoard from './MaintenanceBoard';
  * deep-linkable; `/maintenance/` alone falls back to the user's last panel.
  *
  * The workspace is named Maintenance, but the API namespace and Django models
- * behind it remain `tasks`/`KanbanCard`: renaming those would be a high-risk
+ * behind it remain `tasks`/`WorkOrder`: renaming those would be a high-risk
  * data migration with no user-visible value.
  */
 export default function MaintenanceIndex() {

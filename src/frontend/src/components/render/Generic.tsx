@@ -70,7 +70,7 @@ export function RenderImportSession({
   return instance && <RenderInlineModel primary={instance.data_file} />;
 }
 
-export function RenderKanbanCard({
+export function RenderWorkOrder({
   instance
 }: Readonly<InstanceRenderInterface>): ReactNode {
   return (

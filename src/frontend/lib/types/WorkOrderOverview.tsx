@@ -1,11 +1,11 @@
 /**
  * TypeScript types for the complete work-order overview.
  *
- * Mirrors `KanbanCardOverviewSerializer`. The page renders every applicable
+ * Mirrors `WorkOrderOverviewSerializer`. The page renders every applicable
  * section from this one read rather than a request per section.
  */
 
-import type { KanbanCard } from './Tasks';
+import type { BoardCard, WorkOrder } from './Tasks';
 
 export interface WorkOrderSummary {
   id: number;
@@ -139,7 +139,9 @@ export interface StructuredCloseoutOverview {
   verified_at: string | null;
 }
 
-export interface WorkOrderOverview extends KanbanCard {
+export interface WorkOrderOverview extends WorkOrder {
+  /** Every tracked piece of this job, in board order. */
+  cards: BoardCard[];
   parent_detail: WorkOrderSummary | null;
   children: WorkOrderSummary[];
   dependencies: WorkOrderDependency[];

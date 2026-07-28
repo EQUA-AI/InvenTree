@@ -50,11 +50,11 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type {
   AllocationStatus,
-  KanbanCard,
-  KanbanCardPart,
   KanbanColumnRecord,
   KanbanPriority,
-  KanbanStatus
+  KanbanStatus,
+  WorkOrder,
+  WorkOrderPart
 } from '@lib/types/Tasks';
 
 import { ScopedChatButton } from '../../components/aichat/ScopedChatButton';
@@ -190,7 +190,7 @@ const getDueBadgeColor = (dueDate: string) => {
   return 'blue';
 };
 
-const convertCardToTask = (card: KanbanCard): Task => ({
+const convertCardToTask = (card: WorkOrder): Task => ({
   id: card.id,
   title: card.title,
   description: card.description ?? '',
@@ -208,7 +208,7 @@ const convertCardToTask = (card: KanbanCard): Task => ({
   serviceQuote: card.service_quote ?? '',
   createdAt: card.created_at,
   updatedAt: card.updated_at,
-  parts: (card.parts ?? []).map((p: KanbanCardPart) => ({
+  parts: (card.parts ?? []).map((p: WorkOrderPart) => ({
     partId: p.part,
     partName: p.part_name,
     quantity: p.quantity,
@@ -359,15 +359,15 @@ export default function MaintenanceBoard() {
   }, []);
 
   const cardsQuery = useQuery<
-    KanbanCard[],
+    WorkOrder[],
     Error,
-    KanbanCard[],
+    WorkOrder[],
     ['kanban-cards']
   >({
     queryKey: ['kanban-cards'],
     queryFn: async () => {
       try {
-        const response = await api.get<KanbanCard[]>(
+        const response = await api.get<WorkOrder[]>(
           apiUrl(ApiEndpoints.kanban_card_list)
         );
         return response.data ?? [];
@@ -816,7 +816,7 @@ export default function MaintenanceBoard() {
           formParts.map((fp) => ({ part: fp.partId, quantity: fp.quantity }))
         );
         const allocData = allocResponse.data as {
-          parts: KanbanCardPart[];
+          parts: WorkOrderPart[];
           warnings: string[];
           all_allocated: boolean;
         };

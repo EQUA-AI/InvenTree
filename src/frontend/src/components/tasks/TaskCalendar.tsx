@@ -7,7 +7,7 @@ import type {
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { UserRoles } from '@lib/enums/Roles';
-import type { KanbanCard, KanbanPriority } from '@lib/types/Tasks';
+import type { KanbanPriority, WorkOrder } from '@lib/types/Tasks';
 import { Badge, Group, Text } from '@mantine/core';
 import { useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -47,7 +47,7 @@ export default function TaskCalendar() {
   });
 
   const events: EventInput[] = useMemo(() => {
-    const cards = (calendarState.data ?? []) as KanbanCard[];
+    const cards = (calendarState.data ?? []) as WorkOrder[];
 
     return cards
       .filter((card) => card.scheduled_start || card.due_date)
@@ -80,7 +80,7 @@ export default function TaskCalendar() {
 
   const onEventDrop = useCallback(
     async (info: EventDropArg) => {
-      const card = info.event.extendedProps.card as KanbanCard;
+      const card = info.event.extendedProps.card as WorkOrder;
       if (!info.event.start) {
         info.revert();
         return;
@@ -98,7 +98,7 @@ export default function TaskCalendar() {
 
   const onEventResize = useCallback(
     async (info: EventResizeDoneArg) => {
-      const card = info.event.extendedProps.card as KanbanCard;
+      const card = info.event.extendedProps.card as WorkOrder;
       if (!info.event.end) {
         info.revert();
         return;
@@ -122,7 +122,7 @@ export default function TaskCalendar() {
   );
 
   const renderEvent = useCallback((arg: EventContentArg) => {
-    const card = arg.event.extendedProps.card as KanbanCard;
+    const card = arg.event.extendedProps.card as WorkOrder;
     return (
       <Group
         gap={4}
@@ -142,7 +142,7 @@ export default function TaskCalendar() {
   }, []);
 
   const tooltip = useCallback((arg: EventContentArg) => {
-    const card = arg.event.extendedProps.card as KanbanCard;
+    const card = arg.event.extendedProps.card as WorkOrder;
     return (
       <Text size='sm'>
         {card.title}

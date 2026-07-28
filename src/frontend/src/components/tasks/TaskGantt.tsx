@@ -7,7 +7,7 @@ import type {
 import { Gantt, Willow, WillowDark } from '@svar-ui/react-gantt';
 import '@svar-ui/react-gantt/all.css';
 
-import type { KanbanCard } from '@lib/types/Tasks';
+import type { WorkOrder } from '@lib/types/Tasks';
 import { t } from '@lingui/core/macro';
 import {
   ActionIcon,
@@ -355,7 +355,7 @@ function TaskBarContent({ data }: Readonly<{ data: ITask }>) {
 }
 
 function toTimelineTask(
-  card: KanbanCard,
+  card: WorkOrder,
   visibleIds: Set<number>,
   parentIds: Set<number>
 ): TimelineTask {
@@ -387,9 +387,9 @@ function toTimelineTask(
   };
 }
 
-function orderCards(cards: KanbanCard[], orderBy: OrderBy): KanbanCard[] {
+function orderCards(cards: WorkOrder[], orderBy: OrderBy): WorkOrder[] {
   const ids = new Set(cards.map((card) => card.id));
-  const compare = (left: KanbanCard, right: KanbanCard) => {
+  const compare = (left: WorkOrder, right: WorkOrder) => {
     const leftValue =
       orderBy === 'machine'
         ? (left.machine_name ?? '')
@@ -406,7 +406,7 @@ function orderCards(cards: KanbanCard[], orderBy: OrderBy): KanbanCard[] {
   const roots = cards
     .filter((card) => !card.parent || !ids.has(card.parent))
     .sort(compare);
-  const children = new Map<number, KanbanCard[]>();
+  const children = new Map<number, WorkOrder[]>();
   for (const card of cards) {
     if (card.parent && ids.has(card.parent)) {
       children.set(card.parent, [...(children.get(card.parent) ?? []), card]);

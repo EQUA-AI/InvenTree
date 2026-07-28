@@ -1,6 +1,6 @@
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
-import type { KanbanCard } from '@lib/types/Tasks';
+import type { WorkOrder } from '@lib/types/Tasks';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 
@@ -23,7 +23,7 @@ export interface ScheduleWarning {
 }
 
 export interface ScheduleWindow {
-  cards: KanbanCard[];
+  cards: WorkOrder[];
   dependencies: ScheduleDependency[];
   warnings: ScheduleWarning[];
 }

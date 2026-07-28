@@ -5,7 +5,13 @@ from django.conf import settings
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .models import KanbanColumn, WorkOrder, WorkOrderDependency, WorkOrderPart
+from .models import (
+    KanbanCard,
+    KanbanColumn,
+    WorkOrder,
+    WorkOrderDependency,
+    WorkOrderPart,
+)
 
 
 class WorkOrderDependencySerializer(serializers.ModelSerializer):
@@ -303,6 +309,105 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
         return filtered
 
 
+class KanbanCardSerializer(serializers.ModelSerializer):
+    """One tracked piece of a work order, as the board needs it.
+
+    A card carries enough of its work order to be rendered without a second
+    request - reference, priority, machine, lifecycle - because the board draws
+    the job's identity on every card belonging to it. Those fields are read-only
+    here: they describe the job, and the job is changed through its own
+    endpoints, never by editing one of its cards.
+
+    ``effective_*`` report what the card resolves to after falling back to the
+    work order, so a client does not have to re-implement that rule to show who
+    is doing a piece of work and when.
+    """
+
+    work_order_reference = serializers.CharField(
+        source='work_order.reference', read_only=True, default=None
+    )
+    work_order_title = serializers.CharField(
+        source='work_order.title', read_only=True, default=None
+    )
+    priority = serializers.CharField(
+        source='work_order.priority', read_only=True, default=None
+    )
+    lifecycle_status = serializers.CharField(
+        source='work_order.lifecycle_status', read_only=True, default=None
+    )
+    lifecycle_version = serializers.IntegerField(
+        source='work_order.lifecycle_version', read_only=True, default=None
+    )
+    machine = serializers.IntegerField(
+        source='work_order.machine_id', read_only=True, default=None
+    )
+    machine_name = serializers.CharField(
+        source='work_order.machine.name', read_only=True, default=None
+    )
+    tags = serializers.JSONField(source='work_order.tags', read_only=True)
+
+    effective_assignee = serializers.SerializerMethodField()
+    effective_start = serializers.DateTimeField(read_only=True)
+    effective_end = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        """Serializer configuration for KanbanCard."""
+
+        model = KanbanCard
+        fields = (
+            'id',
+            'work_order',
+            'card_kind',
+            'status',
+            'board_order',
+            'title',
+            'description',
+            'assigned_to',
+            'assignee',
+            'scheduled_start',
+            'scheduled_end',
+            'estimated_minutes',
+            'is_active',
+            'created_at',
+            'updated_at',
+            # Read-only work-order context, so one request renders the board.
+            'work_order_reference',
+            'work_order_title',
+            'priority',
+            'lifecycle_status',
+            'lifecycle_version',
+            'machine',
+            'machine_name',
+            'tags',
+            'effective_assignee',
+            'effective_start',
+            'effective_end',
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+    def update(self, instance, validated_data):
+        """Apply a board edit, refusing to move the card to another job.
+
+        Which work order a piece of work belongs to is settled when the card is
+        created. Allowing a PATCH to change it would let a board drag move work
+        between jobs, quietly detaching it from the closeout that accounts for
+        it - so this is rejected rather than ignored, which would look like it
+        had worked.
+        """
+        work_order = validated_data.pop('work_order', None)
+        if work_order is not None and work_order.pk != instance.work_order_id:
+            raise serializers.ValidationError({
+                'work_order': ['A card cannot be moved to a different work order.']
+            })
+        return super().update(instance, validated_data)
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_effective_assignee(self, obj) -> int | None:
+        """Return who is doing this piece, after the fallback to the job."""
+        user = obj.effective_assignee
+        return user.pk if user else None
+
+
 class WorkOrderSummarySerializer(serializers.ModelSerializer):
     """Compact card identity for hierarchy and dependency rows."""
 
@@ -373,6 +478,7 @@ def _approved_scope_projection(packet) -> dict | None:
 class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
     """Complete read-only work-order context for the detail page."""
 
+    cards = serializers.SerializerMethodField()
     parent_detail = serializers.SerializerMethodField()
     children = serializers.SerializerMethodField()
     dependencies = serializers.SerializerMethodField()
@@ -388,6 +494,7 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
 
         fields = (
             *WorkOrderBoardSerializer.Meta.fields,
+            'cards',
             'parent_detail',
             'children',
             'dependencies',
@@ -399,6 +506,20 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
             'source_alert',
         )
         read_only_fields = fields
+
+    @extend_schema_field(KanbanCardSerializer(many=True))
+    def get_cards(self, obj) -> list:
+        """Return every piece of tracked work belonging to this job.
+
+        The detail page shows the job and the cards it is being worked
+        through; without this it would show a job with no visible work.
+        """
+        return KanbanCardSerializer(
+            obj.cards.select_related('assigned_to').order_by(
+                'board_order', 'created_at'
+            ),
+            many=True,
+        ).data
 
     @staticmethod
     def _summary(work_order):

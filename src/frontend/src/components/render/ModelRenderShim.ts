@@ -13,14 +13,14 @@ import {
   RenderContentType,
   RenderError,
   RenderImportSession,
-  RenderKanbanCard,
   RenderParameter,
   RenderParameterTemplate,
   RenderProjectCode,
   RenderRepairPacket,
   RenderSelectionEntry,
   RenderSelectionList,
-  RenderTag
+  RenderTag,
+  RenderWorkOrder
 } from './Generic';
 import {
   RenderPurchaseOrder,
@@ -81,7 +81,7 @@ registerModelRenderers({
   [ModelType.error]: RenderError,
   [ModelType.tag]: RenderTag,
   // EQUA fork models
-  [ModelType.kanbancard]: RenderKanbanCard,
+  [ModelType.kanbancard]: RenderWorkOrder,
   [ModelType.assetmachine]: RenderAssetMachine,
   [ModelType.repairpacket]: RenderRepairPacket
 });

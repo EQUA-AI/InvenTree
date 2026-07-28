@@ -297,7 +297,9 @@ class WorkOrderAPITest(TestCase):
             company='Legacy Company Text',
         )
 
-        response = self.client.get('/api/kanban/cards/')
+        # The board's work-order surface; /api/kanban/cards/ now serves the
+        # board cards belonging to a job, which is a different shape.
+        response = self.client.get('/api/kanban/work-orders/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         payload = response.json()
@@ -362,7 +364,7 @@ class WorkOrderAPITest(TestCase):
         work_order = self.make_card(title='Read-only typed fields')
 
         response = self.client.patch(
-            f'/api/kanban/cards/{work_order.pk}/',
+            f'/api/kanban/work-orders/{work_order.pk}/',
             data={
                 'lifecycle_status': WorkOrderLifecycle.COMPLETED,
                 'lifecycle_version': 99,
