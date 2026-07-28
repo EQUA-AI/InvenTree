@@ -50,6 +50,7 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type {
   AllocationStatus,
+  BoardCard,
   KanbanColumnRecord,
   KanbanPriority,
   KanbanStatus,
@@ -79,7 +80,12 @@ interface FormPart {
 }
 
 interface Task {
+  /** The board card. One job may put several of these on the board. */
   id: number;
+  /** The job the card belongs to; work-order edits address this, not `id`. */
+  workOrderId: number;
+  /** What kind of piece this card tracks: the job itself, a subtask, sourcing. */
+  cardKind: string;
   title: string;
   description: string;
   status: KanbanStatus;
@@ -190,25 +196,44 @@ const getDueBadgeColor = (dueDate: string) => {
   return 'blue';
 };
 
-const convertCardToTask = (card: WorkOrder): Task => ({
+/**
+ * Build a board item from a card and the job it belongs to.
+ *
+ * The card decides what the board shows and where: its title, its column, its
+ * own schedule. Everything the card does not answer for - priority, machine,
+ * required parts, customer detail - is read from the work order, because those
+ * describe the job rather than this piece of it.
+ *
+ * A job with no card of its own cannot happen (the model creates one), but the
+ * work order is optional here so a card that arrives before its job has loaded
+ * still renders rather than blanking the board.
+ */
+const convertCardToTask = (
+  card: BoardCard,
+  workOrder: WorkOrder | undefined
+): Task => ({
   id: card.id,
+  workOrderId: card.work_order,
+  cardKind: card.card_kind,
   title: card.title,
   description: card.description ?? '',
   status: card.status as KanbanStatus,
-  priority: card.priority as KanbanPriority,
-  dueDate: card.due_date,
-  assignee: card.assignee ?? '',
-  machine: card.machine ?? null,
-  machineName: card.machine_name ?? null,
-  tags: card.tags ?? [],
-  company: card.company ?? '',
-  companyContactName: card.company_contact_name ?? '',
-  companyContactPhone: card.company_contact_phone ?? '',
-  jobNumber: card.job_number ?? '',
-  serviceQuote: card.service_quote ?? '',
+  priority: (card.priority ??
+    workOrder?.priority ??
+    'medium') as KanbanPriority,
+  dueDate: workOrder?.due_date ?? null,
+  assignee: card.assignee || (workOrder?.assignee ?? ''),
+  machine: card.machine ?? workOrder?.machine ?? null,
+  machineName: card.machine_name ?? workOrder?.machine_name ?? null,
+  tags: card.tags ?? workOrder?.tags ?? [],
+  company: workOrder?.company ?? '',
+  companyContactName: workOrder?.company_contact_name ?? '',
+  companyContactPhone: workOrder?.company_contact_phone ?? '',
+  jobNumber: workOrder?.job_number ?? '',
+  serviceQuote: workOrder?.service_quote ?? '',
   createdAt: card.created_at,
   updatedAt: card.updated_at,
-  parts: (card.parts ?? []).map((p: WorkOrderPart) => ({
+  parts: (workOrder?.parts ?? []).map((p: WorkOrderPart) => ({
     partId: p.part,
     partName: p.part_name,
     quantity: p.quantity,
@@ -381,10 +406,42 @@ export default function MaintenanceBoard() {
     }
   });
 
+  // The board renders cards. The work orders are fetched too, for everything a
+  // card does not answer for (priority, parts, customer detail) and because the
+  // edit form addresses the job.
+  const boardCardsQuery = useQuery<
+    BoardCard[],
+    Error,
+    BoardCard[],
+    ['kanban-board-cards']
+  >({
+    queryKey: ['kanban-board-cards'],
+    queryFn: async () => {
+      try {
+        const response = await api.get<BoardCard[]>(
+          apiUrl(ApiEndpoints.kanban_board_card_list)
+        );
+        return response.data ?? [];
+      } catch (error) {
+        showApiErrorMessage({
+          error,
+          title: t`Could not load board cards`
+        });
+        throw error;
+      }
+    }
+  });
+
   useEffect(() => {
-    const mapped = (cardsQuery.data ?? []).map(convertCardToTask);
-    setTasks(mapped);
-  }, [cardsQuery.data]);
+    const workOrders = new Map(
+      (cardsQuery.data ?? []).map((workOrder) => [workOrder.id, workOrder])
+    );
+    setTasks(
+      (boardCardsQuery.data ?? []).map((card) =>
+        convertCardToTask(card, workOrders.get(card.work_order))
+      )
+    );
+  }, [boardCardsQuery.data, cardsQuery.data]);
 
   // Board columns are persisted server-side (kanban/columns/). Previously they
   // lived only in useState, so add/reorder/delete never survived a refresh and a
@@ -729,8 +786,12 @@ export default function MaintenanceBoard() {
 
   const handleWorkPackageCreated = useCallback(
     async (result: WorkPackageResult) => {
-      // Board, Calendar and Timeline all read the same card collection.
+      // Board, Calendar and Timeline all read the same collections. A new job
+      // arrives with its card, so both have to be refreshed.
       await queryClient.invalidateQueries({ queryKey: ['kanban-cards'] });
+      await queryClient.invalidateQueries({
+        queryKey: ['kanban-board-cards']
+      });
 
       notifications.show({
         title: t`Work order created`,
@@ -792,16 +853,33 @@ export default function MaintenanceBoard() {
     setSavingTask(true);
 
     try {
+      // The form edits the job - priority, machine, parts, customer - so it
+      // addresses the work order, not the card that happens to be selected.
       const response = await api.put(
-        apiUrl(ApiEndpoints.kanban_card_detail, editingTask.id),
+        apiUrl(ApiEndpoints.kanban_card_detail, editingTask.workOrderId),
         payload
       );
-      const updated = convertCardToTask(response.data);
-      const cardId = updated.id;
-
+      // Reflect the job's new values on every card showing it, keeping each
+      // card's own title and column.
+      const workOrder: WorkOrder = response.data;
       setTasks((current) =>
-        current.map((task) => (task.id === updated.id ? updated : task))
+        current.map((task) =>
+          task.workOrderId === workOrder.id
+            ? {
+                ...task,
+                title:
+                  task.cardKind === 'work_order' ? workOrder.title : task.title,
+                description: workOrder.description ?? task.description,
+                priority: workOrder.priority as KanbanPriority,
+                dueDate: workOrder.due_date,
+                machine: workOrder.machine ?? null,
+                machineName: workOrder.machine_name ?? null,
+                tags: workOrder.tags ?? []
+              }
+            : task
+        )
       );
+      const cardId = editingTask.workOrderId;
 
       notifications.show({
         title: t`Work order updated`,
@@ -865,18 +943,18 @@ export default function MaintenanceBoard() {
     );
 
     try {
-      const response = await api.patch(
-        apiUrl(ApiEndpoints.kanban_card_detail, taskId),
-        {
-          status
-        }
-      );
-      const updated = convertCardToTask(response.data);
+      // A drag moves the card. The job's lifecycle is not touched by it - that
+      // is what the work-order commands are for.
+      await api.patch(apiUrl(ApiEndpoints.kanban_board_card_detail, taskId), {
+        status
+      });
 
       setTasks((current) =>
-        current.map((task) => (task.id === updated.id ? updated : task))
+        current.map((task) => (task.id === taskId ? { ...task, status } : task))
       );
-      await queryClient.invalidateQueries({ queryKey: ['kanban-cards'] });
+      await queryClient.invalidateQueries({
+        queryKey: ['kanban-board-cards']
+      });
     } catch (error) {
       showApiErrorMessage({
         error,
@@ -900,19 +978,36 @@ export default function MaintenanceBoard() {
 
     setDeletingTaskId(taskId);
 
+    const target = tasks.find((task) => task.id === taskId);
+
     try {
-      await api.delete(apiUrl(ApiEndpoints.kanban_card_detail, taskId));
+      // Archiving the card that tracks the job archives the job; the job would
+      // otherwise stay open with nothing on the board. Archiving any other card
+      // removes only that piece of work.
+      if (target && target.cardKind !== 'work_order') {
+        await api.delete(apiUrl(ApiEndpoints.kanban_board_card_detail, taskId));
+      } else {
+        await api.delete(
+          apiUrl(ApiEndpoints.kanban_card_detail, target?.workOrderId ?? taskId)
+        );
+      }
 
       setTasks((current) => current.filter((task) => task.id !== taskId));
 
       notifications.show({
-        title: t`Work order archived`,
+        title:
+          target && target.cardKind !== 'work_order'
+            ? t`Card archived`
+            : t`Work order archived`,
         message: t`The card is no longer visible on the board.`,
         color: 'green',
         icon: <IconCircleCheck size={16} />
       });
 
       await queryClient.invalidateQueries({ queryKey: ['kanban-cards'] });
+      await queryClient.invalidateQueries({
+        queryKey: ['kanban-board-cards']
+      });
     } catch (error) {
       showApiErrorMessage({
         error,
