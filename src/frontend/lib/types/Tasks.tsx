@@ -41,8 +41,6 @@ export interface WorkOrder {
   lifecycle_version: number;
   actual_started_at: string | null;
   actual_completed_at: string | null;
-  parent: number | null;
-  card_kind: string;
   tags: string[];
   company: string;
   company_contact_name: string;

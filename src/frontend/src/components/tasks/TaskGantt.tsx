@@ -136,15 +136,10 @@ export default function TaskGantt() {
     return orderCards(filtered, orderBy);
   }, [data?.cards, orderBy, search]);
 
-  const tasks = useMemo<TimelineTask[]>(() => {
-    const ids = new Set(visibleCards.map((card) => card.id));
-    const parentIds = new Set(
-      visibleCards
-        .map((card) => card.parent)
-        .filter((parent): parent is number => parent != null && ids.has(parent))
-    );
-    return visibleCards.map((card) => toTimelineTask(card, ids, parentIds));
-  }, [visibleCards]);
+  const tasks = useMemo<TimelineTask[]>(
+    () => visibleCards.map(toTimelineTask),
+    [visibleCards]
+  );
 
   const links = useMemo<ILink[]>(() => {
     const ids = new Set(tasks.map((task) => task.id));
@@ -354,11 +349,7 @@ function TaskBarContent({ data }: Readonly<{ data: ITask }>) {
   );
 }
 
-function toTimelineTask(
-  card: WorkOrder,
-  visibleIds: Set<number>,
-  parentIds: Set<number>
-): TimelineTask {
+function toTimelineTask(card: WorkOrder): TimelineTask {
   const start = new Date(card.scheduled_start as string);
   const end = new Date(card.scheduled_end as string);
   const reference = card.reference ?? `WO-${card.id}`;
@@ -376,9 +367,6 @@ function toTimelineTask(
     durationLabel: formatMinutes(card.estimated_minutes),
     progress: STATUS_PROGRESS[card.status] ?? 0,
     type: `stage-${card.status}`,
-    parent:
-      card.parent && visibleIds.has(card.parent) ? card.parent : undefined,
-    open: parentIds.has(card.id),
     statusLabel: humanize(card.status),
     lifecycleLabel: humanize(card.lifecycle_status),
     machineLabel: card.machine_name ?? '—',
@@ -388,7 +376,6 @@ function toTimelineTask(
 }
 
 function orderCards(cards: WorkOrder[], orderBy: OrderBy): WorkOrder[] {
-  const ids = new Set(cards.map((card) => card.id));
   const compare = (left: WorkOrder, right: WorkOrder) => {
     const leftValue =
       orderBy === 'machine'
@@ -403,20 +390,7 @@ function orderCards(cards: WorkOrder[], orderBy: OrderBy): WorkOrder[] {
       left.title.localeCompare(right.title)
     );
   };
-  const roots = cards
-    .filter((card) => !card.parent || !ids.has(card.parent))
-    .sort(compare);
-  const children = new Map<number, WorkOrder[]>();
-  for (const card of cards) {
-    if (card.parent && ids.has(card.parent)) {
-      children.set(card.parent, [...(children.get(card.parent) ?? []), card]);
-    }
-  }
-
-  return roots.flatMap((root) => [
-    root,
-    ...(children.get(root.id) ?? []).sort(compare)
-  ]);
+  return [...cards].sort(compare);
 }
 
 function scaleConfig(zoom: Zoom): IScaleConfig[] {

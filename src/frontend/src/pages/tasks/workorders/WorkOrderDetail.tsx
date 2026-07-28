@@ -23,8 +23,7 @@ import {
   IconHistory,
   IconLayoutKanban,
   IconPackage,
-  IconShieldCheck,
-  IconTools
+  IconShieldCheck
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -154,18 +153,6 @@ export default function WorkOrderDetail() {
         <WorkOrderAlertContext alert={workOrder.source_alert} />
       )}
 
-      {workOrder.parent_detail && (
-        <Alert color='blue' icon={<IconGitBranch size={16} />}>
-          {t`This task belongs to`}{' '}
-          <Anchor
-            component={Link}
-            to={`/maintenance/work-orders/${workOrder.parent_detail.id}/`}
-          >
-            {displayReference(workOrder.parent_detail)}
-          </Anchor>
-        </Alert>
-      )}
-
       <Card withBorder padding='md'>
         <Stack gap='md'>
           {workOrder.description && (
@@ -238,13 +225,6 @@ export default function WorkOrderDetail() {
         <CardsTable cards={workOrder.cards ?? []} />
       </SectionCard>
 
-      <SectionCard title={t`Jobs and tasks`} icon={<IconTools size={18} />}>
-        <WorkOrderTable
-          rows={workOrder.children}
-          empty={t`No child jobs or tasks.`}
-        />
-      </SectionCard>
-
       <SectionCard title={t`Required parts`} icon={<IconPackage size={18} />}>
         <PartsTable parts={workOrder.parts} />
       </SectionCard>
@@ -315,62 +295,6 @@ function StateBadge({
     <Badge variant='light' color={color}>
       {humanize(value)}
     </Badge>
-  );
-}
-
-function WorkOrderTable({
-  rows,
-  empty
-}: Readonly<{ rows: WorkOrderSummary[]; empty: string }>) {
-  if (rows.length === 0) return <Text c='dimmed'>{empty}</Text>;
-
-  return (
-    <Table.ScrollContainer minWidth={760}>
-      <Table striped highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>{t`Task`}</Table.Th>
-            <Table.Th>{t`Board stage`}</Table.Th>
-            <Table.Th>{t`Lifecycle`}</Table.Th>
-            <Table.Th>{t`Type`}</Table.Th>
-            <Table.Th>{t`Assignee`}</Table.Th>
-            <Table.Th>{t`Schedule`}</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {rows.map((row) => (
-            <Table.Tr key={row.id}>
-              <Table.Td>
-                <Anchor
-                  component={Link}
-                  to={`/maintenance/work-orders/${row.id}/`}
-                >
-                  {displayReference(row)}
-                </Anchor>
-                <Text size='xs' c='dimmed' lineClamp={1}>
-                  {row.description}
-                </Text>
-              </Table.Td>
-              <Table.Td>
-                <StateBadge
-                  value={row.status}
-                  color={statusColor(row.status)}
-                />
-              </Table.Td>
-              <Table.Td>{humanize(row.lifecycle_status)}</Table.Td>
-              <Table.Td>{humanize(row.card_kind)}</Table.Td>
-              <Table.Td>{row.assigned_to_name ?? '-'}</Table.Td>
-              <Table.Td>
-                <Text size='xs'>{formatDateTime(row.scheduled_start)}</Text>
-                <Text size='xs' c='dimmed'>
-                  {formatMinutes(row.estimated_minutes)}
-                </Text>
-              </Table.Td>
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
   );
 }
 

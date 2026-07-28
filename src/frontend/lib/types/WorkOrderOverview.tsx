@@ -16,8 +16,6 @@ export interface WorkOrderSummary {
   priority: string;
   lifecycle_status: string;
   work_order_type: string;
-  card_kind: string;
-  parent: number | null;
   machine: number | null;
   machine_name: string | null;
   assigned_to: number | null;
@@ -142,8 +140,6 @@ export interface StructuredCloseoutOverview {
 export interface WorkOrderOverview extends WorkOrder {
   /** Every tracked piece of this job, in board order. */
   cards: BoardCard[];
-  parent_detail: WorkOrderSummary | null;
-  children: WorkOrderSummary[];
   dependencies: WorkOrderDependency[];
   events: WorkOrderEvent[];
   repair_packet: RepairPacketOverview | null;
