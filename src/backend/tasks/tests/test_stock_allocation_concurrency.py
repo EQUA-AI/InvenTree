@@ -8,6 +8,7 @@ so each worker thread runs a real committed transaction and the
 
 import threading
 from decimal import Decimal
+from unittest import skipUnless
 
 from django.contrib.auth import get_user_model
 from django.db import connection
@@ -99,6 +100,11 @@ class MutateStockAllocationTest(_AllocationFixtureMixin, TestCase):
 
 
 @tag('migration_test')
+@skipUnless(
+    connection.vendor == 'postgresql',
+    'Row-level locking is what is under test; SQLite serializes writes with a '
+    'whole-database lock and reports "database table is locked" instead.',
+)
 class ConcurrentReservationTest(_AllocationFixtureMixin, TransactionTestCase):
     """Threaded proof that concurrent reservations never over-allocate.
 

@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone as dt_timezone
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
@@ -12,7 +13,15 @@ from tasks.services import scheduling
 
 
 def _utc(y, m, d, h=9):
-    return datetime(y, m, d, h, tzinfo=dt_timezone.utc)
+    """Build a fixed instant with the awareness the database expects.
+
+    Tests run with ``USE_TZ`` false. PostgreSQL tolerates an aware datetime in
+    that mode; SQLite refuses it outright, so a hardcoded UTC value made these
+    suites pass on one engine and error on the other. Following the setting is
+    what makes the same test mean the same thing on both.
+    """
+    moment = datetime(y, m, d, h, tzinfo=dt_timezone.utc)
+    return moment if settings.USE_TZ else moment.replace(tzinfo=None)
 
 
 class TerminalColumnTest(TestCase):

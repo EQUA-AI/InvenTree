@@ -15,6 +15,14 @@ from tasks.services.schedule_planner import PlanRequest, plan_schedule
 
 
 def _utc(y, m, d, h=9, mi=0):
+    """Build an aware UTC instant.
+
+    Deliberately aware regardless of the global setting: every class in this
+    module runs under ``@override_settings(USE_TZ=True)``, so the database
+    expects aware values here. ``HORIZON`` below is built at import time, when
+    that override is not yet in force, which is why this cannot consult
+    ``settings.USE_TZ`` the way the other suites' helpers do.
+    """
     return datetime(y, m, d, h, mi, tzinfo=dt_timezone.utc)
 
 

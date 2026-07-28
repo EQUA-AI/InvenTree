@@ -105,13 +105,17 @@ class WorkOrderTableTest(TestCase):
         self.assertEqual(WorkOrder._meta.model_name, 'workorder')
 
     def test_the_table_exists_under_that_name(self):
-        """The rename actually reached the database."""
+        """The rename actually reached the database.
+
+        Asked through Django's introspection rather than ``information_schema``,
+        which only PostgreSQL has - the original spelling made this test an
+        error on SQLite instead of an answer.
+        """
         with connection.cursor() as cursor:
-            cursor.execute(
-                'SELECT 1 FROM information_schema.tables WHERE table_name = %s',
-                ['tasks_workorder'],
-            )
-            self.assertIsNotNone(cursor.fetchone())
+            tables = connection.introspection.table_names(cursor)
+
+        self.assertIn('tasks_workorder', tables)
+        self.assertNotIn('tasks_kanbancardpart', tables)
 
     def test_rbac_follows_the_renamed_model(self):
         """The ruleset keys on ``<app_label>_<model_name>``, so it moved too.

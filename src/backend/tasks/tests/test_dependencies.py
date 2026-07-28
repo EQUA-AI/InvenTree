@@ -7,6 +7,7 @@ from django.urls import reverse
 
 from assets.models import AssetMachine
 from tasks.models import WorkOrder, WorkOrderDependency
+from tasks.tests.tz_support import iso
 from tasks.services import scheduling
 from users.models import RuleSet
 from users.ruleset import RuleSetEnum
@@ -190,9 +191,9 @@ class DependencyApiTest(TestCase):
         self.assertEqual(response.status_code, 204)
 
     def test_window_includes_dependencies(self):
-        self.a.scheduled_start = '2026-08-03T09:00:00Z'
+        self.a.scheduled_start = iso('2026-08-03T09:00:00Z')
         self.a.save()
-        self.b.scheduled_start = '2026-08-04T09:00:00Z'
+        self.b.scheduled_start = iso('2026-08-04T09:00:00Z')
         self.b.save()
         WorkOrderDependency.objects.create(predecessor=self.a, successor=self.b)
 

@@ -7,7 +7,7 @@ from .models import KanbanColumn, WorkOrder
 
 @admin.register(WorkOrder)
 class WorkOrderAdmin(admin.ModelAdmin):
-    """Admin interface for Kanban cards."""
+    """Admin interface for maintenance work orders."""
 
     list_display = (
         'title',

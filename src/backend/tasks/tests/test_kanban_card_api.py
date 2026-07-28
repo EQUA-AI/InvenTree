@@ -1,4 +1,4 @@
-"""API behaviour for the generic Kanban card surface.
+"""API behaviour for the board's work-order surface.
 
 Previously ``tasks/tests.py``, a sibling of the ``tasks/tests/`` package. Python
 prefers the package, so this module was unreachable *and* it made
@@ -15,7 +15,7 @@ from InvenTree.unit_test import InvenTreeAPITestCase
 
 
 class WorkOrderBoardAPITest(InvenTreeAPITestCase):
-    """API behaviour for Kanban cards."""
+    """API behaviour for the work orders the board lists."""
 
     # Named explicitly rather than 'all': upstream's assignRole(assign_all=True)
     # only sets can_view, so 'all' silently leaves every write forbidden.

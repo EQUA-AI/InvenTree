@@ -7,6 +7,7 @@ from django.urls import reverse
 
 from assets.models import AssetMachine
 from tasks.models import WorkOrder, WorkOrderDeletionRecord
+from tasks.tests.tz_support import iso
 from users.models import RuleSet
 from users.ruleset import RuleSetEnum
 
@@ -54,8 +55,8 @@ class SchedulingApiTest(TestCase):
             'kanban-command-schedule',
             {
                 'expected_version': work_order.lifecycle_version,
-                'scheduled_start': '2026-08-03T09:00:00Z',
-                'scheduled_end': '2026-08-03T13:00:00Z',
+                'scheduled_start': iso('2026-08-03T09:00:00Z'),
+                'scheduled_end': iso('2026-08-03T13:00:00Z'),
             },
             pk=work_order.pk,
         )
@@ -69,8 +70,8 @@ class SchedulingApiTest(TestCase):
             'kanban-command-schedule',
             {
                 'expected_version': work_order.lifecycle_version + 5,
-                'scheduled_start': '2026-08-03T09:00:00Z',
-                'scheduled_end': '2026-08-03T13:00:00Z',
+                'scheduled_start': iso('2026-08-03T09:00:00Z'),
+                'scheduled_end': iso('2026-08-03T13:00:00Z'),
             },
             pk=work_order.pk,
         )
@@ -83,8 +84,8 @@ class SchedulingApiTest(TestCase):
             'kanban-command-schedule',
             {
                 'expected_version': work_order.lifecycle_version,
-                'scheduled_start': '2026-08-03T13:00:00Z',
-                'scheduled_end': '2026-08-03T09:00:00Z',
+                'scheduled_start': iso('2026-08-03T13:00:00Z'),
+                'scheduled_end': iso('2026-08-03T09:00:00Z'),
             },
             pk=work_order.pk,
         )
@@ -95,7 +96,7 @@ class SchedulingApiTest(TestCase):
         work_order = self._card()
         response = self._post(
             'kanban-command-schedule',
-            {'scheduled_start': '2026-08-03T09:00:00Z'},
+            {'scheduled_start': iso('2026-08-03T09:00:00Z')},
             pk=work_order.pk,
         )
         self.assertEqual(response.status_code, 400)
@@ -151,14 +152,14 @@ class SchedulingApiTest(TestCase):
                     {
                         'card_id': a.pk,
                         'expected_version': a.lifecycle_version,
-                        'scheduled_start': '2026-08-03T09:00:00Z',
-                        'scheduled_end': '2026-08-03T12:00:00Z',
+                        'scheduled_start': iso('2026-08-03T09:00:00Z'),
+                        'scheduled_end': iso('2026-08-03T12:00:00Z'),
                     },
                     {
                         'card_id': b.pk,
                         'expected_version': b.lifecycle_version,
-                        'scheduled_start': '2026-08-04T09:00:00Z',
-                        'scheduled_end': '2026-08-04T12:00:00Z',
+                        'scheduled_start': iso('2026-08-04T09:00:00Z'),
+                        'scheduled_end': iso('2026-08-04T12:00:00Z'),
                     },
                 ]
             },
@@ -219,8 +220,8 @@ class SchedulingApiPermissionTest(TestCase):
             'kanban-command-schedule',
             {
                 'expected_version': self.work_order.lifecycle_version,
-                'scheduled_start': '2026-08-03T09:00:00Z',
-                'scheduled_end': '2026-08-03T13:00:00Z',
+                'scheduled_start': iso('2026-08-03T09:00:00Z'),
+                'scheduled_end': iso('2026-08-03T13:00:00Z'),
             },
             pk=self.work_order.pk,
         )
@@ -234,8 +235,8 @@ class SchedulingApiPermissionTest(TestCase):
             'kanban-command-schedule',
             {
                 'expected_version': self.work_order.lifecycle_version,
-                'scheduled_start': '2026-08-03T09:00:00Z',
-                'scheduled_end': '2026-08-03T13:00:00Z',
+                'scheduled_start': iso('2026-08-03T09:00:00Z'),
+                'scheduled_end': iso('2026-08-03T13:00:00Z'),
             },
             pk=self.work_order.pk,
         )

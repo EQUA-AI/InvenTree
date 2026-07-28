@@ -305,7 +305,7 @@ def complete_work_order(
         'updated_at',
     ]
 
-    # Closeout is the *only* path that moves a card into the board's terminal
+    # Closeout is the *only* path that moves work into the board's terminal
     # (done) column (§5.8), so the board can never show open work that is
     # actually closed out. Done in the same transaction as completion.
     from tasks.models import KanbanColumn
