@@ -38,16 +38,6 @@ import {
   ProposalCard
 } from '../ai/ChatActionProposals';
 import { CitationList } from './CitationList';
-import {
-  MachineAnomaliesResult,
-  MachineAttachmentsResult,
-  MachineHealthResult,
-  MachineMaintenanceResult,
-  MachinePartsResult,
-  MachineSignalsResult,
-  MachineSummaryResult,
-  MachineTrendResult
-} from './MachineResults';
 import { ScopeChip } from './ScopeChip';
 import { ToolTraceDisclosure } from './ToolTraceDisclosure';
 
@@ -187,20 +177,6 @@ const QUICK_QUESTIONS: Record<string, QuickQuestion[]> = {
     { tool: 'work_order_steps', label: t`Procedure steps` },
     { tool: 'work_order_kit_status', label: t`Kit status` },
     { tool: 'work_order_events_page', label: t`History` }
-  ],
-  machine: [
-    { tool: 'machine_summary', label: t`Details` },
-    { tool: 'machine_health', label: t`Health` },
-    { tool: 'machine_signals', label: t`Live readings` },
-    { tool: 'machine_anomalies', label: t`Open alarms` },
-    {
-      tool: 'machine_anomalies',
-      label: t`Alarm history`,
-      arguments: { include_resolved: true }
-    },
-    { tool: 'machine_installed_parts', label: t`Installed parts` },
-    { tool: 'machine_maintenance_history', label: t`Maintenance` },
-    { tool: 'machine_attachments', label: t`Documents` }
   ]
 };
 
@@ -240,30 +216,6 @@ function TurnResult({ turn }: Readonly<{ turn: ScopedChatTurn }>) {
       break;
     case 'work_order_kit_status':
       body = <KitResult result={result} />;
-      break;
-    case 'machine_summary':
-      body = <MachineSummaryResult result={result} />;
-      break;
-    case 'machine_health':
-      body = <MachineHealthResult result={result} />;
-      break;
-    case 'machine_signals':
-      body = <MachineSignalsResult result={result} />;
-      break;
-    case 'machine_signal_trend':
-      body = <MachineTrendResult result={result} />;
-      break;
-    case 'machine_anomalies':
-      body = <MachineAnomaliesResult result={result} />;
-      break;
-    case 'machine_installed_parts':
-      body = <MachinePartsResult result={result} />;
-      break;
-    case 'machine_maintenance_history':
-      body = <MachineMaintenanceResult result={result} />;
-      break;
-    case 'machine_attachments':
-      body = <MachineAttachmentsResult result={result} />;
       break;
     default:
       body = (

@@ -219,62 +219,6 @@ def _work_order_capabilities(user) -> tuple[str, ...]:
     return tuple(capabilities)
 
 
-def machine_snapshot(machine) -> dict[str, Any]:
-    """Build the reviewed, allow-listed prompt snapshot for a machine.
-
-    Deliberately identity only, mirroring ``work_order_snapshot``'s exclusion of
-    free text: the pin tells the model *which* asset it is looking at, and the
-    fenced free-text fields arrive through tool results that carry a citation
-    and an as-of time. Customer/client identity is excluded here for the same
-    reason the work-order snapshot omits its own -- a pin is not a data feed.
-    """
-    return {
-        'name': machine.name,
-        'active': machine.active,
-        'manufacturer': machine.manufacturer or None,
-        'model': machine.model or None,
-        'serial': machine.serial or None,
-    }
-
-
-def _authorized_machine(user, object_id: str):
-    """Load one machine scope-safely; denial never discloses existence."""
-    from tasks.scope import ScopeError, require_machine_scope
-
-    from assets.models import AssetMachine
-
-    try:
-        pk = int(object_id)
-    except (TypeError, ValueError) as exc:
-        raise ContextForbidden('context unavailable') from exc
-    machine = (
-        AssetMachine.objects.filter(pk=pk).select_related('customer', 'client').first()
-    )
-    if machine is None:
-        raise ContextForbidden('context unavailable')
-    try:
-        require_machine_scope(user, machine)
-    except ScopeError as exc:
-        raise ContextForbidden('context unavailable') from exc
-    return machine
-
-
-def _machine_capabilities(user) -> tuple[str, ...]:
-    """Resolve the actor's scoped-chat capability set for a machine.
-
-    Q&A only. Machine action proposals are not offered: the proposal API
-    requires an integer ``work_order_id`` in its request body, so advertising
-    ``propose_*`` on a machine context would produce a panel that posts a
-    machine pk into a work-order field.
-    """
-    return (CAPABILITY_QA,)
-
-
-def _machine_enabled() -> bool:
-    """Whether the assets context type is switched on for this deployment."""
-    return bool(getattr(settings, 'AIMMS_ASSETS_ENABLED', False))
-
-
 @dataclass(frozen=True)
 class _ContextAdapter:
     """Everything one scoped context type must supply to be reachable.
@@ -300,14 +244,7 @@ _CONTEXT_ADAPTERS: dict[str, _ContextAdapter] = {
         capabilities=_work_order_capabilities,
         snapshot=work_order_snapshot,
         label=lambda wo: f'{wo.reference or f"WO-{wo.pk}"}: {wo.title}',
-    ),
-    'machine': _ContextAdapter(
-        enabled=_machine_enabled,
-        authorize=_authorized_machine,
-        capabilities=_machine_capabilities,
-        snapshot=machine_snapshot,
-        label=lambda machine: machine.name,
-    ),
+    )
 }
 
 

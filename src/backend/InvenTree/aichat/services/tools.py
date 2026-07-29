@@ -29,12 +29,11 @@ from aichat.models import (
     ToolAuthorizationResult,
 )
 from aichat.services import context as context_service
-from assets import ai_read
 
 logger = logging.getLogger('inventree')
 
-# Bumped to '4' when selected controlled-document retrieval was added.
-TOOL_REGISTRY_VERSION = '4'
+# Bumped to '5' when the machine-scoped tools were removed.
+TOOL_REGISTRY_VERSION = '5'
 
 #: Actions the readiness tool may evaluate (mirrors the evaluator's map).
 _READINESS_ACTIONS = frozenset({
@@ -507,168 +506,6 @@ _WORK_ORDER_TOOLS: dict[str, ToolSpec] = {
 }
 
 
-def _limit_arguments(
-    arguments: Mapping[str, Any], *, default: int, maximum: int
-) -> dict[str, Any]:
-    """Validate a lone bounded ``limit`` argument."""
-    extra = set(arguments) - {'limit'}
-    if extra:
-        raise ToolArgumentsInvalid('unknown arguments supplied')
-    return {
-        'limit': _int_argument(
-            arguments, 'limit', default=default, minimum=1, maximum=maximum
-        )
-    }
-
-
-def _anomaly_arguments(arguments: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate the anomaly page size and the resolved-history opt-in."""
-    extra = set(arguments) - {'limit', 'include_resolved'}
-    if extra:
-        raise ToolArgumentsInvalid('unknown arguments supplied')
-    include_resolved = arguments.get('include_resolved', False)
-    if not isinstance(include_resolved, bool):
-        raise ToolArgumentsInvalid('include_resolved must be a boolean')
-    return {
-        'limit': _int_argument(
-            arguments, 'limit', default=10, minimum=1, maximum=ai_read.MAX_ANOMALIES
-        ),
-        'include_resolved': include_resolved,
-    }
-
-
-def _trend_arguments(arguments: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate a trend request: which mapped signal, and how far back."""
-    extra = set(arguments) - {'binding_id', 'hours'}
-    if extra:
-        raise ToolArgumentsInvalid('unknown arguments supplied')
-    if 'binding_id' not in arguments:
-        raise ToolArgumentsInvalid('binding_id is required')
-    return {
-        'binding_id': _int_argument(
-            arguments, 'binding_id', default=0, minimum=1, maximum=2**31 - 1
-        ),
-        'hours': _int_argument(arguments, 'hours', default=24, minimum=1, maximum=168),
-    }
-
-
-# Machine tool handlers. Each receives the already-re-authorized machine that
-# ``invoke_tool`` resolved through ``reauthorize_context`` on this very call,
-# so none of them re-derives authority -- and none of them may write.
-def _machine_summary(machine, args: dict[str, Any], user) -> dict[str, Any]:
-    """Identity, location and description for the pinned machine."""
-    return {'summary': ai_read.machine_identity(machine)}
-
-
-def _machine_health(machine, args: dict[str, Any], user) -> dict[str, Any]:
-    """Current condition, data freshness and per-source connection status."""
-    return ai_read.machine_health(machine)
-
-
-def _machine_signals(machine, args: dict[str, Any], user) -> dict[str, Any]:
-    """Every mapped signal with its value, limits, quality and staleness."""
-    return ai_read.machine_signals(machine)
-
-
-def _machine_signal_trend(machine, args: dict[str, Any], user) -> dict[str, Any]:
-    """A bounded history window for one of this machine's mapped signals."""
-    return ai_read.machine_signal_trend(
-        machine, binding_id=args['binding_id'], hours=args['hours']
-    )
-
-
-def _machine_anomalies(machine, args: dict[str, Any], user) -> dict[str, Any]:
-    """Open alarms, and resolved history when explicitly asked for."""
-    return ai_read.machine_anomalies(
-        machine, include_resolved=args['include_resolved'], limit=args['limit']
-    )
-
-
-def _machine_installed_parts(machine, args: dict[str, Any], user) -> dict[str, Any]:
-    """Installed parts with ids, so the answer can chain into parts/stock."""
-    return ai_read.machine_installed_parts(machine, limit=args['limit'])
-
-
-def _machine_maintenance_history(machine, args: dict[str, Any], user) -> dict[str, Any]:
-    """Service history, with each linked work order re-authorized per row."""
-    return ai_read.machine_maintenance_history(user, machine, limit=args['limit'])
-
-
-def _machine_attachments(machine, args: dict[str, Any], user) -> dict[str, Any]:
-    """What documentation exists for this machine -- labels, never bodies."""
-    return ai_read.machine_attachments(machine, limit=args['limit'])
-
-
-_MACHINE_TOOLS: dict[str, ToolSpec] = {
-    spec.name: spec
-    for spec in (
-        ToolSpec(
-            name='machine_summary',
-            version='1',
-            description='Allow-listed identity snapshot of the pinned machine',
-            validate=_no_arguments,
-            handler=_machine_summary,
-        ),
-        ToolSpec(
-            name='machine_health',
-            version='1',
-            description='Current condition, freshness and source connection health',
-            validate=_no_arguments,
-            handler=_machine_health,
-        ),
-        ToolSpec(
-            name='machine_signals',
-            version='1',
-            description='Mapped signal readings with limits, quality and staleness',
-            validate=_no_arguments,
-            handler=_machine_signals,
-        ),
-        ToolSpec(
-            name='machine_signal_trend',
-            version='1',
-            description='Bounded history window for one mapped signal',
-            validate=_trend_arguments,
-            handler=_machine_signal_trend,
-        ),
-        ToolSpec(
-            name='machine_anomalies',
-            version='1',
-            description='Active anomalies, optionally including resolved history',
-            validate=_anomaly_arguments,
-            handler=_machine_anomalies,
-        ),
-        ToolSpec(
-            name='machine_installed_parts',
-            version='1',
-            description='Parts installed on this machine with quantities',
-            validate=lambda args: _limit_arguments(
-                args, default=ai_read.MAX_PARTS, maximum=ai_read.MAX_PARTS
-            ),
-            handler=_machine_installed_parts,
-        ),
-        ToolSpec(
-            name='machine_maintenance_history',
-            version='1',
-            description='Recorded maintenance events for this machine',
-            validate=lambda args: _limit_arguments(
-                args,
-                default=ai_read.MAX_MAINTENANCE_RECORDS,
-                maximum=ai_read.MAX_MAINTENANCE_RECORDS,
-            ),
-            handler=_machine_maintenance_history,
-        ),
-        ToolSpec(
-            name='machine_attachments',
-            version='1',
-            description='Documentation attached to this machine (labels only)',
-            validate=lambda args: _limit_arguments(
-                args, default=ai_read.MAX_ATTACHMENTS, maximum=ai_read.MAX_ATTACHMENTS
-            ),
-            handler=_machine_attachments,
-        ),
-    )
-}
-
 _SELECTED_DOCUMENT_TOOL = ToolSpec(
     name='search_selected_controlled_document',
     version='1',
@@ -682,11 +519,7 @@ _REGISTRY: dict[str, dict[str, ToolSpec]] = {
     'work_order': {
         **_WORK_ORDER_TOOLS,
         _SELECTED_DOCUMENT_TOOL.name: _SELECTED_DOCUMENT_TOOL,
-    },
-    'machine': {
-        **_MACHINE_TOOLS,
-        _SELECTED_DOCUMENT_TOOL.name: _SELECTED_DOCUMENT_TOOL,
-    },
+    }
 }
 
 
