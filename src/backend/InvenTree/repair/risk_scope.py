@@ -22,7 +22,8 @@ from tasks.scope import MaintenanceScope, ScopeError, scope_for_actor
 SCOPE_UNRESOLVED = 'SCOPE_UNRESOLVED'
 
 _SCOPE_KEY_RE = re.compile(
-    r'^c(?P<customer>[1-9]\d{0,9})(?:~(?P<site>[A-Za-z0-9][A-Za-z0-9_.-]{0,63}))?$'
+    r'^(?:c(?P<customer>[1-9]\d{0,9})|k(?P<client>[1-9]\d{0,9}))'
+    r'(?:~(?P<site>[A-Za-z0-9][A-Za-z0-9_.-]{0,63}))?$'
 )
 
 _SITE_KEY_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
@@ -38,17 +39,24 @@ def encode_scope(scope: MaintenanceScope) -> str:
     """Encode a structured scope into the canonical persisted scope key.
 
     ``RiskScopeCodec`` is the single reversible encoding between structured
-    ``MaintenanceScope(customer_id, site_key)`` and persisted/API
-    ``scope_key`` values; arbitrary caller strings are never trusted.
+    ``MaintenanceScope`` values and persisted/API ``scope_key`` strings;
+    arbitrary caller strings are never trusted. Customer scopes encode as
+    ``c<id>``, client scopes as ``k<id>``; historical c-keys stay decodable
+    so persisted findings never need a data migration.
     """
     customer_id = scope.customer_id
-    if not isinstance(customer_id, int) or customer_id <= 0:
-        raise RiskScopeError('Scope customer id is unresolved')
+    client_id = scope.client_id
+    if isinstance(customer_id, int) and customer_id > 0:
+        key = f'c{customer_id}'
+    elif isinstance(client_id, int) and client_id > 0:
+        key = f'k{client_id}'
+    else:
+        raise RiskScopeError('Scope identity is unresolved')
     if scope.site_key is None:
-        return f'c{customer_id}'
+        return key
     if not _SITE_KEY_RE.match(str(scope.site_key)):
         raise RiskScopeError('Scope site key is not encodable')
-    return f'c{customer_id}~{scope.site_key}'
+    return f'{key}~{scope.site_key}'
 
 
 def decode_scope_key(scope_key: str) -> MaintenanceScope:
@@ -56,8 +64,12 @@ def decode_scope_key(scope_key: str) -> MaintenanceScope:
     match = _SCOPE_KEY_RE.match(str(scope_key or ''))
     if not match:
         raise RiskScopeError('Scope key is not decodable')
+    customer = match.group('customer')
+    client = match.group('client')
     return MaintenanceScope(
-        customer_id=int(match.group('customer')), site_key=match.group('site')
+        customer_id=int(customer) if customer else None,
+        site_key=match.group('site'),
+        client_id=int(client) if client else None,
     )
 
 
@@ -101,20 +113,48 @@ def risk_service_user():
     return user
 
 
-def _require_site_unscoped(scope: MaintenanceScope, source_kind: str) -> int:
+def _require_site_unscoped(
+    scope: MaintenanceScope, source_kind: str
+) -> MaintenanceScope:
     """Reject site-scoped requests no source can prove today.
 
     No authoritative source model carries a site key yet; evaluating a
-    site-scoped request against customer-wide rows would over-disclose, so
+    site-scoped request against scope-wide rows would over-disclose, so
     the adapter aborts instead.
     """
     if scope.site_key is not None:
         raise RiskScopeError(
             f'Source {source_kind!r} cannot prove site-level scope membership'
         )
-    if scope.customer_id is None:
-        raise RiskScopeError('Scope customer id is unresolved')
-    return scope.customer_id
+    if scope.customer_id is None and scope.client_id is None:
+        raise RiskScopeError('Scope identity is unresolved')
+    return scope
+
+
+def _wo_claims_any(prefix: str) -> Q:
+    """Work orders that provably belong to *some* scope, per the WO rule.
+
+    A work order is owned by its explicit customer when it names one, else by
+    its machine's client. Everything else is unowned and never radar input.
+    """
+    return Q(**{f'{prefix}customer__isnull': False}) | Q(**{
+        f'{prefix}machine__client__isnull': False
+    })
+
+
+def _wo_claims_scope(prefix: str, scope: MaintenanceScope) -> Q:
+    """Work orders provably owned by the one requested scope."""
+    if scope.customer_id is not None:
+        return Q(**{f'{prefix}customer_id': scope.customer_id})
+    return Q(**{
+        f'{prefix}customer__isnull': True,
+        f'{prefix}machine__client_id': scope.client_id,
+    })
+
+
+def _wo_claims_foreign(prefix: str, scope: MaintenanceScope) -> Q:
+    """Work orders provably owned by a *different* scope (anchored per row)."""
+    return _wo_claims_any(prefix) & ~_wo_claims_scope(prefix, scope)
 
 
 class RiskSourceScopeAdapter:
@@ -130,80 +170,66 @@ class RiskSourceScopeAdapter:
 class WorkOrderScopeAdapter(RiskSourceScopeAdapter):
     """Scope adapter over ``tasks.WorkOrder`` (the AIMMS work order).
 
-    Mirrors the live fail-closed seam: a row is in scope when its explicit
-    customer and its machine's customer agree on (or one of them names) the
-    requested customer. Conflicting rows are excluded, exactly as the live
-    work-order API excludes them.
+    Mirrors the live fail-closed seam: an explicit work-order customer is the
+    order's whole boundary, otherwise the asset's client owns it -- exactly
+    the rule the live work-order API applies.
     """
 
     source_kind = 'work_order'
 
     def queryset_for_scope(self, *, actor, scope: MaintenanceScope) -> QuerySet:
-        """Return work orders provably owned by the scope customer."""
+        """Return work orders provably owned by the requested scope."""
         from tasks.models import WorkOrder
 
-        customer_id = _require_site_unscoped(scope, self.source_kind)
-        return WorkOrder.objects.filter(
-            Q(customer_id=customer_id, machine__isnull=True)
-            | Q(customer_id=customer_id, machine__customer__isnull=True)
-            | Q(customer_id=customer_id, machine__customer_id=customer_id)
-            | Q(customer__isnull=True, machine__customer_id=customer_id)
-        )
+        scope = _require_site_unscoped(scope, self.source_kind)
+        return WorkOrder.objects.filter(_wo_claims_scope('', scope))
 
 
 class RepairPacketScopeAdapter(RiskSourceScopeAdapter):
     """Scope adapter over ``repair.RepairPacket``.
 
-    A packet's provable owners are its machine's customer and its linked
-    work order's provable customer. Packets claiming any other customer on
-    one of those paths are excluded (never leaked, never counted).
+    A packet's provable owner follows the work-order rule: an explicit
+    customer on its linked work order wins, else the client of its machine
+    (or its work order's machine). Packets claiming any other scope on one
+    of those paths are excluded (never leaked, never counted).
     """
 
     source_kind = 'repair_packet'
 
     def queryset_for_scope(self, *, actor, scope: MaintenanceScope) -> QuerySet:
-        """Return packets provably owned by the scope customer."""
+        """Return packets provably owned by the requested scope."""
         from repair.models import RepairPacket
 
-        customer_id = _require_site_unscoped(scope, self.source_kind)
-        claims_scope = (
-            Q(machine__customer_id=customer_id)
-            | Q(work_order__customer_id=customer_id)
-            | Q(work_order__machine__customer_id=customer_id)
-        )
-        claims_other = (
-            (Q(machine__customer__isnull=False) & ~Q(machine__customer_id=customer_id))
-            | (
-                Q(work_order__customer__isnull=False)
-                & ~Q(work_order__customer_id=customer_id)
+        scope = _require_site_unscoped(scope, self.source_kind)
+        if scope.customer_id is not None:
+            claims_scope = Q(work_order__customer_id=scope.customer_id)
+        else:
+            claims_scope = Q(work_order__customer__isnull=True) & (
+                Q(machine__client_id=scope.client_id)
+                | Q(work_order__machine__client_id=scope.client_id)
             )
-            | (
-                Q(work_order__machine__customer__isnull=False)
-                & ~Q(work_order__machine__customer_id=customer_id)
-            )
+        claims_any = (
+            Q(work_order__customer__isnull=False)
+            | Q(machine__client__isnull=False)
+            | Q(work_order__machine__client__isnull=False)
         )
-        return RepairPacket.objects.filter(claims_scope).exclude(claims_other)
+        return RepairPacket.objects.filter(claims_scope).exclude(
+            claims_any & ~claims_scope
+        )
 
 
-def _conflicting_shortages(customer_id: int) -> QuerySet:
-    """Shortage rows whose work order provably belongs to another customer.
+def _conflicting_shortages(scope: MaintenanceScope) -> QuerySet:
+    """Shortage rows whose work order provably belongs to another scope.
 
     Used as an anchored NOT-EXISTS exclusion: each row in this queryset is
-    one shortage that claims a foreign customer, so excluding parents via
+    one shortage that claims a foreign scope, so excluding parents via
     ``rel__in`` evaluates the conflict per related row instead of across
     the whole join (the classic ``exclude(Q & ~Q)`` multi-valued pitfall).
     """
     from tasks.jobkit_models import JobKitShortage
 
     return JobKitShortage.objects.filter(
-        (
-            Q(line__kit__work_order__customer__isnull=False)
-            & ~Q(line__kit__work_order__customer_id=customer_id)
-        )
-        | (
-            Q(line__kit__work_order__machine__customer__isnull=False)
-            & ~Q(line__kit__work_order__machine__customer_id=customer_id)
-        )
+        _wo_claims_foreign('line__kit__work_order__', scope)
     )
 
 
@@ -226,7 +252,7 @@ class ApprovalScopeAdapter(RiskSourceScopeAdapter):
         from approvals.models import Approval
         from repair.models import RepairPacketApprovalLink
 
-        customer_id = _require_site_unscoped(scope, self.source_kind)
+        scope = _require_site_unscoped(scope, self.source_kind)
         packets = RepairPacketScopeAdapter().queryset_for_scope(
             actor=actor, scope=scope
         )
@@ -239,22 +265,23 @@ class ApprovalScopeAdapter(RiskSourceScopeAdapter):
         # Conflict exclusion must be anchored per related row: a plain
         # .exclude(Q(...) & ~Q(...)) over these multi-valued joins is not
         # anchored to one link, so an approval with one in-scope link would
-        # escape exclusion even while also linked to another customer.
-        conflicting_links = RepairPacketApprovalLink.objects.filter(
-            (
-                Q(packet__machine__customer__isnull=False)
-                & ~Q(packet__machine__customer_id=customer_id)
+        # escape exclusion even while also linked to another scope.
+        if scope.customer_id is not None:
+            link_claims_scope = Q(packet__work_order__customer_id=scope.customer_id)
+        else:
+            link_claims_scope = Q(packet__work_order__customer__isnull=True) & (
+                Q(packet__machine__client_id=scope.client_id)
+                | Q(packet__work_order__machine__client_id=scope.client_id)
             )
-            | (
-                Q(packet__work_order__customer__isnull=False)
-                & ~Q(packet__work_order__customer_id=customer_id)
-            )
-            | (
-                Q(packet__work_order__machine__customer__isnull=False)
-                & ~Q(packet__work_order__machine__customer_id=customer_id)
-            )
+        link_claims_any = (
+            Q(packet__work_order__customer__isnull=False)
+            | Q(packet__machine__client__isnull=False)
+            | Q(packet__work_order__machine__client__isnull=False)
         )
-        conflicting_shortages = _conflicting_shortages(customer_id)
+        conflicting_links = RepairPacketApprovalLink.objects.filter(
+            link_claims_any & ~link_claims_scope
+        )
+        conflicting_shortages = _conflicting_shortages(scope)
         return (
             Approval.objects
             .filter(claims_scope)
@@ -278,17 +305,17 @@ class PurchaseOrderLineScopeAdapter(RiskSourceScopeAdapter):
         """Return PO lines provably feeding the scope's job kits."""
         from order.models import PurchaseOrderLineItem
 
-        customer_id = _require_site_unscoped(scope, self.source_kind)
+        scope = _require_site_unscoped(scope, self.source_kind)
         work_orders = WorkOrderScopeAdapter().queryset_for_scope(
             actor=actor, scope=scope
         )
         # Anchored per shortage row (see ApprovalScopeAdapter): a line
-        # feeding shortages of two customers is conflicting and excluded
+        # feeding shortages of two scopes is conflicting and excluded
         # from both scopes rather than leaked into both.
         return (
             PurchaseOrderLineItem.objects
             .filter(jobkitshortage__line__kit__work_order__in=work_orders)
-            .exclude(jobkitshortage__in=_conflicting_shortages(customer_id))
+            .exclude(jobkitshortage__in=_conflicting_shortages(scope))
             .distinct()
         )
 
@@ -313,36 +340,45 @@ class PartStockScopeAdapter(RiskSourceScopeAdapter):
     """Scope adapter over ``part.Part`` for stock-threshold rules.
 
     Parts are deployment-global catalog rows; scope membership here means
-    *relevance* (the part is installed on one of the scope customer's
-    active machines), not exclusive ownership. Stock counts remain native
-    InvenTree data governed by part permissions.
+    *relevance* (the part is installed on one of the scope client's active
+    machines), not exclusive ownership. Machines belong to clients only, so
+    a customer scope truthfully sees no machine-installed parts. Stock
+    counts remain native InvenTree data governed by part permissions.
     """
 
     source_kind = 'part_stock'
 
     def queryset_for_scope(self, *, actor, scope: MaintenanceScope) -> QuerySet:
-        """Return active parts installed on the scope customer's machines."""
+        """Return active parts installed on the scope client's machines."""
         from part.models import Part
 
-        customer_id = _require_site_unscoped(scope, self.source_kind)
+        scope = _require_site_unscoped(scope, self.source_kind)
+        if scope.client_id is None:
+            return Part.objects.none()
         return Part.objects.filter(
             active=True,
-            machine_installations__machine__customer_id=customer_id,
+            machine_installations__machine__client_id=scope.client_id,
             machine_installations__machine__active=True,
         ).distinct()
 
 
 class AssetMachineScopeAdapter(RiskSourceScopeAdapter):
-    """Scope adapter over ``assets.AssetMachine``."""
+    """Scope adapter over ``assets.AssetMachine``.
+
+    Machines carry only a client identity; a customer scope owns none, and
+    that empty result is truthful rather than fail-silent.
+    """
 
     source_kind = 'asset_machine'
 
     def queryset_for_scope(self, *, actor, scope: MaintenanceScope) -> QuerySet:
-        """Return active machines owned by the scope customer."""
+        """Return active machines owned by the scope client."""
         from assets.models import AssetMachine
 
-        customer_id = _require_site_unscoped(scope, self.source_kind)
-        return AssetMachine.objects.filter(customer_id=customer_id, active=True)
+        scope = _require_site_unscoped(scope, self.source_kind)
+        if scope.client_id is None:
+            return AssetMachine.objects.none()
+        return AssetMachine.objects.filter(client_id=scope.client_id, active=True)
 
 
 SOURCE_ADAPTERS: dict[str, RiskSourceScopeAdapter] = {

@@ -6,6 +6,7 @@ invalidation, reevaluation, cancellation, consumer use binding, and the
 permission matrix.
 """
 
+import uuid
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -14,9 +15,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from assets.models import AssetMachine, MachinePart
+from assets.models import AssetMachine, Client, MachinePart
 from common.models import Parameter, ParameterTemplate
-from company.models import Company
 from part.models import Part, PartRelated
 from part.verification import services
 from part.verification.errors import (
@@ -387,22 +387,22 @@ class CreateSessionServiceTests(VerificationServiceFixture):
 
     @classmethod
     def setUpTestData(cls):
-        """Add customer companies and machines to the shared fixture."""
+        """Add client tenants and machines to the shared fixture."""
         super().setUpTestData()
-        cls.customer_a = Company.objects.create(
-            name=f'{cls.PREFIX} Customer A', description='customer'
+        suffix_a = uuid.uuid4().hex[:10]
+        suffix_b = uuid.uuid4().hex[:10]
+        cls.client_a = Client.objects.create(
+            name=f'Tenant {suffix_a}', code=f'tenant-{suffix_a}'
         )
-        cls.customer_b = Company.objects.create(
-            name=f'{cls.PREFIX} Customer B', description='customer'
+        cls.client_b = Client.objects.create(
+            name=f'Tenant {suffix_b}', code=f'tenant-{suffix_b}'
         )
-        cls.machine = AssetMachine.objects.create(
-            name=f'{cls.PREFIX} Machine', customer=None
-        )
+        cls.machine = AssetMachine.objects.create(name=f'{cls.PREFIX} Machine')
         cls.machine_part = MachinePart.objects.create(
             machine=cls.machine, part=cls.requested, quantity=1
         )
-        cls.customer_machine = AssetMachine.objects.create(
-            name=f'{cls.PREFIX} Customer Machine', customer=cls.customer_b
+        cls.client_machine = AssetMachine.objects.create(
+            name=f'{cls.PREFIX} Client Machine', client=cls.client_b
         )
 
     def test_create_happy_path(self):
@@ -414,6 +414,7 @@ class CreateSessionServiceTests(VerificationServiceFixture):
         self.assertEqual(session.revision, 1)
         self.assertEqual(session.policy_id, self.policy.pk)
         self.assertIsNone(session.scope_customer_id)
+        self.assertIsNone(session.scope_client_id)
         self.assertTrue(
             session.events.filter(event_type=EventType.SESSION_CREATED).exists()
         )
@@ -466,10 +467,12 @@ class CreateSessionServiceTests(VerificationServiceFixture):
 
         A scope mismatch during creation returns the same not-found error as a
         nonexistent context id (spec 17.3 rule 7), so session creation cannot
-        be used as an existence oracle for hidden customer assets.
+        be used as an existence oracle for another tenant's machines.
         """
         self.user.verification_scopes = {
-            VerificationScope(customer_id=self.customer_a.pk, site_key=None)
+            VerificationScope(
+                customer_id=None, site_key=None, client_id=self.client_a.pk
+            )
         }
 
         with self.assertRaises(VerificationNotFound):
@@ -478,10 +481,29 @@ class CreateSessionServiceTests(VerificationServiceFixture):
                 actor=self.user,
                 idempotency_key='create-scope',
                 requested_part_id=self.requested.pk,
-                machine_id=self.customer_machine.pk,
+                machine_id=self.client_machine.pk,
             )
 
         self.assertEqual(PartVerificationSession.objects.count(), 0)
+
+    def test_create_on_client_machine_records_client_scope(self):
+        """Test that a client-owned machine context stamps the client scope."""
+        self.user.verification_scopes = {
+            VerificationScope(
+                customer_id=None, site_key=None, client_id=self.client_b.pk
+            )
+        }
+
+        session = services.create_session(
+            purpose='installed_replacement',
+            actor=self.user,
+            idempotency_key='create-client-scope',
+            requested_part_id=self.requested.pk,
+            machine_id=self.client_machine.pk,
+        )
+
+        self.assertIsNone(session.scope_customer_id)
+        self.assertEqual(session.scope_client_id, self.client_b.pk)
 
     def test_create_unresolved_scope_still_reports_scope_error(self):
         """Test that an unresolved actor scope keeps its own stable code.
@@ -749,7 +771,7 @@ class CandidateDecisionServiceTests(VerificationServiceFixture):
         """Add an asset machine context so source drift can be exercised."""
         super().setUpTestData()
         cls.machine = AssetMachine.objects.create(
-            name=f'{cls.PREFIX} Machine', customer=None, model='MOD-1'
+            name=f'{cls.PREFIX} Machine', model='MOD-1'
         )
         MachinePart.objects.create(machine=cls.machine, part=cls.requested, quantity=1)
 

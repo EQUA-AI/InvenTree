@@ -144,15 +144,11 @@
       }
     ]
   },
-  "customers": [
+  "clients": [
     {
-      "name": "ACME Manufacturing",
-      "description": "Demo customer operating an EQUA acceptance-test cell at its Austin quality lab.",
-      "active": true,
-      "is_customer": true,
-      "is_supplier": false,
-      "is_manufacturer": false,
-      "legacy_machine": "Customer Test Stand (ACME)"
+      "name": "Internal",
+      "code": "internal",
+      "active": true
     }
   ],
   "parts": [
@@ -1030,7 +1026,6 @@
       "description": "Critical carton-transfer conveyor between case packer CP-02 and palletizer PL-02. Rated for 1,200 cartons/hour with three accumulation zones and one 18 m modular belt. Commissioned 2021-08-14; owner: Packaging; criticality: High; PM cadence: monthly inspection and quarterly drive service. Isolate MCC-L2-07 and release pneumatic stops before work.",
       "active": true,
       "location": "Plant A / Packaging Hall / Line 2 / Zone P2-04",
-      "customer": null,
       "manufacturer": "Interroll",
       "model": "MCP Modular Conveyor",
       "serial": "PLC2-CONV-001",
@@ -1111,14 +1106,14 @@
             "priority": "high"
           }
         }
-      ]
+      ],
+      "client": "internal"
     },
     {
       "name": "Unit 3 Switchgear Breaker",
       "description": "Primary 13.8 kV vacuum feeder breaker supplying Unit 3 process loads from lineup SG-3. Rated 1,200 A with 25 kA interrupting duty. Commissioned 2019-05-22; owner: Electrical; criticality: Safety Critical; PM cadence: annual outage service plus quarterly visual and thermographic inspection. Arc-flash boundary is 3.7 m; follow the approved switching order and verify absence of voltage before racking.",
       "active": true,
       "location": "Plant A / Substation U3 / Lineup SG-3 / Cubicle 3B",
-      "customer": null,
       "manufacturer": "Schneider Electric",
       "model": "EvoPacT HVX 15 kV",
       "serial": "U3-SWG-BKR-0138",
@@ -1199,14 +1194,14 @@
             "priority": "high"
           }
         }
-      ]
+      ],
+      "client": "internal"
     },
     {
       "name": "Air Compressor #4",
       "description": "Lead 30 kW variable-speed rotary screw compressor serving the 7.5 bar plant-air header. Nominal capacity is 5.4 m3/min with automatic lead-lag rotation across four units. Commissioned 2022-03-10; owner: Utilities; criticality: High; service interval: 4,000 run hours with weekly condensate and leak checks. Isolate 480 VAC, close the discharge valve, and vent receiver pressure before service.",
       "active": true,
       "location": "Plant A / Utilities Building / Compressor Room / Pad C4",
-      "customer": null,
       "manufacturer": "Atlas Copco",
       "model": "GA 30 VSD+",
       "serial": "AC-004-GA30-22",
@@ -1287,14 +1282,14 @@
             "priority": "low"
           }
         }
-      ]
+      ],
+      "client": "internal"
     },
     {
       "name": "Boiler Feed Pump B",
       "description": "Automatic standby vertical multistage pump supplying Boiler 1 feedwater when Pump A is unavailable. Rated 42 m3/hour at 11.5 bar and 90 C with a 30 kW motor. Commissioned 2020-11-02; owner: Utilities; criticality: High; PM cadence: monthly auto-start, quarterly vibration route, and annual alignment check. Isolate the motor starter and both suction and discharge valves before opening the pump.",
       "active": true,
       "location": "Plant A / Boiler House / Feedwater Skid / Position B",
-      "customer": null,
       "manufacturer": "Grundfos",
       "model": "CR 45-5",
       "serial": "BFP-B-CR45-2020",
@@ -1375,14 +1370,14 @@
             "priority": "medium"
           }
         }
-      ]
+      ],
+      "client": "internal"
     },
     {
       "name": "Customer Test Stand (ACME)",
       "description": "End-of-line functional acceptance stand installed at ACME Manufacturing for 24 V control assemblies. The cell validates 64 digital I/O points, eight analog channels, safety-loop response, and serialized test results at up to 18 units/hour. Commissioned 2024-05-20; owner: Field Service; criticality: Customer Production; calibration cadence: annual with quarterly remote health review. ACME controls site access and lockout; EQUA support owns software and calibration baselines.",
       "active": true,
       "location": "ACME Manufacturing / Austin, TX / Quality Lab / Cell A-01",
-      "customer": "ACME Manufacturing",
       "manufacturer": "EQUA Automation",
       "model": "TS-200",
       "serial": "ACME-TS200-01",
@@ -1463,14 +1458,14 @@
             "priority": "medium"
           }
         }
-      ]
+      ],
+      "client": "internal"
     },
     {
       "name": "Electronics Test Bench 1",
       "description": "Engineering bench used for board bring-up, fault injection, and post-repair verification. Supports 0-60 VDC at 20 A, isolated communications, programmable loads, and two grounded ESD work positions. Commissioned 2023-09-18; owner: Engineering Lab; criticality: Medium; calibration cadence: annual for power and measurement instruments with monthly ESD checks. Bench configuration baseline is LAB-E01-R4.",
       "active": true,
       "location": "Plant A / Engineering Lab / Bench E-01",
-      "customer": null,
       "manufacturer": "In-house",
       "model": "TB-Series Rev 4",
       "serial": "LAB-TB-001",
@@ -1556,388 +1551,389 @@
             "priority": "medium"
           }
         }
-      ]
-      },
-      {
-        "name": "Influent Pump Station No. 1",
-        "description": "Three-pump influent station, 75 kW each, in duty/assist/standby service, rated 19 MGD conventional and 172 MGD wet-weather. Ragging is the dominant failure mode. Commissioned 2022-03-11; owner: Operations; criticality: High; PM cadence: monthly inspection and annual seal service. Isolate MCC-HW-01 and confirm wet-well level before entry.",
-        "active": true,
-        "location": "Tomahawk Creek WRF / Headworks / Influent Gallery",
-        "customer": null,
+      ],
+      "client": "internal"
+    },
+    {
+      "name": "Influent Pump Station No. 1",
+      "description": "Three-pump influent station, 75 kW each, in duty/assist/standby service, rated 19 MGD conventional and 172 MGD wet-weather. Ragging is the dominant failure mode. Commissioned 2022-03-11; owner: Operations; criticality: High; PM cadence: monthly inspection and annual seal service. Isolate MCC-HW-01 and confirm wet-well level before entry.",
+      "active": true,
+      "location": "Tomahawk Creek WRF / Headworks / Influent Gallery",
+      "manufacturer": "Xylem Flygt",
+      "model": "NP 3301 MT",
+      "serial": "TC-INF-PS1-001",
+      "legacy_identity": {
         "manufacturer": "Xylem Flygt",
         "model": "NP 3301 MT",
-        "serial": "TC-INF-PS1-001",
-        "legacy_identity": {
-          "manufacturer": "Xylem Flygt",
-          "model": "NP 3301 MT",
-          "serial": "TC-INF-PS1-001"
-        },
-        "installed_parts": [
-          {
-            "ipn": "EQ-INF-PMP-0750",
-            "quantity": 3,
-            "notes": "Duty/assist/standby; normal current 118-131 A."
-          },
-          {
-            "ipn": "EQ-INF-SEL-0080",
-            "quantity": 3
-          },
-          {
-            "ipn": "EQ-INF-IMP-CHP",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-INF-WRG-0250",
-            "quantity": 3
-          },
-          {
-            "ipn": "EQ-INF-VFD-0750",
-            "quantity": 3
-          },
-          {
-            "ipn": "EQ-INF-VFN-KIT",
-            "quantity": 3
-          },
-          {
-            "ipn": "EQ-INF-BRG-6316",
-            "quantity": 3
-          }
-        ],
-        "maintenance": []
+        "serial": "TC-INF-PS1-001"
       },
-      {
-        "name": "Aeration Blower No. 2",
-        "description": "High-speed turbo blower serving basins 3 and 4. Aeration consumes 25-60% of plant energy, so airflow loss is both a treatment and cost event. Commissioned 2022-06-02; criticality: High; PM cadence: quarterly filter check and annual coupling inspection. Isolate MCC-AER-02 and allow 15 minutes for spin-down.",
-        "active": true,
-        "location": "Tomahawk Creek WRF / Aeration / Blower Building",
-        "customer": null,
+      "installed_parts": [
+        {
+          "ipn": "EQ-INF-PMP-0750",
+          "quantity": 3,
+          "notes": "Duty/assist/standby; normal current 118-131 A."
+        },
+        {
+          "ipn": "EQ-INF-SEL-0080",
+          "quantity": 3
+        },
+        {
+          "ipn": "EQ-INF-IMP-CHP",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-INF-WRG-0250",
+          "quantity": 3
+        },
+        {
+          "ipn": "EQ-INF-VFD-0750",
+          "quantity": 3
+        },
+        {
+          "ipn": "EQ-INF-VFN-KIT",
+          "quantity": 3
+        },
+        {
+          "ipn": "EQ-INF-BRG-6316",
+          "quantity": 3
+        }
+      ],
+      "maintenance": [],
+      "client": "internal"
+    },
+    {
+      "name": "Aeration Blower No. 2",
+      "description": "High-speed turbo blower serving basins 3 and 4. Aeration consumes 25-60% of plant energy, so airflow loss is both a treatment and cost event. Commissioned 2022-06-02; criticality: High; PM cadence: quarterly filter check and annual coupling inspection. Isolate MCC-AER-02 and allow 15 minutes for spin-down.",
+      "active": true,
+      "location": "Tomahawk Creek WRF / Aeration / Blower Building",
+      "manufacturer": "Aerzen",
+      "model": "Turbo Generation 5",
+      "serial": "TC-AER-BLW-002",
+      "legacy_identity": {
         "manufacturer": "Aerzen",
         "model": "Turbo Generation 5",
-        "serial": "TC-AER-BLW-002",
-        "legacy_identity": {
-          "manufacturer": "Aerzen",
-          "model": "Turbo Generation 5",
-          "serial": "TC-AER-BLW-002"
-        },
-        "installed_parts": [
-          {
-            "ipn": "EQ-BLW-FLT-INL",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-BLW-CPL-ELM",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-BLW-CHK-0200",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-BLW-SEN-DOX",
-            "quantity": 2
-          }
-        ],
-        "maintenance": []
+        "serial": "TC-AER-BLW-002"
       },
-      {
-        "name": "Aeration Basin No. 3 Diffuser Grid",
-        "description": "Fine-bubble membrane disc grid with 1,240 diffusers. Membrane fouling appears as rising blower discharge pressure before dissolved oxygen drops. Criticality: Medium; PM cadence: annual oxygen-transfer test and membrane replacement on a seven-year cycle.",
-        "active": true,
-        "location": "Tomahawk Creek WRF / Aeration / Basin 3",
-        "customer": null,
+      "installed_parts": [
+        {
+          "ipn": "EQ-BLW-FLT-INL",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-BLW-CPL-ELM",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-BLW-CHK-0200",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-BLW-SEN-DOX",
+          "quantity": 2
+        }
+      ],
+      "maintenance": [],
+      "client": "internal"
+    },
+    {
+      "name": "Aeration Basin No. 3 Diffuser Grid",
+      "description": "Fine-bubble membrane disc grid with 1,240 diffusers. Membrane fouling appears as rising blower discharge pressure before dissolved oxygen drops. Criticality: Medium; PM cadence: annual oxygen-transfer test and membrane replacement on a seven-year cycle.",
+      "active": true,
+      "location": "Tomahawk Creek WRF / Aeration / Basin 3",
+      "manufacturer": "Xylem Sanitaire",
+      "model": "Silver Series II",
+      "serial": "TC-AER-DIF-003",
+      "legacy_identity": {
         "manufacturer": "Xylem Sanitaire",
         "model": "Silver Series II",
-        "serial": "TC-AER-DIF-003",
-        "legacy_identity": {
-          "manufacturer": "Xylem Sanitaire",
-          "model": "Silver Series II",
-          "serial": "TC-AER-DIF-003"
-        },
-        "installed_parts": [
-          {
-            "ipn": "EQ-BLW-DIF-0090",
-            "quantity": 1240
-          }
-        ],
-        "maintenance": []
+        "serial": "TC-AER-DIF-003"
       },
-      {
-        "name": "Mechanical Bar Screen No. 1",
-        "description": "Multi-rake travelling bar screen with 6 mm bar spacing. Jams and chain failures are frequent, bounded, and parts-intensive. Commissioned 2022-02-18; criticality: High; PM cadence: weekly inspection and quarterly chain tension. Isolate MCC-HW-03 and lock the channel gate before entry.",
-        "active": true,
-        "location": "Tomahawk Creek WRF / Headworks / Screen Channel 1",
-        "customer": null,
+      "installed_parts": [
+        {
+          "ipn": "EQ-BLW-DIF-0090",
+          "quantity": 1240
+        }
+      ],
+      "maintenance": [],
+      "client": "internal"
+    },
+    {
+      "name": "Mechanical Bar Screen No. 1",
+      "description": "Multi-rake travelling bar screen with 6 mm bar spacing. Jams and chain failures are frequent, bounded, and parts-intensive. Commissioned 2022-02-18; criticality: High; PM cadence: weekly inspection and quarterly chain tension. Isolate MCC-HW-03 and lock the channel gate before entry.",
+      "active": true,
+      "location": "Tomahawk Creek WRF / Headworks / Screen Channel 1",
+      "manufacturer": "HUBER",
+      "model": "RakeMax HF",
+      "serial": "TC-HW-SCR-001",
+      "legacy_identity": {
         "manufacturer": "HUBER",
         "model": "RakeMax HF",
-        "serial": "TC-HW-SCR-001",
-        "legacy_identity": {
-          "manufacturer": "HUBER",
-          "model": "RakeMax HF",
-          "serial": "TC-HW-SCR-001"
-        },
-        "installed_parts": [
-          {
-            "ipn": "EQ-SCR-CHN-LNK",
-            "quantity": 88
-          },
-          {
-            "ipn": "EQ-SCR-GBX-0150",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-SCR-TRQ-LIM",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-GRT-SCW-CLS",
-            "quantity": 1
-          }
-        ],
-        "maintenance": []
+        "serial": "TC-HW-SCR-001"
       },
-      {
-        "name": "Dewatering Centrifuge No. 2",
-        "description": "Decanter centrifuge for sludge dewatering. Scroll wear and main-bearing failure are OEM-dependent with long lead times, making this a critical-spares workflow. Commissioned 2021-11-30; criticality: High; PM cadence: 2,000-hour vibration survey and annual scroll inspection.",
-        "active": true,
-        "location": "Tomahawk Creek WRF / Solids / Dewatering Building",
-        "customer": null,
+      "installed_parts": [
+        {
+          "ipn": "EQ-SCR-CHN-LNK",
+          "quantity": 88
+        },
+        {
+          "ipn": "EQ-SCR-GBX-0150",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-SCR-TRQ-LIM",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-GRT-SCW-CLS",
+          "quantity": 1
+        }
+      ],
+      "maintenance": [],
+      "client": "internal"
+    },
+    {
+      "name": "Dewatering Centrifuge No. 2",
+      "description": "Decanter centrifuge for sludge dewatering. Scroll wear and main-bearing failure are OEM-dependent with long lead times, making this a critical-spares workflow. Commissioned 2021-11-30; criticality: High; PM cadence: 2,000-hour vibration survey and annual scroll inspection.",
+      "active": true,
+      "location": "Tomahawk Creek WRF / Solids / Dewatering Building",
+      "manufacturer": "Alfa Laval",
+      "model": "ALDEC G3",
+      "serial": "TC-SLD-CFG-002",
+      "legacy_identity": {
         "manufacturer": "Alfa Laval",
         "model": "ALDEC G3",
-        "serial": "TC-SLD-CFG-002",
-        "legacy_identity": {
-          "manufacturer": "Alfa Laval",
-          "model": "ALDEC G3",
-          "serial": "TC-SLD-CFG-002"
-        },
-        "installed_parts": [
-          {
-            "ipn": "EQ-CFG-TIL-SCR",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-CFG-BRG-MAIN",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-CFG-PMP-STA",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-BLR-HED-DOS",
-            "quantity": 1
-          }
-        ],
-        "maintenance": []
+        "serial": "TC-SLD-CFG-002"
       },
-      {
-        "name": "Secondary Clarifier No. 4",
-        "description": "Forty-metre circular chain-and-flight clarifier. Event frequency is low but consequence is high; a torque overload usually indicates an obstruction rather than a drive fault. Criticality: Medium; PM cadence: monthly torque log and annual gearbox oil sample.",
-        "active": true,
-        "location": "Tomahawk Creek WRF / Secondary / Clarifier 4",
-        "customer": null,
+      "installed_parts": [
+        {
+          "ipn": "EQ-CFG-TIL-SCR",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-CFG-BRG-MAIN",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-CFG-PMP-STA",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-BLR-HED-DOS",
+          "quantity": 1
+        }
+      ],
+      "maintenance": [],
+      "client": "internal"
+    },
+    {
+      "name": "Secondary Clarifier No. 4",
+      "description": "Forty-metre circular chain-and-flight clarifier. Event frequency is low but consequence is high; a torque overload usually indicates an obstruction rather than a drive fault. Criticality: Medium; PM cadence: monthly torque log and annual gearbox oil sample.",
+      "active": true,
+      "location": "Tomahawk Creek WRF / Secondary / Clarifier 4",
+      "manufacturer": "Ovivo",
+      "model": "Chain and flight",
+      "serial": "TC-SEC-CLR-004",
+      "legacy_identity": {
         "manufacturer": "Ovivo",
         "model": "Chain and flight",
-        "serial": "TC-SEC-CLR-004",
-        "legacy_identity": {
-          "manufacturer": "Ovivo",
-          "model": "Chain and flight",
-          "serial": "TC-SEC-CLR-004"
-        },
-        "installed_parts": [
-          {
-            "ipn": "EQ-CLR-GBX-DRV",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-CLR-SWT-TRQ",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-RAS-PMP-0300",
-            "quantity": 2
-          }
-        ],
-        "maintenance": []
+        "serial": "TC-SEC-CLR-004"
       },
-      {
-        "name": "UV Disinfection Channel No. 1",
-        "description": "Open-channel UV system with six banks of twelve modules. Lamp and ballast failures are structured and OEM-specific. Intensity loss is permit-relevant compliance exposure, so process staff own the discharge decision. Criticality: High; PM cadence: annual lamp replacement and quarterly sleeve cleaning.",
-        "active": true,
-        "location": "Tomahawk Creek WRF / Disinfection / UV Channel 1",
-        "customer": null,
+      "installed_parts": [
+        {
+          "ipn": "EQ-CLR-GBX-DRV",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-CLR-SWT-TRQ",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-RAS-PMP-0300",
+          "quantity": 2
+        }
+      ],
+      "maintenance": [],
+      "client": "internal"
+    },
+    {
+      "name": "UV Disinfection Channel No. 1",
+      "description": "Open-channel UV system with six banks of twelve modules. Lamp and ballast failures are structured and OEM-specific. Intensity loss is permit-relevant compliance exposure, so process staff own the discharge decision. Criticality: High; PM cadence: annual lamp replacement and quarterly sleeve cleaning.",
+      "active": true,
+      "location": "Tomahawk Creek WRF / Disinfection / UV Channel 1",
+      "manufacturer": "Trojan Technologies",
+      "model": "TrojanUV3000Plus",
+      "serial": "TC-DIS-UVD-001",
+      "legacy_identity": {
         "manufacturer": "Trojan Technologies",
         "model": "TrojanUV3000Plus",
-        "serial": "TC-DIS-UVD-001",
-        "legacy_identity": {
-          "manufacturer": "Trojan Technologies",
-          "model": "TrojanUV3000Plus",
-          "serial": "TC-DIS-UVD-001"
-        },
-        "installed_parts": [
-          {
-            "ipn": "EQ-UVD-LMP-STD",
-            "quantity": 72
-          },
-          {
-            "ipn": "EQ-UVD-SLV-QTZ",
-            "quantity": 72
-          },
-          {
-            "ipn": "EQ-UVD-BAL-STD",
-            "quantity": 36
-          }
-        ],
-        "maintenance": []
+        "serial": "TC-DIS-UVD-001"
       },
-      {
-        "name": "UF/RO Skid No. 1",
-        "description": "Two-pass UF/RO skid producing boiler-makeup and process water. A water fault here becomes a production fault, making this the highest-dollar industrial workflow. Commissioned 2023-04-20; criticality: Critical; PM cadence: CIP on differential-pressure trigger and annual membrane autopsy. Production sign-off is required before isolation.",
-        "active": true,
-        "location": "Industrial Water Plant / Treatment Bay 1",
-        "customer": null,
+      "installed_parts": [
+        {
+          "ipn": "EQ-UVD-LMP-STD",
+          "quantity": 72
+        },
+        {
+          "ipn": "EQ-UVD-SLV-QTZ",
+          "quantity": 72
+        },
+        {
+          "ipn": "EQ-UVD-BAL-STD",
+          "quantity": 36
+        }
+      ],
+      "maintenance": [],
+      "client": "internal"
+    },
+    {
+      "name": "UF/RO Skid No. 1",
+      "description": "Two-pass UF/RO skid producing boiler-makeup and process water. A water fault here becomes a production fault, making this the highest-dollar industrial workflow. Commissioned 2023-04-20; criticality: Critical; PM cadence: CIP on differential-pressure trigger and annual membrane autopsy. Production sign-off is required before isolation.",
+      "active": true,
+      "location": "Industrial Water Plant / Treatment Bay 1",
+      "manufacturer": "DuPont",
+      "model": "FilmTec 8040 train",
+      "serial": "IW-ROX-SKD-001",
+      "legacy_identity": {
         "manufacturer": "DuPont",
         "model": "FilmTec 8040 train",
-        "serial": "IW-ROX-SKD-001",
-        "legacy_identity": {
-          "manufacturer": "DuPont",
-          "model": "FilmTec 8040 train",
-          "serial": "IW-ROX-SKD-001"
-        },
-        "installed_parts": [
-          {
-            "ipn": "EQ-ROX-MEM-8040",
-            "quantity": 42
-          },
-          {
-            "ipn": "EQ-UFX-MOD-STD",
-            "quantity": 12
-          },
-          {
-            "ipn": "EQ-ROX-PMP-HPX",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-ROX-SEL-HPX",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-ROX-CTF-0050",
-            "quantity": 20
-          },
-          {
-            "ipn": "EQ-ROX-HTR-CIP",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-BLR-RSN-CAT",
-            "quantity": 6
-          },
-          {
-            "ipn": "EQ-BLR-SEN-CND",
-            "quantity": 3
-          }
-        ],
-        "maintenance": []
+        "serial": "IW-ROX-SKD-001"
       },
-      {
-        "name": "Cooling Water Train A",
-        "description": "Two-cell induced-draft cooling tower with circulating pumps and plate exchangers. Fan-gearbox failure drives heat-rejection loss and direct production risk. Criticality: Critical; PM cadence: monthly vibration, annual gearbox oil change, and seasonal drift-eliminator inspection.",
-        "active": true,
-        "location": "Industrial Water Plant / Cooling Yard",
-        "customer": null,
+      "installed_parts": [
+        {
+          "ipn": "EQ-ROX-MEM-8040",
+          "quantity": 42
+        },
+        {
+          "ipn": "EQ-UFX-MOD-STD",
+          "quantity": 12
+        },
+        {
+          "ipn": "EQ-ROX-PMP-HPX",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-ROX-SEL-HPX",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-ROX-CTF-0050",
+          "quantity": 20
+        },
+        {
+          "ipn": "EQ-ROX-HTR-CIP",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-BLR-RSN-CAT",
+          "quantity": 6
+        },
+        {
+          "ipn": "EQ-BLR-SEN-CND",
+          "quantity": 3
+        }
+      ],
+      "maintenance": [],
+      "client": "internal"
+    },
+    {
+      "name": "Cooling Water Train A",
+      "description": "Two-cell induced-draft cooling tower with circulating pumps and plate exchangers. Fan-gearbox failure drives heat-rejection loss and direct production risk. Criticality: Critical; PM cadence: monthly vibration, annual gearbox oil change, and seasonal drift-eliminator inspection.",
+      "active": true,
+      "location": "Industrial Water Plant / Cooling Yard",
+      "manufacturer": "SPX Marley",
+      "model": "NC series",
+      "serial": "IW-CLG-TWR-A01",
+      "legacy_identity": {
         "manufacturer": "SPX Marley",
         "model": "NC series",
-        "serial": "IW-CLG-TWR-A01",
-        "legacy_identity": {
-          "manufacturer": "SPX Marley",
-          "model": "NC series",
-          "serial": "IW-CLG-TWR-A01"
-        },
-        "installed_parts": [
-          {
-            "ipn": "EQ-CLG-GBX-FAN",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-CLG-DFT-ELM",
-            "quantity": 24
-          },
-          {
-            "ipn": "EQ-CLG-GSK-PHE",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-CLG-SEL-PMP",
-            "quantity": 3
-          }
-        ],
-        "maintenance": []
+        "serial": "IW-CLG-TWR-A01"
       },
-      {
-        "name": "Remote Lift Station 14 — Blue River",
-        "description": "Duplex submersible grinder station with standby generator and cellular RTU. It is 22 minutes from the plant, so first-visit failure is expensive. No permanent site-power backup exists beyond the generator. Criticality: High; PM cadence: quarterly wet-well cleaning and monthly generator exercise.",
-        "active": true,
-        "location": "Collection System / Basin 4 / Blue River",
-        "customer": null,
+      "installed_parts": [
+        {
+          "ipn": "EQ-CLG-GBX-FAN",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-CLG-DFT-ELM",
+          "quantity": 24
+        },
+        {
+          "ipn": "EQ-CLG-GSK-PHE",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-CLG-SEL-PMP",
+          "quantity": 3
+        }
+      ],
+      "maintenance": [],
+      "client": "internal"
+    },
+    {
+      "name": "Remote Lift Station 14 — Blue River",
+      "description": "Duplex submersible grinder station with standby generator and cellular RTU. It is 22 minutes from the plant, so first-visit failure is expensive. No permanent site-power backup exists beyond the generator. Criticality: High; PM cadence: quarterly wet-well cleaning and monthly generator exercise.",
+      "active": true,
+      "location": "Collection System / Basin 4 / Blue River",
+      "manufacturer": "Xylem Flygt",
+      "model": "NP 3202 grinder",
+      "serial": "LS-014-BLU-001",
+      "legacy_identity": {
         "manufacturer": "Xylem Flygt",
         "model": "NP 3202 grinder",
-        "serial": "LS-014-BLU-001",
-        "legacy_identity": {
-          "manufacturer": "Xylem Flygt",
-          "model": "NP 3202 grinder",
-          "serial": "LS-014-BLU-001"
+        "serial": "LS-014-BLU-001"
+      },
+      "installed_parts": [
+        {
+          "ipn": "EQ-LFT-PMP-GRN",
+          "quantity": 2
         },
-        "installed_parts": [
-          {
-            "ipn": "EQ-LFT-PMP-GRN",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-LFT-BRK-RAI",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-LFT-GSK-ELB",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-LFT-SEN-LVL",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-LFT-SWT-FLT",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-GEN-CTL-ATS",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-GEN-BAT-STR",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-GEN-HTR-BLK",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-ELE-CON-0090",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-ELE-MCP-0100",
-            "quantity": 2
-          },
-          {
-            "ipn": "EQ-TEL-MDM-LTE",
-            "quantity": 1
-          },
-          {
-            "ipn": "EQ-TEL-SPD-DIN",
-            "quantity": 3
-          }
-        ],
-        "maintenance": []
+        {
+          "ipn": "EQ-LFT-BRK-RAI",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-LFT-GSK-ELB",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-LFT-SEN-LVL",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-LFT-SWT-FLT",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-GEN-CTL-ATS",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-GEN-BAT-STR",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-GEN-HTR-BLK",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-ELE-CON-0090",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-ELE-MCP-0100",
+          "quantity": 2
+        },
+        {
+          "ipn": "EQ-TEL-MDM-LTE",
+          "quantity": 1
+        },
+        {
+          "ipn": "EQ-TEL-SPD-DIN",
+          "quantity": 3
+        }
+      ],
+      "maintenance": [],
+      "client": "internal"
     }
   ]
 }

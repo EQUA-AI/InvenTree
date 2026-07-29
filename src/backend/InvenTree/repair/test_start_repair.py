@@ -51,9 +51,9 @@ class StartRepairTest(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        self.machine = AssetMachine.objects.create(
-            name=f'Blower {suffix}', customer=self.customer
-        )
+        # The work order carries the explicit customer, so the machine's own
+        # tenant identity is irrelevant to these tests.
+        self.machine = AssetMachine.objects.create(name=f'Blower {suffix}')
         self.work_order = WorkOrder.objects.create(
             title='Bearing replacement',
             status=WorkOrder.STATUS_BACKLOG,
@@ -191,9 +191,9 @@ class StartRepairApiTest(InvenTreeAPITestCase):
         _GRANTED_CUSTOMER_IDS[:] = [self.customer.pk]
         self.addCleanup(_GRANTED_CUSTOMER_IDS.clear)
 
-        self.machine = AssetMachine.objects.create(
-            name=f'Screen {suffix}', customer=self.customer
-        )
+        # The work order carries the explicit customer, so the machine's own
+        # tenant identity is irrelevant to these tests.
+        self.machine = AssetMachine.objects.create(name=f'Screen {suffix}')
         self.work_order = WorkOrder.objects.create(
             title='Chain replacement',
             status=WorkOrder.STATUS_BACKLOG,

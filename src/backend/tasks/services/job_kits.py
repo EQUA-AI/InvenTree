@@ -580,7 +580,9 @@ def _require_part_verification(
             expected_requested_part_id=substitution.requested_part_id,
             expected_selected_part_id=substitution.proposed_part_id,
             expected_scope=VerificationScope(
-                customer_id=scope.customer_id, site_key=scope.site_key
+                customer_id=scope.customer_id,
+                site_key=scope.site_key,
+                client_id=scope.client_id,
             ),
             command_hash=hash_canonical(HashDomains.COMMAND, command_payload),
             idempotency_key=f'jobkit-substitution-{substitution.pk}',

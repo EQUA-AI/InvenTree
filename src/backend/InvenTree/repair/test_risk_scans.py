@@ -46,22 +46,28 @@ class ScanEngineTest(RiskEnvMixin, TestCase):
     """End-to-end engine semantics with a scripted rule."""
 
     def setUp(self):
-        """Register the scripted rule and enable it for the test scope."""
+        """Register the scripted rule and enable it for the client scope.
+
+        The scripted rule is machine-sourced (``asset_machine``), so it is
+        enabled and scanned under the machine tenant's client scope.
+        """
         self.build_env()
         self.addCleanup(self.teardown_scopes)
         self.rule = ScriptedRule()
         RULE_SPECS[self.rule.code] = scripted_spec(self.rule)
         self.addCleanup(RULE_SPECS.pop, self.rule.code, None)
-        self.enable_rule(self.rule.code)
+        self.enable_rule(self.rule.code, scopes=[self.client_scope_key])
 
     def scan(self):
         """Run one scan as the service identity."""
-        return run_rule_scan(self.rule.code, self.scope, service_identity=self.service)
+        return run_rule_scan(
+            self.rule.code, self.client_scope, service_identity=self.service
+        )
 
     def findings(self):
-        """Return this rule's findings for the test scope."""
+        """Return this rule's findings for the client scope."""
         return RiskFinding.objects.filter(
-            rule_code=self.rule.code, scope_key=self.scope_key
+            rule_code=self.rule.code, scope_key=self.client_scope_key
         )
 
     def test_upsert_resolve_reopen_cycle(self):
@@ -170,7 +176,7 @@ class ScanEngineTest(RiskEnvMixin, TestCase):
         now = timezone.now()
         RiskScanLease.objects.create(
             rule_code=self.rule.code,
-            scope_key=self.scope_key,
+            scope_key=self.client_scope_key,
             owner='other-worker',
             lease_token='foreign',
             expires_at=now + timedelta(minutes=5),
@@ -187,7 +193,7 @@ class ScanEngineTest(RiskEnvMixin, TestCase):
         now = timezone.now()
         RiskScanLease.objects.create(
             rule_code=self.rule.code,
-            scope_key=self.scope_key,
+            scope_key=self.client_scope_key,
             owner='dead-worker',
             lease_token='stale',
             expires_at=now - timedelta(minutes=5),
@@ -203,7 +209,7 @@ class ScanEngineTest(RiskEnvMixin, TestCase):
 
         def steal_lease():
             RiskScanLease.objects.filter(
-                rule_code=self.rule.code, scope_key=self.scope_key
+                rule_code=self.rule.code, scope_key=self.client_scope_key
             ).update(
                 lease_token='stolen', expires_at=timezone.now() + timedelta(minutes=10)
             )
@@ -222,7 +228,7 @@ class ScanEngineTest(RiskEnvMixin, TestCase):
         now = timezone.now()
         RiskScanLease.objects.create(
             rule_code=self.rule.code,
-            scope_key=self.scope_key,
+            scope_key=self.client_scope_key,
             owner='replayed-worker',
             lease_token=run.lease_token,
             expires_at=now + timedelta(minutes=5),
@@ -256,7 +262,7 @@ class ScanEngineTest(RiskEnvMixin, TestCase):
             update_rule_configuration(
                 admin,
                 self.rule.code,
-                changes={'enabled': True, 'enabled_scopes': [self.scope_key]},
+                changes={'enabled': True, 'enabled_scopes': [self.client_scope_key]},
                 reason='mid-scan supersession',
             )
 
@@ -284,7 +290,7 @@ class ScanEngineTest(RiskEnvMixin, TestCase):
         update_rule_configuration(
             admin,
             self.rule.code,
-            changes={'enabled': True, 'enabled_scopes': [self.scope_key]},
+            changes={'enabled': True, 'enabled_scopes': [self.client_scope_key]},
             reason='tighten thresholds',
         )
         self.rule.script = [[make_candidate('m1')]]
@@ -346,7 +352,11 @@ class ScanEngineTest(RiskEnvMixin, TestCase):
 
     def test_open_min_age_gates_new_findings_only(self):
         """Young conditions stay unopened; open episodes survive churn."""
-        self.enable_rule(self.rule.code, config={'open_min_age_hours': 24})
+        self.enable_rule(
+            self.rule.code,
+            config={'open_min_age_hours': 24},
+            scopes=[self.client_scope_key],
+        )
         young = timezone.now() - timedelta(hours=1)
         old = timezone.now() - timedelta(hours=48)
         self.rule.script = [
@@ -371,7 +381,11 @@ class ScanEngineTest(RiskEnvMixin, TestCase):
 
     def test_resolution_grace_defers(self):
         """Grace keeps a just-seen finding open across one absent scan."""
-        self.enable_rule(self.rule.code, config={'resolution_grace_seconds': 3600})
+        self.enable_rule(
+            self.rule.code,
+            config={'resolution_grace_seconds': 3600},
+            scopes=[self.client_scope_key],
+        )
         self.rule.script = [[make_candidate('m1')]]
         self.scan()
         self.rule.script = [[]]
@@ -448,15 +462,17 @@ class ScanEngineTest(RiskEnvMixin, TestCase):
         self.rule.script = [[make_candidate('m1')]]
         with self.assertRaises(RiskCommandError) as ctx:
             run_rule_scan(
-                self.rule.code, self.other_scope, service_identity=self.service
+                self.rule.code, self.other_client_scope, service_identity=self.service
             )
         self.assertEqual(ctx.exception.code, RULE_DISABLED)
-        # Enable the other scope on the revision: now the scope gate passes
-        # but the principal enumeration still fails closed.
-        self.enable_rule(self.rule.code, scopes=[self.scope_key, self.other_scope_key])
+        # Enable the other client's scope on the revision: now the scope
+        # gate passes but the principal enumeration still fails closed.
+        self.enable_rule(
+            self.rule.code, scopes=[self.client_scope_key, self.other_client_scope_key]
+        )
         with self.assertRaises(RiskCommandError) as ctx:
             run_rule_scan(
-                self.rule.code, self.other_scope, service_identity=self.service
+                self.rule.code, self.other_client_scope, service_identity=self.service
             )
         self.assertEqual(ctx.exception.code, 'SCOPE_UNRESOLVED')
 
@@ -466,13 +482,18 @@ class DispatchTest(RiskEnvMixin, TestCase):
     """Cadence dispatchers enumerate only the principal's scopes."""
 
     def setUp(self):
-        """Register and enable the scripted rule."""
+        """Register and enable the scripted rule for the client scope only.
+
+        The principal holds two scopes (customer + client); enabling the
+        machine-sourced rule for just the client scope key keeps dispatch
+        deterministic at one scan.
+        """
         self.build_env()
         self.addCleanup(self.teardown_scopes)
         self.rule = ScriptedRule()
         RULE_SPECS[self.rule.code] = scripted_spec(self.rule)
         self.addCleanup(RULE_SPECS.pop, self.rule.code, None)
-        self.enable_rule(self.rule.code)
+        self.enable_rule(self.rule.code, scopes=[self.client_scope_key])
 
     def test_dispatch_runs_enabled_rules(self):
         """Dispatch fans out and (synchronously in tests) completes scans."""
@@ -480,9 +501,9 @@ class DispatchTest(RiskEnvMixin, TestCase):
         with override_settings(AIMMS_RISK_SERVICE_USER_ID=str(self.service.pk)):
             dispatched = dispatch_scans('hourly')
         self.assertEqual(dispatched, 1)
-        self.assertEqual(
-            RiskFinding.objects.filter(rule_code=self.rule.code).count(), 1
-        )
+        findings = RiskFinding.objects.filter(rule_code=self.rule.code)
+        self.assertEqual(findings.count(), 1)
+        self.assertEqual(findings.get().scope_key, self.client_scope_key)
 
     def test_dispatch_without_principal_is_noop(self):
         """No scanner principal: nothing dispatches, nothing leaks."""
@@ -501,10 +522,17 @@ class EndToEndTest(RiskEnvMixin, TestCase):
     """A real source condition flows to a finding and back to resolution."""
 
     def setUp(self):
-        """Build the environment and enable the real stall rule."""
+        """Build the environment and enable the real stall rule.
+
+        The stalled packet lives on a client-owned machine with no work
+        order, so the packet is owned by the machine's client and the rule
+        is enabled and scanned under the client scope.
+        """
         self.build_env()
         self.addCleanup(self.teardown_scopes)
-        self.enable_rule('PACKET_STALLED', config={'stall_hours': 48})
+        self.enable_rule(
+            'PACKET_STALLED', config={'stall_hours': 48}, scopes=[self.client_scope_key]
+        )
 
     def test_source_condition_to_finding_to_resolution(self):
         """Stalled packet → finding with governed link → progress → resolved."""
@@ -516,12 +544,15 @@ class EndToEndTest(RiskEnvMixin, TestCase):
         RepairPacket.objects.filter(pk=packet.pk).update(
             created_at=timezone.now() - timedelta(hours=72)
         )
-        run = run_rule_scan('PACKET_STALLED', self.scope, service_identity=self.service)
+        run = run_rule_scan(
+            'PACKET_STALLED', self.client_scope, service_identity=self.service
+        )
         self.assertEqual(run.status, RiskScanStatus.COMPLETE)
         finding = RiskFinding.objects.get(
             rule_code='PACKET_STALLED', source_id=str(packet.pk)
         )
         self.assertEqual(finding.state, RiskFindingState.OPEN)
+        self.assertEqual(finding.scope_key, self.client_scope_key)
         links = list(finding.action_links.values_list('route', flat=True))
         self.assertEqual(links, [f'/repair/packets/{packet.pk}/'])
 
@@ -537,7 +568,7 @@ class EndToEndTest(RiskEnvMixin, TestCase):
             to_status='diagnosed',
         )
         run2 = run_rule_scan(
-            'PACKET_STALLED', self.scope, service_identity=self.service
+            'PACKET_STALLED', self.client_scope, service_identity=self.service
         )
         self.assertEqual(run2.resolve_count, 1)
         finding.refresh_from_db()

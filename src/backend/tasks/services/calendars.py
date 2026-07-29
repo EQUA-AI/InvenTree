@@ -3,14 +3,14 @@
 A card resolves to exactly one calendar, in this order:
 
 1. a calendar scoped to the card's machine,
-2. else a calendar scoped to the card's effective customer (the card's own
-   customer, or its machine's customer),
+2. else a calendar scoped to the card's own explicit customer (machines carry
+   no customer identity; client-scoped calendars are a deferred follow-up),
 3. else the system default calendar (``is_default=True``),
 4. else a hardcoded Mon-Fri 09:00-17:00 UTC fallback, so scheduling never fails
    for want of configuration.
 
-Because every card is anchored to a machine (S3c), step 1 or 2 usually resolves;
-the fallback exists so a fresh install with no calendars still schedules.
+Because every card is anchored to a machine (S3c), step 1 usually resolves; the
+fallback exists so a fresh install with no calendars still schedules.
 """
 
 from __future__ import annotations
@@ -37,9 +37,6 @@ def calendar_for_card(work_order) -> WorkingCalendar | None:
             return machine_cal
 
     customer_id = getattr(work_order, 'customer_id', None)
-    if not customer_id and machine_id:
-        customer_id = getattr(getattr(work_order, 'machine', None), 'customer_id', None)
-
     if customer_id:
         customer_cal = WorkingCalendar.objects.filter(customer_id=customer_id).first()
         if customer_cal is not None:

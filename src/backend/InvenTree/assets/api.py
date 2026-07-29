@@ -30,7 +30,7 @@ class AssetMachineFilter(FilterSet):
         """Filter configuration for AssetMachine."""
 
         model = AssetMachine
-        fields = ('active', 'location', 'customer', 'client', 'manufacturer')
+        fields = ('active', 'location', 'client', 'manufacturer')
 
 
 class MachinePartFilter(FilterSet):
@@ -91,7 +91,7 @@ class ClientDetail(RetrieveUpdateDestroyAPI):
 class AssetMachineList(ListCreateAPI):
     """List and create asset machines."""
 
-    queryset = AssetMachine.objects.select_related('customer', 'client').all()
+    queryset = AssetMachine.objects.select_related('client').all()
     serializer_class = AssetMachineSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,

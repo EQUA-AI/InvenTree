@@ -43,11 +43,6 @@ export function AssetMachineTable() {
         sortable: false
       },
       {
-        accessor: 'customer_name',
-        title: t`Customer`,
-        sortable: false
-      },
-      {
         accessor: 'active',
         title: t`Active`,
         sortable: true,

@@ -1110,12 +1110,12 @@ def _diagnostic_scoped_entity(actor, entity_type: str, entity_id: int):
         from assets.models import AssetMachine
 
         try:
-            entity = AssetMachine.objects.only('pk', 'customer_id', 'updated_at').get(
+            entity = AssetMachine.objects.only('pk', 'client_id', 'updated_at').get(
                 pk=entity_id
             )
         except AssetMachine.DoesNotExist:
             return None
-        customer_id = entity.customer_id
+        client_id = entity.client_id
     elif entity_type == 'repair_packet':
         try:
             entity = (
@@ -1125,20 +1125,22 @@ def _diagnostic_scoped_entity(actor, entity_type: str, entity_id: int):
                     'pk',
                     'machine_id',
                     'machine__pk',
-                    'machine__customer_id',
+                    'machine__client_id',
                     'updated_at',
                 )
                 .get(pk=entity_id)
             )
         except RepairPacket.DoesNotExist:
             return None
-        customer_id = entity.machine.customer_id if entity.machine_id else None
+        client_id = entity.machine.client_id if entity.machine_id else None
     else:
         return None
 
-    if customer_id is None:
+    if client_id is None:
         return None
-    required_scope = MaintenanceScope(customer_id=customer_id, site_key=None)
+    required_scope = MaintenanceScope(
+        customer_id=None, site_key=None, client_id=client_id
+    )
     if required_scope not in authorized_scopes:
         return None
     return entity
@@ -1562,17 +1564,20 @@ def read_diagnostic_published_playbooks(
     ):
         return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
 
-    from django.db.models import F, Q
+    from django.db.models import Q
 
     from tasks.procedure_models import ProcedureRevision, ProcedureRevisionStatus
 
+    # Machines carry no customer identity, so the only procedures an asset can
+    # prove membership of are the customer-less (internal) ones. Customer
+    # procedures never leak through an applicability edge.
     revisions = (
         ProcedureRevision.objects
         .filter(
             status=ProcedureRevisionStatus.PUBLISHED,
             procedure__active=True,
             applicability_rules__machine_id=machine_id,
-            procedure__customer_id=F('applicability_rules__machine__customer_id'),
+            procedure__customer__isnull=True,
         )
         .filter(
             Q(procedure__code__icontains=query)

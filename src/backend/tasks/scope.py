@@ -2,15 +2,13 @@
 
 A maintenance record is reachable through exactly one of two identities:
 
-* **customer** - a sales relationship, for machines installed at somebody we
-  manufacture for or sell to;
-* **client** - the tenant of this software, for internal plant assets nobody
-  bought.
+* **client** - the tenant of this software. Machines are internal plant
+  assets and carry only this identity;
+* **customer** - a sales relationship. It is a claim about a work order or a
+  procedure, never about a machine.
 
-Internal assets used to have neither, which left them with no resolvable scope
-at all: chat and the canonical API refused to touch them rather than guess. The
-client identity is what closes that gap without weakening the boundary - a
-machine with neither identity is still unreachable, by design.
+A machine without a client is unreachable, by design: an empty identity must
+never read as "everyone's".
 
 ``site_key`` remains a deployment-defined subdivision. Free-text machine location
 is never promoted into a boundary.
@@ -91,39 +89,27 @@ def scope_for_actor(actor) -> set[MaintenanceScope]:
 
 
 def scope_for_work_order(work_order) -> MaintenanceScope:
-    """Resolve and reconcile explicit and asset-derived work-order scope.
+    """Resolve a work order's boundary from its own customer or its asset.
 
-    A customer relationship wins when one exists, because that is the stronger
-    claim: the machine is installed at somebody else's site. Otherwise the
-    asset's client owns it. A work order whose asset has neither remains
+    An explicit work-order customer wins: it is a sales claim about this job.
+    Otherwise the asset's client owns it. A work order with neither remains
     unresolved and therefore unreachable.
     """
     explicit_customer_id = getattr(work_order, 'customer_id', None)
     machine = getattr(work_order, 'machine', None)
-    machine_customer_id = getattr(machine, 'customer_id', None) if machine else None
     machine_client_id = getattr(machine, 'client_id', None) if machine else None
 
-    if (
-        explicit_customer_id is not None
-        and machine_customer_id is not None
-        and explicit_customer_id != machine_customer_id
-    ):
-        raise ScopeError('Work-order customer does not match asset customer')
-
-    customer_id = explicit_customer_id or machine_customer_id
-    if customer_id is None and machine_client_id is not None:
+    if explicit_customer_id is not None:
+        # AssetMachine has no authoritative site key. Its free-text
+        # ``location`` must not be promoted into a security boundary.
+        return MaintenanceScope(customer_id=explicit_customer_id, site_key=None)
+    if machine_client_id is not None:
         return MaintenanceScope(
             customer_id=None, site_key=None, client_id=machine_client_id
         )
-    if customer_id is None:
-        raise ScopeError(
-            'Work-order scope is unresolved: its asset has neither a customer '
-            'nor a client.'
-        )
-
-    # AssetMachine currently has no authoritative site key. Its free-text
-    # ``location`` must not be promoted into a security boundary.
-    return MaintenanceScope(customer_id=customer_id, site_key=None)
+    raise ScopeError(
+        'Work-order scope is unresolved: its asset has neither a customer nor a client.'
+    )
 
 
 def require_work_order_scope(actor, work_order) -> MaintenanceScope:
@@ -137,12 +123,10 @@ def require_work_order_scope(actor, work_order) -> MaintenanceScope:
 def scope_for_machine(machine) -> MaintenanceScope:
     """Resolve one asset's own boundary, independent of any work order.
 
-    Same two identities and the same precedence as ``scope_for_work_order``: a
-    customer relationship is the stronger claim because the machine sits at
-    somebody else's site, and the client owns it otherwise. A machine with
-    neither remains unresolved and therefore unreachable.
+    A machine belongs to its client, full stop. A machine without one remains
+    unresolved and therefore unreachable.
 
-    This exists because a machine is now addressable on its own -- the AI read
+    This exists because a machine is addressable on its own -- the AI read
     rails answer questions about an asset with no work order in sight -- and
     deriving asset authority from a work order would make an asset reachable
     only once somebody happened to raise a job against it.
@@ -150,18 +134,12 @@ def scope_for_machine(machine) -> MaintenanceScope:
     if machine is None:
         raise ScopeError('Machine scope is unresolved: no machine supplied')
 
-    customer_id = getattr(machine, 'customer_id', None)
     client_id = getattr(machine, 'client_id', None)
-
-    if customer_id is not None:
+    if client_id is not None:
         # AssetMachine has no authoritative site key. Its free-text ``location``
         # must not be promoted into a security boundary.
-        return MaintenanceScope(customer_id=customer_id, site_key=None)
-    if client_id is not None:
         return MaintenanceScope(customer_id=None, site_key=None, client_id=client_id)
-    raise ScopeError(
-        'Machine scope is unresolved: it has neither a customer nor a client.'
-    )
+    raise ScopeError('Machine scope is unresolved: it has no client.')
 
 
 def require_machine_scope(actor, machine) -> MaintenanceScope:
@@ -197,10 +175,6 @@ def machine_scope_filter(actor) -> Q:
     for scope in scope_for_actor(actor):
         if scope.site_key is not None:
             continue
-        if scope.customer_id is not None:
-            predicate |= Q(customer_id=scope.customer_id)
-        elif scope.client_id is not None:
-            # Customer wins in ``scope_for_machine``, so a client grant must not
-            # reach a machine that also names a customer.
-            predicate |= Q(customer_id__isnull=True, client_id=scope.client_id)
+        if scope.client_id is not None:
+            predicate |= Q(client_id=scope.client_id)
     return predicate

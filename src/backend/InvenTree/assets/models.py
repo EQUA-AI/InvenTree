@@ -46,8 +46,21 @@ class Client(models.Model):
         return self.name
 
 
+def get_default_client() -> Client:
+    """Return the deployment's default internal tenant, creating it if absent.
+
+    Single definition of the fallback identity shared by the backfill
+    migration, the serializer default and the demo loader, so a machine
+    created without an explicit client always lands in the same tenant.
+    """
+    client, _created = Client.objects.get_or_create(
+        code='internal', defaults={'name': 'Internal'}
+    )
+    return client
+
+
 class AssetMachine(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
-    """An equipment asset / machine installed at a facility or customer site.
+    """An equipment asset / machine installed at a facility.
 
     This is separate from the InvenTree ``machine`` app which handles
     external integrations (e.g. label printers).
@@ -81,20 +94,9 @@ class AssetMachine(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         help_text=_('Free-text location (e.g. "Bay 4", "Sydney")'),
     )
 
-    customer = models.ForeignKey(
-        'company.Company',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        db_index=True,
-        related_name='asset_machines',
-        verbose_name=_('Customer'),
-        help_text=_('Customer company using this machine (for external installs)'),
-    )
-
-    # Internal plant assets have no sales customer but always belong to a client
-    # of this software. One of ``customer`` or ``client`` is what makes a machine
-    # scope-resolvable; a machine with neither is deliberately unreachable.
+    # The client is what makes a machine scope-resolvable. Machines carry no
+    # sales-customer identity: that claim belongs to work orders and
+    # procedures. A machine without a client is deliberately unreachable.
     client = models.ForeignKey(
         Client,
         on_delete=models.PROTECT,

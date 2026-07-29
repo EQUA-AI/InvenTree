@@ -129,7 +129,7 @@ def snapshot_machine(machine) -> dict:
     return {
         'id': machine.pk,
         'name': machine.name,
-        'customer': machine.customer_id,
+        'client': machine.client_id,
         'manufacturer': machine.manufacturer or '',
         'model': machine.model or '',
         'serial': machine.serial or '',

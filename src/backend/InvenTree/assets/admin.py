@@ -2,7 +2,17 @@
 
 from django.contrib import admin
 
-from .models import AssetMachine, AssetMaintenanceRecord, MachinePart
+from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
+
+
+@admin.register(Client)
+class ClientAdmin(admin.ModelAdmin):
+    """Admin interface for Client (the system-only tenant identity)."""
+
+    list_display = ('name', 'code', 'active', 'updated_at')
+    list_filter = ('active',)
+    search_fields = ('name', 'code')
+    ordering = ('name',)
 
 
 @admin.register(AssetMachine)
@@ -13,7 +23,7 @@ class AssetMachineAdmin(admin.ModelAdmin):
         'name',
         'active',
         'location',
-        'customer',
+        'client',
         'manufacturer',
         'model',
         'serial',

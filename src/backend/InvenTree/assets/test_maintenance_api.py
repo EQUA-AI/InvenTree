@@ -42,9 +42,7 @@ class MaintenanceRecordProjectionTest(InvenTreeAPITestCase):
         super().setUp()
 
         self.customer = Company.objects.create(name='Northgate Water', is_customer=True)
-        self.machine = AssetMachine.objects.create(
-            name='Influent Pump Station No. 9', customer=self.customer
-        )
+        self.machine = AssetMachine.objects.create(name='Influent Pump Station No. 9')
         self.completed_at = timezone.now()
 
         self.work_order = WorkOrder.objects.create(

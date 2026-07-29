@@ -462,18 +462,12 @@ def create_repair_work_package(
 
     work_order = WorkOrder.objects.get(pk=command.work_order_id)
 
-    # The work order inherits the asset's customer so scope resolution has one
-    # answer; ``estimated_minutes`` is planning metadata the create command does
-    # not accept as a lifecycle field.
-    updates = {}
-    if work_order.customer_id != machine.customer_id:
-        updates['customer_id'] = machine.customer_id
+    # Scope flows from the asset's client via ``scope_for_work_order``; no field
+    # sync is needed. ``estimated_minutes`` is planning metadata the create
+    # command does not accept as a lifecycle field.
     if planning['estimated_minutes'] and not work_order.estimated_minutes:
-        updates['estimated_minutes'] = planning['estimated_minutes']
-    if updates:
-        for field_name, value in updates.items():
-            setattr(work_order, field_name, value)
-        work_order.save(update_fields=[*updates, 'updated_at'])
+        work_order.estimated_minutes = planning['estimated_minutes']
+        work_order.save(update_fields=['estimated_minutes', 'updated_at'])
 
     scheduling.materialise_required_parts(
         work_order_id=work_order.pk,

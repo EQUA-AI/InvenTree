@@ -81,20 +81,18 @@ class WorkOrderEnabledMixin:
 def _scoped_work_orders(actor):
     """Apply actor scope before any other queryset operation."""
     try:
-        customer_ids = [
-            scope.customer_id
-            for scope in scope_for_actor(actor)
-            if scope.site_key is None
-        ]
+        scopes = [scope for scope in scope_for_actor(actor) if scope.site_key is None]
     except ScopeError:
         return WorkOrder.objects.none()
 
-    # An explicit customer must agree with the asset customer. Orders without an
-    # explicit customer inherit scope only from the asset's customer.
+    customer_ids = [s.customer_id for s in scopes if s.customer_id is not None]
+    client_ids = [s.client_id for s in scopes if s.client_id is not None]
+
+    # The literal mirror of ``scope_for_work_order``: an explicit customer is
+    # the order's whole boundary; otherwise the asset's client owns it.
     return WorkOrder.objects.filter(
-        Q(customer_id__in=customer_ids, machine__customer_id__isnull=True)
-        | Q(customer_id__in=customer_ids, machine__customer_id__in=customer_ids)
-        | Q(customer__isnull=True, machine__customer_id__in=customer_ids)
+        Q(customer_id__in=customer_ids)
+        | Q(customer__isnull=True, machine__client_id__in=client_ids)
     )
 
 

@@ -8,12 +8,11 @@ export interface AssetMachine {
   description: string;
   active: boolean;
   location: string;
-  customer: number | null;
-  customer_name: string | null;
-  /** Tenant of this software; how an internal asset resolves its scope. */
+  /**
+   * Tenant of this software; how a machine resolves its scope. System-only:
+   * never displayed on the frontend.
+   */
   client: number | null;
-  client_name: string | null;
-  client_code: string | null;
   manufacturer: string;
   model: string;
   serial: string;

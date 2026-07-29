@@ -12,7 +12,6 @@ from tasks.models import KanbanCard, WorkOrder, WorkOrderLifecycle
 
 from assets.management.commands.load_asset_demo_data import Command
 from assets.models import AssetMachine, AssetMaintenanceRecord, MachinePart
-from company.models import Company
 from part.models import Part, PartCategory
 
 RICH_MACHINE_NAMES = (
@@ -100,8 +99,13 @@ class AssetDemoDataTest(TestCase):
         self.assertIn('1,200 cartons/hour', conveyor.description)
         self.assertIn('MCC-L2-07', conveyor.description)
 
+        # Every loaded machine belongs to the manifest's internal client.
+        self.assertEqual(
+            AssetMachine.objects.filter(client__code='internal').count(), 16
+        )
         customer_stand = AssetMachine.objects.get(name='Customer Test Stand (ACME)')
-        self.assertEqual(customer_stand.customer.name, 'ACME Manufacturing')
+        self.assertEqual(customer_stand.client.code, 'internal')
+        self.assertEqual(customer_stand.client.name, 'Internal')
 
         photoeye = conveyor.machine_parts.get(part__IPN='EQ-CNV-PE-W4')
         self.assertEqual(photoeye.quantity, 6)
@@ -142,6 +146,9 @@ class AssetDemoDataTest(TestCase):
                 self.assertEqual(work_order.actual_completed_at.date(), record.date)
                 self.assertTrue(work_order.reference)
                 self.assertTrue(work_order.work_order_type)
+                # Demo work orders are internal: no explicit customer scope.
+                self.assertIsNone(work_order.customer)
+                self.assertEqual(work_order.company, '')
                 # Imported history is explicitly marked as synthetic demo data.
                 event = work_order.events.get(event_type='IMPORTED_HISTORY')
                 self.assertEqual(event.metadata['source'], 'asset_demo_data')
@@ -306,27 +313,22 @@ class AssetDemoDataTest(TestCase):
             self.expected_work_order_count,
         )
 
-    def test_loader_adopts_linked_legacy_demo_customer(self):
-        """The sparse legacy ACME machine can be enriched in place."""
-        customer = Company.objects.create(name='ACME Manufacturing', is_customer=True)
+    def test_loader_adopts_linked_legacy_demo_machine(self):
+        """The sparse legacy ACME test-stand machine can be enriched in place."""
         machine = AssetMachine.objects.create(
             name='Customer Test Stand (ACME)',
-            customer=customer,
             description='Legacy sparse demo record',
             manufacturer='Equa',
             model='TS-200',
             serial='ACME-TS-200-01',
         )
+        self.assertIsNone(machine.client)
 
         self.load_demo_data()
 
-        customer.refresh_from_db()
         machine.refresh_from_db()
-        self.assertEqual(
-            customer.get_metadata('asset_demo_data'),
-            {'kind': 'customer', 'schema_version': 1},
-        )
         self.assertIn('64 digital I/O points', machine.description)
+        self.assertEqual(machine.client.code, 'internal')
 
     def test_prune_removes_only_known_legacy_placeholder_rows(self):
         """Explicit pruning preserves technician-added machine records."""
@@ -528,13 +530,6 @@ class AssetDemoDataTest(TestCase):
         with self.assertRaisesMessage(
             CommandError, "Multiple parts match demo IPN 'TB1'"
         ):
-            self.load_demo_data()
-
-    def test_loader_refuses_unowned_customer_name(self):
-        """A matching real customer is not converted into demo data."""
-        Company.objects.create(name='ACME Manufacturing', is_customer=True)
-
-        with self.assertRaisesMessage(CommandError, 'not owned'):
             self.load_demo_data()
 
     def test_loader_refuses_unowned_part_ipn(self):

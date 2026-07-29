@@ -32,9 +32,33 @@ class ScopeCodecTest(TestCase):
         self.assertEqual(key, 'c7~plant-3')
         self.assertEqual(decode_scope_key(key), scope)
 
+    def test_round_trip_client_only(self):
+        """Client scopes encode as ``k<id>`` and decode losslessly."""
+        scope = MaintenanceScope(customer_id=None, site_key=None, client_id=9)
+        self.assertEqual(encode_scope(scope), 'k9')
+        self.assertEqual(decode_scope_key('k9'), scope)
+
+    def test_round_trip_client_with_site(self):
+        """Site-qualified client scopes encode and decode losslessly."""
+        scope = MaintenanceScope(customer_id=None, site_key='plant-3', client_id=7)
+        key = encode_scope(scope)
+        self.assertEqual(key, 'k7~plant-3')
+        self.assertEqual(decode_scope_key(key), scope)
+
     def test_rejects_untrusted_strings(self):
         """Arbitrary caller strings are never trusted."""
-        for bad in ('', 'c0', 'x1', '1', 'c-1', 'c1~', 'c1~bad key', 'c1~' + 'a' * 70):
+        for bad in (
+            '',
+            'c0',
+            'k0',
+            'x1',
+            '1',
+            'c-1',
+            'k-1',
+            'c1~',
+            'c1~bad key',
+            'c1~' + 'a' * 70,
+        ):
             with self.assertRaises(RiskScopeError):
                 decode_scope_key(bad)
 
@@ -44,6 +68,10 @@ class ScopeCodecTest(TestCase):
             encode_scope(MaintenanceScope(customer_id=None, site_key=None))
         with self.assertRaises(RiskScopeError):
             encode_scope(MaintenanceScope(customer_id=1, site_key='bad key'))
+        with self.assertRaises(RiskScopeError):
+            encode_scope(
+                MaintenanceScope(customer_id=None, site_key='bad key', client_id=1)
+            )
 
 
 @override_settings(**RISK_FLAGS)
@@ -51,13 +79,28 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
     """Source adapters prove membership before any aggregation."""
 
     def setUp(self):
-        """Build the two-customer environment."""
+        """Build the two-customer, two-client environment."""
         self.build_env()
         self.addCleanup(self.teardown_scopes)
 
+    def make_client_work_order(self, machine):
+        """Create a customer-NULL work order owned via its machine's client."""
+        from tasks.models import WorkOrder
+
+        return WorkOrder.objects.create(
+            title='WO',
+            status='backlog',
+            priority='medium',
+            lifecycle_status='ready',
+            customer=None,
+            machine=machine,
+        )
+
     def test_authorized_scope_keys_sorted(self):
-        """Scope keys are enumerated deterministically."""
-        self.assertEqual(authorized_scope_keys(self.actor), [self.scope_key])
+        """Customer and client keys are enumerated deterministically."""
+        self.assertEqual(
+            authorized_scope_keys(self.actor), [self.scope_key, self.client_scope_key]
+        )
 
     def test_unknown_adapter_aborts(self):
         """A missing adapter aborts instead of returning empty."""
@@ -74,22 +117,40 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
             )
 
     def test_work_order_adapter_membership(self):
-        """Own rows in; other-customer and conflicting rows excluded."""
+        """Customer scopes see explicit-customer rows; nothing via machines."""
         mine = self.make_work_order()
-        mine_via_machine = self.make_work_order(customer=None, machine=self.machine)
+        mine_via_machine = self.make_client_work_order(self.machine)
         theirs = self.make_work_order(customer=self.other_customer)
-        conflict = self.make_work_order(machine=self.other_machine)
+        foreign_via_machine = self.make_client_work_order(self.other_machine)
         queryset = get_source_adapter('work_order').queryset_for_scope(
             actor=self.actor, scope=self.scope
         )
         ids = set(queryset.values_list('pk', flat=True))
         self.assertIn(mine.pk, ids)
-        self.assertIn(mine_via_machine.pk, ids)
+        self.assertNotIn(mine_via_machine.pk, ids)
         self.assertNotIn(theirs.pk, ids)
-        self.assertNotIn(conflict.pk, ids)
+        self.assertNotIn(foreign_via_machine.pk, ids)
+
+    def test_work_order_adapter_client_membership(self):
+        """Client scopes see customer-NULL rows on their machines only."""
+        explicit_customer = self.make_work_order()
+        mine_via_machine = self.make_client_work_order(self.machine)
+        foreign_via_machine = self.make_client_work_order(self.other_machine)
+        customer_wins = self.make_work_order(
+            customer=self.other_customer, machine=self.machine
+        )
+        queryset = get_source_adapter('work_order').queryset_for_scope(
+            actor=self.actor, scope=self.client_scope
+        )
+        ids = set(queryset.values_list('pk', flat=True))
+        self.assertIn(mine_via_machine.pk, ids)
+        self.assertNotIn(explicit_customer.pk, ids)
+        self.assertNotIn(foreign_via_machine.pk, ids)
+        # An explicit work-order customer owns the order even on my machine.
+        self.assertNotIn(customer_wins.pk, ids)
 
     def test_repair_packet_adapter_membership(self):
-        """Packets prove scope via machine or linked work order."""
+        """The explicit work-order customer wins; else the machine's client."""
         from repair.models import RepairPacket
 
         via_machine = RepairPacket.objects.create(
@@ -98,23 +159,41 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
         via_wo = RepairPacket.objects.create(
             fault_summary='b', work_order=self.make_work_order()
         )
+        wo_wins = RepairPacket.objects.create(
+            fault_summary='w',
+            machine=self.other_machine,
+            work_order=self.make_work_order(),
+        )
         theirs = RepairPacket.objects.create(
             fault_summary='c', machine=self.other_machine
         )
-        conflict = RepairPacket.objects.create(
+        foreign_wo = RepairPacket.objects.create(
             fault_summary='d',
             machine=self.machine,
             work_order=self.make_work_order(customer=self.other_customer),
         )
         unprovable = RepairPacket.objects.create(fault_summary='e')
-        queryset = get_source_adapter('repair_packet').queryset_for_scope(
-            actor=self.actor, scope=self.scope
+        all_pks = {
+            via_machine.pk,
+            via_wo.pk,
+            wo_wins.pk,
+            theirs.pk,
+            foreign_wo.pk,
+            unprovable.pk,
+        }
+        adapter = get_source_adapter('repair_packet')
+        customer_ids = set(
+            adapter.queryset_for_scope(actor=self.actor, scope=self.scope).values_list(
+                'pk', flat=True
+            )
         )
-        ids = set(queryset.values_list('pk', flat=True))
-        self.assertEqual(
-            ids & {via_machine.pk, via_wo.pk, theirs.pk, conflict.pk, unprovable.pk},
-            {via_machine.pk, via_wo.pk},
+        self.assertEqual(customer_ids & all_pks, {via_wo.pk, wo_wins.pk})
+        client_ids = set(
+            adapter.queryset_for_scope(
+                actor=self.actor, scope=self.client_scope
+            ).values_list('pk', flat=True)
         )
+        self.assertEqual(client_ids & all_pks, {via_machine.pk})
 
     def test_approval_adapter_membership(self):
         """Approvals are scoped only through provable links."""
@@ -144,16 +223,25 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
             approval=foreign,
         )
         unlinked = approval()
-        queryset = get_source_adapter('approval').queryset_for_scope(
-            actor=self.actor, scope=self.scope
+        adapter = get_source_adapter('approval')
+        ids = set(
+            adapter.queryset_for_scope(
+                actor=self.actor, scope=self.client_scope
+            ).values_list('pk', flat=True)
         )
-        ids = set(queryset.values_list('pk', flat=True))
         self.assertIn(linked.pk, ids)
         self.assertNotIn(foreign.pk, ids)
         self.assertNotIn(unlinked.pk, ids)
+        # Machine-linked packets belong to clients; customer scopes see none.
+        customer_ids = set(
+            adapter.queryset_for_scope(actor=self.actor, scope=self.scope).values_list(
+                'pk', flat=True
+            )
+        )
+        self.assertEqual(customer_ids & {linked.pk, foreign.pk, unlinked.pk}, set())
 
-    def test_approval_linked_to_two_customers_leaks_nowhere(self):
-        """An approval linked to two customers is conflicting: no scope sees it.
+    def test_approval_linked_to_two_clients_leaks_nowhere(self):
+        """An approval linked to two clients is conflicting: no scope sees it.
 
         Regression for the ``exclude(Q & ~Q)`` multi-valued join pitfall:
         with one in-scope link and one foreign link on the same relation,
@@ -184,7 +272,7 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
             approval=conflicted,
         )
         adapter = get_source_adapter('approval')
-        for scope in (self.scope, self.other_scope):
+        for scope in (self.client_scope, self.other_client_scope):
             ids = set(
                 adapter.queryset_for_scope(actor=self.actor, scope=scope).values_list(
                     'pk', flat=True
@@ -278,7 +366,7 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
             self.assertNotIn(shared_line.pk, ids)
 
     def test_part_adapter_membership(self):
-        """Parts are relevant only via the scope customer's machines."""
+        """Parts are relevant only via the scope client's machines."""
         from assets.models import MachinePart
         from part.models import Part
 
@@ -287,22 +375,43 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
         foreign = Part.objects.create(name='Belt-scope', description='d')
         MachinePart.objects.create(machine=self.other_machine, part=foreign)
         loose = Part.objects.create(name='Loose-scope', description='d')
-        queryset = get_source_adapter('part_stock').queryset_for_scope(
-            actor=self.actor, scope=self.scope
+        adapter = get_source_adapter('part_stock')
+        ids = set(
+            adapter.queryset_for_scope(
+                actor=self.actor, scope=self.client_scope
+            ).values_list('pk', flat=True)
         )
-        ids = set(queryset.values_list('pk', flat=True))
         self.assertIn(installed.pk, ids)
         self.assertNotIn(foreign.pk, ids)
         self.assertNotIn(loose.pk, ids)
 
-    def test_machine_adapter_membership(self):
-        """Machines are scoped by their customer."""
-        queryset = get_source_adapter('asset_machine').queryset_for_scope(
+    def test_part_adapter_empty_for_customer_scopes(self):
+        """Machines carry no customer identity: customer scopes see no parts."""
+        from assets.models import MachinePart
+        from part.models import Part
+
+        installed = Part.objects.create(name='Filter-cscope', description='d')
+        MachinePart.objects.create(machine=self.machine, part=installed)
+        queryset = get_source_adapter('part_stock').queryset_for_scope(
             actor=self.actor, scope=self.scope
+        )
+        self.assertEqual(queryset.count(), 0)
+
+    def test_machine_adapter_membership(self):
+        """Machines are scoped by their client."""
+        queryset = get_source_adapter('asset_machine').queryset_for_scope(
+            actor=self.actor, scope=self.client_scope
         )
         ids = set(queryset.values_list('pk', flat=True))
         self.assertIn(self.machine.pk, ids)
         self.assertNotIn(self.other_machine.pk, ids)
+
+    def test_machine_adapter_empty_for_customer_scopes(self):
+        """A customer scope truthfully owns no machines."""
+        queryset = get_source_adapter('asset_machine').queryset_for_scope(
+            actor=self.actor, scope=self.scope
+        )
+        self.assertEqual(queryset.count(), 0)
 
 
 class ServicePrincipalTest(TestCase):

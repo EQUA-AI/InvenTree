@@ -74,7 +74,9 @@ class VoiceBridgeTests(TestCase):
         cls.actor = get_user_model().objects.create_superuser(
             username='voice-sup', email='v@example.com', password='pw'
         )
-        cls.machine = AssetMachine.objects.create(name='Mill 2', customer=cls.customer)
+        # Machine identity is irrelevant here: every proposal targets a work
+        # order that carries an explicit customer, which wins scope resolution.
+        cls.machine = AssetMachine.objects.create(name='Mill 2')
 
     def setUp(self):
         """SetUp."""
@@ -197,7 +199,9 @@ class VoiceProposeSideTests(TestCase):
         cls.actor = get_user_model().objects.create_superuser(
             username='voice-prop', email='vp@example.com', password='pw'
         )
-        cls.machine = AssetMachine.objects.create(name='Mill 9', customer=cls.customer)
+        # Machine identity is irrelevant here: the work order carries an
+        # explicit customer, which wins scope resolution.
+        cls.machine = AssetMachine.objects.create(name='Mill 9')
 
     def setUp(self):
         """SetUp."""

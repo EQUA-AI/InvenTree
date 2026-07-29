@@ -42,9 +42,10 @@ class CaptureApiTests(TestCase):
         cls.customer = Company.objects.create(
             name='Capture API Customer', is_customer=True
         )
-        cls.machine = AssetMachine.objects.create(
-            name='Capture API Machine', customer=cls.customer
-        )
+        # Machine identity is irrelevant here: capture scope derives from the
+        # deployment policy key, and the work order carries an explicit
+        # customer, which wins scope resolution.
+        cls.machine = AssetMachine.objects.create(name='Capture API Machine')
         cls.work_order = WorkOrder.objects.create(
             title='Capture API Work Order',
             status=WorkOrder.STATUS_REVIEW,

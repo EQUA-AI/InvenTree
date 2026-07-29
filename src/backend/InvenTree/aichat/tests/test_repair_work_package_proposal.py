@@ -26,7 +26,6 @@ from tasks.scope import MaintenanceScope
 from aichat.models import ProposalState
 from aichat.services import proposals as svc
 from assets.models import AssetMachine, Client
-from company.models import Company
 from part.models import Part
 from repair.models import RepairPacket
 
@@ -39,8 +38,8 @@ class RepairWorkPackageProposalTest(TestCase):
     def setUp(self):
         """Create a scoped actor, a machine and a stockable part."""
         suffix = uuid.uuid4().hex[:8]
-        self.customer = Company.objects.create(
-            name=f'Chat repair {suffix}', is_customer=True
+        self.client_tenant = Client.objects.create(
+            name=f'Tenant {suffix}', code=f'tenant-{suffix}'
         )
         self.actor = get_user_model().objects.create_superuser(
             username=f'chat-planner-{suffix}',
@@ -48,10 +47,12 @@ class RepairWorkPackageProposalTest(TestCase):
             password='pw',
         )
         self.actor.maintenance_scopes = {
-            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
+            MaintenanceScope(
+                customer_id=None, site_key=None, client_id=self.client_tenant.pk
+            )
         }
         self.machine = AssetMachine.objects.create(
-            name=f'Centrifuge {suffix}', customer=self.customer
+            name=f'Centrifuge {suffix}', client=self.client_tenant
         )
         self.part = Part.objects.create(
             name=f'Bearing {suffix}', description='spare', component=True
@@ -74,7 +75,7 @@ class RepairWorkPackageProposalTest(TestCase):
     def _propose(self, key=None, **overrides):
         return svc.create_proposal(
             owner=self.actor,
-            scope_key=f'customer:{self.customer.pk}',
+            scope_key=f'client:{self.client_tenant.pk}',
             scope_hash='b' * 64,
             action_type=ACTION,
             work_order_id=None,
@@ -176,11 +177,12 @@ class RepairWorkPackageProposalTest(TestCase):
 
     def test_a_machine_outside_scope_is_not_proposable(self):
         """Scope is applied when the proposal is raised, not at execution."""
-        other_customer = Company.objects.create(
-            name=f'Other {uuid.uuid4().hex[:6]}', is_customer=True
+        other_suffix = uuid.uuid4().hex[:6]
+        other_client = Client.objects.create(
+            name=f'Tenant {other_suffix}', code=f'tenant-{other_suffix}'
         )
         other_machine = AssetMachine.objects.create(
-            name=f'Foreign {uuid.uuid4().hex[:6]}', customer=other_customer
+            name=f'Foreign {other_suffix}', client=other_client
         )
 
         with self.assertRaises(svc.ProposalNotFound):
@@ -210,7 +212,7 @@ class RepairWorkPackageProposalTest(TestCase):
         orphan = AssetMachine.objects.create(name=f'Orphan {uuid.uuid4().hex[:6]}')
 
         with self.assertRaisesMessage(
-            svc.ProposalError, 'neither a customer nor a client'
+            svc.ProposalError, 'Machine scope is unresolved: it has no client.'
         ):
             self._propose(machine_id=orphan.pk)
 
@@ -229,13 +231,15 @@ class RepairWorkPackageProposalTest(TestCase):
             password='pw',
         )
         weak.maintenance_scopes = {
-            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
+            MaintenanceScope(
+                customer_id=None, site_key=None, client_id=self.client_tenant.pk
+            )
         }
 
         with self.assertRaises(svc.CapabilityDenied):
             svc.create_proposal(
                 owner=weak,
-                scope_key=f'customer:{self.customer.pk}',
+                scope_key=f'client:{self.client_tenant.pk}',
                 scope_hash='b' * 64,
                 action_type=ACTION,
                 work_order_id=None,

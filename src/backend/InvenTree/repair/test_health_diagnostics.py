@@ -23,8 +23,7 @@ from assets.health_models import (
     SignalQuality,
     SourceType,
 )
-from assets.models import AssetMachine
-from company.models import Company
+from assets.models import AssetMachine, Client
 from machine_health.services.anomalies import fingerprint_for, record_anomaly
 
 from . import services
@@ -33,8 +32,10 @@ HEALTH_CAPABILITY = 'diagnostics.health.read'
 
 
 #: The health reader runs behind the same entity ACL as every other diagnostic
-#: read, so the test actor needs a real scope rather than a stubbed one.
-_GRANTED_CUSTOMER_IDS: list[int] = []
+#: read, so the test actor needs a real scope rather than a stubbed one. The
+#: entity ACL resolves a machine through its client, so the grants are client
+#: scopes.
+_GRANTED_CLIENT_IDS: list[int] = []
 
 
 def _capabilities(actor):
@@ -45,8 +46,8 @@ def _capabilities(actor):
 def _scopes(actor):
     """Return the maintenance scopes granted to the current test actor."""
     return {
-        MaintenanceScope(customer_id=customer_id, site_key=None)
-        for customer_id in _GRANTED_CUSTOMER_IDS
+        MaintenanceScope(customer_id=None, site_key=None, client_id=client_id)
+        for client_id in _GRANTED_CLIENT_IDS
     }
 
 
@@ -89,13 +90,13 @@ class HealthDiagnosticReadTest(TestCase):
         self.actor = get_user_model().objects.create_superuser(
             username=f'reader-{suffix}', email=f'{suffix}@example.com', password='pw'
         )
-        self.customer = Company.objects.create(
-            name=f'Health read {suffix}', is_customer=True
+        self.client_tenant = Client.objects.create(
+            name=f'Tenant {suffix}', code=f'tenant-{suffix}'
         )
-        _GRANTED_CUSTOMER_IDS[:] = [self.customer.pk]
-        self.addCleanup(_GRANTED_CUSTOMER_IDS.clear)
+        _GRANTED_CLIENT_IDS[:] = [self.client_tenant.pk]
+        self.addCleanup(_GRANTED_CLIENT_IDS.clear)
         self.machine = AssetMachine.objects.create(
-            name=f'Blower {suffix}', customer=self.customer
+            name=f'Blower {suffix}', client=self.client_tenant
         )
         self.source = HealthSource.objects.create(
             name=f'SCADA {suffix}',
@@ -192,7 +193,7 @@ class HealthDiagnosticReadTest(TestCase):
     def test_wrong_entity_authorization_abstains(self):
         """An authorization for another record yields nothing."""
         other = AssetMachine.objects.create(
-            name=f'Other {uuid.uuid4().hex[:6]}', customer=self.customer
+            name=f'Other {uuid.uuid4().hex[:6]}', client=self.client_tenant
         )
         self._set_signal(3.0)
 

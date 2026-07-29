@@ -12,8 +12,7 @@ from django.db.models import Q
 from tasks.models import WorkOrder, WorkOrderLifecycle
 
 from assets.demo_history import normalize_completed_history_card
-from assets.models import AssetMachine, AssetMaintenanceRecord, MachinePart
-from company.models import Company
+from assets.models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
 from part.models import Part, PartCategory
 
 DATA_FILE = Path(__file__).resolve().parents[2] / 'demo_machine_data.json'
@@ -46,7 +45,7 @@ class Command(BaseCommand):
         data = self._read_data()
 
         with transaction.atomic():
-            customers = self._load_customers(data['customers'])
+            clients = self._load_clients(data['clients'])
             categories = self._load_categories(data['parts'])
             parts = self._load_parts(data['parts'], categories=categories)
 
@@ -57,7 +56,7 @@ class Command(BaseCommand):
 
             for machine_data in data['machines']:
                 machine, created_links, loaded_records, loaded_work_orders = (
-                    self._load_machine(machine_data, customers=customers, parts=parts)
+                    self._load_machine(machine_data, clients=clients, parts=parts)
                 )
                 machine_count += 1
                 part_link_count += created_links
@@ -96,7 +95,7 @@ class Command(BaseCommand):
         if data.get('schema_version') != 1:
             raise CommandError('Unsupported machine demo data schema version')
 
-        for key in ('customers', 'parts', 'machines'):
+        for key in ('clients', 'parts', 'machines'):
             if not isinstance(data.get(key), list):
                 raise CommandError(f'Machine demo data must contain a {key} list')
 
@@ -153,55 +152,28 @@ class Command(BaseCommand):
                     )
                 references[reference] = label
 
-    def _load_customers(self, records):
-        """Upsert demo customers and return them by name."""
-        customers = {}
+    def _load_clients(self, records):
+        """Upsert demo clients and return them by code.
+
+        ``get_or_create`` by code keeps the loader idempotent with the row the
+        0009 backfill migration seeds for the same ``internal`` tenant.
+        """
+        clients = {}
 
         for record in records:
-            values = record.copy()
-            name = values.pop('name')
-            legacy_machine = values.pop('legacy_machine', None)
-            matches = Company.objects.filter(name__iexact=name).order_by('pk')
+            code = record['code']
+            client, created = Client.objects.get_or_create(
+                code=code,
+                defaults={'name': record['name'], 'active': record.get('active', True)},
+            )
+            if not created:
+                client.name = record['name']
+                client.active = record.get('active', True)
+                client.save(update_fields=['name', 'active'])
 
-            if matches.count() > 1:
-                raise CommandError(
-                    f'Multiple companies match demo customer name {name!r}'
-                )
+            clients[code] = client
 
-            customer = matches.first()
-            if customer is None:
-                customer = Company.objects.create(
-                    name=name,
-                    metadata={
-                        DEMO_METADATA_KEY: {'kind': 'customer', 'schema_version': 1}
-                    },
-                    **values,
-                )
-            else:
-                marker = customer.get_metadata(DEMO_METADATA_KEY, {})
-                managed = isinstance(marker, dict) and marker.get('kind') == 'customer'
-                legacy_owned = bool(
-                    legacy_machine
-                    and AssetMachine.objects.filter(
-                        name=legacy_machine, customer=customer
-                    ).exists()
-                )
-                if not managed and not legacy_owned:
-                    raise CommandError(
-                        f'Demo customer name {name!r} is already used by '
-                        'a record not owned by the machine demo dataset'
-                    )
-
-                for field, value in values.items():
-                    setattr(customer, field, value)
-                metadata = dict(customer.metadata or {})
-                metadata[DEMO_METADATA_KEY] = {'kind': 'customer', 'schema_version': 1}
-                customer.metadata = metadata
-                customer.save(update_fields=[*values, 'metadata'])
-
-            customers[name] = customer
-
-        return customers
+        return clients
 
     @staticmethod
     def _normalize_category_path(value):
@@ -351,7 +323,7 @@ class Command(BaseCommand):
 
         return parts
 
-    def _load_machine(self, record, *, customers, parts):
+    def _load_machine(self, record, *, clients, parts):
         """Upsert one machine and its installed parts and history."""
         machine_values = {
             key: record[key]
@@ -365,16 +337,15 @@ class Command(BaseCommand):
             )
         }
 
-        customer_name = record.get('customer')
-        if customer_name:
-            try:
-                machine_values['customer'] = customers[customer_name]
-            except KeyError as exc:
-                raise CommandError(
-                    f'Unknown demo customer {customer_name!r} for {record["name"]!r}'
-                ) from exc
-        else:
-            machine_values['customer'] = None
+        client_code = record.get('client')
+        if not client_code:
+            raise CommandError(f'Demo machine {record["name"]!r} must name a client')
+        try:
+            machine_values['client'] = clients[client_code]
+        except KeyError as exc:
+            raise CommandError(
+                f'Unknown demo client {client_code!r} for {record["name"]!r}'
+            ) from exc
 
         matches = AssetMachine.objects.filter(name__iexact=record['name']).order_by(
             'pk'
@@ -581,13 +552,13 @@ class Command(BaseCommand):
                 'due_date': record_date,
                 'assignee': maintenance_data['performed_by'],
                 'tags': ['demo', 'maintenance'],
-                'company': machine.customer.name if machine.customer else '',
+                'company': '',
                 'job_number': reference,
                 'is_active': False,
                 'lifecycle_status': WorkOrderLifecycle.COMPLETED,
                 'work_order_type': work_order_data['type'],
                 'machine': machine,
-                'customer': machine.customer,
+                'customer': None,
             },
         )
 

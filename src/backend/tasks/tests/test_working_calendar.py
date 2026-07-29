@@ -56,9 +56,7 @@ class WorkingCalendarModelTest(TestCase):
 class CalendarResolutionTest(TestCase):
     def setUp(self):
         self.customer = Company.objects.create(name='Cal Cust', is_customer=True)
-        self.machine = AssetMachine.objects.create(
-            name='Cal Press', customer=self.customer
-        )
+        self.machine = AssetMachine.objects.create(name='Cal Press')
         self.work_order = WorkOrder.objects.create(
             title='Cal WO', status='backlog', priority='low', machine=self.machine
         )
@@ -73,11 +71,16 @@ class CalendarResolutionTest(TestCase):
         WorkingCalendar.objects.create(
             name='Default cal', is_default=True, timezone='UTC'
         )
+        # Even with an explicit customer on the card, the machine calendar wins.
+        self.work_order.customer = self.customer
+        self.work_order.save()
 
         self.assertEqual(calendar_for_card(self.work_order), machine_cal)
         self.assertEqual(spec_for_card(self.work_order).tzname, 'Europe/Berlin')
 
     def test_customer_calendar_used_when_no_machine_calendar(self):
+        self.work_order.customer = self.customer
+        self.work_order.save()
         customer_cal = WorkingCalendar.objects.create(
             name='Customer cal', customer=self.customer, timezone='Asia/Tokyo'
         )
@@ -85,14 +88,18 @@ class CalendarResolutionTest(TestCase):
 
         self.assertEqual(calendar_for_card(self.work_order), customer_cal)
 
-    def test_customer_inherited_from_machine_when_card_has_none(self):
-        # The card's own customer is null; it should inherit the machine's.
+    def test_default_used_when_card_has_no_explicit_customer(self):
+        # The card carries no customer of its own, and machines no longer carry
+        # a customer identity: a customer-scoped calendar is not considered.
         self.assertIsNone(self.work_order.customer_id)
-        customer_cal = WorkingCalendar.objects.create(
-            name='Inherited', customer=self.customer
+        WorkingCalendar.objects.create(
+            name='Unrelated customer cal', customer=self.customer
+        )
+        default_cal = WorkingCalendar.objects.create(
+            name='Default cal', is_default=True
         )
 
-        self.assertEqual(calendar_for_card(self.work_order), customer_cal)
+        self.assertEqual(calendar_for_card(self.work_order), default_cal)
 
     def test_default_calendar_used_when_nothing_more_specific(self):
         default_cal = WorkingCalendar.objects.create(

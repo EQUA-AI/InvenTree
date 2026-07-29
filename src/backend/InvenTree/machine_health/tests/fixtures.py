@@ -4,8 +4,7 @@ import uuid
 
 from django.utils import timezone
 
-from assets.models import AssetMachine
-from company.models import Company
+from assets.models import AssetMachine, Client
 from assets.health_models import (
     HealthSource,
     MachineSignalBinding,
@@ -18,17 +17,15 @@ from assets.health_models import (
 class HealthEnvMixin:
     """Builds one machine with a webhook source and a bounded signal."""
 
-    def build_health_env(self, *, freshness=900, with_customer=True):
-        """Create a customer, machine, source and one threshold-bounded binding."""
+    def build_health_env(self, *, freshness=900):
+        """Create a client, machine, source and one threshold-bounded binding."""
         suffix = uuid.uuid4().hex[:8]
 
-        self.customer = (
-            Company.objects.create(name=f'Health {suffix}', is_customer=True)
-            if with_customer
-            else None
+        self.client_tenant = Client.objects.create(
+            name=f'Health {suffix}', code=f'health-{suffix}'
         )
         self.machine = AssetMachine.objects.create(
-            name=f'Pump {suffix}', customer=self.customer
+            name=f'Pump {suffix}', client=self.client_tenant
         )
         self.source = HealthSource.objects.create(
             name=f'SCADA {suffix}',

@@ -5,9 +5,10 @@ from an explicit deployment resolver (``AIMMS_RPF_SCOPE_RESOLVER``) or an
 explicit actor attribute; nothing is ever inferred from free-text location, and
 an unresolved or contradictory scope always fails before any object lookup.
 
-A scope with ``customer_id=None`` means the explicit shared/global catalog
-scope. It is never a wildcard: an actor holding only the global scope cannot
-act on a customer-owned context, and vice versa.
+A scope with neither a customer nor a client means the explicit shared/global
+catalog scope. It is never a wildcard: an actor holding only the global scope
+cannot act on an owned context, and vice versa. Machines are owned by their
+client (the internal tenant); a customer is an explicit work-order claim.
 """
 
 from dataclasses import dataclass
@@ -24,18 +25,23 @@ class VerificationScopeError(Exception):
 
 @dataclass(frozen=True)
 class VerificationScope:
-    """One resolved verification scope (customer and optional site)."""
+    """One resolved verification scope (customer or client, optional site)."""
 
     customer_id: int | None
     site_key: str | None = None
+    client_id: int | None = None
 
 
 def scope_fingerprint(scope: VerificationScope) -> str:
-    """Return the canonical fingerprint for a resolved scope."""
-    return hash_canonical(
-        HashDomains.SCOPE,
-        {'customer_id': scope.customer_id, 'site_key': scope.site_key},
-    )
+    """Return the canonical fingerprint for a resolved scope.
+
+    ``client_id`` participates only when set, so every fingerprint persisted
+    before the field existed (customer and global scopes) stays stable.
+    """
+    payload = {'customer_id': scope.customer_id, 'site_key': scope.site_key}
+    if scope.client_id is not None:
+        payload['client_id'] = scope.client_id
+    return hash_canonical(HashDomains.SCOPE, payload)
 
 
 def _coerce_scope(value) -> VerificationScope:
@@ -44,15 +50,20 @@ def _coerce_scope(value) -> VerificationScope:
         return value
     if isinstance(value, dict):
         return VerificationScope(
-            customer_id=value.get('customer_id'), site_key=value.get('site_key')
+            customer_id=value.get('customer_id'),
+            site_key=value.get('site_key'),
+            client_id=value.get('client_id'),
         )
     if isinstance(value, (tuple, list)) and len(value) == 2:
         return VerificationScope(customer_id=value[0], site_key=value[1])
     # Accept maintenance scopes (same shape) without importing the tasks app
     customer_id = getattr(value, 'customer_id', None)
     site_key = getattr(value, 'site_key', None)
-    if customer_id is not None or site_key is not None:
-        return VerificationScope(customer_id=customer_id, site_key=site_key)
+    client_id = getattr(value, 'client_id', None)
+    if customer_id is not None or site_key is not None or client_id is not None:
+        return VerificationScope(
+            customer_id=customer_id, site_key=site_key, client_id=client_id
+        )
     raise VerificationScopeError(
         'Invalid verification scope returned by actor resolver'
     )
@@ -94,35 +105,36 @@ def scope_for_context(
 ) -> VerificationScope:
     """Resolve the target scope for a verification context.
 
-    Customer-owned context (a machine or work order) yields that customer's
-    scope; disagreement between owners fails closed. Pure catalog context
-    (BOM line, requested part, manual) yields the explicit global scope.
+    An explicit work-order customer wins (a sales claim about the job);
+    otherwise the context is owned by the client of the machines involved,
+    and disagreement between owners fails closed. Pure catalog context (BOM
+    line, requested part, manual) yields the explicit global scope.
 
     The free-text ``AssetMachine.location`` is never promoted into a site
     boundary (spec section 17.3).
     """
-    customer_ids = set()
+    client_ids = set()
 
     if machine is not None:
-        customer_ids.add(machine.customer_id)
+        client_ids.add(machine.client_id)
 
     if work_order is not None:
         wo_customer = getattr(work_order, 'customer_id', None)
-        wo_machine = getattr(work_order, 'machine', None)
         if wo_customer is not None:
-            customer_ids.add(wo_customer)
+            return VerificationScope(customer_id=wo_customer, site_key=None)
+        wo_machine = getattr(work_order, 'machine', None)
         if wo_machine is not None:
-            customer_ids.add(wo_machine.customer_id)
+            client_ids.add(wo_machine.client_id)
 
-    customer_ids.discard(None)
+    client_ids.discard(None)
 
-    if len(customer_ids) > 1:
+    if len(client_ids) > 1:
         raise VerificationScopeError(
-            'Verification context owners disagree about customer scope'
+            'Verification context owners disagree about client scope'
         )
 
-    customer_id = next(iter(customer_ids)) if customer_ids else None
-    return VerificationScope(customer_id=customer_id, site_key=None)
+    client_id = next(iter(client_ids)) if client_ids else None
+    return VerificationScope(customer_id=None, site_key=None, client_id=client_id)
 
 
 def require_scope(actor, target: VerificationScope) -> VerificationScope:

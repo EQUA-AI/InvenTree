@@ -40,9 +40,7 @@ class CompleteWorkOrderTest(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        self.machine = AssetMachine.objects.create(
-            name='Pump 1', customer=self.customer
-        )
+        self.machine = AssetMachine.objects.create(name='Pump 1')
         self.work_order = WorkOrder.objects.create(
             title='Complete me', status=WorkOrder.STATUS_REVIEW,
             priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,

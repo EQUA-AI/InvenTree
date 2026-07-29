@@ -17,7 +17,6 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from assets.models import AssetMachine
-from company.models import Company
 from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 
 
@@ -45,10 +44,7 @@ class KanbanScheduleSerializerTest(TestCase):
         self.user.save(update_fields=['first_name', 'last_name'])
         self.client.force_login(self.user)
 
-        self.customer = Company.objects.create(name='Sched Cust', is_customer=True)
-        self.machine = AssetMachine.objects.create(
-            name='Press 7', customer=self.customer, location='Bay 4'
-        )
+        self.machine = AssetMachine.objects.create(name='Press 7', location='Bay 4')
         self.work_order = WorkOrder.objects.create(
             title='Replace bearing',
             status='backlog',
@@ -400,13 +396,8 @@ class KanbanScheduleQueryCountTest(TestCase):
 
     def _build(self, count):
         WorkOrder.objects.all().delete()
-        customer = Company.objects.create(
-            name=f'Count Cust {count}', is_customer=True
-        )
         for index in range(count):
-            machine = AssetMachine.objects.create(
-                name=f'M{count}-{index}', customer=customer
-            )
+            machine = AssetMachine.objects.create(name=f'M{count}-{index}')
             WorkOrder.objects.create(
                 title=f'card-{index}',
                 status='backlog',

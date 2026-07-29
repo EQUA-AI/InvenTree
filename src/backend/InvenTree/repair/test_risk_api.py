@@ -4,6 +4,7 @@ import uuid
 from datetime import timedelta
 from unittest import mock
 
+from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
@@ -52,7 +53,14 @@ class RiskApiTest(RiskEnvMixin, TestCase):
     """Authenticated one-scope API behavior."""
 
     def setUp(self):
-        """Build environment, permissions, and API client."""
+        """Build environment, permissions, and API client.
+
+        The cache is cleared because the summary read-model cache (keyed by
+        scope, fingerprint, and epoch) survives between tests while sqlite
+        reuses rolled-back primary keys, so one test's cached summary could
+        otherwise satisfy the next test's request.
+        """
+        cache.clear()
         self.build_env()
         self.addCleanup(self.teardown_scopes)
         grant_permissions(
@@ -68,15 +76,17 @@ class RiskApiTest(RiskEnvMixin, TestCase):
             ],
         )
         self.actor = fresh(self.actor)
-        SCOPES_BY_USERNAME['risk-actor'] = {self.scope}
+        SCOPES_BY_USERNAME['risk-actor'] = {self.scope, self.client_scope}
         self.client = APIClient()
         self.client.force_authenticate(self.actor)
 
     def test_scope_list(self):
-        """The actor sees exactly their authorized scope keys."""
+        """The actor sees exactly their authorized scope keys, sorted."""
         response = self.client.get(reverse('risk-scope-list'))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['scopes'], [self.scope_key])
+        self.assertEqual(
+            response.json()['scopes'], [self.scope_key, self.client_scope_key]
+        )
         self.assertTrue(response.json()['authorization_fingerprint'])
 
     def test_list_requires_scope_parameter(self):
@@ -156,6 +166,26 @@ class RiskApiTest(RiskEnvMixin, TestCase):
             reverse('risk-finding-list'), {'scope': self.other_scope_key}
         )
         self.assertEqual({row['pk'] for row in other.json()['results']}, {theirs.pk})
+
+    def test_client_scope_key_serves_machine_derived_findings(self):
+        """Machine-derived findings live under the client (``k``) key."""
+        plant = self.make_finding(
+            discriminator='plant', scope_key=self.client_scope_key
+        )
+        sales = self.make_finding(discriminator='sales')
+        response = self.client.get(
+            reverse('risk-finding-list'), {'scope': self.client_scope_key}
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual({row['pk'] for row in payload['results']}, {plant.pk})
+        self.assertEqual(payload['count'], 1)
+        self.assertNotEqual(sales.pk, plant.pk)
+        # The unheld other client's key stays indistinguishable from absent.
+        denied = self.client.get(
+            reverse('risk-finding-list'), {'scope': self.other_client_scope_key}
+        )
+        self.assertEqual(denied.status_code, 404)
 
     def test_detail_includes_evidence_and_events(self):
         """Detail reapplies visibility and exposes the audit chain."""

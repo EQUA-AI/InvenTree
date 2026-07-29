@@ -22,9 +22,7 @@ class CreateChildTest(TestCase):
             username='child-actor', email='c@example.com', password='pw'
         )
         self.customer = Company.objects.create(name='Child Cust', is_customer=True)
-        self.machine = AssetMachine.objects.create(
-            name='Child Press', customer=self.customer
-        )
+        self.machine = AssetMachine.objects.create(name='Child Press')
         self.parent = WorkOrder.objects.create(
             title='Parent WO',
             status='backlog',

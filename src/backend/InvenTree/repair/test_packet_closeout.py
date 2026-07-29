@@ -74,9 +74,9 @@ class PacketCloseoutTest(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        self.machine = AssetMachine.objects.create(
-            name=f'Pump {suffix}', customer=self.customer
-        )
+        # The machine carries no tenant identity of its own: the work order's
+        # explicit customer is what authorizes this closeout.
+        self.machine = AssetMachine.objects.create(name=f'Pump {suffix}')
         self.work_order = WorkOrder.objects.create(
             title='Seal and wear-ring repair',
             status=WorkOrder.STATUS_REVIEW,
@@ -243,9 +243,8 @@ class PacketCloseoutApiTest(InvenTreeAPITestCase):
         )
         _GRANTED_CUSTOMER_IDS[:] = [self.customer.pk]
         self.addCleanup(_GRANTED_CUSTOMER_IDS.clear)
-        self.machine = AssetMachine.objects.create(
-            name=f'Blower {suffix}', customer=self.customer
-        )
+        # Clientless machine: the work order's explicit customer scopes the close.
+        self.machine = AssetMachine.objects.create(name=f'Blower {suffix}')
         self.work_order = WorkOrder.objects.create(
             title='Bearing replacement',
             status=WorkOrder.STATUS_REVIEW,

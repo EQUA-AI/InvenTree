@@ -31,9 +31,7 @@ class WorkOrderCompleteAPITest(TestCase):
         }
         self.client = APIClient()
         self.client.force_authenticate(self.actor)
-        self.machine = AssetMachine.objects.create(
-            name='Compressor', customer=self.customer
-        )
+        self.machine = AssetMachine.objects.create(name='Compressor')
         self.work_order = WorkOrder.objects.create(
             title='Finish work', status=WorkOrder.STATUS_REVIEW,
             priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,

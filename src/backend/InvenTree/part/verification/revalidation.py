@@ -71,7 +71,10 @@ def diff_observations(baseline: dict, current: dict) -> list[dict]:
     return differences
 
 
-# Path fragments whose change is blocking regardless of policy allowlists
+# Path fragments whose change is blocking regardless of policy allowlists.
+# 'machine.customer' is retained deliberately: a baseline snapshotted before
+# machines lost their customer field must block (the field disappearing IS an
+# ownership change), not silently pass revalidation.
 _BLOCKING_FRAGMENTS = (
     'scope_fingerprint',
     'policy.status',
@@ -79,6 +82,7 @@ _BLOCKING_FRAGMENTS = (
     'bom_item.sub_part',
     'bom_item.id',
     'machine.customer',
+    'machine.client',
 )
 
 

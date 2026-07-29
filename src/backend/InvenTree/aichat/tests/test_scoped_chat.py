@@ -78,7 +78,7 @@ class ScopedChatTestCase(TestCase):
             username='scoped-viewer', email='sv@example.com', password='pw'
         )
         cls.machine = AssetMachine.objects.create(
-            name='Lathe 3', customer=cls.customer, serial='TC-INF-PS1-001'
+            name='Lathe 3', serial='TC-INF-PS1-001'
         )
 
     def setUp(self):

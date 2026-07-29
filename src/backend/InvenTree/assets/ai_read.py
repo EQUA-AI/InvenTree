@@ -83,6 +83,7 @@ EXCLUDED_FIELDS = {
     'Attachment.link': 'external URL',
     'Attachment.upload_user': 'uploader identity',
     'Client.code': 'scope-token identifier',
+    'Client.name': 'system-only tenant identity, never rendered',
 }
 
 
@@ -157,9 +158,7 @@ def authorized_machine(user, machine_id) -> AssetMachine | None:
     except (TypeError, ValueError):
         return None
 
-    machine = (
-        AssetMachine.objects.select_related('customer', 'client').filter(pk=pk).first()
-    )
+    machine = AssetMachine.objects.filter(pk=pk).first()
     if machine is None:
         return None
     try:
@@ -213,10 +212,9 @@ def machines_in_scope(user, *, query: str | None = None, limit: int = 10):
 def machine_identity(machine) -> dict[str, Any]:
     """The Details tab: what this asset is and where it lives.
 
-    ``customer_name`` / ``client_name`` are included because the page renders
-    them to the same authorized operator and they answer "whose machine is
-    this". The client *code* is not: it is the identifier an actor's granted
-    scope names, so it stays out of every prompt.
+    The client is a system-only scope identity -- neither its name nor its
+    code belongs in a prompt, the same way the code already stayed out of
+    every projection.
     """
     return {
         'machine_id': machine.pk,
@@ -227,12 +225,6 @@ def machine_identity(machine) -> dict[str, Any]:
         'serial': fence(machine.serial, limit=255),
         'location': fence(machine.location, limit=255),
         'description': fence(machine.description),
-        'customer_name': fence(machine.customer.name, limit=255)
-        if machine.customer_id
-        else None,
-        'client_name': fence(machine.client.name, limit=255)
-        if machine.client_id
-        else None,
         'commissioned_at': _iso(machine.created_at),
         'last_updated_at': _iso(machine.updated_at),
     }

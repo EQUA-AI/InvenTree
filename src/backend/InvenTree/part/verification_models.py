@@ -157,6 +157,14 @@ class PartVerificationSession(models.Model):
         related_name='part_verification_sessions',
     )
 
+    scope_client = models.ForeignKey(
+        'assets.Client',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='part_verification_sessions',
+    )
+
     scope_site_key = models.CharField(max_length=100, blank=True)
 
     scope_fingerprint = models.CharField(max_length=HASH_LENGTH)

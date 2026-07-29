@@ -125,7 +125,7 @@ class VerificationAPIBase(TestCase):
                 model_type=part_ct, model_id=part.pk, template=phase, data=phases
             )
 
-        cls.machine = AssetMachine.objects.create(name='RPF API Machine', customer=None)
+        cls.machine = AssetMachine.objects.create(name='RPF API Machine')
         MachinePart.objects.create(machine=cls.machine, part=cls.requested, quantity=1)
 
     def setUp(self):
@@ -355,7 +355,7 @@ class VerificationEvaluationAPITest(VerificationAPIBase):
 
     def test_readiness_reports_context_blockers(self):
         """Ambiguous installed context yields stable readiness blockers."""
-        bare = AssetMachine.objects.create(name='RPF API Bare Machine', customer=None)
+        bare = AssetMachine.objects.create(name='RPF API Bare Machine')
         session = self._create_session('ready-blocked-1', machine_id=bare.pk).json()
 
         response = self.client.get(self._url(session['pk'], 'readiness/'))

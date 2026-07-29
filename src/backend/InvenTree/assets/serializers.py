@@ -5,21 +5,21 @@ from django.conf import settings
 from rest_framework import serializers
 from tasks.scope import ScopeError, require_work_order_scope
 
-from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
+from .models import (
+    AssetMachine,
+    AssetMaintenanceRecord,
+    Client,
+    MachinePart,
+    get_default_client,
+)
 
 
 class AssetMachineSerializer(serializers.ModelSerializer):
-    """Serializer for AssetMachine instances."""
+    """Serializer for AssetMachine instances.
 
-    customer_name = serializers.CharField(
-        source='customer.name', read_only=True, default=None
-    )
-    client_name = serializers.CharField(
-        source='client.name', read_only=True, default=None
-    )
-    client_code = serializers.CharField(
-        source='client.code', read_only=True, default=None
-    )
+    The client is exposed as a bare id only: it is a system identity used for
+    scope resolution, never rendered by the frontend.
+    """
 
     class Meta:
         """Metaclass defining serializer fields."""
@@ -31,11 +31,7 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'description',
             'active',
             'location',
-            'customer',
-            'customer_name',
             'client',
-            'client_name',
-            'client_code',
             'manufacturer',
             'model',
             'serial',
@@ -43,6 +39,12 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'updated_at',
         )
         read_only_fields = ('pk', 'created_at', 'updated_at')
+
+    def create(self, validated_data):
+        """Ensure every machine created through the API carries a client."""
+        if validated_data.get('client') is None:
+            validated_data['client'] = get_default_client()
+        return super().create(validated_data)
 
 
 class MachinePartSerializer(serializers.ModelSerializer):

@@ -1,11 +1,14 @@
 """API contract tests for canonical maintenance work orders."""
 
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from assets.models import AssetMachine, Client
 from company.models import Company
 from repair.models import RepairPacket
 from tasks.models import (
@@ -83,6 +86,58 @@ class WorkOrderAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         payload = response.json()
         self.assertEqual(set(payload), {'count', 'next', 'previous', 'results'})
+        self.assertEqual(payload['count'], 1)
+        self.assertEqual([item['id'] for item in payload['results']], [visible.pk])
+
+    def test_client_grant_sees_only_customerless_orders_on_its_machines(self):
+        """A client grant reaches customer-NULL orders on that client's machines.
+
+        The explicit customer on a work order is its whole boundary, so a
+        client grant must not see it even when it sits on the client's own
+        machine; and another client's machines stay invisible entirely.
+        """
+        suffix = uuid.uuid4().hex[:6]
+        tenant = Client.objects.create(
+            name=f'Tenant {suffix}', code=f'tenant-{suffix}'
+        )
+        other_tenant = Client.objects.create(
+            name=f'Other tenant {suffix}', code=f'other-tenant-{suffix}'
+        )
+        machine = AssetMachine.objects.create(
+            name=f'Client machine {suffix}', client=tenant
+        )
+        foreign_machine = AssetMachine.objects.create(
+            name=f'Foreign machine {suffix}', client=other_tenant
+        )
+
+        visible = self.make_card(
+            title='Client-owned work order', customer=None, machine=machine
+        )
+        self.make_card(
+            title='Explicit customer wins over the machine client',
+            machine=machine,
+        )
+        self.make_card(
+            title='Another client machine order',
+            customer=None,
+            machine=foreign_machine,
+        )
+
+        actor = get_user_model().objects.create_superuser(
+            username=f'client-grant-supervisor-{suffix}',
+            email=f'client-grant-{suffix}@example.com',
+            password='test-password',
+        )
+        actor.maintenance_scopes = {
+            MaintenanceScope(customer_id=None, site_key=None, client_id=tenant.pk)
+        }
+        api = APIClient()
+        api.force_authenticate(actor)
+
+        response = api.get(self.list_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
         self.assertEqual(payload['count'], 1)
         self.assertEqual([item['id'] for item in payload['results']], [visible.pk])
 

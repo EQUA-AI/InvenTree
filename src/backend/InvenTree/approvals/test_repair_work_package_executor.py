@@ -32,8 +32,7 @@ from approvals.executors import (
 )
 from approvals.models import ActionType
 from assets.health_models import AnomalyStatus, SourceType
-from assets.models import AssetMachine
-from company.models import Company
+from assets.models import AssetMachine, Client
 from repair.models import RepairPacket
 
 
@@ -54,15 +53,19 @@ class RepairWorkPackageExecutorTest(TestCase):
     def setUp(self):
         """Create a scoped actor and a machine."""
         suffix = uuid.uuid4().hex[:8]
-        self.customer = Company.objects.create(name=f'Exec {suffix}', is_customer=True)
+        self.client_tenant = Client.objects.create(
+            name=f'Tenant {suffix}', code=f'tenant-{suffix}'
+        )
         self.actor = get_user_model().objects.create_superuser(
             username=f'exec-{suffix}', email=f'{suffix}@example.com', password='pw'
         )
         self.actor.maintenance_scopes = {
-            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
+            MaintenanceScope(
+                customer_id=None, site_key=None, client_id=self.client_tenant.pk
+            )
         }
         self.machine = AssetMachine.objects.create(
-            name=f'Clarifier {suffix}', customer=self.customer
+            name=f'Clarifier {suffix}', client=self.client_tenant
         )
         self.executor = RepairWorkPackageExecutor()
 
@@ -160,12 +163,14 @@ class RepairAnomalyDriftTest(TestCase):
         from machine_health.services.anomalies import fingerprint_for, record_anomaly
 
         suffix = uuid.uuid4().hex[:8]
-        self.customer = Company.objects.create(name=f'Drift {suffix}', is_customer=True)
+        self.client_tenant = Client.objects.create(
+            name=f'Tenant {suffix}', code=f'tenant-{suffix}'
+        )
         self.actor = get_user_model().objects.create_superuser(
             username=f'drift-{suffix}', email=f'{suffix}@example.com', password='pw'
         )
         self.machine = AssetMachine.objects.create(
-            name=f'UV Channel {suffix}', customer=self.customer
+            name=f'UV Channel {suffix}', client=self.client_tenant
         )
         HealthSource.objects.create(
             name=f'SCADA {suffix}', source_type=SourceType.SCADA
@@ -231,23 +236,25 @@ class ApprovalBridgeTest(TestCase):
     def setUp(self):
         """Create a scoped actor and machine for chat proposals."""
         suffix = uuid.uuid4().hex[:8]
-        self.customer = Company.objects.create(
-            name=f'Bridge {suffix}', is_customer=True
+        self.client_tenant = Client.objects.create(
+            name=f'Tenant {suffix}', code=f'tenant-{suffix}'
         )
         self.actor = get_user_model().objects.create_superuser(
             username=f'bridge-{suffix}', email=f'{suffix}@example.com', password='pw'
         )
         self.actor.maintenance_scopes = {
-            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
+            MaintenanceScope(
+                customer_id=None, site_key=None, client_id=self.client_tenant.pk
+            )
         }
         self.machine = AssetMachine.objects.create(
-            name=f'Skid {suffix}', customer=self.customer
+            name=f'Skid {suffix}', client=self.client_tenant
         )
 
     def _propose(self):
         return chat_svc.create_proposal(
             owner=self.actor,
-            scope_key=f'customer:{self.customer.pk}',
+            scope_key=f'client:{self.client_tenant.pk}',
             scope_hash='c' * 64,
             action_type='repair_work_package.create',
             work_order_id=None,

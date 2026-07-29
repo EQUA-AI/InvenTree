@@ -126,7 +126,9 @@ def _map_scope_error(error: Exception) -> VerificationScopeError:
 def _session_scope(session) -> scope_module.VerificationScope:
     """Return the resolved scope stored on a session."""
     return scope_module.VerificationScope(
-        customer_id=session.scope_customer_id, site_key=session.scope_site_key or None
+        customer_id=session.scope_customer_id,
+        site_key=session.scope_site_key or None,
+        client_id=session.scope_client_id,
     )
 
 
@@ -415,6 +417,7 @@ def create_session(
         purpose=purpose,
         state=PartVerificationState.COLLECTING,
         scope_customer_id=target.customer_id,
+        scope_client_id=target.client_id,
         scope_site_key=target.site_key or '',
         scope_fingerprint=scope_fp,
         requested_part=requested_part,

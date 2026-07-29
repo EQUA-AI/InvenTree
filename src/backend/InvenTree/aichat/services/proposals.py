@@ -199,15 +199,14 @@ def _authorize_and_bind(owner, action_type: str, work_order_id, intent):
 def _authorize_machine_scope(owner, machine_id) -> None:
     """Authorize creation against the machine's own scope identity.
 
-    A machine is reachable through its sales customer *or*, for internal plant
-    assets, through the client that owns it. A machine with neither identity is
-    still refused: that is an unscoped record, and guessing a boundary for it
-    would be worse than declining.
+    Identity resolution is delegated to ``scope_for_machine`` so this rail can
+    never drift from the canonical rule. An unscoped machine is refused:
+    guessing a boundary for it would be worse than declining.
 
     Failures are reported as "no such machine" rather than distinguishing "exists
     but not yours", so a caller cannot enumerate other tenants' assets.
     """
-    from tasks.scope import MaintenanceScope, ScopeError, scope_for_actor
+    from tasks.scope import ScopeError, scope_for_actor, scope_for_machine
 
     from assets.models import AssetMachine
 
@@ -217,16 +216,10 @@ def _authorize_machine_scope(owner, machine_id) -> None:
     if machine is None:
         raise ProposalNotFound('no such machine')
 
-    if machine.customer_id is not None:
-        required = MaintenanceScope(customer_id=machine.customer_id, site_key=None)
-    elif machine.client_id is not None:
-        required = MaintenanceScope(
-            customer_id=None, site_key=None, client_id=machine.client_id
-        )
-    else:
-        raise ProposalError(
-            'machine has neither a customer nor a client, so it has no scope'
-        )
+    try:
+        required = scope_for_machine(machine)
+    except ScopeError as exc:
+        raise ProposalError(str(exc)) from exc
 
     try:
         scopes = scope_for_actor(owner)

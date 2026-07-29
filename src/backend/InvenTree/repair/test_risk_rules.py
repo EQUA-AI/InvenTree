@@ -50,7 +50,13 @@ class RuleTestBase(RiskEnvMixin, TestCase):
     """Shared environment for rule fixtures."""
 
     def setUp(self):
-        """Build the two-customer environment."""
+        """Build the two-tenant (customer + client) environment.
+
+        Work orders carry explicit customers and stay on ``self.scope``;
+        machine-anchored sources (packets, approvals via packets, parts,
+        machines) belong to ``self.client_tenant`` and are evaluated under
+        ``self.client_scope``.
+        """
         self.build_env()
         self.addCleanup(self.teardown_scopes)
 
@@ -105,7 +111,7 @@ class ApprovalSlaBreachRuleTest(RuleTestBase):
             ApprovalSlaBreachRule(),
             'approval',
             self.actor,
-            self.scope,
+            self.client_scope,
             config={'sla_hours': 24},
         )
         self.assertTrue(complete)
@@ -120,7 +126,7 @@ class ApprovalSlaBreachRuleTest(RuleTestBase):
             ApprovalSlaBreachRule(),
             'approval',
             self.actor,
-            self.scope,
+            self.client_scope,
             config={'sla_hours': 24},
         )
         self.assertEqual(candidates, [])
@@ -140,7 +146,7 @@ class ApprovalSlaBreachRuleTest(RuleTestBase):
             ApprovalSlaBreachRule(),
             'approval',
             self.actor,
-            self.scope,
+            self.client_scope,
             config={'sla_hours': 24},
         )
         self.assertEqual(candidates, [])
@@ -157,7 +163,7 @@ class ApprovalSlaBreachRuleTest(RuleTestBase):
             ApprovalSlaBreachRule(),
             'approval',
             self.actor,
-            self.scope,
+            self.client_scope,
             config={'sla_hours': 24},
         )
         self.assertEqual(len(candidates), 1)
@@ -197,7 +203,7 @@ class ApprovalRevalidationFailedRuleTest(RuleTestBase):
         """A latest revalidation failure yields one candidate."""
         approval = self._approval([(5, 'revalidation_failed')])
         candidates, _ = evaluate(
-            ApprovalRevalidationFailedRule(), 'approval', self.actor, self.scope
+            ApprovalRevalidationFailedRule(), 'approval', self.actor, self.client_scope
         )
         self.assertEqual(
             [candidate.source_id for candidate in candidates], [str(approval.pk)]
@@ -207,7 +213,7 @@ class ApprovalRevalidationFailedRuleTest(RuleTestBase):
         """A later revised/opened event clears the condition."""
         self._approval([(5, 'revalidation_failed'), (1, 'revised')])
         candidates, _ = evaluate(
-            ApprovalRevalidationFailedRule(), 'approval', self.actor, self.scope
+            ApprovalRevalidationFailedRule(), 'approval', self.actor, self.client_scope
         )
         self.assertEqual(candidates, [])
 
@@ -268,7 +274,7 @@ class TransitionDetectionTest(RuleTestBase):
             PacketStalledRule(),
             'repair_packet',
             self.actor,
-            self.scope,
+            self.client_scope,
             config={'stall_hours': 48},
         )
         self.assertEqual(
@@ -437,7 +443,7 @@ class WoBlockedSafetyRuleTest(RuleTestBase):
             packet=packet, name='LOTO', gate_type='loto', sequence=1, is_blocking=True
         )
         candidates, _ = evaluate(
-            WoBlockedSafetyRule(), 'repair_packet', self.actor, self.scope
+            WoBlockedSafetyRule(), 'repair_packet', self.actor, self.client_scope
         )
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0].fingerprint_parts, (str(packet.pk), 'advance'))
@@ -465,7 +471,7 @@ class WoBlockedSafetyRuleTest(RuleTestBase):
             status=LockoutPoint.PointStatus.VERIFIED,
         )
         candidates, _ = evaluate(
-            WoBlockedSafetyRule(), 'repair_packet', self.actor, self.scope
+            WoBlockedSafetyRule(), 'repair_packet', self.actor, self.client_scope
         )
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0].fingerprint_parts, (str(packet.pk), 'rts'))
@@ -474,7 +480,7 @@ class WoBlockedSafetyRuleTest(RuleTestBase):
         """A packet without safety blockers yields nothing."""
         self._packet('approved')
         candidates, _ = evaluate(
-            WoBlockedSafetyRule(), 'repair_packet', self.actor, self.scope
+            WoBlockedSafetyRule(), 'repair_packet', self.actor, self.client_scope
         )
         self.assertEqual(candidates, [])
 
@@ -530,7 +536,7 @@ class PacketStalledRuleTest(RuleTestBase):
             PacketStalledRule(),
             'repair_packet',
             self.actor,
-            self.scope,
+            self.client_scope,
             config={'stall_hours': 48},
         )
         self.assertEqual(len(candidates), 1)
@@ -556,7 +562,7 @@ class PacketStalledRuleTest(RuleTestBase):
             PacketStalledRule(),
             'repair_packet',
             self.actor,
-            self.scope,
+            self.client_scope,
             config={'stall_hours': 48},
         )
         self.assertEqual(candidates, [])
@@ -643,7 +649,7 @@ class StockBelowCriticalRuleTest(RuleTestBase):
         """Stock under the configured minimum yields a candidate."""
         part = self._installed_part(minimum=5, stock=2)
         candidates, _ = evaluate(
-            StockBelowCriticalRule(), 'part_stock', self.actor, self.scope
+            StockBelowCriticalRule(), 'part_stock', self.actor, self.client_scope
         )
         self.assertEqual(
             [candidate.source_id for candidate in candidates], [str(part.pk)]
@@ -654,7 +660,7 @@ class StockBelowCriticalRuleTest(RuleTestBase):
         self._installed_part(minimum=5, stock=10)
         self._installed_part(minimum=0, stock=0)
         candidates, _ = evaluate(
-            StockBelowCriticalRule(), 'part_stock', self.actor, self.scope
+            StockBelowCriticalRule(), 'part_stock', self.actor, self.client_scope
         )
         self.assertEqual(candidates, [])
 
@@ -666,7 +672,7 @@ class StockBelowCriticalRuleTest(RuleTestBase):
             StockBelowCriticalRule(),
             'part_stock',
             self.actor,
-            self.scope,
+            self.client_scope,
             config={'part_ids': [low_listed.pk]},
         )
         self.assertEqual(
@@ -677,12 +683,16 @@ class StockBelowCriticalRuleTest(RuleTestBase):
         """Stock totals are annotated in bulk instead of queried per part."""
         self._installed_part(minimum=5, stock=1)
         with CaptureQueriesContext(connection) as one_part:
-            evaluate(StockBelowCriticalRule(), 'part_stock', self.actor, self.scope)
+            evaluate(
+                StockBelowCriticalRule(), 'part_stock', self.actor, self.client_scope
+            )
 
         for _ in range(5):
             self._installed_part(minimum=5, stock=1)
         with CaptureQueriesContext(connection) as many_parts:
-            evaluate(StockBelowCriticalRule(), 'part_stock', self.actor, self.scope)
+            evaluate(
+                StockBelowCriticalRule(), 'part_stock', self.actor, self.client_scope
+            )
 
         self.assertLessEqual(
             len(many_parts.captured_queries), len(one_part.captured_queries) + 1
@@ -710,7 +720,7 @@ class AssetRepeatMaintenanceRuleTest(RuleTestBase):
             AssetRepeatMaintenanceRule(),
             'asset_machine',
             self.actor,
-            self.scope,
+            self.client_scope,
             config={'window_days': 30, 'threshold': 3},
         )
         self.assertEqual(
@@ -726,7 +736,7 @@ class AssetRepeatMaintenanceRuleTest(RuleTestBase):
             AssetRepeatMaintenanceRule(),
             'asset_machine',
             self.actor,
-            self.scope,
+            self.client_scope,
             config={'window_days': 30, 'threshold': 3},
         )
         self.assertEqual(candidates, [])

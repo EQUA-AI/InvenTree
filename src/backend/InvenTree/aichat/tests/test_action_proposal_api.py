@@ -8,6 +8,7 @@ canonical work-order command service.
 from __future__ import annotations
 
 import unittest
+import uuid
 from datetime import timedelta
 
 from django.apps import apps
@@ -24,7 +25,7 @@ from tasks.scope import MaintenanceScope
 
 from aichat.models import ChatActionProposal, ProposalState
 from aichat.services import proposals as svc
-from assets.models import AssetMachine
+from assets.models import AssetMachine, Client
 from company.models import Company
 from users.models import ApiToken
 
@@ -38,17 +39,24 @@ class ProposalRailTestCase(TestCase):
         cls.customer = Company.objects.create(
             name='Proposal Cust', is_customer=True
         )
+        suffix = uuid.uuid4().hex[:8]
+        cls.client_tenant = Client.objects.create(
+            name=f'Tenant {suffix}', code=f'tenant-{suffix}'
+        )
         cls.actor = get_user_model().objects.create_superuser(
             username='proposal-sup', email='p@example.com', password='pw'
         )
         cls.machine = AssetMachine.objects.create(
-            name='Press 7', customer=cls.customer
+            name='Press 7', client=cls.client_tenant
         )
 
     def setUp(self):
         """SetUp."""
         self.actor.maintenance_scopes = {
-            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
+            MaintenanceScope(customer_id=self.customer.pk, site_key=None),
+            MaintenanceScope(
+                customer_id=None, site_key=None, client_id=self.client_tenant.pk
+            ),
         }
         self.work_order = WorkOrder.objects.create(
             title='Hold me',
@@ -530,8 +538,11 @@ class GapClosingProposalTests(ProposalRailTestCase):
 
     def test_create_rejects_a_machine_outside_scope(self):
         """Create is scope-bound: an out-of-scope machine is not disclosed."""
-        other = Company.objects.create(name='Other Co', is_customer=True)
-        other_machine = AssetMachine.objects.create(name='Secret', customer=other)
+        suffix = uuid.uuid4().hex[:8]
+        other_client = Client.objects.create(
+            name=f'Tenant {suffix}', code=f'tenant-{suffix}'
+        )
+        other_machine = AssetMachine.objects.create(name='Secret', client=other_client)
         with self.assertRaises(svc.ProposalNotFound):
             self._create(
                 action='work_order.create',
@@ -861,9 +872,7 @@ class ProposalApiTests(ProposalRailTestCase):
         other_customer = Company.objects.create(
             name='Proposal Other Customer', is_customer=True
         )
-        other_machine = AssetMachine.objects.create(
-            name='Secret press', customer=other_customer
-        )
+        other_machine = AssetMachine.objects.create(name='Secret press')
         other_work_order = WorkOrder.objects.create(
             title='Secret work order',
             status=WorkOrder.STATUS_REVIEW,

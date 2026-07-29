@@ -143,22 +143,43 @@ class RiskEnvMixin:
     """Common environment builder for risk tests."""
 
     def build_env(self):
-        """Create customers, users, scope registrations, and machines."""
-        from assets.models import AssetMachine
+        """Create customers, clients, users, scope registrations, and machines.
+
+        Work orders carry explicit customers (customer scopes, ``c`` keys);
+        machines belong to client tenants (client scopes, ``k`` keys). Actors
+        hold both grants for their side, mirroring a deployment where one
+        organization sees its sales jobs and its own plant.
+        """
+        from assets.models import AssetMachine, Client
         from company.models import Company
 
+        suffix = uuid.uuid4().hex[:8]
         self.customer = Company.objects.create(name='Customer A', is_customer=True)
         self.other_customer = Company.objects.create(
             name='Customer B', is_customer=True
+        )
+        self.client_tenant = Client.objects.create(
+            name=f'Client A {suffix}', code=f'client-a-{suffix}'
+        )
+        self.other_client = Client.objects.create(
+            name=f'Client B {suffix}', code=f'client-b-{suffix}'
         )
         self.scope = MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         self.other_scope = MaintenanceScope(
             customer_id=self.other_customer.pk, site_key=None
         )
+        self.client_scope = MaintenanceScope(
+            customer_id=None, site_key=None, client_id=self.client_tenant.pk
+        )
+        self.other_client_scope = MaintenanceScope(
+            customer_id=None, site_key=None, client_id=self.other_client.pk
+        )
         from .risk_scope import encode_scope
 
         self.scope_key = encode_scope(self.scope)
         self.other_scope_key = encode_scope(self.other_scope)
+        self.client_scope_key = encode_scope(self.client_scope)
+        self.other_client_scope_key = encode_scope(self.other_client_scope)
 
         User = get_user_model()
         self.service = User.objects.create_user(
@@ -168,14 +189,14 @@ class RiskEnvMixin:
             username='risk-actor', email='actor@example.com', password='pw'
         )
         SCOPES_BY_USERNAME.clear()
-        SCOPES_BY_USERNAME['risk-service'] = {self.scope}
-        SCOPES_BY_USERNAME['risk-actor'] = {self.scope}
+        SCOPES_BY_USERNAME['risk-service'] = {self.scope, self.client_scope}
+        SCOPES_BY_USERNAME['risk-actor'] = {self.scope, self.client_scope}
 
         self.machine = AssetMachine.objects.create(
-            name=f'Press {uuid.uuid4().hex[:8]}', customer=self.customer
+            name=f'Press {uuid.uuid4().hex[:8]}', client=self.client_tenant
         )
         self.other_machine = AssetMachine.objects.create(
-            name=f'Lathe {uuid.uuid4().hex[:8]}', customer=self.other_customer
+            name=f'Lathe {uuid.uuid4().hex[:8]}', client=self.other_client
         )
 
     def teardown_scopes(self):

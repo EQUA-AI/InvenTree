@@ -1,9 +1,10 @@
-"""Client scope for internal plant assets.
+"""Client scope for plant assets.
 
-A machine is reachable through its sales customer, or - for an internal asset
-nobody bought - through the client that owns this deployment. These tests pin
-that the second identity works, that the first still wins when both exist, and
-that a machine with neither remains unreachable rather than falling open.
+A machine is reachable through the client that owns this deployment; a sales
+customer is a claim about a work order, never about the asset. These tests pin
+that client resolution works, that an explicit work-order customer still wins
+over the asset's client, and that a machine without a client remains
+unreachable rather than falling open.
 """
 
 import uuid
@@ -28,7 +29,7 @@ class ClientScopeResolutionTest(TestCase):
     """scope_for_work_order resolves customer or client."""
 
     def setUp(self):
-        """Create a client, a customer and one machine of each kind."""
+        """Create a client, a customer, a client machine and an orphan."""
         suffix = uuid.uuid4().hex[:6]
         self.client_record = Client.objects.create(
             name=f'Northgate Water {suffix}', code=f'northgate-{suffix}'
@@ -38,9 +39,6 @@ class ClientScopeResolutionTest(TestCase):
         )
         self.internal = AssetMachine.objects.create(
             name=f'Internal pump {suffix}', client=self.client_record
-        )
-        self.external = AssetMachine.objects.create(
-            name=f'Customer stand {suffix}', customer=self.customer
         )
         self.unscoped = AssetMachine.objects.create(name=f'Orphan {suffix}')
 
@@ -63,22 +61,22 @@ class ClientScopeResolutionTest(TestCase):
         self.assertIsNone(scope.customer_id)
         self.assertTrue(scope.is_resolved)
 
-    def test_customer_asset_still_resolves_to_its_customer(self):
-        """The existing behaviour is unchanged."""
-        scope = scope_for_work_order(self._card(self.external))
+    def test_explicit_work_order_customer_resolves_to_that_customer(self):
+        """A work order that names a customer is that customer's job."""
+        scope = scope_for_work_order(self._card(None, customer=self.customer))
 
         self.assertEqual(scope.customer_id, self.customer.pk)
         self.assertIsNone(scope.client_id)
 
-    def test_customer_wins_when_a_machine_has_both(self):
-        """Installed at somebody else's site is the stronger claim."""
-        both = AssetMachine.objects.create(
-            name=f'Both {uuid.uuid4().hex[:6]}',
-            customer=self.customer,
-            client=self.client_record,
-        )
+    def test_explicit_work_order_customer_wins_over_the_machine_client(self):
+        """The explicit sales claim beats the asset's client.
 
-        scope = scope_for_work_order(self._card(both))
+        Pinned deliberately: this is the one exception to client-first, and a
+        later "simplification" must not silently flip it.
+        """
+        scope = scope_for_work_order(
+            self._card(self.internal, customer=self.customer)
+        )
 
         self.assertEqual(scope.customer_id, self.customer.pk)
         self.assertIsNone(scope.client_id)
