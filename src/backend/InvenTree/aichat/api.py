@@ -70,14 +70,19 @@ _ERROR_STATUS = {
     'PROPOSAL_REVALIDATION_FAILED': status.HTTP_409_CONFLICT,
     'PROPOSAL_INVALID': status.HTTP_403_FORBIDDEN,
     'STRICT_CONFIRMATION_REQUIRED': status.HTTP_400_BAD_REQUEST,
+    'DUPLICATE_OPEN_REPAIR': status.HTTP_409_CONFLICT,
 }
 
 
 def _error(exc: proposal_service.ProposalError) -> Response:
     """Error."""
+    body = {'error': exc.code, 'detail': str(exc)}
+    duplicates = getattr(exc, 'duplicates', None)
+    if duplicates:
+        # Same key the preview uses, so a client renders one list both times.
+        body['duplicate_open_repairs'] = duplicates
     return Response(
-        {'error': exc.code, 'detail': str(exc)},
-        status=_ERROR_STATUS.get(exc.code, status.HTTP_400_BAD_REQUEST),
+        body, status=_ERROR_STATUS.get(exc.code, status.HTTP_400_BAD_REQUEST)
     )
 
 

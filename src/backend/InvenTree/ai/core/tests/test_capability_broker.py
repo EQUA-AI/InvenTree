@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
 from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
@@ -46,13 +47,20 @@ def _pinned_category_lexicon(monkeypatch):
 
 
 def test_catalog_covers_wf8_once_in_canonical_order():
-    expected = tuple(INVENTORY_READ_TOOLS + EMAIL_TOOLS + KANBAN_TOOLS + DOCUMENT_SEARCH_TOOLS)
+    expected = tuple(
+        INVENTORY_READ_TOOLS
+        + EMAIL_TOOLS
+        + KANBAN_TOOLS
+        + DOCUMENT_SEARCH_TOOLS
+        + CONTROLLED_CORPUS_TOOLS
+    )
     catalog = capability_catalog()
 
-    # 55, not 56: delete_kanban_card is withheld from KANBAN_TOOLS (see
-    # test_delete_kanban_card_is_withheld_from_the_agent). Was 46 before the
-    # nine machine read tools joined INVENTORY_READ_TOOLS.
-    assert len(catalog) == len(expected) == 55
+    # 61, not 62: delete_kanban_card is withheld from KANBAN_TOOLS (see
+    # test_delete_kanban_card_is_withheld_from_the_agent). Was 55 before the
+    # five maintenance work-order read tools joined INVENTORY_READ_TOOLS and
+    # search_manuals arrived via CONTROLLED_CORPUS_TOOLS.
+    assert len(catalog) == len(expected) == 61
     assert tuple(entry.tool for entry in catalog) == expected
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
     assert all(entry.tool is expected[index] for index, entry in enumerate(catalog))
@@ -79,6 +87,12 @@ def test_catalog_has_expected_stable_pack_shapes():
         # 7, not 8: delete_kanban_card is withheld, though it remains listed in
         # the kanban.write pack spec so a re-add still resolves to a pack.
         "kanban.write": 7,
+        # Maintenance work orders: search plus the per-order drill-downs
+        # (overview, readiness, repair state) and the per-machine open-repairs
+        # view -- a job question is unanswerable without the full set.
+        "maintenance.read": 5,
+        # Controlled documentation is a single site-scoped retrieval tool.
+        "manuals.read": 1,
     }
 
 
@@ -142,11 +156,26 @@ def test_protected_resource_tools_have_resource_authorizers():
         "get_machine_parts",
         "get_machine_maintenance_history",
         "get_machine_attachments",
+        # Maintenance work orders share the machines rationale AND the
+        # authorizer string: the same tenant scope governs both packs, so the
+        # guard branch is deliberately shared rather than duplicated.
+        "search_work_orders",
+        "get_work_order_overview",
+        "get_work_order_readiness",
+        "get_work_order_repair_state",
+        "get_open_repairs_for_machine",
+        # Controlled-corpus search is site-scoped, not machine-scoped: the
+        # filter comes from deployment constants, so it gets its own branch.
+        "search_manuals",
     }
     assert policies["query_database"].authorizer == "database_relation_access"
     assert policies["get_part_attachments"].all_of == (("part", "view"),)
     assert policies["get_machine_health"].authorizer == "machine_scope_access"
     assert policies["get_machine_health"].all_of == (("work_order", "view"),)
+    assert policies["search_work_orders"].authorizer == "machine_scope_access"
+    assert policies["search_work_orders"].all_of == (("work_order", "view"),)
+    assert policies["search_manuals"].authorizer == "controlled_corpus_access"
+    assert policies["search_manuals"].all_of == (("work_order", "view"),)
 
 
 def test_contract_manifest_is_stable_and_complete():
@@ -155,7 +184,8 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    assert len(first) == 55
+    # Matches the catalog pin: 55 + 5 maintenance reads + search_manuals.
+    assert len(first) == 61
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)

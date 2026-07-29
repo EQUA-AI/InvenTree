@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _AI_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
@@ -410,7 +410,12 @@ class Settings(BaseSettings):
         default="gpt-4o-mini", alias="AZURE_OPENAI_FAST_DEPLOYMENT"
     )
     azure_openai_embedding_deployment: str = Field(
-        default="text-embedding-ada-002", alias="AZURE_OPENAI_EMBEDDING_DEPLOYMENT"
+        default="text-embedding-ada-002",
+        # Canonical name first; the plural spelling has shipped in real .env
+        # files and silently not loading a credential is worse than an alias.
+        validation_alias=AliasChoices(
+            "AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT"
+        ),
     )
     azure_openai_api_version: str = Field(default="2024-10-21", alias="AZURE_OPENAI_API_VERSION")
 
@@ -418,9 +423,13 @@ class Settings(BaseSettings):
     # Azure AI Search Configuration
     # -------------------------------------------------------------------------
     azure_search_endpoint: str = Field(default="", alias="AZURE_SEARCH_ENDPOINT")
-    azure_search_api_key: str = Field(default="", alias="AZURE_SEARCH_API_KEY")
+    azure_search_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("AZURE_SEARCH_API_KEY", "AZURE_SEARCH_KEY"),
+    )
     azure_search_index_name: str = Field(
-        default="inventree-ai-conversations", alias="AZURE_SEARCH_INDEX_NAME"
+        default="inventree-ai-conversations",
+        validation_alias=AliasChoices("AZURE_SEARCH_INDEX_NAME", "AZURE_SEARCH_INDEX"),
     )
     azure_search_documents_index: str = Field(default="", alias="AZURE_SEARCH_DOCUMENTS_INDEX")
     azure_search_controlled_documents_index: str = Field(

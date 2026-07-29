@@ -37,9 +37,11 @@ logger = logging.getLogger(__name__)
 
 def _tool_permission_map() -> dict[Any, tuple[str, str]]:
     """Map tool objects to their required ``(ruleset, permission)`` pair."""
+    from ai.core.integrations import controlled_document_corpus as cdt
     from ai.core.integrations import inventory_tools as it
     from ai.core.integrations import kanban_tools as kt
     from ai.core.tools.inventree.read import machines as mt
+    from ai.core.tools.inventree.read import maintenance as wt
     from ai.core.tools.inventree.write import purchase_orders as po
 
     mapping: dict[Any, tuple[str, str]] = {
@@ -154,6 +156,16 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
         mt.get_machine_parts: ("work_order", "view"),
         mt.get_machine_maintenance_history: ("work_order", "view"),
         mt.get_machine_attachments: ("work_order", "view"),
+        # Maintenance work orders borrow the WORK_ORDER ruleset for the same
+        # reason; tasks.ai_read re-derives scope per call.
+        wt.search_work_orders: ("work_order", "view"),
+        wt.get_work_order_overview: ("work_order", "view"),
+        wt.get_work_order_readiness: ("work_order", "view"),
+        wt.get_work_order_repair_state: ("work_order", "view"),
+        wt.get_open_repairs_for_machine: ("work_order", "view"),
+        # Controlled-document corpus search: readable by maintenance staff;
+        # the site-key filter inside the tool is the content boundary.
+        cdt.search_manuals: ("work_order", "view"),
         # Email stays AIMMS-native (_native_tool_map): Gmail is not an InvenTree
         # model and has no ruleset to map onto.
         # query_database / list_database_tables are intentionally unmapped:

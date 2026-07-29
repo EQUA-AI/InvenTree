@@ -19,6 +19,9 @@ import django
 
 django.setup()
 
+from ai.core.integrations.controlled_document_corpus import (  # noqa: E402
+    CONTROLLED_CORPUS_TOOLS,
+)
 from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS  # noqa: E402
 from ai.core.integrations.email.tools import EMAIL_TOOLS, send_email  # noqa: E402
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS  # noqa: E402
@@ -61,6 +64,9 @@ class PermissionMapCompletenessTests(SimpleTestCase):
             | set(EMAIL_TOOLS)
             | set(KANBAN_TOOLS)
             | set(DOCUMENT_SEARCH_TOOLS)
+            # search_manuals must stay mapped (work_order:view), never a
+            # silent pass-through like the allowed database self-enforcers.
+            | set(CONTROLLED_CORPUS_TOOLS)
             | set(PURCHASE_ORDER_WRITE_TOOLS)
         )
         unmapped = [

@@ -1383,3 +1383,33 @@ PRESIGNED_URL_EXPIRATION = 600
 
 # Taggit settings
 TAGGIT_CASE_INSENSITIVE = True
+
+# ---------------------------------------------------------------------------
+# AIMMS feature flags (env -> Django settings bridge)
+#
+# Every AIMMS surface reads these via getattr(settings, ...) with a
+# fail-closed default. Without this bridge no deployment could ever turn a
+# flag on: the env var alone is invisible to Django. Declared here, in one
+# place, so the container app's env is the single switchboard.
+# ---------------------------------------------------------------------------
+
+AIMMS_WORK_ORDERS_ENABLED = get_boolean_setting(
+    'AIMMS_WORK_ORDERS_ENABLED', 'aimms_work_orders_enabled', False
+)
+AIMMS_MACHINE_AI_READ_ENABLED = get_boolean_setting(
+    'AIMMS_MACHINE_AI_READ_ENABLED', 'aimms_machine_ai_read_enabled', False
+)
+AIMMS_MAINTENANCE_AI_READ_ENABLED = get_boolean_setting(
+    'AIMMS_MAINTENANCE_AI_READ_ENABLED', 'aimms_maintenance_ai_read_enabled', False
+)
+
+# Dotted path to the maintenance scope resolver; empty means unresolved
+# (fail closed) unless actors carry explicit maintenance_scopes.
+AIMMS_MAINTENANCE_SCOPE_RESOLVER = get_setting(
+    'AIMMS_MAINTENANCE_SCOPE_RESOLVER', 'aimms_maintenance_scope_resolver', None
+)
+
+# Tenant code the single-site resolver grants (assets.Client.code).
+AIMMS_SINGLE_SITE_CLIENT_CODE = get_setting(
+    'AIMMS_SINGLE_SITE_CLIENT_CODE', 'aimms_single_site_client_code', 'internal'
+)

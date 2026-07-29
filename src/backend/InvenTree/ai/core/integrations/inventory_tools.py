@@ -45,6 +45,13 @@ from ai.core.tools.inventree.read.machines import (
     get_machine_signals,
     search_machines,
 )
+from ai.core.tools.inventree.read.maintenance import (
+    get_open_repairs_for_machine,
+    get_work_order_overview,
+    get_work_order_readiness,
+    get_work_order_repair_state,
+    search_work_orders,
+)
 from ai.core.tools.inventree.read.parts import (
     get_part as get_part_details,  # Alias for backward compatibility
 )
@@ -312,6 +319,12 @@ INVENTORY_TOOLS = [
     get_machine_parts,
     get_machine_maintenance_history,
     get_machine_attachments,
+    # Maintenance work orders (scope-authorized per call in tasks.ai_read)
+    search_work_orders,
+    get_work_order_overview,
+    get_work_order_readiness,
+    get_work_order_repair_state,
+    get_open_repairs_for_machine,
     # Direct read-only SQL (RBAC-checked per table, read-only transaction)
     list_database_tables,
     query_database,
@@ -358,6 +371,13 @@ INVENTORY_READ_TOOLS = [
     get_machine_parts,
     get_machine_maintenance_history,
     get_machine_attachments,
+    # Maintenance work orders travel with the machines rationale: a job
+    # question has no answer without them on the voice/lookup surface.
+    search_work_orders,
+    get_work_order_overview,
+    get_work_order_readiness,
+    get_work_order_repair_state,
+    get_open_repairs_for_machine,
     list_database_tables,
     query_database,
 ]
@@ -369,6 +389,7 @@ __all__ = [
     "create_part",
     "get_bom",
     "get_build_order",
+    "get_open_repairs_for_machine",
     "get_part_details",
     "get_purchase_order",
     "get_sales_order",
@@ -376,6 +397,9 @@ __all__ = [
     "get_stock_quantity",
     "get_supplier_parts",
     "get_where_used",
+    "get_work_order_overview",
+    "get_work_order_readiness",
+    "get_work_order_repair_state",
     "list_build_orders",
     "list_categories",
     "list_database_tables",
@@ -385,4 +409,5 @@ __all__ = [
     "list_suppliers",
     "query_database",
     "search_parts",
+    "search_work_orders",
 ]

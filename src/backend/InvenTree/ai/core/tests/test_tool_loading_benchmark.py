@@ -12,7 +12,22 @@ from ai.core.benchmarks.tool_loading import (
     load_live_samples,
     run_offline_benchmark,
 )
+from ai.core.tools import capabilities
 from ai.core.workflows.wf8_lookup import _response_usage_metrics
+
+
+@pytest.fixture
+def _pinned_lexicons(monkeypatch):
+    """Pin both live lexicons empty, as test_capability_broker.py does.
+
+    The minimal test settings install neither ``part`` nor ``assets``, so the
+    lexicon builders fail their model import on EVERY selector call (failed
+    imports are retried, never cached) and the p95 gate ends up timing that
+    sandbox artifact -- ~9ms of import machinery per call, flaking past 10ms
+    under load -- instead of the selection logic the benchmark is about.
+    """
+    monkeypatch.setattr(capabilities, "category_lexicon", frozenset)
+    monkeypatch.setattr(capabilities, "machine_lexicon", frozenset)
 
 
 def _sample(
@@ -40,13 +55,14 @@ def _sample(
     )
 
 
-def test_offline_benchmark_meets_static_selection_gates():
+def test_offline_benchmark_meets_static_selection_gates(_pinned_lexicons):
     report = run_offline_benchmark(iterations=3)
 
-    # 55, not 56: delete_kanban_card is withheld from the agent's tool catalog
-    # (see test_kanban_delete_withheld.py). Was 46 before the nine machine read
-    # tools joined INVENTORY_READ_TOOLS.
-    assert report["baseline"]["tool_count"] == 55
+    # 61, not 62: delete_kanban_card is withheld from the agent's tool catalog
+    # (see test_kanban_delete_withheld.py). Was 55 before the five maintenance
+    # work-order read tools joined INVENTORY_READ_TOOLS and search_manuals
+    # arrived via CONTROLLED_CORPUS_TOOLS.
+    assert report["baseline"]["tool_count"] == 61
     assert report["baseline"]["measurement"] == (
         "normalized_local_contract_bytes_not_provider_tokens"
     )

@@ -79,6 +79,32 @@ def _get_card_part_model():
     return WorkOrderPart
 
 
+def _scoped_cards():
+    """Return the acting user's work orders, never everyone's.
+
+    These tools historically read ``WorkOrder.objects.all()`` behind a global
+    ``work_order:view`` grant -- a cross-tenant read. Every read tool now
+    starts from the same fail-closed predicate the canonical work-order API
+    applies. An actor whose maintenance scope cannot be resolved sees an
+    empty board rather than the whole plant's.
+    """
+    from ai.core.auth import get_current_principal
+    from django.contrib.auth import get_user_model
+    from tasks.scope import ScopeError, work_order_scope_filter
+
+    WorkOrder = _get_model()
+    principal = get_current_principal()
+    if principal is None:
+        return WorkOrder.objects.none()
+    user = get_user_model().objects.filter(pk=principal.user_pk).first()
+    if user is None:
+        return WorkOrder.objects.none()
+    try:
+        return WorkOrder.objects.filter(work_order_scope_filter(user))
+    except ScopeError:
+        return WorkOrder.objects.none()
+
+
 # ---------------------------------------------------------------------------
 # READ tools
 # ---------------------------------------------------------------------------
@@ -113,11 +139,10 @@ async def list_kanban_cards(
     Returns:
       Dictionary with 'count' and 'cards' list.
     """
-    WorkOrder = _get_model()
 
     @sync_to_async
     def _query():
-        qs = WorkOrder.objects.all()
+        qs = _scoped_cards()
 
         if not include_archived:
             qs = qs.filter(is_active=True)
@@ -170,13 +195,14 @@ async def get_kanban_card(work_order_id: int) -> dict[str, Any]:
     @sync_to_async
     def _fetch():
         try:
-            work_order = WorkOrder.objects.get(pk=work_order_id)
+            work_order = _scoped_cards().get(pk=work_order_id)
             return _card_to_dict(work_order)
         except WorkOrder.DoesNotExist:
             return None
 
     work_order = await _fetch()
     if work_order is None:
+        # One message whether the card is missing or another tenant's.
         return {"error": f"Kanban card {work_order_id} not found."}
     return work_order
 
@@ -677,7 +703,7 @@ async def check_kanban_card_stock(work_order_id: int) -> dict[str, Any]:
     @sync_to_async
     def _check():
         try:
-            work_order = WorkOrder.objects.get(pk=work_order_id)
+            work_order = _scoped_cards().get(pk=work_order_id)
         except WorkOrder.DoesNotExist:
             return {"error": f"Kanban card {work_order_id} not found."}
 
@@ -767,7 +793,6 @@ async def get_kanban_summary() -> dict[str, Any]:
     Returns:
       Dictionary with status_counts, priority_counts, total_active, and overdue_cards.
     """
-    WorkOrder = _get_model()
 
     @sync_to_async
     def _summarize():
@@ -775,7 +800,7 @@ async def get_kanban_summary() -> dict[str, Any]:
 
         from django.db.models import Count
 
-        active = WorkOrder.objects.filter(is_active=True)
+        active = _scoped_cards().filter(is_active=True)
 
         status_counts = dict(
             active.values_list("status").annotate(c=Count("id")).values_list("status", "c")

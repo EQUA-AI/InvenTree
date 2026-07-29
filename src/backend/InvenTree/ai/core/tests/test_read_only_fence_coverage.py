@@ -99,6 +99,44 @@ def test_reads_are_not_fenced():
             pass  # any other failure is the stubbed ORM, not the fence
 
 
+#: The maintenance work-order reads: voice is a first-class surface for job
+#: questions, so the fence must let every one of them through.
+MAINTENANCE_READS = [
+    ("search_work_orders", {"query": "pump"}),
+    ("get_work_order_overview", {"work_order_id": 1}),
+    ("get_work_order_readiness", {"work_order_id": 1}),
+    ("get_work_order_repair_state", {"work_order_id": 1}),
+    ("get_open_repairs_for_machine", {"machine_id": 1}),
+]
+
+
+@pytest.mark.parametrize(("name", "kwargs"), MAINTENANCE_READS)
+def test_maintenance_reads_are_not_fenced(name, kwargs):
+    from ai.core.tools.inventree.read import maintenance
+
+    tool = getattr(maintenance, name)
+    with read_only_tool_fence():
+        try:
+            asyncio.run(_call(tool, **kwargs))
+        except PermissionError:  # pragma: no cover - would be the defect
+            pytest.fail(f"maintenance read {name} was blocked by the fence")
+        except Exception:
+            pass  # flag-off/stubbed backends, not the fence
+
+
+def test_search_manuals_is_not_fenced():
+    """Controlled-document retrieval is a read; it must survive the fence."""
+    from ai.core.integrations import controlled_document_corpus
+
+    with read_only_tool_fence():
+        try:
+            asyncio.run(_call(controlled_document_corpus.search_manuals, query="seal replacement"))
+        except PermissionError:  # pragma: no cover - would be the defect
+            pytest.fail("search_manuals was blocked by the read-only fence")
+        except Exception:
+            pass  # unconfigured corpus backends, not the fence
+
+
 def test_confirmed_write_exception_reopens_the_fence_for_one_call():
     """A confirmed Tier-3 write must still be able to execute."""
     from ai.core.integrations import kanban_tools

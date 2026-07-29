@@ -162,7 +162,9 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
     "build.read": (
         ToolEffect.READ,
         ("get_build_orders", "get_build_order", "get_build_order_lines"),
-        ("build", "build order", "work order", "manufacturing order"),
+        # "work order" deliberately absent: on this fork a work order is a
+        # MAINTENANCE job (maintenance.read); a manufacturing job is a build.
+        ("build", "build order", "manufacturing order"),
     ),
     "analytics.read": (
         ToolEffect.READ,
@@ -256,6 +258,58 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
         ),
         ("create card", "update card", "move card", "archive card", "delete card"),
     ),
+    "maintenance.read": (
+        ToolEffect.READ,
+        (
+            "search_work_orders",
+            "get_work_order_overview",
+            "get_work_order_readiness",
+            "get_work_order_repair_state",
+            "get_open_repairs_for_machine",
+        ),
+        # A work order here is a MAINTENANCE job. Terms deliberately not shared
+        # with any other pack: "job"/"task" stay on kanban (board phrasing),
+        # "fault"/"downtime" stay on machines (asset phrasing), and "breakdown"
+        # is absent for the same analytics reason machines.read documents.
+        (
+            "work order",
+            "work orders",
+            "maintenance",
+            "repair",
+            "repairs",
+            "repair packet",
+            "finding",
+            "findings",
+            "approved scope",
+            "repair plan",
+            "readiness",
+            "ready to start",
+            "blocker",
+            "blockers",
+            "loto",
+            "lockout",
+            "tagout",
+            "permit",
+            "corrective",
+            "preventive",
+            "preventative",
+        ),
+    ),
+    "manuals.read": (
+        ToolEffect.READ,
+        ("search_manuals",),
+        # Controlled documentation phrasing. "procedure"/"spec" stay with their
+        # owning packs; "document"/"file" stay on documents.read.
+        (
+            "manual",
+            "manuals",
+            "o&m",
+            "technical manual",
+            "handbook",
+            "knowledge base",
+            "documentation",
+        ),
+    ),
 }
 
 _LOOKUP_PACKS = {
@@ -286,7 +340,15 @@ _ADJACENT_PACKS: dict[str, frozenset[str]] = {
     }),
     # Without an adjacency entry a kanban primary is the ONLY pack selected, so
     # "which job needs the M8 bolts?" would lose every stock and parts tool.
-    "kanban.read": frozenset({"parts.read", "stock.read"}),
+    # maintenance.read joins so "is the pump job ready to start" keeps the
+    # readiness tools (worst pick-2: 4 + 6 + 5 = 15 <= MAX_INITIAL_TOOLS).
+    "kanban.read": frozenset({"parts.read", "stock.read", "maintenance.read"}),
+    # A maintenance question usually names the asset, and a machine question
+    # often leads to its open repairs and manual -- each pairing stays within
+    # budget (9 + 5 + 1 = 15 <= 16).
+    "maintenance.read": frozenset({"machines.read"}),
+    "machines.read": frozenset({"maintenance.read", "manuals.read"}),
+    "manuals.read": frozenset({"machines.read"}),
 }
 
 #: Packs inside the InvenTree data graph, where a read-only SQL fallback makes
@@ -578,6 +640,12 @@ _STRICT_READ_SHAPE_RE = re.compile(
 #: names its domain still leads with the domain pack.
 _SHAPE_SCORE = 2
 
+#: A maintenance work-order or repair-packet reference. Requires at least one
+#: character after the prefix and permits hyphenated site schemes
+#: ("WO-000104", "WO-WW-R-001", "RP-9"). Deliberately excludes po/so/bo/mo
+#: prefixes -- those are order documents with their own packs.
+_WORKORDER_REF_RE = re.compile(r"\b(?:wo|rp)-[a-z0-9][a-z0-9-]*\b", re.IGNORECASE)
+
 #: Packs paired with the SQL escape hatch when nothing else scores, so the model
 #: is never handed `query_database` as its only way to reach inventory data.
 _DEFAULT_READ_PACKS = ("parts.read", "stock.read")
@@ -843,6 +911,17 @@ _MACHINE_READ_TOOL_IDS = frozenset({
     "get_machine_attachments",
 })
 
+#: The maintenance pack shares the machines rationale and authorizer: a
+#: work_order:view grant says "may read jobs", never "may read *this* job",
+#: and tasks.ai_read re-checks the row itself on every call.
+_MAINTENANCE_READ_TOOL_IDS = frozenset({
+    "search_work_orders",
+    "get_work_order_overview",
+    "get_work_order_readiness",
+    "get_work_order_repair_state",
+    "get_open_repairs_for_machine",
+})
+
 
 def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
     from ai.core.tools.rbac import tool_requirement
@@ -863,16 +942,30 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
             all_of=(("part", "view"),),
             authorizer="part_attachment_access",
         )
-    if tool_id in _MACHINE_READ_TOOL_IDS:
+    if tool_id in _MACHINE_READ_TOOL_IDS or tool_id in _MAINTENANCE_READ_TOOL_IDS:
         # Deliberately NOT plain NATIVE_PERMISSION. A work_order:view grant is
         # global, while asset rows belong to a customer or a client -- so the
         # role says "may read assets", never "may read *this* asset". The
         # resource authorizer additionally requires a resolvable maintenance
-        # scope, and assets.ai_read then re-checks the row itself on every call.
+        # scope, and the shared readers re-check the row itself on every call.
+        # The authorizer string is reused for both packs on purpose: the guard
+        # branch is the maintenance-scope check, and an unknown string denies
+        # everything.
         return AuthorizationPolicy(
             kind=PolicyKind.RESOURCE_AUTHORIZER,
             all_of=(("work_order", "view"),),
             authorizer="machine_scope_access",
+        )
+    if tool_id == "search_manuals":
+        # Site-scoped controlled-document retrieval. Deliberately NOT
+        # machine_scope_access: the corpus filter is built from deployment
+        # constants server-side, and machine narrowing degrades rather than
+        # gates -- the manual must stay readable before a scope resolver is
+        # configured.
+        return AuthorizationPolicy(
+            kind=PolicyKind.RESOURCE_AUTHORIZER,
+            all_of=(("work_order", "view"),),
+            authorizer="controlled_corpus_access",
         )
     if requirement is not None:
         return AuthorizationPolicy(
@@ -897,12 +990,19 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
 
 
 def _wf8_tools() -> tuple[Any, ...]:
+    from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
     from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
     from ai.core.integrations.email.tools import EMAIL_TOOLS
     from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
 
-    return tuple(INVENTORY_READ_TOOLS + EMAIL_TOOLS + KANBAN_TOOLS + DOCUMENT_SEARCH_TOOLS)
+    return tuple(
+        INVENTORY_READ_TOOLS
+        + EMAIL_TOOLS
+        + KANBAN_TOOLS
+        + DOCUMENT_SEARCH_TOOLS
+        + CONTROLLED_CORPUS_TOOLS
+    )
 
 
 @lru_cache(maxsize=1)
@@ -1414,6 +1514,13 @@ def select_capabilities(
         # noun list cannot cover: sites call their equipment whatever they like.
         scores["machines.read"] = scores.get("machines.read", 0) + 1
         signals.append("machine_lexicon")
+    if _WORKORDER_REF_RE.search(normalized):
+        # A spoken work-order or repair-packet reference ("wo-000104",
+        # "WO-WW-R-001", "rp-9") is patterned, unlike machine names, so a
+        # static regex routes it without a DB lexicon. Purchase/sales/build
+        # refs (po-/so-/bo-) deliberately do not match.
+        scores["maintenance.read"] = scores.get("maintenance.read", 0) + _SHAPE_SCORE
+        signals.append("workorder_reference")
     if widened and _AGGREGATION_SHAPE_RE.search(normalized):
         scores["analytics.read"] = scores.get("analytics.read", 0) + _SHAPE_SCORE
         signals.append("shape")

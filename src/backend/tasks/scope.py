@@ -178,3 +178,56 @@ def machine_scope_filter(actor) -> Q:
         if scope.client_id is not None:
             predicate |= Q(client_id=scope.client_id)
     return predicate
+
+
+def work_order_scope_filter(actor) -> Q:
+    """Return a queryset predicate selecting exactly the actor's work orders.
+
+    The set form of :func:`require_work_order_scope`, and never wider than it:
+    an explicit work-order customer is the order's whole boundary, otherwise
+    the asset's client owns it. The same fail-closed rules as
+    :func:`machine_scope_filter` apply -- ``pk__in=[]`` base so an actor whose
+    scopes contribute nothing matches no rows, and site-qualified grants are
+    skipped because a resolved work-order scope never carries a site key.
+
+    Raises:
+        ScopeError: When the actor's own scope cannot be resolved.
+    """
+    predicate = Q(pk__in=[])
+    for scope in scope_for_actor(actor):
+        if scope.site_key is not None:
+            continue
+        if scope.customer_id is not None:
+            predicate |= Q(customer_id=scope.customer_id)
+        elif scope.client_id is not None:
+            predicate |= Q(customer__isnull=True, machine__client_id=scope.client_id)
+    return predicate
+
+
+def single_site_scope_resolver(actor) -> set[MaintenanceScope]:
+    """Grant the deployment's one internal tenant to authorized operators.
+
+    For a single-tenant deployment: every active user holding the work-order
+    view role is the tenant's staff, and their boundary is the tenant itself.
+    Configured via ``AIMMS_MAINTENANCE_SCOPE_RESOLVER =
+    'tasks.scope.single_site_scope_resolver'``; the tenant is named by
+    ``AIMMS_SINGLE_SITE_CLIENT_CODE`` (default ``internal``).
+
+    Fail-closed by construction: an empty return means ``scope_for_actor``
+    raises, so a missing client row, an inactive user, or a user without the
+    role authorizes nothing rather than everything.
+    """
+    if actor is None or not getattr(actor, 'is_active', False):
+        return set()
+
+    from assets.models import Client
+    from users.permissions import check_user_role
+
+    if not check_user_role(actor, 'work_order', 'view'):
+        return set()
+
+    code = getattr(settings, 'AIMMS_SINGLE_SITE_CLIENT_CODE', 'internal')
+    client = Client.objects.filter(code=code, active=True).first()
+    if client is None:
+        return set()
+    return {MaintenanceScope(customer_id=None, site_key=None, client_id=client.pk)}

@@ -942,3 +942,65 @@ class ProposalApiTests(ProposalRailTestCase):
             )
             self.assertEqual(response.status_code, 403)
             self.assertEqual(response.json()['error'], 'CAPABILITY_DENIED')
+
+    def test_duplicate_open_repair_is_a_409_with_the_existing_links(self):
+        """Confirming into an open repair maps to 409 and lists what is open.
+
+        The chat rail mirrors the REST rail's structured conflict: the body
+        carries the same ``duplicate_open_repairs`` list the preview showed,
+        and nothing new is written.
+        """
+        from repair.models import RepairPacket
+        from repair.work_packages import create_repair_work_package
+
+        existing = create_repair_work_package(
+            actor=self.actor,
+            draft={'machine_id': self.machine.pk, 'title': 'Already open'},
+            idempotency_key=uuid.uuid4().hex,
+        )
+
+        def grant_client_scope(_actor):
+            return {
+                MaintenanceScope(
+                    customer_id=None, site_key=None, client_id=self.client_tenant.pk
+                )
+            }
+
+        with self.settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=grant_client_scope):
+            from aichat.api import _scope_strings
+
+            scope_key, scope_hash = _scope_strings(self.actor)
+            proposal = svc.create_proposal(
+                owner=self.actor,
+                scope_key=scope_key,
+                scope_hash=scope_hash,
+                action_type='repair_work_package.create',
+                work_order_id=None,
+                reason='raise a second repair for the same machine',
+                idempotency_key=uuid.uuid4().hex,
+                policy_version='test-v1',
+                intent={
+                    'machine_id': self.machine.pk,
+                    'title': 'Second repair attempt',
+                },
+            )
+            before_orders = WorkOrder.objects.count()
+            before_packets = RepairPacket.objects.count()
+
+            response = self._client().post(
+                f'/api/aichat/proposals/{proposal.id}/confirm/'
+            )
+
+        self.assertEqual(response.status_code, 409, response.content)
+        body = response.json()
+        self.assertEqual(body['error'], 'DUPLICATE_OPEN_REPAIR')
+        self.assertTrue(body['duplicate_open_repairs'])
+        self.assertEqual(
+            body['duplicate_open_repairs'][0]['work_order_id'],
+            existing.work_order_id,
+        )
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.state, ProposalState.FAILED)
+        self.assertEqual(proposal.failure_code, 'DUPLICATE_OPEN_REPAIR')
+        self.assertEqual(WorkOrder.objects.count(), before_orders)
+        self.assertEqual(RepairPacket.objects.count(), before_packets)

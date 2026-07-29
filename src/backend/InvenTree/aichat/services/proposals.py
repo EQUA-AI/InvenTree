@@ -71,6 +71,22 @@ class ApprovalOwnsExecution(ProposalError):  # noqa: N818
     code = 'APPROVAL_OWNS_EXECUTION'
 
 
+class ProposalDuplicateConflict(ProposalError):  # noqa: N818
+    """Open repair work already exists for the target machine.
+
+    Mirrors the REST rail's 409 for the same condition and carries the
+    existing links so the client can render what is already open -- the same
+    ``duplicate_open_repairs`` list the preview showed.
+    """
+
+    code = 'DUPLICATE_OPEN_REPAIR'
+
+    def __init__(self, message: str, *, duplicates=None) -> None:
+        """Record the conflicting repairs alongside the message."""
+        super().__init__(message)
+        self.duplicates = list(duplicates or [])
+
+
 class StrictConfirmationRequired(ProposalError):  # noqa: N818
     """An irreversible action needs its exact strict confirm phrase."""
 
@@ -1053,6 +1069,8 @@ def confirm_proposal(
     """
     from tasks.services import work_orders as wo_commands
 
+    from repair import work_packages
+
     try:
         with transaction.atomic():
             proposal = (
@@ -1115,6 +1133,18 @@ def confirm_proposal(
             ProposalState.FAILED,
             exc.__class__.__name__[:64],
         )
+        raise ProposalStateConflict(str(exc)) from exc
+    except work_packages.DuplicateRepairConflict as exc:
+        # Before this handler the conflict escaped as a 500 while the REST
+        # rail returned a structured 409 -- the chat rail was the only
+        # uncovered dispatch path.
+        _mark(owner, scope_hash, proposal_id, ProposalState.FAILED, exc.code)
+        raise ProposalDuplicateConflict(str(exc), duplicates=exc.duplicates) from exc
+    except work_packages.WorkPackageError as exc:
+        # Ordered after the duplicate handler: DuplicateRepairConflict
+        # subclasses WorkPackageError. Covers UnknownMachine/UnknownPart and
+        # siblings, which previously also 500ed.
+        _mark(owner, scope_hash, proposal_id, ProposalState.FAILED, exc.code[:64])
         raise ProposalStateConflict(str(exc)) from exc
 
 

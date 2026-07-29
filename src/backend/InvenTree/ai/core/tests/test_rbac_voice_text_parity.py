@@ -175,6 +175,39 @@ def test_a_work_order_role_reaches_the_kanban_tools():
     assert "move_kanban_card" in text_allowed  # change
 
 
+#: The six reads that landed with the maintenance/manuals packs. All are
+#: mapped to work_order:view in rbac.py, so both surfaces must key on it.
+MAINTENANCE_READ_NAMES = frozenset({
+    "search_work_orders",
+    "get_work_order_overview",
+    "get_work_order_readiness",
+    "get_work_order_repair_state",
+    "get_open_repairs_for_machine",
+    "search_manuals",
+})
+
+
+def test_the_work_order_role_gates_the_maintenance_reads():
+    """work_order:view opens all six new reads; without it, none appear.
+
+    The exclusion half is the load-bearing pin: filter_tools passes UNMAPPED
+    tools through, so a read that leaked from the rbac map would silently reach
+    every profile -- exactly what this asserts cannot happen.
+    """
+    crew_allowed = {tool_name(tool) for tool in filter_tools(text_chat_tools(), WORK_ORDER_CREW)}
+    viewer_allowed = {tool_name(tool) for tool in filter_tools(text_chat_tools(), VIEWER)}
+
+    assert crew_allowed >= MAINTENANCE_READ_NAMES
+    assert not MAINTENANCE_READ_NAMES & viewer_allowed
+
+
+def test_maintenance_reads_are_never_confirmation_gated_actions():
+    """A read must not be an action tool: no write confirmation, no voice gate."""
+    action_names = {tool_name(tool) for tool in text_chat_action_tools()}
+
+    assert not MAINTENANCE_READ_NAMES & action_names
+
+
 def test_work_order_writes_are_granular_not_blanket():
     """view alone must not confer add or change on work orders."""
     viewer = frozenset({("part", "view"), ("work_order", "view")})

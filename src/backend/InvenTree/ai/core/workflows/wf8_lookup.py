@@ -22,6 +22,7 @@ from typing import Any
 from agent_framework import ChatAgent, ChatMessage, Role, TextContent
 from agent_framework.azure import AzureOpenAIChatClient
 from ai.core.config import get_settings
+from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
 from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
@@ -364,7 +365,11 @@ figure from an earlier turn as if you had just verified it."""
         self._inventree_client = None
         if not T1LookupWorkflow.BASE_TOOLS:
             T1LookupWorkflow.BASE_TOOLS = tuple(
-                INVENTORY_READ_TOOLS + EMAIL_TOOLS + KANBAN_TOOLS + DOCUMENT_SEARCH_TOOLS
+                INVENTORY_READ_TOOLS
+                + EMAIL_TOOLS
+                + KANBAN_TOOLS
+                + DOCUMENT_SEARCH_TOOLS
+                + CONTROLLED_CORPUS_TOOLS
             )
         if not T1LookupWorkflow.VOICE_BASE_TOOLS:
             T1LookupWorkflow.VOICE_BASE_TOOLS = read_tools(T1LookupWorkflow.BASE_TOOLS)

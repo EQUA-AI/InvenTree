@@ -212,10 +212,22 @@ async def authorize_invocation(tool_id: str, arguments: Any) -> CapabilityEntry:
         # An actor with no resolvable maintenance scope is authorized for no
         # asset at all, so refuse before dispatch rather than letting every
         # read return an empty result and read as "this machine has no data".
-        # The row-level check still happens inside assets.ai_read; this only
-        # denies the actor who could never pass it.
+        # The row-level check still happens inside the shared readers; this
+        # only denies the actor who could never pass it.
         if not await _has_maintenance_scope():
             _deny("maintenance_scope_unresolved")
+    elif policy.authorizer == "controlled_corpus_access":
+        # Site-scoped corpus search: the filter is built from deployment
+        # constants, so the guard checks the inputs it CAN check -- a real
+        # query string and a configured site key. Deliberately no maintenance
+        # scope requirement (machine narrowing degrades instead of gating).
+        query = arguments_dict.get("query")
+        if not isinstance(query, str) or not query.strip():
+            _deny("invalid_document_query")
+        from ai.core.config import get_settings
+
+        if not (get_settings().single_site_policy_key or "").strip():
+            _deny("site_scope_unconfigured")
     elif policy.kind is PolicyKind.RESOURCE_AUTHORIZER:
         _deny("unknown_resource_authorizer")
 

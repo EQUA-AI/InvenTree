@@ -122,6 +122,25 @@ async def search_part_documents(  # noqa: RUF029 - async is the tool-call contra
         dict with "results" list (each has content, title, filepath,
         chunk_id) and "total" count.
     """
+    from ai.core.config import get_settings
+
+    settings = get_settings()
+    controlled_index = settings.azure_search_controlled_documents_index
+    if controlled_index and settings.azure_search_documents_index == controlled_index:
+        # The general documents index has been pointed at the GOVERNED
+        # controlled-document index. This tool applies none of that index's
+        # scope/access filters, so answering from it would leak controlled
+        # chunks to any part:view holder. Refuse and route to the tool that
+        # enforces the boundary.
+        return {
+            "success": False,
+            "error": (
+                "General document search is disabled: the documents index is "
+                "the controlled-document index. Use search_manuals instead."
+            ),
+            "results": [],
+        }
+
     try:
         search_client, _ = _get_clients()
     except RuntimeError as e:
@@ -135,6 +154,14 @@ async def search_part_documents(  # noqa: RUF029 - async is the tool-call contra
         "top": top_k,
         "query_type": "simple",
     }
+    site_key = (settings.single_site_policy_key or "").strip()
+    if site_key:
+        # Baseline governance when the deployment declares a site key: only
+        # current revisions of this site's documents may answer. An index
+        # without these fields rejects the filter, and that error surfaces as
+        # a structured failure below -- never a silent unfiltered retry.
+        escaped = site_key.replace("'", "''")
+        search_kwargs["filter"] = f"scope_key eq '{escaped}' and is_current eq true"
 
     # Try hybrid search (keyword + vector)
     vector = _embed_query(query)

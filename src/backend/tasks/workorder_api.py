@@ -7,7 +7,6 @@ from dataclasses import asdict
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q
 from django.http import Http404
 
 from rest_framework import status
@@ -21,7 +20,7 @@ from InvenTree.mixins import ListAPI, ListCreateAPI, RetrieveUpdateAPI
 
 from .models import WorkOrder, WorkOrderEvent
 from .permissions import PLAN_WORKORDER, VIEW_WORKORDER_AUDIT, require_permission
-from .scope import ScopeError, require_work_order_scope, scope_for_actor
+from .scope import ScopeError, require_work_order_scope, work_order_scope_filter
 from .services.closeout import complete_work_order
 from .services.readiness import evaluate_work_order_readiness
 from .services.work_orders import (
@@ -81,19 +80,9 @@ class WorkOrderEnabledMixin:
 def _scoped_work_orders(actor):
     """Apply actor scope before any other queryset operation."""
     try:
-        scopes = [scope for scope in scope_for_actor(actor) if scope.site_key is None]
+        return WorkOrder.objects.filter(work_order_scope_filter(actor))
     except ScopeError:
         return WorkOrder.objects.none()
-
-    customer_ids = [s.customer_id for s in scopes if s.customer_id is not None]
-    client_ids = [s.client_id for s in scopes if s.client_id is not None]
-
-    # The literal mirror of ``scope_for_work_order``: an explicit customer is
-    # the order's whole boundary; otherwise the asset's client owns it.
-    return WorkOrder.objects.filter(
-        Q(customer_id__in=customer_ids)
-        | Q(customer__isnull=True, machine__client_id__in=client_ids)
-    )
 
 
 def _work_order_queryset(actor):

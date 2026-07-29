@@ -247,6 +247,100 @@ async def test_attachment_guard_rejects_invalid_parent_identifier(monkeypatch):
     assert error.value.reason_code == "invalid_parent_resource"
 
 
+def _site_key(monkeypatch, value: str):
+    """Pin the deployment's single-site policy key as the guard reads it."""
+    from ai.core import config
+
+    monkeypatch.setattr(
+        config,
+        "get_settings",
+        lambda: SimpleNamespace(single_site_policy_key=value),
+    )
+
+
+@pytest.mark.asyncio
+async def test_corpus_guard_rejects_a_blank_query(monkeypatch):
+    _profile(monkeypatch, ("work_order", "view"))
+    _site_key(monkeypatch, "site-a")
+    token = principal_context.set(_principal())
+    try:
+        with (
+            bind_capability_run(
+                workflow="wf8",
+                modality="text",
+                selected_tools=[_tool("search_manuals")],
+            ),
+            pytest.raises(CapabilityAuthorizationError) as error,
+        ):
+            await authorize_invocation("search_manuals", {"query": "   "})
+    finally:
+        principal_context.reset(token)
+
+    assert error.value.reason_code == "invalid_document_query"
+
+
+@pytest.mark.asyncio
+async def test_corpus_guard_denies_an_unconfigured_site_scope(monkeypatch):
+    """A blank policy key would mean an unscoped index query; refuse instead."""
+    _profile(monkeypatch, ("work_order", "view"))
+    _site_key(monkeypatch, "")
+    token = principal_context.set(_principal())
+    try:
+        with (
+            bind_capability_run(
+                workflow="wf8",
+                modality="text",
+                selected_tools=[_tool("search_manuals")],
+            ),
+            pytest.raises(CapabilityAuthorizationError) as error,
+        ):
+            await authorize_invocation("search_manuals", {"query": "seal replacement"})
+    finally:
+        principal_context.reset(token)
+
+    assert error.value.reason_code == "site_scope_unconfigured"
+
+
+@pytest.mark.asyncio
+async def test_corpus_guard_authorizes_a_scoped_query(monkeypatch):
+    _profile(monkeypatch, ("work_order", "view"))
+    _site_key(monkeypatch, "site-a")
+    token = principal_context.set(_principal())
+    try:
+        with bind_capability_run(
+            workflow="wf8",
+            modality="text",
+            selected_tools=[_tool("search_manuals")],
+        ):
+            entry = await authorize_invocation("search_manuals", {"query": "seal replacement"})
+    finally:
+        principal_context.reset(token)
+
+    assert entry.authorization.authorizer == "controlled_corpus_access"
+
+
+@pytest.mark.asyncio
+async def test_corpus_guard_still_requires_the_work_order_role(monkeypatch):
+    """The authorizer refines work_order:view; it must never replace it."""
+    _profile(monkeypatch, ("part", "view"))
+    _site_key(monkeypatch, "site-a")
+    token = principal_context.set(_principal())
+    try:
+        with (
+            bind_capability_run(
+                workflow="wf8",
+                modality="text",
+                selected_tools=[_tool("search_manuals")],
+            ),
+            pytest.raises(CapabilityAuthorizationError) as error,
+        ):
+            await authorize_invocation("search_manuals", {"query": "seal replacement"})
+    finally:
+        principal_context.reset(token)
+
+    assert error.value.reason_code == "required_permission_missing"
+
+
 @pytest.mark.asyncio
 async def test_middleware_stops_dispatch_on_denial(monkeypatch):
     _profile(monkeypatch)

@@ -94,6 +94,9 @@ def text_chat_tools() -> tuple[Any, ...]:
     from this union. Without this filter the flag only governed the
     catalog-guarded text workflow while voice kept executing direct writes.
     """
+    from ai.core.integrations.controlled_document_corpus import (
+        CONTROLLED_CORPUS_TOOLS,
+    )
     from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
     from ai.core.integrations.email.tools import EMAIL_TOOLS
     from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
@@ -112,6 +115,7 @@ def text_chat_tools() -> tuple[Any, ...]:
         *EMAIL_TOOLS,
         *KANBAN_TOOLS,
         *DOCUMENT_SEARCH_TOOLS,
+        *CONTROLLED_CORPUS_TOOLS,
     )
     governed: frozenset[str] = (
         governed_kanban_write_tool_ids() if governed_kanban_writes_enabled() else frozenset()

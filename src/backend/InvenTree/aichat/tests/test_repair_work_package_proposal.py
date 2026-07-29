@@ -223,6 +223,76 @@ class RepairWorkPackageProposalTest(TestCase):
 
         self.assertFalse(WorkOrder.objects.filter(machine=self.machine).exists())
 
+    def test_confirming_into_an_open_repair_fails_closed(self):
+        """A duplicate confirm surfaces the open repair and writes nothing new.
+
+        The preview already warned; if the approver confirms anyway without an
+        explicit override, dispatch refuses with the same links the preview
+        showed and the proposal lands in a terminal FAILED state.
+        """
+        from repair.work_packages import create_repair_work_package
+
+        existing = create_repair_work_package(
+            actor=self.actor,
+            draft={'machine_id': self.machine.pk, 'title': 'Already open'},
+            idempotency_key=uuid.uuid4().hex,
+        )
+        proposal = self._propose()
+        before_orders = WorkOrder.objects.count()
+        before_packets = RepairPacket.objects.count()
+
+        with self.assertRaises(svc.ProposalDuplicateConflict) as caught:
+            svc.confirm_proposal(
+                owner=self.actor, scope_hash='b' * 64, proposal_id=proposal.id
+            )
+
+        self.assertTrue(caught.exception.duplicates)
+        self.assertEqual(
+            caught.exception.duplicates[0]['work_order_id'],
+            existing.work_order_id,
+        )
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.state, ProposalState.FAILED)
+        self.assertEqual(proposal.failure_code, 'DUPLICATE_OPEN_REPAIR')
+        self.assertEqual(WorkOrder.objects.count(), before_orders)
+        self.assertEqual(RepairPacket.objects.count(), before_packets)
+
+    def test_duplicate_override_confirms_alongside_the_open_repair(self):
+        """An explicit override proceeds past the open repair, attributed.
+
+        Proceeding is a deliberate act carried in the intent, so the second
+        aggregate is created and the receipt records that it was created
+        alongside existing open work.
+        """
+        from repair.work_packages import create_repair_work_package
+
+        create_repair_work_package(
+            actor=self.actor,
+            draft={'machine_id': self.machine.pk, 'title': 'Already open'},
+            idempotency_key=uuid.uuid4().hex,
+        )
+        proposal = self._propose(
+            duplicate_override=True,
+            duplicate_override_reason='Second independent fault, crew agreed.',
+        )
+
+        confirmed = svc.confirm_proposal(
+            owner=self.actor, scope_hash='b' * 64, proposal_id=proposal.id
+        )
+
+        self.assertEqual(confirmed.state, ProposalState.EXECUTED)
+        receipt = confirmed.receipt
+        self.assertEqual(receipt['command'], 'create_repair_work_package')
+        self.assertTrue(
+            any('existing open repair' in warning for warning in receipt['warnings'])
+        )
+        self.assertEqual(
+            RepairPacket.objects.filter(machine=self.machine).count(), 2
+        )
+        self.assertEqual(
+            WorkOrder.objects.filter(machine=self.machine).count(), 2
+        )
+
     def test_permission_parity_with_the_ui_path(self):
         """Without work_order.add the proposal cannot even be raised."""
         weak = get_user_model().objects.create_user(
