@@ -144,6 +144,26 @@ def _validate_spans(spans, narrative: str, where: str, *, required: bool):
     return [list(span) for span in spans]
 
 
+def _normalized_text(text: str) -> str:
+    return ' '.join(text.split()).casefold()
+
+
+def _require_value_in_spans(value: str, spans, narrative: str, where: str):
+    """The span union must actually contain the value it claims to anchor.
+
+    Bounds checking alone (FR-CO-003's coordinate half) lets an extractor
+    attach a fabricated value to any in-range span and have it *look*
+    narrative-anchored to the reviewing human. Requiring the normalized value
+    to appear in the joined span text makes a value without a real narrative
+    source unrepresentable. Normalization is casefold plus whitespace
+    collapse; spans may be discontiguous, so containment is checked against
+    their joined text in span order.
+    """
+    joined = _normalized_text(' '.join(narrative[start:end] for start, end in spans))
+    if _normalized_text(value) not in joined:
+        _reject(f'{where}: value is not present in its anchored narrative spans')
+
+
 def _validate_warnings(warnings, where: str):
     if not isinstance(warnings, list) or len(warnings) > _MAX_WARNINGS:
         _reject(f'{where}: warnings must be a bounded list')
@@ -178,6 +198,11 @@ def _validate_field(name: str, payload, narrative: str):
     spans = _validate_spans(
         payload['spans'], narrative, f'field {name!r}', required=populated
     )
+    # downtime_minutes is an integer the narrative may state in words
+    # ("about two hours"), so only its coordinates are checked; every string
+    # value must additionally be present in the text its spans point at.
+    if populated and name != 'downtime_minutes':
+        _require_value_in_spans(value, spans, narrative, f'field {name!r}')
     confidence = payload.get('confidence', 0.0)
     if not isinstance(confidence, (int, float)) or not 0.0 <= float(confidence) <= 1.0:
         _reject(f'field {name!r}: confidence must be within [0, 1]')
@@ -212,6 +237,7 @@ def _validate_candidates(candidates, allowed_keys, narrative: str, where: str):
             ),
             'warnings': _validate_warnings(candidate.get('warnings', []), label),
         }
+        _require_value_in_spans(text, row['spans'], narrative, label)
         for key in allowed_keys - {'text', 'spans', 'warnings'}:
             value = candidate.get(key, '')
             if not isinstance(value, str) or len(value) > 255:

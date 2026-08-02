@@ -80,6 +80,41 @@ class VoicePromptTests(SimpleTestCase):
         voice_prompt = T1LookupWorkflow.VOICE_SYSTEM_PROMPT.lower()
         self.assertIn("read-only", voice_prompt)
         self.assertNotEqual(T1LookupWorkflow.VOICE_SYSTEM_PROMPT, T1LookupWorkflow.SYSTEM_PROMPT)
-        # The text prompt claims write access; the voice prompt must not.
-        self.assertIn("write access", T1LookupWorkflow.SYSTEM_PROMPT.lower())
+        # The text prompt may describe its governed write tools (kanban, email);
+        # the voice prompt must claim no write ability of any kind.
+        text_prompt = T1LookupWorkflow.SYSTEM_PROMPT.lower()
+        self.assertIn("write authority", text_prompt)
+        self.assertNotIn("write authority", voice_prompt)
         self.assertNotIn("write access", voice_prompt)
+
+    def test_no_prompt_carries_an_anti_refusal_directive(self):
+        """An instruction to never refuse is a hallucination instruction.
+
+        The old text prompt claimed FULL READ AND WRITE access against a
+        toolset with no part/order/stock write tools, and ordered the model to
+        never say it cannot create records. Both halves must stay gone, and
+        declining must be explicitly permitted.
+        """
+        for prompt in (
+            T1LookupWorkflow.SYSTEM_PROMPT,
+            T1LookupWorkflow.READ_SYSTEM_PROMPT,
+            T1LookupWorkflow.VOICE_SYSTEM_PROMPT,
+            T1LookupWorkflow.CLARIFY_SYSTEM_PROMPT,
+        ):
+            lowered = prompt.lower()
+            self.assertNotIn("full read and write", lowered)
+            self.assertNotIn("full write access", lowered)
+            self.assertNotIn("never say you cannot", lowered)
+        self.assertIn(
+            "declining is always acceptable",
+            T1LookupWorkflow.READ_SYSTEM_PROMPT.lower(),
+        )
+        self.assertIn(
+            "declining is always acceptable",
+            T1LookupWorkflow.VOICE_SYSTEM_PROMPT.lower(),
+        )
+
+    def test_read_and_voice_prompts_require_manual_citations(self):
+        """Documentation answers must name their source on every prompt path."""
+        self.assertIn("cite the source", T1LookupWorkflow.READ_SYSTEM_PROMPT.lower())
+        self.assertIn("say which document", T1LookupWorkflow.VOICE_SYSTEM_PROMPT.lower())

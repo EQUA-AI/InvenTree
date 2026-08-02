@@ -465,11 +465,26 @@ class NormalizedTurnServiceTests(SimpleTestCase):
         async def exercise():
             repository = _Repository()
             adapter = Adapter()
+            # The reasoning rail fails closed without an authorized diagnostic
+            # context and at least one exposed tool, so wire both stubs in.
+            registry = SimpleNamespace(
+                definitions=(
+                    SimpleNamespace(
+                        name="get_machine_context", capability="diagnostics.machine.read"
+                    ),
+                )
+            )
+            diagnostic_context = SimpleNamespace(
+                capabilities=("diagnostics.machine.read",),
+                record_roots=(),
+            )
             service = _TestTurnService(
                 workflow_factory=_Workflow,
                 repository_factory=lambda actor, context: repository,  # noqa: ARG005
                 complexity_router=VoiceComplexityRouter(),
                 reasoning_adapter=adapter,
+                diagnostic_tool_registry=registry,
+                diagnostic_context_factory=lambda **kwargs: diagnostic_context,  # noqa: ARG005
             )
             common = {
                 "actor": _principal(),
@@ -506,6 +521,64 @@ class NormalizedTurnServiceTests(SimpleTestCase):
                 for call in repository.terminal_calls
             )
         )
+
+    def test_reasoning_route_without_diagnostic_tools_refuses_and_never_reaches_adapter(
+        self,
+    ) -> None:
+        """A tool-less reasoning turn fails closed to an honest, unspeakable refusal.
+
+        This pins the production incident shape: the diagnosis flag on with no
+        capability resolver meant the adapter ran blind and an uncited answer
+        could be spoken. Neither half may regress.
+        """
+
+        class ForbiddenAdapter:
+            def __init__(self):
+                self.calls = []
+
+            async def reason(self, **kwargs):
+                self.calls.append(kwargs)
+                raise AssertionError("a tool-less reasoning turn must not reach the provider")
+
+        async def exercise(context_factory):
+            repository = _Repository()
+            adapter = ForbiddenAdapter()
+            service = _TestTurnService(
+                workflow_factory=_Workflow,
+                repository_factory=lambda actor, context: repository,  # noqa: ARG005
+                complexity_router=VoiceComplexityRouter(),
+                reasoning_adapter=adapter,
+                diagnostic_context_factory=context_factory,
+            )
+            result = await service.process(
+                actor=_principal(),
+                thread_id="thread_normalized",
+                content="The pump is vibrating and the bearing is hot. Diagnose it.",
+                trusted_context=_context(),
+                correlation_id=_context().correlation_id,
+                modality="voice",
+                modality_metadata={"transcription_confidence": 0.91},
+                idempotency_key=f"reason:refusal:{id(context_factory)}",
+            )
+            return result, adapter
+
+        # Case 1: no diagnostic context at all (unset capability resolver).
+        # Case 2: a context whose capabilities expose zero registry tools.
+        no_context = lambda **kwargs: None  # noqa: E731, ARG005
+        empty_capabilities = lambda **kwargs: SimpleNamespace(  # noqa: E731, ARG005
+            capabilities=(), record_roots=()
+        )
+        for factory in (no_context, empty_capabilities):
+            result, adapter = asyncio.run(exercise(factory))
+            self.assertEqual(adapter.calls, [])
+            self.assertEqual(result.route["mode"], "reasoning")
+            canonical = result.canonical_response
+            self.assertEqual(canonical["response_state"], "incomplete")
+            self.assertEqual(canonical["kind"], "repair_diagnosis")
+            self.assertFalse(canonical["speak"])
+            self.assertEqual(canonical["spoken_summary"], "")
+            self.assertEqual(canonical["recommended_actions"], [])
+            self.assertIn("Diagnostic reasoning is unavailable", result.message)
 
     def test_effect_wording_is_advisory_only_and_creates_no_proposal(self) -> None:
         class ForbiddenAdapter:

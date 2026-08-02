@@ -260,6 +260,40 @@ def test_final_evidence_must_match_a_locally_authorized_tool_citation() -> None:
     assert rejected.provenance.outcome_code == "unauthorized_evidence"
 
 
+def test_complete_diagnosis_recommending_action_without_evidence_is_incomplete() -> None:
+    """The evidence gate must not pass vacuously on an empty citation list.
+
+    A "complete" repair diagnosis that recommends action while citing nothing
+    is exactly the uncited answer the adapter exists to prevent; it must land
+    as the honest ``uncited_recommendation`` incomplete outcome. The evidence-
+    free *abstention* shape (no recommendations) stays legal — that carve-out
+    is pinned here too.
+    """
+    payload = json.loads(_canonical_json())
+    payload["recommended_actions"] = [
+        {
+            "kind": "read_only",
+            "title": "Inspect the bearing",
+            "detail": "Check the drive-end bearing temperature against the manual limit.",
+            "requires_approval": False,
+        }
+    ]
+    client = _Client([_response(response_id="uncited", text=json.dumps(payload))])
+    uncited = asyncio.run(_adapter(client).reason(envelope=_envelope()))
+
+    assert uncited.response.response_state == "incomplete"
+    assert uncited.provenance.outcome_code == "uncited_recommendation"
+    assert uncited.response.recommended_actions == []
+    assert uncited.response.speak is False
+
+    abstention_client = _Client([_response(response_id="abstain", text=_canonical_json())])
+    abstention = asyncio.run(_adapter(abstention_client).reason(envelope=_envelope()))
+
+    assert abstention.response.response_state == "complete"
+    assert abstention.response.evidence == []
+    assert abstention.response.recommended_actions == []
+
+
 @pytest.mark.parametrize(
     ("call", "expected_code"),
     [

@@ -265,6 +265,22 @@ class HITLSafetyRules:
         "sensitive",
         "confidential",
         "secret",
+        # Diagnostic/safety answers must never be replayed across machines or
+        # faults: a cached diagnosis for machine A served for a subtly
+        # different symptom on machine B is a physical-safety hazard, and a
+        # stale lockout/safety answer is worse than none.
+        "diagnos",
+        "troubleshoot",
+        "fault",
+        "failure",
+        "root cause",
+        "repair",
+        "safety",
+        "lockout",
+        "tagout",
+        "loto",
+        "isolat",
+        "energiz",
     ]
 
     # Patterns that indicate time-sensitive queries
@@ -280,10 +296,20 @@ class HITLSafetyRules:
         "immediate",
     ]
 
-    # Workflow IDs that should never be cached
+    # Workflow IDs that should never be cached. These are REGISTRY ids
+    # ("wf4"), not module names ("wf4_procurement") — the old module-name
+    # entries could never match a registry-sourced id, so the check was
+    # silently inert. The legacy names are kept so any caller still passing
+    # a module name stays excluded too.
     NEVER_CACHE_WORKFLOWS: ClassVar[list[str]] = [
-        "wf4_procurement",  # Has HITL approval
-        "wf6_documents",  # Document processing may vary
+        "wf1",  # Diagnostics: cross-machine replay is a safety hazard
+        "wf1_diagnostics",
+        "wf4",  # Has HITL approval
+        "wf4_procurement",
+        "wf6",  # Document processing may vary
+        "wf6_documents",
+        "wf7",  # Repair packet: authorizes physical work
+        "wf7_repair_packet",
     ]
 
     @classmethod

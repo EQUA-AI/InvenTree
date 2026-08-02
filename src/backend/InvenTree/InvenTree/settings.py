@@ -1409,6 +1409,16 @@ AIMMS_MAINTENANCE_SCOPE_RESOLVER = get_setting(
     'AIMMS_MAINTENANCE_SCOPE_RESOLVER', 'aimms_maintenance_scope_resolver', None
 )
 
+# Dotted path to the diagnostic capability resolver consulted by the AI
+# reasoning rail (repair.services._diagnostic_capabilities_for_actor). Unset
+# means no capabilities: the diagnostic context factory yields None and the
+# turn service refuses reasoning turns instead of running the model with no
+# tools. Production value:
+# 'repair.diagnostic_scope.single_site_diagnostic_capability_resolver'.
+AIMMS_DIAGNOSTIC_CAPABILITY_RESOLVER = get_setting(
+    'AIMMS_DIAGNOSTIC_CAPABILITY_RESOLVER', 'aimms_diagnostic_capability_resolver', None
+)
+
 # Tenant code the single-site resolver grants (assets.Client.code).
 AIMMS_SINGLE_SITE_CLIENT_CODE = get_setting(
     'AIMMS_SINGLE_SITE_CLIENT_CODE', 'aimms_single_site_client_code', 'internal'

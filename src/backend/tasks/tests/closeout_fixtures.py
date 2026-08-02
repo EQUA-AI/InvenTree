@@ -129,27 +129,50 @@ def _span(narrative, length=6):
     return [0, max(1, min(length, len(narrative)))]
 
 
+def _span_of(narrative, phrase):
+    """Real [start, end) coordinates of ``phrase`` in the narrative.
+
+    The validator checks span CONTENT (the value must appear in the text its
+    spans point at), so fixtures must anchor to genuine offsets — a fixed
+    ``[0, 6]`` would make every value a fabrication by construction. Falls
+    back to the leading slice so an unexpected narrative fails loudly in the
+    containment check rather than on a find() miss.
+    """
+    index = narrative.lower().find(phrase.lower())
+    if index < 0:
+        return [0, max(1, min(len(phrase), len(narrative)))]
+    return [index, index + len(phrase)]
+
+
 def extractor_ok(narrative, shape):
-    """A well-formed schema-v1 document anchored to the narrative."""
-    span = _span(narrative)
+    """A well-formed schema-v1 document genuinely anchored to the narrative.
+
+    Written against the contract narrative
+    ``'Replaced the clogged filter; flow restored to twenty GPM.'``: every
+    value's spans point at text that actually contains it, including the
+    discontiguous two-span anchor for ``'Replaced filter'``.
+    """
     return {
         'schema_version': 1,
         'fields': {
             'cause': {
                 'value': 'Clogged filter',
-                'spans': [span],
+                'spans': [_span_of(narrative, 'clogged filter')],
                 'confidence': 0.9,
                 'warnings': [],
             },
             'action': {
                 'value': 'Replaced filter',
-                'spans': [span],
+                'spans': [
+                    _span_of(narrative, 'Replaced'),
+                    _span_of(narrative, 'filter'),
+                ],
                 'confidence': 0.92,
                 'warnings': [],
             },
             'result': {
-                'value': 'Restored flow',
-                'spans': [span],
+                'value': 'flow restored',
+                'spans': [_span_of(narrative, 'flow restored')],
                 'confidence': 0.88,
                 'warnings': [],
             },
@@ -161,12 +184,16 @@ def extractor_ok(narrative, shape):
             },
         },
         'part_candidates': [
-            {'text': 'the 30A contactor', 'spans': [span], 'quantity_text': 'one'}
+            {
+                'text': 'the clogged filter',
+                'spans': [_span_of(narrative, 'the clogged filter')],
+                'quantity_text': 'one',
+            }
         ],
         'reading_candidates': [
             {
-                'text': 'fifteen-fifty on the output',
-                'spans': [span],
+                'text': 'twenty GPM',
+                'spans': [_span_of(narrative, 'twenty GPM')],
                 'value_text': '',
                 'unit_text': '',
                 'warnings': ['numeric_ambiguity'],
@@ -177,14 +204,19 @@ def extractor_ok(narrative, shape):
 
 
 def extractor_echo(narrative, shape):
-    """Echoes (possibly hostile) narrative text as inert field values."""
-    span = [0, len(narrative)]
+    """Echoes (possibly hostile) narrative text as inert field values.
+
+    Value and span cover the same leading slice, so the echo stays genuinely
+    anchored for narratives of any length (the old whole-narrative span with
+    a 200-char value went unanchored past 200 characters).
+    """
+    cut = min(200, len(narrative))
     return {
         'schema_version': 1,
         'fields': {
             'action': {
-                'value': narrative[:200],
-                'spans': [span],
+                'value': narrative[:cut],
+                'spans': [[0, cut]],
                 'confidence': 0.5,
                 'warnings': [],
             }

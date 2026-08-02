@@ -549,6 +549,22 @@ class NormalizedTurnService:
             context = await context
         return context
 
+    def _allowed_diagnostic_tool_names(self, diagnostic_context: Any | None) -> tuple[str, ...]:
+        """Tool names the diagnostic context authorizes; empty when unscoped.
+
+        This is the single source for the reasoning rail's tool exposure: the
+        router annotation, the trusted envelope, and the fail-closed guard all
+        read the same list so they cannot drift apart.
+        """
+        if diagnostic_context is None or self.diagnostic_tool_registry is None:
+            return ()
+        capabilities = set(getattr(diagnostic_context, "capabilities", ()))
+        return tuple(
+            str(definition.name)
+            for definition in getattr(self.diagnostic_tool_registry, "definitions", ())
+            if getattr(definition, "capability", None) in capabilities
+        )
+
     def _voice_write_enabled(self) -> bool:
         """Whether the opt-in Tier-3 write path is both configured and enabled."""
         if self.voice_write_gate is None:
@@ -775,12 +791,7 @@ class NormalizedTurnService:
             VoiceRoutingRequest,
         )
 
-        allowed_tools: list[str] = []
-        if diagnostic_context is not None and self.diagnostic_tool_registry is not None:
-            capabilities = set(getattr(diagnostic_context, "capabilities", ()))
-            for definition in getattr(self.diagnostic_tool_registry, "definitions", ()):
-                if getattr(definition, "capability", None) in capabilities:
-                    allowed_tools.append(str(definition.name))
+        allowed_tools = self._allowed_diagnostic_tool_names(diagnostic_context)
 
         confidence = 1.0
         if modality == TurnModality.VOICE:
@@ -888,25 +899,60 @@ class NormalizedTurnService:
         diagnostic_context: Any | None,
         emitter: EventEmitter,
     ) -> dict[str, Any]:
-        """Invoke the Foundry adapter and return the durable wrapper."""
+        """Invoke the Foundry adapter and return the durable wrapper.
+
+        Fails closed before the provider is reached: a reasoning turn with no
+        authorized diagnostic context or an empty tool list would run the model
+        blind — it could cite nothing, and an uncited diagnosis must never be
+        produced, let alone spoken. The refusal is an honest ``incomplete``
+        terminal response, which the response schema structurally bars from
+        speech and recommendations.
+        """
         from ai.core.reasoning.luna_diagnostics import TrustedReasoningEnvelope
+
+        allowed_tools = self._allowed_diagnostic_tool_names(diagnostic_context)
+        if diagnostic_context is None or not allowed_tools:
+            response = _canonical_terminal_response(
+                "incomplete",
+                (
+                    "Diagnostic reasoning is unavailable for this request: no "
+                    "authorized diagnostic tools are in scope, so a grounded "
+                    "diagnosis cannot be produced. Contact an administrator if "
+                    "diagnostic access is expected."
+                ),
+            )
+            message = response.detailed_response
+            await self._emit_canonical_events(
+                emitter=emitter,
+                thread_id=thread_id,
+                run_id=f"reasoning:{turn_id}",
+                workflow_id="reasoning_refusal",
+                workflow_name="FOUNDRY_DIAGNOSTICS",
+                message=message,
+                response_state=response.response_state.value,
+            )
+            return {
+                "thread_id": thread_id,
+                "turn_id": turn_id,
+                "message": message,
+                "agent": "complexity_router",
+                "workflow_used": "reasoning_refusal",
+                "response_state": response.response_state.value,
+                "canonical_response": response.model_dump(mode="json"),
+                "spoken_summary": response.spoken_summary,
+                "reasoning_provenance": None,
+                "route": route.to_dict(),
+            }
 
         machine_id: int | None = None
         repair_packet_id: int | None = None
-        if diagnostic_context is not None:
-            for root in getattr(diagnostic_context, "record_roots", ()):
-                if getattr(root, "entity_type", None) == "machine":
-                    machine_id = int(root.entity_id)
-                elif getattr(root, "entity_type", None) == "repair_packet":
-                    repair_packet_id = int(root.entity_id)
-                    machine_id = int(root.linked_machine_id)
+        for root in getattr(diagnostic_context, "record_roots", ()):
+            if getattr(root, "entity_type", None) == "machine":
+                machine_id = int(root.entity_id)
+            elif getattr(root, "entity_type", None) == "repair_packet":
+                repair_packet_id = int(root.entity_id)
+                machine_id = int(root.linked_machine_id)
 
-        allowed_tools = tuple(
-            definition.name
-            for definition in getattr(self.diagnostic_tool_registry, "definitions", ())
-            if diagnostic_context is not None
-            and definition.capability in set(getattr(diagnostic_context, "capabilities", ()))
-        )
         envelope = TrustedReasoningEnvelope(
             actor_id=actor.actor,
             scope={"policy_key": trusted_context.server_policy_key},

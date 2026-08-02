@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 from ai.core.reasoning.schemas import (
     CANONICAL_RESPONSE_VERSION,
     CanonicalTurnResponse,
+    ResponseState,
 )
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -204,6 +205,10 @@ inference, and unknowns. Cite every operational claim or explicitly abstain.
 Every evidence entry must reproduce a local tool citation's source type, id,
 revision, authorization class, and as-of exactly; place its string locator in
 locator.field. Omit any citation not returned by a local tool.
+If the authorized evidence does not directly support a diagnosis, return an
+abstention instead of a recommendation: a wrong diagnosis on this machinery can
+injure someone, and declining is always acceptable. Never recommend an action
+you cannot support with a cited evidence entry.
 Never declare equipment safe, isolated, approved, cleared, or restored. Return
 only the strict CanonicalTurnResponse JSON object; do not expose chain-of-thought.
 """
@@ -725,6 +730,23 @@ class LunaDiagnosticsAdapter:
                 ):
                     return self._incomplete_outcome(
                         code="unauthorized_evidence",
+                        effort=selected_effort,
+                        request_id=request_id,
+                        tool_names=tool_names,
+                        tool_rounds=tool_rounds,
+                    )
+                if (
+                    canonical.response_state == ResponseState.COMPLETE
+                    and canonical.kind == "repair_diagnosis"
+                    and not canonical.evidence
+                    and canonical.recommended_actions
+                ):
+                    # The gate above rejects forged citations but an empty list
+                    # passed it vacuously: a diagnosis recommending action while
+                    # citing nothing is exactly the uncited answer this adapter
+                    # exists to prevent, and "complete" would let it be spoken.
+                    return self._incomplete_outcome(
+                        code="uncited_recommendation",
                         effort=selected_effort,
                         request_id=request_id,
                         tool_names=tool_names,

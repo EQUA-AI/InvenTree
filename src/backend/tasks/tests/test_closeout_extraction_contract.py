@@ -89,6 +89,70 @@ class ExtractionContractTest(TestCase):
                 NARRATIVE,
             )
 
+    def test_fabricated_value_on_a_valid_span_is_rejected(self):
+        """In-bounds coordinates are not provenance: the value must be there.
+
+        Bounds checking alone let an extractor attach any invented value to
+        any valid span and have it look narrative-anchored to the reviewing
+        human. The containment rule makes that unrepresentable (FR-CO-003's
+        span-provenance intent enforced on content, SC-CO-005 adjacent).
+        """
+        with self.assertRaises(ExtractionInvalidOutput):
+            validate_extraction_output(
+                {
+                    'schema_version': 1,
+                    'fields': {
+                        'action': {
+                            # Valid coordinates, fabricated content.
+                            'value': 'we consumed all remaining stock',
+                            'spans': [[0, 8]],
+                            'confidence': 1,
+                        }
+                    },
+                },
+                NARRATIVE,
+            )
+        with self.assertRaises(ExtractionInvalidOutput):
+            validate_extraction_output(
+                {
+                    'schema_version': 1,
+                    'fields': {},
+                    'part_candidates': [
+                        {
+                            'text': 'a 900A contactor',
+                            'spans': [[0, len(NARRATIVE)]],
+                        }
+                    ],
+                },
+                NARRATIVE,
+            )
+
+    def test_discontiguous_spans_anchor_a_joined_value(self):
+        """A value may be assembled from multiple spans, in span order."""
+        document = validate_extraction_output(
+            {
+                'schema_version': 1,
+                'fields': {
+                    'action': {
+                        'value': 'Replaced filter',
+                        'spans': [
+                            [
+                                NARRATIVE.index('Replaced'),
+                                NARRATIVE.index('Replaced') + len('Replaced'),
+                            ],
+                            [
+                                NARRATIVE.index('filter'),
+                                NARRATIVE.index('filter') + len('filter'),
+                            ],
+                        ],
+                        'confidence': 0.9,
+                    }
+                },
+            },
+            NARRATIVE,
+        )
+        self.assertEqual(document['fields']['action']['value'], 'Replaced filter')
+
     def test_identity_keys_anywhere_are_rejected(self):
         with self.assertRaises(ExtractionInvalidOutput):
             validate_extraction_output(

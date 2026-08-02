@@ -389,7 +389,12 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             description="Complex troubleshooting and root cause analysis",
             tier=WorkflowTier.T6_MAGENTIC,
             builder=T6DiagnosticsWorkflow,
-            cacheable=True,
+            # Diagnoses must never be replayed across machines or faults;
+            # HITLSafetyRules.NEVER_CACHE_WORKFLOWS lists wf1 for the same
+            # reason. (No production code reads this flag today — it is kept
+            # truthful so nothing can later wire caching in "because the
+            # registry said it was safe".)
+            cacheable=False,
             requires_hitl=False,
             tags=["analysis", "diagnostics", "phase-2"],
         )
