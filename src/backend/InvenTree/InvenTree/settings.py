@@ -1213,6 +1213,7 @@ OAUTH2_CHECK_EXCLUDED = [  # This setting mutes schema checks for these rule/met
     '/api/webhook/{endpoint}/:post',
     # Fork-added endpoints (EQUA customizations) - session/token auth only, no oauth2 scopes yet
     '/api/aichat/context/resolve/:post',
+    '/api/aichat/feedback/:post',
     '/api/aichat/conversations/:get',
     '/api/aichat/conversations/:post',
     '/api/aichat/conversations/{conversation_id}/:get',

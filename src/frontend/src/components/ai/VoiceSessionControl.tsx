@@ -22,6 +22,7 @@ const STATE_LABELS: Record<VoiceClientState, string> = {
   ready: 'Voice ready',
   connecting: 'Connecting…',
   listening: 'Listening',
+  confirming: 'Confirm transcript',
   reviewing: 'Reviewing…',
   speaking: 'Speaking',
   error: 'Voice error'
@@ -32,6 +33,7 @@ const STATE_COLORS: Record<VoiceClientState, string> = {
   ready: 'blue',
   connecting: 'yellow',
   listening: 'red',
+  confirming: 'orange',
   reviewing: 'yellow',
   speaking: 'teal',
   error: 'red'
@@ -50,6 +52,10 @@ export interface VoiceSessionControlProps {
   onEnd: () => void;
   onCancel: () => void;
   onToggleMute: () => void;
+  /** Submit the transcript held by the critical-terms policy. */
+  onConfirmTranscript?: () => void;
+  /** Discard the held transcript and resume listening. */
+  onDiscardTranscript?: () => void;
 }
 
 export function VoiceSessionControl({
@@ -60,11 +66,17 @@ export function VoiceSessionControl({
   onStart,
   onEnd,
   onCancel,
-  onToggleMute
+  onToggleMute,
+  onConfirmTranscript,
+  onDiscardTranscript
 }: Readonly<VoiceSessionControlProps>) {
-  const active = ['connecting', 'listening', 'reviewing', 'speaking'].includes(
-    state
-  );
+  const active = [
+    'connecting',
+    'listening',
+    'confirming',
+    'reviewing',
+    'speaking'
+  ].includes(state);
 
   const statusBadge = useMemo(
     () => (
@@ -120,6 +132,29 @@ export function VoiceSessionControl({
               )}
             </ActionIcon>
           </Tooltip>
+          {state === 'confirming' && (
+            <>
+              <Button
+                size='compact-xs'
+                color='orange'
+                onClick={onConfirmTranscript}
+                data-testid='voice-confirm-transcript'
+                aria-label='Confirm transcript'
+              >
+                Confirm
+              </Button>
+              <Button
+                size='compact-xs'
+                variant='subtle'
+                color='gray'
+                onClick={onDiscardTranscript}
+                data-testid='voice-discard-transcript'
+                aria-label='Discard transcript'
+              >
+                Discard
+              </Button>
+            </>
+          )}
           {state === 'speaking' && (
             <Tooltip label='Stop speaking'>
               <ActionIcon

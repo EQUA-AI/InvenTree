@@ -6,13 +6,22 @@ const markdownComponents: Components = {
   a: ({ children, href }) => {
     const isExternal = /^https?:\/\//i.test(href ?? '');
 
+    // Model-authored links are only trusted when absolute http(s). A relative
+    // href here is a fabricated in-app deep link — the model invents ids and
+    // paths — and rendering it clickable presents an invented identifier as a
+    // navigable fact (it also bypasses the SPA router and the /web base, so
+    // it 404s at best). Until server-verified entity links exist (execution
+    // plan S28), everything else renders as plain text.
+    if (!isExternal) {
+      return (
+        <Text span size='sm' inherit>
+          {children}
+        </Text>
+      );
+    }
+
     return (
-      <Anchor
-        href={href}
-        size='sm'
-        target={isExternal ? '_blank' : undefined}
-        rel={isExternal ? 'noopener noreferrer' : undefined}
-      >
+      <Anchor href={href} size='sm' target='_blank' rel='noopener noreferrer'>
         {children}
       </Anchor>
     );
@@ -158,5 +167,70 @@ export function MarkdownMessage({
         {content}
       </ReactMarkdown>
     </Box>
+  );
+}
+
+/**
+ * Inline-only markdown for one-line surfaces (approval summaries, proposal
+ * previews): emphasis, inline code and hardened links render; block
+ * structure — headings, tables, blockquotes, images — is unwrapped to its
+ * plain text so a stray "# " or "|" in server/model-authored summary text
+ * neither renders raw nor explodes the layout.
+ */
+const inlineComponents: Components = {
+  // Governance surfaces (proposal summaries and reasons, approval rows)
+  // carry client- and model-authored text where a markdown link can mask an
+  // arbitrary target behind innocuous anchor text — so NO link is ever
+  // clickable here; the children render as plain text.
+  a: ({ children }) => (
+    <Text span inherit>
+      {children}
+    </Text>
+  ),
+  // Inherit the wrapping Text's size and spacing instead of paragraph
+  // styling, so xs summaries stay xs and lineClamp keeps working.
+  p: ({ children }) => (
+    <Text span inherit>
+      {children}
+    </Text>
+  ),
+  code: markdownComponents.code
+};
+
+export function InlineMarkdown({
+  content
+}: Readonly<{
+  content: string;
+}>) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={inlineComponents}
+      skipHtml
+      unwrapDisallowed
+      disallowedElements={[
+        'h1',
+        'h2',
+        'h3',
+        'h4',
+        'h5',
+        'h6',
+        'table',
+        'thead',
+        'tbody',
+        'tr',
+        'th',
+        'td',
+        'blockquote',
+        'hr',
+        'img',
+        'pre',
+        'ul',
+        'ol',
+        'li'
+      ]}
+    >
+      {content}
+    </ReactMarkdown>
   );
 }

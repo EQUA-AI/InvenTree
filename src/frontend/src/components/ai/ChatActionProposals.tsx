@@ -31,6 +31,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 
 import { api } from '../../App';
+import { InlineMarkdown } from '../aichat/MarkdownMessage';
 
 export interface ChatActionProposalPreview {
   action?: string;
@@ -216,13 +217,13 @@ export function ProposalCard({
           </Text>
         )}
         {summary && (
-          <Text size='xs' c='dimmed'>
-            {summary}
+          <Text size='xs' c='dimmed' component='div'>
+            <InlineMarkdown content={summary} />
           </Text>
         )}
         {proposal.reason && (
-          <Text size='xs' fs='italic'>
-            “{proposal.reason}”
+          <Text size='xs' fs='italic' component='div'>
+            “<InlineMarkdown content={proposal.reason} />”
           </Text>
         )}
         {irreversible && pending && (

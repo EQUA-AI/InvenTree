@@ -57,7 +57,7 @@ import { HITLApprovalCard, HITLResultBanner } from '../ai/HITLApprovalModal';
 import { VoiceContextBadge } from '../ai/VoiceContextBadge';
 import { VoiceSessionControl } from '../ai/VoiceSessionControl';
 import { VoiceTranscript } from '../ai/VoiceTranscript';
-import { MarkdownMessage } from '../aichat/MarkdownMessage';
+import { InlineMarkdown, MarkdownMessage } from '../aichat/MarkdownMessage';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history';
 
@@ -212,7 +212,9 @@ function ApprovalInboxPanel({
           <Paper p='md' radius='md' withBorder>
             <Group justify='space-between' align='flex-start' mb='xs'>
               <Box style={{ flex: 1 }}>
-                <Text fw={600}>{detail.summary}</Text>
+                <Text fw={600} component='div'>
+                  <InlineMarkdown content={detail.summary} />
+                </Text>
                 <Text size='xs' c='dimmed'>
                   {t`Tier`} {detail.risk_tier} • {detail.action_type} •{' '}
                   {detail.status}
@@ -338,8 +340,8 @@ function ApprovalInboxPanel({
             >
               <Group justify='space-between' align='flex-start'>
                 <Box style={{ flex: 1 }}>
-                  <Text size='sm' fw={600} lineClamp={1}>
-                    {item.summary}
+                  <Text size='sm' fw={600} lineClamp={1} component='div'>
+                    <InlineMarkdown content={item.summary} />
                   </Text>
                   <Text size='xs' c='dimmed'>
                     {t`Tier`} {item.risk_tier} • {item.action_type}
@@ -571,12 +573,47 @@ function TypingIndicator() {
  */
 function MessageActions({
   content,
+  messageId,
+  threadId,
   onRegenerate
 }: Readonly<{
   content: string;
+  messageId: string;
+  threadId: string | null;
   onRegenerate?: () => void;
 }>) {
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
+
+  // Persist the verdict to the durable ledger. Freshly streamed messages
+  // carry client-generated ids that never exist server-side, so the exact
+  // rated content's SHA-256 rides along and the server attributes by content
+  // when the id is unknown. Toggling a thumb off retracts the verdict —
+  // "no verdict" is a legitimate latest state.
+  const rate = (rating: 'up' | 'down') => {
+    const next = feedback === rating ? null : rating;
+    setFeedback(next);
+    if (!threadId) {
+      return;
+    }
+    void (async () => {
+      try {
+        const bytes = new TextEncoder().encode(content);
+        const digest = await crypto.subtle.digest('SHA-256', bytes);
+        const contentSha256 = Array.from(new Uint8Array(digest))
+          .map((byte) => byte.toString(16).padStart(2, '0'))
+          .join('');
+        await api.post('/api/aichat/feedback/', {
+          thread_id: threadId,
+          message_id: messageId,
+          rating: next ?? 'none',
+          content_sha256: contentSha256
+        });
+      } catch {
+        // The optimistic state stays; the ledger simply missed one verdict.
+        console.debug('feedback not recorded');
+      }
+    })();
+  };
 
   return (
     <Group
@@ -609,7 +646,7 @@ function MessageActions({
           size='xs'
           variant='subtle'
           color={feedback === 'up' ? 'blue' : 'gray'}
-          onClick={() => setFeedback(feedback === 'up' ? null : 'up')}
+          onClick={() => rate('up')}
         >
           <IconThumbUp size={14} />
         </ActionIcon>
@@ -620,7 +657,7 @@ function MessageActions({
           size='xs'
           variant='subtle'
           color={feedback === 'down' ? 'red' : 'gray'}
-          onClick={() => setFeedback(feedback === 'down' ? null : 'down')}
+          onClick={() => rate('down')}
         >
           <IconThumbDown size={14} />
         </ActionIcon>
@@ -649,9 +686,11 @@ function MessageActions({
  * Single chat message component - CopilotKit style
  */
 function ChatMessageItem({
-  message
+  message,
+  threadId
 }: Readonly<{
   message: ChatMessage;
+  threadId: string | null;
 }>) {
   const theme = useMantineTheme();
   const isUser = message.role === 'user';
@@ -752,7 +791,11 @@ function ChatMessageItem({
           {/* Action buttons for assistant messages */}
           {!isUser && !message.isStreaming && message.content && (
             <Box ml={36}>
-              <MessageActions content={message.content} />
+              <MessageActions
+                content={message.content}
+                messageId={message.id}
+                threadId={threadId}
+              />
             </Box>
           )}
         </Box>
@@ -1299,7 +1342,11 @@ export function AIChatDrawer({
 
               {/* Message list */}
               {messages.map((message) => (
-                <ChatMessageItem key={message.id} message={message} />
+                <ChatMessageItem
+                  key={message.id}
+                  message={message}
+                  threadId={activeThreadId}
+                />
               ))}
 
               {/* HITL Result Banner - shows approval/rejection confirmation */}
@@ -1422,6 +1469,8 @@ export function AIChatDrawer({
                 onEnd={() => void voice.end()}
                 onCancel={() => void voice.cancel()}
                 onToggleMute={voice.toggleMute}
+                onConfirmTranscript={() => void voice.confirmPending()}
+                onDiscardTranscript={voice.discardPending}
               />
               <VoiceContextBadge
                 threadId={voice.session?.thread_id ?? null}
@@ -1431,6 +1480,7 @@ export function AIChatDrawer({
             <VoiceTranscript
               partial={voice.partial}
               listening={voice.state === 'listening'}
+              pendingConfirm={voice.pendingConfirm}
             />
             <Paper
               radius='xl'

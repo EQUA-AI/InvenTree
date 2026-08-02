@@ -724,6 +724,21 @@ class LunaDiagnosticsAdapter:
                         tool_names=tool_names,
                         tool_rounds=tool_rounds,
                     )
+                if "\\n" in canonical.detailed_response and "\n" not in canonical.detailed_response:
+                    # A visible answer with literal backslash-n separators and
+                    # NO real newlines is the double-escaped-JSON artifact —
+                    # the whole text arrived on one line. Only that exact
+                    # signature is normalized; text that mixes real newlines
+                    # with legitimate backslash sequences (Windows paths, code
+                    # samples) is left untouched. model_copy skips
+                    # re-validation deliberately: the schema and lexical gates
+                    # already ran on this object, and this rewrite only splits
+                    # at separators the tokenizer treats as boundaries anyway.
+                    canonical = canonical.model_copy(
+                        update={
+                            "detailed_response": canonical.detailed_response.replace("\\n", "\n")
+                        }
+                    )
                 if any(
                     not _evidence_is_authorized(item, authorized_citations)
                     for item in canonical.evidence

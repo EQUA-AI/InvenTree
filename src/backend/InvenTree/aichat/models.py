@@ -523,6 +523,57 @@ class ChatCitation(models.Model):
         return f'{self.source_type}:{self.source_id} citation'
 
 
+class MessageFeedbackRating(models.TextChoices):
+    """A reader's verdict on one assistant message."""
+
+    UP = 'up', 'Helpful'
+    DOWN = 'down', 'Not helpful'
+
+
+class MessageFeedback(models.Model):
+    """One user's durable rating of one assistant message.
+
+    The drawer's thumbs previously died in React state, so the team had no
+    ground-truth quality signal at all — and no before/after instrument for
+    behaviour changes such as diagnosis turns becoming refusals. Because the
+    message row carries thread, turn and metadata linkage, each rating joins
+    to workflow, route and tool trace for free. One row per (message, user);
+    re-rating updates in place, so the ledger records the latest verdict.
+    """
+
+    message = models.ForeignKey(
+        ChatMessage, on_delete=models.CASCADE, related_name='feedback'
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+'
+    )
+    rating = models.CharField(max_length=8, choices=MessageFeedbackRating.choices)
+    reason = models.CharField(max_length=500, blank=True, default='')
+    #: The id the client used when it rated a freshly streamed message whose
+    #: durable pk it did not yet know — audit breadcrumb only, never identity.
+    client_message_id = models.CharField(max_length=80, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """One live verdict per reader per message."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['message', 'user'], name='aichat_feedback_one_per_user'
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['rating', 'created_at'], name='aichat_feedback_rating_idx'
+            )
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'{self.rating} on {self.message_id}'
+
+
 class ToolAuthorizationResult(models.TextChoices):
     """Outcome of the per-call tool authorization decision."""
 

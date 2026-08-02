@@ -1,4 +1,4 @@
-import { t } from '@lingui/core/macro';
+import { useLingui } from '@lingui/react/macro';
 import { Stack } from '@mantine/core';
 import {
   IconCalendar,
@@ -29,6 +29,8 @@ import MaintenanceBoard from './MaintenanceBoard';
  * data migration with no user-visible value.
  */
 export default function MaintenanceIndex() {
+  const { t } = useLingui();
+
   const panels: PanelType[] = useMemo(
     () => [
       {
@@ -50,7 +52,7 @@ export default function MaintenanceIndex() {
         content: <TaskGantt />
       }
     ],
-    []
+    [t]
   );
 
   return (

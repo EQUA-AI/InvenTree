@@ -21,6 +21,7 @@ export type VoiceClientState =
   | 'ready'
   | 'connecting'
   | 'listening'
+  | 'confirming'
   | 'reviewing'
   | 'speaking'
   | 'error';

@@ -564,3 +564,51 @@ class ConversationToolInvokeView(APIView):
         except tool_service.ToolError as exc:
             return _scoped_error(exc)
         return Response(envelope)
+
+
+class MessageFeedbackView(APIView):
+    """Record the caller's rating of one assistant message in their thread."""
+
+    authentication_classes = [SessionAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    _STATUS = {
+        'FEEDBACK_INVALID_RATING': status.HTTP_400_BAD_REQUEST,
+        'FEEDBACK_THREAD_UNAVAILABLE': status.HTTP_404_NOT_FOUND,
+        'FEEDBACK_MESSAGE_UNAVAILABLE': status.HTTP_404_NOT_FOUND,
+    }
+
+    def post(self, request):
+        """Post."""
+        from aichat.services import feedback as feedback_service
+
+        data = request.data if isinstance(request.data, dict) else {}
+        rating = str(data.get('rating', ''))
+        try:
+            if rating == 'none':
+                # Retraction: the latest verdict is "no verdict".
+                cleared = feedback_service.clear_feedback(
+                    owner=request.user,
+                    thread_id=str(data.get('thread_id', '')),
+                    message_id=str(data.get('message_id', '')),
+                    content_sha256=str(data.get('content_sha256', '')),
+                )
+                return Response({'rating': None, 'cleared': cleared})
+            row = feedback_service.record_feedback(
+                owner=request.user,
+                thread_id=str(data.get('thread_id', '')),
+                message_id=str(data.get('message_id', '')),
+                rating=rating,
+                reason=str(data.get('reason', '')),
+                content_sha256=str(data.get('content_sha256', '')),
+            )
+        except feedback_service.FeedbackError as exc:
+            return Response(
+                {'error': exc.code, 'detail': str(exc)},
+                status=self._STATUS.get(exc.code, status.HTTP_400_BAD_REQUEST),
+            )
+        return Response({
+            'message_id': row.message_id,
+            'rating': row.rating,
+            'updated_at': row.updated_at.isoformat(),
+        })

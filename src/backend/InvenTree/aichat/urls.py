@@ -9,6 +9,7 @@ from aichat.api import (
     ConversationListCreateView,
     ConversationToolInvokeView,
     ConversationToolTraceView,
+    MessageFeedbackView,
     ProposalConfirmView,
     ProposalDetailView,
     ProposalListCreateView,
@@ -34,6 +35,7 @@ urlpatterns = [
         ProposalRejectView.as_view(),
         name='proposal-reject',
     ),
+    path('feedback/', MessageFeedbackView.as_view(), name='message-feedback'),
     path('context/resolve/', ContextResolveView.as_view(), name='context-resolve'),
     path(
         'conversations/', ConversationListCreateView.as_view(), name='conversation-list'

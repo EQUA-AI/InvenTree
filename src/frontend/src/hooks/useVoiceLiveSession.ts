@@ -20,6 +20,10 @@ import type {
   VoiceSessionPayload,
   VoiceTurnResponse
 } from '../../lib/types/Voice';
+import {
+  DEFAULT_CONFIDENCE_FLOOR,
+  detectCriticalSpans
+} from '../components/ai/voiceCriticalTerms';
 
 const DATA_CHANNEL_LABEL = 'voice-live-events';
 const FINAL_EVENT = 'conversation.item.input_audio_transcription.completed';
@@ -138,6 +142,12 @@ export interface UseVoiceLiveSessionResult {
    * of structured use (fault/closeout capture), not of advisory chat.
    */
   submitTranscript: (transcript: VoiceFinalTranscript) => Promise<void>;
+  /** Transcript held for confirmation (critical terms or low confidence). */
+  pendingConfirm: VoiceFinalTranscript | null;
+  /** Submit the held transcript exactly as heard. */
+  confirmPending: () => Promise<void>;
+  /** Discard the held transcript and resume listening. */
+  discardPending: () => void;
 }
 
 export function useVoiceLiveSession(
@@ -145,6 +155,12 @@ export function useVoiceLiveSession(
 ): UseVoiceLiveSessionResult {
   const { host, enabled, threadId, onTurnResult, onFinalTranscript } = options;
 
+  const [pendingConfirm, setPendingConfirm] =
+    useState<VoiceFinalTranscript | null>(null);
+  // Ref mirror for event handlers; state alone is stale inside the data
+  // channel callback. Set both through setHold only.
+  const pendingConfirmRef = useRef<VoiceFinalTranscript | null>(null);
+  const confidenceFloorRef = useRef<number>(DEFAULT_CONFIDENCE_FLOOR);
   const [state, setState] = useState<VoiceClientState>(
     enabled ? 'ready' : 'unavailable'
   );
@@ -189,7 +205,13 @@ export function useVoiceLiveSession(
           credentials: 'include'
         });
         if (!cancelled && response.ok) {
-          const body = (await response.json()) as { enabled?: boolean };
+          const body = (await response.json()) as {
+            enabled?: boolean;
+            confidence_floor?: number;
+          };
+          if (typeof body.confidence_floor === 'number') {
+            confidenceFloorRef.current = body.confidence_floor;
+          }
           setServerEnabled(Boolean(body.enabled));
           return;
         }
@@ -243,11 +265,18 @@ export function useVoiceLiveSession(
       // permanently unable to reconnect. The server session expires on its own.
       sessionRef.current = null;
       setSession(null);
+      pendingConfirmRef.current = null;
+      setPendingConfirm(null);
       setError({ code, detail });
       setState('error');
     },
     [releaseMedia]
   );
+
+  const setHold = useCallback((held: VoiceFinalTranscript | null) => {
+    pendingConfirmRef.current = held;
+    setPendingConfirm(held);
+  }, []);
 
   const submitNow = useCallback(
     async (transcript: VoiceFinalTranscript) => {
@@ -255,7 +284,10 @@ export function useVoiceLiveSession(
       if (!active) {
         return;
       }
-      setState('reviewing');
+      // An earlier turn completing must never knock the UI out of the
+      // confirmation hold; the held transcript owns the state until the
+      // technician resolves it.
+      setState((current) => (current === 'confirming' ? current : 'reviewing'));
       // Status speech (the thinking/failure phrases) streams on the shared
       // element while the turn is still processing, so resume it up front
       // if an earlier cancel() paused it. Autoplay-policy rejections retry
@@ -296,7 +328,9 @@ export function useVoiceLiveSession(
             // simply try again by voice.
             setError({ code });
             setPartial(null);
-            setState('listening');
+            setState((current) =>
+              current === 'confirming' ? current : 'listening'
+            );
             return;
           }
           fail(code);
@@ -311,7 +345,13 @@ export function useVoiceLiveSession(
         if (playbackRequested) {
           speakingSinceRef.current = Date.now();
         }
-        setState(playbackRequested ? 'speaking' : 'listening');
+        setState((current) =>
+          current === 'confirming'
+            ? current
+            : playbackRequested
+              ? 'speaking'
+              : 'listening'
+        );
         if (!playbackRequested) {
           return;
         }
@@ -428,21 +468,67 @@ export function useVoiceLiveSession(
         if (!/[\p{L}\p{N}]/u.test(trimmed) || FILLER_ONLY.test(trimmed)) {
           return;
         }
+        // The hold is exclusive: while a transcript awaits on-screen
+        // confirmation, further speech is intentionally not processed —
+        // neither replacing the held transcript (a voiced "no, discard that"
+        // must not overwrite the safety utterance it refers to) nor
+        // submitting around it. The strip tells the technician to decide on
+        // screen.
+        if (pendingConfirmRef.current) {
+          return;
+        }
         onFinalTranscript?.(finalTranscript);
-        // Hands-free loop: every completed transcript becomes a turn and the
-        // spoken answer is the correction loop. Critical-value confirmation
-        // remains a structured-use (capture) requirement, not a chat gate.
+        // Critical-terms hold (WS5-T7, execution plan S7): a transcript that
+        // carries safety-relevant content — measurements, negations, LOTO
+        // terms, identifiers — or arrived measurably below the server's ASR
+        // confidence floor waits for explicit confirmation instead of
+        // auto-submitting: "15 psi" vs "50 psi", or a dropped "not", changes
+        // a repair. A missing confidence field is NOT treated as low
+        // confidence — providers may omit it, and holding every utterance
+        // would kill the hands-free loop.
+        const critical = detectCriticalSpans(finalTranscript.text).length > 0;
+        const lowConfidence =
+          typeof finalTranscript.confidence === 'number' &&
+          finalTranscript.confidence < confidenceFloorRef.current;
+        if (critical || lowConfidence) {
+          setHold(finalTranscript);
+          setState('confirming');
+          return;
+        }
         void submitTranscript(finalTranscript);
       }
     },
-    [clearSpeakingTimer, onFinalTranscript, submitTranscript]
+    [clearSpeakingTimer, onFinalTranscript, submitTranscript, setHold]
   );
+
+  /** Submit the held transcript exactly as heard. */
+  const confirmPending = useCallback(async () => {
+    const held = pendingConfirmRef.current;
+    if (!held) {
+      return;
+    }
+    setHold(null);
+    // Leave 'confirming' first so submitNow's hold-aware transitions run
+    // normally; the dedupe/queue semantics of submitTranscript are intact
+    // because the hold happened BEFORE the submitted-items set saw this
+    // itemId.
+    setState('reviewing');
+    await submitTranscript(held);
+  }, [setHold, submitTranscript]);
+
+  /** Drop the held transcript; the technician re-speaks instead. */
+  const discardPending = useCallback(() => {
+    setHold(null);
+    setState((current) => (current === 'confirming' ? 'listening' : current));
+  }, [setHold]);
 
   const start = useCallback(async () => {
     if (!effectiveEnabled || sessionRef.current) {
       return;
     }
     setError(null);
+    pendingConfirmRef.current = null;
+    setPendingConfirm(null);
     setState('connecting');
 
     if (
@@ -589,6 +675,8 @@ export function useVoiceLiveSession(
       sessionRef.current = null;
       submittedItemsRef.current.clear();
       submitQueueRef.current = [];
+      pendingConfirmRef.current = null;
+      setPendingConfirm(null);
       releaseMedia();
       setPartial(null);
       if (!active) {
@@ -663,6 +751,9 @@ export function useVoiceLiveSession(
     end,
     cancel,
     toggleMute,
-    submitTranscript
+    submitTranscript,
+    pendingConfirm,
+    confirmPending,
+    discardPending
   };
 }
