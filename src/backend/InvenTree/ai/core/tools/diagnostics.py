@@ -19,6 +19,7 @@ from types import MappingProxyType
 from typing import Annotated, Any, Literal, Protocol
 
 from ai.core.auth import AIPrincipal
+from ai.core.tools.provider_schema import strict_provider_schema
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 MACHINE_READ_CAPABILITY = "diagnostics.machine.read"
@@ -589,8 +590,7 @@ class DiagnosticToolRegistry:
                 or definition.root_type not in root_types
             ):
                 continue
-            parameters = definition.arguments_model.model_json_schema()
-            parameters["additionalProperties"] = False
+            parameters = strict_provider_schema(definition.arguments_model)
             result.append({
                 "type": "function",
                 "name": definition.name,

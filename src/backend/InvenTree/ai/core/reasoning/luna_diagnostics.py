@@ -24,6 +24,7 @@ from ai.core.reasoning.schemas import (
     CanonicalTurnResponse,
     ResponseState,
 )
+from ai.core.tools.provider_schema import strict_provider_schema
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 if TYPE_CHECKING:
@@ -473,7 +474,7 @@ class LunaDiagnosticsAdapter:
                 "type": "function",
                 "name": name,
                 "description": "Read current authorized diagnostic evidence.",
-                "parameters": arguments_model.model_json_schema(),
+                "parameters": strict_provider_schema(arguments_model),
                 "strict": True,
             })
         return tools
@@ -506,7 +507,7 @@ class LunaDiagnosticsAdapter:
                     "type": "json_schema",
                     "name": "canonical_turn_response",
                     "strict": True,
-                    "schema": CanonicalTurnResponse.model_json_schema(),
+                    "schema": strict_provider_schema(CanonicalTurnResponse),
                 }
             },
             "tools": self._provider_tools(tool_context, envelope.allowed_tool_names),
