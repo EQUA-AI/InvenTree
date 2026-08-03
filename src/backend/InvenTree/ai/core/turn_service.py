@@ -1276,9 +1276,11 @@ class NormalizedTurnService:
             # because stdlib logging discards extra entirely -- which is why the
             # 2026-07-26 session left only 2 of 36 turns attributable, and both
             # only because they crashed. No transcript or PII, by construction.
+            provenance = canonical.get("reasoning_provenance") or {}
             logger.info(
                 "voice.turn modality=%s workflow=%s route=%s state=%s "
-                "duration_ms=%d thread_id=%s turn_id=%s",
+                "duration_ms=%d thread_id=%s turn_id=%s "
+                "outcome_code=%s tool_rounds=%s tool_names=%s",
                 modality,
                 canonical.get("workflow_used") or capture.workflow_id or "unknown",
                 (canonical.get("route") or {}).get("mode", "none"),
@@ -1286,6 +1288,14 @@ class NormalizedTurnService:
                 int((time.perf_counter() - turn_started) * 1000),
                 thread.pk,
                 turn.pk,
+                # Value-free reasoning telemetry: WHICH local bound ended the
+                # turn (uncited_recommendation, tool_denied, timeout, ...) was
+                # unobservable in production - outcome codes exist only in
+                # provenance, which no log or API surfaced. Codes and tool
+                # names are enum-like, never content.
+                provenance.get("outcome_code") or "-",
+                provenance.get("tool_rounds", "-"),
+                ",".join(provenance.get("tool_names") or ()) or "-",
             )
             return self._result_from_canonical(thread.pk, finalized.pk, canonical, replayed=False)
         except asyncio.CancelledError:
