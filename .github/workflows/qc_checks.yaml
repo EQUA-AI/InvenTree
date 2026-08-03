@@ -598,6 +598,7 @@ jobs:
         uses: ./.github/actions/setup
         with:
           apt-dependency: gettext poppler-utils
+          pip-dependency: pytest-asyncio
           dev-install: true
           update: true
           static: true

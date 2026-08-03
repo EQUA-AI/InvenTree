@@ -170,11 +170,14 @@ class DiagnosticRecordRoot:
     expected_revision: str
     linked_machine_id: int | None = None
     authorization_class: str = "maintenance_scope"
+    display_name: str = ""
 
     def __post_init__(self) -> None:
         """Reject ambiguous or mutable-looking root values."""
         if self.entity_type not in {"machine", "repair_packet"}:
             raise ValueError("Unsupported diagnostic record root")
+        if not isinstance(self.display_name, str) or len(self.display_name) > 255:
+            raise ValueError("Record-root display names must be short strings")
         if type(self.entity_id) is not int or self.entity_id <= 0:
             raise ValueError("Record-root identifiers must be positive integers")
         if not isinstance(self.expected_revision, str) or not self.expected_revision:

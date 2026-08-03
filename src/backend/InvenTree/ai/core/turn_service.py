@@ -908,7 +908,10 @@ class NormalizedTurnService:
         terminal response, which the response schema structurally bars from
         speech and recommendations.
         """
-        from ai.core.reasoning.luna_diagnostics import TrustedReasoningEnvelope
+        from ai.core.reasoning.luna_diagnostics import (
+            AuthorizedRecord,
+            TrustedReasoningEnvelope,
+        )
 
         allowed_tools = self._allowed_diagnostic_tool_names(diagnostic_context)
         if diagnostic_context is None or not allowed_tools:
@@ -946,12 +949,31 @@ class NormalizedTurnService:
 
         machine_id: int | None = None
         repair_packet_id: int | None = None
+        authorized_records: list[AuthorizedRecord] = []
         for root in getattr(diagnostic_context, "record_roots", ()):
             if getattr(root, "entity_type", None) == "machine":
                 machine_id = int(root.entity_id)
             elif getattr(root, "entity_type", None) == "repair_packet":
                 repair_packet_id = int(root.entity_id)
                 machine_id = int(root.linked_machine_id)
+            else:
+                continue
+            # Every tool call must quote a server-resolved id and revision, so
+            # the model is handed the authorized roots verbatim; the registry
+            # still re-authorizes each read (this is information, not grant).
+            authorized_records.append(
+                AuthorizedRecord(
+                    entity_type=root.entity_type,
+                    entity_id=int(root.entity_id),
+                    expected_revision=str(root.expected_revision),
+                    linked_machine_id=(
+                        int(root.linked_machine_id)
+                        if getattr(root, "linked_machine_id", None) is not None
+                        else None
+                    ),
+                    display_name=str(getattr(root, "display_name", "") or ""),
+                )
+            )
 
         envelope = TrustedReasoningEnvelope(
             actor_id=actor.actor,
@@ -962,6 +984,7 @@ class NormalizedTurnService:
             user_message=content,
             mode=modality,
             allowed_tool_names=allowed_tools,
+            authorized_records=tuple(authorized_records),
             policy_version=trusted_context.policy_version,
             correlation_id=trusted_context.correlation_id,
         )

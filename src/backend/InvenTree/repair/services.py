@@ -1060,7 +1060,7 @@ def list_diagnostic_record_roots(
     machines = (
         AssetMachine.objects
         .filter(client_id__in=client_ids, active=True)
-        .only('pk', 'updated_at')
+        .only('pk', 'updated_at', 'name')
         .order_by('pk')[:machine_limit]
     )
     for machine in machines:
@@ -1074,6 +1074,10 @@ def list_diagnostic_record_roots(
             'expected_revision': revision,
             'linked_machine_id': None,
             'authorization_class': 'maintenance_scope',
+            # The reasoning model must target records by exact id+revision and
+            # is forbidden from inventing identifiers, so each root carries the
+            # name a technician would use to refer to it.
+            'display_name': str(machine.name or '')[:255],
         })
 
     if machine_ids:

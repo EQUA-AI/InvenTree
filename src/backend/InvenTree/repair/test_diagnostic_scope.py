@@ -159,6 +159,7 @@ class DiagnosticRecordRootListingTest(TestCase):
         self.assertEqual([r['entity_id'] for r in machine_roots], [self.machine.pk])
         self.assertTrue(machine_roots[0]['expected_revision'])
         self.assertEqual(machine_roots[0]['authorization_class'], 'maintenance_scope')
+        self.assertEqual(machine_roots[0]['display_name'], 'Influent Pump 1')
 
     def test_customer_only_scope_lists_nothing(self):
         """A customer-only scope must not resolve any machine root.

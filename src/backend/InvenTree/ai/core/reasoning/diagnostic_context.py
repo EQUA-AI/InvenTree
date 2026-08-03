@@ -57,6 +57,7 @@ def _build_sync(principal: AIPrincipal) -> Any | None:
                 expected_revision=item["expected_revision"],
                 linked_machine_id=item["linked_machine_id"],
                 authorization_class=item["authorization_class"],
+                display_name=str(item.get("display_name", "") or ""),
             )
             for item in roots_data
         )

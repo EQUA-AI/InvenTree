@@ -522,6 +522,113 @@ class NormalizedTurnServiceTests(SimpleTestCase):
             )
         )
 
+    def test_reasoning_envelope_carries_the_authorized_records_verbatim(self) -> None:
+        """The model can only quote server ids/revisions it was actually given.
+
+        Every diagnostic tool demands the exact entity_id + expected_revision
+        the server resolved, and the instructions forbid inventing identifiers
+        — so a turn whose envelope omits the authorized roots is structurally
+        unable to ground itself (found live 2026-08-03: every grounded turn
+        ended incomplete). The envelope must mirror the context's roots.
+        """
+        from ai.core.reasoning.schemas import CanonicalTurnResponse
+
+        response = CanonicalTurnResponse(
+            kind="repair_diagnosis",
+            response_version=1,
+            response_state="incomplete",
+            detailed_response="Incomplete.",
+            spoken_summary="",
+            reasoning_summary="stub",
+            confidence="low",
+            evidence=[],
+            next_questions=[],
+            recommended_actions=[],
+            safety_boundary="No safety status was inferred.",
+            speak=False,
+        )
+
+        class Adapter:
+            def __init__(self):
+                self.calls = []
+
+            async def reason(self, **kwargs):
+                self.calls.append(kwargs)
+                provenance = SimpleNamespace(to_dict=dict)
+                return SimpleNamespace(response=response, provenance=provenance)
+
+        async def exercise():
+            repository = _Repository()
+            adapter = Adapter()
+            registry = SimpleNamespace(
+                definitions=(
+                    SimpleNamespace(
+                        name="get_machine_context", capability="diagnostics.machine.read"
+                    ),
+                )
+            )
+            diagnostic_context = SimpleNamespace(
+                capabilities=("diagnostics.machine.read",),
+                record_roots=(
+                    SimpleNamespace(
+                        entity_type="machine",
+                        entity_id=44,
+                        expected_revision="2026-08-01T00:00:00+00:00",
+                        linked_machine_id=None,
+                        display_name="Influent Pump 1",
+                    ),
+                    SimpleNamespace(
+                        entity_type="repair_packet",
+                        entity_id=7,
+                        expected_revision="2026-08-02T00:00:00+00:00",
+                        linked_machine_id=44,
+                        display_name="",
+                    ),
+                ),
+            )
+            service = _TestTurnService(
+                workflow_factory=_Workflow,
+                repository_factory=lambda actor, context: repository,  # noqa: ARG005
+                complexity_router=VoiceComplexityRouter(),
+                reasoning_adapter=adapter,
+                diagnostic_tool_registry=registry,
+                diagnostic_context_factory=lambda **kwargs: diagnostic_context,  # noqa: ARG005
+            )
+            await service.process(
+                actor=_principal(),
+                thread_id="thread_normalized",
+                content="The pump is vibrating and the bearing is hot. Diagnose it.",
+                trusted_context=_context(),
+                correlation_id=_context().correlation_id,
+                modality="text",
+                modality_metadata={},
+                idempotency_key="reason:roots",
+            )
+            return adapter
+
+        adapter = asyncio.run(exercise())
+        envelope = adapter.calls[0]["envelope"]
+        records = [record.model_dump() for record in envelope.authorized_records]
+        self.assertEqual(
+            records,
+            [
+                {
+                    "entity_type": "machine",
+                    "entity_id": 44,
+                    "expected_revision": "2026-08-01T00:00:00+00:00",
+                    "linked_machine_id": None,
+                    "display_name": "Influent Pump 1",
+                },
+                {
+                    "entity_type": "repair_packet",
+                    "entity_id": 7,
+                    "expected_revision": "2026-08-02T00:00:00+00:00",
+                    "linked_machine_id": 44,
+                    "display_name": "",
+                },
+            ],
+        )
+
     def test_reasoning_route_without_diagnostic_tools_refuses_and_never_reaches_adapter(
         self,
     ) -> None:
