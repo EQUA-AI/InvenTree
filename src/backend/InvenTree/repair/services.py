@@ -1034,10 +1034,13 @@ def list_diagnostic_record_roots(
 ) -> list[dict]:
     """Record roots this actor may read for a diagnostic turn.
 
-    Returns the active machines in the actor's maintenance (customer) scope plus
+    Returns the active machines in the actor's maintenance (client) scope plus
     their non-terminal repair packets, each with its current optimistic-read
-    revision. Fail-closed: an unauthenticated/unscoped actor or a scope error
-    yields an empty list, so the reasoning path exposes no diagnostic tools.
+    revision. Machines are identified by their owning client — the same
+    boundary ``_diagnostic_scoped_entity`` enforces per entity, so the listed
+    roots and the per-read ACL cannot disagree. Fail-closed: an
+    unauthenticated/unscoped actor or a scope error yields an empty list, so
+    the reasoning path exposes no diagnostic tools.
     """
     from tasks.scope import ScopeError, scope_for_actor
 
@@ -1048,17 +1051,15 @@ def list_diagnostic_record_roots(
         scopes = scope_for_actor(actor)
     except ScopeError:
         return []
-    customer_ids = {
-        scope.customer_id for scope in scopes if scope.customer_id is not None
-    }
-    if not customer_ids:
+    client_ids = {scope.client_id for scope in scopes if scope.client_id is not None}
+    if not client_ids:
         return []
 
     roots: list[dict] = []
     machine_ids: list[int] = []
     machines = (
         AssetMachine.objects
-        .filter(customer_id__in=customer_ids, active=True)
+        .filter(client_id__in=client_ids, active=True)
         .only('pk', 'updated_at')
         .order_by('pk')[:machine_limit]
     )

@@ -107,3 +107,82 @@ class ResolverSeamTest(TestCase):
         with self.settings(AIMMS_DIAGNOSTIC_CAPABILITY_RESOLVER=None):
             grants = services.diagnostic_capabilities_for_actor(_user(superuser=True))
         self.assertEqual(grants, frozenset())
+
+
+class DiagnosticRecordRootListingTest(TestCase):
+    """The record-root lister must speak the same scope dialect as the ACL.
+
+    Machines are identified by their owning *client* (the customer column was
+    dropped when machines became client-scoped), and the per-entity ACL
+    (``_diagnostic_scoped_entity``) already matches on ``client_id``. The
+    lister silently kept filtering on ``scope.customer_id`` — always ``None``
+    from the production resolver — so every actor got zero record roots, the
+    diagnostic context factory returned ``None``, and the reasoning rail
+    refused every turn. Found live on 2026-08-03 (battery test R1); nothing
+    exercised the real lister until this suite.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        """One client with an active machine, plus decoys."""
+        from assets.models import AssetMachine, Client
+
+        cls.client_row = Client.objects.create(name='Site A', code='site-a')
+        cls.other_client = Client.objects.create(name='Site B', code='site-b')
+        cls.machine = AssetMachine.objects.create(
+            name='Influent Pump 1', client=cls.client_row
+        )
+        AssetMachine.objects.create(
+            name='Inactive Pump', client=cls.client_row, active=False
+        )
+        AssetMachine.objects.create(name='Foreign Pump', client=cls.other_client)
+
+    def _actor(self, scopes):
+        actor = _user(superuser=False)
+        actor.maintenance_scopes = scopes
+        return actor
+
+    def test_client_scoped_actor_lists_only_their_active_machines(self):
+        """The production scope shape yields the client's active machines.
+
+        Each root carries a non-empty optimistic-read revision.
+        """
+        from tasks.scope import MaintenanceScope
+
+        actor = self._actor({
+            MaintenanceScope(
+                customer_id=None, site_key=None, client_id=self.client_row.pk
+            )
+        })
+        roots = services.list_diagnostic_record_roots(actor)
+        machine_roots = [r for r in roots if r['entity_type'] == 'machine']
+        self.assertEqual([r['entity_id'] for r in machine_roots], [self.machine.pk])
+        self.assertTrue(machine_roots[0]['expected_revision'])
+        self.assertEqual(machine_roots[0]['authorization_class'], 'maintenance_scope')
+
+    def test_customer_only_scope_lists_nothing(self):
+        """A customer-only scope must not resolve any machine root.
+
+        Machines carry no customer identity — that claim belongs to work
+        orders.
+        """
+        from tasks.scope import MaintenanceScope
+
+        actor = self._actor({
+            MaintenanceScope(customer_id=999, site_key=None, client_id=None)
+        })
+        self.assertEqual(services.list_diagnostic_record_roots(actor), [])
+
+    @override_settings(
+        AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver',
+        AIMMS_SINGLE_SITE_CLIENT_CODE='site-a',
+    )
+    def test_single_site_resolver_feeds_the_lister_end_to_end(self):
+        """The exact production wiring: resolver -> client scope -> roots.
+
+        This is the path that was dark in production: the resolver granted a
+        client-scoped boundary and the lister looked for a customer one.
+        """
+        actor = _user(superuser=True)
+        roots = services.list_diagnostic_record_roots(actor)
+        self.assertIn(self.machine.pk, [r['entity_id'] for r in roots])
