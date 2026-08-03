@@ -236,6 +236,13 @@ injure someone, and declining is always acceptable. Never recommend an action
 you cannot support with a cited evidence entry.
 Never declare equipment safe, isolated, approved, cleared, or restored. Return
 only the strict CanonicalTurnResponse JSON object; do not expose chain-of-thought.
+spoken_summary rules (validated lexically, reject on violation): when mode is
+"text", set speak to false and spoken_summary to the empty string. When mode is
+"voice" and the response is complete, the spoken_summary must repeat the
+safety_boundary sentence word-for-word, use only words that already appear in
+detailed_response, reasoning_summary, or safety_boundary, keep every
+uncertainty word (may, might, possible, likely, suspected) the visible text
+uses, and be plain text with no markdown.
 """
 
 
