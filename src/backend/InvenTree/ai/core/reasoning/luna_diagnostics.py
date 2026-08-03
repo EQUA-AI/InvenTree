@@ -251,6 +251,29 @@ def _function_calls(response: Any) -> list[Any]:
     return [item for item in output if _item_value(item, "type") == "function_call"]
 
 
+def _replayable_output(response: Any) -> list[Any]:
+    """A round's output items, ready to re-enter the next request's ``input``.
+
+    ``previous_response_id`` is rejected outright when the parent request was
+    sent with ``store: False`` (verified live against gpt-5.6-luna on
+    2026-08-03: ``previous_response_not_found``), so the tool loop chains
+    statelessly by re-sending the full transcript. Reasoning items without
+    encrypted content cannot be replayed and are dropped; the API accepts
+    their absence. SDK objects are flattened to plain dicts so the replayed
+    items are exactly what the provider emitted, minus nulls.
+    """
+    items: list[Any] = []
+    for item in _item_value(response, "output", []) or []:
+        if _item_value(item, "type") == "reasoning" and not _item_value(item, "encrypted_content"):
+            continue
+        if hasattr(item, "model_dump"):
+            item = item.model_dump(mode="json", exclude_none=True)
+        elif not isinstance(item, dict):
+            item = {k: v for k, v in vars(item).items() if v is not None}
+        items.append(item)
+    return items
+
+
 def _output_text(response: Any) -> str:
     direct = _item_value(response, "output_text", "")
     if direct:
@@ -489,6 +512,10 @@ class LunaDiagnosticsAdapter:
             "tools": self._provider_tools(tool_context, envelope.allowed_tool_names),
             "parallel_tool_calls": False,
             "store": False,
+            # Nothing is stored server-side, so ask for replayable reasoning
+            # items up front; without this a model that emits reasoning items
+            # could not chain them into the stateless follow-up request.
+            "include": ["reasoning.encrypted_content"],
         }
         if config.invocation_mode == "agent_reference":
             request["extra_body"] = {
@@ -649,6 +676,9 @@ class LunaDiagnosticsAdapter:
             tool_context=tool_context,
             output_token_limit=self.budget.max_output_tokens,
         )
+        # The full conversation transcript, re-sent every round: the provider
+        # keeps nothing (store: False), so chaining is the caller's job.
+        transcript: list[Any] = list(request["input"])
         tool_names: list[str] = []
         tool_data_bytes = 0
         tool_rounds = 0
@@ -915,14 +945,15 @@ class LunaDiagnosticsAdapter:
                     tool_names=tool_names,
                     tool_rounds=tool_rounds,
                 )
+            transcript.extend(_replayable_output(response))
+            transcript.extend(outputs)
             request = self._base_request(
                 envelope=envelope,
                 effort=selected_effort,
                 tool_context=tool_context,
                 output_token_limit=remaining_output_tokens,
             )
-            request["input"] = outputs
-            request["previous_response_id"] = _response_id(response)
+            request["input"] = list(transcript)
 
 
 __all__ = [

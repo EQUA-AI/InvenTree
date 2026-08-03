@@ -53,6 +53,7 @@ jobs:
           filters: |
             server:
               - 'src/backend/InvenTree/**'
+              - 'src/backend/tasks/**'
               - 'src/backend/requirements.txt'
               - 'src/backend/requirements-dev.txt'
             migrations:
@@ -568,6 +569,50 @@ jobs:
         run: invoke dev.test --check --translations
       - name: Data Export Test
         uses: ./.github/actions/migration
+
+  fork-ai:
+    # Fork-only AI suites (execution-plan slice S1). Deliberately NON-BLOCKING:
+    # upstream CI knows nothing about these apps, and two suites carry
+    # documented pre-existing failures (repair: test_packet_closeout; ai/core
+    # island: test_work_order_still_prefers_the_build_pack + 21 collection-time
+    # DB errors). This job exists to make regressions VISIBLE per push, not to
+    # gate merges — promote to blocking only after the baselines are clean.
+    name: Tests - Fork AI suites [non-blocking]
+    runs-on: ubuntu-24.04
+    needs: ["paths-filter"]
+    if: needs.paths-filter.outputs.server == 'true' || needs.paths-filter.outputs.force == 'true'
+    continue-on-error: true
+
+    env:
+      INVENTREE_DB_ENGINE: sqlite3
+      INVENTREE_DB_NAME: ./fork_ai_test.sqlite
+      INVENTREE_DEBUG: true
+      INVENTREE_LOG_LEVEL: WARNING
+      INVENTREE_CONSOLE_LOG: false
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Environment Setup
+        uses: ./.github/actions/setup
+        with:
+          apt-dependency: gettext poppler-utils
+          dev-install: true
+          update: true
+          static: true
+      - name: Django-runner fork suites
+        # One invocation = one test-DB build across all fork apps.
+        continue-on-error: true
+        run: invoke dev.test --runtest='aichat repair tasks voice approvals assets machine_health'
+      - name: ai/core pytest island
+        # Separate settings module and pytest runner by design (see
+        # ai/core/tests/settings.py); requirements.txt pins the island's
+        # agent-framework-core version.
+        continue-on-error: true
+        run: |
+          cd src/backend/InvenTree
+          DJANGO_SETTINGS_MODULE=ai.core.tests.settings python -m pytest -q ai/core/tests
 
   migration-tests:
     name: Tests - Migrations [PostgreSQL]

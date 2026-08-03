@@ -1424,3 +1424,77 @@ AIMMS_DIAGNOSTIC_CAPABILITY_RESOLVER = get_setting(
 AIMMS_SINGLE_SITE_CLIENT_CODE = get_setting(
     'AIMMS_SINGLE_SITE_CLIENT_CODE', 'aimms_single_site_client_code', 'internal'
 )
+
+# --- Django-plane flags bridged by execution-plan slice S4 (2026-08-02). ---
+# Every name below was previously consumed via getattr with a fail-closed
+# default but had NO env bridge, so the features were structurally off in
+# every deployment regardless of configuration. Bridging changes nothing by
+# itself: all defaults remain fail-closed.
+
+# When on, the 7 direct-ORM kanban write tools are DISABLED in the capability
+# catalog so the governed proposal rail is the only AI write path (S12 flips
+# this on, soaks, then deletes the tools outright).
+AIMMS_GOVERNED_KANBAN_WRITES = get_boolean_setting(
+    'AIMMS_GOVERNED_KANBAN_WRITES', 'aimms_governed_kanban_writes', False
+)
+
+# Closeout extraction (S19): master gate, extractor seam (dotted path to the
+# ai.core capability binding), provenance label, and the capture wizard.
+AIMMS_CLOSEOUT_EXTRACTION_ENABLED = get_boolean_setting(
+    'AIMMS_CLOSEOUT_EXTRACTION_ENABLED', 'aimms_closeout_extraction_enabled', False
+)
+AIMMS_CLOSEOUT_EXTRACTOR = get_setting(
+    'AIMMS_CLOSEOUT_EXTRACTOR', 'aimms_closeout_extractor', None
+)
+AIMMS_CLOSEOUT_EXTRACTION_MODEL = get_setting(
+    'AIMMS_CLOSEOUT_EXTRACTION_MODEL', 'aimms_closeout_extraction_model', ''
+)
+AIMMS_CLOSEOUT_WIZARD_ENABLED = get_boolean_setting(
+    'AIMMS_CLOSEOUT_WIZARD_ENABLED', 'aimms_closeout_wizard_enabled', False
+)
+
+# Risk Radar / Command Center (S21): scans, findings API, notifications, and
+# the least-privilege scanner principal (scans fail closed while unset).
+AIMMS_RISK_RADAR_ENABLED = get_boolean_setting(
+    'AIMMS_RISK_RADAR_ENABLED', 'aimms_risk_radar_enabled', False
+)
+AIMMS_COMMAND_CENTER_ENABLED = get_boolean_setting(
+    'AIMMS_COMMAND_CENTER_ENABLED', 'aimms_command_center_enabled', False
+)
+AIMMS_RISK_NOTIFICATIONS_ENABLED = get_boolean_setting(
+    'AIMMS_RISK_NOTIFICATIONS_ENABLED', 'aimms_risk_notifications_enabled', False
+)
+AIMMS_RISK_SERVICE_USER_ID = get_setting(
+    'AIMMS_RISK_SERVICE_USER_ID', 'aimms_risk_service_user_id', None
+)
+
+# Per-rule enablement list; the consumer iterates it, so the env value is a
+# comma-separated string parsed here (empty enables nothing — fail closed).
+_aimms_risk_rules_raw = get_setting(
+    'AIMMS_RISK_RULES_ENABLED', 'aimms_risk_rules_enabled', ''
+)
+AIMMS_RISK_RULES_ENABLED = [
+    code.strip() for code in str(_aimms_risk_rules_raw or '').split(',') if code.strip()
+]
+
+# One boot-time line stating the effective AIMMS switchboard, so "which flags
+# does this revision actually run with" is answerable from container logs
+# instead of by re-deriving env → settings mappings by hand.
+logger.info(
+    'AIMMS switchboard: work_orders=%s machine_read=%s maintenance_read=%s '
+    'governed_kanban=%s closeout=%s closeout_wizard=%s risk_radar=%s '
+    'command_center=%s risk_notifications=%s risk_rules=%s '
+    'diagnostic_resolver=%s maintenance_resolver=%s',
+    AIMMS_WORK_ORDERS_ENABLED,
+    AIMMS_MACHINE_AI_READ_ENABLED,
+    AIMMS_MAINTENANCE_AI_READ_ENABLED,
+    AIMMS_GOVERNED_KANBAN_WRITES,
+    AIMMS_CLOSEOUT_EXTRACTION_ENABLED,
+    AIMMS_CLOSEOUT_WIZARD_ENABLED,
+    AIMMS_RISK_RADAR_ENABLED,
+    AIMMS_COMMAND_CENTER_ENABLED,
+    AIMMS_RISK_NOTIFICATIONS_ENABLED,
+    AIMMS_RISK_RULES_ENABLED,
+    bool(AIMMS_DIAGNOSTIC_CAPABILITY_RESOLVER),
+    bool(AIMMS_MAINTENANCE_SCOPE_RESOLVER),
+)

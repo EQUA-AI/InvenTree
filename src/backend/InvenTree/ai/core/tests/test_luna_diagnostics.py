@@ -203,10 +203,55 @@ def test_tool_calls_round_trip_through_local_registry_with_fresh_context() -> No
         }
     ]
     follow_up = client.responses.calls[1]
-    assert follow_up["previous_response_id"] == "resp_tool"
-    assert follow_up["input"][0]["type"] == "function_call_output"
+    # Stateless chaining: ``previous_response_id`` is rejected by the provider
+    # when the parent was sent with store:False (live-verified 2026-08-03), so
+    # the follow-up must replay the full transcript instead — original user
+    # message, the model's function_call item, then the tool output.
+    assert "previous_response_id" not in follow_up
+    types = [item.get("type", item.get("role")) for item in follow_up["input"]]
+    assert types == ["user", "function_call", "function_call_output"]
+    assert follow_up["input"][0] == client.responses.calls[0]["input"][0]
+    assert follow_up["input"][-1]["call_id"] == follow_up["input"][1]["call_id"]
     assert outcome.provenance.tool_names == ("get_machine_context",)
     assert outcome.provenance.tool_rounds == 1
+
+
+def test_second_tool_round_replays_the_accumulated_transcript() -> None:
+    """Round N's request carries every prior round — nothing is stored remotely.
+
+    Two tool rounds: the third request must contain the user message, both
+    function_call items, and both function_call_output items in order. A
+    reasoning item without encrypted content must NOT be replayed (the
+    provider rejects it and tolerates its absence).
+    """
+    registry = _Registry()
+    first = _response(response_id="resp_a", calls=[_tool_call(call_id="call_a")])
+    first.output.insert(0, SimpleNamespace(type="reasoning", encrypted_content=None))
+    client = _Client([
+        first,
+        _response(response_id="resp_b", calls=[_tool_call(call_id="call_b")]),
+        _response(response_id="resp_final", text=_canonical_json()),
+    ])
+    outcome = asyncio.run(
+        _adapter(client, registry=registry).reason(
+            envelope=_envelope(tools=("get_machine_context",)),
+            tool_context=object(),
+        )
+    )
+
+    assert outcome.provenance.tool_rounds == 2
+    third = client.responses.calls[2]
+    assert "previous_response_id" not in third
+    types = [item.get("type", item.get("role")) for item in third["input"]]
+    assert types == [
+        "user",
+        "function_call",
+        "function_call_output",
+        "function_call",
+        "function_call_output",
+    ]
+    call_ids = [item.get("call_id") for item in third["input"][1:]]
+    assert call_ids == ["call_a", "call_a", "call_b", "call_b"]
 
 
 def test_final_evidence_must_match_a_locally_authorized_tool_citation() -> None:
