@@ -339,6 +339,31 @@ def test_complete_diagnosis_recommending_action_without_evidence_is_incomplete()
     assert abstention.response.recommended_actions == []
 
 
+def test_uncited_gate_cannot_be_dodged_by_kind_drift() -> None:
+    """``kind`` is a model-chosen free string, so the gate must ignore it.
+
+    Observed live (2026-08-03): the model labelled a grounded answer
+    "diagnostic_response" rather than "repair_diagnosis". A gate keyed to one
+    kind value would let an uncited recommendation through under any other
+    label the model invents.
+    """
+    payload = json.loads(_canonical_json())
+    payload["kind"] = "diagnostic_response"
+    payload["recommended_actions"] = [
+        {
+            "kind": "read_only",
+            "title": "Inspect the bearing",
+            "detail": "Check the drive-end bearing temperature against the manual limit.",
+            "requires_approval": False,
+        }
+    ]
+    client = _Client([_response(response_id="drift", text=json.dumps(payload))])
+    outcome = asyncio.run(_adapter(client).reason(envelope=_envelope()))
+
+    assert outcome.response.response_state == "incomplete"
+    assert outcome.provenance.outcome_code == "uncited_recommendation"
+
+
 @pytest.mark.parametrize(
     ("call", "expected_code"),
     [

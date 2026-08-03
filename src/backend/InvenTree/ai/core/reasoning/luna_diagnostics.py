@@ -814,7 +814,6 @@ class LunaDiagnosticsAdapter:
                     )
                 if (
                     canonical.response_state == ResponseState.COMPLETE
-                    and canonical.kind == "repair_diagnosis"
                     and not canonical.evidence
                     and canonical.recommended_actions
                 ):
@@ -822,6 +821,11 @@ class LunaDiagnosticsAdapter:
                     # passed it vacuously: a diagnosis recommending action while
                     # citing nothing is exactly the uncited answer this adapter
                     # exists to prevent, and "complete" would let it be spoken.
+                    # No kind filter: ``kind`` is a model-chosen free string
+                    # (observed live: "diagnostic_response"), so keying the gate
+                    # on one value lets the model drift out from under it. Every
+                    # canonical parsed here is model-authored; the server-built
+                    # advisory/legacy wrappers never pass through this gate.
                     return self._incomplete_outcome(
                         code="uncited_recommendation",
                         effort=selected_effort,
