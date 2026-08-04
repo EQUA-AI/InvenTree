@@ -9,15 +9,12 @@ the InvenTree ``repair`` app persists:
 3. Derive applicable *safety gates* (LOTO/isolation) from the fault signature.
 4. (Forward work) resolve a *parts path* + *procurement* decision via WF2/WF4.
 
-Contract (consumed by ``repair.generation.AIServiceGenerator``): ``invoke`` returns
-a dict carrying a ``repair_packet`` object AND a fenced ```json block in the
-``message`` field, so the Django side can extract the structured payload no matter
-how the ``/chat`` endpoint wraps the workflow result.
-
-NOTE: This runs inside the *AI service* runtime (separate Python 3.12+ with
-``agent_framework``). It is syntax-validated but must be integration-tested in that
-runtime; the Django side never hard-depends on it (it falls back to the heuristic
-generator when the AI service is unavailable).
+Contract (consumed by ``repair.generation.InProcessTurnGenerator``): the result
+carries a ``repair_packet`` payload AND renders it as a fenced ```json block in
+the turn message (``formatted_response``), so the Django side can extract the
+structured payload from the normalized turn result. The Django side never
+hard-depends on this workflow succeeding - it falls back to the heuristic
+generator when the turn fails or produces no payload.
 """
 
 from __future__ import annotations
@@ -70,6 +67,21 @@ class RepairPacketResult:
             "confidence": self.confidence,
             "agent_run_id": self.agent_run_id,
         }
+
+    @property
+    def formatted_response(self) -> str:
+        """Chat-forwardable message carrying the payload as a fenced block.
+
+        RootWorkflow's execute-fallback yields this string as the turn message;
+        ``repair.generation`` parses the fenced JSON back out of it. Without
+        this property the dataclass repr would be streamed instead and the
+        payload would be unrecoverable.
+        """
+        return (
+            "Repair packet diagnosis assembled.\n\n```json\n"
+            + json.dumps(self.as_payload(), indent=2)
+            + "\n```"
+        )
 
 
 class WF7RepairPacketWorkflow:
@@ -181,11 +193,7 @@ class WF7RepairPacketWorkflow:
         return {
             "repair_packet": payload,
             "data": {"repair_packet": payload},
-            "message": (
-                "Repair packet diagnosis assembled.\n\n```json\n"
-                + json.dumps(payload, indent=2)
-                + "\n```"
-            ),
+            "message": result.formatted_response,
         }
 
     def as_agent(self):

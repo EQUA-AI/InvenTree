@@ -21,6 +21,7 @@ from ai.core.auth import (  # noqa: E402
     AIBoundaryPolicy,
     get_current_principal,
     get_identity_anomaly_counts,
+    principal_for_user,
     require_ai_principal,
     reset_identity_anomaly_counts,
     sign_interactive_subject,
@@ -332,6 +333,28 @@ class AIBoundaryAuthTests(SimpleTestCase):
         with self.assertRaises(HTTPException) as raised:
             asyncio.run(require_ai_principal(request))
         self.assertEqual(raised.exception.status_code, 401)
+
+    def test_principal_for_user_binds_the_real_user(self) -> None:
+        """The in-process seam yields a user principal, never a service one."""
+        user = TestUser(pk="31", username="in-process-tech")
+        with patch.object(AIBoundaryPolicy, "from_settings", return_value=_policy()):
+            principal = principal_for_user(user)
+        self.assertEqual(principal.subject, "user:31")
+        self.assertEqual(principal.actor, "user:31")
+        self.assertEqual(principal.user_pk, "31")
+        self.assertEqual(principal.username, "in-process-tech")
+        self.assertEqual(principal.authentication_method, "in_process_generation")
+        self.assertEqual(principal.scope, "pilot-site")
+        self.assertFalse(principal.is_staff)
+        self.assertFalse(principal.is_superuser)
+
+    def test_principal_for_user_refuses_missing_and_inactive_users(self) -> None:
+        """Missing or deactivated users are refused instead of substituted."""
+        with self.assertRaises(ValueError):
+            principal_for_user(None)
+        inactive = TestUser(pk="32", username="former-tech", is_active=False)
+        with self.assertRaises(ValueError):
+            principal_for_user(inactive)
 
     def test_standalone_fastapi_dependency_returns_401_not_422(self) -> None:
         try:

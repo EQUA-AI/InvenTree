@@ -478,6 +478,10 @@ def run_repair_packet_workflow(
         'criticality': packet.criticality,
         'thread_id': f'repair-{packet.pk}',
         'user_id': params.get('user_id'),
+        # The in-process provider derives its turn idempotency key from this,
+        # so a retried run replays the same AI turn instead of paying for a
+        # second one.
+        'agent_run_id': run_id,
     }
 
     try:
@@ -511,6 +515,10 @@ def run_repair_packet_workflow(
                 'parts': len(result.parts),
                 'gates_created': gates_created,
             }
+            if result.thread_id or result.turn_id:
+                # Provenance link to the in-process AI turn (S10 surfaces it).
+                run.result_summary['thread_id'] = result.thread_id
+                run.result_summary['turn_id'] = result.turn_id
             run.save()
 
             _record_event(

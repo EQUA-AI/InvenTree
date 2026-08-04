@@ -323,6 +323,21 @@ def _principal(user: Any, method: str, policy: AIBoundaryPolicy) -> AIPrincipal:
     )
 
 
+def principal_for_user(user: Any, method: str = "in_process_generation") -> AIPrincipal:
+    """Derive a boundary principal for a server-side turn made on a user's behalf.
+
+    This is the only sanctioned way for in-process callers (e.g. repair
+    generation) to obtain a principal: the identity is always a real, active
+    user — never a service account. Callers must treat a raised ``ValueError``
+    as "no generation is possible", not substitute a synthetic actor.
+    """
+    if user is None or getattr(user, "pk", None) is None:
+        raise ValueError("An existing user is required for an in-process principal")
+    if not getattr(user, "is_active", False):
+        raise ValueError("An inactive user cannot hold an in-process principal")
+    return _principal(user, method, AIBoundaryPolicy.from_settings())
+
+
 async def _authenticate(
     headers: Mapping[bytes, list[bytes]], policy: AIBoundaryPolicy
 ) -> AIPrincipal:
@@ -492,6 +507,7 @@ __all__ = [
     "get_current_principal",
     "get_identity_anomaly_counts",
     "principal_context",
+    "principal_for_user",
     "record_identity_anomaly",
     "require_ai_principal",
     "reset_identity_anomaly_counts",

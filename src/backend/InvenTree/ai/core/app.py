@@ -271,13 +271,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("AIMMS Backend shutdown complete")
 
 
-# Create FastAPI app
+# Create FastAPI app. Interactive docs and the OpenAPI schema are exposed in
+# development only: outside dev they were the sole unauthenticated standalone
+# surface (execution-plan S8).
+_expose_docs = get_settings().env == "development"
 app = FastAPI(
     title="AIMMS Backend",
     description="AI-powered Manufacturing Management System",
     version="2.3.0",
     lifespan=lifespan,
     dependencies=[Depends(require_ai_principal)],
+    docs_url="/docs" if _expose_docs else None,
+    redoc_url="/redoc" if _expose_docs else None,
+    openapi_url="/openapi.json" if _expose_docs else None,
 )
 
 # Realtime Voice session routes (WS4). The router inherits the boundary

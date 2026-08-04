@@ -106,9 +106,11 @@ def test_root_workflow_honours_the_server_workflow_pin():
 
     source = inspect.getsource(root)
     # The pin must be read from the aggregated (server-owned) context and must
-    # take precedence over the router's decision.
+    # take precedence over the router's decision. An *earlier* read may exist
+    # to skip routing entirely for non-voice server pins (S8); the overriding
+    # read - the last one - is the invariant this guard protects.
     assert 'aggregated_context.get("pinned_workflow_id")' in source
-    pin_index = source.index('aggregated_context.get("pinned_workflow_id")')
+    pin_index = source.rindex('aggregated_context.get("pinned_workflow_id")')
     assign_index = source.index("workflow_id = decision.get_workflow_id()")
     assert pin_index > assign_index, "the pin must override the router's choice"
 

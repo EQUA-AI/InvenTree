@@ -6,10 +6,13 @@ auto fallback path, failure recording, idempotency, the audit timeline and the
 new cancel / generation-status API endpoints - all against real Postgres.
 """
 
+import json
 import os
 import uuid
+from types import SimpleNamespace
 from unittest import mock
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
@@ -19,7 +22,7 @@ from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 from assets.models import AssetMachine
 from InvenTree.unit_test import InvenTreeAPITestCase
 
-from . import services
+from . import generation, services
 from .generation import (
     AIServiceUnavailableError,
     GeneratedPartLine,
@@ -229,15 +232,160 @@ class GenerationFallbackTest(TestCase):
     """Auto mode falls back to the heuristic provider when the AI service errors."""
 
     def test_auto_falls_back_to_heuristic(self):
-        """Auto mode succeeds via the heuristic provider when the AI service fails."""
+        """Auto mode succeeds via the heuristic provider when the AI path fails."""
         packet = RepairPacket.objects.create(fault_summary='fan not starting')
         with mock.patch(
-            'repair.generation.AIServiceGenerator.generate',
+            'repair.generation.InProcessTurnGenerator.generate',
             side_effect=AIServiceUnavailableError('down'),
         ):
             services.run_repair_packet_workflow(packet, {'generator': 'auto'})
         packet.refresh_from_db()
         self.assertEqual(packet.generation_status, GenerationStatus.SUCCEEDED)
+        self.assertEqual(packet.generation_runs.first().provider, 'heuristic')
+
+
+class _StubTurnService:
+    """Records process() calls and answers with a fenced repair payload."""
+
+    def __init__(self, payload=None, *, message=None):
+        self.payload = payload
+        self.message = message
+        self.calls = []
+
+    async def process(self, **kwargs):
+        self.calls.append(kwargs)
+        message = self.message
+        if message is None:
+            message = (
+                'Repair packet diagnosis assembled.\n\n```json\n'
+                + json.dumps(self.payload)
+                + '\n```'
+            )
+        return SimpleNamespace(
+            thread_id=kwargs['thread_id'], turn_id='turn-generated', message=message
+        )
+
+
+class InProcessGenerationTest(TestCase):
+    """The in-process provider runs as the requesting user, or not at all."""
+
+    _PAYLOAD = {
+        'diagnosis': {'likely_cause': 'Contactor coil short', 'confidence': 0.72},
+        'parts': [],
+        'safety_gates': [{'name': 'LOTO', 'gate_type': 'loto', 'requires_photo': True}],
+    }
+
+    def setUp(self):
+        """Pin the boundary policy key and reset the cached AI settings."""
+        from ai.core.config import get_settings
+
+        self._env = mock.patch.dict(
+            os.environ, {'AIMMS_SINGLE_SITE_POLICY_KEY': 'repair-test-site'}
+        )
+        self._env.start()
+        get_settings.cache_clear()
+        self.addCleanup(self._env.stop)
+        self.addCleanup(get_settings.cache_clear)
+
+    @staticmethod
+    def _user(**kwargs):
+        return get_user_model().objects.create_user(
+            username=f'tech-{uuid.uuid4().hex[:8]}', password='x', **kwargs
+        )
+
+    def test_runs_as_the_requesting_user(self):
+        """The turn executes under the caller's principal, pinned to wf7."""
+        user = self._user()
+        packet = RepairPacket.objects.create(fault_summary='motor breaker trips')
+        stub = _StubTurnService(self._PAYLOAD)
+
+        with mock.patch.object(generation, '_get_turn_service', return_value=stub):
+            services.run_repair_packet_workflow(
+                packet, {'generator': 'ai_service', 'user_id': user.pk}
+            )
+        packet.refresh_from_db()
+
+        self.assertEqual(packet.generation_status, GenerationStatus.SUCCEEDED)
+        run = packet.generation_runs.first()
+        self.assertEqual(run.provider, 'ai_service')
+
+        call = stub.calls[0]
+        self.assertEqual(call['actor'].user_pk, str(user.pk))
+        self.assertEqual(call['actor'].authentication_method, 'in_process_generation')
+        self.assertEqual(call['actor'].scope, 'repair-test-site')
+        self.assertEqual(call['trusted_context'].server_policy_key, 'repair-test-site')
+        self.assertEqual(call['server_pinned_workflow'], 'wf7')
+        self.assertEqual(
+            call['idempotency_key'], f'repair-gen:{packet.pk}:{packet.agent_run_id}'
+        )
+        # Turn provenance is recorded for the packet UI (S10).
+        self.assertEqual(run.result_summary['thread_id'], call['thread_id'])
+        self.assertEqual(run.result_summary['turn_id'], 'turn-generated')
+        self.assertTrue(packet.gates.filter(gate_type='loto').exists())
+
+    def test_missing_user_never_reaches_the_turn_service(self):
+        """No requesting user means no AI turn; auto mode degrades to heuristic."""
+        packet = RepairPacket.objects.create(fault_summary='pump seized')
+        with mock.patch.object(generation, '_get_turn_service') as svc:
+            services.run_repair_packet_workflow(packet, {'generator': 'auto'})
+        svc.assert_not_called()
+        packet.refresh_from_db()
+        self.assertEqual(packet.generation_status, GenerationStatus.SUCCEEDED)
+        self.assertEqual(packet.generation_runs.first().provider, 'heuristic')
+
+    def test_unknown_user_falls_back_to_heuristic(self):
+        """A user id that matches no row is refused, not substituted."""
+        packet = RepairPacket.objects.create(fault_summary='pump seized')
+        with mock.patch.object(generation, '_get_turn_service') as svc:
+            services.run_repair_packet_workflow(
+                packet, {'generator': 'auto', 'user_id': 99999999}
+            )
+        svc.assert_not_called()
+        self.assertEqual(packet.generation_runs.first().provider, 'heuristic')
+
+    def test_inactive_user_falls_back_to_heuristic(self):
+        """A deactivated account cannot anchor an in-process principal."""
+        user = self._user(is_active=False)
+        packet = RepairPacket.objects.create(fault_summary='pump seized')
+        with mock.patch.object(generation, '_get_turn_service') as svc:
+            services.run_repair_packet_workflow(
+                packet, {'generator': 'auto', 'user_id': user.pk}
+            )
+        svc.assert_not_called()
+        self.assertEqual(packet.generation_runs.first().provider, 'heuristic')
+
+    def test_replay_uses_a_stable_idempotency_key(self):
+        """The same agent_run_id always maps onto the same turn idempotency key."""
+        user = self._user()
+        stub = _StubTurnService(self._PAYLOAD)
+        context = {
+            'repair_packet_id': 41,
+            'thread_id': 'repair-41',
+            'user_id': user.pk,
+            'agent_run_id': 'run-stable',
+        }
+        with mock.patch.object(generation, '_get_turn_service', return_value=stub):
+            first = generation.InProcessTurnGenerator().generate(
+                fault_summary='pump', context=context
+            )
+            generation.InProcessTurnGenerator().generate(
+                fault_summary='pump', context=context
+            )
+        self.assertEqual(first.provider, 'ai_service')
+        self.assertEqual(
+            {call['idempotency_key'] for call in stub.calls},
+            {'repair-gen:41:run-stable'},
+        )
+
+    def test_payloadless_turn_falls_back_to_heuristic(self):
+        """A turn without a fenced repair payload is unusable, not trusted."""
+        user = self._user()
+        packet = RepairPacket.objects.create(fault_summary='drive fault')
+        stub = _StubTurnService(message='I could not analyze this fault.')
+        with mock.patch.object(generation, '_get_turn_service', return_value=stub):
+            services.run_repair_packet_workflow(
+                packet, {'generator': 'auto', 'user_id': user.pk}
+            )
         self.assertEqual(packet.generation_runs.first().provider, 'heuristic')
 
 

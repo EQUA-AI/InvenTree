@@ -1031,8 +1031,16 @@ class NormalizedTurnService:
         idempotency_key: str,
         correlation_id: str,
         emitter: EventEmitter | None = None,
+        server_pinned_workflow: str | None = None,
     ) -> NormalizedTurnResult:
-        """Process one idempotent turn through the common reasoning path."""
+        """Process one idempotent turn through the common reasoning path.
+
+        ``server_pinned_workflow`` is server-only: trusted in-process callers
+        (e.g. repair generation) use it to force one specific legacy workflow,
+        bypassing complexity routing. HTTP/voice adapters must never populate
+        it from anything a client sent — a client-influenced pin would let a
+        request select its own execution tier.
+        """
 
         if not content.strip():
             raise ValueError("turn content must not be empty")
@@ -1040,6 +1048,8 @@ class NormalizedTurnService:
             raise ValueError("unsupported turn modality")
         if not idempotency_key.strip():
             raise ValueError("idempotency key is required")
+        if server_pinned_workflow is not None and not server_pinned_workflow.strip():
+            raise ValueError("server_pinned_workflow must be a workflow id when set")
 
         trusted = _json_value(trusted_context)
         metadata = _json_value(modality_metadata or {}, reject_audio=True)
@@ -1144,7 +1154,11 @@ class NormalizedTurnService:
             elif write_canonical is not None:
                 # A pending write confirmation resolved; it supersedes routing.
                 canonical = write_canonical
-            elif route_mode == "reasoning" and self.reasoning_adapter is not None:
+            elif (
+                server_pinned_workflow is None
+                and route_mode == "reasoning"
+                and self.reasoning_adapter is not None
+            ):
                 canonical = await self._reasoning_canonical(
                     actor=actor,
                     trusted_context=trusted_context,
@@ -1156,7 +1170,7 @@ class NormalizedTurnService:
                     diagnostic_context=diagnostic_context,
                     emitter=isolated_emitter,
                 )
-            elif route_mode == "advisory_intent":
+            elif server_pinned_workflow is None and route_mode == "advisory_intent":
                 canonical = None
                 if modality == TurnModality.VOICE:
                     _log_voice_write_confirmation_shadow(content, thread.pk)
@@ -1204,7 +1218,11 @@ class NormalizedTurnService:
                 workflow = self.workflow_factory()
                 workflow_context = dict(trusted)
                 workflow_context["modality"] = modality
-                if modality == TurnModality.VOICE:
+                if server_pinned_workflow is not None:
+                    # A trusted in-process caller selected the workflow itself;
+                    # its pin wins over routing the same way the voice pin does.
+                    workflow_context["pinned_workflow_id"] = server_pinned_workflow
+                elif modality == TurnModality.VOICE:
                     # Pin the workflow the voice router already chose. Without
                     # this the legacy router re-decides from scratch and can pick
                     # a write-tier workflow for a voice turn (observed: wf4

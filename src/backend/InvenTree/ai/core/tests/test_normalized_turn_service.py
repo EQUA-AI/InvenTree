@@ -1109,3 +1109,63 @@ class ConversationHistoryTests(SimpleTestCase):
 
         # A lookup answered without context beats a turn that fails outright.
         self.assertEqual(history, [])
+
+
+class ServerPinnedWorkflowTests(SimpleTestCase):
+    """A server-owned workflow pin bypasses routing, not the safety ordering."""
+
+    def test_pin_forces_the_legacy_branch_over_reasoning(self) -> None:
+        async def exercise():
+            repository = _Repository()
+            workflow = _Workflow()
+            service = _TestTurnService(
+                workflow_factory=lambda: workflow,
+                repository_factory=lambda actor, context: repository,  # noqa: ARG005
+                # Non-None sentinels: if the pin failed to bypass the reasoning
+                # branch, _reasoning_canonical would fail loudly on these.
+                complexity_router=object(),
+                reasoning_adapter=object(),
+            )
+            service._route_turn = lambda **kwargs: SimpleNamespace(  # noqa: ARG005
+                mode=SimpleNamespace(value="reasoning"),
+                target_workflow_id="wf1",
+                to_dict=lambda: {"mode": "reasoning"},
+            )
+            result = await service.process(
+                actor=_principal(),
+                thread_id="thread_normalized",
+                content="Generate a repair packet for the seized pump",
+                modality="text",
+                trusted_context=_context(),
+                modality_metadata={},
+                idempotency_key="repair-gen:1:run",
+                correlation_id=_context().correlation_id,
+                server_pinned_workflow="wf7",
+            )
+            return result, workflow
+
+        result, workflow = asyncio.run(exercise())
+        self.assertEqual(result.message, "Normalized response")
+        self.assertEqual(len(workflow.calls), 1)
+        self.assertEqual(workflow.calls[0]["context"]["pinned_workflow_id"], "wf7")
+
+    def test_blank_pin_is_rejected(self) -> None:
+        service = _TestTurnService(
+            workflow_factory=lambda: None,
+            complexity_router=object(),
+            reasoning_adapter=object(),
+        )
+        with self.assertRaises(ValueError):
+            asyncio.run(
+                service.process(
+                    actor=_principal(),
+                    thread_id=None,
+                    content="Generate a packet",
+                    modality="text",
+                    trusted_context=_context(),
+                    modality_metadata={},
+                    idempotency_key="repair-gen:1:run",
+                    correlation_id=_context().correlation_id,
+                    server_pinned_workflow="   ",
+                )
+            )

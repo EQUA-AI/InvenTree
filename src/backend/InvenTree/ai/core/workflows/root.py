@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ai.core.agents.routing import RoutingDecision, UnifiedRouter
@@ -39,6 +40,22 @@ class RouterProtocol(Protocol):
     ) -> RoutingDecision:
         """Route a message to a workflow."""
         ...
+
+
+class _PinnedDecision:
+    """Routing stand-in for a server-pinned turn; no classifier is consulted."""
+
+    use_fast_path = False
+    fast_path_result = None
+    confidence = 1.0
+    reasoning = "server-pinned workflow"
+
+    def __init__(self, workflow_id: str) -> None:
+        self._workflow_id = workflow_id
+        self.workflow_type = SimpleNamespace(name=f"PINNED_{workflow_id.upper()}")
+
+    def get_workflow_id(self) -> str | None:
+        return self._workflow_id
 
 
 class ConversationManagerProtocol(Protocol):
@@ -151,9 +168,18 @@ class RootWorkflow:
             stage = "routing"
             await run_ctx.emit_thinking("Routing request...")
 
-            decision = await self.router.route(
-                message=message, thread_id=thread_id, context=aggregated_context
-            )
+            server_pin = aggregated_context.get("pinned_workflow_id")
+            if server_pin and aggregated_context.get("modality") != "voice":
+                # A server-owned pin already names the workflow. Running the
+                # intent classifier here would burn a model call whose result
+                # is discarded — and stall the turn for the provider's full
+                # retry budget when the classifier endpoint is unreachable.
+                # Voice keeps routing: its fast-path answers depend on it.
+                decision = _PinnedDecision(server_pin)
+            else:
+                decision = await self.router.route(
+                    message=message, thread_id=thread_id, context=aggregated_context
+                )
 
             # Deterministic fast-path answer for permitted voice lookups: skip
             # the LLM tool loop entirely. Permission-gated because the fast path

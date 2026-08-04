@@ -1,27 +1,34 @@
 """Typed AI-generation boundary for Repair Packets (the ``wf7`` seam).
 
-Architecture note (validated 2026-07-03): the AIMMS agent stack (``ai/core``)
-runs as a **separate FastAPI service** (default ``http://localhost:8080``) on a
-different Python runtime, and calls *back* into InvenTree's REST API. Django must
-therefore treat generation as a **network boundary**, not an in-process import.
+Architecture note (revised 2026-08-04, execution-plan S8): the AIMMS agent stack
+(``ai/core``) is mounted in this same process (``InvenTree.asgi``), so repair
+generation is an **in-process call through NormalizedTurnService** — the same
+authenticated, idempotent, audited path interactive chat uses. The previous
+standalone-service ``httpx.post`` forward path carried no credentials, was
+always rejected by the AI boundary (401), and silently degraded every ``auto``
+generation to the heuristic.
 
-This module defines that boundary as a small, typed contract with two providers:
+This module defines the generation boundary as a small, typed contract with two
+providers:
 
 * :class:`HeuristicGenerator` - a dependency-free, deterministic fallback that
   always produces a schema-conformant diagnosis. Guarantees the fault-to-fix loop
-  works (and is testable) even when the AI service is down or unconfigured.
-* :class:`AIServiceGenerator` - the forward path that calls the AI service's
-  ``/chat`` endpoint (which routes to ``wf7_repair_packet``) over HTTP.
+  works (and is testable) even when the AI stack is down or unconfigured.
+* :class:`InProcessTurnGenerator` - the forward path. It runs ``wf7`` through
+  ``NormalizedTurnService`` **as the requesting user**: no service identity
+  exists, and a missing or inactive user means no AI generation at all.
 
-``get_generator('auto')`` prefers the AI service and transparently falls back to
+``get_generator('auto')`` prefers the AI path and transparently falls back to
 the heuristic provider on any error, so callers never fail closed on generation.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -63,6 +70,11 @@ class GenerationResult:
     safety_gates: list[GeneratedSafetyGate] = field(default_factory=list)
     confidence: float = 0.0
     provider: str = 'unknown'
+    # Provenance of the in-process turn that produced this result (empty for
+    # the heuristic provider). Recorded on the generation run so the packet
+    # UI can link back to the underlying AI turn.
+    thread_id: str = ''
+    turn_id: str = ''
 
 
 class RepairPacketGenerator(Protocol):
@@ -80,22 +92,22 @@ class RepairPacketGenerator(Protocol):
 # --------------------------------------------------------------------------- #
 # Configuration (env-driven; no settings.py edits required)
 # --------------------------------------------------------------------------- #
-def get_ai_base_url() -> str:
-    """Base URL of the AIMMS agent service."""
-    return os.environ.get('AIMMS_AI_BASE_URL', 'http://localhost:8080').rstrip('/')
-
-
-def get_ai_timeout() -> float:
-    """HTTP timeout (seconds) for AI-service calls."""
-    try:
-        return float(os.environ.get('AIMMS_AI_TIMEOUT', '30'))
-    except (TypeError, ValueError):
-        return 30.0
-
-
 def get_generator_mode() -> str:
     """Selected provider mode: ``auto`` | ``ai_service`` | ``heuristic``."""
     return os.environ.get('AIMMS_REPAIR_GENERATOR', 'auto').strip().lower()
+
+
+def get_ai_timeout() -> float:
+    """Wall-clock budget (seconds) for one in-process generation turn.
+
+    Provider SDK retry loops are unbounded from this module's point of view;
+    without a budget an unreachable model endpoint stalls generation for the
+    provider's full retry schedule instead of falling back to the heuristic.
+    """
+    try:
+        return float(os.environ.get('AIMMS_AI_TIMEOUT', '60'))
+    except (TypeError, ValueError):
+        return 60.0
 
 
 # --------------------------------------------------------------------------- #
@@ -185,20 +197,84 @@ class HeuristicGenerator:
 
 
 # --------------------------------------------------------------------------- #
-# AI-service (forward-path) provider
+# In-process (forward-path) provider
 # --------------------------------------------------------------------------- #
 class AIServiceUnavailableError(RuntimeError):
-    """Raised when the AI service cannot be reached or returns no usable data."""
+    """Raised when AI generation cannot run or returns no usable data."""
 
 
-class AIServiceGenerator:
-    """Calls the AIMMS agent service (``wf7`` via ``/chat``) over HTTP.
+#: One turn service per Django process. Deliberately built from
+#: ``get_root_workflow`` directly - importing ``ai.core.app`` would drag the
+#: whole FastAPI surface (and its middleware) into every Django worker.
+_turn_service: Any | None = None
 
-    The AI service is expected to return a structured ``repair_packet`` payload
-    embedded in its response (either as a top-level ``data`` object or a fenced
-    JSON block in the assistant message). If no structured payload is present
-    (e.g. ``wf7`` not yet deployed), this raises :class:`AIServiceUnavailableError`
-    so ``auto`` mode can fall back to the heuristic provider.
+
+def _get_turn_service() -> Any:
+    global _turn_service
+    if _turn_service is None:
+        from ai.core.turn_service import NormalizedTurnService
+        from ai.core.workflows.root import get_root_workflow
+
+        _turn_service = NormalizedTurnService(workflow_factory=get_root_workflow)
+    return _turn_service
+
+
+def _extract_repair_payload(message: str | None) -> dict[str, Any] | None:
+    """Pull the fenced ```json repair_packet payload out of a turn message."""
+    if not isinstance(message, str) or not message:
+        return None
+    match = re.search(r'```json\s*(\{.*?\})\s*```', message, re.DOTALL)
+    if not match:
+        return None
+    try:
+        parsed = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    if isinstance(parsed, dict) and 'diagnosis' in parsed:
+        return parsed.get('repair_packet', parsed)
+    return None
+
+
+def _payload_to_result(data: dict[str, Any], *, provider: str) -> GenerationResult:
+    """Convert a ``repair_packet`` payload dict into a GenerationResult."""
+    diagnosis = coerce_diagnosis(data.get('diagnosis', {}))
+    parts = [
+        GeneratedPartLine(
+            name=str(p.get('name', '') or ''),
+            part_id=p.get('part_id'),
+            quantity=float(p.get('quantity', 1) or 1),
+            reason=str(p.get('reason', '') or ''),
+        )
+        for p in data.get('parts', [])
+        if isinstance(p, dict)
+    ]
+    gates = [
+        GeneratedSafetyGate(
+            name=str(g.get('name', '') or ''),
+            gate_type=str(g.get('gate_type', 'other') or 'other'),
+            requires_photo=bool(g.get('requires_photo', False)),
+        )
+        for g in data.get('safety_gates', [])
+        if isinstance(g, dict) and g.get('name')
+    ]
+    return GenerationResult(
+        diagnosis=diagnosis,
+        parts=parts,
+        safety_gates=gates,
+        confidence=float(diagnosis.get('confidence', 0.0)),
+        provider=provider,
+    )
+
+
+class InProcessTurnGenerator:
+    """Runs ``wf7`` through the in-process ``NormalizedTurnService``.
+
+    The turn executes **as the requesting user**: the principal is derived from
+    ``context['user_id']`` via :func:`ai.core.auth.principal_for_user`. There is
+    no service identity and no fallback actor - a missing or inactive user
+    raises :class:`AIServiceUnavailableError` so ``auto`` mode degrades to the
+    heuristic provider. The fallback is *no generation*, never a synthetic
+    actor.
     """
 
     name = 'ai_service'
@@ -206,103 +282,119 @@ class AIServiceGenerator:
     def generate(
         self, *, fault_summary: str, context: dict[str, Any]
     ) -> GenerationResult:
-        """Request a structured repair packet from the AI service over HTTP."""
-        try:
-            import httpx
-        except ImportError as exc:  # pragma: no cover - httpx ships with InvenTree
-            raise AIServiceUnavailableError('httpx is not installed') from exc
+        """Run one idempotent wf7 turn and parse its repair_packet payload."""
+        principal = self._resolve_principal(context)
 
-        url = f'{get_ai_base_url()}/chat'
-        payload = {
-            'message': (
-                'Generate a repair packet diagnosis, parts path and applicable '
-                f'safety gates for the following fault:\n\n{fault_summary}'
-            ),
-            'thread_id': context.get('thread_id'),
-            'user_id': str(context.get('user_id') or 'repair-service'),
-            'context': {**context, 'intent': 'repair_packet', 'workflow_hint': 'wf7'},
-        }
+        packet_pk = context.get('repair_packet_id')
+        run_id = str(context.get('agent_run_id') or '') or uuid.uuid4().hex
+        idempotency_key = f'repair-gen:{packet_pk}:{run_id}'
+
         try:
-            response = httpx.post(url, json=payload, timeout=get_ai_timeout())
-            response.raise_for_status()
-            body = response.json()
-        except Exception as exc:  # network / decode / status errors
-            logger.warning('ai_service_generate_failed', error=str(exc), url=url)
+            from asgiref.sync import async_to_sync
+
+            result = async_to_sync(self._run_turn)(
+                principal, fault_summary, context, idempotency_key
+            )
+        except AIServiceUnavailableError:
+            raise
+        except Exception as exc:
+            logger.warning('in_process_generate_failed', error=str(exc))
             raise AIServiceUnavailableError(str(exc)) from exc
 
-        structured = self._extract_structured(body)
+        structured = _extract_repair_payload(getattr(result, 'message', None))
         if not structured:
             raise AIServiceUnavailableError(
-                'AI response contained no repair_packet payload'
+                'AI turn contained no repair_packet payload'
             )
 
-        return self._to_result(structured)
+        generation = _payload_to_result(structured, provider=self.name)
+        generation.thread_id = str(getattr(result, 'thread_id', '') or '')
+        generation.turn_id = str(getattr(result, 'turn_id', '') or '')
+        return generation
 
     @staticmethod
-    def _extract_structured(body: dict[str, Any]) -> dict[str, Any] | None:
-        """Pull a repair_packet payload from a ChatResponse-shaped body."""
-        if not isinstance(body, dict):
-            return None
-        for key in ('data', 'result', 'repair_packet'):
-            value = body.get(key)
-            if isinstance(value, dict) and (
-                'diagnosis' in value or 'repair_packet' in value
-            ):
-                return value.get('repair_packet', value)
-        # Fall back to a fenced ```json block inside the assistant message.
-        message = body.get('message') or body.get('response') or ''
-        if isinstance(message, str):
-            match = re.search(r'```json\s*(\{.*?\})\s*```', message, re.DOTALL)
-            if match:
-                try:
-                    parsed = json.loads(match.group(1))
-                    if isinstance(parsed, dict) and 'diagnosis' in parsed:
-                        return parsed
-                except json.JSONDecodeError:
-                    return None
-        return None
+    def _resolve_principal(context: dict[str, Any]) -> Any:
+        """Resolve the requesting user's boundary principal, or refuse."""
+        user_id = context.get('user_id')
+        if user_id in (None, ''):
+            raise AIServiceUnavailableError(
+                'in-process generation requires the requesting user'
+            )
+        try:
+            from django.contrib.auth import get_user_model
 
-    def _to_result(self, data: dict[str, Any]) -> GenerationResult:
-        diagnosis = coerce_diagnosis(data.get('diagnosis', {}))
-        parts = [
-            GeneratedPartLine(
-                name=str(p.get('name', '') or ''),
-                part_id=p.get('part_id'),
-                quantity=float(p.get('quantity', 1) or 1),
-                reason=str(p.get('reason', '') or ''),
-            )
-            for p in data.get('parts', [])
-            if isinstance(p, dict)
-        ]
-        gates = [
-            GeneratedSafetyGate(
-                name=str(g.get('name', '') or ''),
-                gate_type=str(g.get('gate_type', 'other') or 'other'),
-                requires_photo=bool(g.get('requires_photo', False)),
-            )
-            for g in data.get('safety_gates', [])
-            if isinstance(g, dict) and g.get('name')
-        ]
-        return GenerationResult(
-            diagnosis=diagnosis,
-            parts=parts,
-            safety_gates=gates,
-            confidence=float(diagnosis.get('confidence', 0.0)),
-            provider=self.name,
+            from ai.core.auth import principal_for_user
+        except ImportError as exc:  # pragma: no cover - split deployments only
+            raise AIServiceUnavailableError(str(exc)) from exc
+
+        try:
+            user = get_user_model().objects.filter(pk=user_id).first()
+        except (TypeError, ValueError):
+            user = None
+        try:
+            return principal_for_user(user)
+        except ValueError as exc:
+            raise AIServiceUnavailableError(str(exc)) from exc
+
+    async def _run_turn(
+        self,
+        principal: Any,
+        fault_summary: str,
+        context: dict[str, Any],
+        idempotency_key: str,
+    ) -> Any:
+        from ai.core.auth import principal_context
+        from ai.core.trusted_context import build_trusted_turn_context
+
+        correlation_id = str(
+            uuid.uuid5(uuid.NAMESPACE_URL, f'{principal.subject}:{idempotency_key}')
         )
+        trusted = build_trusted_turn_context(
+            principal,
+            correlation_id=correlation_id,
+            server_route_hints=('/repair/generate',),
+        )
+        # Threads are owner-scoped; suffixing the actor keeps a regeneration by
+        # a second user from colliding with the first user's thread.
+        packet_pk = context.get('repair_packet_id')
+        base_thread = str(context.get('thread_id') or f'repair-{packet_pk}')
+        thread_id = f'{base_thread}:u{principal.user_pk}'[:80]
+        prompt = (
+            'Generate a repair packet diagnosis, parts path and applicable '
+            f'safety gates for the following fault:\n\n{fault_summary}'
+        )
+
+        token = principal_context.set(principal)
+        try:
+            return await asyncio.wait_for(
+                _get_turn_service().process(
+                    actor=principal,
+                    thread_id=thread_id,
+                    content=prompt,
+                    modality='text',
+                    trusted_context=trusted,
+                    modality_metadata=None,
+                    idempotency_key=idempotency_key,
+                    correlation_id=correlation_id,
+                    server_pinned_workflow='wf7',
+                ),
+                timeout=get_ai_timeout(),
+            )
+        finally:
+            principal_context.reset(token)
 
 
 # --------------------------------------------------------------------------- #
 # Provider selection
 # --------------------------------------------------------------------------- #
 class AutoGenerator:
-    """Prefer the AI service; fall back to the heuristic provider on any error."""
+    """Prefer the AI path; fall back to the heuristic provider on any error."""
 
     name = 'auto'
 
     def __init__(self) -> None:
-        """Instantiate the AI-service and heuristic providers."""
-        self._ai = AIServiceGenerator()
+        """Instantiate the in-process AI and heuristic providers."""
+        self._ai = InProcessTurnGenerator()
         self._heuristic = HeuristicGenerator()
 
     def generate(
@@ -322,7 +414,7 @@ def get_generator(mode: str | None = None) -> RepairPacketGenerator:
     """Return the configured generator provider."""
     mode = (mode or get_generator_mode()).strip().lower()
     if mode == 'ai_service':
-        return AIServiceGenerator()
+        return InProcessTurnGenerator()
     if mode == 'heuristic':
         return HeuristicGenerator()
     return AutoGenerator()
@@ -330,13 +422,13 @@ def get_generator(mode: str | None = None) -> RepairPacketGenerator:
 
 __all__ = [
     'DIAGNOSIS_SCHEMA_VERSION',
-    'AIServiceGenerator',
     'AIServiceUnavailableError',
     'AutoGenerator',
     'GeneratedPartLine',
     'GeneratedSafetyGate',
     'GenerationResult',
     'HeuristicGenerator',
+    'InProcessTurnGenerator',
     'RepairPacketGenerator',
     'get_generator',
     'get_generator_mode',

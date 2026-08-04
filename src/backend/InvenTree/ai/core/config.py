@@ -41,7 +41,10 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Server Configuration
     # -------------------------------------------------------------------------
-    host: str = "0.0.0.0"
+    # Loopback by default: the agent stack is mounted inside InvenTree.asgi, so
+    # a standalone run is a dev convenience and must not bind publicly unless
+    # a deployment explicitly sets AIMMS_HOST.
+    host: str = "127.0.0.1"
     port: int = 8080
 
     # -------------------------------------------------------------------------

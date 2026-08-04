@@ -6,8 +6,10 @@ Postgres objects: the HTTP API, the complete lifecycle, safety-gate gating, the
 approvals integration and pre-execution revalidation with real parts + stock.
 """
 
+import os
 import uuid
 from decimal import Decimal
+from unittest import mock
 
 from django.test import TestCase
 from django.urls import reverse
@@ -74,7 +76,10 @@ class RepairPacketAPITest(InvenTreeAPITestCase):
         """The generate endpoint populates diagnosis and advances to diagnosed."""
         packet = RepairPacket.objects.create(fault_summary='bearing noise')
         url = reverse('repair-packet-generate', kwargs={'pk': packet.pk})
-        resp = self.post(url, {}, expected_code=200)
+        # Lifecycle test, not a provider test: pin the offline provider so the
+        # in-process AI turn (and its provider retry latency) never runs here.
+        with mock.patch.dict(os.environ, {'AIMMS_REPAIR_GENERATOR': 'heuristic'}):
+            resp = self.post(url, {}, expected_code=200)
         self.assertEqual(resp.data['status'], PacketStatus.DIAGNOSED)
         self.assertIn('generated_from', resp.data['diagnosis'])
 
@@ -84,7 +89,8 @@ class RepairPacketAPITest(InvenTreeAPITestCase):
         gen = reverse('repair-packet-generate', kwargs={'pk': packet.pk})
         adv = reverse('repair-packet-advance', kwargs={'pk': packet.pk})
 
-        self.post(gen, {}, expected_code=200)
+        with mock.patch.dict(os.environ, {'AIMMS_REPAIR_GENERATOR': 'heuristic'}):
+            self.post(gen, {}, expected_code=200)
 
         r1 = self.post(adv, {'to': PacketStatus.APPROVED}, expected_code=200)
         self.assertTrue(r1.data['ok'])
