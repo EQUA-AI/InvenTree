@@ -46,6 +46,7 @@ _CONFLICT_CODES = {
     risk_services.SCAN_LEASE_HELD,
     risk_services.RULE_DISABLED,
 }
+_SERVICE_UNAVAILABLE_CODES = {risk_services.RECHECK_QUEUE_FAILED}
 
 
 def _error_body(*, code: str, detail: str, correlation_id: str, current_version=None):
@@ -65,6 +66,8 @@ def _error_response(
     http_status = (
         status.HTTP_409_CONFLICT
         if exc.code in _CONFLICT_CODES
+        else status.HTTP_503_SERVICE_UNAVAILABLE
+        if exc.code in _SERVICE_UNAVAILABLE_CODES
         else status.HTTP_404_NOT_FOUND
         if exc.code == 'FINDING_NOT_FOUND'
         else status.HTTP_400_BAD_REQUEST
@@ -122,7 +125,11 @@ class RiskScopeList(RiskRadarEnabledMixin, APIView):
     def get(self, request):
         """Return the actor's scope keys (empty when unresolved)."""
         try:
-            scopes = authorized_scope_keys(request.user)
+            scopes = (
+                authorized_scope_keys(request.user)
+                if request.user.has_perm(risk_services.PERM_VIEW)
+                else []
+            )
         except RiskScopeError:
             scopes = []
         return Response({
@@ -383,14 +390,28 @@ class RiskFindingRecheck(RiskRadarEnabledMixin, APIView):
         """Queue a full-snapshot scan; never resolves from a delta."""
         correlation_id = str(uuid.uuid4())
         finding = _visible_finding_or_404(request, pk)
+        serializer = RiskCommandSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
         try:
-            risk_services.enqueue_recheck(request.user, finding)
+            replayed = risk_services.enqueue_recheck(
+                request.user,
+                finding,
+                expected_version=payload['expected_version'],
+                idempotency_key=payload['idempotency_key'],
+            )
         except risk_services.RiskCommandError as exc:
-            return _error_response(exc, correlation_id)
+            current = (
+                RiskFinding.objects
+                .filter(pk=pk)
+                .values_list('version', flat=True)
+                .first()
+            )
+            return _error_response(exc, correlation_id, current_version=current)
         except RiskScopeError as exc:
             raise Http404 from exc
         return Response(
-            {'queued': True, 'correlation_id': correlation_id},
+            {'queued': True, 'replayed': replayed, 'correlation_id': correlation_id},
             status=status.HTTP_202_ACCEPTED,
         )
 

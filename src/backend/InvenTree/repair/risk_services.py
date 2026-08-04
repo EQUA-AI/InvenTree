@@ -93,6 +93,7 @@ SCOPE_UNRESOLVED = 'SCOPE_UNRESOLVED'
 SUMMARY_STALE = 'SUMMARY_STALE'
 IDEMPOTENCY_CONFLICT = 'IDEMPOTENCY_CONFLICT'
 ASSIGN_TARGET_NOT_VISIBLE = 'ASSIGN_TARGET_NOT_VISIBLE'
+RECHECK_QUEUE_FAILED = 'RECHECK_QUEUE_FAILED'
 
 _CADENCE_SECONDS = {'minutes_15': 15 * 60, 'hourly': 3600, 'daily': 86400}
 
@@ -1298,28 +1299,72 @@ def _command_result(finding: RiskFinding, event: RiskFindingEvent, *, replayed: 
     }
 
 
-def enqueue_recheck(actor, finding: RiskFinding) -> bool:
+def enqueue_recheck(
+    actor, finding: RiskFinding, *, expected_version: int, idempotency_key: str
+) -> bool:
     """Enqueue the complete current rule+scope full-snapshot scan.
 
     A recheck never resolves from a targeted or delta absence — it simply
-    runs the same complete scan sooner (FR-RR-003).
+    runs the same complete scan sooner (FR-RR-003). The request is recorded
+    before queuing so retries cannot fan out duplicate scans.
+
+    Returns ``True`` for an idempotent replay and ``False`` for a newly
+    accepted request.
     """
     require_view_permission(actor)
-    scope = decode_scope_key(finding.scope_key)
-    if scope not in authorized_scopes(actor):
-        raise RiskScopeError('Finding scope is not authorized for this actor')
-    enabled, gate = rule_enablement(finding.rule_code, finding.scope_key)
-    if not enabled:
-        raise RiskCommandError(RULE_DISABLED, f'Rule gate failed: {gate}')
-    from InvenTree.tasks import offload_task
+    request_hash = hashlib.sha256(_canonical_json(['recheck', {}]).encode()).hexdigest()
+    with transaction.atomic():
+        finding = RiskFinding.objects.select_for_update().filter(pk=finding.pk).first()
+        if finding is None:
+            raise RiskCommandError('FINDING_NOT_FOUND', 'Finding does not exist')
+        scope = decode_scope_key(finding.scope_key)
+        if scope not in authorized_scopes(actor):
+            raise RiskScopeError('Finding scope is not authorized for this actor')
+        if not VISIBILITY_POLICY.can_view(actor, finding):
+            raise RiskScopeError('Finding category is not visible to this actor')
+        replay = RiskFindingEvent.objects.filter(
+            finding=finding, idempotency_key=idempotency_key
+        ).first()
+        if replay is not None:
+            if replay.request_hash != request_hash:
+                raise RiskCommandError(
+                    IDEMPOTENCY_CONFLICT,
+                    'Idempotency key was already used with a different request',
+                )
+            return True
+        if finding.version != int(expected_version):
+            raise RiskCommandError(
+                FINDING_STATE_CONFLICT,
+                f'Expected version {expected_version}, current {finding.version}',
+            )
+        enabled, gate = rule_enablement(finding.rule_code, finding.scope_key)
+        if not enabled:
+            raise RiskCommandError(RULE_DISABLED, f'Rule gate failed: {gate}')
+        RiskFindingEvent.objects.create(
+            finding=finding,
+            event_type='recheck_requested',
+            actor=actor,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+        )
+        # Queue while the request ledger transaction is still open. An
+        # immediate queue-adapter failure rolls the ledger row back, allowing
+        # the caller to retry instead of replaying a request that was never
+        # actually queued.
+        from InvenTree.tasks import offload_task
 
-    offload_task(
-        'repair.risk_services.run_scan_by_key',
-        finding.rule_code,
-        finding.scope_key,
-        group='risk-radar',
-    )
-    return True
+        queued = offload_task(
+            'repair.risk_services.run_scan_by_key',
+            finding.rule_code,
+            finding.scope_key,
+            group='risk-radar',
+        )
+        if queued is False:
+            raise RiskCommandError(
+                RECHECK_QUEUE_FAILED,
+                'The recheck could not be queued; retry the command',
+            )
+    return False
 
 
 # ---------------------------------------------------------------------------

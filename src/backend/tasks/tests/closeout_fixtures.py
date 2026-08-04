@@ -12,8 +12,8 @@ from stock.models import StockItem
 from tasks.models import (
     FulfillmentMode,
     JobKitLine,
-    WorkOrder,
     ProcedureResourceKind,
+    WorkOrder,
     WorkOrderLifecycle,
     WorkOrderType,
 )
@@ -149,8 +149,8 @@ def extractor_ok(narrative, shape):
 
     Written against the contract narrative
     ``'Replaced the clogged filter; flow restored to twenty GPM.'``: every
-    value's spans point at text that actually contains it, including the
-    discontiguous two-span anchor for ``'Replaced filter'``.
+    value's spans point at text that actually contains it in one contiguous
+    source span.
     """
     return {
         'schema_version': 1,
@@ -162,11 +162,8 @@ def extractor_ok(narrative, shape):
                 'warnings': [],
             },
             'action': {
-                'value': 'Replaced filter',
-                'spans': [
-                    _span_of(narrative, 'Replaced'),
-                    _span_of(narrative, 'filter'),
-                ],
+                'value': 'Replaced the clogged filter',
+                'spans': [_span_of(narrative, 'Replaced the clogged filter')],
                 'confidence': 0.92,
                 'warnings': [],
             },
@@ -187,7 +184,8 @@ def extractor_ok(narrative, shape):
             {
                 'text': 'the clogged filter',
                 'spans': [_span_of(narrative, 'the clogged filter')],
-                'quantity_text': 'one',
+                # Quantity was not stated; do not infer one from a singular noun.
+                'quantity_text': '',
             }
         ],
         'reading_candidates': [
@@ -233,9 +231,7 @@ def extractor_identity_leak(narrative, shape):
     return {
         'schema_version': 1,
         'fields': {},
-        'part_candidates': [
-            {'text': 'contactor', 'spans': [span], 'part_id': 42}
-        ],
+        'part_candidates': [{'text': 'contactor', 'spans': [span], 'part_id': 42}],
         'reading_candidates': [],
         'warnings': [],
     }
@@ -250,9 +246,7 @@ def extractor_unanchored(narrative, shape):
     """Returns a populated value with no source span."""
     return {
         'schema_version': 1,
-        'fields': {
-            'action': {'value': 'did things', 'spans': [], 'confidence': 0.9}
-        },
+        'fields': {'action': {'value': 'did things', 'spans': [], 'confidence': 0.9}},
     }
 
 

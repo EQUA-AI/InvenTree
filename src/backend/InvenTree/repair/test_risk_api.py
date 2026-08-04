@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 from .risk_models import (
     RiskActionLink,
     RiskFinding,
+    RiskFindingEvent,
     RiskFindingState,
     RiskRuleConfigurationEvent,
     RiskRuleDefinition,
@@ -88,6 +89,17 @@ class RiskApiTest(RiskEnvMixin, TestCase):
             response.json()['scopes'], [self.scope_key, self.client_scope_key]
         )
         self.assertTrue(response.json()['authorization_fingerprint'])
+
+    def test_scope_list_is_empty_without_finding_view_permission(self):
+        """A maintenance scope alone must not advertise an unusable radar."""
+        self.actor.user_permissions.clear()
+        self.actor = fresh(self.actor)
+        self.client.force_authenticate(self.actor)
+
+        response = self.client.get(reverse('risk-scope-list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['scopes'], [])
 
     def test_list_requires_scope_parameter(self):
         """A missing scope parameter is a stable envelope error."""
@@ -385,12 +397,63 @@ class RiskApiTest(RiskEnvMixin, TestCase):
         self.assertEqual(len(body.strip().splitlines()), 56)
 
     def test_recheck_enqueues_when_rule_enabled(self):
-        """Recheck queues the full-snapshot scan for enabled rules."""
+        """Recheck is versioned, durable-idempotent, and queues only once."""
         finding = self.make_finding(discriminator='rc')
         url = reverse('risk-finding-recheck', kwargs={'pk': finding.pk})
-        disabled = self.client.post(url)
+        command = {
+            'expected_version': finding.version,
+            'idempotency_key': uuid.uuid4().hex,
+        }
+        disabled = self.client.post(url, command, format='json')
         self.assertEqual(disabled.status_code, 409)
         self.assertEqual(disabled.json()['code'], 'RULE_DISABLED')
+
+        self.enable_rule('PACKET_STALLED')
+        with (
+            override_settings(AIMMS_RISK_RULES_ENABLED=['PACKET_STALLED']),
+            mock.patch('InvenTree.tasks.offload_task') as offload,
+        ):
+            first = self.client.post(url, command, format='json')
+            replay = self.client.post(url, command, format='json')
+            stale = self.client.post(
+                url,
+                {
+                    'expected_version': finding.version + 1,
+                    'idempotency_key': uuid.uuid4().hex,
+                },
+                format='json',
+            )
+
+        self.assertEqual(first.status_code, 202)
+        self.assertFalse(first.json()['replayed'])
+        self.assertEqual(replay.status_code, 202)
+        self.assertTrue(replay.json()['replayed'])
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(stale.json()['code'], 'FINDING_STATE_CONFLICT')
+        offload.assert_called_once_with(
+            'repair.risk_services.run_scan_by_key',
+            finding.rule_code,
+            finding.scope_key,
+            group='risk-radar',
+        )
+
+        failed_key = uuid.uuid4().hex
+        with (
+            override_settings(AIMMS_RISK_RULES_ENABLED=['PACKET_STALLED']),
+            mock.patch('InvenTree.tasks.offload_task', return_value=False),
+        ):
+            unavailable = self.client.post(
+                url,
+                {'expected_version': finding.version, 'idempotency_key': failed_key},
+                format='json',
+            )
+        self.assertEqual(unavailable.status_code, 503)
+        self.assertEqual(unavailable.json()['code'], 'RECHECK_QUEUE_FAILED')
+        self.assertFalse(
+            RiskFindingEvent.objects.filter(
+                finding=finding, idempotency_key=failed_key
+            ).exists()
+        )
 
     def test_summary_gated_by_command_center_flag(self):
         """The summary needs its own flag on top of the master flag."""

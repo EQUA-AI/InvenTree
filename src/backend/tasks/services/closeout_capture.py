@@ -342,6 +342,32 @@ def _work_order_shape(work_order) -> dict:
     }
 
 
+def _extraction_model_provenance(raw_output) -> dict[str, str]:
+    """Copy trusted binding metadata without admitting it into the JSON schema.
+
+    The deployment adapter attaches provenance as an out-of-band attribute on
+    its dict subclass. Model-produced JSON cannot set that attribute. Other
+    configured extractors retain the explicit Django label as a compatibility
+    fallback, but blank labels are not recorded as if they identified a model.
+    """
+    supplied = getattr(raw_output, 'model_provenance', None)
+    if isinstance(supplied, dict):
+        provenance = {
+            key: value.strip()
+            for key in ('deployment', 'model', 'run_id')
+            if isinstance((value := supplied.get(key)), str)
+            and value.strip()
+            and len(value.strip()) <= 255
+        }
+        if provenance:
+            return provenance
+
+    configured = str(
+        getattr(settings, 'AIMMS_CLOSEOUT_EXTRACTION_MODEL', '') or ''
+    ).strip()
+    return {'model': configured} if configured else {}
+
+
 def _live_proposal(revision) -> CloseoutProposal | None:
     return (
         CloseoutProposal.objects
@@ -396,6 +422,7 @@ def request_extraction(*, work_order_id, capture_id, actor):
     try:
         extractor = resolve_extractor()
         raw_output = extractor(narrative, shape)
+        model_provenance = _extraction_model_provenance(raw_output)
     except WorkOrderCommandError:
         _revert_capture_to_open(capture_id)
         raise
@@ -425,11 +452,7 @@ def request_extraction(*, work_order_id, capture_id, actor):
             capture_revision=revision,
             schema_version=EXTRACTION_SCHEMA_VERSION,
             extractor=getattr(extractor, '__name__', 'configured'),
-            model_provenance={
-                'model': str(
-                    getattr(settings, 'AIMMS_CLOSEOUT_EXTRACTION_MODEL', '') or ''
-                )
-            },
+            model_provenance=model_provenance,
             fields=document['fields'],
             part_candidates=document['part_candidates'],
             reading_candidates=document['reading_candidates'],

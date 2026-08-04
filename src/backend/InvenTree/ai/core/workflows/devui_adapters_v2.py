@@ -369,18 +369,6 @@ def create_procurement_workflow() -> DevUICompatibleWorkflow:
     )
 
 
-def create_cpq_workflow() -> DevUICompatibleWorkflow:
-    """Create DevUI-compatible T5 CPQ workflow."""
-    from ai.core.workflows.wf5_cpq import T5CPQWorkflow
-
-    return DevUICompatibleWorkflow(
-        T5CPQWorkflow(),
-        name="T5 CPQ",
-        description="Configure-Price-Quote multi-agent workflow. "
-        "Configures products, calculates pricing, and generates quotes.",
-    )
-
-
 def create_documents_workflow() -> DevUICompatibleWorkflow:
     """Create DevUI-compatible T7 Documents workflow."""
     # Use the new conversational v2 workflow
@@ -416,7 +404,6 @@ def get_all_devui_workflows() -> list[DevUICompatibleWorkflow]:
         ("T2 Parts Analysis", create_parts_analysis_workflow),
         ("T3 Research", create_research_workflow),
         ("T4 Procurement", create_procurement_workflow),
-        ("T5 CPQ", create_cpq_workflow),
         ("T6 Diagnostics", create_diagnostics_workflow),
         ("T7 Documents", create_documents_workflow),
     ]

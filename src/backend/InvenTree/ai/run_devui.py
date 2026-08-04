@@ -9,7 +9,6 @@ This provides access to the COMPLETE multi-agent workflows, including:
 - Parallel execution (WF3 Research)
 - Human-in-the-loop approval (WF4 Procurement)
 - Semantic caching (WF1 Diagnostics)
-- Multi-agent collaboration (WF5 CPQ)
 
 Usage:
     python run_devui.py
@@ -107,11 +106,6 @@ def create_full_workflows():
             "factory": ("ai.core.workflows.wf4_procurement", "create_procurement_workflow"),
         },
         {
-            "name": "T5 CPQ (WF5)",
-            "description": "Configure-Price-Quote with multi-agent collaboration",
-            "factory": ("ai.core.workflows.wf5_cpq", "create_cpq_workflow"),
-        },
-        {
             "name": "T6 Diagnostics (WF1)",
             "description": "Equipment diagnostics with semantic caching",
             "factory": ("ai.core.workflows.wf1_diagnostics", "create_diagnostics_workflow"),
@@ -171,7 +165,7 @@ def main():
 ║  🌐 DevUI URL: http://127.0.0.1:{port:<5}                               ║
 ║                                                                      ║
 ║  Features enabled:                                                   ║
-║    ✓ Multi-agent orchestration (WF3, WF5)                           ║
+║    ✓ Multi-agent orchestration (WF3 Research)                       ║
 ║    ✓ Parallel execution (WF3 Research)                              ║
 ║    ✓ Human-in-the-loop approval (WF4 Procurement)                   ║
 ║    ✓ Semantic caching (WF1 Diagnostics)                             ║

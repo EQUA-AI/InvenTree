@@ -468,6 +468,217 @@ class GateFloorReviewRegressionTest(TestCase):
         self.assertTrue(gate.is_mandatory)
         self.assertTrue(gate.requires_second_person)
 
+    def test_template_and_suggestion_may_share_a_name_across_regeneration(self):
+        """Suggestion identity must exclude the template-backed sibling.
+
+        The authored row and AI row legitimately share a display name. Looking
+        up a suggestion by ``(packet, name)`` alone finds both rows on the next
+        generation and raises ``MultipleObjectsReturned``, failing the entire
+        packet generation run.
+        """
+        SafetyGateTemplate.objects.create(
+            name='Energy isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=True,
+        )
+        packet = self._packet()
+
+        self._run(packet, [('Energy isolation', 'loto')])
+        self._run(packet, [('Energy isolation', 'loto')])
+
+        rows = packet.gates.filter(name='Energy isolation')
+        self.assertEqual(rows.count(), 2)
+        self.assertEqual(rows.filter(template__isnull=True).count(), 1)
+        self.assertEqual(rows.filter(template__isnull=False).count(), 1)
+
+    def test_generated_gate_type_is_canonical_before_it_is_persisted(self):
+        """Formatting noise must not disable the exact LOTO interlocks.
+
+        Model output such as ``"  LOTO "`` matched the template but was stored
+        verbatim. Both confirmation and return-to-service then ignored the
+        gate's physical lockout points because those checks compare to the
+        canonical ``loto`` value.
+        """
+        SafetyGateTemplate.objects.create(
+            name='Energy isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=True,
+        )
+        packet = self._packet()
+
+        self._run(packet, [('AI worded lockout', '  LOTO ')])
+        gate = packet.gates.get(name='AI worded lockout')
+        template_gate = packet.gates.get(template__isnull=False)
+        template_ok, template_detail = services.confirm_gate(template_gate)
+        self.assertTrue(template_ok, template_detail)
+        LockoutPoint.objects.create(
+            gate=gate,
+            energy_source=LockoutPoint.EnergySource.ELECTRICAL,
+            isolation_device='MCC-1 bucket',
+        )
+
+        self.assertEqual(gate.gate_type, 'loto')
+        confirm_ok, confirm_detail = services.confirm_gate(gate)
+        close_ok, close_detail = packet.can_return_to_service()
+        self.assertFalse(confirm_ok, confirm_detail)
+        self.assertFalse(close_ok, close_detail)
+
+    def test_regeneration_upgrades_other_to_known_type_without_downgrade(self):
+        """A known type may harden ``other`` but weak output cannot erase it.
+
+        Same-name regeneration previously left an old ``other`` value in place,
+        so the row gained blocking flags without gaining the exact LOTO
+        interlocks. Conversely, a later unrecognised output must not turn a
+        known LOTO row back into ``other``.
+        """
+        packet = self._packet()
+        RepairPacketGate.objects.create(
+            packet=packet,
+            name='AI worded lockout',
+            gate_type='other',
+            is_blocking=False,
+            is_mandatory=False,
+        )
+        SafetyGateTemplate.objects.create(
+            name='Energy isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=True,
+        )
+
+        self._run(packet, [('AI worded lockout', ' LOTO ')])
+        gate = packet.gates.get(name='AI worded lockout')
+        self.assertEqual(gate.gate_type, 'loto')
+
+        self._run(packet, [('AI worded lockout', 'unrecognised')])
+        gate.refresh_from_db()
+        self.assertEqual(gate.gate_type, 'loto')
+
+    def test_regeneration_upgrades_each_safety_dimension_independently(self):
+        """An already-blocking row can still be weak on every other dimension.
+
+        Gating the upgrade on ``not row.is_blocking`` left mandatory, photo,
+        permission and second-person requirements unset forever on partially
+        upgraded rows.
+        """
+        packet = self._packet()
+        RepairPacketGate.objects.create(
+            packet=packet,
+            name='AI worded lockout',
+            gate_type='loto',
+            is_blocking=True,
+            is_mandatory=False,
+            requires_photo=False,
+            requires_second_person=False,
+        )
+        SafetyGateTemplate.objects.create(
+            name='Energy isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=True,
+            is_mandatory=True,
+            required_permission='repair.change_repairpacket',
+            requires_photo=True,
+            requires_second_person=True,
+            default_sequence=17,
+        )
+
+        self._run(packet, [('AI worded lockout', 'loto')])
+
+        gate = packet.gates.get(name='AI worded lockout')
+        self.assertTrue(gate.is_blocking)
+        self.assertTrue(gate.is_mandatory)
+        self.assertTrue(gate.requires_photo)
+        self.assertTrue(gate.requires_second_person)
+        self.assertEqual(gate.required_permission, 'repair.change_repairpacket')
+        self.assertEqual(gate.sequence, 17)
+
+    def test_existing_template_row_adopts_only_stricter_template_edits(self):
+        """Editing a deployed template must harden packets already resolved.
+
+        ``get_or_create(defaults=...)`` applies the template contract only on
+        insert. Without an update path, an existing packet remains advisory
+        after its governing template is made blocking.
+        """
+        template = SafetyGateTemplate.objects.create(
+            name='Energy isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=False,
+            is_mandatory=False,
+        )
+        packet = self._packet()
+        services.resolve_safety_gates(packet)
+
+        template.is_blocking = True
+        template.is_mandatory = True
+        template.required_permission = 'repair.change_repairpacket'
+        template.requires_photo = True
+        template.requires_second_person = True
+        template.save()
+        services.resolve_safety_gates(packet)
+
+        gate = packet.gates.get(template=template)
+        self.assertTrue(gate.is_blocking)
+        self.assertTrue(gate.is_mandatory)
+        self.assertTrue(gate.requires_photo)
+        self.assertTrue(gate.requires_second_person)
+        self.assertEqual(gate.required_permission, 'repair.change_repairpacket')
+
+        template.is_blocking = False
+        template.is_mandatory = False
+        template.required_permission = ''
+        template.requires_photo = False
+        template.requires_second_person = False
+        template.save()
+        services.resolve_safety_gates(packet)
+
+        gate.refresh_from_db()
+        self.assertTrue(gate.is_blocking)
+        self.assertTrue(gate.is_mandatory)
+        self.assertTrue(gate.requires_photo)
+        self.assertTrue(gate.requires_second_person)
+        self.assertEqual(gate.required_permission, 'repair.change_repairpacket')
+
+    def test_same_type_templates_merge_incomparable_safety_requirements(self):
+        """No single sort order can represent independent safety dimensions.
+
+        One applicable template can require a photo while another requires a
+        second person and permission. The generated row must inherit the union,
+        while its order follows the strict governing template rather than the
+        model-row default of zero.
+        """
+        SafetyGateTemplate.objects.create(
+            name='Photograph isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=True,
+            is_mandatory=True,
+            requires_photo=True,
+            default_sequence=41,
+        )
+        SafetyGateTemplate.objects.create(
+            name='Witness isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=True,
+            is_mandatory=True,
+            required_permission='repair.change_repairpacket',
+            requires_second_person=True,
+            default_sequence=73,
+        )
+        packet = self._packet()
+
+        self._run(packet, [('AI worded lockout', 'loto')])
+
+        gate = packet.gates.get(name='AI worded lockout')
+        self.assertTrue(gate.requires_photo)
+        self.assertTrue(gate.requires_second_person)
+        self.assertEqual(gate.required_permission, 'repair.change_repairpacket')
+        self.assertEqual(gate.sequence, 73)
+
     def test_gate_type_is_normalised_before_matching(self):
         """The model's spelling must not decide whether the floor applies."""
         SafetyGateTemplate.objects.create(

@@ -468,17 +468,6 @@ def create_procurement_workflow() -> DevUICompatibleWorkflow:
     )
 
 
-def create_cpq_workflow() -> DevUICompatibleWorkflow:
-    """Create DevUI-compatible CPQ workflow."""
-    from ai.core.workflows.wf5_cpq import T5CPQWorkflow
-
-    return DevUICompatibleWorkflow(
-        T5CPQWorkflow(),
-        name="T5 CPQ",
-        description="Configure-Price-Quote multi-agent workflow",
-    )
-
-
 def create_documents_workflow() -> DevUICompatibleWorkflow:
     """Create DevUI-compatible documents workflow."""
     from ai.core.workflows.wf6_documents import WF6DocumentWorkflow
@@ -508,7 +497,6 @@ def get_all_devui_workflows() -> list[DevUICompatibleWorkflow]:
         create_parts_analysis_workflow(),
         create_research_workflow(),
         create_procurement_workflow(),
-        create_cpq_workflow(),
         create_documents_workflow(),
         create_lookup_workflow(),
     ]

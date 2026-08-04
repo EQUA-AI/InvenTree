@@ -23,12 +23,7 @@ _MAX_REPLY_TOKENS = 2000
 
 
 def _deployment_name() -> str:
-    """The pinned model: the Django-plane override, else the fast deployment.
-
-    ``AIMMS_CLOSEOUT_EXTRACTION_MODEL`` is also stamped into each proposal's
-    ``model_provenance`` by the Django side, so overriding it changes both the
-    call and the recorded provenance together.
-    """
+    """Return the pinned deployment: Django override, else the fast deployment."""
     try:
         from django.conf import settings as django_settings
 
@@ -44,7 +39,12 @@ def _deployment_name() -> str:
     return get_settings().azure_openai_fast_deployment
 
 
-def _complete(messages: list[dict]) -> str:
+def _complete(
+    messages: list[dict],
+    *,
+    deployment_name: str | None = None,
+    provenance: dict[str, str] | None = None,
+) -> str:
     """One deterministic, JSON-mode chat completion against the pinned model."""
     from ai.core.config import get_settings
     from openai import AzureOpenAI
@@ -57,16 +57,42 @@ def _complete(messages: list[dict]) -> str:
         api_key=settings.azure_openai_api_key,
         api_version=settings.azure_openai_api_version,
     )
+    deployment = deployment_name or _deployment_name()
     response = client.chat.completions.create(
-        model=_deployment_name(),
+        model=deployment,
         messages=messages,
         temperature=0,
         max_tokens=_MAX_REPLY_TOKENS,
         response_format={"type": "json_object"},
     )
+    if provenance is not None:
+        provenance["deployment"] = deployment
+        provenance["model"] = str(getattr(response, "model", "") or deployment)
+        run_id = str(getattr(response, "id", "") or "").strip()
+        if run_id:
+            provenance["run_id"] = run_id
     return response.choices[0].message.content or ""
+
+
+class ExtractionDocument(dict):
+    """Schema document carrying trusted out-of-band inference provenance."""
+
+    def __init__(self, document: dict, *, model_provenance: dict[str, str]) -> None:
+        super().__init__(document)
+        self.model_provenance = dict(model_provenance)
 
 
 def extract(narrative: str, shape: dict[str, Any]) -> dict:
     """The ``AIMMS_CLOSEOUT_EXTRACTOR`` entry point."""
-    return extract_closeout(narrative, shape, complete=_complete)
+    deployment = _deployment_name()
+    provenance = {"deployment": deployment, "model": deployment}
+
+    def complete(messages: list[dict]) -> str:
+        return _complete(
+            messages,
+            deployment_name=deployment,
+            provenance=provenance,
+        )
+
+    document = extract_closeout(narrative, shape, complete=complete)
+    return ExtractionDocument(document, model_provenance=provenance)

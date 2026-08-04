@@ -383,12 +383,17 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
     ),
 }
 
-#: Which workflows may invoke each pack. ``authorize_invocation`` denies a call
-#: whose bound workflow is absent here, so this is the enforcement boundary
-#: between rails — wf8 must never gain the specialist write packs by default.
+#: Which workflows may invoke each effectful pack. ``authorize_invocation``
+#: denies a call whose bound workflow is absent here, so omission must fail
+#: closed rather than grant a newly added or misspelled write pack to all rails.
 _DEFAULT_PACK_WORKFLOWS = frozenset({"wf8", "general"})
 _SPECIALIST_WORKFLOWS = frozenset({"wf2", "wf3", "wf4", "wf6"})
+_ALL_PACK_WORKFLOWS = _DEFAULT_PACK_WORKFLOWS | _SPECIALIST_WORKFLOWS
 _PACK_WORKFLOWS: dict[str, frozenset[str]] = {
+    # Email is part of the research rail as well as the everyday assistant.
+    "email.write": frozenset({"wf3", "wf8", "general"}),
+    # Direct-ORM kanban writes never belong to a specialist rail.
+    "kanban.write": _DEFAULT_PACK_WORKFLOWS,
     "parts.write": _SPECIALIST_WORKFLOWS,
     "stock.write": _SPECIALIST_WORKFLOWS,
     "company.write": _SPECIALIST_WORKFLOWS,
@@ -399,11 +404,14 @@ _PACK_WORKFLOWS: dict[str, frozenset[str]] = {
 
 
 def pack_workflows(pack_id: str) -> frozenset[str]:
-    """Workflows authorized for one pack; read packs are shared by every rail."""
+    """Return one pack's rails, sharing only known read packs by default."""
     explicit = _PACK_WORKFLOWS.get(pack_id)
     if explicit is not None:
         return explicit
-    return _DEFAULT_PACK_WORKFLOWS | _SPECIALIST_WORKFLOWS
+    spec = _PACK_SPECS.get(pack_id)
+    if spec is not None and spec[0] is ToolEffect.READ:
+        return _ALL_PACK_WORKFLOWS
+    return frozenset()
 
 
 _LOOKUP_PACKS = {

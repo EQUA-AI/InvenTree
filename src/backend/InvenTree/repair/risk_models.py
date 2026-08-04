@@ -323,6 +323,7 @@ class RiskFindingEvent(models.Model):
         'resolved',
         'reopened',
         'superseded',
+        'recheck_requested',
     )
 
     finding = models.ForeignKey(

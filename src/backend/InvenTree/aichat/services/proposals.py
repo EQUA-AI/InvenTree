@@ -13,11 +13,16 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from aichat.models import ChatActionProposal, ProposalAction, ProposalState
+from aichat.models import (
+    ChatActionProposal,
+    ProposalAction,
+    ProposalState,
+    ThreadNamespace,
+)
 
 #: Adopted default (plan, 2026-07-15): 15 minutes, no extension.
 PROPOSAL_EXPIRY_SECONDS = 15 * 60
@@ -739,7 +744,7 @@ def reject_proposal(*, owner, scope_hash: str, proposal_id) -> ChatActionProposa
 
 def _command_receipt(result) -> dict[str, Any]:
     """Serialize a lifecycle ``CommandResult`` into a durable receipt."""
-    return {
+    receipt = {
         'work_order_id': result.work_order_id,
         'event_id': result.event_id,
         'command': result.command,
@@ -748,6 +753,20 @@ def _command_receipt(result) -> dict[str, Any]:
         'correlation_id': str(result.correlation_id),
         'idempotency_key': result.idempotency_key,
     }
+    # Preserve only the server-derived fields the outcome renderer knows. A
+    # CommandResult's metadata is otherwise an open-ended internal surface and
+    # must not silently become part of every durable chat receipt.
+    metadata_keys = {
+        'schedule': ('scheduled_start', 'scheduled_end'),
+        'resize': ('estimated_minutes', 'scheduled_end'),
+    }.get(result.command, ())
+    raw_metadata = result.metadata if isinstance(result.metadata, dict) else {}
+    result_metadata = {
+        key: raw_metadata[key] for key in metadata_keys if key in raw_metadata
+    }
+    if result_metadata:
+        receipt['result_metadata'] = result_metadata
+    return receipt
 
 
 def _deletion_receipt(result) -> dict[str, Any]:
@@ -1160,7 +1179,7 @@ def _mark(owner, scope_hash: str, proposal_id, state: str, code: str) -> None:
 
 
 def expire_stale_proposals() -> int:
-    """Scheduled sweep (adopted default: 15-minute cadence)."""
+    """Expire pending proposals; the task runner invokes this every minute."""
     return ChatActionProposal.objects.filter(
         state=ProposalState.PROPOSED, expires_at__lt=timezone.now()
     ).update(state=ProposalState.EXPIRED, updated_at=timezone.now())
@@ -1201,21 +1220,64 @@ def _deliver_notification(
 
     if not proposal.thread_id:
         return False
-    if _notification_exists(proposal.thread_id, proposal.id, kind):
-        return False
     try:
-        repository = ThreadRepository(proposal.owner, proposal.scope_key)
-        repository.append(
-            proposal.thread_id,
-            role='assistant',
-            content=content,
-            metadata={
-                'proposal_id': str(proposal.id),
-                'kind': kind,
-                'action_type': proposal.action_type,
-            },
-        )
-    except ThreadRepositoryError:
+        with transaction.atomic():
+            locked = (
+                ChatActionProposal.objects
+                .select_for_update()
+                .select_related('owner')
+                .get(pk=proposal.pk)
+            )
+            # A linked approval is the sole execution authority. There is no
+            # approval-to-chat state synchronizer, so this rail cannot promise
+            # its expiry deadline or truthfully report its eventual outcome.
+            if locked.approval_id is not None:
+                return False
+            # The sweep query is only a candidate scan. Re-check state while
+            # holding the row lock so confirmation/rejection/expiry cannot race
+            # a stale reminder, and serialize the existence-check + append.
+            if kind == NOTIFICATION_KIND_WARNING:
+                if (
+                    locked.state != ProposalState.PROPOSED
+                    or locked.expires_at <= timezone.now()
+                ):
+                    return False
+            elif kind == NOTIFICATION_KIND_OUTCOME:
+                if locked.state not in (ProposalState.EXECUTED, ProposalState.FAILED):
+                    return False
+            else:
+                return False
+            if not locked.thread_id:
+                return False
+
+            namespace = (
+                ThreadNamespace.SCOPED
+                if locked.thread_id.startswith('scoped_')
+                else ThreadNamespace.UNSCOPED
+            )
+            repository = ThreadRepository(
+                locked.owner, locked.scope_key, namespace=namespace
+            )
+            # Lock the boundary-matched transcript before dedupe and append.
+            # If the original was deleted, an equal public id may now name a
+            # different conversation; its later creation time proves it is not
+            # the proposal's originating thread.
+            thread = repository._lock_thread(locked.thread_id)
+            if thread.created_at > locked.created_at:
+                return False
+            if _notification_exists(thread.pk, locked.id, kind):
+                return False
+            repository.append(
+                thread.pk,
+                role='assistant',
+                content=content,
+                metadata={
+                    'proposal_id': str(locked.id),
+                    'kind': kind,
+                    'action_type': locked.action_type,
+                },
+            )
+    except (ChatActionProposal.DoesNotExist, ThreadRepositoryError, DatabaseError):
         return False
     return True
 
@@ -1225,6 +1287,50 @@ def _proposal_subject(proposal: ChatActionProposal) -> str:
     if proposal.target_work_order_id:
         return f'{label} for work order {proposal.target_work_order_id}'
     return label
+
+
+def _receipt_string(mapping: dict, key: str) -> str:
+    """Return one bounded receipt string, never a rendered object/collection."""
+    value = mapping.get(key)
+    if isinstance(value, str):
+        value = value.strip()
+        if 0 < len(value) <= 255:
+            return value
+    return ''
+
+
+def _receipt_outcome_detail(receipt: dict) -> str:
+    """Render detail only from fields emitted by real server receipt builders."""
+    command = _receipt_string(receipt, 'command')
+    metadata = receipt.get('result_metadata')
+    metadata = metadata if isinstance(metadata, dict) else {}
+
+    if command == 'schedule':
+        if not {'scheduled_start', 'scheduled_end'} <= metadata.keys():
+            return ''
+        start = _receipt_string(metadata, 'scheduled_start')
+        end = _receipt_string(metadata, 'scheduled_end')
+        if start and end:
+            return f'Scheduled window: {start} through {end}.'
+        if start:
+            return f'Scheduled start: {start}.'
+        if end:
+            return f'Scheduled end: {end}.'
+        if metadata['scheduled_start'] is None and metadata['scheduled_end'] is None:
+            return 'The scheduled window was cleared.'
+        return ''
+
+    if command == 'resize':
+        end = _receipt_string(metadata, 'scheduled_end')
+        minutes = metadata.get('estimated_minutes')
+        if type(minutes) is int and minutes >= 0 and end:
+            return f'Duration: {minutes} minutes; scheduled end: {end}.'
+        if type(minutes) is int and minutes >= 0:
+            return f'Duration: {minutes} minutes.'
+        if end:
+            return f'Scheduled end: {end}.'
+
+    return ''
 
 
 def sweep_proposal_notifications(
@@ -1238,6 +1344,7 @@ def sweep_proposal_notifications(
         ChatActionProposal.objects
         .filter(
             state=ProposalState.PROPOSED,
+            approval__isnull=True,
             expires_at__gt=now,
             expires_at__lte=now + timedelta(minutes=warning_window_minutes),
         )
@@ -1250,7 +1357,7 @@ def sweep_proposal_notifications(
             expires = timezone.localtime(expires)
         content = (
             f'Reminder: the proposed {_proposal_subject(proposal)} expires at '
-            f'{expires:%H:%M} unless it is '
+            f'{expires:%Y-%m-%d %H:%M %Z} unless it is '
             'confirmed or rejected in the Approvals tab.'
         )
         counts['warned'] += _deliver_notification(
@@ -1261,6 +1368,7 @@ def sweep_proposal_notifications(
         ChatActionProposal.objects
         .filter(
             state__in=(ProposalState.EXECUTED, ProposalState.FAILED),
+            approval__isnull=True,
             updated_at__gte=now - timedelta(hours=outcome_lookback_hours),
         )
         .exclude(thread_id='')
@@ -1269,10 +1377,10 @@ def sweep_proposal_notifications(
     for proposal in settled:
         if proposal.state == ProposalState.EXECUTED:
             receipt = proposal.receipt if isinstance(proposal.receipt, dict) else {}
-            summary = str(receipt.get('summary') or '').strip()
             content = f'Applied: the {_proposal_subject(proposal)} was executed.'
-            if summary:
-                content = f'{content} {summary}'
+            detail = _receipt_outcome_detail(receipt)
+            if detail:
+                content = f'{content} {detail}'
         else:
             code = proposal.failure_code or 'unknown_error'
             content = (

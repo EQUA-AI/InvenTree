@@ -28,6 +28,16 @@ class TestPromptConstruction:
         assert "untrusted data" in messages[0]["content"]
         assert NARRATIVE not in messages[0]["content"]
 
+    def test_system_prompt_matches_the_authoritative_span_contract(self):
+        """The model must not be invited to emit documents Django will reject."""
+        prompt = build_extraction_messages(NARRATIVE, SHAPE)[0]["content"]
+        assert "one contiguous" in prompt
+        assert "verbatim" in prompt
+        assert "Do not combine separate spans" in prompt
+        assert "quantity_text, value_text, and unit_text" in prompt
+        assert "Qualified, negated, ranged, approximate, or compound" in prompt
+        assert "downtime_minutes" in prompt and "null" in prompt
+
     def test_narrative_is_fenced_as_data(self):
         messages = build_extraction_messages(NARRATIVE, SHAPE)
         user = messages[1]["content"]
@@ -76,8 +86,8 @@ class TestExtractCloseout:
                 "schema_version": CLOSEOUT_EXTRACTION_SCHEMA_VERSION,
                 "fields": {
                     "action": {
-                        "value": "Replaced filter",
-                        "spans": [[0, 19]],
+                        "value": "Replaced the clogged filter",
+                        "spans": [[0, 27]],
                         "confidence": 0.9,
                         "warnings": [],
                     }
@@ -89,7 +99,7 @@ class TestExtractCloseout:
 
         document = extract_closeout(NARRATIVE, SHAPE, complete=fake_complete)
         assert document["schema_version"] == 1
-        assert document["fields"]["action"]["value"] == "Replaced filter"
+        assert document["fields"]["action"]["value"] == "Replaced the clogged filter"
         assert seen["messages"][0]["role"] == "system"
 
     def test_capability_is_not_a_registered_chat_workflow(self):

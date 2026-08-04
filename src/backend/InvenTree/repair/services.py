@@ -164,6 +164,74 @@ def _matches(pattern: str, value: str | None) -> bool:
         return False
 
 
+_GATE_TYPES = frozenset(value for value, _label in RepairPacketGate.GATE_TYPE_CHOICES)
+
+
+def _known_gate_type(value: str | None) -> str | None:
+    """Return one canonical gate type, or ``None`` for untrusted values."""
+    normalized = str(value or '').strip().casefold()
+    return normalized if normalized in _GATE_TYPES else None
+
+
+def _canonical_gate_type(value: str | None) -> str:
+    """Canonicalise generated values without persisting an invalid choice."""
+    return _known_gate_type(value) or 'other'
+
+
+def _regenerated_gate_type(stored: str | None, generated: str | None) -> str:
+    """Repair spelling and upgrade ``other`` without downgrading a known type."""
+    stored_type = _canonical_gate_type(stored)
+    generated_type = _known_gate_type(generated)
+    if stored_type == 'other' and generated_type not in {None, 'other'}:
+        return generated_type
+    return stored_type
+
+
+def _upgrade_gate_contract(
+    row: RepairPacketGate,
+    *,
+    gate_type: str | None = None,
+    sequence: int | None = None,
+    is_blocking: bool = False,
+    is_mandatory: bool = False,
+    required_permission: str = '',
+    requires_photo: bool = False,
+    requires_second_person: bool = False,
+) -> None:
+    """Apply a gate contract monotonically, except deterministic identity fields.
+
+    Safety requirements only move in the stricter direction. A permission is
+    filled when absent but never replaced because two Django permissions have
+    no safe ordering. ``gate_type`` is canonical identity data and ``sequence``
+    is inherited ordering, so callers may explicitly repair those values.
+    """
+    updates: list[str] = []
+
+    if gate_type is not None and row.gate_type != gate_type:
+        row.gate_type = gate_type
+        updates.append('gate_type')
+    if sequence is not None and row.sequence != sequence:
+        row.sequence = sequence
+        updates.append('sequence')
+
+    for field, required in (
+        ('is_blocking', is_blocking),
+        ('is_mandatory', is_mandatory),
+        ('requires_photo', requires_photo),
+        ('requires_second_person', requires_second_person),
+    ):
+        if required and not getattr(row, field):
+            setattr(row, field, True)
+            updates.append(field)
+
+    if required_permission and not row.required_permission:
+        row.required_permission = required_permission
+        updates.append('required_permission')
+
+    if updates:
+        row.save(update_fields=updates)
+
+
 def resolve_templates_for(packet: RepairPacket) -> list[SafetyGateTemplate]:
     """Return active safety templates that apply to a packet."""
     text = f'{packet.fault_summary} {packet.symptom}'.lower()
@@ -203,12 +271,13 @@ def resolve_safety_gates(packet: RepairPacket, actor=None) -> int:
     """Materialise applicable safety templates onto a packet, idempotently."""
     created = 0
     for template in resolve_templates_for(packet):
-        _, was_created = RepairPacketGate.objects.get_or_create(
+        gate_type = _canonical_gate_type(template.gate_type)
+        row, was_created = RepairPacketGate.objects.get_or_create(
             packet=packet,
             template=template,
             defaults={
                 'name': template.name,
-                'gate_type': template.gate_type,
+                'gate_type': gate_type,
                 'sequence': template.default_sequence,
                 'is_blocking': template.is_blocking,
                 'is_mandatory': template.is_mandatory,
@@ -217,6 +286,18 @@ def resolve_safety_gates(packet: RepairPacket, actor=None) -> int:
                 'requires_second_person': template.requires_second_person,
             },
         )
+        if not was_created:
+            # Template edits must harden packets already materialised. Never
+            # downgrade a durable gate merely because a later edit is weaker.
+            _upgrade_gate_contract(
+                row,
+                gate_type=gate_type,
+                is_blocking=template.is_blocking,
+                is_mandatory=template.is_mandatory,
+                required_permission=template.required_permission,
+                requires_photo=template.requires_photo,
+                requires_second_person=template.requires_second_person,
+            )
         created += int(was_created)
 
     if created:
@@ -229,10 +310,10 @@ def resolve_safety_gates(packet: RepairPacket, actor=None) -> int:
     return created
 
 
-def _governing_template(
+def _governing_templates(
     packet: RepairPacket, gate_type: str
-) -> SafetyGateTemplate | None:
-    """The strictest *applicable* template governing one suggested gate type.
+) -> tuple[SafetyGateTemplate, ...]:
+    """Applicable same-type templates, strictest first.
 
     A generator naming ``loto`` or ``isolation`` is describing an energy-control
     step; the deployment's template — not the model — decides whether that step
@@ -242,28 +323,40 @@ def _governing_template(
       same ``applies_to`` evaluation the template-backed path uses, so a gate
       can never inherit the contract of a template the deployment's own rules
       say does not govern this packet or machine.
-    * **Strictness.** Where several applicable templates share a gate type, the
-      blocking/mandatory one wins. Ordering by ``default_sequence`` alone let an
-      advisory template shadow a blocking one — the exact failure this floor
+    * **Strictness.** Safety requirements precede ``default_sequence`` when
+      choosing the row whose sequence governs. Ordering by sequence alone let
+      an advisory template shadow a blocking one — the exact failure this floor
       exists to prevent.
 
-    ``gate_type`` arrives unvalidated from the model, so it is normalised before
-    matching rather than trusted verbatim.
+    ``gate_type`` arrives unvalidated from the model, so only a recognised,
+    canonical value may match. Independent safety dimensions are merged by the
+    caller because no scalar sort can make photo and second-person requirements
+    comparable.
     """
-    normalized = str(gate_type or '').strip().casefold()
+    normalized = _known_gate_type(gate_type)
     if not normalized:
-        return None
+        return ()
     applicable = [
         template
         for template in resolve_templates_for(packet)
-        if str(template.gate_type or '').strip().casefold() == normalized
+        if _known_gate_type(template.gate_type) == normalized
     ]
     if not applicable:
-        return None
-    return sorted(
-        applicable,
-        key=lambda t: (not t.is_blocking, not t.is_mandatory, t.default_sequence, t.pk),
-    )[0]
+        return ()
+    return tuple(
+        sorted(
+            applicable,
+            key=lambda t: (
+                not t.is_blocking,
+                not t.is_mandatory,
+                not t.requires_second_person,
+                not t.requires_photo,
+                not bool(t.required_permission),
+                t.default_sequence,
+                t.pk,
+            ),
+        )
+    )
 
 
 def _create_safety_gates(packet: RepairPacket, result: GenerationResult) -> int:
@@ -278,9 +371,11 @@ def _create_safety_gates(packet: RepairPacket, result: GenerationResult) -> int:
     """
     created = 0
     for gate in result.safety_gates:
-        template = _governing_template(packet, gate.gate_type)
+        gate_type = _canonical_gate_type(gate.gate_type)
+        templates = _governing_templates(packet, gate.gate_type)
+        template = templates[0] if templates else None
         defaults = {
-            'gate_type': gate.gate_type,
+            'gate_type': gate_type,
             'requires_photo': gate.requires_photo,
             'is_blocking': False,
             'is_mandatory': False,
@@ -295,28 +390,45 @@ def _create_safety_gates(packet: RepairPacket, result: GenerationResult) -> int:
             # turned into a rolled-back generation run. Leaving it unset also
             # keeps the deployment's own authored gate, with its name and
             # instructions, materialising alongside the suggestion.
+            # Boolean requirements are independent: two same-type templates
+            # can respectively require a photo and a second person, so taking
+            # either row wholesale would weaken the generated representation.
+            required_permission = next(
+                (
+                    item.required_permission
+                    for item in templates
+                    if item.required_permission
+                ),
+                '',
+            )
             defaults.update({
-                'is_blocking': template.is_blocking,
-                'is_mandatory': template.is_mandatory,
-                'required_permission': template.required_permission,
-                'requires_photo': gate.requires_photo or template.requires_photo,
-                'requires_second_person': template.requires_second_person,
+                'sequence': template.default_sequence,
+                'is_blocking': any(item.is_blocking for item in templates),
+                'is_mandatory': any(item.is_mandatory for item in templates),
+                'required_permission': required_permission,
+                'requires_photo': gate.requires_photo
+                or any(item.requires_photo for item in templates),
+                'requires_second_person': any(
+                    item.requires_second_person for item in templates
+                ),
             })
         row, was_created = RepairPacketGate.objects.get_or_create(
-            packet=packet, name=gate.name, defaults=defaults
+            packet=packet, name=gate.name, template=None, defaults=defaults
         )
         created += int(was_created)
-        if not was_created and template is not None and not row.is_blocking:
-            # ``defaults`` applies only on INSERT, so a gate persisted advisory
-            # by an earlier run would stay advisory forever. Regeneration
-            # upgrades it -- strictly in the safety direction, never the reverse.
-            row.is_blocking = template.is_blocking
-            row.is_mandatory = template.is_mandatory or row.is_mandatory
-            row.requires_second_person = (
-                template.requires_second_person or row.requires_second_person
-            )
-            row.save(
-                update_fields=['is_blocking', 'is_mandatory', 'requires_second_person']
+        if not was_created:
+            # ``defaults`` applies only on INSERT. Repair the stored spelling
+            # and upgrade every requirement independently; being blocking does
+            # not imply the photo, permission or witness contract is complete.
+            _upgrade_gate_contract(
+                row,
+                gate_type=_regenerated_gate_type(row.gate_type, gate.gate_type),
+                sequence=template.default_sequence if template is not None else None,
+                is_blocking=defaults['is_blocking'],
+                is_mandatory=defaults['is_mandatory'],
+                required_permission=defaults.get('required_permission', ''),
+                requires_photo=defaults['requires_photo'],
+                requires_second_person=defaults.get('requires_second_person', False),
             )
     created += resolve_safety_gates(packet)
     return created

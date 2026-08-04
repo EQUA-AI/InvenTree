@@ -59,6 +59,26 @@ def test_wf5_is_retired_from_the_registry() -> None:
     assert "wf5" not in _registered_workflow_ids()
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        WORKFLOW_DIR / "devui_adapters.py",
+        WORKFLOW_DIR / "devui_adapters_v2.py",
+        WORKFLOW_DIR.parent.parent / "run_devui.py",
+    ],
+)
+def test_wf5_is_not_reachable_through_devui(path: Path) -> None:
+    """Retiring a rail includes development entry points that execute it.
+
+    The production registry no longer exposed wf5, but both adapter generations
+    and the runner's manual fallback instantiated CPQ directly, preserving the
+    retired path and its fabricated ``CFG-*``/``Q-*`` identifiers.
+    """
+    source = path.read_text().casefold()
+    assert "wf5" not in source, path
+    assert "cpq" not in source, path
+
+
 def test_run_with_rbac_requires_a_workflow_and_binds_the_run() -> None:
     """The bind point is the helper, so a call site cannot forget it."""
     signature = inspect.signature(rbac_run.run_with_rbac)
@@ -130,6 +150,26 @@ def test_specialist_write_packs_are_not_reachable_from_wf8() -> None:
         assert "wf8" not in pack_workflows(pack_id)
         assert "general" not in pack_workflows(pack_id)
     assert pack_workflows("procurement.write") == frozenset({"wf4"})
+
+
+def test_every_effectful_pack_has_an_explicit_fail_closed_workflow_map() -> None:
+    """A new or misspelled write pack must not silently gain every rail.
+
+    The former grant-all fallback authorized email writes from procurement and
+    kanban writes from parts analysis. Read packs are intentionally shared;
+    every externally effectful pack needs a deliberate map.
+    """
+    from ai.core.tools.capabilities import _PACK_SPECS, _PACK_WORKFLOWS, ToolEffect
+
+    effectful = {
+        pack_id
+        for pack_id, (effect, _tools, _terms) in _PACK_SPECS.items()
+        if effect is not ToolEffect.READ
+    }
+    assert effectful <= _PACK_WORKFLOWS.keys()
+    assert pack_workflows("email.write") == frozenset({"wf3", "wf8", "general"})
+    assert pack_workflows("kanban.write") == frozenset({"wf8", "general"})
+    assert pack_workflows("misspelled.write") == frozenset()
 
 
 def test_write_packs_carry_no_selection_terms() -> None:
