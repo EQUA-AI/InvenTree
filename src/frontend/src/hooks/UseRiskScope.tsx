@@ -78,8 +78,12 @@ export function useRiskScope(): RiskScopeState {
 
   // The feature is unavailable if the endpoint errors (e.g. HTTP 404 when
   // the feature flag is off) or the viewer has no authorized scopes.
+  // `scopes` is deliberately empty while a successful query revalidates. Do
+  // not turn that loading state into "unavailable": mounting a second consumer
+  // (the Risk Radar panel itself) refetches this shared query, and hiding the
+  // parent tab during that refetch would unmount/remount the panel forever.
   const unavailable: boolean =
-    scopesQuery.isError || (scopesQuery.isSuccess && scopes.length === 0);
+    scopesQuery.isError || (scopeDataReady && scopes.length === 0);
 
   // Reset an unauthorized stored scope to the first available scope. An
   // empty stored value is left alone: the displayed scope falls back to
