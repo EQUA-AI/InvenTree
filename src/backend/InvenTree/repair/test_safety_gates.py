@@ -265,16 +265,17 @@ class GeneratorSuggestedGateFloorTest(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        """One active blocking LOTO template, matching no fault keywords.
+        """One active blocking LOTO template that APPLIES to the test packets.
 
-        ``applies_to`` deliberately names a keyword the test packets do not
-        use, so the template is NOT auto-resolved: the only way the gate can
-        become blocking is the generator-suggested path under test.
+        Applicability matters: a template whose ``applies_to`` rules do not
+        govern this packet must confer nothing (pinned in
+        ``GateFloorReviewRegressionTest``), so the fixture has to match for the
+        inheritance path to be exercised at all.
         """
         cls.template = SafetyGateTemplate.objects.create(
             name='Energy isolation',
             gate_type='loto',
-            applies_to={'fault_keywords': ['unrelated-keyword']},
+            applies_to={'fault_keywords': ['seal']},
             is_blocking=True,
             is_mandatory=True,
             requires_second_person=True,
@@ -293,7 +294,7 @@ class GeneratorSuggestedGateFloorTest(TestCase):
     def test_suggested_loto_gate_inherits_blocking_from_its_template(self):
         """The governing template's enforcement flags win over the default."""
         packet = RepairPacket.objects.create(
-            fault_summary='Seal replacement', status=PacketStatus.DIAGNOSED
+            fault_summary='Seal replacement on the drive', status=PacketStatus.DIAGNOSED
         )
         self._generate(packet, gate_type='loto')
 
@@ -301,13 +302,15 @@ class GeneratorSuggestedGateFloorTest(TestCase):
         self.assertTrue(gate.is_blocking)
         self.assertTrue(gate.is_mandatory)
         self.assertTrue(gate.requires_second_person)
-        self.assertEqual(gate.template_id, self.template.pk)
-        self.assertEqual(gate.sequence, 3)
+        # The template FK stays unset on a suggestion: it is the identity key
+        # of the template-backed path, and claiming it collided (see
+        # GateFloorReviewRegressionTest).
+        self.assertIsNone(gate.template_id)
 
     def test_a_blocking_suggested_gate_actually_stops_approval(self):
         """The point of the flag: the packet cannot advance past it."""
         packet = RepairPacket.objects.create(
-            fault_summary='Seal replacement', status=PacketStatus.DIAGNOSED
+            fault_summary='Seal replacement on the drive', status=PacketStatus.DIAGNOSED
         )
         self._generate(packet, gate_type='loto')
 
@@ -318,7 +321,7 @@ class GeneratorSuggestedGateFloorTest(TestCase):
     def test_ungoverned_gate_type_stays_advisory(self):
         """An unrecognised suggestion must not invent blocking authority."""
         packet = RepairPacket.objects.create(
-            fault_summary='Seal replacement', status=PacketStatus.DIAGNOSED
+            fault_summary='Seal replacement on the drive', status=PacketStatus.DIAGNOSED
         )
         self._generate(packet, gate_type='other', name='Wear gloves')
 
@@ -332,9 +335,149 @@ class GeneratorSuggestedGateFloorTest(TestCase):
         self.template.active = False
         self.template.save(update_fields=['active'])
         packet = RepairPacket.objects.create(
-            fault_summary='Seal replacement', status=PacketStatus.DIAGNOSED
+            fault_summary='Seal replacement on the drive', status=PacketStatus.DIAGNOSED
         )
         self._generate(packet, gate_type='loto')
 
         gate = packet.gates.get(name='AI suggested lockout')
         self.assertFalse(gate.is_blocking)
+
+
+class GateFloorReviewRegressionTest(TestCase):
+    """Defects an adversarial review of the S13 floor found before it shipped."""
+
+    def _packet(self):
+        return RepairPacket.objects.create(
+            fault_summary='Seal replacement on the drive', status=PacketStatus.DIAGNOSED
+        )
+
+    def _run(self, packet, gates):
+        from repair.generation import GeneratedSafetyGate, GenerationResult
+
+        return services._create_safety_gates(
+            packet,
+            GenerationResult(
+                diagnosis={},
+                safety_gates=[
+                    GeneratedSafetyGate(name=name, gate_type=gate_type)
+                    for name, gate_type in gates
+                ],
+            ),
+        )
+
+    def test_two_suggestions_of_one_type_do_not_abort_generation(self):
+        """The suggested gate must not claim the template-backed identity key.
+
+        Writing ``template=T`` onto a suggestion made two suggestions of one
+        type collapse onto ``(packet, template)`` — the key
+        ``resolve_safety_gates`` does ``get_or_create`` on — raising
+        MultipleObjectsReturned, which the caller's broad ``except`` turned
+        into a rolled-back, failed generation run.
+        """
+        SafetyGateTemplate.objects.create(
+            name='Energy isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=True,
+            is_mandatory=True,
+        )
+        packet = self._packet()
+
+        self._run(
+            packet, [('Lock out the drive', 'loto'), ('Lock out the feed', 'loto')]
+        )
+
+        self.assertEqual(packet.gates.filter(is_blocking=True).count(), 3)
+
+    def test_the_deployment_authored_template_gate_still_materialises(self):
+        """A suggestion must not shadow the template's own name/instructions."""
+        SafetyGateTemplate.objects.create(
+            name='Energy isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=True,
+        )
+        packet = self._packet()
+
+        self._run(packet, [('AI worded lockout', 'loto')])
+
+        self.assertTrue(packet.gates.filter(name='Energy isolation').exists())
+        self.assertTrue(packet.gates.filter(name='AI worded lockout').exists())
+
+    def test_the_strictest_applicable_template_wins_not_the_lowest_sequence(self):
+        """An advisory template must not shadow a blocking one of the same type."""
+        SafetyGateTemplate.objects.create(
+            name='Advisory check',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=False,
+            is_mandatory=False,
+            default_sequence=0,
+        )
+        SafetyGateTemplate.objects.create(
+            name='Hard isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=True,
+            is_mandatory=True,
+            default_sequence=9,
+        )
+        packet = self._packet()
+
+        self._run(packet, [('AI worded lockout', 'loto')])
+
+        self.assertTrue(packet.gates.get(name='AI worded lockout').is_blocking)
+
+    def test_an_inapplicable_template_confers_nothing(self):
+        """applies_to governs the floor exactly as it governs the template path."""
+        SafetyGateTemplate.objects.create(
+            name='Boiler isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['boiler']},
+            is_blocking=True,
+        )
+        packet = self._packet()
+
+        self._run(packet, [('AI worded lockout', 'loto')])
+
+        self.assertFalse(packet.gates.get(name='AI worded lockout').is_blocking)
+
+    def test_regeneration_upgrades_a_gate_persisted_advisory(self):
+        """defaults= applies only on INSERT, so an old gate stayed advisory."""
+        packet = self._packet()
+        RepairPacketGate.objects.create(
+            packet=packet,
+            name='AI worded lockout',
+            gate_type='loto',
+            is_blocking=False,
+            is_mandatory=False,
+        )
+        SafetyGateTemplate.objects.create(
+            name='Energy isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=True,
+            is_mandatory=True,
+            requires_second_person=True,
+        )
+
+        self._run(packet, [('AI worded lockout', 'loto')])
+
+        gate = packet.gates.get(name='AI worded lockout')
+        self.assertTrue(gate.is_blocking)
+        self.assertTrue(gate.is_mandatory)
+        self.assertTrue(gate.requires_second_person)
+
+    def test_gate_type_is_normalised_before_matching(self):
+        """The model's spelling must not decide whether the floor applies."""
+        SafetyGateTemplate.objects.create(
+            name='Energy isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['seal']},
+            is_blocking=True,
+        )
+        packet = self._packet()
+
+        self._run(packet, [('AI worded lockout', '  LOTO ')])
+
+        self.assertTrue(packet.gates.get(name='AI worded lockout').is_blocking)

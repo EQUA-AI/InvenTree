@@ -229,21 +229,41 @@ def resolve_safety_gates(packet: RepairPacket, actor=None) -> int:
     return created
 
 
-def _blocking_template_for(gate_type: str) -> SafetyGateTemplate | None:
-    """The active template governing one gate type, if the deployment has one.
+def _governing_template(
+    packet: RepairPacket, gate_type: str
+) -> SafetyGateTemplate | None:
+    """The strictest *applicable* template governing one suggested gate type.
 
     A generator naming ``loto`` or ``isolation`` is describing an energy-control
     step; the deployment's template — not the model — decides whether that step
-    blocks. Lowest ``default_sequence`` wins so the ordering is deterministic.
+    blocks. Two rules matter here, and both were wrong in review:
+
+    * **Applicability.** Candidates come from ``resolve_templates_for``, the
+      same ``applies_to`` evaluation the template-backed path uses, so a gate
+      can never inherit the contract of a template the deployment's own rules
+      say does not govern this packet or machine.
+    * **Strictness.** Where several applicable templates share a gate type, the
+      blocking/mandatory one wins. Ordering by ``default_sequence`` alone let an
+      advisory template shadow a blocking one — the exact failure this floor
+      exists to prevent.
+
+    ``gate_type`` arrives unvalidated from the model, so it is normalised before
+    matching rather than trusted verbatim.
     """
-    if not gate_type:
+    normalized = str(gate_type or '').strip().casefold()
+    if not normalized:
         return None
-    return (
-        SafetyGateTemplate.objects
-        .filter(active=True, gate_type=gate_type)
-        .order_by('default_sequence', 'pk')
-        .first()
-    )
+    applicable = [
+        template
+        for template in resolve_templates_for(packet)
+        if str(template.gate_type or '').strip().casefold() == normalized
+    ]
+    if not applicable:
+        return None
+    return sorted(
+        applicable,
+        key=lambda t: (not t.is_blocking, not t.is_mandatory, t.default_sequence, t.pk),
+    )[0]
 
 
 def _create_safety_gates(packet: RepairPacket, result: GenerationResult) -> int:
@@ -258,7 +278,7 @@ def _create_safety_gates(packet: RepairPacket, result: GenerationResult) -> int:
     """
     created = 0
     for gate in result.safety_gates:
-        template = _blocking_template_for(gate.gate_type)
+        template = _governing_template(packet, gate.gate_type)
         defaults = {
             'gate_type': gate.gate_type,
             'requires_photo': gate.requires_photo,
@@ -266,19 +286,38 @@ def _create_safety_gates(packet: RepairPacket, result: GenerationResult) -> int:
             'is_mandatory': False,
         }
         if template is not None:
+            # Enforcement flags are inherited; the ``template`` FK deliberately
+            # is NOT. That column is the identity key of the template-backed
+            # path (``resolve_safety_gates`` does get_or_create on
+            # ``(packet, template)``), so claiming it here made two suggestions
+            # of one type collapse onto one key and raise
+            # MultipleObjectsReturned -- which the caller's broad ``except``
+            # turned into a rolled-back generation run. Leaving it unset also
+            # keeps the deployment's own authored gate, with its name and
+            # instructions, materialising alongside the suggestion.
             defaults.update({
-                'template': template,
-                'sequence': template.default_sequence,
                 'is_blocking': template.is_blocking,
                 'is_mandatory': template.is_mandatory,
                 'required_permission': template.required_permission,
                 'requires_photo': gate.requires_photo or template.requires_photo,
                 'requires_second_person': template.requires_second_person,
             })
-        _, was_created = RepairPacketGate.objects.get_or_create(
+        row, was_created = RepairPacketGate.objects.get_or_create(
             packet=packet, name=gate.name, defaults=defaults
         )
         created += int(was_created)
+        if not was_created and template is not None and not row.is_blocking:
+            # ``defaults`` applies only on INSERT, so a gate persisted advisory
+            # by an earlier run would stay advisory forever. Regeneration
+            # upgrades it -- strictly in the safety direction, never the reverse.
+            row.is_blocking = template.is_blocking
+            row.is_mandatory = template.is_mandatory or row.is_mandatory
+            row.requires_second_person = (
+                template.requires_second_person or row.requires_second_person
+            )
+            row.save(
+                update_fields=['is_blocking', 'is_mandatory', 'requires_second_person']
+            )
     created += resolve_safety_gates(packet)
     return created
 

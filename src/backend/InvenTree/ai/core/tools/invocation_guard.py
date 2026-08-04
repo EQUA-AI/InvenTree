@@ -234,6 +234,20 @@ async def authorize_invocation(tool_id: str, arguments: Any) -> CapabilityEntry:
     return entry
 
 
+#: Denials that are NEVER downgraded to shadow. Shadow mode exists to soak a
+#: rail whose catalog coverage is new — it must not soften a failure that says
+#: we do not know WHO is calling or WHETHER the run was bound at all. Without
+#: this, ``missing_run_context`` carried ``workflow=None``, which is in no
+#: enforced set, so an unbound run would have been logged and then dispatched:
+#: the exact inverse of the guarantee ``rbac_run`` relies on.
+_NEVER_SHADOWED = frozenset({
+    "missing_run_context",
+    "stale_catalog",
+    "missing_principal",
+    "principal_mismatch",
+})
+
+
 def _enforced_workflows() -> frozenset[str]:
     """Workflows the guard denies on; every other workflow runs in shadow."""
     try:
@@ -242,7 +256,11 @@ def _enforced_workflows() -> frozenset[str]:
         raw = get_settings().capability_broker_enforced_workflows
     except Exception:  # pragma: no cover - config absent in minimal envs
         raw = "wf8,general"
-    return frozenset(part.strip() for part in str(raw or "").split(",") if part.strip())
+    configured = frozenset(part.strip() for part in str(raw or "").split(",") if part.strip())
+    # A blank or malformed value must not silently make the guard advisory on
+    # the rails it already protects, so the soaked defaults are a floor rather
+    # than a default the operator can erase.
+    return configured | frozenset({"wf8", "general"})
 
 
 class CapabilityInvocationMiddleware(FunctionMiddleware):
@@ -262,7 +280,7 @@ class CapabilityInvocationMiddleware(FunctionMiddleware):
         except CapabilityAuthorizationError as exc:
             run_context = capability_run_context.get()
             workflow = run_context.workflow if run_context else None
-            enforced = workflow in _enforced_workflows()
+            enforced = exc.reason_code in _NEVER_SHADOWED or workflow in _enforced_workflows()
             logger.warning(
                 "AI tool invocation denied" if enforced else "AI tool invocation shadow-denied",
                 extra={

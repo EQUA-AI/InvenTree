@@ -139,3 +139,53 @@ def test_write_packs_carry_no_selection_terms() -> None:
     for pack_id, (effect, _tools, terms) in _PACK_SPECS.items():
         if effect is ToolEffect.WRITE and pack_id not in {"email.write", "kanban.write"}:
             assert terms == (), f"{pack_id} exposes selection terms"
+
+
+def test_identity_failures_are_never_downgraded_to_shadow() -> None:
+    """Shadow mode softens workflow coverage, never "who is calling".
+
+    ``missing_run_context`` carries no run context, so its workflow is
+    ``None`` — which is in no enforced set. Keying the shadow decision on the
+    workflow alone therefore logged an UNBOUND run and dispatched the tool
+    anyway: the exact inverse of the guarantee ``run_with_rbac`` relies on.
+    """
+    from ai.core.tools.invocation_guard import _NEVER_SHADOWED
+
+    assert {
+        "missing_run_context",
+        "stale_catalog",
+        "missing_principal",
+        "principal_mismatch",
+    } <= _NEVER_SHADOWED
+
+
+def test_enforced_workflows_cannot_be_emptied_by_configuration() -> None:
+    """A blank or malformed setting must not make the guard advisory on wf8.
+
+    The soaked rails are a floor, not an operator-erasable default: an empty
+    value previously yielded an empty set, and since the middleware re-raises
+    only when enforced, the entire guard would have gone advisory on the one
+    rail it was already protecting.
+    """
+    from unittest.mock import patch
+
+    from ai.core.tools.invocation_guard import _enforced_workflows
+
+    for raw in ("", "   ", ",,", "typo_wf8"):
+        with patch("ai.core.config.get_settings") as settings:
+            settings.return_value.capability_broker_enforced_workflows = raw
+            enforced = _enforced_workflows()
+        assert "wf8" in enforced, raw
+        assert "general" in enforced, raw
+
+
+def test_a_newly_enforced_workflow_can_be_added_by_configuration() -> None:
+    """The floor must not prevent widening enforcement to a specialist rail."""
+    from unittest.mock import patch
+
+    from ai.core.tools.invocation_guard import _enforced_workflows
+
+    with patch("ai.core.config.get_settings") as settings:
+        settings.return_value.capability_broker_enforced_workflows = "wf8,general,wf4"
+        enforced = _enforced_workflows()
+    assert "wf4" in enforced
