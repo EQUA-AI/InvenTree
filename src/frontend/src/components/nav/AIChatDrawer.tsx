@@ -58,6 +58,7 @@ import { VoiceContextBadge } from '../ai/VoiceContextBadge';
 import { VoiceSessionControl } from '../ai/VoiceSessionControl';
 import { VoiceTranscript } from '../ai/VoiceTranscript';
 import { InlineMarkdown, MarkdownMessage } from '../aichat/MarkdownMessage';
+import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history';
 
@@ -1232,26 +1233,29 @@ export function AIChatDrawer({
 
           {/* Drawer tab strip (Chat / Approvals / History) */}
           <Box mt='sm'>
-            <Tabs
-              value={activeTab}
-              onChange={(v) => setActiveTab((v as AIChatDrawerTab) || 'chat')}
-              variant='pills'
-            >
-              <Tabs.List>
-                <Tabs.Tab value='chat'>{t`Chat`}</Tabs.Tab>
-                <Tabs.Tab value='approvals'>
-                  <Group gap={6} wrap='nowrap'>
-                    <Text size='sm'>{t`Approvals`}</Text>
-                    {pendingApprovalCount > 0 && (
-                      <Badge size='xs' variant='filled' color='red'>
-                        {pendingApprovalCount}
-                      </Badge>
-                    )}
-                  </Group>
-                </Tabs.Tab>
-                <Tabs.Tab value='history'>{t`History`}</Tabs.Tab>
-              </Tabs.List>
-            </Tabs>
+            <Group justify='space-between' wrap='nowrap'>
+              <Tabs
+                value={activeTab}
+                onChange={(v) => setActiveTab((v as AIChatDrawerTab) || 'chat')}
+                variant='pills'
+              >
+                <Tabs.List>
+                  <Tabs.Tab value='chat'>{t`Chat`}</Tabs.Tab>
+                  <Tabs.Tab value='approvals'>
+                    <Group gap={6} wrap='nowrap'>
+                      <Text size='sm'>{t`Approvals`}</Text>
+                      {pendingApprovalCount > 0 && (
+                        <Badge size='xs' variant='filled' color='red'>
+                          {pendingApprovalCount}
+                        </Badge>
+                      )}
+                    </Group>
+                  </Tabs.Tab>
+                  <Tabs.Tab value='history'>{t`History`}</Tabs.Tab>
+                </Tabs.List>
+              </Tabs>
+              <RiskRadarDrawerBadge />
+            </Group>
           </Box>
 
           {/* Thread selector */}

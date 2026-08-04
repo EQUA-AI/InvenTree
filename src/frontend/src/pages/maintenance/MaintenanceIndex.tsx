@@ -3,6 +3,7 @@ import { Stack } from '@mantine/core';
 import {
   IconCalendar,
   IconLayoutKanban,
+  IconRadar2,
   IconTimeline
 } from '@tabler/icons-react';
 import { useMemo } from 'react';
@@ -12,8 +13,10 @@ import type { PanelType } from '@lib/types/Panel';
 
 import PageTitle from '../../components/nav/PageTitle';
 import { PanelGroup } from '../../components/panels/PanelGroup';
+import RiskRadarPanel from '../../components/riskradar/RiskRadarPanel';
 import TaskCalendar from '../../components/tasks/TaskCalendar';
 import TaskGantt from '../../components/tasks/TaskGantt';
+import { useRiskScope } from '../../hooks/UseRiskScope';
 import MaintenanceBoard from './MaintenanceBoard';
 
 /**
@@ -30,6 +33,9 @@ import MaintenanceBoard from './MaintenanceBoard';
  */
 export default function MaintenanceIndex() {
   const { t } = useLingui();
+  // Feature-flagged server-side: the tab only exists when the viewer has an
+  // authorized risk scope, so flag-off deployments render unchanged.
+  const { unavailable: riskUnavailable } = useRiskScope();
 
   const panels: PanelType[] = useMemo(
     () => [
@@ -50,9 +56,16 @@ export default function MaintenanceIndex() {
         label: t`Timeline`,
         icon: <IconTimeline />,
         content: <TaskGantt />
+      },
+      {
+        name: 'risk-radar',
+        label: t`Risk Radar`,
+        icon: <IconRadar2 />,
+        content: <RiskRadarPanel />,
+        hidden: riskUnavailable
       }
     ],
-    [t]
+    [t, riskUnavailable]
   );
 
   return (

@@ -1164,3 +1164,123 @@ def expire_stale_proposals() -> int:
     return ChatActionProposal.objects.filter(
         state=ProposalState.PROPOSED, expires_at__lt=timezone.now()
     ).update(state=ProposalState.EXPIRED, updated_at=timezone.now())
+
+
+# --- Sweeper notifications (execution-plan A9) ---------------------------------
+#
+# Deterministic, server-authored messages closing the proposal loop in the
+# originating thread: a pre-expiry reminder while confirmation is still
+# possible, and the command outcome after dispatch. No model involvement;
+# idempotent via message metadata, so repeated sweeps never duplicate.
+
+NOTIFICATION_KIND_WARNING = 'proposal_expiry_warning'
+NOTIFICATION_KIND_OUTCOME = 'proposal_outcome'
+
+
+def _notification_exists(thread_id: str, proposal_id, kind: str) -> bool:
+    from aichat.models import ChatMessage
+
+    return ChatMessage.objects.filter(
+        thread_id=thread_id,
+        role='assistant',
+        metadata__proposal_id=str(proposal_id),
+        metadata__kind=kind,
+    ).exists()
+
+
+def _deliver_notification(
+    proposal: ChatActionProposal, kind: str, content: str
+) -> bool:
+    """Append one idempotent server-authored message to the proposal's thread.
+
+    Fail-soft by design: a missing, foreign, or deleted thread means the
+    notification simply is not deliverable — the sweep must never crash or
+    block expiry over messaging.
+    """
+    from aichat.services.threads import ThreadRepository, ThreadRepositoryError
+
+    if not proposal.thread_id:
+        return False
+    if _notification_exists(proposal.thread_id, proposal.id, kind):
+        return False
+    try:
+        repository = ThreadRepository(proposal.owner, proposal.scope_key)
+        repository.append(
+            proposal.thread_id,
+            role='assistant',
+            content=content,
+            metadata={
+                'proposal_id': str(proposal.id),
+                'kind': kind,
+                'action_type': proposal.action_type,
+            },
+        )
+    except ThreadRepositoryError:
+        return False
+    return True
+
+
+def _proposal_subject(proposal: ChatActionProposal) -> str:
+    label = proposal.get_action_type_display().lower()
+    if proposal.target_work_order_id:
+        return f'{label} for work order {proposal.target_work_order_id}'
+    return label
+
+
+def sweep_proposal_notifications(
+    *, warning_window_minutes: int = 20, outcome_lookback_hours: int = 24
+) -> dict[str, int]:
+    """Deliver pending expiry warnings and dispatch outcomes. Returns counts."""
+    now = timezone.now()
+    counts = {'warned': 0, 'outcomes': 0}
+
+    expiring = (
+        ChatActionProposal.objects
+        .filter(
+            state=ProposalState.PROPOSED,
+            expires_at__gt=now,
+            expires_at__lte=now + timedelta(minutes=warning_window_minutes),
+        )
+        .exclude(thread_id='')
+        .select_related('owner')
+    )
+    for proposal in expiring:
+        expires = proposal.expires_at
+        if timezone.is_aware(expires):
+            expires = timezone.localtime(expires)
+        content = (
+            f'Reminder: the proposed {_proposal_subject(proposal)} expires at '
+            f'{expires:%H:%M} unless it is '
+            'confirmed or rejected in the Approvals tab.'
+        )
+        counts['warned'] += _deliver_notification(
+            proposal, NOTIFICATION_KIND_WARNING, content
+        )
+
+    settled = (
+        ChatActionProposal.objects
+        .filter(
+            state__in=(ProposalState.EXECUTED, ProposalState.FAILED),
+            updated_at__gte=now - timedelta(hours=outcome_lookback_hours),
+        )
+        .exclude(thread_id='')
+        .select_related('owner')
+    )
+    for proposal in settled:
+        if proposal.state == ProposalState.EXECUTED:
+            receipt = proposal.receipt if isinstance(proposal.receipt, dict) else {}
+            summary = str(receipt.get('summary') or '').strip()
+            content = f'Applied: the {_proposal_subject(proposal)} was executed.'
+            if summary:
+                content = f'{content} {summary}'
+        else:
+            code = proposal.failure_code or 'unknown_error'
+            content = (
+                f'Not applied: the {_proposal_subject(proposal)} failed '
+                f'({code}). Nothing was changed.'
+            )
+        counts['outcomes'] += _deliver_notification(
+            proposal, NOTIFICATION_KIND_OUTCOME, content
+        )
+
+    return counts

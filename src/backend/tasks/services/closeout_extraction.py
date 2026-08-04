@@ -89,8 +89,8 @@ def resolve_extractor():
 
     ``AIMMS_CLOSEOUT_EXTRACTOR`` is a callable or dotted path taking
     ``(narrative, shape)`` and returning the schema-v1 output document. The
-    default deployment adapter is the tool-free capability in
-    ``ai.core.workflows.closeout_extraction``.
+    deployment adapter is ``ai.core.capabilities.closeout_binding.extract``,
+    which pins the tool-free capability to the configured model.
     """
     if not extraction_enabled():
         raise ExtractionUnavailable('Closeout extraction is disabled')

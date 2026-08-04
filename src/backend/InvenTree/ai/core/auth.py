@@ -17,8 +17,9 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import parse_qs
 
+from asgiref.sync import sync_to_async
 from django.conf import settings as django_settings
-from django.contrib.auth import aget_user, get_user_model
+from django.contrib.auth import aget_user, get_user, get_user_model
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest, HttpResponse
@@ -240,7 +241,12 @@ async def _session_user(headers: Mapping[bytes, list[bytes]]) -> Any | None:
     session = engine.SessionStore(session_key=session_key)
     request = HttpRequest()
     request.session = session
-    user = await aget_user(request)
+    try:
+        user = await aget_user(request)
+    except AttributeError as exc:
+        if "aget_user" not in str(exc):
+            raise
+        user = await sync_to_async(get_user, thread_sensitive=True)(request)
     if not getattr(user, "is_authenticated", False):
         raise _AuthenticationFailure("invalid_session")
     if not getattr(user, "is_active", False):
