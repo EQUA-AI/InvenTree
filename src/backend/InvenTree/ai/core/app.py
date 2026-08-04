@@ -1169,8 +1169,8 @@ async def list_workflows() -> list[dict[str, Any]]:
             "id": "wf5_cpq",
             "name": "Configure-Price-Quote",
             "tier": "T5",
-            "enabled": settings.feature_wf5_cpq,
-            "description": "Product configuration and quote generation",
+            "enabled": False,
+            "description": "Retired: CPQ contradicts the client-scoped fork",
         },
         {
             "id": "wf6_documents",

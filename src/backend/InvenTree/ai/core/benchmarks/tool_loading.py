@@ -137,7 +137,11 @@ def run_offline_benchmark(
         serialized_contract_bytes,
     )
 
-    baseline_tools = tuple(entry.tool for entry in capability_catalog())
+    # Selection is a wf8 concern, so the baseline is what a wf8 turn would
+    # carry unselected. Since S11 the catalog also holds the specialist write
+    # packs (wf2/wf4/wf6); counting those would inflate the reduction against
+    # tools this rail never had.
+    baseline_tools = tuple(entry.tool for entry in capability_catalog() if "wf8" in entry.workflows)
     baseline_bytes = serialized_contract_bytes(baseline_tools)
     case_results: list[dict[str, Any]] = []
     all_timings_ms: list[float] = []

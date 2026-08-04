@@ -25,7 +25,7 @@ from ai.core.config import get_settings
 from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
 from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
-from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
+from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
 from ai.core.integrations.kanban_tools import KANBAN_TOOLS
 from ai.core.tools.invocation_guard import (
     CapabilityInvocationMiddleware,
@@ -842,8 +842,6 @@ class T1LookupWorkflowBuilder:
         """
         settings = get_settings()
 
-        all_tools = list(INVENTORY_TOOLS) + self._tools
-
         # Create Azure OpenAI chat client
         chat_client = AzureOpenAIChatClient(
             deployment_name=self._model_deployment or settings.azure_openai_deployment,
@@ -856,7 +854,11 @@ class T1LookupWorkflowBuilder:
             instructions=self._system_prompt or T1LookupWorkflow.SYSTEM_PROMPT,
             name="AIMMS Lookup Agent",
             description="Fast inventory lookups: stock levels, part details, BOM queries",
-            tools=all_tools,
+            # Tools-less by construction (S11). This composition path attached
+            # the FULL write toolset with no per-user filter and no middleware —
+            # the widest of the bypasses, on the everyday rail. Composed callers
+            # dispatch through run_with_rbac like the serving path does.
+            middleware=CapabilityInvocationMiddleware(),
         )
 
         return agent

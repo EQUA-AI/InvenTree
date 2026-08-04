@@ -15,7 +15,6 @@ human-in-the-loop confirmation for writes is handled by the Tier-3 flow (Phase 4
 from __future__ import annotations
 
 import logging
-import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
@@ -26,6 +25,7 @@ from agent_framework.azure import AzureOpenAIChatClient
 from ai.core.config import get_settings
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
 from ai.core.tools.inventree.write.purchase_orders import PURCHASE_ORDER_WRITE_TOOLS
+from ai.core.tools.invocation_guard import CapabilityInvocationMiddleware
 from ai.core.workflows.rbac_run import run_with_rbac
 
 if TYPE_CHECKING:
@@ -76,7 +76,11 @@ class LineItem:
 class PurchaseOrder:
     """A purchase order document."""
 
-    order_id: str = field(default_factory=lambda: f"PO-{uuid.uuid4().hex[:8].upper()}")
+    # No default (S13): a purchase order without a server-assigned reference is
+    # a fabricated identifier. The old default_factory minted PO-{uuid4} for
+    # any construction, so an invented reference could reach an approval
+    # callback and be read as a real record.
+    order_id: str
     status: ProcurementStatus = ProcurementStatus.DRAFT
     supplier_id: int | None = None
     supplier_name: str = ""
@@ -248,6 +252,7 @@ Format purchase orders clearly with:
                 instructions=self.SYSTEM_PROMPT,
                 name="Procurement Agent",
                 description="Handles procurement and purchase orders",
+                middleware=CapabilityInvocationMiddleware(),
             )
 
         return self._agent
@@ -290,6 +295,7 @@ Format purchase orders clearly with:
             response = await run_with_rbac(
                 agent,
                 query,
+                workflow="wf4",
                 full_tools=[*INVENTORY_TOOLS, *PURCHASE_ORDER_WRITE_TOOLS],
                 context=context,
             )
@@ -346,25 +352,17 @@ Format purchase orders clearly with:
             )
 
     def _parse_purchase_order(self, response: str) -> PurchaseOrder | None:
+        """Deleted (execution-plan S13): identifiers are never invented.
+
+        This used to mint ``PO-{uuid4}`` whenever the words "purchase order"
+        appeared in a model reply, then hand that fabricated identifier to the
+        approval callback — an invented identifier presented as a real record,
+        which is exactly the hazard the diagnosis rail exists to prevent. A
+        real purchase order comes back from ``create_purchase_order`` with a
+        server-assigned reference; until this rail reads that tool result, it
+        reports no order at all.
         """
-        Parse response text for purchase order details.
-
-        In production, this would parse structured output from tools.
-        For now, we return a placeholder if PO-related keywords are found.
-        """
-        if "PO-" in response or "purchase order" in response.lower():
-            # Extract PO ID if present
-            import re
-
-            po_match = re.search(r"PO-[A-Z0-9]+", response)
-            order_id = po_match.group(0) if po_match else f"PO-{uuid.uuid4().hex[:8].upper()}"
-
-            return PurchaseOrder(
-                order_id=order_id,
-                status=ProcurementStatus.DRAFT,
-                notes="Parsed from agent response",
-            )
-
+        del response
         return None
 
     async def stream_execute(
@@ -372,6 +370,7 @@ Format purchase orders clearly with:
         query: str,
         thread_id: str = "",
         user_id: str = "",
+        context: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
         """Execute with streaming response."""
         yield "🛒 Processing procurement request...\n\n"
@@ -380,7 +379,11 @@ Format purchase orders clearly with:
             agent = await self._get_agent()
 
             response = await run_with_rbac(
-                agent, query, full_tools=[*INVENTORY_TOOLS, *PURCHASE_ORDER_WRITE_TOOLS]
+                agent,
+                query,
+                workflow="wf4",
+                full_tools=[*INVENTORY_TOOLS, *PURCHASE_ORDER_WRITE_TOOLS],
+                context=context,
             )
             if response.messages:
                 last_msg = response.messages[-1]
@@ -441,8 +444,6 @@ class T4ProcurementBuilder:
         """Convert workflow to a composable agent."""
         settings = get_settings()
 
-        all_tools = [*INVENTORY_TOOLS, *PURCHASE_ORDER_WRITE_TOOLS, *self._additional_tools]
-
         chat_client = AzureOpenAIChatClient(
             deployment_name=settings.azure_openai_deployment,
             endpoint=settings.azure_openai_endpoint,
@@ -454,7 +455,11 @@ class T4ProcurementBuilder:
             instructions=T4ProcurementWorkflow.SYSTEM_PROMPT,
             name="AIMMS Procurement Agent",
             description="Procurement workflows with human-in-the-loop approval",
-            tools=all_tools,
+            # Tools-less by construction (S11): a constructor toolset is
+            # unioned into every run, so the per-user RBAC filter in
+            # run_with_rbac would never see it. Composed callers dispatch
+            # through run_with_rbac like every other rail.
+            middleware=CapabilityInvocationMiddleware(),
         )
 
 

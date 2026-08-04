@@ -310,7 +310,101 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
             "documentation",
         ),
     ),
+    # --- Specialist write packs (execution-plan S11) -------------------------
+    #
+    # wf2/wf3/wf4/wf6 already carry these tools at runtime; before S11 the
+    # catalog covered wf8 only, so ``authorize_invocation`` would have denied
+    # every one of them with ``workflow_not_allowed`` the moment the middleware
+    # was attached. Cataloguing them is what makes the middleware attachable —
+    # each is NATIVE_PERMISSION-mapped through the same RBAC requirement the
+    # list filter already uses, so exposure is unchanged and enforcement is new.
+    #
+    # Selection terms are empty on purpose: ``_pack_scores`` only scores READ
+    # packs, and a write pack must never be selectable from a user sentence —
+    # the specialist workflow decides, not the phrasing.
+    "parts.write": (
+        ToolEffect.WRITE,
+        (
+            "create_part",
+            "update_part",
+            "set_part_parameter",
+            "deactivate_part",
+            "create_part_category",
+            "add_bom_item",
+        ),
+        (),
+    ),
+    "stock.write": (
+        ToolEffect.WRITE,
+        (
+            "create_stock_location",
+            "add_stock",
+            "remove_stock",
+            "transfer_stock",
+            "count_stock",
+            "merge_stock",
+            "update_stock_location",
+            "change_stock_status",
+            "split_stock",
+            "convert_stock",
+            "add_stock_test_result",
+            "serialize_stock",
+            "install_stock",
+            "uninstall_stock",
+            "assign_stock",
+            "return_stock",
+        ),
+        (),
+    ),
+    "company.write": (
+        ToolEffect.WRITE,
+        ("create_company", "create_supplier_part", "create_manufacturer_part"),
+        (),
+    ),
+    "procurement.write": (
+        ToolEffect.WRITE,
+        (
+            "create_purchase_order",
+            "add_po_line_item",
+            "issue_purchase_order",
+            "receive_po_items",
+            "cancel_purchase_order",
+            "update_purchase_order",
+            "complete_purchase_order",
+            "delete_purchase_order",
+            "delete_po_line_item",
+        ),
+        (),
+    ),
+    "sales.write": (
+        ToolEffect.WRITE,
+        ("create_sales_order", "add_so_line_item"),
+        (),
+    ),
 }
+
+#: Which workflows may invoke each pack. ``authorize_invocation`` denies a call
+#: whose bound workflow is absent here, so this is the enforcement boundary
+#: between rails — wf8 must never gain the specialist write packs by default.
+_DEFAULT_PACK_WORKFLOWS = frozenset({"wf8", "general"})
+_SPECIALIST_WORKFLOWS = frozenset({"wf2", "wf3", "wf4", "wf6"})
+_PACK_WORKFLOWS: dict[str, frozenset[str]] = {
+    "parts.write": _SPECIALIST_WORKFLOWS,
+    "stock.write": _SPECIALIST_WORKFLOWS,
+    "company.write": _SPECIALIST_WORKFLOWS,
+    "sales.write": _SPECIALIST_WORKFLOWS,
+    # Procurement writes belong to wf4 alone: it is the HITL-gated rail.
+    "procurement.write": frozenset({"wf4"}),
+}
+
+
+def pack_workflows(pack_id: str) -> frozenset[str]:
+    """Workflows authorized for one pack; read packs are shared by every rail."""
+    explicit = _PACK_WORKFLOWS.get(pack_id)
+    if explicit is not None:
+        return explicit
+    return _DEFAULT_PACK_WORKFLOWS | _SPECIALIST_WORKFLOWS
+
 
 _LOOKUP_PACKS = {
     "stock_check": "stock.read",
@@ -859,6 +953,12 @@ _WITHHELD_TOOLS: dict[str, str] = {
 #: confirmation dispatches the canonical ``tasks.services`` command (permission,
 #: customer scope, expected-version, audit event, exactly-once receipt). Off by
 #: default, so a deployment that has not adopted the proposal rail is unchanged.
+#:
+#: The tool-for-tool parity mapping onto proposal actions — including the four
+#: capabilities with NO governed counterpart (move/archive/restore/remove-part)
+#: — is recorded in ``LocalDocs/AiUpgrades/KanbanWriteParity.md``. That table is
+#: the precondition for defaulting the flag on: flipping it removes capability
+#: users have today, and the losses have to be a decision, not a surprise.
 _GOVERNED_KANBAN_WRITE_TOOLS: frozenset[str] = frozenset({
     "create_kanban_card",
     "update_kanban_card",
@@ -989,20 +1089,41 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
     )
 
 
-def _wf8_tools() -> tuple[Any, ...]:
+def _catalog_tools() -> tuple[Any, ...]:
+    """Every tool any registered workflow can dispatch, in stable order.
+
+    Before S11 this was wf8's toolset alone, which is why attaching the
+    invocation middleware to wf2/wf3/wf4/wf6 would have denied their every
+    call: an uncatalogued tool is an unknown tool. The union is deduplicated
+    by name (wf2-wf6 share the inventory toolset) and each entry's authorized
+    workflows come from its pack, not from membership in this list.
+    """
     from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
     from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
     from ai.core.integrations.email.tools import EMAIL_TOOLS
-    from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
+    from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
+    from ai.core.tools.inventree.write.purchase_orders import PURCHASE_ORDER_WRITE_TOOLS
 
-    return tuple(
-        INVENTORY_READ_TOOLS
-        + EMAIL_TOOLS
-        + KANBAN_TOOLS
-        + DOCUMENT_SEARCH_TOOLS
-        + CONTROLLED_CORPUS_TOOLS
-    )
+    ordered: list[Any] = []
+    seen: set[str] = set()
+    for tool in (
+        *INVENTORY_READ_TOOLS,
+        *EMAIL_TOOLS,
+        *KANBAN_TOOLS,
+        *DOCUMENT_SEARCH_TOOLS,
+        *CONTROLLED_CORPUS_TOOLS,
+        # Specialist rails (wf2/wf3/wf4/wf6) below; the wf8 prefix above keeps
+        # the existing catalog order stable for the manifest.
+        *INVENTORY_TOOLS,
+        *PURCHASE_ORDER_WRITE_TOOLS,
+    ):
+        name = tool_name(tool)
+        if name in seen:
+            continue
+        seen.add(name)
+        ordered.append(tool)
+    return tuple(ordered)
 
 
 @lru_cache(maxsize=1)
@@ -1012,7 +1133,7 @@ def capability_catalog() -> tuple[CapabilityEntry, ...]:
     entries: list[CapabilityEntry] = []
     seen_ids: set[str] = set()
 
-    for tool in _wf8_tools():
+    for tool in _catalog_tools():
         tool_id = tool_name(tool)
         if tool_id in seen_ids:
             raise ValueError(f"Duplicate tool name in capability catalog: {tool_id}")
@@ -1028,7 +1149,7 @@ def capability_catalog() -> tuple[CapabilityEntry, ...]:
                 pack_id=pack_id,
                 effect=effect,
                 authorization=_authorization_policy(tool, tool_id),
-                workflows=frozenset({"wf8"}),
+                workflows=pack_workflows(pack_id),
                 modalities=frozenset({"text", "voice"}),
                 selection_terms=terms,
                 contract_digest=contract_digest(tool),

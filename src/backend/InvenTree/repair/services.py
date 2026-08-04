@@ -229,19 +229,54 @@ def resolve_safety_gates(packet: RepairPacket, actor=None) -> int:
     return created
 
 
+def _blocking_template_for(gate_type: str) -> SafetyGateTemplate | None:
+    """The active template governing one gate type, if the deployment has one.
+
+    A generator naming ``loto`` or ``isolation`` is describing an energy-control
+    step; the deployment's template — not the model — decides whether that step
+    blocks. Lowest ``default_sequence`` wins so the ordering is deterministic.
+    """
+    if not gate_type:
+        return None
+    return (
+        SafetyGateTemplate.objects
+        .filter(active=True, gate_type=gate_type)
+        .order_by('default_sequence', 'pk')
+        .first()
+    )
+
+
 def _create_safety_gates(packet: RepairPacket, result: GenerationResult) -> int:
-    """Create generator-suggested advisory gates, then template-backed gates."""
+    """Create generator-suggested gates, then template-backed gates.
+
+    Generator-suggested gates inherit their governing template's enforcement
+    flags (execution-plan S13). Persisting an AI-named LOTO step as advisory
+    was the hazard: the packet displayed a lockout gate that blocked nothing,
+    so a technician could advance past it. Where no template governs the type,
+    the gate stays advisory — an unrecognised suggestion must not invent
+    blocking authority either.
+    """
     created = 0
     for gate in result.safety_gates:
+        template = _blocking_template_for(gate.gate_type)
+        defaults = {
+            'gate_type': gate.gate_type,
+            'requires_photo': gate.requires_photo,
+            'is_blocking': False,
+            'is_mandatory': False,
+        }
+        if template is not None:
+            defaults.update({
+                'template': template,
+                'sequence': template.default_sequence,
+                'is_blocking': template.is_blocking,
+                'is_mandatory': template.is_mandatory,
+                'required_permission': template.required_permission,
+                'requires_photo': gate.requires_photo or template.requires_photo,
+                'requires_second_person': template.requires_second_person,
+            })
         _, was_created = RepairPacketGate.objects.get_or_create(
-            packet=packet,
-            name=gate.name,
-            defaults={
-                'gate_type': gate.gate_type,
-                'requires_photo': gate.requires_photo,
-                'is_blocking': False,
-                'is_mandatory': False,
-            },
+            packet=packet, name=gate.name, defaults=defaults
         )
         created += int(was_created)
     created += resolve_safety_gates(packet)

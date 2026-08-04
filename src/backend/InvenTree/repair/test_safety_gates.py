@@ -252,3 +252,89 @@ class SafetyGateAPITest(InvenTreeAPITestCase):
         )
         closed = self.post(advance_url, {'to': PacketStatus.CLOSED}, expected_code=200)
         self.assertTrue(closed.data['ok'])
+
+
+class GeneratorSuggestedGateFloorTest(TestCase):
+    """A generator-named safety step inherits its template's authority (S13).
+
+    Suggested gates were persisted advisory (``is_blocking=False``) regardless
+    of the deployment's templates, so a packet could display a LOTO gate that
+    blocked nothing and a technician could advance straight past it. The
+    template — not the model — decides whether an energy-control step blocks.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        """One active blocking LOTO template, matching no fault keywords.
+
+        ``applies_to`` deliberately names a keyword the test packets do not
+        use, so the template is NOT auto-resolved: the only way the gate can
+        become blocking is the generator-suggested path under test.
+        """
+        cls.template = SafetyGateTemplate.objects.create(
+            name='Energy isolation',
+            gate_type='loto',
+            applies_to={'fault_keywords': ['unrelated-keyword']},
+            is_blocking=True,
+            is_mandatory=True,
+            requires_second_person=True,
+            default_sequence=3,
+        )
+
+    def _generate(self, packet, *, gate_type, name='AI suggested lockout'):
+        from repair.generation import GeneratedSafetyGate, GenerationResult
+
+        result = GenerationResult(
+            diagnosis={},
+            safety_gates=[GeneratedSafetyGate(name=name, gate_type=gate_type)],
+        )
+        return services._create_safety_gates(packet, result)
+
+    def test_suggested_loto_gate_inherits_blocking_from_its_template(self):
+        """The governing template's enforcement flags win over the default."""
+        packet = RepairPacket.objects.create(
+            fault_summary='Seal replacement', status=PacketStatus.DIAGNOSED
+        )
+        self._generate(packet, gate_type='loto')
+
+        gate = packet.gates.get(name='AI suggested lockout')
+        self.assertTrue(gate.is_blocking)
+        self.assertTrue(gate.is_mandatory)
+        self.assertTrue(gate.requires_second_person)
+        self.assertEqual(gate.template_id, self.template.pk)
+        self.assertEqual(gate.sequence, 3)
+
+    def test_a_blocking_suggested_gate_actually_stops_approval(self):
+        """The point of the flag: the packet cannot advance past it."""
+        packet = RepairPacket.objects.create(
+            fault_summary='Seal replacement', status=PacketStatus.DIAGNOSED
+        )
+        self._generate(packet, gate_type='loto')
+
+        ok, detail = services.advance_packet(packet, PacketStatus.APPROVED)
+        self.assertFalse(ok)
+        self.assertIn('Safety gate', detail)
+
+    def test_ungoverned_gate_type_stays_advisory(self):
+        """An unrecognised suggestion must not invent blocking authority."""
+        packet = RepairPacket.objects.create(
+            fault_summary='Seal replacement', status=PacketStatus.DIAGNOSED
+        )
+        self._generate(packet, gate_type='other', name='Wear gloves')
+
+        gate = packet.gates.get(name='Wear gloves')
+        self.assertFalse(gate.is_blocking)
+        self.assertFalse(gate.is_mandatory)
+        self.assertIsNone(gate.template_id)
+
+    def test_inactive_template_does_not_confer_authority(self):
+        """A retired template governs nothing."""
+        self.template.active = False
+        self.template.save(update_fields=['active'])
+        packet = RepairPacket.objects.create(
+            fault_summary='Seal replacement', status=PacketStatus.DIAGNOSED
+        )
+        self._generate(packet, gate_type='loto')
+
+        gate = packet.gates.get(name='AI suggested lockout')
+        self.assertFalse(gate.is_blocking)

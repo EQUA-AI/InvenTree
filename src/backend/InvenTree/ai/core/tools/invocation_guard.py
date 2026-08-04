@@ -234,8 +234,26 @@ async def authorize_invocation(tool_id: str, arguments: Any) -> CapabilityEntry:
     return entry
 
 
+def _enforced_workflows() -> frozenset[str]:
+    """Workflows the guard denies on; every other workflow runs in shadow."""
+    try:
+        from ai.core.config import get_settings
+
+        raw = get_settings().capability_broker_enforced_workflows
+    except Exception:  # pragma: no cover - config absent in minimal envs
+        raw = "wf8,general"
+    return frozenset(part.strip() for part in str(raw or "").split(",") if part.strip())
+
+
 class CapabilityInvocationMiddleware(FunctionMiddleware):
-    """MAF middleware that enforces the capability guard before dispatch."""
+    """MAF middleware that enforces the capability guard before dispatch.
+
+    Enforcement is per workflow (S11): a workflow outside
+    ``capability_broker_enforced_workflows`` still runs the full authorization
+    and logs what it *would* have denied, but the call proceeds. That is how a
+    missing catalog entry surfaces as one log line instead of a rail that
+    denies every call the moment the middleware is attached.
+    """
 
     async def process(self, context: FunctionInvocationContext, next) -> None:
         tool_id = tool_name(context.function)
@@ -243,15 +261,19 @@ class CapabilityInvocationMiddleware(FunctionMiddleware):
             await authorize_invocation(tool_id, context.arguments)
         except CapabilityAuthorizationError as exc:
             run_context = capability_run_context.get()
+            workflow = run_context.workflow if run_context else None
+            enforced = workflow in _enforced_workflows()
             logger.warning(
-                "AI tool invocation denied",
+                "AI tool invocation denied" if enforced else "AI tool invocation shadow-denied",
                 extra={
                     "tool_id": tool_id,
-                    "workflow": run_context.workflow if run_context else None,
+                    "workflow": workflow,
                     "reason_code": exc.reason_code,
+                    "enforced": enforced,
                 },
             )
-            raise
+            if enforced:
+                raise
         await next(context)
 
 

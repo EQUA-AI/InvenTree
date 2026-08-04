@@ -97,7 +97,6 @@ CONTEXT_BUNDLES_BY_WORKFLOW: dict[str, list[str]] = {
     "wf2": ["user_profile", "parts_preference"],
     "wf3": ["user_profile", "parts_preference"],
     "wf4": ["user_profile", "parts_preference"],
-    "wf5": ["user_profile", "parts_preference", "thread_summary"],
     "wf6": ["user_profile"],
     "wf7": ["user_profile", "problem_solution", "thread_summary"],
     "wf8": ["user_profile", "parts_preference"],
@@ -306,7 +305,6 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
     from ai.core.workflows.wf2_parts_analysis import T2PartsAnalysisWorkflow
     from ai.core.workflows.wf3_research import T3ResearchWorkflow
     from ai.core.workflows.wf4_procurement import T4ProcurementWorkflow
-    from ai.core.workflows.wf5_cpq import T5CPQWorkflow
     from ai.core.workflows.wf6_documents import WF6DocumentWorkflow
     from ai.core.workflows.wf7_repair_packet import WF7RepairPacketWorkflow
     from ai.core.workflows.wf8_lookup import T1LookupWorkflow
@@ -335,7 +333,9 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             builder=T2PartsAnalysisWorkflow,
             cacheable=True,
             requires_hitl=False,
-            tags=["read-only", "analysis", "phase-1"],
+            # Orchestrator feedstock (S13): kept registered for S48 to compose,
+            # but its regex parsers get no further investment.
+            tags=["read-only", "analysis", "phase-1", "orchestrator-feedstock"],
         )
     )
 
@@ -349,7 +349,8 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             builder=T3ResearchWorkflow,
             cacheable=True,
             requires_hitl=False,
-            tags=["read-only", "research", "phase-1"],
+            # Orchestrator feedstock (S13); see wf2.
+            tags=["read-only", "research", "phase-1", "orchestrator-feedstock"],
         )
     )
 
@@ -367,19 +368,10 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
         )
     )
 
-    # WF5: T5 CPQ
-    registry.register(
-        WorkflowDefinition(
-            workflow_id="wf5",
-            name="T5 Configure-Price-Quote",
-            description="Product configuration and quote generation",
-            tier=WorkflowTier.T5_GROUP_CHAT,
-            builder=T5CPQWorkflow,
-            cacheable=False,
-            requires_hitl=True,
-            tags=["write", "cpq", "phase-2"],
-        )
-    )
+    # WF5 (T5 CPQ) is retired (execution-plan S13): its sales-CPQ shape
+    # contradicts the client-scoped fork, and its quote agent ran outside
+    # run_with_rbac entirely. The router remaps any lingering CPQ intent to
+    # wf8. Module deletion follows after the soak window.
 
     # WF1: T6 Diagnostics
     registry.register(

@@ -24,6 +24,7 @@ from agent_framework.azure import AzureOpenAIChatClient
 from ai.core.config import get_settings
 from ai.core.integrations.email import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
+from ai.core.tools.invocation_guard import CapabilityInvocationMiddleware
 from ai.core.workflows.rbac_run import run_with_rbac
 
 if TYPE_CHECKING:
@@ -106,6 +107,7 @@ Be thorough but concise in your findings."""
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Inventory Research Agent",
+                middleware=CapabilityInvocationMiddleware(),
             )
         return self._agent
 
@@ -149,6 +151,7 @@ Focus on actionable supplier intelligence."""
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Supplier Research Agent",
+                middleware=CapabilityInvocationMiddleware(),
             )
         return self._agent
 
@@ -192,6 +195,7 @@ Focus on extracting actionable intelligence from communications."""
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Email Research Agent",
+                middleware=CapabilityInvocationMiddleware(),
             )
         return self._agent
 
@@ -235,6 +239,7 @@ Format your synthesis with:
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Synthesis Agent",
+                middleware=CapabilityInvocationMiddleware(),
             )
         return self._agent
 
@@ -312,7 +317,11 @@ class T3ResearchWorkflow:
             # Research agents may use inventory or email tools; RBAC filters per
             # user and voice narrows to the read-only surface.
             response = await run_with_rbac(
-                agent, query, full_tools=[*INVENTORY_TOOLS, *EMAIL_TOOLS], context=context
+                agent,
+                query,
+                workflow="wf3",
+                full_tools=[*INVENTORY_TOOLS, *EMAIL_TOOLS],
+                context=context,
             )
             response_text = ""
             if response.messages:
@@ -589,8 +598,6 @@ Format your response with:
 - Recommendations
 - Any caveats or additional research needed"""
 
-        all_tools = list(INVENTORY_TOOLS) + list(EMAIL_TOOLS)
-
         chat_client = AzureOpenAIChatClient(
             deployment_name=settings.azure_openai_deployment,
             endpoint=settings.azure_openai_endpoint,
@@ -602,7 +609,11 @@ Format your response with:
             instructions=combined_prompt,
             name="AIMMS Research Agent",
             description="Multi-source research: suppliers, specifications, pricing",
-            tools=all_tools,
+            # Tools-less by construction (S11): a constructor toolset is
+            # unioned into every run, so the per-user RBAC filter in
+            # run_with_rbac would never see it. Composed callers dispatch
+            # through run_with_rbac like every other rail.
+            middleware=CapabilityInvocationMiddleware(),
         )
 
 

@@ -38,8 +38,8 @@ from typing import TYPE_CHECKING, Any
 from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
 from ai.core.config import get_settings
-from ai.core.integrations.email import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
+from ai.core.tools.invocation_guard import CapabilityInvocationMiddleware
 from ai.core.workflows.rbac_run import run_with_rbac
 
 if TYPE_CHECKING:
@@ -248,6 +248,7 @@ Analyze the document and respond with:
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Document Classification Agent",
+                middleware=CapabilityInvocationMiddleware(),
             )
         return self._agent
 
@@ -319,6 +320,7 @@ Format your extraction as structured data with clear sections."""
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Data Extraction Agent",
+                middleware=CapabilityInvocationMiddleware(),
             )
         return self._agent
 
@@ -374,6 +376,7 @@ Report Format:
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Data Validation Agent",
+                middleware=CapabilityInvocationMiddleware(),
             )
         return self._agent
 
@@ -824,6 +827,7 @@ class WF6DocumentWorkflow:
                 extraction_outcome=extraction_outcome,
                 thread_id=thread_id,
                 start_time=start_time,
+                context=context,
             )
         else:
             return await self._execute_pipeline(
@@ -833,6 +837,7 @@ class WF6DocumentWorkflow:
                 email_id=email_id,
                 thread_id=thread_id,
                 start_time=start_time,
+                context=context,
             )
 
     # ------------------------------------------------------------------
@@ -906,11 +911,18 @@ class WF6DocumentWorkflow:
         extraction_outcome: _ExtractionOutcome | None,
         thread_id: str,
         start_time: float,
+        context: dict[str, Any] | None = None,
     ) -> DocumentProcessingResult:
         """Run the single-agent conversational path."""
         try:
             agent = await self._get_conversational_agent(content)
-            response = await run_with_rbac(agent, query, full_tools=INVENTORY_TOOLS)
+            response = await run_with_rbac(
+                agent,
+                query,
+                workflow="wf6",
+                full_tools=INVENTORY_TOOLS,
+                context=context,
+            )
 
             response_text = self._extract_response_text(response)
             execution_time = (time.perf_counter() - start_time) * 1000
@@ -961,6 +973,7 @@ class WF6DocumentWorkflow:
             chat_client=chat_client,
             instructions=system_prompt,
             name="Document Processing Agent",
+            middleware=CapabilityInvocationMiddleware(),
         )
 
     # ------------------------------------------------------------------
@@ -976,6 +989,7 @@ class WF6DocumentWorkflow:
         email_id: str | None,
         thread_id: str,
         start_time: float,
+        context: dict[str, Any] | None = None,
     ) -> DocumentProcessingResult:
         """Run the staged pipeline path."""
         extraction = DocumentExtractionResult()
@@ -1001,7 +1015,7 @@ class WF6DocumentWorkflow:
                 f"{len(extraction.line_items)} line items"
             )
 
-            validation = await self._validate_data(extraction, extracted_data)
+            validation = await self._validate_data(extraction, extracted_data, context)
             extraction.status = ProcessingStatus.VALIDATED
             self._parse_validation(validation, extraction)
             actions.append(
@@ -1070,7 +1084,10 @@ class WF6DocumentWorkflow:
         return self._extract_response_text(response)
 
     async def _validate_data(
-        self, extraction: DocumentExtractionResult, extracted_data: str = ""
+        self,
+        extraction: DocumentExtractionResult,
+        extracted_data: str = "",
+        context: dict[str, Any] | None = None,
     ) -> str:
         agent = await self.validation_agent.get_agent()
 
@@ -1104,7 +1121,9 @@ class WF6DocumentWorkflow:
                 "Search for each part number in inventory and validate."
             )
 
-        response = await run_with_rbac(agent, prompt, full_tools=INVENTORY_TOOLS)
+        response = await run_with_rbac(
+            agent, prompt, workflow="wf6", full_tools=INVENTORY_TOOLS, context=context
+        )
         return self._extract_response_text(response)
 
     async def _route_document(self, extraction: DocumentExtractionResult) -> str:
@@ -1343,7 +1362,6 @@ class WF6DocumentBuilder:
             "- Validation results\n"
             "- Recommended actions"
         )
-        all_tools = list(INVENTORY_TOOLS) + list(EMAIL_TOOLS)
         chat_client = AzureOpenAIChatClient(
             deployment_name=settings.azure_openai_deployment,
             endpoint=settings.azure_openai_endpoint,
@@ -1354,7 +1372,11 @@ class WF6DocumentBuilder:
             instructions=combined_prompt,
             name="AIMMS Document Agent",
             description="Document processing and analysis",
-            tools=all_tools,
+            # Tools-less by construction (S11): a constructor toolset is
+            # unioned into every run, so the per-user RBAC filter in
+            # run_with_rbac would never see it. Composed callers dispatch
+            # through run_with_rbac like every other rail.
+            middleware=CapabilityInvocationMiddleware(),
         )
 
 

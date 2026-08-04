@@ -21,6 +21,7 @@ from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
 from ai.core.config import get_settings
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
+from ai.core.tools.invocation_guard import CapabilityInvocationMiddleware
 from ai.core.workflows.rbac_run import run_with_rbac
 
 if TYPE_CHECKING:
@@ -105,6 +106,7 @@ Format your analysis clearly with:
                 instructions=self.SYSTEM_PROMPT,
                 name="Parts Analysis Agent",
                 description="Analyzes part compatibility and alternatives",
+                middleware=CapabilityInvocationMiddleware(),
             )
 
         return self._agent
@@ -159,6 +161,7 @@ Provide your analysis with:
                 instructions=self.SYSTEM_PROMPT,
                 name="BOM Analysis Agent",
                 description="Analyzes and validates Bills of Materials",
+                middleware=CapabilityInvocationMiddleware(),
             )
 
         return self._agent
@@ -247,7 +250,7 @@ class T2PartsAnalysisWorkflow:
 
             # Run analysis with per-user RBAC-filtered tools (voice read-only).
             response = await run_with_rbac(
-                agent, query, full_tools=INVENTORY_TOOLS, context=context
+                agent, query, workflow="wf2", full_tools=INVENTORY_TOOLS, context=context
             )
             response_text = ""
             if response.messages:
@@ -336,13 +339,16 @@ class T2PartsAnalysisWorkflow:
         query: str,
         analysis_type: AnalysisType = AnalysisType.GENERAL_ANALYSIS,
         thread_id: str = "",
+        context: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
         """Execute with streaming response."""
         try:
             agent_wrapper = self._get_agent_for_type(analysis_type)
             agent = await agent_wrapper.get_agent()
 
-            response = await run_with_rbac(agent, query, full_tools=INVENTORY_TOOLS)
+            response = await run_with_rbac(
+                agent, query, workflow="wf2", full_tools=INVENTORY_TOOLS, context=context
+            )
             if response.messages:
                 last_msg = response.messages[-1]
                 yield last_msg.text if hasattr(last_msg, "text") else str(last_msg)
@@ -407,8 +413,6 @@ Analyze the user's request and provide thorough analysis with:
 - Detailed recommendations
 - Action items if applicable"""
 
-        all_tools = list(INVENTORY_TOOLS) + self._additional_tools
-
         chat_client = AzureOpenAIChatClient(
             deployment_name=settings.azure_openai_deployment,
             endpoint=settings.azure_openai_endpoint,
@@ -420,7 +424,11 @@ Analyze the user's request and provide thorough analysis with:
             instructions=combined_prompt,
             name="AIMMS Parts Analyst",
             description="BOM analysis, compatibility checks, alternative parts",
-            tools=all_tools,
+            # Deliberately tools-less (S11). A constructor toolset bypasses
+            # run_with_rbac entirely: MAF unions it into every run, so the
+            # per-user filter never sees it. Composed callers must dispatch
+            # through run_with_rbac like every other rail.
+            middleware=CapabilityInvocationMiddleware(),
         )
 
 

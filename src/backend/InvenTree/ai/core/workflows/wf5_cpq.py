@@ -25,6 +25,7 @@ from agent_framework import ChatAgent
 from agent_framework.azure import AzureOpenAIChatClient
 from ai.core.config import get_settings
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
+from ai.core.tools.invocation_guard import CapabilityInvocationMiddleware
 from ai.core.workflows.rbac_run import run_with_rbac
 
 if TYPE_CHECKING:
@@ -198,6 +199,7 @@ When configuring:
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Configurator Agent",
+                middleware=CapabilityInvocationMiddleware(),
             )
         return self._agent
 
@@ -252,6 +254,7 @@ When pricing:
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Pricing Agent",
+                middleware=CapabilityInvocationMiddleware(),
             )
         return self._agent
 
@@ -307,6 +310,7 @@ When generating quotes:
                 chat_client=chat_client,
                 instructions=self.SYSTEM_PROMPT,
                 name="Quote Agent",
+                middleware=CapabilityInvocationMiddleware(),
             )
         return self._agent
 
@@ -455,7 +459,9 @@ Please generate a formal quote."""
         """Run configuration agent."""
         agent = await self.configurator.get_agent()
 
-        response = await run_with_rbac(agent, query, full_tools=INVENTORY_TOOLS)
+        response = await run_with_rbac(
+            agent, query, workflow="wf5", full_tools=INVENTORY_TOOLS, context=None
+        )
         response_text = ""
         if response.messages:
             last_msg = response.messages[-1]
@@ -467,7 +473,9 @@ Please generate a formal quote."""
         """Run pricing agent."""
         agent = await self.pricing.get_agent()
 
-        response = await run_with_rbac(agent, query, full_tools=INVENTORY_TOOLS)
+        response = await run_with_rbac(
+            agent, query, workflow="wf5", full_tools=INVENTORY_TOOLS, context=None
+        )
         response_text = ""
         if response.messages:
             last_msg = response.messages[-1]
@@ -556,7 +564,9 @@ Please generate a formal quote."""
 
         yield "🔧 **Step 1: Configuring Product**\n"
         agent = await self.configurator.get_agent()
-        response = await run_with_rbac(agent, query, full_tools=INVENTORY_TOOLS)
+        response = await run_with_rbac(
+            agent, query, workflow="wf5", full_tools=INVENTORY_TOOLS, context=None
+        )
         if response.messages:
             last_msg = response.messages[-1]
             content = last_msg.text if hasattr(last_msg, "text") else str(last_msg)
@@ -565,7 +575,11 @@ Please generate a formal quote."""
         yield "\n---\n💰 **Step 2: Calculating Pricing**\n"
         agent = await self.pricing.get_agent()
         response = await run_with_rbac(
-            agent, f"Price this configuration: {query}", full_tools=INVENTORY_TOOLS
+            agent,
+            f"Price this configuration: {query}",
+            workflow="wf5",
+            full_tools=INVENTORY_TOOLS,
+            context=None,
         )
         if response.messages:
             last_msg = response.messages[-1]
@@ -663,7 +677,9 @@ Provide complete CPQ response with:
             instructions=combined_prompt,
             name="AIMMS CPQ Agent",
             description="Configure-Price-Quote for complex assemblies",
-            tools=INVENTORY_TOOLS,
+            # Tools-less: wf5 is retired (S13) and an unfiltered constructor
+            # toolset must not outlive it.
+            middleware=CapabilityInvocationMiddleware(),
         )
 
 

@@ -82,7 +82,9 @@ WORKFLOW_ID_MAP: dict[WorkflowType, str] = {
     WorkflowType.T2_PARTS_ANALYSIS: "wf2",
     WorkflowType.T3_RESEARCH: "wf3",
     WorkflowType.T4_PROCUREMENT: "wf4",
-    WorkflowType.T5_CPQ: "wf5",
+    # wf5 is retired (S13); a model that still emits the CPQ label falls
+    # back to the read-only lookup rail instead of a dead registry id.
+    WorkflowType.T5_CPQ: "wf8",
     WorkflowType.T6_DIAGNOSTICS: "wf1",
     WorkflowType.T7_DOCUMENTS: "wf6",
 }
@@ -295,7 +297,6 @@ WORKFLOW TYPES:
 2. T2_PARTS_ANALYSIS - Complex parts/BOM analysis, compatibility checks, alternatives
 3. T3_RESEARCH - Multi-source research: specifications, supplier info, pricing
 4. T4_PROCUREMENT - Purchasing, ordering, vendor quotes (requires approval)
-5. T5_CPQ - Configure-Price-Quote: custom configurations, pricing, proposals
 6. T6_DIAGNOSTICS - Complex problem diagnosis, troubleshooting, root cause analysis
 7. T7_DOCUMENTS - Processing incoming documents: RFQs, purchase orders, invoices
 8. GENERAL - General conversation, greetings, unclear intent
@@ -557,12 +558,6 @@ class SemanticRouter:
             "request quote for X",
             "purchase X",
             "restock X",
-        ],
-        WorkflowType.T5_CPQ: [
-            "configure a new system",
-            "create a quote for customer X",
-            "price out a custom build",
-            "generate a proposal",
         ],
         WorkflowType.T6_DIAGNOSTICS: [
             "diagnose issue with X",

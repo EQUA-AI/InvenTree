@@ -126,6 +126,15 @@ class Settings(BaseSettings):
     feature_capability_broker_enforce: bool = Field(
         default=True, alias="FEATURE_CAPABILITY_BROKER_ENFORCE"
     )
+    # Which workflows the invocation guard ENFORCES on, comma separated. Any
+    # other workflow runs in shadow: the guard still evaluates and logs the
+    # denial reason, but the call proceeds. wf8/general have soaked since the
+    # broker shipped; the specialist rails join one at a time (S11), which is
+    # the only safe way to discover a missing catalog entry — it would
+    # otherwise deny every call on that workflow at once.
+    capability_broker_enforced_workflows: str = Field(
+        default="wf8,general", alias="CAPABILITY_BROKER_ENFORCED_WORKFLOWS"
+    )
     # Capability selection v2: score the aggregation/threshold *shape* of a question
     # instead of a superlative keyword whitelist, keep the read-only SQL pack
     # attached to every read selection, and allow a second adjacent pack. Without

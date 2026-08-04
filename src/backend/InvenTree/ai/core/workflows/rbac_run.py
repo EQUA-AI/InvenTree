@@ -7,10 +7,12 @@ turns additionally start from the read-only subset (Tier-1 safety) when
 ``feature_voice_readonly_tools`` is on -- this closes the email/kanban-by-voice
 gap in every workflow, not just wf8.
 
-Execution-time middleware (CapabilityInvocationMiddleware) is intentionally not
-applied here: the catalog currently covers only wf8's read tools, so extending
-the middleware to wf2-wf6 needs a catalog overhaul (documented Phase 2
-hardening follow-up). The per-run list filter is the enforcement boundary.
+Since S11 this is also the single place a capability run is bound: the catalog
+covers every workflow's toolset, so ``run_with_rbac`` wraps each run in
+``bind_capability_run`` and the agents carry ``CapabilityInvocationMiddleware``.
+Binding here rather than at each of the eleven call sites means a new workflow
+cannot forget it — an unbound run is denied by the guard (``missing_run_context``),
+not silently unenforced.
 """
 
 from __future__ import annotations
@@ -55,6 +57,7 @@ async def run_with_rbac(
     agent: Any,
     query: str,
     *,
+    workflow: str,
     full_tools: Any,
     context: dict[str, Any] | None = None,
 ) -> Any:
@@ -62,10 +65,15 @@ async def run_with_rbac(
 
     ``full_tools`` is the workflow's complete toolset for text; voice turns are
     narrowed to the read-only surface first. Either way the per-user RBAC filter
-    is applied before the tools reach the model.
+    is applied before the tools reach the model, and the run is bound so the
+    invocation guard can re-authorize each call against ``workflow``.
     """
+    from ai.core.tools.invocation_guard import bind_capability_run
     from ai.core.tools.rbac import tools_for_current_user
 
     base = rbac_base_tools(full_tools, context)
     tools = await tools_for_current_user(base)
-    return await agent.run(query, tools=tools)
+    with bind_capability_run(
+        workflow=workflow, modality=modality_of(context), selected_tools=tools
+    ):
+        return await agent.run(query, tools=tools)

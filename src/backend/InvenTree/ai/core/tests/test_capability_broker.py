@@ -46,8 +46,14 @@ def _pinned_category_lexicon(monkeypatch):
     monkeypatch.setattr(capabilities, "category_lexicon", frozenset)
 
 
-def test_catalog_covers_wf8_once_in_canonical_order():
-    expected = tuple(
+def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
+    """Since S11 the catalog spans every rail, not wf8 alone.
+
+    An uncatalogued tool is denied as ``unknown_tool``, so a workflow whose
+    tools are missing here cannot run at all once its middleware is attached.
+    wf8's toolset stays the canonical prefix so the manifest order is stable.
+    """
+    wf8_tools = tuple(
         INVENTORY_READ_TOOLS
         + EMAIL_TOOLS
         + KANBAN_TOOLS
@@ -56,14 +62,29 @@ def test_catalog_covers_wf8_once_in_canonical_order():
     )
     catalog = capability_catalog()
 
-    # 61, not 62: delete_kanban_card is withheld from KANBAN_TOOLS (see
-    # test_delete_kanban_card_is_withheld_from_the_agent). Was 55 before the
-    # five maintenance work-order read tools joined INVENTORY_READ_TOOLS and
-    # search_manuals arrived via CONTROLLED_CORPUS_TOOLS.
-    assert len(catalog) == len(expected) == 61
-    assert tuple(entry.tool for entry in catalog) == expected
+    # 61 wf8 tools (delete_kanban_card is withheld) + the specialist writes
+    # wf2/wf3/wf4/wf6 carry: parts/stock/company/sales writes and the nine
+    # purchase-order write tools.
+    assert len(wf8_tools) == 61
+    assert len(catalog) == 97
+    assert tuple(entry.tool for entry in catalog[:61]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
-    assert all(entry.tool is expected[index] for index, entry in enumerate(catalog))
+
+
+def test_wf8_never_gains_a_specialist_write_pack():
+    """The rail boundary is the point of the workflow map.
+
+    wf8 is the everyday chat rail; the specialist write packs exist so
+    wf2/wf4/wf6 can be enforced, not so a lookup turn can reach them.
+    """
+    catalog = capability_catalog()
+    wf8_packs = {entry.pack_id for entry in catalog if "wf8" in entry.workflows}
+    assert not {pack for pack in wf8_packs if pack.endswith(".write")} - {
+        "email.write",
+        "kanban.write",
+    }
+    procurement = next(entry for entry in catalog if entry.tool_id == "issue_purchase_order")
+    assert procurement.workflows == frozenset({"wf4"})
 
 
 def test_catalog_has_expected_stable_pack_shapes():
@@ -93,6 +114,13 @@ def test_catalog_has_expected_stable_pack_shapes():
         "maintenance.read": 5,
         # Controlled documentation is a single site-scoped retrieval tool.
         "manuals.read": 1,
+        # Specialist write packs (S11): catalogued so wf2/wf3/wf4/wf6 can be
+        # enforced at all. Not selectable -- _pack_scores only scores reads.
+        "parts.write": 6,
+        "stock.write": 16,
+        "company.write": 3,
+        "procurement.write": 9,
+        "sales.write": 2,
     }
 
 
@@ -185,7 +213,7 @@ def test_contract_manifest_is_stable_and_complete():
     assert first == second
     assert manifest_json() == manifest_json()
     # Matches the catalog pin: 55 + 5 maintenance reads + search_manuals.
-    assert len(first) == 61
+    assert len(first) == 97
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)
