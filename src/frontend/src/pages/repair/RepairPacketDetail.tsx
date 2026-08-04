@@ -29,6 +29,7 @@ import { PageDetail } from '../../components/nav/PageDetail';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useApi } from '../../contexts/ApiContext';
 import { useInstance } from '../../hooks/UseInstance';
+import { DiagnosisPanel } from './components/DiagnosisPanel';
 import { InvestigationPanel } from './components/InvestigationPanel';
 import { PacketCloseoutModal } from './components/PacketCloseoutModal';
 import { SafetyPanel } from './components/safety/SafetyPanel';
@@ -193,7 +194,13 @@ export default function RepairPacketDetail() {
         name: 'diagnosis',
         label: t`Diagnosis`,
         icon: <IconStethoscope />,
-        content: <JsonPanel data={packetData?.diagnosis} />
+        content: (
+          <DiagnosisPanel
+            packetId={packet?.pk}
+            diagnosis={packetData?.diagnosis}
+            onRefresh={() => instanceQuery.refetch?.()}
+          />
+        )
       },
       {
         name: 'investigation',

@@ -415,7 +415,15 @@ class AutoGenerator:
         try:
             return self._ai.generate(fault_summary=fault_summary, context=context)
         except Exception as exc:
-            logger.info('generation_fallback_to_heuristic', reason=str(exc))
+            # Error, not info: in auto mode every fallback means the AI path is
+            # broken and a keyword heuristic is now writing packet content. The
+            # S10 UI labels the result, but operations must hear about it too.
+            logger.error(
+                'generation_fallback_to_heuristic',
+                reason=str(exc),
+                repair_packet_id=context.get('repair_packet_id'),
+                run_id=context.get('agent_run_id'),
+            )
             return self._heuristic.generate(
                 fault_summary=fault_summary, context=context
             )

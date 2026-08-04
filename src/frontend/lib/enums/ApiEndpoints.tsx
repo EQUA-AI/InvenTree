@@ -137,6 +137,7 @@ export enum ApiEndpoints {
   machine_open_repairs = 'repair/machines/:id/open-repairs/',
   repair_packet_cancel = 'repair/packets/:id/cancel/',
   repair_packet_generation_status = 'repair/packets/:id/generation-status/',
+  repair_packet_verify_diagnosis = 'repair/packets/:id/verify-diagnosis/',
   repair_packet_resolve_gates = 'repair/packets/:id/resolve-gates/',
   repair_packet_gate_list = 'repair/packets/:id/gates/',
   repair_packet_gate_confirm = 'repair/packets/:id/gates/:gate_pk/confirm/',

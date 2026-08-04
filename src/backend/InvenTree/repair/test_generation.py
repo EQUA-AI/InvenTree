@@ -643,6 +643,75 @@ class AdvanceAuditTest(TestCase):
         )
 
 
+class VerifyDiagnosisTest(InvenTreeAPITestCase):
+    """The verify-diagnosis endpoint: the only path out of 'preliminary'."""
+
+    roles = 'all'
+
+    def _diagnosed_packet(self):
+        packet = RepairPacket.objects.create(fault_summary='bearing noise')
+        services.run_repair_packet_workflow(packet, {'generator': 'heuristic'})
+        packet.refresh_from_db()
+        return packet
+
+    def test_verify_marks_diagnosis_and_records_one_event(self):
+        """Verification stamps the blob and audits exactly one event."""
+        from .schema import is_preliminary
+
+        packet = self._diagnosed_packet()
+        self.assertTrue(is_preliminary(packet.diagnosis))
+
+        url = reverse('repair-packet-verify-diagnosis', kwargs={'pk': packet.pk})
+        resp = self.post(url, {'note': 'confirmed on site'}, expected_code=200)
+        self.assertTrue(resp.data['ok'])
+
+        packet.refresh_from_db()
+        self.assertFalse(is_preliminary(packet.diagnosis))
+        self.assertTrue(packet.diagnosis['verified_by_user'])
+        self.assertTrue(packet.diagnosis['verified_at'])
+        self.assertEqual(packet.diagnosis['verified_by'], self.user.get_username())
+        self.assertEqual(
+            packet.events.filter(
+                event_type=RepairPacketEvent.EventType.DIAGNOSIS_VERIFIED
+            ).count(),
+            1,
+        )
+
+    def test_verify_is_idempotent(self):
+        """A second verification changes nothing and records no second event."""
+        packet = self._diagnosed_packet()
+        url = reverse('repair-packet-verify-diagnosis', kwargs={'pk': packet.pk})
+        self.post(url, {}, expected_code=200)
+        packet.refresh_from_db()
+        first_at = packet.diagnosis['verified_at']
+
+        resp = self.post(url, {}, expected_code=200)
+        self.assertEqual(resp.data['detail'], 'Already verified')
+        packet.refresh_from_db()
+        self.assertEqual(packet.diagnosis['verified_at'], first_at)
+        self.assertEqual(
+            packet.events.filter(
+                event_type=RepairPacketEvent.EventType.DIAGNOSIS_VERIFIED
+            ).count(),
+            1,
+        )
+
+    def test_empty_diagnosis_cannot_be_verified(self):
+        """There is nothing to verify on an ungenerated packet."""
+        packet = RepairPacket.objects.create(fault_summary='x')
+        url = reverse('repair-packet-verify-diagnosis', kwargs={'pk': packet.pk})
+        resp = self.post(url, {}, expected_code=400)
+        self.assertFalse(resp.data['ok'])
+
+    def test_verification_requires_an_authenticated_actor(self):
+        """Anonymous callers cannot verify; the audit needs a real actor."""
+        packet = self._diagnosed_packet()
+        ok, detail = services.verify_diagnosis(packet, user=None)
+        self.assertFalse(ok)
+        self.assertIn('Authentication', detail)
+        self.assertFalse(packet.diagnosis.get('verified_by_user'))
+
+
 class RepairPacketNewEndpointsTest(InvenTreeAPITestCase):
     """New API endpoints: cancel, generation-status, and events in the payload."""
 

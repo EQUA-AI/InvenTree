@@ -610,6 +610,41 @@ def confirm_gate(gate: RepairPacketGate, user=None, note: str = '') -> tuple[boo
     return True, ''
 
 
+def verify_diagnosis(
+    packet: RepairPacket, user=None, note: str = ''
+) -> tuple[bool, str]:
+    """Record a technician's verification of the packet's diagnosis.
+
+    This is the only path that turns "preliminary results" into a diagnosis
+    (``repair.schema.is_preliminary``). Idempotent: verifying an
+    already-verified diagnosis changes nothing and records no second event.
+    """
+    # Mirrors the gate confirm/verify pattern: repair models enforce
+    # endpoint-level permissions (users/ruleset.py exempts them from the
+    # generic ruleset table), so the requirement here is an authenticated,
+    # audited actor - anonymous read-scope tokens cannot verify.
+    if not (user and getattr(user, 'is_authenticated', False)):
+        return False, 'Authentication required'
+
+    diagnosis = packet.diagnosis if isinstance(packet.diagnosis, dict) else {}
+    if not diagnosis.get('likely_cause'):
+        return False, 'No diagnosis to verify'
+    if diagnosis.get('verified_by_user'):
+        return True, 'Already verified'
+
+    diagnosis = dict(diagnosis)
+    diagnosis['verified_by_user'] = True
+    diagnosis['verified_at'] = timezone.now().isoformat()
+    diagnosis['verified_by'] = user.get_username()
+    packet.diagnosis = diagnosis
+    packet.save(update_fields=['diagnosis', 'updated_at'])
+
+    _record_event(
+        packet, RepairPacketEvent.EventType.DIAGNOSIS_VERIFIED, actor=user, reason=note
+    )
+    return True, ''
+
+
 def verify_gate(gate: RepairPacketGate, user=None, note: str = '') -> tuple[bool, str]:
     """Record second-person verification for a gate."""
     if (

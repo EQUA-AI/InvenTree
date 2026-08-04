@@ -193,6 +193,23 @@ class RepairPacketGateConfirm(APIView):
         return _gate_response(gate, ok, detail)
 
 
+class RepairPacketVerifyDiagnosis(APIView):
+    """Record technician verification of the packet's preliminary diagnosis."""
+
+    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+
+    def post(self, request, pk):
+        """Mark the diagnosis verified by the requesting user."""
+        packet = get_object_or_404(RepairPacket, pk=pk)
+        ok, detail = services.verify_diagnosis(
+            packet, user=_request_user(request), note=request.data.get('note', '')
+        )
+        return Response(
+            {'ok': ok, 'detail': detail, 'diagnosis': packet.diagnosis},
+            status=200 if ok else 400,
+        )
+
+
 class RepairPacketGateVerify(APIView):
     """Record second-person verification for a safety gate."""
 
@@ -671,6 +688,11 @@ repair_api_urls = [
                 '<int:pk>/generation-status/',
                 RepairPacketGenerationStatus.as_view(),
                 name='repair-packet-generation-status',
+            ),
+            path(
+                '<int:pk>/verify-diagnosis/',
+                RepairPacketVerifyDiagnosis.as_view(),
+                name='repair-packet-verify-diagnosis',
             ),
             path(
                 '<int:pk>/resolve-gates/',

@@ -11,6 +11,7 @@ import {
   Paper,
   ScrollArea,
   Skeleton,
+  Stack,
   Tabs,
   Text,
   Textarea,
@@ -57,6 +58,7 @@ import { HITLApprovalCard, HITLResultBanner } from '../ai/HITLApprovalModal';
 import { VoiceContextBadge } from '../ai/VoiceContextBadge';
 import { VoiceSessionControl } from '../ai/VoiceSessionControl';
 import { VoiceTranscript } from '../ai/VoiceTranscript';
+import { CitationList } from '../aichat/CitationList';
 import { InlineMarkdown, MarkdownMessage } from '../aichat/MarkdownMessage';
 import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
@@ -765,6 +767,44 @@ function ChatMessageItem({
             ) : (
               message.isStreaming && <TypingIndicator />
             )}
+            {/* Diagnosis-rail provenance (S10): a cited answer shows its
+                sources; an uncited one is visibly flagged, never implied. */}
+            {!isUser &&
+              !message.isStreaming &&
+              message.evidence !== undefined && (
+                <Stack gap={4} mt={8}>
+                  {message.confidence && (
+                    <Badge
+                      size='sm'
+                      variant='outline'
+                      color='gray'
+                      w='fit-content'
+                    >
+                      {t`Declared confidence: ${message.confidence}`}
+                    </Badge>
+                  )}
+                  {message.evidence.length > 0 ? (
+                    <CitationList
+                      citations={message.evidence.map((entry, index) => ({
+                        id: index,
+                        turn_key: message.id,
+                        source_type: entry.source_type,
+                        available: true,
+                        as_of: entry.as_of,
+                        source_id: entry.source_id,
+                        source_revision: entry.source_revision,
+                        locator: entry.locator?.field
+                          ? { tool: entry.locator.field }
+                          : undefined
+                      }))}
+                    />
+                  ) : (
+                    <Text size='xs' c='orange' data-testid='diagnosis-uncited'>
+                      {t`No cited sources — not grounded in machine data.`}
+                    </Text>
+                  )}
+                </Stack>
+              )}
           </Paper>
 
           {/* Avatar for user */}

@@ -888,6 +888,7 @@ class RepairPacketEvent(models.Model):
         GATE_CONFIRMED = 'gate_confirmed', _('Gate Confirmed')
         GATE_VERIFIED = 'gate_verified', _('Gate Verified')
         GATE_WAIVED = 'gate_waived', _('Gate Waived')
+        DIAGNOSIS_VERIFIED = 'diagnosis_verified', _('Diagnosis Verified')
         LOCKOUT_UPDATED = 'lockout_updated', _('Lockout Updated')
         RETURN_TO_SERVICE = 'return_to_service', _('Return To Service')
         WORK_ORDER_CREATED = 'work_order_created', _('Work Order Created')

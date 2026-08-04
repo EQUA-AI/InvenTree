@@ -1006,6 +1006,23 @@ class NormalizedTurnService:
             message=message,
             response_state=response.response_state.value,
         )
+        # Provenance for the chat surface (S10): the drawer renders the
+        # citations and declared confidence next to the answer, so an
+        # evidence-free diagnosis visibly differs from a cited one. Citations
+        # only — never tool payloads.
+        await emitter.emit(
+            AGUIEvent(
+                event_type=EventType.STATE_DELTA,
+                data={
+                    "kind": "diagnosis_provenance",
+                    "confidence": response.confidence.value,
+                    "evidence": [entry.model_dump(mode="json") for entry in response.evidence],
+                },
+                thread_id=thread_id,
+                run_id=run_id,
+                agent_name="root_workflow",
+            )
+        )
         return {
             "thread_id": thread_id,
             "turn_id": turn_id,

@@ -329,6 +329,24 @@ export interface UploadedFile {
 }
 
 /**
+ * One revision-bound citation from the diagnosis rail's canonical response.
+ * Server-authorized reads only; the shape mirrors ai.core EvidenceEntry.
+ */
+export interface DiagnosisEvidence {
+  source_type: string;
+  source_id: string;
+  source_revision: string;
+  as_of: string;
+  authorization_class: string;
+  claim: string;
+  locator?: {
+    field?: string | null;
+    page?: number | null;
+    chunk?: string | null;
+  };
+}
+
+/**
  * Chat message structure
  */
 export interface ChatMessage {
@@ -339,6 +357,10 @@ export interface ChatMessage {
   isStreaming?: boolean;
   toolCallId?: string;
   toolCallName?: string;
+  /** Present only for diagnosis-rail answers: [] means visibly uncited. */
+  evidence?: DiagnosisEvidence[];
+  /** Model-declared confidence level accompanying `evidence`. */
+  confidence?: string;
 }
 
 /**
@@ -1189,6 +1211,18 @@ export function useAIChat(config: AIChatConfig = {}) {
     );
   }, []);
 
+  /** Attach diagnosis-rail provenance (citations + declared confidence). */
+  const attachProvenance = useCallback(
+    (messageId: string, evidence: DiagnosisEvidence[], confidence: string) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, evidence, confidence } : msg
+        )
+      );
+    },
+    []
+  );
+
   /**
    * Send a message and get AI response
    * Handles AG-UI protocol events from Microsoft Agent Framework
@@ -1437,6 +1471,27 @@ export function useAIChat(config: AIChatConfig = {}) {
                               '[AG-UI] Run finished:',
                               finishEvent.runId
                             );
+                            break;
+                          }
+
+                          case AGUIEventType.STATE_DELTA: {
+                            // Diagnosis-rail provenance: citations + declared
+                            // confidence attach to the answer so an uncited
+                            // diagnosis is visibly different from a cited one.
+                            const deltaEvent = event as unknown as {
+                              kind?: string;
+                              confidence?: string;
+                              evidence?: DiagnosisEvidence[];
+                            };
+                            if (deltaEvent.kind === 'diagnosis_provenance') {
+                              attachProvenance(
+                                assistantMessage.id,
+                                Array.isArray(deltaEvent.evidence)
+                                  ? deltaEvent.evidence
+                                  : [],
+                                String(deltaEvent.confidence ?? '')
+                              );
+                            }
                             break;
                           }
 
@@ -1692,6 +1747,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       addMessage,
       updateMessage,
       appendToMessage,
+      attachProvenance,
       saveCurrentThread,
       resetStreamingMessage,
       chatEndpoint

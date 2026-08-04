@@ -522,6 +522,94 @@ class NormalizedTurnServiceTests(SimpleTestCase):
             )
         )
 
+    def test_reasoning_route_emits_diagnosis_provenance_event(self) -> None:
+        """The chat surface receives citations + declared confidence (S10)."""
+        from datetime import UTC, datetime
+
+        from ai.core.reasoning.schemas import EvidenceEntry, EvidenceLocator
+
+        entry = EvidenceEntry(
+            source_type="machine",
+            source_id="44",
+            source_revision="r7",
+            locator=EvidenceLocator(field="bearing_temp_c"),
+            as_of=datetime(2026, 8, 4, 12, 0, 0, tzinfo=UTC),
+            authorization_class="maintenance_scope",
+            claim="Bearing temperature trended above baseline.",
+        )
+        response = CanonicalTurnResponse(
+            kind="repair_diagnosis",
+            response_version=1,
+            response_state="complete",
+            detailed_response="The current evidence supports further inspection.",
+            spoken_summary="",
+            reasoning_summary="Current evidence was reviewed.",
+            confidence="medium",
+            evidence=[entry],
+            next_questions=[],
+            recommended_actions=[],
+            safety_boundary="No safety status was inferred.",
+            speak=False,
+        )
+
+        class Adapter:
+            async def reason(self, **kwargs):
+                provenance = SimpleNamespace(to_dict=dict)
+                return SimpleNamespace(response=response, provenance=provenance)
+
+        captured: list[AGUIEvent] = []
+
+        class RawCapture:
+            async def handle(self, event: AGUIEvent) -> None:
+                captured.append(event)
+
+        async def exercise():
+            repository = _Repository()
+            registry = SimpleNamespace(
+                definitions=(
+                    SimpleNamespace(
+                        name="get_machine_context", capability="diagnostics.machine.read"
+                    ),
+                )
+            )
+            diagnostic_context = SimpleNamespace(
+                capabilities=("diagnostics.machine.read",),
+                record_roots=(),
+            )
+            service = _TestTurnService(
+                workflow_factory=_Workflow,
+                repository_factory=lambda actor, context: repository,  # noqa: ARG005
+                complexity_router=VoiceComplexityRouter(),
+                reasoning_adapter=Adapter(),
+                diagnostic_tool_registry=registry,
+                diagnostic_context_factory=lambda **kwargs: diagnostic_context,  # noqa: ARG005
+            )
+            emitter = InMemoryEventEmitter()
+            await emitter.subscribe(RawCapture())
+            await service.process(
+                actor=_principal(),
+                thread_id="thread_normalized",
+                content="The pump is vibrating and the bearing is hot. Diagnose it.",
+                modality="text",
+                trusted_context=_context(),
+                modality_metadata={},
+                idempotency_key="reason:provenance",
+                correlation_id=_context().correlation_id,
+                emitter=emitter,
+            )
+
+        asyncio.run(exercise())
+        deltas = [
+            event
+            for event in captured
+            if event.event_type == EventType.STATE_DELTA
+            and event.data.get("kind") == "diagnosis_provenance"
+        ]
+        self.assertEqual(len(deltas), 1)
+        self.assertEqual(deltas[0].data["confidence"], "medium")
+        self.assertEqual(deltas[0].data["evidence"][0]["source_id"], "44")
+        self.assertEqual(deltas[0].data["evidence"][0]["source_revision"], "r7")
+
     def test_reasoning_envelope_carries_the_authorized_records_verbatim(self) -> None:
         """The model can only quote server ids/revisions it was actually given.
 
