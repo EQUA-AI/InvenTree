@@ -1032,14 +1032,18 @@ class NormalizedTurnService:
         correlation_id: str,
         emitter: EventEmitter | None = None,
         server_pinned_workflow: str | None = None,
+        server_generation_target: dict[str, int] | None = None,
     ) -> NormalizedTurnResult:
         """Process one idempotent turn through the common reasoning path.
 
-        ``server_pinned_workflow`` is server-only: trusted in-process callers
-        (e.g. repair generation) use it to force one specific legacy workflow,
-        bypassing complexity routing. HTTP/voice adapters must never populate
-        it from anything a client sent — a client-influenced pin would let a
-        request select its own execution tier.
+        ``server_pinned_workflow`` and ``server_generation_target`` are
+        server-only: trusted in-process callers (e.g. repair generation) use
+        them to force one specific legacy workflow and to name the record the
+        generation is for. HTTP/voice adapters must never populate them from
+        anything a client sent — a client-influenced pin would let a request
+        select its own execution tier, and a client-named target could point
+        generation at another record. The target is information, not a grant:
+        the workflow intersects it with the actor's authorized record roots.
         """
 
         if not content.strip():
@@ -1050,6 +1054,17 @@ class NormalizedTurnService:
             raise ValueError("idempotency key is required")
         if server_pinned_workflow is not None and not server_pinned_workflow.strip():
             raise ValueError("server_pinned_workflow must be a workflow id when set")
+        if server_generation_target is not None and (
+            not isinstance(server_generation_target, dict)
+            or not set(server_generation_target) <= {"machine_id", "repair_packet_id"}
+            or not all(
+                isinstance(value, int) and not isinstance(value, bool)
+                for value in server_generation_target.values()
+            )
+        ):
+            raise ValueError(
+                "server_generation_target accepts int machine_id/repair_packet_id only"
+            )
 
         trusted = _json_value(trusted_context)
         metadata = _json_value(modality_metadata or {}, reject_audio=True)
@@ -1222,6 +1237,10 @@ class NormalizedTurnService:
                     # A trusted in-process caller selected the workflow itself;
                     # its pin wins over routing the same way the voice pin does.
                     workflow_context["pinned_workflow_id"] = server_pinned_workflow
+                    if server_generation_target is not None:
+                        workflow_context["server_generation_target"] = dict(
+                            server_generation_target
+                        )
                 elif modality == TurnModality.VOICE:
                     # Pin the workflow the voice router already chose. Without
                     # this the legacy router re-decides from scratch and can pick

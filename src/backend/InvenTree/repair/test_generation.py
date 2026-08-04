@@ -389,6 +389,190 @@ class InProcessGenerationTest(TestCase):
         self.assertEqual(packet.generation_runs.first().provider, 'heuristic')
 
 
+class InProcessEvidenceIntegrationTest(TestCase):
+    """S9 end-to-end: the persisted packet cites the authorized record.
+
+    Runs the REAL normalized turn service, the real server pin path, the real
+    wf7 workflow and the real diagnostic scope resolution (production
+    resolvers); only the Luna provider is stubbed — and the stub builds its
+    citation *from the envelope it receives*, so the asserted evidence can
+    only exist if the workflow offered the actor's authorized record roots.
+    """
+
+    RESOLVERS = {
+        'AIMMS_DIAGNOSTIC_CAPABILITY_RESOLVER': (
+            'repair.diagnostic_scope.single_site_diagnostic_capability_resolver'
+        ),
+        'AIMMS_MAINTENANCE_SCOPE_RESOLVER': 'tasks.scope.single_site_scope_resolver',
+        'AIMMS_SINGLE_SITE_CLIENT_CODE': 'site-a',
+    }
+
+    def setUp(self):
+        """Pin the boundary policy key and reset the cached AI settings."""
+        from ai.core.config import get_settings
+
+        self._env = mock.patch.dict(
+            os.environ, {'AIMMS_SINGLE_SITE_POLICY_KEY': 'repair-test-site'}
+        )
+        self._env.start()
+        get_settings.cache_clear()
+        self.addCleanup(self._env.stop)
+        self.addCleanup(get_settings.cache_clear)
+
+    class _EnvelopeCitingAdapter:
+        """Cites exactly one authorized machine root handed to it."""
+
+        def __init__(self):
+            self.envelopes = []
+
+        async def reason(self, *, envelope, tool_context=None, **kwargs):
+            from datetime import UTC, datetime
+
+            from ai.core.reasoning.luna_diagnostics import ReasoningProvenance
+            from ai.core.reasoning.schemas import (
+                CanonicalTurnResponse,
+                EvidenceEntry,
+                EvidenceLocator,
+            )
+
+            self.envelopes.append(envelope)
+            root = next(
+                r for r in envelope.authorized_records if r.entity_type == 'machine'
+            )
+            entry = EvidenceEntry(
+                source_type='machine',
+                source_id=str(root.entity_id),
+                source_revision=str(root.expected_revision),
+                locator=EvidenceLocator(field='vibration_mm_s'),
+                as_of=datetime(2026, 8, 4, 12, 0, 0, tzinfo=UTC),
+                authorization_class='maintenance_scope',
+                claim='Vibration doubled over two weeks on the drive end.',
+            )
+            response = CanonicalTurnResponse(
+                kind='diagnosis',
+                response_version=1,
+                response_state='complete',
+                detailed_response='Probable drive-end bearing wear.',
+                spoken_summary='',
+                reasoning_summary='Vibration trend against the machine baseline.',
+                confidence='high',
+                evidence=[entry],
+                next_questions=['Capture a spectrum at the drive-end bearing.'],
+                recommended_actions=[],
+                safety_boundary='Advisory only; no physical work is authorized.',
+                speak=False,
+            )
+            return SimpleNamespace(
+                response=response,
+                provenance=ReasoningProvenance(
+                    invocation_mode='direct_deployment',
+                    provider_request_id='req-integration',
+                    effort='medium',
+                    deployment='luna-test',
+                ),
+            )
+
+    def _real_turn_service(self):
+        """Build the production service around a real root workflow.
+
+        The router is inert: the server pin must make routing unreachable,
+        and a router call would fail the test loudly.
+        """
+        from ai.core.memory.conversation import ConversationManager
+        from ai.core.turn_service import NormalizedTurnService
+        from ai.core.workflows.registry import get_workflow_registry
+        from ai.core.workflows.root import RootWorkflow
+
+        class _NeverRouter:
+            async def route(self, *args, **kwargs):
+                raise AssertionError('a pinned generation turn must not route')
+
+        return NormalizedTurnService(
+            workflow_factory=lambda: RootWorkflow(
+                router=_NeverRouter(),
+                registry=get_workflow_registry(),
+                conversation_manager=ConversationManager(),
+            )
+        )
+
+    def test_generated_packet_cites_the_authorized_machine(self):
+        """The persisted diagnosis cites the actor's authorized machine root.
+
+        It also carries the model-declared confidence band, not an invention.
+        """
+        from django.test import override_settings
+
+        from ai.core.workflows.registry import get_workflow_registry
+        from assets.models import Client
+
+        from . import schema
+        from . import services as repair_services
+
+        client_row = Client.objects.create(name='Site A', code='site-a')
+        machine = AssetMachine.objects.create(name='Influent Pump 1', client=client_row)
+        packet = RepairPacket.objects.create(
+            fault_summary='pump vibration climbing', machine=machine
+        )
+        user = get_user_model().objects.create_superuser(
+            username=f'tech-{uuid.uuid4().hex[:8]}',
+            email='tech@example.com',
+            password='x',
+        )
+
+        adapter = self._EnvelopeCitingAdapter()
+        registry = get_workflow_registry()
+        wf7 = registry.get_workflow('wf7')
+        original = (wf7._reasoning_adapter, wf7._tool_registry)
+        wf7._reasoning_adapter = adapter
+
+        def _restore():
+            wf7._reasoning_adapter, wf7._tool_registry = original
+            registry._instances.pop('wf7', None)
+
+        self.addCleanup(_restore)
+
+        with (
+            override_settings(**self.RESOLVERS),
+            mock.patch.object(
+                generation, '_get_turn_service', return_value=self._real_turn_service()
+            ),
+        ):
+            expected_roots = repair_services.list_diagnostic_record_roots(user)
+            services.run_repair_packet_workflow(
+                packet, {'generator': 'ai_service', 'user_id': user.pk}
+            )
+        packet.refresh_from_db()
+
+        self.assertEqual(packet.generation_status, GenerationStatus.SUCCEEDED)
+        run = packet.generation_runs.first()
+        self.assertEqual(run.provider, 'ai_service')
+        self.assertTrue(run.result_summary.get('thread_id'))
+        self.assertTrue(run.result_summary.get('turn_id'))
+
+        machine_root = next(
+            r
+            for r in expected_roots
+            if r['entity_type'] == 'machine' and r['entity_id'] == machine.pk
+        )
+        diagnosis = packet.diagnosis
+        schema.validate_diagnosis(diagnosis)
+        self.assertEqual(diagnosis['generator'], 'wf7')
+        self.assertEqual(diagnosis['status'], schema.STATUS_AVAILABLE)
+        self.assertEqual(diagnosis['confidence'], 0.8)
+        self.assertEqual(diagnosis['confidence_label'], 'high')
+        citation = diagnosis['evidence'][0]
+        self.assertEqual(
+            citation['snapshot_id'],
+            f'machine:{machine.pk}@{machine_root["expected_revision"]}',
+        )
+        self.assertEqual(citation['relation'], 'supports')
+
+        # The envelope focused on the packet's own machine, nothing wider.
+        envelope = adapter.envelopes[0]
+        self.assertEqual(envelope.machine_id, machine.pk)
+        self.assertEqual(envelope.repair_packet_id, packet.pk)
+
+
 class GenerationFailureTest(TestCase):
     """Generation failures are recorded and leave the packet re-generatable."""
 

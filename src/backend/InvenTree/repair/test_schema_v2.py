@@ -8,6 +8,7 @@ from .schema import (
     RELATION_SUPPORTS,
     RELATION_UNKNOWN,
     STATUS_AVAILABLE,
+    STATUS_INSUFFICIENT,
     STATUS_UNAVAILABLE,
     coerce_diagnosis,
     empty_diagnosis,
@@ -103,6 +104,57 @@ class EvidenceCitationTest(TestCase):
         blob['evidence'] = [{'observation': 'x', 'relation': 'proves'}]
         with self.assertRaises(ValidationError):
             validate_diagnosis(blob)
+
+
+class UncitedAIDiagnosisTest(TestCase):
+    """An AI diagnosis with no evidence must not read as trustworthy (S9)."""
+
+    def test_ai_generated_empty_evidence_is_forced_insufficient(self):
+        """Whatever wf7 claimed, no citations means insufficient + no confidence."""
+        blob = coerce_diagnosis({
+            'likely_cause': 'Confident-sounding but uncited cause',
+            'confidence': 0.9,
+            'status': STATUS_AVAILABLE,
+            'evidence': [],
+            'generator': 'wf7',
+        })
+        self.assertEqual(blob['status'], STATUS_INSUFFICIENT)
+        self.assertEqual(blob['confidence'], 0.0)
+        self.assertEqual(blob['confidence_label'], 'unknown')
+        validate_diagnosis(blob)
+
+    def test_ai_generated_cited_diagnosis_keeps_its_claim(self):
+        """Real citations keep the declared status and confidence."""
+        blob = coerce_diagnosis({
+            'likely_cause': 'Bearing wear',
+            'confidence': 0.8,
+            'status': STATUS_AVAILABLE,
+            'evidence': [
+                {
+                    'snapshot_id': 'machine:44@r7',
+                    'observation': 'Temperature trend',
+                    'relation': RELATION_SUPPORTS,
+                }
+            ],
+            'generator': 'wf7',
+        })
+        self.assertEqual(blob['status'], STATUS_AVAILABLE)
+        self.assertEqual(blob['confidence'], 0.8)
+
+    def test_heuristic_generator_is_exempt(self):
+        """The offline keyword fallback never claimed analysis.
+
+        It keeps its low confidence and availability rather than masquerading
+        as an AI abstention.
+        """
+        blob = coerce_diagnosis({
+            'likely_cause': 'Suspected fault related to: pump noise',
+            'confidence': 0.3,
+            'evidence': [],
+            'generator': 'heuristic',
+        })
+        self.assertEqual(blob['status'], STATUS_AVAILABLE)
+        self.assertEqual(blob['confidence'], 0.3)
 
 
 class VerificationTest(TestCase):

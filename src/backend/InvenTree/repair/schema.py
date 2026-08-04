@@ -72,6 +72,11 @@ AUTHORITY_DERIVED = 'derived'
 
 ANALYSIS_AUTHORITIES = (AUTHORITY_SOURCE_DECLARED, AUTHORITY_DERIVED)
 
+#: Generator labels whose diagnoses claim AI analysis. An empty ``evidence``
+#: list from one of these forces ``status='insufficient'`` and zero
+#: confidence: an uncited AI claim is preliminary prose, not a diagnosis.
+AI_GENERATORS = ('wf7',)
+
 # key -> accepted python type(s)
 _REQUIRED_FIELDS: dict[str, type | tuple[type, ...]] = {
     'likely_cause': str,
@@ -233,6 +238,15 @@ def coerce_diagnosis(data: dict[str, Any] | None) -> dict[str, Any]:
         for key, value in data.items():
             if key not in result:
                 result[key] = value
+
+        # An AI-generated diagnosis that cites nothing must not read as an
+        # available, confident answer — regardless of what the generator
+        # claimed. The prose stays for human review; the trust does not.
+        # The keyword heuristic is exempt: it never claims analysis at all
+        # and is labelled as an offline fallback by its own generator value.
+        if result.get('generator') in AI_GENERATORS and not result['evidence']:
+            result['status'] = STATUS_INSUFFICIENT
+            result['confidence'] = 0.0
 
     result['confidence_label'] = confidence_label(result['confidence'])
     result['schema_version'] = DIAGNOSIS_SCHEMA_VERSION

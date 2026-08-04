@@ -364,6 +364,16 @@ class InProcessTurnGenerator:
             f'safety gates for the following fault:\n\n{fault_summary}'
         )
 
+        # The generation target names which packet/machine this turn is for.
+        # It is information, never authority: wf7 intersects it with the
+        # actor's own authorized record roots and refuses on no overlap.
+        target: dict[str, int] = {}
+        if isinstance(packet_pk, int):
+            target['repair_packet_id'] = packet_pk
+        machine_id = context.get('machine_id')
+        if isinstance(machine_id, int):
+            target['machine_id'] = machine_id
+
         token = principal_context.set(principal)
         try:
             return await asyncio.wait_for(
@@ -377,6 +387,7 @@ class InProcessTurnGenerator:
                     idempotency_key=idempotency_key,
                     correlation_id=correlation_id,
                     server_pinned_workflow='wf7',
+                    server_generation_target=target or None,
                 ),
                 timeout=get_ai_timeout(),
             )
