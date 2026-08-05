@@ -3,7 +3,7 @@ import { ModelType } from '@lib/enums/ModelType';
 import type { PanelType } from '@lib/types/Panel';
 import { t } from '@lingui/core/macro';
 import { Badge, Group, Skeleton, Stack } from '@mantine/core';
-import { IconInfoCircle } from '@tabler/icons-react';
+import { IconInfoCircle, IconShieldLock } from '@tabler/icons-react';
 import { type ReactNode, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import type { DetailsField } from '../../components/details/Details';
@@ -16,6 +16,7 @@ import {} from '../../hooks/UseForm';
 import { useInstance } from '../../hooks/UseInstance';
 import { useGlobalSettingsState } from '../../states/SettingsStates';
 import { useUserState } from '../../states/UserState';
+import { CloseoutPermissionsPanel } from './CloseoutPermissionsPanel';
 
 /**
  * Detail page for a single user
@@ -187,9 +188,16 @@ export default function UserDetail() {
         label: t`User Details`,
         icon: <IconInfoCircle />,
         content: detailsPanel
+      },
+      {
+        name: 'closeout-permissions',
+        label: t`Closeout Permissions`,
+        icon: <IconShieldLock />,
+        content: <CloseoutPermissionsPanel userId={instance?.pk} />,
+        hidden: !user.isStaff()
       }
     ];
-  }, [instance, id, user]);
+  }, [instance, id, user, detailsPanel]);
 
   const userBadges: ReactNode[] = useMemo(() => {
     return instanceQuery.isLoading

@@ -41,6 +41,7 @@ from .closeout_api import (
     CloseoutReadingList,
     CloseoutVerify,
 )
+from .closeout_permissions_api import CloseoutPermissionDetail
 from .jobkit_api import (
     JobKitAllocationConsume,
     JobKitAllocationIssue,
@@ -1343,6 +1344,11 @@ kanban_api_urls = [
 
 
 tasks_api_urls = [
+    path(
+        'closeout/permissions/<int:user_pk>/',
+        CloseoutPermissionDetail.as_view(),
+        name='closeout-permission-detail',
+    ),
     path(
         'procedures/',
         include([
