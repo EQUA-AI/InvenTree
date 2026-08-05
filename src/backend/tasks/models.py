@@ -180,6 +180,19 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         verbose_name = _('Work Order')
         verbose_name_plural = _('Work Orders')
 
+        # The lifecycle command services enforce these via require_permission.
+        # They MUST be declared here: an enforced-but-undeclared codename has
+        # no Permission row, is ungrantable by any mechanism, and silently
+        # reduces the whole write path to superusers (found live 2026-08-05).
+        permissions = [
+            ('plan_workorder', 'Can plan work orders'),
+            ('assign_workorder', 'Can assign work orders'),
+            ('transition_workorder', 'Can transition work orders'),
+            ('execute_workorder', 'Can execute work orders'),
+            ('complete_workorder', 'Can complete work orders'),
+            ('view_workorder_audit', 'Can view work order audit surfaces'),
+        ]
+
     def __str__(self) -> str:
         """Readable identity for admin and logs."""
         return self.title

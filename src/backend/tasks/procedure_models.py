@@ -90,6 +90,15 @@ class Procedure(models.Model):
             )
         ]
 
+        # Enforced by the procedure services via require_permission; declared
+        # here so the Permission rows exist and the grants are role-manageable.
+        permissions = [
+            ('author_procedure', 'Can author procedures'),
+            ('review_procedure', 'Can review procedures'),
+            ('publish_procedure', 'Can publish procedures'),
+            ('apply_procedure', 'Can apply procedures to work orders'),
+        ]
+
 
 class ProcedureRevision(models.Model):
     """Immutable governed content revision for a procedure."""

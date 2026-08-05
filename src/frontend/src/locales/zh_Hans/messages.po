@@ -64,7 +64,7 @@ msgstr "编辑"
 #: lib/components/RowActions.tsx:66
 #: src/components/forms/ApiForm.tsx:835
 #: src/components/items/ActionDropdown.tsx:260
-#: src/components/items/RoleTable.tsx:207
+#: src/components/items/RoleTable.tsx:348
 #: src/hooks/UseForm.tsx:174
 #: src/pages/Notifications.tsx:109
 #: src/tables/plugin/PluginListTable.tsx:254
@@ -2147,7 +2147,7 @@ msgstr "保存当前模板并重新加载预览"
 
 #: src/components/editors/TemplateEditor/TemplateEditor.tsx:387
 #: src/components/forms/HostOptionsForm.tsx:90
-#: src/components/items/RoleTable.tsx:300
+#: src/components/items/RoleTable.tsx:440
 #: src/components/items/TransferList.tsx:215
 #: src/components/items/TransferList.tsx:223
 #: src/components/tables/FilterSelectDrawer.tsx:719
@@ -2947,39 +2947,115 @@ msgstr "此信息仅对管理员用户开放"
 #~ msgid "PLH"
 #~ msgstr "PLH"
 
-#: src/components/items/RoleTable.tsx:73
+#: src/components/items/RoleTable.tsx:130
+msgid "Closeout Permissions"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:134
 msgid "Can capture closeout narratives"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:77
+#: src/components/items/RoleTable.tsx:138
 msgid "Can review closeout proposals"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:81
+#: src/components/items/RoleTable.tsx:142
 msgid "Can reconcile closeout part usage"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:85
+#: src/components/items/RoleTable.tsx:146
 msgid "Can verify completed closeouts"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:89
+#: src/components/items/RoleTable.tsx:150
 msgid "Can amend completed closeouts"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:93
+#: src/components/items/RoleTable.tsx:154
 msgid "Can view closeout audit surfaces"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:127
+#: src/components/items/RoleTable.tsx:161
+msgid "Work Order Lifecycle"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:165
+msgid "Can plan work orders"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:169
+msgid "Can assign work orders"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:173
+msgid "Can transition work orders"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:177
+msgid "Can execute work orders"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:181
+msgid "Can complete work orders"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:185
+msgid "Can view work order audit surfaces"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:192
+msgid "Procedure Permissions"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:196
+msgid "Can author procedures"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:200
+msgid "Can review procedures"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:204
+msgid "Can publish procedures"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:208
+msgid "Can apply procedures to work orders"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:215
+msgid "Job Kit Permissions"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:219
+msgid "Can manage job kits"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:223
+msgid "Can reserve job kit stock"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:227
+msgid "Can stage job kits"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:231
+msgid "Can issue job kits"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:235
+msgid "Can approve job kit substitutions"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:271
 msgid "Updating"
 msgstr "更新中"
 
-#: src/components/items/RoleTable.tsx:128
+#: src/components/items/RoleTable.tsx:272
 msgid "Updating group roles"
 msgstr "正在更新组角色"
 
-#: src/components/items/RoleTable.tsx:170
+#: src/components/items/RoleTable.tsx:311
 #: src/components/settings/ConfigValueList.tsx:42
 #: src/components/tables/ColumnRenderers.tsx:776
 #: src/pages/part/pricing/BomPricingPanel.tsx:158
@@ -2988,42 +3064,38 @@ msgstr "正在更新组角色"
 msgid "Updated"
 msgstr "已更新"
 
-#: src/components/items/RoleTable.tsx:171
+#: src/components/items/RoleTable.tsx:312
 msgid "Group roles updated"
 msgstr "组角色已更新"
 
-#: src/components/items/RoleTable.tsx:187
+#: src/components/items/RoleTable.tsx:328
 msgid "Role"
 msgstr "角色"
 
-#: src/components/items/RoleTable.tsx:192
+#: src/components/items/RoleTable.tsx:333
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:906
 msgid "View"
 msgstr "视图"
 
-#: src/components/items/RoleTable.tsx:197
+#: src/components/items/RoleTable.tsx:338
 msgid "Change"
 msgstr "更改"
 
-#: src/components/items/RoleTable.tsx:202
+#: src/components/items/RoleTable.tsx:343
 #: src/forms/StockForms.tsx:1642
 #: src/tables/stock/StockItemTestResultTable.tsx:369
 msgid "Add"
 msgstr "添加"
 
-#: src/components/items/RoleTable.tsx:255
-msgid "Closeout Permissions"
-msgstr ""
-
-#: src/components/items/RoleTable.tsx:279
+#: src/components/items/RoleTable.tsx:419
 msgid "Reset group roles"
 msgstr "重置组角色"
 
-#: src/components/items/RoleTable.tsx:288
+#: src/components/items/RoleTable.tsx:428
 msgid "Reset"
 msgstr "重置"
 
-#: src/components/items/RoleTable.tsx:291
+#: src/components/items/RoleTable.tsx:431
 msgid "Save group roles"
 msgstr "保存组角色"
 

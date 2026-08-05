@@ -278,6 +278,66 @@ class RuleSet(models.Model):
         verbose_name=_('Can view closeout audit surfaces'), default=False
     )
 
+    can_plan_workorder = models.BooleanField(
+        verbose_name=_('Can plan work orders'), default=False
+    )
+
+    can_assign_workorder = models.BooleanField(
+        verbose_name=_('Can assign work orders'), default=False
+    )
+
+    can_transition_workorder = models.BooleanField(
+        verbose_name=_('Can transition work orders'), default=False
+    )
+
+    can_execute_workorder = models.BooleanField(
+        verbose_name=_('Can execute work orders'), default=False
+    )
+
+    can_complete_workorder = models.BooleanField(
+        verbose_name=_('Can complete work orders'), default=False
+    )
+
+    can_view_workorder_audit = models.BooleanField(
+        verbose_name=_('Can view work order audit surfaces'), default=False
+    )
+
+    can_author_procedure = models.BooleanField(
+        verbose_name=_('Can author procedures'), default=False
+    )
+
+    can_review_procedure = models.BooleanField(
+        verbose_name=_('Can review procedures'), default=False
+    )
+
+    can_publish_procedure = models.BooleanField(
+        verbose_name=_('Can publish procedures'), default=False
+    )
+
+    can_apply_procedure = models.BooleanField(
+        verbose_name=_('Can apply procedures to work orders'), default=False
+    )
+
+    can_manage_jobkit = models.BooleanField(
+        verbose_name=_('Can manage job kits'), default=False
+    )
+
+    can_reserve_jobkit = models.BooleanField(
+        verbose_name=_('Can reserve job kit stock'), default=False
+    )
+
+    can_stage_jobkit = models.BooleanField(
+        verbose_name=_('Can stage job kits'), default=False
+    )
+
+    can_issue_jobkit = models.BooleanField(
+        verbose_name=_('Can issue job kits'), default=False
+    )
+
+    can_approve_jobkit_substitution = models.BooleanField(
+        verbose_name=_('Can approve job kit substitutions'), default=False
+    )
+
     def __str__(self, debug=False):  # pragma: no cover
         """Ruleset string representation."""
         if debug:

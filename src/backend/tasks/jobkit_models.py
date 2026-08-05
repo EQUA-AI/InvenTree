@@ -67,6 +67,19 @@ class JobKit(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        """Model metadata."""
+
+        # Enforced by the job-kit services via require_permission; declared
+        # here so the Permission rows exist and the grants are role-manageable.
+        permissions = [
+            ('manage_jobkit', 'Can manage job kits'),
+            ('reserve_jobkit', 'Can reserve job kit stock'),
+            ('stage_jobkit', 'Can stage job kits'),
+            ('issue_jobkit', 'Can issue job kits'),
+            ('approve_jobkit_substitution', 'Can approve job kit substitutions'),
+        ]
+
     def __str__(self) -> str:
         """Readable identity for admin and logs."""
         return f'Job kit for {self.work_order}'

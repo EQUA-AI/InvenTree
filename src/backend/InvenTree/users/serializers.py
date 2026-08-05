@@ -58,6 +58,21 @@ class RuleSetSerializer(InvenTreeModelSerializer):
             'can_verify_closeout',
             'can_amend_closeout',
             'can_view_closeout_audit',
+            'can_plan_workorder',
+            'can_assign_workorder',
+            'can_transition_workorder',
+            'can_execute_workorder',
+            'can_complete_workorder',
+            'can_view_workorder_audit',
+            'can_author_procedure',
+            'can_review_procedure',
+            'can_publish_procedure',
+            'can_apply_procedure',
+            'can_manage_jobkit',
+            'can_reserve_jobkit',
+            'can_stage_jobkit',
+            'can_issue_jobkit',
+            'can_approve_jobkit_substitution',
         ]
         read_only_fields = ['pk', 'name', 'label', 'group']
 

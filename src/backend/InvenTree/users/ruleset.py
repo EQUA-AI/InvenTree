@@ -61,6 +61,24 @@ RULESET_CUSTOM_PERMISSIONS = {
         'can_verify_closeout': ('tasks_closeoutcapture', 'verify_closeout'),
         'can_amend_closeout': ('tasks_closeoutcapture', 'amend_closeout'),
         'can_view_closeout_audit': ('tasks_closeoutcapture', 'view_closeout_audit'),
+        'can_plan_workorder': ('tasks_workorder', 'plan_workorder'),
+        'can_assign_workorder': ('tasks_workorder', 'assign_workorder'),
+        'can_transition_workorder': ('tasks_workorder', 'transition_workorder'),
+        'can_execute_workorder': ('tasks_workorder', 'execute_workorder'),
+        'can_complete_workorder': ('tasks_workorder', 'complete_workorder'),
+        'can_view_workorder_audit': ('tasks_workorder', 'view_workorder_audit'),
+        'can_author_procedure': ('tasks_procedure', 'author_procedure'),
+        'can_review_procedure': ('tasks_procedure', 'review_procedure'),
+        'can_publish_procedure': ('tasks_procedure', 'publish_procedure'),
+        'can_apply_procedure': ('tasks_procedure', 'apply_procedure'),
+        'can_manage_jobkit': ('tasks_jobkit', 'manage_jobkit'),
+        'can_reserve_jobkit': ('tasks_jobkit', 'reserve_jobkit'),
+        'can_stage_jobkit': ('tasks_jobkit', 'stage_jobkit'),
+        'can_issue_jobkit': ('tasks_jobkit', 'issue_jobkit'),
+        'can_approve_jobkit_substitution': (
+            'tasks_jobkit',
+            'approve_jobkit_substitution',
+        ),
     }
 }
 
