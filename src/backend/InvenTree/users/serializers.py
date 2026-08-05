@@ -52,6 +52,12 @@ class RuleSetSerializer(InvenTreeModelSerializer):
             'can_add',
             'can_change',
             'can_delete',
+            'can_capture_closeout',
+            'can_review_closeout',
+            'can_reconcile_closeout_parts',
+            'can_verify_closeout',
+            'can_amend_closeout',
+            'can_view_closeout_audit',
         ]
         read_only_fields = ['pk', 'name', 'label', 'group']
 

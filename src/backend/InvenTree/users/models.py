@@ -254,6 +254,30 @@ class RuleSet(models.Model):
         help_text=_('Permission to delete items'),
     )
 
+    can_capture_closeout = models.BooleanField(
+        verbose_name=_('Can capture closeout narratives'), default=False
+    )
+
+    can_review_closeout = models.BooleanField(
+        verbose_name=_('Can review closeout proposals'), default=False
+    )
+
+    can_reconcile_closeout_parts = models.BooleanField(
+        verbose_name=_('Can reconcile closeout part usage'), default=False
+    )
+
+    can_verify_closeout = models.BooleanField(
+        verbose_name=_('Can verify completed closeouts'), default=False
+    )
+
+    can_amend_closeout = models.BooleanField(
+        verbose_name=_('Can amend completed closeouts'), default=False
+    )
+
+    can_view_closeout_audit = models.BooleanField(
+        verbose_name=_('Can view closeout audit surfaces'), default=False
+    )
+
     def __str__(self, debug=False):  # pragma: no cover
         """Ruleset string representation."""
         if debug:

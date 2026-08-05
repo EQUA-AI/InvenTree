@@ -49,6 +49,22 @@ RULESET_PERMISSIONS = ['view', 'add', 'change', 'delete']
 RULESET_CHANGE_INHERIT = [('part', 'bomitem')]
 
 
+# Named action permissions which do not fit the standard model CRUD columns.
+RULESET_CUSTOM_PERMISSIONS = {
+    RuleSetEnum.WORK_ORDER: {
+        'can_capture_closeout': ('tasks_closeoutcapture', 'capture_closeout'),
+        'can_review_closeout': ('tasks_closeoutcapture', 'review_closeout'),
+        'can_reconcile_closeout_parts': (
+            'tasks_closeoutcapture',
+            'reconcile_closeout_parts',
+        ),
+        'can_verify_closeout': ('tasks_closeoutcapture', 'verify_closeout'),
+        'can_amend_closeout': ('tasks_closeoutcapture', 'amend_closeout'),
+        'can_view_closeout_audit': ('tasks_closeoutcapture', 'view_closeout_audit'),
+    }
+}
+
+
 def get_ruleset_models() -> dict:
     """Return a dictionary of models associated with each ruleset.
 

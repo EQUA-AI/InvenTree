@@ -12,6 +12,7 @@ from users.models import ApiToken, Owner
 from users.oauth2_scopes import _roles
 from users.ruleset import (
     RULESET_CHOICES,
+    RULESET_CUSTOM_PERMISSIONS,
     RULESET_NAMES,
     get_ruleset_ignore,
     get_ruleset_models,
@@ -191,6 +192,26 @@ class RuleSetModelTest(TestCase):
 
         # There should now not be any permissions assigned to this group
         self.assertEqual(group.permissions.count(), 0)
+
+    def test_closeout_permission_assign(self):
+        """Named closeout actions are synchronized by the work-order ruleset."""
+        group = Group.objects.create(name='Closeout technicians')
+        ruleset = group.rule_sets.get(name='work_order')
+
+        for field, (_model, codename) in RULESET_CUSTOM_PERMISSIONS[
+            'work_order'
+        ].items():
+            permission = {'content_type__app_label': 'tasks', 'codename': codename}
+
+            self.assertFalse(group.permissions.filter(**permission).exists())
+
+            setattr(ruleset, field, True)
+            ruleset.save()
+            self.assertTrue(group.permissions.filter(**permission).exists())
+
+            setattr(ruleset, field, False)
+            ruleset.save()
+            self.assertFalse(group.permissions.filter(**permission).exists())
 
 
 class OwnerModelTest(InvenTreeTestCase):

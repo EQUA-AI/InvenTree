@@ -32,7 +32,7 @@ msgid "Error Details"
 msgstr ""
 
 #: lib/components/CopyButton.tsx:49
-#: src/components/nav/AIChatDrawer.tsx:593
+#: src/components/nav/AIChatDrawer.tsx:633
 msgid "Copy"
 msgstr ""
 
@@ -55,7 +55,7 @@ msgstr ""
 #: lib/components/RowActions.tsx:66
 #: src/components/forms/ApiForm.tsx:835
 #: src/components/items/ActionDropdown.tsx:260
-#: src/components/items/RoleTable.tsx:155
+#: src/components/items/RoleTable.tsx:207
 #: src/hooks/UseForm.tsx:174
 #: src/pages/Notifications.tsx:109
 #: src/tables/plugin/PluginListTable.tsx:254
@@ -67,6 +67,7 @@ msgstr ""
 #: src/components/editors/TemplateEditor/TemplateEditor.tsx:200
 #: src/components/items/ActionDropdown.tsx:281
 #: src/components/items/ActionDropdown.tsx:282
+#: src/components/riskradar/RiskRadarPanel.tsx:534
 #: src/components/tables/FilterSelectDrawer.tsx:679
 #: src/components/tables/FilterSelectDrawer.tsx:731
 #: src/contexts/ThemeContext.tsx:57
@@ -79,7 +80,7 @@ msgstr ""
 #: src/pages/maintenance/MaintenanceBoard.tsx:2086
 #: src/pages/maintenance/MaintenanceBoard.tsx:2125
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:602
-#: src/pages/repair/RepairPacketDetail.tsx:169
+#: src/pages/repair/RepairPacketDetail.tsx:170
 #: src/pages/repair/components/PacketCloseoutModal.tsx:190
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:154
 #: src/pages/repair/components/safety/SafetyGateConfirmModal.tsx:86
@@ -177,7 +178,7 @@ msgstr ""
 #: src/pages/build/BuildOrderDetailsPanel.tsx:45
 #: src/pages/part/PartDetail.tsx:807
 #: src/pages/part/bom/BomCompare.tsx:203
-#: src/pages/repair/RepairPacketDetail.tsx:228
+#: src/pages/repair/RepairPacketDetail.tsx:235
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:364
 #: src/tables/assets/MachinePartTable.tsx:23
 #: src/tables/build/BuildOrderParametricTable.tsx:29
@@ -199,7 +200,7 @@ msgstr ""
 #: src/pages/part/CategoryDetail.tsx:316
 #: src/pages/part/PartCategoryDetailsPanel.tsx:69
 #: src/pages/part/PartDetail.tsx:529
-#: src/pages/repair/RepairPacketDetail.tsx:222
+#: src/pages/repair/RepairPacketDetail.tsx:229
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:410
 msgid "Parts"
 msgstr ""
@@ -546,7 +547,7 @@ msgstr ""
 
 #: lib/enums/ModelInformation.tsx:278
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:89
-#: src/pages/core/UserDetail.tsx:132
+#: src/pages/core/UserDetail.tsx:130
 #: src/pages/maintenance/MaintenanceBoard.tsx:1668
 #: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:133
 #: src/pages/sales/ReturnOrderDetailsPanel.tsx:145
@@ -573,7 +574,7 @@ msgstr ""
 #: src/components/tables/ColumnRenderers.tsx:637
 #: src/components/tables/Filter.tsx:441
 #: src/pages/Auth/ChangePassword.tsx:36
-#: src/pages/core/UserDetail.tsx:219
+#: src/pages/core/UserDetail.tsx:217
 #: src/tables/settings/ApiTokenTable.tsx:110
 #: src/tables/settings/ApiTokenTable.tsx:130
 #: src/tables/settings/BarcodeScanHistoryTable.tsx:79
@@ -589,7 +590,7 @@ msgstr ""
 #: src/defaults/actions.tsx:191
 #: src/pages/Index/Settings/AdminCenter/UserManagementPanel.tsx:15
 #: src/pages/core/CoreIndex.tsx:22
-#: src/pages/core/UserDetail.tsx:225
+#: src/pages/core/UserDetail.tsx:223
 msgid "Users"
 msgstr ""
 
@@ -603,7 +604,7 @@ msgstr ""
 #: src/pages/Index/Settings/AdminCenter/UserManagementPanel.tsx:23
 #: src/pages/core/CoreIndex.tsx:28
 #: src/pages/core/GroupDetail.tsx:80
-#: src/pages/core/UserDetail.tsx:96
+#: src/pages/core/UserDetail.tsx:94
 #: src/tables/settings/UserTable.tsx:277
 msgid "Groups"
 msgstr ""
@@ -694,13 +695,13 @@ msgid "Machines"
 msgstr ""
 
 #: lib/enums/ModelInformation.tsx:367
-#: src/pages/repair/RepairPacketDetail.tsx:312
+#: src/pages/repair/RepairPacketDetail.tsx:319
 msgid "Repair Packet"
 msgstr ""
 
 #: lib/enums/ModelInformation.tsx:368
 #: src/components/dashboard/widgets/BlockedFlowWidget.tsx:112
-#: src/pages/repair/RepairPacketDetail.tsx:313
+#: src/pages/repair/RepairPacketDetail.tsx:320
 #: src/pages/repair/RepairPacketIndex.tsx:20
 #: src/pages/repair/RepairPacketIndex.tsx:29
 msgid "Repair Packets"
@@ -892,6 +893,8 @@ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:355
 #: src/components/ai/HITLApprovalModal.tsx:410
+#: src/components/riskradar/RiskRadarPanel.tsx:473
+#: src/components/riskradar/RiskRadarPanel.tsx:542
 msgid "Dismiss"
 msgstr ""
 
@@ -984,13 +987,13 @@ msgid "Ready"
 msgstr ""
 
 #: src/components/aichat/ScopedChatPanel.tsx:61
-msgid "evaluated"
-msgstr ""
-
-#: src/components/aichat/ScopedChatPanel.tsx:61
 #: src/pages/Index/Scan.tsx:212
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:524
 msgid "Action"
+msgstr ""
+
+#: src/components/aichat/ScopedChatPanel.tsx:61
+msgid "evaluated"
 msgstr ""
 
 #: src/components/aichat/ScopedChatPanel.tsx:100
@@ -999,6 +1002,7 @@ msgstr ""
 
 #: src/components/aichat/ScopedChatPanel.tsx:115
 #: src/components/aichat/ScopedChatPanel.tsx:142
+#: src/components/riskradar/RiskRadarPanel.tsx:499
 msgid "Showing"
 msgstr ""
 
@@ -1037,9 +1041,9 @@ msgid "Procedure steps"
 msgstr ""
 
 #: src/components/aichat/ScopedChatPanel.tsx:179
-#: src/components/nav/AIChatDrawer.tsx:1209
+#: src/components/nav/AIChatDrawer.tsx:1294
 #: src/pages/Notifications.tsx:83
-#: src/pages/repair/RepairPacketDetail.tsx:278
+#: src/pages/repair/RepairPacketDetail.tsx:285
 msgid "History"
 msgstr ""
 
@@ -1393,6 +1397,7 @@ msgstr ""
 
 #: src/components/calendar/OrderCalendar.tsx:208
 #: src/components/calendar/OrderCalendarToolTip.tsx:68
+#: src/components/riskradar/RiskRadarPanel.tsx:418
 #: src/components/tables/Filter.tsx:194
 msgid "Overdue"
 msgstr ""
@@ -1700,6 +1705,8 @@ msgstr ""
 #: src/components/dashboard/DashboardWidgetLibrary.tsx:249
 #: src/components/dashboard/widgets/RiskRadarWidget.tsx:67
 #: src/components/dashboard/widgets/RiskRadarWidget.tsx:83
+#: src/components/riskradar/RiskRadarPanel.tsx:339
+#: src/pages/maintenance/MaintenanceIndex.tsx:62
 msgid "Risk Radar"
 msgstr ""
 
@@ -1739,6 +1746,7 @@ msgstr ""
 
 #: src/components/dashboard/widgets/BlockedFlowWidget.tsx:115
 #: src/components/dashboard/widgets/RiskRadarWidget.tsx:138
+#: src/components/riskradar/RiskRadarPanel.tsx:493
 msgid "Data as of"
 msgstr ""
 
@@ -1786,18 +1794,22 @@ msgid "Risk radar is unavailable, or you have no authorized scopes."
 msgstr ""
 
 #: src/components/dashboard/widgets/RiskRadarWidget.tsx:98
+#: src/components/riskradar/RiskRadarPanel.tsx:365
 msgid "Risk data degraded"
 msgstr ""
 
 #: src/components/dashboard/widgets/RiskRadarWidget.tsx:100
+#: src/components/riskradar/RiskRadarPanel.tsx:367
 msgid "Unavailable sources"
 msgstr ""
 
 #: src/components/dashboard/widgets/RiskRadarWidget.tsx:104
+#: src/components/riskradar/RiskRadarPanel.tsx:372
 msgid "No open findings"
 msgstr ""
 
 #: src/components/dashboard/widgets/RiskRadarWidget.tsx:105
+#: src/components/riskradar/RiskRadarPanel.tsx:373
 msgid "There are no risk findings for this scope"
 msgstr ""
 
@@ -1817,7 +1829,7 @@ msgstr ""
 
 #: src/components/dashboard/widgets/StocktakeDashboardWidget.tsx:37
 #: src/pages/part/PartStockHistoryDetail.tsx:111
-#: src/pages/repair/RepairPacketDetail.tsx:125
+#: src/pages/repair/RepairPacketDetail.tsx:126
 msgid "Generate"
 msgstr ""
 
@@ -1838,16 +1850,16 @@ msgstr ""
 
 #: src/components/details/Details.tsx:129
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:76
-#: src/pages/core/UserDetail.tsx:90
-#: src/pages/core/UserDetail.tsx:202
+#: src/pages/core/UserDetail.tsx:88
+#: src/pages/core/UserDetail.tsx:200
 #: src/tables/settings/UserTable.tsx:412
 msgid "Superuser"
 msgstr ""
 
 #: src/components/details/Details.tsx:130
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:72
-#: src/pages/core/UserDetail.tsx:84
-#: src/pages/core/UserDetail.tsx:199
+#: src/pages/core/UserDetail.tsx:82
+#: src/pages/core/UserDetail.tsx:197
 #: src/tables/settings/UserTable.tsx:286
 #: src/tables/settings/UserTable.tsx:407
 msgid "Administrator"
@@ -2133,7 +2145,7 @@ msgstr ""
 
 #: src/components/editors/TemplateEditor/TemplateEditor.tsx:387
 #: src/components/forms/HostOptionsForm.tsx:90
-#: src/components/items/RoleTable.tsx:224
+#: src/components/items/RoleTable.tsx:300
 #: src/components/items/TransferList.tsx:215
 #: src/components/items/TransferList.tsx:223
 #: src/components/tables/FilterSelectDrawer.tsx:719
@@ -2278,7 +2290,7 @@ msgstr ""
 #: src/components/forms/AuthenticationForm.tsx:136
 #: src/components/forms/AuthenticationForm.tsx:296
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:64
-#: src/pages/core/UserDetail.tsx:45
+#: src/pages/core/UserDetail.tsx:43
 msgid "Username"
 msgstr ""
 
@@ -2310,7 +2322,7 @@ msgstr ""
 #: src/components/forms/AuthenticationForm.tsx:173
 #: src/components/forms/AuthenticationForm.tsx:303
 #: src/pages/Auth/Reset.tsx:17
-#: src/pages/core/UserDetail.tsx:68
+#: src/pages/core/UserDetail.tsx:66
 msgid "Email"
 msgstr ""
 
@@ -2793,7 +2805,7 @@ msgstr ""
 #: src/components/importer/ImporterDrawer.tsx:119
 #: src/components/modals/AboutInvenTreeModal.tsx:206
 #: src/components/modals/ServerInfoModal.tsx:134
-#: src/components/nav/AIChatDrawer.tsx:1169
+#: src/components/nav/AIChatDrawer.tsx:1253
 #: src/components/wizards/ImportPartWizard.tsx:773
 #: src/forms/BomForms.tsx:146
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:687
@@ -2936,15 +2948,39 @@ msgstr ""
 #~ msgid "This panel is a placeholder."
 #~ msgstr ""
 
+#: src/components/items/RoleTable.tsx:73
+msgid "Can capture closeout narratives"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:77
+msgid "Can review closeout proposals"
+msgstr ""
+
 #: src/components/items/RoleTable.tsx:81
+msgid "Can reconcile closeout part usage"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:85
+msgid "Can verify completed closeouts"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:89
+msgid "Can amend completed closeouts"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:93
+msgid "Can view closeout audit surfaces"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:127
 msgid "Updating"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:82
+#: src/components/items/RoleTable.tsx:128
 msgid "Updating group roles"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:118
+#: src/components/items/RoleTable.tsx:170
 #: src/components/settings/ConfigValueList.tsx:42
 #: src/components/tables/ColumnRenderers.tsx:776
 #: src/pages/part/pricing/BomPricingPanel.tsx:158
@@ -2953,38 +2989,42 @@ msgstr ""
 msgid "Updated"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:119
+#: src/components/items/RoleTable.tsx:171
 msgid "Group roles updated"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:135
+#: src/components/items/RoleTable.tsx:187
 msgid "Role"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:140
+#: src/components/items/RoleTable.tsx:192
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:906
 msgid "View"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:145
+#: src/components/items/RoleTable.tsx:197
 msgid "Change"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:150
+#: src/components/items/RoleTable.tsx:202
 #: src/forms/StockForms.tsx:1642
 #: src/tables/stock/StockItemTestResultTable.tsx:369
 msgid "Add"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:203
+#: src/components/items/RoleTable.tsx:255
+msgid "Closeout Permissions"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:279
 msgid "Reset group roles"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:212
+#: src/components/items/RoleTable.tsx:288
 msgid "Reset"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:215
+#: src/components/items/RoleTable.tsx:291
 msgid "Save group roles"
 msgstr ""
 
@@ -3227,192 +3267,202 @@ msgstr ""
 msgid "Email settings not configured."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:109
+#: src/components/nav/AIChatDrawer.tsx:112
 #: src/pages/assets/health/AnomalyList.tsx:165
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
 msgid "Unknown"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:118
-#: src/components/nav/AIChatDrawer.tsx:391
+#: src/components/nav/AIChatDrawer.tsx:121
+#: src/components/nav/AIChatDrawer.tsx:396
 msgid "Just now"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:119
-#: src/components/nav/AIChatDrawer.tsx:392
+#: src/components/nav/AIChatDrawer.tsx:122
+#: src/components/nav/AIChatDrawer.tsx:397
 msgid "{minutes}m ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:120
-#: src/components/nav/AIChatDrawer.tsx:393
+#: src/components/nav/AIChatDrawer.tsx:123
+#: src/components/nav/AIChatDrawer.tsx:398
 msgid "{hours}h ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:121
-#: src/components/nav/AIChatDrawer.tsx:394
+#: src/components/nav/AIChatDrawer.tsx:124
+#: src/components/nav/AIChatDrawer.tsx:399
 msgid "{days}d ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:150
+#: src/components/nav/AIChatDrawer.tsx:153
 msgid "Failed to load approvals"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:164
+#: src/components/nav/AIChatDrawer.tsx:167
 msgid "Failed to load approval detail"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:188
+#: src/components/nav/AIChatDrawer.tsx:191
 msgid "Back"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:191
-#: src/components/nav/AIChatDrawer.tsx:292
+#: src/components/nav/AIChatDrawer.tsx:194
+#: src/components/nav/AIChatDrawer.tsx:297
+#: src/components/riskradar/RiskRadarPanel.tsx:353
 #: src/pages/assets/health/MachineHealthPanel.tsx:190
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
 #: src/pages/repair/components/safety/SafetyPanel.tsx:110
 msgid "Refresh"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:217
-#: src/components/nav/AIChatDrawer.tsx:345
+#: src/components/nav/AIChatDrawer.tsx:222
+#: src/components/nav/AIChatDrawer.tsx:350
 msgid "Tier"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:230
+#: src/components/nav/AIChatDrawer.tsx:235
 msgid "No details available"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:244
+#: src/components/nav/AIChatDrawer.tsx:249
 msgid "(complex value)"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:277
+#: src/components/nav/AIChatDrawer.tsx:282
 msgid "Developer details"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:290
-#: src/components/nav/AIChatDrawer.tsx:1201
-#: src/pages/repair/RepairPacketDetail.tsx:249
+#: src/components/nav/AIChatDrawer.tsx:295
+#: src/components/nav/AIChatDrawer.tsx:1286
+#: src/pages/repair/RepairPacketDetail.tsx:256
 msgid "Approvals"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:418
+#: src/components/nav/AIChatDrawer.tsx:423
 msgid "New Chat"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:425
+#: src/components/nav/AIChatDrawer.tsx:430
 msgid "Conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:434
-#: src/components/nav/AIChatDrawer.tsx:1156
+#: src/components/nav/AIChatDrawer.tsx:439
+#: src/components/nav/AIChatDrawer.tsx:1240
 msgid "New conversation"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:456
+#: src/components/nav/AIChatDrawer.tsx:461
 msgid "Rename conversation"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:506
+#: src/components/nav/AIChatDrawer.tsx:511
 msgid "No previous conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:524
-#: src/components/nav/AIChatDrawer.tsx:688
-#: src/components/nav/AIChatDrawer.tsx:1125
+#: src/components/nav/AIChatDrawer.tsx:529
+#: src/components/nav/AIChatDrawer.tsx:730
+#: src/components/nav/AIChatDrawer.tsx:1209
 msgid "AI Assistant"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:593
+#: src/components/nav/AIChatDrawer.tsx:633
 msgid "Copied!"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:606
+#: src/components/nav/AIChatDrawer.tsx:646
 msgid "Good response"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:617
+#: src/components/nav/AIChatDrawer.tsx:657
 msgid "Bad response"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:629
+#: src/components/nav/AIChatDrawer.tsx:669
 msgid "Regenerate"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:747
+#. placeholder {0}: message.confidence
+#: src/components/nav/AIChatDrawer.tsx:783
+msgid "Declared confidence: {0}"
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:803
+msgid "No cited sources — not grounded in machine data."
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:827
 msgid "You"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:917
+#: src/components/nav/AIChatDrawer.tsx:1001
 msgid "Search parts"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:918
+#: src/components/nav/AIChatDrawer.tsx:1002
 msgid "Create order"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:919
+#: src/components/nav/AIChatDrawer.tsx:1003
 msgid "Low stock"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1128
+#: src/components/nav/AIChatDrawer.tsx:1212
 msgid "Powered by AIMMS AI"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1135
+#: src/components/nav/AIChatDrawer.tsx:1219
 msgid "Syncing..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1135
+#: src/components/nav/AIChatDrawer.tsx:1219
 msgid "Sync conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1186
+#: src/components/nav/AIChatDrawer.tsx:1270
 msgid "Syncing conversations with server..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1198
+#: src/components/nav/AIChatDrawer.tsx:1283
 msgid "Chat"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1258
+#: src/components/nav/AIChatDrawer.tsx:1345
 msgid "Hi! 👋 How can I help?"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1261
+#: src/components/nav/AIChatDrawer.tsx:1348
 msgid "I can help you search for parts, create orders, and automate tasks in AIMMS."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1348
+#: src/components/nav/AIChatDrawer.tsx:1439
 msgid "No actions waiting for review"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1362
+#: src/components/nav/AIChatDrawer.tsx:1453
 msgid "No resolved actions yet"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1445
+#: src/components/nav/AIChatDrawer.tsx:1539
 msgid "Attach file"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1463
+#: src/components/nav/AIChatDrawer.tsx:1557
 msgid "Add a message about attached files..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1464
+#: src/components/nav/AIChatDrawer.tsx:1558
 msgid "Type a message..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1491
+#: src/components/nav/AIChatDrawer.tsx:1585
 msgid "Stop generating"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1504
+#: src/components/nav/AIChatDrawer.tsx:1598
 msgid "Send message"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1530
+#: src/components/nav/AIChatDrawer.tsx:1624
 msgid "AI may make mistakes. Verify important information."
 msgstr ""
 
@@ -3622,7 +3672,7 @@ msgstr ""
 #: src/components/nav/NavigationDrawer.tsx:105
 #: src/defaults/links.tsx:85
 #: src/pages/assets/MachineDetail.tsx:151
-#: src/pages/maintenance/MaintenanceIndex.tsx:58
+#: src/pages/maintenance/MaintenanceIndex.tsx:73
 msgid "Maintenance"
 msgstr ""
 
@@ -3843,8 +3893,8 @@ msgstr ""
 #: src/components/plugins/PluginDrawer.tsx:93
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:68
 #: src/pages/assets/MachineDetail.tsx:55
-#: src/pages/core/UserDetail.tsx:78
-#: src/pages/core/UserDetail.tsx:208
+#: src/pages/core/UserDetail.tsx:76
+#: src/pages/core/UserDetail.tsx:206
 #: src/pages/part/PartDetailsPanel.tsx:244
 #: src/tables/assets/AssetMachineTable.tsx:47
 #: src/tables/bom/UsedInTable.tsx:107
@@ -3968,7 +4018,7 @@ msgstr ""
 #: src/components/tables/ColumnRenderers.tsx:652
 #: src/pages/company/CompanyDetail.tsx:262
 #: src/pages/company/SupplierPartDetail.tsx:216
-#: src/pages/core/UserDetail.tsx:210
+#: src/pages/core/UserDetail.tsx:208
 #: src/pages/part/PartDetail.tsx:616
 msgid "Inactive"
 msgstr ""
@@ -4041,7 +4091,7 @@ msgstr ""
 #: src/forms/StockForms.tsx:1888
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:88
 #: src/pages/assets/MachineDetail.tsx:60
-#: src/pages/core/UserDetail.tsx:155
+#: src/pages/core/UserDetail.tsx:153
 #: src/pages/stock/StockDetailsPanel.tsx:237
 #: src/tables/assets/AssetMachineTable.tsx:27
 #: src/tables/stock/StockTrackingTable.tsx:131
@@ -4152,6 +4202,95 @@ msgstr ""
 
 #: src/components/riskradar/RiskRadarCommon.tsx:425
 msgid "Source disabled"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarDrawerBadge.tsx:44
+msgid "Open risk findings - view in Maintenance"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:100
+msgid "The command could not be completed."
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:211
+msgid "Command failed"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:242
+msgid "Recheck queued"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:243
+msgid "The finding will be refreshed as the scan completes."
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:253
+msgid "Recheck failed"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:327
+msgid "Risk Radar unavailable"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:329
+msgid "Risk radar is not enabled on this deployment, or you have no authorized scopes."
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:379
+msgid "Severity"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:380
+#: src/pages/maintenance/workorders/components/InvestigationSection.tsx:74
+#: src/pages/repair/components/InvestigationPanel.tsx:91
+msgid "Finding"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:381
+msgid "Rule"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:382
+#: src/pages/assets/health/SignalTable.tsx:63
+#: src/pages/tasks/workorders/CloseoutPanel.tsx:646
+msgid "State"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:383
+#: src/tables/notifications/NotificationTable.tsx:26
+msgid "Age"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:445
+#: src/pages/assets/health/AnomalyList.tsx:120
+msgid "Acknowledge"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:457
+msgid "Snooze 24h"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:466
+msgid "Recheck"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:495
+msgid "findings"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:508
+msgid "Dismiss finding"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:514
+#: src/pages/repair/RepairPacketDetail.tsx:295
+#: src/pages/repair/components/safety/SafetyGateWaiveModal.tsx:101
+#: src/pages/tasks/workorders/CloseoutPanel.tsx:699
+msgid "Reason"
+msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:515
+msgid "Recorded on the finding's audit trail."
 msgstr ""
 
 #: src/components/settings/ConfigValueList.tsx:36
@@ -4407,7 +4546,7 @@ msgstr ""
 #: src/pages/build/BuildOrderDetailsPanel.tsx:90
 #: src/pages/part/bom/BomCompare.tsx:34
 #: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:44
-#: src/pages/repair/RepairPacketDetail.tsx:67
+#: src/pages/repair/RepairPacketDetail.tsx:68
 #: src/pages/sales/ReturnOrderDetailsPanel.tsx:45
 #: src/pages/sales/SalesOrderDetailsPanel.tsx:45
 #: src/pages/stock/TransferOrderDetailsPanel.tsx:23
@@ -4433,7 +4572,7 @@ msgid "Allocated Lines"
 msgstr ""
 
 #: src/components/tables/ColumnRenderers.tsx:660
-#: src/pages/core/UserDetail.tsx:173
+#: src/pages/core/UserDetail.tsx:171
 msgid "User Information"
 msgstr ""
 
@@ -4736,14 +4875,14 @@ msgstr ""
 #: src/forms/StockForms.tsx:1387
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:87
 #: src/pages/build/BuildOrderDetailsPanel.tsx:67
-#: src/pages/core/UserDetail.tsx:148
+#: src/pages/core/UserDetail.tsx:146
 #: src/pages/maintenance/MaintenanceBoard.tsx:1734
 #: src/pages/maintenance/MaintenanceBoard.tsx:1898
 #: src/pages/maintenance/workorders/components/WorkOrderSafetyReadiness.tsx:83
 #: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:71
-#: src/pages/repair/RepairPacketDetail.tsx:68
-#: src/pages/repair/RepairPacketDetail.tsx:231
-#: src/pages/repair/RepairPacketDetail.tsx:256
+#: src/pages/repair/RepairPacketDetail.tsx:69
+#: src/pages/repair/RepairPacketDetail.tsx:238
+#: src/pages/repair/RepairPacketDetail.tsx:263
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:129
 #: src/pages/repair/components/safety/LockoutPointTable.tsx:77
 #: src/pages/sales/ReturnOrderDetailsPanel.tsx:72
@@ -6370,7 +6509,7 @@ msgstr ""
 #: src/forms/SalesOrderForms.tsx:435
 #: src/forms/TransferOrderForms.tsx:239
 #: src/pages/part/PartDetail.tsx:586
-#: src/pages/repair/RepairPacketDetail.tsx:230
+#: src/pages/repair/RepairPacketDetail.tsx:237
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:366
 #: src/tables/build/BuildAllocatedStockTable.tsx:132
 #: src/tables/build/BuildLineTable.tsx:201
@@ -7796,12 +7935,12 @@ msgstr ""
 #~ msgstr ""
 
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:65
-#: src/pages/core/UserDetail.tsx:52
+#: src/pages/core/UserDetail.tsx:50
 msgid "First Name"
 msgstr ""
 
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:66
-#: src/pages/core/UserDetail.tsx:60
+#: src/pages/core/UserDetail.tsx:58
 msgid "Last Name"
 msgstr ""
 
@@ -7818,13 +7957,13 @@ msgstr ""
 #~ msgstr ""
 
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:85
-#: src/pages/core/UserDetail.tsx:116
+#: src/pages/core/UserDetail.tsx:114
 #: src/tables/settings/CustomStateTable.tsx:101
 msgid "Display Name"
 msgstr ""
 
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:86
-#: src/pages/core/UserDetail.tsx:124
+#: src/pages/core/UserDetail.tsx:122
 msgid "Position"
 msgstr ""
 
@@ -7837,7 +7976,7 @@ msgid "Type"
 msgstr ""
 
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:91
-#: src/pages/core/UserDetail.tsx:140
+#: src/pages/core/UserDetail.tsx:138
 msgid "Organisation"
 msgstr ""
 
@@ -8864,10 +9003,6 @@ msgstr ""
 msgid "Analyze"
 msgstr ""
 
-#: src/pages/assets/health/AnomalyList.tsx:120
-msgid "Acknowledge"
-msgstr ""
-
 #: src/pages/assets/health/AnomalyList.tsx:131
 #: src/pages/maintenance/MaintenanceBoard.tsx:1846
 msgid "Open work order"
@@ -9075,7 +9210,7 @@ msgid "Unclear"
 msgstr ""
 
 #: src/pages/assets/health/PreliminaryResults.tsx:95
-#: src/pages/repair/RepairPacketDetail.tsx:194
+#: src/pages/repair/RepairPacketDetail.tsx:195
 msgid "Diagnosis"
 msgstr ""
 
@@ -9179,11 +9314,6 @@ msgstr ""
 
 #: src/pages/assets/health/SignalTable.tsx:61
 msgid "Signal"
-msgstr ""
-
-#: src/pages/assets/health/SignalTable.tsx:63
-#: src/pages/tasks/workorders/CloseoutPanel.tsx:646
-msgid "State"
 msgstr ""
 
 #: src/pages/assets/health/SignalTable.tsx:64
@@ -9876,7 +10006,7 @@ msgstr ""
 
 #: src/pages/core/CoreIndex.tsx:47
 #: src/pages/core/GroupDetail.tsx:79
-#: src/pages/core/UserDetail.tsx:223
+#: src/pages/core/UserDetail.tsx:221
 msgid "System Overview"
 msgstr ""
 
@@ -9895,20 +10025,20 @@ msgstr ""
 msgid "Group Roles"
 msgstr ""
 
-#: src/pages/core/UserDetail.tsx:174
+#: src/pages/core/UserDetail.tsx:172
 msgid "User Permissions"
 msgstr ""
 
-#: src/pages/core/UserDetail.tsx:176
+#: src/pages/core/UserDetail.tsx:174
 msgid "User Profile"
 msgstr ""
 
-#: src/pages/core/UserDetail.tsx:187
+#: src/pages/core/UserDetail.tsx:185
 #: src/tables/settings/UserTable.tsx:165
 msgid "User Details"
 msgstr ""
 
-#: src/pages/core/UserDetail.tsx:205
+#: src/pages/core/UserDetail.tsx:203
 msgid "Normal user"
 msgstr ""
 
@@ -10294,15 +10424,15 @@ msgstr ""
 msgid "Create column"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceIndex.tsx:36
+#: src/pages/maintenance/MaintenanceIndex.tsx:44
 msgid "Board"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceIndex.tsx:42
+#: src/pages/maintenance/MaintenanceIndex.tsx:50
 msgid "Calendar"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceIndex.tsx:48
+#: src/pages/maintenance/MaintenanceIndex.tsx:56
 msgid "Timeline"
 msgstr ""
 
@@ -10328,7 +10458,7 @@ msgstr ""
 
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:428
 #: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:68
-#: src/pages/repair/RepairPacketDetail.tsx:78
+#: src/pages/repair/RepairPacketDetail.tsx:79
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:472
 #: src/tables/repair/RepairPacketTable.tsx:32
 msgid "Symptom"
@@ -10339,7 +10469,7 @@ msgid "What the operator observes"
 msgstr ""
 
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:433
-#: src/pages/repair/RepairPacketDetail.tsx:70
+#: src/pages/repair/RepairPacketDetail.tsx:71
 #: src/tables/repair/RepairPacketTable.tsx:37
 msgid "Criticality"
 msgstr ""
@@ -10420,11 +10550,6 @@ msgstr ""
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:70
 #: src/pages/repair/components/InvestigationPanel.tsx:81
 msgid "Investigation findings"
-msgstr ""
-
-#: src/pages/maintenance/workorders/components/InvestigationSection.tsx:74
-#: src/pages/repair/components/InvestigationPanel.tsx:91
-msgid "Finding"
 msgstr ""
 
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:76
@@ -10529,7 +10654,7 @@ msgid "Criticality: {0}"
 msgstr ""
 
 #: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:64
-#: src/pages/repair/RepairPacketDetail.tsx:183
+#: src/pages/repair/RepairPacketDetail.tsx:184
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:471
 msgid "Fault"
 msgstr ""
@@ -10734,7 +10859,7 @@ msgid "Part parameters cannot be edited, as the part is locked"
 msgstr ""
 
 #: src/pages/part/PartDetail.tsx:592
-#: src/pages/repair/RepairPacketDetail.tsx:229
+#: src/pages/repair/RepairPacketDetail.tsx:236
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:810
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:365
 #: src/tables/part/PartTestTemplateTable.tsx:116
@@ -11426,83 +11551,94 @@ msgstr ""
 msgid "Issue Date"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:40
+#: src/pages/repair/RepairPacketDetail.tsx:41
+#: src/pages/repair/components/DiagnosisPanel.tsx:104
 msgid "No data yet."
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:69
+#: src/pages/repair/RepairPacketDetail.tsx:70
 #: src/tables/repair/RepairPacketTable.tsx:27
 #: src/tables/settings/AssetTable.tsx:35
 msgid "Asset"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:71
+#: src/pages/repair/RepairPacketDetail.tsx:72
 msgid "Generation"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:79
+#: src/pages/repair/RepairPacketDetail.tsx:80
 msgid "Fault Summary"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:80
+#: src/pages/repair/RepairPacketDetail.tsx:81
 msgid "Production Impact"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:97
+#: src/pages/repair/RepairPacketDetail.tsx:98
 msgid "Request Approval"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:99
+#: src/pages/repair/RepairPacketDetail.tsx:100
 msgid "Start Work"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:101
+#: src/pages/repair/RepairPacketDetail.tsx:102
 msgid "Close Packet"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:152
+#: src/pages/repair/RepairPacketDetail.tsx:153
 msgid "Close Repair"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:200
+#: src/pages/repair/RepairPacketDetail.tsx:207
 msgid "Investigation"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:211
+#: src/pages/repair/RepairPacketDetail.tsx:218
 msgid "Safety"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:255
+#: src/pages/repair/RepairPacketDetail.tsx:262
 msgid "Purpose"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:272
+#: src/pages/repair/RepairPacketDetail.tsx:279
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:380
 msgid "Closeout"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:284
+#: src/pages/repair/RepairPacketDetail.tsx:291
 #: src/tables/settings/ErrorTable.tsx:103
 msgid "When"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:285
+#: src/pages/repair/RepairPacketDetail.tsx:292
 msgid "Event"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:286
+#: src/pages/repair/RepairPacketDetail.tsx:293
 msgid "From"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:287
+#: src/pages/repair/RepairPacketDetail.tsx:294
 #: src/tables/settings/EmailTable.tsx:85
 msgid "To"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:288
-#: src/pages/repair/components/safety/SafetyGateWaiveModal.tsx:101
-#: src/pages/tasks/workorders/CloseoutPanel.tsx:699
-msgid "Reason"
+#: src/pages/repair/components/DiagnosisPanel.tsx:117
+msgid "Verification failed"
+msgstr ""
+
+#: src/pages/repair/components/DiagnosisPanel.tsx:128
+msgid "This content was produced by an offline keyword match over the fault text. No machine data was read and no AI analysis ran."
+msgstr ""
+
+#: src/pages/repair/components/DiagnosisPanel.tsx:136
+msgid "Offline keyword fallback — not analyzed"
+msgstr ""
+
+#: src/pages/repair/components/DiagnosisPanel.tsx:150
+msgid "Verify diagnosis"
 msgstr ""
 
 #: src/pages/repair/components/InvestigationPanel.tsx:28
@@ -14187,10 +14323,6 @@ msgstr ""
 
 #: src/tables/machine/MachineTypeTable.tsx:382
 msgid "Machine Driver Detail"
-msgstr ""
-
-#: src/tables/notifications/NotificationTable.tsx:26
-msgid "Age"
 msgstr ""
 
 #: src/tables/notifications/NotificationTable.tsx:37

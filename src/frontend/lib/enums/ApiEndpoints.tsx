@@ -104,7 +104,6 @@ export enum ApiEndpoints {
   work_order_readiness = 'tasks/work-orders/:id/readiness/',
   work_order_complete = 'tasks/work-orders/:id/complete/',
   work_order_events = 'tasks/work-orders/:id/events/',
-  closeout_permission_detail = 'tasks/closeout/permissions/:id/',
   work_order_closeout_captures = 'tasks/work-orders/:id/closeout/captures/',
   work_order_closeout_capture_detail = 'tasks/work-orders/:id/closeout/captures/:capId/',
   work_order_closeout_capture_extract = 'tasks/work-orders/:id/closeout/captures/:capId/extract/',

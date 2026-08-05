@@ -2,7 +2,7 @@
  * Tests for UI permissions checks
  */
 
-import { test } from './baseFixtures';
+import { expect, test } from './baseFixtures';
 import { adminuser, readeruser } from './defaults';
 import { clickOnRowMenu, loadTab } from './helpers';
 import { doCachedLogin } from './login';
@@ -52,6 +52,41 @@ test('Permissions - Admin', async ({ browser }) => {
   );
   await page.getByRole('menuitem', { name: 'Open Profile' }).click();
   await page.getByText('User: ian', { exact: true }).click();
+});
+
+test('Permissions - Closeout group role', async ({ browser }) => {
+  const page = await doCachedLogin(browser, {
+    user: adminuser,
+    url: '/settings/admin/'
+  });
+
+  await loadTab(page, 'Users / Access');
+  await page.getByRole('button', { name: 'Groups', exact: true }).click();
+  await page.getByRole('cell', { name: 'engineering', exact: true }).click();
+  await page.getByRole('button', { name: 'Group Roles', exact: true }).click();
+
+  const closeoutRow = page.getByTestId('closeout-permissions-row');
+  await expect(closeoutRow).toBeVisible();
+  await expect(
+    closeoutRow.getByText('Closeout Permissions', { exact: true })
+  ).toBeVisible();
+
+  const closeoutPermission = closeoutRow.getByRole('checkbox', {
+    name: 'Can capture closeout narratives',
+    exact: true
+  });
+  const wasGranted = await closeoutPermission.isChecked();
+
+  await closeoutPermission.click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByText('Group roles updated', { exact: true }).waitFor();
+  await expect(closeoutPermission).toBeChecked({ checked: !wasGranted });
+
+  // Restore the fixture state for other tests.
+  await closeoutPermission.click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByText('Group roles updated', { exact: true }).waitFor();
+  await expect(closeoutPermission).toBeChecked({ checked: wasGranted });
 });
 
 /**

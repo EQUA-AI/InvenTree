@@ -10,7 +10,12 @@ import structlog
 from InvenTree.ready import canAppAccessDatabase
 from users.models import RuleSet
 from users.permissions import get_model_permission_string, split_permission
-from users.ruleset import RULESET_CHANGE_INHERIT, RULESET_CHOICES, RULESET_NAMES
+from users.ruleset import (
+    RULESET_CHANGE_INHERIT,
+    RULESET_CHOICES,
+    RULESET_CUSTOM_PERMISSIONS,
+    RULESET_NAMES,
+)
 
 logger = structlog.get_logger('inventree')
 
@@ -77,6 +82,19 @@ def update_group_roles(group: Group, debug: bool = False) -> None:
     # List of permissions which must be removed from the group
     permissions_to_delete = set()
 
+    # Explicit model ownership for named permissions whose codenames do not
+    # follow Django's standard ``action_model`` format.
+    custom_permission_models = {}
+
+    def add_permission(permission_string, allowed):
+        """Add or remove a permission from the desired group state."""
+        if allowed:
+            # An 'allowed' action is always preferenced over a 'forbidden' action
+            permissions_to_delete.discard(permission_string)
+            permissions_to_add.add(permission_string)
+        elif permission_string not in permissions_to_add:
+            permissions_to_delete.add(permission_string)
+
     def add_model(name, action, allowed):
         """Add a new model to the pile.
 
@@ -90,15 +108,7 @@ def update_group_roles(group: Group, debug: bool = False) -> None:
 
         permission_string = get_model_permission_string(model, action)
 
-        if allowed:
-            # An 'allowed' action is always preferenced over a 'forbidden' action
-            if permission_string in permissions_to_delete:
-                permissions_to_delete.remove(permission_string)
-
-            permissions_to_add.add(permission_string)
-
-        elif permission_string not in permissions_to_add:
-            permissions_to_delete.add(permission_string)
+        add_permission(permission_string, allowed)
 
     # Pre-fetch all the RuleSet objects
     rulesets: dict[Any, RuleSet] = {
@@ -125,6 +135,14 @@ def update_group_roles(group: Group, debug: bool = False) -> None:
             add_model(model, 'change', ruleset.can_change)
             add_model(model, 'delete', ruleset.can_delete)
 
+        for field, (model_name, codename) in RULESET_CUSTOM_PERMISSIONS.get(
+            rule_name, {}
+        ).items():
+            app = model_name.split('_', maxsplit=1)[0]
+            permission_string = f'{app}.{codename}'
+            custom_permission_models[permission_string] = model_name
+            add_permission(permission_string, getattr(ruleset, field))
+
     def get_permission_object(permission_string):
         """Find the permission object in the database, from the simplified permission string.
 
@@ -135,7 +153,10 @@ def update_group_roles(group: Group, debug: bool = False) -> None:
         """
         (app, perm) = permission_string.split('.')
 
-        perm, model = split_permission(app, perm)
+        if model_name := custom_permission_models.get(permission_string):
+            _model_app, model = model_name.split('_', maxsplit=1)
+        else:
+            perm, model = split_permission(app, perm)
         permission = None
 
         try:

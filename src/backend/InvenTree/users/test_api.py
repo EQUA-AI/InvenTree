@@ -547,3 +547,29 @@ class GroupDetailTests(InvenTreeAPITestCase):
 
         response = self.get(url, {'permission_detail': 'false'}, expected_code=200)
         self.assertNotIn('permissions', response.data)
+
+    def test_update_closeout_permission(self):
+        """Closeout actions are managed through the standard RuleSet API."""
+        self.user.is_staff = True
+        self.user.is_superuser = True
+        self.user.save()
+
+        group = Group.objects.get(pk=1)
+        ruleset = group.rule_sets.get(name='work_order')
+        url = reverse('api-ruleset-detail', kwargs={'pk': ruleset.pk})
+        permission = {
+            'content_type__app_label': 'tasks',
+            'codename': 'capture_closeout',
+        }
+
+        response = self.patch(
+            url, data={'can_capture_closeout': True}, expected_code=200
+        )
+        self.assertTrue(response.data['can_capture_closeout'])
+        self.assertTrue(group.permissions.filter(**permission).exists())
+
+        response = self.patch(
+            url, data={'can_capture_closeout': False}, expected_code=200
+        )
+        self.assertFalse(response.data['can_capture_closeout'])
+        self.assertFalse(group.permissions.filter(**permission).exists())
