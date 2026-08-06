@@ -231,39 +231,69 @@ def _normalized_text(text: str) -> str:
     return ' '.join(text.split()).casefold()
 
 
-def _tighten_field_spans(value: str, spans, narrative: str):
-    """Narrow each claimed span to the guarded occurrence of the value in it.
-
-    The extractor anchors values with character coordinates, but a language
-    model cannot do character arithmetic reliably: live runs consistently
-    produced the right value anchored to its containing sentence, which the
-    exact-span rule rejected (observed 2026-08-05, field ``cause``, four out
-    of four attempts). Tightening keeps every anti-fabrication property:
-
-    * the value must still occur inside the span the extractor claimed, at
-      word boundaries (no borrowing ``safe`` from ``unsafe``);
-    * the exact containment check that follows re-applies the narrowed-span
-      guards, including the negation/hedge lookbehind - ``safe`` tightened
-      out of ``was not safe`` is still rejected;
-    * when no guarded occurrence exists the span is left untouched, so the
-      rejection path is byte-for-byte what it was before.
-    """
+def _value_pattern(value: str):
+    """Word-boundary, whitespace-flexible pattern for one contiguous value."""
     normalized = _normalized_text(value)
     tokens = [re.escape(token) for token in normalized.split()]
     if not tokens:
-        return spans
+        return None
     body = r'\s+'.join(tokens)
     prefix = r'(?<!\w)' if re.match(r'\w', normalized[0]) else ''
     suffix = r'(?!\w)' if re.match(r'\w', normalized[-1]) else ''
-    pattern = re.compile(f'{prefix}{body}{suffix}', re.IGNORECASE)
-    tightened = []
+    return re.compile(f'{prefix}{body}{suffix}', re.IGNORECASE)
+
+
+def _anchor_field_spans(value: str, spans, narrative: str, where: str):
+    """Anchor a field value to real narrative coordinates, guards intact.
+
+    The extractor claims character coordinates, but a language model cannot do
+    character arithmetic reliably: live runs consistently produced the right
+    value with wrong or over-wide spans and the exact-span rule refused every
+    one of them (observed 2026-08-05, field ``cause``, WO-000128). The server
+    now derives the coordinates itself: first from occurrences inside the
+    claimed spans, then - flagged as realigned for the reviewing human - from
+    the narrative as a whole. Every candidate occurrence is re-validated by
+    the exact containment check, so all fabrication guards still apply:
+
+    * a value absent from the narrative anchors nowhere and is rejected;
+    * word boundaries hold (``safe`` finds no anchor inside ``unsafe``);
+    * the negation/hedge lookbehind still fires - an occurrence inside
+      ``was not safe`` is skipped, and if no clean occurrence exists the
+      field is rejected;
+    * values may not join separate fragments (single contiguous match only).
+
+    Nothing here weakens review authority: every extracted field still
+    requires an explicit human decision before anything is persisted.
+
+    Returns ``(anchored_spans, realigned)``; raises via the containment check
+    when no guarded occurrence exists anywhere.
+    """
+    pattern = _value_pattern(value)
+    if pattern is None:
+        return spans, False
+
+    def _candidates(start: int, end: int):
+        for match in pattern.finditer(narrative, start, end):
+            yield [match.start(), match.end()]
+
     for span_start, span_end in spans:
-        match = pattern.search(narrative[span_start:span_end])
-        if match is None:
-            tightened.append([span_start, span_end])
-        else:
-            tightened.append([span_start + match.start(), span_start + match.end()])
-    return tightened
+        for candidate in _candidates(span_start, span_end):
+            try:
+                _require_value_in_spans(value, [candidate], narrative, where)
+            except ExtractionInvalidOutput:
+                continue
+            return [candidate], False
+
+    for candidate in _candidates(0, len(narrative)):
+        try:
+            _require_value_in_spans(value, [candidate], narrative, where)
+        except ExtractionInvalidOutput:
+            continue
+        return [candidate], True
+
+    # No guarded occurrence anywhere: surface the original rejection.
+    _require_value_in_spans(value, spans, narrative, where)
+    return spans, False  # pragma: no cover - the line above always raises
 
 
 def _require_value_in_spans(
@@ -498,16 +528,23 @@ def _validate_field(name: str, payload, narrative: str):
     spans = _validate_spans(
         payload['spans'], narrative, f'field {name!r}', required=populated
     )
+    realigned = False
     if populated:
         if name == 'downtime_minutes':
             _require_downtime_in_spans(value, spans, narrative)
         else:
-            spans = _tighten_field_spans(value, spans, narrative)
-            _require_value_in_spans(value, spans, narrative, f'field {name!r}')
+            spans, realigned = _anchor_field_spans(
+                value, spans, narrative, f'field {name!r}'
+            )
     confidence = payload.get('confidence', 0.0)
     if type(confidence) not in (int, float) or not 0.0 <= float(confidence) <= 1.0:
         _reject(f'field {name!r}: confidence must be within [0, 1]')
     warnings = _validate_warnings(payload.get('warnings', []), f'field {name!r}')
+    if realigned and 'span_realigned' not in warnings:
+        # The extractor's claimed coordinates did not contain the value; the
+        # anchor shown to the reviewer was derived server-side. Visible so a
+        # reviewing human knows the highlight is ours, not the model's claim.
+        warnings.append('span_realigned')
     return {
         'value': value,
         'spans': spans,

@@ -228,18 +228,47 @@ class ExtractionContractTest(TestCase):
             narrative[tightened_start:tightened_end], 'debris accumulation'
         )
 
-    def test_tightening_does_not_reach_outside_the_claimed_span(self):
-        """A value present in the narrative but not the cited span still fails."""
+    def test_misaligned_span_is_realigned_and_flagged(self):
+        """Wrong coordinates for a real value re-anchor, visibly to the human.
+
+        Live extractors emitted correct values with coordinates that did not
+        contain them at all. The value must still occur - unnegated, at word
+        boundaries, contiguously - somewhere in the narrative; the derived
+        anchor is flagged ``span_realigned`` so the reviewer knows the
+        highlight is server-derived, not the model's claim.
+        """
         narrative = 'Root cause was debris accumulation. Flow restored fully.'
         flow_start = narrative.index('Flow')
+        document = validate_extraction_output(
+            {
+                'schema_version': 1,
+                'fields': {
+                    'cause': {
+                        'value': 'debris accumulation',
+                        'spans': [[flow_start, len(narrative)]],
+                        'confidence': 0.9,
+                    }
+                },
+            },
+            narrative,
+        )
+        field = document['fields']['cause']
+        start, end = field['spans'][0]
+        self.assertEqual(narrative[start:end], 'debris accumulation')
+        self.assertIn('span_realigned', field['warnings'])
+
+    def test_realignment_never_anchors_a_negated_occurrence(self):
+        """The fallback cannot launder negated context into a clean anchor."""
+        narrative = 'The pump was not safe. Work was stopped immediately.'
+        stopped = narrative.index('Work')
         with self.assertRaises(ExtractionInvalidOutput):
             validate_extraction_output(
                 {
                     'schema_version': 1,
                     'fields': {
-                        'cause': {
-                            'value': 'debris accumulation',
-                            'spans': [[flow_start, len(narrative)]],
+                        'result': {
+                            'value': 'safe',
+                            'spans': [[stopped, len(narrative)]],
                             'confidence': 0.9,
                         }
                     },
