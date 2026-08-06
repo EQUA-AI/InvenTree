@@ -4,6 +4,7 @@ import {
   IconActivityHeartbeat,
   IconInfoCircle,
   IconListCheck,
+  IconMessageChatbot,
   IconPlayerPlay,
   IconTool
 } from '@tabler/icons-react';
@@ -23,6 +24,7 @@ import InstanceDetail from '../../components/nav/InstanceDetail';
 import { PageDetail } from '../../components/nav/PageDetail';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useInstance } from '../../hooks/UseInstance';
+import { openGlobalAIChat } from '../../states/AIChatState';
 import { MachinePartTable } from '../../tables/assets/MachinePartTable';
 import { MaintenanceRecordTable } from '../../tables/assets/MaintenanceRecordTable';
 import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateModal';
@@ -168,6 +170,25 @@ export default function MachineDetail() {
           title={machine?.name ?? t`Machine Detail`}
           breadcrumbs={[{ name: t`Machines`, url: '/machines/index/' }]}
           actions={[
+            // S14 B5: opens the main chat drawer with this machine preloaded
+            // as a VISIBLE routing hint — never authority. Every tool call
+            // re-authorizes server-side; a denied or out-of-scope machine is
+            // indistinguishable from a nonexistent one.
+            <Button
+              key='ask-ai'
+              variant='light'
+              leftSection={<IconMessageChatbot size={16} />}
+              onClick={() =>
+                machine?.pk &&
+                openGlobalAIChat({
+                  machineId: machine.pk,
+                  machineName: machine.name ?? `Machine ${machine.pk}`
+                })
+              }
+              disabled={!machine?.pk}
+            >
+              {t`Ask about this machine`}
+            </Button>,
             // Create repair plans work for this asset. Starting it is a
             // separate, readiness-gated transition and is not offered here.
             <Button

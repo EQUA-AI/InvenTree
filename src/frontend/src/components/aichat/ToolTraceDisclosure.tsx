@@ -14,7 +14,17 @@ import {
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
 import { useState } from 'react';
 
-import type { ScopedToolTraceRow } from '../../hooks/UseScopedChat';
+// Owned here since S14 removed the scoped-chat rail.
+export interface ScopedToolTraceRow {
+  id: number;
+  turn_key: string;
+  tool: string;
+  tool_version: string;
+  arguments: Record<string, any>;
+  authorization_result: 'allowed' | 'denied';
+  duration_ms: number | null;
+  created_at: string;
+}
 
 export function ToolTraceDisclosure({
   rows

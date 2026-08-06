@@ -58,7 +58,6 @@ import type {
   WorkOrderPart
 } from '@lib/types/Tasks';
 
-import { ScopedChatButton } from '../../components/aichat/ScopedChatButton';
 import { useApi } from '../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../functions/notifications';
 import {
@@ -1859,14 +1858,6 @@ export default function MaintenanceBoard() {
       >
         <form onSubmit={handleTaskSubmit}>
           <Stack gap='md'>
-            {editingTask && (
-              <Group justify='flex-end'>
-                <ScopedChatButton
-                  contextType='work_order'
-                  objectId={editingTask.id}
-                />
-              </Group>
-            )}
             <TextInput
               label={t`Title`}
               placeholder={t`Summarize the work in one line`}

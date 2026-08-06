@@ -7,6 +7,7 @@ import {
   CopyButton,
   Drawer,
   Group,
+  Loader,
   Menu,
   Paper,
   ScrollArea,
@@ -14,6 +15,7 @@ import {
   Stack,
   Tabs,
   Text,
+  TextInput,
   Textarea,
   Tooltip,
   Transition,
@@ -33,6 +35,7 @@ import {
   IconPlayerStop,
   IconRefresh,
   IconRobot,
+  IconSearch,
   IconSend,
   IconSparkles,
   IconThumbDown,
@@ -52,6 +55,7 @@ import {
   useAIChat
 } from '../../hooks/UseAIChat';
 import { useVoiceLiveSession } from '../../hooks/useVoiceLiveSession';
+import { useAIChatState } from '../../states/AIChatState';
 import { useLocalState } from '../../states/LocalState';
 import { ChatActionProposalList } from '../ai/ChatActionProposals';
 import { HITLApprovalCard, HITLResultBanner } from '../ai/HITLApprovalModal';
@@ -122,6 +126,102 @@ function formatRelativeTimeFromISOString(iso: string): string {
   if (minutes < 60) return t`${minutes}m ago`;
   if (hours < 24) return t`${hours}h ago`;
   return t`${days}d ago`;
+}
+
+/**
+ * Conversation history with server-side search and resume (S20 A8).
+ *
+ * Search runs over the durable aichat ledger inside the caller's own
+ * owner/scope boundary — the server can only ever return the viewer's
+ * threads. Clicking a row resumes that thread in the chat tab.
+ */
+function ThreadHistoryPanel({
+  threads,
+  activeThreadId,
+  searchThreads,
+  onResume
+}: Readonly<{
+  threads: { id: string; title: string; updatedAt: Date }[];
+  activeThreadId: string | null;
+  searchThreads: (
+    query: string
+  ) => Promise<{ id: string; title: string; updatedAt: Date }[]>;
+  onResume: (threadId: string) => void;
+}>) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<
+    { id: string; title: string; updatedAt: Date }[] | null
+  >(null);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    const term = query.trim();
+    if (!term) {
+      setResults(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const handle = setTimeout(() => {
+      searchThreads(term)
+        .then((rows) => setResults(rows))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [query, searchThreads]);
+
+  const rows = results ?? threads;
+
+  return (
+    <Stack gap='xs' data-testid='ai-chat-thread-history'>
+      <TextInput
+        placeholder={t`Search conversations...`}
+        value={query}
+        onChange={(event) => setQuery(event.currentTarget.value)}
+        leftSection={<IconSearch size={14} />}
+        rightSection={searching ? <Loader size='xs' /> : undefined}
+        aria-label='search-ai-chat-history'
+      />
+      {rows.length === 0 && (
+        <Text size='sm' c='dimmed' ta='center' py='md'>
+          {results !== null
+            ? t`No conversations match`
+            : t`No conversations yet`}
+        </Text>
+      )}
+      {rows.map((thread) => (
+        <UnstyledButton
+          key={thread.id}
+          onClick={() => onResume(thread.id)}
+          data-testid='ai-chat-history-row'
+        >
+          <Paper
+            p='xs'
+            radius='md'
+            withBorder
+            style={{
+              borderColor:
+                thread.id === activeThreadId
+                  ? 'var(--mantine-color-blue-4)'
+                  : undefined
+            }}
+          >
+            <Group justify='space-between' wrap='nowrap'>
+              <Text size='sm' truncate style={{ flex: 1 }}>
+                {thread.title || t`Chat`}
+              </Text>
+              <Text size='xs' c='dimmed' style={{ whiteSpace: 'nowrap' }}>
+                {formatRelativeTimeFromISOString(
+                  thread.updatedAt.toISOString()
+                )}
+              </Text>
+            </Group>
+          </Paper>
+        </UnstyledButton>
+      ))}
+    </Stack>
+  );
 }
 
 function ApprovalInboxPanel({
@@ -871,6 +971,7 @@ export function AIChatDrawer({
     renameThread,
     isSyncing,
     syncThreads,
+    searchThreads,
     // HITL (Human-in-the-Loop) approval
     pendingHITL,
     hitlResult,
@@ -880,6 +981,10 @@ export function AIChatDrawer({
     clearHITLResult,
     uploadFile
   } = useAIChat();
+
+  // S14 B5: machine routing hint preloaded by "Ask about this machine".
+  const routingHint = useAIChatState((state) => state.routingHint);
+  const clearRoutingHint = useAIChatState((state) => state.clearHint);
 
   // Realtime voice (WS5): explicit user-started sessions in the same
   // drawer, converging on the same server-backed conversation history.
@@ -1040,11 +1145,27 @@ export function AIChatDrawer({
       const text = messageText || inputValue;
       if (!text.trim() || isLoading) return;
       const fileIds = attachedFiles.map((f) => f.file_id);
-      sendMessage(text, fileIds.length > 0 ? fileIds : undefined);
+      // S14 B5: the routing hint travels as visible message text — a hint the
+      // server may use for routing/narrowing, never an authority claim. It is
+      // consumed by the first message so follow-ups stay clean.
+      const outgoing = routingHint
+        ? `[Machine: ${routingHint.machineName}] ${text}`
+        : text;
+      sendMessage(outgoing, fileIds.length > 0 ? fileIds : undefined);
+      if (routingHint) {
+        clearRoutingHint();
+      }
       setInputValue('');
       setAttachedFiles([]);
     },
-    [inputValue, isLoading, sendMessage, attachedFiles]
+    [
+      inputValue,
+      isLoading,
+      sendMessage,
+      attachedFiles,
+      routingHint,
+      clearRoutingHint
+    ]
   );
 
   // Handle file selection
@@ -1442,16 +1563,30 @@ export function AIChatDrawer({
           )}
 
           {activeTab === 'history' && (
-            <ApprovalInboxPanel
-              statuses={[
-                'succeeded',
-                'denied',
-                'failed',
-                'expired',
-                'canceled'
-              ]}
-              emptyText={t`No resolved actions yet`}
-            />
+            <>
+              <ThreadHistoryPanel
+                threads={threads}
+                activeThreadId={activeThreadId}
+                searchThreads={searchThreads}
+                onResume={(threadId) => {
+                  switchThread(threadId);
+                  setActiveTab('chat');
+                }}
+              />
+              <Text size='xs' fw={600} c='dimmed' mt='md'>
+                {t`Resolved actions`}
+              </Text>
+              <ApprovalInboxPanel
+                statuses={[
+                  'succeeded',
+                  'denied',
+                  'failed',
+                  'expired',
+                  'canceled'
+                ]}
+                emptyText={t`No resolved actions yet`}
+              />
+            </>
           )}
         </ScrollArea>
 
@@ -1526,6 +1661,27 @@ export function AIChatDrawer({
               listening={voice.state === 'listening'}
               pendingConfirm={voice.pendingConfirm}
             />
+            {routingHint && (
+              <Group gap='xs' mb={4} data-testid='ai-chat-routing-hint'>
+                <Badge
+                  variant='light'
+                  color='blue'
+                  rightSection={
+                    <ActionIcon
+                      size='xs'
+                      variant='transparent'
+                      color='blue'
+                      aria-label='dismiss-routing-hint'
+                      onClick={clearRoutingHint}
+                    >
+                      <IconX size={10} />
+                    </ActionIcon>
+                  }
+                >
+                  {t`Asking about`}: {routingHint.machineName}
+                </Badge>
+              </Group>
+            )}
             <Paper
               radius='xl'
               p='xs'

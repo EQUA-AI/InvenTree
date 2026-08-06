@@ -9,7 +9,19 @@ import { t } from '@lingui/core/macro';
 import { Group, Stack, Text } from '@mantine/core';
 import { IconLink, IconLock } from '@tabler/icons-react';
 
-import type { ScopedCitation } from '../../hooks/UseScopedChat';
+// Owned here since S14 removed the scoped-chat rail; the drawer maps its
+// evidence payloads into this shape.
+export interface ScopedCitation {
+  id: number;
+  turn_key: string;
+  source_type: string;
+  available: boolean;
+  as_of: string;
+  source_id?: string;
+  source_revision?: string;
+  locator?: Record<string, any>;
+  excerpt_hash?: string;
+}
 
 export function CitationList({
   citations

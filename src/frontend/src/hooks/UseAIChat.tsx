@@ -478,11 +478,15 @@ function saveStoredThreads(threads: StoredThread[]): void {
  * Fetch threads from server
  */
 async function fetchServerThreads(
-  host: string
+  host: string,
+  query?: string
 ): Promise<ThreadSyncResponse | null> {
   try {
+    const search = query?.trim()
+      ? `&q=${encodeURIComponent(query.trim().slice(0, 200))}`
+      : '';
     const response = await fetch(
-      `${host}/threads?include_persisted=true&limit=50`,
+      `${host}/threads?include_persisted=true&limit=50${search}`,
       {
         method: 'GET',
         headers: {
@@ -979,6 +983,30 @@ export function useAIChat(config: AIChatConfig = {}) {
     createdAt: new Date(t.createdAt),
     updatedAt: new Date(t.updatedAt)
   }));
+
+  /**
+   * Search durable threads by title or message content (S20 A8).
+   *
+   * Server-side and boundary-scoped: the ledger query runs inside the
+   * caller's own owner/scope boundary, so it can only match their threads.
+   * Returns lightweight rows without touching local thread state.
+   */
+  const searchThreads = useCallback(
+    async (query: string): Promise<ChatThread[]> => {
+      const serverData = await fetchServerThreads(aiHost, query);
+      if (!serverData) {
+        return [];
+      }
+      return serverData.threads.map((thread) => ({
+        id: thread.thread_id,
+        title: thread.title || thread.summary || 'Chat',
+        messages: [],
+        createdAt: new Date(thread.created_at ?? Date.now()),
+        updatedAt: new Date(thread.last_activity ?? Date.now())
+      }));
+    },
+    [aiHost]
+  );
 
   /**
    * Save current messages to the active thread
@@ -1898,6 +1926,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     isSyncing,
     lastSyncTime,
     syncThreads,
+    searchThreads,
 
     // HITL (Human-in-the-Loop)
     pendingHITL,

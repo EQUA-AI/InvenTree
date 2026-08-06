@@ -29,6 +29,7 @@ import { getNavTabs } from '../../defaults/links';
 import { generateUrl } from '../../functions/urls';
 import { usePluginUIFeature } from '../../hooks/UsePluginUIFeature';
 import * as classes from '../../main.css';
+import { useAIChatState } from '../../states/AIChatState';
 import { useLocalState } from '../../states/LocalState';
 import { useServerApiState } from '../../states/ServerApiState';
 import {
@@ -80,10 +81,13 @@ export function Header() {
     { open: openNotificationDrawer, close: closeNotificationDrawer }
   ] = useDisclosure(false);
 
-  const [
-    aiChatDrawerOpened,
-    { open: openAIChatDrawer, close: closeAIChatDrawer }
-  ] = useDisclosure(false);
+  // Drawer open state lives in a global store (S14 B5) so pages like
+  // MachineDetail can open the drawer with a routing hint preloaded.
+  const {
+    isOpen: aiChatDrawerOpened,
+    open: openAIChatDrawer,
+    close: closeAIChatDrawer
+  } = useAIChatState();
 
   const { isLoggedIn, user } = useUserState();
   const [notificationCount, setNotificationCount] = useState<number>(0);
