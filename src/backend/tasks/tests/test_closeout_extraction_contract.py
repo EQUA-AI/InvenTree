@@ -194,6 +194,77 @@ class ExtractionContractTest(TestCase):
                     narrative,
                 )
 
+    def test_sentence_anchored_value_is_tightened_not_rejected(self):
+        """A correct value anchored to its containing sentence is accepted.
+
+        Live extractors cannot do character arithmetic: four out of four
+        production runs anchored ``cause`` to the whole sentence and were
+        refused (2026-08-05). The validator now narrows the span to the
+        guarded occurrence of the value and keeps every fabrication check.
+        """
+        narrative = (
+            'Replaced the inlet filter. Root cause was debris accumulation; '
+            'no deviations occurred.'
+        )
+        start = narrative.index('Root cause')
+        end = narrative.index(';')
+        document = validate_extraction_output(
+            {
+                'schema_version': 1,
+                'fields': {
+                    'cause': {
+                        'value': 'debris accumulation',
+                        'spans': [[start, end]],
+                        'confidence': 0.9,
+                    }
+                },
+            },
+            narrative,
+        )
+        field = document['fields']['cause']
+        self.assertEqual(field['value'], 'debris accumulation')
+        tightened_start, tightened_end = field['spans'][0]
+        self.assertEqual(
+            narrative[tightened_start:tightened_end], 'debris accumulation'
+        )
+
+    def test_tightening_does_not_reach_outside_the_claimed_span(self):
+        """A value present in the narrative but not the cited span still fails."""
+        narrative = 'Root cause was debris accumulation. Flow restored fully.'
+        flow_start = narrative.index('Flow')
+        with self.assertRaises(ExtractionInvalidOutput):
+            validate_extraction_output(
+                {
+                    'schema_version': 1,
+                    'fields': {
+                        'cause': {
+                            'value': 'debris accumulation',
+                            'spans': [[flow_start, len(narrative)]],
+                            'confidence': 0.9,
+                        }
+                    },
+                },
+                narrative,
+            )
+
+    def test_tightening_cannot_borrow_from_a_longer_token(self):
+        """Word boundaries hold: ``safe`` finds no anchor inside ``unsafe``."""
+        narrative = 'The pump was declared unsafe by the operator.'
+        with self.assertRaises(ExtractionInvalidOutput):
+            validate_extraction_output(
+                {
+                    'schema_version': 1,
+                    'fields': {
+                        'result': {
+                            'value': 'safe',
+                            'spans': [[0, len(narrative)]],
+                            'confidence': 0.9,
+                        }
+                    },
+                },
+                narrative,
+            )
+
     def test_text_fields_cannot_drop_context_from_a_broader_span(self):
         """Containment alone lets a value omit negation present in its cited span."""
         cases = (

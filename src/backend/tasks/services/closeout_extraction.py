@@ -231,6 +231,41 @@ def _normalized_text(text: str) -> str:
     return ' '.join(text.split()).casefold()
 
 
+def _tighten_field_spans(value: str, spans, narrative: str):
+    """Narrow each claimed span to the guarded occurrence of the value in it.
+
+    The extractor anchors values with character coordinates, but a language
+    model cannot do character arithmetic reliably: live runs consistently
+    produced the right value anchored to its containing sentence, which the
+    exact-span rule rejected (observed 2026-08-05, field ``cause``, four out
+    of four attempts). Tightening keeps every anti-fabrication property:
+
+    * the value must still occur inside the span the extractor claimed, at
+      word boundaries (no borrowing ``safe`` from ``unsafe``);
+    * the exact containment check that follows re-applies the narrowed-span
+      guards, including the negation/hedge lookbehind - ``safe`` tightened
+      out of ``was not safe`` is still rejected;
+    * when no guarded occurrence exists the span is left untouched, so the
+      rejection path is byte-for-byte what it was before.
+    """
+    normalized = _normalized_text(value)
+    tokens = [re.escape(token) for token in normalized.split()]
+    if not tokens:
+        return spans
+    body = r'\s+'.join(tokens)
+    prefix = r'(?<!\w)' if re.match(r'\w', normalized[0]) else ''
+    suffix = r'(?!\w)' if re.match(r'\w', normalized[-1]) else ''
+    pattern = re.compile(f'{prefix}{body}{suffix}', re.IGNORECASE)
+    tightened = []
+    for span_start, span_end in spans:
+        match = pattern.search(narrative[span_start:span_end])
+        if match is None:
+            tightened.append([span_start, span_end])
+        else:
+            tightened.append([span_start + match.start(), span_start + match.end()])
+    return tightened
+
+
 def _require_value_in_spans(
     value: str, spans, narrative: str, where: str, *, exact: bool = True
 ):
@@ -467,6 +502,7 @@ def _validate_field(name: str, payload, narrative: str):
         if name == 'downtime_minutes':
             _require_downtime_in_spans(value, spans, narrative)
         else:
+            spans = _tighten_field_spans(value, spans, narrative)
             _require_value_in_spans(value, spans, narrative, f'field {name!r}')
     confidence = payload.get('confidence', 0.0)
     if type(confidence) not in (int, float) or not 0.0 <= float(confidence) <= 1.0:
