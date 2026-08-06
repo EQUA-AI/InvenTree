@@ -168,7 +168,6 @@ def test_every_effectful_pack_has_an_explicit_fail_closed_workflow_map() -> None
     }
     assert effectful <= _PACK_WORKFLOWS.keys()
     assert pack_workflows("email.write") == frozenset({"wf3", "wf8", "general"})
-    assert pack_workflows("kanban.write") == frozenset({"wf8", "general"})
     assert pack_workflows("misspelled.write") == frozenset()
 
 

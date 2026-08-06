@@ -51,15 +51,19 @@ async def _call(tool, **kwargs):
     return await result if hasattr(result, "__await__") else result
 
 
-KANBAN_WRITES = [
-    ("create_kanban_card", {"title": "x"}),
-    ("update_kanban_card", {"card_id": 1}),
-    ("move_kanban_card", {"card_id": 1, "status": "done"}),
-    ("archive_kanban_card", {"card_id": 127}),
-    ("restore_kanban_card", {"card_id": 127}),
-    ("delete_kanban_card", {"card_id": 127}),
-    ("add_parts_to_kanban_card", {"card_id": 1, "parts": []}),
-    ("remove_part_from_kanban_card", {"card_id": 1, "part_id": 1}),
+#: The kanban write tools were deleted outright (S12 step 3); the fence has
+#: nothing to cover there. Absence itself is pinned by
+#: test_kanban_writes_governed; the parametrized ids remain listed here so a
+#: resurrected tool immediately re-enters fence coverage.
+KANBAN_WRITES_RETIRED = [
+    "create_kanban_card",
+    "update_kanban_card",
+    "move_kanban_card",
+    "archive_kanban_card",
+    "restore_kanban_card",
+    "delete_kanban_card",
+    "add_parts_to_kanban_card",
+    "remove_part_from_kanban_card",
 ]
 EMAIL_WRITES = [
     ("mark_email_processed", {"message_id": "1"}),
@@ -68,13 +72,17 @@ EMAIL_WRITES = [
 ]
 
 
-@pytest.mark.parametrize(("name", "kwargs"), KANBAN_WRITES)
-def test_kanban_writes_are_fenced(name, kwargs):
+@pytest.mark.parametrize("name", KANBAN_WRITES_RETIRED)
+def test_kanban_writes_stay_deleted_or_fenced(name):
+    """A resurrected board write tool must land back inside the fence.
+
+    Today the tools do not exist (S12 step 3) and this asserts exactly that;
+    if one returns, this test fails until it is added to the fence coverage
+    lists above with a real fenced-call case.
+    """
     from ai.core.integrations import kanban_tools
 
-    tool = getattr(kanban_tools, name)
-    with read_only_tool_fence(), pytest.raises(PermissionError):
-        asyncio.run(_call(tool, **kwargs))
+    assert not hasattr(kanban_tools, name)
 
 
 @pytest.mark.parametrize(("name", "kwargs"), EMAIL_WRITES)

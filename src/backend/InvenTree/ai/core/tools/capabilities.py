@@ -242,22 +242,6 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
         # access job details -- right after summarising the board.
         ("kanban", "board", "card", "backlog", "job", "jobs", "task", "tasks"),
     ),
-    "kanban.write": (
-        ToolEffect.WRITE,
-        (
-            "create_kanban_card",
-            "update_kanban_card",
-            "move_kanban_card",
-            "archive_kanban_card",
-            "restore_kanban_card",
-            # "delete_kanban_card" is withheld -- see _WITHHELD_TOOLS. The catalog
-            # rejects packs referencing unregistered tools, so this entry must stay
-            # removed for as long as the tool is absent from KANBAN_TOOLS.
-            "add_parts_to_kanban_card",
-            "remove_part_from_kanban_card",
-        ),
-        ("create card", "update card", "move card", "archive card", "delete card"),
-    ),
     "maintenance.read": (
         ToolEffect.READ,
         (
@@ -392,8 +376,6 @@ _ALL_PACK_WORKFLOWS = _DEFAULT_PACK_WORKFLOWS | _SPECIALIST_WORKFLOWS
 _PACK_WORKFLOWS: dict[str, frozenset[str]] = {
     # Email is part of the research rail as well as the everyday assistant.
     "email.write": frozenset({"wf3", "wf8", "general"}),
-    # Direct-ORM kanban writes never belong to a specialist rail.
-    "kanban.write": _DEFAULT_PACK_WORKFLOWS,
     "parts.write": _SPECIALIST_WORKFLOWS,
     "stock.write": _SPECIALIST_WORKFLOWS,
     "company.write": _SPECIALIST_WORKFLOWS,
@@ -946,7 +928,8 @@ _WITHHELD_TOOLS: dict[str, str] = {
     # unlike the REST work-order surface which applies ``scope_for_actor``.
     # Deletion returns as a governed command (permission, customer scope, expected
     # version, strict confirmation, durable audit record); until then it is withheld.
-    # ``archive_kanban_card`` remains available and is the correct soft-delete.
+    # The function itself was deleted with the S12 write-tool retirement; this
+    # entry remains as the fail-closed backstop should it ever be re-added.
     "delete_kanban_card": (
         "Hard delete cascades away work-order audit and closeout history, and the "
         "tool applies no customer scope; withheld pending a governed delete command"
@@ -954,55 +937,12 @@ _WITHHELD_TOOLS: dict[str, str] = {
 }
 
 
-#: The direct-ORM kanban write tools. When governed writes are enabled these are
-#: withheld from the agent so the ONLY AI path that mutates a board card is the
-#: governed proposal rail (``aichat.services.proposals``): the model proposes, a
-#: deterministic command computes the effect, and a separate authenticated
-#: confirmation dispatches the canonical ``tasks.services`` command (permission,
-#: customer scope, expected-version, audit event, exactly-once receipt). Off by
-#: default, so a deployment that has not adopted the proposal rail is unchanged.
-#:
-#: The tool-for-tool parity mapping onto proposal actions — including the four
-#: capabilities with NO governed counterpart (move/archive/restore/remove-part)
-#: — is recorded in ``LocalDocs/AiUpgrades/KanbanWriteParity.md``. That table is
-#: the precondition for defaulting the flag on: flipping it removes capability
-#: users have today, and the losses have to be a decision, not a surprise.
-_GOVERNED_KANBAN_WRITE_TOOLS: frozenset[str] = frozenset({
-    "create_kanban_card",
-    "update_kanban_card",
-    "move_kanban_card",
-    "archive_kanban_card",
-    "restore_kanban_card",
-    "add_parts_to_kanban_card",
-    "remove_part_from_kanban_card",
-})
-
-#: Reason surfaced when a governed-write tool is denied. Kept short and stable so
-#: the catalog manifest digest is deterministic under the flag.
-_GOVERNED_WRITE_REASON = (
-    "Direct AI board writes are governed: propose the change through the chat "
-    "proposal rail, which dispatches the canonical work-order command on confirm"
-)
-
-
-def _governed_kanban_writes_enabled() -> bool:
-    """Whether the direct-ORM kanban write bypass is retired (deploy setting).
-
-    Read at catalog-build time; ``capability_catalog.cache_clear()`` re-reads it.
-    """
-    from django.conf import settings
-
-    return bool(getattr(settings, "AIMMS_GOVERNED_KANBAN_WRITES", False))
-
-
-def governed_kanban_writes_enabled() -> bool:
-    """Public accessor for the governance flag (voice gate consults it too)."""
-    return _governed_kanban_writes_enabled()
-
-
-def governed_kanban_write_tool_ids() -> frozenset[str]:
-    """The direct-ORM kanban write tools retired by the governance flag."""
-    return _GOVERNED_KANBAN_WRITE_TOOLS
+# The direct-ORM kanban write tools were DELETED (execution-plan S12 step 3,
+# after the governed-flag soak): board mutations from chat/voice go through
+# the governed proposal rail (aichat.services.proposals) and the REST surface
+# only. The retirement is enforced by absence — the tools, their kanban.write
+# pack, and this module's disable-branch are gone. Do not re-add a direct
+# write tool; add a governed command instead.
 
 
 #: Tools whose authority is tenant-scoped rather than role-scoped. Kept as a
@@ -1040,10 +980,6 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
         # Checked before the RBAC map so a mapped-but-withheld tool cannot fall
         # through to NATIVE_PERMISSION and become exposed again.
         return AuthorizationPolicy(kind=PolicyKind.DISABLED, reason=withheld_reason)
-    if tool_id in _GOVERNED_KANBAN_WRITE_TOOLS and _governed_kanban_writes_enabled():
-        # Same guarantee as _WITHHELD_TOOLS, but policy-driven: the direct-ORM
-        # write is retired in favour of the proposal rail when governance is on.
-        return AuthorizationPolicy(kind=PolicyKind.DISABLED, reason=_GOVERNED_WRITE_REASON)
     if tool_id == "get_part_attachments":
         return AuthorizationPolicy(
             kind=PolicyKind.RESOURCE_AUTHORIZER,

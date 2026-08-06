@@ -334,6 +334,11 @@ class WF7RepairPacketWorkflow:
         response = outcome.response
         state = getattr(response.response_state, "value", response.response_state)
         if str(state) != "complete":
+            # Value-free observability: live triage of auto-mode fallbacks needs
+            # to distinguish an honest abstention/demotion from a provider
+            # failure without exposing content (found 2026-08-06: the wrapped
+            # "AI turn failed" left the outcome shape invisible).
+            logger.info("wf7 reasoning outcome not complete (state=%s)", state)
             raise RepairGenerationRefused(f"reasoning outcome was {state}")
 
         diagnosis, confidence = self._diagnosis_from_response(response, outcome.provenance)

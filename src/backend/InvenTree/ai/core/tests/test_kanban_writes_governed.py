@@ -1,18 +1,10 @@
-"""Regression: with governed writes on, the AI has no direct board-write path.
+"""Regression: the direct-ORM kanban write path no longer exists at all.
 
-Phase 6d retires the direct-ORM kanban write bypass. When
-``AIMMS_GOVERNED_KANBAN_WRITES`` is enabled, every card-mutating tool
-(``create``/``update``/``move``/``archive``/``restore`` and the part-allocation
-tools) flips to ``PolicyKind.DISABLED``. Two independent enforcement points key
-off that policy, and both are asserted here so neither can be removed silently:
-
-1. ``exposure_authorized`` refuses a DISABLED entry regardless of how privileged
-   the actor is, so the model-visible schema never contains the tool; and
-2. the invocation guard refuses a DISABLED policy, so even a hand-crafted call
-   cannot run it.
-
-The flag is off by default: a deployment that has not adopted the proposal rail
-keeps the legacy write surface unchanged, which the parity tests below assert.
+S12 step 3 (after the governed-flag soak) DELETED the seven write tools and
+their ``kanban.write`` capability pack: board mutations from any AI surface go
+through the governed proposal rail and the REST surface only. These tests pin
+the invariant by absence — stronger than the flag-driven DISABLED policy they
+replace, because there is no configuration in which the bypass can return.
 """
 
 # ruff: noqa: E402
@@ -29,109 +21,58 @@ import django
 django.setup()
 
 import ai.core.integrations.kanban_tools as kanban_tools
-import pytest
-from ai.core.tools.capabilities import (
-    _GOVERNED_KANBAN_WRITE_TOOLS,
-    PolicyKind,
-    _authorization_policy,
-    capability_catalog,
-    exposure_authorized,
+from ai.core.tools.capabilities import capability_catalog
+
+#: Every tool id the retired bypass exposed, including the withheld delete.
+RETIRED_WRITE_TOOL_IDS = (
+    "create_kanban_card",
+    "update_kanban_card",
+    "move_kanban_card",
+    "archive_kanban_card",
+    "restore_kanban_card",
+    "add_parts_to_kanban_card",
+    "remove_part_from_kanban_card",
+    "delete_kanban_card",
 )
-from django.test import override_settings
 
-GOVERNED = override_settings(AIMMS_GOVERNED_KANBAN_WRITES=True)
-
-#: The most privileged non-superuser kanban profile the exposure filter can see.
-# Kanban cards are work orders: the WORK_ORDER ruleset governs them.
-FULL_KANBAN_PROFILE = frozenset({
-    ("work_order", "view"),
-    ("work_order", "add"),
-    ("work_order", "change"),
-    ("work_order", "delete"),
-})
-
-WRITE_TOOL_IDS = sorted(_GOVERNED_KANBAN_WRITE_TOOLS)
-READ_TOOL_IDS = ["list_kanban_cards", "get_kanban_card"]
+READ_TOOL_IDS = (
+    "list_kanban_cards",
+    "get_kanban_card",
+    "get_kanban_summary",
+    "check_kanban_card_stock",
+)
 
 
-@pytest.fixture
-def _fresh_catalog():
-    """Rebuild the memoized catalog around a test so the flag is re-read."""
-    capability_catalog.cache_clear()
-    try:
-        yield
-    finally:
-        capability_catalog.cache_clear()
+def _tool_name(tool) -> str:
+    return getattr(tool, "name", None) or getattr(tool, "__name__", str(tool))
 
 
-def _entry(tool_id: str):
-    return next(e for e in capability_catalog() if e.tool_id == tool_id)
+def test_kanban_module_exports_reads_only() -> None:
+    """KANBAN_TOOLS is exactly the read set; no write function exists."""
+    names = {_tool_name(tool) for tool in kanban_tools.KANBAN_TOOLS}
+    assert names == set(READ_TOOL_IDS)
+    for retired in RETIRED_WRITE_TOOL_IDS:
+        assert not hasattr(kanban_tools, retired), (
+            f"{retired} exists again; board writes must go through the "
+            "governed proposal rail, never a direct-ORM tool"
+        )
 
 
-@pytest.mark.parametrize("tool_id", WRITE_TOOL_IDS)
-def test_write_tool_is_disabled_when_governed(tool_id):
-    """The policy source of truth: every write tool is DISABLED under the flag."""
-    tool = getattr(kanban_tools, tool_id)
-    with GOVERNED:
-        policy = _authorization_policy(tool, tool_id)
-    assert policy.kind is PolicyKind.DISABLED
-    assert policy.reason is not None
-    assert "proposal" in policy.reason
+def test_no_capability_pack_carries_a_kanban_write() -> None:
+    """The kanban.write pack is gone and no entry smuggles the ids back in."""
+    for entry in capability_catalog():
+        assert entry.pack_id != "kanban.write"
+        assert entry.tool_id not in RETIRED_WRITE_TOOL_IDS, (
+            f"{entry.tool_id} reappeared in pack {entry.pack_id}"
+        )
 
 
-@pytest.mark.parametrize("tool_id", WRITE_TOOL_IDS)
-def test_write_tool_is_not_exposed_to_any_actor_when_governed(tool_id, _fresh_catalog):
-    """Even a fully-permissioned actor cannot see a governed write tool."""
-    with GOVERNED:
-        capability_catalog.cache_clear()
-        assert not exposure_authorized(_entry(tool_id), FULL_KANBAN_PROFILE, authenticated=True)
+def test_text_chat_union_has_no_kanban_writes() -> None:
+    """The voice gate builds from this union; it must be structurally clean."""
+    from ai.core.voice.tool_actions import text_chat_tools
 
-
-def test_reads_remain_exposed_when_governed(_fresh_catalog):
-    """Governing writes must not touch the read surface."""
-    with GOVERNED:
-        capability_catalog.cache_clear()
-        for tool_id in READ_TOOL_IDS:
-            assert exposure_authorized(_entry(tool_id), FULL_KANBAN_PROFILE, authenticated=True)
-
-
-@pytest.mark.parametrize("tool_id", WRITE_TOOL_IDS)
-def test_write_tools_are_native_permissioned_by_default(tool_id):
-    """Parity: with the flag off (default), the legacy write surface is intact."""
-    tool = getattr(kanban_tools, tool_id)
-    policy = _authorization_policy(tool, tool_id)
-    assert policy.kind is PolicyKind.NATIVE_PERMISSION
-
-
-@pytest.mark.parametrize("tool_id", WRITE_TOOL_IDS)
-def test_write_tools_are_exposed_to_a_permissioned_actor_by_default(tool_id, _fresh_catalog):
-    """Parity: default exposure of the write surface is unchanged."""
-    assert exposure_authorized(_entry(tool_id), FULL_KANBAN_PROFILE, authenticated=True)
-
-
-def test_governed_write_set_matches_the_kanban_write_pack():
-    """The governed set is exactly the write pack (minus the withheld hard delete).
-
-    Guards against a new write tool being added to the pack but not to the
-    governed set, which would leave a live direct-ORM bypass under governance.
-    """
-    from ai.core.tools.capabilities import _PACK_SPECS
-
-    _effect, pack_tools, _terms = _PACK_SPECS["kanban.write"]
-    assert set(pack_tools) == set(WRITE_TOOL_IDS)
-
-
-def test_still_no_direct_write_tool_leaks_into_exposure_under_governance(_fresh_catalog):
-    """Whole-catalog sweep: no WRITE-effect kanban tool is exposed when governed."""
-    from ai.core.tools.capabilities import ToolEffect
-
-    with GOVERNED:
-        capability_catalog.cache_clear()
-        exposed_writes = [
-            entry.tool_id
-            for entry in capability_catalog()
-            if entry.pack_id == "kanban.write"
-            and entry.effect is ToolEffect.WRITE
-            and exposure_authorized(entry, FULL_KANBAN_PROFILE, authenticated=True)
-        ]
-    assert exposed_writes == []
+    names = {_tool_name(tool) for tool in text_chat_tools()}
+    for tool_id in RETIRED_WRITE_TOOL_IDS:
+        assert tool_id not in names
+    for read_id in READ_TOOL_IDS:
+        assert read_id in names

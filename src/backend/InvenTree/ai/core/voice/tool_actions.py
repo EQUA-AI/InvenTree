@@ -88,11 +88,10 @@ _ACTION_DOMAINS: tuple[tuple[re.Pattern[str], frozenset[str]], ...] = (
 def text_chat_tools() -> tuple[Any, ...]:
     """Return the stable union of tools exposed by the text workflows.
 
-    When ``AIMMS_GOVERNED_KANBAN_WRITES`` is on, the direct-ORM kanban write
-    tools are excluded here as well: the governance flag retires that bypass on
-    every surface, and the voice gate (resolver + executor) builds its catalog
-    from this union. Without this filter the flag only governed the
-    catalog-guarded text workflow while voice kept executing direct writes.
+    The direct-ORM kanban write tools no longer exist (S12 step 3): board
+    mutations from every AI surface go through the governed proposal rail,
+    so this union — and the voice gate catalog built from it — is
+    structurally free of them.
     """
     from ai.core.integrations.controlled_document_corpus import (
         CONTROLLED_CORPUS_TOOLS,
@@ -101,10 +100,6 @@ def text_chat_tools() -> tuple[Any, ...]:
     from ai.core.integrations.email.tools import EMAIL_TOOLS
     from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
-    from ai.core.tools.capabilities import (
-        governed_kanban_write_tool_ids,
-        governed_kanban_writes_enabled,
-    )
     from ai.core.tools.inventree.write.purchase_orders import (
         PURCHASE_ORDER_WRITE_TOOLS,
     )
@@ -117,14 +112,9 @@ def text_chat_tools() -> tuple[Any, ...]:
         *DOCUMENT_SEARCH_TOOLS,
         *CONTROLLED_CORPUS_TOOLS,
     )
-    governed: frozenset[str] = (
-        governed_kanban_write_tool_ids() if governed_kanban_writes_enabled() else frozenset()
-    )
     unique: dict[str, Any] = {}
     for tool in ordered:
         name = tool_name(tool)
-        if name in governed:
-            continue
         existing = unique.get(name)
         if existing is not None and existing is not tool:
             raise RuntimeError(f"Conflicting text-chat tools share the name {name!r}")

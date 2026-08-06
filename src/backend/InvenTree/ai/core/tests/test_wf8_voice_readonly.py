@@ -19,10 +19,7 @@ import django
 django.setup()
 
 from ai.core.integrations.email.tools import list_emails, send_email  # noqa: E402
-from ai.core.integrations.kanban_tools import (  # noqa: E402
-    create_kanban_card,
-    list_kanban_cards,
-)
+from ai.core.integrations.kanban_tools import list_kanban_cards  # noqa: E402
 from ai.core.tools.rbac import read_tools  # noqa: E402
 from ai.core.workflows.wf8_lookup import T1LookupWorkflow  # noqa: E402
 from django.test import SimpleTestCase  # noqa: E402
@@ -42,7 +39,8 @@ class VoiceReadOnlyToolsetTests(SimpleTestCase):
         voice = set(self.wf.VOICE_BASE_TOOLS)
         # No mutating tools that would bypass the InvenTree read-only fence.
         self.assertNotIn(send_email, voice)
-        self.assertNotIn(create_kanban_card, voice)
+        # Kanban write tools no longer exist anywhere (S12 step 3); the voice
+        # set is asserted read-only against the surviving surface.
         # Every text-chat read tool remains available, including email reads.
         allowed = set(read_tools(self.wf.BASE_TOOLS))
         self.assertTrue(voice)
@@ -53,7 +51,7 @@ class VoiceReadOnlyToolsetTests(SimpleTestCase):
     def test_text_toolset_keeps_full_surface(self):
         text = set(self.wf.BASE_TOOLS)
         self.assertIn(send_email, text)
-        self.assertIn(create_kanban_card, text)
+        self.assertIn(list_kanban_cards, text)
 
     def test_base_tools_for_gates_on_flag_and_modality(self):
         with patch(

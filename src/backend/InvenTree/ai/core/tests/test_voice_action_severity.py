@@ -54,7 +54,7 @@ def test_unknown_tools_fail_closed_to_strict():
 
 @pytest.mark.parametrize(
     "name",
-    ["archive_kanban_card", "restore_kanban_card", "move_kanban_card", "add_stock", "update_part"],
+    ["add_stock", "update_part", "transfer_stock", "count_stock"],
 )
 def test_reversible_actions_keep_the_lenient_bar(name):
     assert severity_for_tool_name(name) is WriteSeverity.REVERSIBLE
@@ -113,24 +113,13 @@ def _classify(tool_name_str: str, content: str):
         return tool_actions._action_class(object(), content)
 
 
-def test_archive_stays_reversible_despite_the_word_delete():
-    """The exact production utterance; archive must not claim to be permanent."""
-    action_class, phrase = _classify(
-        "archive_kanban_card", "can you delete the kanban card for grinder pump"
-    )
-
-    assert action_class is WriteActionClass.IRREVERSIBLE  # utterance raised it
-    # ...but the phrase names the real operation, not the mis-described one.
-    assert phrase == DEFAULT_CONFIRM_PHRASE
-
-
-def test_archive_with_a_neutral_utterance_takes_the_lenient_bar():
-    action_class, phrase = _classify(
-        "archive_kanban_card", "please take that grinder pump card off the board"
-    )
-
-    assert action_class is WriteActionClass.CONFIRMABLE
-    assert phrase == ""
+def test_retired_kanban_writes_fail_closed_to_strict():
+    """S12 step 3 deleted the board write tools; if one ever reappears the
+    severity table no longer knows it, and unknown tools take the strict bar.
+    (The grinder-pump archive incident this file used to pin is impossible
+    now: there is no archive tool to mis-describe.)"""
+    assert severity_for_tool_name("archive_kanban_card") is WriteSeverity.IRREVERSIBLE
+    assert severity_for_tool_name("move_kanban_card") is WriteSeverity.IRREVERSIBLE
 
 
 def test_send_email_is_strict_even_for_a_neutral_utterance():

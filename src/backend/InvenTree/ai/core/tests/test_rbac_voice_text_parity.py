@@ -171,8 +171,9 @@ def test_a_work_order_role_reaches_the_kanban_tools():
     text_allowed = {tool_name(tool) for tool in filter_tools(text_chat_tools(), WORK_ORDER_CREW)}
 
     assert "list_kanban_cards" in text_allowed  # view
-    assert "create_kanban_card" in text_allowed  # add
-    assert "move_kanban_card" in text_allowed  # change
+    # The write tools (create/move/...) were deleted in S12 step 3; the read
+    # surface is all a work-order role can reach from chat now.
+    assert "get_kanban_summary" in text_allowed  # view
 
 
 #: The six reads that landed with the maintenance/manuals packs. All are
@@ -219,8 +220,9 @@ def test_work_order_writes_are_granular_not_blanket():
     assert voice_allowed == set()
 
     #: delete is its own permission -- holding change must not grant it.
-    assert tool_requirement(_kanban_tool("delete_kanban_card")) == ("work_order", "delete")
-    assert not _voice_allows(_kanban_tool("delete_kanban_card"), WORK_ORDER_CREW)
+    # delete_kanban_card no longer exists; granularity is asserted on the
+    # surviving read tools plus the absence pinned in
+    # test_kanban_writes_governed.
 
 
 def _kanban_tool(name: str):

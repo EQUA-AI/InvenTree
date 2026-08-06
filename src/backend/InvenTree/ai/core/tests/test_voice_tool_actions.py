@@ -20,7 +20,6 @@ from ai.core.integrations.email.tools import (  # noqa: E402
     send_email,
 )
 from ai.core.integrations.inventory_tools import create_part  # noqa: E402
-from ai.core.integrations.kanban_tools import create_kanban_card  # noqa: E402
 from ai.core.tools.capabilities import tool_name  # noqa: E402
 from ai.core.tools.inventree.write.purchase_orders import (  # noqa: E402
     issue_purchase_order,
@@ -57,7 +56,8 @@ def test_action_catalog_covers_inventory_procurement_email_and_kanban():
     assert issue_purchase_order in actions
     assert send_email in actions
     assert generate_and_send_document in actions
-    assert create_kanban_card in actions
+    # Kanban write tools were deleted (S12 step 3); the action set is
+    # asserted against surviving mutating tools only.
     assert list_emails not in actions
     assert len({tool.__name__ for tool in actions}) == len(actions)
     assert all(capability_for_tool(tool) for tool in actions)

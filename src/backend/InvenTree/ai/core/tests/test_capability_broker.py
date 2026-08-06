@@ -65,9 +65,9 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
     # 61 wf8 tools (delete_kanban_card is withheld) + the specialist writes
     # wf2/wf3/wf4/wf6 carry: parts/stock/company/sales writes and the nine
     # purchase-order write tools.
-    assert len(wf8_tools) == 61
-    assert len(catalog) == 97
-    assert tuple(entry.tool for entry in catalog[:61]) == wf8_tools
+    assert len(wf8_tools) == 54
+    assert len(catalog) == 90
+    assert tuple(entry.tool for entry in catalog[:54]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -107,7 +107,6 @@ def test_catalog_has_expected_stable_pack_shapes():
         "kanban.read": 4,
         # 7, not 8: delete_kanban_card is withheld, though it remains listed in
         # the kanban.write pack spec so a re-add still resolves to a pack.
-        "kanban.write": 7,
         # Maintenance work orders: search plus the per-order drill-downs
         # (overview, readiness, repair state) and the per-machine open-repairs
         # view -- a job question is unanswerable without the full set.
@@ -213,7 +212,7 @@ def test_contract_manifest_is_stable_and_complete():
     assert first == second
     assert manifest_json() == manifest_json()
     # Matches the catalog pin: 55 + 5 maintenance reads + search_manuals.
-    assert len(first) == 97
+    assert len(first) == 90
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)

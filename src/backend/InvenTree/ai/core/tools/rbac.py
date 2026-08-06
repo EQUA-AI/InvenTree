@@ -132,15 +132,8 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
         kt.get_kanban_card: ("work_order", "view"),
         kt.get_kanban_summary: ("work_order", "view"),
         kt.check_kanban_card_stock: ("work_order", "view"),
-        kt.create_kanban_card: ("work_order", "add"),
-        kt.update_kanban_card: ("work_order", "change"),
-        kt.move_kanban_card: ("work_order", "change"),
-        kt.archive_kanban_card: ("work_order", "change"),
-        kt.restore_kanban_card: ("work_order", "change"),
-        kt.add_parts_to_kanban_card: ("work_order", "change"),
-        kt.remove_part_from_kanban_card: ("work_order", "change"),
-        # Hard-deletes the card and cascades to its parts: delete, not change.
-        kt.delete_kanban_card: ("work_order", "delete"),
+        # The direct-ORM kanban write tools were deleted (S12 step 3): board
+        # mutations go through the governed proposal rail and REST surface only.
         # Machines / assets. AssetMachine has no ruleset of its own, and an
         # asset is what a work order is raised against, so it borrows the
         # WORK_ORDER ruleset the same way kanban cards do. Role visibility is

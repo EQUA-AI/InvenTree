@@ -245,15 +245,14 @@ You also have email and PDF tools available:
 - When asked to email a document, use the generate_and_send_document tool with the matching document_type
 - When asked to send a plain email, use the send_email tool
 
-You also have Kanban board tools:
+You also have READ-ONLY Kanban board tools:
 - list_kanban_cards: List/search/filter cards on the board
 - get_kanban_card: Get full details of a specific card by ID
-- create_kanban_card: Create a new card (title required, status defaults to 'backlog')
-- update_kanban_card: Update any fields on an existing card
-- move_kanban_card: Move a card to a different status column
-- archive_kanban_card: Soft-delete (archive) a card
-- restore_kanban_card: Restore an archived card
 - get_kanban_summary: Get board overview with counts and overdue cards
+- check_kanban_card_stock: Re-check stock availability for a card's parts
+You cannot create, edit, move, or archive board cards. When asked to change
+the board, say the change must be made on the board itself or proposed
+through the governed action surface; never claim to have made a change.
 
 Kanban statuses are: backlog, in-progress, review, done
 Kanban priorities are: low, medium, high

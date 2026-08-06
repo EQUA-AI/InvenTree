@@ -18,7 +18,6 @@ removed silently:
 
 from __future__ import annotations
 
-import ai.core.integrations.kanban_tools as kanban_tools
 import pytest
 from ai.core.integrations.kanban_tools import KANBAN_READ_TOOLS, KANBAN_TOOLS
 from ai.core.tools.capabilities import (
@@ -63,12 +62,13 @@ def test_full_kanban_permissions_still_do_not_offer_delete():
     assert offered, "expected the profile to be offered the remaining kanban tools"
 
 
-def test_soft_delete_remains_available():
-    """Withholding hard delete must not remove the legitimate alternative."""
+def test_board_mutations_are_absent_entirely():
+    """S12 step 3 removed every board mutation, archive/restore included."""
     offered = {tool_name(tool) for tool in filter_tools(KANBAN_TOOLS, FULL_KANBAN_PROFILE)}
 
-    assert "archive_kanban_card" in offered
-    assert "restore_kanban_card" in offered
+    assert "archive_kanban_card" not in offered
+    assert "restore_kanban_card" not in offered
+    assert offered, "the read tools must survive for the privileged profile"
 
 
 def test_readding_the_tool_would_still_be_denied():
@@ -78,7 +78,11 @@ def test_readding_the_tool_would_still_be_denied():
     invocation guard (``policy_disabled``), so the failure mode of someone restoring
     the list entry is a denied tool rather than a live hard delete.
     """
-    policy = _authorization_policy(kanban_tools.delete_kanban_card, DELETE_TOOL_ID)
+
+    def resurrected_delete(work_order_id: int):  # pragma: no cover
+        raise AssertionError("must never execute")
+
+    policy = _authorization_policy(resurrected_delete, DELETE_TOOL_ID)
 
     assert policy.kind is PolicyKind.DISABLED
     assert policy.reason
@@ -96,9 +100,11 @@ def test_pack_spec_does_not_reference_the_withheld_tool():
     assert DELETE_TOOL_ID not in _pack_index()
 
 
-def test_rbac_mapping_is_retained():
-    """The permission mapping stays, so the tool is not silently unmapped later."""
-    assert _filter_map_cached()[kanban_tools.delete_kanban_card] == ("work_order", "delete")
+def test_rbac_map_has_no_kanban_write_entries():
+    """The write tools are deleted; the RBAC map must not resurrect them."""
+    names = {tool_name(tool) for tool in _filter_map_cached()}
+    assert DELETE_TOOL_ID not in names
+    assert "create_kanban_card" not in names
 
 
 def test_the_agent_prompt_does_not_advertise_delete():
@@ -119,6 +125,6 @@ def test_the_agent_prompt_does_not_advertise_delete():
     "tool_id",
     ["create_kanban_card", "update_kanban_card", "move_kanban_card"],
 )
-def test_other_write_tools_are_unaffected(tool_id):
-    """Scope check: this change withholds one tool, not the write surface."""
-    assert tool_id in {tool_name(tool) for tool in KANBAN_TOOLS}
+def test_former_write_tools_stay_deleted(tool_id):
+    """S12 step 3: the whole write surface is gone, not just hard delete."""
+    assert tool_id not in {tool_name(tool) for tool in KANBAN_TOOLS}

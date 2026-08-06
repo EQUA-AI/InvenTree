@@ -62,7 +62,7 @@ def test_offline_benchmark_meets_static_selection_gates(_pinned_lexicons):
     # (see test_kanban_delete_withheld.py). Was 55 before the five maintenance
     # work-order read tools joined INVENTORY_READ_TOOLS and search_manuals
     # arrived via CONTROLLED_CORPUS_TOOLS.
-    assert report["baseline"]["tool_count"] == 61
+    assert report["baseline"]["tool_count"] == 54
     assert report["baseline"]["measurement"] == (
         "normalized_local_contract_bytes_not_provider_tokens"
     )
