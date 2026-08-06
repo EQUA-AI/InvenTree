@@ -90,8 +90,10 @@ class VoiceLiveChannel:
     the first SDP request and torn down through :func:`close_channel`.
     """
 
-    def __init__(self, session_id: str) -> None:
+    def __init__(self, session_id: str, user_id: int | None = None) -> None:
         self.session_id = session_id
+        #: The session owner's pk, used only to derive actor-scoped ASR hints.
+        self._user_id = user_id
         self._ws: Any | None = None
         self._http: Any | None = None
         self._drain_task: asyncio.Task | None = None
@@ -133,26 +135,52 @@ class VoiceLiveChannel:
             raise TransportUnavailable("provider connection failed") from exc
         return self._ws
 
-    @staticmethod
-    def _session_policy_payload() -> dict[str, Any]:
+    def _session_policy_payload(self, actor_hints: tuple[str, ...] = ()) -> dict[str, Any]:
         from ai.core.config import get_settings
 
         settings = get_settings()
+        # S7 A2: operator-static hints first, then the actor-scoped lexicon.
+        # The merge happens server-side at session mint; the client never
+        # supplies or sees another actor's terms.
+        merged = tuple(dict.fromkeys(tuple(settings.azure_voicelive_phrase_hints) + actor_hints))
         policy = SessionPolicy(
             voice_name=settings.azure_voicelive_voice,
             language=settings.azure_voicelive_language,
             transcription_model=settings.azure_voicelive_transcription_model,
-            phrase_hints=tuple(settings.azure_voicelive_phrase_hints),
+            phrase_hints=merged,
             native_sts=settings.feature_voice_native_sts,
         )
         return policy.session_update_payload()["session"]
 
+    async def _actor_phrase_hints(self) -> tuple[str, ...]:
+        """Resolve the actor-scoped ASR lexicon off the event loop.
+
+        The reverted first build called the sync ORM inside this async
+        coroutine and raised ``SynchronousOnlyOperation`` on a cold cache —
+        hence the ``sync_to_async`` wrap. Failure degrades to no extra hints.
+        """
+        if self._user_id is None:
+            return ()
+        try:
+            from ai.core.tools.capabilities import actor_phrase_hints
+            from asgiref.sync import sync_to_async
+
+            return tuple(await sync_to_async(actor_phrase_hints)(self._user_id))
+        except Exception as exc:
+            logger.warning(
+                "Actor phrase hints unavailable for session %s: %s",
+                self.session_id,
+                type(exc).__name__,
+            )
+            return ()
+
     async def request_sdp_answer(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Send ``rtc.call.sdp.create`` with server policy; await the reply."""
+        actor_hints = await self._actor_phrase_hints()
         async with self._lock:
             ws = await self._connect()
             request = dict(payload)
-            request["session"] = self._session_policy_payload()
+            request["session"] = self._session_policy_payload(actor_hints)
             try:
                 await ws.send_json(request)
                 reply = await asyncio.wait_for(
@@ -285,7 +313,7 @@ def channel_for_session(session) -> VoiceLiveChannel:
     session_id = str(session.id)
     channel = _channels.get(session_id)
     if channel is None:
-        channel = VoiceLiveChannel(session_id)
+        channel = VoiceLiveChannel(session_id, user_id=getattr(session, "owner_id", None))
         _channels[session_id] = channel
     return channel
 

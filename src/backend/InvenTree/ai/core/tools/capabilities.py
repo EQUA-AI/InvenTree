@@ -1333,6 +1333,73 @@ def invalidate_machine_lexicon(**_kwargs: Any) -> None:
         )
 
 
+#: S7 A2 actor-scoped ASR hints: per-user cache key + provider-safe cap.
+_ACTOR_HINTS_CACHE_PREFIX = "aimms:capability:actor_hints:v1"
+_ACTOR_HINTS_TTL_SECONDS = 600
+_ACTOR_HINTS_CAP = 64
+
+
+def actor_phrase_hints(user_id) -> list[str]:
+    """ASR phrase hints scoped to ONE actor: their machines and open jobs.
+
+    The reverted first build (S7 A2) exported the deliberately UNSCOPED
+    ``machine_lexicon`` into per-user provider sessions — cross-tenant name
+    egress, because that lexicon exists to route tools, not to leave the
+    server. This lexicon is derived through the same authorization the tools
+    themselves use (``assets.ai_read.machines_in_scope`` and the tasks scope
+    filter under the acting user), so a session's hints can never carry
+    another actor's machine names or work-order references.
+
+    Failure degrades to an empty list: hints only improve transcription, so
+    absence is safe.
+    """
+    if user_id is None:
+        return []
+    try:
+        from django.contrib.auth import get_user_model
+        from django.core.cache import cache
+
+        key = f"{_ACTOR_HINTS_CACHE_PREFIX}:{user_id}"
+        cached = cache.get(key)
+        if cached is not None:
+            return list(cached)
+
+        user = get_user_model().objects.filter(pk=user_id, is_active=True).first()
+        if user is None:
+            return []
+
+        terms: set[str] = set()
+        from assets import ai_read
+
+        for row in ai_read.machines_in_scope(user, limit=_ACTOR_HINTS_CAP):
+            name = str(getattr(row, "name", "") or "").strip()
+            if name:
+                terms.add(name)
+
+        try:
+            from tasks.models import WorkOrder
+            from tasks.scope import work_order_scope_filter
+
+            references = (
+                WorkOrder.objects
+                .filter(work_order_scope_filter(user))
+                .exclude(status=WorkOrder.STATUS_DONE)
+                .exclude(reference="")
+                .order_by("-updated_at")
+                .values_list("reference", flat=True)[:16]
+            )
+            terms.update(str(ref) for ref in references)
+        except Exception:  # hints are best-effort; scope errors mean none
+            pass
+
+        hints = sorted(terms)[:_ACTOR_HINTS_CAP]
+        cache.set(key, hints, _ACTOR_HINTS_TTL_SECONDS)
+        return hints
+    except Exception as exc:
+        logger.info("Actor phrase hints unavailable", extra={"error_type": type(exc).__name__})
+        return []
+
+
 def category_lexicon() -> frozenset[str]:
     """Return selection terms derived from live part category names.
 
