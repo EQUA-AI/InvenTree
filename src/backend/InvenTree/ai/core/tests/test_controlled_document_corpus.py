@@ -208,6 +208,38 @@ def test_allowlisted_document_class_narrows_the_filter(site_scope):
     assert result["machine_filter"] == "not_requested"
 
 
+class _ClassFilteredSearchClient(_SearchClient):
+    """Returns nothing while a document_class clause is present."""
+
+    def search(self, **kwargs):
+        self.calls += 1
+        self.kwargs = kwargs
+        if "document_class eq" in kwargs["filter"]:
+            return []
+        return list(self._rows)
+
+
+def test_class_narrowing_degrades_instead_of_reporting_an_empty_manual(site_scope):
+    """Class narrowing is a precision hint, never the reason for zero results.
+
+    The live corpus carries class values outside the request allowlist, so an
+    allowlisted narrowing filtered out EVERYTHING and the model honestly told
+    the user the manual had no answer it demonstrably has (battery A1,
+    2026-08-06). A zero-hit class filter must retry site-wide.
+    """
+    search_client = _ClassFilteredSearchClient()
+    _, _, result = _run(search_client=search_client, document_class="technical_manual")
+    assert search_client.calls == 2
+    assert "document_class eq" not in search_client.kwargs["filter"]
+    assert result["total"] == 1
+
+
+def test_class_narrowing_with_hits_does_not_retry(site_scope):
+    search_client, _, result = _run(document_class="technical_manual")
+    assert search_client.calls == 1
+    assert result["total"] == 1
+
+
 # ---------------------------------------------------------------------------
 # search_corpus: server-side machine narrowing
 # ---------------------------------------------------------------------------

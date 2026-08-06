@@ -159,6 +159,13 @@ def search_corpus(
     from ai.core.config import get_settings
 
     scope_key = get_settings().single_site_policy_key or ""
+    if not scope_key:
+        # Checked before any network call: a blank policy key must refuse
+        # without embedding the query or touching the search service.
+        raise ControlledDocumentSearchError(
+            "Controlled-document site scope is not configured",
+            code="CONTROLLED_DOCUMENT_SCOPE_UNCONFIGURED",
+        )
 
     asset_id: str | None = None
     machine_filter = "not_requested"
@@ -206,34 +213,51 @@ def search_corpus(
     if search_client is None:
         search_client = AzureSelectedDocumentSearch.from_settings().client()
 
-    filter_expression = corpus_filter(
-        scope_key=scope_key, asset_id=asset_id, document_class=document_class
-    )
     vector = _query_vector(
         query=query, embedding_client=embedding_client, dimensions=embedding_dimensions
     )
-    try:
-        from azure.search.documents.models import VectorizedQuery
 
-        rows = search_client.search(
-            search_text=query,
-            vector_queries=[
-                VectorizedQuery(vector=vector, k_nearest_neighbors=top_k, fields="text_vector")
-            ],
-            vector_filter_mode="preFilter",
-            filter=filter_expression,
-            top=top_k,
-            query_type="semantic",
-            semantic_configuration_name="semantic-default",
-            select=_SELECT_FIELDS,
+    def _run(class_filter: str | None):
+        filter_expression = corpus_filter(
+            scope_key=scope_key, asset_id=asset_id, document_class=class_filter
         )
-    except ControlledDocumentSearchError:
-        raise
-    except Exception as exc:
-        raise ControlledDocumentSearchError(
-            "Controlled-document Search query failed",
-            code="CONTROLLED_DOCUMENT_SEARCH_FAILED",
-        ) from exc
+        try:
+            from azure.search.documents.models import VectorizedQuery
+
+            return list(
+                search_client.search(
+                    search_text=query,
+                    vector_queries=[
+                        VectorizedQuery(
+                            vector=vector, k_nearest_neighbors=top_k, fields="text_vector"
+                        )
+                    ],
+                    vector_filter_mode="preFilter",
+                    filter=filter_expression,
+                    top=top_k,
+                    query_type="semantic",
+                    semantic_configuration_name="semantic-default",
+                    select=_SELECT_FIELDS,
+                )
+            )
+        except ControlledDocumentSearchError:
+            raise
+        except Exception as exc:
+            raise ControlledDocumentSearchError(
+                "Controlled-document Search query failed",
+                code="CONTROLLED_DOCUMENT_SEARCH_FAILED",
+            ) from exc
+
+    rows = _run(document_class)
+    if not rows and document_class:
+        # Class narrowing is a precision hint, exactly like machine narrowing
+        # above — never the reason a corpus that HAS the answer reports none.
+        # The live corpus carries class values outside the request allowlist
+        # (found 2026-08-06: every chunk classed
+        # ``controlled_operations_maintenance_diagnostics_repair_knowledge``),
+        # so an allowlisted narrowing filtered out everything and the model
+        # honestly reported an empty manual. Degrade to the site-wide result.
+        rows = _run(None)
 
     chunks: list[dict[str, Any]] = []
     for row in rows:
