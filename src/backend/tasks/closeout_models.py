@@ -205,7 +205,9 @@ class CloseoutFieldDecision(models.Model):
     field_path = models.CharField(max_length=128)
     origin = models.CharField(max_length=16)  # extracted | manual
     decision = models.CharField(max_length=16)  # accepted | edited | rejected
-    final_value = models.JSONField(default=dict, blank=True)
+    # Null means the human recorded 'no value' (a rejection, or clearing a
+    # field): distinct from {} which is an empty edited value.
+    final_value = models.JSONField(null=True, blank=True, default=dict)
     decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     decided_at = models.DateTimeField()
 

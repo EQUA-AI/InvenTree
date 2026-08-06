@@ -107,7 +107,7 @@ class DecisionEntrySerializer(serializers.Serializer):
 
     field_path = serializers.CharField(max_length=128)
     decision = serializers.ChoiceField(choices=['accepted', 'edited', 'rejected'])
-    final_value = serializers.JSONField(required=False)
+    final_value = serializers.JSONField(required=False, allow_null=True)
 
 
 class DecisionBatchCommandSerializer(BaseCommandSerializer):

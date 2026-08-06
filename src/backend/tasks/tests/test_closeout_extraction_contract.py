@@ -327,10 +327,7 @@ class ExtractionContractTest(TestCase):
                     'schema_version': 1,
                     'fields': {},
                     'part_candidates': [
-                        {
-                            'text': 'a 900A contactor',
-                            'spans': [[0, len(NARRATIVE)]],
-                        }
+                        {'text': 'a 900A contactor', 'spans': [[0, len(NARRATIVE)]]}
                     ],
                 },
                 NARRATIVE,
@@ -925,3 +922,57 @@ class InjectionCorpusTest(CloseoutEnvMixin, TestCase):
                     idempotency_key=f'hostile-abandon-{index}',
                     reason='corpus cleanup',
                 )
+
+
+class RejectedDecisionPersistenceTest(CloseoutEnvMixin, TestCase):
+    """Rejections are first-class decisions (found live 2026-08-06)."""
+
+    def test_rejected_decision_persists_with_null_final_value(self):
+        """A rejection is a first-class decision, not an integrity error.
+
+        Found live 2026-08-06 (WO-000128): every rejected decision 500'd
+        because the service writes final_value=None and the column forbade
+        NULL - rejections were unrepresentable end-to-end.
+        """
+        from tasks.closeout_models import CloseoutFieldDecision
+        from tasks.services.closeout_capture import record_decisions
+
+        self.build_env(lifecycle=WorkOrderLifecycle.IN_PROGRESS)
+        with self.settings(**CLOSEOUT_FLAGS):
+            create_capture(
+                work_order_id=self.work_order.pk,
+                actor=self.actor,
+                narrative=NARRATIVE,
+                expected_version=self.work_order.lifecycle_version,
+                idempotency_key='reject-cap',
+            )
+            with override_settings(
+                AIMMS_CLOSEOUT_EXTRACTION_ENABLED=True,
+                AIMMS_CLOSEOUT_EXTRACTOR=f'{_FIXTURES}.extractor_ok',
+            ):
+                request_extraction(
+                    work_order_id=self.work_order.pk,
+                    capture_id=CloseoutCapture.objects.get(
+                        work_order=self.work_order
+                    ).pk,
+                    actor=self.actor,
+                )
+            capture = CloseoutCapture.objects.get(work_order=self.work_order)
+            record_decisions(
+                work_order_id=self.work_order.pk,
+                capture_id=capture.pk,
+                actor=self.actor,
+                decisions=[
+                    {'field_path': 'action', 'decision': 'accepted'},
+                    {'field_path': 'result', 'decision': 'accepted'},
+                    {'field_path': 'verification_summary', 'decision': 'accepted'},
+                    {'field_path': 'follow_up', 'decision': 'rejected'},
+                ],
+                expected_version=self.work_order.lifecycle_version,
+                idempotency_key='reject-decide',
+            )
+        rejected = CloseoutFieldDecision.objects.get(
+            proposal__capture_revision__capture=capture, field_path='follow_up'
+        )
+        self.assertEqual(rejected.decision, 'rejected')
+        self.assertIsNone(rejected.final_value)
