@@ -579,6 +579,48 @@ class MessageFeedback(models.Model):
         return f'{self.rating} on {self.message_id}'
 
 
+class RetrievalMiss(models.Model):
+    """One controlled-corpus search outcome, query metadata only (S16 A7).
+
+    ``search_manuals`` already computed everything here — hit count, top
+    score, how the machine filter resolved — and discarded it, so "what
+    questions can the manuals not answer" was unknowable. Every search
+    writes one row (the rollup filters to misses); the ledger stores the
+    question and its outcome, never any retrieved or generated answer text.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    #: The natural-language question, capped at the search contract's bound.
+    query = models.CharField(max_length=500)
+    hit_count = models.PositiveIntegerField(default=0)
+    top_score = models.FloatField(null=True, blank=True)
+    #: not_requested / not_applied / applied / ambiguous — mirrors the
+    #: machine_filter outcome the search itself returns.
+    machine_filter = models.CharField(max_length=16, blank=True, default='')
+    document_class = models.CharField(max_length=128, blank=True, default='')
+    scope_key = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Rollups slice zero-hit rows by recency."""
+
+        indexes = [
+            models.Index(
+                fields=['hit_count', 'created_at'], name='aichat_retrmiss_hit_idx'
+            )
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'{self.hit_count} hits at {self.created_at:%Y-%m-%d}'
+
+
 class ToolAuthorizationResult(models.TextChoices):
     """Outcome of the per-call tool authorization decision."""
 

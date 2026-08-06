@@ -185,6 +185,15 @@ def search_corpus(
             asset_id = str(candidates[0]["serial"])
             machine_filter = "applied"
         elif len(candidates) > 1:
+            _record_search_outcome(
+                user=user,
+                query=query,
+                hit_count=0,
+                top_score=None,
+                machine_filter="ambiguous",
+                document_class=document_class,
+                scope_key=scope_key,
+            )
             return {
                 "chunks": [],
                 "total": 0,
@@ -243,11 +252,27 @@ def search_corpus(
                 "excerpt_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             },
         })
+    _record_search_outcome(
+        user=user,
+        query=query,
+        hit_count=len(chunks),
+        top_score=max((float(row["score"] or 0) for row in chunks), default=None),
+        machine_filter=machine_filter,
+        document_class=document_class,
+        scope_key=scope_key,
+    )
     return {
         "chunks": chunks,
         "total": len(chunks),
         "machine_filter": machine_filter,
     }
+
+
+def _record_search_outcome(**kwargs) -> None:
+    """Write the A7 ledger row; the writer itself is fail-soft (S16)."""
+    from aichat.services.retrieval_misses import record_search
+
+    record_search(**kwargs)
 
 
 def _default_embedding_client() -> EmbeddingClient:
