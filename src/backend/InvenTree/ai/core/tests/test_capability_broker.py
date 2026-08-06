@@ -65,9 +65,9 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
     # 61 wf8 tools (delete_kanban_card is withheld) + the specialist writes
     # wf2/wf3/wf4/wf6 carry: parts/stock/company/sales writes and the nine
     # purchase-order write tools.
-    assert len(wf8_tools) == 54
-    assert len(catalog) == 90
-    assert tuple(entry.tool for entry in catalog[:54]) == wf8_tools
+    assert len(wf8_tools) == 55
+    assert len(catalog) == 91
+    assert tuple(entry.tool for entry in catalog[:55]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -110,7 +110,7 @@ def test_catalog_has_expected_stable_pack_shapes():
         # Maintenance work orders: search plus the per-order drill-downs
         # (overview, readiness, repair state) and the per-machine open-repairs
         # view -- a job question is unanswerable without the full set.
-        "maintenance.read": 5,
+        "maintenance.read": 6,
         # Controlled documentation is a single site-scoped retrieval tool.
         "manuals.read": 1,
         # Specialist write packs (S11): catalogued so wf2/wf3/wf4/wf6 can be
@@ -187,6 +187,7 @@ def test_protected_resource_tools_have_resource_authorizers():
         # authorizer string: the same tenant scope governs both packs, so the
         # guard branch is deliberately shared rather than duplicated.
         "search_work_orders",
+        "get_work_order_history",
         "get_work_order_overview",
         "get_work_order_readiness",
         "get_work_order_repair_state",
@@ -211,8 +212,8 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    # Matches the catalog pin: 55 + 5 maintenance reads + search_manuals.
-    assert len(first) == 90
+    # Matches the catalog pin: 91 entries (wf8 55 + specialist writes + packs).
+    assert len(first) == 91
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)
@@ -780,7 +781,9 @@ def test_tool_budget_holds_for_every_selectable_pack_combination():
 
     assert worst <= MAX_INITIAL_TOOLS
     # Informational pin: update alongside deliberate pack-size changes.
-    assert worst == 15
+    # 16 = maintenance(6) + machines(9) + SQL(1) after the manuals-rider
+    # adjacency change kept manuals reachable from a maintenance primary.
+    assert worst == 16
 
 
 def test_forced_budget_trims_weakest_adjacent_and_terminates(monkeypatch, caplog):

@@ -211,17 +211,52 @@ async def get_open_repairs_for_machine(machine_id: int) -> dict[str, Any]:
     return result if result is not None else {"error": _NOT_FOUND}
 
 
+@ai_function
+async def get_work_order_history(work_order_id: int, limit: int = 15) -> dict[str, Any]:
+    """
+    Get the audit history of one work order: lifecycle events, actors and timestamps.
+
+    Answers "what happened on this job", "who moved it and when" and "why was
+    it put on hold". Requires the work-order audit grant; without it the
+    history is reported unavailable exactly like a missing record.
+
+    Args:
+      work_order_id: The work order's ID, typically from search_work_orders.
+      limit: Maximum events to return, newest first (default 15, max 50).
+
+    Returns:
+      Dictionary with 'count' and 'events' (each with event_type, from_status,
+      to_status, actor, reason and created_at), or an error if not available.
+    """
+
+    @sync_to_async
+    def _fetch():
+        from tasks import ai_read
+
+        user, work_order = _resolve(work_order_id)
+        if work_order is None:
+            return None
+        return ai_read.work_order_history(user, work_order, limit=limit)
+
+    events = await _fetch()
+    if events is None:
+        return {"error": _NOT_FOUND}
+    return {"count": len(events), "events": events}
+
+
 MAINTENANCE_READ_TOOLS = [
     search_work_orders,
     get_work_order_overview,
     get_work_order_readiness,
     get_work_order_repair_state,
     get_open_repairs_for_machine,
+    get_work_order_history,
 ]
 
 __all__ = [
     "MAINTENANCE_READ_TOOLS",
     "get_open_repairs_for_machine",
+    "get_work_order_history",
     "get_work_order_overview",
     "get_work_order_readiness",
     "get_work_order_repair_state",

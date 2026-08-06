@@ -40,6 +40,7 @@ EXPECTED_MAINTENANCE_TOOL_IDS = frozenset({
     "get_work_order_readiness",
     "get_work_order_repair_state",
     "get_open_repairs_for_machine",
+    "get_work_order_history",
 })
 
 PROFILE = frozenset({
@@ -68,7 +69,7 @@ def test_maintenance_tools_are_on_the_shared_read_surface():
 
 
 def test_catalog_carries_exactly_the_five_maintenance_tools():
-    """The pack is the five ai_read delegates -- no more, no fewer."""
+    """The pack is the six ai_read delegates -- no more, no fewer."""
     pack_tool_ids = {
         entry.tool_id for entry in capability_catalog() if entry.pack_id == "maintenance.read"
     }
@@ -234,3 +235,22 @@ def test_maintenance_pack_is_not_a_sql_escape_hatch():
     """
     assert "maintenance.read" not in capabilities._SQL_HATCH_PACKS
     assert "manuals.read" not in capabilities._SQL_HATCH_PACKS
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # The flagship phrasing: a manuals term plus repair/maintenance terms.
+        # maintenance.read wins the primary and max_adjacent used to drop the
+        # single-tool manuals pack the user NAMED — the model then claimed it
+        # had no documentation search at all (live, 2026-08-06).
+        "What does the manual say about the influent pump station's repair boundaries?",
+        "Search the manuals for repair boundaries",
+        "what does the maintenance manual say about seal replacement?",
+    ],
+)
+def test_an_explicit_manuals_term_always_carries_search_manuals(question):
+    """Naming the manuals guarantees the manuals pack rides along."""
+    selected = select_capabilities(question, profile=PROFILE, authenticated=True)
+
+    assert "search_manuals" in set(selected.tool_ids), (question, selected.pack_ids)

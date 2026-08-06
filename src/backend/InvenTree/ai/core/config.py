@@ -187,9 +187,10 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # One wall-clock ceiling for a whole text turn. Before it, only a client
     # disconnect ended a hung turn. Generous by design — a tripwire above the
-    # observed p99, not a behaviour change; 0 disables.
+    # observed p99, not a behaviour change; 0 disables. 120s proved too tight
+    # in live testing (a legitimate wf2 analysis exceeded it), hence 240s.
     turn_wall_clock_cap_s: float = Field(
-        default=120.0, ge=0.0, le=600.0, alias="TURN_WALL_CLOCK_CAP_S"
+        default=240.0, ge=0.0, le=600.0, alias="TURN_WALL_CLOCK_CAP_S"
     )
     # Tighter budget for the routing stage alone: a hung classifier endpoint
     # must not consume the whole turn cap. 0 disables (the turn cap still holds).
@@ -200,6 +201,12 @@ class Settings(BaseSettings):
     # run concurrently and one hung provider costs at most this much.
     context_provider_timeout_s: float = Field(
         default=5.0, ge=0.5, le=60.0, alias="CONTEXT_PROVIDER_TIMEOUT_S"
+    )
+    # wf3's internal fan-out budget. The old hardcoded 30s left ZERO research
+    # agents complete under real load, so even the salvage path had nothing to
+    # keep; 90s sits under the turn cap with room for synthesis.
+    research_stage_timeout_s: float = Field(
+        default=90.0, ge=10.0, le=300.0, alias="RESEARCH_STAGE_TIMEOUT_S"
     )
 
     # -------------------------------------------------------------------------

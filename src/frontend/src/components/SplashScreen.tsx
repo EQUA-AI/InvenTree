@@ -20,12 +20,10 @@ export default function SplashScreen({
     useShallow((state) => [state.login_checked])
   );
 
-  // Fetch server data on mount if no server data is present
+  // Refresh server data on mount, as persisted runtime health may be stale.
   useEffect(() => {
-    if (server.server === null) {
-      fetchServerApiState();
-    }
-  }, [server]);
+    fetchServerApiState();
+  }, [fetchServerApiState]);
 
   if (server.customize?.splash && checked_login) {
     return (

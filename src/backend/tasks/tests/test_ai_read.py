@@ -300,6 +300,73 @@ class WorkOrderSearchTests(MaintenanceAiReadTestCase):
         """A job with no asset reports that, not a crash or a guess."""
         self.assertIsNone(ai_read.work_order_row(self.customer_wo)['machine'])
 
+    def test_row_carries_both_status_planes_and_the_assignee(self):
+        """board_status and lifecycle_status are different fields (live G1).
+
+        Answering "what's in progress" from lifecycle alone contradicted the
+        kanban board, and the row had no assignee at all.
+        """
+        self.wo.status = WorkOrder.STATUS_IN_PROGRESS
+        self.wo.assigned_to = self.actor
+        self.wo.save(update_fields=['status', 'assigned_to'])
+        row = ai_read.work_order_row(self.wo)
+        self.assertEqual(row['board_status'], WorkOrder.STATUS_IN_PROGRESS)
+        self.assertEqual(row['lifecycle_status'], self.wo.lifecycle_status)
+        self.assertEqual(row['assigned_to'], self.actor.get_username())
+
+
+class WorkOrderHistoryTests(MaintenanceAiReadTestCase):
+    """The audit projection needs the audit grant on top of row scope."""
+
+    def _grant_audit(self, user):
+        from django.contrib.auth.models import Permission
+
+        user.user_permissions.add(
+            Permission.objects.get(codename='view_workorder_audit')
+        )
+        return get_user_model().objects.get(pk=user.pk)
+
+    def _seed_event(self):
+        from tasks.workorder_models import WorkOrderEvent
+
+        return WorkOrderEvent.objects.create(
+            work_order=self.wo,
+            event_type='status_changed',
+            from_status='backlog',
+            to_status='in-progress',
+            actor=self.actor,
+            reason='Technician started the job',
+            correlation_id=uuid.uuid4(),
+        )
+
+    def test_history_requires_the_audit_grant(self):
+        """Without tasks.view_workorder_audit the history is None (uniform).
+
+        A plain user: the fixture actors are superusers, for whom has_perm
+        is unconditionally true.
+        """
+        self._seed_event()
+        plain = get_user_model().objects.create_user(
+            username='history-no-grant', password='x'
+        )
+        self.assertIsNone(ai_read.work_order_history(plain, self.wo))
+        granted = self._grant_audit(plain)
+        self.assertEqual(len(ai_read.work_order_history(granted, self.wo)), 1)
+
+    def test_history_projects_bounded_events_for_a_granted_actor(self):
+        self._seed_event()
+        granted = self._grant_audit(self.actor)
+        events = ai_read.work_order_history(granted, self.wo)
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        self.assertEqual(event['event_type'], 'status_changed')
+        self.assertEqual(event['from_status'], 'backlog')
+        self.assertEqual(event['to_status'], 'in-progress')
+        self.assertEqual(event['actor'], self.actor.get_username())
+        self.assertIn('Technician started the job', event['reason'])
+        self.assertTrue(event['created_at'])
+        self.assertNotIn('metadata', event)
+
 
 class OverviewProjectionTests(MaintenanceAiReadTestCase):
     """The overview is an allow-list: named fields, nothing else."""

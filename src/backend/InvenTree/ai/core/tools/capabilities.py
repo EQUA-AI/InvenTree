@@ -250,6 +250,7 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
             "get_work_order_readiness",
             "get_work_order_repair_state",
             "get_open_repairs_for_machine",
+            "get_work_order_history",
         ),
         # A work order here is a MAINTENANCE job. Terms deliberately not shared
         # with any other pack: "job"/"task" stay on kanban (board phrasing),
@@ -428,9 +429,12 @@ _ADJACENT_PACKS: dict[str, frozenset[str]] = {
     # readiness tools (worst pick-2: 4 + 6 + 5 = 15 <= MAX_INITIAL_TOOLS).
     "kanban.read": frozenset({"parts.read", "stock.read", "maintenance.read"}),
     # A maintenance question usually names the asset, and a machine question
-    # often leads to its open repairs and manual -- each pairing stays within
-    # budget (9 + 5 + 1 = 15 <= 16).
-    "maintenance.read": frozenset({"machines.read"}),
+    # often leads to its open repairs and manual. manuals.read is adjacent to
+    # BOTH: "what does the manual say about the pump's repair boundaries"
+    # makes maintenance the primary, and without this edge the pack the user
+    # named was unreachable. Worst stack: 9 + 5 + manuals 1 + SQL 1 = 16
+    # <= MAX_INITIAL_TOOLS.
+    "maintenance.read": frozenset({"machines.read", "manuals.read"}),
     "machines.read": frozenset({"maintenance.read", "manuals.read"}),
     "manuals.read": frozenset({"machines.read"}),
 }
@@ -968,6 +972,7 @@ _MAINTENANCE_READ_TOOL_IDS = frozenset({
     "get_work_order_readiness",
     "get_work_order_repair_state",
     "get_open_repairs_for_machine",
+    "get_work_order_history",
 })
 
 
@@ -1526,7 +1531,21 @@ def _ordered_pack_ids(
         if scores.get(pack_id, 0) > 0
     ]
     candidates.sort(key=lambda pack_id: (-scores[pack_id], pack_id))
-    return (primary, *candidates[:max_adjacent])
+    selected = [primary, *candidates[:max_adjacent]]
+    # An explicit documentation request must never lose the single-tool
+    # manuals pack to adjacency scoring. "What does the manual say about the
+    # pump's repair boundaries" scores maintenance/machines above manuals, and
+    # ``max_adjacent`` then silently dropped the pack the user NAMED — the
+    # model answered "I don't have a documentation search tool" (live,
+    # 2026-08-06). The rider costs one tool and only fires when the sentence
+    # itself scored a manuals term and the topology already permits the pair.
+    if (
+        "manuals.read" not in selected
+        and scores.get("manuals.read", 0) > 0
+        and "manuals.read" in _ADJACENT_PACKS.get(primary, frozenset())
+    ):
+        selected.append("manuals.read")
+    return tuple(selected)
 
 
 def _with_sql_escape_hatch(pack_ids: tuple[str, ...]) -> tuple[str, ...]:

@@ -266,8 +266,21 @@ class T3ResearchWorkflow:
         )
     """
 
-    # Timeout for parallel research tasks (seconds)
+    # Timeout for parallel research tasks (seconds). Fallback only: the live
+    # value comes from settings (RESEARCH_STAGE_TIMEOUT_S) — 30s left zero
+    # agents complete under real load. An instance override (tests) wins.
     RESEARCH_TIMEOUT = 30.0
+
+    def _research_timeout_s(self) -> float:
+        """Configured fan-out budget; an explicit instance override wins."""
+        if "RESEARCH_TIMEOUT" in self.__dict__:
+            return float(self.RESEARCH_TIMEOUT)
+        try:
+            from ai.core.config import get_settings
+
+            return float(get_settings().research_stage_timeout_s)
+        except Exception:  # pragma: no cover - config absent in minimal envs
+            return float(self.RESEARCH_TIMEOUT)
 
     def __init__(self):
         """Initialize workflow with research agents."""
@@ -395,7 +408,7 @@ class T3ResearchWorkflow:
             # expiry, so "returning partial results" was a lie — the empty
             # source list became success=False and the root turned a slow turn
             # into a 500. asyncio.wait keeps what actually finished.
-            done, pending = await asyncio.wait(tasks, timeout=self.RESEARCH_TIMEOUT)
+            done, pending = await asyncio.wait(tasks, timeout=self._research_timeout_s())
             if pending:
                 for task in pending:
                     task.cancel()

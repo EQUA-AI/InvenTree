@@ -106,6 +106,22 @@ class SessionPolicy:
             "auto_truncate": True,
         }
 
+    def _hints_prompt(self) -> str:
+        """Render phrase hints as OpenAI-family transcription guidance.
+
+        Whole terms only, bounded: the prompt is provider payload on every
+        session, and a truncated term would bias transcription toward a
+        fragment that names nothing.
+        """
+        rendered = "Expected terminology: "
+        parts: list[str] = []
+        for hint in self.phrase_hints:
+            candidate = ", ".join([*parts, hint])
+            if len(rendered) + len(candidate) > 800:
+                break
+            parts.append(hint)
+        return rendered + ", ".join(parts)
+
     def session_update_payload(self) -> dict[str, Any]:
         """Return the exact ``session.update`` body sent on connect."""
         transcription: dict[str, Any] = {
@@ -113,7 +129,18 @@ class SessionPolicy:
             "language": self.language,
         }
         if self.phrase_hints:
-            transcription["phrase_list"] = list(self.phrase_hints)
+            # Family split (Voice Live contract): ``phrase_list`` belongs to
+            # the Azure transcription family (azure-speech, mai-transcribe);
+            # OpenAI-family models (gpt-4o-transcribe, whisper-*) take a
+            # ``prompt`` string instead. Sending phrase_list to an OpenAI
+            # model silently stopped ALL transcription — the session
+            # connected and then never produced a transcript (S7 regression,
+            # found in live testing 2026-08-06).
+            model = self.transcription_model.strip().lower()
+            if model.startswith(("azure-", "mai-")):
+                transcription["phrase_list"] = list(self.phrase_hints)
+            else:
+                transcription["prompt"] = self._hints_prompt()
         return {
             "type": "session.update",
             "session": {

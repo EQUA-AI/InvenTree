@@ -156,6 +156,9 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
         wt.get_work_order_readiness: ("work_order", "view"),
         wt.get_work_order_repair_state: ("work_order", "view"),
         wt.get_open_repairs_for_machine: ("work_order", "view"),
+        # History additionally requires tasks.view_workorder_audit, checked
+        # inside tasks.ai_read.work_order_history for the same user.
+        wt.get_work_order_history: ("work_order", "view"),
         # Controlled-document corpus search: readable by maintenance staff;
         # the site-key filter inside the tool is the content boundary.
         cdt.search_manuals: ("work_order", "view"),

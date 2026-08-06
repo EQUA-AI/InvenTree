@@ -136,7 +136,7 @@ def work_orders_in_scope(user, *, query: str | None = None, limit: int = 10):
     except ScopeError:
         return []
 
-    rows = WorkOrder.objects.filter(predicate).select_related('machine')
+    rows = WorkOrder.objects.filter(predicate).select_related('machine', 'assigned_to')
     if query:
         from django.db.models import Q
 
@@ -157,19 +157,70 @@ def work_orders_in_scope(user, *, query: str | None = None, limit: int = 10):
 
 
 def work_order_row(work_order) -> dict[str, Any]:
-    """A disambiguating identity line for reference resolution."""
+    """A disambiguating identity line for reference resolution.
+
+    ``board_status`` (the kanban column) and ``lifecycle_status`` (the
+    governed execution machine) are DIFFERENT fields that both read as
+    "status" in conversation. Projecting only the lifecycle made the AI
+    answer "nothing is in progress" while the board showed five cards in
+    the In Progress column (live finding, 2026-08-06) — the reader needs
+    both to answer either meaning honestly.
+    """
     return {
         'work_order_id': work_order.pk,
         'reference': work_order.reference or '',
         'title': fence(work_order.title, limit=255),
+        'board_status': work_order.status,
         'lifecycle_status': work_order.lifecycle_status,
         'work_order_type': work_order.work_order_type,
         'priority': work_order.priority,
+        'assigned_to': (
+            work_order.assigned_to.get_username() if work_order.assigned_to_id else None
+        ),
         'machine': fence(work_order.machine.name, limit=255)
         if work_order.machine_id
         else None,
         'due_date': _iso(work_order.due_date),
     }
+
+
+def work_order_history(
+    user, work_order, *, limit: int = 15
+) -> list[dict[str, Any]] | None:
+    """Append-only audit events for one already-authorized work order.
+
+    Requires ``tasks.view_workorder_audit`` on top of row scope — the same
+    grant the REST audit surface enforces. A missing grant returns ``None``
+    so the caller's refusal stays indistinguishable from a missing record.
+    Event metadata is deliberately not projected: it can carry free-form
+    payloads that were never written for model consumption.
+    """
+    from tasks.permissions import VIEW_WORKORDER_AUDIT
+    from tasks.workorder_models import WorkOrderEvent
+
+    if not getattr(user, 'is_authenticated', False):
+        return None
+    if not user.has_perm(VIEW_WORKORDER_AUDIT):
+        return None
+
+    bounded = max(1, min(int(limit), 50))
+    events = (
+        WorkOrderEvent.objects
+        .filter(work_order=work_order)
+        .select_related('actor')
+        .order_by('-created_at')[:bounded]
+    )
+    return [
+        {
+            'event_type': event.event_type,
+            'from_status': event.from_status or None,
+            'to_status': event.to_status or None,
+            'actor': event.actor.get_username() if event.actor_id else None,
+            'reason': fence(event.reason, limit=500) if event.reason else None,
+            'created_at': _iso(event.created_at),
+        }
+        for event in events
+    ]
 
 
 def work_order_overview(work_order) -> dict[str, Any]:

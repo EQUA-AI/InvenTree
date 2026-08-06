@@ -42,22 +42,57 @@ def _settings_stub(hints):
 
 
 def test_policy_payload_merges_static_and_actor_hints(monkeypatch):
-    """Operator-static hints come first; actor hints append, deduplicated."""
+    """Merged hints reach the OpenAI-family transcriber as a prompt string.
+
+    The first live rollout sent ``phrase_list`` here — an Azure-family field —
+    and gpt-4o-transcribe silently stopped transcribing entirely. Hints for
+    OpenAI-family models must travel as ``prompt``.
+    """
     monkeypatch.setattr(
         "ai.core.config.get_settings",
         lambda: _settings_stub(["Epcon", "AIMMS"]),
     )
     channel = VoiceLiveChannel("session-1", user_id=7)
     payload = channel._session_policy_payload(("Influent Pump 1", "AIMMS", "WO-000128"))
-    hints = payload["input_audio_transcription"]["phrase_list"]
-    assert hints == ["Epcon", "AIMMS", "Influent Pump 1", "WO-000128"]
+    transcription = payload["input_audio_transcription"]
+    assert "phrase_list" not in transcription
+    assert transcription["prompt"] == (
+        "Expected terminology: Epcon, AIMMS, Influent Pump 1, WO-000128"
+    )
 
 
 def test_policy_payload_without_actor_hints_matches_static(monkeypatch):
     monkeypatch.setattr("ai.core.config.get_settings", lambda: _settings_stub(["Epcon"]))
     channel = VoiceLiveChannel("session-2", user_id=None)
     payload = channel._session_policy_payload(())
-    assert payload["input_audio_transcription"]["phrase_list"] == ["Epcon"]
+    assert payload["input_audio_transcription"]["prompt"] == "Expected terminology: Epcon"
+
+
+def test_azure_family_transcriber_still_gets_phrase_list(monkeypatch):
+    """azure-speech keeps the native phrase_list field."""
+    from ai.core.config import Settings
+
+    monkeypatch.setattr(
+        "ai.core.config.get_settings",
+        lambda: Settings(
+            _env_file=None,
+            AZURE_VOICELIVE_PHRASE_HINTS=["Epcon"],
+            AZURE_VOICELIVE_TRANSCRIPTION_MODEL="azure-speech",
+        ),
+    )
+    channel = VoiceLiveChannel("session-az", user_id=None)
+    transcription = channel._session_policy_payload(("Clarifier",))["input_audio_transcription"]
+    assert transcription["phrase_list"] == ["Epcon", "Clarifier"]
+    assert "prompt" not in transcription
+
+
+def test_empty_hints_add_no_transcription_fields(monkeypatch):
+    """No hints -> the payload matches the pre-S7 shape exactly."""
+    monkeypatch.setattr("ai.core.config.get_settings", lambda: _settings_stub([]))
+    channel = VoiceLiveChannel("session-none", user_id=None)
+    transcription = channel._session_policy_payload(())["input_audio_transcription"]
+    assert "phrase_list" not in transcription
+    assert "prompt" not in transcription
 
 
 @pytest.mark.asyncio
