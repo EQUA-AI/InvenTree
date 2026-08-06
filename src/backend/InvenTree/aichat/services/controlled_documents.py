@@ -165,10 +165,16 @@ def mark_indexed(
     revision: str,
     source_sha256: str,
     search_index_name: str,
+    embedding_model: str = '',
+    embedding_dimensions: int = 0,
 ) -> ControlledDocument:
     """Publish an indexed revision and atomically supersede its predecessor."""
     _validate_source_sha256(source_sha256)
     _required(search_index_name, 'search_index_name', 128)
+    if not isinstance(embedding_model, str) or len(embedding_model) > 128:
+        raise ControlledDocumentError('embedding_model is invalid')
+    if not isinstance(embedding_dimensions, int) or embedding_dimensions < 0:
+        raise ControlledDocumentError('embedding_dimensions is invalid')
 
     with transaction.atomic():
         document = _scoped_document(
@@ -198,6 +204,8 @@ def mark_indexed(
         document.search_index_name = search_index_name
         document.indexed_at = timezone.now()
         document.indexing_error_code = ''
+        document.embedding_model = embedding_model
+        document.embedding_dimensions = embedding_dimensions
         document.save(
             update_fields=[
                 'state',
@@ -205,10 +213,51 @@ def mark_indexed(
                 'search_index_name',
                 'indexed_at',
                 'indexing_error_code',
+                'embedding_model',
+                'embedding_dimensions',
                 'updated_at',
             ]
         )
         return document
+
+
+def begin_reindex(
+    *, scope_key: str, scope_hash: str, document_id: str, revision: str
+) -> ControlledDocument:
+    """Return an INDEXED revision to INDEXING for a governed re-embed (S17).
+
+    ``is_current`` is deliberately left set: the revision keeps answering until
+    ``mark_indexed`` republishes it with fresh vectors, and a failure lands in
+    the same FAILED state any indexing failure does.
+    """
+    with transaction.atomic():
+        document = _scoped_document(
+            scope_key=scope_key,
+            scope_hash=scope_hash,
+            document_id=document_id,
+            revision=revision,
+        )
+        document = ControlledDocument.objects.select_for_update().get(pk=document.pk)
+        if document.state != ControlledDocumentState.INDEXED:
+            raise ControlledDocumentStateConflict('document is not indexed')
+        document.state = ControlledDocumentState.INDEXING
+        document.indexing_error_code = ''
+        document.save(update_fields=['state', 'indexing_error_code', 'updated_at'])
+        return document
+
+
+def indexed_embedding_models() -> list[str]:
+    """Return the distinct embedding models stamped on current indexed revisions.
+
+    Blank entries are revisions indexed before the stamp existed (S17); callers
+    treat them as unknown, not as a match.
+    """
+    return list(
+        ControlledDocument.objects
+        .filter(state=ControlledDocumentState.INDEXED, is_current=True)
+        .values_list('embedding_model', flat=True)
+        .distinct()
+    )
 
 
 def mark_failed(

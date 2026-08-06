@@ -252,8 +252,15 @@ def build_search_documents(
     document: ControlledDocument,
     chunks: list[MarkdownChunk],
     indexed_at: datetime,
+    embedding_model: str = "",
+    embedding_dimensions: int = 0,
 ) -> list[dict[str, object]]:
-    """Build governed Search documents before embedding vectors are attached."""
+    """Build governed Search documents before embedding vectors are attached.
+
+    ``embedding_model``/``embedding_dimensions`` stamp which model produced the
+    chunk vectors (S17 A4), so a future model migration can tell stale chunks
+    from current ones instead of trusting configuration.
+    """
     as_of = (
         document.revision_date.isoformat()
         if document.revision_date
@@ -297,12 +304,19 @@ def build_search_documents(
             "token_count": chunk.token_count,
             "as_of": as_of,
             "indexed_at": indexed_at_text,
+            "embedding_model": embedding_model,
+            "embedding_dimensions": embedding_dimensions,
         })
     return documents
 
 
 def build_ingestion_manifest(
-    *, source_sha256: str, sections: list[MarkdownSection], chunks: list[MarkdownChunk]
+    *,
+    source_sha256: str,
+    sections: list[MarkdownSection],
+    chunks: list[MarkdownChunk],
+    embedding_model: str = "",
+    embedding_dimensions: int = 0,
 ) -> dict[str, object]:
     """Return bounded audit metadata without retaining source content."""
     return {
@@ -313,4 +327,6 @@ def build_ingestion_manifest(
         "metadata_valid": all(
             bool(chunk.section_id and chunk.section_path and chunk.text) for chunk in chunks
         ),
+        "embedding_model": embedding_model,
+        "embedding_dimensions": embedding_dimensions,
     }

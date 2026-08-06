@@ -138,15 +138,23 @@ class _EmbeddingClient:
 
 
 class _SearchProjection:
-    def __init__(self):
+    def __init__(self, dimensions=3072):
         self.calls = []
         self.retired = []
+        self.dimensions = dimensions
+        self.stamp_ensured = 0
 
     def replace_documents(self, *, parent_document_key, documents):
         self.calls.append((parent_document_key, documents))
 
     def retire_stale_revisions(self, *, document):
         self.retired.append(document.pk)
+
+    def vector_dimensions(self):
+        return self.dimensions
+
+    def ensure_stamp_fields(self):
+        self.stamp_ensured += 1
 
 
 class _Registry:
@@ -176,12 +184,23 @@ class _Registry:
         self.document.state = "indexed"
         self.document.is_current = True
         self.document.search_index_name = kwargs["search_index_name"]
+        self.document.embedding_model = kwargs.get("embedding_model", "")
+        self.document.embedding_dimensions = kwargs.get("embedding_dimensions", 0)
         return self.document
 
     def mark_failed(self, **kwargs):
         self.document.state = "failed"
         self.failed_codes.append(kwargs["error_code"])
         return self.document
+
+    def begin_reindex(self, **kwargs):
+        assert self.document.state == "indexed"
+        self.document.state = "indexing"
+        return self.document
+
+    def indexed_embedding_models(self):
+        stamped = getattr(self.document, "embedding_model", "") if self.document else ""
+        return [stamped] if stamped else []
 
 
 def _metadata():
@@ -249,3 +268,68 @@ def test_indexer_marks_registry_failed_when_embedding_dimension_is_wrong(tmp_pat
     assert registry.document.state == "failed"
     assert registry.failed_codes == ["CONTROLLED_DOCUMENT_EMBEDDING_DIMENSION_INVALID"]
     assert not projection.calls
+
+
+def test_indexer_refuses_live_index_dimension_drift(tmp_path):
+    """Ingestion into an index storing a different vector width refuses up front."""
+    source = tmp_path / "pump-station-manual.md"
+    source.write_text(MARKDOWN, encoding="utf-8")
+    registry = _Registry()
+    projection = _SearchProjection(dimensions=1536)
+    indexer = ControlledDocumentIndexer(
+        embedding_client=_EmbeddingClient(),
+        search_projection=projection,
+        search_index_name="eaits-manuals-v4a",
+        embedding_model="text-embedding-3-large",
+        registry=registry,
+    )
+
+    with pytest.raises(ControlledDocumentIngestionError) as error:
+        indexer.ingest(source_path=source, metadata=_metadata())
+
+    assert error.value.code == "CONTROLLED_DOCUMENT_EMBEDDING_DIMENSION_DRIFT"
+    assert registry.document is None
+    assert not projection.calls
+
+
+def test_indexer_refuses_corpus_embedded_with_a_different_model(tmp_path):
+    """A configured model change must go through the governed re-embed path."""
+    source = tmp_path / "pump-station-manual.md"
+    source.write_text(MARKDOWN, encoding="utf-8")
+    registry = _Registry()
+    projection = _SearchProjection()
+    first = ControlledDocumentIndexer(
+        embedding_client=_EmbeddingClient(),
+        search_projection=projection,
+        search_index_name="eaits-manuals-v4a",
+        embedding_model="text-embedding-3-large",
+        registry=registry,
+    )
+    first.ingest(source_path=source, metadata=_metadata())
+    assert registry.document.embedding_model == "text-embedding-3-large"
+
+    swapped = ControlledDocumentIndexer(
+        embedding_client=_EmbeddingClient(),
+        search_projection=projection,
+        search_index_name="eaits-manuals-v4a",
+        embedding_model="text-embedding-4-huge",
+        registry=registry,
+    )
+    with pytest.raises(ControlledDocumentIngestionError) as error:
+        swapped.ingest(source_path=source, metadata=_metadata())
+    assert error.value.code == "CONTROLLED_DOCUMENT_EMBEDDING_MODEL_DRIFT"
+
+    reembed = ControlledDocumentIndexer(
+        embedding_client=_EmbeddingClient(),
+        search_projection=projection,
+        search_index_name="eaits-manuals-v4a",
+        embedding_model="text-embedding-4-huge",
+        allow_model_change=True,
+        registry=registry,
+    )
+    result = reembed.ingest(source_path=source, metadata=_metadata(), force=True)
+    assert not result.already_indexed
+    assert registry.document.embedding_model == "text-embedding-4-huge"
+    assert projection.stamp_ensured >= 2
+    stamped_rows = projection.calls[-1][1]
+    assert all(row["embedding_model"] == "text-embedding-4-huge" for row in stamped_rows)

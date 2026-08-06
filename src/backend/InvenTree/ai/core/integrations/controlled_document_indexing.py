@@ -53,6 +53,12 @@ class SearchProjection(Protocol):
     def retire_stale_revisions(self, *, document: ControlledDocument) -> None:
         """Clear the current projection flag from superseded Search revisions."""
 
+    def vector_dimensions(self) -> int | None:
+        """Return the index's stored vector dimensions, or None if unreadable."""
+
+    def ensure_stamp_fields(self) -> None:
+        """Additively ensure the index schema carries the embedding stamp fields."""
+
 
 @dataclass(frozen=True)
 class ControlledDocumentMetadata:
@@ -163,6 +169,9 @@ class AzureOpenAIEmbeddingClient:
                 model=self._deployment,
                 input=inputs,
             )
+            from ai.core.integrations.model_pins import record_resolved_model
+
+            record_resolved_model(self._deployment, str(getattr(response, "model", "") or ""))
             return [item.embedding for item in response.data]
         except ControlledDocumentIngestionError:
             raise
@@ -230,6 +239,90 @@ class AzureSearchProjection:
             credential=credential,
         )
         return self._client
+
+    def _get_index_client(self) -> Any:
+        """Create a schema-level client with the same credential posture."""
+        try:
+            from azure.core.credentials import AzureKeyCredential
+            from azure.search.documents.indexes import SearchIndexClient
+        except ImportError as exc:  # pragma: no cover - deployment packaging
+            raise ControlledDocumentIngestionError(
+                "Azure Search SDK is unavailable", code="CONTROLLED_DOCUMENT_SEARCH_UNAVAILABLE"
+            ) from exc
+        credential: Any
+        if self._api_key:
+            credential = AzureKeyCredential(self._api_key)
+        else:
+            try:
+                from azure.identity import DefaultAzureCredential
+            except ImportError as exc:  # pragma: no cover - deployment packaging
+                raise ControlledDocumentIngestionError(
+                    "Azure Identity SDK is unavailable",
+                    code="CONTROLLED_DOCUMENT_SEARCH_UNAVAILABLE",
+                ) from exc
+            credential = DefaultAzureCredential()
+        return SearchIndexClient(endpoint=self._endpoint, credential=credential)
+
+    def vector_dimensions(self) -> int | None:
+        """Return the live index's ``text_vector`` dimensions, or None if unreadable.
+
+        ``None`` means the schema could not be read (typically a data-plane-only
+        credential) — callers must treat that as "unknown", never as a match.
+        """
+        try:
+            index = self._get_index_client().get_index(self._index_name)
+            for field in index.fields:
+                if field.name == "text_vector":
+                    return getattr(field, "vector_search_dimensions", None)
+            return None
+        except Exception:
+            return None
+
+    def ensure_stamp_fields(self) -> None:
+        """Additively add the S17 embedding stamp fields to the index schema.
+
+        Adding retrievable non-key fields is a safe, non-destructive index
+        update. A credential that can upload documents but not update the
+        schema fails closed here: ingestion must not silently produce
+        unstamped chunks once the stamp is part of the contract.
+        """
+        try:
+            from azure.search.documents.indexes.models import (
+                SearchFieldDataType,
+                SimpleField,
+            )
+
+            index_client = self._get_index_client()
+            index = index_client.get_index(self._index_name)
+            existing = {field.name for field in index.fields}
+            additions = []
+            if "embedding_model" not in existing:
+                additions.append(
+                    SimpleField(
+                        name="embedding_model",
+                        type=SearchFieldDataType.String,
+                        filterable=True,
+                    )
+                )
+            if "embedding_dimensions" not in existing:
+                additions.append(
+                    SimpleField(
+                        name="embedding_dimensions",
+                        type=SearchFieldDataType.Int32,
+                        filterable=True,
+                    )
+                )
+            if not additions:
+                return
+            index.fields.extend(additions)
+            index_client.create_or_update_index(index)
+        except ControlledDocumentIngestionError:
+            raise
+        except Exception as exc:
+            raise ControlledDocumentIngestionError(
+                "Search index schema cannot carry the embedding stamp",
+                code="CONTROLLED_DOCUMENT_INDEX_STAMP_FAILED",
+            ) from exc
 
     @staticmethod
     def _all_succeeded(results: Any) -> bool:
@@ -323,6 +416,8 @@ class ControlledDocumentIndexer:
         search_index_name: str,
         embedding_dimensions: int = 3072,
         embedding_batch_size: int = 16,
+        embedding_model: str = "",
+        allow_model_change: bool = False,
         registry=None,
     ) -> None:
         self.embedding_client = embedding_client
@@ -330,6 +425,10 @@ class ControlledDocumentIndexer:
         self.search_index_name = search_index_name
         self.embedding_dimensions = embedding_dimensions
         self.embedding_batch_size = embedding_batch_size
+        self.embedding_model = embedding_model
+        # Only the governed re-embed command may ingest with a model that
+        # differs from what the current corpus was embedded with.
+        self.allow_model_change = allow_model_change
         if registry is None:
             from aichat.services import controlled_documents
 
@@ -337,7 +436,7 @@ class ControlledDocumentIndexer:
         self.registry = registry
 
     @classmethod
-    def from_settings(cls) -> ControlledDocumentIndexer:
+    def from_settings(cls, *, allow_model_change: bool = False) -> ControlledDocumentIndexer:
         """Build an indexer using only typed AIMMS configuration values."""
         from ai.core.config import get_settings
 
@@ -352,7 +451,38 @@ class ControlledDocumentIndexer:
             search_projection=AzureSearchProjection.from_settings(),
             search_index_name=settings.azure_search_controlled_documents_index,
             embedding_dimensions=settings.controlled_document_embedding_dimensions,
+            embedding_model=settings.azure_openai_embedding_deployment,
+            allow_model_change=allow_model_change,
         )
+
+    def _refuse_on_drift(self) -> None:
+        """Refuse ingestion into an index or corpus embedded differently (S17 A4).
+
+        Two independent checks, each authoritative when it can see:
+        * the live index's stored vector dimensions (skipped when the schema is
+          unreadable — the per-vector check in ``_embed`` still holds), and
+        * the registry stamp of already-current revisions, which must match the
+          configured model unless the governed re-embed path acknowledged the
+          migration.
+        """
+        live_dims = self.search_projection.vector_dimensions()
+        if live_dims is not None and live_dims != self.embedding_dimensions:
+            raise ControlledDocumentIngestionError(
+                "Configured embedding dimensions do not match the live index",
+                code="CONTROLLED_DOCUMENT_EMBEDDING_DIMENSION_DRIFT",
+            )
+        if self.allow_model_change or not self.embedding_model:
+            return
+        stamped = getattr(self.registry, "indexed_embedding_models", None)
+        if stamped is None:
+            return
+        others = set(stamped()) - {"", self.embedding_model}
+        if others:
+            raise ControlledDocumentIngestionError(
+                "Corpus already embedded with a different model; use the governed "
+                "re-embed command to migrate",
+                code="CONTROLLED_DOCUMENT_EMBEDDING_MODEL_DRIFT",
+            )
 
     def _embed(self, chunks: list[MarkdownChunk]) -> list[list[float]]:
         """Generate and validate exactly one fixed-dimension vector per chunk."""
@@ -387,9 +517,17 @@ class ControlledDocumentIndexer:
             )
 
     def ingest(
-        self, *, source_path: Path, metadata: ControlledDocumentMetadata
+        self,
+        *,
+        source_path: Path,
+        metadata: ControlledDocumentMetadata,
+        force: bool = False,
     ) -> ControlledDocumentIngestionResult:
-        """Ingest one trusted Azure Files Markdown source into the shared Search index."""
+        """Ingest one trusted Azure Files Markdown source into the shared Search index.
+
+        ``force`` re-projects an already-indexed revision — the governed
+        re-embed path — instead of short-circuiting on the registry state.
+        """
         try:
             source_bytes = source_path.read_bytes()
         except OSError as exc:
@@ -410,7 +548,10 @@ class ControlledDocumentIndexer:
             source_sha256=source_sha256,
             sections=sections,
             chunks=chunks,
+            embedding_model=self.embedding_model,
+            embedding_dimensions=self.embedding_dimensions,
         )
+        self._refuse_on_drift()
         scope_hash = hashlib.sha256(metadata.scope_key.encode("utf-8")).hexdigest()
         document = self.registry.register_document(
             document_id=metadata.document_id,
@@ -433,33 +574,45 @@ class ControlledDocumentIndexer:
             created_by=metadata.created_by,
             approved_by=metadata.approved_by,
         )
-        if document.state == "indexed":
-            return ControlledDocumentIngestionResult(
-                document_id=document.document_id,
-                revision=document.revision,
-                source_sha256=document.source_sha256,
-                search_index_name=document.search_index_name,
-                manifest=manifest,
-                already_indexed=True,
-            )
-
         started = False
-        try:
-            document = self.registry.start_indexing(
+        if document.state == "indexed":
+            if not force:
+                return ControlledDocumentIngestionResult(
+                    document_id=document.document_id,
+                    revision=document.revision,
+                    source_sha256=document.source_sha256,
+                    search_index_name=document.search_index_name,
+                    manifest=manifest,
+                    already_indexed=True,
+                )
+            document = self.registry.begin_reindex(
                 scope_key=document.scope_key,
                 scope_hash=document.scope_hash,
                 document_id=document.document_id,
                 revision=document.revision,
             )
             started = True
+
+        try:
+            if not started:
+                document = self.registry.start_indexing(
+                    scope_key=document.scope_key,
+                    scope_hash=document.scope_hash,
+                    document_id=document.document_id,
+                    revision=document.revision,
+                )
+                started = True
             indexed_at = datetime.now(UTC)
             documents = build_search_documents(
                 document=document,
                 chunks=chunks,
                 indexed_at=indexed_at,
+                embedding_model=self.embedding_model,
+                embedding_dimensions=self.embedding_dimensions,
             )
             for row, vector in zip(documents, self._embed(chunks), strict=True):
                 row["text_vector"] = vector
+            self.search_projection.ensure_stamp_fields()
             self.search_projection.replace_documents(
                 parent_document_key=str(document.pk), documents=documents
             )
@@ -471,6 +624,8 @@ class ControlledDocumentIndexer:
                 revision=document.revision,
                 source_sha256=source_sha256,
                 search_index_name=self.search_index_name,
+                embedding_model=self.embedding_model,
+                embedding_dimensions=self.embedding_dimensions,
             )
         except ControlledDocumentIngestionError as exc:
             if started:

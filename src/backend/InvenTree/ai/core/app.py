@@ -224,6 +224,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     get_workflow_root()
     logger.info("Root workflow initialized")
 
+    # S17 model/embedding pins: refuse to serve a retrieval plane whose live
+    # embedding output cannot be stored in the configured index. A ModelPinError
+    # here aborts startup by design; EMBEDDING_BOOT_PROBE_ENABLED=false is the
+    # one-env rollback. Unconfigured planes skip loudly inside the probe.
+    from ai.core.integrations.model_pins import run_boot_probes
+
+    await asyncio.to_thread(run_boot_probes)
+
     # Voice Live provider gateway (WS4-T4 deployment wiring). Installed only
     # when the realtime flag is on; otherwise the SDP relay keeps reporting
     # honestly unavailable and text remains the fallback.

@@ -388,6 +388,11 @@ class ControlledDocument(models.Model):
     search_index_name = models.CharField(max_length=128, blank=True, default='')
     indexed_at = models.DateTimeField(null=True, blank=True)
     indexing_error_code = models.CharField(max_length=64, blank=True, default='')
+    # S17 A4: which embedding model produced this revision's chunk vectors and
+    # at what dimensionality. Blank/0 marks revisions indexed before the stamp
+    # existed; the governed re-embed command backfills them.
+    embedding_model = models.CharField(max_length=128, blank=True, default='')
+    embedding_dimensions = models.PositiveIntegerField(default=0)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

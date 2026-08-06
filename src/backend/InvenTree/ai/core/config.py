@@ -422,7 +422,11 @@ class Settings(BaseSettings):
         default="gpt-4o-mini", alias="AZURE_OPENAI_FAST_DEPLOYMENT"
     )
     azure_openai_embedding_deployment: str = Field(
-        default="text-embedding-ada-002",
+        # Must agree with controlled_document_embedding_dimensions below: the
+        # live index stores 3072-dimension text-embedding-3-large vectors. The
+        # old ada-002 default (1536) contradicted that and failed per query on
+        # any environment that forgot the env override (S17 A4).
+        default="text-embedding-3-large",
         # Canonical name first; the plural spelling has shipped in real .env
         # files and silently not loading a credential is worse than an alias.
         validation_alias=AliasChoices(
@@ -430,6 +434,30 @@ class Settings(BaseSettings):
         ),
     )
     azure_openai_api_version: str = Field(default="2024-10-21", alias="AZURE_OPENAI_API_VERSION")
+
+    # -------------------------------------------------------------------------
+    # S17 model pins and boot probes (fail closed; each has its own kill switch)
+    # -------------------------------------------------------------------------
+    # A4: at startup, embed one known string and refuse to boot when the vector
+    # dimensions cannot be stored in the configured controlled-document index.
+    # Skips loudly when the embedding plane or the index is unconfigured.
+    embedding_boot_probe_enabled: bool = Field(default=True, alias="EMBEDDING_BOOT_PROBE_ENABLED")
+    # A10: resolve each chat deployment's actual model identity at boot with a
+    # one-token call and assert it against the pins below. Opt-in: every
+    # replica boot pays two provider calls, so a deployment enables it
+    # deliberately rather than by default.
+    model_version_boot_probe_enabled: bool = Field(
+        default=False, alias="MODEL_VERSION_BOOT_PROBE_ENABLED"
+    )
+    # Optional pins: empty string means record-only (the resolved identity is
+    # still logged and stamped onto turns); a set pin makes a mismatch fatal.
+    azure_openai_expected_model: str = Field(default="", alias="AZURE_OPENAI_EXPECTED_MODEL")
+    azure_openai_expected_fast_model: str = Field(
+        default="", alias="AZURE_OPENAI_EXPECTED_FAST_MODEL"
+    )
+    azure_openai_expected_embedding_model: str = Field(
+        default="", alias="AZURE_OPENAI_EXPECTED_EMBEDDING_MODEL"
+    )
 
     # -------------------------------------------------------------------------
     # Azure AI Search Configuration
@@ -482,7 +510,10 @@ class AzureOpenAISettings(BaseSettings):
     deployment: str = Field(default="gpt-4o", description="Primary model deployment name")
     fast_deployment: str = Field(default="gpt-4o-mini", description="Fast model for T1 routing")
     embedding_deployment: str = Field(
-        default="text-embedding-ada-002", description="Embedding model deployment"
+        # Kept in lockstep with Settings.azure_openai_embedding_deployment; the
+        # live controlled-document index stores 3072-dim 3-large vectors.
+        default="text-embedding-3-large",
+        description="Embedding model deployment",
     )
     api_version: str = Field(default="2024-10-21", description="API version")
 

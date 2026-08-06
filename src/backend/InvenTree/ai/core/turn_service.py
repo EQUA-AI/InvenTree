@@ -279,6 +279,21 @@ def _canonical_response_for_legacy(
     )
 
 
+def _terminal_output_metadata(base: dict[str, Any]) -> dict[str, Any]:
+    """Attach the resolved model-version stamp to a terminal turn (S17 A10).
+
+    Deployment names are aliases; the stamp records which concrete model
+    identities the provider reported during this process, so a post-hoc audit
+    of any persisted turn can name the models that served it.
+    """
+    from ai.core.integrations.model_pins import resolved_model_versions
+
+    versions = resolved_model_versions()
+    if versions:
+        return {**base, "model_versions": versions}
+    return base
+
+
 def _canonical_terminal_response(state: str, message: str) -> CanonicalTurnResponse:
     """Return a strict, non-speaking response for a non-complete lifecycle state."""
     state_value = str(getattr(state, "value", state))
@@ -1319,11 +1334,11 @@ class NormalizedTurnService:
                 state=response_state,
                 canonical_result=canonical,
                 output_content=message,
-                output_metadata={
+                output_metadata=_terminal_output_metadata({
                     "response_state": response_state,
                     "events": capture.events,
                     "spoken_summary": str(canonical.get("spoken_summary") or ""),
-                },
+                }),
                 workflow_id=capture.workflow_id or "",
             )
             # One rendered line per turn. Fields go in the message, not extra={},
@@ -1384,11 +1399,11 @@ class NormalizedTurnService:
                     state=TurnState.CANCELED,
                     canonical_result=canonical,
                     output_content=response.detailed_response,
-                    output_metadata={
+                    output_metadata=_terminal_output_metadata({
                         "response_state": TurnState.CANCELED,
                         "events": capture.events,
                         "spoken_summary": "",
-                    },
+                    }),
                     workflow_id=capture.workflow_id or "",
                 )
             )
@@ -1427,11 +1442,11 @@ class NormalizedTurnService:
                 state=TurnState.INCOMPLETE,
                 canonical_result=canonical,
                 output_content=response.detailed_response,
-                output_metadata={
+                output_metadata=_terminal_output_metadata({
                     "response_state": TurnState.INCOMPLETE,
                     "events": capture.events,
                     "spoken_summary": "",
-                },
+                }),
                 workflow_id=capture.workflow_id or "",
             )
             return self._result_from_canonical(thread.pk, finalized.pk, canonical, replayed=False)
@@ -1477,11 +1492,11 @@ class NormalizedTurnService:
                 state=TurnState.FAILED,
                 canonical_result=canonical,
                 output_content=response.detailed_response,
-                output_metadata={
+                output_metadata=_terminal_output_metadata({
                     "response_state": TurnState.FAILED,
                     "events": capture.events,
                     "spoken_summary": "",
-                },
+                }),
                 workflow_id=capture.workflow_id or "",
             )
             raise TurnExecutionFailed("AI turn failed") from None
