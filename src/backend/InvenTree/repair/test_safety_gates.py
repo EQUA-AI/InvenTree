@@ -692,3 +692,55 @@ class GateFloorReviewRegressionTest(TestCase):
         self._run(packet, [('AI worded lockout', '  LOTO ')])
 
         self.assertTrue(packet.gates.get(name='AI worded lockout').is_blocking)
+
+
+class GateBlockingBackfillTest(TestCase):
+    """Migration 0010's rule: template authority or blocking, never neither."""
+
+    def test_backfill_rule_matches_creation_semantics(self):
+        """Legacy non-blocking rows flip unless their template opts out."""
+        from django.db.models import Q
+
+        from .models import RepairPacket, RepairPacketGate, SafetyGateTemplate
+
+        packet = RepairPacket.objects.create(fault_summary='backfill probe')
+        opt_out = SafetyGateTemplate.objects.create(
+            name='Advisory walkdown', gate_type='other', is_blocking=False
+        )
+        blocking_template = SafetyGateTemplate.objects.create(
+            name='Electrical LOTO', gate_type='loto', is_blocking=True
+        )
+        legacy_plain = RepairPacketGate.objects.create(
+            packet=packet, name='legacy loto', gate_type='loto', is_blocking=False
+        )
+        legacy_templated = RepairPacketGate.objects.create(
+            packet=packet,
+            name='legacy templated',
+            gate_type='loto',
+            template=blocking_template,
+            is_blocking=False,
+        )
+        advisory = RepairPacketGate.objects.create(
+            packet=packet,
+            name='advisory',
+            gate_type='other',
+            template=opt_out,
+            is_blocking=False,
+        )
+        already = RepairPacketGate.objects.create(
+            packet=packet, name='already blocking', gate_type='isolation'
+        )
+
+        # The exact queryset the data migration runs.
+        RepairPacketGate.objects.filter(
+            Q(template__isnull=True) | Q(template__is_blocking=True), is_blocking=False
+        ).update(is_blocking=True)
+
+        legacy_plain.refresh_from_db()
+        legacy_templated.refresh_from_db()
+        advisory.refresh_from_db()
+        already.refresh_from_db()
+        self.assertTrue(legacy_plain.is_blocking)
+        self.assertTrue(legacy_templated.is_blocking)
+        self.assertFalse(advisory.is_blocking)  # configured opt-out survives
+        self.assertTrue(already.is_blocking)
