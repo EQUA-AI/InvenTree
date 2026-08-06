@@ -568,23 +568,44 @@ def _validate_candidates(candidates, allowed_keys, narrative: str, where: str):
         text = candidate.get('text', '')
         if not isinstance(text, str) or not text.strip() or len(text) > 255:
             _reject(f'{label}: text is required and bounded')
+        claimed_spans = _validate_spans(
+            candidate.get('spans', []), narrative, label, required=True
+        )
+        # Same live failure mode as the primary fields: correct candidate
+        # text, unreliable model coordinates. Anchor the text server-side
+        # with the full guard set; flag realignment for the reviewer.
+        anchored_spans, realigned = _anchor_field_spans(
+            text, claimed_spans, narrative, label
+        )
         row = {
             'text': text,
-            'spans': _validate_spans(
-                candidate.get('spans', []), narrative, label, required=True
-            ),
+            'spans': anchored_spans,
             'warnings': _validate_warnings(candidate.get('warnings', []), label),
         }
-        _require_value_in_spans(text, row['spans'], narrative, label)
+        # Auxiliary values (quantity/unit/value text) must share provenance
+        # with the candidate phrase: first the spans the extractor claimed,
+        # else the immediate neighbourhood of the anchored phrase itself.
+        window = [
+            max(0, anchored_spans[0][0] - 80),
+            min(len(narrative), anchored_spans[-1][1] + 80),
+        ]
         for key in allowed_keys - {'text', 'spans', 'warnings'}:
             value = candidate.get(key, '')
             if not isinstance(value, str) or len(value) > 255:
                 _reject(f'{label}: {key} must be a bounded string')
             if value.strip():
-                _require_value_in_spans(
-                    value, row['spans'], narrative, f'{label}.{key}', exact=False
-                )
+                try:
+                    _require_value_in_spans(
+                        value, claimed_spans, narrative, f'{label}.{key}', exact=False
+                    )
+                except ExtractionInvalidOutput:
+                    _require_value_in_spans(
+                        value, [window], narrative, f'{label}.{key}', exact=False
+                    )
+                    realigned = True
             row[key] = value
+        if realigned and 'span_realigned' not in row['warnings']:
+            row['warnings'].append('span_realigned')
         validated.append(row)
     return validated
 

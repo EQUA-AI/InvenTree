@@ -294,6 +294,48 @@ class ExtractionContractTest(TestCase):
                 narrative,
             )
 
+    def test_candidate_with_misaligned_span_is_realigned_and_flagged(self):
+        """Candidates get the same server-side anchoring as primary fields."""
+        narrative = 'Used one filter cartridge during the repair. Flow restored.'
+        flow_start = narrative.index('Flow')
+        document = validate_extraction_output(
+            {
+                'schema_version': 1,
+                'fields': {},
+                'part_candidates': [
+                    {
+                        'text': 'filter cartridge',
+                        'quantity_text': 'one',
+                        'spans': [[flow_start, len(narrative)]],
+                    }
+                ],
+            },
+            narrative,
+        )
+        row = document['part_candidates'][0]
+        start, end = row['spans'][0]
+        self.assertEqual(narrative[start:end], 'filter cartridge')
+        # quantity anchors in the immediate neighbourhood of the phrase.
+        self.assertEqual(row['quantity_text'], 'one')
+        self.assertIn('span_realigned', row['warnings'])
+
+    def test_candidate_text_absent_from_narrative_is_still_rejected(self):
+        """Anchoring never invents provenance for fabricated candidates."""
+        with self.assertRaises(ExtractionInvalidOutput):
+            validate_extraction_output(
+                {
+                    'schema_version': 1,
+                    'fields': {},
+                    'part_candidates': [
+                        {
+                            'text': 'a 900A contactor',
+                            'spans': [[0, len(NARRATIVE)]],
+                        }
+                    ],
+                },
+                NARRATIVE,
+            )
+
     def test_text_fields_cannot_drop_context_from_a_broader_span(self):
         """Containment alone lets a value omit negation present in its cited span."""
         cases = (
