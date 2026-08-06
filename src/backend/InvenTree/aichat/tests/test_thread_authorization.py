@@ -80,18 +80,15 @@ class ThreadAuthorizationTests(TestCase):
                     repository.delete(self.thread.pk)
 
     def test_legacy_repository_rejects_scoped_identifier(self) -> None:
-        """Scoped thread syntax cannot be addressed by legacy operations."""
-        scoped = ThreadRepository(
-            self.owner.pk,
-            'site:main',
-            namespace=ThreadNamespace.SCOPED,
-        )
-        scoped_thread, _ = scoped.get_or_create()
-        self.assertTrue(scoped_thread.pk.startswith('scoped_thread_'))
+        """The scoped_ prefix stays reserved after the rail's removal (S14c).
 
+        A stale scoped identifier must fail closed rather than resolve —
+        or be creatable — inside the main namespace.
+        """
         with self.assertRaises(ScopedThreadRejected):
-            self.repository.get(scoped_thread.pk)
-        self.assertNotIn(scoped_thread, self.repository.list())
+            self.repository.get('scoped_thread_0000stale0000')
+        with self.assertRaises(ScopedThreadRejected):
+            self.repository.get_or_create('scoped_thread_0000stale0000')
 
     def test_append_replay_rename_and_delete_stay_in_boundary(self) -> None:
         """Transcript and lifecycle operations work only inside the boundary."""

@@ -131,12 +131,13 @@ class ThreadRepository:
         )
 
     def _reject_wrong_namespace_id(self, thread_id: str) -> None:
-        """Fail closed when identifier syntax crosses a namespace boundary."""
-        is_scoped_id = thread_id.startswith('scoped_')
-        if self.namespace == ThreadNamespace.UNSCOPED and is_scoped_id:
+        """Fail closed on the permanently reserved scoped-rail id prefix.
+
+        The scoped namespace was dropped with its rail (S14c); a stale
+        ``scoped_`` identifier must refuse rather than resolve here.
+        """
+        if thread_id.startswith('scoped_'):
             raise ScopedThreadRejected('Scoped threads are unavailable here')
-        if self.namespace == ThreadNamespace.SCOPED and not is_scoped_id:
-            raise ThreadNotFound('Thread not found')
 
     def _get_thread(self, thread_id: str) -> ChatThread:
         """Resolve a thread only after applying the complete boundary."""
@@ -160,8 +161,6 @@ class ThreadRepository:
         """Get a boundary-visible thread or create it without claiming collisions."""
         if thread_id is None:
             thread_id = generate_thread_id()
-            if self.namespace == ThreadNamespace.SCOPED:
-                thread_id = f'scoped_{thread_id}'
         if not isinstance(thread_id, str) or not thread_id or len(thread_id) > 80:
             raise InvalidBoundary('Thread identifier is invalid')
         if not isinstance(title, str) or len(title) > 255:

@@ -59,3 +59,59 @@ class ScopedChatRemovalTests(TestCase):
         """Proposals and feedback — the main rail — are untouched."""
         self.assertTrue(reverse('aichat:proposal-list'))
         self.assertTrue(reverse('aichat:message-feedback'))
+
+
+from django.db import connection  # noqa: E402
+from django.db.migrations.executor import MigrationExecutor  # noqa: E402
+from django.test import TransactionTestCase, tag  # noqa: E402
+
+
+@tag('migration_test')
+class DropScopedChatMigrationTests(TransactionTestCase):
+    """The destructive S14(c) drop is structurally zero-row-gated."""
+
+    def _executor(self) -> MigrationExecutor:
+        connection.close()
+        return MigrationExecutor(connection)
+
+    def test_forward_succeeds_on_zero_rows(self) -> None:
+        """With an empty rail the drop removes all four tables."""
+        self._executor().migrate([('aichat', '0013_retrievalmiss')])
+        tables = set(connection.introspection.table_names())
+        self.assertIn('aichat_scopedconversation', tables)
+
+        self._executor().migrate([('aichat', '0014_drop_scoped_chat')])
+        tables = set(connection.introspection.table_names())
+        for table in (
+            'aichat_scopedconversation',
+            'aichat_scopedconversationgrant',
+            'aichat_chatcitation',
+            'aichat_chattoolinvocation',
+        ):
+            self.assertNotIn(table, tables)
+
+    def test_forward_aborts_on_a_live_scoped_row(self) -> None:
+        """The migration itself refuses when rows exist — the gate is code."""
+        executor = self._executor()
+        executor.migrate([('aichat', '0013_retrievalmiss')])
+        apps = executor.loader.project_state(
+            ('aichat', '0013_retrievalmiss')
+        ).apps
+        user = apps.get_model('auth', 'User').objects.create(
+            username='scoped-abort-probe'
+        )
+        apps.get_model('aichat', 'ScopedConversation').objects.create(
+            owner_id=user.pk,
+            context_type='work_order',
+            object_id='1',
+            scope_key='site:test',
+            scope_hash='0' * 64,
+            ai_thread_id='scoped_thread_probe',
+        )
+
+        with self.assertRaisesMessage(RuntimeError, 'Refusing to drop'):
+            self._executor().migrate([('aichat', '0014_drop_scoped_chat')])
+
+        # Clean up so the post-test migrate-forward succeeds.
+        apps.get_model('aichat', 'ScopedConversation').objects.all().delete()
+        self._executor().migrate([('aichat', '0014_drop_scoped_chat')])

@@ -1250,13 +1250,11 @@ def _deliver_notification(
             if not locked.thread_id:
                 return False
 
-            namespace = (
-                ThreadNamespace.SCOPED
-                if locked.thread_id.startswith('scoped_')
-                else ThreadNamespace.UNSCOPED
-            )
+            # The scoped namespace is gone (S14c). A proposal still naming a
+            # scoped_ thread id fails closed in _lock_thread's prefix guard
+            # rather than resolving into the main namespace.
             repository = ThreadRepository(
-                locked.owner, locked.scope_key, namespace=namespace
+                locked.owner, locked.scope_key, namespace=ThreadNamespace.UNSCOPED
             )
             # Lock the boundary-matched transcript before dedupe and append.
             # If the original was deleted, an equal public id may now name a

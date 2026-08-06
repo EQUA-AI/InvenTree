@@ -92,12 +92,9 @@ class ProposalNotificationSweepTests(TestCase):
         )
         repository = ThreadRepository(cls.owner, 'site:test')
         cls.thread = repository.get_or_create(None, title='Sweep thread')[0]
-        scoped_repository = ThreadRepository(
-            cls.owner, 'site:test', namespace=ThreadNamespace.SCOPED
-        )
-        cls.scoped_thread = scoped_repository.get_or_create(
-            None, title='Scoped sweep thread'
-        )[0]
+        # The scoped namespace is gone (S14c); this stale identifier proves
+        # delivery fails closed instead of resolving into the main namespace.
+        cls.stale_scoped_thread_id = 'scoped_thread_0000stale0000'
 
     def _messages(self, kind):
         return ChatMessage.objects.filter(
@@ -250,23 +247,26 @@ class ProposalNotificationSweepTests(TestCase):
         self.assertIn('Applied', outcome.content)
         self.assertNotIn('window was cleared', outcome.content)
 
-    def test_scoped_thread_receives_its_outcome(self):
-        """Notification routing preserves the thread's enforced namespace."""
+    def test_stale_scoped_thread_id_fails_closed(self):
+        """A proposal naming a scoped_ id delivers nothing after S14c.
+
+        The scoped rail is gone; its reserved prefix must refuse rather than
+        deliver a notification into the main namespace.
+        """
         proposal = _proposal(
             self.owner,
-            self.scoped_thread.pk,
+            self.stale_scoped_thread_id,
             state=ProposalState.EXECUTED,
             suffix='scoped-done',
             receipt={'command': 'hold', 'lifecycle_status': 'on_hold'},
         )
 
-        self.assertEqual(sweep_proposal_notifications()['outcomes'], 1)
-        outcome = ChatMessage.objects.get(
-            thread=self.scoped_thread,
-            metadata__proposal_id=str(proposal.id),
-            metadata__kind=NOTIFICATION_KIND_OUTCOME,
+        self.assertEqual(sweep_proposal_notifications()['outcomes'], 0)
+        self.assertFalse(
+            ChatMessage.objects.filter(
+                metadata__proposal_id=str(proposal.id)
+            ).exists()
         )
-        self.assertIn('Applied', outcome.content)
 
     def test_stale_warning_candidate_is_rechecked_under_lock(self):
         """A concurrent rejection must not receive the scan's obsolete reminder."""

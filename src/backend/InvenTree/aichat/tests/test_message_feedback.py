@@ -157,20 +157,12 @@ class MessageFeedbackServiceTests(TestCase):
 
     def test_scoped_namespace_threads_are_not_ratable(self):
         """Feedback targets the unscoped drawer only; scoped threads refuse."""
-        from aichat.models import ThreadNamespace
-
-        scoped = ChatThread.objects.create(
-            id='scoped_feedback_probe_thread',
-            owner=self.owner,
-            scope_key='site:test',
-            scope_hash='0' * 64,
-            namespace=ThreadNamespace.SCOPED,
-            title='scoped',
-        )
+        # The scoped rail is gone (S14c); the reserved prefix must still be
+        # refused with the uniform unavailability code.
         with self.assertRaises(feedback_service.FeedbackError) as caught:
             feedback_service.record_feedback(
                 owner=self.owner,
-                thread_id=scoped.pk,
+                thread_id='scoped_feedback_probe_thread',
                 message_id='anything',
                 rating='up',
             )

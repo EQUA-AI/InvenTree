@@ -28,10 +28,14 @@ def generate_turn_id() -> str:
 
 
 class ThreadNamespace(models.TextChoices):
-    """Conversation namespaces with different authorization contracts."""
+    """Conversation namespaces with different authorization contracts.
+
+    The SCOPED namespace was dropped with the scoped-chat rail (S14c); the
+    ``scoped_`` id prefix stays permanently reserved so a stale identifier
+    fails closed instead of resolving into the main namespace.
+    """
 
     UNSCOPED = 'unscoped', 'Unscoped'
-    SCOPED = 'scoped', 'Scoped'
 
 
 class MessageRole(models.TextChoices):
@@ -115,11 +119,7 @@ class ChatThread(models.Model):
             ),
             models.CheckConstraint(
                 condition=(
-                    Q(namespace=ThreadNamespace.SCOPED, id__startswith='scoped_')
-                    | (
-                        Q(namespace=ThreadNamespace.UNSCOPED)
-                        & ~Q(id__startswith='scoped_')
-                    )
+                    Q(namespace=ThreadNamespace.UNSCOPED) & ~Q(id__startswith='scoped_')
                 ),
                 name='aichat_thread_namespace_id',
             ),
@@ -259,93 +259,6 @@ class ChatTurn(models.Model):
         return f'{self.thread_id} turn {self.pk} ({self.state})'
 
 
-class ConversationStatus(models.TextChoices):
-    """Lifecycle of one scoped conversation's governance row."""
-
-    ACTIVE = 'active', 'Active'
-    READ_ONLY = 'read_only', 'Read only'
-    CLOSED = 'closed', 'Closed'
-    DELETED = 'deleted', 'Deleted'
-
-
-class ScopedConversation(models.Model):
-    """Governance row binding one scoped transcript to one pinned record.
-
-    Django rows are the sole authorization authority for scoped chat
-    (SC-ADR-007): owner, scope, and context are enforced here so audit and
-    access control never depend on parsing transcripts. The transcript itself
-    lives in the scoped ``ChatThread`` namespace referenced by
-    ``ai_thread_id``.
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name='scoped_conversations',
-    )
-    context_type = models.CharField(max_length=32, db_index=True)
-    object_id = models.CharField(max_length=64, db_index=True)
-    scope_key = models.CharField(max_length=255)
-    scope_hash = models.CharField(max_length=64, db_index=True)
-    selected_document = models.ForeignKey(
-        'ControlledDocument',
-        null=True,
-        blank=True,
-        on_delete=models.PROTECT,
-        related_name='scoped_conversations',
-    )
-    title = models.CharField(max_length=255, blank=True, default='')
-    status = models.CharField(
-        max_length=16,
-        choices=ConversationStatus.choices,
-        default=ConversationStatus.ACTIVE,
-    )
-    ai_thread_id = models.CharField(max_length=80, unique=True)
-    last_context_revision = models.CharField(max_length=128, blank=True, default='')
-    deleted_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        """Ordering, boundary indexes, and namespace/lifecycle constraints."""
-
-        ordering = ['-updated_at', '-created_at']
-        indexes = [
-            models.Index(
-                fields=['owner', 'scope_hash', 'context_type', 'object_id'],
-                name='aichat_conv_boundary_idx',
-            )
-        ]
-        constraints = [
-            models.CheckConstraint(
-                condition=Q(ai_thread_id__startswith='scoped_'),
-                name='aichat_conv_scoped_thread_id',
-            ),
-            models.CheckConstraint(
-                condition=~Q(scope_hash=''), name='aichat_conv_scope_required'
-            ),
-            models.CheckConstraint(
-                condition=(
-                    Q(status=ConversationStatus.DELETED, deleted_at__isnull=False)
-                    | ~Q(status=ConversationStatus.DELETED)
-                ),
-                name='aichat_conv_deleted_marker',
-            ),
-        ]
-
-    def __str__(self) -> str:
-        """Return a safe diagnostic representation."""
-        return f'{self.context_type}:{self.object_id} conversation {self.pk}'
-
-
-class GrantAccess(models.TextChoices):
-    """Access levels an explicit conversation grant can convey."""
-
-    READ = 'read', 'Read'
-    EXPORT = 'export', 'Export'
-
-
 class ControlledDocumentState(models.TextChoices):
     """Lifecycle states for a governed document revision."""
 
@@ -465,69 +378,6 @@ class ControlledDocument(models.Model):
         return f'{self.document_id} revision {self.revision}'
 
 
-class ScopedConversationGrant(models.Model):
-    """An explicit, logged, revocable grant to another user's conversation."""
-
-    conversation = models.ForeignKey(
-        ScopedConversation, on_delete=models.PROTECT, related_name='access_grants'
-    )
-    grantee = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+'
-    )
-    granted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+'
-    )
-    access = models.CharField(max_length=16, choices=GrantAccess.choices)
-    expires_at = models.DateTimeField(null=True, blank=True)
-    revoked_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        """Grant rows are audit records and are never hard-deleted."""
-
-        ordering = ['-created_at']
-
-    def __str__(self) -> str:
-        """Return a safe diagnostic representation."""
-        return f'{self.access} grant on {self.conversation_id}'
-
-
-class ChatCitation(models.Model):
-    """One grounded-statement source stamp with revision and as-of time.
-
-    Citations are re-filtered against the viewer's current authorization at
-    render time (SC-ADR-004/010); the row itself stores only locators and
-    hashes, never source content.
-    """
-
-    conversation = models.ForeignKey(
-        ScopedConversation, on_delete=models.PROTECT, related_name='citations'
-    )
-    turn_key = models.CharField(max_length=64, db_index=True)
-    source_type = models.CharField(max_length=32)
-    source_id = models.CharField(max_length=64)
-    source_revision = models.CharField(max_length=128, blank=True, default='')
-    locator = models.JSONField(default=dict, blank=True)
-    excerpt_hash = models.CharField(max_length=64, blank=True, default='')
-    authorization_class = models.CharField(max_length=32, blank=True, default='')
-    as_of = models.DateTimeField()
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        """Ordered per turn for stable rendering."""
-
-        ordering = ['created_at']
-        indexes = [
-            models.Index(
-                fields=['conversation', 'turn_key'], name='aichat_citation_turn_idx'
-            )
-        ]
-
-    def __str__(self) -> str:
-        """Return a safe diagnostic representation."""
-        return f'{self.source_type}:{self.source_id} citation'
-
-
 class MessageFeedbackRating(models.TextChoices):
     """A reader's verdict on one assistant message."""
 
@@ -619,45 +469,6 @@ class RetrievalMiss(models.Model):
     def __str__(self) -> str:
         """Return a safe diagnostic representation."""
         return f'{self.hit_count} hits at {self.created_at:%Y-%m-%d}'
-
-
-class ToolAuthorizationResult(models.TextChoices):
-    """Outcome of the per-call tool authorization decision."""
-
-    ALLOWED = 'allowed', 'Allowed'
-    DENIED = 'denied', 'Denied'
-
-
-class ChatToolInvocation(models.Model):
-    """Audit row for one scoped tool call (arguments redacted, never output)."""
-
-    conversation = models.ForeignKey(
-        ScopedConversation, on_delete=models.PROTECT, related_name='tool_invocations'
-    )
-    turn_key = models.CharField(max_length=64, db_index=True)
-    tool = models.CharField(max_length=64)
-    tool_version = models.CharField(max_length=16, blank=True, default='')
-    arguments_redacted = models.JSONField(default=dict, blank=True)
-    authorization_result = models.CharField(
-        max_length=16, choices=ToolAuthorizationResult.choices
-    )
-    output_hash = models.CharField(max_length=64, blank=True, default='')
-    duration_ms = models.PositiveIntegerField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        """Ordered per turn for stable trace rendering."""
-
-        ordering = ['created_at']
-        indexes = [
-            models.Index(
-                fields=['conversation', 'turn_key'], name='aichat_tool_turn_idx'
-            )
-        ]
-
-    def __str__(self) -> str:
-        """Return a safe diagnostic representation."""
-        return f'{self.tool} ({self.authorization_result})'
 
 
 class ProposalAction(models.TextChoices):
