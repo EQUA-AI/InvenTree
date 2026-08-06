@@ -23,7 +23,7 @@ from ai.core.agents.routing import RoutingDecision, UnifiedRouter
 from ai.core.config import get_settings
 from ai.core.faults import fault_location
 from ai.core.memory.conversation import ConversationManager
-from ai.core.streaming import EventEmitter, RunContext
+from ai.core.streaming import EventEmitter, EventType, RunContext
 from ai.core.workflows.registry import WorkflowRegistry, get_workflow_registry
 
 if TYPE_CHECKING:
@@ -103,6 +103,22 @@ class RootWorkflow:
             return None
         return format_fast_path_answer(result)
 
+    @staticmethod
+    async def _bounded_stream(chunks, remaining) -> AsyncIterator[str]:
+        """Iterate a workflow stream with each step bounded by the turn budget.
+
+        ``wait_for`` cancels the pending ``__anext__`` on expiry, which lands a
+        ``CancelledError`` inside the workflow at its current await and raises
+        ``TimeoutError`` here — one task, no cross-task cancellation semantics.
+        """
+        iterator = chunks.__aiter__()
+        while True:
+            try:
+                chunk = await asyncio.wait_for(iterator.__anext__(), timeout=remaining())
+            except StopAsyncIteration:
+                return
+            yield chunk
+
     async def run_stream(
         self,
         message: str,
@@ -146,6 +162,20 @@ class RootWorkflow:
         # an outage without correlating timestamps against the source.
         stage = "start"
 
+        # A5 (S18): one wall-clock budget for the whole text turn. Before this
+        # cap, nothing server-side ended a hung turn — only a client disconnect
+        # did. Every awaited stage below is bounded by the remaining budget,
+        # recomputed per await, so the deadline holds across streamed chunks.
+        settings = get_settings()
+        cap_s = settings.turn_wall_clock_cap_s
+        deadline = (asyncio.get_running_loop().time() + cap_s) if cap_s > 0 else None
+
+        def remaining() -> float | None:
+            """Budget left for the next await; None means the cap is disabled."""
+            if deadline is None:
+                return None
+            return max(0.001, deadline - asyncio.get_running_loop().time())
+
         try:
             # Emit run started
             await run_ctx.emit_run_started()
@@ -155,10 +185,13 @@ class RootWorkflow:
             stage = "context"
             await run_ctx.emit_thinking("Gathering context...")
 
-            aggregated_context = await self.conversation_manager.gather_context(
-                query=message,
-                thread_id=thread_id,
-                user_id=user_id,
+            aggregated_context = await asyncio.wait_for(
+                self.conversation_manager.gather_context(
+                    query=message,
+                    thread_id=thread_id,
+                    user_id=user_id,
+                ),
+                timeout=remaining(),
             )
 
             if context:
@@ -177,8 +210,18 @@ class RootWorkflow:
                 # Voice keeps routing: its fast-path answers depend on it.
                 decision = _PinnedDecision(server_pin)
             else:
-                decision = await self.router.route(
-                    message=message, thread_id=thread_id, context=aggregated_context
+                # The routing stage gets its own tighter budget: a hung
+                # classifier endpoint must not consume the whole turn cap.
+                budgets = [
+                    value
+                    for value in (settings.turn_routing_budget_s or None, remaining())
+                    if value is not None
+                ]
+                decision = await asyncio.wait_for(
+                    self.router.route(
+                        message=message, thread_id=thread_id, context=aggregated_context
+                    ),
+                    timeout=min(budgets) if budgets else None,
                 )
 
             # Deterministic fast-path answer for permitted voice lookups: skip
@@ -246,24 +289,29 @@ class RootWorkflow:
             # Execute the workflow
             # We support both streaming and non-streaming workflows
             if hasattr(workflow, "execute_streaming"):
-                async for chunk in workflow.execute_streaming(
+                chunks = workflow.execute_streaming(
                     query=message,
                     thread_id=thread_id,
                     context=aggregated_context,
-                ):
+                )
+                async for chunk in self._bounded_stream(chunks, remaining):
                     yield chunk
             elif hasattr(workflow, "run_stream"):
                 # Agent Framework style
-                async for chunk in workflow.run_stream(
+                chunks = workflow.run_stream(
                     message=message, thread_id=thread_id, run_id=run_id, decision=decision
-                ):
+                )
+                async for chunk in self._bounded_stream(chunks, remaining):
                     yield chunk
             else:
                 # Fallback to sync/async execute
-                result = await workflow.execute(
-                    query=message,
-                    thread_id=thread_id,
-                    context=aggregated_context,
+                result = await asyncio.wait_for(
+                    workflow.execute(
+                        query=message,
+                        thread_id=thread_id,
+                        context=aggregated_context,
+                    ),
+                    timeout=remaining(),
                 )
 
                 # A workflow that caught its own exception still failed. Reading
@@ -291,6 +339,21 @@ class RootWorkflow:
             await run_ctx.emit_run_finished()
 
         except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            # A5: the wall-clock cap ended the turn. The run is cancelled at
+            # the await it was stuck in (stages are CancelledError-transparent),
+            # a typed timeout event tells the client why, and the raise lets
+            # NormalizedTurnService persist the honest FAILED lifecycle.
+            logger.error(
+                "Root workflow timed out (stage=%s cap_s=%s)",
+                stage,
+                cap_s,
+            )
+            await run_ctx.emit(
+                EventType.RUN_ERROR,
+                {"message": "AI turn timed out", "code": "turn_timeout", "stage": stage},
+            )
             raise
         except Exception as exc:
             # Provider failures may contain credentials or customer content.

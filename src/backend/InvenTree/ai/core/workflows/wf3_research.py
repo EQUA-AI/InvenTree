@@ -387,18 +387,28 @@ class T3ResearchWorkflow:
 
             # Create parallel research tasks
             tasks = [
-                self._run_research_agent(name, agent, query, context) for name, agent in agents
+                asyncio.ensure_future(self._run_research_agent(name, agent, query, context))
+                for name, agent in agents
             ]
 
-            # Run with timeout
-            try:
-                sources = await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True),
-                    timeout=self.RESEARCH_TIMEOUT,
+            # Run with timeout. wait_for(gather(...)) cancelled EVERY task on
+            # expiry, so "returning partial results" was a lie — the empty
+            # source list became success=False and the root turned a slow turn
+            # into a 500. asyncio.wait keeps what actually finished.
+            done, pending = await asyncio.wait(tasks, timeout=self.RESEARCH_TIMEOUT)
+            if pending:
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+                logger.warning(
+                    "Research timeout; %d of %d sources completed",
+                    len(done),
+                    len(tasks),
                 )
-            except TimeoutError:
-                logger.warning("Research timeout, returning partial results")
-                sources = []
+            sources = []
+            for task in done:
+                exc = task.exception()
+                sources.append(exc if exc is not None else task.result())
 
             # Filter successful sources
             valid_sources = [s for s in sources if isinstance(s, ResearchSource) and s.success]

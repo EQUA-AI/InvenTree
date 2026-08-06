@@ -195,6 +195,26 @@ class Settings(BaseSettings):
     chat_history_turns: int = Field(default=6, alias="CHAT_HISTORY_TURNS", ge=0, le=50)
 
     # -------------------------------------------------------------------------
+    # S18 turn-loop budgets (A5/A12)
+    # -------------------------------------------------------------------------
+    # One wall-clock ceiling for a whole text turn. Before it, only a client
+    # disconnect ended a hung turn. Generous by design — a tripwire above the
+    # observed p99, not a behaviour change; 0 disables.
+    turn_wall_clock_cap_s: float = Field(
+        default=120.0, ge=0.0, le=600.0, alias="TURN_WALL_CLOCK_CAP_S"
+    )
+    # Tighter budget for the routing stage alone: a hung classifier endpoint
+    # must not consume the whole turn cap. 0 disables (the turn cap still holds).
+    turn_routing_budget_s: float = Field(
+        default=30.0, ge=0.0, le=120.0, alias="TURN_ROUTING_BUDGET_S"
+    )
+    # Per-provider budget inside context gathering (A12): the three providers
+    # run concurrently and one hung provider costs at most this much.
+    context_provider_timeout_s: float = Field(
+        default=5.0, ge=0.5, le=60.0, alias="CONTEXT_PROVIDER_TIMEOUT_S"
+    )
+
+    # -------------------------------------------------------------------------
     # WS3 Foundry reasoning adapter
     # -------------------------------------------------------------------------
     # The owner-selected primary path references a pinned Foundry project agent.

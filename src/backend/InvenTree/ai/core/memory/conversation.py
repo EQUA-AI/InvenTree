@@ -7,6 +7,7 @@ Moved from orchestrator.py during refactor.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -14,7 +15,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
+from ai.core.faults import fault_location
+
 logger = logging.getLogger(__name__)
+
+#: Sentinel distinguishing "provider failed/timed out" from a legitimate None
+#: result, so absence in the aggregated context is always deliberate.
+_PROVIDER_FAILED = object()
 
 
 @dataclass
@@ -190,7 +197,6 @@ class ConversationManager:
         self._providers_initialized = False
         self._enable_persistence = enable_persistence
         self._persistence_dir = Path(persistence_dir) if persistence_dir else None
-        self._context_cache_timestamps: dict[str, datetime] = {}
 
         # Database persistence settings
         self._enable_db_persistence = enable_db_persistence
@@ -344,52 +350,97 @@ class ConversationManager:
         """
         self._init_providers()
 
-        # Check cache
         state = self.get_or_create_state(thread_id, user_id)
-        now = datetime.now()
+        cached = self._cached_context(thread_id)
+        if cached is not None:
+            state.context_cache = cached
+            return cached
 
-        # Simple cache check (if query is similar or just time-based)
-        # For now, we just check if we have cached context and it's fresh
-        if thread_id in self._context_cache_timestamps:
-            age = (now - self._context_cache_timestamps[thread_id]).total_seconds()
-            if age < self.CONTEXT_CACHE_TTL:
-                return state.context_cache
+        # A12: the providers are independent reads, so they run concurrently,
+        # each under its own timeout — one hung provider must cost at most its
+        # own budget, never the turn's. Failures degrade to an absent key and
+        # are logged by coordinates only (fault_location), never by message.
+        timeout_s = self._provider_timeout_s()
+        active = [
+            (key, awaitable)
+            for key, awaitable in (
+                (
+                    "user_profile",
+                    self._user_profile_provider.get_profile(user_id)
+                    if self._user_profile_provider
+                    else None,
+                ),
+                (
+                    "thread_summary",
+                    self._thread_summary_provider.get_summary(thread_id)
+                    if self._thread_summary_provider
+                    else None,
+                ),
+                (
+                    "parts_preferences",
+                    self._parts_preference_provider.get_preferences(user_id)
+                    if self._parts_preference_provider
+                    else None,
+                ),
+            )
+            if awaitable is not None
+        ]
+        results = await asyncio.gather(
+            *(self._bounded_provider(key, awaitable, timeout_s) for key, awaitable in active)
+        )
+        context = {key: value for key, value in results if value is not _PROVIDER_FAILED}
 
-        # Gather from providers
-        # Note: In a real implementation, we would run these in parallel
-        # and handle failures gracefully.
-        context = {}
-
-        # 1. User Profile
-        if self._user_profile_provider:
-            try:
-                profile = await self._user_profile_provider.get_profile(user_id)
-                context["user_profile"] = profile
-            except Exception as e:
-                logger.warning(f"Failed to get user profile: {e}")
-
-        # 2. Thread Summary
-        if self._thread_summary_provider:
-            try:
-                summary = await self._thread_summary_provider.get_summary(thread_id)
-                context["thread_summary"] = summary
-            except Exception as e:
-                logger.warning(f"Failed to get thread summary: {e}")
-
-        # 3. Parts Preferences (if relevant)
-        if self._parts_preference_provider:
-            try:
-                prefs = await self._parts_preference_provider.get_preferences(user_id)
-                context["parts_preferences"] = prefs
-            except Exception as e:
-                logger.warning(f"Failed to get parts preferences: {e}")
-
-        # Update cache
         state.context_cache = context
-        self._context_cache_timestamps[thread_id] = now
+        self._store_cached_context(thread_id, context)
 
         # Save state if persistence enabled
         if self._enable_persistence:
             self._save_state(state)
 
         return context
+
+    @staticmethod
+    def _provider_timeout_s() -> float:
+        """Per-provider budget; configuration-driven with a safe fallback."""
+        try:
+            from ai.core.config import get_settings
+
+            return get_settings().context_provider_timeout_s
+        except Exception:  # pragma: no cover - config absent in minimal envs
+            return 5.0
+
+    async def _bounded_provider(self, key: str, awaitable, timeout_s: float):
+        """Run one provider under its own timeout, degrading to absence."""
+        try:
+            return key, await asyncio.wait_for(awaitable, timeout=timeout_s)
+        except TimeoutError:
+            logger.warning("context provider timed out provider=%s timeout_s=%s", key, timeout_s)
+            return key, _PROVIDER_FAILED
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("context provider failed provider=%s %s", key, fault_location(exc))
+            return key, _PROVIDER_FAILED
+
+    def _cache_key(self, thread_id: str) -> str:
+        """Cross-process cache key for a thread's aggregated context."""
+        return f"aimms:ctx:{thread_id}"
+
+    def _cached_context(self, thread_id: str) -> dict[str, Any] | None:
+        """Read the shared context cache; any cache failure is a miss."""
+        try:
+            from django.core.cache import cache
+
+            value = cache.get(self._cache_key(thread_id))
+        except Exception:  # pragma: no cover - cache backend unavailable
+            return None
+        return value if isinstance(value, dict) else None
+
+    def _store_cached_context(self, thread_id: str, context: dict[str, Any]) -> None:
+        """Write the shared context cache; a write failure only disables reuse."""
+        try:
+            from django.core.cache import cache
+
+            cache.set(self._cache_key(thread_id), context, timeout=self.CONTEXT_CACHE_TTL)
+        except Exception:  # pragma: no cover - cache backend unavailable
+            logger.warning("context cache write failed thread_id=%s", thread_id)
