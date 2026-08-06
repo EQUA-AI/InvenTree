@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, models, transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
@@ -195,6 +195,27 @@ class ThreadRepository:
         # ``builtins.list``: in annotations here ``list`` would otherwise
         # resolve to this method, which shadows the builtin in the class body.
         return list(self._threads())
+
+    def search(self, query: str, *, limit: int = 50) -> builtins.list[ChatThread]:
+        """Search titles and message content within the complete boundary (S20).
+
+        Built on ``_threads()`` so the owner/scope boundary is the queryset
+        base, not a filter someone can forget: user B's threads can never
+        match user A's query. Ordering matches ``list`` (most recent first).
+        """
+        term = str(query or '').strip()[:200]
+        if not term:
+            return self.list()[: max(1, min(int(limit), 100))]
+        rows = (
+            self
+            ._threads()
+            .filter(
+                models.Q(title__icontains=term)
+                | models.Q(messages__content__icontains=term)
+            )
+            .distinct()
+        )
+        return list(rows[: max(1, min(int(limit), 100))])
 
     def get(self, thread_id: str) -> ChatThread:
         """Return one thread within the complete boundary."""

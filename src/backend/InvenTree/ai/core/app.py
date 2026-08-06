@@ -753,8 +753,14 @@ async def list_threads(
     user_id: str | None = None,
     include_persisted: bool = True,
     limit: int = Query(default=50, ge=1, le=100),
+    q: str | None = Query(default=None, max_length=200),
 ) -> ThreadSyncResponse:
-    """List only threads within the authenticated owner/scope boundary."""
+    """List only threads within the authenticated owner/scope boundary.
+
+    ``q`` (S20 A8) searches titles and message content — inside the same
+    repository boundary, so a query can only ever match the caller's own
+    threads. The response shape is unchanged.
+    """
 
     del include_persisted  # Durable storage is always authoritative in WS1.
     _observe_legacy_identity(user_id, source="query")
@@ -762,7 +768,7 @@ async def list_threads(
 
     def materialize() -> tuple[list[ThreadInfo], int]:
         """Materialize."""
-        all_threads = repository.list()
+        all_threads = repository.search(q, limit=limit) if q else repository.list()
         selected = all_threads[: max(1, min(limit, 100))]
         result = [
             ThreadInfo(
