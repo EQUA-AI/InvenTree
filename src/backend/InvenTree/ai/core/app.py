@@ -33,7 +33,6 @@ from ai.core.auth import (
     require_ai_principal,
 )
 from ai.core.config import get_devui_settings, get_settings
-from ai.core.memory import get_semantic_cache
 from ai.core.middleware import (
     RateLimitConfig,
     RateLimitMiddleware,
@@ -211,9 +210,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     Handles startup and shutdown tasks:
     - Initialize root workflow
+    - Run the S17 model/embedding boot probes
     - Start DevUI if enabled
-    - Initialize semantic cache
-    - Initialize conversation persistence and search index
     """
     settings = get_settings()
     devui_settings = get_devui_settings()
@@ -250,13 +248,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # The workflow's legacy memory object is execution-local and is not an
     # authorization or persistence source.
     logger.info("Authorized aichat persistence boundary initialized")
-
-    # Initialize semantic cache
-    if settings.semantic_cache_enabled:
-        get_semantic_cache()
-        logger.info(
-            f"Semantic cache initialized (threshold: {settings.semantic_cache_similarity_threshold})"
-        )
 
     # Start DevUI if enabled
     if devui_settings.enabled:
@@ -1089,36 +1080,6 @@ async def get_pending_hitl(
         })
 
     return pending
-
-
-@app.get("/cache/stats")
-async def cache_stats() -> dict[str, Any]:
-    """Get semantic cache statistics."""
-    settings = get_settings()
-    if not settings.semantic_cache_enabled:
-        return {"enabled": False}
-
-    cache = get_semantic_cache()
-    return {
-        "enabled": True,
-        **cache.get_stats(),
-    }
-
-
-@app.post("/cache/invalidate")
-async def invalidate_cache(
-    workflow_id: str | None = None,
-) -> dict[str, Any]:
-    """Invalidate cache entries."""
-    if not _principal().is_staff:
-        raise HTTPException(status_code=403, detail="Staff access required")
-    settings = get_settings()
-    if not settings.semantic_cache_enabled:
-        return {"enabled": False, "invalidated": 0}
-
-    cache = get_semantic_cache()
-    count = cache.invalidate(workflow_id=workflow_id)
-    return {"invalidated": count}
 
 
 @app.get("/rate-limit/stats")

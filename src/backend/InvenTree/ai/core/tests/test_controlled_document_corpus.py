@@ -385,11 +385,9 @@ def test_alias_env_names_populate_canonical_fields(monkeypatch, tmp_path):
         monkeypatch,
         tmp_path,
         AZURE_SEARCH_KEY="alias-key",
-        AZURE_SEARCH_INDEX="alias-index",
         AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT="text-embedding-3-large",
     )
     assert settings.azure_search_api_key == "alias-key"
-    assert settings.azure_search_index_name == "alias-index"
     assert settings.azure_openai_embedding_deployment == "text-embedding-3-large"
 
 
@@ -400,11 +398,8 @@ def test_canonical_env_names_win_over_aliases(monkeypatch, tmp_path):
         tmp_path,
         AZURE_SEARCH_API_KEY="canonical-key",
         AZURE_SEARCH_KEY="alias-key",
-        AZURE_SEARCH_INDEX_NAME="canonical-index",
-        AZURE_SEARCH_INDEX="alias-index",
         AZURE_OPENAI_EMBEDDING_DEPLOYMENT="canonical-embedding",
         AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT="alias-embedding",
     )
     assert settings.azure_search_api_key == "canonical-key"
-    assert settings.azure_search_index_name == "canonical-index"
     assert settings.azure_openai_embedding_deployment == "canonical-embedding"

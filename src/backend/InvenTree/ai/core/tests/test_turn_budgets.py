@@ -123,7 +123,7 @@ async def test_cap_disabled_streams_to_completion(monkeypatch):
 @pytest.mark.asyncio
 async def test_one_hung_provider_costs_only_its_own_budget(monkeypatch, caplog):
     """gather_context returns the healthy providers' results within the budget."""
-    manager = ConversationManager(enable_db_persistence=False)
+    manager = ConversationManager()
     manager._providers_initialized = True
 
     class _Profile:

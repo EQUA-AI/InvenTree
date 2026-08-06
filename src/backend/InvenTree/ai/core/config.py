@@ -96,18 +96,6 @@ class Settings(BaseSettings):
         return v
 
     # -------------------------------------------------------------------------
-    # Semantic Cache Configuration
-    # -------------------------------------------------------------------------
-    semantic_cache_enabled: bool = Field(default=True, alias="SEMANTIC_CACHE_ENABLED")
-    semantic_cache_similarity_threshold: float = Field(
-        default=0.92,
-        alias="SEMANTIC_CACHE_SIMILARITY_THRESHOLD",
-        ge=0.0,
-        le=1.0,
-    )
-    semantic_cache_ttl_hours: int = Field(default=24, alias="SEMANTIC_CACHE_TTL_HOURS")
-
-    # -------------------------------------------------------------------------
     # HITL Configuration
     # -------------------------------------------------------------------------
     hitl_timeout_seconds: int = Field(default=300, alias="HITL_TIMEOUT_SECONDS")
@@ -487,10 +475,6 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("AZURE_SEARCH_API_KEY", "AZURE_SEARCH_KEY"),
     )
-    azure_search_index_name: str = Field(
-        default="inventree-ai-conversations",
-        validation_alias=AliasChoices("AZURE_SEARCH_INDEX_NAME", "AZURE_SEARCH_INDEX"),
-    )
     azure_search_documents_index: str = Field(default="", alias="AZURE_SEARCH_DOCUMENTS_INDEX")
     azure_search_controlled_documents_index: str = Field(
         default="", alias="AZURE_SEARCH_CONTROLLED_DOCUMENTS_INDEX"
@@ -508,11 +492,11 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Conversation Persistence Configuration
     # -------------------------------------------------------------------------
-    conversation_persistence_enabled: bool = Field(
-        default=True, alias="CONVERSATION_PERSISTENCE_ENABLED"
-    )
-    conversation_search_enabled: bool = Field(default=True, alias="CONVERSATION_SEARCH_ENABLED")
-    conversation_sync_batch_size: int = Field(default=50, alias="CONVERSATION_SYNC_BATCH_SIZE")
+    # The quarantined conversation-persistence/search plane and its settings
+    # (CONVERSATION_PERSISTENCE_ENABLED, CONVERSATION_SEARCH_ENABLED,
+    # CONVERSATION_SYNC_BATCH_SIZE, AZURE_SEARCH_INDEX_NAME) were deleted in
+    # S15. Durable history lives in the aichat ledger; S20's thread search is
+    # ledger-backed and must never resurrect the Azure conversation index.
 
 
 class AzureOpenAISettings(BaseSettings):

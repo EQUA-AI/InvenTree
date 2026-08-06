@@ -372,7 +372,7 @@ def create_procurement_workflow() -> DevUICompatibleWorkflow:
 def create_documents_workflow() -> DevUICompatibleWorkflow:
     """Create DevUI-compatible T7 Documents workflow."""
     # Use the new conversational v2 workflow
-    from ai.core.workflows.wf6_documents_v2 import WF6DocumentWorkflow
+    from ai.core.workflows.wf6_documents import WF6DocumentWorkflow
 
     return DevUICompatibleWorkflow(
         WF6DocumentWorkflow(),

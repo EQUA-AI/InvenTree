@@ -5,11 +5,12 @@ Contains memory-related components:
 - ContextProviders: MAF-compliant context injection
   - UserProfileProvider: User preferences and history
   - ThreadSummaryProvider: Conversation summarization
-  - ProblemSolutionProvider: Semantic problem-solution cache
+  - ProblemSolutionProvider: File-backed problem-solution pairs
   - PartsPreferenceProvider: Part selection preferences
 
-- SemanticCache: Problem-solution caching with HITL safety rules
-- FoundryStore: Azure Foundry Memory Store integration (TODO)
+The semantic cache that lived here was deleted in S15: it was the latent
+serve-machine-A's-diagnosis-for-machine-B trap S6 fenced, and deletion makes
+that failure structurally impossible.
 """
 
 from ai.core.memory.providers import (
@@ -22,41 +23,18 @@ from ai.core.memory.providers import (
     get_thread_summary_provider,
     get_user_profile_provider,
 )
-from ai.core.memory.semantic_cache import (
-    AzureOpenAIEmbeddingProvider,
-    CacheConfig,
-    CachedEntry,
-    CachePolicy,
-    CacheResult,
-    HITLSafetyRules,
-    LocalEmbeddingProvider,
-    SemanticCache,
-    create_semantic_cache,
-    get_semantic_cache,
-)
 
 __all__ = [
-    "AzureOpenAIEmbeddingProvider",
-    "CacheConfig",
-    "CachePolicy",
-    "CacheResult",
-    "CachedEntry",
-    "HITLSafetyRules",
-    "LocalEmbeddingProvider",
     # Parts Preference
     "PartsPreferenceProvider",
-    # Problem-Solution Cache
+    # Problem-Solution pairs
     "ProblemSolutionProvider",
-    # Semantic Cache
-    "SemanticCache",
     # Thread Summary
     "ThreadSummaryProvider",
     # User Profile
     "UserProfileProvider",
-    "create_semantic_cache",
     "get_parts_preference_provider",
     "get_problem_solution_provider",
-    "get_semantic_cache",
     "get_thread_summary_provider",
     "get_user_profile_provider",
 ]

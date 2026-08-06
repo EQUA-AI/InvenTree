@@ -181,27 +181,22 @@ class ConversationManager:
         self,
         persistence_dir: str | None = None,
         enable_persistence: bool = False,
-        enable_db_persistence: bool = True,
-        enable_search_indexing: bool = True,
     ):
         """
         Initialize conversation manager.
 
+        Durable threads and turns live exclusively in the ``aichat``
+        repository; the quarantined database persistence layer that used to be
+        lazily loaded here was deleted in S15.
+
         Args:
             persistence_dir: Directory for persisting state (legacy file-based)
             enable_persistence: Whether to persist state to disk (legacy)
-            enable_db_persistence: Whether to persist to PostgreSQL database
-            enable_search_indexing: Whether to index messages in Azure AI Search
         """
         self._conversations: dict[str, ConversationState] = {}
         self._providers_initialized = False
         self._enable_persistence = enable_persistence
         self._persistence_dir = Path(persistence_dir) if persistence_dir else None
-
-        # Database persistence settings
-        self._enable_db_persistence = enable_db_persistence
-        self._enable_search_indexing = enable_search_indexing
-        self._db_persistence = None  # Lazy-loaded
 
         # Lazy-loaded providers
         self._user_profile_provider = None
@@ -215,31 +210,8 @@ class ConversationManager:
             logger.info(
                 f"ConversationManager initialized with file persistence (persistence_dir={self._persistence_dir})"
             )
-
-        if self._enable_db_persistence:
-            logger.info(
-                f"ConversationManager initialized with database persistence (search_indexing={self._enable_search_indexing})"
-            )
         else:
             logger.info("ConversationManager initialized (in-memory only)")
-
-    def _get_db_persistence(self):
-        """Lazily initialize database persistence layer."""
-        if self._db_persistence is None and self._enable_db_persistence:
-            try:
-                from ai.core.infrastructure.persistence import ConversationPersistence
-
-                self._db_persistence = ConversationPersistence(
-                    enable_search_indexing=self._enable_search_indexing
-                )
-                logger.debug("Database persistence layer initialized")
-            except ImportError as e:
-                logger.warning(f"Failed to import database persistence layer: {e}")
-                self._enable_db_persistence = False
-            except Exception as e:
-                logger.warning(f"Failed to initialize database persistence: {e}")
-                self._enable_db_persistence = False
-        return self._db_persistence
 
     def _init_providers(self) -> None:
         """Lazily initialize context providers."""

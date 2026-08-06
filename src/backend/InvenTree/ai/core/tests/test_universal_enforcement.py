@@ -62,7 +62,6 @@ def test_wf5_is_retired_from_the_registry() -> None:
 @pytest.mark.parametrize(
     "path",
     [
-        WORKFLOW_DIR / "devui_adapters.py",
         WORKFLOW_DIR / "devui_adapters_v2.py",
         WORKFLOW_DIR.parent.parent / "run_devui.py",
     ],
@@ -70,9 +69,11 @@ def test_wf5_is_retired_from_the_registry() -> None:
 def test_wf5_is_not_reachable_through_devui(path: Path) -> None:
     """Retiring a rail includes development entry points that execute it.
 
-    The production registry no longer exposed wf5, but both adapter generations
-    and the runner's manual fallback instantiated CPQ directly, preserving the
-    retired path and its fabricated ``CFG-*``/``Q-*`` identifiers.
+    The production registry no longer exposed wf5, but the adapters and the
+    runner's manual fallback instantiated CPQ directly, preserving the
+    retired path and its fabricated ``CFG-*``/``Q-*`` identifiers. The v1
+    adapter and ``wf5_cpq.py`` itself were deleted in S15; import-absence is
+    pinned in ``test_cache_safety_rules``.
     """
     source = path.read_text().casefold()
     assert "wf5" not in source, path

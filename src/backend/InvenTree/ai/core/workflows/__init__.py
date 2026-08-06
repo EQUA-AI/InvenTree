@@ -6,7 +6,6 @@ Contains all workflow definitions for the AIMMS system:
 - WF2: Sequential Workflow (T2 - SequentialBuilder)
 - WF3: Concurrent Workflow (T3 - ConcurrentBuilder)
 - WF4: Procurement Workflow (T4 - HITL approval)
-- WF5: CPQ Workflow (T5 - GroupChatBuilder)
 - WF6: Incoming Documents Workflow (Email + Doc Intelligence)
 - WF8: Lookup Workflow (T1 - Single agent fast-path)
 
@@ -62,18 +61,9 @@ from ai.core.workflows.wf4_procurement import (
     t4_procurement_builder,
 )
 
-# WF5: T5 CPQ
-from ai.core.workflows.wf5_cpq import (
-    ConfigurationStatus,
-    CPQResult,
-    ProductConfiguration,
-    Quote,
-    T5CPQBuilder,
-    T5CPQWorkflow,
-    create_t5_cpq_workflow,
-    t5_cpq_builder,
-)
-
+# WF5 (CPQ) was retired in S13 and its module deleted in S15: its sales-CPQ
+# shape contradicted the client-scoped fork and its quote agent ran outside
+# run_with_rbac. The router remaps a lingering CPQ label to wf8.
 # WF6: Documents
 from ai.core.workflows.wf6_documents import (
     DocumentExtractionResult,
@@ -137,15 +127,6 @@ __all__ = [  # noqa: RUF022
     "LineItem",
     "create_t4_procurement_workflow",
     "t4_procurement_builder",
-    # WF5: CPQ
-    "T5CPQWorkflow",
-    "T5CPQBuilder",
-    "CPQResult",
-    "ProductConfiguration",
-    "Quote",
-    "ConfigurationStatus",
-    "create_t5_cpq_workflow",
-    "t5_cpq_builder",
     # WF6: Documents
     "WF6DocumentWorkflow",
     "WF6DocumentBuilder",

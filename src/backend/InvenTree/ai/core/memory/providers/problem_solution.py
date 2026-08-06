@@ -87,7 +87,9 @@ class ProblemSolutionProvider:
         Returns:
             List of similar problems with solutions.
         """
-        threshold = threshold or settings.semantic_cache_similarity_threshold
+        # Local default: the semantic-cache settings this used to read were
+        # deleted with the cache plane (S15).
+        threshold = threshold or 0.92
 
         # In production, this would use embeddings and vector similarity
         # For now, use simple keyword matching as a placeholder
@@ -191,9 +193,6 @@ class ProblemSolutionProvider:
         Returns:
             Context dictionary with similar problems.
         """
-        if not settings.semantic_cache_enabled:
-            return {"cache_enabled": False}
-
         # Extract the current problem from the last user message
         user_messages = [m for m in messages if m.get("role") == "user"]
         if not user_messages:

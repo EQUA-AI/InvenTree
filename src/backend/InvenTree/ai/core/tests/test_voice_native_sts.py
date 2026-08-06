@@ -132,7 +132,7 @@ def test_gateway_threads_native_sts_flag_into_session_policy() -> None:
         feature_voice_native_sts=True,
     )
     with patch("ai.core.config.get_settings", return_value=fake):
-        session = VoiceLiveChannel._session_policy_payload()
+        session = VoiceLiveChannel("sts-test")._session_policy_payload()
     assert session["turn_detection"]["type"] == "semantic_vad"
     assert session["input_audio_transcription"]["model"] == "whisper-1"
     # Governance survives the flag.

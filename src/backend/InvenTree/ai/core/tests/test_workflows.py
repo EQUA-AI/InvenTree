@@ -297,48 +297,6 @@ class WorkflowTester:
             traceback.print_exc()
             return False
 
-    async def test_semantic_cache(self) -> bool:
-        """Test semantic cache with HITL safety rules."""
-        print_header("Testing Semantic Cache")
-
-        try:
-            from ai.core.memory.semantic_cache import (
-                HITLSafetyRules,
-            )
-
-            # Test HITL safety rules
-            print("\n🔒 Testing HITL Safety Rules...")
-
-            test_cases = [
-                ("What parts do we have in stock?", True, "Safe query"),
-                ("Approve this purchase order", False, "HITL pattern"),
-                ("What is the current stock level?", False, "Time-sensitive"),
-                ("Delete all records", False, "HITL pattern"),
-                ("Show me motor specifications", True, "Safe query"),
-            ]
-
-            for query, should_cache, reason in test_cases:
-                can_cache, rule_reason = HITLSafetyRules.can_cache(query)
-                success = can_cache == should_cache
-                print_result(
-                    success,
-                    f"'{query[:35]}...' - {reason}",
-                    {"can_cache": can_cache, "reason": rule_reason},
-                )
-                self.results.append({
-                    "test": f"hitl_safety_{reason.replace(' ', '_')}",
-                    "success": success,
-                })
-
-            return all(r["success"] for r in self.results if "hitl_safety" in r["test"])
-
-        except Exception as e:
-            print_result(False, f"Cache tests failed: {e}")
-            import traceback
-
-            traceback.print_exc()
-            return False
-
     async def test_middleware(self) -> bool:
         """Test middleware error categorization."""
         print_header("Testing Middleware")
@@ -443,7 +401,6 @@ async def main():
     await tester.test_demo_dataset_queries()
     await tester.test_router_classification()
     await tester.test_event_emission()
-    await tester.test_semantic_cache()
     await tester.test_middleware()
 
     # Print summary
