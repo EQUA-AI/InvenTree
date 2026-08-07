@@ -326,11 +326,70 @@ def test_turn_bridge_persists_exact_spoken_summary_and_replays():
     assert first["spoken"]["spoken_summary"] == (
         "Two likely causes. Confirm the vibration reading."
     )
+    # S22: a turn that did not ask reports no pending question.
+    assert first["pending_question"] is None
     # The idempotency key binds session + provider item id.
     assert fake.calls[0]["idempotency_key"] == f"voice:{created['id']}:item-9"
     assert fake.calls[0]["modality_metadata"]["voice_live_item_id"] == "item-9"
     # A provider repeat replays the same persisted utterance.
     assert second["spoken"]["utterance_id"] == first["spoken"]["utterance_id"]
+
+
+def test_turn_bridge_surfaces_a_pending_question():
+    """S22/S23: the per-turn response carries the question payload."""
+    user = _user()
+    settings = _settings([user.pk])
+    principal = _principal(user)
+    created = _run(
+        principal,
+        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        settings,
+    )
+
+    payload = {
+        "kind": "clarification_question",
+        "interrupt_id": "q-voice-1",
+        "question_text": "Which machine do you mean?",
+        "options": [
+            {"id": "machine:1", "label": "Influent Pump Station No. 1"},
+            {"id": "machine:2", "label": "Clarifier Drive 2"},
+        ],
+    }
+
+    class _AskingTurnService(_FakeTurnService):
+        async def process(self, **kwargs):
+            self.calls.append(kwargs)
+            return NormalizedTurnResult(
+                thread_id=str(kwargs["thread_id"]),
+                turn_id="turn-q",
+                message="Which machine do you mean?",
+                workflow_used="wf8",
+                spoken_summary="",
+                canonical_response={"speak": False, "response_state": "complete"},
+                pending_question=payload,
+            )
+
+    fake = _AskingTurnService()
+    request = VoiceTurnRequest(
+        transcript="what does the manual say about the pump",
+        item_id="item-q",
+        confidence=0.9,
+        language="en-US",
+    )
+    with (
+        patch.object(ai_app, "get_turn_service", return_value=fake),
+        patch(
+            "ai.core.trusted_context.build_trusted_turn_context",
+            return_value=SimpleNamespace(),
+        ),
+    ):
+        result = _run(
+            principal,
+            lambda: submit_voice_turn(created["id"], request),
+            settings,
+        )
+
+    assert result["pending_question"] == payload
 
 
 def test_turn_bridge_rejects_empty_transcript():

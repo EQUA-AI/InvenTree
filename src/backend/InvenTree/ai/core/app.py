@@ -793,6 +793,23 @@ async def list_threads(
     )
 
 
+def _persisted_provenance(metadata: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract the diagnosis provenance from the persisted event list.
+
+    Evidence and confidence previously vanished on reload because the message
+    projection carried neither; the persisted STATE_DELTA event already holds
+    them, so the projection derives the same payload the live stream delivered
+    (S22 reload-fidelity fix, provenance included in passing).
+    """
+    for event in metadata.get("events") or []:
+        if isinstance(event, dict) and event.get("kind") == "diagnosis_provenance":
+            return {
+                "confidence": event.get("confidence"),
+                "evidence": event.get("evidence"),
+            }
+    return None
+
+
 @app.get("/threads/{thread_id}")
 async def get_thread(
     thread_id: str,
@@ -826,6 +843,10 @@ async def get_thread(
                     "tool_name": message.metadata.get("tool_name"),
                     "workflow_id": message.metadata.get("workflow_id"),
                     "response_state": message.metadata.get("response_state"),
+                    # S22: cards and their resolutions survive reload.
+                    "question": message.metadata.get("question"),
+                    "question_resolution": message.metadata.get("question_resolution"),
+                    "provenance": _persisted_provenance(message.metadata),
                 }
                 for message in selected
             ],

@@ -507,4 +507,7 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
             "response_state": result.response_state,
             "replayed": result.replayed,
             "spoken": spoken,
+            # S22/S23: the per-turn signal that this turn ended by asking a
+            # question; the client renders the same card the drawer shows.
+            "pending_question": result.pending_question,
         }

@@ -201,6 +201,7 @@ def search_corpus(
                 document_class=document_class,
                 scope_key=scope_key,
             )
+            _propose_machine_question(candidates)
             return {
                 "chunks": [],
                 "total": 0,
@@ -297,6 +298,35 @@ def _record_search_outcome(**kwargs) -> None:
     from aichat.services.retrieval_misses import record_search
 
     record_search(**kwargs)
+
+
+def _propose_machine_question(candidates: list[dict[str, Any]]) -> None:
+    """Propose a structured machine-disambiguation question (S22).
+
+    The candidates came from the RBAC-scoped resolver, so the options inherit
+    its scope. Fail-soft and flag-gated: with the flag off (or on any error)
+    the tool's return value is the only signal, exactly as before.
+    """
+    try:
+        from ai.core.config import get_settings
+
+        if not get_settings().feature_question_cards:
+            return
+        from ai.core.questions.promotion import (
+            promote_machine_candidates,
+            set_question_proposal,
+        )
+
+        options = promote_machine_candidates(candidates, modality="text")
+        if len(options) < 2:
+            return
+        set_question_proposal({
+            "source": "manual_search_ambiguity",
+            "question_text": "Which machine do you mean?",
+            "options": options,
+        })
+    except Exception:
+        logger.warning("Machine question proposal failed; ambiguity stays textual")
 
 
 def _default_embedding_client() -> EmbeddingClient:

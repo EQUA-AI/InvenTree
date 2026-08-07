@@ -139,6 +139,13 @@ class Settings(BaseSettings):
     # hand-maintained synonym list. Separate flag: this is the only selection
     # input that touches the database and cache.
     feature_category_lexicon: bool = Field(default=True, alias="FEATURE_CATEGORY_LEXICON")
+    # Structured question cards (S22/S23): a turn may COMPLETE with a
+    # clarification question whose 2-4 options are server-derived; the answer
+    # arrives as the next turn and is validated against the persisted record.
+    # The flag gates ASKING only — the answer binder always runs, so flipping
+    # this off drains any in-flight pending question harmlessly. Ships dark;
+    # flips on only after the client that renders the card is live.
+    feature_question_cards: bool = Field(default=False, alias="FEATURE_QUESTION_CARDS")
     feature_reflection_middleware: bool = Field(default=True, alias="FEATURE_REFLECTION_MIDDLEWARE")
     feature_voice_live_diagnosis: bool = Field(default=False, alias="FEATURE_VOICE_LIVE_DIAGNOSIS")
     # Safety tightening (Tier-1): restrict voice-modality lookups to read-only tools

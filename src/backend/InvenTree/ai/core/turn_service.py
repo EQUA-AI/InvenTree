@@ -16,7 +16,7 @@ import re
 import time
 import unicodedata
 from dataclasses import asdict, dataclass, is_dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from ai.core.reasoning.schemas import CanonicalTurnResponse
@@ -68,6 +68,57 @@ class NormalizedTurnResult:
     spoken_summary: str = ""
     reasoning_provenance: dict[str, Any] | None = None
     route: dict[str, Any] | None = None
+    #: S22: the QUESTION payload when this turn ended by asking one -- the
+    #: voice route surfaces it per-turn so the client can render the card.
+    pending_question: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _QuestionResolution:
+    """One consumed pending question plus the parser's verdict (S22).
+
+    Everything the accept branch acts on comes from the PERSISTED record —
+    the reply only ever selects; it can never supply values.
+    """
+
+    record: dict[str, Any]
+    interpretation: Any
+
+    @property
+    def outcome(self) -> str:
+        return str(self.interpretation.outcome)
+
+    def _selected_option(self) -> dict[str, Any]:
+        return dict(self.record["options"][self.interpretation.option_index])
+
+    @property
+    def routing_content(self) -> str:
+        """The original intent enriched by the selected label, both persisted."""
+        origin = str((self.record.get("origin") or {}).get("content") or "").strip()
+        label = str(self._selected_option().get("label") or "").strip()
+        if origin and label:
+            return f"{origin} — {label}"
+        return label or origin
+
+    def context_payload(self) -> dict[str, Any]:
+        """Trusted workflow context for an accepted selection (ref included)."""
+        return {
+            "interrupt_id": self.record.get("interrupt_id"),
+            "source": self.record.get("source"),
+            "option": self._selected_option(),
+        }
+
+    def audit_payload(self) -> dict[str, Any]:
+        """The durable, ref-free resolution record for canonical/metadata."""
+        payload: dict[str, Any] = {
+            "interrupt_id": self.record.get("interrupt_id"),
+            "outcome": self.outcome,
+            "answer_policy_version": self.interpretation.policy_version,
+        }
+        if self.outcome == "selected":
+            payload["selected_option_id"] = self.interpretation.option_id
+            payload["matched_by"] = self.interpretation.matched_by
+        return payload
 
 
 class _EventCapture:
@@ -419,6 +470,7 @@ class NormalizedTurnService:
         diagnostic_tool_registry: Any | None = None,
         diagnostic_context_factory: Callable[..., Any] | None = None,
         voice_write_gate: Any | None = None,
+        question_store: Any | None = None,
     ) -> None:
         self.workflow_factory = workflow_factory
         self.repository_factory = repository_factory or self._default_repository
@@ -432,6 +484,12 @@ class NormalizedTurnService:
         # RBAC-backed seams. Nothing here relaxes the read-only fence.
         self.voice_write_gate = voice_write_gate
         self._voice_action_router: Any | None = None
+        # S22 pending-question store: single slot per thread, consume-on-read.
+        if question_store is None:
+            from ai.core.questions.pending import CachedPendingQuestionStore
+
+            question_store = CachedPendingQuestionStore()
+        self.question_store = question_store
 
         # Preserve typed chat exactly while diagnosis is disabled.  When the
         # server flag is enabled, build the Foundry adapter lazily here so both
@@ -722,6 +780,161 @@ class NormalizedTurnService:
             workflow_id="voice_write_confirm",
             workflow_name="VOICE_WRITE_CONFIRM",
         )
+
+    def _abandon_pending_question(self, *, thread_id: Any) -> None:
+        """Consume and discard the thread's pending question, if any (S22).
+
+        Called on injection-refused turns and turns captured by a pending
+        write confirmation: the one-turn answer window closes either way, and
+        a bookkeeping failure must never fail the turn.
+        """
+        try:
+            record = self.question_store.take(thread_id)
+            if record is not None:
+                logger.info(
+                    "question.abandoned interrupt_id=%s thread_id=%s",
+                    record.get("interrupt_id"),
+                    thread_id,
+                )
+        except Exception:
+            logger.warning("Pending-question abandon failed for thread %s", thread_id)
+
+    def _resolve_pending_question(
+        self, *, content: str, modality: str, thread_id: Any
+    ) -> _QuestionResolution | None:
+        """S22 answer binder: consume the slot exactly once and interpret.
+
+        Whatever this turn is, the slot is empty afterwards — only the
+        immediately-following turn can answer, and an answer can never be
+        replayed. A missing/expired record or an unmatched reply returns
+        ``None``-equivalent behaviour (unmatched falls through to routing).
+        """
+        try:
+            record = self.question_store.take(thread_id)
+        except Exception:
+            logger.warning("Pending-question read failed for thread %s", thread_id)
+            return None
+        if record is None:
+            return None
+        expires_at = str(record.get("expires_at") or "")
+        try:
+            expired = bool(expires_at) and datetime.fromisoformat(expires_at) < datetime.now(UTC)
+        except ValueError:
+            expired = True
+        if expired:
+            # Belt and braces over the cache TTL. No auto-selected default on
+            # timeout, ever — expiry is silence.
+            logger.info(
+                "question.expired interrupt_id=%s thread_id=%s",
+                record.get("interrupt_id"),
+                thread_id,
+            )
+            return None
+        from ai.core.questions.answers import interpret_question_answer
+
+        interpretation = interpret_question_answer(
+            content, record.get("options") or [], modality=modality
+        )
+        return _QuestionResolution(record=record, interpretation=interpretation)
+
+    async def _arm_pending_question(
+        self,
+        canonical: dict[str, Any],
+        *,
+        thread_id: Any,
+        turn_id: Any,
+        content: str,
+        modality: str,
+        emitter: Any,
+    ) -> dict[str, Any]:
+        """Consume a producer's question proposal and arm the pending slot.
+
+        The turn service owns every S22 invariant, so the record save, the
+        persisted QUESTION event and the canonical audit copy happen at this
+        one choke point. A malformed proposal is dropped, never raised — a
+        question must not be able to fail a turn.
+        """
+        from ai.core.questions.promotion import consume_question_proposal
+
+        proposal = consume_question_proposal()
+        if proposal is None:
+            return canonical
+        try:
+            from ai.core.config import get_settings
+
+            if not get_settings().feature_question_cards:
+                return canonical
+            options = list(proposal.get("options") or [])
+            question_text = str(proposal.get("question_text") or "").strip()
+            source = str(proposal.get("source") or "unknown")
+            if not question_text or not 2 <= len(options) <= 4:
+                logger.warning("question.proposal.invalid source=%s", source)
+                return canonical
+            for option in options:
+                if not option.get("id") or not option.get("label"):
+                    logger.warning("question.proposal.invalid source=%s", source)
+                    return canonical
+            from ai.core.questions.schema import build_pending_record
+
+            record, payload = build_pending_record(
+                thread_id=thread_id,
+                turn_id=turn_id,
+                source=source,
+                question_text=question_text,
+                options=options,
+                origin_content=content,
+                workflow=str(canonical.get("workflow_used") or ""),
+                modality=modality,
+            )
+            self.question_store.save(thread_id, record)
+            await emitter.emit(
+                AGUIEvent(
+                    event_type=EventType.QUESTION,
+                    data=payload,
+                    thread_id=thread_id,
+                    run_id=f"question:{turn_id}",
+                    agent_name="root_workflow",
+                )
+            )
+            canonical["kind"] = "clarification_question"
+            canonical["question"] = payload
+        except Exception:
+            logger.warning("Pending-question arming failed for thread %s", thread_id)
+        return canonical
+
+    async def _question_declined_canonical(
+        self,
+        *,
+        thread_id: Any,
+        turn_id: Any,
+        modality: str,
+        route: Any,
+        emitter: Any,
+    ) -> dict[str, Any]:
+        """Terminal canonical for a declined question: acknowledge, never route."""
+        message = "Okay — tell me a bit more about what you're looking for."
+        await self._emit_canonical_events(
+            emitter=emitter,
+            thread_id=thread_id,
+            run_id=f"question:{turn_id}",
+            workflow_id="question_declined",
+            workflow_name="QUESTION_DECLINED",
+            message=message,
+            response_state=TurnState.COMPLETE,
+        )
+        response = _canonical_response_for_legacy(message, speakable=modality == TurnModality.VOICE)
+        return {
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "message": message,
+            "agent": "root_workflow",
+            "workflow_used": "question_declined",
+            "response_state": TurnState.COMPLETE,
+            "canonical_response": response.model_dump(mode="json"),
+            "spoken_summary": response.spoken_summary,
+            "reasoning_provenance": None,
+            "route": route.to_dict() if route is not None else None,
+        }
 
     async def _begin_voice_write(
         self,
@@ -1168,7 +1381,11 @@ class NormalizedTurnService:
                 # way to step over the one-turn window rather than be stopped by
                 # it.
                 self._abandon_pending_voice_write(modality=modality, thread_id=thread.pk)
+                # The same reasoning closes the question window (S22 invariant
+                # 3): a refused turn abandons the pending question.
+                self._abandon_pending_question(thread_id=thread.pk)
                 write_canonical = None
+                question_resolution = None
             else:
                 write_canonical = await self._resolve_pending_voice_write(
                     actor=actor,
@@ -1179,16 +1396,36 @@ class NormalizedTurnService:
                     turn_id=turn.pk,
                     emitter=isolated_emitter,
                 )
+                if write_canonical is not None:
+                    # A write confirmation captured the turn; the question slot
+                    # is consumed and discarded -- it was not answered.
+                    self._abandon_pending_question(thread_id=thread.pk)
+                    question_resolution = None
+                else:
+                    # S22 answer binder: consume-on-read, exactly once. A
+                    # non-answer returns None and the turn routes normally.
+                    question_resolution = self._resolve_pending_question(
+                        content=content, modality=modality, thread_id=thread.pk
+                    )
+
+            # An accepted selection re-routes the ORIGINAL intent enriched by
+            # the selected option label; both parts come from the persisted
+            # record, never from anything the client echoed back. The raw
+            # answer text stays the persisted user message untouched.
+            routing_content = content
+            if question_resolution is not None and question_resolution.outcome == "selected":
+                routing_content = question_resolution.routing_content
+
             diagnostic_context = await self._build_diagnostic_context(
                 actor=actor,
                 trusted_context=trusted_context,
-                content=content,
+                content=routing_content,
                 modality=modality,
             )
             route = self._route_turn(
                 actor=actor,
                 trusted_context=trusted_context,
-                content=content,
+                content=routing_content,
                 modality=modality,
                 modality_metadata=metadata,
                 diagnostic_context=diagnostic_context,
@@ -1201,6 +1438,16 @@ class NormalizedTurnService:
             elif write_canonical is not None:
                 # A pending write confirmation resolved; it supersedes routing.
                 canonical = write_canonical
+            elif question_resolution is not None and question_resolution.outcome == "declined":
+                # A declined question is terminal: acknowledge and invite a
+                # rephrase. It never routes and never executes anything.
+                canonical = await self._question_declined_canonical(
+                    thread_id=thread.pk,
+                    turn_id=turn.pk,
+                    modality=modality,
+                    route=route,
+                    emitter=isolated_emitter,
+                )
             elif (
                 server_pinned_workflow is None
                 and route_mode == "reasoning"
@@ -1211,7 +1458,7 @@ class NormalizedTurnService:
                     trusted_context=trusted_context,
                     thread_id=thread.pk,
                     turn_id=turn.pk,
-                    content=content,
+                    content=routing_content,
                     modality=modality,
                     route=route,
                     diagnostic_context=diagnostic_context,
@@ -1294,9 +1541,13 @@ class NormalizedTurnService:
                 history = await self._conversation_history(repository, thread.pk)
                 if history:
                     workflow_context["conversation_history"] = history
+                if question_resolution is not None and question_resolution.outcome == "selected":
+                    # Trusted context: the selected option's server-persisted
+                    # ref, so wf8 can pin e.g. the machine filter exactly.
+                    workflow_context["question_resolution"] = question_resolution.context_payload()
 
                 async for chunk in workflow.run_stream(
-                    message=content,
+                    message=routing_content,
                     emitter=isolated_emitter,
                     thread_id=thread.pk,
                     user_id=actor.user_pk,
@@ -1320,6 +1571,21 @@ class NormalizedTurnService:
                     "reasoning_provenance": None,
                     "route": route.to_dict() if route is not None else None,
                 }
+            # S22 arming choke point: a producer proposed a question via the
+            # promotion ContextVar; the turn service owns the invariants, so
+            # the record save, the persisted QUESTION event, and the canonical
+            # audit copy all happen here — before events are frozen into the
+            # canonical.
+            canonical = await self._arm_pending_question(
+                canonical,
+                thread_id=thread.pk,
+                turn_id=turn.pk,
+                content=content,
+                modality=modality,
+                emitter=isolated_emitter,
+            )
+            if question_resolution is not None:
+                canonical["question_resolution"] = question_resolution.audit_payload()
             canonical["events"] = capture.events
             canonical = await self._transform_proposals(
                 canonical,
@@ -1338,6 +1604,14 @@ class NormalizedTurnService:
                     "response_state": response_state,
                     "events": capture.events,
                     "spoken_summary": str(canonical.get("spoken_summary") or ""),
+                    # S22: the card and its resolution ride message metadata so
+                    # the /threads projection can reproduce them on reload.
+                    **({"question": canonical["question"]} if canonical.get("question") else {}),
+                    **(
+                        {"question_resolution": canonical["question_resolution"]}
+                        if canonical.get("question_resolution")
+                        else {}
+                    ),
                 }),
                 workflow_id=capture.workflow_id or "",
             )
@@ -1516,6 +1790,7 @@ class NormalizedTurnService:
         canonical_response = canonical.get("canonical_response")
         reasoning_provenance = canonical.get("reasoning_provenance")
         route = canonical.get("route")
+        pending_question = canonical.get("question")
         return NormalizedTurnResult(
             thread_id=thread_id,
             turn_id=turn_id,
@@ -1534,6 +1809,9 @@ class NormalizedTurnService:
                 dict(reasoning_provenance) if isinstance(reasoning_provenance, dict) else None
             ),
             route=dict(route) if isinstance(route, dict) else None,
+            pending_question=(
+                dict(pending_question) if isinstance(pending_question, dict) else None
+            ),
         )
 
 

@@ -55,6 +55,11 @@ class EventType(Enum):
     TOOL_CALL_END = "TOOL_CALL_END"
     TOOL_CALL_RESULT = "TOOL_CALL_RESULT"
 
+    # Structured question (S22): a turn that COMPLETES by asking. First-class
+    # and persisted so replay reproduces the card; its data must never carry
+    # top-level content/delta keys (stale clients would render them as text).
+    QUESTION = "QUESTION"
+
     # HITL events
     HITL_REQUIRED = "HITL_REQUIRED"
     HITL_APPROVED = "HITL_APPROVED"

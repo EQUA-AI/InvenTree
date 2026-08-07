@@ -466,6 +466,168 @@ figure from an earlier turn as if you had just verified it."""
             messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=messages)])]
         return [*messages, ChatMessage(role=Role.USER, contents=[TextContent(text=note)])]
 
+    @staticmethod
+    def _with_question_resolution(run_input: Any, context: dict[str, Any] | None) -> Any:
+        """Append the trusted hint for an accepted question selection (S22).
+
+        The turn service placed the selected option's server-persisted ref in
+        trusted context; a machine selection pins the exact ``machine_filter``
+        so the agent cannot re-ambiguate the machine the user just chose.
+        """
+        resolution = (context or {}).get("question_resolution")
+        if not isinstance(resolution, dict):
+            return run_input
+        option = resolution.get("option") or {}
+        ref = option.get("ref") or {}
+        if option.get("kind") == "machine" and ref.get("name"):
+            serial = str(ref.get("serial") or "")
+            note = (
+                f"Resolved machine: {ref['name']}"
+                + (f" (serial {serial})" if serial else "")
+                + ". Use this machine when narrowing searches"
+                + (f' (machine_filter="{serial}")' if serial else "")
+                + "."
+            )
+        elif option.get("kind") == "lexicon_term" and ref.get("term"):
+            note = f"The user selected the topic '{ref['term']}'."
+        else:
+            return run_input
+        messages = run_input
+        if isinstance(messages, str):
+            messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=messages)])]
+        return [*messages, ChatMessage(role=Role.USER, contents=[TextContent(text=note)])]
+
+    async def _structured_clarification(
+        self, query: str, context: dict[str, Any] | None, *, modality: str
+    ) -> str | None:
+        """Turn a zero-match clarification into a structured question (S22).
+
+        The recoverable signals on this branch are matched lexicon terms:
+        category terms via the existing matcher, machine terms via the new
+        one over RBAC-scoped descriptors fetched exactly the way the corpus
+        search resolves machines. Fewer than two options is not a question —
+        return ``None`` and let the free-text clarify agent run unchanged.
+        """
+        from ai.core.config import get_settings
+
+        if not get_settings().feature_question_cards:
+            return None
+        try:
+            from ai.core.questions.promotion import (
+                promote_lexicon_options,
+                set_question_proposal,
+            )
+            from ai.core.tools.capabilities import (
+                matched_category_terms,
+                matched_machine_terms,
+            )
+            from asgiref.sync import sync_to_async
+
+            history = (context or {}).get("conversation_history")
+
+            @sync_to_async
+            def _scoped_machines() -> list[dict[str, Any]]:
+                from ai.core.auth import get_current_principal
+                from django.contrib.auth import get_user_model
+
+                principal = get_current_principal()
+                if principal is None:
+                    return []
+                user = get_user_model().objects.filter(pk=principal.user_pk).first()
+                if user is None:
+                    return []
+                from assets import ai_read
+
+                return [
+                    {
+                        "machine_id": row.pk,
+                        "name": row.name,
+                        "serial": row.serial or "",
+                    }
+                    for row in ai_read.machines_in_scope(user, limit=10)
+                ]
+
+            machines = await _scoped_machines()
+            machine_terms = list(matched_machine_terms(query, machines, history))
+            category_terms = list(matched_category_terms(query, history))
+            options = promote_lexicon_options(
+                machine_terms=machine_terms,
+                category_terms=category_terms,
+                modality=modality,
+            )
+            if not options:
+                return None
+            proposal = {
+                "source": "lookup_clarification",
+                "question_text": "Did you mean one of these?",
+                "options": options,
+            }
+            rendered = self._question_text_for_proposal(proposal, modality)
+            if rendered is None:
+                return None
+            set_question_proposal(proposal)
+            return rendered
+        except Exception:
+            logger.warning("Structured clarification unavailable; using clarify agent")
+            return None
+
+    def _apply_question_proposal(self, response_text: str, *, modality: str) -> str:
+        """Replace the model's text with the deterministic question, if proposed.
+
+        Peeks without consuming — the turn service's arming choke point owns
+        consumption. A proposal that cannot be rendered inside the voice
+        budget is cleared so the slot is never armed with unspoken options.
+        """
+        from ai.core.questions.promotion import (
+            consume_question_proposal,
+            pending_question_proposal,
+            set_question_proposal,
+        )
+
+        proposal = pending_question_proposal.get()
+        if proposal is None:
+            return response_text
+        # Render against a copy; rendering may trim options (voice budget) and
+        # the pending record must persist exactly what was rendered.
+        trimmed = dict(proposal)
+        rendered = self._question_text_for_proposal(trimmed, modality)
+        if rendered is None:
+            consume_question_proposal()
+            return response_text
+        set_question_proposal(trimmed)
+        return rendered
+
+    @staticmethod
+    def _question_text_for_proposal(proposal: dict[str, Any], modality: str) -> str | None:
+        """Render the deterministic question, enforcing the voice budget.
+
+        Invariant: the rendered options and the proposal's options must stay
+        identical — the pending record persists exactly what was offered. On
+        voice the 700-char spoken ceiling is honoured by DROPPING options
+        (3 -> 2), never truncating labels; if two options still do not fit,
+        the promotion is abandoned (return ``None``) and the model's own text
+        stands.
+        """
+        from ai.core.questions.schema import render_question_text
+        from ai.core.turn_service import _SPOKEN_SUMMARY_MAX_CHARS
+
+        question_text = str(proposal.get("question_text") or "").strip()
+        options = list(proposal.get("options") or [])
+        if not question_text or len(options) < 2:
+            return None
+        if modality != "voice":
+            proposal["options"] = options[:4]
+            return render_question_text(question_text, proposal["options"], modality="text")
+        for width in (3, 2):
+            candidate = options[:width]
+            if len(candidate) < 2:
+                break
+            rendered = render_question_text(question_text, candidate, modality="voice")
+            if len(rendered) <= _SPOKEN_SUMMARY_MAX_CHARS:
+                proposal["options"] = candidate
+                return rendered
+        return None
+
     async def _get_agent(
         self, *, voice: bool = False, read_only: bool = False, clarify: bool = False
     ) -> ChatAgent:
@@ -707,6 +869,24 @@ figure from an earlier turn as if you had just verified it."""
                 and selection.clarification_required
                 and not _is_social_turn(query)
             )
+            modality_for_question = "voice" if is_voice else "text"
+            if clarify:
+                # S22: when the sentence itself named enough (machines or
+                # category terms) to offer real options, ask deterministically
+                # -- no LLM call at all. Fewer than two options falls back to
+                # the free-text clarify agent unchanged.
+                structured = await self._structured_clarification(
+                    query, context, modality=modality_for_question
+                )
+                if structured is not None:
+                    execution_time = (time.perf_counter() - start_time) * 1000
+                    return LookupResult(
+                        lookup_type=lookup_type,
+                        success=True,
+                        data={"raw_response": structured},
+                        formatted_response=structured,
+                        execution_time_ms=execution_time,
+                    )
             agent = await self._get_agent(
                 voice=voice_read_only and not clarify,
                 read_only=enforce_selection and not voice_read_only and not clarify,
@@ -725,6 +905,7 @@ figure from an earlier turn as if you had just verified it."""
                 # history-inheriting turn (V12) receive the hint with an empty
                 # toolset.
                 run_input = self._with_category_hint(run_input, query, context)
+                run_input = self._with_question_resolution(run_input, context)
             with bind_capability_run(
                 workflow="wf8", modality=modality, selected_tools=runtime_tools
             ):
@@ -742,6 +923,12 @@ figure from an earlier turn as if you had just verified it."""
                     if hasattr(msg, "role") and msg.role == Role.ASSISTANT:
                         response_text = msg.text or ""
                         break
+
+            # S22: a tool proposed a question mid-run (ambiguous machine on
+            # search_manuals). The deterministic question replaces the model's
+            # paraphrase so the visible text and the persisted options agree;
+            # the turn service consumes the proposal and arms the slot.
+            response_text = self._apply_question_proposal(response_text, modality=modality)
 
             execution_time = (time.perf_counter() - start_time) * 1000
             usage_metrics = _response_usage_metrics(response)

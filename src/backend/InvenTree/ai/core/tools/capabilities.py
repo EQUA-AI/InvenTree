@@ -1481,6 +1481,57 @@ def _lexicon_pattern(lexicon: frozenset[str]) -> re.Pattern[str] | None:
 _HINT_CONTENT_CAP = 2000
 
 
+def matched_machine_terms(
+    query: str,
+    machines: Iterable[Mapping[str, Any]],
+    history: Iterable[Any] | None = None,
+) -> tuple[dict, ...]:
+    """RBAC-scoped machine descriptors mentioned in this turn or its history.
+
+    The machine twin of :func:`matched_category_terms`, and the gap S22
+    closes: the clarify path could observe *which category* a sentence named
+    but never *which machine*. Pure matcher — the caller fetches descriptors
+    (``{machine_id, name, serial}``) through the same authorized resolver the
+    corpus search uses, so anything returned here is already in the actor's
+    scope. Ranked by match strength (serial hit outranks full-name hit
+    outranks token overlap), capped at three.
+    """
+    if not isinstance(history, (list, tuple)):
+        history = ()
+    texts = [" ".join(str(query or "").casefold().split())[:_HINT_CONTENT_CAP]]
+    for entry in history:
+        if isinstance(entry, dict) and entry.get("role") in ("user", "assistant"):
+            content = str(entry.get("content") or "")
+            texts.append(" ".join(content.casefold().split())[:_HINT_CONTENT_CAP])
+    haystack = " \n ".join(texts)
+    haystack_tokens = set(re.findall(r"[a-z0-9][a-z0-9-]+", haystack))
+
+    scored: list[tuple[int, int, dict]] = []
+    for position, descriptor in enumerate(machines):
+        name = str(descriptor.get("name") or "").strip()
+        serial = str(descriptor.get("serial") or "").strip()
+        if not name:
+            continue
+        name_folded = " ".join(name.casefold().split())
+        score = 0
+        if serial and serial.casefold() in haystack:
+            score = 3
+        elif name_folded and name_folded in haystack:
+            score = 2
+        else:
+            name_tokens = {
+                token for token in re.findall(r"[a-z0-9][a-z0-9-]+", name_folded) if len(token) >= 3
+            }
+            overlap = name_tokens & haystack_tokens
+            if name_tokens and len(overlap) >= max(1, len(name_tokens) // 2):
+                score = 1
+        if score:
+            scored.append((score, position, dict(descriptor)))
+
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return tuple(descriptor for _, _, descriptor in scored[:3])
+
+
 def matched_category_terms(query: str, history: Iterable[Any] | None = None) -> tuple[str, ...]:
     """Live category names mentioned in this turn or its replayed transcript.
 
@@ -1766,6 +1817,7 @@ __all__ = [
     "invalidate_category_lexicon",
     "manifest_json",
     "matched_category_terms",
+    "matched_machine_terms",
     "select_capabilities",
     "selection_v2_enabled",
     "serialized_contract_bytes",
