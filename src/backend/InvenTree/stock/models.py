@@ -1817,10 +1817,10 @@ class StockItem(
 
     @staticmethod
     def bulk_allocation_count(stock_items) -> dict:
-        """Bulk-compute the total allocated quantity (builds + sales orders + transfer orders) for a set of StockItem objects.
+        """Bulk-compute the total allocated quantity (builds + sales orders + transfer orders + Job Kits) for a set of StockItem objects.
 
         Mirrors the per-instance calculation in `allocation_count()`, but resolves the whole
-        set in 3 aggregate queries (one per allocation type) rather than one query per
+        set in 4 aggregate queries (one per allocation type) rather than one query per
         allocation type *per item* - critical for validating requests which reference many
         stock items at once.
 
@@ -1860,6 +1860,24 @@ class StockItem(
             'item',
         )
 
+        # Maintenance Job Kit reservations are the fourth allocation domain
+        # (mirroring job_kit_allocation_count / total_committed_allocation).
+        # Resolved lazily so core stock never imports the maintenance app.
+        try:
+            from django.apps import apps
+
+            JobKitAllocation = apps.get_model('tasks', 'JobKitAllocation')
+        except LookupError:
+            JobKitAllocation = None
+
+        if JobKitAllocation is not None:
+            _accumulate(
+                JobKitAllocation.objects.filter(
+                    stock_item__in=pks, status__in=['reserved', 'staged', 'issued']
+                ),
+                'stock_item',
+            )
+
         return totals
 
     def can_delete(self):
@@ -1871,6 +1889,7 @@ class StockItem(
         - It has been assigned to a SalesOrder
         - It has been assigned to a BuildOrder
         - It has active allocations against a SalesOrder or TransferOrder
+        - It is referenced by a Job Kit allocation (any status - the FK is PROTECT)
         - It is referenced by a ReturnOrder line item
         """
         if self.installed_item_count() > 0:
@@ -1887,6 +1906,15 @@ class StockItem(
 
         if self.get_transfer_order_allocations(active=True).exists():
             return False
+
+        # Any Job Kit allocation row (active or terminal) blocks deletion:
+        # the FK is on_delete=PROTECT, so refuse cleanly here instead of
+        # letting the delete raise ProtectedError.
+        try:
+            if self.job_kit_allocations.exists():
+                return False
+        except AttributeError:
+            pass
 
         return not self.return_order_lines.exists()
 

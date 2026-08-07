@@ -113,6 +113,38 @@ class StockAllocationAccountingTest(TestCase):
             Decimal('0'),
         )
 
+    def test_bulk_allocation_count_matches_per_instance_authority(self):
+        """The bulk path must agree with allocation_count() on the job-kit domain.
+
+        Upstream's bulk_allocation_count() drives all build-allocation
+        validation (serializer prefetch + allocate_stock re-validation +
+        auto-allocate); if it drops the job-kit domain, builds silently
+        consume maintenance-reserved stock.
+        """
+        self.make_allocation('3', JobKitAllocationStatus.RESERVED)
+        self.make_allocation('2', JobKitAllocationStatus.STAGED)
+        self.make_allocation('1', JobKitAllocationStatus.ISSUED)
+        # Terminal states must not count in either path.
+        self.make_allocation('4', JobKitAllocationStatus.CONSUMED)
+
+        bulk = StockItem.bulk_allocation_count([self.stock])
+        self.assertEqual(bulk.get(self.stock.pk, Decimal(0)), Decimal('6'))
+        self.assertEqual(
+            bulk.get(self.stock.pk, Decimal(0)), self.stock.allocation_count()
+        )
+
+    def test_can_delete_blocked_by_job_kit_allocation(self):
+        """Any Job Kit allocation row blocks deletion (FK is PROTECT).
+
+        Even terminal rows keep the PROTECT reference, so can_delete() must
+        refuse cleanly rather than let the delete raise ProtectedError.
+        """
+        self.assertTrue(self.stock.can_delete())
+        allocation = self.make_allocation('2', JobKitAllocationStatus.CONSUMED)
+        self.assertFalse(self.stock.can_delete())
+        allocation.delete()
+        self.assertTrue(self.stock.can_delete())
+
 
 class BuildGuardJobKitTest(BuildTestBase):
     """Prove the BuildItem over-allocation guard now counts Job Kit reservations.
@@ -180,3 +212,36 @@ class BuildGuardJobKitTest(BuildTestBase):
             build_line=self.line_1, stock_item=self.stock_1_1, quantity=Decimal('3')
         )
         ok.clean()
+
+    def test_allocate_stock_bulk_path_counts_job_kit_allocation(self):
+        """The bulk allocate path must honour Job Kit reservations.
+
+        Build.allocate_stock() persists via bulk_create/bulk_update, which
+        bypasses BuildItem.save()/clean() - its own re-validation (backed by
+        bulk_allocation_count) is the only guard on the allocation API path.
+        """
+        # stock_1_1 holds 3 units of sub_part_1 and is otherwise unallocated.
+        self.assertEqual(self.stock_1_1.quantity, 3)
+        user, line = self._job_kit_line()
+        self._reserve(line, user, '2', JobKitAllocationStatus.RESERVED)
+
+        # 2 reserved for maintenance + 2 for build = 4 > 3 available.
+        with self.assertRaises(ValidationError):
+            self.build.allocate_stock([
+                {
+                    'build_line': self.line_1,
+                    'stock_item': self.stock_1_1,
+                    'quantity': Decimal('2'),
+                }
+            ])
+        self.assertEqual(self.line_1.allocated_quantity(), 0)
+
+        # 2 + 1 = 3 exactly available -> allowed.
+        self.build.allocate_stock([
+            {
+                'build_line': self.line_1,
+                'stock_item': self.stock_1_1,
+                'quantity': Decimal('1'),
+            }
+        ])
+        self.assertEqual(self.line_1.allocated_quantity(), Decimal('1'))
