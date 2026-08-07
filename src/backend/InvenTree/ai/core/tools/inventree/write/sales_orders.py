@@ -306,27 +306,40 @@ async def allocate_so_stock(
     """
     logger.info(f"Allocating {quantity} from stock {stock_item_id} to SO line {line_item_id}")
 
-    data: dict[str, Any] = {
-        "line": line_item_id,
-        "item": stock_item_id,
-        "quantity": quantity,
-    }
-
-    if shipment_id:
-        data["shipment"] = shipment_id
-
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
 
         client = get_inventree_client()
 
-        result = await client._request("POST", "/order/so-allocation/", json_data=data)
+        # Allocations are created through the order-level action
+        # POST /order/so/{order}/allocate/ (the so-allocation list endpoint
+        # is read/bulk-edit only) - resolve the order from the line first
+        line = await client._request("GET", f"/order/so-line/{line_item_id}/")
+        if not isinstance(line, dict) or not line.get("order"):
+            raise ValueError(f"Sales order line {line_item_id} not found")
+
+        data: dict[str, Any] = {
+            "items": [
+                {
+                    "line_item": line_item_id,
+                    "stock_item": stock_item_id,
+                    "quantity": quantity,
+                }
+            ],
+        }
+
+        if shipment_id:
+            data["shipment"] = shipment_id
+
+        result = await client._request(
+            "POST", f"/order/so/{line['order']}/allocate/", json_data=data
+        )
 
         if isinstance(result, dict):
-            logger.info(f"Created SO allocation pk={result.get('pk')}")
+            logger.info(f"Allocated stock to SO line {line_item_id}")
             return result
 
-        return {"error": "Unexpected response format"}
+        return {"success": True, "line_item": line_item_id, "quantity": quantity}
 
     except Exception as e:
         logger.error(f"Failed to allocate stock: {e}")

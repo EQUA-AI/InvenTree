@@ -105,6 +105,15 @@ async def add_stock(
 
         result = await client._request("POST", "/stock/", json_data=data)
 
+        # StockItemCreate returns a LIST of created items (upstream v383) -
+        # serialized creation can yield several rows from one request
+        if isinstance(result, list) and result:
+            if len(result) == 1:
+                logger.info(f"Added stock item pk={result[0].get('pk')}")
+                return result[0]
+            logger.info(f"Added {len(result)} stock items")
+            return {"items": result, "count": len(result)}
+
         if isinstance(result, dict):
             logger.info(f"Added stock item pk={result.get('pk')}")
             return result
@@ -336,7 +345,8 @@ async def merge_stock(
     logger.info(f"Merging stock items: {stock_ids}")
 
     data: dict[str, Any] = {
-        "items": [{"pk": sid} for sid in stock_ids],
+        # StockMergeItemSerializer's field is 'item', not 'pk'
+        "items": [{"item": sid} for sid in stock_ids],
         "allow_mismatched_suppliers": False,
         "allow_mismatched_status": False,
     }

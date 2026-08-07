@@ -280,6 +280,16 @@ async def receive_po_items(
 
         result = await client._request("POST", f"/order/po/{order_id}/receive/", json_data=data)
 
+        # The receive action returns the LIST of created stock items
+        # (upstream v385)
+        if isinstance(result, list):
+            logger.info(f"Received items for PO {order_id}")
+            return {
+                "success": True,
+                "received_quantity": quantity,
+                "stock_items": result,
+            }
+
         if isinstance(result, dict):
             logger.info(f"Received items for PO {order_id}")
             return result

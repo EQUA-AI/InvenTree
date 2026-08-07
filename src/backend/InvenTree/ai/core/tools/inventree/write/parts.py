@@ -93,7 +93,7 @@ async def create_part(
         "category": category_id,
         "component": is_component,
         "purchaseable": is_purchaseable,
-        "saleable": is_saleable,
+        "salable": is_saleable,
         "trackable": is_trackable,
         "virtual": is_virtual,
         "is_template": is_template,
@@ -114,7 +114,13 @@ async def create_part(
     if default_location_id:
         data["default_location"] = default_location_id
     if default_supplier_id:
-        data["default_supplier"] = default_supplier_id
+        # The Part API dropped default_supplier (upstream v456); the notion
+        # now lives on SupplierPart.primary. Log rather than send a field the
+        # serializer would silently discard.
+        logger.warning(
+            "default_supplier_id is no longer supported by the Part API; "
+            "set the 'primary' flag on the supplier part instead"
+        )
     if notes:
         data["notes"] = notes
     if link:
@@ -221,7 +227,7 @@ async def update_part(
     if is_purchaseable is not None:
         data["purchaseable"] = is_purchaseable
     if is_saleable is not None:
-        data["saleable"] = is_saleable
+        data["salable"] = is_saleable
     if is_trackable is not None:
         data["trackable"] = is_trackable
     if minimum_stock is not None:
@@ -368,19 +374,25 @@ async def duplicate_part(
 
         client = get_inventree_client()
 
-        # Use InvenTree's copy endpoint
+        # Duplication is now a plain part creation carrying nested
+        # 'duplicate' options (the standalone copy endpoint is gone; the
+        # original-part reference is the 'original' field since v514).
         copy_data = {
-            "part": source_part_id,
             "name": new_name,
-            "copy_image": copy_image,
-            "copy_bom": copy_bom,
-            "copy_parameters": copy_parameters,
+            "description": source.get("description") or new_name,
+            "category": source.get("category"),
+            "duplicate": {
+                "original": source_part_id,
+                "copy_image": copy_image,
+                "copy_bom": copy_bom,
+                "copy_parameters": copy_parameters,
+            },
         }
 
         if new_ipn:
             copy_data["IPN"] = new_ipn
 
-        result = await client._request("POST", "/part/copy/", json_data=copy_data)
+        result = await client._request("POST", "/part/", json_data=copy_data)
 
         if isinstance(result, dict):
             logger.info(f"Duplicated part to pk={result.get('pk')}")
@@ -452,7 +464,7 @@ async def set_part_parameter(
         if template_id is None and template_name:
             templates = await client._request(
                 "GET",
-                "/part/parameter/template/",
+                "/parameter/template/",
                 params={"search": template_name, "limit": 10},
             )
             if isinstance(templates, dict) and "results" in templates:
@@ -471,11 +483,12 @@ async def set_part_parameter(
 
             template_id = template.get("pk")
 
-        # Check if parameter already exists for this part
+        # Check if parameter already exists for this part. Parameters are
+        # generic since upstream v430: they attach via (model_type, model_id).
         existing_params = await client._request(
             "GET",
-            "/part/parameter/",
-            params={"part": part_id, "template": template_id},
+            "/parameter/",
+            params={"model_type": "part", "model_id": part_id, "template": template_id},
         )
         if isinstance(existing_params, dict) and "results" in existing_params:
             existing_params = existing_params["results"]
@@ -485,7 +498,7 @@ async def set_part_parameter(
             param_id = existing_params[0].get("pk")
             result = await client._request(
                 "PATCH",
-                f"/part/parameter/{param_id}/",
+                f"/parameter/{param_id}/",
                 json_data={"data": str(value)},
             )
             logger.info(f"Updated parameter {param_id} for part {part_id}")
@@ -493,9 +506,10 @@ async def set_part_parameter(
             # Create new parameter
             result = await client._request(
                 "POST",
-                "/part/parameter/",
+                "/parameter/",
                 json_data={
-                    "part": part_id,
+                    "model_type": "part.part",
+                    "model_id": part_id,
                     "template": template_id,
                     "data": str(value),
                 },

@@ -58,13 +58,14 @@ async def add_part_attachment(
         client = await tool.get_client()
 
         data = {
-            "part": part_id,
+            "model_type": "part",
+            "model_id": part_id,
             "comment": comment,
         }
 
         if attachment_type == "link":
             data["link"] = link
-            result = await client.post("part/attachment/", json=data)
+            result = await client.post("attachment/", json=data)
         else:
             # For file uploads, we need to use multipart form data
             import base64
@@ -72,7 +73,7 @@ async def add_part_attachment(
             file_bytes = base64.b64decode(file_content_base64)
             files = {"attachment": (file_name, file_bytes)}
             result = await client.post(
-                "part/attachment/",
+                "attachment/",
                 data=data,
                 files=files,
             )
@@ -109,23 +110,19 @@ async def delete_attachment(
     """
     tool = WriteTool("delete_attachment")
 
-    model_endpoints = {
-        "part": "part/attachment",
-        "stock": "stock/attachment",
-        "build": "build/attachment",
-        "order": "order/attachment",
-    }
-
-    if attachment_model not in model_endpoints:
+    # Attachments are a single generic model - the per-model endpoints were
+    # consolidated into /attachment/ upstream; attachment_model is retained
+    # only for interface compatibility
+    valid_models = ("part", "stock", "build", "order")
+    if attachment_model not in valid_models:
         return tool.error_response(
-            f"Invalid attachment_model. Must be one of: {list(model_endpoints.keys())}"
+            f"Invalid attachment_model. Must be one of: {list(valid_models)}"
         )
 
     try:
         client = await tool.get_client()
 
-        endpoint = f"{model_endpoints[attachment_model]}/{attachment_id}/"
-        await client.delete(endpoint)
+        await client.delete(f"attachment/{attachment_id}/")
 
         logger.info(f"Deleted {attachment_model} attachment {attachment_id}")
         return tool.success_response(
@@ -180,20 +177,21 @@ async def add_stock_attachment(
         client = await tool.get_client()
 
         data = {
-            "stock_item": stock_item_id,
+            "model_type": "stockitem",
+            "model_id": stock_item_id,
             "comment": comment,
         }
 
         if attachment_type == "link":
             data["link"] = link
-            result = await client.post("stock/attachment/", json=data)
+            result = await client.post("attachment/", json=data)
         else:
             import base64
 
             file_bytes = base64.b64decode(file_content_base64)
             files = {"attachment": (file_name, file_bytes)}
             result = await client.post(
-                "stock/attachment/",
+                "attachment/",
                 data=data,
                 files=files,
             )
@@ -246,26 +244,30 @@ async def print_label(
     try:
         client = await tool.get_client()
 
-        # Build the label print request
-        endpoint = f"label/{item_type}/"
+        # Printing goes through the consolidated /label/print/ action
+        # (the per-model label endpoints were removed upstream). Resolve a
+        # template when the caller did not name one.
+        if not label_template_id:
+            templates = await client.get(
+                "label/template/",
+                params={"model_type": item_type, "enabled": "true", "limit": 1},
+            )
+            if isinstance(templates, dict) and "results" in templates:
+                templates = templates["results"]
+            if not templates:
+                return tool.error_response(f"No enabled label template found for {item_type}")
+            label_template_id = templates[0].get("pk")
+
         params = {
-            "item": item_id,
-            "quantity": quantity,
+            "template": label_template_id,
+            "items": [item_id] * quantity,
         }
 
-        if label_template_id:
-            params["template"] = label_template_id
-
         if printer_id:
-            # Print to a specific printer
             params["plugin"] = printer_id
-            result = await client.post(endpoint, json=params)
-            message = f"Label print job submitted to printer {printer_id}"
-        else:
-            # Return label PDF data
-            params["export"] = "pdf"
-            result = await client.get(endpoint, params=params)
-            message = f"Label generated for {item_type} {item_id}"
+
+        result = await client.post("label/print/", json=params)
+        message = f"Label print job submitted for {item_type} {item_id}"
 
         logger.info(f"Printed label for {item_type} {item_id}")
         return tool.success_response(
@@ -325,10 +327,12 @@ async def create_label_template(
             "width": width,
             "height": height,
             "enabled": enabled,
+            # Templates are generic now; the target model is a field, not
+            # part of the URL
+            "model_type": label_type,
         }
 
-        # Different endpoints for different label types
-        endpoint = f"label/{label_type}/"
+        endpoint = "label/template/"
 
         if template_content:
             # Upload template file

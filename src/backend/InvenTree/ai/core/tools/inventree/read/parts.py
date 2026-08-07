@@ -172,7 +172,8 @@ async def search_parts(
         results = [p for p in results if p.get("purchaseable") == is_purchaseable]
 
     if is_saleable is not None:
-        results = [p for p in results if p.get("saleable") == is_saleable]
+        # NB: the API field is 'salable' (single l)
+        results = [p for p in results if p.get("salable") == is_saleable]
 
     if is_active is not None:
         results = [p for p in results if p.get("active") == is_active]
@@ -345,40 +346,60 @@ async def get_part_pricing(
         "currency": currency,
     }
 
-    # Get pricing from the part data itself
-    pricing_data = part.get("pricing_data", {})
-    if pricing_data:
-        result["internal_price"] = pricing_data.get("internal_cost")
-        result["sale_price"] = pricing_data.get("sale_price")
+    # Pricing lives on the dedicated /part/{id}/pricing/ endpoint (the part
+    # record itself only carries the pricing_min/pricing_max range)
+    try:
+        from ai.core.integrations.inventree.client import get_inventree_client
 
-        # Add price breaks if available
-        for pb in pricing_data.get("price_breaks", []):
-            result["price_breaks"].append({
-                "type": "internal",
-                "quantity": pb.get("quantity"),
-                "price": pb.get("price"),
-                "currency": pb.get("price_currency"),
-            })
+        pricing_data = await get_inventree_client()._request("GET", f"/part/{part_id}/pricing/")
+    except Exception as e:
+        logger.warning(f"Could not get part pricing: {e}")
+        pricing_data = None
+
+    if isinstance(pricing_data, dict):
+        result["internal_price"] = pricing_data.get("internal_cost_min") or pricing_data.get(
+            "overall_min"
+        )
+        result["sale_price"] = pricing_data.get("sale_price_min")
+        result["bom_cost"] = pricing_data.get("bom_cost_min")
+        result["pricing_range"] = {
+            "overall_min": pricing_data.get("overall_min"),
+            "overall_max": pricing_data.get("overall_max"),
+            "currency": pricing_data.get("currency"),
+        }
 
     # Get supplier prices
     if include_supplier_prices:
         try:
             supplier_parts = await provider.get_supplier_parts(part_id)
             for sp in supplier_parts:
-                pack_qty = sp.get("pack_quantity") or 1
-                price = sp.get("price") or 0
+                pack_qty = float(sp.get("pack_quantity_native") or 1)
+                # Supplier pricing lives in the opt-in price_breaks list;
+                # take the lowest-quantity break as the base price
+                breaks = sorted(
+                    sp.get("price_breaks") or [],
+                    key=lambda pb: pb.get("quantity") or 0,
+                )
+                base = breaks[0] if breaks else {}
+                price = float(base.get("price") or 0)
                 result["supplier_prices"].append({
                     "supplier_id": sp.get("supplier"),
-                    "supplier_name": sp.get("supplier_name")
-                    or sp.get("supplier_detail", {}).get("name"),
+                    "supplier_name": (sp.get("supplier_detail") or {}).get("name"),
                     "sku": sp.get("SKU"),
                     "price": price,
-                    "currency": sp.get("price_currency"),
+                    "currency": base.get("price_currency"),
                     "pack_quantity": pack_qty,
                     "effective_price": price / pack_qty if pack_qty > 0 else price,
-                    "lead_time": sp.get("lead_time"),
                     "last_updated": sp.get("updated"),
                 })
+                for pb in breaks:
+                    result["price_breaks"].append({
+                        "type": "supplier",
+                        "supplier_id": sp.get("supplier"),
+                        "quantity": pb.get("quantity"),
+                        "price": pb.get("price"),
+                        "currency": pb.get("price_currency"),
+                    })
         except Exception as e:
             logger.warning(f"Could not get supplier prices: {e}")
 
@@ -394,8 +415,11 @@ async def get_part_pricing(
                     # Get component part for pricing info
                     comp_part = await provider.get_part(component_id)
                     if comp_part:
-                        comp_pricing = comp_part.get("pricing_data", {})
-                        comp_price = comp_pricing.get("internal_cost")
+                        # PartSerializer exposes the computed pricing range
+                        # directly as pricing_min/pricing_max
+                        comp_price = comp_part.get("pricing_min")
+                        if comp_price is not None:
+                            comp_price = float(comp_price)
 
                         # Fall back to supplier price if no internal cost
                         if not comp_price:

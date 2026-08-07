@@ -60,13 +60,21 @@ async def serialize_stock(
     if not stock_item:
         raise ValueError(f"Stock item with ID {stock_id} not found")
 
+    # Serialization is a per-item detail action: POST /stock/{pk}/serialize/
+    # with quantity + serial_numbers + a REQUIRED destination
+    destination = destination_location_id or stock_item.get("location")
+    if not destination:
+        raise ValueError(
+            "destination_location_id is required (the stock item has no "
+            "current location to fall back to)"
+        )
+
     data: dict[str, Any] = {
-        "items": [{"pk": stock_id}],
-        "serials": ",".join(serial_numbers),
+        "quantity": len(serial_numbers),
+        "serial_numbers": ",".join(serial_numbers),
+        "destination": destination,
     }
 
-    if destination_location_id:
-        data["location"] = destination_location_id
     if notes:
         data["notes"] = notes
 
@@ -75,7 +83,7 @@ async def serialize_stock(
 
         client = get_inventree_client()
 
-        result = await client._request("POST", "/stock/serialize/", json_data=data)
+        result = await client._request("POST", f"/stock/{stock_id}/serialize/", json_data=data)
 
         if isinstance(result, dict):
             logger.info(f"Serialized stock item {stock_id} into {len(serial_numbers)} items")
@@ -121,24 +129,21 @@ async def install_stock(
     """
     logger.info(f"Installing stock item {stock_id} into {into_stock_id}")
 
-    item_data: dict[str, Any] = {"pk": stock_id}
+    # Installation is a per-item detail action on the PARENT item:
+    # POST /stock/{parent_pk}/install/ with the child as 'stock_item'
+    data: dict[str, Any] = {"stock_item": stock_id}
     if quantity is not None:
-        item_data["quantity"] = quantity
-
-    data: dict[str, Any] = {
-        "items": [item_data],
-        "part": into_stock_id,
-    }
+        data["quantity"] = int(quantity)
 
     if notes:
-        data["notes"] = notes
+        data["note"] = notes
 
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
 
         client = get_inventree_client()
 
-        result = await client._request("POST", "/stock/install/", json_data=data)
+        result = await client._request("POST", f"/stock/{into_stock_id}/install/", json_data=data)
 
         if isinstance(result, dict):
             logger.info(f"Installed stock item {stock_id}")
@@ -184,24 +189,25 @@ async def uninstall_stock(
     """
     logger.info(f"Uninstalling stock item {stock_id} to location {destination_location_id}")
 
-    item_data: dict[str, Any] = {"pk": stock_id}
+    # Uninstallation is a per-item detail action on the INSTALLED item:
+    # POST /stock/{pk}/uninstall/ - the whole item is always uninstalled
     if quantity is not None:
-        item_data["quantity"] = quantity
+        logger.warning(
+            "Partial uninstall is not supported by the API; "
+            "the whole stock item will be uninstalled"
+        )
 
-    data: dict[str, Any] = {
-        "items": [item_data],
-        "location": destination_location_id,
-    }
+    data: dict[str, Any] = {"location": destination_location_id}
 
     if notes:
-        data["notes"] = notes
+        data["note"] = notes
 
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
 
         client = get_inventree_client()
 
-        result = await client._request("POST", "/stock/uninstall/", json_data=data)
+        result = await client._request("POST", f"/stock/{stock_id}/uninstall/", json_data=data)
 
         if isinstance(result, dict):
             logger.info(f"Uninstalled stock item {stock_id}")
@@ -247,12 +253,15 @@ async def assign_stock(
     """
     logger.info(f"Assigning stock item {stock_id} to customer {customer_id}")
 
-    item_data: dict[str, Any] = {"pk": stock_id}
+    # StockAssignmentItemSerializer's field is 'item'; whole items are
+    # assigned (no per-item quantity)
     if quantity is not None:
-        item_data["quantity"] = quantity
+        logger.warning(
+            "Partial assignment is not supported by the API; the whole stock item will be assigned"
+        )
 
     data: dict[str, Any] = {
-        "items": [item_data],
+        "items": [{"item": stock_id}],
         "customer": customer_id,
     }
 

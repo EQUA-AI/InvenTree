@@ -452,6 +452,9 @@ class InvenTreeClient:
         params: dict[str, Any] = {
             "limit": limit,
             "offset": offset,
+            # Detail blocks are opt-in per request (the view-level output
+            # options default them off regardless of serializer defaults)
+            "category_detail": "true",
         }
 
         if query:
@@ -709,6 +712,10 @@ class InvenTreeClient:
         params: dict[str, Any] = {
             "part": part_id,
             "inherited": str(include_inherited).lower(),
+            # Consumers read sub_part_detail/part_detail; both default off at
+            # the view layer and must be requested explicitly
+            "part_detail": "true",
+            "sub_part_detail": "true",
         }
 
         result = await self._request("GET", "/bom/", params=params)
@@ -849,7 +856,16 @@ class InvenTreeClient:
         Returns:
             List of supplier parts.
         """
-        params: dict[str, Any] = {"limit": limit}
+        params: dict[str, Any] = {
+            "limit": limit,
+            # Consumers read these detail blocks and the price-break list;
+            # all default off at the view layer and must be requested
+            # explicitly
+            "part_detail": "true",
+            "supplier_detail": "true",
+            "manufacturer_detail": "true",
+            "price_breaks": "true",
+        }
 
         if supplier_id:
             params["supplier"] = supplier_id
@@ -1098,11 +1114,9 @@ class InvenTreeClient:
         Returns:
             List of stock allocations.
         """
-        params = {"build": bo_id, "limit": 250}
-        # Note: Endpoint usually /build/item/ or /build/allocation/ depending on version.
-        # Assuming modern InvenTree uses /build/item/ for "Line Items" (BOM items to track)
-        # but the prompt asks about status/what is missing.
-        # Let's try /build/item/ which are the "Build Line Items"
+        # /build/item/ rows are stock allocations against build lines.
+        # stock_detail=true embeds stock_item_detail (off by default).
+        params = {"build": bo_id, "limit": 250, "stock_detail": "true"}
         result = await self._request("GET", "/build/item/", params=params)
 
         if isinstance(result, dict) and "results" in result:
@@ -1128,12 +1142,16 @@ class InvenTreeClient:
         Returns:
             List of part parameters.
         """
+        # Generic parameter API (upstream v430 removed the part-scoped
+        # parameter endpoints): parameters attach via (model_type, model_id).
         params: dict[str, Any] = {
-            "part": part_id,
+            "model_type": "part",
+            "model_id": part_id,
             "limit": limit,
+            "template_detail": "true",
         }
 
-        result = await self._request("GET", "/part/parameter/", params=params)
+        result = await self._request("GET", "/parameter/", params=params)
 
         if isinstance(result, dict) and "results" in result:
             return result["results"]

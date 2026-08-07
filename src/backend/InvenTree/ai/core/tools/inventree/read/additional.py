@@ -319,8 +319,6 @@ async def get_low_stock_report(
         - deficit: Amount below minimum (minimum - in_stock)
         - percentage: Current stock as percentage of minimum
         - units: Unit of measure
-        - default_supplier: Default supplier name
-        - last_stocktake: Date of last stock count
         - on_order: Quantity on purchase orders
         - building: Quantity in active builds
 

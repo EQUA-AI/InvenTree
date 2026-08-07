@@ -59,7 +59,7 @@ async def create_parameter_template(
         if choices:
             data["choices"] = choices
 
-        result = await client.post("part/parameter/template/", json=data)
+        result = await client.post("parameter/template/", json=data)
 
         logger.info(f"Created parameter template '{name}': {result.get('pk')}")
         return tool.success_response(
@@ -119,7 +119,7 @@ async def update_parameter_template(
         if not data:
             return tool.error_response("No fields provided to update.")
 
-        result = await client.patch(f"part/parameter/template/{template_id}/", json=data)
+        result = await client.patch(f"parameter/template/{template_id}/", json=data)
 
         logger.info(f"Updated parameter template {template_id}")
         return tool.success_response(
@@ -155,9 +155,9 @@ async def delete_parameter_template(
         client = await tool.get_client()
 
         # First get the template to confirm it exists
-        template = await client.get(f"part/parameter/template/{template_id}/")
+        template = await client.get(f"parameter/template/{template_id}/")
 
-        await client.delete(f"part/parameter/template/{template_id}/")
+        await client.delete(f"parameter/template/{template_id}/")
 
         logger.info(f"Deleted parameter template {template_id} ({template.get('name')})")
         return tool.success_response(
@@ -216,24 +216,31 @@ async def bulk_set_parameters(
             try:
                 # Check if parameter already exists for this part
                 existing = await client.get(
-                    "part/parameter/",
-                    params={"part": part_id, "template": template_id},
+                    "parameter/",
+                    params={
+                        "model_type": "part",
+                        "model_id": part_id,
+                        "template": template_id,
+                    },
                 )
+                if isinstance(existing, dict) and "results" in existing:
+                    existing = existing["results"]
 
                 if existing and len(existing) > 0:
                     # Update existing parameter
                     param_id = existing[0]["pk"]
                     result = await client.patch(
-                        f"part/parameter/{param_id}/",
+                        f"parameter/{param_id}/",
                         json={"data": str(data_value)},
                     )
                     results.append({"action": "updated", "result": result})
                 else:
                     # Create new parameter
                     result = await client.post(
-                        "part/parameter/",
+                        "parameter/",
                         json={
-                            "part": part_id,
+                            "model_type": "part.part",
+                            "model_id": part_id,
                             "template": template_id,
                             "data": str(data_value),
                         },
@@ -294,9 +301,11 @@ async def copy_parameters(
 
         # Get source part parameters
         source_params = await client.get(
-            "part/parameter/",
-            params={"part": source_part_id},
+            "parameter/",
+            params={"model_type": "part", "model_id": source_part_id},
         )
+        if isinstance(source_params, dict) and "results" in source_params:
+            source_params = source_params["results"]
 
         if not source_params:
             return tool.success_response(
@@ -306,9 +315,11 @@ async def copy_parameters(
 
         # Get existing target parameters
         target_params = await client.get(
-            "part/parameter/",
-            params={"part": target_part_id},
+            "parameter/",
+            params={"model_type": "part", "model_id": target_part_id},
         )
+        if isinstance(target_params, dict) and "results" in target_params:
+            target_params = target_params["results"]
         target_template_ids = {p["template"] for p in target_params}
 
         copied = 0
@@ -329,16 +340,17 @@ async def copy_parameters(
                 )
                 if existing:
                     await client.patch(
-                        f"part/parameter/{existing['pk']}/",
+                        f"parameter/{existing['pk']}/",
                         json={"data": param["data"]},
                     )
                     copied += 1
             else:
                 # Create new parameter
                 await client.post(
-                    "part/parameter/",
+                    "parameter/",
                     json={
-                        "part": target_part_id,
+                        "model_type": "part.part",
+                        "model_id": target_part_id,
                         "template": template_id,
                         "data": param["data"],
                     },

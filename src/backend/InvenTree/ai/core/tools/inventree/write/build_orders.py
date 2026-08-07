@@ -189,17 +189,29 @@ async def allocate_build_stock(
     """
     logger.info(f"Allocating {quantity} from stock {stock_item_id} to build {build_id}")
 
-    data: dict[str, Any] = {
-        "build": build_id,
-        "bom_item": bom_item_id,
-        "stock_item": stock_item_id,
-        "quantity": quantity,
-    }
-
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
 
         client = get_inventree_client()
+
+        # BuildItem allocations reference a BuildLine (the 'build' field is
+        # read-only and 'bom_item' is not accepted) - resolve the line for
+        # this build + BOM item first
+        lines = await client._request(
+            "GET", "/build/line/", params={"build": build_id, "limit": 500}
+        )
+        if isinstance(lines, dict) and "results" in lines:
+            lines = lines["results"]
+
+        line = next((ln for ln in lines or [] if ln.get("bom_item") == bom_item_id), None)
+        if not line:
+            raise ValueError(f"Build {build_id} has no line for BOM item {bom_item_id}")
+
+        data: dict[str, Any] = {
+            "build_line": line.get("pk"),
+            "stock_item": stock_item_id,
+            "quantity": quantity,
+        }
 
         result = await client._request("POST", "/build/item/", json_data=data)
 
@@ -252,28 +264,42 @@ async def complete_build_output(
     """
     logger.info(f"Completing {quantity} outputs for build {build_id}")
 
-    output_data: dict[str, Any] = {
-        "quantity": quantity,
-    }
-
-    if serial_numbers:
-        output_data["serial_numbers"] = serial_numbers
-    if batch_code:
-        output_data["batch_code"] = batch_code
-
-    data: dict[str, Any] = {
-        "outputs": [output_data],
-        "location": location_id,
-        "status": 10,  # OK status
-    }
-
-    if notes:
-        data["notes"] = notes
-
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
 
         client = get_inventree_client()
+
+        # Two-step flow: create the in-production output(s), then complete
+        # them into stock. /build/{id}/complete/ only accepts EXISTING output
+        # references ({'output': <stock pk>}), not inline quantities.
+        output_data: dict[str, Any] = {"quantity": quantity}
+        if serial_numbers:
+            output_data["serial_numbers"] = serial_numbers
+        if batch_code:
+            output_data["batch_code"] = batch_code
+
+        await client._request("POST", f"/build/{build_id}/create-output/", json_data=output_data)
+
+        # Collect this build's in-production outputs (includes any created
+        # previously and not yet completed - they are completed together)
+        outputs = await client._request(
+            "GET",
+            "/stock/",
+            params={"build": build_id, "is_building": "true", "limit": 250},
+        )
+        if isinstance(outputs, dict) and "results" in outputs:
+            outputs = outputs["results"]
+
+        if not outputs:
+            raise ValueError(f"Build {build_id} has no in-production outputs")
+
+        data: dict[str, Any] = {
+            "outputs": [{"output": o.get("pk")} for o in outputs],
+            "location": location_id,
+        }
+
+        if notes:
+            data["notes"] = notes
 
         result = await client._request("POST", f"/build/{build_id}/complete/", json_data=data)
 

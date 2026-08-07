@@ -180,19 +180,36 @@ async def unallocate_build_stock(
     """
     logger.info(f"Unallocating stock from build order {build_id}")
 
-    data: dict[str, Any] = {
-        "build": build_id,
-    }
-
-    if allocation_id:
-        data["build_line"] = allocation_id
-    if bom_item_id:
-        data["bom_item"] = bom_item_id
-
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
 
         client = get_inventree_client()
+
+        if allocation_id:
+            # A single allocation is removed by deleting the BuildItem row -
+            # the unallocate action only understands build lines
+            await client._request("DELETE", f"/build/item/{allocation_id}/")
+            logger.info(f"Removed build allocation {allocation_id}")
+            return {"success": True, "removed_allocation": allocation_id}
+
+        data: dict[str, Any] = {}
+
+        if bom_item_id:
+            # Resolve the build line for this BOM item; the serializer accepts
+            # only 'build_line' (and 'output'), never 'bom_item'
+            lines = await client._request(
+                "GET", "/build/line/", params={"build": build_id, "limit": 500}
+            )
+            if isinstance(lines, dict) and "results" in lines:
+                lines = lines["results"]
+
+            line = next(
+                (ln for ln in lines or [] if ln.get("bom_item") == bom_item_id),
+                None,
+            )
+            if not line:
+                raise ValueError(f"Build {build_id} has no line for BOM item {bom_item_id}")
+            data["build_line"] = line.get("pk")
 
         result = await client._request("POST", f"/build/{build_id}/unallocate/", json_data=data)
 

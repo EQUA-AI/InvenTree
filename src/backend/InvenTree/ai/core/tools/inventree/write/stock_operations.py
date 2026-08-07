@@ -54,13 +54,15 @@ async def change_stock_status(
     """
     logger.info(f"Changing stock item {stock_id} status to {status}")
 
+    # StockChangeStatusSerializer takes a flat list of PKs and a singular
+    # 'note' field
     data: dict[str, Any] = {
-        "items": [{"pk": stock_id}],
+        "items": [stock_id],
         "status": status,
     }
 
     if notes:
-        data["notes"] = notes
+        data["note"] = notes
 
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
@@ -122,20 +124,15 @@ async def convert_stock(
 
     logger.info(f"Converting stock item {stock_id} to part {target_part_id}")
 
-    data: dict[str, Any] = {
-        "items": [{"pk": stock_id}],
-        "part": target_part_id,
-    }
-
-    if notes:
-        data["notes"] = notes
+    # Conversion is a per-item detail action: POST /stock/{pk}/convert/
+    data: dict[str, Any] = {"part": target_part_id}
 
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
 
         client = get_inventree_client()
 
-        result = await client._request("POST", "/stock/convert/", json_data=data)
+        result = await client._request("POST", f"/stock/{stock_id}/convert/", json_data=data)
 
         if isinstance(result, dict):
             logger.info(f"Converted stock item {stock_id} to part {target_part_id}")
@@ -187,23 +184,49 @@ async def add_stock_test_result(
     """
     logger.info(f"Adding test result '{test_name}' to stock item {stock_id}")
 
-    data: dict[str, Any] = {
-        "stock_item": stock_id,
-        "test": test_name,
-        "result": result,
-    }
-
-    if value:
-        data["value"] = value
-    if notes:
-        data["notes"] = notes
-    if attachment:
-        data["attachment"] = attachment
+    provider = get_data_provider()
+    stock_item = await provider.get_stock_item(stock_id)
+    if not stock_item:
+        raise ValueError(f"Stock item with ID {stock_id} not found")
 
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
 
         client = get_inventree_client()
+
+        # Test results must reference a PartTestTemplate PK (the legacy
+        # name-based 'test' field and auto-created templates were removed
+        # upstream at v382) - resolve the template from the part first
+        templates = await client._request(
+            "GET",
+            "/part/test-template/",
+            params={"part": stock_item.get("part"), "limit": 100},
+        )
+        if isinstance(templates, dict) and "results" in templates:
+            templates = templates["results"]
+
+        template = next(
+            (t for t in templates or [] if t.get("test_name", "").lower() == test_name.lower()),
+            None,
+        )
+        if not template:
+            raise ValueError(
+                f"Test template '{test_name}' not found for part "
+                f"{stock_item.get('part')} - it must be defined on the part first"
+            )
+
+        data: dict[str, Any] = {
+            "stock_item": stock_id,
+            "template": template.get("pk"),
+            "result": result,
+        }
+
+        if value:
+            data["value"] = value
+        if notes:
+            data["notes"] = notes
+        if attachment:
+            data["attachment"] = attachment
 
         result_data = await client._request("POST", "/stock/test/", json_data=data)
 
