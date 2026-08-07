@@ -51,6 +51,7 @@ import { api } from '../../App';
 import {
   type ChatMessage,
   type ChatThread,
+  type QuestionResolution,
   type UploadedFile,
   useAIChat
 } from '../../hooks/UseAIChat';
@@ -59,6 +60,7 @@ import { useAIChatState } from '../../states/AIChatState';
 import { useLocalState } from '../../states/LocalState';
 import { ChatActionProposalList } from '../ai/ChatActionProposals';
 import { HITLApprovalCard, HITLResultBanner } from '../ai/HITLApprovalModal';
+import { QuestionCard } from '../ai/QuestionCard';
 import { VoiceContextBadge } from '../ai/VoiceContextBadge';
 import { VoiceSessionControl } from '../ai/VoiceSessionControl';
 import { VoiceTranscript } from '../ai/VoiceTranscript';
@@ -790,10 +792,16 @@ function MessageActions({
  */
 function ChatMessageItem({
   message,
-  threadId
+  threadId,
+  questionArmed,
+  questionResolution,
+  onQuestionAnswer
 }: Readonly<{
   message: ChatMessage;
   threadId: string | null;
+  questionArmed?: boolean;
+  questionResolution?: QuestionResolution;
+  onQuestionAnswer?: (text: string) => void;
 }>) {
   const theme = useMantineTheme();
   const isUser = message.role === 'user';
@@ -866,6 +874,16 @@ function ChatMessageItem({
               )
             ) : (
               message.isStreaming && <TypingIndicator />
+            )}
+            {/* Structured question card (S22/S23): message-anchored so the
+                frozen card survives reload; the singleton governs armedness. */}
+            {!isUser && message.question && (
+              <QuestionCard
+                payload={message.question}
+                armed={!!questionArmed}
+                resolution={questionResolution}
+                onAnswer={(text) => onQuestionAnswer?.(text)}
+              />
             )}
             {/* Diagnosis-rail provenance (S10): a cited answer shows its
                 sources; an uncited one is visibly flagged, never implied. */}
@@ -972,6 +990,8 @@ export function AIChatDrawer({
     isSyncing,
     syncThreads,
     searchThreads,
+    // Structured questions (S22/S23)
+    pendingQuestion,
     // HITL (Human-in-the-Loop) approval
     pendingHITL,
     hitlResult,
@@ -985,6 +1005,16 @@ export function AIChatDrawer({
   // S14 B5: machine routing hint preloaded by "Ask about this machine".
   const routingHint = useAIChatState((state) => state.routingHint);
   const clearRoutingHint = useAIChatState((state) => state.clearHint);
+
+  // S22: resolutions live on the answering turn's assistant message; the
+  // asking card looks its own outcome up by interrupt_id when frozen.
+  const questionResolutions = new Map<string, QuestionResolution>();
+  for (const message of messages) {
+    const resolution = message.questionResolution;
+    if (resolution?.interrupt_id) {
+      questionResolutions.set(resolution.interrupt_id, resolution);
+    }
+  }
 
   // Realtime voice (WS5): explicit user-started sessions in the same
   // drawer, converging on the same server-backed conversation history.
@@ -1511,6 +1541,15 @@ export function AIChatDrawer({
                   key={message.id}
                   message={message}
                   threadId={activeThreadId}
+                  questionArmed={
+                    !!message.question &&
+                    pendingQuestion?.interrupt_id ===
+                      message.question.interrupt_id
+                  }
+                  questionResolution={questionResolutions.get(
+                    message.question?.interrupt_id ?? ''
+                  )}
+                  onQuestionAnswer={(text) => handleSendMessage(text)}
                 />
               ))}
 
@@ -1709,9 +1748,11 @@ export function AIChatDrawer({
                 <Textarea
                   ref={inputRef}
                   placeholder={
-                    attachedFiles.length > 0
-                      ? t`Add a message about attached files...`
-                      : t`Type a message...`
+                    pendingQuestion
+                      ? t`Answer the question above, or ask something else...`
+                      : attachedFiles.length > 0
+                        ? t`Add a message about attached files...`
+                        : t`Type a message...`
                   }
                   value={inputValue}
                   onChange={(e) => setInputValue(e.currentTarget.value)}

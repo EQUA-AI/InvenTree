@@ -164,6 +164,9 @@ export enum AGUIEventType {
   TOOL_CALL_RESULT = 'TOOL_CALL_RESULT',
   TOOL_CALL_CHUNK = 'TOOL_CALL_CHUNK',
 
+  // Structured question (S22/S23): a turn that completed by asking.
+  QUESTION = 'QUESTION',
+
   // HITL Events
   HITL_REQUIRED = 'HITL_REQUIRED',
   HITL_APPROVED = 'HITL_APPROVED',
@@ -361,6 +364,35 @@ export interface ChatMessage {
   evidence?: DiagnosisEvidence[];
   /** Model-declared confidence level accompanying `evidence`. */
   confidence?: string;
+  /** S22: the structured question this turn ended by asking. */
+  question?: QuestionPayload;
+  /** S22: how a previously asked question was resolved by this turn. */
+  questionResolution?: QuestionResolution;
+}
+
+/** S22 question card payload (server-derived; refs never reach the client). */
+export interface QuestionOption {
+  id: string;
+  label: string;
+  kind?: string;
+  description?: string;
+  recommended?: boolean;
+}
+
+export interface QuestionPayload {
+  kind: 'clarification_question';
+  interrupt_id: string;
+  question_text: string;
+  options: QuestionOption[];
+  expires_at?: string;
+  source?: string;
+}
+
+export interface QuestionResolution {
+  interrupt_id: string;
+  outcome: 'selected' | 'declined' | 'unmatched';
+  selected_option_id?: string;
+  matched_by?: string;
 }
 
 /**
@@ -419,6 +451,9 @@ interface ServerMessage {
   timestamp: string;
   tool_name?: string;
   workflow_id?: string;
+  question?: QuestionPayload;
+  question_resolution?: QuestionResolution;
+  provenance?: { confidence?: string; evidence?: DiagnosisEvidence[] } | null;
 }
 
 /**
@@ -546,7 +581,14 @@ async function fetchServerThread(
         role: m.role as ChatMessage['role'],
         content: m.content,
         timestamp: new Date(m.timestamp),
-        toolCallName: m.tool_name
+        toolCallName: m.tool_name,
+        // S22 reload fidelity: cards, resolutions and provenance survive.
+        question: m.question ?? undefined,
+        questionResolution: m.question_resolution ?? undefined,
+        evidence: Array.isArray(m.provenance?.evidence)
+          ? m.provenance.evidence
+          : undefined,
+        confidence: m.provenance?.confidence ?? undefined
       })
     );
 
@@ -812,6 +854,9 @@ export function useAIChat(config: AIChatConfig = {}) {
 
   // HITL (Human-in-the-Loop) state
   const [pendingHITL, setPendingHITL] = useState<HITLRequest | null>(null);
+  // S22/S23: at most one armed question per thread (server single-slot).
+  const [pendingQuestion, setPendingQuestion] =
+    useState<QuestionPayload | null>(null);
   const [hitlResult, setHitlResult] = useState<{
     approved: boolean;
     action: string;
@@ -943,6 +988,13 @@ export function useAIChat(config: AIChatConfig = {}) {
     async (threadId: string): Promise<ChatMessage[] | null> => {
       const serverData = await fetchServerThread(threadId, aiHost);
       if (serverData) {
+        // S22 reload fidelity: re-arm iff the question is on the LAST message
+        // and unexpired — matching the server's answer-window semantics
+        // (only the immediately-following turn can answer).
+        const last = serverData.messages[serverData.messages.length - 1];
+        const expiresAt = last?.question?.expires_at;
+        const unexpired = !expiresAt || new Date(expiresAt) > new Date();
+        setPendingQuestion(last?.question && unexpired ? last.question : null);
         // Update stored thread with messages
         setStoredThreads((prev) => {
           const idx = prev.findIndex((t) => t.id === threadId);
@@ -1251,6 +1303,24 @@ export function useAIChat(config: AIChatConfig = {}) {
     []
   );
 
+  /** S22: attach the question payload to its message and arm the singleton. */
+  const attachQuestion = useCallback(
+    (messageId: string, payload: QuestionPayload) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, question: payload } : msg
+        )
+      );
+      setPendingQuestion(payload);
+    },
+    []
+  );
+
+  /** S22: freeze the armed question (answered, superseded, or expired). */
+  const clearPendingQuestion = useCallback(() => {
+    setPendingQuestion(null);
+  }, []);
+
   /**
    * Send a message and get AI response
    * Handles AG-UI protocol events from Microsoft Agent Framework
@@ -1260,6 +1330,9 @@ export function useAIChat(config: AIChatConfig = {}) {
       if (!userContent.trim() || isLoading) return;
 
       setError(null);
+      // S22: any send disarms the card — the server slot is consume-on-read,
+      // so whatever this message is, the question cannot be answered later.
+      setPendingQuestion(null);
 
       // Add user message
       addMessage('user', userContent.trim());
@@ -1499,6 +1572,38 @@ export function useAIChat(config: AIChatConfig = {}) {
                               '[AG-UI] Run finished:',
                               finishEvent.runId
                             );
+                            break;
+                          }
+
+                          case AGUIEventType.QUESTION: {
+                            // S22: the turn completed by asking. The payload
+                            // deliberately carries no content/delta keys, so
+                            // stale clients ignore it; here it becomes the
+                            // message-anchored card + the armed singleton.
+                            const questionEvent = event as unknown as {
+                              kind?: string;
+                              interrupt_id?: string;
+                              question_text?: string;
+                              options?: QuestionOption[];
+                              expires_at?: string;
+                              source?: string;
+                            };
+                            if (
+                              questionEvent.kind === 'clarification_question' &&
+                              questionEvent.interrupt_id &&
+                              Array.isArray(questionEvent.options)
+                            ) {
+                              attachQuestion(assistantMessage.id, {
+                                kind: 'clarification_question',
+                                interrupt_id: questionEvent.interrupt_id,
+                                question_text: String(
+                                  questionEvent.question_text ?? ''
+                                ),
+                                options: questionEvent.options,
+                                expires_at: questionEvent.expires_at,
+                                source: questionEvent.source
+                              });
+                            }
                             break;
                           }
 
@@ -1927,6 +2032,10 @@ export function useAIChat(config: AIChatConfig = {}) {
     lastSyncTime,
     syncThreads,
     searchThreads,
+
+    // Structured questions (S22/S23)
+    pendingQuestion,
+    clearPendingQuestion,
 
     // HITL (Human-in-the-Loop)
     pendingHITL,
