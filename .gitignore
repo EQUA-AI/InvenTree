@@ -162,5 +162,6 @@ skills-lock.json
 # hyphenated name => not importable by app code)
 src/backend/InvenTree/ai/core/tools/Tools-Testing/
 
-# performance test results
+# test results and logs
+_tests*.txt
 .codspeed/

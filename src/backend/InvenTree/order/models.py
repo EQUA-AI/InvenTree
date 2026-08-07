@@ -1708,22 +1708,27 @@ class SalesOrder(TotalPriceMixin, Order):
             serial_numbers, quantity, part.get_latest_serial_number(), part=part
         )
 
+        serials = [str(serial).strip() for serial in serials]
+
         serials_not_exist = set()
         serials_unavailable = set()
         stock_items_to_allocate = []
 
+        # Bulk-fetch every candidate StockItem in a single query, keyed by serial,
+        # rather than querying once per requested serial number
+        candidate_items = {}
+
+        for item in stock.models.StockItem.objects.filter(
+            part=part, serial__in=serials, quantity=1
+        ):
+            candidate_items.setdefault(item.serial, item)
+
         for serial in serials:
-            serial = str(serial).strip()
+            stock_item = candidate_items.get(serial)
 
-            items = stock.models.StockItem.objects.filter(
-                part=part, serial=serial, quantity=1
-            )
-
-            if not items.exists():
+            if stock_item is None:
                 serials_not_exist.add(serial)
                 continue
-
-            stock_item = items[0]
 
             if get_global_setting('SALESORDER_BLOCK_INCOMPLETE_ITEM_TESTS'):
                 if (
@@ -1734,6 +1739,13 @@ class SalesOrder(TotalPriceMixin, Order):
                     continue
 
             if not stock_item.in_stock:
+                serials_unavailable.add(serial)
+                continue
+
+            # Lock the StockItem row, so that concurrent allocation requests are
+            # serialized against each other, and re-validate the unallocated
+            # quantity against the now-current (and now-locked) state
+            if not stock_item.lock_quantity():
                 serials_unavailable.add(serial)
                 continue
 
@@ -1957,9 +1969,7 @@ class SalesOrder(TotalPriceMixin, Order):
         self.status = SalesOrderStatus.CANCELLED.value
         self.save()
 
-        for line in self.lines.all():
-            for allocation in line.allocations.all():
-                allocation.delete()
+        SalesOrderAllocation.objects.filter(line__order=self).delete()
 
         trigger_event(SalesOrderEvents.CANCELLED, id=self.pk)
 
@@ -4283,8 +4293,7 @@ class TransferOrderAllocation(models.Model):
 
         # Ensure that we do not 'over allocate' a stock item.
         # Uses the shared four-domain authority (build + sales + transfer + job
-        # kit), excluding this transfer allocation from its own domain. The prior
-        # logic ignored the transfer domain entirely, permitting over-allocation.
+        # kit), excluding this transfer allocation from its own domain.
         total_allocation = (
             self.item.total_committed_allocation(exclude_transfer={'pk': self.pk})
             + self.quantity
