@@ -314,3 +314,76 @@ def test_apply_question_proposal_still_asks_a_different_question():
     assert "UV Disinfection Channel No. 1" in out
     assert pending_question_proposal.get() is not None
     consume_question_proposal()
+
+
+def test_structured_clarification_refuses_after_a_selected_answer():
+    """A turn that just answered a question must never be asked again."""
+    import asyncio
+    from types import SimpleNamespace
+    from unittest import mock
+
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+
+    workflow = T1LookupWorkflow()
+    context = {
+        "question_resolution": {
+            "interrupt_id": "q-1",
+            "source": "lookup_clarification",
+            "option": {"id": "machine:23", "label": "Influent Pump Station No. 1"},
+        }
+    }
+    with mock.patch(
+        "ai.core.config.get_settings",
+        return_value=SimpleNamespace(feature_question_cards=True),
+    ):
+        result = asyncio.run(
+            workflow._structured_clarification(
+                "influent pump station 1 — Influent Pump Station No. 1",
+                context,
+                modality="text",
+            )
+        )
+    assert result is None
+
+
+def test_apply_question_proposal_drops_a_reask_of_the_selected_option():
+    """A tool re-offering what the user just chose is silently dropped."""
+    from ai.core.questions.promotion import pending_question_proposal
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+
+    workflow = T1LookupWorkflow()
+    set_question_proposal({
+        "source": "manual_search_ambiguity",
+        "question_text": "Which machine do you mean?",
+        "options": [
+            {"id": "machine:8", "label": "Boiler Feed Pump B"},
+            {"id": "machine:23", "label": "Influent Pump Station No. 1"},
+        ],
+    })
+    context = {
+        "question_resolution": {
+            "interrupt_id": "q-1",
+            "source": "lookup_clarification",
+            "option": {"id": "machine:23", "label": "Influent Pump Station No. 1"},
+        }
+    }
+    out = workflow._apply_question_proposal("model text", modality="text", context=context)
+    assert out == "model text"
+    assert pending_question_proposal.get() is None
+
+
+def test_selected_machine_reframes_as_a_machine_lookup():
+    """The reselect query attaches the machine pack instead of clarifying.
+
+    Pins the selection contract the execute() reframe relies on: 'machine
+    overview for <label>' must never itself require clarification.
+    """
+    from ai.core.tests.test_capability_broker import ALL_VIEW_PROFILE
+    from ai.core.tools.capabilities import select_capabilities
+
+    selection = select_capabilities(
+        "machine overview for Influent Pump Station No. 1 (TC-INF-PS1-001)",
+        profile=ALL_VIEW_PROFILE,
+        authenticated=True,
+    )
+    assert selection.clarification_required is False

@@ -514,12 +514,15 @@ figure from an earlier turn as if you had just verified it."""
         if not get_settings().feature_question_cards:
             return None
         resolution = (context or {}).get("question_resolution")
-        if isinstance(resolution, dict) and resolution.get("outcome") == "unmatched":
-            # Loop guard (found live 2026-08-08): this reply just failed to
-            # answer a structured question, and near-miss fragments routed
-            # here re-derived the SAME options from history — an identical
-            # card forever. The free-text clarify agent takes the turn
-            # instead; it sees the transcript and the user's attempt.
+        if isinstance(resolution, dict) and (
+            resolution.get("outcome") == "unmatched" or resolution.get("option")
+        ):
+            # Loop guard (found live 2026-08-08): this reply just answered —
+            # or just failed to answer — a structured question. Either way,
+            # asking again immediately is the loop: near-miss fragments
+            # re-derived the SAME options from history, and selected answers
+            # whose origin was itself a fragment re-entered clarify. The
+            # free-text clarify agent takes the turn instead.
             return None
         try:
             from ai.core.questions.promotion import (
@@ -599,11 +602,16 @@ figure from an earlier turn as if you had just verified it."""
         if proposal is None:
             return response_text
         resolution = (context or {}).get("question_resolution")
-        if isinstance(resolution, dict) and resolution.get("outcome") == "unmatched":
+        if isinstance(resolution, dict):
             proposed_ids = {str(option.get("id") or "") for option in proposal.get("options") or []}
-            if proposed_ids and proposed_ids == set(resolution.get("option_ids") or []):
-                # Loop guard: never re-arm the identical question the user
-                # just failed to answer; the model's own text stands.
+            unmatched_reask = resolution.get("outcome") == "unmatched" and proposed_ids == set(
+                resolution.get("option_ids") or []
+            )
+            selected_id = str((resolution.get("option") or {}).get("id") or "")
+            selected_reask = bool(selected_id) and selected_id in proposed_ids
+            if proposed_ids and (unmatched_reask or selected_reask):
+                # Loop guard: never re-arm the question the user just failed
+                # to answer — or just answered; the model's own text stands.
                 consume_question_proposal()
                 return response_text
         # Render against a copy; rendering may trim options (voice budget) and
@@ -888,6 +896,28 @@ figure from an earlier turn as if you had just verified it."""
                 and selection.clarification_required
                 and not _is_social_turn(query)
             )
+            resolution_context = (context or {}).get("question_resolution")
+            selected_option = (
+                resolution_context.get("option") if isinstance(resolution_context, dict) else None
+            )
+            if clarify and isinstance(selected_option, dict) and selected_option.get("label"):
+                # The user JUST answered a structured question — asking
+                # anything again is never right (observed live 2026-08-08: a
+                # selection whose origin was itself a fragment carried no
+                # capability term, re-entered clarify, and re-carded). Reframe
+                # as a lookup on the chosen record so selection attaches the
+                # machine pack; the resolution hint pins the machine below.
+                reselect = self._capability_selection(
+                    query=f"machine overview for {selected_option['label']}",
+                    lookup_type=lookup_type,
+                    context=context,
+                    current_tools=tools,
+                )
+                if reselect is not None and not reselect.clarification_required:
+                    selection = reselect
+                    enforce_selection = enforce and not selection.requires_specialist
+                    runtime_tools = list(selection.tools) if enforce_selection else tools
+                    clarify = False
             modality_for_question = "voice" if is_voice else "text"
             if clarify:
                 # S22: when the sentence itself named enough (machines or
