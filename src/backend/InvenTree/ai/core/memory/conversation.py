@@ -201,7 +201,6 @@ class ConversationManager:
         # Lazy-loaded providers
         self._user_profile_provider = None
         self._thread_summary_provider = None
-        self._problem_solution_provider = None
         self._parts_preference_provider = None
 
         # Initialize persistence directory if needed (legacy)
@@ -220,14 +219,12 @@ class ConversationManager:
 
         from ai.core.memory import (
             get_parts_preference_provider,
-            get_problem_solution_provider,
             get_thread_summary_provider,
             get_user_profile_provider,
         )
 
         self._user_profile_provider = get_user_profile_provider()
         self._thread_summary_provider = get_thread_summary_provider()
-        self._problem_solution_provider = get_problem_solution_provider()
         self._parts_preference_provider = get_parts_preference_provider()
         self._providers_initialized = True
 

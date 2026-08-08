@@ -35,6 +35,7 @@ BASE_DIAGNOSTIC_TOOL_NAMES = (
     "get_machine_context",
     "get_repair_packet",
     "get_recent_maintenance_history",
+    "find_similar_past_repairs",
     "get_machine_health_summary",
     "get_machine_health_anomalies",
     "search_approved_manuals",
@@ -110,6 +111,17 @@ class GetRecentMaintenanceHistoryArguments(_StrictArguments):
     machine_id: StrictPositiveInt
     expected_revision: StrictRevision
     limit: Annotated[int, Field(default=10, strict=True, ge=1, le=25)] = 10
+
+
+class FindSimilarPastRepairsArguments(_StrictArguments):
+    """Arguments for verified closeouts of similar past repairs (S26)."""
+
+    machine_id: StrictPositiveInt
+    expected_revision: StrictRevision
+    # A model-supplied candidate for the current packet, used only to score
+    # similarity; the reader re-checks it belongs to the authorized machine.
+    repair_packet_id: StrictPositiveInt | None = None
+    limit: Annotated[int, Field(default=5, strict=True, ge=1, le=5)] = 5
 
 
 class GetMachineHealthSummaryArguments(_StrictArguments):
@@ -382,6 +394,13 @@ _BASE_DEFINITIONS = (
         "machine_id",
     ),
     DiagnosticToolDefinition(
+        "find_similar_past_repairs",
+        FindSimilarPastRepairsArguments,
+        MAINTENANCE_READ_CAPABILITY,
+        "machine",
+        "machine_id",
+    ),
+    DiagnosticToolDefinition(
         "get_machine_health_summary",
         GetMachineHealthSummaryArguments,
         HEALTH_READ_CAPABILITY,
@@ -430,6 +449,11 @@ _TOOL_DESCRIPTIONS = {
     "get_machine_context": "Read current authorized machine context.",
     "get_repair_packet": "Read a current authorized and safety-redacted repair packet.",
     "get_recent_maintenance_history": "Read recent authorized maintenance history.",
+    "find_similar_past_repairs": (
+        "Find verified past repair closeouts similar to the current fault on "
+        "this machine or same-model machines. Deterministic; only verified "
+        "closeouts qualify."
+    ),
     "get_machine_health_summary": (
         "Read a machine's current normalized condition, including data freshness "
         "and quality. Stale telemetry must never be reported as current."
@@ -508,6 +532,7 @@ class ProductionDiagnosticReader:
             "get_machine_context": "read_diagnostic_machine_context",
             "get_repair_packet": "read_diagnostic_repair_packet",
             "get_recent_maintenance_history": "read_diagnostic_maintenance_history",
+            "find_similar_past_repairs": "read_diagnostic_similar_past_repairs",
             "get_machine_health_summary": "read_diagnostic_health_summary",
             "get_machine_health_anomalies": "read_diagnostic_health_anomalies",
             "search_approved_manuals": "read_diagnostic_approved_manuals",
@@ -1069,6 +1094,7 @@ __all__ = [
     "DiagnosticToolRegistry",
     "EvidenceClaim",
     "FindPublishedRepairPlaybooksArguments",
+    "FindSimilarPastRepairsArguments",
     "GetLiveSafetyStatusArguments",
     "GetMachineContextArguments",
     "GetPartsAvailabilityArguments",

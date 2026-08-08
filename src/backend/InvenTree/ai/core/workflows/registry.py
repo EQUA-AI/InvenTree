@@ -93,12 +93,12 @@ class WorkflowDefinition:
 
 # Context bundle mapping per workflow type
 CONTEXT_BUNDLES_BY_WORKFLOW: dict[str, list[str]] = {
-    "wf1": ["user_profile", "problem_solution", "thread_summary"],
+    "wf1": ["user_profile", "thread_summary"],
     "wf2": ["user_profile", "parts_preference"],
     "wf3": ["user_profile", "parts_preference"],
     "wf4": ["user_profile", "parts_preference"],
     "wf6": ["user_profile"],
-    "wf7": ["user_profile", "problem_solution", "thread_summary"],
+    "wf7": ["user_profile", "thread_summary"],
     "wf8": ["user_profile", "parts_preference"],
 }
 

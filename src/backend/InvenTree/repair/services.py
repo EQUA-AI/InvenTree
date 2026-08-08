@@ -1618,6 +1618,164 @@ def read_diagnostic_maintenance_history(
     return _diagnostic_result(*evidence, reason=_DIAGNOSTIC_ABSTENTION)
 
 
+#: Bounded scan of candidate past repairs before scoring. Newest-verified
+#: first, so the cap discards the oldest history, never the most relevant.
+_DIAGNOSTIC_SIMILAR_CANDIDATE_LIMIT = 100
+_DIAGNOSTIC_SIMILAR_RESULT_LIMIT = 5
+
+
+def read_diagnostic_similar_past_repairs(
+    *,
+    actor,
+    authorization,
+    machine_id: int,
+    expected_revision: str,
+    repair_packet_id: int | None = None,
+    limit: int = _DIAGNOSTIC_SIMILAR_RESULT_LIMIT,
+) -> dict[str, Any]:
+    """Read verified closeouts of similar past repairs (S26).
+
+    Deterministic, no embedding: candidates are repair packets whose work
+    order carries a VERIFIED WorkOrderCloseout, on this machine or on
+    same-model machines within the same client. Scored
+    ``2 x |failure_codes intersection| + 1 x |finding_categories
+    intersection|`` against the current packet's approved scope and
+    findings; without a current packet the ranking is recency of
+    verification. Only verified closeouts qualify -- an unverified closeout
+    is a claim, not history.
+
+    ``repair_packet_id`` is a model-supplied candidate, never a grant: it
+    must belong to the authorized machine or the read abstains.
+    """
+    if (
+        authorization.entity_type != 'machine'
+        or authorization.entity_id != machine_id
+        or not _diagnostic_reauthorize(actor, authorization, expected_revision)
+    ):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+
+    from django.db.models import Q
+
+    from tasks.services.closeout_amend import effective_closeout
+
+    from assets.models import AssetMachine
+    from repair.models import RepairPacket
+
+    machine = (
+        AssetMachine.objects
+        .only('pk', 'client_id', 'model')
+        .filter(pk=machine_id)
+        .first()
+    )
+    if machine is None or machine.client_id is None:
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+
+    current_codes: set[str] = set()
+    current_categories: set[str] = set()
+    if repair_packet_id is not None:
+        current = RepairPacket.objects.filter(
+            pk=repair_packet_id, machine_id=machine_id
+        ).first()
+        if current is None:
+            return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+        scope_row = current.approved_scopes.order_by('-version').first()
+        if scope_row is not None:
+            current_codes = {
+                code
+                for code in (scope_row.failure_codes or [])
+                if isinstance(code, str) and code
+            }
+        current_categories = set(
+            # Clear the model's default ordering: it would join the DISTINCT
+            # and duplicate categories per row.
+            current.findings.order_by().values_list('category', flat=True).distinct()
+        )
+
+    same_model = (
+        Q(machine__client_id=machine.client_id, machine__model=machine.model)
+        if machine.model
+        else Q(machine_id=machine_id)
+    )
+    candidates = (
+        RepairPacket.objects
+        .filter(work_order__structured_closeout__verified_by__isnull=False)
+        .filter(Q(machine_id=machine_id) | same_model)
+        .exclude(pk=repair_packet_id)
+        .select_related('work_order', 'work_order__structured_closeout')
+        .prefetch_related('approved_scopes', 'findings')
+        .order_by('-work_order__structured_closeout__verified_at')
+    )[:_DIAGNOSTIC_SIMILAR_CANDIDATE_LIMIT]
+
+    scored = []
+    for packet in candidates:
+        latest_scope = next(iter(packet.approved_scopes.all()), None)
+        codes = (
+            {
+                code
+                for code in (latest_scope.failure_codes or [])
+                if isinstance(code, str) and code
+            }
+            if latest_scope is not None
+            else set()
+        )
+        categories = {finding.category for finding in packet.findings.all()}
+        shared_codes = sorted(codes & current_codes)
+        shared_categories = sorted(categories & current_categories)
+        score = 2 * len(shared_codes) + len(shared_categories)
+        closeout = packet.work_order.structured_closeout
+        sort_time = closeout.verified_at or closeout.completed_at
+        scored.append((score, sort_time, packet, shared_codes, shared_categories))
+
+    # Highest score first; ties broken newest-verified first, then pk for a
+    # total, reproducible order (three stable passes, last key is primary).
+    scored.sort(key=lambda row: row[2].pk, reverse=True)
+    scored.sort(key=lambda row: row[1], reverse=True)
+    scored.sort(key=lambda row: row[0], reverse=True)
+
+    bounded = max(
+        1,
+        min(
+            int(limit or _DIAGNOSTIC_SIMILAR_RESULT_LIMIT),
+            _DIAGNOSTIC_SIMILAR_RESULT_LIMIT,
+        ),
+    )
+    evidence = []
+    for score, sort_time, packet, shared_codes, shared_categories in scored[:bounded]:
+        closeout = packet.work_order.structured_closeout
+        fields = effective_closeout(closeout)
+        claim = json.dumps(
+            {
+                'work_order_reference': packet.work_order.reference,
+                'machine_id': packet.machine_id,
+                'fault_summary': packet.fault_summary,
+                'symptom': packet.symptom,
+                'cause': fields['cause'],
+                'action': fields['action'],
+                'result': fields['result'],
+                'verification_summary': fields['verification_summary'],
+                'downtime_minutes': fields['downtime_minutes'],
+                'shared_failure_codes': shared_codes,
+                'shared_finding_categories': shared_categories,
+                'similarity_score': score,
+                'verified_at': sort_time.isoformat() if sort_time else None,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        )
+        evidence.append(
+            _diagnostic_evidence(
+                source_type='work_order_closeout',
+                source_id=closeout.pk,
+                revision=closeout.content_hash or f'v{closeout.version}',
+                locator=f'/maintenance/work-orders/{packet.work_order_id}/closeout',
+                as_of=sort_time,
+                claim=claim,
+                untrusted=True,
+            )
+        )
+    return _diagnostic_result(*evidence, reason=_DIAGNOSTIC_ABSTENTION)
+
+
 def read_diagnostic_health_summary(
     *, actor, authorization, machine_id: int, expected_revision: str
 ) -> dict[str, Any]:

@@ -294,6 +294,18 @@ class Settings(BaseSettings):
         le=1024,
         alias="AZURE_LUNA_DIAGNOSIS_MAX_TOOL_DATA_KB",
     )
+    # S26: when a medium/high-confidence diagnosis cites no history and never
+    # consulted the history tools, the server retrieves history evidence and
+    # runs ONE stateless full-transcript continuation. Dark by default; flip
+    # dev -> experimental, and raise AZURE_LUNA_DIAGNOSIS_TIMEOUT_S to 45
+    # wherever this is enabled so the continuation fits the deadline.
+    feature_history_enrichment: bool = Field(default=False, alias="FEATURE_HISTORY_ENRICHMENT")
+    azure_luna_history_enrichment_rounds: int = Field(
+        default=1,
+        ge=0,
+        le=2,
+        alias="AZURE_LUNA_HISTORY_ENRICHMENT_ROUNDS",
+    )
     repair_safety_p0s_closed: bool = Field(default=False, alias="REPAIR_SAFETY_P0S_CLOSED")
     diagnostic_capability_resolver: str = ""
 

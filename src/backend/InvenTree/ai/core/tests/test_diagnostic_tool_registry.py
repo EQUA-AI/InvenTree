@@ -87,6 +87,7 @@ def test_registry_snapshot_is_exact_and_separate() -> None:
         "get_machine_context",
         "get_repair_packet",
         "get_recent_maintenance_history",
+        "find_similar_past_repairs",
         "get_machine_health_summary",
         "get_machine_health_anomalies",
         "search_approved_manuals",
