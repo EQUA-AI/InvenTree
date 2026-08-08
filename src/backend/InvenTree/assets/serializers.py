@@ -35,10 +35,27 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'manufacturer',
             'model',
             'serial',
+            'profile',
             'created_at',
             'updated_at',
         )
         read_only_fields = ('pk', 'created_at', 'updated_at')
+
+    def validate_profile(self, value):
+        """Enforce the machine_profile.v1 schema at the only write surface.
+
+        The DB accepts any JSON (deliberately); this is where an invalid
+        shape is refused, so every stored profile a reader sees validated at
+        write time.
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from assets.machine_profile import validate_machine_profile
+
+        try:
+            return validate_machine_profile(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages) from exc
 
     def create(self, validated_data):
         """Ensure every machine created through the API carries a client."""

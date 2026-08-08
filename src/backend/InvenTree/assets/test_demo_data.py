@@ -118,6 +118,18 @@ class AssetDemoDataTest(TestCase):
             self.assertIsNone(repair.work_order)
         self.assertIn('200-carton verification', repair.details)
 
+        # S25: the machine with the ingested manual carries a validated
+        # knowledge profile so the enum-closure demo is real.
+        pump_station = AssetMachine.objects.get(serial='TC-INF-PS1-001')
+        self.assertEqual(pump_station.profile['criticality'], 'high')
+        self.assertIn('AL-CLOG', pump_station.profile['fault_codes'])
+        self.assertIn('EQ-INF-BRG-6316', pump_station.profile['approved_spares'])
+        self.assertEqual(
+            {c['ref'] for c in pump_station.profile['components'] if 'parent_ref' in c}
+            | {'PMP', 'VFD'},
+            {c['ref'] for c in pump_station.profile['components']},
+        )
+
     def test_every_history_row_has_a_completed_work_order(self):
         """No dataset-owned maintenance row loads as an unlinked legacy record."""
         if connection.vendor != 'postgresql':

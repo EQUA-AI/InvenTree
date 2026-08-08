@@ -118,6 +118,18 @@ class AssetMachine(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         max_length=255, blank=True, verbose_name=_('Serial Number')
     )
 
+    # S25: operator-declared knowledge profile (aimms.machine_profile.v1).
+    # Schema-validated in the serializer via assets/machine_profile.py, never
+    # at the DB level -- existing rows and admin edits must not brick reads.
+    profile = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name=_('Knowledge Profile'),
+        help_text=_(
+            'Structured machine knowledge (criticality, components, fault codes)'
+        ),
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

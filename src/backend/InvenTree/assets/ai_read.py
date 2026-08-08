@@ -545,6 +545,71 @@ def machine_attachments(machine, *, limit: int = MAX_ATTACHMENTS) -> dict[str, A
     return {'attachments': items, 'total': total, 'truncated': total > len(items)}
 
 
+def machine_profile(user, machine) -> dict[str, Any]:
+    """The knowledge profile: what operators declared, beside what records show.
+
+    Two clearly-labelled provenances so the model can weigh them: `declared`
+    is the operator-authored profile (schema-validated at write time; a
+    stored value that no longer validates degrades to nothing declared), and
+    `observed` is derived from server records -- energy sources actually
+    locked out on this machine's repair packets, and the installed spares.
+    Free-text component names are fenced like every other operator string.
+    """
+    del user  # profile rows carry no cross-tenant references to re-authorize
+
+    from assets.machine_profile import (
+        MACHINE_PROFILE_CLASS,
+        declared_profile,
+        observed_energy_sources,
+    )
+
+    declared_raw = declared_profile(machine)
+    declared: dict[str, Any] = {}
+    for key in ('criticality', 'maintenance_strategy'):
+        if key in declared_raw:
+            declared[key] = declared_raw[key]
+    if 'energy_sources' in declared_raw:
+        declared['energy_sources'] = declared_raw['energy_sources']
+    if 'fault_codes' in declared_raw:
+        declared['fault_codes'] = [
+            fence(code, limit=64) for code in declared_raw['fault_codes']
+        ]
+    if 'approved_spares' in declared_raw:
+        declared['approved_spares'] = [
+            fence(spare, limit=100) for spare in declared_raw['approved_spares']
+        ]
+    if 'components' in declared_raw:
+        declared['components'] = [
+            {
+                'name': fence(component['name'], limit=255),
+                'ref': fence(component['ref'], limit=64),
+                **(
+                    {'parent_ref': fence(component['parent_ref'], limit=64)}
+                    if 'parent_ref' in component
+                    else {}
+                ),
+            }
+            for component in declared_raw['components']
+        ]
+
+    observed_parts = machine_installed_parts(machine, limit=10)
+    return {
+        'profile_class': MACHINE_PROFILE_CLASS,
+        'declared': {'source': 'operator-declared profile', **declared},
+        'observed': {
+            'energy_sources': {
+                'source': "lockout points on this machine's repair packets",
+                'values': observed_energy_sources(machine),
+            },
+            'installed_spares': {
+                'source': 'installed-parts records',
+                'values': observed_parts['parts'],
+                'truncated': observed_parts['truncated'],
+            },
+        },
+    }
+
+
 def machine_overview(user, machine) -> dict[str, Any]:
     """Everything the machine page shows, in one call.
 
@@ -555,6 +620,7 @@ def machine_overview(user, machine) -> dict[str, Any]:
     """
     return {
         'identity': machine_identity(machine),
+        'profile': machine_profile(user, machine),
         'health': machine_health(machine),
         'signals': machine_signals(machine),
         'anomalies': machine_anomalies(machine, limit=5),
@@ -576,6 +642,7 @@ __all__ = [
     'machine_installed_parts',
     'machine_maintenance_history',
     'machine_overview',
+    'machine_profile',
     'machine_search_row',
     'machine_signal_trend',
     'machine_signals',

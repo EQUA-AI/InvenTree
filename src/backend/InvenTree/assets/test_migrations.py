@@ -66,3 +66,44 @@ class ClientBackfillMigrationTests(TransactionTestCase):
         )
 
         MigrationExecutor(connection).migrate(self.migrate_to)
+
+
+@tag('migration_test')
+class ProfileFieldMigrationTests(TransactionTestCase):
+    """Prove 0011 adds the profile column additively and reverses cleanly."""
+
+    migrate_from = [('assets', '0010_remove_assetmachine_customer')]
+    migrate_to = [('assets', '0011_assetmachine_profile')]
+
+    def _machine_columns(self) -> set[str]:
+        with connection.cursor() as cursor:
+            description = connection.introspection.get_table_description(
+                cursor, 'assets_assetmachine'
+            )
+        return {column.name for column in description}
+
+    def test_profile_column_round_trips(self) -> None:
+        """Existing rows survive forward and backward with data intact."""
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        old_apps = executor.loader.project_state(self.migrate_from).apps
+        OldMachine = old_apps.get_model('assets', 'AssetMachine')
+        machine = OldMachine.objects.create(name='Profile migration pump')
+        self.assertNotIn('profile', self._machine_columns())
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        self.assertIn('profile', self._machine_columns())
+        new_apps = executor.loader.project_state(self.migrate_to).apps
+        NewMachine = new_apps.get_model('assets', 'AssetMachine')
+        migrated = NewMachine.objects.get(pk=machine.pk)
+        self.assertEqual(migrated.profile, {})
+        self.assertEqual(migrated.name, 'Profile migration pump')
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_from)
+        self.assertNotIn('profile', self._machine_columns())
+
+        MigrationExecutor(connection).migrate(self.migrate_to)

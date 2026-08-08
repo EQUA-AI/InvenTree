@@ -1567,6 +1567,33 @@
         "model": "NP 3301 MT",
         "serial": "TC-INF-PS1-001"
       },
+      "profile": {
+        "criticality": "high",
+        "maintenance_strategy": "preventive",
+        "components": [
+          {"name": "Submersible pump unit", "ref": "PMP"},
+          {"name": "N-hydraulic chopper impeller", "ref": "IMP", "parent_ref": "PMP"},
+          {"name": "Mechanical seal cartridge", "ref": "SEAL", "parent_ref": "PMP"},
+          {"name": "Suction wear ring", "ref": "WRG", "parent_ref": "PMP"},
+          {"name": "Drive-end bearing 6316", "ref": "BRG", "parent_ref": "PMP"},
+          {"name": "Variable frequency drive", "ref": "VFD"}
+        ],
+        "energy_sources": ["electrical", "mechanical", "gravity"],
+        "fault_codes": [
+          "AL-OVERCURRENT",
+          "AL-SEAL-LEAK",
+          "AL-OVERTEMP",
+          "AL-VIBRATION",
+          "AL-CLOG"
+        ],
+        "approved_spares": [
+          "EQ-INF-SEL-0080",
+          "EQ-INF-IMP-CHP",
+          "EQ-INF-WRG-0250",
+          "EQ-INF-BRG-6316",
+          "EQ-INF-VFN-KIT"
+        ]
+      },
       "installed_parts": [
         {
           "ipn": "EQ-INF-PMP-0750",

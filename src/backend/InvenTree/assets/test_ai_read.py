@@ -432,6 +432,7 @@ class ProjectionTests(MachineAiReadTestCase):
             set(overview),
             {
                 'identity',
+                'profile',
                 'health',
                 'signals',
                 'anomalies',

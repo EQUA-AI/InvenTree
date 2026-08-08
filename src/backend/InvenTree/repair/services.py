@@ -1489,6 +1489,7 @@ def read_diagnostic_machine_context(
     ):
         return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
 
+    from assets.machine_profile import profile_claim_section
     from assets.models import AssetMachine
 
     try:
@@ -1504,6 +1505,9 @@ def read_diagnostic_machine_context(
             'serial': machine.serial,
             'location': machine.location,
             'active': machine.active,
+            # S25: declared + observed knowledge; the whole claim is already
+            # marked untrusted, so the section carries raw values.
+            'profile': profile_claim_section(machine),
         },
         ensure_ascii=True,
         sort_keys=True,

@@ -337,6 +337,16 @@ class Command(BaseCommand):
             )
         }
 
+        if 'profile' in record:
+            from assets.machine_profile import validate_machine_profile
+
+            try:
+                machine_values['profile'] = validate_machine_profile(record['profile'])
+            except ValidationError as exc:
+                raise CommandError(
+                    f'Invalid demo profile for {record["name"]!r}: {exc}'
+                ) from exc
+
         client_code = record.get('client')
         if not client_code:
             raise CommandError(f'Demo machine {record["name"]!r} must name a client')
