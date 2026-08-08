@@ -698,9 +698,13 @@ class NormalizedTurnService:
 
             if not get_settings().feature_entity_manifest:
                 return canonical
+            from ai.core.tools.capture_ledger import current_tool_captures
+
+            ledger = current_tool_captures()
             entities = build_entity_manifest(
                 canonical=canonical,
                 record_roots=getattr(diagnostic_context, "record_roots", ()),
+                observed_ids=ledger.observed_values() if ledger is not None else None,
             )
             if not entities:
                 return canonical

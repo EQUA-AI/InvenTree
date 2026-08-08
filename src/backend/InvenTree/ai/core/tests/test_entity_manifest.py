@@ -78,13 +78,27 @@ class TestBuildEntityManifest:
 
     def test_dedupe_and_bound(self) -> None:
         roots = [_root(entity_id=44)] * 3 + [_root(entity_id=index) for index in range(1, 30)]
-        entities = build_entity_manifest(canonical={}, record_roots=roots)
+        observed = {str(root.entity_id) for root in roots}
+        entities = build_entity_manifest(canonical={}, record_roots=roots, observed_ids=observed)
         assert len(entities) == MAX_ENTITIES
         assert len({(e["model"], e["pk"]) for e in entities}) == MAX_ENTITIES
 
     def test_invalid_ids_are_dropped(self) -> None:
         roots = [_root(entity_id="not-a-pk"), _root(entity_id=-4), _root(entity_id=7)]
         entities = build_entity_manifest(canonical={}, record_roots=roots)
+        assert [e["pk"] for e in entities] == [7]
+
+    def test_fleet_sized_root_listing_without_observation_yields_no_chips(self) -> None:
+        """A text turn's roots are the whole fleet — that is not 'about'."""
+        roots = [_root(entity_id=index) for index in range(1, 13)]
+        assert build_entity_manifest(canonical={}, record_roots=roots) == []
+
+    def test_observed_ids_filter_roots_to_touched_records(self) -> None:
+        """Only machines a tool actually returned become chips."""
+        roots = [_root(entity_id=index) for index in range(1, 13)]
+        entities = build_entity_manifest(
+            canonical={}, record_roots=roots, observed_ids={"7", "TC-INF-PS1-001"}
+        )
         assert [e["pk"] for e in entities] == [7]
 
 
