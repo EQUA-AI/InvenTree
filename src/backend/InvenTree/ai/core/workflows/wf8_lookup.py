@@ -513,6 +513,14 @@ figure from an earlier turn as if you had just verified it."""
 
         if not get_settings().feature_question_cards:
             return None
+        resolution = (context or {}).get("question_resolution")
+        if isinstance(resolution, dict) and resolution.get("outcome") == "unmatched":
+            # Loop guard (found live 2026-08-08): this reply just failed to
+            # answer a structured question, and near-miss fragments routed
+            # here re-derived the SAME options from history — an identical
+            # card forever. The free-text clarify agent takes the turn
+            # instead; it sees the transcript and the user's attempt.
+            return None
         try:
             from ai.core.questions.promotion import (
                 promote_lexicon_options,
@@ -572,7 +580,9 @@ figure from an earlier turn as if you had just verified it."""
             logger.warning("Structured clarification unavailable; using clarify agent")
             return None
 
-    def _apply_question_proposal(self, response_text: str, *, modality: str) -> str:
+    def _apply_question_proposal(
+        self, response_text: str, *, modality: str, context: dict[str, Any] | None = None
+    ) -> str:
         """Replace the model's text with the deterministic question, if proposed.
 
         Peeks without consuming — the turn service's arming choke point owns
@@ -588,6 +598,14 @@ figure from an earlier turn as if you had just verified it."""
         proposal = pending_question_proposal.get()
         if proposal is None:
             return response_text
+        resolution = (context or {}).get("question_resolution")
+        if isinstance(resolution, dict) and resolution.get("outcome") == "unmatched":
+            proposed_ids = {str(option.get("id") or "") for option in proposal.get("options") or []}
+            if proposed_ids and proposed_ids == set(resolution.get("option_ids") or []):
+                # Loop guard: never re-arm the identical question the user
+                # just failed to answer; the model's own text stands.
+                consume_question_proposal()
+                return response_text
         # Render against a copy; rendering may trim options (voice budget) and
         # the pending record must persist exactly what was rendered.
         trimmed = dict(proposal)
@@ -929,7 +947,9 @@ figure from an earlier turn as if you had just verified it."""
             # search_manuals). The deterministic question replaces the model's
             # paraphrase so the visible text and the persisted options agree;
             # the turn service consumes the proposal and arms the slot.
-            response_text = self._apply_question_proposal(response_text, modality=modality)
+            response_text = self._apply_question_proposal(
+                response_text, modality=modality, context=context
+            )
 
             execution_time = (time.perf_counter() - start_time) * 1000
             usage_metrics = _response_usage_metrics(response)

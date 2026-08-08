@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-QUESTION_ANSWER_POLICY_VERSION = "question-answer-v1"
+QUESTION_ANSWER_POLICY_VERSION = "question-answer-v2"
 
 _ORDINAL_WORDS = {
     "1": 0,
@@ -51,13 +51,33 @@ _POSITIONAL_RE = re.compile(
 _LAST_ONE_RE = re.compile(r"\bthe\s+last\s+(?:one|option|choice)\b", re.IGNORECASE)
 
 _DECLINE_RE = re.compile(
-    r"^\s*(?:no\s+thanks?|none\s+of\s+(?:those|these|them)|neither"
+    r"^\s*(?:no\s+thanks?|none\s+of\s+(?:those|these|them)|neither(?:\s+of\s+(?:those|these|them))?"
     r"|skip(?:\s+it)?|cancel|never\s?mind|forget\s+it)[\s.!,]*$",
     re.IGNORECASE,
 )
 #: Decline words inside a longer request ("cancel the order for pump seals")
 #: must NOT decline; the anchor above plus this token bound enforces it.
 _DECLINE_MAX_TOKENS = 6
+
+#: v2 normalized label matching. Live battery 2026-08-08: technicians answer
+#: "Influent Pump Station 1" / "influent pump station one" against the label
+#: "Influent Pump Station No. 1" — exact/containment can never match those,
+#: and every near-miss re-asked the identical card. Normalization folds case,
+#: strips punctuation, maps small number words to digits and drops filler
+#: tokens, then a UNIQUE token-subset match either way selects. A long reply
+#: is a new question, not an answer — the token bound keeps a fresh sentence
+#: that merely mentions an option ("The influent pump station is tripping
+#: again...") from being hijacked as a selection.
+_NUMBER_WORDS = {"one": "1", "two": "2", "three": "3", "four": "4"}
+_LABEL_FILLER_TOKENS = frozenset({"the", "a", "an", "no", "number", "num", "option", "please"})
+_LABEL_MATCH_MAX_TOKENS = 8
+
+
+def _normalized_tokens(text: str) -> tuple[str, ...]:
+    tokens = re.findall(r"[a-z0-9]+", text.casefold())
+    return tuple(
+        _NUMBER_WORDS.get(token, token) for token in tokens if token not in _LABEL_FILLER_TOKENS
+    )
 
 
 @dataclass(frozen=True)
@@ -146,6 +166,22 @@ def interpret_question_answer(
     ]
     if len(contains) == 1:
         return _selected(contains[0], options, "label")
+
+    # v2: normalized token matching, short replies only. A unique option whose
+    # normalized tokens contain (or are contained by) the reply's selects;
+    # any ambiguity — "pump" hitting two pumps — stays unmatched: guessing
+    # selects nothing.
+    if len(text.split()) <= _LABEL_MATCH_MAX_TOKENS:
+        answer_tokens = set(_normalized_tokens(text))
+        if answer_tokens:
+            normalized = [
+                i
+                for i, option in enumerate(options)
+                if (label_tokens := set(_normalized_tokens(str(option["label"]))))
+                and (answer_tokens <= label_tokens or label_tokens <= answer_tokens)
+            ]
+            if len(normalized) == 1:
+                return _selected(normalized[0], options, "label")
 
     return _unmatched()
 

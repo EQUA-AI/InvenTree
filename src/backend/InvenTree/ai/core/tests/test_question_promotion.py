@@ -126,7 +126,7 @@ def test_matched_machine_terms_ranks_serial_over_name_over_tokens():
     assert token_hit and token_hit[0]["machine_id"] == 1
 
 
-def test_matched_machine_terms_reads_history_conversational_rows_only():
+def test_matched_machine_terms_reads_user_history_rows_only():
     machines = [{"machine_id": 1, "name": "Clarifier Drive 2", "serial": "CD2"}]
     history = [
         {"role": "tool", "content": "clarifier drive 2 telemetry"},
@@ -136,6 +136,29 @@ def test_matched_machine_terms_reads_history_conversational_rows_only():
 
     tool_only = [{"role": "tool", "content": "clarifier drive 2 telemetry"}]
     assert matched_machine_terms("show its open jobs", machines, tool_only) == ()
+
+
+def test_assistant_rows_never_feed_machine_terms():
+    """An asked card must not guarantee its own re-asking.
+
+    The assistant's question text contains every option label; matching
+    against assistant rows made each card re-derive identical options on the
+    next clarify turn, forever (observed live 2026-08-08).
+    """
+    machines = [
+        {"machine_id": 8, "name": "Boiler Feed Pump B", "serial": "BFP-B"},
+        {"machine_id": 23, "name": "Influent Pump Station No. 1", "serial": "PS1"},
+    ]
+    card_history = [
+        {
+            "role": "assistant",
+            "content": (
+                "Did you mean one of these? Option one: Boiler Feed Pump B. "
+                "Option two: Influent Pump Station No. 1."
+            ),
+        },
+    ]
+    assert matched_machine_terms("show its open jobs", machines, card_history) == ()
 
 
 def test_matched_machine_terms_caps_at_three():
@@ -214,3 +237,80 @@ def test_threads_projection_derives_provenance_from_persisted_events():
     }
     assert _persisted_provenance({"events": [{"type": "RUN_STARTED"}]}) is None
     assert _persisted_provenance({}) is None
+
+
+# ---------------------------------------------------------------------------
+# S22 loop guards (live battery 2026-08-08): a reply that failed to answer a
+# question must never receive the identical question again.
+# ---------------------------------------------------------------------------
+
+
+def test_structured_clarification_refuses_after_unmatched_reply():
+    """The deterministic producer stands down for the free-text agent."""
+    import asyncio
+    from types import SimpleNamespace
+    from unittest import mock
+
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+
+    workflow = T1LookupWorkflow()
+    context = {"question_resolution": {"outcome": "unmatched", "option_ids": ["machine:8"]}}
+    with mock.patch(
+        "ai.core.config.get_settings",
+        return_value=SimpleNamespace(feature_question_cards=True),
+    ):
+        result = asyncio.run(
+            workflow._structured_clarification("influent pump station 1", context, modality="text")
+        )
+    assert result is None
+
+
+def test_apply_question_proposal_drops_an_identical_reask():
+    """A tool re-proposing the just-unmatched options is silently dropped."""
+    from ai.core.questions.promotion import pending_question_proposal
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+
+    workflow = T1LookupWorkflow()
+    set_question_proposal({
+        "source": "manual_search_ambiguity",
+        "question_text": "Which machine do you mean?",
+        "options": [
+            {"id": "machine:8", "label": "Boiler Feed Pump B"},
+            {"id": "machine:23", "label": "Influent Pump Station No. 1"},
+        ],
+    })
+    context = {
+        "question_resolution": {
+            "outcome": "unmatched",
+            "option_ids": ["machine:23", "machine:8"],
+        }
+    }
+    out = workflow._apply_question_proposal("model text", modality="text", context=context)
+    assert out == "model text"
+    assert pending_question_proposal.get() is None
+
+
+def test_apply_question_proposal_still_asks_a_different_question():
+    """The guard is exact: different options may still be proposed."""
+    from ai.core.questions.promotion import pending_question_proposal
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+
+    workflow = T1LookupWorkflow()
+    set_question_proposal({
+        "source": "manual_search_ambiguity",
+        "question_text": "Which machine do you mean?",
+        "options": [
+            {"id": "machine:1", "label": "UV Disinfection Channel No. 1"},
+            {"id": "machine:2", "label": "Secondary Clarifier No. 4"},
+        ],
+    })
+    context = {
+        "question_resolution": {
+            "outcome": "unmatched",
+            "option_ids": ["machine:23", "machine:8"],
+        }
+    }
+    out = workflow._apply_question_proposal("model text", modality="text", context=context)
+    assert "UV Disinfection Channel No. 1" in out
+    assert pending_question_proposal.get() is not None
+    consume_question_proposal()

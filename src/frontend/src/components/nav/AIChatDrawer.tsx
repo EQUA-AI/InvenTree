@@ -51,6 +51,7 @@ import { api } from '../../App';
 import {
   type ChatMessage,
   type ChatThread,
+  type QuestionPayload,
   type QuestionResolution,
   type UploadedFile,
   useAIChat
@@ -998,6 +999,7 @@ export function AIChatDrawer({
     searchThreads,
     // Structured questions (S22/S23)
     pendingQuestion,
+    armQuestion,
     // HITL (Human-in-the-Loop) approval
     pendingHITL,
     hitlResult,
@@ -1039,6 +1041,11 @@ export function AIChatDrawer({
       if (turn.thread_id && turn.thread_id !== activeThreadId) {
         switchThread(turn.thread_id);
       }
+      // S22/S23: voice turns deliver the pending question on the REST
+      // response (no SSE QUESTION event on this rail). Arm the singleton so
+      // the card renders clickable instead of permanently frozen, and
+      // disarm when a turn resolves it.
+      armQuestion((turn.pending_question as QuestionPayload | null) ?? null);
     }
   });
   const handleClose = useCallback(() => {

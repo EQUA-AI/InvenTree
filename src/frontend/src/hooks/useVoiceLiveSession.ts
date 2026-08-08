@@ -32,6 +32,14 @@ const PARTIAL_EVENT = 'conversation.item.input_audio_transcription.delta';
 // Pure-filler utterances that should never become application turns.
 const FILLER_ONLY = /^(?:uh|um|hmm+|mm+|mhm|huh|erm|ah|oh)[.!?,\s]*$/i;
 
+// Hands-free review decisions: ONLY an utterance that is entirely one of
+// these phrases acts on a held transcript. Anything longer is ignored — a
+// sentence containing "yes" or "cancel" must not decide a safety review.
+const VOICE_CONFIRM_RE =
+  /^(?:confirm|yes|yes please|continue|send it|submit|go ahead|that's right|correct)$/;
+const VOICE_DISCARD_RE =
+  /^(?:discard|cancel|no|nope|scratch that|start over|delete|discard it|try again)$/;
+
 // A public STUN server lets the browser discover its server-reflexive
 // candidate so the peer can be reached across NAT. It carries no credentials,
 // so nothing provider-authoritative ever reaches this module. Fully locked-
@@ -408,6 +416,27 @@ export function useVoiceLiveSession(
     [drainQueue]
   );
 
+  /** Submit the held transcript exactly as heard. */
+  const confirmPending = useCallback(async () => {
+    const held = pendingConfirmRef.current;
+    if (!held) {
+      return;
+    }
+    setHold(null);
+    // Leave 'confirming' first so submitNow's hold-aware transitions run
+    // normally; the dedupe/queue semantics of submitTranscript are intact
+    // because the hold happened BEFORE the submitted-items set saw this
+    // itemId.
+    setState('reviewing');
+    await submitTranscript(held);
+  }, [setHold, submitTranscript]);
+
+  /** Drop the held transcript; the technician re-speaks instead. */
+  const discardPending = useCallback(() => {
+    setHold(null);
+    setState((current) => (current === 'confirming' ? 'listening' : current));
+  }, [setHold]);
+
   const handleDataChannelMessage = useCallback(
     (raw: string) => {
       let event: Record<string, unknown>;
@@ -468,13 +497,23 @@ export function useVoiceLiveSession(
         if (!/[\p{L}\p{N}]/u.test(trimmed) || FILLER_ONLY.test(trimmed)) {
           return;
         }
-        // The hold is exclusive: while a transcript awaits on-screen
-        // confirmation, further speech is intentionally not processed —
-        // neither replacing the held transcript (a voiced "no, discard that"
-        // must not overwrite the safety utterance it refers to) nor
-        // submitting around it. The strip tells the technician to decide on
-        // screen.
+        // The hold stays exclusive: while a transcript awaits confirmation,
+        // speech never replaces it or submits around it. But a hands-free
+        // technician must be able to DECIDE by voice (battery feedback,
+        // 2026-08-08): an utterance that is exactly a confirm phrase submits
+        // the held transcript, exactly a discard phrase drops it, and
+        // anything else is still ignored so the safety utterance under
+        // review cannot be overwritten by more speech.
         if (pendingConfirmRef.current) {
+          const decision = trimmed
+            .toLowerCase()
+            .replace(/[.!?,]+$/g, '')
+            .trim();
+          if (VOICE_CONFIRM_RE.test(decision)) {
+            void confirmPending();
+          } else if (VOICE_DISCARD_RE.test(decision)) {
+            discardPending();
+          }
           return;
         }
         onFinalTranscript?.(finalTranscript);
@@ -498,29 +537,15 @@ export function useVoiceLiveSession(
         void submitTranscript(finalTranscript);
       }
     },
-    [clearSpeakingTimer, onFinalTranscript, submitTranscript, setHold]
+    [
+      clearSpeakingTimer,
+      onFinalTranscript,
+      submitTranscript,
+      setHold,
+      confirmPending,
+      discardPending
+    ]
   );
-
-  /** Submit the held transcript exactly as heard. */
-  const confirmPending = useCallback(async () => {
-    const held = pendingConfirmRef.current;
-    if (!held) {
-      return;
-    }
-    setHold(null);
-    // Leave 'confirming' first so submitNow's hold-aware transitions run
-    // normally; the dedupe/queue semantics of submitTranscript are intact
-    // because the hold happened BEFORE the submitted-items set saw this
-    // itemId.
-    setState('reviewing');
-    await submitTranscript(held);
-  }, [setHold, submitTranscript]);
-
-  /** Drop the held transcript; the technician re-speaks instead. */
-  const discardPending = useCallback(() => {
-    setHold(null);
-    setState((current) => (current === 'confirming' ? 'listening' : current));
-  }, [setHold]);
 
   const start = useCallback(async () => {
     if (!effectiveEnabled || sessionRef.current) {

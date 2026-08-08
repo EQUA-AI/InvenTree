@@ -380,3 +380,29 @@ class QuestionTurnBindingTests(SimpleTestCase):
         service = self._service(_AskingWorkflow(), _Repository(), store)
         service._abandon_pending_question(thread_id="thread_q")
         self.assertIsNone(store.take("thread_q"))
+
+    def test_unmatched_reply_passes_the_loop_guard_context(self) -> None:
+        """The next workflow sees which question just went unanswered.
+
+        Without this, near-miss replies re-derived the identical card
+        forever (live battery 2026-08-08) — the producers key their
+        never-re-ask guard on this payload.
+        """
+
+        async def exercise():
+            repository = _Repository()
+            store = InMemoryPendingQuestionStore()
+            service = self._service(_AskingWorkflow(), repository, store)
+            with mock.patch("ai.core.config.get_settings", _flag_settings(True)):
+                await self._turn(service, "manual for the pump", "ask:1")
+                unmatched = _AskingWorkflow(propose=False)
+                service.workflow_factory = lambda: unmatched
+                await self._turn(service, "list open work orders", "miss:1")
+            return unmatched
+
+        unmatched = asyncio.run(exercise())
+        resolution = unmatched.calls[0]["context"]["question_resolution"]
+        self.assertEqual(resolution["outcome"], "unmatched")
+        self.assertEqual(resolution["option_ids"], [str(option["id"]) for option in OPTIONS])
+        # No refs leak on the unmatched path.
+        self.assertNotIn("option", resolution)

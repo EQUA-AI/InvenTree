@@ -125,3 +125,70 @@ def test_voice_modality_parses_the_second_one():
     interp = interpret_question_answer("the second one", OPTIONS, modality="voice")
     assert interp.outcome == "selected"
     assert interp.option_index == 1
+
+
+# ---------------------------------------------------------------------------
+# v2 normalized matching — every case below is verbatim (or near-verbatim)
+# from the 2026-08-08 live battery, where each of these replies re-armed an
+# identical card forever.
+# ---------------------------------------------------------------------------
+
+_PUMPS = [
+    {"id": "machine:8", "label": "Boiler Feed Pump B"},
+    {"id": "machine:23", "label": "Influent Pump Station No. 1"},
+]
+
+
+@pytest.mark.parametrize(
+    ("reply", "index"),
+    [
+        ("Influent Pump Station 1.", 1),
+        ("influent pump station one", 1),
+        ("influent pump station 1", 1),
+        ("the influent pump station", 1),
+        ("Influent pump station number one please", 1),
+        ("boiler pump", 0),
+        ("the boiler feed pump", 0),
+    ],
+)
+def test_normalized_label_variants_select(reply, index):
+    """Fillers, punctuation, number words and a missing 'No.' all match."""
+    interp = interpret_question_answer(reply, _PUMPS)
+    assert interp.outcome == "selected", reply
+    assert interp.option_index == index, reply
+    assert interp.matched_by == "label"
+
+
+def test_normalized_matching_respects_serial_suffixed_labels():
+    """Machine-candidate labels carry '(serial)'; answers still match."""
+    options = [
+        {"id": "machine:8", "label": "Boiler Feed Pump B (BFP-B-CR45-2020)"},
+        {"id": "machine:23", "label": "Influent Pump Station No. 1 (TC-INF-PS1-001)"},
+    ]
+    interp = interpret_question_answer("influent pump station 1", options)
+    assert interp.outcome == "selected"
+    assert interp.option_index == 1
+
+
+def test_ambiguous_normalized_token_stays_unmatched():
+    """'pump' hits both pumps: guessing selects nothing."""
+    assert interpret_question_answer("pump", _PUMPS).outcome == "unmatched"
+    assert interpret_question_answer("the pump", _PUMPS).outcome == "unmatched"
+
+
+def test_a_fresh_sentence_is_a_question_not_an_answer():
+    """A long reply that merely mentions an option must route normally."""
+    reply = (
+        "The influent pump station is tripping on high vibrations again. What's the likely cause?"
+    )
+    assert interpret_question_answer(reply, _PUMPS).outcome == "unmatched"
+
+
+def test_neither_of_those_declines():
+    """The battery's own decline phrasing (A3) must decline."""
+    interp = interpret_question_answer("neither of those", _PUMPS)
+    assert interp.outcome == "declined"
+
+
+def test_policy_version_bumped_for_v2_grammar():
+    assert QUESTION_ANSWER_POLICY_VERSION == "question-answer-v2"

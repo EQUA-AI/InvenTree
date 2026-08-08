@@ -1344,6 +1344,23 @@ export function useAIChat(config: AIChatConfig = {}) {
     setPendingQuestion(null);
   }, []);
 
+  /** S23: arm (or disarm) the question singleton from a non-SSE surface.
+   * Voice turns return `pending_question` on the REST response instead of a
+   * QUESTION stream event; without this the drawer rendered voice cards
+   * permanently frozen ("No longer active") the moment they appeared. */
+  const armQuestion = useCallback((payload: QuestionPayload | null) => {
+    if (
+      payload &&
+      payload.kind === 'clarification_question' &&
+      payload.interrupt_id &&
+      Array.isArray(payload.options)
+    ) {
+      setPendingQuestion(payload);
+    } else {
+      setPendingQuestion(null);
+    }
+  }, []);
+
   /**
    * Send a message and get AI response
    * Handles AG-UI protocol events from Microsoft Agent Framework
@@ -2079,6 +2096,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     // Structured questions (S22/S23)
     pendingQuestion,
     clearPendingQuestion,
+    armQuestion,
 
     // HITL (Human-in-the-Loop)
     pendingHITL,

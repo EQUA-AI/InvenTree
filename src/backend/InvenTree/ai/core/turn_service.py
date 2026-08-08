@@ -115,6 +115,22 @@ class _QuestionResolution:
             "option": self._selected_option(),
         }
 
+    def unmatched_payload(self) -> dict[str, Any]:
+        """Trusted context for an unmatched reply (loop guard input, S22).
+
+        The producers use this to refuse re-asking the question the user just
+        failed to answer — without it, a near-miss reply re-armed an
+        identical card indefinitely (observed live 2026-08-08).
+        """
+        return {
+            "outcome": "unmatched",
+            "interrupt_id": self.record.get("interrupt_id"),
+            "source": self.record.get("source"),
+            "option_ids": [
+                str(option.get("id") or "") for option in (self.record.get("options") or [])
+            ],
+        }
+
     def audit_payload(self) -> dict[str, Any]:
         """The durable, ref-free resolution record for canonical/metadata."""
         payload: dict[str, Any] = {
@@ -1680,6 +1696,12 @@ class NormalizedTurnService:
                     # Trusted context: the selected option's server-persisted
                     # ref, so wf8 can pin e.g. the machine filter exactly.
                     workflow_context["question_resolution"] = question_resolution.context_payload()
+                elif question_resolution is not None and question_resolution.outcome == "unmatched":
+                    # Loop guard input: producers must not re-ask the exact
+                    # question this reply just failed to answer.
+                    workflow_context["question_resolution"] = (
+                        question_resolution.unmatched_payload()
+                    )
 
                 async for chunk in workflow.run_stream(
                     message=routing_content,

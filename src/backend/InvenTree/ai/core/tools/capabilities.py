@@ -1495,12 +1495,18 @@ def matched_machine_terms(
     corpus search uses, so anything returned here is already in the actor's
     scope. Ranked by match strength (serial hit outranks full-name hit
     outranks token overlap), capped at three.
+
+    USER history rows only, deliberately: an assistant row that asked a
+    question card literally contains every option label, so matching against
+    assistant text made each asked card guarantee the same matches forever —
+    the self-reinforcing loop observed live 2026-08-08. The user's own words
+    are the only signal for "which machine did you mean".
     """
     if not isinstance(history, (list, tuple)):
         history = ()
     texts = [" ".join(str(query or "").casefold().split())[:_HINT_CONTENT_CAP]]
     for entry in history:
-        if isinstance(entry, dict) and entry.get("role") in ("user", "assistant"):
+        if isinstance(entry, dict) and entry.get("role") == "user":
             content = str(entry.get("content") or "")
             texts.append(" ".join(content.casefold().split())[:_HINT_CONTENT_CAP])
     haystack = " \n ".join(texts)

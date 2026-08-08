@@ -59,6 +59,24 @@ export interface VoiceTurnResponse {
   response_state: string;
   replayed: boolean;
   spoken: VoiceSpokenPayload | null;
+  /** S22: set when this turn ended by asking a structured question. */
+  pending_question?: VoicePendingQuestion | null;
+}
+
+/** Wire shape of a pending structured question on the voice rail (S22). */
+export interface VoicePendingQuestion {
+  kind: string;
+  interrupt_id: string;
+  question_text: string;
+  options: Array<{
+    id: string;
+    label: string;
+    kind?: string;
+    description?: string;
+    recommended?: boolean;
+  }>;
+  expires_at?: string;
+  source?: string;
 }
 
 /** Stable backend error codes surfaced to the UI verbatim. */
