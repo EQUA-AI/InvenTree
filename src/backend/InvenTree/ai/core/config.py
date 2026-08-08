@@ -294,6 +294,14 @@ class Settings(BaseSettings):
         le=1024,
         alias="AZURE_LUNA_DIAGNOSIS_MAX_TOOL_DATA_KB",
     )
+    # S27: cite-or-downgrade for manuals-grounded wf8 answers. shadow logs a
+    # content-free would_downgrade line and persists the assessment; enforce
+    # replaces confirmed-ungrounded answers with the downgrade template.
+    # Enforce flip is HUMAN-gated after a >=5-day shadow soak (plan L784).
+    manual_grounding_mode: Literal["off", "shadow", "enforce"] = Field(
+        default="shadow",
+        validation_alias=AliasChoices("AIMMS_MANUAL_GROUNDING_MODE", "MANUAL_GROUNDING_MODE"),
+    )
     # S26: when a medium/high-confidence diagnosis cites no history and never
     # consulted the history tools, the server retrieves history evidence and
     # runs ONE stateless full-transcript continuation. Dark by default; flip

@@ -585,6 +585,20 @@ class NormalizedTurnService:
     async def _call_sync(function: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         return await sync_to_async(function, thread_sensitive=True)(*args, **kwargs)
 
+    @staticmethod
+    def _rehydrate_user_for_grounding(actor: Any) -> Any | None:
+        """Reload the Django user for S27 closure reads; None outside Django.
+
+        The closure readers re-authorize per machine, so this is identity
+        rehydration only, never a grant.
+        """
+        try:
+            from django.contrib.auth import get_user_model
+
+            return get_user_model().objects.filter(pk=actor.user_pk).first()
+        except Exception:
+            return None
+
     async def _conversation_history(self, repository: Any, thread_id: str) -> list[dict[str, str]]:
         """Return the recent transcript preceding this turn, oldest first.
 
@@ -1582,6 +1596,12 @@ class NormalizedTurnService:
                     }
             else:
                 workflow = self.workflow_factory()
+                # S27: fresh capture ledger for this turn; the invocation
+                # middleware records every tool result into it so grounding
+                # can compare the answer against what the server returned.
+                from ai.core.tools.capture_ledger import bind_tool_captures
+
+                capture_ledger = bind_tool_captures()
                 workflow_context = dict(trusted)
                 workflow_context["modality"] = modality
                 if server_pinned_workflow is not None:
@@ -1628,6 +1648,40 @@ class NormalizedTurnService:
                     chunks.append(str(chunk))
 
                 message = "".join(chunks)
+                grounding_meta = None
+                try:
+                    # S27 seam: after message assembly, before the canonical
+                    # wrapper, so a downgrade is what gets persisted AND
+                    # spoken. Fail-soft: a grounding error ships the answer.
+                    from ai.core.config import get_settings
+                    from ai.core.grounding import enum_closure_sets, evaluate_manual_grounding
+
+                    grounding_mode = str(get_settings().manual_grounding_mode)
+                    closure: frozenset[str] = frozenset()
+                    if grounding_mode in ("shadow", "enforce"):
+                        machine_ids = [
+                            root.entity_id
+                            for root in getattr(diagnostic_context, "record_roots", ())
+                            if getattr(root, "entity_type", "") == "machine"
+                        ]
+                        if machine_ids:
+                            actor_user = await self._call_sync(
+                                self._rehydrate_user_for_grounding, actor
+                            )
+                            if actor_user is not None:
+                                closure = await self._call_sync(
+                                    enum_closure_sets, actor_user, machine_ids
+                                )
+                    message, assessment = evaluate_manual_grounding(
+                        message=message,
+                        ledger=capture_ledger,
+                        mode=grounding_mode,
+                        closure_values=closure,
+                    )
+                    if assessment is not None:
+                        grounding_meta = assessment.to_meta()
+                except Exception:  # pragma: no cover - grounding must fail soft
+                    logger.warning("manual grounding evaluation failed", exc_info=False)
                 response = _canonical_response_for_legacy(
                     message, speakable=modality == TurnModality.VOICE
                 )
@@ -1643,6 +1697,8 @@ class NormalizedTurnService:
                     "reasoning_provenance": None,
                     "route": route.to_dict() if route is not None else None,
                 }
+                if grounding_meta is not None:
+                    canonical["grounding"] = grounding_meta
             # S22 arming choke point: a producer proposed a question via the
             # promotion ContextVar; the turn service owns the invariants, so
             # the record save, the persisted QUESTION event, and the canonical
@@ -1684,6 +1740,9 @@ class NormalizedTurnService:
                         if canonical.get("question_resolution")
                         else {}
                     ),
+                    # S27: the grounding assessment persists with the turn so
+                    # the shadow soak can be audited from stored data alone.
+                    **({"grounding": canonical["grounding"]} if canonical.get("grounding") else {}),
                 }),
                 workflow_id=capture.workflow_id or "",
             )

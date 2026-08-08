@@ -293,6 +293,15 @@ class CapabilityInvocationMiddleware(FunctionMiddleware):
             if enforced:
                 raise
         await next(context)
+        # S27: record what the tool actually returned into the per-turn
+        # capture ledger. Post-next and fail-soft: observation must never
+        # change or kill a dispatch that already happened.
+        try:
+            from ai.core.tools.capture_ledger import record_tool_result
+
+            record_tool_result(tool_id, getattr(context, "result", None))
+        except Exception:  # pragma: no cover - observation is best-effort
+            pass
 
 
 __all__ = [
