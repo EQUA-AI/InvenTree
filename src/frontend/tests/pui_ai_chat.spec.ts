@@ -41,6 +41,49 @@ test('AI Chat - History search', async ({ browser }) => {
 });
 
 /**
+ * S28: server-observed entity chips. A machine-routed question resolves a
+ * machine record root, which becomes a navigable chip under the answer.
+ * Resilient like the question-card spec: when no chip appears (routing did
+ * not resolve a machine root) the spec verifies nothing phantom rendered.
+ */
+test('AI Chat - Entity chips navigate', async ({ browser }) => {
+  const page = await doCachedLogin(browser, {
+    username: 'admin',
+    password: 'inventree'
+  });
+
+  await navigate(page, 'machines/machine/1/');
+  await page.getByRole('button', { name: 'Ask about this machine' }).click();
+  await page.getByTestId('ai-chat-routing-hint').waitFor();
+
+  const composer = page.getByPlaceholder(/Type a message|Answer the question/);
+  await composer.fill('Give me a quick status overview of this machine.');
+  await composer.press('Enter');
+
+  const chips = page.getByTestId('entity-chips');
+  const appeared = await chips
+    .waitFor({ timeout: 60000 })
+    .then(() => true)
+    .catch(() => false);
+
+  if (appeared) {
+    const machineChip = chips.locator(
+      '[data-testid^="entity-chip-assetmachine"]'
+    );
+    await machineChip.first().click();
+    await page.waitForURL(/machines\/machine\/\d+/, { timeout: 15000 });
+  } else {
+    // No machine root resolved: the transcript must not contain flattened
+    // manifest payload keys rendered as text.
+    const transcript = await page
+      .getByTestId('ai-chat-drawer')
+      .textContent()
+      .catch(() => '');
+    expect(transcript ?? '').not.toContain('entity_manifest');
+  }
+});
+
+/**
  * S22/S23: the structured question card. These cases exercise the armed and
  * frozen states; they require FEATURE_QUESTION_CARDS on the backend and a
  * corpus with >=2 machines matching "pump", so they are resilient: when no

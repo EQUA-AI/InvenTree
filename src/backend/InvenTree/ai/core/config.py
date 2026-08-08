@@ -294,6 +294,10 @@ class Settings(BaseSettings):
         le=1024,
         alias="AZURE_LUNA_DIAGNOSIS_MAX_TOOL_DATA_KB",
     )
+    # S28: server-observed entity chips under answers. Additive and inert on
+    # stale clients (unknown STATE_DELTA kinds are ignored), so it defaults
+    # on; the flag is a kill switch only.
+    feature_entity_manifest: bool = Field(default=True, alias="FEATURE_ENTITY_MANIFEST")
     # S27: cite-or-downgrade for manuals-grounded wf8 answers. shadow logs a
     # content-free would_downgrade line and persists the assessment; enforce
     # replaces confirmed-ungrounded answers with the downgrade template.

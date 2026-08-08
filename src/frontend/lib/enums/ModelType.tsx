@@ -39,6 +39,7 @@ export enum ModelType {
   selectionlist = 'selectionlist',
   selectionentry = 'selectionentry',
   kanbancard = 'kanbancard',
+  workorder = 'workorder',
   assetmachine = 'assetmachine',
   repairpacket = 'repairpacket',
   error = 'error',

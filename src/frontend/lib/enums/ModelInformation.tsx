@@ -355,6 +355,14 @@ export const ModelInformationDict: ModelDict = {
     api_endpoint: ApiEndpoints.kanban_card_list,
     icon: 'list'
   },
+  workorder: {
+    label: () => t`Work Order`,
+    label_multiple: () => t`Work Orders`,
+    url_overview: '/maintenance/',
+    url_detail: '/maintenance/work-orders/:pk/',
+    api_endpoint: ApiEndpoints.kanban_card_list,
+    icon: 'list'
+  },
   assetmachine: {
     label: () => t`Machine`,
     label_multiple: () => t`Machines`,

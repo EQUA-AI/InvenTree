@@ -368,6 +368,16 @@ export interface ChatMessage {
   question?: QuestionPayload;
   /** S22: how a previously asked question was resolved by this turn. */
   questionResolution?: QuestionResolution;
+  /** S28: server-observed entity chips (records this turn was about). */
+  entities?: EntityChip[];
+}
+
+/** S28 entity chip: server-mapped model + pk, never model-invented. */
+export interface EntityChip {
+  model: string;
+  pk: number;
+  label: string;
+  source?: string;
 }
 
 /** S22 question card payload (server-derived; refs never reach the client). */
@@ -454,6 +464,7 @@ interface ServerMessage {
   question?: QuestionPayload;
   question_resolution?: QuestionResolution;
   provenance?: { confidence?: string; evidence?: DiagnosisEvidence[] } | null;
+  entities?: EntityChip[] | null;
 }
 
 /**
@@ -588,7 +599,9 @@ async function fetchServerThread(
         evidence: Array.isArray(m.provenance?.evidence)
           ? m.provenance.evidence
           : undefined,
-        confidence: m.provenance?.confidence ?? undefined
+        confidence: m.provenance?.confidence ?? undefined,
+        // S28: chips reload from persisted metadata.
+        entities: Array.isArray(m.entities) ? m.entities : undefined
       })
     );
 
@@ -1303,6 +1316,16 @@ export function useAIChat(config: AIChatConfig = {}) {
     []
   );
 
+  /** S28: attach server-observed entity chips to their message. */
+  const attachEntities = useCallback(
+    (messageId: string, entities: EntityChip[]) => {
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === messageId ? { ...msg, entities } : msg))
+      );
+    },
+    []
+  );
+
   /** S22: attach the question payload to its message and arm the singleton. */
   const attachQuestion = useCallback(
     (messageId: string, payload: QuestionPayload) => {
@@ -1625,6 +1648,25 @@ export function useAIChat(config: AIChatConfig = {}) {
                                 String(deltaEvent.confidence ?? '')
                               );
                             }
+                            // S28: server-observed entity chips for this turn.
+                            const entityEvent = event as unknown as {
+                              kind?: string;
+                              entities?: EntityChip[];
+                            };
+                            if (
+                              entityEvent.kind === 'entity_manifest' &&
+                              Array.isArray(entityEvent.entities)
+                            ) {
+                              attachEntities(
+                                assistantMessage.id,
+                                entityEvent.entities.filter(
+                                  (e) =>
+                                    e &&
+                                    typeof e.model === 'string' &&
+                                    Number.isInteger(e.pk)
+                                )
+                              );
+                            }
                             break;
                           }
 
@@ -1881,6 +1923,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       updateMessage,
       appendToMessage,
       attachProvenance,
+      attachEntities,
       saveCurrentThread,
       resetStreamingMessage,
       chatEndpoint

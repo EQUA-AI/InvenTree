@@ -682,6 +682,45 @@ class NormalizedTurnService:
             raise TypeError("proposal transformer must return a canonical object")
         return transformed
 
+    async def _attach_entity_manifest(
+        self,
+        canonical: dict[str, Any],
+        *,
+        diagnostic_context: Any | None,
+        thread_id: str,
+        turn_id: str,
+        emitter: EventEmitter | None,
+    ) -> dict[str, Any]:
+        """Attach the S28 server-observed entity manifest; fail-soft."""
+        try:
+            from ai.core.config import get_settings
+            from ai.core.entities import build_entity_manifest
+
+            if not get_settings().feature_entity_manifest:
+                return canonical
+            entities = build_entity_manifest(
+                canonical=canonical,
+                record_roots=getattr(diagnostic_context, "record_roots", ()),
+            )
+            if not entities:
+                return canonical
+            canonical["entities"] = entities
+            event = AGUIEvent(
+                event_type=EventType.STATE_DELTA,
+                # SSE hygiene: kind/entities only — never content/delta/
+                # choices/message, which stale clients render as text.
+                data={"kind": "entity_manifest", "entities": entities},
+                thread_id=thread_id,
+                run_id=f"entities:{turn_id}",
+            )
+            if emitter is not None:
+                await emitter.emit(event)
+            elif isinstance(canonical.get("events"), list):
+                canonical["events"].append(event.to_dict())
+        except Exception:  # pragma: no cover - chips must never fail a turn
+            logger.warning("entity manifest attachment failed", exc_info=False)
+        return canonical
+
     async def _build_diagnostic_context(
         self,
         *,
@@ -1720,6 +1759,17 @@ class NormalizedTurnService:
                 actor=actor,
                 trusted_context=trusted_context,
             )
+            # S28: server-observed entity manifest, after proposals so the
+            # manifest reflects the final canonical. The event lands in the
+            # live stream AND capture.events (same list as
+            # canonical["events"]), so replay reproduces the chips.
+            canonical = await self._attach_entity_manifest(
+                canonical,
+                diagnostic_context=diagnostic_context,
+                thread_id=thread.pk,
+                turn_id=turn.pk,
+                emitter=isolated_emitter,
+            )
             message = str(canonical.get("message") or "")
             response_state = str(canonical.get("response_state") or TurnState.COMPLETE)
             finalized = await self._call_sync(
@@ -1743,6 +1793,8 @@ class NormalizedTurnService:
                     # S27: the grounding assessment persists with the turn so
                     # the shadow soak can be audited from stored data alone.
                     **({"grounding": canonical["grounding"]} if canonical.get("grounding") else {}),
+                    # S28: chips reload from the same metadata on /threads.
+                    **({"entities": canonical["entities"]} if canonical.get("entities") else {}),
                 }),
                 workflow_id=capture.workflow_id or "",
             )
