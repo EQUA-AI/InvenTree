@@ -25,6 +25,7 @@ from ai.core.reasoning.schemas import (
     ResponseState,
 )
 from ai.core.tools.provider_schema import strict_provider_schema
+from ai.core.usage import record_usage
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 if TYPE_CHECKING:
@@ -318,6 +319,22 @@ def _output_text(response: Any) -> str:
                 if text:
                     chunks.append(str(text))
     return "".join(chunks)
+
+
+def _usage_metrics(response: Any) -> dict[str, int]:
+    """Provider-reported token counts for the S24 usage ledger; ints only.
+
+    Unlike ``_response_output_tokens`` this never estimates — the ledger
+    records what the provider said or nothing, so persisted usage is always
+    provider truth.
+    """
+    usage = _item_value(response, "usage")
+    metrics: dict[str, int] = {}
+    for key in ("input_tokens", "output_tokens", "total_tokens"):
+        value = _item_value(usage, key)
+        if type(value) is int and value >= 0:
+            metrics[key] = value
+    return metrics
 
 
 def _response_output_tokens(response: Any) -> int:
@@ -756,8 +773,26 @@ class LunaDiagnosticsAdapter:
                 )
 
             request_id = _response_id(response) or request_id
+            record_usage("luna_diagnostics", _usage_metrics(response))
             output_tokens_used += _response_output_tokens(response)
             if output_tokens_used > self.budget.max_output_tokens:
+                return self._incomplete_outcome(
+                    code="output_token_limit",
+                    effort=selected_effort,
+                    request_id=request_id,
+                    tool_names=tool_names,
+                    tool_rounds=tool_rounds,
+                )
+            if (
+                str(_item_value(response, "status", "") or "") == "incomplete"
+                and str(
+                    _item_value(_item_value(response, "incomplete_details"), "reason", "") or ""
+                )
+                == "max_output_tokens"
+            ):
+                # HTTP 200 with a provider-truncated body: the partial text
+                # would fail schema validation below and be misattributed as
+                # invalid_final_schema. Name the real cause.
                 return self._incomplete_outcome(
                     code="output_token_limit",
                     effort=selected_effort,

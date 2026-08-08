@@ -119,12 +119,14 @@ class Settings(BaseSettings):
     )
     # Which workflows the invocation guard ENFORCES on, comma separated. Any
     # other workflow runs in shadow: the guard still evaluates and logs the
-    # denial reason, but the call proceeds. wf8/general have soaked since the
-    # broker shipped; the specialist rails join one at a time (S11), which is
-    # the only safe way to discover a missing catalog entry — it would
-    # otherwise deny every call on that workflow at once.
+    # denial reason, but the call proceeds. The specialist rails soaked
+    # shadow-first (S11) and were flipped live 2026-08-06 with zero denials
+    # observed; enforcement everywhere is now the DEFAULT. The env var
+    # remains an override, and the floor union in the guard keeps wf8/general
+    # enforced no matter what an operator sets.
     capability_broker_enforced_workflows: str = Field(
-        default="wf8,general", alias="CAPABILITY_BROKER_ENFORCED_WORKFLOWS"
+        default="wf8,general,wf2,wf3,wf4,wf6",
+        alias="CAPABILITY_BROKER_ENFORCED_WORKFLOWS",
     )
     # Capability selection v2: score the aggregation/threshold *shape* of a question
     # instead of a superlative keyword whitelist, keep the read-only SQL pack
@@ -183,11 +185,37 @@ class Settings(BaseSettings):
     voice_write_plan_timeout_s: float = Field(
         default=8.0, ge=1.0, le=60.0, alias="VOICE_WRITE_PLAN_TIMEOUT_S"
     )
-    # Prior thread messages replayed into a lookup turn so a follow-up ("just the
-    # ones over 2000") resolves against what was already said. Bounded because the
-    # transcript is prompt payload: every message is re-sent on every turn. 0
-    # disables replay and restores single-message turns.
-    chat_history_turns: int = Field(default=6, alias="CHAT_HISTORY_TURNS", ge=0, le=50)
+    # Prior thread MESSAGES replayed into a lookup turn so a follow-up ("just
+    # the ones over 2000") resolves against what was already said. Renamed
+    # from chat_history_turns (S24): it always counted messages — 12 messages
+    # is 6 real exchanges, which RAISES the old effective window (6 messages
+    # = 3 exchanges). Legacy env spellings still load. 0 disables replay.
+    chat_history_messages: int = Field(
+        default=12,
+        validation_alias=AliasChoices(
+            "AIMMS_CHAT_HISTORY_MESSAGES",
+            "CHAT_HISTORY_MESSAGES",
+            "AIMMS_CHAT_HISTORY_TURNS",
+            "CHAT_HISTORY_TURNS",
+        ),
+        ge=0,
+        le=50,
+    )
+    # S24 replay budgets: one huge answer used to be re-sent verbatim for up
+    # to the whole window. Per-message head-truncation (with a visible
+    # marker) and a total cap that drops OLDEST whole messages — never the
+    # newest two, which are the follow-up antecedent. 0 disables either cap.
+    chat_history_max_message_chars: int = Field(
+        default=4000, ge=0, le=32000, alias="CHAT_HISTORY_MAX_MESSAGE_CHARS"
+    )
+    chat_history_max_total_chars: int = Field(
+        default=24000, ge=0, le=200000, alias="CHAT_HISTORY_MAX_TOTAL_CHARS"
+    )
+    # S24: persist per-turn provider usage (wf8 + Luna) into terminal turn
+    # metadata so budgets are measured, not guessed. Kill switch only.
+    feature_turn_usage_persistence: bool = Field(
+        default=True, alias="FEATURE_TURN_USAGE_PERSISTENCE"
+    )
 
     # -------------------------------------------------------------------------
     # S18 turn-loop budgets (A5/A12)

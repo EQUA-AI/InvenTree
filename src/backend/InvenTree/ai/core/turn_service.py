@@ -27,6 +27,13 @@ from ai.core.streaming import (
     InMemoryEventEmitter,
 )
 from ai.core.tools.read_only import READ_ONLY_TOOLS
+from ai.core.usage import (
+    TurnUsageLedger,
+    drain_turn_usage,
+    estimate_tokens,
+    record_usage,
+    turn_usage_ledger,
+)
 from aichat.models import ThreadNamespace, TurnModality, TurnState
 from aichat.services import IdempotencyConflict, ThreadRepository
 from asgiref.sync import sync_to_async
@@ -330,19 +337,60 @@ def _canonical_response_for_legacy(
     )
 
 
+_HISTORY_TRUNCATION_MARKER = "… [truncated]"
+# A follow-up resolves against the immediately preceding exchange; dropping
+# it for budget would silently change what "the second one" means.
+_HISTORY_PROTECTED_NEWEST = 2
+
+
+def _budgeted_history(
+    messages: list[dict[str, str]], *, max_message_chars: int, max_total_chars: int
+) -> list[dict[str, str]]:
+    """Apply the S24 replay budgets to an oldest-first transcript.
+
+    Two independent caps, each disabled at 0: a message keeps its head up to
+    ``max_message_chars`` with a visible truncation marker, then whole
+    messages are dropped oldest-first until the transcript fits
+    ``max_total_chars``. The newest two messages are never dropped, even
+    when they alone exceed the total budget.
+    """
+    budgeted: list[dict[str, str]] = []
+    for message in messages:
+        content = str(message.get("content", ""))
+        if 0 < max_message_chars < len(content):
+            content = content[:max_message_chars].rstrip() + _HISTORY_TRUNCATION_MARKER
+        budgeted.append({**message, "content": content})
+    if max_total_chars <= 0:
+        return budgeted
+    total = sum(len(entry["content"]) for entry in budgeted)
+    while total > max_total_chars and len(budgeted) > _HISTORY_PROTECTED_NEWEST:
+        total -= len(budgeted.pop(0)["content"])
+    return budgeted
+
+
 def _terminal_output_metadata(base: dict[str, Any]) -> dict[str, Any]:
     """Attach the resolved model-version stamp to a terminal turn (S17 A10).
 
     Deployment names are aliases; the stamp records which concrete model
     identities the provider reported during this process, so a post-hoc audit
-    of any persisted turn can name the models that served it.
+    of any persisted turn can name the models that served it. S24 adds the
+    turn's provider usage through the same funnel, behind its kill switch.
     """
+    from ai.core.config import get_settings
     from ai.core.integrations.model_pins import resolved_model_versions
 
+    metadata = dict(base)
     versions = resolved_model_versions()
     if versions:
-        return {**base, "model_versions": versions}
-    return base
+        metadata["model_versions"] = versions
+    try:
+        if get_settings().feature_turn_usage_persistence:
+            usage = drain_turn_usage()
+            if usage:
+                metadata["usage"] = usage
+    except Exception:  # pragma: no cover - telemetry must never fail a turn
+        pass
+    return metadata
 
 
 def _canonical_terminal_response(state: str, message: str) -> CanonicalTurnResponse:
@@ -547,12 +595,16 @@ class NormalizedTurnService:
         would duplicate the query.
 
         Failure degrades to no history: a lookup answered without context beats a
-        turn that fails outright.
+        turn that fails outright. The S24 char budgets bound what a window of
+        messages can cost in prompt payload (`_budgeted_history`).
         """
         from ai.core.config import get_settings
 
         try:
-            limit = int(get_settings().chat_history_turns)
+            settings = get_settings()
+            limit = int(settings.chat_history_messages)
+            max_message_chars = int(settings.chat_history_max_message_chars)
+            max_total_chars = int(settings.chat_history_max_total_chars)
         except Exception:
             return []
         if limit <= 0:
@@ -564,11 +616,26 @@ class NormalizedTurnService:
         except Exception:
             logger.warning("Conversation history unavailable for this turn")
             return []
-        return [
+        history = [
             {"role": str(message.role), "content": str(message.content)}
             for message in recent
             if str(message.content).strip()
         ]
+        budgeted = _budgeted_history(
+            history, max_message_chars=max_message_chars, max_total_chars=max_total_chars
+        )
+        try:
+            metrics: dict[str, Any] = {
+                "history_messages": len(budgeted),
+                "history_chars": sum(len(entry["content"]) for entry in budgeted),
+            }
+            estimate = estimate_tokens("\n".join(entry["content"] for entry in budgeted))
+            if estimate is not None:
+                metrics["history_token_estimate"] = estimate
+            record_usage("history_replay", metrics)
+        except Exception:  # pragma: no cover - telemetry must never fail a turn
+            pass
+        return budgeted
 
     async def _emit_replay(
         self, emitter: EventEmitter | None, canonical_result: dict[str, Any]
@@ -1310,6 +1377,11 @@ class NormalizedTurnService:
             raise ValueError(
                 "server_generation_target accepts int machine_id/repair_packet_id only"
             )
+
+        # S24: a fresh ledger per turn. Rebinding (rather than set/reset)
+        # guarantees no cross-turn leakage even when a turn exits early —
+        # the next turn always starts from an empty ledger.
+        turn_usage_ledger.set(TurnUsageLedger())
 
         trusted = _json_value(trusted_context)
         metadata = _json_value(modality_metadata or {}, reject_audio=True)

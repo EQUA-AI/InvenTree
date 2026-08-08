@@ -32,6 +32,7 @@ from ai.core.tools.invocation_guard import (
     bind_capability_run,
 )
 from ai.core.tools.rbac import read_tools
+from ai.core.usage import record_usage
 
 logger = logging.getLogger(__name__)
 
@@ -932,6 +933,7 @@ figure from an earlier turn as if you had just verified it."""
 
             execution_time = (time.perf_counter() - start_time) * 1000
             usage_metrics = _response_usage_metrics(response)
+            record_usage("wf8_lookup", usage_metrics)
 
             logger.info(
                 "T1 lookup complete",

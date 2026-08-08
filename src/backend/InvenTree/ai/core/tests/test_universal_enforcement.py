@@ -229,3 +229,21 @@ def test_a_newly_enforced_workflow_can_be_added_by_configuration() -> None:
         settings.return_value.capability_broker_enforced_workflows = "wf8,general,wf4"
         enforced = _enforced_workflows()
     assert "wf4" in enforced
+
+
+def test_every_catalogued_rail_is_enforced_by_default() -> None:
+    """Enforcement everywhere is the shipped default, not an env-only state.
+
+    The 2026-08-06 flip observed zero denials across the soak; if the default
+    regressed to the wf8/general floor, removing the env var (routine config
+    hygiene) would silently drop wf2/wf3/wf4/wf6 back to advisory.
+    """
+    from ai.core.config import Settings
+
+    settings = Settings(_env_file=None)
+    configured = {
+        token.strip()
+        for token in settings.capability_broker_enforced_workflows.split(",")
+        if token.strip()
+    }
+    assert configured == {"wf8", "general", "wf2", "wf3", "wf4", "wf6"}

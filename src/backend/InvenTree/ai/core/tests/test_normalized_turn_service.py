@@ -1154,7 +1154,11 @@ class ConversationHistoryTests(SimpleTestCase):
                 ]
 
         service = _TestTurnService(workflow_factory=lambda: None)
-        settings = SimpleNamespace(chat_history_turns=6)
+        settings = SimpleNamespace(
+            chat_history_messages=6,
+            chat_history_max_message_chars=4000,
+            chat_history_max_total_chars=24000,
+        )
         with patch("ai.core.config.get_settings", return_value=settings):
             history = asyncio.run(service._conversation_history(_Repository(), "thread_history"))
 
@@ -1177,7 +1181,11 @@ class ConversationHistoryTests(SimpleTestCase):
                 raise AssertionError("must not query when replay is disabled")
 
         service = _TestTurnService(workflow_factory=lambda: None)
-        settings = SimpleNamespace(chat_history_turns=0)
+        settings = SimpleNamespace(
+            chat_history_messages=0,
+            chat_history_max_message_chars=4000,
+            chat_history_max_total_chars=24000,
+        )
         with patch("ai.core.config.get_settings", return_value=settings):
             history = asyncio.run(service._conversation_history(_Repository(), "thread_history"))
 
@@ -1191,7 +1199,11 @@ class ConversationHistoryTests(SimpleTestCase):
                 raise RuntimeError("transcript unavailable")
 
         service = _TestTurnService(workflow_factory=lambda: None)
-        settings = SimpleNamespace(chat_history_turns=6)
+        settings = SimpleNamespace(
+            chat_history_messages=6,
+            chat_history_max_message_chars=4000,
+            chat_history_max_total_chars=24000,
+        )
         with patch("ai.core.config.get_settings", return_value=settings):
             history = asyncio.run(service._conversation_history(_Repository(), "thread_history"))
 

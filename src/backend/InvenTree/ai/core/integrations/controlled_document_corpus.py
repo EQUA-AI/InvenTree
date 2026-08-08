@@ -47,6 +47,11 @@ _DOCUMENT_CLASS_ALLOWLIST = (
     "procedure",
     "specification",
     "knowledge_base",
+    # The live corpus's actual class (found 2026-08-06 when every allowlisted
+    # narrowing filtered out the whole manual). "Grows only by decision" —
+    # this is that decision; retire it after the manual is re-classed to
+    # controlled_o_and_m at its next re-ingestion.
+    "controlled_operations_maintenance_diagnostics_repair_knowledge",
 )
 
 _SELECT_FIELDS = [
@@ -368,8 +373,10 @@ async def search_manuals(
       machine: Optional machine name to narrow results to that asset's
                documents. If it cannot be resolved the search still runs
                site-wide.
-      document_class: Optional filter: technical_manual, procedure,
-                      specification or knowledge_base.
+      document_class: Optional filter: technical_manual, controlled_o_and_m,
+                      procedure, specification, knowledge_base or
+                      controlled_operations_maintenance_diagnostics_repair_knowledge.
+                      A class with no hits degrades to the site-wide result.
       top_k: Maximum passages to return (default 5, max 5).
 
     Returns:

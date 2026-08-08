@@ -240,6 +240,27 @@ def test_class_narrowing_with_hits_does_not_retry(site_scope):
     assert result["total"] == 1
 
 
+def test_live_ingested_document_class_is_allowlisted(site_scope):
+    """The class value the live chunks actually carry must build a filter.
+
+    The ingested corpus classes its chunks
+    `controlled_operations_maintenance_diagnostics_repair_knowledge` — outside
+    the original request allowlist, so the model could never narrow to the
+    documents that exist (battery A1 follow-up). Allowlisted until the manual
+    is re-classed to `controlled_o_and_m` at the next re-ingestion.
+    """
+    live_class = "controlled_operations_maintenance_diagnostics_repair_knowledge"
+    search_client, _, result = _run(document_class=live_class)
+    assert search_client.kwargs["filter"] == (f"{BASE_FILTER} and document_class eq '{live_class}'")
+    assert result["total"] == 1
+    # Widening the allowlist must not have weakened the refusal for classes
+    # that exist nowhere.
+    refused = _SearchClient()
+    with pytest.raises(ControlledDocumentSearchError):
+        _run(document_class="blueprint", search_client=refused)
+    assert refused.calls == 0
+
+
 # ---------------------------------------------------------------------------
 # search_corpus: server-side machine narrowing
 # ---------------------------------------------------------------------------
