@@ -32,11 +32,14 @@ export function QuestionCard({
   payload,
   armed,
   resolution,
+  answeredExternally,
   onAnswer
 }: Readonly<{
   payload: QuestionPayload;
   armed: boolean;
   resolution?: QuestionResolution;
+  /** Answered from this client by a typed message rather than a click. */
+  answeredExternally?: boolean;
   onAnswer: (text: string) => void;
 }>) {
   const [answered, setAnswered] = useState(false);
@@ -144,7 +147,7 @@ export function QuestionCard({
               ? t`Answered`
               : resolution?.outcome === 'declined'
                 ? t`Declined`
-                : answered
+                : answered || answeredExternally
                   ? t`Answered in chat`
                   : t`No longer active — just type your answer`}
           </Text>

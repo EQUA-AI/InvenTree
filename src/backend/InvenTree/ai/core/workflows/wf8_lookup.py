@@ -468,6 +468,23 @@ figure from an earlier turn as if you had just verified it."""
         return [*messages, ChatMessage(role=Role.USER, contents=[TextContent(text=note)])]
 
     @staticmethod
+    def _recent_substantive_user_content(context: dict[str, Any] | None) -> str:
+        """The newest user history row that reads like a real request.
+
+        Used to carry the ORIGINAL intent into the post-selection reframe:
+        the card's origin is often a fragment ("the pump"), while the intent
+        ("...lockout steps in the manual...") lives one or two user turns
+        back. Five tokens separates requests from fragments and ordinals.
+        """
+        for row in reversed((context or {}).get("conversation_history") or []):
+            if not isinstance(row, dict) or row.get("role") != "user":
+                continue
+            content = str(row.get("content") or "").strip()
+            if len(content.split()) >= 5:
+                return content[:300]
+        return ""
+
+    @staticmethod
     def _with_question_resolution(run_input: Any, context: dict[str, Any] | None) -> Any:
         """Append the trusted hint for an accepted question selection (S22).
 
@@ -907,8 +924,16 @@ figure from an earlier turn as if you had just verified it."""
                 # capability term, re-entered clarify, and re-carded). Reframe
                 # as a lookup on the chosen record so selection attaches the
                 # machine pack; the resolution hint pins the machine below.
+                # The reframe carries the most recent substantive user message
+                # too: without it the reselect toolset was machines-only, and
+                # a "manual lockout steps" question answered post-selection
+                # with "no manual attached" (battery finding 2026-08-10).
+                intent = self._recent_substantive_user_content(context)
+                reselect_query = f"machine overview for {selected_option['label']}"
+                if intent:
+                    reselect_query = f"{intent} — {reselect_query}"
                 reselect = self._capability_selection(
-                    query=f"machine overview for {selected_option['label']}",
+                    query=reselect_query,
                     lookup_type=lookup_type,
                     context=context,
                     current_tools=tools,

@@ -870,6 +870,12 @@ export function useAIChat(config: AIChatConfig = {}) {
   // S22/S23: at most one armed question per thread (server single-slot).
   const [pendingQuestion, setPendingQuestion] =
     useState<QuestionPayload | null>(null);
+  // Interrupt ids answered from THIS client (click or typed) so their frozen
+  // cards read "Answered in chat" instead of "No longer active" before the
+  // server resolution converges.
+  const [answeredQuestionIds, setAnsweredQuestionIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [hitlResult, setHitlResult] = useState<{
     approved: boolean;
     action: string;
@@ -1043,6 +1049,34 @@ export function useAIChat(config: AIChatConfig = {}) {
   /**
    * Get all threads sorted by most recent
    */
+  // S22/S23 reload fidelity (battery finding 2026-08-10): a page reload
+  // restores the active thread from LOCAL storage, which never ran the
+  // server projection's re-arm rule — an unexpired question on the last
+  // message stayed frozen. Arm from the restored copy immediately, then
+  // converge messages + resolutions from the server for persisted threads.
+  const mountFidelityRan = useRef(false);
+  useEffect(() => {
+    if (mountFidelityRan.current) return;
+    mountFidelityRan.current = true;
+    const last = messages[messages.length - 1];
+    const expiresAt = last?.question?.expires_at;
+    const unexpired = !expiresAt || new Date(expiresAt) > new Date();
+    if (last?.question && unexpired) {
+      setPendingQuestion(last.question);
+    }
+    const active = storedThreadsRef.current.find(
+      (t) => t.id === activeThreadIdRef.current
+    );
+    if (active?.isPersisted) {
+      void loadThreadFromServer(active.id).then((serverMessages) => {
+        if (serverMessages && activeThreadIdRef.current === active.id) {
+          setMessages(serverMessages);
+        }
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const threads: ChatThread[] = storedThreads.map((t: StoredThread) => ({
     ...t,
     createdAt: new Date(t.createdAt),
@@ -1372,7 +1406,17 @@ export function useAIChat(config: AIChatConfig = {}) {
       setError(null);
       // S22: any send disarms the card — the server slot is consume-on-read,
       // so whatever this message is, the question cannot be answered later.
-      setPendingQuestion(null);
+      // Remember which card this send answered so its frozen state reads
+      // "Answered in chat" (typed answers previously fell back to the stale
+      // "No longer active" hint — battery finding 2026-08-10).
+      setPendingQuestion((current) => {
+        if (current) {
+          setAnsweredQuestionIds((prev) =>
+            new Set(prev).add(current.interrupt_id)
+          );
+        }
+        return null;
+      });
 
       // Add user message
       addMessage('user', userContent.trim());
@@ -2097,6 +2141,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     pendingQuestion,
     clearPendingQuestion,
     armQuestion,
+    answeredQuestionIds,
 
     // HITL (Human-in-the-Loop)
     pendingHITL,

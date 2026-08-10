@@ -387,3 +387,59 @@ def test_selected_machine_reframes_as_a_machine_lookup():
         authenticated=True,
     )
     assert selection.clarification_required is False
+
+
+def test_reframe_intent_comes_from_the_last_substantive_user_row():
+    """Fragments and ordinals are skipped; the real request is carried."""
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+
+    context = {
+        "conversation_history": [
+            {
+                "role": "user",
+                "content": "Find the isolation and lockout steps in the manual for the pump.",
+            },
+            {"role": "assistant", "content": "Which pump do you mean?"},
+            {"role": "user", "content": "the pump"},
+            {"role": "assistant", "content": "Did you mean one of these? ..."},
+        ]
+    }
+    intent = T1LookupWorkflow._recent_substantive_user_content(context)
+    assert intent.startswith("Find the isolation and lockout steps")
+    assert T1LookupWorkflow._recent_substantive_user_content({}) == ""
+    assert (
+        T1LookupWorkflow._recent_substantive_user_content({
+            "conversation_history": [{"role": "user", "content": "the second one"}]
+        })
+        == ""
+    )
+
+
+def test_reframe_query_with_intent_attaches_manuals_not_just_machines():
+    """The post-selection toolset must be able to answer the ORIGINAL ask.
+
+    Battery 2026-08-10: without the intent, the reselect toolset was
+    machines-only and a manual-LOTO question answered "no manual attached"
+    right after the user picked the machine.
+    """
+    from ai.core.tests.test_capability_broker import ALL_VIEW_PROFILE
+    from ai.core.tools.capabilities import select_capabilities
+
+    selection = select_capabilities(
+        "Find the isolation and lockout steps in the manual for the pump. — "
+        "machine overview for Influent Pump Station No. 1 (TC-INF-PS1-001)",
+        profile=ALL_VIEW_PROFILE,
+        authenticated=True,
+    )
+    assert selection.clarification_required is False
+    assert "machines.read" in selection.pack_ids
+    assert "manuals.read" in selection.pack_ids
+
+    # Without the intent, the reframe alone selects machines-only — the
+    # exact toolset that produced "no manual attached".
+    bare = select_capabilities(
+        "machine overview for Influent Pump Station No. 1 (TC-INF-PS1-001)",
+        profile=ALL_VIEW_PROFILE,
+        authenticated=True,
+    )
+    assert "manuals.read" not in bare.pack_ids

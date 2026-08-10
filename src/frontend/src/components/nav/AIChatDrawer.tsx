@@ -796,12 +796,14 @@ function ChatMessageItem({
   message,
   threadId,
   questionArmed,
+  questionAnsweredLocally,
   questionResolution,
   onQuestionAnswer
 }: Readonly<{
   message: ChatMessage;
   threadId: string | null;
   questionArmed?: boolean;
+  questionAnsweredLocally?: boolean;
   questionResolution?: QuestionResolution;
   onQuestionAnswer?: (text: string) => void;
 }>) {
@@ -883,6 +885,7 @@ function ChatMessageItem({
               <QuestionCard
                 payload={message.question}
                 armed={!!questionArmed}
+                answeredExternally={!!questionAnsweredLocally}
                 resolution={questionResolution}
                 onAnswer={(text) => onQuestionAnswer?.(text)}
               />
@@ -1000,6 +1003,7 @@ export function AIChatDrawer({
     // Structured questions (S22/S23)
     pendingQuestion,
     armQuestion,
+    answeredQuestionIds,
     // HITL (Human-in-the-Loop) approval
     pendingHITL,
     hitlResult,
@@ -1558,6 +1562,10 @@ export function AIChatDrawer({
                     !!message.question &&
                     pendingQuestion?.interrupt_id ===
                       message.question.interrupt_id
+                  }
+                  questionAnsweredLocally={
+                    !!message.question &&
+                    answeredQuestionIds.has(message.question.interrupt_id)
                   }
                   questionResolution={questionResolutions.get(
                     message.question?.interrupt_id ?? ''
