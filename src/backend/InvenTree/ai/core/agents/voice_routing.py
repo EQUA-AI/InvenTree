@@ -290,13 +290,17 @@ class VoiceComplexityRouter:
         for pattern in (
             r"\bdiagnos(?:e|is|tic|tics)\b",
             r"\btroubleshoot(?:ing)?\b",
-            r"\broot causes?\b",
-            r"\bpossible causes?\b",
+            r"\b(?:root|possible|likely|probable|potential|underlying) causes?\b",
             r"\bwhat (?:could|might|may|would) cause\b",
+            # "what is the (likely) cause of ..." / "what is causing ..."
+            # within one clause; the bounded window keeps this from spanning
+            # sentences.
+            r"\bwhat(?:'s| is| are| was| were)\b[^.?!]{0,60}\bcaus(?:e|es|ing)\b",
             r"\bwhy (?:is|does|did|has|would)\b",
             r"\bsymptoms?\b",
-            r"\b(?:fault|failure|malfunction|overheat(?:ing)?|vibrat(?:e|es|ing|ion)|leak(?:s|ing)?|intermittent|jammed|stalled)\b",
-            r"\b(?:not|isn't|is not|won't|will not|stopped) working\b",
+            r"\b(?:fault|failure|malfunction|breakdown|overheat(?:ing)?|vibrat(?:e|es|ing|ion)|leak(?:s|ing)?|intermittent|jam(?:s|med|ming)?|stall(?:s|ed|ing)?|trip(?:s|ped|ping))\b",
+            r"\bkeeps? (?:stopping|halting|stalling|jamming|tripping|failing|faulting|breaking|cutting out|shutting (?:down|off))\b",
+            r"\b(?:not|isn't|is not|won't|will not|stopped|stops|quit) working\b",
             r"\b(?:abnormal|unusual|grinding|rattling) (?:noise|sound)\b",
         )
     )

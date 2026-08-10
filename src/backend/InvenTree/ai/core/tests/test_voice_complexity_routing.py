@@ -104,6 +104,13 @@ def test_effect_words_in_informational_phrases_do_not_select_advisory(
         "Develop a repair plan for the stalled conveyor",
         "The sensor readings are inconsistent with the inspection",
         "Compare the service manual with its maintenance history",
+        # 2026-08-10 live-battery regression: these phrasings fell through to
+        # the fast path because no diagnostic idiom matched them.
+        "The packaging line 2 conveyor keeps stopping with jams again. What is the likely cause?",
+        "The palletizer trips its breaker every morning",
+        "What is causing the intermittent stalls on line 2?",
+        "The wrapper keeps shutting down mid-cycle",
+        "The likely cause of the breakdown is unclear",
     ),
 )
 def test_diagnostic_and_evidence_content_routes_to_reasoning(content) -> None:
