@@ -289,9 +289,12 @@ def test_final_evidence_must_match_a_locally_authorized_tool_citation() -> None:
     )
 
     payload["evidence"][0]["source_revision"] = "invented-revision"
+    # Three responses: the corrective retry consumes one and the forged
+    # citation is repeated, so the turn still ends unauthorized_evidence.
     rejected_client = _Client([
         _response(response_id="tool", calls=[_tool_call()]),
         _response(response_id="final", text=json.dumps(payload)),
+        _response(response_id="final_retry", text=json.dumps(payload)),
     ])
     rejected = asyncio.run(
         _adapter(rejected_client, registry=registry).reason(
@@ -664,3 +667,30 @@ def test_cancel_timeout_lost_response_and_invalid_schema_are_incomplete() -> Non
         outcome.response.response_state == "incomplete"
         for outcome in (canceled, timed_out, lost, invalid)
     )
+
+
+def test_unauthorized_evidence_gets_one_corrective_retry() -> None:
+    """A citation-mangled final is corrected once, then honest (2026-08-10)."""
+    cited = json.loads(_canonical_json())
+    cited["evidence"] = [
+        {
+            "source_type": "asset_machine",
+            "source_id": "44",
+            "source_revision": "2026-08-01T00:00:00+00:00",
+            "authorization_class": "maintenance_scope",
+            "as_of": "2026-08-01T00:00:00+00:00",
+            "locator": {"field": "/machines/44"},
+            "claim": "The machine context supports this.",
+        }
+    ]
+    client = _Client([
+        _response(response_id="resp_cited", text=json.dumps(cited)),
+        _response(response_id="resp_clean", text=_canonical_json()),
+    ])
+    outcome = asyncio.run(_adapter(client).reason(envelope=_envelope()))
+
+    assert outcome.response.response_state == "complete"
+    assert outcome.provenance.provider_request_id == "resp_clean"
+    note = client.responses.calls[1]["input"][-1]
+    assert note["role"] == "user"
+    assert "did not reproduce a local tool citation exactly" in note["content"]

@@ -283,6 +283,18 @@ _SCHEMA_RETRY_NOTE = (
     "Return ONLY the corrected strict JSON object now - no code fences, no "
     "commentary - following every rule already given."
 )
+#: Live 2026-08-10: a turn that survived a denied tool call then failed
+#: because one model-written evidence entry did not reproduce a tool
+#: citation exactly. Same single-shot budget as the schema retry.
+_CITATION_RETRY_NOTE = (
+    "One or more evidence entries in your previous reply did not reproduce a "
+    "local tool citation exactly. Return ONLY the corrected strict "
+    "CanonicalTurnResponse JSON object: every evidence entry must copy "
+    "source_type, id, revision, authorization class, locator and as-of "
+    "EXACTLY from a tool result citation, and any claim you cannot cite that "
+    "way must be removed or the response converted to an abstention."
+)
+_CORRECTIVE_RETRY_CODES = frozenset({"invalid_final_schema", "unauthorized_evidence"})
 
 
 def _denied_tool_output(call_id: str) -> dict[str, Any]:
@@ -1194,7 +1206,7 @@ class LunaDiagnosticsAdapter:
                 )
                 remaining_retry_tokens = self.budget.max_output_tokens - output_tokens_used
                 if (
-                    outcome.provenance.outcome_code == "invalid_final_schema"
+                    outcome.provenance.outcome_code in _CORRECTIVE_RETRY_CODES
                     and not schema_retry_used
                     and deadline - self._clock() >= _SCHEMA_RETRY_MIN_REMAINING_S
                     and remaining_retry_tokens >= 128
@@ -1202,9 +1214,18 @@ class LunaDiagnosticsAdapter:
                     # One corrective continuation; the retry is validated by
                     # the same finalizer, so nothing weaker can ship.
                     schema_retry_used = True
-                    logger.warning("luna.schema_retry request_id=%s", request_id)
+                    logger.warning(
+                        "luna.corrective_retry code=%s request_id=%s",
+                        outcome.provenance.outcome_code,
+                        request_id,
+                    )
+                    note = (
+                        _CITATION_RETRY_NOTE
+                        if outcome.provenance.outcome_code == "unauthorized_evidence"
+                        else _SCHEMA_RETRY_NOTE
+                    )
                     transcript.extend(_replayable_output(response))
-                    transcript.append({"role": "user", "content": _SCHEMA_RETRY_NOTE})
+                    transcript.append({"role": "user", "content": note})
                     request = self._base_request(
                         envelope=envelope,
                         effort=selected_effort,
