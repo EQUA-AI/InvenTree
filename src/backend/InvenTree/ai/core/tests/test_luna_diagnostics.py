@@ -364,15 +364,8 @@ def test_uncited_gate_cannot_be_dodged_by_kind_drift() -> None:
     assert outcome.provenance.outcome_code == "uncited_recommendation"
 
 
-@pytest.mark.parametrize(
-    ("call", "expected_code"),
-    [
-        (_tool_call(name="create_diagnostic_draft"), "tool_denied"),
-        (_tool_call(arguments="not-json"), "tool_arguments_invalid"),
-    ],
-)
-def test_invalid_or_unavailable_tool_calls_are_incomplete(call, expected_code) -> None:
-    client = _Client([_response(calls=[call])])
+def test_invalid_tool_arguments_are_incomplete() -> None:
+    client = _Client([_response(calls=[_tool_call(arguments="not-json")])])
     outcome = asyncio.run(
         _adapter(client, registry=_Registry()).reason(
             envelope=_envelope(tools=("get_machine_context",))
@@ -382,7 +375,131 @@ def test_invalid_or_unavailable_tool_calls_are_incomplete(call, expected_code) -
     assert outcome.response.response_state == "incomplete"
     assert outcome.response.speak is False
     assert outcome.response.recommended_actions == []
-    assert outcome.provenance.outcome_code == expected_code
+    assert outcome.provenance.outcome_code == "tool_arguments_invalid"
+
+
+def test_denied_tool_call_gets_a_refusal_and_the_turn_recovers() -> None:
+    """An invented tool name no longer kills the turn (live 2026-08-10).
+
+    The model receives one constant refusal output and its corrected next
+    round completes normally; the refusal text must reveal nothing about
+    whether the record or tool exists.
+    """
+    client = _Client([
+        _response(calls=[_tool_call(name="create_diagnostic_draft", call_id="bad_1")]),
+        _response(text=_canonical_json()),
+    ])
+    outcome = asyncio.run(
+        _adapter(client, registry=_Registry()).reason(
+            envelope=_envelope(tools=("get_machine_context",))
+        )
+    )
+
+    assert outcome.response.response_state == "complete"
+    # The second request replays the refusal output for the bad call.
+    second = client.responses.calls[1]
+    refusals = [
+        item
+        for item in second["input"]
+        if isinstance(item, dict)
+        and item.get("call_id") == "bad_1"
+        and item.get("type") == "function_call_output"
+    ]
+    assert len(refusals) == 1
+    assert "tool_unavailable" in refusals[0]["output"]
+    assert "create_diagnostic_draft" not in refusals[0]["output"]
+    # Denied calls never reach provenance as executed tools.
+    assert outcome.provenance.tool_names == ()
+
+
+def test_persistent_denied_calls_still_end_the_turn() -> None:
+    """The denial budget is a cap, not forgiveness: three bad calls die."""
+    bad = [
+        _response(calls=[_tool_call(name="create_diagnostic_draft", call_id=f"bad_{i}")])
+        for i in range(3)
+    ]
+    client = _Client(bad)
+    outcome = asyncio.run(
+        _adapter(client, registry=_Registry()).reason(
+            envelope=_envelope(tools=("get_machine_context",))
+        )
+    )
+    assert outcome.provenance.outcome_code == "tool_denied"
+    assert outcome.response.response_state == "incomplete"
+
+
+def test_failed_tool_execution_gets_the_same_refusal_and_recovers() -> None:
+    """An authorization failure is indistinguishable from an unknown name."""
+
+    class _FailingRegistry(_Registry):
+        async def execute(self, *, name, arguments, context):
+            raise RuntimeError("authorization failed for record 44")
+
+    client = _Client([
+        _response(calls=[_tool_call(call_id="auth_1")]),
+        _response(text=_canonical_json()),
+    ])
+    outcome = asyncio.run(
+        _adapter(client, registry=_FailingRegistry()).reason(
+            envelope=_envelope(tools=("get_machine_context",))
+        )
+    )
+    assert outcome.response.response_state == "complete"
+    second = client.responses.calls[1]
+    refusals = [
+        item
+        for item in second["input"]
+        if isinstance(item, dict)
+        and item.get("call_id") == "auth_1"
+        and item.get("type") == "function_call_output"
+    ]
+    assert len(refusals) == 1
+    assert "tool_unavailable" in refusals[0]["output"]
+    # The failure detail must never leak into what the model sees.
+    assert "authorization failed" not in refusals[0]["output"]
+    assert "44" not in refusals[0]["output"]
+
+
+def test_invalid_final_schema_gets_one_corrective_retry() -> None:
+    """Model JSON drift (live 08-03/08-10) is repaired once, then honest."""
+    client = _Client([
+        _response(response_id="resp_bad", text="{not valid json"),
+        _response(response_id="resp_good", text=_canonical_json()),
+    ])
+    outcome = asyncio.run(_adapter(client).reason(envelope=_envelope()))
+
+    assert outcome.response.response_state == "complete"
+    assert outcome.provenance.provider_request_id == "resp_good"
+    retry = client.responses.calls[1]
+    note = retry["input"][-1]
+    assert note["role"] == "user"
+    assert "not a valid CanonicalTurnResponse" in note["content"]
+
+
+def test_schema_retry_is_single_shot() -> None:
+    """Two invalid finals stay invalid_final_schema — no retry loops."""
+    client = _Client([
+        _response(text="{not valid json"),
+        _response(text="{still not valid"),
+    ])
+    outcome = asyncio.run(_adapter(client).reason(envelope=_envelope()))
+    assert outcome.provenance.outcome_code == "invalid_final_schema"
+    assert len(client.responses.calls) == 2
+
+
+def test_history_directive_only_when_tools_offered() -> None:
+    """The instructions never tempt tools the envelope cannot honour."""
+    with_history = _Client([_response(text=_canonical_json())])
+    asyncio.run(
+        _adapter(with_history).reason(envelope=_envelope(tools=("get_recent_maintenance_history",)))
+    )
+    assert "find_similar_past_repairs" in with_history.responses.calls[0]["instructions"]
+
+    without = _Client([_response(text=_canonical_json())])
+    asyncio.run(_adapter(without).reason(envelope=_envelope(tools=("get_machine_context",))))
+    instructions = without.responses.calls[0]["instructions"]
+    assert "find_similar_past_repairs" not in instructions
+    assert "never invent or guess a tool name" in instructions
 
 
 def test_non_json_tool_result_is_incomplete() -> None:
@@ -528,8 +645,15 @@ def test_cancel_timeout_lost_response_and_invalid_schema_are_incomplete() -> Non
         ).reason(envelope=_envelope())
     )
     lost = asyncio.run(_adapter(_Client([_response(text="")])).reason(envelope=_envelope()))
+    # Two invalid finals: the schema retry (single-shot) runs and the turn
+    # still reports honestly.
     invalid = asyncio.run(
-        _adapter(_Client([_response(text='{"unexpected":true}')])).reason(envelope=_envelope())
+        _adapter(
+            _Client([
+                _response(text='{"unexpected":true}'),
+                _response(text='{"unexpected":true}'),
+            ])
+        ).reason(envelope=_envelope())
     )
 
     assert canceled.provenance.outcome_code == "canceled"

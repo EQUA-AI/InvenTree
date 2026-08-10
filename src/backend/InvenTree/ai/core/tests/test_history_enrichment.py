@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -308,7 +309,17 @@ def test_continuation_requesting_more_tools_forfeits_enrichment() -> None:
 
 
 def test_history_evidence_already_cited_skips_enrichment() -> None:
-    """History evidence in the answer means the gate has nothing to add."""
+    """History evidence in the answer means the gate has nothing to add.
+
+    Unit-level on the gate itself: building a full turn whose history
+    citation is AUTHORIZED needs a real tool round, and the previous
+    fixture quietly failed schema validation instead of testing this.
+    """
+    from ai.core.reasoning.luna_diagnostics import ReasoningOutcome
+    from ai.core.reasoning.schemas import CanonicalTurnResponse
+
+    registry = _HistoryRegistry()
+    adapter = _adapter(_Client([]), registry=registry)
     payload = json.loads(_diagnosis_json())
     payload["evidence"] = [
         {
@@ -316,22 +327,40 @@ def test_history_evidence_already_cited_skips_enrichment() -> None:
             "source_id": "5",
             "source_revision": "2026-08-01T00:00:00+00:00",
             "authorization_class": "maintenance_scope",
-            "as_of": "2026-08-01T00:00:00+00:00",
+            "as_of": datetime(2026, 8, 1, tzinfo=UTC),
             "locator": {"field": "/machines/44/maintenance/5"},
-            "summary": "Seal replaced two weeks ago.",
+            "claim": "Seal replaced two weeks ago.",
         }
     ]
-    registry = _HistoryRegistry()
-    client = _Client([_response(text=json.dumps(payload))])
-    adapter = _adapter(client, registry=registry)
-
-    # The citation must be authorized or the turn dies before the gate: give
-    # the loop a matching authorized citation via a model-initiated call...
-    # simpler: patch the evidence gate input by running with the citation
-    # pre-authorized through a real tool round is heavy — instead assert the
-    # unauthorized-evidence path stands AND no enrichment dispatch happened.
+    canonical = CanonicalTurnResponse.model_validate(payload)
+    outcome = ReasoningOutcome(
+        response=canonical,
+        provenance=adapter._provenance(
+            effort="medium",
+            request_id="resp_1",
+            tool_names=(),
+            tool_rounds=0,
+            outcome_code="complete",
+        ),
+    )
     with patch("ai.core.config.get_settings", return_value=_settings(True)):
-        outcome = _run(adapter, _envelope())
-    assert outcome.provenance.history_enrichment_rounds == 0
+        result = asyncio.run(
+            adapter._maybe_enrich_with_history(
+                outcome=outcome,
+                envelope=_envelope(),
+                tool_context=object(),
+                transcript=[],
+                response=_response(text=_diagnosis_json()),
+                selected_effort="medium",
+                request_id="resp_1",
+                tool_names=[],
+                tool_rounds=0,
+                tool_data_bytes=0,
+                authorized_citations=set(),
+                deadline=1e12,
+                output_tokens_used=0,
+                cancel_event=None,
+            )
+        )
+    assert result is None
     assert registry.executions == []
-    assert len(client.responses.calls) == 1

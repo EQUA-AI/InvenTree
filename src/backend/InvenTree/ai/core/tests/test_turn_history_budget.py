@@ -270,9 +270,13 @@ class TestLunaUsageAndTruncation:
         assert outcome.provenance.outcome_code == "output_token_limit"
 
     def test_other_incomplete_reasons_keep_existing_attribution(self) -> None:
-        response = _response(text='{"kind": "repair_diag')
-        response.status = "incomplete"
-        response.incomplete_details = SimpleNamespace(reason="content_filter")
-        adapter = _adapter(_Client([response]))
+        def _partial():
+            response = _response(text='{"kind": "repair_diag')
+            response.status = "incomplete"
+            response.incomplete_details = SimpleNamespace(reason="content_filter")
+            return response
+
+        # Two copies: the schema-retry continuation consumes one.
+        adapter = _adapter(_Client([_partial(), _partial()]))
         outcome = asyncio.run(adapter.reason(envelope=_envelope()))
         assert outcome.provenance.outcome_code == "invalid_final_schema"
