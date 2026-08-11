@@ -845,14 +845,33 @@ class LunaDiagnosticsAdapter:
         try:
             canonical = CanonicalTurnResponse.model_validate_json(text)
         except (ValidationError, ValueError, TypeError, json.JSONDecodeError):
-            return self._incomplete_outcome(
-                code="invalid_final_schema",
-                effort=selected_effort,
-                request_id=request_id,
-                tool_names=tool_names,
-                tool_rounds=tool_rounds,
-                history_rounds=history_rounds,
-            )
+            # Voice finals fail the strict spoken-summary lexical contract far
+            # more often than text finals fail anything (Phase 6 battery A3:
+            # a fully-cited answer died as invalid_final_schema twice). If the
+            # ONLY problem is the spoken contract, salvage the answer with
+            # speech stripped: re-validate with speak=False and an empty
+            # summary, so nothing unvalidated is ever spoken and the voice
+            # rail's "answer is ready in the chat" phrase covers audio. Any
+            # other defect still fails exactly as before.
+            canonical = None
+            try:
+                payload = json.loads(text)
+                if isinstance(payload, dict):
+                    payload["speak"] = False
+                    payload["spoken_summary"] = ""
+                    canonical = CanonicalTurnResponse.model_validate(payload)
+                    logger.warning("luna.spoken_summary_stripped request_id=%s", request_id)
+            except (ValidationError, ValueError, TypeError, json.JSONDecodeError):
+                canonical = None
+            if canonical is None:
+                return self._incomplete_outcome(
+                    code="invalid_final_schema",
+                    effort=selected_effort,
+                    request_id=request_id,
+                    tool_names=tool_names,
+                    tool_rounds=tool_rounds,
+                    history_rounds=history_rounds,
+                )
         if "\\n" in canonical.detailed_response and "\n" not in canonical.detailed_response:
             # A visible answer with literal backslash-n separators and
             # NO real newlines is the double-escaped-JSON artifact —

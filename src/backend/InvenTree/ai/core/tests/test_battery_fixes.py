@@ -128,3 +128,94 @@ def test_no_match_hint_wording_present_in_turn_service():
     window = source[anchor - 800 : anchor]
     assert 'response_state.value == "incomplete"' in window
     assert "authorized_records" in window
+
+
+def test_spoken_contract_failure_salvages_with_speech_stripped():
+    """A final failing ONLY the spoken contract survives as unspoken text."""
+    import json as jsonlib
+
+    from ai.core.reasoning import luna_diagnostics as luna
+
+    adapter = luna.LunaDiagnosticsAdapter.__new__(luna.LunaDiagnosticsAdapter)
+    adapter.budget = luna.ToolLoopBudget(timeout_seconds=45.0)
+    adapter.provider_config = luna.ReasoningProviderConfig(
+        invocation_mode="direct_deployment",
+        project_endpoint="",
+        agent_name="",
+        agent_version="",
+        direct_endpoint="https://example.com",
+        direct_deployment="luna",
+        direct_api_version="v1",
+    )
+
+    good = {
+        "kind": "repair_diagnosis",
+        "response_version": luna.CANONICAL_RESPONSE_VERSION,
+        "response_state": "complete",
+        "detailed_response": "The likely cause may be a worn bearing.",
+        # Violates the lexical contract: drops the uncertainty marker and
+        # does not echo the safety boundary.
+        "spoken_summary": "It is a worn bearing.",
+        "reasoning_summary": "Cited review.",
+        "confidence": "low",
+        "evidence": [],
+        "next_questions": [],
+        "recommended_actions": [],
+        "safety_boundary": "No safety status was inferred.",
+        "speak": True,
+    }
+    response = {
+        "id": "resp_x",
+        "output": [
+            {"type": "message", "content": [{"type": "output_text", "text": jsonlib.dumps(good)}]}
+        ],
+    }
+
+    outcome = adapter._finalize_response(
+        response=response,
+        selected_effort="medium",
+        request_id="resp_x",
+        tool_names=("get_machine_context",),
+        tool_rounds=2,
+        authorized_citations=set(),
+        history_rounds=0,
+    )
+    result = outcome.response
+    assert result.response_state.value == "complete"
+    assert result.speak is False
+    assert result.spoken_summary == ""
+    assert "worn bearing" in result.detailed_response
+
+
+def test_broken_final_still_fails_as_invalid_schema():
+    """A final broken beyond the spoken contract keeps the incomplete path."""
+    from ai.core.reasoning import luna_diagnostics as luna
+
+    adapter = luna.LunaDiagnosticsAdapter.__new__(luna.LunaDiagnosticsAdapter)
+    adapter.budget = luna.ToolLoopBudget(timeout_seconds=45.0)
+    adapter.provider_config = luna.ReasoningProviderConfig(
+        invocation_mode="direct_deployment",
+        project_endpoint="",
+        agent_name="",
+        agent_version="",
+        direct_endpoint="https://example.com",
+        direct_deployment="luna",
+        direct_api_version="v1",
+    )
+    response = {
+        "id": "resp_y",
+        "output": [
+            {"type": "message", "content": [{"type": "output_text", "text": '{"nonsense": true}'}]}
+        ],
+    }
+    outcome = adapter._finalize_response(
+        response=response,
+        selected_effort="medium",
+        request_id="resp_y",
+        tool_names=(),
+        tool_rounds=0,
+        authorized_citations=set(),
+        history_rounds=0,
+    )
+    assert outcome.response.response_state.value == "incomplete"
+    assert "stopped (invalid_final_schema)" in outcome.response.reasoning_summary
