@@ -884,7 +884,11 @@ class LunaDiagnosticsAdapter:
                 if isinstance(payload, dict):
                     payload["speak"] = False
                     payload["spoken_summary"] = ""
-                    canonical = CanonicalTurnResponse.model_validate(payload)
+                    # Back through JSON mode: the schema is strict, and
+                    # python-mode validation of a JSON-loaded dict rejects
+                    # the string-to-enum coercions JSON mode permits — which
+                    # silently defeated this salvage on its first live run.
+                    canonical = CanonicalTurnResponse.model_validate_json(json.dumps(payload))
                     logger.warning("luna.spoken_summary_stripped request_id=%s", request_id)
             except (ValidationError, ValueError, TypeError, json.JSONDecodeError):
                 canonical = None

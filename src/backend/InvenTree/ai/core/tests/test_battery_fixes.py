@@ -172,7 +172,20 @@ def test_spoken_contract_failure_salvages_with_speech_stripped():
         "spoken_summary": "It is a worn bearing.",
         "reasoning_summary": "Cited review.",
         "confidence": "low",
-        "evidence": [],
+        # A REAL evidence entry with an ISO datetime: strict python-mode
+        # validation rejects the string as_of that JSON mode accepts, which
+        # is exactly how the first salvage version silently failed live.
+        "evidence": [
+            {
+                "source_type": "machine_health_summary",
+                "source_id": "23",
+                "source_revision": "2026-08-08T03:05:15+00:00",
+                "locator": {"field": "state"},
+                "as_of": "2026-08-11T16:05:36+00:00",
+                "authorization_class": "maintenance_scope",
+                "claim": "State is unknown with zero signals.",
+            }
+        ],
         "next_questions": [],
         "recommended_actions": [],
         "safety_boundary": "No safety status was inferred.",
@@ -191,7 +204,16 @@ def test_spoken_contract_failure_salvages_with_speech_stripped():
         request_id="resp_x",
         tool_names=("get_machine_context",),
         tool_rounds=2,
-        authorized_citations=set(),
+        authorized_citations={
+            (
+                "machine_health_summary",
+                "23",
+                "2026-08-08T03:05:15+00:00",
+                "maintenance_scope",
+                "state",
+                "2026-08-11T16:05:36+00:00",
+            )
+        },
         history_rounds=0,
     )
     result = outcome.response
