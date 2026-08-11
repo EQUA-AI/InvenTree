@@ -11,6 +11,7 @@ validates and stores the proposal in a second transaction (NFR-CO-003).
 """
 
 import hashlib
+import logging
 import uuid
 
 from django.conf import settings
@@ -47,6 +48,8 @@ from tasks.services.work_orders import (
     _require_scope,
     _require_version,
 )
+
+logger = logging.getLogger(__name__)
 
 CAPTURE_CLOSEOUT = 'tasks.capture_closeout'
 REVIEW_CLOSEOUT = 'tasks.review_closeout'
@@ -99,6 +102,51 @@ def _max_narrative_chars() -> int:
 
 def _narrative_hash(narrative: str) -> str:
     return hashlib.sha256(narrative.encode()).hexdigest()
+
+
+def _min_narrative_chars() -> int:
+    return int(getattr(settings, 'AIMMS_CLOSEOUT_MIN_NARRATIVE_CHARS', 80))
+
+
+# Coaching warnings (S30 E5): deterministic quality nudges computed from the
+# work order's own state, merged into the proposal warning set so the review
+# step's existing alert surfaces them. Strings obey the extraction contract's
+# 64-char bound.
+_COACH_THIN_NARRATIVE = 'Narrative is thin; add cause, action and result detail'
+_COACH_READINGS = 'Required readings are unresolved'
+_COACH_PART_USAGE = 'Part usage rows are unresolved'
+
+_MAX_PROPOSAL_WARNINGS = 32
+
+
+def coaching_warnings(work_order, narrative: str) -> list[str]:
+    """Return deterministic closeout-quality warnings; never raises."""
+    from tasks.services.closeout_reconcile import (
+        unresolved_required_readings,
+        unresolved_usage_rows,
+    )
+
+    warnings: list[str] = []
+    try:
+        if len((narrative or '').strip()) < _min_narrative_chars():
+            warnings.append(_COACH_THIN_NARRATIVE)
+        if unresolved_required_readings(work_order):
+            warnings.append(_COACH_READINGS)
+        variances, candidates = unresolved_usage_rows(work_order)
+        if variances or candidates:
+            warnings.append(_COACH_PART_USAGE)
+    except Exception:  # pragma: no cover - coaching must never block closeout
+        logger.warning('closeout coaching evaluation failed', exc_info=False)
+    return warnings
+
+
+def _merge_warnings(base: list[str], extra: list[str]) -> list[str]:
+    """Append new warnings without duplicates, keeping the contract cap."""
+    merged = list(base)
+    for warning in extra:
+        if warning not in merged:
+            merged.append(warning)
+    return merged[:_MAX_PROPOSAL_WARNINGS]
 
 
 def _validate_narrative(narrative: str):
@@ -435,6 +483,9 @@ def request_extraction(*, work_order_id, capture_id, actor):
     except WorkOrderCommandError:
         _revert_capture_to_open(capture_id)
         raise
+    document['warnings'] = _merge_warnings(
+        document['warnings'], coaching_warnings(work_order, narrative)
+    )
 
     with transaction.atomic():
         capture = CloseoutCapture.objects.select_for_update().get(pk=capture_id)
@@ -464,19 +515,21 @@ def request_extraction(*, work_order_id, capture_id, actor):
         return proposal
 
 
-def _manual_proposal(revision) -> CloseoutProposal:
+def _manual_proposal(revision, work_order) -> CloseoutProposal:
+    warnings = _merge_warnings([], coaching_warnings(work_order, revision.narrative))
     document = {
         'schema_version': EXTRACTION_SCHEMA_VERSION,
         'fields': {},
         'part_candidates': [],
         'reading_candidates': [],
-        'warnings': [],
+        'warnings': warnings,
     }
     return CloseoutProposal.objects.create(
         capture_revision=revision,
         schema_version=EXTRACTION_SCHEMA_VERSION,
         extractor='manual',
         fields={},
+        warnings=warnings,
         content_hash=content_hash(document),
     )
 
@@ -574,7 +627,7 @@ def record_decisions(
 
     proposal = _live_proposal(revision)
     if proposal is None:
-        proposal = _manual_proposal(revision)
+        proposal = _manual_proposal(revision, work_order)
 
     now = timezone.now()
     for entry in decisions:

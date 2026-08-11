@@ -1004,3 +1004,72 @@ class ProposalApiTests(ProposalRailTestCase):
         self.assertEqual(proposal.failure_code, 'DUPLICATE_OPEN_REPAIR')
         self.assertEqual(WorkOrder.objects.count(), before_orders)
         self.assertEqual(RepairPacket.objects.count(), before_packets)
+
+
+def _machine_scope_resolver(actor):
+    """Scope resolver granting the customer scope plus every client scope."""
+    scopes = set()
+    customer = Company.objects.filter(name='Proposal Cust').first()
+    if customer is not None:
+        scopes.add(MaintenanceScope(customer_id=customer.pk, site_key=None))
+    for client_row in Client.objects.all():
+        scopes.add(
+            MaintenanceScope(
+                customer_id=None, site_key=None, client_id=client_row.pk
+            )
+        )
+    return scopes
+
+
+class TargetlessProposalApiTests(ProposalRailTestCase):
+    """S30 E1: the REST rail accepts targetless creating actions."""
+
+    RESOLVER = f'{__name__}._machine_scope_resolver'
+
+    def test_repair_package_draft_without_work_order_id(self):
+        """A repair work-package draft posts with no work_order_id at all."""
+        from assets.health_models import MachineAnomaly
+
+        anomaly = MachineAnomaly.objects.create(
+            machine=self.machine,
+            fingerprint=uuid.uuid4().hex,
+            severity='critical',
+            status='open',
+            title='Bearing temperature high',
+            first_observed_at=timezone.now() - timedelta(hours=2),
+            last_observed_at=timezone.now(),
+        )
+        with self.settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=self.RESOLVER):
+            self.client.force_login(self.actor)
+            created = self.client.post(
+                '/api/aichat/proposals/',
+                {
+                    'action_type': 'repair_work_package.create',
+                    'reason': 'Drafted from Risk Radar finding #1',
+                    'intent': {
+                        'machine_id': self.machine.pk,
+                        'title': 'Unaddressed anomaly: bearing temperature',
+                        'origin': 'anomaly',
+                        'source': {'anomaly_id': anomaly.pk},
+                        'fault': {'summary': 'Bearing temperature high'},
+                    },
+                },
+                content_type='application/json',
+            )
+            self.assertEqual(created.status_code, 201, created.content)
+            body = created.json()
+            self.assertEqual(body['work_order_id'], None)
+            self.assertEqual(body['preview']['machine_name'], self.machine.name)
+            self.assertEqual(body['preview']['origin'], 'anomaly')
+
+    def test_targeted_actions_still_require_a_work_order_id(self):
+        """The null-target allowance is scoped to creating actions only."""
+        with self.settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=self.RESOLVER):
+            self.client.force_login(self.actor)
+            response = self.client.post(
+                '/api/aichat/proposals/',
+                {'action_type': 'work_order.hold', 'reason': 'hold'},
+                content_type='application/json',
+            )
+            self.assertEqual(response.status_code, 400, response.content)
+            self.assertEqual(response.json()['error'], 'PROPOSAL_INVALID')

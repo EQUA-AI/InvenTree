@@ -21,7 +21,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from aichat.models import ChatActionProposal
+from aichat.models import ChatActionProposal, ProposalAction
 from aichat.services import proposals as proposal_service
 
 
@@ -116,13 +116,24 @@ class ProposalListCreateView(APIView):
         action_type = str(data.get('action_type', ''))
         reason = str(data.get('reason', ''))
         idempotency_key = str(data.get('idempotency_key') or f'ui:{uuid.uuid4()}')[:128]
-        try:
-            work_order_id = int(data.get('work_order_id'))
-        except (TypeError, ValueError):
-            return Response(
-                {'error': 'PROPOSAL_INVALID', 'detail': 'work_order_id required'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # Creating actions are targetless: the service authorizes against the
+        # machine (or candidate set) named in the intent instead of a work
+        # order. Every other action still requires an integer target.
+        targetless = action_type in {
+            ProposalAction.WORK_ORDER_CREATE.value,
+            ProposalAction.REPAIR_WORK_PACKAGE_CREATE.value,
+            ProposalAction.SCHEDULE_OPTIMIZE.value,
+        }
+        raw_target = data.get('work_order_id')
+        work_order_id = None
+        if raw_target is not None or not targetless:
+            try:
+                work_order_id = int(raw_target)
+            except (TypeError, ValueError):
+                return Response(
+                    {'error': 'PROPOSAL_INVALID', 'detail': 'work_order_id required'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         # Optional action parameters (schedule window, assignee, plan fields).
         # Untrusted display data: the service re-derives and the command
         # re-validates it at confirmation; here we only enforce the shape.

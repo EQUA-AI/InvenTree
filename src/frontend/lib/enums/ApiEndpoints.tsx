@@ -126,6 +126,8 @@ export enum ApiEndpoints {
   aichat_conversation_tools = 'aichat/conversations/:id/tools/',
   aichat_conversation_tool_invoke = 'aichat/conversations/:id/tools/invoke/',
   aichat_proposal_list = 'aichat/proposals/',
+  aichat_proposal_confirm = 'aichat/proposals/:id/confirm/',
+  aichat_proposal_reject = 'aichat/proposals/:id/reject/',
 
   // Repair Packet endpoints
   repair_packet_list = 'repair/packets/',

@@ -8,7 +8,9 @@ from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
+from .risk_models import RiskFindingState
 from .risk_rules import (
+    AnomalyUnaddressedRule,
     ApprovalRevalidationFailedRule,
     ApprovalSlaBreachRule,
     AssetRepeatMaintenanceRule,
@@ -16,6 +18,8 @@ from .risk_rules import (
     JobKitShortageAgingRule,
     PacketStalledRule,
     PoLateRule,
+    ScheduleInfeasibleRule,
+    ShiftBriefingRule,
     StockBelowCriticalRule,
     WoBlockedAssignmentRule,
     WoBlockedProcedureRule,
@@ -740,3 +744,154 @@ class AssetRepeatMaintenanceRuleTest(RuleTestBase):
             config={'window_days': 30, 'threshold': 3},
         )
         self.assertEqual(candidates, [])
+
+
+class AnomalyUnaddressedTests(RuleTestBase):
+    """E1: active warning/critical anomalies aging without a linked response."""
+
+    def _anomaly(self, *, machine=None, severity='critical', age_minutes=90, **kw):
+        from assets.health_models import MachineAnomaly
+
+        now = timezone.now()
+        observed = now - timedelta(minutes=age_minutes)
+        defaults = {
+            'machine': machine or self.machine,
+            'fingerprint': uuid.uuid4().hex,
+            'severity': severity,
+            'status': 'open',
+            'title': 'Bearing temperature high',
+            'first_observed_at': observed,
+            'last_observed_at': now,
+        }
+        defaults.update(kw)
+        return MachineAnomaly.objects.create(**defaults)
+
+    def test_aged_unlinked_anomaly_matches_with_criticality(self):
+        """A critical anomaly past grace with no WO/packet is a candidate."""
+        anomaly = self._anomaly(severity='critical', age_minutes=90)
+        candidates, complete = evaluate(
+            AnomalyUnaddressedRule(), 'machine_anomaly', self.actor, self.client_scope
+        )
+        self.assertTrue(complete)
+        self.assertEqual([c.source_id for c in candidates], [str(anomaly.pk)])
+        self.assertEqual(candidates[0].severity_factors['criticality'], 'critical')
+        self.assertEqual(candidates[0].evidence['anomaly_id'], anomaly.pk)
+        kinds = {link['target_kind'] for link in candidates[0].action_links}
+        self.assertIn('machine_anomaly', kinds)
+
+    def test_warning_anomaly_has_no_criticality_promotion(self):
+        """Warning anomalies keep the high base without a criticality factor."""
+        self._anomaly(severity='warning', age_minutes=90)
+        candidates, _ = evaluate(
+            AnomalyUnaddressedRule(), 'machine_anomaly', self.actor, self.client_scope
+        )
+        self.assertEqual(len(candidates), 1)
+        self.assertNotIn('criticality', candidates[0].severity_factors)
+
+    def test_linked_young_info_and_resolved_are_silent(self):
+        """Linked, in-grace, info-severity and resolved anomalies never match."""
+        wo = self.make_work_order(machine=self.machine)
+        self._anomaly(age_minutes=90, work_order=wo)
+        self._anomaly(age_minutes=5)
+        self._anomaly(severity='info', age_minutes=90)
+        self._anomaly(age_minutes=90, status='resolved')
+        candidates, _ = evaluate(
+            AnomalyUnaddressedRule(), 'machine_anomaly', self.actor, self.client_scope
+        )
+        self.assertEqual(candidates, [])
+
+    def test_other_tenant_anomaly_is_out_of_scope(self):
+        """The adapter proves scope by the machine's client identity."""
+        self._anomaly(machine=self.other_machine, age_minutes=90)
+        candidates, _ = evaluate(
+            AnomalyUnaddressedRule(), 'machine_anomaly', self.actor, self.client_scope
+        )
+        self.assertEqual(candidates, [])
+
+
+class ScheduleInfeasibleTests(RuleTestBase):
+    """E3: pure planning what-if over the scope's open work orders."""
+
+    def _wo(self, *, minutes=60, due=None, lifecycle='ready', title='WO'):
+        wo = self.make_work_order(lifecycle=lifecycle, title=title)
+        wo.estimated_minutes = minutes
+        wo.due_date = due
+        wo.save(update_fields=['estimated_minutes', 'due_date'])
+        return wo
+
+    def test_missing_estimate_and_past_due_are_reported(self):
+        """No-estimate and planned-past-due conditions become candidates."""
+        no_estimate = self._wo(minutes=None, title='No estimate')
+        late = self._wo(
+            minutes=240, due=(timezone.now() - timedelta(days=2)).date(), title='Late'
+        )
+        candidates, complete = evaluate(
+            ScheduleInfeasibleRule(), 'work_order', self.actor, self.scope
+        )
+        self.assertTrue(complete)
+        reasons = {c.evidence.get('reason') for c in candidates}
+        self.assertEqual(reasons, {'no_estimate', 'past_due'})
+        by_reason = {c.evidence['reason']: c for c in candidates}
+        self.assertEqual(by_reason['no_estimate'].source_id, str(no_estimate.pk))
+        self.assertEqual(by_reason['past_due'].source_id, str(late.pk))
+        self.assertGreaterEqual(by_reason['past_due'].severity_factors['days_late'], 1)
+
+    def test_dependency_cycle_is_reported_once(self):
+        """A dependency loop yields one stable candidate naming all members."""
+        from tasks.models import WorkOrderDependency
+
+        first = self._wo(title='First')
+        second = self._wo(title='Second')
+        WorkOrderDependency.objects.create(predecessor=first, successor=second)
+        WorkOrderDependency.objects.create(predecessor=second, successor=first)
+        candidates, _ = evaluate(
+            ScheduleInfeasibleRule(), 'work_order', self.actor, self.scope
+        )
+        cycles = [
+            c for c in candidates if c.evidence.get('reason') == 'dependency_cycle'
+        ]
+        self.assertEqual(len(cycles), 1)
+        self.assertEqual(
+            set(cycles[0].evidence['work_order_ids']), {first.pk, second.pk}
+        )
+
+    def test_terminal_and_feasible_orders_are_silent(self):
+        """Completed/canceled and comfortably feasible orders never match."""
+        self._wo(minutes=None, lifecycle='completed', title='Done')
+        self._wo(
+            minutes=60, due=(timezone.now() + timedelta(days=30)).date(), title='Fine'
+        )
+        candidates, _ = evaluate(
+            ScheduleInfeasibleRule(), 'work_order', self.actor, self.scope
+        )
+        self.assertEqual(candidates, [])
+
+
+class ShiftBriefingTests(RuleTestBase):
+    """E2: one per-scope digest that supersedes daily by fingerprint date."""
+
+    def test_digest_counts_active_findings_and_excludes_itself(self):
+        """The digest counts other rules' findings, never its own."""
+        self.make_finding(discriminator='a1', severity='high')
+        self.make_finding(discriminator='a2', severity='medium')
+        self.make_finding(discriminator='old', state=RiskFindingState.RESOLVED)
+        self.make_finding(code='SHIFT_BRIEFING', discriminator='self')
+        candidates, complete = evaluate(
+            ShiftBriefingRule(), 'risk_finding', self.actor, self.scope
+        )
+        self.assertTrue(complete)
+        self.assertEqual(len(candidates), 1)
+        digest = candidates[0]
+        self.assertEqual(digest.evidence['active_count'], 2)
+        self.assertEqual(digest.evidence['by_severity'], {'high': 1, 'medium': 1})
+        self.assertEqual(digest.evidence['resolved_last_window'], 1)
+        self.assertEqual(digest.fingerprint_parts, (digest.evidence['briefing_date'],))
+        self.assertEqual(digest.source_id, digest.evidence['briefing_date'])
+
+    def test_empty_scope_still_emits_one_digest(self):
+        """A quiet scope gets an explicit zero-finding briefing."""
+        candidates, _ = evaluate(
+            ShiftBriefingRule(), 'risk_finding', self.actor, self.scope
+        )
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].evidence['active_count'], 0)

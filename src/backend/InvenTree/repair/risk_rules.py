@@ -49,9 +49,13 @@ DEFAULT_PAGE_SIZE = 200
 # not exist yet, so no rule may advertise them (RR-ADR-008).
 ACTION_ROUTES = {
     'repair_packet': '/repair/packets/{id}/',
-    'work_order': '/tasks/work-orders/{id}',
+    # The canonical work-order surface; /tasks/work-orders/ is only a
+    # redirect and fails the frontend's exact-match governance check.
+    'work_order': '/maintenance/work-orders/{id}',
     'purchase_order': '/purchasing/purchase-order/{id}/',
     'asset_machine': '/machines/machine/{id}/',
+    # {id} is the MACHINE id: the health panel is the anomaly surface.
+    'machine_anomaly': '/machines/machine/{id}/health',
     'part': '/part/{id}/',
 }
 
@@ -1040,6 +1044,411 @@ class AssetRepeatMaintenanceRule(RiskRule):
         yield from self._snapshot_pages(candidates, now)
 
 
+class AnomalyUnaddressedRule(RiskRule):
+    """Active warning/critical anomalies aging without a linked response.
+
+    An anomaly is "addressed" the moment a work order or repair packet is
+    linked to it; until then it is an open detected condition that nobody
+    has committed to act on. The grace window keeps freshly detected
+    anomalies out of the radar while triage is still reasonable.
+    """
+
+    code = 'ANOMALY_UNADDRESSED'
+    category = 'assets'
+    cadence = CADENCE_MINUTES_15
+    source_kind = 'machine_anomaly'
+    severity_base = 'high'
+    default_config = {'grace_minutes': 30, 'severities': ['critical', 'warning']}
+
+    def evaluate(self, *, queryset, scope, config, watermark, actor=None):
+        """Yield candidates for aging unaddressed anomalies."""
+        from assets.health_models import ACTIVE_ANOMALY_STATUSES
+
+        now = timezone.now()
+        grace_minutes = int(config.get('grace_minutes', 30))
+        severities = tuple(config.get('severities') or ('critical', 'warning'))
+        cutoff = now - timedelta(minutes=grace_minutes)
+        rows = (
+            queryset
+            .filter(
+                status__in=ACTIVE_ANOMALY_STATUSES,
+                severity__in=severities,
+                work_order__isnull=True,
+                repair_packet__isnull=True,
+                first_observed_at__lte=cutoff,
+            )
+            .select_related('machine')
+            .order_by('pk')
+        )
+        candidates: list[RiskCandidate] = []
+        for anomaly in rows.iterator():
+            started = _aware(anomaly.first_observed_at) or now
+            links = [
+                make_action_link(
+                    'Open machine health', 'machine_anomaly', anomaly.machine_id
+                ),
+                make_action_link('Open machine', 'asset_machine', anomaly.machine_id),
+            ]
+            candidates.append(
+                RiskCandidate(
+                    fingerprint_parts=(str(anomaly.pk),),
+                    source_model='assets.MachineAnomaly',
+                    source_id=str(anomaly.pk),
+                    title=f'Unaddressed anomaly: {anomaly.title}',
+                    summary=(
+                        f'{anomaly.get_severity_display()} anomaly on '
+                        f'{anomaly.machine.name} is {anomaly.status} with no '
+                        f'work order or repair packet linked'
+                    ),
+                    severity_factors=self._factors(
+                        anomaly_severity=anomaly.severity,
+                        age_hours=round(_age_hours(started, now), 1),
+                        # criticality is the only factor allowed to raise the
+                        # derived label above the base (derive_severity).
+                        **(
+                            {'criticality': 'critical'}
+                            if anomaly.severity == 'critical'
+                            else {}
+                        ),
+                    ),
+                    evidence=self._evidence(anomaly, actor),
+                    source_as_of=now,
+                    condition_started_at=started,
+                    action_links=[link for link in links if link],
+                )
+            )
+        yield from self._snapshot_pages(candidates, now)
+
+    @staticmethod
+    def _evidence(anomaly, actor) -> dict[str, Any]:
+        """Embed the read-only preliminary analysis, structured fields only.
+
+        ``capture=False`` re-reads existing snapshots without disturbing the
+        evidence set; an analysis failure degrades to the anomaly's own
+        fields rather than failing the scan.
+        """
+        evidence: dict[str, Any] = {
+            'anomaly_id': anomaly.pk,
+            'machine_id': anomaly.machine_id,
+            'machine_name': anomaly.machine.name,
+            'anomaly_severity': anomaly.severity,
+            'anomaly_status': anomaly.status,
+            'alarm_code': anomaly.alarm_code or None,
+            'first_observed_at': anomaly.first_observed_at.isoformat(),
+        }
+        try:
+            from machine_health.services.preliminary import analyze_anomaly
+
+            analysis = analyze_anomaly(anomaly, actor=actor, capture=False)
+            evidence['preliminary'] = {
+                'status': analysis.get('status'),
+                'confidence': analysis.get('confidence'),
+                'likely_cause': analysis.get('likely_cause'),
+                'snapshot_count': (analysis.get('data_window') or {}).get(
+                    'snapshot_count'
+                ),
+                'stale': (analysis.get('freshness') or {}).get('stale'),
+            }
+        except Exception:  # pragma: no cover - evidence must not fail a scan
+            evidence['preliminary'] = None
+        return evidence
+
+
+def _dependency_cycles(edges: list[tuple[int, int]]) -> list[tuple[int, ...]]:
+    """Return strongly connected components of size > 1 (dependency cycles).
+
+    Iterative Tarjan so a long dependency chain cannot overflow the stack.
+    Self-loops are rejected by the dependency model's own validation, so
+    only multi-node components are reported.
+    """
+    graph: dict[int, list[int]] = {}
+    for pred, succ in edges:
+        graph.setdefault(pred, []).append(succ)
+        graph.setdefault(succ, [])
+    index: dict[int, int] = {}
+    lowlink: dict[int, int] = {}
+    on_stack: set[int] = set()
+    stack: list[int] = []
+    counter = 0
+    cycles: list[tuple[int, ...]] = []
+    for root in graph:
+        if root in index:
+            continue
+        work = [(root, iter(graph[root]))]
+        index[root] = lowlink[root] = counter
+        counter += 1
+        stack.append(root)
+        on_stack.add(root)
+        while work:
+            node, children = work[-1]
+            advanced = False
+            for child in children:
+                if child not in index:
+                    index[child] = lowlink[child] = counter
+                    counter += 1
+                    stack.append(child)
+                    on_stack.add(child)
+                    work.append((child, iter(graph[child])))
+                    advanced = True
+                    break
+                if child in on_stack:
+                    lowlink[node] = min(lowlink[node], index[child])
+            if advanced:
+                continue
+            work.pop()
+            if work:
+                parent = work[-1][0]
+                lowlink[parent] = min(lowlink[parent], lowlink[node])
+            if lowlink[node] == index[node]:
+                component = []
+                while True:
+                    member = stack.pop()
+                    on_stack.discard(member)
+                    component.append(member)
+                    if member == node:
+                        break
+                if len(component) > 1:
+                    cycles.append(tuple(sorted(component)))
+    return cycles
+
+
+class ScheduleInfeasibleRule(RiskRule):
+    """Open work orders the pure planner cannot place feasibly.
+
+    Runs :func:`plan_schedule` as a read-only what-if over the scope's open
+    work orders and reports only conditions provable from pure reads: a
+    missing duration estimate (the planner's sole unscheduled reason), a
+    planned completion landing after the due date (the planner never
+    refuses late placements, so lateness is the honest infeasibility
+    signal), and dependency cycles detected from the edge set itself (the
+    planner silently linearizes cycles rather than reporting them).
+    """
+
+    code = 'SCHEDULE_INFEASIBLE'
+    category = 'operations'
+    cadence = CADENCE_DAILY
+    source_kind = 'work_order'
+    severity_base = 'medium'
+    default_config = {'check_assignee': False}
+
+    _TERMINAL_LIFECYCLES = ('completed', 'canceled')
+
+    def evaluate(self, *, queryset, scope, config, watermark, actor=None):
+        """Yield infeasibility candidates from one pure planning pass."""
+        from tasks.services.schedule_planner import PlanRequest, plan_schedule
+
+        now = timezone.now()
+        open_orders = list(
+            queryset
+            .filter(is_active=True)
+            .exclude(lifecycle_status__in=self._TERMINAL_LIFECYCLES)
+            .order_by('pk')
+        )
+        candidates: list[RiskCandidate] = []
+        if not open_orders:
+            yield from self._snapshot_pages(candidates, now)
+            return
+        by_id = {order.pk: order for order in open_orders}
+        # The planner's working calendars are timezone-aware (UTC fallback),
+        # so the horizon must be aware even when USE_TZ is off (tests).
+        horizon = now if timezone.is_aware(now) else timezone.make_aware(now, UTC)
+        plan = plan_schedule(
+            PlanRequest(
+                candidate_ids=list(by_id),
+                horizon_start=horizon,
+                check_assignee=bool(config.get('check_assignee', False)),
+            )
+        )
+
+        for order_id in plan.unscheduled:
+            order = by_id.get(order_id)
+            if order is None:
+                continue
+            candidates.append(
+                self._candidate(
+                    order,
+                    kind='no_estimate',
+                    title=f'Unschedulable (no duration): {order.title}',
+                    summary=(
+                        'The planner cannot place this work order because it '
+                        'has no estimated duration'
+                    ),
+                    factors={'reason': 'no_estimate'},
+                    evidence={'work_order_id': order_id, 'reason': 'no_estimate'},
+                    now=now,
+                )
+            )
+
+        planned_end = {op.work_order_id: op.new_end for op in plan.operations}
+        for order in open_orders:
+            if order.due_date is None or order.pk in plan.unscheduled:
+                continue
+            end = planned_end.get(order.pk, _aware(order.scheduled_end))
+            if end is None:
+                continue
+            days_late = (end.date() - order.due_date).days
+            if days_late <= 0:
+                continue
+            candidates.append(
+                self._candidate(
+                    order,
+                    kind='past_due',
+                    title=f'Planned past due date: {order.title}',
+                    summary=(
+                        f'The earliest feasible completion lands {days_late} '
+                        f'day(s) after the due date {order.due_date.isoformat()}'
+                    ),
+                    factors={'reason': 'past_due', 'days_late': days_late},
+                    evidence={
+                        'work_order_id': order.pk,
+                        'reason': 'past_due',
+                        'due_date': order.due_date.isoformat(),
+                        'planned_end': end.isoformat(),
+                        'days_late': days_late,
+                    },
+                    now=now,
+                )
+            )
+
+        from tasks.models import WorkOrderDependency
+
+        edges = list(
+            WorkOrderDependency.objects.filter(
+                predecessor_id__in=by_id, successor_id__in=by_id
+            ).values_list('predecessor_id', 'successor_id')
+        )
+        for cycle in _dependency_cycles(edges):
+            anchor = by_id[cycle[0]]
+            candidates.append(
+                self._candidate(
+                    anchor,
+                    kind='dependency_cycle',
+                    fingerprint_extra=','.join(str(pk) for pk in cycle),
+                    title=f'Dependency cycle among {len(cycle)} work orders',
+                    summary=(
+                        'These work orders depend on each other in a loop and '
+                        'can never all be scheduled: '
+                        + ', '.join(f'#{pk}' for pk in cycle)
+                    ),
+                    factors={'reason': 'dependency_cycle', 'cycle_size': len(cycle)},
+                    evidence={
+                        'reason': 'dependency_cycle',
+                        'work_order_ids': list(cycle),
+                    },
+                    now=now,
+                )
+            )
+
+        yield from self._snapshot_pages(candidates, now)
+
+    def _candidate(
+        self,
+        order,
+        *,
+        kind: str,
+        title: str,
+        summary: str,
+        factors: dict,
+        evidence: dict,
+        now: datetime,
+        fingerprint_extra: str = '',
+    ) -> RiskCandidate:
+        """Build one infeasibility candidate anchored on a work order."""
+        parts = (fingerprint_extra or str(order.pk), kind)
+        link = make_action_link('Open work order', 'work_order', order.pk)
+        return RiskCandidate(
+            fingerprint_parts=parts,
+            source_model='tasks.WorkOrder',
+            source_id=str(order.pk),
+            title=title,
+            summary=summary,
+            severity_factors=self._factors(**factors),
+            evidence=evidence,
+            source_as_of=now,
+            condition_started_at=now,
+            action_links=[link] if link else [],
+        )
+
+
+class ShiftBriefingRule(RiskRule):
+    """One deterministic per-scope digest of the radar, refreshed daily.
+
+    The briefing summarizes findings *other rules* already proved — it never
+    evaluates sources itself and it excludes its own code so it cannot
+    self-reference. The fingerprint carries the briefing date, so today's
+    digest is a new finding and yesterday's resolves by absence under the
+    full-snapshot contract.
+    """
+
+    code = 'SHIFT_BRIEFING'
+    category = 'operations'
+    cadence = CADENCE_DAILY
+    source_kind = 'risk_finding'
+    severity_base = 'low'
+    default_config = {'delta_hours': 24}
+
+    def evaluate(self, *, queryset, scope, config, watermark, actor=None):
+        """Yield exactly one digest candidate for the scope."""
+        from repair.risk_models import ACTIVE_FINDING_STATES, RiskFindingState
+
+        now = timezone.now()
+        delta_hours = int(config.get('delta_hours', 24))
+        window_start = now - timedelta(hours=delta_hours)
+        rows = queryset.exclude(rule_code=self.code)
+        active = rows.filter(state__in=ACTIVE_FINDING_STATES)
+
+        by_severity: dict[str, int] = {}
+        by_category: dict[str, int] = {}
+        for row in active.values('severity').annotate(n=Count('id')):
+            by_severity[row['severity']] = row['n']
+        for row in active.values('category').annotate(n=Count('id')):
+            by_category[row['category']] = row['n']
+        active_count = sum(by_severity.values())
+        new_count = active.filter(first_seen__gte=window_start).count()
+        resolved_count = rows.filter(
+            state=RiskFindingState.RESOLVED, last_seen__gte=window_start
+        ).count()
+
+        oldest_active = active.order_by('condition_started_at').first()
+        # localdate() rejects naive datetimes; tests run with USE_TZ off.
+        briefing_date = (
+            timezone.localdate(now) if timezone.is_aware(now) else now.date()
+        ).isoformat()
+        severity_text = (
+            ', '.join(f'{count} {sev}' for sev, count in sorted(by_severity.items()))
+            or 'none'
+        )
+        candidate = RiskCandidate(
+            fingerprint_parts=(briefing_date,),
+            source_model='repair.RiskFinding',
+            source_id=briefing_date,
+            title=f'Shift briefing {briefing_date}: {active_count} active findings',
+            summary=(
+                f'Active by severity: {severity_text}. '
+                f'Last {delta_hours}h: {new_count} new, {resolved_count} resolved.'
+            ),
+            severity_factors=self._factors(active_count=active_count),
+            evidence={
+                'briefing_date': briefing_date,
+                'active_count': active_count,
+                'by_severity': by_severity,
+                'by_category': by_category,
+                'new_last_window': new_count,
+                'resolved_last_window': resolved_count,
+                'delta_hours': delta_hours,
+                'oldest_active_started_at': (
+                    oldest_active.condition_started_at.isoformat()
+                    if oldest_active
+                    else None
+                ),
+            },
+            source_as_of=now,
+            condition_started_at=now,
+            action_links=[],
+        )
+        yield from self._snapshot_pages([candidate], now)
+
+
 @dataclass(frozen=True)
 class RuleSpec:
     """Registration record for one rule code.
@@ -1096,6 +1505,9 @@ RULE_SPECS: dict[str, RuleSpec] = {
         _spec(CloseoutMissingRule(), requires_flags=('AIMMS_WORK_ORDERS_ENABLED',)),
         _spec(StockBelowCriticalRule()),
         _spec(AssetRepeatMaintenanceRule()),
+        _spec(AnomalyUnaddressedRule()),
+        _spec(ShiftBriefingRule()),
+        _spec(ScheduleInfeasibleRule(), requires_flags=('AIMMS_WORK_ORDERS_ENABLED',)),
         RuleSpec(
             code='WO_BLOCKED_PARTS',
             category='parts',

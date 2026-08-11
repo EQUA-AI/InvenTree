@@ -290,6 +290,7 @@ const GOVERNED_ACTION_ROUTES: Record<string, (targetId: string) => string> = {
   work_order: (targetId) => `/maintenance/work-orders/${targetId}`,
   purchase_order: (targetId) => `/purchasing/purchase-order/${targetId}/`,
   asset_machine: (targetId) => `/machines/machine/${targetId}/`,
+  machine_anomaly: (targetId) => `/machines/machine/${targetId}/health`,
   part: (targetId) => `/part/${targetId}/`
 };
 

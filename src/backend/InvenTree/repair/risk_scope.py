@@ -381,6 +381,44 @@ class AssetMachineScopeAdapter(RiskSourceScopeAdapter):
         return AssetMachine.objects.filter(client_id=scope.client_id, active=True)
 
 
+class MachineAnomalyScopeAdapter(RiskSourceScopeAdapter):
+    """Scope adapter over ``assets.MachineAnomaly`` via its machine.
+
+    Anomalies inherit the machine's client identity; a customer scope owns
+    no machines and therefore truthfully sees no anomalies.
+    """
+
+    source_kind = 'machine_anomaly'
+
+    def queryset_for_scope(self, *, actor, scope: MaintenanceScope) -> QuerySet:
+        """Return anomalies on active machines owned by the scope client."""
+        from assets.health_models import MachineAnomaly
+
+        scope = _require_site_unscoped(scope, self.source_kind)
+        if scope.client_id is None:
+            return MachineAnomaly.objects.none()
+        return MachineAnomaly.objects.filter(
+            machine__client_id=scope.client_id, machine__active=True
+        )
+
+
+class RiskFindingScopeAdapter(RiskSourceScopeAdapter):
+    """Scope adapter over persisted ``repair.RiskFinding`` rows.
+
+    Findings already carry their proven scope key, so membership is exact
+    key equality — no join-based re-derivation that could drift from the
+    scope proven at promotion time.
+    """
+
+    source_kind = 'risk_finding'
+
+    def queryset_for_scope(self, *, actor, scope: MaintenanceScope) -> QuerySet:
+        """Return findings persisted under exactly this scope key."""
+        from repair.risk_models import RiskFinding
+
+        return RiskFinding.objects.filter(scope_key=encode_scope(scope))
+
+
 SOURCE_ADAPTERS: dict[str, RiskSourceScopeAdapter] = {
     adapter.source_kind: adapter
     for adapter in (
@@ -391,6 +429,8 @@ SOURCE_ADAPTERS: dict[str, RiskSourceScopeAdapter] = {
         JobKitShortageScopeAdapter(),
         PartStockScopeAdapter(),
         AssetMachineScopeAdapter(),
+        MachineAnomalyScopeAdapter(),
+        RiskFindingScopeAdapter(),
     )
 }
 

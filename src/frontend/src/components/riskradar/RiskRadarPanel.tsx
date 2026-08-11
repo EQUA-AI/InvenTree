@@ -21,6 +21,7 @@ import {
   IconCheck,
   IconClockPause,
   IconDotsVertical,
+  IconEye,
   IconRefresh,
   IconX
 } from '@tabler/icons-react';
@@ -32,6 +33,7 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { useApi } from '../../contexts/ApiContext';
 import { useRiskScope } from '../../hooks/UseRiskScope';
+import RiskFindingDetailModal from './RiskFindingDetailModal';
 import {
   LocalDateTime,
   type RiskFinding,
@@ -117,6 +119,7 @@ export default function RiskRadarPanel() {
   const [dismissFinding, setDismissFinding] = useState<RiskFinding | null>(
     null
   );
+  const [detailFindingPk, setDetailFindingPk] = useState<number | null>(null);
   const [dismissReason, setDismissReason] = useState('');
   const [dismissError, setDismissError] = useState<string | null>(null);
   const [dismissConflict, setDismissConflict] = useState(false);
@@ -437,6 +440,12 @@ export default function RiskRadarPanel() {
                       </Menu.Target>
                       <Menu.Dropdown>
                         <Menu.Item
+                          leftSection={<IconEye size={14} />}
+                          onClick={() => setDetailFindingPk(finding.pk)}
+                        >
+                          {t`Details`}
+                        </Menu.Item>
+                        <Menu.Item
                           leftSection={<IconCheck size={14} />}
                           onClick={() => {
                             void runCommand(finding, 'acknowledge');
@@ -501,6 +510,12 @@ export default function RiskRadarPanel() {
           )}
         </Text>
       </Stack>
+
+      <RiskFindingDetailModal
+        findingPk={detailFindingPk}
+        scope={scope ?? ''}
+        onClose={() => setDetailFindingPk(null)}
+      />
 
       <Modal
         opened={dismissFinding != null}
