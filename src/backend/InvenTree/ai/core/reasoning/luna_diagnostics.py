@@ -844,7 +844,26 @@ class LunaDiagnosticsAdapter:
             )
         try:
             canonical = CanonicalTurnResponse.model_validate_json(text)
-        except (ValidationError, ValueError, TypeError, json.JSONDecodeError):
+        except (ValidationError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            # Content-free forensics: WHICH fields failed, never their values.
+            # Voice finals fail here consistently while text passes (Phase 6
+            # battery A3) and without the failing locations the next
+            # investigation has nothing to work from.
+            if isinstance(exc, ValidationError):
+                locations = sorted({
+                    ".".join(str(part) for part in err["loc"]) for err in exc.errors()
+                })[:8]
+                logger.warning(
+                    "luna.final_schema_locations request_id=%s locs=%s",
+                    request_id,
+                    ",".join(locations) or "-",
+                )
+            else:
+                logger.warning(
+                    "luna.final_not_json request_id=%s kind=%s",
+                    request_id,
+                    type(exc).__name__,
+                )
             # Voice finals fail the strict spoken-summary lexical contract far
             # more often than text finals fail anything (Phase 6 battery A3:
             # a fully-cited answer died as invalid_final_schema twice). If the
