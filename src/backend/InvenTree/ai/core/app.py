@@ -40,7 +40,7 @@ from ai.core.middleware import (
     get_retry_stats,
 )
 from ai.core.streaming import AGUIEvent, EventType, InMemoryEventEmitter, SSEEventStream
-from ai.core.trusted_context import build_trusted_turn_context
+from ai.core.trusted_context import build_trusted_turn_context, resolve_actor_locale
 from ai.core.turn_service import (
     NormalizedTurnService,
     TurnAlreadyRunning,
@@ -557,6 +557,9 @@ async def chat(request: ChatRequest) -> ChatResponse:
             correlation_id=correlation_id,
             browser_context=request.context,
             server_route_hints=("/chat",),
+            locale=await sync_to_async(resolve_actor_locale, thread_sensitive=True)(
+                principal.user_pk
+            ),
         )
         metadata = await _turn_metadata(principal, request)
         result = await get_turn_service().process(
@@ -628,6 +631,9 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
             correlation_id=correlation_id,
             browser_context=request.context,
             server_route_hints=("/chat/stream",),
+            locale=await sync_to_async(resolve_actor_locale, thread_sensitive=True)(
+                principal.user_pk
+            ),
         )
         metadata = await _turn_metadata(principal, request)
     except (ThreadNotFound, ScopedThreadRejected):

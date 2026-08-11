@@ -308,7 +308,7 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
         raise HTTPException(status_code=422, detail="VOICE_TRANSCRIPT_INCOMPLETE") from None
 
     from ai.core.app import get_turn_service
-    from ai.core.trusted_context import build_trusted_turn_context
+    from ai.core.trusted_context import build_trusted_turn_context, resolve_actor_locale
     from ai.core.turn_service import IdempotencyConflict, TurnAlreadyRunning
     from ai.core.voice import status_phrases
     from ai.core.voice.speech import build_exact_tts_payload
@@ -323,6 +323,7 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
         correlation_id=correlation_id,
         browser_context=None,
         server_route_hints=("/voice/turns",),
+        locale=await sync_to_async(resolve_actor_locale, thread_sensitive=True)(principal.user_pk),
     )
 
     def _touch():
@@ -338,6 +339,11 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
         outcome should be audible (§7.6). Status speech is best-effort: it can
         never block or fail the turn itself.
         """
+        # S33: localize at the single choke point; the allow-list check runs
+        # on the RETURNED phrase, so an unlisted translation cannot speak.
+        phrase = status_phrases.localized_status_phrase(
+            phrase, getattr(trusted_context, "locale", "en")
+        )
         if send_control is None or phrase not in status_phrases.ALLOWED_STATUS_PHRASES:
             return False
         try:
@@ -511,3 +517,54 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
             # question; the client renders the same card the drawer shows.
             "pending_question": result.pending_question,
         }
+
+
+class WalkthroughRequest(BaseModel):
+    """One stateless guided-procedure walkthrough utterance (B7)."""
+
+    work_order_id: int
+    utterance: str = ""
+    position: int = 0
+
+
+@router.post("/procedures/walkthrough")
+async def procedure_walkthrough(request: WalkthroughRequest) -> dict[str, Any]:
+    """Advance a read-only voice step-through of an applied procedure.
+
+    Flag-gated dark; an out-of-scope or missing work order is a 404
+    indistinguishable from nonexistence. The reply's speak_text is either
+    verbatim snapshot text or a fixed deterministic phrase — never
+    generated.
+    """
+    from ai.core.config import get_settings
+    from ai.core.voice.procedure_walkthrough import walkthrough_reply
+
+    if not get_settings().feature_guided_procedures:
+        raise HTTPException(status_code=404, detail="Not found")
+    principal = _principal()
+
+    def perform():
+        from django.contrib.auth import get_user_model
+
+        actor = get_user_model().objects.get(pk=principal.user_pk)
+        return walkthrough_reply(
+            actor=actor,
+            work_order_id=request.work_order_id,
+            utterance=request.utterance,
+            position=request.position,
+        )
+
+    try:
+        reply = await sync_to_async(perform, thread_sensitive=True)()
+    except Exception:
+        raise HTTPException(status_code=404, detail="Not found") from None
+    return {
+        "action": reply.action,
+        "position": reply.position,
+        "total": reply.total,
+        "speak_text": reply.speak_text,
+        "done": reply.done,
+        "step_key": reply.step_key,
+        "completed": reply.completed,
+        "error": reply.error,
+    }

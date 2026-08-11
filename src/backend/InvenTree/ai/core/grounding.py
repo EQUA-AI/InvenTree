@@ -232,6 +232,7 @@ def evaluate_manual_grounding(
     message: str,
     ledger: ToolCaptureLedger | None,
     mode: str,
+    locale: str = "en",
     closure_values: frozenset[str] = frozenset(),
     audit_call: Callable[[str, list[dict[str, Any]]], dict[str, Any]] | None = None,
 ) -> tuple[str, GroundingAssessment | None]:
@@ -311,7 +312,10 @@ def evaluate_manual_grounding(
             },
         )
     if downgraded:
-        return DOWNGRADE_TEMPLATE.format(titles="; ".join(titles) or "the manual"), assessment
+        from ai.core.i18n_templates import GROUNDING_DOWNGRADE, deterministic_template
+
+        template = deterministic_template(GROUNDING_DOWNGRADE, locale)
+        return template.format(titles="; ".join(titles) or "the manual"), assessment
     return message, assessment
 
 

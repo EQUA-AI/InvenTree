@@ -25,6 +25,7 @@ import asyncio
 import contextlib
 import logging
 import time
+import typing
 import uuid
 from typing import Any
 
@@ -135,7 +136,22 @@ class VoiceLiveChannel:
             raise TransportUnavailable("provider connection failed") from exc
         return self._ws
 
-    def _session_policy_payload(self, actor_hints: tuple[str, ...] = ()) -> dict[str, Any]:
+    #: S33: the ONLY voices a per-user preference may select. The user's
+    #: saved locale is a lookup key into this server-owned map — session
+    #: create stays client-hint-free, and an unlisted locale keeps the
+    #: deployment default voice.
+    USER_VOICE_MAP: typing.ClassVar[dict[str, tuple[str, str]]] = {
+        "en": ("en-US-AvaNeural", "en-US"),
+        "es": ("es-ES-ElviraNeural", "es-ES"),
+        "de": ("de-DE-KatjaNeural", "de-DE"),
+        "fr": ("fr-FR-DeniseNeural", "fr-FR"),
+    }
+
+    def _session_policy_payload(
+        self,
+        actor_hints: tuple[str, ...] = (),
+        voice_override: tuple[str, str] | None = None,
+    ) -> dict[str, Any]:
         from ai.core.config import get_settings
 
         settings = get_settings()
@@ -143,14 +159,40 @@ class VoiceLiveChannel:
         # The merge happens server-side at session mint; the client never
         # supplies or sees another actor's terms.
         merged = tuple(dict.fromkeys(tuple(settings.azure_voicelive_phrase_hints) + actor_hints))
+        voice_name, language = voice_override or (
+            settings.azure_voicelive_voice,
+            settings.azure_voicelive_language,
+        )
         policy = SessionPolicy(
-            voice_name=settings.azure_voicelive_voice,
-            language=settings.azure_voicelive_language,
+            voice_name=voice_name,
+            language=language,
             transcription_model=settings.azure_voicelive_transcription_model,
             phrase_hints=merged,
             native_sts=settings.feature_voice_native_sts,
         )
         return policy.session_update_payload()["session"]
+
+    async def _actor_voice_override(self) -> tuple[str, str] | None:
+        """Resolve the user's allow-listed voice from their saved locale.
+
+        Same off-loop discipline as the phrase hints; any failure keeps the
+        deployment default voice rather than degrading the session.
+        """
+        if self._user_id is None:
+            return None
+        try:
+            from ai.core.trusted_context import resolve_actor_locale
+            from asgiref.sync import sync_to_async
+
+            locale = await sync_to_async(resolve_actor_locale)(self._user_id)
+            return self.USER_VOICE_MAP.get(str(locale).lower().split("-")[0])
+        except Exception as exc:
+            logger.warning(
+                "Actor voice preference unavailable for session %s: %s",
+                self.session_id,
+                type(exc).__name__,
+            )
+            return None
 
     async def _actor_phrase_hints(self) -> tuple[str, ...]:
         """Resolve the actor-scoped ASR lexicon off the event loop.
@@ -177,10 +219,11 @@ class VoiceLiveChannel:
     async def request_sdp_answer(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Send ``rtc.call.sdp.create`` with server policy; await the reply."""
         actor_hints = await self._actor_phrase_hints()
+        voice_override = await self._actor_voice_override()
         async with self._lock:
             ws = await self._connect()
             request = dict(payload)
-            request["session"] = self._session_policy_payload(actor_hints)
+            request["session"] = self._session_policy_payload(actor_hints, voice_override)
             try:
                 await ws.send_json(request)
                 reply = await asyncio.wait_for(

@@ -47,6 +47,11 @@ class TrustedTurnContext:
     correlation_id: str
     policy_version: str
     untrusted_content: str
+    # S33: server-derived from the user's saved profile language, validated
+    # against the deployment's supported locale set — never taken from
+    # request headers or browser context. Defaulted so existing
+    # constructions stay valid.
+    locale: str = "en"
 
 
 def _canonical_untrusted_content(content: Mapping[str, Any] | None) -> str:
@@ -100,6 +105,34 @@ def _safe_capabilities(capabilities: Sequence[str] | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(selected))
 
 
+def resolve_actor_locale(user_pk: Any) -> str:
+    """Resolve the actor's saved language, validated and fail-safe (S33).
+
+    Synchronous ORM read: async call sites must wrap this in
+    ``sync_to_async``. An absent profile, empty value, or a language
+    outside the deployment's supported set all degrade to ``en`` — a
+    wrong-locale answer is worse than an English one.
+    """
+    try:
+        from django.conf import settings as django_settings
+        from django.contrib.auth import get_user_model
+
+        user = get_user_model().objects.filter(pk=user_pk).select_related("profile").first()
+        raw = str(getattr(getattr(user, "profile", None), "language", "") or "").strip()
+        if not raw:
+            return "en"
+        supported = {str(code).lower() for code in getattr(django_settings, "LOCALE_CODES", [])}
+        candidate = raw.lower()
+        if candidate in supported:
+            return candidate
+        base = candidate.split("-")[0]
+        if base in supported:
+            return base
+        return "en"
+    except Exception:  # pragma: no cover - locale must never fail a turn
+        return "en"
+
+
 def build_trusted_turn_context(
     principal: AIPrincipal,
     *,
@@ -109,6 +142,7 @@ def build_trusted_turn_context(
     server_allowed_capabilities: Sequence[str] | None = None,
     correlation_id: str | None = None,
     browser_context: Mapping[str, Any] | None = None,
+    locale: str | None = None,
 ) -> TrustedTurnContext:
     """Build the unscoped trusted envelope solely from server-owned inputs.
 
@@ -154,6 +188,7 @@ def build_trusted_turn_context(
         correlation_id=correlation_id,
         policy_version=version,
         untrusted_content=_canonical_untrusted_content(browser_context),
+        locale=(locale or "en").strip() or "en",
     )
 
 

@@ -317,6 +317,10 @@ class Settings(BaseSettings):
     # repository (Django plane) and the /threads surface (this plane) can
     # never disagree about whether sharing exists.
     feature_thread_sharing: bool = Field(default=False, alias="FEATURE_THREAD_SHARING")
+    # S33 (B7): read-only voice step-through of applied guided procedures.
+    # Verbatim step_snapshot text only; completion posts through the existing
+    # step-execution command API as the user. Dark by default.
+    feature_guided_procedures: bool = Field(default=False, alias="FEATURE_GUIDED_PROCEDURES")
     azure_luna_history_enrichment_rounds: int = Field(
         default=1,
         ge=0,

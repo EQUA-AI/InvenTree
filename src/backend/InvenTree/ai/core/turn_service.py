@@ -429,27 +429,21 @@ def _canonical_terminal_response(state: str, message: str) -> CanonicalTurnRespo
 
 
 def _canonical_advisory_intent(
-    *, voice: bool = False, action_available: bool = False
+    *, voice: bool = False, action_available: bool = False, locale: str = "en"
 ) -> CanonicalTurnResponse:
-    """Explain effect wording without creating a proposal or executable action."""
-    safety_boundary = "This response does not change or confirm any safety status."
-    message = (
-        (
-            "I could not prepare that action from the details provided. Say it again with "
-            f"the required record, quantity, and destination. {safety_boundary}"
-            if action_available
-            else (
-                "I can help look up the details, but I do not create or change records by voice. "
-                f"Use the normal authenticated screen. {safety_boundary}"
-            )
-        )
-        if voice
-        else (
-            "I can discuss that requested change, but this turn cannot create a "
-            "proposal or perform an effect. Use the normal authenticated action "
-            "surface for an allow-listed operation."
-        )
-    )
+    """Explain effect wording without creating a proposal or executable action.
+
+    S33: every string comes from the deterministic per-locale template
+    tables; an unknown locale degrades to English inside the lookup.
+    """
+    from ai.core import i18n_templates as i18n
+
+    safety_boundary = i18n.deterministic_template(i18n.SAFETY_BOUNDARY, locale)
+    if voice:
+        key = i18n.ADVISORY_VOICE_ACTION if action_available else i18n.ADVISORY_VOICE_READONLY
+        message = i18n.deterministic_template(key, locale).format(safety=safety_boundary)
+    else:
+        message = i18n.deterministic_template(i18n.ADVISORY_TEXT, locale)
     return CanonicalTurnResponse(
         kind="advisory_intent",
         response_version=1,
@@ -459,7 +453,7 @@ def _canonical_advisory_intent(
         reasoning_summary=("Effect-shaped wording was isolated as advisory intent only."),
         confidence="high",
         evidence=[],
-        next_questions=["What details would you like me to look up first?"],
+        next_questions=[i18n.deterministic_template(i18n.ADVISORY_NEXT_QUESTION, locale)],
         recommended_actions=[],
         safety_boundary=safety_boundary,
         speak=voice,
@@ -1050,9 +1044,12 @@ class NormalizedTurnService:
         modality: str,
         route: Any,
         emitter: Any,
+        locale: str = "en",
     ) -> dict[str, Any]:
         """Terminal canonical for a declined question: acknowledge, never route."""
-        message = "Okay — tell me a bit more about what you're looking for."
+        from ai.core import i18n_templates as i18n
+
+        message = i18n.deterministic_template(i18n.QUESTION_DECLINED_ACK, locale)
         await self._emit_canonical_events(
             emitter=emitter,
             thread_id=thread_id,
@@ -1592,6 +1589,7 @@ class NormalizedTurnService:
                     modality=modality,
                     route=route,
                     emitter=isolated_emitter,
+                    locale=getattr(trusted_context, "locale", "en"),
                 )
             elif (
                 server_pinned_workflow is None
@@ -1630,6 +1628,7 @@ class NormalizedTurnService:
                         action_available=(
                             modality == TurnModality.VOICE and self._voice_write_enabled()
                         ),
+                        locale=getattr(trusted_context, "locale", "en"),
                     )
                     message = response.detailed_response
                     await self._emit_canonical_events(
@@ -1741,6 +1740,7 @@ class NormalizedTurnService:
                         message=message,
                         ledger=capture_ledger,
                         mode=grounding_mode,
+                        locale=getattr(trusted_context, "locale", "en"),
                         closure_values=closure,
                     )
                     if assessment is not None:

@@ -35,10 +35,37 @@ ANSWER_INCOMPLETE = "I could not finish that answer. Please try again."
 #: voice_write_plan_timeout_s) now finish below this.
 INTERIM_STATUS_DELAY_S = 4.0
 
+#: S33: per-locale variants of the SAME four phrases. Every entry joins the
+#: allow-list below, so the persist-before-speak hash discipline is identical
+#: in every language — a localized phrase is allow-listed or it is not spoken.
+#: Keys are the English phrases (the canonical identity of each status).
+LOCALIZED_STATUS_PHRASES: dict[str, dict[str, str]] = {
+    "es": {
+        THINKING: "Déjame comprobarlo.",
+        ANSWER_IN_CHAT: "La respuesta está lista en el chat.",
+        TURN_FAILED: "Lo siento, no pude procesarlo. Inténtalo de nuevo.",
+        ANSWER_INCOMPLETE: ("No pude terminar esa respuesta. Inténtalo de nuevo."),
+    },
+}
+
+
+def localized_status_phrase(phrase: str, locale: str | None) -> str:
+    """Return the locale's variant of a canonical status phrase.
+
+    Unknown locales and unknown phrases fall back to the English input —
+    a wrong-language phrase is worse than an English one, and the caller's
+    allow-list check runs on the RETURNED value either way.
+    """
+    if not locale:
+        return phrase
+    table = LOCALIZED_STATUS_PHRASES.get(str(locale).lower().split("-")[0])
+    if not table:
+        return phrase
+    return table.get(phrase, phrase)
+
+
 #: The complete allow-list; anything not present here is not a status phrase.
-ALLOWED_STATUS_PHRASES = frozenset({
-    THINKING,
-    ANSWER_IN_CHAT,
-    TURN_FAILED,
-    ANSWER_INCOMPLETE,
-})
+ALLOWED_STATUS_PHRASES = frozenset(
+    {THINKING, ANSWER_IN_CHAT, TURN_FAILED, ANSWER_INCOMPLETE}
+    | {localized for table in LOCALIZED_STATUS_PHRASES.values() for localized in table.values()}
+)
