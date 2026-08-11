@@ -850,13 +850,19 @@ class LunaDiagnosticsAdapter:
             # battery A3) and without the failing locations the next
             # investigation has nothing to work from.
             if isinstance(exc, ValidationError):
-                locations = sorted({
-                    ".".join(str(part) for part in err["loc"]) for err in exc.errors()
-                })[:8]
+                errors = exc.errors()
+                locations = sorted({".".join(str(part) for part in err["loc"]) for err in errors})[
+                    :8
+                ]
+                # Model-validator failures carry no location; their messages
+                # are OUR static template strings (never input values), so
+                # logging them is content-free and names the failing rule.
+                messages = sorted({str(err.get("msg", ""))[:100] for err in errors})[:4]
                 logger.warning(
-                    "luna.final_schema_locations request_id=%s locs=%s",
+                    "luna.final_schema_locations request_id=%s locs=%s msgs=%s",
                     request_id,
-                    ",".join(locations) or "-",
+                    ",".join(loc for loc in locations if loc) or "-",
+                    " | ".join(messages) or "-",
                 )
             else:
                 logger.warning(
