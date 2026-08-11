@@ -282,6 +282,16 @@ class Settings(BaseSettings):
         le=120,
         alias="AZURE_LUNA_DIAGNOSIS_TIMEOUT_S",
     )
+    # Voice turns carry ASR + session overhead on the same wall clock, so the
+    # tool loop that completes a text turn at ~40 s blows a shared 45 s bound
+    # on voice (Phase 6 battery A3). Voice gets its own ceiling; the spoken
+    # "Let me check that" interim keeps the technician informed meanwhile.
+    azure_luna_diagnosis_timeout_voice_s: float = Field(
+        default=75.0,
+        gt=0,
+        le=120,
+        alias="AZURE_LUNA_DIAGNOSIS_TIMEOUT_VOICE_S",
+    )
     azure_luna_diagnosis_max_output_tokens: int = Field(
         default=6000,
         ge=128,

@@ -409,15 +409,22 @@ class T6DiagnosticsWorkflow:
             # absence of information produced report-shaped artifacts whose
             # sections explained that there was nothing to report.
             if self._analysis_lacks_evidence(analysis_response):
+                # The authorized readers — not the model — are the authority
+                # on absence. A cadence/history question the router lands
+                # here ("how often has X needed maintenance?") would
+                # otherwise decline with a FALSE "records are missing" claim
+                # while the maintenance tab is full (Phase 6 battery B2).
+                grounded = await self._records_grounded_fallback(query)
                 logger.info(
-                    "T6 diagnostics degraded: no evidence to diagnose",
+                    "T6 diagnostics degraded: no evidence to diagnose (records_fallback=%s)",
+                    bool(grounded),
                     extra={"thread_id": thread_id},
                 )
                 return DiagnosticsResult(
                     success=True,
                     problem_category=ProblemCategory.UNKNOWN,
                     diagnosis_steps=steps,
-                    formatted_response=self._no_evidence_response(analysis_response),
+                    formatted_response=grounded or self._no_evidence_response(analysis_response),
                     cache_hit=False,
                     execution_time_ms=(time.perf_counter() - start_time) * 1000,
                 )
@@ -626,6 +633,78 @@ Recommend practical solutions to address the identified root causes."""
         """Whether the problem analysis admits it has nothing to diagnose."""
         lowered = analysis.lower()
         return any(marker in lowered for marker in cls._NO_EVIDENCE_MARKERS)
+
+    @staticmethod
+    async def _records_grounded_fallback(query: str) -> str | None:
+        """Answer a records question from the authorized readers, or None.
+
+        Fires only on the no-evidence decline path. If the query names a
+        machine the actor may read, the reply is composed ENTIRELY from
+        server aggregates (counts, dates, gap stats, code/cause
+        histograms) — no operator free text, so nothing needs fencing and
+        the model contributes no claims. Any failure returns None and the
+        plain decline stands.
+        """
+        from asgiref.sync import sync_to_async
+
+        def _lookup() -> str | None:
+            from ai.core.auth import get_current_principal
+            from django.contrib.auth import get_user_model
+
+            principal = get_current_principal()
+            if principal is None:
+                return None
+            user = get_user_model().objects.filter(pk=principal.user_pk).first()
+            if user is None:
+                return None
+            from assets import ai_read
+
+            lowered = query.lower()
+            machine = next(
+                (
+                    row
+                    for row in ai_read.machines_in_scope(user, limit=50)
+                    if row.name and row.name.lower() in lowered
+                ),
+                None,
+            )
+            if machine is None:
+                return None
+            rollup = ai_read.machine_fault_history(user, machine, fenced=False)
+            maintenance = rollup["observed"]["maintenance"]
+            count = maintenance["count"]
+            parts = [
+                f"I can't diagnose a current fault, but the records for "
+                f"{machine.name} show: {count} maintenance record"
+                f"{'s' if count != 1 else ''} in the last "
+                f"{rollup['window_days']} days"
+            ]
+            if count:
+                parts[0] += f" (first {maintenance['first_date']}, last {maintenance['last_date']})"
+            gap = maintenance["gap_days"]["median"]
+            if gap is not None:
+                parts.append(f"typical gap about {gap} days between visits")
+            parts.append(
+                "repeat-activity flag raised: "
+                + ("yes" if maintenance["repeat_window_flag"] else "no")
+            )
+            codes = rollup["observed"]["failure_codes"]["top"]
+            if codes:
+                listed = ", ".join(f"{row['code']} ({row['count']} times)" for row in codes[:3])
+                parts.append(f"top failure codes: {listed}")
+            causes = rollup["observed"]["verified_causes"]["top"]
+            if causes:
+                listed = ", ".join(f"{row['cause']} ({row['count']} times)" for row in causes[:3])
+                parts.append(f"verified causes: {listed}")
+            else:
+                parts.append("no verified closeout causes recorded")
+            return "; ".join(parts) + ". Ask about the maintenance history for the full records."
+
+        try:
+            return await sync_to_async(_lookup, thread_sensitive=True)()
+        except Exception:  # pragma: no cover - fallback must never break decline
+            logger.warning("records-grounded fallback failed", exc_info=False)
+            return None
 
     @staticmethod
     def _no_evidence_response(analysis: str) -> str:

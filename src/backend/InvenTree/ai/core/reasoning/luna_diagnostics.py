@@ -121,12 +121,19 @@ class ToolLoopBudget:
     # S26: how many server-initiated history-enrichment continuations one
     # turn may run. 0 disables even when the feature flag is on.
     history_enrichment_rounds: int = 1
+    # Phase 6 battery finding: the tool loop that completes a text turn in
+    # ~35-41 s blows the same bound on voice (ASR + session overhead ride
+    # the same wall clock). Voice turns get their own ceiling; None means
+    # "same as text".
+    voice_timeout_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= self.max_tool_rounds <= 12:
             raise ValueError("max_tool_rounds must be between 1 and 12")
         if not 0 < self.timeout_seconds <= 120:
             raise ValueError("timeout_seconds must be between 0 and 120")
+        if self.voice_timeout_seconds is not None and not (0 < self.voice_timeout_seconds <= 120):
+            raise ValueError("voice_timeout_seconds must be between 0 and 120")
         if not 128 <= self.max_output_tokens <= 16_000:
             raise ValueError("max_output_tokens is outside the supported bound")
         if not 1024 <= self.max_tool_data_bytes <= 1024 * 1024:
@@ -308,7 +315,10 @@ history, approvals, or safety state. The envelope's authorized_records list is
 the complete set of records you may read this turn: call tools only with an
 entity_id and expected_revision copied exactly from one of its entries, using
 display_name to match the record the user is talking about. If the user's
-machine is not in authorized_records, say so and abstain. Distinguish observed facts, evidence,
+machine is not in authorized_records, respond IMMEDIATELY with a COMPLETE
+abstention stating that no matching machine record exists — do not spend tool
+calls searching for it, and do not return an incomplete response for this
+case. Distinguish observed facts, evidence,
 inference, and unknowns. Cite every operational claim or explicitly abstain.
 Every evidence entry must reproduce a local tool citation's source type, id,
 revision, authorization class, and as-of exactly; place its string locator in
@@ -512,6 +522,7 @@ class LunaDiagnosticsAdapter:
                 max_output_tokens=settings.azure_luna_diagnosis_max_output_tokens,
                 max_tool_data_bytes=(settings.azure_luna_diagnosis_max_tool_data_kb * 1024),
                 history_enrichment_rounds=settings.azure_luna_history_enrichment_rounds,
+                voice_timeout_seconds=settings.azure_luna_diagnosis_timeout_voice_s,
             )
         self.provider_config = provider_config
         self.budget = budget
@@ -1109,7 +1120,10 @@ class LunaDiagnosticsAdapter:
         """Run one strict response request and bounded local function-call loop."""
         selected_effort = self._validate_effort(effort or self.provider_config.default_effort)
         # Effort validation is intentionally above the first client access.
-        deadline = self._clock() + self.budget.timeout_seconds
+        timeout = self.budget.timeout_seconds
+        if getattr(envelope, "mode", "text") == "voice" and self.budget.voice_timeout_seconds:
+            timeout = self.budget.voice_timeout_seconds
+        deadline = self._clock() + timeout
         request = self._base_request(
             envelope=envelope,
             effort=selected_effort,
