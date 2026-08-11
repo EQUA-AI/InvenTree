@@ -125,9 +125,23 @@ def test_no_match_hint_wording_present_in_turn_service():
     assert "no machine on record for your site" in source
     # It must be gated on the incomplete state and on named-record mismatch.
     anchor = source.index("no machine on record for your site")
-    window = source[anchor - 800 : anchor]
+    window = source[anchor - 1600 : anchor]
     assert 'response_state.value == "incomplete"' in window
     assert "authorized_records" in window
+
+
+def test_no_match_hint_token_matching():
+    """Partial machine names suppress the hint; unrelated names do not."""
+    import re as re_mod
+
+    def name_matches(name: str, lowered: str) -> bool:
+        tokens = [token for token in re_mod.findall(r"[a-z]+", name.lower()) if len(token) >= 3]
+        return bool(tokens) and all(token in lowered for token in tokens)
+
+    utterance = "why is the influent pump station tripping on high vibration again?"
+    assert name_matches("Influent Pump Station No. 1", utterance)
+    assert not name_matches("Packaging Line 2 Conveyor", utterance)
+    assert not name_matches("No. 1", utterance)  # no substantive tokens
 
 
 def test_spoken_contract_failure_salvages_with_speech_stripped():

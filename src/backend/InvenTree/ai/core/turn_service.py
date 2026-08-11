@@ -1367,8 +1367,17 @@ class NormalizedTurnService:
         # the visible text gains the fact.
         if response.response_state.value == "incomplete":
             lowered = content.lower()
+
+            def _name_matches(name: str) -> bool:
+                # Token-based, not full-string: "influent pump station" must
+                # match "Influent Pump Station No. 1". A name matches when
+                # ALL of its substantive alphabetic tokens appear in the
+                # utterance; names with no such tokens never match.
+                tokens = [token for token in re.findall(r"[a-z]+", name.lower()) if len(token) >= 3]
+                return bool(tokens) and all(token in lowered for token in tokens)
+
             names = [record.display_name for record in authorized_records if record.display_name]
-            if names and not any(name.lower() in lowered for name in names):
+            if names and not any(_name_matches(name) for name in names):
                 message = (
                     f"{message} Note: no machine on record for your site "
                     "matches a name in your message — check the machine name "
