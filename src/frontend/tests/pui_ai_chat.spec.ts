@@ -124,3 +124,44 @@ test('AI Chat - Question card round trip', async ({ browser }) => {
     expect(transcript ?? '').not.toContain('interrupt_id');
   }
 });
+
+/**
+ * S32a: scanning a machine tag opens the AI drawer with the machine as a
+ * visible routing hint (and lands on the machine page). The scan response
+ * is mocked — the barcode resolution rail has its own backend tests.
+ */
+test('AI Chat - Machine scan opens drawer with hint', async ({ browser }) => {
+  const page = await doCachedLogin(browser, {
+    username: 'admin',
+    password: 'inventree'
+  });
+
+  await navigate(page, 'home');
+  await page.route(/\/api\/barcode\//, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: 'Match found',
+        barcode: 'INV-AM1',
+        assetmachine: {
+          pk: 1,
+          api_url: '/api/assets/machines/1/',
+          web_url: '/web/machines/machine/1/',
+          instance: { pk: 1, name: 'Scan Target Machine' }
+        }
+      })
+    })
+  );
+
+  await page.getByLabel('barcode-scan-button-any').click();
+  await page.getByLabel('barcode-scan-keyboard-input').fill('INV-AM1');
+  await page.keyboard.press('Enter');
+
+  await page.getByTestId('ai-chat-routing-hint').waitFor();
+  await expect(page.getByTestId('ai-chat-routing-hint')).toContainText(
+    'Scan Target Machine'
+  );
+  await expect(page).toHaveURL(/machines\/machine\/1/);
+  await page.unroute(/\/api\/barcode\//);
+});

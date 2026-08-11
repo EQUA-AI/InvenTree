@@ -13,13 +13,21 @@ import {
 import { useDisclosure, useDocumentVisibility } from '@mantine/hooks';
 import { IconBell, IconSearch, IconUserBolt } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from 'react';
 import { useMatch, useNavigate } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
+import { ModelInformationDict } from '@lib/enums/ModelInformation';
+import { ModelType } from '@lib/enums/ModelType';
 import { apiUrl } from '@lib/functions/Api';
 import { useInvenTreeHotkeys } from '@lib/functions/Events';
-import { getBaseUrl } from '@lib/functions/Navigation';
+import { getBaseUrl, getDetailUrl } from '@lib/functions/Navigation';
 import { navigateToLink } from '@lib/functions/Navigation';
 import { t } from '@lingui/core/macro';
 import { useShallow } from 'zustand/react/shallow';
@@ -29,7 +37,7 @@ import { getNavTabs } from '../../defaults/links';
 import { generateUrl } from '../../functions/urls';
 import { usePluginUIFeature } from '../../hooks/UsePluginUIFeature';
 import * as classes from '../../main.css';
-import { useAIChatState } from '../../states/AIChatState';
+import { openGlobalAIChat, useAIChatState } from '../../states/AIChatState';
 import { useLocalState } from '../../states/LocalState';
 import { useServerApiState } from '../../states/ServerApiState';
 import {
@@ -48,8 +56,36 @@ import { NotificationDrawer } from './NotificationDrawer';
 import { SearchDrawer } from './SearchDrawer';
 
 export function Header() {
+  const navigate = useNavigate();
   const [setNavigationOpen, navigationOpen] = useLocalState(
     useShallow((state) => [state.setNavigationOpen, state.navigationOpen])
+  );
+
+  // S32a: a scanned MACHINE tag lands on the machine page AND opens the AI
+  // drawer with the machine preloaded as a visible routing hint (never
+  // authority — every tool call re-authorizes server-side). Anything else
+  // keeps the stock behavior: navigate to the matched record.
+  const onScanSuccess = useCallback(
+    (_barcode: string, response: any) => {
+      const machine = response?.[ModelType.assetmachine];
+      if (machine?.pk) {
+        navigate(getDetailUrl(ModelType.assetmachine, machine.pk));
+        openGlobalAIChat({
+          machineId: machine.pk,
+          machineName: machine.instance?.name ?? `Machine ${machine.pk}`
+        });
+        return;
+      }
+      for (const modelType of Object.keys(ModelInformationDict)) {
+        if (response?.[modelType]?.pk) {
+          navigate(
+            getDetailUrl(modelType as ModelType, response[modelType].pk)
+          );
+          return;
+        }
+      }
+    },
+    [navigate]
   );
   const [server] = useServerApiState(useShallow((state) => [state.server]));
   const [navDrawerOpened, { open: openNavDrawer, close: closeNavDrawer }] =
@@ -209,7 +245,9 @@ export function Header() {
               </ActionIcon>
             </Tooltip>
             {userSettings.isSet('SHOW_SPOTLIGHT') && <SpotlightButton hotkey />}
-            {globalSettings.isSet('BARCODE_ENABLE') && <ScanButton hotkey />}
+            {globalSettings.isSet('BARCODE_ENABLE') && (
+              <ScanButton hotkey onScanSuccess={onScanSuccess} />
+            )}
             <Indicator
               radius='lg'
               size='18'

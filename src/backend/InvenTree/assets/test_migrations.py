@@ -107,3 +107,47 @@ class ProfileFieldMigrationTests(TransactionTestCase):
         self.assertNotIn('profile', self._machine_columns())
 
         MigrationExecutor(connection).migrate(self.migrate_to)
+
+
+@tag('migration_test')
+class BarcodeFieldMigrationTests(TransactionTestCase):
+    """Prove 0012 adds the barcode columns additively and reverses cleanly."""
+
+    migrate_from = [('assets', '0011_assetmachine_profile')]
+    migrate_to = [
+        ('assets', '0012_assetmachine_barcode_data_assetmachine_barcode_hash')
+    ]
+
+    def _machine_columns(self) -> set[str]:
+        with connection.cursor() as cursor:
+            description = connection.introspection.get_table_description(
+                cursor, 'assets_assetmachine'
+            )
+        return {column.name for column in description}
+
+    def test_barcode_columns_round_trip(self) -> None:
+        """Existing rows survive forward and backward with data intact."""
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        old_apps = executor.loader.project_state(self.migrate_from).apps
+        OldMachine = old_apps.get_model('assets', 'AssetMachine')
+        machine = OldMachine.objects.create(name='Barcode migration pump')
+        self.assertNotIn('barcode_data', self._machine_columns())
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        self.assertIn('barcode_data', self._machine_columns())
+        self.assertIn('barcode_hash', self._machine_columns())
+        new_apps = executor.loader.project_state(self.migrate_to).apps
+        NewMachine = new_apps.get_model('assets', 'AssetMachine')
+        migrated = NewMachine.objects.get(pk=machine.pk)
+        self.assertEqual(migrated.barcode_data, '')
+        self.assertEqual(migrated.name, 'Barcode migration pump')
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_from)
+        self.assertNotIn('barcode_data', self._machine_columns())
+
+        MigrationExecutor(connection).migrate(self.migrate_to)

@@ -59,12 +59,35 @@ def get_default_client() -> Client:
     return client
 
 
-class AssetMachine(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
+class AssetMachine(
+    InvenTree.models.InvenTreeBarcodeMixin,
+    InvenTree.models.InvenTreeAttachmentMixin,
+    models.Model,
+):
     """An equipment asset / machine installed at a facility.
 
     This is separate from the InvenTree ``machine`` app which handles
     external integrations (e.g. label printers).
+
+    S32a: the barcode mixin makes machines scannable — the printed QR on
+    the physical asset resolves to this row through the standard barcode
+    rail, and scanning one in the field opens the AI drawer with the
+    machine as a visible routing hint.
     """
+
+    @classmethod
+    def barcode_model_type_code(cls):
+        """Return the barcode model type code for machines."""
+        return 'AM'
+
+    @staticmethod
+    def get_api_url():
+        """Return the API detail URL base for machines."""
+        return '/api/assets/machines/'
+
+    def get_absolute_url(self):
+        """Return the web URL for this machine's detail page."""
+        return f'/web/machines/machine/{self.pk}/'
 
     name = models.CharField(
         max_length=255,

@@ -13,6 +13,10 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
 
+import { UserRoles } from '@lib/enums/Roles';
+import { BarcodeActionDropdown } from '../../components/items/ActionDropdown';
+import { useUserState } from '../../states/UserState';
+
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
 import type { PanelType } from '@lib/types/Panel';
@@ -36,6 +40,7 @@ import { MachineHealthPanel } from './health/MachineHealthPanel';
 export default function MachineDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const user = useUserState();
   const [createRepairOpen, setCreateRepairOpen] = useState(false);
   const [startRepairOpen, setStartRepairOpen] = useState(false);
 
@@ -180,6 +185,14 @@ export default function MachineDetail() {
           title={machine?.name ?? t`Machine Detail`}
           breadcrumbs={[{ name: t`Machines`, url: '/machines/index/' }]}
           actions={[
+            // S32a: view the machine QR, or link/unlink a third-party tag.
+            <BarcodeActionDropdown
+              key='barcode_actions'
+              model={ModelType.assetmachine}
+              pk={machine?.pk}
+              hash={machine?.barcode_hash}
+              perm={user.hasChangeRole(UserRoles.work_order)}
+            />,
             // S14 B5: opens the main chat drawer with this machine preloaded
             // as a VISIBLE routing hint — never authority. Every tool call
             // re-authorizes server-side; a denied or out-of-scope machine is

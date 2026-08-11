@@ -36,10 +36,11 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'model',
             'serial',
             'profile',
+            'barcode_hash',
             'created_at',
             'updated_at',
         )
-        read_only_fields = ('pk', 'created_at', 'updated_at')
+        read_only_fields = ('pk', 'barcode_hash', 'created_at', 'updated_at')
 
     def validate_profile(self, value):
         """Enforce the machine_profile.v1 schema at the only write surface.
