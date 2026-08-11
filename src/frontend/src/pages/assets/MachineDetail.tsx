@@ -2,6 +2,7 @@ import { t } from '@lingui/core/macro';
 import { Button, Stack, Text } from '@mantine/core';
 import {
   IconActivityHeartbeat,
+  IconHistory,
   IconInfoCircle,
   IconListCheck,
   IconMessageChatbot,
@@ -28,6 +29,7 @@ import { openGlobalAIChat } from '../../states/AIChatState';
 import { MachinePartTable } from '../../tables/assets/MachinePartTable';
 import { MaintenanceRecordTable } from '../../tables/assets/MaintenanceRecordTable';
 import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateModal';
+import FaultHistoryPanel from './FaultHistoryPanel';
 import { StartRepairModal } from './StartRepairModal';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
 
@@ -154,6 +156,14 @@ export default function MachineDetail() {
         icon: <IconTool />,
         content: machine?.pk ? (
           <MaintenanceRecordTable machineId={machine.pk} />
+        ) : null
+      },
+      {
+        name: 'fault-history',
+        label: t`Fault History`,
+        icon: <IconHistory />,
+        content: machine?.pk ? (
+          <FaultHistoryPanel machineId={machine.pk} />
         ) : null
       },
       AttachmentPanel({

@@ -610,6 +610,142 @@ def machine_profile(user, machine) -> dict[str, Any]:
     }
 
 
+def machine_fault_history(
+    user, machine, *, window_days: int = 365, fenced: bool = True
+) -> dict[str, Any]:
+    """Deterministic fault-history rollup: pure ORM aggregates, no search.
+
+    Same provenance split as the knowledge profile: ``declared`` carries the
+    operator-declared fault codes; ``observed`` carries only what server
+    records prove — maintenance activity/cadence, failure codes from
+    approved repair scopes, and a cause histogram restricted to VERIFIED
+    closeouts (an unverified cause is a claim, not a fact). Work orders are
+    re-authorized per row exactly like the maintenance tab, so a shared
+    machine can never leak another tenant's closeout text into a histogram.
+
+    ``fenced`` selects the consumer: the AI rail keeps the untrusted-content
+    markers on operator-authored strings; the REST panel gets the same
+    values sanitized (markers escaped, bounded) without the wrapper, since
+    HTML escaping — not prompt fencing — is that surface's defense.
+    """
+    import itertools
+    from collections import Counter
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from tasks.models import WorkOrder
+    from tasks.scope import ScopeError, require_work_order_scope
+    from tasks.services.closeout_amend import effective_closeout
+
+    from assets.machine_profile import declared_profile
+    from repair.models import ApprovedRepairScope
+
+    def clean(value: str, *, limit: int) -> str:
+        if fenced:
+            return fence(value, limit=limit)
+        text = ' '.join((value or '').split())
+        if len(text) > limit:
+            text = f'{text[:limit]}…'
+        text = text.replace(UNTRUSTED_CONTENT_BEGIN, _ESCAPED_UNTRUSTED_MARKER)
+        return text.replace(UNTRUSTED_CONTENT_END, _ESCAPED_UNTRUSTED_MARKER)
+
+    window_days = max(30, min(int(window_days or 365), 3650))
+    now = timezone.now()
+    cutoff = (now - timedelta(days=window_days)).date()
+
+    dates = list(
+        AssetMaintenanceRecord.objects
+        .filter(machine=machine, date__gte=cutoff)
+        .order_by('date')
+        .values_list('date', flat=True)
+    )
+    gaps = [
+        (later - earlier).days
+        for earlier, later in itertools.pairwise(dates)
+        if (later - earlier).days >= 0
+    ]
+    # Shares the ASSET_REPEAT_MAINTENANCE defaults so the flag here and the
+    # radar finding can never disagree about what "repeat activity" means.
+    repeat_cutoff = (now - timedelta(days=30)).date()
+    repeat_count = sum(1 for date in dates if date >= repeat_cutoff)
+
+    code_counts: Counter[str] = Counter()
+    scope_rows = ApprovedRepairScope.objects.filter(
+        packet__machine=machine
+    ).values_list('failure_codes', flat=True)
+    for codes in scope_rows:
+        for code in codes or []:
+            cleaned = clean(str(code), limit=64)
+            if cleaned:
+                code_counts[cleaned] += 1
+
+    cause_counts: Counter[str] = Counter()
+    closeout_rows = (
+        WorkOrder.objects
+        .filter(
+            machine=machine,
+            structured_closeout__isnull=False,
+            structured_closeout__verified_at__isnull=False,
+        )
+        .select_related('structured_closeout')
+        .order_by('-structured_closeout__completed_at')[:200]
+    )
+    for work_order in closeout_rows:
+        try:
+            require_work_order_scope(user, work_order)
+        except ScopeError:
+            continue
+        cause = str(
+            effective_closeout(work_order.structured_closeout).get('cause') or ''
+        )
+        cleaned = clean(' '.join(cause.split()).lower(), limit=120)
+        if cleaned:
+            cause_counts[cleaned] += 1
+
+    declared_codes = [
+        clean(code, limit=64)
+        for code in declared_profile(machine).get('fault_codes', [])
+    ]
+
+    return {
+        'window_days': window_days,
+        'declared': {
+            'source': 'operator-declared profile',
+            'fault_codes': declared_codes,
+        },
+        'observed': {
+            'maintenance': {
+                'source': 'maintenance records in the window',
+                'count': len(dates),
+                'first_date': _iso(dates[0]) if dates else None,
+                'last_date': _iso(dates[-1]) if dates else None,
+                'gap_days': {
+                    'min': min(gaps) if gaps else None,
+                    'max': max(gaps) if gaps else None,
+                    'median': sorted(gaps)[len(gaps) // 2] if gaps else None,
+                },
+                'repeat_window_flag': repeat_count >= 3,
+                'repeat_window_count': repeat_count,
+            },
+            'failure_codes': {
+                'source': 'approved repair scopes',
+                'top': [
+                    {'code': code, 'count': count}
+                    for code, count in code_counts.most_common(10)
+                ],
+            },
+            'verified_causes': {
+                'source': 'verified closeouts (effective text after amendments)',
+                'top': [
+                    {'cause': cause, 'count': count}
+                    for cause, count in cause_counts.most_common(10)
+                ],
+            },
+        },
+    }
+
+
 def machine_overview(user, machine) -> dict[str, Any]:
     """Everything the machine page shows, in one call.
 
@@ -626,6 +762,7 @@ def machine_overview(user, machine) -> dict[str, Any]:
         'anomalies': machine_anomalies(machine, limit=5),
         'installed_parts': machine_installed_parts(machine, limit=10),
         'maintenance_history': machine_maintenance_history(user, machine, limit=5),
+        'fault_history': machine_fault_history(user, machine),
         'attachments': machine_attachments(machine, limit=10),
     }
 
@@ -637,6 +774,7 @@ __all__ = [
     'machine_ai_read_enabled',
     'machine_anomalies',
     'machine_attachments',
+    'machine_fault_history',
     'machine_health',
     'machine_identity',
     'machine_installed_parts',

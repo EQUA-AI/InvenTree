@@ -8,6 +8,7 @@ asset/health model graph.
 from __future__ import annotations
 
 import unittest
+from datetime import timedelta
 
 from django.apps import apps
 
@@ -438,6 +439,111 @@ class ProjectionTests(MachineAiReadTestCase):
                 'anomalies',
                 'installed_parts',
                 'maintenance_history',
+                'fault_history',
                 'attachments',
             },
         )
+
+
+class MachineFaultHistoryTests(MachineAiReadTestCase):
+    """C4: the deterministic rollup aggregates only what records prove."""
+
+    def _record(self, days_ago, summary='PM service'):
+        from django.utils import timezone as tz
+
+        return AssetMaintenanceRecord.objects.create(
+            machine=self.machine,
+            date=(tz.now() - timedelta(days=days_ago)).date(),
+            summary=summary,
+        )
+
+    def _verified_closeout(self, cause, *, verified=True):
+        from django.utils import timezone as tz
+
+        from tasks.models import WorkOrder, WorkOrderLifecycle
+        from tasks.workorder_models import WorkOrderCloseout
+
+        work_order = WorkOrder.objects.create(
+            title='Fix it',
+            status='done',
+            priority='medium',
+            lifecycle_status=WorkOrderLifecycle.COMPLETED,
+            machine=self.machine,
+        )
+        now = tz.now()
+        return WorkOrderCloseout.objects.create(
+            work_order=work_order,
+            cause=cause,
+            action='Replaced part',
+            result='Working',
+            verification_summary='Verified OK',
+            completed_by=self.actor,
+            completed_at=now,
+            verified_by=self.actor if verified else None,
+            verified_at=now if verified else None,
+            content_hash='0' * 64,
+        )
+
+    def test_rollup_aggregates_and_provenance(self):
+        """Counts, gaps, code/cause histograms and the repeat flag."""
+        from repair.models import ApprovedRepairScope, RepairPacket
+
+        for days_ago in (2, 9, 16, 200):
+            self._record(days_ago)
+        packet = RepairPacket.objects.create(
+            fault_summary='seal leak', machine=self.machine
+        )
+        ApprovedRepairScope.objects.create(
+            packet=packet, version=1, failure_codes=['SEAL-01', 'BRG-07']
+        )
+        ApprovedRepairScope.objects.create(
+            packet=packet, version=2, failure_codes=['SEAL-01']
+        )
+        self._verified_closeout('Bearing wear')
+        self._verified_closeout('bearing  wear')
+        self._verified_closeout('never verified', verified=False)
+
+        rollup = ai_read.machine_fault_history(self.actor, self.machine, fenced=False)
+
+        maintenance = rollup['observed']['maintenance']
+        self.assertEqual(maintenance['count'], 4)
+        self.assertTrue(maintenance['repeat_window_flag'])
+        self.assertEqual(maintenance['repeat_window_count'], 3)
+        self.assertEqual(maintenance['gap_days']['min'], 7)
+
+        codes = rollup['observed']['failure_codes']['top']
+        self.assertEqual(codes[0], {'code': 'SEAL-01', 'count': 2})
+        causes = rollup['observed']['verified_causes']['top']
+        # Whitespace/case-normalized; the unverified cause never appears.
+        self.assertEqual(causes, [{'cause': 'bearing wear', 'count': 2}])
+        self.assertEqual(rollup['declared']['source'], 'operator-declared profile')
+
+    def test_unauthorized_work_orders_are_skipped(self):
+        """A closeout on a WO outside the actor's scope never aggregates."""
+        from company.models import Company
+
+        closeout = self._verified_closeout('foreign cause')
+        other_customer = Company.objects.create(
+            name='Fault Hist Other', is_customer=True
+        )
+        closeout.work_order.customer = other_customer
+        closeout.work_order.save(update_fields=['customer'])
+
+        rollup = ai_read.machine_fault_history(self.actor, self.machine, fenced=False)
+        self.assertEqual(rollup['observed']['verified_causes']['top'], [])
+
+    def test_overview_includes_fault_history_with_fencing(self):
+        """The AI overview carries the rollup with fenced operator text."""
+        from repair.models import ApprovedRepairScope, RepairPacket
+
+        packet = RepairPacket.objects.create(
+            fault_summary='seal leak', machine=self.machine
+        )
+        ApprovedRepairScope.objects.create(
+            packet=packet, version=1, failure_codes=['SEAL-01']
+        )
+        overview = ai_read.machine_overview(self.actor, self.machine)
+        self.assertIn('fault_history', overview)
+        top = overview['fault_history']['observed']['failure_codes']['top']
+        # The AI rail keeps the untrusted-content fence on operator strings.
+        self.assertIn('[UNTRUSTED-CONTENT-BEGIN]', top[0]['code'])

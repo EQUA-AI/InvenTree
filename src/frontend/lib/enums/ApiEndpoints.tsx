@@ -180,6 +180,7 @@ export enum ApiEndpoints {
   asset_client_detail = 'assets/clients/:id/',
   asset_machine_list = 'assets/machines/',
   asset_machine_detail = 'assets/machines/:id/',
+  asset_machine_fault_history = 'assets/machines/:id/fault-history/',
   asset_machine_part_list = 'assets/parts/',
   asset_machine_part_detail = 'assets/parts/:id/',
   machine_health_summary = 'machine-health/machines/:id/health/',

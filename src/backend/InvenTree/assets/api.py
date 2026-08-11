@@ -5,6 +5,8 @@ from __future__ import annotations
 from django.urls import include, path
 
 from django_filters.rest_framework import FilterSet, filters
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
@@ -124,6 +126,39 @@ class AssetMachineDetail(RetrieveUpdateDestroyAPI):
     role_required = 'work_order'
 
 
+class AssetMachineFaultHistory(APIView):
+    """Deterministic fault-history rollup for one machine (C4).
+
+    Unlike the plain detail endpoints, this projection aggregates closeout
+    text, so it uses the ai_read discipline: machine scope is re-derived per
+    request and an out-of-scope machine is indistinguishable from a missing
+    one.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+
+    def get(self, request, pk):
+        """Return the rollup, 404ing out-of-scope machines."""
+        from django.http import Http404
+
+        from tasks.scope import ScopeError, require_machine_scope
+
+        from assets.ai_read import machine_fault_history
+
+        machine = AssetMachine.objects.filter(pk=pk).first()
+        if machine is None:
+            raise Http404
+        try:
+            require_machine_scope(request.user, machine)
+        except ScopeError as exc:
+            raise Http404 from exc
+        return Response(machine_fault_history(request.user, machine, fenced=False))
+
+
 class MachinePartList(ListCreateAPI):
     """List and create machine-part relationships."""
 
@@ -206,6 +241,11 @@ assets_api_urls = [
             path('', AssetMachineList.as_view(), name='asset-machine-list'),
             path(
                 '<int:pk>/', AssetMachineDetail.as_view(), name='asset-machine-detail'
+            ),
+            path(
+                '<int:pk>/fault-history/',
+                AssetMachineFaultHistory.as_view(),
+                name='asset-machine-fault-history',
             ),
         ]),
     ),
