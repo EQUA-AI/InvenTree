@@ -134,6 +134,8 @@ class ThreadInfo(BaseModel):
     created_at: str | None = None
     last_activity: str | None = None
     is_persisted: bool = False
+    # S32b: set on rows in the shared_threads list; owned rows omit it.
+    shared: bool = False
 
 
 class ThreadSyncResponse(BaseModel):
@@ -142,6 +144,9 @@ class ThreadSyncResponse(BaseModel):
     threads: list[ThreadInfo]
     sync_token: str | None = None
     has_more: bool = False
+    # S32b: read-only threads granted to the caller (empty when the
+    # feature is dark, so the response shape is always stable).
+    shared_threads: list[ThreadInfo] = []
 
 
 class ThreadMessage(BaseModel):
@@ -766,30 +771,37 @@ async def list_threads(
     _observe_legacy_identity(user_id, source="query")
     repository = _repository(_principal())
 
-    def materialize() -> tuple[list[ThreadInfo], int]:
+    def _info(thread, *, shared: bool = False) -> ThreadInfo:
+        """Project one thread row for the sync response."""
+        return ThreadInfo(
+            thread_id=thread.pk,
+            title=thread.title,
+            message_count=thread.messages.count(),
+            turn_count=thread.turns.count(),
+            summary=thread.summary,
+            created_at=thread.created_at.isoformat(),
+            last_activity=thread.updated_at.isoformat(),
+            is_persisted=True,
+            shared=shared,
+        )
+
+    def materialize() -> tuple[list[ThreadInfo], int, list[ThreadInfo]]:
         """Materialize."""
         all_threads = repository.search(q, limit=limit) if q else repository.list()
         selected = all_threads[: max(1, min(limit, 100))]
-        result = [
-            ThreadInfo(
-                thread_id=thread.pk,
-                title=thread.title,
-                message_count=thread.messages.count(),
-                turn_count=thread.turns.count(),
-                summary=thread.summary,
-                created_at=thread.created_at.isoformat(),
-                last_activity=thread.updated_at.isoformat(),
-                is_persisted=True,
-            )
-            for thread in selected
-        ]
-        return result, len(all_threads)
+        result = [_info(thread) for thread in selected]
+        # S32b: shared threads ride the same response; list_shared returns
+        # [] whenever the feature is dark. The search box intentionally
+        # does not search shared transcripts.
+        shared = [] if q else [_info(thread, shared=True) for thread in repository.list_shared()]
+        return result, len(all_threads), shared
 
-    threads, total = await sync_to_async(materialize, thread_sensitive=True)()
+    threads, total, shared_threads = await sync_to_async(materialize, thread_sensitive=True)()
     return ThreadSyncResponse(
         threads=threads,
         sync_token=None,
         has_more=total > len(threads),
+        shared_threads=shared_threads,
     )
 
 
@@ -823,8 +835,10 @@ async def get_thread(
 
     def materialize() -> dict[str, Any]:
         """Materialize."""
-        thread = repository.get(thread_id)
-        stored_messages = repository.messages(thread_id) if include_messages else []
+        # S32b: reads (and only reads) honor explicit grants; the shared
+        # marker lets the client withhold every write affordance.
+        thread, shared = repository.get_readable(thread_id)
+        stored_messages = repository.readable_messages(thread_id) if include_messages else []
         selected = stored_messages[-max(1, min(message_limit, 200)) :]
         return {
             "thread_id": thread.pk,
@@ -856,6 +870,7 @@ async def get_thread(
             "created_at": thread.created_at.isoformat(),
             "updated_at": thread.updated_at.isoformat(),
             "is_persisted": True,
+            "shared": shared,
         }
 
     try:
@@ -891,6 +906,77 @@ async def update_thread(
     except (ThreadNotFound, ScopedThreadRejected):
         raise HTTPException(status_code=404, detail="Thread not found") from None
     return {"thread_id": thread.pk, "title": thread.title, "updated": True}
+
+
+class ThreadShareRequest(BaseModel):
+    """Grant or revoke read access for one username (S32b)."""
+
+    username: str
+
+
+def _resolve_grantee(username: str):
+    """Resolve an active user by exact username, or None."""
+    from django.contrib.auth import get_user_model
+
+    name = str(username or "").strip()
+    if not name:
+        return None
+    return get_user_model().objects.filter(username=name, is_active=True).first()
+
+
+@app.post("/threads/{thread_id}/share")
+async def share_thread(thread_id: str, request: ThreadShareRequest) -> dict[str, Any]:
+    """Grant read access on an owned thread (flag-gated, audited).
+
+    An unknown grantee and a disabled feature are both reported without
+    disclosing whether the thread exists for other principals.
+    """
+    from aichat.services.threads import InvalidBoundary
+
+    repository = _repository(_principal())
+
+    def perform() -> dict[str, Any]:
+        """Perform."""
+        grantee = _resolve_grantee(request.username)
+        if grantee is None:
+            raise HTTPException(status_code=400, detail="Unknown grantee")
+        grant = repository.share(thread_id, grantee_id=grantee.pk)
+        return {
+            "thread_id": thread_id,
+            "grantee": grantee.username,
+            "access": grant.access,
+            "granted": True,
+        }
+
+    try:
+        return await sync_to_async(perform, thread_sensitive=True)()
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    except InvalidBoundary as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@app.post("/threads/{thread_id}/revoke-share")
+async def revoke_thread_share(thread_id: str, request: ThreadShareRequest) -> dict[str, Any]:
+    """Revoke read access on an owned thread; grant rows are kept as audit."""
+    from aichat.services.threads import InvalidBoundary
+
+    repository = _repository(_principal())
+
+    def perform() -> dict[str, Any]:
+        """Perform."""
+        grantee = _resolve_grantee(request.username)
+        if grantee is None:
+            raise HTTPException(status_code=400, detail="Unknown grantee")
+        revoked = repository.revoke_share(thread_id, grantee_id=grantee.pk)
+        return {"thread_id": thread_id, "grantee": grantee.username, "revoked": revoked}
+
+    try:
+        return await sync_to_async(perform, thread_sensitive=True)()
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    except InvalidBoundary as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @app.post("/threads/sync")

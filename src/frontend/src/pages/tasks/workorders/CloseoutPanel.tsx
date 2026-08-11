@@ -28,6 +28,7 @@ import {
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
+import DictateCloseoutModal from './DictateCloseoutModal';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -143,6 +144,7 @@ export function CloseoutPanel({
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
   const [narrative, setNarrative] = useState('');
+  const [dictateOpen, setDictateOpen] = useState(false);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [downtime, setDowntime] = useState<number | ''>('');
   const [followUp, setFollowUp] = useState('');
@@ -378,6 +380,13 @@ export function CloseoutPanel({
   return (
     <Card withBorder padding='lg'>
       <Title order={4} mb='md'>{t`Closeout`}</Title>
+      <DictateCloseoutModal
+        opened={dictateOpen}
+        onClose={() => setDictateOpen(false)}
+        workOrderId={workOrder.id}
+        workOrderVersion={workOrder.lifecycle_version}
+        onCommitted={() => void invalidate()}
+      />
       <Stepper
         active={step}
         onStepClick={setStep}
@@ -391,6 +400,7 @@ export function CloseoutPanel({
             setNarrative={setNarrative}
             onCreate={createCapture}
             onExtract={extract}
+            onDictate={() => setDictateOpen(true)}
             busy={busy}
             loading={capturesQuery.isLoading}
           />
@@ -452,6 +462,7 @@ function NarrativeStep({
   setNarrative,
   onCreate,
   onExtract,
+  onDictate,
   busy,
   loading
 }: Readonly<{
@@ -460,6 +471,7 @@ function NarrativeStep({
   setNarrative: (value: string) => void;
   onCreate: () => void;
   onExtract: () => void;
+  onDictate: () => void;
   busy: boolean;
   loading: boolean;
 }>) {
@@ -508,6 +520,17 @@ function NarrativeStep({
       <Group>
         <Button onClick={onCreate} loading={busy} disabled={!narrative.trim()}>
           {t`Capture narrative`}
+        </Button>
+        {/* B4: voice provenance path — mutually exclusive with typing,
+            because the server refuses a handoff over an active capture. */}
+        <Button
+          variant='light'
+          color='grape'
+          onClick={onDictate}
+          disabled={busy || !!narrative.trim()}
+          data-testid='dictate-closeout'
+        >
+          {t`Dictate`}
         </Button>
       </Group>
     </Stack>

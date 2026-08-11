@@ -34,3 +34,35 @@ class AIChatMigrationTests(TransactionTestCase):
         )
 
         MigrationExecutor(connection).migrate(self.migrate_to)
+
+
+@tag('migration_test')
+class ThreadGrantMigrationTests(TransactionTestCase):
+    """Prove 0015 adds the grant table additively and reverses cleanly."""
+
+    migrate_from = [('aichat', '0014_drop_scoped_chat')]
+    migrate_to = [('aichat', '0015_chatthreadgrant')]
+
+    def test_grant_table_round_trips(self) -> None:
+        """The grant table appears, reverses, and re-applies."""
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        self.assertNotIn(
+            'aichat_chatthreadgrant', set(connection.introspection.table_names())
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        self.assertIn(
+            'aichat_chatthreadgrant', set(connection.introspection.table_names())
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_from)
+        self.assertNotIn(
+            'aichat_chatthreadgrant', set(connection.introspection.table_names())
+        )
+
+        MigrationExecutor(connection).migrate(self.migrate_to)

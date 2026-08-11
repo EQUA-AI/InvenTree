@@ -27,6 +27,7 @@ import {
   IconCheck,
   IconChevronDown,
   IconCopy,
+  IconEye,
   IconGripVertical,
   IconMessagePlus,
   IconMessages,
@@ -37,6 +38,7 @@ import {
   IconRobot,
   IconSearch,
   IconSend,
+  IconShare2,
   IconSparkles,
   IconThumbDown,
   IconThumbUp,
@@ -471,23 +473,29 @@ function ApprovalInboxPanel({
  */
 function ThreadSelector({
   threads,
+  sharedThreads = [],
   activeThreadId,
   onSelectThread,
   onNewThread,
   onDeleteThread,
   onRenameThread,
+  onShareThread,
   disabled = false
 }: Readonly<{
   threads: ChatThread[];
+  sharedThreads?: ChatThread[];
   activeThreadId: string;
   onSelectThread: (threadId: string) => void;
   onNewThread: () => void;
   onDeleteThread: (threadId: string) => void;
   onRenameThread: (threadId: string, title: string) => void;
+  onShareThread?: (threadId: string, entry: string) => void;
   disabled?: boolean;
 }>) {
   const theme = useMantineTheme();
-  const activeThread = threads.find((t) => t.id === activeThreadId);
+  const activeThread =
+    threads.find((t) => t.id === activeThreadId) ??
+    sharedThreads.find((t) => t.id === activeThreadId);
 
   // Format relative time
   const formatTime = (date: Date) => {
@@ -572,6 +580,26 @@ function ThreadSelector({
                   >
                     <IconPencil size={12} />
                   </ActionIcon>
+                  {onShareThread && (
+                    <ActionIcon
+                      aria-label={`share-ai-chat-thread-${thread.id}`}
+                      size='xs'
+                      variant='subtle'
+                      color='gray'
+                      disabled={disabled}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const entry = window.prompt(
+                          t`Share read-only with username (prefix with - to revoke)`
+                        );
+                        if (entry?.trim()) {
+                          onShareThread(thread.id, entry.trim());
+                        }
+                      }}
+                    >
+                      <IconShare2 size={12} />
+                    </ActionIcon>
+                  )}
                   <ActionIcon
                     aria-label={`delete-ai-chat-thread-${thread.id}`}
                     size='xs'
@@ -610,7 +638,43 @@ function ThreadSelector({
           ))}
         </ScrollArea.Autosize>
 
-        {threads.length === 0 && (
+        {sharedThreads.length > 0 && (
+          <>
+            <Menu.Divider />
+            <Menu.Label>{t`Shared with me`}</Menu.Label>
+            <ScrollArea.Autosize mah={160}>
+              {sharedThreads.map((thread) => (
+                <Menu.Item
+                  key={thread.id}
+                  data-testid={`shared-thread-${thread.id}`}
+                  onClick={() => onSelectThread(thread.id)}
+                  rightSection={<IconEye size={12} style={{ opacity: 0.6 }} />}
+                  style={{
+                    backgroundColor:
+                      thread.id === activeThreadId
+                        ? theme.colors.blue[0]
+                        : undefined
+                  }}
+                >
+                  <Box>
+                    <Text
+                      size='sm'
+                      truncate
+                      fw={thread.id === activeThreadId ? 600 : 400}
+                    >
+                      {thread.title}
+                    </Text>
+                    <Text size='xs' c='dimmed'>
+                      {t`Read-only`}
+                    </Text>
+                  </Box>
+                </Menu.Item>
+              ))}
+            </ScrollArea.Autosize>
+          </>
+        )}
+
+        {threads.length === 0 && sharedThreads.length === 0 && (
           <Text size='xs' c='dimmed' ta='center' py='sm'>
             {t`No previous conversations`}
           </Text>
@@ -1000,6 +1064,11 @@ export function AIChatDrawer({
     isSyncing,
     syncThreads,
     searchThreads,
+    // S32b: read-only sharing
+    sharedThreads,
+    activeThreadShared,
+    shareThread,
+    revokeThreadShare,
     // Structured questions (S22/S23)
     pendingQuestion,
     armQuestion,
@@ -1471,11 +1540,28 @@ export function AIChatDrawer({
             <Box mt='sm'>
               <ThreadSelector
                 threads={threads}
+                sharedThreads={sharedThreads}
                 activeThreadId={activeThreadId}
                 onSelectThread={handleSwitchThread}
                 onNewThread={handleNewThread}
                 onDeleteThread={handleDeleteThread}
                 onRenameThread={renameThread}
+                onShareThread={(threadId, entry) => {
+                  const revoke = entry.startsWith('-');
+                  const username = revoke ? entry.slice(1).trim() : entry;
+                  if (!username) return;
+                  void (
+                    revoke
+                      ? revokeThreadShare(threadId, username)
+                      : shareThread(threadId, username)
+                  ).then((result) => {
+                    if (!result.ok) {
+                      window.alert(
+                        `${t`Sharing failed`}: ${result.detail ?? ''}`
+                      );
+                    }
+                  });
+                }}
                 disabled={isLoading}
               />
             </Box>
@@ -1769,11 +1855,13 @@ export function AIChatDrawer({
                 <Textarea
                   ref={inputRef}
                   placeholder={
-                    pendingQuestion
-                      ? t`Answer the question above, or ask something else...`
-                      : attachedFiles.length > 0
-                        ? t`Add a message about attached files...`
-                        : t`Type a message...`
+                    activeThreadShared
+                      ? t`Shared conversation — read-only`
+                      : pendingQuestion
+                        ? t`Answer the question above, or ask something else...`
+                        : attachedFiles.length > 0
+                          ? t`Add a message about attached files...`
+                          : t`Type a message...`
                   }
                   value={inputValue}
                   onChange={(e) => setInputValue(e.currentTarget.value)}
@@ -1781,7 +1869,7 @@ export function AIChatDrawer({
                   autosize
                   minRows={1}
                   maxRows={4}
-                  disabled={isLoading}
+                  disabled={isLoading || activeThreadShared}
                   styles={{
                     input: {
                       border: 'none',
@@ -1821,7 +1909,7 @@ export function AIChatDrawer({
                         variant='filled'
                         color='blue'
                         onClick={() => handleSendMessage()}
-                        disabled={!inputValue.trim()}
+                        disabled={!inputValue.trim() || activeThreadShared}
                         style={{
                           transition: 'transform 0.2s ease',
                           transform: inputValue.trim()

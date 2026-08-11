@@ -514,6 +514,164 @@ class ThreadRepository:
         thread = self._get_thread(thread_id)
         return list(ChatMessage.objects.filter(thread=thread))
 
+    # ---- S32b (B6): explicit read-only sharing ---------------------------
+    #
+    # Grants widen EXACTLY two things: resolving one named thread for a read
+    # (``get_readable``) and the "shared with me" listing (``list_shared``).
+    # ``_threads()``, ``_get_thread`` and ``_lock_thread`` stay owner-only,
+    # so every write path — rename, delete, append, begin_turn, terminal —
+    # is untouched by a grant, which is what makes READ access read-only.
+
+    @staticmethod
+    def _sharing_enabled() -> bool:
+        """Whether thread sharing exists in this deployment (fail closed)."""
+        from django.conf import settings as django_settings
+
+        return bool(getattr(django_settings, 'FEATURE_THREAD_SHARING', False))
+
+    def _active_grants(self):
+        """Grants currently conferring read access to the acting user."""
+        from django.utils import timezone
+
+        from aichat.models import ChatThreadGrant
+
+        return ChatThreadGrant.objects.filter(
+            grantee_id=self.actor_id, revoked_at__isnull=True
+        ).filter(
+            models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=timezone.now())
+        )
+
+    def _get_shared_thread(self, thread_id: str) -> ChatThread:
+        """Resolve a thread readable through an explicit active grant.
+
+        The grant must land inside the SAME scope boundary this repository
+        was constructed for; a grant can never carry a thread across scopes.
+        """
+        if not self._sharing_enabled():
+            raise ThreadNotFound('Thread not found')
+        self._reject_wrong_namespace_id(thread_id)
+        grant = (
+            self
+            ._active_grants()
+            .filter(
+                thread_id=thread_id,
+                thread__scope_key=self.scope_key,
+                thread__scope_hash=self.scope_hash,
+                thread__namespace=self.namespace,
+            )
+            .select_related('thread')
+            .first()
+        )
+        if grant is None:
+            raise ThreadNotFound('Thread not found')
+        return grant.thread
+
+    def get_readable(self, thread_id: str) -> tuple[ChatThread, bool]:
+        """Return one READABLE thread: owned, or explicitly granted.
+
+        The second element reports whether the access came from a grant, so
+        callers can label shared transcripts and withhold write affordances.
+        """
+        try:
+            return self._get_thread(thread_id), False
+        except ThreadNotFound:
+            return self._get_shared_thread(thread_id), True
+
+    def readable_messages(self, thread_id: str) -> builtins.list[ChatMessage]:
+        """Return the transcript of one readable (owned or granted) thread."""
+        thread, _ = self.get_readable(thread_id)
+        return list(ChatMessage.objects.filter(thread=thread))
+
+    def list_shared(self) -> builtins.list[ChatThread]:
+        """Threads shared with the actor inside this scope boundary."""
+        if not self._sharing_enabled():
+            return []
+        rows = (
+            self
+            ._active_grants()
+            .filter(
+                thread__scope_key=self.scope_key,
+                thread__scope_hash=self.scope_hash,
+                thread__namespace=self.namespace,
+            )
+            .select_related('thread')
+            .order_by('-thread__updated_at')
+        )
+        seen: set[str] = set()
+        threads: builtins.list[ChatThread] = []
+        for grant in rows:
+            if grant.thread_id not in seen:
+                seen.add(grant.thread_id)
+                threads.append(grant.thread)
+        return threads
+
+    def share(self, thread_id: str, *, grantee_id: int, expires_at=None):
+        """Grant read access on an OWNED thread; idempotent per active grant."""
+        from django.contrib.auth import get_user_model
+
+        from aichat.models import ChatThreadGrant
+
+        if not self._sharing_enabled():
+            raise InvalidBoundary('Thread sharing is disabled')
+        thread = self._get_thread(thread_id)  # owner-only resolution
+        if int(grantee_id) == int(self.actor_id):
+            raise InvalidBoundary('A thread cannot be shared with its owner')
+        grantee = get_user_model().objects.filter(pk=grantee_id, is_active=True).first()
+        if grantee is None:
+            raise InvalidBoundary('Grantee is unknown or inactive')
+        existing = (
+            self
+            ._filtered_thread_grants(thread, grantee_id)
+            .filter(revoked_at__isnull=True)
+            .first()
+        )
+        if existing is not None:
+            return existing
+        return ChatThreadGrant.objects.create(
+            thread=thread,
+            grantee=grantee,
+            granted_by_id=self.actor_id,
+            expires_at=expires_at,
+        )
+
+    def revoke_share(self, thread_id: str, *, grantee_id: int) -> int:
+        """Revoke active grants on an OWNED thread; rows are never deleted."""
+        from django.utils import timezone
+
+        if not self._sharing_enabled():
+            raise InvalidBoundary('Thread sharing is disabled')
+        thread = self._get_thread(thread_id)  # owner-only resolution
+        return (
+            self
+            ._filtered_thread_grants(thread, grantee_id)
+            .filter(revoked_at__isnull=True)
+            .update(revoked_at=timezone.now())
+        )
+
+    @staticmethod
+    def _filtered_thread_grants(thread: ChatThread, grantee_id: int):
+        """All grant rows for one (thread, grantee) pair."""
+        from aichat.models import ChatThreadGrant
+
+        return ChatThreadGrant.objects.filter(thread=thread, grantee_id=grantee_id)
+
+    def thread_grants(self, thread_id: str):
+        """Active grants on an OWNED thread (for the share UI)."""
+        thread = self._get_thread(thread_id)
+        return list(self._active_grants_for_thread(thread).select_related('grantee'))
+
+    def _active_grants_for_thread(self, thread: ChatThread):
+        """Active (unrevoked, unexpired) grants on one thread."""
+        from django.utils import timezone
+
+        from aichat.models import ChatThreadGrant
+
+        return ChatThreadGrant.objects.filter(
+            thread=thread, revoked_at__isnull=True
+        ).filter(
+            models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=timezone.now())
+        )
+
     def recent_messages(
         self, thread_id: str, limit: int, *, exclude_latest: int = 0
     ) -> builtins.list[ChatMessage]:

@@ -1477,6 +1477,12 @@ AIMMS_RISK_RULES_ENABLED = [
     code.strip() for code in str(_aimms_risk_rules_raw or '').split(',') if code.strip()
 ]
 
+# S32b (B6): thread sharing. Same env var as the ai.core plane's
+# FEATURE_THREAD_SHARING so both planes flip together.
+FEATURE_THREAD_SHARING = get_boolean_setting(
+    'FEATURE_THREAD_SHARING', 'feature_thread_sharing', False
+)
+
 # One boot-time line stating the effective AIMMS switchboard, so "which flags
 # does this revision actually run with" is answerable from container logs
 # instead of by re-deriving env → settings mappings by hand.

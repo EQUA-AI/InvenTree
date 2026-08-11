@@ -414,6 +414,8 @@ export interface ChatThread {
   messages: ChatMessage[];
   createdAt: Date;
   updatedAt: Date;
+  /** S32b: true for read-only threads granted by another user. */
+  shared?: boolean;
 }
 
 /**
@@ -440,6 +442,7 @@ interface ServerThreadInfo {
   created_at: string | null;
   last_activity: string | null;
   is_persisted: boolean;
+  shared?: boolean;
 }
 
 /**
@@ -449,6 +452,8 @@ interface ThreadSyncResponse {
   threads: ServerThreadInfo[];
   sync_token: string | null;
   has_more: boolean;
+  /** S32b: read-only threads granted to the caller ([] when dark). */
+  shared_threads?: ServerThreadInfo[];
 }
 
 /**
@@ -671,6 +676,40 @@ async function updateServerThreadTitle(
 }
 
 /**
+ * S32b: grant or revoke read access on an owned thread. Returns the server
+ * error detail on failure so the UI can report "unknown user" vs "disabled".
+ */
+async function postThreadShare(
+  threadId: string,
+  username: string,
+  host: string,
+  action: 'share' | 'revoke-share'
+): Promise<{ ok: boolean; detail?: string }> {
+  try {
+    const response = await fetch(
+      `${host}/threads/${encodeURIComponent(threadId)}/${action}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...csrfHeaders()
+        },
+        credentials: 'include',
+        body: JSON.stringify({ username })
+      }
+    );
+    if (response.ok) {
+      return { ok: true };
+    }
+    const body = await response.json().catch(() => ({}));
+    return { ok: false, detail: body?.detail ?? `HTTP ${response.status}` };
+  } catch (error) {
+    console.error('Error updating thread share:', error);
+    return { ok: false, detail: 'network error' };
+  }
+}
+
+/**
  * Generate a unique message ID
  */
 function generateMessageId(): string {
@@ -842,6 +881,12 @@ export function useAIChat(config: AIChatConfig = {}) {
   const [storedThreads, setStoredThreads] =
     useState<StoredThread[]>(loadStoredThreads);
 
+  // S32b: read-only threads granted by other users. Server-only state —
+  // never written to localStorage, so a revocation takes effect on the
+  // next sync with nothing stale left behind.
+  const [sharedThreads, setSharedThreads] = useState<ChatThread[]>([]);
+  const [activeThreadShared, setActiveThreadShared] = useState(false);
+
   const [activeThreadId, setActiveThreadId] = useState<string>(() => {
     // Initialize with the most recent thread or create a new one
     const threads = loadStoredThreads();
@@ -915,6 +960,16 @@ export function useAIChat(config: AIChatConfig = {}) {
       }
 
       const localThreads = storedThreadsRef.current;
+      setSharedThreads(
+        (serverData.shared_threads ?? []).map((thread) => ({
+          id: thread.thread_id,
+          title: thread.title || thread.summary || 'Shared chat',
+          messages: [],
+          createdAt: new Date(thread.created_at ?? Date.now()),
+          updatedAt: new Date(thread.last_activity ?? Date.now()),
+          shared: true
+        }))
+      );
       const serverIds = new Set(
         serverData.threads.map((thread) => thread.thread_id)
       );
@@ -1107,6 +1162,20 @@ export function useAIChat(config: AIChatConfig = {}) {
     [aiHost]
   );
 
+  /** S32b: grant read access on one owned thread to a username. */
+  const shareThread = useCallback(
+    (threadId: string, username: string) =>
+      postThreadShare(threadId, username, aiHost, 'share'),
+    [aiHost]
+  );
+
+  /** S32b: revoke a previously granted read access. */
+  const revokeThreadShare = useCallback(
+    (threadId: string, username: string) =>
+      postThreadShare(threadId, username, aiHost, 'revoke-share'),
+    [aiHost]
+  );
+
   /**
    * Save current messages to the active thread
    */
@@ -1159,10 +1228,32 @@ export function useAIChat(config: AIChatConfig = {}) {
    */
   const switchThread = useCallback(
     async (threadId: string) => {
-      // Save current thread before switching
-      if (messages.length > 0) {
+      // Save current thread before switching — never for a shared
+      // transcript, which must not leak into the owner-local store.
+      if (messages.length > 0 && !activeThreadShared) {
         saveCurrentThread(messages);
       }
+
+      // S32b: a shared thread is viewed read-only straight from the server.
+      const shared = sharedThreads.find((t) => t.id === threadId);
+      if (shared) {
+        activeThreadIdRef.current = threadId;
+        setActiveThreadId(threadId);
+        setActiveThreadShared(true);
+        setError(null);
+        setIsLoading(true);
+        try {
+          const serverMessages = await loadThreadFromServer(threadId);
+          setMessages(serverMessages ?? []);
+        } catch (err) {
+          console.error('Failed to load shared thread:', err);
+          setMessages([]);
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
+      setActiveThreadShared(false);
 
       const thread = storedThreads.find((t: StoredThread) => t.id === threadId);
 
@@ -1192,25 +1283,33 @@ export function useAIChat(config: AIChatConfig = {}) {
         }
       }
     },
-    [messages, storedThreads, saveCurrentThread, loadThreadFromServer]
+    [
+      messages,
+      storedThreads,
+      sharedThreads,
+      activeThreadShared,
+      saveCurrentThread,
+      loadThreadFromServer
+    ]
   );
 
   /**
    * Create a new thread and switch to it
    */
   const createNewThread = useCallback(() => {
-    // Save current thread before creating new one
-    if (messages.length > 0) {
+    // Save current thread before creating new one (never a shared view).
+    if (messages.length > 0 && !activeThreadShared) {
       saveCurrentThread(messages);
     }
 
     const newId = generateThreadId();
     activeThreadIdRef.current = newId;
     setActiveThreadId(newId);
+    setActiveThreadShared(false);
     setMessages([]);
     setError(null);
     return newId;
-  }, [messages, saveCurrentThread]);
+  }, [messages, activeThreadShared, saveCurrentThread]);
 
   /**
    * Delete a thread (both locally and on server)
@@ -2130,6 +2229,12 @@ export function useAIChat(config: AIChatConfig = {}) {
     deleteThread,
     renameThread,
     clearChat,
+
+    // S32b: read-only sharing
+    sharedThreads,
+    activeThreadShared,
+    shareThread,
+    revokeThreadShare,
 
     // Sync functionality
     isSyncing,

@@ -312,6 +312,11 @@ class Settings(BaseSettings):
     # dev -> experimental, and raise AZURE_LUNA_DIAGNOSIS_TIMEOUT_S to 45
     # wherever this is enabled so the continuation fits the deadline.
     feature_history_enrichment: bool = Field(default=False, alias="FEATURE_HISTORY_ENRICHMENT")
+    # S32b (B6): read-only thread sharing via explicit audited grants. Dark by
+    # default; the same env var is bridged into Django settings so the
+    # repository (Django plane) and the /threads surface (this plane) can
+    # never disagree about whether sharing exists.
+    feature_thread_sharing: bool = Field(default=False, alias="FEATURE_THREAD_SHARING")
     azure_luna_history_enrichment_rounds: int = Field(
         default=1,
         ge=0,

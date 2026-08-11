@@ -130,6 +130,53 @@ class ChatThread(models.Model):
         return f'{self.namespace} chat thread {self.pk}'
 
 
+class ThreadGrantAccess(models.TextChoices):
+    """Access levels a thread grant may confer (read-only for now)."""
+
+    READ = 'read', 'Read'
+
+
+class ChatThreadGrant(models.Model):
+    """An explicit, logged, revocable read grant on another user's thread.
+
+    Mirrors the dropped ``ScopedConversationGrant`` semantics (B6): grant
+    rows are audit records and are never hard-deleted — revocation stamps
+    ``revoked_at``; expiry is optional. Only explicit single-thread READS
+    honor a grant; every write path stays owner-only.
+    """
+
+    thread = models.ForeignKey(
+        ChatThread, on_delete=models.PROTECT, related_name='access_grants'
+    )
+    grantee = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+'
+    )
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+'
+    )
+    access = models.CharField(
+        max_length=16, choices=ThreadGrantAccess.choices, default=ThreadGrantAccess.READ
+    )
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Audit ordering and the lookup index for grantee reads."""
+
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(
+                fields=['grantee', 'revoked_at'], name='aichat_grant_grantee_idx'
+            ),
+            models.Index(fields=['thread', 'grantee'], name='aichat_grant_thread_idx'),
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'grant {self.pk} on {self.thread_id} ({self.access})'
+
+
 class ChatMessage(models.Model):
     """An immutable, monotonically ordered transcript message."""
 
