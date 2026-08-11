@@ -1360,6 +1360,20 @@ class NormalizedTurnService:
         )
         response = outcome.response
         message = response.detailed_response
+        # Phase 6 battery A2: when a reasoning turn ends incomplete AND no
+        # authorized machine name appears in the utterance, the generic
+        # incomplete text leaves the user guessing. The server KNOWS no name
+        # matched — say so deterministically. State stays incomplete; only
+        # the visible text gains the fact.
+        if response.response_state.value == "incomplete":
+            lowered = content.lower()
+            names = [record.display_name for record in authorized_records if record.display_name]
+            if names and not any(name.lower() in lowered for name in names):
+                message = (
+                    f"{message} Note: no machine on record for your site "
+                    "matches a name in your message — check the machine name "
+                    "and ask again."
+                )
         route_record = route.to_dict()
         run_id = f"reasoning:{turn_id}"
         await self._emit_canonical_events(

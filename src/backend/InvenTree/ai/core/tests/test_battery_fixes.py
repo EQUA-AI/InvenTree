@@ -113,3 +113,18 @@ def test_no_match_instruction_present():
 
     source = inspect.getsource(luna)
     assert "COMPLETE\nabstention stating that no matching machine record exists" in source
+
+
+def test_no_match_hint_wording_present_in_turn_service():
+    """The deterministic no-match hint ships on the incomplete reasoning path."""
+    import inspect
+
+    from ai.core import turn_service
+
+    source = inspect.getsource(turn_service)
+    assert "no machine on record for your site" in source
+    # It must be gated on the incomplete state and on named-record mismatch.
+    anchor = source.index("no machine on record for your site")
+    window = source[anchor - 800 : anchor]
+    assert 'response_state.value == "incomplete"' in window
+    assert "authorized_records" in window
