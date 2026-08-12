@@ -324,7 +324,15 @@ class RootWorkflow:
                         "Workflow reported failure",
                         extra={"workflow_id": workflow_id, "error": str(error)},
                     )
-                    raise RuntimeError(str(error))
+                    failure = RuntimeError(str(error))
+                    # S38: the original exception died inside the workflow;
+                    # carry its pre-classified failure class across the
+                    # string boundary so the turn-service taxonomy doesn't
+                    # demote provider outages to "internal".
+                    failure_class = getattr(result, "failure_class", None)
+                    if failure_class:
+                        failure.failure_class = failure_class
+                    raise failure
 
                 response = str(result)
                 if hasattr(result, "formatted_response"):

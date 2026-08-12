@@ -118,20 +118,24 @@ class TestTurnUsageLedger:
     """The fail-soft per-turn accumulator."""
 
     def test_record_and_totals(self) -> None:
+        # S37: both vocabularies normalize to canonical keys at record time,
+        # so cross-source totals merge into one comparable number.
         ledger = TurnUsageLedger()
         ledger.record("wf8_lookup", {"input_token_count": 100, "output_token_count": 20})
         ledger.record("luna_diagnostics", {"input_tokens": 50, "output_token_count": 5})
         assert ledger.totals() == {
-            "input_token_count": 100,
-            "output_token_count": 25,
-            "input_tokens": 50,
+            "input_tokens": 150,
+            "output_tokens": 25,
         }
         assert ledger.events[0]["source"] == "wf8_lookup"
 
     def test_non_integers_and_bools_are_dropped(self) -> None:
+        # S37: "model"/"deployment" are the only strings that survive; bools
+        # and other non-ints still drop, and a string-only event records
+        # nothing.
         ledger = TurnUsageLedger()
         ledger.record("wf8_lookup", {"model": "gpt", "cached": True, "tokens": 3})
-        assert ledger.events == [{"source": "wf8_lookup", "tokens": 3}]
+        assert ledger.events == [{"source": "wf8_lookup", "model": "gpt", "tokens": 3}]
         ledger.record("wf8_lookup", {"model": "gpt"})
         assert len(ledger.events) == 1  # nothing numeric -> no event
 
@@ -153,9 +157,11 @@ class TestTurnUsageLedger:
         with bind_turn_usage() as ledger:
             record_usage("wf8_lookup", {"tokens": 4})
             drained = drain_turn_usage()
+            # S37: totals() sums canonical keys only; non-canonical ints stay
+            # per-event detail.
             assert drained == {
                 "events": [{"source": "wf8_lookup", "tokens": 4}],
-                "totals": {"tokens": 4},
+                "totals": {},
             }
             assert ledger.events
         assert drain_turn_usage() is None  # unbound again outside
@@ -177,7 +183,7 @@ class TestTerminalMetadataUsageStamp:
             record_usage("wf8_lookup", {"input_token_count": 10})
             metadata = _terminal_output_metadata({"workflow_used": "wf8"})
         assert metadata["workflow_used"] == "wf8"
-        assert metadata["usage"]["totals"] == {"input_token_count": 10}
+        assert metadata["usage"]["totals"] == {"input_tokens": 10}
 
     def test_kill_switch_suppresses_the_stamp(self) -> None:
         settings = SimpleNamespace(feature_turn_usage_persistence=False)

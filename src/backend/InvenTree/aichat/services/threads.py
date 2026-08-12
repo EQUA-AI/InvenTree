@@ -10,6 +10,7 @@ from __future__ import annotations
 import builtins
 import hashlib
 import json
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -28,6 +29,8 @@ from aichat.models import (
     TurnState,
     generate_thread_id,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ThreadRepositoryError(Exception):
@@ -483,7 +486,42 @@ class ThreadRepository:
             if workflow_id:
                 thread.last_workflow = workflow_id
                 thread.save(update_fields=['last_workflow', 'updated_at'])
+            # S38: fresh-write path only — the replay guard above returned
+            # already, so a replayed terminal can never re-trigger.
+            self._maybe_schedule_compaction(thread)
             return turn
+
+    #: S38: summarize rarely and in large chunks (prefix-cache stability) —
+    #: only once this many messages sit above the watermark.
+    COMPACTION_MIN_BACKLOG = 16
+
+    def _maybe_schedule_compaction(self, thread) -> None:
+        """Queue the compaction job when the un-summarized backlog is large.
+
+        Best-effort and flag-gated (shadow or full). ``force_async`` keeps
+        the LLM call off the request path: without workers the job simply
+        waits for one instead of running inline.
+        """
+        try:
+            from ai.core.config import get_settings
+
+            settings = get_settings()
+            if not (
+                settings.feature_thread_compaction_shadow
+                or settings.feature_thread_compaction
+            ):
+                return
+            backlog = (thread.next_sequence - 1) - thread.summary_through_sequence
+            if backlog < self.COMPACTION_MIN_BACKLOG:
+                return
+            from aichat import tasks as aichat_tasks
+            from InvenTree.tasks import offload_task
+
+            offload_task(
+                aichat_tasks.compact_thread_summary, thread.pk, force_async=True
+            )
+        except Exception:
+            logger.warning('Thread compaction scheduling failed (ignored)')
 
     def replay(
         self,

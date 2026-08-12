@@ -211,6 +211,29 @@ export interface AGUIRunErrorEvent extends AGUIBaseEvent {
   type: AGUIEventType.RUN_ERROR;
   message: string;
   code?: string;
+  // S38: typed failure class (provider_outage | rate_limited | config_gate
+  // | internal), present only when the backend flag is on.
+  failure_class?: string;
+}
+
+/**
+ * S38: compacted thread summaries are stored as `label\nJSON-body`. Only the
+ * first line (the <=60-char label) is display-safe; the body is structured
+ * data that must never render as a thread title.
+ */
+export function threadSummaryLabel(summary?: string | null): string {
+  return (summary || '').split('\n')[0].trim();
+}
+
+/** S38: carries the backend failure class through the throw/catch plumbing. */
+export class AIRunError extends Error {
+  failureClass?: string;
+
+  constructor(message: string, failureClass?: string) {
+    super(message);
+    this.name = 'AIRunError';
+    this.failureClass = failureClass;
+  }
 }
 
 export interface AGUITextMessageStartEvent extends AGUIBaseEvent {
@@ -612,7 +635,10 @@ async function fetchServerThread(
 
     return {
       messages,
-      title: data.title || data.summary?.substring(0, 50) || 'Chat',
+      title:
+        data.title ||
+        threadSummaryLabel(data.summary).substring(0, 50) ||
+        'Chat',
       created_at: data.created_at,
       updated_at: data.updated_at
     };
@@ -963,7 +989,8 @@ export function useAIChat(config: AIChatConfig = {}) {
       setSharedThreads(
         (serverData.shared_threads ?? []).map((thread) => ({
           id: thread.thread_id,
-          title: thread.title || thread.summary || 'Shared chat',
+          title:
+            thread.title || threadSummaryLabel(thread.summary) || 'Shared chat',
           messages: [],
           createdAt: new Date(thread.created_at ?? Date.now()),
           updatedAt: new Date(thread.last_activity ?? Date.now()),
@@ -976,7 +1003,10 @@ export function useAIChat(config: AIChatConfig = {}) {
       const mergedThreads: StoredThread[] = serverData.threads.map(
         (serverThread) => ({
           id: serverThread.thread_id,
-          title: serverThread.title || serverThread.summary || 'Chat',
+          title:
+            serverThread.title ||
+            threadSummaryLabel(serverThread.summary) ||
+            'Chat',
           // A successful server sync makes durable history authoritative. The
           // detail endpoint supplies messages when this thread becomes active.
           messages: [],
@@ -1153,7 +1183,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       }
       return serverData.threads.map((thread) => ({
         id: thread.thread_id,
-        title: thread.title || thread.summary || 'Chat',
+        title: thread.title || threadSummaryLabel(thread.summary) || 'Chat',
         messages: [],
         createdAt: new Date(thread.created_at ?? Date.now()),
         updatedAt: new Date(thread.last_activity ?? Date.now())
@@ -1832,8 +1862,9 @@ export function useAIChat(config: AIChatConfig = {}) {
 
                           case AGUIEventType.RUN_ERROR: {
                             const errorEvent = event as AGUIRunErrorEvent;
-                            throw new Error(
-                              errorEvent.message || 'Agent run failed'
+                            throw new AIRunError(
+                              errorEvent.message || 'Agent run failed',
+                              errorEvent.failure_class
                             );
                           }
 
@@ -2062,7 +2093,16 @@ export function useAIChat(config: AIChatConfig = {}) {
           // Request was cancelled
           updateMessage(assistantMessage.id, '(Message cancelled)');
         } else {
-          const errorMsg = err.message || 'Failed to get AI response';
+          // S38: typed failure classes get actionable copy; everything else
+          // keeps the generic message.
+          let errorMsg = err.message || 'Failed to get AI response';
+          if (err.failureClass === 'provider_outage') {
+            errorMsg =
+              'The AI service could not be reached. Your data is unchanged — please try again shortly.';
+          } else if (err.failureClass === 'rate_limited') {
+            errorMsg =
+              'The AI service is handling too many requests right now. Wait a moment and try again.';
+          }
           setError(errorMsg);
           updateMessage(
             assistantMessage.id,
