@@ -1,0 +1,12 @@
+# S40 OFFLINE evaluation dependencies — NEVER installed into the container
+# image (verified: only ai/requirements.txt is referenced by
+# contrib/container/Dockerfile). Install manually on an eval workstation:
+#
+#   pip install -r ai/requirements-eval.txt
+#
+# Used by ai/core/grounding_nli.py (lazy imports) and
+# ai/core/evals/run_nli_eval.py. CPU-only torch keeps the footprint sane.
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.3.0
+transformers>=4.44.0

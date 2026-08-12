@@ -158,6 +158,7 @@ markers = [
     "integration: Integration tests (requires InvenTree)",
     "e2e: End-to-end tests (full system)",
     "slow: Slow tests",
+    "golden: S39 golden-set gate (live deployment; AIMMS_GOLDEN_LIVE=1 + creds)",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

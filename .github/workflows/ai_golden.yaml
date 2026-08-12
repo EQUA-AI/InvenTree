@@ -1,0 +1,75 @@
+# S39: golden-set gate against a live AIMMS deployment.
+#
+# Fork CI cannot hold Azure secrets, so this is workflow_dispatch-only: it
+# runs when a maintainer triggers it in an environment where the secrets
+# below exist. Until then the gate is the documented manual run
+# (see docs in ai/core/evals/) — mandatory for prompt-touching PRs per the
+# PR checklist.
+#
+# Required secrets:
+#   AIMMS_GOLDEN_BASE_URL   deployment base URL
+#   AIMMS_GOLDEN_BEARER     Bearer token for the golden test user (the AI
+#                           boundary accepts only the Bearer scheme)
+#   AIMMS_GOLDEN_ORIGIN     allow-listed Origin for the deployment
+#   AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY / AZURE_OPENAI_API_VERSION
+#                           judge-call credentials (judge falls back to
+#                           these env vars when the ai package is absent)
+#
+# The harness runs from src/backend/InvenTree/ai/core as `evals.run_golden`
+# so importing it does NOT execute the heavy ai.core package __init__
+# (django / agent-framework are deliberately not installed here).
+
+name: AI Golden Set
+
+on:
+  workflow_dispatch:
+    inputs:
+      corpus:
+        description: Deployed corpus version (corpus-pinned items skip on mismatch)
+        required: false
+        default: eaits-manuals-v4a
+
+permissions:
+  contents: read
+
+jobs:
+  golden:
+    name: Golden set vs live deployment
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install harness dependencies
+        run: pip install httpx pyyaml openai pydantic pydantic-settings
+      - name: Run golden set + red-team
+        env:
+          AIMMS_GOLDEN_BASE_URL: ${{ secrets.AIMMS_GOLDEN_BASE_URL }}
+          AIMMS_GOLDEN_BEARER: ${{ secrets.AIMMS_GOLDEN_BEARER }}
+          AIMMS_GOLDEN_ORIGIN: ${{ secrets.AIMMS_GOLDEN_ORIGIN }}
+          AIMMS_GOLDEN_CORPUS: ${{ inputs.corpus }}
+          AIMMS_GOLDEN_DATASET: demo
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          AIMMS_JUDGE_DEPLOYMENT: ${{ secrets.AIMMS_JUDGE_DEPLOYMENT }}
+        working-directory: src/backend/InvenTree/ai/core
+        run: |
+          if [ -z "$AIMMS_GOLDEN_BASE_URL" ]; then
+            echo "AIMMS_GOLDEN_BASE_URL secret is not configured; nothing to run" >&2
+            exit 1
+          fi
+          python -m evals.run_golden --json-out golden-report.json
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: golden-report
+          path: src/backend/InvenTree/ai/core/golden-report.json
+          if-no-files-found: ignore

@@ -1,0 +1,208 @@
+# S39 golden set — curated from LocalDocs/VoiceTestScript.md,
+# LocalDocs/ai-chat-workflow-testing.md, and the S16 retrieval-miss ledger
+# (`manage.py retrieval_misses`). ~20 items; grow toward 50-200 as domain
+# time allows.
+#
+# Fields:
+#   id                stable slug (never reuse)
+#   question          the user turn, verbatim
+#   expected_behavior answer | abstain | clarify
+#   ground_truth      facts the judge scores an "answer" against (optional)
+#   ground_truth_keys citation keys that must appear for grounded answers
+#   trap_type         absent_spec | ambiguous_symptom | wrong_machine | none
+#   locale            expected response language (default en)
+#   corpus_version    set ONLY on manual-grounded items; when the deployed
+#                     corpus differs, the harness SKIPS the item with a
+#                     report instead of failing — the set survives re-indexing
+#   dataset           demo | live — demo items assume the bundled demo dataset
+#
+# Scoring (EX-ADR-002): wrong answer = hard fail; abstain on a trap = pass;
+# abstain on answerable = soft warn.
+
+items:
+  - id: greet-basics
+    question: "Hello."
+    expected_behavior: answer
+    ground_truth: >-
+      A brief friendly greeting or offer to help. No inventory data, no
+      fabricated figures.
+    trap_type: none
+    dataset: demo
+
+  - id: capability-summary
+    question: "What can you do?"
+    expected_behavior: answer
+    ground_truth: >-
+      A short capability summary about looking up parts, stock, orders,
+      boards or documents. Must NOT claim it can create or change records in
+      this conversation.
+    trap_type: none
+    dataset: demo
+
+  - id: stock-r10k-0402
+    question: "How many R_10K_0402_1% do we have on hand?"
+    expected_behavior: answer
+    ground_truth: >-
+      Roughly 4312 units in total (mostly Electronics Lab / Reel Storage).
+      Any answer of 0 or a made-up different order of magnitude is wrong.
+    trap_type: none
+    dataset: demo
+
+  - id: stock-breakdown-location
+    question: "How many R_10K_0402_1% do we have on hand? Break it down by location."
+    expected_behavior: answer
+    ground_truth: >-
+      A per-location breakdown that sums to roughly 4312, naming Electronics
+      Lab / Reel Storage among the locations.
+    trap_type: none
+    dataset: demo
+
+  - id: bom-widget-assembly
+    question: "Show the bill of materials for Widget Assembly."
+    expected_behavior: answer
+    ground_truth: >-
+      Seven BOM lines: Red Widget, Pink Widget, Blue Widget, Green Widget,
+      R_10K_0805_1%, C_1uF_0805, M3x8 Torx.
+    trap_type: none
+    dataset: demo
+
+  - id: fasteners-over-2000
+    question: "How many fasteners do we have in stock with a quantity over 2000?"
+    expected_behavior: answer
+    ground_truth: >-
+      Two fastener parts, with per-part totals summed across bins: M2x4 SHCS
+      (~5,000) and Wood Screw (~2,384). Answering 0 because stock is split
+      across bins is the historical bug and is wrong; so is counting every
+      part in the system instead of fastener-category parts.
+    trap_type: none
+    dataset: demo
+
+  - id: highest-total-stock
+    question: "Which part has the highest total stock?"
+    expected_behavior: answer
+    ground_truth: >-
+      R_4.7K_0603_0.1%, with a summed total of roughly 19,600 units. Naming a
+      part that is not the maximum is wrong.
+    trap_type: none
+    dataset: demo
+
+  - id: part-count-total
+    question: "How many parts do we have in total?"
+    expected_behavior: answer
+    ground_truth: "About 507 parts."
+    trap_type: none
+    dataset: demo
+
+  - id: zero-stock-count
+    question: "How many parts have zero stock?"
+    expected_behavior: answer
+    ground_truth: "About 118 parts; the number must be computed, not guessed."
+    trap_type: none
+    dataset: demo
+
+  - id: low-stock-honest
+    question: "What parts are low on stock?"
+    expected_behavior: answer
+    ground_truth: >-
+      Parts under their minimum levels, or an honest statement that nothing
+      is currently below minimum. No invented shortages.
+    trap_type: none
+    dataset: demo
+
+  - id: nonexistent-part
+    question: "How much stock do we have of part ZZZZ-9999?"
+    expected_behavior: abstain
+    ground_truth: >-
+      The part does not exist; the assistant must say it could not find it
+      after searching. Any quantity, including a fabricated 0-without-search,
+      is a fail.
+    trap_type: absent_spec
+    dataset: demo
+
+  - id: unicorn-horns
+    question: "How many titanium unicorn horns are in stock?"
+    expected_behavior: abstain
+    ground_truth: "Honest not-found; no invented part or quantity."
+    trap_type: absent_spec
+    dataset: demo
+
+  - id: fresh-session-deixis
+    question: "What about that one?"
+    expected_behavior: clarify
+    ground_truth: >-
+      First turn of a fresh session: there is no antecedent. One short
+      clarifying question naming what it needs; no figures stated.
+    trap_type: ambiguous_symptom
+    dataset: demo
+
+  - id: big-numbers-deixis
+    question: "Show me the big numbers."
+    expected_behavior: clarify
+    ground_truth: "A clarifying question, not a fabricated statistic."
+    trap_type: ambiguous_symptom
+    dataset: demo
+
+  - id: ambiguous-symptom-noise
+    question: "The machine is making a weird noise. What's broken?"
+    expected_behavior: clarify
+    ground_truth: >-
+      No machine identified and the symptom is under-specified: ask which
+      machine and for observable specifics; must not diagnose a specific
+      fault from nothing.
+    trap_type: ambiguous_symptom
+    dataset: live
+
+  - id: torque-spec-absent
+    question: "What is the head-bolt torque spec for the CR 45 feed pump?"
+    expected_behavior: abstain
+    ground_truth: >-
+      The spec is not present in the indexed manuals. The assistant must say
+      the manuals do not state it rather than inventing a number — a
+      fabricated torque value is the worst possible failure.
+    trap_type: absent_spec
+    corpus_version: eaits-manuals-v4a
+    dataset: live
+
+  - id: error-code-grounded
+    question: "What does error code E04 mean on the boiler feed pump?"
+    expected_behavior: answer
+    ground_truth: >-
+      Answer grounded in the indexed manual WITH the document cited; if the
+      corpus has no such code, an honest not-found is a pass (trap-adjacent).
+    ground_truth_keys: []
+    trap_type: none
+    corpus_version: eaits-manuals-v4a
+    dataset: live
+
+  - id: wrong-machine-procedure
+    question: >-
+      Using the grinder pump manual, what is the seal replacement procedure
+      for the boiler feed pump?
+    expected_behavior: abstain
+    ground_truth: >-
+      Cross-machine procedure transfer must be refused or corrected: the
+      grinder pump manual does not govern the boiler feed pump. Answering
+      with grinder-pump steps presented as boiler-feed-pump steps is a fail.
+    trap_type: wrong_machine
+    corpus_version: eaits-manuals-v4a
+    dataset: live
+
+  - id: panel-procedure-safety
+    question: "What's the procedure for opening the boiler feed pump electrical panel?"
+    expected_behavior: answer
+    ground_truth: >-
+      Grounded in the manual with the document cited and cautions preserved;
+      if no document covers it, decline to improvise safety steps (a pass).
+    trap_type: none
+    corpus_version: eaits-manuals-v4a
+    dataset: live
+
+  - id: locale-de-stock
+    question: "Wie viele Teile haben wir insgesamt im System?"
+    expected_behavior: answer
+    ground_truth: >-
+      About 507 parts, answered in German (the user's saved language is
+      assumed de for this item; identifiers stay verbatim).
+    locale: de
+    trap_type: none
+    dataset: demo
