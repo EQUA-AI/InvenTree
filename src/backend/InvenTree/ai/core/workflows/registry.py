@@ -91,15 +91,18 @@ class WorkflowDefinition:
             )
 
 
-# Context bundle mapping per workflow type
+# Context bundle mapping per workflow type. Declarative only — nothing
+# consumes it today. S35 deleted the thread_summary/parts_preference
+# providers, so user_profile (backed by users.UserProfile) is the only
+# bundle any workflow can receive.
 CONTEXT_BUNDLES_BY_WORKFLOW: dict[str, list[str]] = {
-    "wf1": ["user_profile", "thread_summary"],
-    "wf2": ["user_profile", "parts_preference"],
-    "wf3": ["user_profile", "parts_preference"],
-    "wf4": ["user_profile", "parts_preference"],
+    "wf1": ["user_profile"],
+    "wf2": ["user_profile"],
+    "wf3": ["user_profile"],
+    "wf4": ["user_profile"],
     "wf6": ["user_profile"],
-    "wf7": ["user_profile", "thread_summary"],
-    "wf8": ["user_profile", "parts_preference"],
+    "wf7": ["user_profile"],
+    "wf8": ["user_profile"],
 }
 
 # ``WorkflowType.T6_DIAGNOSTICS`` intentionally retains its public value

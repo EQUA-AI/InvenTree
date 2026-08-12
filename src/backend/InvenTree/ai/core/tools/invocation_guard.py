@@ -275,33 +275,42 @@ class CapabilityInvocationMiddleware(FunctionMiddleware):
 
     async def process(self, context: FunctionInvocationContext, next) -> None:
         tool_id = tool_name(context.function)
-        try:
-            await authorize_invocation(tool_id, context.arguments)
-        except CapabilityAuthorizationError as exc:
-            run_context = capability_run_context.get()
-            workflow = run_context.workflow if run_context else None
-            enforced = exc.reason_code in _NEVER_SHADOWED or workflow in _enforced_workflows()
-            logger.warning(
-                "AI tool invocation denied" if enforced else "AI tool invocation shadow-denied",
-                extra={
-                    "tool_id": tool_id,
-                    "workflow": workflow,
-                    "reason_code": exc.reason_code,
-                    "enforced": enforced,
-                },
-            )
-            if enforced:
-                raise
-        await next(context)
-        # S27: record what the tool actually returned into the per-turn
-        # capture ledger. Post-next and fail-soft: observation must never
-        # change or kill a dispatch that already happened.
-        try:
-            from ai.core.tools.capture_ledger import record_tool_result
+        # S36: one span per tool invocation. Name and decision code only —
+        # arguments and results never reach span attributes.
+        from ai.core.correlation import current_correlation
+        from ai.core.tracing import set_span_attrs, turn_span
 
-            record_tool_result(tool_id, getattr(context, "result", None))
-        except Exception:  # pragma: no cover - observation is best-effort
-            pass
+        with turn_span(
+            "aimms.tool", tool_name=tool_id, correlation_id=current_correlation()
+        ) as span:
+            try:
+                await authorize_invocation(tool_id, context.arguments)
+            except CapabilityAuthorizationError as exc:
+                run_context = capability_run_context.get()
+                workflow = run_context.workflow if run_context else None
+                enforced = exc.reason_code in _NEVER_SHADOWED or workflow in _enforced_workflows()
+                logger.warning(
+                    "AI tool invocation denied" if enforced else "AI tool invocation shadow-denied",
+                    extra={
+                        "tool_id": tool_id,
+                        "workflow": workflow,
+                        "reason_code": exc.reason_code,
+                        "enforced": enforced,
+                    },
+                )
+                set_span_attrs(span, decision_code=exc.reason_code)
+                if enforced:
+                    raise
+            await next(context)
+            # S27: record what the tool actually returned into the per-turn
+            # capture ledger. Post-next and fail-soft: observation must never
+            # change or kill a dispatch that already happened.
+            try:
+                from ai.core.tools.capture_ledger import record_tool_result
+
+                record_tool_result(tool_id, getattr(context, "result", None))
+            except Exception:  # pragma: no cover - observation is best-effort
+                pass
 
 
 __all__ = [

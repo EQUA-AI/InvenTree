@@ -23,20 +23,14 @@ _MAX_REPLY_TOKENS = 2000
 
 
 def _deployment_name() -> str:
-    """Return the pinned deployment: Django override, else the fast deployment."""
-    try:
-        from django.conf import settings as django_settings
+    """Return the pinned deployment via the S37 policy table.
 
-        override = str(
-            getattr(django_settings, "AIMMS_CLOSEOUT_EXTRACTION_MODEL", "") or ""
-        ).strip()
-        if override:
-            return override
-    except Exception:  # pragma: no cover - Django not configured (island tests)
-        pass
-    from ai.core.config import get_settings
+    The table preserves this site's precedence exactly: the Django
+    ``AIMMS_CLOSEOUT_EXTRACTION_MODEL`` override, else the fast deployment.
+    """
+    from ai.core.model_policy import ModelPurpose, select_deployment
 
-    return get_settings().azure_openai_fast_deployment
+    return select_deployment(ModelPurpose.CLOSEOUT_BINDING)
 
 
 def _complete(
@@ -71,6 +65,10 @@ def _complete(
         run_id = str(getattr(response, "id", "") or "").strip()
         if run_id:
             provenance["run_id"] = run_id
+    # S37: deliberately NOT recorded in the turn usage ledger — this runs in
+    # the closeout wizard REST path where no ledger is bound, so a
+    # record_usage here would be a silent no-op pretending to count. Listed
+    # as known-uncounted in ai/core/usage.py.
     return response.choices[0].message.content or ""
 
 

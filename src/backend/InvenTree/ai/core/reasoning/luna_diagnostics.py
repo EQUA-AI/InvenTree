@@ -98,6 +98,8 @@ class TrustedReasoningEnvelope(BaseModel):
     authorized_records: tuple[AuthorizedRecord, ...] = ()
     policy_version: str = Field(min_length=1, max_length=64)
     correlation_id: str = Field(min_length=1, max_length=100)
+    # W0 (S33 B2): server-derived response language; "en" adds no directive.
+    locale: str = Field(default="en", min_length=2, max_length=16)
 
     @field_validator("allowed_tool_names")
     @classmethod
@@ -341,6 +343,25 @@ uses, and be plain text with no markdown.
 """
 
 
+def _locale_directive(locale: str) -> str:
+    """The response-language directive for non-English users (W0/S33 B2).
+
+    Identifiers, part numbers and citations stay verbatim regardless of the
+    response language — the directive says so in the target language itself.
+    English (and unknown locales, which fail safe to English upstream) add
+    nothing, keeping the en prompt byte-identical to before this change.
+    """
+    base = str(locale or "en").lower().split("-")[0]
+    if base == "en":
+        return ""
+    from ai.core.i18n_templates import RESPOND_IN_LOCALE, deterministic_template
+
+    directive = deterministic_template(RESPOND_IN_LOCALE, base)
+    if directive == deterministic_template(RESPOND_IN_LOCALE, "en"):
+        return ""
+    return "\n" + directive
+
+
 def _incomplete_response(code: str) -> CanonicalTurnResponse:
     """Create the exact safe terminal response for any exhausted local bound."""
     return CanonicalTurnResponse(
@@ -428,6 +449,13 @@ def _usage_metrics(response: Any) -> dict[str, int]:
         value = _item_value(usage, key)
         if type(value) is int and value >= 0:
             metrics[key] = value
+    # S37: prompt-cache hit telemetry on the reasoning rail — the number the
+    # tool-bundle-ordering work is judged against. Absent/None on contract
+    # fakes is normal and records nothing.
+    details = _item_value(usage, "input_tokens_details")
+    cached = _item_value(details, "cached_tokens") if details is not None else None
+    if type(cached) is int and cached >= 0:
+        metrics["cached_input_tokens"] = cached
     return metrics
 
 
@@ -650,7 +678,8 @@ class LunaDiagnosticsAdapter:
                 _HISTORY_PREFERENCE_DIRECTIVE
                 if any(name in envelope.allowed_tool_names for name in _HISTORY_TOOL_NAMES)
                 else ""
-            ),
+            )
+            + _locale_directive(envelope.locale),
             "reasoning": {"effort": effort},
             "max_output_tokens": output_token_limit,
             "text": {

@@ -121,37 +121,46 @@ async def test_cap_disabled_streams_to_completion(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_one_hung_provider_costs_only_its_own_budget(monkeypatch, caplog):
-    """gather_context returns the healthy providers' results within the budget."""
+async def test_hung_provider_costs_only_its_own_budget(monkeypatch, caplog):
+    """A hung provider degrades to an absent key within its own budget."""
     manager = ConversationManager()
     manager._providers_initialized = True
 
-    class _Profile:
-        async def get_profile(self, user_id):
-            return {"role": "technician"}
-
     class _Hung:
-        async def get_summary(self, thread_id):
+        async def get_profile(self, user_id):
             await asyncio.sleep(60)
 
-    class _Prefs:
-        async def get_preferences(self, user_id):
-            raise RuntimeError("secret-laden provider message")
-
-    manager._user_profile_provider = _Profile()
-    manager._thread_summary_provider = _Hung()
-    manager._parts_preference_provider = _Prefs()
+    manager._user_profile_provider = _Hung()
     monkeypatch.setattr(ConversationManager, "_provider_timeout_s", staticmethod(lambda: 0.2))
 
     with caplog.at_level(logging.WARNING, logger="ai.core.memory.conversation"):
         async with asyncio.timeout(5):
             context = await manager.gather_context("q", "thread-1", "user-1")
 
-    assert context == {"user_profile": {"role": "technician"}}
-    assert "thread_summary" not in context
+    assert context == {}
+    joined = " ".join(record.getMessage() for record in caplog.records)
+    assert "user_profile" in joined
+
+
+@pytest.mark.asyncio
+async def test_failing_provider_degrades_without_leaking_messages(caplog):
+    """A raising provider yields an absent key; its message never hits logs."""
+    manager = ConversationManager()
+    manager._providers_initialized = True
+
+    class _Broken:
+        async def get_profile(self, user_id):
+            raise RuntimeError("secret-laden provider message")
+
+    manager._user_profile_provider = _Broken()
+
+    with caplog.at_level(logging.WARNING, logger="ai.core.memory.conversation"):
+        context = await manager.gather_context("q", "thread-1", "user-1")
+
+    assert context == {}
     joined = " ".join(record.getMessage() for record in caplog.records)
     assert "secret-laden" not in joined, "exception text must never reach the logs"
-    assert "parts_preferences" in joined
+    assert "user_profile" in joined
 
 
 @pytest.mark.asyncio

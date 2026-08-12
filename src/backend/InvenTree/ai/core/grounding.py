@@ -174,8 +174,11 @@ def _default_citation_audit(message: str, citations: list[dict[str, Any]]) -> di
         },
         ensure_ascii=True,
     )
+    from ai.core.model_policy import ModelPurpose, select_deployment
+
+    audit_deployment = select_deployment(ModelPurpose.GROUNDING_AUDIT)
     response = client.chat.completions.create(
-        model=settings.azure_openai_fast_deployment or settings.azure_openai_deployment,
+        model=audit_deployment,
         messages=[
             {
                 "role": "system",
@@ -197,6 +200,23 @@ def _default_citation_audit(message: str, citations: list[dict[str, Any]]) -> di
                 "strict": True,
                 "schema": _AUDIT_SCHEMA,
             },
+        },
+    )
+    # S37: count the audit call in the turn ledger (this runs inside
+    # process(), so the ledger is bound). Injected audit_call fakes bypass
+    # this by design — only the real provider call is counted.
+    from ai.core.usage import record_usage
+
+    usage = getattr(response, "usage", None)
+    details = getattr(usage, "prompt_tokens_details", None)
+    record_usage(
+        "grounding_audit",
+        {
+            "prompt_tokens": getattr(usage, "prompt_tokens", None),
+            "completion_tokens": getattr(usage, "completion_tokens", None),
+            "total_tokens": getattr(usage, "total_tokens", None),
+            "cached_tokens": getattr(details, "cached_tokens", None),
+            "deployment": audit_deployment,
         },
     )
     return json.loads(response.choices[0].message.content)

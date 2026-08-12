@@ -349,11 +349,10 @@ Only output the JSON object, no other text."""
             # the main deployment (a reasoning model in this deployment) put a
             # slow round trip in front of every turn the regex and semantic
             # routers missed; the fast deployment answers the same question.
+            from ai.core.model_policy import ModelPurpose, select_deployment
+
             chat_client = AzureOpenAIChatClient(
-                deployment_name=(
-                    getattr(settings, "azure_openai_fast_deployment", "")
-                    or settings.azure_openai_deployment
-                ),
+                deployment_name=select_deployment(ModelPurpose.FALLBACK_CLASSIFIER),
                 endpoint=settings.azure_openai_endpoint,
                 api_key=settings.azure_openai_api_key,
             )
@@ -382,6 +381,13 @@ Only output the JSON object, no other text."""
         try:
             agent = await self._get_agent()
             response = await agent.run(prompt)
+
+            # S37: the fallback classifier is a real provider call the turn
+            # ledger was blind to. MAF response — usage lives on
+            # usage_details, extracted by the shared helper.
+            from ai.core.usage import maf_response_usage_metrics, record_usage
+
+            record_usage("routing_classifier", maf_response_usage_metrics(response))
 
             # Extract response text
             response_text = ""

@@ -134,50 +134,21 @@ class LookupResult:
     formatted_response: str
     execution_time_ms: float
     error: str | None = None
+    # S38: classified while the real exception object still exists — the
+    # ``error`` string that crosses the workflow boundary can't be
+    # re-classified (the taxonomy never reads message text).
+    failure_class: str | None = None
 
 
 def _response_usage_metrics(response: Any) -> dict[str, int]:
-    """Normalize provider usage without inferring unavailable token counts."""
-    usage = getattr(response, "usage_details", None)
-    if usage is None:
-        return {}
-    if isinstance(usage, dict):
-        counts = dict(usage)
-    elif hasattr(usage, "to_dict"):
-        counts = usage.to_dict(exclude_none=True)
-    else:
-        counts = {
-            key: getattr(usage, key, None)
-            for key in (
-                "input_token_count",
-                "output_token_count",
-                "total_token_count",
-            )
-        }
+    """Normalize provider usage without inferring unavailable token counts.
 
-    metrics = {
-        key: value
-        for key, value in counts.items()
-        if isinstance(value, int) and not isinstance(value, bool)
-    }
-    cached = next(
-        (
-            metrics[key]
-            for key in (
-                "cache_read_input_token_count",
-                "cached_input_token_count",
-                "cached_tokens",
-            )
-            if key in metrics
-        ),
-        None,
-    )
-    input_tokens = metrics.get("input_token_count")
-    if cached is not None:
-        metrics["cached_input_token_count"] = cached
-    if input_tokens is not None and cached is not None:
-        metrics["uncached_input_token_count"] = max(input_tokens - cached, 0)
-    return metrics
+    S37: the shared extractor lives in ``ai.core.usage`` so the routing
+    classifier (also MAF-response-shaped) records through the same code.
+    """
+    from ai.core.usage import maf_response_usage_metrics
+
+    return maf_response_usage_metrics(response)
 
 
 class T1LookupWorkflow:
@@ -468,6 +439,29 @@ figure from an earlier turn as if you had just verified it."""
         return [*messages, ChatMessage(role=Role.USER, contents=[TextContent(text=note)])]
 
     @staticmethod
+    def _with_locale_hint(run_input: Any, context: dict[str, Any] | None) -> Any:
+        """Append the language directive for non-English users (S33 B2).
+
+        The deterministic templates are already localized; this closes the
+        gap for MODEL-generated prose. A labelled USER-role note (never a
+        system message) because the agents are cached per process and their
+        instructions cannot vary per user. English contexts add nothing.
+        """
+        from ai.core.i18n_templates import RESPOND_IN_LOCALE, deterministic_template
+
+        locale = str((context or {}).get("locale") or "en").lower()
+        if locale.split("-")[0] == "en":
+            return run_input
+        note = deterministic_template(RESPOND_IN_LOCALE, locale)
+        if note == deterministic_template(RESPOND_IN_LOCALE, "en"):
+            # Unknown locale fell back to English — add nothing.
+            return run_input
+        messages = run_input
+        if isinstance(messages, str):
+            messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=messages)])]
+        return [*messages, ChatMessage(role=Role.USER, contents=[TextContent(text=note)])]
+
+    @staticmethod
     def _recent_substantive_user_content(context: dict[str, Any] | None) -> str:
         """The newest user history row that reads like a real request.
 
@@ -692,10 +686,14 @@ figure from an earlier turn as if you had just verified it."""
 
         settings = get_settings()
 
-        # Voice Tier-1 lookups use the fast deployment for lower latency; text
-        # keeps the standard deployment.
-        deployment = (
-            settings.azure_openai_fast_deployment if voice else settings.azure_openai_deployment
+        # S37: voice keeps the fast deployment for latency, text the
+        # standard one, now decided by the shared policy table. Note the
+        # choice is baked into the cached agent at first build per variant —
+        # flag flips need a process restart to take effect here.
+        from ai.core.model_policy import ModelPurpose, select_deployment
+
+        deployment = select_deployment(
+            ModelPurpose.WF8_PRIMARY, modality="voice" if voice else "text"
         )
 
         # Create Azure OpenAI chat client
@@ -980,6 +978,7 @@ figure from an earlier turn as if you had just verified it."""
                 # toolset.
                 run_input = self._with_category_hint(run_input, query, context)
                 run_input = self._with_question_resolution(run_input, context)
+                run_input = self._with_locale_hint(run_input, context)
             with bind_capability_run(
                 workflow="wf8", modality=modality, selected_tools=runtime_tools
             ):
@@ -1041,6 +1040,8 @@ figure from an earlier turn as if you had just verified it."""
                 },
             )
 
+            from ai.core.failure_taxonomy import classify_turn_failure
+
             return LookupResult(
                 lookup_type=lookup_type,
                 success=False,
@@ -1048,6 +1049,7 @@ figure from an earlier turn as if you had just verified it."""
                 formatted_response="Unable to complete lookup.",
                 execution_time_ms=execution_time,
                 error="lookup_failed",
+                failure_class=classify_turn_failure(e).value,
             )
 
 
@@ -1105,9 +1107,12 @@ class T1LookupWorkflowBuilder:
         """
         settings = get_settings()
 
-        # Create Azure OpenAI chat client
+        # Create Azure OpenAI chat client. An explicit builder override wins;
+        # otherwise the S37 policy table decides (text-shaped wf8).
+        from ai.core.model_policy import ModelPurpose, select_deployment
+
         chat_client = AzureOpenAIChatClient(
-            deployment_name=self._model_deployment or settings.azure_openai_deployment,
+            deployment_name=self._model_deployment or select_deployment(ModelPurpose.WF8_PRIMARY),
             endpoint=settings.azure_openai_endpoint,
             api_key=settings.azure_openai_api_key,
         )
