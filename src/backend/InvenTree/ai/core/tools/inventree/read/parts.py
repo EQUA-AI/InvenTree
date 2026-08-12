@@ -49,7 +49,7 @@ async def get_part(
         - link: External reference URL
         - notes: Part notes
 
-        Returns None if part not found.
+        Returns {"found": false, "note": ...} if no part matches.
 
     Example:
         # Get by ID
@@ -88,10 +88,18 @@ async def get_part(
             part["in_stock"] = None
 
         logger.info(f"Found part: {part.get('name')} (pk={part.get('pk')})")
-    else:
-        logger.info("Part not found")
+        return part
 
-    return part
+    logger.info("Part not found")
+    # Explicit, serializable not-found (a bare None drops the tool message
+    # from the provider request entirely — see invocation_guard).
+    return {
+        "found": False,
+        "note": (
+            "No part matched this id/IPN/name. Absence is not proof the part "
+            "does not exist under a different identifier."
+        ),
+    }
 
 
 @ai_function

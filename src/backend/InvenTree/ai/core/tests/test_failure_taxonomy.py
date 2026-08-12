@@ -253,6 +253,11 @@ async def test_typed_event_and_localized_message(monkeypatch):
     assert errors, "expected a RUN_ERROR event"
     assert errors[-1]["failure_class"] == "provider_outage"
     assert errors[-1]["code"] == "turn_failed"
+    # The live event carries the user's-language copy so the frontend can
+    # show exactly what gets persisted.
+    assert errors[-1]["localized_message"] == deterministic_template(
+        TURN_FAILED_PROVIDER_OUTAGE, "de"
+    )
     assert repository.terminal_calls[-1]["output_content"] == deterministic_template(
         TURN_FAILED_PROVIDER_OUTAGE, "de"
     )

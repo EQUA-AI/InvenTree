@@ -16,6 +16,7 @@ import inspect
 import json
 import logging
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol
@@ -100,6 +101,10 @@ class TrustedReasoningEnvelope(BaseModel):
     correlation_id: str = Field(min_length=1, max_length=100)
     # W0 (S33 B2): server-derived response language; "en" adds no directive.
     locale: str = Field(default="en", min_length=2, max_length=16)
+    # Server-derived: does any authorized machine name token-match the
+    # utterance? False adds the clarify-first directive — a diagnosis with
+    # no identifiable machine must ask, not enumerate causes.
+    machine_match: bool = True
 
     @field_validator("allowed_tool_names")
     @classmethod
@@ -362,16 +367,33 @@ def _locale_directive(locale: str) -> str:
     return "\n" + directive
 
 
+#: Appended when the server established that NO machine on record matches
+#: the utterance. Ground truth for the golden ambiguous-symptom trap: an
+#: underspecified symptom with no identifiable machine gets a clarifying
+#: question, never a list of candidate causes.
+_CLARIFY_FIRST_DIRECTIVE = (
+    "\nNo machine on record matches the user's message. Do not list "
+    "possible causes, failure modes, or diagnoses. Respond by asking which "
+    "machine is affected and for one or two observable specifics (sound, "
+    "location, reading, or error code), and say that no machine on record "
+    "matches a name in the message."
+)
+
+
+#: The turn's response locale, task-local so concurrent reason() calls
+#: cannot bleed languages into each other's terminal templates.
+_response_locale: ContextVar[str] = ContextVar("aimms_reasoning_locale", default="en")
+
+
 def _incomplete_response(code: str) -> CanonicalTurnResponse:
     """Create the exact safe terminal response for any exhausted local bound."""
+    from ai.core.i18n_templates import TURN_INCOMPLETE, deterministic_template
+
     return CanonicalTurnResponse(
         kind="repair_diagnosis",
         response_version=CANONICAL_RESPONSE_VERSION,
         response_state="incomplete",
-        detailed_response=(
-            "The diagnostic review is incomplete. No recommendation was produced; "
-            "check the authoritative machine and safety records before proceeding."
-        ),
+        detailed_response=deterministic_template(TURN_INCOMPLETE, _response_locale.get()),
         spoken_summary="",
         reasoning_summary=f"The bounded diagnostic adapter stopped ({code}).",
         confidence="low",
@@ -679,6 +701,7 @@ class LunaDiagnosticsAdapter:
                 if any(name in envelope.allowed_tool_names for name in _HISTORY_TOOL_NAMES)
                 else ""
             )
+            + ("" if envelope.machine_match else _CLARIFY_FIRST_DIRECTIVE)
             + _locale_directive(envelope.locale),
             "reasoning": {"effort": effort},
             "max_output_tokens": output_token_limit,
@@ -1195,6 +1218,9 @@ class LunaDiagnosticsAdapter:
         cancel_event: asyncio.Event | None = None,
     ) -> ReasoningOutcome:
         """Run one strict response request and bounded local function-call loop."""
+        # Terminal templates (the incomplete canonical) must speak the
+        # user's chat language; task-local so concurrent turns can't bleed.
+        _response_locale.set(getattr(envelope, "locale", "en"))
         selected_effort = self._validate_effort(effort or self.provider_config.default_effort)
         # Effort validation is intentionally above the first client access.
         timeout = self.budget.timeout_seconds

@@ -58,28 +58,35 @@ def _judge_client_config() -> tuple[str, str, str, str]:
     ``openai`` + ``pydantic`` installed (importing ``ai.core.config`` pulls
     the whole ai package, which needs django/agent-framework).
     """
+    # The judge runs on the Luna reasoning deployment by default — verdicts
+    # are worth the extra latency, and Luna is guaranteed to exist wherever
+    # the ai plane runs. AIMMS_JUDGE_DEPLOYMENT stays the explicit override
+    # in both paths.
+    override = os.environ.get("AIMMS_JUDGE_DEPLOYMENT", "")
     try:
         from ai.core.config import get_settings
-        from ai.core.model_policy import ModelPurpose, select_deployment
 
         settings = get_settings()
         return (
             settings.azure_openai_endpoint,
             settings.azure_openai_api_key,
             settings.azure_openai_api_version,
-            select_deployment(ModelPurpose.GROUNDING_AUDIT),
+            override or settings.azure_luna_deployment,
         )
     except Exception:
+        # Run per the docs (python -m evals.run_golden FROM ai/core), the ai
+        # package is never importable — this env path is the REAL path, not
+        # a corner case.
         return (
             os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
             os.environ.get("AZURE_OPENAI_API_KEY", ""),
             os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21"),
-            os.environ.get("AIMMS_JUDGE_DEPLOYMENT", "gpt-4o-mini"),
+            override or os.environ.get("AZURE_LUNA_DEPLOYMENT", "") or "gpt-5.6-luna",
         )
 
 
 def default_judge_call(payload: str) -> dict[str, Any]:
-    """One strict structured-outputs judge call on the fast deployment."""
+    """One strict structured-outputs judge call on the Luna reasoning deployment."""
     from openai import AzureOpenAI
 
     endpoint, api_key, api_version, deployment = _judge_client_config()

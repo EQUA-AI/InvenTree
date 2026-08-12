@@ -26,6 +26,7 @@ TURN_FAILED_PROVIDER_OUTAGE = "turn_failed_provider_outage"
 TURN_FAILED_RATE_LIMITED = "turn_failed_rate_limited"
 TURN_FAILED_CONFIG_GATE = "turn_failed_config_gate"
 TURN_FAILED_INTERNAL = "turn_failed_internal"
+TURN_INCOMPLETE = "turn_incomplete"
 
 _TEMPLATES: dict[str, dict[str, str]] = {
     RESPOND_IN_LOCALE: {
@@ -164,6 +165,29 @@ _TEMPLATES: dict[str, dict[str, str]] = {
         "de": ("Der Diagnosevorgang schlug fehl, bevor eine vollständige Antwort erstellt wurde."),
         "fr": ("Le tour de diagnostic a échoué avant de produire une réponse complète."),
     },
+    # Exhausted-bound reasoning turns (timeout / round cap): the safe
+    # incomplete canonical, in the user's chat language.
+    TURN_INCOMPLETE: {
+        "en": (
+            "The diagnostic review is incomplete. No recommendation was produced; "
+            "check the authoritative machine and safety records before proceeding."
+        ),
+        "es": (
+            "La revisión de diagnóstico está incompleta. No se produjo ninguna "
+            "recomendación; consulta los registros autorizados de la máquina y de "
+            "seguridad antes de continuar."
+        ),
+        "de": (
+            "Die Diagnoseprüfung ist unvollständig. Es wurde keine Empfehlung "
+            "erstellt; prüfe die maßgeblichen Maschinen- und Sicherheitsaufzeichnungen, "
+            "bevor du fortfährst."
+        ),
+        "fr": (
+            "La revue de diagnostic est incomplète. Aucune recommandation n'a été "
+            "produite ; consultez les enregistrements machine et sécurité faisant "
+            "autorité avant de poursuivre."
+        ),
+    },
 }
 
 
@@ -190,5 +214,6 @@ __all__ = [
     "TURN_FAILED_INTERNAL",
     "TURN_FAILED_PROVIDER_OUTAGE",
     "TURN_FAILED_RATE_LIMITED",
+    "TURN_INCOMPLETE",
     "deterministic_template",
 ]

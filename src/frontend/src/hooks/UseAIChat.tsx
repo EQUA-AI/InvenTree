@@ -214,6 +214,10 @@ export interface AGUIRunErrorEvent extends AGUIBaseEvent {
   // S38: typed failure class (provider_outage | rate_limited | config_gate
   // | internal), present only when the backend flag is on.
   failure_class?: string;
+  // Server-rendered copy in the user's chat language (template-derived,
+  // matches the persisted failed-turn message). Preferred over the local
+  // English strings when present.
+  localized_message?: string;
 }
 
 /**
@@ -228,11 +232,17 @@ export function threadSummaryLabel(summary?: string | null): string {
 /** S38: carries the backend failure class through the throw/catch plumbing. */
 export class AIRunError extends Error {
   failureClass?: string;
+  localizedMessage?: string;
 
-  constructor(message: string, failureClass?: string) {
+  constructor(
+    message: string,
+    failureClass?: string,
+    localizedMessage?: string
+  ) {
     super(message);
     this.name = 'AIRunError';
     this.failureClass = failureClass;
+    this.localizedMessage = localizedMessage;
   }
 }
 
@@ -1864,7 +1874,8 @@ export function useAIChat(config: AIChatConfig = {}) {
                             const errorEvent = event as AGUIRunErrorEvent;
                             throw new AIRunError(
                               errorEvent.message || 'Agent run failed',
-                              errorEvent.failure_class
+                              errorEvent.failure_class,
+                              errorEvent.localized_message
                             );
                           }
 
@@ -2093,10 +2104,13 @@ export function useAIChat(config: AIChatConfig = {}) {
           // Request was cancelled
           updateMessage(assistantMessage.id, '(Message cancelled)');
         } else {
-          // S38: typed failure classes get actionable copy; everything else
-          // keeps the generic message.
+          // S38: prefer the server's copy in the user's chat language (it
+          // matches the persisted failed-turn message); fall back to local
+          // English strings for typed classes from older backends.
           let errorMsg = err.message || 'Failed to get AI response';
-          if (err.failureClass === 'provider_outage') {
+          if (err.localizedMessage) {
+            errorMsg = err.localizedMessage;
+          } else if (err.failureClass === 'provider_outage') {
             errorMsg =
               'The AI service could not be reached. Your data is unchanged — please try again shortly.';
           } else if (err.failureClass === 'rate_limited') {

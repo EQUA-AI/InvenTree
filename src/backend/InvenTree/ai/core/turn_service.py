@@ -1389,6 +1389,21 @@ class NormalizedTurnService:
                 )
             )
 
+        # Token-based, not full-string: "influent pump station" must match
+        # "Influent Pump Station No. 1". A name matches when ALL of its
+        # substantive alphabetic tokens appear in the utterance; names with
+        # no such tokens never match. Computed BEFORE the reasoning call so
+        # a no-match turn gets the clarify-first directive (golden
+        # ambiguous-symptom trap), and reused for the incomplete-note text.
+        lowered_content = content.lower()
+
+        def _name_matches(name: str) -> bool:
+            tokens = [token for token in re.findall(r"[a-z]+", name.lower()) if len(token) >= 3]
+            return bool(tokens) and all(token in lowered_content for token in tokens)
+
+        record_names = [record.display_name for record in authorized_records if record.display_name]
+        machine_match = not record_names or any(_name_matches(name) for name in record_names)
+
         envelope = TrustedReasoningEnvelope(
             actor_id=actor.actor,
             scope={"policy_key": trusted_context.server_policy_key},
@@ -1402,6 +1417,7 @@ class NormalizedTurnService:
             policy_version=trusted_context.policy_version,
             correlation_id=trusted_context.correlation_id,
             locale=getattr(trusted_context, "locale", "en"),
+            machine_match=machine_match,
         )
         outcome = await self.reasoning_adapter.reason(
             envelope=envelope,
@@ -1415,24 +1431,12 @@ class NormalizedTurnService:
         # incomplete text leaves the user guessing. The server KNOWS no name
         # matched — say so deterministically. State stays incomplete; only
         # the visible text gains the fact.
-        if response.response_state.value == "incomplete":
-            lowered = content.lower()
-
-            def _name_matches(name: str) -> bool:
-                # Token-based, not full-string: "influent pump station" must
-                # match "Influent Pump Station No. 1". A name matches when
-                # ALL of its substantive alphabetic tokens appear in the
-                # utterance; names with no such tokens never match.
-                tokens = [token for token in re.findall(r"[a-z]+", name.lower()) if len(token) >= 3]
-                return bool(tokens) and all(token in lowered for token in tokens)
-
-            names = [record.display_name for record in authorized_records if record.display_name]
-            if names and not any(_name_matches(name) for name in names):
-                message = (
-                    f"{message} Note: no machine on record for your site "
-                    "matches a name in your message — check the machine name "
-                    "and ask again."
-                )
+        if response.response_state.value == "incomplete" and not machine_match:
+            message = (
+                f"{message} Note: no machine on record for your site "
+                "matches a name in your message — check the machine name "
+                "and ask again."
+            )
         route_record = route.to_dict()
         run_id = f"reasoning:{turn_id}"
         await self._emit_canonical_events(
@@ -1979,7 +1983,7 @@ class NormalizedTurnService:
             # only because they crashed. No transcript or PII, by construction.
             provenance = canonical.get("reasoning_provenance") or {}
             logger.info(
-                "voice.turn modality=%s workflow=%s route=%s state=%s "
+                "ai.turn modality=%s workflow=%s route=%s state=%s "
                 "duration_ms=%d thread_id=%s turn_id=%s correlation_id=%s "
                 "outcome_code=%s tool_rounds=%s tool_names=%s",
                 modality,
@@ -2123,6 +2127,10 @@ class NormalizedTurnService:
                 failed_message = i18n_failures.deterministic_template(
                     template_key, getattr(trusted_context, "locale", "en")
                 )
+                # The LIVE error copy must speak the user's chat language,
+                # matching the persisted message. Template-derived text only
+                # — the content-free event discipline holds.
+                error_data["localized_message"] = failed_message
             await isolated_emitter.emit(
                 AGUIEvent(
                     event_type=EventType.RUN_ERROR,

@@ -302,6 +302,21 @@ class CapabilityInvocationMiddleware(FunctionMiddleware):
                 if enforced:
                     raise
             await next(context)
+            # A None/blank tool result must still yield a tool message: the
+            # provider rejects an assistant tool_call whose response message
+            # is missing, and the framework drops contentless results from
+            # the serialized turn (observed: get_part returning None for a
+            # nonexistent part -> provider 400 -> turn 500). Make absence
+            # explicit — that is also the honest signal for the model.
+            result = getattr(context, "result", ...)
+            if result is None or (isinstance(result, str) and not result.strip()):
+                context.result = {
+                    "found": False,
+                    "note": (
+                        "No matching record for this query. Absence here is "
+                        "not proof none exists under a different identifier."
+                    ),
+                }
             # S27: record what the tool actually returned into the per-turn
             # capture ledger. Post-next and fail-soft: observation must never
             # change or kill a dispatch that already happened.

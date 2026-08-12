@@ -134,8 +134,8 @@ known_django="django"
 sections=["FUTURE","STDLIB","DJANGO","THIRDPARTY","FIRSTPARTY","LOCALFOLDER"]
 
 [tool.codespell]
-# responde/momento/deine are Spanish/German words in the ai i18n templates
-ignore-words-list = ["assertIn","SME","intoto","fitH","responde","momento","deine"]
+# responde/momento/deine/ist/recommandation are es/de/fr words in the ai i18n templates
+ignore-words-list = ["assertIn","SME","intoto","fitH","responde","momento","deine","ist","recommandation"]
 
 [tool.pytest]
 django_find_project = false

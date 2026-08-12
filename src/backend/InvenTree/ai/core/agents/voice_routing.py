@@ -301,7 +301,11 @@ class VoiceComplexityRouter:
             r"\b(?:fault|failure|malfunction|breakdown|overheat(?:ing)?|vibrat(?:e|es|ing|ion)|leak(?:s|ing)?|intermittent|jam(?:s|med|ming)?|stall(?:s|ed|ing)?|trip(?:s|ped|ping))\b",
             r"\bkeeps? (?:stopping|halting|stalling|jamming|tripping|failing|faulting|breaking|cutting out|shutting (?:down|off))\b",
             r"\b(?:not|isn't|is not|won't|will not|stopped|stops|quit) working\b",
-            r"\b(?:abnormal|unusual|grinding|rattling) (?:noise|sound)\b",
+            # Golden ambiguous-symptom trap: colloquial noise reports and
+            # "what's broken" must reach the reasoning rail (which owns the
+            # clarify-first directive), not the wf1 fast path essay.
+            r"\b(?:abnormal|unusual|weird|strange|odd|funny|grinding|rattling|squealing|clunking) (?:noise|sound)s?\b",
+            r"\bwhat(?:'s| is)\s+(?:broken|wrong|failing)\b",
         )
     )
     _REPAIR_PLANNING_PATTERNS: ClassVar[tuple[re.Pattern[str], ...]] = tuple(
