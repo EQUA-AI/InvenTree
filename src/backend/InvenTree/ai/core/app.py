@@ -1237,38 +1237,70 @@ async def data_status() -> dict[str, Any]:
 
 
 @app.post("/data/switch")
-async def switch_data_mode(mode: str) -> dict[str, Any]:
+async def switch_data_mode() -> dict[str, Any]:
+    """Retired (S44): no runtime configuration writes.
+
+    This endpoint used to rewrite the ai plane's ``.env`` on disk — runtime
+    mutable config that survives nowhere sanely under container revisions.
+    ``USE_DEMO_DATASET`` is deploy-time-only now: set it on the container
+    app revision (or the local launch env) and restart.
     """
-    Switch between demo and live data modes.
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Retired: runtime config writes are not supported. Set "
+            "USE_DEMO_DATASET in the deployment environment and restart."
+        ),
+    )
 
-    Note: This only updates the setting. A server restart is required
-    for the change to take full effect.
 
-    Args:
-        mode: Either "demo" or "live"
+_CONFIG_SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
+
+
+def _redact_config(value: Any, name: str = "") -> Any:
+    """Redact secret-shaped values from a settings dump (S44)."""
+    upper = name.upper()
+    if any(marker in upper for marker in _CONFIG_SECRET_MARKERS):
+        return "***" if value not in (None, "") else value
+    if isinstance(value, dict):
+        return {key: _redact_config(item, key) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_config(item, name) for item in value]
+    # pydantic SecretStr dumps as the masked literal already, but be safe.
+    if value.__class__.__name__ == "SecretStr":
+        return "***"
+    return value
+
+
+@app.get("/config/effective")
+async def effective_config() -> dict[str, Any]:
+    """The ai plane's effective configuration, redacted (S44).
+
+    Staff-gated. Answers "what is this revision actually running with"
+    without re-deriving env -> settings mappings by hand. Secrets never
+    appear: SecretStr fields and any name containing KEY/TOKEN/SECRET/
+    PASSWORD/CREDENTIAL are masked.
     """
     if not _principal().is_staff:
         raise HTTPException(status_code=403, detail="Staff access required")
-    if mode not in ("demo", "live"):
-        raise HTTPException(status_code=400, detail="Mode must be 'demo' or 'live'")
 
-    from ai.core.integrations import get_mode_status, reset_provider
-    from ai.core.switch_mode import get_env_file_path, update_env_value
+    from ai.core.config import get_settings
+    from aimms_flags import REGISTRY
 
-    env_path = get_env_file_path()
-    value = "true" if mode == "demo" else "false"
-
-    if update_env_value("USE_DEMO_DATASET", value, env_path):
-        # Reset the provider so next request uses new mode
-        reset_provider()
-        return {
-            "success": True,
-            "mode": mode,
-            "message": f"Switched to {mode} mode. Restart server for full effect.",
-            "status": get_mode_status(),
-        }
-    else:
-        raise HTTPException(status_code=500, detail="Failed to update .env file")
+    settings = get_settings()
+    dumped = settings.model_dump(mode="json")
+    return {
+        "settings": {key: _redact_config(value, key) for key, value in dumped.items()},
+        "registry": [
+            {
+                "env_name": entry.env_name,
+                "planes": entry.planes,
+                "kind": entry.kind,
+                "default": entry.default,
+            }
+            for entry in REGISTRY
+        ],
+    }
 
 
 def main() -> None:

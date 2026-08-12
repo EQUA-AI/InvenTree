@@ -94,18 +94,46 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Feature Flags
     # -------------------------------------------------------------------------
-    feature_wf1_diagnostics: bool = Field(default=True, alias="FEATURE_WF1_DIAGNOSTICS")
-    feature_wf2_sequential: bool = Field(default=True, alias="FEATURE_WF2_SEQUENTIAL")
-    feature_wf3_concurrent: bool = Field(default=True, alias="FEATURE_WF3_CONCURRENT")
-    feature_wf4_procurement: bool = Field(default=True, alias="FEATURE_WF4_PROCUREMENT")
-    feature_wf5_cpq: bool = Field(default=True, alias="FEATURE_WF5_CPQ")
-    feature_wf6_incoming_docs: bool = Field(default=True, alias="FEATURE_WF6_INCOMING_DOCS")
-    feature_wf8_lookup: bool = Field(default=True, alias="FEATURE_WF8_LOOKUP")
+    feature_wf1_diagnostics: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("FEATURE_WF1_DIAGNOSTICS", "AIMMS_FEATURE_WF1_DIAGNOSTICS"),
+    )
+    feature_wf2_sequential: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("FEATURE_WF2_SEQUENTIAL", "AIMMS_FEATURE_WF2_SEQUENTIAL"),
+    )
+    feature_wf3_concurrent: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("FEATURE_WF3_CONCURRENT", "AIMMS_FEATURE_WF3_CONCURRENT"),
+    )
+    feature_wf4_procurement: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("FEATURE_WF4_PROCUREMENT", "AIMMS_FEATURE_WF4_PROCUREMENT"),
+    )
+    feature_wf5_cpq: bool = Field(
+        default=True, validation_alias=AliasChoices("FEATURE_WF5_CPQ", "AIMMS_FEATURE_WF5_CPQ")
+    )
+    feature_wf6_incoming_docs: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_WF6_INCOMING_DOCS", "AIMMS_FEATURE_WF6_INCOMING_DOCS"
+        ),
+    )
+    feature_wf8_lookup: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("FEATURE_WF8_LOOKUP", "AIMMS_FEATURE_WF8_LOOKUP"),
+    )
     feature_capability_broker_shadow: bool = Field(
-        default=True, alias="FEATURE_CAPABILITY_BROKER_SHADOW"
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_CAPABILITY_BROKER_SHADOW", "AIMMS_FEATURE_CAPABILITY_BROKER_SHADOW"
+        ),
     )
     feature_capability_broker_enforce: bool = Field(
-        default=True, alias="FEATURE_CAPABILITY_BROKER_ENFORCE"
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_CAPABILITY_BROKER_ENFORCE", "AIMMS_FEATURE_CAPABILITY_BROKER_ENFORCE"
+        ),
     )
     # Which workflows the invocation guard ENFORCES on, comma separated. Any
     # other workflow runs in shadow: the guard still evaluates and logs the
@@ -124,30 +152,50 @@ class Settings(BaseSettings):
     # it, "how many X are over N" reaches no tool that can express the question.
     # Kill switch reverts to keyword-only selection.
     feature_capability_selection_v2: bool = Field(
-        default=True, alias="FEATURE_CAPABILITY_SELECTION_V2"
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_CAPABILITY_SELECTION_V2", "AIMMS_FEATURE_CAPABILITY_SELECTION_V2"
+        ),
     )
     # Derive selection terms from live PartCategory names so deployment-specific
     # taxonomy ("Fasteners", "O-Rings") routes to the parts pack without a
     # hand-maintained synonym list. Separate flag: this is the only selection
     # input that touches the database and cache.
-    feature_category_lexicon: bool = Field(default=True, alias="FEATURE_CATEGORY_LEXICON")
+    feature_category_lexicon: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("FEATURE_CATEGORY_LEXICON", "AIMMS_FEATURE_CATEGORY_LEXICON"),
+    )
     # Structured question cards (S22/S23): a turn may COMPLETE with a
     # clarification question whose 2-4 options are server-derived; the answer
     # arrives as the next turn and is validated against the persisted record.
     # The flag gates ASKING only — the answer binder always runs, so flipping
     # this off drains any in-flight pending question harmlessly. Ships dark;
     # flips on only after the client that renders the card is live.
-    feature_question_cards: bool = Field(default=False, alias="FEATURE_QUESTION_CARDS")
-    feature_reflection_middleware: bool = Field(default=True, alias="FEATURE_REFLECTION_MIDDLEWARE")
+    feature_question_cards: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_QUESTION_CARDS", "AIMMS_FEATURE_QUESTION_CARDS"),
+    )
+    feature_reflection_middleware: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_REFLECTION_MIDDLEWARE", "AIMMS_FEATURE_REFLECTION_MIDDLEWARE"
+        ),
+    )
     # S35: cross-replica rate limiting over the shared cache. Shadow runs the
     # fixed-window limiter next to the legacy in-process buckets and logs any
     # divergence; enforce hands the 429 decision to the windowed limiter.
     # Both off reverts to the per-process buckets alone.
     feature_distributed_rate_limit_shadow: bool = Field(
-        default=True, alias="FEATURE_DISTRIBUTED_RATE_LIMIT_SHADOW"
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_DISTRIBUTED_RATE_LIMIT_SHADOW", "AIMMS_FEATURE_DISTRIBUTED_RATE_LIMIT_SHADOW"
+        ),
     )
     feature_distributed_rate_limit_enforce: bool = Field(
-        default=False, alias="FEATURE_DISTRIBUTED_RATE_LIMIT_ENFORCE"
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_DISTRIBUTED_RATE_LIMIT_ENFORCE", "AIMMS_FEATURE_DISTRIBUTED_RATE_LIMIT_ENFORCE"
+        ),
     )
     # S37: per-user daily token budgets (UTC day, shared-cache counters).
     # 0 = unlimited. Shadow logs budget.would_block; enforce returns the
@@ -156,8 +204,18 @@ class Settings(BaseSettings):
         default=500_000, ge=0, alias="AI_USER_DAILY_TOKEN_BUDGET"
     )
     ai_budget_exempt_user_ids: str = Field(default="", alias="AI_BUDGET_EXEMPT_USER_IDS")
-    feature_token_budget_shadow: bool = Field(default=True, alias="FEATURE_TOKEN_BUDGET_SHADOW")
-    feature_token_budget_enforce: bool = Field(default=False, alias="FEATURE_TOKEN_BUDGET_ENFORCE")
+    feature_token_budget_shadow: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_TOKEN_BUDGET_SHADOW", "AIMMS_FEATURE_TOKEN_BUDGET_SHADOW"
+        ),
+    )
+    feature_token_budget_enforce: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_TOKEN_BUDGET_ENFORCE", "AIMMS_FEATURE_TOKEN_BUDGET_ENFORCE"
+        ),
+    )
     # S37: deterministic model tiering through one policy table
     # (ai/core/model_policy.py). Shadow logs any legacy-vs-policy divergence
     # (the initial table is the identity, so a divergence means a policy
@@ -165,35 +223,77 @@ class Settings(BaseSettings):
     # policy edit — text lookup-shaped wf8 turns on the fast deployment —
     # sits behind its own flag and flips only after the S39 golden set
     # passes against the fast deployment.
-    feature_model_tiering_shadow: bool = Field(default=True, alias="FEATURE_MODEL_TIERING_SHADOW")
-    feature_model_tiering_enforce: bool = Field(
-        default=False, alias="FEATURE_MODEL_TIERING_ENFORCE"
+    feature_model_tiering_shadow: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_MODEL_TIERING_SHADOW", "AIMMS_FEATURE_MODEL_TIERING_SHADOW"
+        ),
     )
-    feature_wf8_text_fast_tier: bool = Field(default=False, alias="FEATURE_WF8_TEXT_FAST_TIER")
+    feature_model_tiering_enforce: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_MODEL_TIERING_ENFORCE", "AIMMS_FEATURE_MODEL_TIERING_ENFORCE"
+        ),
+    )
+    feature_wf8_text_fast_tier: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_WF8_TEXT_FAST_TIER", "AIMMS_FEATURE_WF8_TEXT_FAST_TIER"
+        ),
+    )
     # S38: typed turn failures. Off = classify-and-log-only (shadow); on =
     # the RUN_ERROR event carries failure_class and the FAILED message uses
     # the per-class localized template.
-    feature_typed_turn_failures: bool = Field(default=False, alias="FEATURE_TYPED_TURN_FAILURES")
+    feature_typed_turn_failures: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_TYPED_TURN_FAILURES", "AIMMS_FEATURE_TYPED_TURN_FAILURES"
+        ),
+    )
     # S38: watermarked thread compaction. Shadow summarizes and writes the
     # watermark/summary (DB-observable, behavior-inert while the frontend
     # title guard is deployed); the full flag additionally injects the
     # summary note and truncates injected history at the watermark.
     feature_thread_compaction_shadow: bool = Field(
-        default=False, alias="FEATURE_THREAD_COMPACTION_SHADOW"
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_THREAD_COMPACTION_SHADOW", "AIMMS_FEATURE_THREAD_COMPACTION_SHADOW"
+        ),
     )
-    feature_thread_compaction: bool = Field(default=False, alias="FEATURE_THREAD_COMPACTION")
+    feature_thread_compaction: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_THREAD_COMPACTION", "AIMMS_FEATURE_THREAD_COMPACTION"
+        ),
+    )
     # S40: NLI groundedness cascade. Dark this phase — the model deps ship in
     # the never-installed ai/requirements-eval.txt and only the offline
     # eval harness exists; live cascade wiring is Phase 8.
-    feature_nli_groundedness: bool = Field(default=False, alias="FEATURE_NLI_GROUNDEDNESS")
-    feature_voice_live_diagnosis: bool = Field(default=False, alias="FEATURE_VOICE_LIVE_DIAGNOSIS")
+    feature_nli_groundedness: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_NLI_GROUNDEDNESS", "AIMMS_FEATURE_NLI_GROUNDEDNESS"),
+    )
+    feature_voice_live_diagnosis: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_VOICE_LIVE_DIAGNOSIS", "AIMMS_FEATURE_VOICE_LIVE_DIAGNOSIS"
+        ),
+    )
     # Safety tightening (Tier-1): restrict voice-modality lookups to read-only tools
     # and a read-only spoken prompt. Defaults on because voice is contractually
     # read-only; set false to revert voice to the full text toolset.
-    feature_voice_readonly_tools: bool = Field(default=True, alias="FEATURE_VOICE_READONLY_TOOLS")
+    feature_voice_readonly_tools: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_VOICE_READONLY_TOOLS", "AIMMS_FEATURE_VOICE_READONLY_TOOLS"
+        ),
+    )
     # Tier-1 latency: answer pattern-matched voice lookups from the deterministic
     # fast path (permission-gated) instead of the LLM tool loop. Off by default.
-    feature_voice_fast_path: bool = Field(default=False, alias="FEATURE_VOICE_FAST_PATH")
+    feature_voice_fast_path: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_VOICE_FAST_PATH", "AIMMS_FEATURE_VOICE_FAST_PATH"),
+    )
     # Confirmed actions: allow a voice-initiated write ONLY through a mandatory verbal
     # confirmation turn (propose -> exact read-back -> explicit spoken confirm ->
     # execute via the same RBAC-gated write tools text uses). Destructive actions
@@ -214,7 +314,10 @@ class Settings(BaseSettings):
     # confirmation turn. Set FEATURE_VOICE_WRITE_CONFIRMATION=false to re-arm the
     # kill switch for a deployment that wants voice to stay strictly read-only.
     feature_voice_write_confirmation: bool = Field(
-        default=True, alias="FEATURE_VOICE_WRITE_CONFIRMATION"
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_VOICE_WRITE_CONFIRMATION", "AIMMS_FEATURE_VOICE_WRITE_CONFIRMATION"
+        ),
     )
     # Ceiling on the voice action planner. It resolves one tool call through an
     # agent loop; past this the turn degrades to the same advisory refusal it
@@ -251,7 +354,10 @@ class Settings(BaseSettings):
     # S24: persist per-turn provider usage (wf8 + Luna) into terminal turn
     # metadata so budgets are measured, not guessed. Kill switch only.
     feature_turn_usage_persistence: bool = Field(
-        default=True, alias="FEATURE_TURN_USAGE_PERSISTENCE"
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_TURN_USAGE_PERSISTENCE", "AIMMS_FEATURE_TURN_USAGE_PERSISTENCE"
+        ),
     )
 
     # -------------------------------------------------------------------------
@@ -344,7 +450,10 @@ class Settings(BaseSettings):
     # S28: server-observed entity chips under answers. Additive and inert on
     # stale clients (unknown STATE_DELTA kinds are ignored), so it defaults
     # on; the flag is a kill switch only.
-    feature_entity_manifest: bool = Field(default=True, alias="FEATURE_ENTITY_MANIFEST")
+    feature_entity_manifest: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("FEATURE_ENTITY_MANIFEST", "AIMMS_FEATURE_ENTITY_MANIFEST"),
+    )
     # S27: cite-or-downgrade for manuals-grounded wf8 answers. shadow logs a
     # content-free would_downgrade line and persists the assessment; enforce
     # replaces confirmed-ungrounded answers with the downgrade template.
@@ -358,16 +467,29 @@ class Settings(BaseSettings):
     # runs ONE stateless full-transcript continuation. Dark by default; flip
     # dev -> experimental, and raise AZURE_LUNA_DIAGNOSIS_TIMEOUT_S to 45
     # wherever this is enabled so the continuation fits the deadline.
-    feature_history_enrichment: bool = Field(default=False, alias="FEATURE_HISTORY_ENRICHMENT")
+    feature_history_enrichment: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_HISTORY_ENRICHMENT", "AIMMS_FEATURE_HISTORY_ENRICHMENT"
+        ),
+    )
     # S32b (B6): read-only thread sharing via explicit audited grants. Dark by
     # default; the same env var is bridged into Django settings so the
     # repository (Django plane) and the /threads surface (this plane) can
     # never disagree about whether sharing exists.
-    feature_thread_sharing: bool = Field(default=False, alias="FEATURE_THREAD_SHARING")
+    feature_thread_sharing: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_THREAD_SHARING", "AIMMS_FEATURE_THREAD_SHARING"),
+    )
     # S33 (B7): read-only voice step-through of applied guided procedures.
     # Verbatim step_snapshot text only; completion posts through the existing
     # step-execution command API as the user. Dark by default.
-    feature_guided_procedures: bool = Field(default=False, alias="FEATURE_GUIDED_PROCEDURES")
+    feature_guided_procedures: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_GUIDED_PROCEDURES", "AIMMS_FEATURE_GUIDED_PROCEDURES"
+        ),
+    )
     azure_luna_history_enrichment_rounds: int = Field(
         default=1,
         ge=0,
@@ -417,15 +539,29 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # WS4 Voice Live transport (all fail closed; flags default off)
     # -------------------------------------------------------------------------
-    feature_voice_live: bool = Field(default=False, alias="FEATURE_VOICE_LIVE")
-    feature_voice_live_webrtc: bool = Field(default=False, alias="FEATURE_VOICE_LIVE_WEBRTC")
-    feature_voice_live_relay: bool = Field(default=False, alias="FEATURE_VOICE_LIVE_RELAY")
+    feature_voice_live: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_VOICE_LIVE", "AIMMS_FEATURE_VOICE_LIVE"),
+    )
+    feature_voice_live_webrtc: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_VOICE_LIVE_WEBRTC", "AIMMS_FEATURE_VOICE_LIVE_WEBRTC"
+        ),
+    )
+    feature_voice_live_relay: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_VOICE_LIVE_RELAY", "AIMMS_FEATURE_VOICE_LIVE_RELAY"),
+    )
     # Phase 5 (optional): move the transport to a native realtime model
     # (gpt-realtime) with native semantic VAD for snappier turn-taking. Answers
     # stay governed -- create_response:false, exact-TTS, no session tools, prompt
     # of record in the repo -- so this is a transport swap, never A4/A5. Off by
     # default; requires FEATURE_VOICE_LIVE and a gpt-realtime session model.
-    feature_voice_native_sts: bool = Field(default=False, alias="FEATURE_VOICE_NATIVE_STS")
+    feature_voice_native_sts: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_VOICE_NATIVE_STS", "AIMMS_FEATURE_VOICE_NATIVE_STS"),
+    )
     azure_voicelive_endpoint: str = Field(default="", alias="AZURE_VOICELIVE_ENDPOINT")
     azure_voicelive_model: str = Field(default="gpt-4.1-mini", alias="AZURE_VOICELIVE_MODEL")
     azure_voicelive_api_version: str = Field(

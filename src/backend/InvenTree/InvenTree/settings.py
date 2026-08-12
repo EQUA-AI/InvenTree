@@ -1394,113 +1394,39 @@ TAGGIT_CASE_INSENSITIVE = True
 # place, so the container app's env is the single switchboard.
 # ---------------------------------------------------------------------------
 
-AIMMS_WORK_ORDERS_ENABLED = get_boolean_setting(
-    'AIMMS_WORK_ORDERS_ENABLED', 'aimms_work_orders_enabled', False
-)
-AIMMS_MACHINE_AI_READ_ENABLED = get_boolean_setting(
-    'AIMMS_MACHINE_AI_READ_ENABLED', 'aimms_machine_ai_read_enabled', False
-)
-AIMMS_MAINTENANCE_AI_READ_ENABLED = get_boolean_setting(
-    'AIMMS_MAINTENANCE_AI_READ_ENABLED', 'aimms_maintenance_ai_read_enabled', False
-)
+# S44: the flags are DECLARED once in the registry (aimms_flags.py, repo
+# root of the backend package tree) and bridged here by kind. The historic
+# hand-written blocks (S4, 2026-08-02) carried per-flag commentary — that
+# context now lives on the registry entries. Values and module-level names
+# are unchanged; the island parity test (test_flag_registry.py) locks both
+# planes' defaults together.
+from aimms_flags import django_flags as _aimms_django_flags
 
-# Dotted path to the maintenance scope resolver; empty means unresolved
-# (fail closed) unless actors carry explicit maintenance_scopes.
-AIMMS_MAINTENANCE_SCOPE_RESOLVER = get_setting(
-    'AIMMS_MAINTENANCE_SCOPE_RESOLVER', 'aimms_maintenance_scope_resolver', None
-)
-
-# Dotted path to the diagnostic capability resolver consulted by the AI
-# reasoning rail (repair.services._diagnostic_capabilities_for_actor). Unset
-# means no capabilities: the diagnostic context factory yields None and the
-# turn service refuses reasoning turns instead of running the model with no
-# tools. Production value:
-# 'repair.diagnostic_scope.single_site_diagnostic_capability_resolver'.
-AIMMS_DIAGNOSTIC_CAPABILITY_RESOLVER = get_setting(
-    'AIMMS_DIAGNOSTIC_CAPABILITY_RESOLVER', 'aimms_diagnostic_capability_resolver', None
-)
-
-# Tenant code the single-site resolver grants (assets.Client.code).
-AIMMS_SINGLE_SITE_CLIENT_CODE = get_setting(
-    'AIMMS_SINGLE_SITE_CLIENT_CODE', 'aimms_single_site_client_code', 'internal'
-)
-
-# --- Django-plane flags bridged by execution-plan slice S4 (2026-08-02). ---
-# Every name below was previously consumed via getattr with a fail-closed
-# default but had NO env bridge, so the features were structurally off in
-# every deployment regardless of configuration. Bridging changes nothing by
-# itself: all defaults remain fail-closed.
-
-# When on, the 7 direct-ORM kanban write tools are DISABLED in the capability
-# catalog so the governed proposal rail is the only AI write path (S12 flips
-# this on, soaks, then deletes the tools outright).
-AIMMS_GOVERNED_KANBAN_WRITES = get_boolean_setting(
-    'AIMMS_GOVERNED_KANBAN_WRITES', 'aimms_governed_kanban_writes', False
-)
-
-# Closeout extraction (S19): master gate, extractor seam (dotted path to the
-# ai.core capability binding), provenance label, and the capture wizard.
-AIMMS_CLOSEOUT_EXTRACTION_ENABLED = get_boolean_setting(
-    'AIMMS_CLOSEOUT_EXTRACTION_ENABLED', 'aimms_closeout_extraction_enabled', False
-)
-AIMMS_CLOSEOUT_EXTRACTOR = get_setting(
-    'AIMMS_CLOSEOUT_EXTRACTOR', 'aimms_closeout_extractor', None
-)
-AIMMS_CLOSEOUT_EXTRACTION_MODEL = get_setting(
-    'AIMMS_CLOSEOUT_EXTRACTION_MODEL', 'aimms_closeout_extraction_model', ''
-)
-AIMMS_CLOSEOUT_WIZARD_ENABLED = get_boolean_setting(
-    'AIMMS_CLOSEOUT_WIZARD_ENABLED', 'aimms_closeout_wizard_enabled', False
-)
-
-# Risk Radar / Command Center (S21): scans, findings API, notifications, and
-# the least-privilege scanner principal (scans fail closed while unset).
-AIMMS_RISK_RADAR_ENABLED = get_boolean_setting(
-    'AIMMS_RISK_RADAR_ENABLED', 'aimms_risk_radar_enabled', False
-)
-AIMMS_COMMAND_CENTER_ENABLED = get_boolean_setting(
-    'AIMMS_COMMAND_CENTER_ENABLED', 'aimms_command_center_enabled', False
-)
-AIMMS_RISK_NOTIFICATIONS_ENABLED = get_boolean_setting(
-    'AIMMS_RISK_NOTIFICATIONS_ENABLED', 'aimms_risk_notifications_enabled', False
-)
-AIMMS_RISK_SERVICE_USER_ID = get_setting(
-    'AIMMS_RISK_SERVICE_USER_ID', 'aimms_risk_service_user_id', None
-)
-
-# Per-rule enablement list; the consumer iterates it, so the env value is a
-# comma-separated string parsed here (empty enables nothing — fail closed).
-_aimms_risk_rules_raw = get_setting(
-    'AIMMS_RISK_RULES_ENABLED', 'aimms_risk_rules_enabled', ''
-)
-AIMMS_RISK_RULES_ENABLED = [
-    code.strip() for code in str(_aimms_risk_rules_raw or '').split(',') if code.strip()
-]
-
-# S32b (B6): thread sharing. Same env var as the ai.core plane's
-# FEATURE_THREAD_SHARING so both planes flip together.
-FEATURE_THREAD_SHARING = get_boolean_setting(
-    'FEATURE_THREAD_SHARING', 'feature_thread_sharing', False
-)
+for _aimms_entry in _aimms_django_flags():
+    if _aimms_entry.kind == 'bool':
+        _aimms_value = get_boolean_setting(
+            _aimms_entry.env_name, _aimms_entry.config_key, _aimms_entry.default
+        )
+    elif _aimms_entry.kind == 'csv':
+        _aimms_raw = get_setting(
+            _aimms_entry.env_name, _aimms_entry.config_key, _aimms_entry.default
+        )
+        _aimms_value = [
+            code.strip() for code in str(_aimms_raw or '').split(',') if code.strip()
+        ]
+    else:
+        _aimms_value = get_setting(
+            _aimms_entry.env_name, _aimms_entry.config_key, _aimms_entry.default
+        )
+    globals()[_aimms_entry.env_name] = _aimms_value
 
 # One boot-time line stating the effective AIMMS switchboard, so "which flags
-# does this revision actually run with" is answerable from container logs
-# instead of by re-deriving env → settings mappings by hand.
+# does this revision actually run with" is answerable from container logs.
+# Registry-driven: every Django-plane flag, registry order, name=value.
 logger.info(
-    'AIMMS switchboard: work_orders=%s machine_read=%s maintenance_read=%s '
-    'governed_kanban=%s closeout=%s closeout_wizard=%s risk_radar=%s '
-    'command_center=%s risk_notifications=%s risk_rules=%s '
-    'diagnostic_resolver=%s maintenance_resolver=%s',
-    AIMMS_WORK_ORDERS_ENABLED,
-    AIMMS_MACHINE_AI_READ_ENABLED,
-    AIMMS_MAINTENANCE_AI_READ_ENABLED,
-    AIMMS_GOVERNED_KANBAN_WRITES,
-    AIMMS_CLOSEOUT_EXTRACTION_ENABLED,
-    AIMMS_CLOSEOUT_WIZARD_ENABLED,
-    AIMMS_RISK_RADAR_ENABLED,
-    AIMMS_COMMAND_CENTER_ENABLED,
-    AIMMS_RISK_NOTIFICATIONS_ENABLED,
-    AIMMS_RISK_RULES_ENABLED,
-    bool(AIMMS_DIAGNOSTIC_CAPABILITY_RESOLVER),
-    bool(AIMMS_MAINTENANCE_SCOPE_RESOLVER),
+    'AIMMS switchboard: %s',
+    ' '.join(
+        f'{entry.env_name}={globals()[entry.env_name]}'
+        for entry in _aimms_django_flags()
+    ),
 )
