@@ -13,12 +13,23 @@ import django
 django.setup()
 
 from ai.core.auth import AI_PRINCIPAL_SCOPE_KEY, AIPrincipal  # noqa: E402
+from ai.core.config import Settings  # noqa: E402
 from ai.core.middleware.rate_limit import (  # noqa: E402
     RateLimitConfig,
     RateLimiter,
     RateLimitMiddleware,
+    WindowedRateLimiter,
     normalized_route_path,
 )
+from ai.core.middleware.rate_limit_store import InMemoryRateLimitStore  # noqa: E402
+
+
+def _flag_settings(*, shadow: bool = False, enforce: bool = False) -> Settings:
+    return Settings(
+        _env_file=None,
+        FEATURE_DISTRIBUTED_RATE_LIMIT_SHADOW=shadow,
+        FEATURE_DISTRIBUTED_RATE_LIMIT_ENFORCE=enforce,
+    )
 
 
 def _principal(subject: str = "user:7") -> AIPrincipal:
@@ -70,12 +81,19 @@ def _status(messages: list[dict]) -> int:
     )
 
 
-def _middleware(limiter: RateLimiter) -> RateLimitMiddleware:
+def _middleware(
+    limiter: RateLimiter, windowed: WindowedRateLimiter | None = None
+) -> RateLimitMiddleware:
     async def app(_scope, _receive, send):
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"ok"})
 
-    return RateLimitMiddleware(app, limiter=limiter, exempt_paths=set())
+    return RateLimitMiddleware(
+        app,
+        limiter=limiter,
+        exempt_paths=set(),
+        windowed=windowed or WindowedRateLimiter(limiter.config, store=InMemoryRateLimitStore()),
+    )
 
 
 def test_normalized_route_path_handles_both_mounted_scope_shapes() -> None:
@@ -83,7 +101,8 @@ def test_normalized_route_path_handles_both_mounted_scope_shapes() -> None:
     assert normalized_route_path({"path": "/api/ai/chat", "root_path": "/api/ai"}) == "/chat"
 
 
-def test_spoofed_header_cannot_change_principal_bucket() -> None:
+def test_spoofed_header_cannot_change_principal_bucket(monkeypatch) -> None:
+    monkeypatch.setattr("ai.core.config.get_settings", _flag_settings)
     limiter = RateLimiter(
         RateLimitConfig(
             max_requests_per_minute=1,
@@ -109,13 +128,23 @@ def test_spoofed_header_cannot_change_principal_bucket() -> None:
             headers=[(b"x-user-id", b"attacker-choice-two")],
         )
     )
+    # A different real principal still has its own budget — the header
+    # never chose the bucket.
+    other = asyncio.run(
+        _run(
+            middleware,
+            principal=_principal("user:8"),
+            headers=[(b"x-user-id", b"attacker-choice-one")],
+        )
+    )
 
     assert _status(first) == 200
     assert _status(second) == 429
-    assert set(limiter._user_buckets) == {principal.rate_limit_key}
+    assert _status(other) == 200
 
 
-def test_mounted_endpoint_rule_applies_to_api_ai_chat() -> None:
+def test_mounted_endpoint_rule_applies_to_api_ai_chat(monkeypatch) -> None:
+    monkeypatch.setattr("ai.core.config.get_settings", _flag_settings)
     limiter = RateLimiter(
         RateLimitConfig(
             max_requests_per_minute=20,
@@ -138,7 +167,58 @@ def test_mounted_endpoint_rule_applies_to_api_ai_chat() -> None:
     assert b"Retry-After" in headers
 
 
-def test_rate_limit_middleware_never_falls_back_to_attacker_identity() -> None:
+def test_rate_limit_middleware_never_falls_back_to_attacker_identity(monkeypatch) -> None:
+    monkeypatch.setattr("ai.core.config.get_settings", _flag_settings)
     middleware = _middleware(RateLimiter())
     messages = asyncio.run(_run(middleware, headers=[(b"x-user-id", b"chosen-bucket")]))
     assert _status(messages) == 401
+
+
+def test_enforce_hands_the_decision_to_the_windowed_limiter(monkeypatch) -> None:
+    """S35: with enforce on, the shared-cache windows decide, not the buckets."""
+    monkeypatch.setattr("ai.core.config.get_settings", lambda: _flag_settings(enforce=True))
+    # Buckets would allow 100/min; the windowed limiter allows 1.
+    limiter = RateLimiter(RateLimitConfig(max_requests_per_minute=100))
+    windowed = WindowedRateLimiter(
+        RateLimitConfig(
+            max_requests_per_minute=1,
+            max_requests_per_hour=100,
+            global_max_requests_per_minute=100,
+            endpoint_limits={},
+        ),
+        store=InMemoryRateLimitStore(),
+    )
+    middleware = _middleware(limiter, windowed=windowed)
+    principal = _principal()
+
+    assert _status(asyncio.run(_run(middleware, principal=principal))) == 200
+    messages = asyncio.run(_run(middleware, principal=principal))
+    assert _status(messages) == 429
+    body = next(message["body"] for message in messages if message["type"] == "http.response.body")
+    assert json.loads(body)["error"] == "rate_limit_exceeded"
+
+
+def test_shadow_logs_divergence_but_keeps_the_bucket_decision(monkeypatch, caplog) -> None:
+    """S35 soak signal: divergence is logged, the legacy verdict stands."""
+    import logging
+
+    monkeypatch.setattr("ai.core.config.get_settings", lambda: _flag_settings(shadow=True))
+    limiter = RateLimiter(RateLimitConfig(max_requests_per_minute=100))
+    windowed = WindowedRateLimiter(
+        RateLimitConfig(
+            max_requests_per_minute=1,
+            max_requests_per_hour=100,
+            global_max_requests_per_minute=100,
+            endpoint_limits={},
+        ),
+        store=InMemoryRateLimitStore(),
+    )
+    middleware = _middleware(limiter, windowed=windowed)
+    principal = _principal()
+
+    with caplog.at_level(logging.WARNING, logger="ai.core.middleware.rate_limit"):
+        assert _status(asyncio.run(_run(middleware, principal=principal))) == 200
+        # Second request: buckets allow, windows reject — divergence, still 200.
+        assert _status(asyncio.run(_run(middleware, principal=principal))) == 200
+
+    assert any("rate_limit.shadow divergence" in r.getMessage() for r in caplog.records)

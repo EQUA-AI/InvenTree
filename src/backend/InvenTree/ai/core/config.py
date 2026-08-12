@@ -80,20 +80,10 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 
-    # -------------------------------------------------------------------------
-    # Storage Paths
-    # -------------------------------------------------------------------------
-    data_dir: Path = Field(default=Path("./data"))
-    threads_dir: Path = Field(default=Path("./data/threads"))
-    checkpoints_dir: Path = Field(default=Path("./data/checkpoints"))
-    cache_dir: Path = Field(default=Path("./data/cache"))
-
-    @field_validator("data_dir", "threads_dir", "checkpoints_dir", "cache_dir", mode="after")
-    @classmethod
-    def ensure_directories(cls, v: Path) -> Path:
-        """Ensure storage directories exist."""
-        v.mkdir(parents=True, exist_ok=True)
-        return v
+    # S35: the CWD-relative ./data storage tree (threads/checkpoints/cache
+    # dirs plus their import-time mkdir) was deleted along with the file-JSON
+    # memory providers that read it. Durable state lives in the database and
+    # the shared Django cache only.
 
     # -------------------------------------------------------------------------
     # HITL Configuration
@@ -149,6 +139,53 @@ class Settings(BaseSettings):
     # flips on only after the client that renders the card is live.
     feature_question_cards: bool = Field(default=False, alias="FEATURE_QUESTION_CARDS")
     feature_reflection_middleware: bool = Field(default=True, alias="FEATURE_REFLECTION_MIDDLEWARE")
+    # S35: cross-replica rate limiting over the shared cache. Shadow runs the
+    # fixed-window limiter next to the legacy in-process buckets and logs any
+    # divergence; enforce hands the 429 decision to the windowed limiter.
+    # Both off reverts to the per-process buckets alone.
+    feature_distributed_rate_limit_shadow: bool = Field(
+        default=True, alias="FEATURE_DISTRIBUTED_RATE_LIMIT_SHADOW"
+    )
+    feature_distributed_rate_limit_enforce: bool = Field(
+        default=False, alias="FEATURE_DISTRIBUTED_RATE_LIMIT_ENFORCE"
+    )
+    # S37: per-user daily token budgets (UTC day, shared-cache counters).
+    # 0 = unlimited. Shadow logs budget.would_block; enforce returns the
+    # typed 429. An abuse control, not billing — see middleware/budget.py.
+    ai_user_daily_token_budget: int = Field(
+        default=500_000, ge=0, alias="AI_USER_DAILY_TOKEN_BUDGET"
+    )
+    ai_budget_exempt_user_ids: str = Field(default="", alias="AI_BUDGET_EXEMPT_USER_IDS")
+    feature_token_budget_shadow: bool = Field(default=True, alias="FEATURE_TOKEN_BUDGET_SHADOW")
+    feature_token_budget_enforce: bool = Field(default=False, alias="FEATURE_TOKEN_BUDGET_ENFORCE")
+    # S37: deterministic model tiering through one policy table
+    # (ai/core/model_policy.py). Shadow logs any legacy-vs-policy divergence
+    # (the initial table is the identity, so a divergence means a policy
+    # edit); enforce switches callers to the policy choice. The first real
+    # policy edit — text lookup-shaped wf8 turns on the fast deployment —
+    # sits behind its own flag and flips only after the S39 golden set
+    # passes against the fast deployment.
+    feature_model_tiering_shadow: bool = Field(default=True, alias="FEATURE_MODEL_TIERING_SHADOW")
+    feature_model_tiering_enforce: bool = Field(
+        default=False, alias="FEATURE_MODEL_TIERING_ENFORCE"
+    )
+    feature_wf8_text_fast_tier: bool = Field(default=False, alias="FEATURE_WF8_TEXT_FAST_TIER")
+    # S38: typed turn failures. Off = classify-and-log-only (shadow); on =
+    # the RUN_ERROR event carries failure_class and the FAILED message uses
+    # the per-class localized template.
+    feature_typed_turn_failures: bool = Field(default=False, alias="FEATURE_TYPED_TURN_FAILURES")
+    # S38: watermarked thread compaction. Shadow summarizes and writes the
+    # watermark/summary (DB-observable, behavior-inert while the frontend
+    # title guard is deployed); the full flag additionally injects the
+    # summary note and truncates injected history at the watermark.
+    feature_thread_compaction_shadow: bool = Field(
+        default=False, alias="FEATURE_THREAD_COMPACTION_SHADOW"
+    )
+    feature_thread_compaction: bool = Field(default=False, alias="FEATURE_THREAD_COMPACTION")
+    # S40: NLI groundedness cascade. Dark this phase — the model deps ship in
+    # the never-installed ai/requirements-eval.txt and only the offline
+    # eval harness exists; live cascade wiring is Phase 8.
+    feature_nli_groundedness: bool = Field(default=False, alias="FEATURE_NLI_GROUNDEDNESS")
     feature_voice_live_diagnosis: bool = Field(default=False, alias="FEATURE_VOICE_LIVE_DIAGNOSIS")
     # Safety tightening (Tier-1): restrict voice-modality lookups to read-only tools
     # and a read-only spoken prompt. Defaults on because voice is contractually
@@ -621,20 +658,6 @@ class AzureDocIntelligenceSettings(BaseSettings):
     key: SecretStr = Field(description="Document Intelligence API key")
 
 
-class AzureFoundryMemorySettings(BaseSettings):
-    """Azure Foundry Memory Store Configuration."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="AZURE_FOUNDRY_MEMORY_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
-    endpoint: str = Field(description="Foundry Memory Store endpoint")
-    key: SecretStr = Field(description="Foundry Memory Store API key")
-
-
 class InvenTreeSettings(BaseSettings):
     """InvenTree Configuration."""
 
@@ -727,14 +750,6 @@ def get_azure_doc_intelligence_settings() -> AzureDocIntelligenceSettings:
     # Required fields are supplied via environment variables at runtime;
     # pydantic-settings raises a ValidationError if they are missing.
     return AzureDocIntelligenceSettings()
-
-
-@lru_cache
-def get_azure_foundry_memory_settings() -> AzureFoundryMemorySettings:
-    """Get cached Foundry Memory Store settings."""
-    # Required fields are supplied via environment variables at runtime;
-    # pydantic-settings raises a ValidationError if they are missing.
-    return AzureFoundryMemorySettings()
 
 
 @lru_cache

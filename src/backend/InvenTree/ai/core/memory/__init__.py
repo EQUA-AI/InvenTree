@@ -2,33 +2,22 @@
 AIMMS Memory Module
 
 Contains memory-related components:
-- ContextProviders: MAF-compliant context injection
-  - UserProfileProvider: User preferences and history
-  - ThreadSummaryProvider: Conversation summarization
-  - PartsPreferenceProvider: Part selection preferences
+- DBUserProfileProvider: the ``user_profile`` context key, read from the
+  real ``users.UserProfile`` model (S35).
 
 The semantic cache that lived here was deleted in S15: it was the latent
 serve-machine-A's-diagnosis-for-machine-B trap S6 fenced, and deletion makes
-that failure structurally impossible.
+that failure structurally impossible. The file-JSON providers
+(thread_summary, parts_preference, the old user_profile) were deleted in
+S35: write-never in production, hardcoded-default reads.
 """
 
 from ai.core.memory.providers import (
-    PartsPreferenceProvider,
-    ThreadSummaryProvider,
-    UserProfileProvider,
-    get_parts_preference_provider,
-    get_thread_summary_provider,
+    DBUserProfileProvider,
     get_user_profile_provider,
 )
 
 __all__ = [
-    # Parts Preference
-    "PartsPreferenceProvider",
-    # Thread Summary
-    "ThreadSummaryProvider",
-    # User Profile
-    "UserProfileProvider",
-    "get_parts_preference_provider",
-    "get_thread_summary_provider",
+    "DBUserProfileProvider",
     "get_user_profile_provider",
 ]

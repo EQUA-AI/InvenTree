@@ -8,11 +8,9 @@ Moved from orchestrator.py during refactor.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import Any, ClassVar
 
 from ai.core.faults import fault_location
@@ -163,142 +161,38 @@ class ConversationState:
 
 class ConversationManager:
     """
-    Manages conversation state and context aggregation.
+    Aggregates per-turn context for the root orchestrator.
 
-    Features:
-    - Multi-turn state tracking with message history
-    - Context provider invocation in parallel
-    - Automatic summarization for long conversations
-    - Handoff management between workflows
-    - PostgreSQL persistence with Azure AI Search indexing
-    - Context caching with TTL support
+    S35: this class is deliberately stateless across requests. The file-JSON
+    providers, the legacy file persistence, the per-process ``_conversations``
+    cache, and the cross-process aggregated-context cache were all deleted —
+    the one surviving provider is a single cheap DB read, which is cheaper
+    than any staleness a cache would buy. Durable threads and turns live
+    exclusively in the ``aichat`` repository.
     """
 
-    # Context cache TTL in seconds
-    CONTEXT_CACHE_TTL = 300  # 5 minutes
-
-    def __init__(
-        self,
-        persistence_dir: str | None = None,
-        enable_persistence: bool = False,
-    ):
-        """
-        Initialize conversation manager.
-
-        Durable threads and turns live exclusively in the ``aichat``
-        repository; the quarantined database persistence layer that used to be
-        lazily loaded here was deleted in S15.
-
-        Args:
-            persistence_dir: Directory for persisting state (legacy file-based)
-            enable_persistence: Whether to persist state to disk (legacy)
-        """
-        self._conversations: dict[str, ConversationState] = {}
+    def __init__(self) -> None:
+        """Initialize conversation manager (no cross-request state)."""
         self._providers_initialized = False
-        self._enable_persistence = enable_persistence
-        self._persistence_dir = Path(persistence_dir) if persistence_dir else None
-
-        # Lazy-loaded providers
         self._user_profile_provider = None
-        self._thread_summary_provider = None
-        self._parts_preference_provider = None
-
-        # Initialize persistence directory if needed (legacy)
-        if self._enable_persistence and self._persistence_dir:
-            self._persistence_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(
-                f"ConversationManager initialized with file persistence (persistence_dir={self._persistence_dir})"
-            )
-        else:
-            logger.info("ConversationManager initialized (in-memory only)")
 
     def _init_providers(self) -> None:
         """Lazily initialize context providers."""
         if self._providers_initialized:
             return
 
-        from ai.core.memory import (
-            get_parts_preference_provider,
-            get_thread_summary_provider,
-            get_user_profile_provider,
-        )
+        from ai.core.memory import get_user_profile_provider
 
         self._user_profile_provider = get_user_profile_provider()
-        self._thread_summary_provider = get_thread_summary_provider()
-        self._parts_preference_provider = get_parts_preference_provider()
         self._providers_initialized = True
-
-    def _get_persistence_path(self, thread_id: str) -> Path | None:
-        """Get the persistence file path for a thread."""
-        if not self._enable_persistence or not self._persistence_dir:
-            return None
-        return self._persistence_dir / f"{thread_id}.json"
-
-    def _load_state(self, thread_id: str) -> ConversationState | None:
-        """Load state from persistence."""
-        path = self._get_persistence_path(thread_id)
-        if not path or not path.exists():
-            return None
-
-        try:
-            with Path(path).open() as f:
-                data = json.load(f)
-            return ConversationState.from_dict(data)
-        except (json.JSONDecodeError, OSError, KeyError) as e:
-            logger.warning(f"Failed to load conversation state (thread_id={thread_id}): {e}")
-            return None
-
-    def _save_state(self, state: ConversationState) -> None:
-        """Save state to persistence."""
-        path = self._get_persistence_path(state.thread_id)
-        if not path:
-            return
-
-        try:
-            with Path(path).open("w") as f:
-                json.dump(state.to_dict(), f, indent=2)
-            logger.debug(f"Conversation state saved (thread_id={state.thread_id})")
-        except OSError as e:
-            logger.warning(f"Failed to save conversation state (thread_id={state.thread_id}): {e}")
 
     def get_or_create_state(
         self,
         thread_id: str,
         user_id: str = "anonymous",
     ) -> ConversationState:
-        """
-        Get existing conversation state or create new one (sync version).
-
-        Checks in-memory cache first, then file persistence if enabled.
-        For database persistence, use get_or_create_state_async().
-        """
-        # Check in-memory cache
-        if thread_id in self._conversations:
-            return self._conversations[thread_id]
-
-        # Try loading from file persistence (legacy)
-        state = self._load_state(thread_id)
-        if state:
-            self._conversations[thread_id] = state
-            return state
-
-        # Create new state
-        state = ConversationState(thread_id=thread_id, user_id=user_id)
-        self._conversations[thread_id] = state
-        return state
-
-    def list_active_threads(self) -> list[str]:
-        """List all active in-memory threads."""
-        return list(self._conversations.keys())
-
-    def get_state(self, thread_id: str) -> ConversationState | None:
-        """Get state if it exists in memory."""
-        return self._conversations.get(thread_id)
-
-    def cleanup(self, thread_id: str) -> None:
-        """Remove thread from memory."""
-        if thread_id in self._conversations:
-            del self._conversations[thread_id]
+        """A fresh per-call scratch state; nothing is retained across requests."""
+        return ConversationState(thread_id=thread_id, user_id=user_id)
 
     async def gather_context(
         self,
@@ -319,16 +213,12 @@ class ConversationManager:
         """
         self._init_providers()
 
-        state = self.get_or_create_state(thread_id, user_id)
-        cached = self._cached_context(thread_id)
-        if cached is not None:
-            state.context_cache = cached
-            return cached
-
-        # A12: the providers are independent reads, so they run concurrently,
-        # each under its own timeout — one hung provider must cost at most its
-        # own budget, never the turn's. Failures degrade to an absent key and
-        # are logged by coordinates only (fault_location), never by message.
+        # A12: providers are independent reads, each under its own timeout —
+        # one hung provider must cost at most its own budget, never the
+        # turn's. Failures degrade to an absent key and are logged by
+        # coordinates only (fault_location), never by message. A None result
+        # (e.g. unknown user) is also an absent key: consumers never see a
+        # placeholder profile.
         timeout_s = self._provider_timeout_s()
         active = [
             (key, awaitable)
@@ -339,34 +229,17 @@ class ConversationManager:
                     if self._user_profile_provider
                     else None,
                 ),
-                (
-                    "thread_summary",
-                    self._thread_summary_provider.get_summary(thread_id)
-                    if self._thread_summary_provider
-                    else None,
-                ),
-                (
-                    "parts_preferences",
-                    self._parts_preference_provider.get_preferences(user_id)
-                    if self._parts_preference_provider
-                    else None,
-                ),
             )
             if awaitable is not None
         ]
         results = await asyncio.gather(
             *(self._bounded_provider(key, awaitable, timeout_s) for key, awaitable in active)
         )
-        context = {key: value for key, value in results if value is not _PROVIDER_FAILED}
-
-        state.context_cache = context
-        self._store_cached_context(thread_id, context)
-
-        # Save state if persistence enabled
-        if self._enable_persistence:
-            self._save_state(state)
-
-        return context
+        return {
+            key: value
+            for key, value in results
+            if value is not _PROVIDER_FAILED and value is not None
+        }
 
     @staticmethod
     def _provider_timeout_s() -> float:
@@ -390,26 +263,3 @@ class ConversationManager:
         except Exception as exc:
             logger.warning("context provider failed provider=%s %s", key, fault_location(exc))
             return key, _PROVIDER_FAILED
-
-    def _cache_key(self, thread_id: str) -> str:
-        """Cross-process cache key for a thread's aggregated context."""
-        return f"aimms:ctx:{thread_id}"
-
-    def _cached_context(self, thread_id: str) -> dict[str, Any] | None:
-        """Read the shared context cache; any cache failure is a miss."""
-        try:
-            from django.core.cache import cache
-
-            value = cache.get(self._cache_key(thread_id))
-        except Exception:  # pragma: no cover - cache backend unavailable
-            return None
-        return value if isinstance(value, dict) else None
-
-    def _store_cached_context(self, thread_id: str, context: dict[str, Any]) -> None:
-        """Write the shared context cache; a write failure only disables reuse."""
-        try:
-            from django.core.cache import cache
-
-            cache.set(self._cache_key(thread_id), context, timeout=self.CONTEXT_CACHE_TTL)
-        except Exception:  # pragma: no cover - cache backend unavailable
-            logger.warning("context cache write failed thread_id=%s", thread_id)

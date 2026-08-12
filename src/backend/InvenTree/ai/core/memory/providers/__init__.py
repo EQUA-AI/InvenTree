@@ -1,32 +1,19 @@
-"""
-AIMMS Context Providers
+"""AIMMS Context Providers.
 
-MAF-compliant ContextProvider implementations following the interface:
-- invoking(messages, **kwargs) -> Context
-- invoked(request_messages, response_messages, invoke_exception, **kwargs)
+S35: the file-JSON providers (user_profile, thread_summary,
+parts_preference) were deleted — they were write-never in production and
+every read returned hardcoded defaults. The one context key that survives,
+``user_profile``, is now backed by the real ``users.UserProfile`` model.
+Thread summaries return in S38 as ``ChatThread.summary`` compaction, injected
+by the turn service rather than a context provider.
 """
 
-from ai.core.memory.providers.parts_preference import (
-    PartsPreferenceProvider,
-    get_parts_preference_provider,
-)
-from ai.core.memory.providers.thread_summary import (
-    ThreadSummaryProvider,
-    get_thread_summary_provider,
-)
-from ai.core.memory.providers.user_profile import (
-    UserProfileProvider,
+from ai.core.memory.providers.db_user_profile import (
+    DBUserProfileProvider,
     get_user_profile_provider,
 )
 
 __all__ = [
-    # Parts Preference
-    "PartsPreferenceProvider",
-    # Thread Summary
-    "ThreadSummaryProvider",
-    # User Profile
-    "UserProfileProvider",
-    "get_parts_preference_provider",
-    "get_thread_summary_provider",
+    "DBUserProfileProvider",
     "get_user_profile_provider",
 ]

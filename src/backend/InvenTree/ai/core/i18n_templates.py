@@ -14,14 +14,39 @@ English.
 from __future__ import annotations
 
 SAFETY_BOUNDARY = "safety_boundary"
+RESPOND_IN_LOCALE = "respond_in_locale"
 ADVISORY_VOICE_ACTION = "advisory_voice_action"
 ADVISORY_VOICE_READONLY = "advisory_voice_readonly"
 ADVISORY_TEXT = "advisory_text"
 ADVISORY_NEXT_QUESTION = "advisory_next_question"
 QUESTION_DECLINED_ACK = "question_declined_ack"
 GROUNDING_DOWNGRADE = "grounding_downgrade"
+# S38: typed turn-failure messages, keyed by FailureClass value.
+TURN_FAILED_PROVIDER_OUTAGE = "turn_failed_provider_outage"
+TURN_FAILED_RATE_LIMITED = "turn_failed_rate_limited"
+TURN_FAILED_CONFIG_GATE = "turn_failed_config_gate"
+TURN_FAILED_INTERNAL = "turn_failed_internal"
 
 _TEMPLATES: dict[str, dict[str, str]] = {
+    RESPOND_IN_LOCALE: {
+        # W0 (S33 B2): the directive appended to model-bound input for
+        # non-English users. Written in the TARGET language so the model
+        # reads it natively; English deliberately has no entry — callers
+        # skip the note entirely for en.
+        "en": "Respond in English.",
+        "es": (
+            "[idioma] Responde en español. Mantén los identificadores, "
+            "números de pieza y citas exactamente como aparecen."
+        ),
+        "de": (
+            "[Sprache] Antworte auf Deutsch. Bezeichner, Teilenummern und "
+            "Zitate bleiben unverändert."
+        ),
+        "fr": (
+            "[langue] Réponds en français. Conserve les identifiants, "
+            "références de pièces et citations tels quels."
+        ),
+    },
     SAFETY_BOUNDARY: {
         "en": "This response does not change or confirm any safety status.",
         "es": "Esta respuesta no cambia ni confirma ningún estado de seguridad.",
@@ -76,6 +101,69 @@ _TEMPLATES: dict[str, dict[str, str]] = {
             "procedimiento en el manual antes de actuar."
         ),
     },
+    # S38: safe, content-free per-class failure copy. No provider names, no
+    # error text — the class alone decides what the user can usefully do.
+    TURN_FAILED_PROVIDER_OUTAGE: {
+        "en": (
+            "The AI service could not be reached, so this turn did not "
+            "complete. Your data is unchanged — please try again shortly."
+        ),
+        "es": (
+            "No se pudo contactar el servicio de IA, así que este turno no se "
+            "completó. Tus datos no han cambiado — inténtalo de nuevo en un momento."
+        ),
+        "de": (
+            "Der KI-Dienst war nicht erreichbar, daher wurde dieser Vorgang "
+            "nicht abgeschlossen. Deine Daten sind unverändert — bitte versuche "
+            "es gleich noch einmal."
+        ),
+        "fr": (
+            "Le service d'IA était injoignable, ce tour n'a donc pas abouti. "
+            "Vos données sont intactes — réessayez dans un instant."
+        ),
+    },
+    TURN_FAILED_RATE_LIMITED: {
+        "en": (
+            "The AI service is handling too many requests right now. Wait a moment and try again."
+        ),
+        "es": (
+            "El servicio de IA está atendiendo demasiadas solicitudes en este "
+            "momento. Espera un momento y vuelve a intentarlo."
+        ),
+        "de": (
+            "Der KI-Dienst verarbeitet gerade zu viele Anfragen. Warte einen "
+            "Moment und versuche es erneut."
+        ),
+        "fr": (
+            "Le service d'IA traite trop de demandes en ce moment. Patientez "
+            "un instant puis réessayez."
+        ),
+    },
+    TURN_FAILED_CONFIG_GATE: {
+        "en": (
+            "This request was stopped by a server-side configuration check. "
+            "An administrator needs to review the AI configuration."
+        ),
+        "es": (
+            "Esta solicitud fue detenida por una comprobación de configuración "
+            "del servidor. Un administrador debe revisar la configuración de IA."
+        ),
+        "de": (
+            "Diese Anfrage wurde von einer serverseitigen "
+            "Konfigurationsprüfung gestoppt. Ein Administrator muss die "
+            "KI-Konfiguration prüfen."
+        ),
+        "fr": (
+            "Cette demande a été arrêtée par un contrôle de configuration côté "
+            "serveur. Un administrateur doit vérifier la configuration de l'IA."
+        ),
+    },
+    TURN_FAILED_INTERNAL: {
+        "en": "The diagnostic turn failed before a complete answer was produced.",
+        "es": "El turno de diagnóstico falló antes de producir una respuesta completa.",
+        "de": ("Der Diagnosevorgang schlug fehl, bevor eine vollständige Antwort erstellt wurde."),
+        "fr": ("Le tour de diagnostic a échoué avant de produire une réponse complète."),
+    },
 }
 
 
@@ -96,6 +184,11 @@ __all__ = [
     "ADVISORY_VOICE_READONLY",
     "GROUNDING_DOWNGRADE",
     "QUESTION_DECLINED_ACK",
+    "RESPOND_IN_LOCALE",
     "SAFETY_BOUNDARY",
+    "TURN_FAILED_CONFIG_GATE",
+    "TURN_FAILED_INTERNAL",
+    "TURN_FAILED_PROVIDER_OUTAGE",
+    "TURN_FAILED_RATE_LIMITED",
     "deterministic_template",
 ]

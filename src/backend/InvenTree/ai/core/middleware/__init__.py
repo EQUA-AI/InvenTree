@@ -16,7 +16,9 @@ from ai.core.middleware.rate_limit import (
     RateLimitMiddleware,
     RateLimitResult,
     RateLimitStats,
+    WindowedRateLimiter,
     get_rate_limiter,
+    get_windowed_rate_limiter,
     rate_limit,
 )
 from ai.core.middleware.reflection import (
@@ -45,30 +47,27 @@ from ai.core.middleware.retry import (
 
 __all__ = [
     "AZURE_OPENAI_RETRY_CONFIG",
-    # Error handling
     "ErrorCategory",
     "ExecutionContext",
     "LoggingMiddleware",
     "MetricsMiddleware",
     "MetricsSummary",
-    # Rate limiting
     "RateLimitConfig",
     "RateLimitMiddleware",
     "RateLimitResult",
     "RateLimitStats",
     "RateLimiter",
-    # Middleware classes
     "ReflectionFunctionMiddleware",
-    # Retry utilities
     "RetryConfig",
     "RetryStats",
     "ToolExecutionResult",
+    "WindowedRateLimiter",
     "get_logging_middleware",
     "get_metrics_middleware",
     "get_rate_limiter",
-    # Factory functions
     "get_reflection_middleware",
     "get_retry_stats",
+    "get_windowed_rate_limiter",
     "is_retryable_error",
     "rate_limit",
     "retry_async",

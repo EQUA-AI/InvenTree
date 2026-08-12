@@ -44,11 +44,22 @@ class ErrorCategory(Enum):
     UNKNOWN = "unknown"  # Log and escalate
 
 
+def _turn_correlation() -> str:
+    """The active turn's bound correlation id, or '' outside a turn (S36).
+
+    Consuming the turn's id instead of minting per call is what lets a tool
+    log line join the same spine as the utterance and the proposal.
+    """
+    from ai.core.correlation import current_correlation
+
+    return current_correlation()
+
+
 @dataclass
 class ExecutionContext:
     """Context for middleware execution."""
 
-    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    correlation_id: str = field(default_factory=lambda: _turn_correlation() or str(uuid.uuid4()))
     thread_id: str = ""
     user_id: str = ""
     workflow_id: str = ""
@@ -444,7 +455,9 @@ class LoggingMiddleware:
 
         @functools.wraps(func)
         async def async_wrapper(*args, **kwargs):
-            correlation_id = kwargs.pop("_correlation_id", str(uuid.uuid4()))
+            correlation_id = (
+                kwargs.pop("_correlation_id", None) or _turn_correlation() or str(uuid.uuid4())
+            )
             start = time.perf_counter()
 
             self.logger.info(
@@ -490,7 +503,9 @@ class LoggingMiddleware:
 
         @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):
-            correlation_id = kwargs.pop("_correlation_id", str(uuid.uuid4()))
+            correlation_id = (
+                kwargs.pop("_correlation_id", None) or _turn_correlation() or str(uuid.uuid4())
+            )
             start = time.perf_counter()
 
             self.logger.info(

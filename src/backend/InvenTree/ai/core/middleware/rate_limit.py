@@ -3,26 +3,22 @@ Rate Limiting Middleware for FastAPI
 
 Provides rate limiting to protect Azure OpenAI quotas and prevent abuse.
 
-Features:
-- Token bucket algorithm for smooth rate limiting
-- Per-user and global rate limits
-- Configurable limits by endpoint
-- In-memory storage (Redis adapter available)
-- Proper 429 responses with Retry-After headers
+Two limiter implementations coexist during the S35 rollout:
+
+- ``RateLimiter`` — the legacy per-process token buckets. Wrong once the API
+  runs more than one replica: each replica grants the full limit.
+- ``WindowedRateLimiter`` — fixed-window counters in the shared Django cache
+  (see ``rate_limit_store``), correct across replicas. It also enforces the
+  per-hour endpoint limits the bucket limiter silently ignored.
+
+Rollout ladder (flags in ``ai.core.config``):
+``FEATURE_DISTRIBUTED_RATE_LIMIT_SHADOW`` runs the windowed limiter next to
+the buckets and logs any divergence; ``FEATURE_DISTRIBUTED_RATE_LIMIT_ENFORCE``
+hands the decision to the windowed limiter. Both off = legacy buckets only.
+The bucket machinery is deleted once enforce has soaked.
 
 Usage:
-    from ai.core.middleware.rate_limit import RateLimiter, rate_limit
-
-    # Global limiter
-    limiter = RateLimiter()
-
-    @app.post("/chat")
-    @rate_limit(limiter, max_requests=10, window_seconds=60)
-    async def chat(request: Request):
-        ...
-
-    # Or use middleware for all routes
-    app.add_middleware(RateLimitMiddleware, limiter=limiter)
+    app.add_middleware(RateLimitMiddleware, limiter=RateLimiter())
 """
 
 from __future__ import annotations
@@ -31,6 +27,7 @@ import asyncio
 import functools
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -57,7 +54,8 @@ T = TypeVar("T")
 class RateLimitConfig:
     """Configuration for rate limits."""
 
-    # Default limits
+    # Default limits. The hourly limits are enforced only by the
+    # WindowedRateLimiter; the legacy bucket limiter never read them.
     max_requests_per_minute: int = 20  # Per user
     max_requests_per_hour: int = 200  # Per user
     global_max_requests_per_minute: int = 100  # Total across all users
@@ -264,29 +262,108 @@ class RateLimiter:
         """Get rate limiting statistics."""
         return self._stats.to_dict()
 
-    async def cleanup_stale_buckets(self, max_age_seconds: float = 3600) -> int:
-        """Remove buckets that haven't been used recently."""
-        now = time.time()
-        removed = 0
 
-        async with self._lock:
-            stale_users = []
-            for user_id, endpoints in self._user_buckets.items():
-                stale_endpoints = [
-                    ep
-                    for ep, bucket in endpoints.items()
-                    if now - bucket.last_update > max_age_seconds
-                ]
-                for ep in stale_endpoints:
-                    del endpoints[ep]
-                    removed += 1
-                if not endpoints:
-                    stale_users.append(user_id)
+# ===== Windowed Rate Limiter (S35) =====
 
-            for user_id in stale_users:
-                del self._user_buckets[user_id]
 
-        return removed
+class WindowedRateLimiter:
+    """Cross-replica fixed-window limiter over a shared ``RateLimitStore``.
+
+    Enforces, per principal: the endpoint's per-minute limit, the endpoint's
+    per-hour limit (configured since the beginning but never enforced by the
+    bucket limiter), and the shared global per-minute limit. Check order:
+    a read-only PEEK of the global window first (a saturated global window
+    rejects without charging the user's own minute/hour quotas — otherwise
+    someone else's traffic storm plus client auto-retries could lock a user
+    out of their hour window), then user-minute and user-hour increments,
+    then the global increment (which closes the peek's race window). A
+    request over its own user limit never consumes the shared global window
+    (the bucket limiter achieved the same with a refund).
+
+    Store failures fail OPEN with a fault log — see the ADR note in
+    ``rate_limit_store``.
+    """
+
+    def __init__(self, config: RateLimitConfig | None = None, store: Any = None):
+        """Initialize with limits config and a counter store."""
+        from ai.core.middleware.rate_limit_store import CacheRateLimitStore
+
+        self.config = config or RateLimitConfig()
+        self.store = store or CacheRateLimitStore()
+        # Per-process observability only; the counters that decide live in
+        # the shared store.
+        self._stats = RateLimitStats()
+
+    def check_rate_limit(
+        self, user_id: str, endpoint: str, now: float | None = None
+    ) -> RateLimitResult:
+        """Count this request in every applicable window and decide."""
+        from ai.core.middleware.rate_limit_store import seconds_to_window_end
+
+        now = time.time() if now is None else now
+        if user_id in self.config.exempt_user_ids:
+            return RateLimitResult(allowed=True, reason="exempt")
+
+        global_limit = self.config.global_max_requests_per_minute
+        global_seen = self.store.peek(
+            scope="global", endpoint=endpoint, key="-", window_seconds=60, now=now
+        )
+        if global_seen is not None and global_seen >= global_limit:
+            self._stats.record_rejected("global", endpoint)
+            return RateLimitResult(
+                allowed=False,
+                reason="global_limit_exceeded",
+                retry_after=seconds_to_window_end(now, 60),
+                limit_type="global",
+            )
+
+        minute_limit = self.config.get_limit_for_endpoint(endpoint, "minute")
+        minute_count = self.store.increment(
+            scope="user", endpoint=endpoint, key=user_id, window_seconds=60, now=now
+        )
+        remaining = -1 if minute_count is None else max(0, minute_limit - minute_count)
+        if minute_count is not None and minute_count > minute_limit:
+            self._stats.record_rejected("user", endpoint)
+            return RateLimitResult(
+                allowed=False,
+                reason="user_limit_exceeded",
+                retry_after=seconds_to_window_end(now, 60),
+                limit_type="user",
+                remaining=0,
+            )
+
+        hour_limit = self.config.get_limit_for_endpoint(endpoint, "hour")
+        hour_count = self.store.increment(
+            scope="user", endpoint=endpoint, key=user_id, window_seconds=3600, now=now
+        )
+        if hour_count is not None and hour_count > hour_limit:
+            self._stats.record_rejected("user_hour", endpoint)
+            return RateLimitResult(
+                allowed=False,
+                reason="user_hourly_limit_exceeded",
+                retry_after=seconds_to_window_end(now, 3600),
+                limit_type="user",
+                remaining=0,
+            )
+
+        global_count = self.store.increment(
+            scope="global", endpoint=endpoint, key="-", window_seconds=60, now=now
+        )
+        if global_count is not None and global_count > global_limit:
+            self._stats.record_rejected("global", endpoint)
+            return RateLimitResult(
+                allowed=False,
+                reason="global_limit_exceeded",
+                retry_after=seconds_to_window_end(now, 60),
+                limit_type="global",
+            )
+
+        self._stats.record_allowed(endpoint)
+        return RateLimitResult(allowed=True, remaining=remaining)
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get this process's rate limiting statistics."""
+        return self._stats.to_dict()
 
 
 # ===== Rate Limit Result =====
@@ -354,6 +431,10 @@ class RateLimitStats:
 
 # ===== FastAPI Middleware =====
 
+#: The endpoints that actually spend tokens (normalized paths). The S37
+#: budget gate applies only here — see the middleware comment.
+_BUDGETED_ENDPOINTS = re.compile(r"/chat|/chat/stream|/voice/sessions/[^/]+/turns")
+
 
 def normalized_route_path(scope: dict[str, Any]) -> str:
     """Return an endpoint path independent of a Starlette mount root.
@@ -408,6 +489,7 @@ class RateLimitMiddleware:
         limiter: RateLimiter | None = None,
         user_id_header: str = "X-User-ID",
         exempt_paths: set[str] | None = None,
+        windowed: WindowedRateLimiter | None = None,
     ):
         """Initialize middleware."""
         self.app = app
@@ -416,6 +498,46 @@ class RateLimitMiddleware:
         # ignored as authority and never supplies a rate-limit key.
         self.user_id_header = user_id_header
         self.exempt_paths = exempt_paths or {"/health", "/docs", "/openapi.json"}
+        self.windowed = windowed or get_windowed_rate_limiter(self.limiter.config)
+
+    async def _check(self, user_key: str, endpoint: str) -> RateLimitResult:
+        """Bucket path, windowed path, or both, per the S35 rollout flags.
+
+        Enforce hands the decision to the shared-cache windowed limiter.
+        Shadow keeps the bucket decision but runs the windowed limiter too
+        and logs any divergence — the soak signal for the enforce flip.
+        """
+        try:
+            from ai.core.config import get_settings
+
+            settings = get_settings()
+            shadow = settings.feature_distributed_rate_limit_shadow
+            enforce = settings.feature_distributed_rate_limit_enforce
+        except Exception:  # pragma: no cover - config absent in minimal envs
+            shadow, enforce = False, False
+
+        # The windowed limiter does real cache I/O; asyncio.to_thread keeps a
+        # slow or stalling cache off the event loop (a blocked loop would
+        # stall every concurrent SSE stream and voice turn on this worker —
+        # exactly the outage the fail-open posture exists to prevent).
+        if enforce:
+            return await asyncio.to_thread(self.windowed.check_rate_limit, user_key, endpoint)
+
+        bucket_result = await self.limiter.check_rate_limit(user_id=user_key, endpoint=endpoint)
+        if shadow:
+            windowed_result = await asyncio.to_thread(
+                self.windowed.check_rate_limit, user_key, endpoint
+            )
+            if windowed_result.allowed != bucket_result.allowed:
+                logger.warning(
+                    "rate_limit.shadow divergence endpoint=%s bucket_allowed=%s "
+                    "windowed_allowed=%s windowed_reason=%s",
+                    endpoint,
+                    bucket_result.allowed,
+                    windowed_result.allowed,
+                    windowed_result.reason,
+                )
+        return bucket_result
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         """Rate limit HTTP calls using only the boundary-derived principal."""
@@ -446,11 +568,29 @@ class RateLimitMiddleware:
             )
             return
 
+        # S37: pre-turn daily token budget, one cache GET off-loop. Only
+        # turn submissions spend tokens, so only they are gated — an
+        # over-cap user must keep read access to their own threads, voice
+        # capability probes, and uploads.
+        if _BUDGETED_ENDPOINTS.fullmatch(endpoint):
+            from ai.core.middleware.budget import check_budget
+
+            budget = await asyncio.to_thread(check_budget, getattr(principal, "user_pk", None))
+            if budget.blocked:
+                await _send_json(
+                    send,
+                    status=429,
+                    content={
+                        "error": "token_budget_exhausted",
+                        "code": "rate_limited",
+                        "retry_after": budget.retry_after,
+                    },
+                    headers={"Retry-After": str(budget.retry_after)},
+                )
+                return
+
         # Check rate limit
-        result = await self.limiter.check_rate_limit(
-            user_id=principal.rate_limit_key,
-            endpoint=endpoint,
-        )
+        result = await self._check(principal.rate_limit_key, endpoint)
 
         if not result.allowed:
             logger.warning(
@@ -496,6 +636,10 @@ def rate_limit(
 ) -> Callable[[Callable[..., Coroutine[Any, Any, T]]], Callable[..., Coroutine[Any, Any, T]]]:
     """
     Decorator to add rate limiting to individual endpoints.
+
+    Legacy surface with no current callers; kept for API compatibility. It
+    consults only the bucket limiter it is given and retires with the bucket
+    machinery once S35 enforce has soaked.
 
     Usage:
         limiter = RateLimiter()
@@ -556,6 +700,7 @@ def rate_limit(
 # ===== Global Rate Limiter Instance =====
 
 _rate_limiter: RateLimiter | None = None
+_windowed_limiter: WindowedRateLimiter | None = None
 
 
 def get_rate_limiter(config: RateLimitConfig | None = None) -> RateLimiter:
@@ -564,6 +709,14 @@ def get_rate_limiter(config: RateLimitConfig | None = None) -> RateLimiter:
     if _rate_limiter is None:
         _rate_limiter = RateLimiter(config)
     return _rate_limiter
+
+
+def get_windowed_rate_limiter(config: RateLimitConfig | None = None) -> WindowedRateLimiter:
+    """Get or create the global windowed limiter (counters live in the cache)."""
+    global _windowed_limiter
+    if _windowed_limiter is None:
+        _windowed_limiter = WindowedRateLimiter(config)
+    return _windowed_limiter
 
 
 # ===== Export =====
@@ -575,7 +728,9 @@ __all__ = [
     "RateLimitStats",
     "RateLimiter",
     "TokenBucket",
+    "WindowedRateLimiter",
     "get_rate_limiter",
+    "get_windowed_rate_limiter",
     "normalized_route_path",
     "rate_limit",
 ]

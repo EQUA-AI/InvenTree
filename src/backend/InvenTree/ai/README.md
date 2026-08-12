@@ -37,6 +37,29 @@ A production-ready multi-agent system built on Microsoft Agent Framework (MAF) f
 - **WF6**: Incoming Documents - Email attachment processing
 - **WF8**: Lookup (T1) - Fast single-agent queries
 
+## Process-State Invariant (S35)
+
+**No in-process cross-request state.** The AI plane may run as multiple
+replicas; anything a request writes that a later request must read lives in
+the database or the shared Django cache, never in a module global or
+instance attribute. Rate-limit counters (`rate_limit_store`), pending
+question cards (`questions/pending.py`), and voice pending writes all follow
+this rule.
+
+Accepted exceptions (each documented at its definition):
+
+| State | Location | Why it is acceptable |
+|-------|----------|----------------------|
+| Voice channels + token cache | `voice/gateway.py` | Bound to the process that owns the WebSocket connection |
+| Voice `_turn_locks` | `voice/routes.py` | Session is WebSocket-affine to one replica; see comment for residual risk |
+| InvenTree client read cache | `integrations/inventree/client.py` | TTL defaults to 0 (off); pure latency optimization |
+| `model_pins._RESOLVED` | `model_pins.py` | Read-only after startup |
+| Legacy token buckets | `middleware/rate_limit.py` | Shadow-mode comparison baseline; deleted after S35 enforce soaks |
+| Limiter statistics | `middleware/rate_limit.py` | Per-process observability counters, never a decision input |
+
+New code adding cross-request state must either use the DB/cache or add a
+row to this table with a defensible reason.
+
 ## Quick Start
 
 ### Prerequisites

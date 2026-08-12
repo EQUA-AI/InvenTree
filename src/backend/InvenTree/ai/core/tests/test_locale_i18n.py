@@ -93,3 +93,60 @@ def test_session_policy_voice_override_shape():
     policy = SessionPolicy(voice_name=voice_name, language=language)
     payload = policy.session_update_payload()["session"]
     assert language in str(payload)
+
+
+def test_wf8_locale_hint_appends_only_for_non_english():
+    """W0: the run-input note appears for es and never for en/unknown."""
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+
+    base = "how many pumps are in stock"
+    unchanged = T1LookupWorkflow._with_locale_hint(base, {"locale": "en"})
+    assert unchanged == base
+    unknown = T1LookupWorkflow._with_locale_hint(base, {"locale": "xx"})
+    # Unknown locale falls back to the English template → no note.
+    assert unknown == base
+
+    spanish = T1LookupWorkflow._with_locale_hint(base, {"locale": "es"})
+    assert isinstance(spanish, list)
+    texts = [c.text for m in spanish for c in m.contents]
+    assert any("Responde en español" in t for t in texts)
+    assert texts[0] == base
+
+
+def test_luna_locale_directive_shapes():
+    """W0: the Luna instructions gain the directive only for known non-en."""
+    from ai.core.reasoning.luna_diagnostics import _locale_directive
+
+    assert _locale_directive("en") == ""
+    assert _locale_directive("en-US") == ""
+    assert _locale_directive("xx") == ""
+    assert "Responde en español" in _locale_directive("es")
+    assert "Antworte auf Deutsch" in _locale_directive("de-DE")
+
+
+def test_reasoning_envelope_carries_locale():
+    from ai.core.reasoning.luna_diagnostics import TrustedReasoningEnvelope
+
+    envelope = TrustedReasoningEnvelope(
+        actor_id="user:1",
+        scope={"policy_key": "site"},
+        thread_id="thread_x",
+        user_message="why is it vibrating",
+        mode="text",
+        policy_version="v1",
+        correlation_id="c" * 32,
+        locale="es",
+    )
+    assert envelope.locale == "es"
+    assert (
+        TrustedReasoningEnvelope(
+            actor_id="user:1",
+            scope={"policy_key": "site"},
+            thread_id="thread_x",
+            user_message="hello",
+            mode="text",
+            policy_version="v1",
+            correlation_id="c" * 32,
+        ).locale
+        == "en"
+    )
