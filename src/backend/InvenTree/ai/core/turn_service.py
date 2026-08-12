@@ -163,6 +163,20 @@ class _EventCapture:
                 self.workflow_id = str(workflow_id)
 
 
+def _machine_name_matches(name: str, lowered_content: str) -> bool:
+    """Token-based utterance match for a machine display name.
+
+    "influent pump station" must match "Influent Pump Station No. 1": a name
+    matches when ALL of its substantive alphabetic tokens (len >= 3) appear
+    in the lowered utterance; names with no such tokens never match. Shared
+    by the clarify-first routing signal and the cross-machine grounding
+    fence seed (P8-W0a) so both agree on what "the turn is about machine X"
+    means.
+    """
+    tokens = [token for token in re.findall(r"[a-z]+", name.lower()) if len(token) >= 3]
+    return bool(tokens) and all(token in lowered_content for token in tokens)
+
+
 def _reject_durable_audio(value: Any, *, path: str = "metadata") -> None:
     """Reject raw/audio-shaped values before any durable turn write."""
 
@@ -1389,20 +1403,15 @@ class NormalizedTurnService:
                 )
             )
 
-        # Token-based, not full-string: "influent pump station" must match
-        # "Influent Pump Station No. 1". A name matches when ALL of its
-        # substantive alphabetic tokens appear in the utterance; names with
-        # no such tokens never match. Computed BEFORE the reasoning call so
-        # a no-match turn gets the clarify-first directive (golden
-        # ambiguous-symptom trap), and reused for the incomplete-note text.
+        # Computed BEFORE the reasoning call so a no-match turn gets the
+        # clarify-first directive (golden ambiguous-symptom trap), and
+        # reused for the incomplete-note text. Matching semantics live in
+        # _machine_name_matches (shared with the grounding fence seed).
         lowered_content = content.lower()
-
-        def _name_matches(name: str) -> bool:
-            tokens = [token for token in re.findall(r"[a-z]+", name.lower()) if len(token) >= 3]
-            return bool(tokens) and all(token in lowered_content for token in tokens)
-
         record_names = [record.display_name for record in authorized_records if record.display_name]
-        machine_match = not record_names or any(_name_matches(name) for name in record_names)
+        machine_match = not record_names or any(
+            _machine_name_matches(name, lowered_content) for name in record_names
+        )
 
         envelope = TrustedReasoningEnvelope(
             actor_id=actor.actor,
@@ -1871,15 +1880,37 @@ class NormalizedTurnService:
                     # wrapper, so a downgrade is what gets persisted AND
                     # spoken. Fail-soft: a grounding error ships the answer.
                     from ai.core.config import get_settings
-                    from ai.core.grounding import enum_closure_sets, evaluate_manual_grounding
+                    from ai.core.grounding import (
+                        enum_closure_sets,
+                        evaluate_manual_grounding,
+                        machine_serials,
+                    )
 
                     grounding_mode = str(get_settings().manual_grounding_mode)
                     closure: frozenset[str] = frozenset()
+                    serials: frozenset[str] = frozenset()
                     if grounding_mode in ("shadow", "enforce"):
-                        machine_ids = [
-                            root.entity_id
+                        machine_roots = [
+                            root
                             for root in getattr(diagnostic_context, "record_roots", ())
                             if getattr(root, "entity_type", "") == "machine"
+                        ]
+                        machine_ids = [root.entity_id for root in machine_roots]
+                        # P8-W0a: the fence seed is the machines the
+                        # UTTERANCE names (token match), never the whole
+                        # scope — record_roots holds every in-scope machine,
+                        # and a scope-wide seed can neither catch an
+                        # in-scope wrong-machine citation nor stay honest
+                        # under root truncation. No name match => the turn
+                        # does not identify a machine => fence inert.
+                        lowered_utterance = content.lower()
+                        matched_ids = [
+                            root.entity_id
+                            for root in machine_roots
+                            if _machine_name_matches(
+                                str(getattr(root, "display_name", "") or ""),
+                                lowered_utterance,
+                            )
                         ]
                         if machine_ids:
                             actor_user = await self._call_sync(
@@ -1889,12 +1920,17 @@ class NormalizedTurnService:
                                 closure = await self._call_sync(
                                     enum_closure_sets, actor_user, machine_ids
                                 )
+                                if matched_ids:
+                                    serials = await self._call_sync(
+                                        machine_serials, actor_user, matched_ids
+                                    )
                     message, assessment = evaluate_manual_grounding(
                         message=message,
                         ledger=capture_ledger,
                         mode=grounding_mode,
                         locale=getattr(trusted_context, "locale", "en"),
                         closure_values=closure,
+                        turn_machine_serials=serials,
                     )
                     if assessment is not None:
                         grounding_meta = assessment.to_meta()

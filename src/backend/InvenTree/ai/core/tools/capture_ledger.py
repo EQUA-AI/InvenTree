@@ -101,6 +101,9 @@ def _manuals_citations(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "revision": str(citation.get("revision") or ""),
                 "section_path": str(citation.get("section_path") or ""),
                 "chunk_id": str(citation.get("chunk_id") or ""),
+                # Machine identity (serial) of the cited chunk, for the
+                # cross-machine grounding fence (P8-W0a).
+                "asset_id": str(citation.get("asset_id") or ""),
             })
     return citations
 

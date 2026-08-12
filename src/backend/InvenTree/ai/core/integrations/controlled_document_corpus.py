@@ -279,6 +279,10 @@ def search_corpus(
                 "section_path": str(row.get("section_path") or ""),
                 "chunk_id": str(row.get("chunk_id") or row.get("id") or ""),
                 "as_of": str(row.get("as_of") or ""),
+                # The indexed machine identity (serial), so downstream
+                # grounding can fence a citation from the WRONG machine's
+                # manual (P8-W0a). Empty for site-wide documents.
+                "asset_id": str(row.get("asset_id") or ""),
                 "excerpt_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             },
         })

@@ -87,6 +87,13 @@ class GroundingAssessment:
     would_downgrade: bool = False
     downgraded: bool = False
     citation_count: int = 0
+    # P8-W0a: whether the cross-machine fence was ARMED this turn (the
+    # utterance named at least one machine whose serial resolved) — without
+    # it a zero cross_machine_count is unfalsifiable in the soak report.
+    fence_armed: bool = False
+    # Citations whose indexed machine identity does not match any machine
+    # the utterance named. Non-zero forces the ungrounded path.
+    cross_machine_count: int = 0
     ungrounded_identifiers: tuple[str, ...] = ()
     titles: tuple[str, ...] = field(default=())
 
@@ -102,6 +109,8 @@ class GroundingAssessment:
             "would_downgrade": self.would_downgrade,
             "downgraded": self.downgraded,
             "citation_count": self.citation_count,
+            "fence_armed": self.fence_armed,
+            "cross_machine_count": self.cross_machine_count,
             "ungrounded_identifiers": list(self.ungrounded_identifiers),
         }
 
@@ -254,6 +263,7 @@ def evaluate_manual_grounding(
     mode: str,
     locale: str = "en",
     closure_values: frozenset[str] = frozenset(),
+    turn_machine_serials: frozenset[str] = frozenset(),
     audit_call: Callable[[str, list[dict[str, Any]]], dict[str, Any]] | None = None,
 ) -> tuple[str, GroundingAssessment | None]:
     """Evaluate one legacy-branch answer; return (message, assessment).
@@ -262,6 +272,13 @@ def evaluate_manual_grounding(
     ungrounded answer, where it becomes the downgrade template. ``None``
     assessment means the validator did not apply (mode off, no ledger, or no
     manuals chunks were retrieved this turn).
+
+    P8-W0a cross-machine fence: when the turn has authorized machines and a
+    citation carries a machine identity (``asset_id``, the indexed serial)
+    outside that set, the answer cites the WRONG machine's manual. That is a
+    server-decidable fact, so it skips both the heuristic short-circuit and
+    the LLM audit and goes straight to the downgrade decision. Citations
+    with an empty ``asset_id`` (site-wide documents) never mismatch.
     """
     if mode not in ("shadow", "enforce") or ledger is None:
         return message, None
@@ -279,12 +296,58 @@ def evaluate_manual_grounding(
         )
     )
 
+    fence_armed = bool(turn_machine_serials)
+    cross_machine_count = 0
+    if fence_armed:
+        cross_machine_count = sum(
+            1
+            for citation in citations
+            if _fence_key(citation.get("asset_id"))
+            and _fence_key(citation.get("asset_id")) not in turn_machine_serials
+        )
+    if cross_machine_count:
+        downgraded = mode == "enforce"
+        assessment = GroundingAssessment(
+            mode=mode,
+            applied=True,
+            heuristic_grounded=False,
+            would_downgrade=True,
+            downgraded=downgraded,
+            citation_count=len(citations),
+            fence_armed=True,
+            cross_machine_count=cross_machine_count,
+            ungrounded_identifiers=identifiers,
+            titles=titles,
+        )
+        # Counts in the message (house log style — extra= is discarded by
+        # the prod formatter). Never machine names or answer text.
+        logger.warning(
+            "manual grounding cross-machine citation mode=%s citations=%d "
+            "cross_machine=%d enforced=%s",
+            mode,
+            len(citations),
+            cross_machine_count,
+            downgraded,
+        )
+        if downgraded:
+            # The mismatched manual's titles must NOT be endorsed here —
+            # the dedicated template points at the correct machine's manual
+            # without naming the wrong one.
+            from ai.core.i18n_templates import (
+                GROUNDING_CROSS_MACHINE,
+                deterministic_template,
+            )
+
+            return deterministic_template(GROUNDING_CROSS_MACHINE, locale), assessment
+        return message, assessment
+
     if _heuristic_grounded(message, citations):
         return message, GroundingAssessment(
             mode=mode,
             applied=True,
             heuristic_grounded=True,
             citation_count=len(citations),
+            fence_armed=fence_armed,
             ungrounded_identifiers=identifiers,
             titles=titles,
         )
@@ -317,6 +380,7 @@ def evaluate_manual_grounding(
         would_downgrade=would_downgrade,
         downgraded=downgraded,
         citation_count=len(citations),
+        fence_armed=fence_armed,
         ungrounded_identifiers=identifiers,
         titles=titles,
     )
@@ -337,6 +401,41 @@ def evaluate_manual_grounding(
         template = deterministic_template(GROUNDING_DOWNGRADE, locale)
         return template.format(titles="; ".join(titles) or "the manual"), assessment
     return message, assessment
+
+
+def _fence_key(value: str) -> str:
+    """Normalize a serial/asset_id for fence comparison.
+
+    The index-side ``asset_id`` is operator-entered at ingest and the
+    machine serial is an editable field — byte-exact comparison would turn
+    case/whitespace drift into false cross-machine verdicts.
+    """
+    return str(value or "").strip().casefold()
+
+
+def machine_serials(user, machine_ids) -> frozenset[str]:
+    """The named machines' serials, for the cross-machine fence (P8-W0a).
+
+    The manuals index stamps each machine-scoped chunk with the machine
+    SERIAL (``asset_id``), so normalized serials are the comparison key.
+    Callers pass the machines the UTTERANCE identifies — never a whole
+    scope — and there is deliberately NO truncation: this set is
+    load-bearing (a missing serial reads as a cross-machine citation).
+    Django-only (lazy imports). Any error returns an EMPTY set so the
+    fence is disabled for the turn rather than armed with partial data.
+    """
+    try:
+        from assets.ai_read import authorized_machine
+
+        serials: set[str] = set()
+        for machine_id in machine_ids:
+            machine = authorized_machine(user, machine_id)
+            if machine is not None and machine.serial:
+                serials.add(_fence_key(machine.serial))
+        return frozenset(serial for serial in serials if serial)
+    except Exception:
+        logger.debug("machine serials unavailable; fence disabled", exc_info=False)
+        return frozenset()
 
 
 def enum_closure_sets(user, machine_ids) -> frozenset[str]:
@@ -379,5 +478,6 @@ __all__ = [
     "GroundingAssessment",
     "enum_closure_sets",
     "evaluate_manual_grounding",
+    "machine_serials",
     "ungrounded_identifiers",
 ]

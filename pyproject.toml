@@ -135,7 +135,7 @@ sections=["FUTURE","STDLIB","DJANGO","THIRDPARTY","FIRSTPARTY","LOCALFOLDER"]
 
 [tool.codespell]
 # responde/momento/deine/ist/recommandation are es/de/fr words in the ai i18n templates
-ignore-words-list = ["assertIn","SME","intoto","fitH","responde","momento","deine","ist","recommandation"]
+ignore-words-list = ["assertIn","SME","intoto","fitH","responde","momento","deine","ist","recommandation","maschine"]
 
 [tool.pytest]
 django_find_project = false

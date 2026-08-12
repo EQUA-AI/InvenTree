@@ -139,6 +139,32 @@ class RetrievalMissLedgerTests(TestCase):
         )
         self.assertEqual(report['top_unanswered'][0]['asked'], 3)
 
+    def test_weak_report_surfaces_low_score_hits(self):
+        """P8-W0b: weak-but-nonzero hits are the over-caution suspects."""
+        self._search(query='Zero hit question')
+        self._search(
+            rows=[{'chunk': 'x', '@search.score': 0.31, 'document_id': 'd'}],
+            query='What torque for the coupling?',
+        )
+        self._search(
+            rows=[{'chunk': 'x', '@search.score': 2.4, 'document_id': 'd'}],
+            query='Strong hit question',
+        )
+        out = StringIO()
+        call_command('retrieval_misses', '--json', '--weak', '0.5', stdout=out)
+        import json
+
+        report = json.loads(out.getvalue())
+        self.assertEqual(report['weak_threshold'], 0.5)
+        self.assertEqual(report['total_weak'], 1)
+        self.assertEqual(
+            report['top_weak'][0]['query'], 'What torque for the coupling?'
+        )
+        # The strong hit and the zero-hit rows never appear in the weak list.
+        weak_queries = {row['query'] for row in report['top_weak']}
+        self.assertNotIn('Strong hit question', weak_queries)
+        self.assertNotIn('Zero hit question', weak_queries)
+
 
 @tag('migration_test')
 class RetrievalMissMigrationTests(TransactionTestCase):

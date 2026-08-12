@@ -2118,9 +2118,13 @@ export function useAIChat(config: AIChatConfig = {}) {
               'The AI service is handling too many requests right now. Wait a moment and try again.';
           }
           setError(errorMsg);
+          // Server-localized copy is complete on its own — prefixing it with
+          // English would mix languages for non-English users (P8-W0e).
           updateMessage(
             assistantMessage.id,
-            `Sorry, I encountered an error: ${errorMsg}`
+            err.localizedMessage
+              ? errorMsg
+              : `Sorry, I encountered an error: ${errorMsg}`
           );
         }
       } finally {

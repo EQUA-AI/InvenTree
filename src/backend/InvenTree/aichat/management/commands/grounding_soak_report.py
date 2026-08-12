@@ -51,6 +51,8 @@ class Command(BaseCommand):
         audit_verdicts: Counter[str] = Counter()
         citation_counts: Counter[int] = Counter()
         per_day: Counter[str] = Counter()
+        cross_machine_turns = 0
+        fence_armed_turns = 0
         would_downgrade: list[dict] = []
 
         for row in rows:
@@ -70,6 +72,10 @@ class Command(BaseCommand):
                 if assessment.get('audit_error'):
                     audit_errors += 1
                 citation_counts[int(assessment.get('citation_count') or 0)] += 1
+                if assessment.get('fence_armed'):
+                    fence_armed_turns += 1
+                if int(assessment.get('cross_machine_count') or 0) > 0:
+                    cross_machine_turns += 1
             if assessment.get('would_downgrade'):
                 would_downgrade.append({
                     'message_id': row['id'],
@@ -78,6 +84,7 @@ class Command(BaseCommand):
                     'modality': row['modality'],
                     'downgraded': bool(assessment.get('downgraded')),
                     'citation_count': assessment.get('citation_count'),
+                    'cross_machine_count': assessment.get('cross_machine_count', 0),
                     'ungrounded_identifiers': assessment.get(
                         'ungrounded_identifiers', []
                     ),
@@ -97,6 +104,8 @@ class Command(BaseCommand):
                 str(k): v for k, v in sorted(citation_counts.items())
             },
             'per_day': dict(sorted(per_day.items())),
+            'fence_armed_turns': fence_armed_turns,
+            'cross_machine_turns': cross_machine_turns,
             'would_downgrade_count': len(would_downgrade),
             'would_downgrade': would_downgrade,
         }
@@ -115,11 +124,16 @@ class Command(BaseCommand):
             f'audit errors {audit_errors}, verdicts {dict(audit_verdicts)})'
         )
         self.stdout.write(f'  per-day: {dict(sorted(per_day.items()))}')
+        self.stdout.write(
+            f'  cross-machine fence: armed on {fence_armed_turns} turns, '
+            f'fired on {cross_machine_turns}'
+        )
         self.stdout.write(f'  would-downgrade: {len(would_downgrade)}')
         for item in would_downgrade:
             self.stdout.write(
                 f'    {item["created_at"]} thread={item["thread_id"]} '
                 f'modality={item["modality"]} citations={item["citation_count"]} '
+                f'cross_machine={item["cross_machine_count"]} '
                 f'ungrounded={item["ungrounded_identifiers"]} '
                 f'downgraded={item["downgraded"]}'
             )

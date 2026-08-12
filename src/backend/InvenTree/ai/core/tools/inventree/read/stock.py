@@ -514,9 +514,11 @@ async def get_bom(
     current stock information and recursive expansion.
 
     Args:
-        part_id: The assembly part ID
-        include_inherited: Include BOM items inherited from parent templates
-                         (default True)
+        part_id: The assembly part ID. BOMs live on TEMPLATE parts: when a
+                part search returned a variant (variant_of set), pass the
+                template's ID to see the full BOM.
+        include_inherited: Keep BOM lines inherited from ancestor templates
+                         (default True; False filters them out client-side)
         recursive: If True, recursively expand sub-assemblies to show all
                   components at all levels (default False)
         include_stock: Include current stock levels for each component

@@ -304,18 +304,17 @@ async def get_stock_levels(
 
 async def get_bom(
     part_id: int,
-    include_sub_assemblies: bool = True,
 ) -> dict[str, Any]:
     """
     Get the Bill of Materials (BOM) for an assembly part.
 
     Use this tool to see what components are needed to build an assembly,
     including quantities, references, and whether sub-components have stock.
+    Lines inherited from an ancestor/template part are always included
+    (the API's default); each row carries an ``inherited`` flag.
 
     Args:
         part_id: The numeric ID of the assembly part.
-        include_sub_assemblies: If True, include inherited BOM items from
-                                sub-assemblies (default True).
 
     Returns:
         A dictionary containing:
@@ -364,10 +363,7 @@ async def get_bom(
                 "message": "This part is not an assembly and has no BOM",
             }
 
-        bom_items = await client.get_bom(
-            part_id=part_id,
-            include_inherited=include_sub_assemblies,
-        )
+        bom_items = await client.get_bom(part_id=part_id)
 
         items_in_stock = 0
         items_short = 0

@@ -28,7 +28,7 @@ from ai.core.tools.capture_ledger import (  # noqa: E402
 _MANUAL_TITLE = "Xylem Flygt NP 3301 O&M manual (rev 3)"
 
 
-def _manuals_result(chunk_ids=("chunk-1", "chunk-2")):
+def _manuals_result(chunk_ids=("chunk-1", "chunk-2"), asset_id=""):
     return {
         "chunks": [
             {
@@ -42,6 +42,7 @@ def _manuals_result(chunk_ids=("chunk-1", "chunk-2")):
                     "section_path": "20 Service / 20.2 Repair boundaries",
                     "chunk_id": chunk_id,
                     "as_of": "2026-08-01",
+                    "asset_id": asset_id,
                     "excerpt_hash": "abc",
                 },
             }
@@ -66,6 +67,13 @@ class TestCaptureLedger:
         citations = ledger.manuals_citations()
         assert [c["chunk_id"] for c in citations] == ["chunk-1", "chunk-2"]
         assert citations[0]["document"] == _MANUAL_TITLE
+
+    def test_citation_asset_id_is_carried_through(self) -> None:
+        """P8-W0a: the fence needs the cited chunk's machine identity."""
+        ledger = ToolCaptureLedger()
+        ledger.record("manuals.read:search_manuals", _manuals_result(asset_id="SER-PS1-001"))
+        citations = ledger.manuals_citations()
+        assert {c["asset_id"] for c in citations} == {"SER-PS1-001"}
 
     def test_generic_results_feed_observed_values(self) -> None:
         ledger = ToolCaptureLedger()
@@ -449,3 +457,153 @@ class TestMiddlewareCapture:
             asyncio.run(CapabilityInvocationMiddleware().process(_Context(), _next))
 
         assert [c["chunk_id"] for c in ledger.manuals_citations()] == ["chunk-9"]
+
+
+class TestCrossMachineFence:
+    """P8-W0a: a citation from the WRONG machine's manual forces the
+    ungrounded path server-side — no heuristic pass, no LLM audit."""
+
+    @staticmethod
+    def _ledger(asset_id: str) -> ToolCaptureLedger:
+        ledger = ToolCaptureLedger()
+        ledger.record("manuals.read:search_manuals", _manuals_result(asset_id=asset_id))
+        return ledger
+
+    def test_wrong_machine_citation_would_downgrade_in_shadow(self) -> None:
+        def audit(message, citations):  # pragma: no cover - must not run
+            raise AssertionError("the fence must decide before any audit")
+
+        message = f"Per {_MANUAL_TITLE}, replace the seal."
+        out, assessment = evaluate_manual_grounding(
+            message=message,
+            ledger=self._ledger("SER-OTHER-MACHINE"),
+            mode="shadow",
+            turn_machine_serials=frozenset({"ser-ps1-001"}),
+            audit_call=audit,
+        )
+        assert out == message
+        assert assessment.would_downgrade is True
+        assert assessment.downgraded is False
+        assert assessment.audit_ran is False
+        assert assessment.heuristic_grounded is False
+        assert assessment.cross_machine_count == 2
+        assert assessment.to_meta()["cross_machine_count"] == 2
+        assert assessment.to_meta()["fence_armed"] is True
+
+    def test_wrong_machine_citation_downgrades_in_enforce(self) -> None:
+        from ai.core.i18n_templates import GROUNDING_CROSS_MACHINE, deterministic_template
+
+        out, assessment = evaluate_manual_grounding(
+            message=f"Per {_MANUAL_TITLE}, replace the seal.",
+            ledger=self._ledger("SER-OTHER-MACHINE"),
+            mode="enforce",
+            turn_machine_serials=frozenset({"ser-ps1-001"}),
+        )
+        # The dedicated template never names (= endorses) the wrong manual.
+        assert out == deterministic_template(GROUNDING_CROSS_MACHINE, "en")
+        assert _MANUAL_TITLE not in out
+        assert assessment.downgraded is True
+        assert assessment.cross_machine_count == 2
+
+    def test_matching_serial_takes_the_normal_path(self) -> None:
+        message = f"Per {_MANUAL_TITLE}, isolate MCC-HW-01 first."
+        out, assessment = evaluate_manual_grounding(
+            message=message,
+            ledger=self._ledger("SER-PS1-001"),
+            mode="shadow",
+            turn_machine_serials=frozenset({"ser-ps1-001"}),
+        )
+        assert out == message
+        assert assessment.cross_machine_count == 0
+        assert assessment.fence_armed is True
+        assert assessment.heuristic_grounded is True
+
+    def test_comparison_normalizes_case_and_whitespace(self) -> None:
+        """Operator-entered asset_id stamps must not false-positive on
+        case/whitespace drift (ingest is free text; serials are editable)."""
+        message = f"Per {_MANUAL_TITLE}, isolate MCC-HW-01 first."
+        out, assessment = evaluate_manual_grounding(
+            message=message,
+            ledger=self._ledger("  SER-ps1-001 "),
+            mode="shadow",
+            turn_machine_serials=frozenset({"ser-ps1-001"}),
+        )
+        assert out == message
+        assert assessment.cross_machine_count == 0
+
+    def test_empty_asset_id_never_mismatches(self) -> None:
+        """Site-wide documents carry no machine identity — never fenced."""
+        message = f"Per {_MANUAL_TITLE}, isolate MCC-HW-01 first."
+        out, assessment = evaluate_manual_grounding(
+            message=message,
+            ledger=_ledger_with_manuals(),
+            mode="shadow",
+            turn_machine_serials=frozenset({"SER-PS1-001"}),
+        )
+        assert out == message
+        assert assessment.cross_machine_count == 0
+
+    def test_machine_serials_error_returns_empty_set(self) -> None:
+        """A resolution error must DISABLE the fence, never half-arm it.
+
+        The island has no assets app, so the fake module is injected: the
+        first machine resolves (a serial IS collected), the second raises —
+        the partial set must be discarded, not returned.
+        """
+        import sys
+        import types
+
+        from ai.core.grounding import machine_serials
+
+        calls = {"n": 0}
+
+        class _Machine:
+            serial = "SER-PS1-001"
+
+        def flaky(user, machine_id):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                raise RuntimeError("transient")
+            return _Machine()
+
+        fake_pkg = types.ModuleType("assets")
+        fake_mod = types.ModuleType("assets.ai_read")
+        fake_mod.authorized_machine = flaky
+        fake_pkg.ai_read = fake_mod
+        with patch.dict(sys.modules, {"assets": fake_pkg, "assets.ai_read": fake_mod}):
+            result = machine_serials(object(), [1, 2, 3])
+        assert calls["n"] == 2
+        assert result == frozenset()
+
+    def test_machine_serials_normalizes_and_collects(self) -> None:
+        import sys
+        import types
+
+        from ai.core.grounding import machine_serials
+
+        class _Machine:
+            def __init__(self, serial):
+                self.serial = serial
+
+        machines = {1: _Machine(" SER-PS1-001 "), 2: _Machine(""), 3: None}
+        fake_pkg = types.ModuleType("assets")
+        fake_mod = types.ModuleType("assets.ai_read")
+        fake_mod.authorized_machine = lambda _user, mid: machines.get(mid)
+        fake_pkg.ai_read = fake_mod
+        with patch.dict(sys.modules, {"assets": fake_pkg, "assets.ai_read": fake_mod}):
+            result = machine_serials(object(), [1, 2, 3])
+        assert result == frozenset({"ser-ps1-001"})
+
+    def test_fence_inert_without_turn_machines(self) -> None:
+        """No authorized machines this turn -> the fence cannot apply."""
+        message = f"Per {_MANUAL_TITLE}, isolate MCC-HW-01 first."
+        out, assessment = evaluate_manual_grounding(
+            message=message,
+            ledger=self._ledger("SER-OTHER-MACHINE"),
+            mode="shadow",
+            turn_machine_serials=frozenset(),
+        )
+        assert out == message
+        assert assessment.cross_machine_count == 0
+        assert assessment.fence_armed is False
+        assert assessment.heuristic_grounded is True

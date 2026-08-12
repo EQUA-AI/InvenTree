@@ -21,6 +21,7 @@ ADVISORY_TEXT = "advisory_text"
 ADVISORY_NEXT_QUESTION = "advisory_next_question"
 QUESTION_DECLINED_ACK = "question_declined_ack"
 GROUNDING_DOWNGRADE = "grounding_downgrade"
+GROUNDING_CROSS_MACHINE = "grounding_cross_machine"
 # S38: typed turn-failure messages, keyed by FailureClass value.
 TURN_FAILED_PROVIDER_OUTAGE = "turn_failed_provider_outage"
 TURN_FAILED_RATE_LIMITED = "turn_failed_rate_limited"
@@ -100,6 +101,26 @@ _TEMPLATES: dict[str, dict[str, str]] = {
         "es": (
             "Encontré secciones relevantes en {titles} — verifica el "
             "procedimiento en el manual antes de actuar."
+        ),
+    },
+    # P8-W0a: the cross-machine downgrade must NOT endorse the mismatched
+    # manual by naming it — it points at the correct machine's manual only.
+    GROUNDING_CROSS_MACHINE: {
+        "en": (
+            "The manual sections found do not cover the machine in question. "
+            "Check the correct machine's manual before acting."
+        ),
+        "es": (
+            "Las secciones de manual encontradas no corresponden a la máquina "
+            "en cuestión. Consulta el manual de la máquina correcta antes de actuar."
+        ),
+        "de": (
+            "Die gefundenen Handbuchabschnitte gelten nicht für die betreffende "
+            "Maschine. Prüfe das Handbuch der richtigen Maschine, bevor du handelst."
+        ),
+        "fr": (
+            "Les sections de manuel trouvées ne concernent pas la machine en "
+            "question. Consultez le manuel de la bonne machine avant d'agir."
         ),
     },
     # S38: safe, content-free per-class failure copy. No provider names, no
@@ -206,6 +227,7 @@ __all__ = [
     "ADVISORY_TEXT",
     "ADVISORY_VOICE_ACTION",
     "ADVISORY_VOICE_READONLY",
+    "GROUNDING_CROSS_MACHINE",
     "GROUNDING_DOWNGRADE",
     "QUESTION_DECLINED_ACK",
     "RESPOND_IN_LOCALE",

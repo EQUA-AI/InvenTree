@@ -697,21 +697,26 @@ class InvenTreeClient:
     async def get_bom(
         self,
         part_id: int,
-        include_inherited: bool = True,
     ) -> list[dict[str, Any]]:
         """
         Get Bill of Materials for a part.
 
+        The ``part`` filter alone is correct: the API's BomFilter already
+        includes lines inherited from ancestor/template parts by default.
+        An ``inherited`` query param must NEVER be sent here — it is a plain
+        ``BomItem.inherited`` FIELD filter, so ``inherited=true`` restricts
+        the result to lines flagged for variant inheritance and silently
+        drops every ordinary BOM line (P8-W0c root cause: partial/empty
+        BOMs for normal assemblies).
+
         Args:
             part_id: The parent part ID.
-            include_inherited: Include inherited BOM items.
 
         Returns:
-            List of BOM items.
+            List of BOM items (each carries an ``inherited`` bool field).
         """
         params: dict[str, Any] = {
             "part": part_id,
-            "inherited": str(include_inherited).lower(),
             # Consumers read sub_part_detail/part_detail; both default off at
             # the view layer and must be requested explicitly
             "part_detail": "true",

@@ -144,6 +144,9 @@ async def search_parts(
         - is_assembly: Whether part has BOM
         - is_purchaseable: Can be purchased
         - is_saleable: Can be sold
+        - is_template / variant_of: BOMs live on TEMPLATE parts. When a hit
+          has variant_of set, it is a variant — fetch the BOM with the
+          variant_of (template) part ID to see the complete line list.
 
     Example:
         # Search by keyword
