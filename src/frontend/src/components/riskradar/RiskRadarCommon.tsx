@@ -1,3 +1,4 @@
+import type { RISK_FINDING_FIELDS } from '@lib/types/AimmsWire.generated';
 import { t } from '@lingui/core/macro';
 import { Group, Paper, Stack, Text } from '@mantine/core';
 import {
@@ -60,6 +61,43 @@ export interface RiskFinding {
   reopen_count: number;
   version: number;
 }
+
+// S43: compile-time drift check — every field the backend serializer emits
+// must exist on the hand interface above (satisfies keyof). A new
+// serializer field fails typecheck here instead of silently never
+// rendering. RISK_FINDING_FIELDS is generated from
+// RiskFindingSerializer.Meta.fields.
+type _RiskFindingWireField = (typeof RISK_FINDING_FIELDS)[number];
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _riskFindingCoversWire = {
+  pk: true,
+  scope_key: true,
+  rule_code: true,
+  rule_version: true,
+  category: true,
+  severity: true,
+  severity_factors: true,
+  source_model: true,
+  source_id: true,
+  title: true,
+  summary: true,
+  state: true,
+  owner: true,
+  owner_username: true,
+  first_seen: true,
+  last_seen: true,
+  condition_started_at: true,
+  source_as_of: true,
+  due_at: true,
+  due_breached: true,
+  age_hours: true,
+  snooze_until: true,
+  dismiss_recheck_at: true,
+  reopen_count: true,
+  version: true
+} as const satisfies Record<_RiskFindingWireField, true> satisfies Partial<
+  Record<keyof RiskFinding, true>
+>;
 
 export interface RiskFindingEvent {
   pk: number;

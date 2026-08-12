@@ -12,6 +12,7 @@
  * voice rail enforces verbally (§5.3).
  */
 
+import { PROPOSAL_ACTION_LABELS } from '@lib/types/AimmsWire.generated';
 import {
   Alert,
   Badge,
@@ -74,23 +75,9 @@ const STATE_COLORS: Record<string, string> = {
   failed: 'red'
 };
 
-const ACTION_LABELS: Record<string, string> = {
-  'work_order.hold': 'Hold work order',
-  'work_order.resume': 'Resume work order',
-  'work_order.schedule': 'Reschedule work order',
-  'work_order.resize': 'Change work order duration',
-  'work_order.update': 'Update work order plan',
-  'work_order.assign': 'Reassign work order',
-  'work_order.delete': 'Delete work order',
-  'work_order.cancel': 'Cancel work order',
-  'work_order.transition': 'Change work order lifecycle',
-  'work_order.create': 'Create work order',
-  'work_order.create_child': 'Create child work order',
-  'work_order.generate_procurement': 'Generate procurement child',
-  'dependency.create': 'Add dependency',
-  'dependency.delete': 'Remove dependency',
-  'schedule.optimize': 'Auto-schedule (bulk)'
-};
+// S43: labels are GENERATED from ProposalAction (all 16 actions, en
+// labels) — the hand map silently missed repair_work_package.create.
+const ACTION_LABELS: Record<string, string> = PROPOSAL_ACTION_LABELS;
 
 function actionIcon(actionType: string) {
   if (actionType === 'work_order.hold') return <IconClockPause size={16} />;

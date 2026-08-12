@@ -139,49 +139,14 @@ function generateIdempotencyKey(): string {
 }
 
 /**
- * AG-UI Protocol Event Types
+ * AG-UI Protocol Event Types — GENERATED from the backend EventType enum
+ * (S43). The hand-written copy drifted (25 members vs the backend's 36,
+ * plus one phantom TOOL_CALL_CHUNK the backend never defined); the
+ * generated enum is the wire truth and CI's drift check keeps it so.
  * @see https://docs.ag-ui.com/concepts/events
  */
-export enum AGUIEventType {
-  // Lifecycle Events
-  RUN_STARTED = 'RUN_STARTED',
-  RUN_FINISHED = 'RUN_FINISHED',
-  RUN_ERROR = 'RUN_ERROR',
-  RUN_CANCELLED = 'RUN_CANCELLED',
-  STEP_STARTED = 'STEP_STARTED',
-  STEP_FINISHED = 'STEP_FINISHED',
-
-  // Text Message Events
-  TEXT_MESSAGE_START = 'TEXT_MESSAGE_START',
-  TEXT_MESSAGE_CONTENT = 'TEXT_MESSAGE_CONTENT',
-  TEXT_MESSAGE_END = 'TEXT_MESSAGE_END',
-  TEXT_MESSAGE_CHUNK = 'TEXT_MESSAGE_CHUNK',
-
-  // Tool Call Events
-  TOOL_CALL_START = 'TOOL_CALL_START',
-  TOOL_CALL_ARGS = 'TOOL_CALL_ARGS',
-  TOOL_CALL_END = 'TOOL_CALL_END',
-  TOOL_CALL_RESULT = 'TOOL_CALL_RESULT',
-  TOOL_CALL_CHUNK = 'TOOL_CALL_CHUNK',
-
-  // Structured question (S22/S23): a turn that completed by asking.
-  QUESTION = 'QUESTION',
-
-  // HITL Events
-  HITL_REQUIRED = 'HITL_REQUIRED',
-  HITL_APPROVED = 'HITL_APPROVED',
-  HITL_REJECTED = 'HITL_REJECTED',
-  HITL_TIMEOUT = 'HITL_TIMEOUT',
-
-  // State Management Events
-  STATE_SNAPSHOT = 'STATE_SNAPSHOT',
-  STATE_DELTA = 'STATE_DELTA',
-  MESSAGES_SNAPSHOT = 'MESSAGES_SNAPSHOT',
-
-  // Special Events
-  RAW = 'RAW',
-  CUSTOM = 'CUSTOM'
-}
+export { AGUIEventType } from '@lib/types/AimmsWire.generated';
+import { AGUIEventType } from '@lib/types/AimmsWire.generated';
 
 /**
  * AG-UI Protocol Event interfaces
@@ -1967,20 +1932,44 @@ export function useAIChat(config: AIChatConfig = {}) {
                             // Progress events - could be used for UI feedback
                             break;
 
+                          case AGUIEventType.ERROR: {
+                            // Backend-only ERROR maps to the same typed path
+                            // as RUN_ERROR (S43).
+                            const errEvent =
+                              event as unknown as AGUIRunErrorEvent;
+                            throw new AIRunError(
+                              errEvent.message || 'Agent error',
+                              errEvent.failure_class,
+                              errEvent.localized_message
+                            );
+                          }
+
+                          // Backend-only informational events: typed no-ops.
+                          // They must never render — the old default arm
+                          // sniffed `.content` off unknown events and pasted
+                          // it into the assistant message (S43 leak vector).
+                          case AGUIEventType.AGENT_THINKING:
+                          case AGUIEventType.AGENT_EXECUTING:
+                          case AGUIEventType.AGENT_WAITING:
+                          case AGUIEventType.AGENT_HANDOFF:
+                          case AGUIEventType.PROGRESS_UPDATE:
+                          case AGUIEventType.WORKFLOW_STARTED:
+                          case AGUIEventType.WORKFLOW_COMPLETED:
+                          case AGUIEventType.WORKFLOW_STEP:
+                          case AGUIEventType.CACHE_HIT:
+                          case AGUIEventType.CACHE_MISS:
+                          case AGUIEventType.WARNING:
+                            break;
+
                           default:
-                            // Handle legacy/fallback formats (OpenAI-style)
-                            const legacyContent =
-                              (event as any).choices?.[0]?.delta?.content ||
-                              (event as any).choices?.[0]?.message?.content ||
-                              (event as any).delta?.content ||
-                              (event as any).content ||
-                              '';
-                            if (legacyContent) {
-                              appendToMessage(
-                                assistantMessage.id,
-                                legacyContent
-                              );
-                            }
+                            // Unknown typed event: log and DROP. Rendering
+                            // heuristics for typed events are gone; the
+                            // non-JSON plain-text fallback below still
+                            // guards transport garbage.
+                            console.debug(
+                              '[AG-UI] unhandled event type',
+                              (event as any).type
+                            );
                             break;
                         }
                       } catch (eventError) {

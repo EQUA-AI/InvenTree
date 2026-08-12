@@ -121,20 +121,25 @@ def _session_error(exc) -> HTTPException:
 
 
 def _session_payload(session, settings) -> dict[str, Any]:
-    return {
-        "id": str(session.id),
-        "state": session.state,
-        "thread_id": session.thread_id,
-        "transport": session.transport or None,
-        "transports_allowed": {
-            "webrtc": settings.feature_voice_live_webrtc,
-            "relay": settings.feature_voice_live_relay,
-        },
-        "webrtc_preview": True,
-        "turn_count": session.turn_count,
-        "policy_version": session.policy_version,
-        "terminal_reason": session.terminal_reason or None,
-    }
+    # S43: built through the wire model so the generated TS contract and
+    # this payload can never drift; model_dump() output is byte-identical
+    # to the historic hand-built dict.
+    from ai.core.voice.wire import VoiceSessionPayload, VoiceTransportsAllowed
+
+    return VoiceSessionPayload(
+        id=str(session.id),
+        state=session.state,
+        thread_id=session.thread_id,
+        transport=session.transport or None,
+        transports_allowed=VoiceTransportsAllowed(
+            webrtc=settings.feature_voice_live_webrtc,
+            relay=settings.feature_voice_live_relay,
+        ),
+        webrtc_preview=True,
+        turn_count=session.turn_count,
+        policy_version=session.policy_version,
+        terminal_reason=session.terminal_reason or None,
+    ).model_dump(mode="json")
 
 
 async def _owned_session(principal: AIPrincipal, session_id: str, settings):
@@ -525,19 +530,23 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
             await _clear_active_speech(interim_spoken)
             await _speak_status(VoiceUtteranceType.FAILURE_STATUS, status_phrases.ANSWER_INCOMPLETE)
 
-        return {
-            "session_id": str(session.id),
-            "thread_id": result.thread_id,
-            "turn_id": result.turn_id,
-            "message": result.message,
-            "workflow_used": result.workflow_used,
-            "response_state": result.response_state,
-            "replayed": result.replayed,
-            "spoken": spoken,
-            # S22/S23: the per-turn signal that this turn ended by asking a
-            # question; the client renders the same card the drawer shows.
-            "pending_question": result.pending_question,
-        }
+        # S43: built through the wire model (see wire.py) so the generated
+        # TS contract and this payload can never drift. pending_question
+        # keeps S22/S23 semantics: the client renders the same card the
+        # drawer shows.
+        from ai.core.voice.wire import VoiceTurnResponse
+
+        return VoiceTurnResponse(
+            session_id=str(session.id),
+            thread_id=result.thread_id,
+            turn_id=result.turn_id,
+            message=result.message,
+            workflow_used=result.workflow_used,
+            response_state=result.response_state,
+            replayed=result.replayed,
+            spoken=spoken,
+            pending_question=result.pending_question,
+        ).model_dump(mode="json")
 
 
 class WalkthroughRequest(BaseModel):

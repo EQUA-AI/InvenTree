@@ -419,6 +419,10 @@ jobs:
         run: |
           invoke migrate --detect
           python3 .github/scripts/check_migration_files.py
+      - name: Wire Contract Drift Check (S43)
+        run: |
+          cd src/backend/InvenTree
+          python3 manage.py generate_wire_contract --check
       - name: Coverage Tests
         run: invoke dev.test --check --coverage --translations
       - name: Upload raw coverage to artifacts

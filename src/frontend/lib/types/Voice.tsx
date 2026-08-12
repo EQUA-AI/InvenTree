@@ -26,72 +26,24 @@ export type VoiceClientState =
   | 'speaking'
   | 'error';
 
-export interface VoiceTransportsAllowed {
-  webrtc: boolean;
-  relay: boolean;
-}
+// S43: the session/turn payload shapes are GENERATED from the backend's
+// pydantic wire models (ai/core/voice/wire.py) — re-exported here so every
+// existing import keeps working while drift is structurally impossible.
+export type {
+  VoicePendingQuestion,
+  VoicePendingQuestionOption,
+  VoiceSessionPayload,
+  VoiceSpokenPayload,
+  VoiceTransportsAllowed,
+  VoiceTurnResponse
+} from './AimmsWire.generated';
+import type { ServerVoiceErrorCode } from './AimmsWire.generated';
 
-export interface VoiceSessionPayload {
-  id: string;
-  state: VoiceSessionState;
-  thread_id: string;
-  transport: 'webrtc' | 'relay' | null;
-  transports_allowed: VoiceTransportsAllowed;
-  webrtc_preview: boolean;
-  turn_count: number;
-  policy_version: string;
-  terminal_reason: string | null;
-}
+/** Codes only the CLIENT mints (never sent by the server). */
+export type ClientVoiceErrorCode = 'MICROPHONE_DENIED' | 'BROWSER_UNSUPPORTED';
 
-export interface VoiceSpokenPayload {
-  utterance_id: string;
-  spoken_summary: string;
-  spoken_summary_hash: string;
-  playback_state: string;
-}
-
-export interface VoiceTurnResponse {
-  session_id: string;
-  thread_id: string;
-  turn_id: string;
-  message: string;
-  workflow_used: string | null;
-  response_state: string;
-  replayed: boolean;
-  spoken: VoiceSpokenPayload | null;
-  /** S22: set when this turn ended by asking a structured question. */
-  pending_question?: VoicePendingQuestion | null;
-}
-
-/** Wire shape of a pending structured question on the voice rail (S22). */
-export interface VoicePendingQuestion {
-  kind: string;
-  interrupt_id: string;
-  question_text: string;
-  options: Array<{
-    id: string;
-    label: string;
-    kind?: string;
-    description?: string;
-    recommended?: boolean;
-  }>;
-  expires_at?: string;
-  source?: string;
-}
-
-/** Stable backend error codes surfaced to the UI verbatim. */
-export type VoiceErrorCode =
-  | 'VOICE_SESSION_UNAVAILABLE'
-  | 'VOICE_SESSION_LIMIT'
-  | 'VOICE_SESSION_FORBIDDEN'
-  | 'VOICE_SESSION_EXPIRED'
-  | 'VOICE_SIGNALING_FAILED'
-  | 'VOICE_TRANSPORT_UNAVAILABLE'
-  | 'VOICE_TRANSCRIPT_INCOMPLETE'
-  | 'VOICE_RESPONSE_INCOMPLETE'
-  | 'IDEMPOTENCY_CONFLICT'
-  | 'MICROPHONE_DENIED'
-  | 'BROWSER_UNSUPPORTED';
+/** Stable error codes surfaced to the UI verbatim (server ∪ client). */
+export type VoiceErrorCode = ServerVoiceErrorCode | ClientVoiceErrorCode;
 
 export interface VoiceError {
   code: VoiceErrorCode;

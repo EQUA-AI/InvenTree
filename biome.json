@@ -9,32 +9,40 @@
 		}
 	},
 	"linter": {
-    "rules": {
-		"suspicious" : {
-			"noExplicitAny": "off",
-			"noDoubleEquals": "off",
-			"noArrayIndexKey": "off",
-			"useDefaultSwitchClauseLast": "off"
-		},
-		"style": {
-			"noUselessElse": "off",
-			"noNonNullAssertion": "off",
-			"noParameterAssign": "off"
-		}, "correctness":{
-			"useExhaustiveDependencies": "off",
-			"useJsxKeyInIterable": "off",
-			"noUnsafeOptionalChaining": "off",
-			"noSwitchDeclarations": "off",
-			"noUnusedImports":"error"
-		}, "complexity": {
-			"noBannedTypes": "off",
-			"noExtraBooleanCast": "off",
-			"noForEach": "off",
-			"noUselessSwitchCase": "off",
-			"useLiteralKeys":"off"
-		}, "performance": {
-			"noDelete":"off"
+		"rules": {
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noDoubleEquals": "off",
+				"noArrayIndexKey": "off",
+				"useDefaultSwitchClauseLast": "off"
+			},
+			"style": {
+				"noUselessElse": "off",
+				"noNonNullAssertion": "off",
+				"noParameterAssign": "off"
+			},
+			"correctness": {
+				"useExhaustiveDependencies": "off",
+				"useJsxKeyInIterable": "off",
+				"noUnsafeOptionalChaining": "off",
+				"noSwitchDeclarations": "off",
+				"noUnusedImports": "error"
+			},
+			"complexity": {
+				"noBannedTypes": "off",
+				"noExtraBooleanCast": "off",
+				"noForEach": "off",
+				"noUselessSwitchCase": "off",
+				"useLiteralKeys": "off"
+			},
+			"performance": {
+				"noDelete": "off"
+			}
 		}
+	},
+	"files": {
+		"ignore": [
+			"src/frontend/lib/types/AimmsWire.generated.ts"
+		]
 	}
-}
 }
