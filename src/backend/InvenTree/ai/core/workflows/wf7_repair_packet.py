@@ -316,6 +316,16 @@ class WF7RepairPacketWorkflow:
             for root in roots
         )
 
+        # S36: prefer the turn's threaded id, then the bound context var; a
+        # fresh mint is the last resort and is logged as a spine
+        # discontinuity so silent re-mints stay visible.
+        from ai.core.correlation import current_correlation
+
+        correlation_id = str(context.get("correlation_id") or current_correlation() or "")
+        if not correlation_id:
+            correlation_id = str(uuid.uuid4())
+            logger.warning("wf7 minted a fresh correlation id (spine discontinuity)")
+
         envelope = TrustedReasoningEnvelope(
             actor_id=str(principal.actor),
             scope={"policy_key": str(context.get("server_policy_key") or principal.scope)},
@@ -327,7 +337,10 @@ class WF7RepairPacketWorkflow:
             allowed_tool_names=allowed_tools,
             authorized_records=authorized_records,
             policy_version=str(context.get("policy_version") or principal.policy_version),
-            correlation_id=str(context.get("correlation_id") or uuid.uuid4()),
+            correlation_id=correlation_id,
+            # W0: server-derived locale so wf7's reasoning respects the
+            # user's language exactly like the main reasoning rail.
+            locale=str(context.get("locale") or "en"),
         )
 
         outcome = await adapter.reason(envelope=envelope, tool_context=diagnostic_context)

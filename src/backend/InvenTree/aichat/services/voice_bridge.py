@@ -115,6 +115,7 @@ def build_voice_proposal(
     policy_version: str = 'ws7-voice-v1',
     thread_id: str = '',
     source_turn_id: str = '',
+    correlation_id: str = '',
     capability: str = 'work_order.change',
 ) -> ResolvedVoiceWrite:
     """Propose-side of the unified rail: create a proposal, return a resolved write.
@@ -139,6 +140,7 @@ def build_voice_proposal(
         intent=intent or {},
         thread_id=thread_id,
         source_turn_id=source_turn_id,
+        correlation_id=correlation_id,
         expiry_seconds=VOICE_PROPOSAL_EXPIRY_SECONDS,
     )
     executable = ExecutableWrite(

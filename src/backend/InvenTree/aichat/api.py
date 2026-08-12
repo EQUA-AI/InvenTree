@@ -143,6 +143,21 @@ class ProposalListCreateView(APIView):
                 {'error': 'PROPOSAL_INVALID', 'detail': 'intent must be an object'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        source_turn_id = str(data.get('source_turn_id', ''))[:64]
+        # S36: the proposal's correlation id is server-derived from the
+        # originating turn row — never taken from the request body. An
+        # unknown or foreign turn simply yields a blank id.
+        correlation_id = ''
+        if source_turn_id:
+            from aichat.models import ChatTurn
+
+            source_turn = (
+                ChatTurn.objects
+                .filter(pk=source_turn_id, thread__owner=request.user)
+                .only('correlation_id')
+                .first()
+            )
+            correlation_id = source_turn.correlation_id if source_turn else ''
         try:
             scope_key, scope_hash = _scope_strings(request.user)
             proposal = proposal_service.create_proposal(
@@ -156,7 +171,8 @@ class ProposalListCreateView(APIView):
                 policy_version='ws7-v1',
                 intent=intent,
                 thread_id=str(data.get('thread_id', ''))[:255],
-                source_turn_id=str(data.get('source_turn_id', ''))[:64],
+                source_turn_id=source_turn_id,
+                correlation_id=correlation_id,
             )
         except proposal_service.ProposalError as exc:
             return _error(exc)

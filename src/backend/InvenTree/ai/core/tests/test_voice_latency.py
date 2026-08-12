@@ -136,9 +136,22 @@ def test_filler_threshold_is_above_the_measured_turn_floor():
 
 
 def test_intent_classifier_prefers_the_fast_deployment():
+    """S37: the choice now routes through the policy table, which keeps the
+    classifier on the fast deployment (fast or standard fallback)."""
     import inspect
+    from types import SimpleNamespace
+    from unittest.mock import patch
 
     from ai.core.agents import routing
+    from ai.core.model_policy import ModelPurpose, select_deployment
 
     source = inspect.getsource(routing.IntentClassifier._get_agent)
-    assert "azure_openai_fast_deployment" in source
+    assert "FALLBACK_CLASSIFIER" in source
+    fake = SimpleNamespace(
+        azure_openai_fast_deployment="fast-mini",
+        azure_openai_deployment="standard",
+        feature_model_tiering_shadow=False,
+        feature_model_tiering_enforce=False,
+    )
+    with patch("ai.core.config.get_settings", return_value=fake):
+        assert select_deployment(ModelPurpose.FALLBACK_CLASSIFIER) == "fast-mini"

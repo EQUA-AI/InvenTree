@@ -810,7 +810,9 @@ def create_child(
         )
 
 
-def generate_procurement_child(*, parent_id: int, actor) -> KanbanCard | None:
+def generate_procurement_child(
+    *, parent_id: int, actor, correlation_id: uuid.UUID | None = None
+) -> KanbanCard | None:
     """Raise a procurement card for the job's parts shortfall.
 
     Returns the procurement card, or None when there is no shortfall.
@@ -852,7 +854,7 @@ def generate_procurement_child(*, parent_id: int, actor) -> KanbanCard | None:
             work_order_id=parent_id,
             event_type='CHILD_GENERATED',
             actor=actor if getattr(actor, 'pk', None) else None,
-            correlation_id=_new_correlation(None),
+            correlation_id=_new_correlation(correlation_id),
             metadata={
                 'card_id': card.pk,
                 'card_kind': KanbanCard.KIND_PROCUREMENT,

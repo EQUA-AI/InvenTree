@@ -132,7 +132,7 @@ def test_injection_guard_runs_before_pending_writes_and_routing():
 
     from ai.core import turn_service
 
-    source = inspect.getsource(turn_service.NormalizedTurnService.process)
+    source = inspect.getsource(turn_service.NormalizedTurnService._process_turn)
     guard = source.index("_refuse_instruction_override")
     pending = source.index("_resolve_pending_voice_write")
     routing = source.index("route = self._route_turn")

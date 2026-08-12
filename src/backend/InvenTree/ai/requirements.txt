@@ -80,6 +80,15 @@ numpy>=1.26.0
 # Logging & Observability
 # =============================================================================
 structlog>=24.1.0
+# S36: OTel pinned to the exact versions in src/backend/requirements.txt —
+# both requirement sets install into one image, and version skew between the
+# api/sdk halves is the failure mode to avoid. Spans ship dark: without a
+# configured tracer provider (INVENTREE_TRACING_*) every span is a no-op.
+opentelemetry-api==1.44.0
+opentelemetry-sdk==1.44.0
+opentelemetry-exporter-otlp==1.44.0
+# Same 0.65b0 wave as the instrumentation packages the backend pins.
+opentelemetry-instrumentation-fastapi==0.65b0
 
 # =============================================================================
 # Testing

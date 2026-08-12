@@ -10,6 +10,7 @@ display data throughout.
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -573,6 +574,7 @@ def create_proposal(
     intent: dict[str, Any] | None = None,
     thread_id: str = '',
     source_turn_id: str = '',
+    correlation_id: str = '',
     expiry_seconds: int = PROPOSAL_EXPIRY_SECONDS,
 ) -> ChatActionProposal:
     """Create (or exactly replay) one owner-bound proposal.
@@ -580,6 +582,10 @@ def create_proposal(
     The preview is derived from a fresh server read; the caller-supplied
     reason and intent are stored as quoted untrusted parameters only — the
     canonical command re-reads and re-validates them at confirmation.
+
+    ``correlation_id`` (S36) is the originating turn's server-minted id,
+    telemetry only: it never joins the idempotent-replay comparison, so a
+    retried request with a re-minted id still replays cleanly.
     """
     if action_type not in _ALLOWED_ACTIONS:
         raise CapabilityDenied(f'{action_type} is not an executable action')
@@ -612,6 +618,7 @@ def create_proposal(
                 reason=normalized_reason,
                 policy_version=policy_version,
                 idempotency_key=idempotency_key,
+                correlation_id=(correlation_id or '')[:100],
                 expires_at=timezone.now() + timedelta(seconds=expiry_seconds),
             )
             if _approval_queue_owns_execution(action_type):
@@ -837,7 +844,22 @@ def _create_planning(intent: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _dispatch_optimize(owner, intent: dict[str, Any], idem: str) -> dict[str, Any]:
+def _as_uuid(value: str) -> uuid.UUID | None:
+    """Parse a stored correlation id for command threading (S36).
+
+    Fail-soft: a blank or unparsable value returns None, and the command
+    then mints its own id — exactly the pre-S36 behavior. Telemetry must
+    never block an execution.
+    """
+    try:
+        return uuid.UUID(str(value)) if value else None
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def _dispatch_optimize(
+    owner, intent: dict[str, Any], idem: str, correlation: uuid.UUID | None = None
+) -> dict[str, Any]:
     """Bulk optimize: re-plan deterministically, then apply atomically.
 
     The planner (not the model) chooses slots; ``apply_schedule_batch`` uses each
@@ -877,7 +899,10 @@ def _dispatch_optimize(owner, intent: dict[str, Any], idem: str) -> dict[str, An
         for op in plan.operations
     ]
     results = scheduling.apply_schedule_batch(
-        actor=owner, idempotency_key=idem, operations=operations
+        actor=owner,
+        idempotency_key=idem,
+        operations=operations,
+        correlation_id=correlation,
     )
     return {
         'command': 'optimize',
@@ -898,15 +923,43 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
     the stored intent. The command, not this function, is the security
     boundary; this only routes and shapes the receipt.
     """
-    from tasks.services import scheduling
-    from tasks.services import work_orders as wo_commands
-
     action = proposal.action_type
     idem = f'proposal:{proposal.id}'
     wo_id = proposal.target_work_order_id
     version = proposal.target_version
     intent = proposal.intent or {}
     reason = proposal.reason or f'Confirmed chat proposal {proposal.id}'
+    # S36: thread the turn's correlation id into the audited command so one
+    # id joins utterance -> proposal -> WorkOrderEvent. None (blank or
+    # unparsable) lets the command mint, exactly the pre-S36 behavior.
+    correlation = _as_uuid(proposal.correlation_id)
+    from ai.core.tracing import turn_span
+
+    with turn_span(
+        'aimms.proposal.dispatch',
+        proposal_id=str(proposal.id),
+        action_type=action,
+        correlation_id=proposal.correlation_id,
+    ):
+        return _dispatch_command(
+            proposal, owner, action, idem, wo_id, version, intent, reason, correlation
+        )
+
+
+def _dispatch_command(
+    proposal: ChatActionProposal,
+    owner,
+    action: str,
+    idem: str,
+    wo_id,
+    version,
+    intent: dict[str, Any],
+    reason: str,
+    correlation: uuid.UUID | None,
+) -> dict[str, Any]:
+    """Route one allow-listed action to its canonical command (span-wrapped)."""
+    from tasks.services import scheduling
+    from tasks.services import work_orders as wo_commands
 
     if action == ProposalAction.WORK_ORDER_HOLD:
         return _command_receipt(
@@ -916,6 +969,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 expected_version=version,
                 idempotency_key=idem,
                 reason=reason,
+                correlation_id=correlation,
             )
         )
     if action == ProposalAction.WORK_ORDER_RESUME:
@@ -926,6 +980,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 expected_version=version,
                 idempotency_key=idem,
                 reason=reason,
+                correlation_id=correlation,
             )
         )
     if action == ProposalAction.WORK_ORDER_SCHEDULE:
@@ -937,6 +992,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 idempotency_key=idem,
                 scheduled_start=_dt(intent.get('scheduled_start')),
                 scheduled_end=_dt(intent.get('scheduled_end')),
+                correlation_id=correlation,
             )
         )
     if action == ProposalAction.WORK_ORDER_RESIZE:
@@ -948,6 +1004,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 idempotency_key=idem,
                 estimated_minutes=intent.get('estimated_minutes'),
                 scheduled_end=_dt(intent.get('scheduled_end')),
+                correlation_id=correlation,
             )
         )
     if action == ProposalAction.WORK_ORDER_UPDATE:
@@ -958,6 +1015,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 expected_version=version,
                 idempotency_key=idem,
                 fields=dict(intent.get('fields') or {}),
+                correlation_id=correlation,
             )
         )
     if action == ProposalAction.WORK_ORDER_ASSIGN:
@@ -969,6 +1027,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 expected_version=version,
                 idempotency_key=idem,
                 reason=reason,
+                correlation_id=correlation,
             )
         )
     if action == ProposalAction.WORK_ORDER_DELETE:
@@ -979,6 +1038,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 expected_version=version,
                 idempotency_key=idem,
                 reason=reason,
+                correlation_id=correlation,
             )
         )
     if action == ProposalAction.WORK_ORDER_CANCEL:
@@ -989,6 +1049,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 expected_version=version,
                 idempotency_key=idem,
                 reason=reason,
+                correlation_id=correlation,
             )
         )
     if action == ProposalAction.WORK_ORDER_TRANSITION:
@@ -1000,6 +1061,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 expected_version=version,
                 idempotency_key=idem,
                 reason=reason,
+                correlation_id=correlation,
             )
         )
     if action == ProposalAction.WORK_ORDER_CREATE:
@@ -1009,6 +1071,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 idempotency_key=idem,
                 title=intent.get('title', ''),
                 machine_id=intent.get('machine_id'),
+                correlation_id=correlation,
                 **_create_planning(intent),
             )
         )
@@ -1016,7 +1079,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
         from repair.work_packages import create_repair_work_package
 
         result = create_repair_work_package(
-            actor=owner, draft=intent, idempotency_key=idem
+            actor=owner, draft=intent, idempotency_key=idem, correlation_id=correlation
         )
         return {'command': 'create_repair_work_package', **result.as_dict()}
     if action == ProposalAction.WORK_ORDER_CREATE_CHILD:
@@ -1029,12 +1092,15 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                 idempotency_key=idem,
                 title=intent.get('title', ''),
                 card_kind=intent.get('card_kind', KanbanCard.KIND_SUBTASK),
+                correlation_id=correlation,
                 **_create_planning(intent),
             )
         )
     if action == ProposalAction.WORK_ORDER_GENERATE_PROCUREMENT:
         return _child_receipt(
-            scheduling.generate_procurement_child(parent_id=wo_id, actor=owner)
+            scheduling.generate_procurement_child(
+                parent_id=wo_id, actor=owner, correlation_id=correlation
+            )
         )
     if action == ProposalAction.DEPENDENCY_CREATE:
         from tasks.models import WorkOrderDependency
@@ -1048,11 +1114,14 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
                     'dependency_type', WorkOrderDependency.TYPE_FS
                 ),
                 lag_minutes=int(intent.get('lag_minutes', 0)),
+                correlation_id=correlation,
             )
         )
     if action == ProposalAction.DEPENDENCY_DELETE:
         removed = scheduling.delete_dependency(
-            dependency_id=int(intent['dependency_id']), actor=owner
+            dependency_id=int(intent['dependency_id']),
+            actor=owner,
+            correlation_id=correlation,
         )
         return {
             'command': 'delete_dependency',
@@ -1060,7 +1129,7 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
             'removed': bool(removed),
         }
     if action == ProposalAction.SCHEDULE_OPTIMIZE:
-        return _dispatch_optimize(owner, intent, idem)
+        return _dispatch_optimize(owner, intent, idem, correlation)
     # Unreachable: create_proposal gates action_type against the same allow-list.
     raise CapabilityDenied(f'{action} has no dispatcher')
 

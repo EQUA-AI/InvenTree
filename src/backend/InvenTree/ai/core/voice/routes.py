@@ -40,6 +40,13 @@ _provider_channel_closer = None
 #: Per-session turn serialization: hands-free auto-submit can deliver a new
 #: utterance while the previous turn is still processing, and the shared
 #: provider channel's speech slot must be handed over in order.
+#:
+#: S35 accepted exception to the "no in-process cross-request state"
+#: invariant (ai/README.md): these locks assume a voice session is affine to
+#: one replica, which holds because the session's WebSocket pins it to the
+#: process that owns the provider channel. Residual risk: if voice turns
+#: ever arrive over plain HTTP across replicas, serialization silently
+#: weakens to per-replica — revisit before any such transport change.
 _turn_locks: dict[str, asyncio.Lock] = {}
 
 
@@ -317,7 +324,13 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
     from voice.services import realtime
 
     idempotency_key = final.idempotency_key(str(session.id))
-    correlation_id = str(session.correlation_id)
+    # S36: per-turn child correlation id, deterministically derived from the
+    # session's id plus the turn's idempotency key. Session-granular ids made
+    # every turn in a session indistinguishable on the spine; the session id
+    # remains recoverable (and is logged on session telemetry) as the parent.
+    from ai.core.correlation import voice_turn_correlation
+
+    correlation_id = voice_turn_correlation(session.correlation_id, idempotency_key)
     trusted_context = build_trusted_turn_context(
         principal,
         correlation_id=correlation_id,
@@ -408,16 +421,24 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
 
         try:
             await sync_to_async(_touch, thread_sensitive=True)()
-            result = await get_turn_service().process(
-                actor=principal,
-                thread_id=session.thread_id,
-                content=final.text,
-                modality=TurnModality.VOICE,
-                trusted_context=trusted_context,
-                modality_metadata=final.modality_metadata(),
-                idempotency_key=idempotency_key,
+            from ai.core.tracing import turn_span
+
+            with turn_span(
+                "aimms.voice.turn",
                 correlation_id=correlation_id,
-            )
+                session_correlation_id=str(session.correlation_id),
+                turn_sequence=getattr(session, "turn_count", None),
+            ):
+                result = await get_turn_service().process(
+                    actor=principal,
+                    thread_id=session.thread_id,
+                    content=final.text,
+                    modality=TurnModality.VOICE,
+                    trusted_context=trusted_context,
+                    modality_metadata=final.modality_metadata(),
+                    idempotency_key=idempotency_key,
+                    correlation_id=correlation_id,
+                )
         except realtime.VoiceSessionError as exc:
             await _finish_interim()
             raise _session_error(exc) from None

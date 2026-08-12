@@ -127,7 +127,7 @@ def test_turn_telemetry_is_rendered_not_passed_as_extra():
 
     from ai.core import turn_service
 
-    source = inspect.getsource(turn_service.NormalizedTurnService.process)
+    source = inspect.getsource(turn_service.NormalizedTurnService._process_turn)
     assert "voice.turn modality=%s" in source
     for field in ("workflow=", "route=", "state=", "duration_ms="):
         assert field in source
@@ -139,7 +139,7 @@ def test_turn_telemetry_carries_no_transcript():
 
     from ai.core import turn_service
 
-    source = inspect.getsource(turn_service.NormalizedTurnService.process)
+    source = inspect.getsource(turn_service.NormalizedTurnService._process_turn)
     telemetry = source[source.index("voice.turn modality=%s") :][:600]
     for forbidden in ("content", "message", "spoken_summary", "query"):
         assert f"{forbidden}," not in telemetry

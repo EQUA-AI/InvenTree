@@ -362,7 +362,7 @@ class QuestionTurnBindingTests(SimpleTestCase):
         """Source pin: the injection branch closes the question window."""
         from ai.core import turn_service as module
 
-        source = inspect.getsource(module.NormalizedTurnService.process)
+        source = inspect.getsource(module.NormalizedTurnService._process_turn)
         injection_block = source.split("injection_canonical is not None:")[1].split("else:")[0]
         self.assertIn("_abandon_pending_voice_write", injection_block)
         self.assertIn("_abandon_pending_question", injection_block)

@@ -86,7 +86,12 @@ class ChatThread(models.Model):
         max_length=16, choices=ThreadNamespace.choices, default=ThreadNamespace.UNSCOPED
     )
     title = models.CharField(max_length=255, blank=True, default='')
+    # S38 compaction: first line of ``summary`` is a <=60-char label, then a
+    # newline and the structured JSON body. Written only by the compaction
+    # job; ``summary_through_sequence`` is its watermark — messages with
+    # sequence <= watermark are represented by the summary.
     summary = models.TextField(blank=True, default='')
+    summary_through_sequence = models.PositiveBigIntegerField(default=0)
     last_workflow = models.CharField(max_length=100, blank=True, default='')
     next_sequence = models.PositiveBigIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -201,7 +206,13 @@ class ChatMessage(models.Model):
 
         ordering = ['sequence']
         indexes = [
-            models.Index(fields=['thread', 'sequence'], name='aichat_message_order_idx')
+            models.Index(
+                fields=['thread', 'sequence'], name='aichat_message_order_idx'
+            ),
+            # S36: the correlation spine's exit-gate join
+            # (message -> proposal -> WorkOrderEvent) enters through this
+            # column; unindexed it is a table scan.
+            models.Index(fields=['correlation_id'], name='aichat_msg_correlation_idx'),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -607,6 +618,14 @@ class ChatActionProposal(models.Model):
     )
     policy_version = models.CharField(max_length=64)
     idempotency_key = models.CharField(max_length=128)
+    # S36 correlation spine: the originating turn's server-minted correlation
+    # id, threaded into the tasks-service command at dispatch so one id joins
+    # utterance -> proposal -> WorkOrderEvent. Blank on pre-S36 rows (those
+    # keep the 3-hop idempotency_key join) and on proposals created outside a
+    # turn. Deliberately NOT part of the idempotent-replay comparison.
+    correlation_id = models.CharField(
+        max_length=100, blank=True, default='', db_index=True
+    )
     expires_at = models.DateTimeField()
     confirmed_at = models.DateTimeField(null=True, blank=True)
     receipt = models.JSONField(null=True, blank=True)

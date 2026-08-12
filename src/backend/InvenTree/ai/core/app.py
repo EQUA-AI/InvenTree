@@ -290,6 +290,13 @@ app = FastAPI(
     openapi_url="/openapi.json" if _expose_docs else None,
 )
 
+# S36: request spans for the AI plane. Dark by default — without a
+# configured tracer provider every span is a no-op, and an absent
+# instrumentation package (bare local venvs) is tolerated inside.
+from ai.core.tracing import instrument_fastapi  # noqa: E402
+
+instrument_fastapi(app)
+
 # Realtime Voice session routes (WS4). The router inherits the boundary
 # principal dependency above; feature flags keep every route fail-closed.
 from ai.core.voice.routes import router as _voice_router  # noqa: E402
@@ -538,6 +545,20 @@ async def health_check() -> HealthResponse:
     )
 
 
+def _server_correlation_id(principal: Any, idempotency_key: str, client_value: str | None) -> str:
+    """Mint the turn's correlation id server-side (S36).
+
+    A client-supplied value is never used — it could poison logs, collide
+    across users, or overflow the 100-char persistence columns. We do not
+    400 on it (breaking clients over a telemetry field is disproportionate);
+    a differing value is noted once and ignored.
+    """
+    minted = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{principal.subject}:{idempotency_key}"))
+    if client_value and client_value != minted:
+        logger.info("client correlation_id ignored; server-minted id used")
+    return minted
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     """Adapt typed REST chat to the shared normalized turn service."""
@@ -546,9 +567,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     if "user_id" in request.model_fields_set:
         _observe_legacy_identity(request.user_id, source="body")
     idempotency_key = request.idempotency_key or str(uuid.uuid4())
-    correlation_id = request.correlation_id or str(
-        uuid.uuid5(uuid.NAMESPACE_URL, f"{principal.subject}:{idempotency_key}")
-    )
+    correlation_id = _server_correlation_id(principal, idempotency_key, request.correlation_id)
     try:
         if request.modality != TurnModality.TEXT:
             raise ValueError("typed chat only accepts text modality")
@@ -620,9 +639,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     if "user_id" in request.model_fields_set:
         _observe_legacy_identity(request.user_id, source="body")
     idempotency_key = request.idempotency_key or str(uuid.uuid4())
-    correlation_id = request.correlation_id or str(
-        uuid.uuid5(uuid.NAMESPACE_URL, f"{principal.subject}:{idempotency_key}")
-    )
+    correlation_id = _server_correlation_id(principal, idempotency_key, request.correlation_id)
     try:
         if request.modality != TurnModality.TEXT:
             raise ValueError("typed chat only accepts text modality")
@@ -1044,58 +1061,11 @@ class HITLResponse(BaseModel):
     message: str
 
 
-# Global dict to track pending HITL requests
-# In production, this would be in Redis or similar
-_pending_hitl_requests: dict[str, dict[str, Any]] = {}
-
-
-def register_hitl_request(
-    request_id: str,
-    action: str,
-    details: dict[str, Any],
-    thread_id: str,
-    timeout_seconds: int = 300,
-) -> None:
-    """Register a pending HITL request."""
-    import time
-
-    _pending_hitl_requests[request_id] = {
-        "action": action,
-        "details": details,
-        "thread_id": thread_id,
-        "created_at": time.time(),
-        "expires_at": time.time() + timeout_seconds,
-        "status": "pending",
-    }
-
-
-def get_hitl_request(request_id: str) -> dict[str, Any] | None:
-    """Get a pending HITL request."""
-    import time
-
-    request = _pending_hitl_requests.get(request_id)
-    if request:  # noqa: SIM102
-        # Check if expired
-        if time.time() > request["expires_at"]:
-            request["status"] = "expired"
-    return request
-
-
-def resolve_hitl_request(
-    request_id: str,
-    approved: bool,
-    reason: str | None = None,
-    user_id: str = "anonymous",
-) -> dict[str, Any] | None:
-    """Resolve a pending HITL request."""
-    request = _pending_hitl_requests.get(request_id)
-    if request:
-        request["status"] = "approved" if approved else "rejected"
-        request["resolved_by"] = user_id
-        request["resolved_reason"] = reason
-        # Keep for a bit for status queries, then clean up
-        # In production, use TTL in Redis
-    return request
+# S35: the in-memory pending-request dict and its register/get/resolve
+# helpers were deleted. The rail was retired in WS7, the helpers had zero
+# callers, and per-process approval state violates the "no in-process
+# cross-request state" invariant (ai/README.md). The endpoints below remain
+# only to answer legacy clients with the retirement notice.
 
 
 @app.post("/hitl/respond", response_model=HITLResponse)
@@ -1156,8 +1126,6 @@ async def get_pending_hitl(
     Returns:
         List of pending HITL requests
     """
-    import time
-
     _observe_legacy_identity(user_id, source="query")
     repository = _repository(_principal())
     if thread_id:
@@ -1170,45 +1138,16 @@ async def get_pending_hitl(
     # from it. The authenticated proposal surface owns pending approvals.
     return []
 
-    pending = []
-
-    for request_id, request in _pending_hitl_requests.items():
-        # Filter by thread if specified
-        if thread_id and request.get("thread_id") != thread_id:
-            continue
-
-        # Only return pending requests
-        if request["status"] != "pending":
-            continue
-
-        # Check if expired
-        if time.time() > request["expires_at"]:
-            continue
-
-        request_thread_id = request.get("thread_id")
-        if request_thread_id:
-            try:
-                await sync_to_async(repository.get, thread_sensitive=True)(request_thread_id)
-            except (ThreadNotFound, ScopedThreadRejected):
-                continue
-
-        pending.append({
-            "request_id": request_id,
-            "action": request["action"],
-            "details": request["details"],
-            "thread_id": request.get("thread_id"),
-            "expires_in_seconds": int(request["expires_at"] - time.time()),
-        })
-
-    return pending
-
 
 @app.get("/rate-limit/stats")
 async def rate_limit_stats() -> dict[str, Any]:
-    """Get rate limiting statistics."""
+    """Get rate limiting statistics (per-process; counters live in the cache)."""
+    from ai.core.middleware.rate_limit import get_windowed_rate_limiter
+
     limiter = get_rate_limiter()
     return {
         "rate_limiting": limiter.get_stats(),
+        "windowed": get_windowed_rate_limiter().get_stats(),
         "config": {
             "max_requests_per_minute": rate_limit_config.max_requests_per_minute,
             "max_requests_per_hour": rate_limit_config.max_requests_per_hour,
