@@ -24,7 +24,11 @@ if TYPE_CHECKING:
 
 import logging
 
-logger = logging.getLogger(__name__)
+#: The legacy path's fail-soft warnings keep their PRE-extraction logger
+#: identity: ops filters, log configs, and assertLogs key on
+#: "ai.core.turn_service", and a refactor must not silently move records
+#: out from under them (S47 review finding).
+logger = logging.getLogger("ai.core.turn_service")
 
 #: The workflow-facing context dict. It starts as a splat of the trusted
 #: turn context and gains: modality, pinned_workflow_id,
