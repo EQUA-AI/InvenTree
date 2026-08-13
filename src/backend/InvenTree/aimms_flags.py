@@ -402,6 +402,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='B7 guided procedure walkthrough',
     ),
     FlagEntry(
+        'FEATURE_TOKEN_STREAMING',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_token_streaming',
+        description='S45 real token streaming on the wf8 text rail',
+    ),
+    FlagEntry(
         'AIMMS_MANUAL_GROUNDING_MODE',
         'literal',
         'shadow',

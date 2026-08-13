@@ -287,15 +287,43 @@ class RootWorkflow:
             await run_ctx.emit_executing(f"Running {decision.workflow_type.name}...")
 
             # Execute the workflow
-            # We support both streaming and non-streaming workflows
-            if hasattr(workflow, "execute_streaming"):
+            # We support both streaming and non-streaming workflows.
+            # S45: token streaming is flag-gated and TEXT-only — voice keeps
+            # the single-delta contract (the spoken-summary pipeline must
+            # never see partial text), and flag-off takes the classic
+            # execute() path so rollback is an env flip.
+            from ai.core.config import get_settings as _get_settings
+
+            # The flag chooses the path only when a workflow supports BOTH:
+            # a stream-only workflow always streams (pre-S45 semantics),
+            # while wf8 (both) streams only when the flag is on and the
+            # turn is text.
+            supports_streaming = hasattr(workflow, "execute_streaming")
+            supports_execute = hasattr(workflow, "execute")
+            use_token_streaming = supports_streaming and (
+                not supports_execute
+                or (
+                    _get_settings().feature_token_streaming
+                    and (aggregated_context or {}).get("modality") != "voice"
+                )
+            )
+            if use_token_streaming:
                 chunks = workflow.execute_streaming(
                     query=message,
                     thread_id=thread_id,
                     context=aggregated_context,
                 )
+                # This branch OWNS text emission: one start, a delta per
+                # chunk, one end — all inside the wall-clock bound.
+                started = False
                 async for chunk in self._bounded_stream(chunks, remaining):
+                    if not started:
+                        await run_ctx.emit_text_start()
+                        started = True
+                    await run_ctx.emit_text_delta(chunk)
                     yield chunk
+                if started:
+                    await run_ctx.emit_text_end()
             elif hasattr(workflow, "run_stream"):
                 # Agent Framework style
                 chunks = workflow.run_stream(

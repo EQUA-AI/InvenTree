@@ -140,6 +140,94 @@ class LookupResult:
     failure_class: str | None = None
 
 
+@dataclass
+class _PreparedLookupRun:
+    """Everything a prepared wf8 model run needs (S45 shared prep)."""
+
+    agent: Any
+    run_input: Any
+    runtime_tools: list[Any]
+    modality: str
+    enforce: bool
+
+
+def question_text_for_proposal(proposal: dict[str, Any], modality: str) -> str | None:
+    """Render the deterministic question, enforcing the voice budget.
+
+    Invariant: the rendered options and the proposal's options must stay
+    identical — the pending record persists exactly what was offered. On
+    voice the 700-char spoken ceiling is honoured by DROPPING options
+    (3 -> 2), never truncating labels; if two options still do not fit,
+    the promotion is abandoned (return ``None``) and the model's own text
+    stands.
+    """
+    from ai.core.questions.schema import render_question_text
+    from ai.core.turn_service import _SPOKEN_SUMMARY_MAX_CHARS
+
+    question_text = str(proposal.get("question_text") or "").strip()
+    options = list(proposal.get("options") or [])
+    if not question_text or len(options) < 2:
+        return None
+    if modality != "voice":
+        proposal["options"] = options[:4]
+        return render_question_text(question_text, proposal["options"], modality="text")
+    for width in (3, 2):
+        candidate = options[:width]
+        if len(candidate) < 2:
+            break
+        rendered = render_question_text(question_text, candidate, modality="voice")
+        if len(rendered) <= _SPOKEN_SUMMARY_MAX_CHARS:
+            proposal["options"] = candidate
+            return rendered
+    return None
+
+
+def apply_question_replacement(
+    response_text: str, *, modality: str, context: dict[str, Any] | None = None
+) -> str:
+    """Replace the model's text with the deterministic question, if proposed.
+
+    Peeks without consuming — the turn service's arming choke point owns
+    consumption. IDEMPOTENT and input-independent when it fires (the
+    rendered question replaces the text wholesale), so the turn service
+    applies it again after joining streamed chunks (S45) without caring
+    whether the workflow already did. A proposal that cannot be rendered
+    inside the voice budget is cleared so the slot is never armed with
+    unspoken options.
+    """
+    from ai.core.questions.promotion import (
+        consume_question_proposal,
+        pending_question_proposal,
+        set_question_proposal,
+    )
+
+    proposal = pending_question_proposal.get()
+    if proposal is None:
+        return response_text
+    resolution = (context or {}).get("question_resolution")
+    if isinstance(resolution, dict):
+        proposed_ids = {str(option.get("id") or "") for option in proposal.get("options") or []}
+        unmatched_reask = resolution.get("outcome") == "unmatched" and proposed_ids == set(
+            resolution.get("option_ids") or []
+        )
+        selected_id = str((resolution.get("option") or {}).get("id") or "")
+        selected_reask = bool(selected_id) and selected_id in proposed_ids
+        if proposed_ids and (unmatched_reask or selected_reask):
+            # Loop guard: never re-arm the question the user just failed
+            # to answer — or just answered; the model's own text stands.
+            consume_question_proposal()
+            return response_text
+    # Render against a copy; rendering may trim options (voice budget) and
+    # the pending record must persist exactly what was rendered.
+    trimmed = dict(proposal)
+    rendered = question_text_for_proposal(trimmed, modality)
+    if rendered is None:
+        consume_question_proposal()
+        return response_text
+    set_question_proposal(trimmed)
+    return rendered
+
+
 def _response_usage_metrics(response: Any) -> dict[str, int]:
     """Normalize provider usage without inferring unavailable token counts.
 
@@ -597,74 +685,13 @@ figure from an earlier turn as if you had just verified it."""
     def _apply_question_proposal(
         self, response_text: str, *, modality: str, context: dict[str, Any] | None = None
     ) -> str:
-        """Replace the model's text with the deterministic question, if proposed.
-
-        Peeks without consuming — the turn service's arming choke point owns
-        consumption. A proposal that cannot be rendered inside the voice
-        budget is cleared so the slot is never armed with unspoken options.
-        """
-        from ai.core.questions.promotion import (
-            consume_question_proposal,
-            pending_question_proposal,
-            set_question_proposal,
-        )
-
-        proposal = pending_question_proposal.get()
-        if proposal is None:
-            return response_text
-        resolution = (context or {}).get("question_resolution")
-        if isinstance(resolution, dict):
-            proposed_ids = {str(option.get("id") or "") for option in proposal.get("options") or []}
-            unmatched_reask = resolution.get("outcome") == "unmatched" and proposed_ids == set(
-                resolution.get("option_ids") or []
-            )
-            selected_id = str((resolution.get("option") or {}).get("id") or "")
-            selected_reask = bool(selected_id) and selected_id in proposed_ids
-            if proposed_ids and (unmatched_reask or selected_reask):
-                # Loop guard: never re-arm the question the user just failed
-                # to answer — or just answered; the model's own text stands.
-                consume_question_proposal()
-                return response_text
-        # Render against a copy; rendering may trim options (voice budget) and
-        # the pending record must persist exactly what was rendered.
-        trimmed = dict(proposal)
-        rendered = self._question_text_for_proposal(trimmed, modality)
-        if rendered is None:
-            consume_question_proposal()
-            return response_text
-        set_question_proposal(trimmed)
-        return rendered
+        """Delegate to the module-level helper (shared with the S45 seam)."""
+        return apply_question_replacement(response_text, modality=modality, context=context)
 
     @staticmethod
     def _question_text_for_proposal(proposal: dict[str, Any], modality: str) -> str | None:
-        """Render the deterministic question, enforcing the voice budget.
-
-        Invariant: the rendered options and the proposal's options must stay
-        identical — the pending record persists exactly what was offered. On
-        voice the 700-char spoken ceiling is honoured by DROPPING options
-        (3 -> 2), never truncating labels; if two options still do not fit,
-        the promotion is abandoned (return ``None``) and the model's own text
-        stands.
-        """
-        from ai.core.questions.schema import render_question_text
-        from ai.core.turn_service import _SPOKEN_SUMMARY_MAX_CHARS
-
-        question_text = str(proposal.get("question_text") or "").strip()
-        options = list(proposal.get("options") or [])
-        if not question_text or len(options) < 2:
-            return None
-        if modality != "voice":
-            proposal["options"] = options[:4]
-            return render_question_text(question_text, proposal["options"], modality="text")
-        for width in (3, 2):
-            candidate = options[:width]
-            if len(candidate) < 2:
-                break
-            rendered = render_question_text(question_text, candidate, modality="voice")
-            if len(rendered) <= _SPOKEN_SUMMARY_MAX_CHARS:
-                proposal["options"] = candidate
-                return rendered
-        return None
+        """Delegate to the module-level helper (kept for callers/tests)."""
+        return question_text_for_proposal(proposal, modality)
 
     async def _get_agent(
         self, *, voice: bool = False, read_only: bool = False, clarify: bool = False
@@ -832,6 +859,130 @@ figure from an earlier turn as if you had just verified it."""
                 raise
             return None
 
+    async def _prepare_run(
+        self,
+        *,
+        query: str,
+        lookup_type: LookupType,
+        context: dict[str, Any] | None,
+        start_time: float,
+    ) -> LookupResult | _PreparedLookupRun:
+        """Shared pre-run machinery for execute() and execute_streaming().
+
+        Tool RBAC, capability selection, clarify/reselect, structured
+        clarification, agent choice, and run-input composition — extracted
+        so the S45 streaming path can never drift from the classic path. A
+        LookupResult return is TERMINAL (no model run); otherwise the
+        prepared bundle is ready for agent.run / agent.run_stream.
+        """
+        import time
+
+        is_voice = context is not None and context.get("modality") == "voice"
+        voice_read_only = is_voice and get_settings().feature_voice_readonly_tools
+
+        # Offer only the tools this user's InvenTree roles permit; the
+        # filtered list is memoized per permission profile and keeps a
+        # stable order so provider prompt caching stays effective. Voice
+        # turns start from the read-only subset (Tier-1 safety).
+        from ai.core.tools.rbac import tools_for_current_user
+
+        tools = await tools_for_current_user(self._base_tools_for(is_voice=is_voice))
+
+        selection = self._capability_selection(
+            query=query,
+            lookup_type=lookup_type,
+            context=context,
+            current_tools=tools,
+        )
+        enforce = get_settings().feature_capability_broker_enforce
+        enforce_selection = enforce and selection is not None and not selection.requires_specialist
+        runtime_tools = list(selection.tools) if enforce_selection else tools
+        # A selection that matched nothing yields no tools. Answering anyway
+        # is how an empty tool result becomes a confident wrong figure, so the
+        # turn switches to asking instead -- except for social turns, which
+        # match no capability by nature. "Hello." was reaching the clarify
+        # agent and coming back as "What would you like me to check -- such
+        # as a part, order, category...", after 4-6s and a "Let me check
+        # that" filler, because a greeting scores no pack.
+        clarify = (
+            enforce_selection and selection.clarification_required and not _is_social_turn(query)
+        )
+        resolution_context = (context or {}).get("question_resolution")
+        selected_option = (
+            resolution_context.get("option") if isinstance(resolution_context, dict) else None
+        )
+        if clarify and isinstance(selected_option, dict) and selected_option.get("label"):
+            # The user JUST answered a structured question — asking
+            # anything again is never right (observed live 2026-08-08: a
+            # selection whose origin was itself a fragment carried no
+            # capability term, re-entered clarify, and re-carded). Reframe
+            # as a lookup on the chosen record so selection attaches the
+            # machine pack; the resolution hint pins the machine below.
+            # The reframe carries the most recent substantive user message
+            # too: without it the reselect toolset was machines-only, and
+            # a "manual lockout steps" question answered post-selection
+            # with "no manual attached" (battery finding 2026-08-10).
+            intent = self._recent_substantive_user_content(context)
+            reselect_query = f"machine overview for {selected_option['label']}"
+            if intent:
+                reselect_query = f"{intent} — {reselect_query}"
+            reselect = self._capability_selection(
+                query=reselect_query,
+                lookup_type=lookup_type,
+                context=context,
+                current_tools=tools,
+            )
+            if reselect is not None and not reselect.clarification_required:
+                selection = reselect
+                enforce_selection = enforce and not selection.requires_specialist
+                runtime_tools = list(selection.tools) if enforce_selection else tools
+                clarify = False
+        modality_for_question = "voice" if is_voice else "text"
+        if clarify:
+            # S22: when the sentence itself named enough (machines or
+            # category terms) to offer real options, ask deterministically
+            # -- no LLM call at all. Fewer than two options falls back to
+            # the free-text clarify agent unchanged.
+            structured = await self._structured_clarification(
+                query, context, modality=modality_for_question
+            )
+            if structured is not None:
+                execution_time = (time.perf_counter() - start_time) * 1000
+                return LookupResult(
+                    lookup_type=lookup_type,
+                    success=True,
+                    data={"raw_response": structured},
+                    formatted_response=structured,
+                    execution_time_ms=execution_time,
+                )
+        agent = await self._get_agent(
+            voice=voice_read_only and not clarify,
+            read_only=enforce_selection and not voice_read_only and not clarify,
+            clarify=clarify,
+        )
+
+        # NOTE: no max_tokens here — reasoning deployments (gpt-5.6-luna)
+        # reject it, demanding max_completion_tokens instead.
+        modality = "voice" if is_voice else "text"
+        run_input = self._run_input(query, context)
+        if enforce_selection and runtime_tools:
+            # Gate on the tools actually being passed, which is the real
+            # invariant: telling a turn to "resolve the category first" is
+            # only coherent if it has something to resolve it with. Gating
+            # on `clarify` instead let a social turn (V18) and a
+            # history-inheriting turn (V12) receive the hint with an empty
+            # toolset.
+            run_input = self._with_category_hint(run_input, query, context)
+            run_input = self._with_question_resolution(run_input, context)
+            run_input = self._with_locale_hint(run_input, context)
+        return _PreparedLookupRun(
+            agent=agent,
+            run_input=run_input,
+            runtime_tools=runtime_tools,
+            modality=modality,
+            enforce=enforce,
+        )
+
     async def execute(
         self,
         query: str,
@@ -877,112 +1028,21 @@ figure from an earlier turn as if you had just verified it."""
         )
 
         try:
-            is_voice = context is not None and context.get("modality") == "voice"
-            voice_read_only = is_voice and get_settings().feature_voice_readonly_tools
-
-            # Offer only the tools this user's InvenTree roles permit; the
-            # filtered list is memoized per permission profile and keeps a
-            # stable order so provider prompt caching stays effective. Voice
-            # turns start from the read-only subset (Tier-1 safety).
-            from ai.core.tools.rbac import tools_for_current_user
-
-            tools = await tools_for_current_user(self._base_tools_for(is_voice=is_voice))
-
-            selection = self._capability_selection(
+            prepared = await self._prepare_run(
                 query=query,
                 lookup_type=lookup_type,
                 context=context,
-                current_tools=tools,
+                start_time=start_time,
             )
-            enforce = get_settings().feature_capability_broker_enforce
-            enforce_selection = (
-                enforce and selection is not None and not selection.requires_specialist
-            )
-            runtime_tools = list(selection.tools) if enforce_selection else tools
-            # A selection that matched nothing yields no tools. Answering anyway
-            # is how an empty tool result becomes a confident wrong figure, so the
-            # turn switches to asking instead -- except for social turns, which
-            # match no capability by nature. "Hello." was reaching the clarify
-            # agent and coming back as "What would you like me to check -- such
-            # as a part, order, category...", after 4-6s and a "Let me check
-            # that" filler, because a greeting scores no pack.
-            clarify = (
-                enforce_selection
-                and selection.clarification_required
-                and not _is_social_turn(query)
-            )
-            resolution_context = (context or {}).get("question_resolution")
-            selected_option = (
-                resolution_context.get("option") if isinstance(resolution_context, dict) else None
-            )
-            if clarify and isinstance(selected_option, dict) and selected_option.get("label"):
-                # The user JUST answered a structured question — asking
-                # anything again is never right (observed live 2026-08-08: a
-                # selection whose origin was itself a fragment carried no
-                # capability term, re-entered clarify, and re-carded). Reframe
-                # as a lookup on the chosen record so selection attaches the
-                # machine pack; the resolution hint pins the machine below.
-                # The reframe carries the most recent substantive user message
-                # too: without it the reselect toolset was machines-only, and
-                # a "manual lockout steps" question answered post-selection
-                # with "no manual attached" (battery finding 2026-08-10).
-                intent = self._recent_substantive_user_content(context)
-                reselect_query = f"machine overview for {selected_option['label']}"
-                if intent:
-                    reselect_query = f"{intent} — {reselect_query}"
-                reselect = self._capability_selection(
-                    query=reselect_query,
-                    lookup_type=lookup_type,
-                    context=context,
-                    current_tools=tools,
-                )
-                if reselect is not None and not reselect.clarification_required:
-                    selection = reselect
-                    enforce_selection = enforce and not selection.requires_specialist
-                    runtime_tools = list(selection.tools) if enforce_selection else tools
-                    clarify = False
-            modality_for_question = "voice" if is_voice else "text"
-            if clarify:
-                # S22: when the sentence itself named enough (machines or
-                # category terms) to offer real options, ask deterministically
-                # -- no LLM call at all. Fewer than two options falls back to
-                # the free-text clarify agent unchanged.
-                structured = await self._structured_clarification(
-                    query, context, modality=modality_for_question
-                )
-                if structured is not None:
-                    execution_time = (time.perf_counter() - start_time) * 1000
-                    return LookupResult(
-                        lookup_type=lookup_type,
-                        success=True,
-                        data={"raw_response": structured},
-                        formatted_response=structured,
-                        execution_time_ms=execution_time,
-                    )
-            agent = await self._get_agent(
-                voice=voice_read_only and not clarify,
-                read_only=enforce_selection and not voice_read_only and not clarify,
-                clarify=clarify,
-            )
-
-            # NOTE: no max_tokens here — reasoning deployments (gpt-5.6-luna)
-            # reject it, demanding max_completion_tokens instead.
-            modality = "voice" if is_voice else "text"
-            run_input = self._run_input(query, context)
-            if enforce_selection and runtime_tools:
-                # Gate on the tools actually being passed, which is the real
-                # invariant: telling a turn to "resolve the category first" is
-                # only coherent if it has something to resolve it with. Gating
-                # on `clarify` instead let a social turn (V18) and a
-                # history-inheriting turn (V12) receive the hint with an empty
-                # toolset.
-                run_input = self._with_category_hint(run_input, query, context)
-                run_input = self._with_question_resolution(run_input, context)
-                run_input = self._with_locale_hint(run_input, context)
+            if isinstance(prepared, LookupResult):
+                return prepared
+            runtime_tools = prepared.runtime_tools
+            enforce = prepared.enforce
+            modality = prepared.modality
             with bind_capability_run(
                 workflow="wf8", modality=modality, selected_tools=runtime_tools
             ):
-                response = await agent.run(run_input, tools=runtime_tools)
+                response = await prepared.agent.run(prepared.run_input, tools=runtime_tools)
 
             # Extract response text
             response_text = ""
@@ -1051,6 +1111,102 @@ figure from an earlier turn as if you had just verified it."""
                 error="lookup_failed",
                 failure_class=classify_turn_failure(e).value,
             )
+
+    async def execute_streaming(
+        self,
+        query: str,
+        lookup_type: LookupType = LookupType.GENERAL_LOOKUP,
+        thread_id: str = "",
+        context: dict[str, Any] | None = None,
+    ):
+        """Stream a T1 lookup's answer as text chunks (S45, flag-gated at root).
+
+        Same pre-run machinery as execute() via _prepare_run — terminal
+        branches (social replies, structured clarification) yield their
+        whole text once. The deterministic question replacement is NOT
+        applied here: the turn service applies the shared
+        apply_question_replacement to the joined text and reconciles the
+        client via MESSAGES_SNAPSHOT, so streamed paraphrase never becomes
+        the durable answer. Failures raise RuntimeError with a stamped
+        failure_class so the S38 taxonomy classifies them across the
+        generator boundary.
+        """
+        import time
+
+        start_time = time.perf_counter()
+
+        social = _social_reply(query)
+        if social is not None:
+            yield social
+            return
+
+        logger.info(
+            "Executing T1 lookup (streaming)",
+            extra={"thread_id": thread_id, "lookup_type": lookup_type.value},
+        )
+
+        def _raise_classified(exc: Exception) -> None:
+            from ai.core.failure_taxonomy import classify_turn_failure
+
+            logger.error(
+                "T1 streaming lookup failed",
+                extra={
+                    "thread_id": thread_id,
+                    "lookup_type": lookup_type.value,
+                    "error_type": type(exc).__name__,
+                },
+            )
+            failure = RuntimeError("lookup_failed")
+            failure.failure_class = classify_turn_failure(exc).value
+            raise failure from exc
+
+        try:
+            prepared = await self._prepare_run(
+                query=query,
+                lookup_type=lookup_type,
+                context=context,
+                start_time=start_time,
+            )
+        except Exception as exc:
+            _raise_classified(exc)
+        if isinstance(prepared, LookupResult):
+            if prepared.formatted_response:
+                yield prepared.formatted_response
+            return
+
+        usage_metrics: dict[str, int] = {}
+        try:
+            with bind_capability_run(
+                workflow="wf8",
+                modality=prepared.modality,
+                selected_tools=prepared.runtime_tools,
+            ):
+                async for update in prepared.agent.run_stream(
+                    prepared.run_input, tools=prepared.runtime_tools
+                ):
+                    metrics = _response_usage_metrics(update)
+                    if any(metrics.values()):
+                        # Usage rides the terminal update(s); keep the last
+                        # non-empty reading.
+                        usage_metrics = metrics
+                    text = getattr(update, "text", "") or ""
+                    if text:
+                        yield text
+        except Exception as exc:
+            _raise_classified(exc)
+
+        record_usage("wf8_lookup", usage_metrics)
+        logger.info(
+            "T1 lookup complete",
+            extra={
+                "thread_id": thread_id,
+                "execution_time_ms": (time.perf_counter() - start_time) * 1000,
+                "tool_count": len(prepared.runtime_tools),
+                "capability_broker_enforced": prepared.enforce,
+                "streaming": True,
+                **usage_metrics,
+            },
+        )
 
 
 class T1LookupWorkflowBuilder:

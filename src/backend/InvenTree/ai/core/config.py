@@ -266,6 +266,13 @@ class Settings(BaseSettings):
             "FEATURE_THREAD_COMPACTION", "AIMMS_FEATURE_THREAD_COMPACTION"
         ),
     )
+    # S45: real token streaming on the wf8/general fast TEXT rail. Dark by
+    # default; the reasoning rail, voice turns, and replay stay single-delta
+    # structurally regardless of this flag.
+    feature_token_streaming: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_TOKEN_STREAMING", "AIMMS_FEATURE_TOKEN_STREAMING"),
+    )
     # S40: NLI groundedness cascade. Dark this phase — the model deps ship in
     # the never-installed ai/requirements-eval.txt and only the offline
     # eval harness exists; live cascade wiring is Phase 8.

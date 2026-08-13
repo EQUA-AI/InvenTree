@@ -1835,6 +1835,34 @@ export function useAIChat(config: AIChatConfig = {}) {
                             break;
                           }
 
+                          case AGUIEventType.MESSAGES_SNAPSHOT: {
+                            // S45 reconciliation: the server's FINAL text
+                            // supersedes whatever streamed (question
+                            // replacement, grounding downgrade). Replace the
+                            // bubble wholesale — idempotent, and the exact
+                            // semantics the AG-UI client adoption (S49/S50)
+                            // expects later.
+                            const snapshotEvent = event as unknown as {
+                              messages?: Array<{
+                                role?: string;
+                                content?: string;
+                              }>;
+                            };
+                            const assistantEntry = (
+                              snapshotEvent.messages ?? []
+                            ).find((entry) => entry?.role === 'assistant');
+                            if (
+                              assistantEntry &&
+                              typeof assistantEntry.content === 'string'
+                            ) {
+                              updateMessage(
+                                assistantMessage.id,
+                                assistantEntry.content
+                              );
+                            }
+                            break;
+                          }
+
                           case AGUIEventType.RUN_ERROR: {
                             const errorEvent = event as AGUIRunErrorEvent;
                             throw new AIRunError(

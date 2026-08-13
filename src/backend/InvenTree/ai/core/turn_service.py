@@ -163,6 +163,51 @@ class _EventCapture:
                 self.workflow_id = str(workflow_id)
 
 
+def coalesce_text_deltas(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse streamed text deltas for durable storage (S45).
+
+    Token streaming multiplies TEXT_MESSAGE_CONTENT records; stored turns
+    must keep TODAY'S single-delta shape so idempotency replay stays
+    byte-compatible with every existing turn and stale client, and canonical
+    JSON growth stays zero. Consecutive TEXT_MESSAGE_CONTENT records with
+    the same messageId merge into one; when a MESSAGES_SNAPSHOT follows
+    (the S45 reconciliation event), its assistant content becomes the
+    merged delta and the snapshot record itself is dropped from storage —
+    replay then emits exactly the final text.
+    """
+    snapshot_content: str | None = None
+    for record in events:
+        if record.get("type") == EventType.MESSAGES_SNAPSHOT.value:
+            for entry in record.get("messages") or []:
+                if isinstance(entry, dict) and entry.get("role") == "assistant":
+                    snapshot_content = str(entry.get("content") or "")
+
+    coalesced: list[dict[str, Any]] = []
+    for record in events:
+        if record.get("type") == EventType.MESSAGES_SNAPSHOT.value:
+            continue
+        if (
+            record.get("type") == EventType.TEXT_MESSAGE_CONTENT.value
+            and coalesced
+            and coalesced[-1].get("type") == EventType.TEXT_MESSAGE_CONTENT.value
+            and coalesced[-1].get("messageId") == record.get("messageId")
+        ):
+            merged = dict(coalesced[-1])
+            merged["delta"] = str(merged.get("delta") or "") + str(record.get("delta") or "")
+            coalesced[-1] = merged
+            continue
+        coalesced.append(record)
+
+    if snapshot_content is not None:
+        for index in range(len(coalesced) - 1, -1, -1):
+            if coalesced[index].get("type") == EventType.TEXT_MESSAGE_CONTENT.value:
+                replaced = dict(coalesced[index])
+                replaced["delta"] = snapshot_content
+                coalesced[index] = replaced
+                break
+    return coalesced
+
+
 def _machine_name_matches(name: str, lowered_content: str) -> bool:
     """Token-based utterance match for a machine display name.
 
@@ -1873,7 +1918,24 @@ class NormalizedTurnService:
                     ):
                         chunks.append(str(chunk))
 
-                message = "".join(chunks)
+                streamed_text = "".join(chunks)
+                # S45/S22: the deterministic question replacement is applied
+                # HERE for both paths — wf8's own application (classic path)
+                # already replaced the text, and the shared helper is
+                # idempotent (it renders from the pending proposal, ignoring
+                # the input), so streamed turns get the identical replacement
+                # without the workflow retro-editing its stream.
+                message = streamed_text
+                try:
+                    from ai.core.workflows.wf8_lookup import apply_question_replacement
+
+                    message = apply_question_replacement(
+                        message,
+                        modality="voice" if modality == TurnModality.VOICE else "text",
+                        context=workflow_context,
+                    )
+                except Exception:  # pragma: no cover - replacement is fail-soft
+                    logger.warning("question replacement failed", exc_info=False)
                 grounding_meta = None
                 try:
                     # S27 seam: after message assembly, before the canonical
@@ -1936,6 +1998,24 @@ class NormalizedTurnService:
                         grounding_meta = assessment.to_meta()
                 except Exception:  # pragma: no cover - grounding must fail soft
                     logger.warning("manual grounding evaluation failed", exc_info=False)
+                # S45 reconciliation: whenever the FINAL message differs from
+                # what was emitted as text (question replacement, grounding
+                # enforce-downgrade — a mismatch that predates streaming and
+                # was latent on the single-delta path too), one
+                # MESSAGES_SNAPSHOT tells the client to replace the bubble
+                # wholesale. Emitted before events freeze so replay carries
+                # the truth.
+                if message != streamed_text:
+                    try:
+                        await isolated_emitter.emit(
+                            AGUIEvent(
+                                event_type=EventType.MESSAGES_SNAPSHOT,
+                                data={"messages": [{"role": "assistant", "content": message}]},
+                                thread_id=thread.pk,
+                            )
+                        )
+                    except Exception:  # pragma: no cover - advisory event
+                        logger.warning("messages snapshot emit failed", exc_info=False)
                 response = _canonical_response_for_legacy(
                     message, speakable=modality == TurnModality.VOICE
                 )
@@ -1968,7 +2048,7 @@ class NormalizedTurnService:
             )
             if question_resolution is not None:
                 canonical["question_resolution"] = question_resolution.audit_payload()
-            canonical["events"] = capture.events
+            canonical["events"] = coalesce_text_deltas(capture.events)
             canonical = await self._transform_proposals(
                 canonical,
                 actor=actor,
@@ -1995,7 +2075,7 @@ class NormalizedTurnService:
                 output_content=message,
                 output_metadata=_terminal_output_metadata({
                     "response_state": response_state,
-                    "events": capture.events,
+                    "events": coalesce_text_deltas(capture.events),
                     "spoken_summary": str(canonical.get("spoken_summary") or ""),
                     # S22: the card and its resolution ride message metadata so
                     # the /threads projection can reproduce them on reload.
@@ -2063,7 +2143,7 @@ class NormalizedTurnService:
                 "spoken_summary": "",
                 "reasoning_provenance": None,
                 "route": None,
-                "events": capture.events,
+                "events": coalesce_text_deltas(capture.events),
             }
             await asyncio.shield(
                 self._call_sync(
@@ -2074,7 +2154,7 @@ class NormalizedTurnService:
                     output_content=response.detailed_response,
                     output_metadata=_terminal_output_metadata({
                         "response_state": TurnState.CANCELED,
-                        "events": capture.events,
+                        "events": coalesce_text_deltas(capture.events),
                         "spoken_summary": "",
                     }),
                     workflow_id=capture.workflow_id or "",
@@ -2107,7 +2187,7 @@ class NormalizedTurnService:
                 "spoken_summary": "",
                 "reasoning_provenance": None,
                 "route": None,
-                "events": capture.events,
+                "events": coalesce_text_deltas(capture.events),
             }
             finalized = await self._call_sync(
                 repository.terminal,
@@ -2117,7 +2197,7 @@ class NormalizedTurnService:
                 output_content=response.detailed_response,
                 output_metadata=_terminal_output_metadata({
                     "response_state": TurnState.INCOMPLETE,
-                    "events": capture.events,
+                    "events": coalesce_text_deltas(capture.events),
                     "spoken_summary": "",
                 }),
                 workflow_id=capture.workflow_id or "",
@@ -2186,7 +2266,7 @@ class NormalizedTurnService:
                 "spoken_summary": "",
                 "reasoning_provenance": None,
                 "route": None,
-                "events": capture.events,
+                "events": coalesce_text_deltas(capture.events),
             }
             await self._call_sync(
                 repository.terminal,
@@ -2196,7 +2276,7 @@ class NormalizedTurnService:
                 output_content=response.detailed_response,
                 output_metadata=_terminal_output_metadata({
                     "response_state": TurnState.FAILED,
-                    "events": capture.events,
+                    "events": coalesce_text_deltas(capture.events),
                     "spoken_summary": "",
                 }),
                 workflow_id=capture.workflow_id or "",
