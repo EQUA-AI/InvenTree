@@ -119,6 +119,15 @@ class Command(BaseCommand):
         sections.append('// --- AG-UI event types (ai.core.streaming.EventType) ---\n')
         sections.append(_emit_event_enum())
 
+        sections.append(
+            '// --- S49 /agui CUSTOM channels (ai.core.agui.translate) ---\n'
+        )
+        from ai.core.agui.translate import CUSTOM_CHANNELS
+
+        sections.append(
+            f'export type AimmsCustomChannel =\n  | {_ts_string_union(list(CUSTOM_CHANNELS))};\n'
+        )
+
         sections.append('// --- Proposal rail (aichat.models) ---\n')
         action_values = [str(choice.value) for choice in ProposalAction]
         sections.append(

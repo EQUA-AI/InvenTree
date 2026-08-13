@@ -418,6 +418,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='S46 content-free tool/step events on the chat stream',
     ),
     FlagEntry(
+        'FEATURE_AGUI_ENDPOINT',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_agui_endpoint',
+        description='S49 spec-clean AG-UI adapter route (/agui)',
+    ),
+    FlagEntry(
         'AIMMS_MANUAL_GROUNDING_MODE',
         'literal',
         'shadow',

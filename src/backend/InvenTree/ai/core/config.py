@@ -280,6 +280,13 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("FEATURE_TOOL_EVENTS", "AIMMS_FEATURE_TOOL_EVENTS"),
     )
+    # S49: the spec-clean AG-UI adapter route. Off ⇒ /agui 404s at request
+    # time (indistinguishable from absent); the frontend's auto wire
+    # selection keys off the /threads capabilities advertisement.
+    feature_agui_endpoint: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_AGUI_ENDPOINT", "AIMMS_FEATURE_AGUI_ENDPOINT"),
+    )
     # S40: NLI groundedness cascade. Dark this phase — the model deps ship in
     # the never-installed ai/requirements-eval.txt and only the offline
     # eval harness exists; live cascade wiring is Phase 8.

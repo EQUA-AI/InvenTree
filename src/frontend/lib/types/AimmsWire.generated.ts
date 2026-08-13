@@ -46,6 +46,19 @@ export enum AGUIEventType {
   CUSTOM = 'CUSTOM',
 }
 
+// --- S49 /agui CUSTOM channels (ai.core.agui.translate) ---
+
+export type AimmsCustomChannel =
+  | 'aimms.error'
+  | 'aimms.toolStatus'
+  | 'aimms.question'
+  | 'aimms.entities'
+  | 'aimms.provenance'
+  | 'aimms.stateDelta'
+  | 'aimms.proposalsRefresh'
+  | 'aimms.hitl'
+  | 'aimms.custom';
+
 // --- Proposal rail (aichat.models) ---
 
 export type ProposalActionType =

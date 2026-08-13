@@ -245,8 +245,13 @@ def test_contentful_tool_events_have_no_emit_sites() -> None:
         text = path.read_text()
         # The streaming helpers may REFERENCE the enum members; what must not
         # exist is a sink/emit call site outside streaming.py's dormant
-        # helpers.
+        # helpers. The S49 translator likewise only REFERENCES them to map
+        # stored records at the /agui edge (TOOL_CALL_RESULT is skipped;
+        # TOOL_CALL_ARGS is a defensive passthrough for records the internal
+        # rail never produces — which is exactly what this test pins).
         if path.name == "streaming.py":
+            continue
+        if path.parent.name == "agui" and path.name == "translate.py":
             continue
         if "EventType.TOOL_CALL_ARGS" in text or "EventType.TOOL_CALL_RESULT" in text:
             offenders.append(str(path))

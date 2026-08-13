@@ -148,6 +148,9 @@ class ThreadSyncResponse(BaseModel):
     # S32b: read-only threads granted to the caller (empty when the
     # feature is dark, so the response shape is always stable).
     shared_threads: list[ThreadInfo] = []
+    # S49: server capability advertisement. The frontend's auto wire
+    # selection keys off capabilities["agui"]; old clients ignore the key.
+    capabilities: dict[str, bool] = {}
 
 
 class ThreadMessage(BaseModel):
@@ -304,6 +307,12 @@ from ai.core.voice.routes import router as _voice_router  # noqa: E402
 
 app.include_router(_voice_router)
 
+# S49: the spec-clean AG-UI adapter. Dark behind feature_agui_endpoint
+# (404 at request time); same auth inheritance as the voice router.
+from ai.core.agui.routes import router as _agui_router  # noqa: E402
+
+app.include_router(_agui_router)
+
 # Configure CORS - restrict to InvenTree frontend origins
 # Set CORS_ALLOWED_ORIGINS env var for production:
 #   CORS_ALLOWED_ORIGINS="https://your-inventree-domain.com,https://app.inventree.com"
@@ -338,6 +347,8 @@ rate_limit_config = RateLimitConfig(
     endpoint_limits={
         "/chat": {"per_minute": 10, "per_hour": 100},
         "/chat/stream": {"per_minute": 10, "per_hour": 100},
+        # S49: the AG-UI adapter is the same model rail as /chat/stream.
+        "/agui": {"per_minute": 10, "per_hour": 100},
     },
 )
 app.add_middleware(
@@ -826,6 +837,7 @@ async def list_threads(
         sync_token=None,
         has_more=total > len(threads),
         shared_threads=shared_threads,
+        capabilities={"agui": bool(getattr(get_settings(), "feature_agui_endpoint", False))},
     )
 
 

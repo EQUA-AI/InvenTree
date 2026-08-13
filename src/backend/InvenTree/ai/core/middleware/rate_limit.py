@@ -432,8 +432,10 @@ class RateLimitStats:
 # ===== FastAPI Middleware =====
 
 #: The endpoints that actually spend tokens (normalized paths). The S37
-#: budget gate applies only here — see the middleware comment.
-_BUDGETED_ENDPOINTS = re.compile(r"/chat|/chat/stream|/voice/sessions/[^/]+/turns")
+#: budget gate applies only here — see the middleware comment. Matched with
+#: fullmatch: a new spending route MUST be added as a literal alternative
+#: (S49 added /agui) or it silently bypasses the budget.
+_BUDGETED_ENDPOINTS = re.compile(r"/chat|/chat/stream|/voice/sessions/[^/]+/turns|/agui")
 
 
 def normalized_route_path(scope: dict[str, Any]) -> str:
