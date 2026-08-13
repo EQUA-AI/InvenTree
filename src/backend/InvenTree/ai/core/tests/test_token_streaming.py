@@ -271,15 +271,16 @@ class TestGuards:
         assert '!= "voice"' in guard
 
     def test_turn_service_reconciles_before_freezing_events(self) -> None:
+        """S47: the legacy post-run transforms moved to the execution stage."""
         import inspect
 
-        from ai.core import turn_service
+        from ai.core.turn import execution
 
-        source = inspect.getsource(turn_service.NormalizedTurnService)
+        source = inspect.getsource(execution._run_legacy_workflow)
         assert "MESSAGES_SNAPSHOT" in source
         # Reconciliation must precede the canonical wrapper on the legacy path.
         assert source.index("message != streamed_text") < source.index(
-            "response = _canonical_response_for_legacy(\n                    message"
+            "response = _canonical_response_for_legacy("
         )
 
     def test_reconciliation_and_replacement_are_flag_gated(self) -> None:
@@ -289,9 +290,9 @@ class TestGuards:
         MESSAGES_SNAPSHOT emit."""
         import inspect
 
-        from ai.core import turn_service
+        from ai.core.turn import execution
 
-        source = inspect.getsource(turn_service.NormalizedTurnService)
+        source = inspect.getsource(execution._run_legacy_workflow)
         gate = source.index("streaming_reconcile = (")
         assert "feature_token_streaming" in source[gate : gate + 300]
         assert "modality != TurnModality.VOICE" in source[gate : gate + 300]

@@ -116,26 +116,37 @@ def test_root_workflow_honours_the_server_workflow_pin():
 
 
 def test_turn_service_pins_voice_turns_to_the_routed_workflow():
+    """S47: the pin-assembly moved to the execution stage module."""
     import inspect
 
-    from ai.core import turn_service
+    from ai.core.turn import execution
 
-    source = inspect.getsource(turn_service)
+    source = inspect.getsource(execution)
     assert 'workflow_context["pinned_workflow_id"]' in source
     # Defaults to the read lookup workflow when the router named none.
     assert 'or "wf8"' in source
 
 
 def test_injection_guard_runs_before_pending_writes_and_routing():
-    """Ordering is the control: an injected turn must not confirm a write."""
+    """Ordering is the control: an injected turn must not confirm a write.
+
+    S47 split the invariant across the stage seam: inside the pending
+    stage the injection refusal precedes the write resolution, and in the
+    orchestrator the pending stage precedes the routing stage.
+    """
     import inspect
 
     from ai.core import turn_service
+    from ai.core.turn import pending
 
-    source = inspect.getsource(turn_service.NormalizedTurnService._process_turn)
-    guard = source.index("_refuse_instruction_override")
-    pending = source.index("_resolve_pending_voice_write")
-    routing = source.index("route = self._route_turn")
+    stage_source = inspect.getsource(pending.resolve_preconditions)
+    guard = stage_source.index("_refuse_instruction_override")
+    write = stage_source.index("_resolve_pending_voice_write")
+    assert guard < write, "injection guard must precede pending-write resolution"
 
-    assert guard < pending, "injection guard must precede pending-write resolution"
-    assert guard < routing, "injection guard must precede routing"
+    orchestrator = inspect.getsource(turn_service.NormalizedTurnService._process_turn)
+    pending_call = orchestrator.index("pending.resolve_preconditions")
+    routing_call = orchestrator.index("routing.build_route")
+    execution_call = orchestrator.index("execution.build_canonical")
+    assert pending_call < routing_call, "pending resolution must precede routing"
+    assert routing_call < execution_call, "routing must precede execution"

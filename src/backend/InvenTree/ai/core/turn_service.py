@@ -23,10 +23,8 @@ from ai.core.streaming import (
 )
 from ai.core.tools.read_only import READ_ONLY_TOOLS
 from ai.core.usage import (
-    TurnUsageLedger,
     estimate_tokens,
     record_usage,
-    turn_usage_ledger,
 )
 from aichat.models import ThreadNamespace, TurnModality, TurnState
 from aichat.services import IdempotencyConflict, ThreadRepository
@@ -1163,447 +1161,51 @@ class NormalizedTurnService:
         the workflow intersects it with the actor's authorized record roots.
         """
 
-        if not content.strip():
-            raise ValueError("turn content must not be empty")
-        if modality not in TurnModality.values:
-            raise ValueError("unsupported turn modality")
-        if not idempotency_key.strip():
-            raise ValueError("idempotency key is required")
-        if server_pinned_workflow is not None and not server_pinned_workflow.strip():
-            raise ValueError("server_pinned_workflow must be a workflow id when set")
-        if server_generation_target is not None and (
-            not isinstance(server_generation_target, dict)
-            or not set(server_generation_target) <= {"machine_id", "repair_packet_id"}
-            or not all(
-                isinstance(value, int) and not isinstance(value, bool)
-                for value in server_generation_target.values()
-            )
-        ):
-            raise ValueError(
-                "server_generation_target accepts int machine_id/repair_packet_id only"
-            )
+        from ai.core.turn import execution, intake, pending, routing
 
-        # S24: a fresh ledger per turn. Rebinding (rather than set/reset)
-        # guarantees no cross-turn leakage even when a turn exits early —
-        # the next turn always starts from an empty ledger.
-        turn_usage_ledger.set(TurnUsageLedger())
-        # S36: bind the turn's correlation id for infrastructure that logs
-        # outside this call graph's arguments (reflection middleware, spans).
-        # Same rebinding idiom as the ledger: never leaks across turns.
-        from ai.core.correlation import bind_correlation
-
-        bind_correlation(correlation_id)
-
-        trusted = _json_value(trusted_context)
-        metadata = _json_value(modality_metadata or {}, reject_audio=True)
-        fingerprint = turn_request_fingerprint(
+        run = await intake.begin(
+            self,
+            actor=actor,
+            thread_id=thread_id,
             content=content,
             modality=modality,
-            trusted_context=trusted,
-            modality_metadata=metadata,
-        )
-
-        repository = await self._call_sync(self.repository_factory, actor, trusted_context)
-        thread, created = await self._call_sync(
-            repository.get_or_create, thread_id, title=content.strip()[:255]
-        )
-        if not created and getattr(thread, "title", None) == "":
-            thread = await self._call_sync(repository.rename, thread.pk, content.strip()[:255])
-        begin = await self._call_sync(
-            repository.begin_turn,
-            thread.pk,
-            content=content,
-            modality=modality,
-            trusted_context=trusted,
-            modality_metadata=metadata,
+            trusted_context=trusted_context,
+            modality_metadata=modality_metadata,
             idempotency_key=idempotency_key,
-            request_fingerprint=fingerprint,
             correlation_id=correlation_id,
+            server_pinned_workflow=server_pinned_workflow,
+            server_generation_target=server_generation_target,
         )
-
-        if begin.replayed:
-            turn = begin.turn
-            if not turn.is_terminal or not isinstance(turn.canonical_result, dict):
-                raise TurnAlreadyRunning("turn with this idempotency key is running")
-            await self._emit_replay(emitter, turn.canonical_result)
+        if run.replayed_canonical is not None:
+            await self._emit_replay(emitter, run.replayed_canonical)
             return self._result_from_canonical(
-                thread.pk, turn.pk, turn.canonical_result, replayed=True
+                run.thread.pk, run.turn.pk, run.replayed_canonical, replayed=True
             )
 
-        turn = begin.turn
+        repository = run.repository
+        thread = run.thread
+        turn = run.turn
         isolated_emitter = emitter or InMemoryEventEmitter()
         capture = _EventCapture(thread.pk)
         unsubscribe = await isolated_emitter.subscribe(capture)
-        chunks: list[str] = []
+        run.emitter = isolated_emitter
+        run.capture = capture
 
         # Hands-free voice has no visible confirmation step, so speech must be
         # structurally unable to execute an effect (contract §0.2): the fence
         # makes every write tool fail closed for the whole voice execution.
         turn_started = time.perf_counter()
+        run.turn_started = turn_started
         fence_token = READ_ONLY_TOOLS.set(True) if modality == TurnModality.VOICE else None
 
         try:
-            # First of all: an attempt to rewrite the assistant's instructions is
-            # refused outright. This must precede BOTH the pending-write
-            # resolution and routing -- an injected turn may neither confirm a
-            # stored write nor reach a workflow. Ordering is the control here.
-            injection_canonical = await self._refuse_instruction_override(
-                content=content,
-                modality=modality,
-                thread_id=thread.pk,
-                turn_id=turn.pk,
-                emitter=isolated_emitter,
-            )
-            # Before routing: a confirmation reply to a pending Tier-3 write
-            # ("yes"/"confirm delete") would otherwise route like any request,
-            # so the pending confirmation must capture this turn first.
-            if injection_canonical is not None:
-                # A refused turn must still CLOSE the confirmation window. Merely
-                # skipping resolution left the proposal armed, so a bare "yes"
-                # one turn later executed it -- the injection would have been a
-                # way to step over the one-turn window rather than be stopped by
-                # it.
-                self._abandon_pending_voice_write(modality=modality, thread_id=thread.pk)
-                # The same reasoning closes the question window (S22 invariant
-                # 3): a refused turn abandons the pending question.
-                self._abandon_pending_question(thread_id=thread.pk)
-                write_canonical = None
-                question_resolution = None
-            else:
-                write_canonical = await self._resolve_pending_voice_write(
-                    actor=actor,
-                    trusted_context=trusted_context,
-                    content=content,
-                    modality=modality,
-                    thread_id=thread.pk,
-                    turn_id=turn.pk,
-                    emitter=isolated_emitter,
-                )
-                if write_canonical is not None:
-                    # A write confirmation captured the turn; the question slot
-                    # is consumed and discarded -- it was not answered.
-                    self._abandon_pending_question(thread_id=thread.pk)
-                    question_resolution = None
-                else:
-                    # S22 answer binder: consume-on-read, exactly once. A
-                    # non-answer returns None and the turn routes normally.
-                    question_resolution = self._resolve_pending_question(
-                        content=content, modality=modality, thread_id=thread.pk
-                    )
-
-            # An accepted selection re-routes the ORIGINAL intent enriched by
-            # the selected option label; both parts come from the persisted
-            # record, never from anything the client echoed back. The raw
-            # answer text stays the persisted user message untouched.
-            routing_content = content
-            if question_resolution is not None and question_resolution.outcome == "selected":
-                routing_content = question_resolution.routing_content
-
-            diagnostic_context = await self._build_diagnostic_context(
-                actor=actor,
-                trusted_context=trusted_context,
-                content=routing_content,
-                modality=modality,
-            )
-            from ai.core.tracing import set_span_attrs as _set_span_attrs
-            from ai.core.tracing import turn_span as _turn_span
-
-            with _turn_span("aimms.route", correlation_id=correlation_id) as route_span:
-                route = self._route_turn(
-                    actor=actor,
-                    trusted_context=trusted_context,
-                    content=routing_content,
-                    modality=modality,
-                    modality_metadata=metadata,
-                    diagnostic_context=diagnostic_context,
-                )
-                _set_span_attrs(
-                    route_span,
-                    route_mode=getattr(getattr(route, "mode", None), "value", None),
-                    workflow_id=getattr(route, "target_workflow_id", None),
-                )
-
-            route_mode = getattr(getattr(route, "mode", None), "value", None)
-            if injection_canonical is not None:
-                # Refusal wins over every other branch, including a pending write.
-                canonical = injection_canonical
-            elif write_canonical is not None:
-                # A pending write confirmation resolved; it supersedes routing.
-                canonical = write_canonical
-            elif question_resolution is not None and question_resolution.outcome == "declined":
-                # A declined question is terminal: acknowledge and invite a
-                # rephrase. It never routes and never executes anything.
-                canonical = await self._question_declined_canonical(
-                    thread_id=thread.pk,
-                    turn_id=turn.pk,
-                    modality=modality,
-                    route=route,
-                    emitter=isolated_emitter,
-                    locale=getattr(trusted_context, "locale", "en"),
-                )
-            elif (
-                server_pinned_workflow is None
-                and route_mode == "reasoning"
-                and self.reasoning_adapter is not None
-            ):
-                canonical = await self._reasoning_canonical(
-                    actor=actor,
-                    trusted_context=trusted_context,
-                    thread_id=thread.pk,
-                    turn_id=turn.pk,
-                    content=routing_content,
-                    modality=modality,
-                    route=route,
-                    diagnostic_context=diagnostic_context,
-                    emitter=isolated_emitter,
-                )
-            elif server_pinned_workflow is None and route_mode == "advisory_intent":
-                canonical = None
-                if modality == TurnModality.VOICE:
-                    _log_voice_write_confirmation_shadow(content, thread.pk)
-                    # Opt-in Tier-3: try to turn this effect turn into a
-                    # confirmable write proposal (read-back). None -> stay
-                    # advisory and read-only.
-                    canonical = await self._begin_voice_write(
-                        actor=actor,
-                        trusted_context=trusted_context,
-                        content=content,
-                        thread_id=thread.pk,
-                        turn_id=turn.pk,
-                        emitter=isolated_emitter,
-                    )
-                if canonical is None:
-                    response = _canonical_advisory_intent(
-                        voice=modality == TurnModality.VOICE,
-                        action_available=(
-                            modality == TurnModality.VOICE and self._voice_write_enabled()
-                        ),
-                        locale=getattr(trusted_context, "locale", "en"),
-                    )
-                    message = response.detailed_response
-                    await self._emit_canonical_events(
-                        emitter=isolated_emitter,
-                        thread_id=thread.pk,
-                        run_id=f"advisory:{turn.pk}",
-                        workflow_id="advisory_intent",
-                        workflow_name="ADVISORY_INTENT",
-                        message=message,
-                        response_state=response.response_state.value,
-                    )
-                    canonical = {
-                        "thread_id": thread.pk,
-                        "turn_id": turn.pk,
-                        "message": message,
-                        "agent": "complexity_router",
-                        "workflow_used": "advisory_intent",
-                        "response_state": response.response_state.value,
-                        "canonical_response": response.model_dump(mode="json"),
-                        "spoken_summary": response.spoken_summary,
-                        "reasoning_provenance": None,
-                        "route": route.to_dict(),
-                    }
-            else:
-                workflow = self.workflow_factory()
-                # S27: fresh capture ledger for this turn; the invocation
-                # middleware records every tool result into it so grounding
-                # can compare the answer against what the server returned.
-                from ai.core.tools.capture_ledger import bind_tool_captures
-
-                capture_ledger = bind_tool_captures()
-                workflow_context = dict(trusted)
-                workflow_context["modality"] = modality
-                if server_pinned_workflow is not None:
-                    # A trusted in-process caller selected the workflow itself;
-                    # its pin wins over routing the same way the voice pin does.
-                    workflow_context["pinned_workflow_id"] = server_pinned_workflow
-                    if server_generation_target is not None:
-                        workflow_context["server_generation_target"] = dict(
-                            server_generation_target
-                        )
-                elif modality == TurnModality.VOICE:
-                    # Pin the workflow the voice router already chose. Without
-                    # this the legacy router re-decides from scratch and can pick
-                    # a write-tier workflow for a voice turn (observed: wf4
-                    # procurement). Voice may only land on read workflows.
-                    pinned = getattr(route, "target_workflow_id", None) or "wf8"
-                    workflow_context["pinned_workflow_id"] = pinned
-                # Client hints remain visibly and semantically untrusted. They
-                # are nested so no caller value can overwrite a server field.
-                untrusted_context = metadata.get("untrusted_client_context")
-                if isinstance(untrusted_context, dict):
-                    workflow_context["untrusted_client_context"] = untrusted_context
-                uploaded_files = metadata.get("uploaded_files")
-                if isinstance(uploaded_files, list):
-                    workflow_context["uploaded_files"] = uploaded_files
-                # Server-derived (owner-scoped rows from our own store), so it sits
-                # alongside the other trusted fields. Its *content* is still
-                # user-authored text and must be read as data, never instructions.
-                history = await self._conversation_history(repository, thread.pk)
-                if history:
-                    workflow_context["conversation_history"] = history
-                if question_resolution is not None and question_resolution.outcome == "selected":
-                    # Trusted context: the selected option's server-persisted
-                    # ref, so wf8 can pin e.g. the machine filter exactly.
-                    workflow_context["question_resolution"] = question_resolution.context_payload()
-                elif question_resolution is not None and question_resolution.outcome == "unmatched":
-                    # Loop guard input: producers must not re-ask the exact
-                    # question this reply just failed to answer.
-                    workflow_context["question_resolution"] = (
-                        question_resolution.unmatched_payload()
-                    )
-
-                from ai.core.tracing import turn_span as _turn_span
-
-                with _turn_span(
-                    "aimms.workflow.execute",
-                    workflow_id=workflow_context.get("pinned_workflow_id"),
-                    correlation_id=correlation_id,
-                ):
-                    # S46: bind the content-free tool-event sink for this
-                    # turn (flag-gated). The invocation-guard middleware
-                    # emits through it from any agent-framework depth.
-                    from contextlib import ExitStack as _ExitStack
-
-                    from ai.core.config import get_settings as _get_settings
-                    from ai.core.tool_events import bind_tool_event_sink
-
-                    with _ExitStack() as sink_stack:
-                        if getattr(_get_settings(), "feature_tool_events", False):
-                            sink_stack.enter_context(
-                                bind_tool_event_sink(isolated_emitter, thread.pk, f"run:{turn.pk}")
-                            )
-                        async for chunk in workflow.run_stream(
-                            message=routing_content,
-                            emitter=isolated_emitter,
-                            thread_id=thread.pk,
-                            user_id=actor.user_pk,
-                            context=workflow_context,
-                        ):
-                            chunks.append(str(chunk))
-
-                streamed_text = "".join(chunks)
-                # S45: the post-hoc question replacement and the snapshot
-                # reconciliation run ONLY when the token-streaming rail could
-                # have produced the text (flag on, non-voice). Flag off, wf8's
-                # own in-workflow application already produced the final text
-                # and the classic path must stay byte-identical (ships-dark);
-                # voice keeps the workflow's voice-trimmed rendering — a
-                # second render would re-trim an already-trimmed proposal
-                # (the trim loop-guard is not idempotent).
-                streaming_reconcile = (
-                    getattr(_get_settings(), "feature_token_streaming", False)
-                    and modality != TurnModality.VOICE
-                )
-                message = streamed_text
-                if streaming_reconcile:
-                    try:
-                        from ai.core.workflows.wf8_lookup import apply_question_replacement
-
-                        message = apply_question_replacement(
-                            message,
-                            modality="text",
-                            context=workflow_context,
-                        )
-                    except Exception:  # pragma: no cover - replacement is fail-soft
-                        logger.warning("question replacement failed", exc_info=False)
-                grounding_meta = None
-                try:
-                    # S27 seam: after message assembly, before the canonical
-                    # wrapper, so a downgrade is what gets persisted AND
-                    # spoken. Fail-soft: a grounding error ships the answer.
-                    from ai.core.config import get_settings
-                    from ai.core.grounding import (
-                        enum_closure_sets,
-                        evaluate_manual_grounding,
-                        machine_serials,
-                    )
-
-                    grounding_mode = str(get_settings().manual_grounding_mode)
-                    closure: frozenset[str] = frozenset()
-                    serials: frozenset[str] = frozenset()
-                    if grounding_mode in ("shadow", "enforce"):
-                        machine_roots = [
-                            root
-                            for root in getattr(diagnostic_context, "record_roots", ())
-                            if getattr(root, "entity_type", "") == "machine"
-                        ]
-                        machine_ids = [root.entity_id for root in machine_roots]
-                        # P8-W0a: the fence seed is the machines the
-                        # UTTERANCE names (token match), never the whole
-                        # scope — record_roots holds every in-scope machine,
-                        # and a scope-wide seed can neither catch an
-                        # in-scope wrong-machine citation nor stay honest
-                        # under root truncation. No name match => the turn
-                        # does not identify a machine => fence inert.
-                        lowered_utterance = content.lower()
-                        matched_ids = [
-                            root.entity_id
-                            for root in machine_roots
-                            if _machine_name_matches(
-                                str(getattr(root, "display_name", "") or ""),
-                                lowered_utterance,
-                            )
-                        ]
-                        if machine_ids:
-                            actor_user = await self._call_sync(
-                                self._rehydrate_user_for_grounding, actor
-                            )
-                            if actor_user is not None:
-                                closure = await self._call_sync(
-                                    enum_closure_sets, actor_user, machine_ids
-                                )
-                                if matched_ids:
-                                    serials = await self._call_sync(
-                                        machine_serials, actor_user, matched_ids
-                                    )
-                    message, assessment = evaluate_manual_grounding(
-                        message=message,
-                        ledger=capture_ledger,
-                        mode=grounding_mode,
-                        locale=getattr(trusted_context, "locale", "en"),
-                        closure_values=closure,
-                        turn_machine_serials=serials,
-                    )
-                    if assessment is not None:
-                        grounding_meta = assessment.to_meta()
-                except Exception:  # pragma: no cover - grounding must fail soft
-                    logger.warning("manual grounding evaluation failed", exc_info=False)
-                # S45 reconciliation: whenever the FINAL message differs from
-                # what was emitted as text (question replacement, grounding
-                # enforce-downgrade), one MESSAGES_SNAPSHOT tells the client
-                # to replace the bubble wholesale. Emitted before events
-                # freeze so replay carries the truth. Same gate as the
-                # replacement above: flag off, the wire and storage must stay
-                # byte-identical to the pre-S45 shape (the latent
-                # enforce-downgrade divergence stays latent until the flip).
-                if streaming_reconcile and message != streamed_text:
-                    try:
-                        await isolated_emitter.emit(
-                            AGUIEvent(
-                                event_type=EventType.MESSAGES_SNAPSHOT,
-                                data={"messages": [{"role": "assistant", "content": message}]},
-                                thread_id=thread.pk,
-                            )
-                        )
-                    except Exception:  # pragma: no cover - advisory event
-                        logger.warning("messages snapshot emit failed", exc_info=False)
-                response = _canonical_response_for_legacy(
-                    message, speakable=modality == TurnModality.VOICE
-                )
-                canonical = {
-                    "thread_id": thread.pk,
-                    "turn_id": turn.pk,
-                    "message": message,
-                    "agent": "root_workflow",
-                    "workflow_used": capture.workflow_id,
-                    "response_state": TurnState.COMPLETE,
-                    "canonical_response": response.model_dump(mode="json"),
-                    "spoken_summary": response.spoken_summary,
-                    "reasoning_provenance": None,
-                    "route": route.to_dict() if route is not None else None,
-                }
-                if grounding_meta is not None:
-                    canonical["grounding"] = grounding_meta
+            # Stage order is the security contract: injection refusal and
+            # pending-window resolution (pending.resolve_preconditions)
+            # strictly precede routing (routing.build_route), and routing
+            # strictly precedes execution.
+            await pending.resolve_preconditions(self, run)
+            await routing.build_route(self, run)
+            canonical = await execution.build_canonical(self, run)
             # S22 arming choke point: a producer proposed a question via the
             # promotion ContextVar; the turn service owns the invariants, so
             # the record save, the persisted QUESTION event, and the canonical
@@ -1617,8 +1219,8 @@ class NormalizedTurnService:
                 modality=modality,
                 emitter=isolated_emitter,
             )
-            if question_resolution is not None:
-                canonical["question_resolution"] = question_resolution.audit_payload()
+            if run.question_resolution is not None:
+                canonical["question_resolution"] = run.question_resolution.audit_payload()
             # Live alias: the arming and manifest seams below append to
             # capture.events and must land in the canonical; the coalesced
             # freeze happens immediately before the terminal write.
@@ -1634,7 +1236,7 @@ class NormalizedTurnService:
             # canonical["events"]), so replay reproduces the chips.
             canonical = await self._attach_entity_manifest(
                 canonical,
-                diagnostic_context=diagnostic_context,
+                diagnostic_context=run.diagnostic_context,
                 thread_id=thread.pk,
                 turn_id=turn.pk,
                 emitter=isolated_emitter,

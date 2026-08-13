@@ -359,10 +359,14 @@ class QuestionTurnBindingTests(SimpleTestCase):
         self.assertIsNone(store.take("thread_q"))
 
     def test_injection_branch_abandons_the_pending_question(self) -> None:
-        """Source pin: the injection branch closes the question window."""
-        from ai.core import turn_service as module
+        """Source pin: the injection branch closes the question window.
 
-        source = inspect.getsource(module.NormalizedTurnService._process_turn)
+        S47 moved the pending-resolution block into its stage module; the
+        invariant (a refused turn closes BOTH pending windows) is unchanged.
+        """
+        from ai.core.turn import pending as module
+
+        source = inspect.getsource(module.resolve_preconditions)
         injection_block = source.split("injection_canonical is not None:")[1].split("else:")[0]
         self.assertIn("_abandon_pending_voice_write", injection_block)
         self.assertIn("_abandon_pending_question", injection_block)
