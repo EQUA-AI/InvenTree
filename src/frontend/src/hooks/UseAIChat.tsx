@@ -4,6 +4,11 @@ import { api } from '../App';
 import { getCsrfCookie } from '../functions/auth';
 import { useLocalState } from '../states/LocalState';
 import { useUserState } from '../states/UserState';
+import {
+  AguiRunError,
+  AguiUnavailableError,
+  runAguiTurn
+} from './AguiTransport';
 
 // ===== Retry Configuration =====
 
@@ -462,7 +467,16 @@ interface ThreadSyncResponse {
   has_more: boolean;
   /** S32b: read-only threads granted to the caller ([] when dark). */
   shared_threads?: ServerThreadInfo[];
+  /** S49: server capability advertisement (absent on older backends). */
+  capabilities?: Record<string, boolean>;
 }
+
+/**
+ * S50: the last capabilities advertisement seen on /threads. Module scope by
+ * design — the flag is server-global, and the auto wire selection must work
+ * before any particular hook instance re-fetches.
+ */
+let lastServerCapabilities: Record<string, boolean> = {};
 
 /**
  * Server message format
@@ -560,11 +574,31 @@ async function fetchServerThreads(
       return null;
     }
 
-    return (await response.json()) as ThreadSyncResponse;
+    const data = (await response.json()) as ThreadSyncResponse;
+    if (data.capabilities && typeof data.capabilities === 'object') {
+      lastServerCapabilities = data.capabilities;
+    }
+    return data;
   } catch (error) {
     console.error('Error fetching server threads:', error);
     return null;
   }
+}
+
+/**
+ * S50 wire selection: 'legacy' | 'agui' via the localStorage escape hatch
+ * (`aimms.wire`), else auto — agui iff the server advertised it on the last
+ * /threads sync. `sessionDisabled` is the mid-session 404/405 fallback latch.
+ */
+function wirePreference(sessionDisabled: boolean): 'agui' | 'legacy' {
+  try {
+    const stored = localStorage.getItem('aimms.wire');
+    if (stored === 'legacy' || stored === 'agui') return stored;
+  } catch {
+    // Storage unavailable (private mode) — fall through to auto.
+  }
+  if (sessionDisabled) return 'legacy';
+  return lastServerCapabilities.agui === true ? 'agui' : 'legacy';
 }
 
 /**
@@ -939,6 +973,9 @@ export function useAIChat(config: AIChatConfig = {}) {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const syncInProgressRef = useRef(false);
+  // S50: latched when /agui answers 404/405 mid-session — the rest of the
+  // session stays on the legacy wire without further probing.
+  const aguiDisabledRef = useRef(false);
   const storedThreadsRef = useRef(storedThreads);
   const activeThreadIdRef = useRef(activeThreadId);
   storedThreadsRef.current = storedThreads;
@@ -1608,6 +1645,10 @@ export function useAIChat(config: AIChatConfig = {}) {
           // Includes retry logic for transient failures
           let retryAttempt = 0;
           const retryConfig = DEFAULT_RETRY_CONFIG;
+          // S50: wire selection — official client against /agui, or the
+          // legacy hand-rolled SSE path (kept byte-for-byte as the escape
+          // hatch and for servers that have not enabled the adapter).
+          let wire = wirePreference(aguiDisabledRef.current);
 
           while (retryAttempt < retryConfig.maxAttempts) {
             try {
@@ -1618,6 +1659,136 @@ export function useAIChat(config: AIChatConfig = {}) {
                 resetStreamingMessage(assistantMessage.id);
               }
               messageIdMap.clear();
+
+              if (wire === 'agui') {
+                try {
+                  await runAguiTurn({
+                    url: `${aiHost}/agui`,
+                    threadId: activeThreadId ?? undefined,
+                    message: userContent.trim(),
+                    fileIds:
+                      fileIds && fileIds.length > 0 ? fileIds : undefined,
+                    idempotencyKey,
+                    signal: abortControllerRef.current!.signal,
+                    csrfToken: getCsrfCookie() || undefined,
+                    callbacks: {
+                      onTextStart: (messageId) => {
+                        messageIdMap.set(messageId, assistantMessage.id);
+                      },
+                      onTextDelta: (_messageId, delta) => {
+                        appendToMessage(assistantMessage.id, delta);
+                      },
+                      onMessagesSnapshot: (content) => {
+                        updateMessage(assistantMessage.id, content);
+                      },
+                      onToolStart: (entry) => {
+                        upsertToolActivity(assistantMessage.id, {
+                          id: entry.id,
+                          name: entry.name,
+                          status: 'running'
+                        });
+                      },
+                      onToolEnd: () => {
+                        // Provisional no-op: the real status/duration ride
+                        // the aimms.toolStatus CUSTOM that follows.
+                      },
+                      onToolStatus: (value) => {
+                        if (value.toolCallId) {
+                          upsertToolActivity(assistantMessage.id, {
+                            id: value.toolCallId,
+                            name: value.toolCallName ?? '',
+                            status:
+                              value.status === 'denied' ||
+                              value.status === 'error'
+                                ? value.status
+                                : 'ok',
+                            durationMs: value.durationMs
+                          });
+                        }
+                      },
+                      onQuestion: (value) => {
+                        const questionEvent = value as {
+                          kind?: string;
+                          interrupt_id?: string;
+                          question_text?: string;
+                          options?: QuestionOption[];
+                          expires_at?: string;
+                          source?: string;
+                        };
+                        if (
+                          questionEvent.kind === 'clarification_question' &&
+                          questionEvent.interrupt_id &&
+                          Array.isArray(questionEvent.options)
+                        ) {
+                          attachQuestion(assistantMessage.id, {
+                            kind: 'clarification_question',
+                            interrupt_id: questionEvent.interrupt_id,
+                            question_text: String(
+                              questionEvent.question_text ?? ''
+                            ),
+                            options: questionEvent.options,
+                            expires_at: questionEvent.expires_at,
+                            source: questionEvent.source
+                          });
+                        }
+                      },
+                      onEntities: (entities) => {
+                        attachEntities(
+                          assistantMessage.id,
+                          (entities as EntityChip[]).filter(
+                            (e) =>
+                              e &&
+                              typeof e.model === 'string' &&
+                              Number.isInteger(e.pk)
+                          )
+                        );
+                      },
+                      onProvenance: (evidence, confidence) => {
+                        attachProvenance(
+                          assistantMessage.id,
+                          evidence as DiagnosisEvidence[],
+                          confidence
+                        );
+                      },
+                      onProposalsRefresh: () => {
+                        window.dispatchEvent(
+                          new CustomEvent('aimms:proposals-refresh')
+                        );
+                      }
+                    }
+                  });
+
+                  // Mark streaming as complete and save (same finalize as
+                  // the legacy success tail).
+                  setMessages((prev) => {
+                    const updated = prev.map((msg) =>
+                      msg.id === assistantMessage.id
+                        ? { ...msg, isStreaming: false }
+                        : msg
+                    );
+                    saveCurrentThread(updated, undefined, true);
+                    return updated;
+                  });
+                  break;
+                } catch (aguiError: unknown) {
+                  if (aguiError instanceof AguiUnavailableError) {
+                    // Flag off / older backend: latch this session onto the
+                    // legacy wire and resend the SAME logical turn (the
+                    // idempotency key is unchanged).
+                    aguiDisabledRef.current = true;
+                    wire = 'legacy';
+                    continue;
+                  }
+                  if (aguiError instanceof AguiRunError) {
+                    throw new AIRunError(
+                      aguiError.message,
+                      aguiError.failureClass,
+                      aguiError.localizedMessage
+                    );
+                  }
+                  throw aguiError;
+                }
+              }
 
               const response = await fetch(streamingEndpoint!, {
                 method: 'POST',

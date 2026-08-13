@@ -41,6 +41,8 @@
         "compile": "lingui compile --typescript"
     },
     "dependencies": {
+        "@ag-ui/client": "0.0.57",
+        "@ag-ui/core": "0.0.57",
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/lang-liquid": "^6.3.2",
         "@codemirror/language": "^6.12.2",

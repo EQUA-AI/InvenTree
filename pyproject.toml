@@ -136,6 +136,8 @@ sections=["FUTURE","STDLIB","DJANGO","THIRDPARTY","FIRSTPARTY","LOCALFOLDER"]
 [tool.codespell]
 # responde/momento/deine/ist/recommandation are es/de/fr words in the ai i18n templates
 ignore-words-list = ["assertIn","SME","intoto","fitH","responde","momento","deine","ist","recommandation","maschine"]
+# Lockfile integrity hashes false-positive constantly.
+skip = "src/frontend/package-lock.json"
 
 [tool.pytest]
 django_find_project = false

@@ -298,8 +298,10 @@ export function ChatActionProposalList() {
     void refresh();
     const interval = window.setInterval(() => void refresh(), 30_000);
     // S46: a finished chat turn nudges an immediate refresh so a proposal
-    // minted by the turn you just watched appears now; the poll stays as
-    // the backstop until S49's STATE_DELTA replaces it.
+    // minted by the turn you just watched appears now; on the S49/S50 agui
+    // wire the same event is dispatched from the aimms.proposalsRefresh
+    // CUSTOM channel. The 30s poll stays as the backstop; a full proposal
+    // state push (proposal_transformer seam) is a named follow-up.
     const onTurnFinished = () => void refresh();
     window.addEventListener('aimms:proposals-refresh', onTurnFinished);
     return () => {
