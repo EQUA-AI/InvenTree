@@ -42,9 +42,18 @@ class ToolEventSink:
     thread_id: str
     run_id: str
     _emitted: int = field(default=0, init=False)
+    #: Calls whose START made it onto the wire. Their END always follows —
+    #: a cap that lands mid-pair would strand an open TOOL_CALL_START, which
+    #: sticks the activity strip on "running" and makes the AG-UI client's
+    #: verifyEvents reject the run's finish (P9 review finding: MAF runs
+    #: parallel tool calls, so STARTs and ENDs interleave freely).
+    _open: set[str] = field(default_factory=set, init=False)
 
     async def started(self, tool_call_id: str, tool_name: str) -> None:
         """TOOL_CALL_START: the call exists; nothing about its arguments."""
+        if self._emitted >= MAX_TOOL_EVENTS_PER_TURN:
+            return
+        self._open.add(tool_call_id)
         await self._emit(
             EventType.TOOL_CALL_START,
             {"toolCallId": tool_call_id, "toolCallName": tool_name},
@@ -58,6 +67,11 @@ class ToolEventSink:
         duration_ms: float,
     ) -> None:
         """TOOL_CALL_END: ok | denied | error, with wall-clock duration."""
+        if tool_call_id in self._open:
+            self._open.discard(tool_call_id)
+        elif self._emitted >= MAX_TOOL_EVENTS_PER_TURN:
+            # No START on the wire and the cap is hit: drop the END too.
+            return
         await self._emit(
             EventType.TOOL_CALL_END,
             {
@@ -69,8 +83,6 @@ class ToolEventSink:
         )
 
     async def _emit(self, event_type: EventType, data: dict[str, Any]) -> None:
-        if self._emitted >= MAX_TOOL_EVENTS_PER_TURN:
-            return
         self._emitted += 1
         try:
             await self.emitter.emit(

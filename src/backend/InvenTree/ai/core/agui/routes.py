@@ -37,9 +37,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["agui"])
 
 
-@router.post("/agui")
-async def run_agui(run_input: RunAgentInput, request: Request) -> StreamingResponse:
-    """Run one agent turn over the official AG-UI protocol."""
+@router.api_route(
+    "/agui",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    include_in_schema=False,
+)
+async def run_agui(request: Request) -> StreamingResponse:
+    """Run one agent turn over the official AG-UI protocol.
+
+    Dark-shape discipline: the FLAG CHECK runs before body parsing and
+    before method dispatch, so a flag-off deployment answers 404 to every
+    method and every body — indistinguishable from an absent route (a
+    pydantic-typed body parameter would 422 malformed input before the
+    handler could 404). The route is also excluded from the OpenAPI schema.
+    """
     # Runtime imports from the app module: the router is included mid-module,
     # so a module-level import would be circular (voice routes precedent).
     from ai.core.app import (
@@ -57,9 +68,19 @@ async def run_agui(run_input: RunAgentInput, request: Request) -> StreamingRespo
         ScopedThreadRejected,
         ThreadNotFound,
     )
+    from pydantic import ValidationError
 
     if not getattr(get_settings(), "feature_agui_endpoint", False):
         raise HTTPException(status_code=404, detail="Not found")
+    if request.method != "POST":
+        raise HTTPException(status_code=405, detail="Method not allowed")
+
+    try:
+        run_input = RunAgentInput.model_validate(await request.json())
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors(include_url=False)) from None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Request body must be JSON") from None
 
     principal = _principal()
     try:
@@ -91,8 +112,11 @@ async def run_agui(run_input: RunAgentInput, request: Request) -> StreamingRespo
         )
         metadata = await _turn_metadata(
             principal,
+            # thread_id must ride along: uploads are authorized against the
+            # thread, and _turn_metadata rejects file_ids without one.
             ChatRequest(
                 message=content,
+                thread_id=run_input.thread_id,
                 file_ids=run_input.forwarded_props.file_ids,
             ),
         )

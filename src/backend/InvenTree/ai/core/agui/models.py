@@ -16,13 +16,31 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class AGUIInputMessage(BaseModel):
-    """One inbound protocol message; only the last user one is consumed."""
+    """One inbound protocol message; only the last user one is consumed.
+
+    ``content`` accepts the full spec union — a string OR a list of content
+    parts (text/image/audio/...). Non-text parts are IGNORED, never 422'd:
+    the endpoint's contract is that spec-valid input is always accepted.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     id: str | None = None
     role: str = ""
-    content: str | None = None
+    content: str | list[Any] | None = None
+
+    def text_content(self) -> str:
+        """The message's text: the string itself, or joined text parts."""
+        if isinstance(self.content, str):
+            return self.content
+        if isinstance(self.content, list):
+            parts = [
+                str(part.get("text") or "")
+                for part in self.content
+                if isinstance(part, dict) and part.get("type") == "text"
+            ]
+            return "\n".join(part for part in parts if part)
+        return ""
 
 
 class AGUIForwardedProps(BaseModel):
@@ -64,6 +82,8 @@ def derive_user_message(run_input: RunAgentInput) -> str:
     Raises ValueError when no non-empty user message exists (route → 400).
     """
     for message in reversed(run_input.messages):
-        if message.role == "user" and isinstance(message.content, str) and message.content.strip():
-            return message.content
+        if message.role == "user":
+            text = message.text_content()
+            if text.strip():
+                return text
     raise ValueError("RunAgentInput must carry at least one user message with text content")

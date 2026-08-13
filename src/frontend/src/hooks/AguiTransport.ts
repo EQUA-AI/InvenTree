@@ -232,7 +232,15 @@ export async function runAguiTurn(options: AguiTurnOptions): Promise<void> {
       dispatchCustom(event.name, event.value, options.callbacks, stash);
     },
     onRunErrorEvent: ({ event }) => {
-      if (event.code === 'run_cancelled') {
+      // Two cancel shapes: the server's RUN_CANCELLED translation
+      // (code=run_cancelled) and the SDK's SYNTHETIC local RUN_ERROR
+      // (code='abort') minted when the caller's AbortSignal killed the
+      // fetch — 0.0.57 converts the AbortError instead of rejecting.
+      if (
+        event.code === 'run_cancelled' ||
+        event.code === 'abort' ||
+        options.signal.aborted
+      ) {
         fatal = new DOMException('Message cancelled', 'AbortError');
         return;
       }
@@ -273,6 +281,18 @@ export async function runAguiTurn(options: AguiTurnOptions): Promise<void> {
       /not found|method not allowed|status/i.test(message)
     ) {
       throw new AguiUnavailableError();
+    }
+    // Retry parity with the legacy wire (it retried Response 429/5xx by
+    // status). The SDK rejects with Error('HTTP <status>: <body>') — map
+    // retryable statuses to a message isRetryableError recognizes, and
+    // NEVER let the raw response body reach error copy.
+    const resolvedStatus =
+      httpStatus ?? Number(/^HTTP (\d{3}):/.exec(message)?.[1] ?? Number.NaN);
+    if ([429, 500, 502, 503, 504].includes(resolvedStatus)) {
+      throw new Error(`network error: HTTP ${resolvedStatus} (retryable)`);
+    }
+    if (!Number.isNaN(resolvedStatus)) {
+      throw new Error(`HTTP error ${resolvedStatus}`);
     }
     throw error instanceof Error ? error : new Error(message);
   }

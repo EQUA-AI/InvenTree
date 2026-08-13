@@ -102,8 +102,8 @@ class TestEnvelope:
 
     def test_lifecycle_echoes_request_ids_not_stored_ids(self) -> None:
         translator = _t()
-        out = translator.translate(_record(EventType.RUN_FINISHED))
-        finished = out[-1]
+        assert translator.translate(_record(EventType.RUN_FINISHED)) == []
+        finished = translator.flush_finish()[-1]
         assert finished["threadId"] == "thread_req"
         assert finished["runId"] == "run_req"
 
@@ -209,16 +209,49 @@ class TestDispositions:
         assert first[0]["messages"][0]["id"] == "msg_run_req_0"
         assert first == second
 
-    def test_run_finished_nudges_proposals_only_after_tool_events(self) -> None:
+    def test_run_finished_is_buffered_and_flushes_last(self) -> None:
+        """The classic dialect emits tail events AFTER its RUN_FINISHED
+        (question arming, entity manifest, provenance, reconcile snapshot);
+        @ag-ui/client rejects any post-finish frame, so the spec finish is
+        held until stream close."""
         quiet = _t()
-        assert [e["type"] for e in quiet.translate(_record(EventType.RUN_FINISHED))] == [
-            "RUN_FINISHED"
-        ]
+        assert quiet.translate(_record(EventType.RUN_FINISHED)) == []
+        assert [e["type"] for e in quiet.flush_finish()] == ["RUN_FINISHED"]
+        # flush is once-only
+        assert quiet.flush_finish() == []
+
         busy = _t()
         busy.translate(_record(EventType.TOOL_CALL_START, toolCallId="c", toolCallName="t"))
-        out = busy.translate(_record(EventType.RUN_FINISHED))
+        assert busy.translate(_record(EventType.RUN_FINISHED)) == []
+        out = busy.flush_finish()
         assert [e["type"] for e in out] == ["CUSTOM", "RUN_FINISHED"]
         assert out[0]["name"] == "aimms.proposalsRefresh"
+
+    def test_post_finish_tail_precedes_the_flushed_finish(self) -> None:
+        translator = _t()
+        frames = []
+        for record in (
+            _record(EventType.RUN_FINISHED),
+            _record(EventType.QUESTION, kind="clarification_question", interrupt_id="i1"),
+            _record(EventType.STATE_DELTA, kind="entity_manifest", entities=[]),
+        ):
+            frames.extend(translator.translate(record))
+        frames.extend(translator.flush_finish())
+        assert [f["type"] for f in frames] == ["CUSTOM", "CUSTOM", "RUN_FINISHED"]
+
+    def test_error_after_finish_supersedes_the_buffered_finish(self) -> None:
+        translator = _t()
+        assert translator.translate(_record(EventType.RUN_FINISHED)) == []
+        out = translator.translate(_record(EventType.RUN_ERROR, message="late failure"))
+        assert [e["type"] for e in out] == ["CUSTOM", "RUN_ERROR"]
+        assert translator.flush_finish() == []
+
+    def test_internal_error_rides_custom_only(self) -> None:
+        """ERROR is non-terminal internally; mapping it to spec RUN_ERROR
+        terminated the client run before the localized RUN_ERROR arrived."""
+        out = _t().translate(_record(EventType.ERROR, message="transient", code="oops"))
+        assert [e["type"] for e in out] == ["CUSTOM"]
+        assert out[0]["name"] == "aimms.error"
 
     def test_step_events_pass_and_arm_the_nudge(self) -> None:
         translator = _t()
@@ -248,6 +281,7 @@ class TestGoldenTranscript:
         frames = [encode_sse(translator.run_started_frame())]
         for record in classic:
             frames.extend(encode_sse(event) for event in translator.translate(record))
+        frames.extend(encode_sse(event) for event in translator.flush_finish())
         expected = [
             'data: {"type":"RUN_STARTED","threadId":"thread_req","runId":"run_req"}\n\n',
             f'data: {{"type":"TEXT_MESSAGE_START","timestamp":{TS_MS},"messageId":"m1","role":"assistant"}}\n\n',

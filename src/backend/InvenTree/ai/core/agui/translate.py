@@ -85,6 +85,14 @@ class SpecTranslator:
         self.run_id = run_id
         self.saw_tool_events = False
         self.run_started_sent = False
+        # The spec RUN_FINISHED is BUFFERED, not forwarded in arrival order:
+        # the frozen classic dialect legitimately emits events AFTER its
+        # RUN_FINISHED (question arming, entity manifest, provenance, the
+        # S45 reconcile snapshot), and @ag-ui/client's verifyEvents rejects
+        # any post-finish frame, failing the whole run. The stream owner
+        # calls flush_finish() at close so RUN_FINISHED is always last.
+        self._pending_finish: list[dict[str, Any]] = []
+        self._errored = False
 
     def _spec(self, event_type: str, record: dict[str, Any], **fields: Any) -> dict[str, Any]:
         out: dict[str, Any] = {"type": event_type}
@@ -101,6 +109,18 @@ class SpecTranslator:
         """The synthetic spec RUN_STARTED the route emits as the first frame."""
         self.run_started_sent = True
         return {"type": "RUN_STARTED", "threadId": self.thread_id, "runId": self.run_id}
+
+    def flush_finish(self) -> list[dict[str, Any]]:
+        """The buffered terminal frames, emitted once at stream close.
+
+        Empty when the run errored (the client already terminated on
+        RUN_ERROR and would reject anything after it).
+        """
+        if self._errored:
+            return []
+        pending = self._pending_finish
+        self._pending_finish = []
+        return pending
 
     def translate(self, record: dict[str, Any]) -> list[dict[str, Any]]:
         """Translate one classic record into zero or more spec events."""
@@ -119,18 +139,33 @@ class SpecTranslator:
                 return []
             return [self.run_started_frame()]
         if event_type == EventType.RUN_FINISHED:
-            out = []
+            pending = []
             if self.saw_tool_events:
                 # S46 nudge: only runs that carried tool/step events may
                 # trigger the proposals refetch (poll stays the backstop).
-                out.append(self._custom("aimms.proposalsRefresh", {}, record))
-            out.append(
+                pending.append(self._custom("aimms.proposalsRefresh", {}, record))
+            pending.append(
                 self._spec("RUN_FINISHED", record, threadId=self.thread_id, runId=self.run_id)
             )
-            return out
-        if event_type in (EventType.RUN_ERROR, EventType.ERROR):
+            self._pending_finish = pending
+            return []
+        if event_type == EventType.ERROR:
+            # ERROR is NON-terminal in the internal dialect (a turn can
+            # continue past it, and real failures always emit a typed
+            # RUN_ERROR afterwards). Mapping it to spec RUN_ERROR terminated
+            # the client run early with the generic copy, eating the
+            # localized RUN_ERROR that followed — so it rides the CUSTOM
+            # channel only.
+            detail = {
+                "message": str(payload.get("message") or payload.get("error") or "AI turn failed"),
+                "code": str(payload.get("code") or "error"),
+                "failureClass": payload.get("failure_class"),
+                "localizedMessage": payload.get("localized_message"),
+            }
+            return [self._custom("aimms.error", detail, record)]
+        if event_type == EventType.RUN_ERROR:
             message = str(payload.get("message") or payload.get("error") or "AI turn failed")
-            code = str(payload.get("code") or ("error" if event_type == EventType.ERROR else ""))
+            code = str(payload.get("code") or "")
             detail = {
                 "message": message,
                 "code": code,
@@ -140,9 +175,13 @@ class SpecTranslator:
             spec_error = self._spec("RUN_ERROR", record, message=message)
             if code:
                 spec_error["code"] = code
+            self._errored = True
+            self._pending_finish = []
             # CUSTOM first — the client run terminates on RUN_ERROR.
             return [self._custom("aimms.error", detail, record), spec_error]
         if event_type == EventType.RUN_CANCELLED:
+            self._errored = True
+            self._pending_finish = []
             return [self._spec("RUN_ERROR", record, message="Run cancelled", code="run_cancelled")]
 
         if event_type == EventType.TEXT_MESSAGE_START:
@@ -321,7 +360,13 @@ class SpecSSEStream:
         await self._queue.put(None)
 
     async def frames(self) -> Any:
-        """Yield translated spec SSE frames (async iterator of str)."""
+        """Yield translated spec SSE frames (async iterator of str).
+
+        The buffered RUN_FINISHED flushes AFTER the queue sentinel: the
+        classic dialect's post-finish tail (question, entities, provenance,
+        reconcile snapshot) must all be on the wire before the spec finish,
+        or @ag-ui/client's verifyEvents fails the whole run.
+        """
         import asyncio
 
         await self.start()
@@ -336,5 +381,7 @@ class SpecSSEStream:
                     break
                 for spec_event in self.translator.translate(event.to_dict()):
                     yield encode_sse(spec_event)
+            for spec_event in self.translator.flush_finish():
+                yield encode_sse(spec_event)
         finally:
             await self.stop()

@@ -36,8 +36,18 @@ def _input(**overrides) -> RunAgentInput:
     return RunAgentInput.model_validate(payload)
 
 
-def _request(headers: dict | None = None) -> SimpleNamespace:
-    return SimpleNamespace(headers=headers or {})
+def _request(
+    body: dict | None = None,
+    headers: dict | None = None,
+    method: str = "POST",
+) -> SimpleNamespace:
+    async def _json():
+        await asyncio.sleep(0)
+        if body is None:
+            raise ValueError("no body")
+        return body
+
+    return SimpleNamespace(headers=headers or {}, method=method, json=_json)
 
 
 class _FakeTurnService:
@@ -94,7 +104,7 @@ def _run_route(run_input: RunAgentInput, *, headers: dict | None = None, fake=No
             ),
             patch("ai.core.trusted_context.resolve_actor_locale", return_value="en"),
         ):
-            response = await run_agui(run_input, _request(headers))
+            response = await run_agui(_request(run_input.model_dump(by_alias=True), headers))
             frames = await _drain(response)
             return response, frames
 
@@ -107,7 +117,7 @@ def test_flag_off_is_404() -> None:
             "ai.core.config.get_settings",
             return_value=SimpleNamespace(feature_agui_endpoint=False),
         ):
-            await run_agui(_input(), _request())
+            await run_agui(_request(_input().model_dump(by_alias=True)))
 
     with pytest.raises(HTTPException) as excinfo:
         asyncio.run(scenario())
@@ -166,7 +176,7 @@ def test_no_user_message_is_400() -> None:
             ),
             patch("ai.core.app._principal", side_effect=_principal_stub),
         ):
-            await run_agui(RunAgentInput.model_validate({"runId": "r", "messages": []}), _request())
+            await run_agui(_request({"runId": "r", "messages": []}))
 
     with pytest.raises(HTTPException) as excinfo:
         asyncio.run(scenario())

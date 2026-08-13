@@ -591,13 +591,15 @@ async function fetchServerThreads(
  * /threads sync. `sessionDisabled` is the mid-session 404/405 fallback latch.
  */
 function wirePreference(sessionDisabled: boolean): 'agui' | 'legacy' {
+  // The 404/405 latch wins even over a forced 'agui' — otherwise a forced
+  // preference against a flag-off server probes /agui once per send.
+  if (sessionDisabled) return 'legacy';
   try {
     const stored = localStorage.getItem('aimms.wire');
     if (stored === 'legacy' || stored === 'agui') return stored;
   } catch {
     // Storage unavailable (private mode) — fall through to auto.
   }
-  if (sessionDisabled) return 'legacy';
   return lastServerCapabilities.agui === true ? 'agui' : 'legacy';
 }
 
