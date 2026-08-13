@@ -357,7 +357,10 @@ class InvenTreeConfig(AppConfig):
                 logger.warning(
                     'INVE-W8: Empty database detected - trying to run migrations'
                 )
-                InvenTree.tasks.check_for_migrations(force_run=True)
+                # S42: check_for_migrations has no force_run parameter — the
+                # bad kwarg raised TypeError on exactly this bootstrap path
+                # (DOCKER + empty DB + AUTO_UPDATE off).
+                InvenTree.tasks.check_for_migrations(force=True)
             else:
                 logger.error('INVE-W8: Database Migrations required')
                 sys.exit(1)

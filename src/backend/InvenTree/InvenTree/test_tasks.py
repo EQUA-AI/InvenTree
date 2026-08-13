@@ -273,6 +273,43 @@ class InvenTreeTaskTests(PluginRegistryMixin, TestCase):
                 print('Removing dummy migration file:', fn)
                 os.remove(fn)
 
+    def test_empty_database_bootstrap_uses_valid_kwargs(self):
+        """S42: the empty-DB bootstrap retry must use a real keyword argument.
+
+        ensure_migrations_done()'s fresh-database branch (DOCKER, empty
+        migration table, AUTO_UPDATE off) used to call
+        check_for_migrations(force_run=True) — a parameter that does not
+        exist — so the one path built to bootstrap a brand-new database died
+        with TypeError instead. autospec enforces the real signature, so this
+        test fails on any bad kwarg.
+        """
+        from unittest import mock
+
+        import InvenTree.apps as apps_module
+
+        spec_mock = mock.create_autospec(
+            InvenTree.tasks.check_for_migrations, return_value=False
+        )
+        saved = apps_module.MIGRATIONS_CHECK_DONE
+        apps_module.MIGRATIONS_CHECK_DONE = False
+        try:
+            with (
+                mock.patch('InvenTree.ready.canAppAccessDatabase', return_value=True),
+                mock.patch('InvenTree.ready.isInTestMode', return_value=False),
+                mock.patch('InvenTree.ready.isRunningMigrations', return_value=False),
+                mock.patch('InvenTree.tasks.get_migration_count', return_value=0),
+                mock.patch('InvenTree.tasks.check_for_migrations', spec_mock),
+                self.settings(DOCKER=True),
+            ):
+                apps_module.InvenTreeConfig.ensure_migrations_done()
+        finally:
+            apps_module.MIGRATIONS_CHECK_DONE = saved
+
+        # First call: the plain check. Second call: the bootstrap retry,
+        # which must use the REAL parameter name.
+        self.assertEqual(spec_mock.call_count, 2)
+        self.assertEqual(spec_mock.call_args_list[1], mock.call(force=True))
+
     def test_failed_task_notification(self):
         """Test that a failed task will generate a notification."""
         from common.models import NotificationEntry, NotificationMessage
