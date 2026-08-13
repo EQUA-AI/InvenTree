@@ -8,18 +8,13 @@ service; neither transport is allowed to select an identity or a tenant scope.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import inspect
-import json
 import logging
-import re
 import time
-import unicodedata
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from ai.core.reasoning.schemas import CanonicalTurnResponse
 from ai.core.streaming import (
     AGUIEvent,
     EventEmitter,
@@ -29,7 +24,6 @@ from ai.core.streaming import (
 from ai.core.tools.read_only import READ_ONLY_TOOLS
 from ai.core.usage import (
     TurnUsageLedger,
-    drain_turn_usage,
     estimate_tokens,
     record_usage,
     turn_usage_ledger,
@@ -37,7 +31,6 @@ from ai.core.usage import (
 from aichat.models import ThreadNamespace, TurnModality, TurnState
 from aichat.services import IdempotencyConflict, ThreadRepository
 from asgiref.sync import sync_to_async
-from pydantic import ValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -45,19 +38,49 @@ if TYPE_CHECKING:
     from ai.core.auth import AIPrincipal
     from ai.core.trusted_context import TrustedTurnContext
 
+# ---------------------------------------------------------------------------
+# S47: the turn pipeline's helpers live in ai/core/turn/ (and the question
+# resolution record in ai/core/questions/resolution.py); this module remains
+# the ONLY public surface. Every moved symbol is re-exported here so existing
+# imports (production and tests) keep working unchanged.
+# ---------------------------------------------------------------------------
+from ai.core.questions.resolution import (
+    QuestionResolution as _QuestionResolution,
+)
+from ai.core.turn.events import (
+    _event_from_record,
+    _EventCapture,
+    coalesce_text_deltas,
+)
+from ai.core.turn.finalize import _terminal_output_metadata
+from ai.core.turn.history import (  # noqa: F401
+    _HISTORY_PROTECTED_NEWEST,
+    _HISTORY_TRUNCATION_MARKER,
+    _budgeted_history,
+)
+from ai.core.turn.request import (  # noqa: F401
+    _json_value,
+    _machine_name_matches,
+    _reject_durable_audio,
+    turn_request_fingerprint,
+)
+from ai.core.turn.responses import (  # noqa: F401
+    _LEGACY_REASONING_SUMMARY,
+    _SPOKEN_SUMMARY_MAX_CHARS,
+    _canonical_advisory_intent,
+    _canonical_response_for_legacy,
+    _canonical_terminal_response,
+    _canonical_voice_write,
+    _plain_spoken_text,
+    _speakable_summary_candidates,
+)
+from ai.core.turn.types import (
+    TurnAlreadyRunning,
+    TurnExecutionFailed,
+    TurnIncomplete,
+)
+
 logger = logging.getLogger(__name__)
-
-
-class TurnAlreadyRunning(RuntimeError):
-    """Raised when an idempotency key refers to a non-terminal turn."""
-
-
-class TurnExecutionFailed(RuntimeError):
-    """Value-free public failure raised after a durable failed transition."""
-
-
-class TurnIncomplete(RuntimeError):
-    """Signal that bounded processing ended without a valid final answer."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,499 +101,6 @@ class NormalizedTurnResult:
     #: S22: the QUESTION payload when this turn ended by asking one -- the
     #: voice route surfaces it per-turn so the client can render the card.
     pending_question: dict[str, Any] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class _QuestionResolution:
-    """One consumed pending question plus the parser's verdict (S22).
-
-    Everything the accept branch acts on comes from the PERSISTED record —
-    the reply only ever selects; it can never supply values.
-    """
-
-    record: dict[str, Any]
-    interpretation: Any
-
-    @property
-    def outcome(self) -> str:
-        return str(self.interpretation.outcome)
-
-    def _selected_option(self) -> dict[str, Any]:
-        return dict(self.record["options"][self.interpretation.option_index])
-
-    @property
-    def routing_content(self) -> str:
-        """The original intent enriched by the selected label, both persisted."""
-        origin = str((self.record.get("origin") or {}).get("content") or "").strip()
-        label = str(self._selected_option().get("label") or "").strip()
-        if origin and label:
-            return f"{origin} — {label}"
-        return label or origin
-
-    def context_payload(self) -> dict[str, Any]:
-        """Trusted workflow context for an accepted selection (ref included)."""
-        return {
-            "interrupt_id": self.record.get("interrupt_id"),
-            "source": self.record.get("source"),
-            "option": self._selected_option(),
-        }
-
-    def unmatched_payload(self) -> dict[str, Any]:
-        """Trusted context for an unmatched reply (loop guard input, S22).
-
-        The producers use this to refuse re-asking the question the user just
-        failed to answer — without it, a near-miss reply re-armed an
-        identical card indefinitely (observed live 2026-08-08).
-        """
-        return {
-            "outcome": "unmatched",
-            "interrupt_id": self.record.get("interrupt_id"),
-            "source": self.record.get("source"),
-            "option_ids": [
-                str(option.get("id") or "") for option in (self.record.get("options") or [])
-            ],
-        }
-
-    def audit_payload(self) -> dict[str, Any]:
-        """The durable, ref-free resolution record for canonical/metadata."""
-        payload: dict[str, Any] = {
-            "interrupt_id": self.record.get("interrupt_id"),
-            "outcome": self.outcome,
-            "answer_policy_version": self.interpretation.policy_version,
-        }
-        if self.outcome == "selected":
-            payload["selected_option_id"] = self.interpretation.option_id
-            payload["matched_by"] = self.interpretation.matched_by
-        return payload
-
-
-class _EventCapture:
-    """Capture exactly the events emitted by one isolated turn emitter."""
-
-    def __init__(self, thread_id: str) -> None:
-        self.thread_id = thread_id
-        self.events: list[dict[str, Any]] = []
-        self.workflow_id: str | None = None
-
-    async def handle(self, event: AGUIEvent) -> None:
-        if event.thread_id and event.thread_id != self.thread_id:
-            return
-        record = event.to_dict()
-        self.events.append(record)
-        if event.event_type == EventType.WORKFLOW_STARTED:
-            workflow_id = event.data.get("workflow_id")
-            if workflow_id:
-                self.workflow_id = str(workflow_id)
-
-
-def coalesce_text_deltas(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Collapse streamed text deltas for durable storage (S45).
-
-    Token streaming multiplies TEXT_MESSAGE_CONTENT records; stored turns
-    must keep TODAY'S single-delta shape so idempotency replay stays
-    byte-compatible with every existing turn and stale client, and canonical
-    JSON growth stays zero. Consecutive TEXT_MESSAGE_CONTENT records with
-    the same messageId merge into one. When a MESSAGES_SNAPSHOT (the S45
-    reconciliation event) carries the final assistant text, it supersedes
-    EVERY delta of the final message — S46 tool records split the deltas
-    into non-adjacent groups, and rewriting only the last group would
-    replay superseded text alongside the final one. If no delta exists at
-    all, the snapshot record is KEPT: it is then the only carrier of the
-    turn's text, and the client renders it via its MESSAGES_SNAPSHOT case.
-    """
-    snapshot_content: str | None = None
-    snapshot_record: dict[str, Any] | None = None
-    for record in events:
-        if record.get("type") == EventType.MESSAGES_SNAPSHOT.value:
-            for entry in record.get("messages") or []:
-                if isinstance(entry, dict) and entry.get("role") == "assistant":
-                    snapshot_content = str(entry.get("content") or "")
-                    snapshot_record = record
-
-    coalesced: list[dict[str, Any]] = []
-    for record in events:
-        if record.get("type") == EventType.MESSAGES_SNAPSHOT.value:
-            continue
-        if (
-            record.get("type") == EventType.TEXT_MESSAGE_CONTENT.value
-            and coalesced
-            and coalesced[-1].get("type") == EventType.TEXT_MESSAGE_CONTENT.value
-            and coalesced[-1].get("messageId") == record.get("messageId")
-        ):
-            merged = dict(coalesced[-1])
-            merged["delta"] = str(merged.get("delta") or "") + str(record.get("delta") or "")
-            coalesced[-1] = merged
-            continue
-        coalesced.append(record)
-
-    if snapshot_content is None:
-        return coalesced
-
-    text_indices = [
-        index
-        for index, record in enumerate(coalesced)
-        if record.get("type") == EventType.TEXT_MESSAGE_CONTENT.value
-    ]
-    if not text_indices:
-        if snapshot_record is not None:
-            coalesced.append(snapshot_record)
-        return coalesced
-
-    final_message_id = coalesced[text_indices[-1]].get("messageId")
-    superseded = [
-        index for index in text_indices if coalesced[index].get("messageId") == final_message_id
-    ]
-    replaced = dict(coalesced[superseded[0]])
-    replaced["delta"] = snapshot_content
-    coalesced[superseded[0]] = replaced
-    for index in reversed(superseded[1:]):
-        del coalesced[index]
-    return coalesced
-
-
-def _machine_name_matches(name: str, lowered_content: str) -> bool:
-    """Token-based utterance match for a machine display name.
-
-    "influent pump station" must match "Influent Pump Station No. 1": a name
-    matches when ALL of its substantive alphabetic tokens (len >= 3) appear
-    in the lowered utterance; names with no such tokens never match. Shared
-    by the clarify-first routing signal and the cross-machine grounding
-    fence seed (P8-W0a) so both agree on what "the turn is about machine X"
-    means.
-    """
-    tokens = [token for token in re.findall(r"[a-z]+", name.lower()) if len(token) >= 3]
-    return bool(tokens) and all(token in lowered_content for token in tokens)
-
-
-def _reject_durable_audio(value: Any, *, path: str = "metadata") -> None:
-    """Reject raw/audio-shaped values before any durable turn write."""
-
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        raise ValueError("raw audio must not enter normalized turn persistence")
-    if isinstance(value, dict):
-        forbidden = {
-            "audio",
-            "audio_bytes",
-            "audio_data",
-            "audio_payload",
-            "pcm",
-            "waveform",
-        }
-        for key, item in value.items():
-            if str(key).lower() in forbidden:
-                raise ValueError("raw audio metadata is not permitted")
-            _reject_durable_audio(item, path=f"{path}.{key}")
-    elif isinstance(value, (list, tuple)):
-        for index, item in enumerate(value):
-            _reject_durable_audio(item, path=f"{path}[{index}]")
-
-
-def _json_value(value: Any, *, reject_audio: bool = False) -> dict[str, Any]:
-    """Convert a trusted context object to a JSON-compatible dictionary."""
-
-    if hasattr(value, "to_dict"):
-        result = value.to_dict()
-    elif hasattr(value, "model_dump"):
-        result = value.model_dump(mode="json")
-    elif is_dataclass(value):
-        result = asdict(value)
-    elif isinstance(value, dict):
-        result = value
-    else:  # pragma: no cover - defensive misuse guard
-        raise TypeError("trusted context must be serializable")
-
-    # A round-trip both validates portability and strips exotic mapping types.
-    if reject_audio:
-        _reject_durable_audio(result)
-    try:
-        normalized = json.loads(json.dumps(result, sort_keys=True))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("turn metadata must contain JSON values") from exc
-    if not isinstance(normalized, dict):  # pragma: no cover - guarded above
-        raise TypeError("trusted context must serialize to an object")
-    return normalized
-
-
-def turn_request_fingerprint(
-    *,
-    content: str,
-    modality: str,
-    trusted_context: dict[str, Any],
-    modality_metadata: dict[str, Any],
-) -> str:
-    """Return the stable fingerprint bound to an idempotency key."""
-
-    payload = json.dumps(
-        {
-            "content": content,
-            "modality": modality,
-            "trusted_context": trusted_context,
-            "modality_metadata": modality_metadata,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _event_from_record(record: dict[str, Any]) -> AGUIEvent:
-    """Rehydrate a persisted event without changing its public SSE payload."""
-
-    base_keys = {
-        "type",
-        "timestamp",
-        "threadId",
-        "runId",
-        "agentName",
-        "eventId",
-    }
-    timestamp = record.get("timestamp")
-    parsed_timestamp = datetime.fromisoformat(str(timestamp)) if timestamp else None
-    kwargs: dict[str, Any] = {
-        "event_type": EventType(str(record["type"])),
-        "data": {key: value for key, value in record.items() if key not in base_keys},
-        "thread_id": str(record.get("threadId") or ""),
-        "run_id": str(record.get("runId") or ""),
-        "agent_name": str(record.get("agentName") or ""),
-        "event_id": str(record.get("eventId") or ""),
-    }
-    if parsed_timestamp is not None:
-        kwargs["timestamp"] = parsed_timestamp
-    return AGUIEvent(**kwargs)
-
-
-#: Ceiling for a spoken legacy answer. Only the complete plain text is ever
-#: spoken — clipping could drop a safety qualifier mid-claim, so an answer
-#: that does not fit is honestly not spoken at all.
-_SPOKEN_SUMMARY_MAX_CHARS = 700
-
-_LEGACY_REASONING_SUMMARY = (
-    "This text was produced by the selected legacy workflow. No hidden reasoning was persisted."
-)
-
-
-def _plain_spoken_text(message: str) -> str:
-    """Reduce workflow markdown to the plain text the spoken schema accepts.
-
-    Table rows and rule lines read as word-soup when spoken, so they are
-    dropped entirely; removing text can only tighten the entailment check.
-    """
-    prose_lines = [
-        line
-        for line in message.splitlines()
-        if not re.match(r"^\s*\|", line) and not re.match(r"^\s*[-=|:\s]{3,}$", line)
-    ]
-    text = re.sub(r"```.*?```", " ", "\n".join(prose_lines), flags=re.DOTALL)
-    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
-    text = re.sub(r"\[([^\]\n]+)\]\([^)\n]+\)", r"\1", text)
-    text = re.sub(r"</?[A-Za-z][^>\n]*>", " ", text)
-    text = re.sub(r"^\s{0,3}(?:#{1,6}\s+|>\s?|[-+*]\s+|\d+[.)]\s+)", " ", text, flags=re.MULTILINE)
-    text = re.sub(r"[`|*_~#>]", " ", text)
-    text = "".join(
-        " " if unicodedata.category(character).startswith("C") else character for character in text
-    )
-    return " ".join(text.split())
-
-
-def _speakable_summary_candidates(message: str) -> tuple[str, ...]:
-    """Return spoken-summary candidates derived only from the visible answer.
-
-    Deriving from the answer text keeps the schema's lexical-entailment check
-    satisfiable by construction. Truncation is deliberately never attempted:
-    a clip can silently drop a qualifier ("... only if the machine is locked
-    out") and speak a stronger claim than the visible answer makes.
-    """
-    plain = _plain_spoken_text(message)
-    if not plain or len(plain) > _SPOKEN_SUMMARY_MAX_CHARS:
-        return ()
-    return (plain,)
-
-
-def _canonical_response_for_legacy(
-    message: str, *, speakable: bool = False
-) -> CanonicalTurnResponse:
-    """Adapt existing workflow text without changing its visible rendering.
-
-    For voice-modality turns, attempt a schema-valid spoken summary derived
-    from the answer itself so simple queries are spoken back. Every candidate
-    must pass the full canonical validators (plain text, lexical entailment,
-    caveat preservation); when none does, the turn stays honestly silent.
-    """
-    if speakable:
-        for summary in _speakable_summary_candidates(message):
-            try:
-                return CanonicalTurnResponse(
-                    kind="legacy_chat",
-                    response_version=1,
-                    response_state="complete",
-                    detailed_response=message or "No response was produced.",
-                    spoken_summary=summary,
-                    reasoning_summary=_LEGACY_REASONING_SUMMARY,
-                    confidence="low",
-                    evidence=[],
-                    next_questions=[],
-                    recommended_actions=[],
-                    safety_boundary="No additional safety boundary.",
-                    speak=True,
-                )
-            except ValidationError:
-                continue
-    return CanonicalTurnResponse(
-        kind="legacy_chat",
-        response_version=1,
-        response_state="complete",
-        detailed_response=message or "No response was produced.",
-        spoken_summary="",
-        reasoning_summary=_LEGACY_REASONING_SUMMARY,
-        confidence="low",
-        evidence=[],
-        next_questions=[],
-        recommended_actions=[],
-        safety_boundary=("No safety status was inferred; check the authoritative safety surface."),
-        speak=False,
-    )
-
-
-_HISTORY_TRUNCATION_MARKER = "… [truncated]"
-# A follow-up resolves against the immediately preceding exchange; dropping
-# it for budget would silently change what "the second one" means.
-_HISTORY_PROTECTED_NEWEST = 2
-
-
-def _budgeted_history(
-    messages: list[dict[str, str]],
-    *,
-    max_message_chars: int,
-    max_total_chars: int,
-    reserved_chars: int = 0,
-) -> list[dict[str, str]]:
-    """Apply the S24 replay budgets to an oldest-first transcript.
-
-    Two independent caps, each disabled at 0: a message keeps its head up to
-    ``max_message_chars`` with a visible truncation marker, then whole
-    messages are dropped oldest-first until the transcript fits
-    ``max_total_chars``. The newest two messages are never dropped, even
-    when they alone exceed the total budget.
-
-    ``reserved_chars`` (S38) pre-charges the budget for content the caller
-    will prepend AFTER budgeting (the compaction summary note). Without the
-    reservation a prepended note would be at index 0 — the first thing the
-    drop loop removes.
-    """
-    budgeted: list[dict[str, str]] = []
-    for message in messages:
-        content = str(message.get("content", ""))
-        if 0 < max_message_chars < len(content):
-            content = content[:max_message_chars].rstrip() + _HISTORY_TRUNCATION_MARKER
-        budgeted.append({**message, "content": content})
-    if max_total_chars <= 0:
-        return budgeted
-    effective_total = max(0, max_total_chars - max(0, reserved_chars))
-    total = sum(len(entry["content"]) for entry in budgeted)
-    while total > effective_total and len(budgeted) > _HISTORY_PROTECTED_NEWEST:
-        total -= len(budgeted.pop(0)["content"])
-    return budgeted
-
-
-def _terminal_output_metadata(base: dict[str, Any]) -> dict[str, Any]:
-    """Attach the resolved model-version stamp to a terminal turn (S17 A10).
-
-    Deployment names are aliases; the stamp records which concrete model
-    identities the provider reported during this process, so a post-hoc audit
-    of any persisted turn can name the models that served it. S24 adds the
-    turn's provider usage through the same funnel, behind its kill switch.
-    """
-    from ai.core.config import get_settings
-    from ai.core.integrations.model_pins import resolved_model_versions
-
-    metadata = dict(base)
-    versions = resolved_model_versions()
-    if versions:
-        metadata["model_versions"] = versions
-    try:
-        if get_settings().feature_turn_usage_persistence:
-            usage = drain_turn_usage()
-            if usage:
-                metadata["usage"] = usage
-    except Exception:  # pragma: no cover - telemetry must never fail a turn
-        pass
-    return metadata
-
-
-def _canonical_terminal_response(state: str, message: str) -> CanonicalTurnResponse:
-    """Return a strict, non-speaking response for a non-complete lifecycle state."""
-    state_value = str(getattr(state, "value", state))
-    return CanonicalTurnResponse(
-        kind="repair_diagnosis",
-        response_version=1,
-        response_state=state_value,
-        detailed_response=message,
-        spoken_summary="",
-        reasoning_summary=("The normalized turn ended without a complete diagnostic answer."),
-        confidence="low",
-        evidence=[],
-        next_questions=[],
-        recommended_actions=[],
-        safety_boundary=("No safety status was inferred; check the authoritative safety surface."),
-        speak=False,
-    )
-
-
-def _canonical_advisory_intent(
-    *, voice: bool = False, action_available: bool = False, locale: str = "en"
-) -> CanonicalTurnResponse:
-    """Explain effect wording without creating a proposal or executable action.
-
-    S33: every string comes from the deterministic per-locale template
-    tables; an unknown locale degrades to English inside the lookup.
-    """
-    from ai.core import i18n_templates as i18n
-
-    safety_boundary = i18n.deterministic_template(i18n.SAFETY_BOUNDARY, locale)
-    if voice:
-        key = i18n.ADVISORY_VOICE_ACTION if action_available else i18n.ADVISORY_VOICE_READONLY
-        message = i18n.deterministic_template(key, locale).format(safety=safety_boundary)
-    else:
-        message = i18n.deterministic_template(i18n.ADVISORY_TEXT, locale)
-    return CanonicalTurnResponse(
-        kind="advisory_intent",
-        response_version=1,
-        response_state="complete",
-        detailed_response=message,
-        spoken_summary=message if voice else "",
-        reasoning_summary=("Effect-shaped wording was isolated as advisory intent only."),
-        confidence="high",
-        evidence=[],
-        next_questions=[i18n.deterministic_template(i18n.ADVISORY_NEXT_QUESTION, locale)],
-        recommended_actions=[],
-        safety_boundary=safety_boundary,
-        speak=voice,
-    )
-
-
-def _canonical_voice_write(message: str) -> CanonicalTurnResponse:
-    """A spoken voice write-confirmation read-back or outcome (Phase 4).
-
-    ``message`` is always server-authored -- an exact read-back of a resolved
-    action, or a fixed outcome phrase from the confirmation allow-list. It is
-    spoken (an eyes-free technician must hear it) and the spoken summary equals
-    the visible text, so speech adds nothing the record does not show.
-    """
-    return CanonicalTurnResponse(
-        kind="voice_write_confirmation",
-        response_version=1,
-        response_state="complete",
-        detailed_response=message,
-        spoken_summary=message,
-        reasoning_summary="Voice write-confirmation gate response.",
-        confidence="high",
-        evidence=[],
-        next_questions=[],
-        recommended_actions=[],
-        safety_boundary="None",
-        speak=True,
-    )
 
 
 def _log_voice_write_confirmation_shadow(content: str, thread_id: int) -> None:
