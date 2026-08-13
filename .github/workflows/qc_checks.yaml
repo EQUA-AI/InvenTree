@@ -56,6 +56,9 @@ jobs:
               - 'src/backend/tasks/**'
               - 'src/backend/requirements.txt'
               - 'src/backend/requirements-dev.txt'
+              # S43: hand-edits to the generated wire artifact must run
+              # the drift check even on frontend-only PRs.
+              - 'src/frontend/lib/types/AimmsWire.generated.ts'
             migrations:
               - '**/test_migrations.py'
               - '**/migrations/**'
@@ -144,6 +147,16 @@ jobs:
       - name: Check types
         run: |
           ty check --python ${Python_ROOT_DIR}/bin/python3 src/backend
+      # S43: lives in a BLOCKING job — the coverage job is
+      # continue-on-error (so coverage always pushes), which would let
+      # contract drift onto master with a green check.
+      - name: Wire Contract Drift Check (S43)
+        env:
+          INVENTREE_DB_ENGINE: sqlite3
+          INVENTREE_DB_NAME: ./inventree.sqlite
+        run: |
+          cd src/backend/InvenTree
+          python3 manage.py generate_wire_contract --check
 
   mkdocs:
     name: Style [Documentation]
@@ -419,10 +432,6 @@ jobs:
         run: |
           invoke migrate --detect
           python3 .github/scripts/check_migration_files.py
-      - name: Wire Contract Drift Check (S43)
-        run: |
-          cd src/backend/InvenTree
-          python3 manage.py generate_wire_contract --check
       - name: Coverage Tests
         run: invoke dev.test --check --coverage --translations
       - name: Upload raw coverage to artifacts

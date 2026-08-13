@@ -14,6 +14,7 @@ Responsibilities:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import uuid
 from types import SimpleNamespace
@@ -179,7 +180,7 @@ class RootWorkflow:
         # S46: content-free step events (names only), same flag as the tool
         # events. current_step pairing guarantees every STARTED gets a
         # FINISHED even across stage hops.
-        step_events_on = settings.feature_tool_events
+        step_events_on = getattr(settings, "feature_tool_events", False)
         current_step: str | None = None
 
         async def _step(name: str | None) -> None:
@@ -322,7 +323,7 @@ class RootWorkflow:
             use_token_streaming = supports_streaming and (
                 not supports_execute
                 or (
-                    _get_settings().feature_token_streaming
+                    getattr(_get_settings(), "feature_token_streaming", False)
                     and (aggregated_context or {}).get("modality") != "voice"
                 )
             )
@@ -406,6 +407,10 @@ class RootWorkflow:
                 stage,
                 cap_s,
             )
+            # S46: close the open step so failed turns never persist an
+            # unpaired STEP_STARTED. Fail-soft — the RUN_ERROR must ship.
+            with contextlib.suppress(Exception):
+                await _step(None)
             await run_ctx.emit(
                 EventType.RUN_ERROR,
                 {"message": "AI turn timed out", "code": "turn_timeout", "stage": stage},
@@ -428,6 +433,10 @@ class RootWorkflow:
                 location["raised_at"],
                 location["via"],
             )
+            # S46: close the open step so failed turns never persist an
+            # unpaired STEP_STARTED. Fail-soft — the ERROR must ship.
+            with contextlib.suppress(Exception):
+                await _step(None)
             await run_ctx.emit_error("AI turn failed")
             raise
 

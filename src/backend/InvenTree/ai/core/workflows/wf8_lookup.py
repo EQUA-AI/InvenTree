@@ -1174,6 +1174,8 @@ figure from an earlier turn as if you had just verified it."""
                 yield prepared.formatted_response
             return
 
+        from ai.core.usage import maf_update_usage_metrics
+
         usage_metrics: dict[str, int] = {}
         try:
             with bind_capability_run(
@@ -1184,7 +1186,11 @@ figure from an earlier turn as if you had just verified it."""
                 async for update in prepared.agent.run_stream(
                     prepared.run_input, tools=prepared.runtime_tools
                 ):
-                    metrics = _response_usage_metrics(update)
+                    # Streamed updates carry usage as UsageContent inside
+                    # contents, never as a usage_details attribute — the
+                    # response-shaped extractor alone reads {} on every real
+                    # MAF update.
+                    metrics = maf_update_usage_metrics(update)
                     if any(metrics.values()):
                         # Usage rides the terminal update(s); keep the last
                         # non-empty reading.

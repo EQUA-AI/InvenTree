@@ -32,6 +32,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import lru_cache
+from types import SimpleNamespace
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -176,6 +177,28 @@ def maf_response_usage_metrics(response: Any) -> dict[str, int]:
     if input_tokens is not None and cached is not None:
         metrics["uncached_input_token_count"] = max(input_tokens - cached, 0)
     return metrics
+
+
+def maf_update_usage_metrics(update: Any) -> dict[str, int]:
+    """Extract usage from a streamed MAF ``AgentRunResponseUpdate`` (S45).
+
+    Streaming updates never grow a ``usage_details`` attribute — the
+    provider's usage rides as a ``UsageContent`` entry (``type == "usage"``)
+    inside ``update.contents``. Try the response-shaped attribute first so
+    fakes and future MAF shapes keep working, then scan contents.
+    """
+    direct = maf_response_usage_metrics(update)
+    if direct:
+        return direct
+    for content in getattr(update, "contents", None) or ():
+        if getattr(content, "type", "") != "usage":
+            continue
+        details = getattr(content, "details", None)
+        if details is not None:
+            metrics = maf_response_usage_metrics(SimpleNamespace(usage_details=details))
+            if metrics:
+                return metrics
+    return {}
 
 
 def drain_turn_usage() -> dict[str, Any] | None:

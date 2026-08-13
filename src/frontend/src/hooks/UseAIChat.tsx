@@ -1676,6 +1676,11 @@ export function useAIChat(config: AIChatConfig = {}) {
 
               if (reader) {
                 let buffer = '';
+                // S46: only a run that actually carried tool/step events
+                // may nudge the proposals panel — with FEATURE_TOOL_EVENTS
+                // off none arrive, so the pre-slice 30s poll cadence is
+                // preserved exactly (ships-dark).
+                let sawToolEvents = false;
 
                 while (true) {
                   const { done, value } = await reader.read();
@@ -1770,6 +1775,7 @@ export function useAIChat(config: AIChatConfig = {}) {
                             // content — the old 🔧 string injection baked
                             // tool noise into persisted threads and the
                             // copy payload.
+                            sawToolEvents = true;
                             const toolEvent = event as AGUIToolCallStartEvent;
                             upsertToolActivity(assistantMessage.id, {
                               id: toolEvent.toolCallId,
@@ -1780,6 +1786,7 @@ export function useAIChat(config: AIChatConfig = {}) {
                           }
 
                           case AGUIEventType.TOOL_CALL_END: {
+                            sawToolEvents = true;
                             const endEvent = event as unknown as {
                               toolCallId?: string;
                               toolCallName?: string;
@@ -1819,10 +1826,13 @@ export function useAIChat(config: AIChatConfig = {}) {
                             );
                             // S46: nudge the proposals panel — a proposal
                             // minted by THIS turn should appear now, not on
-                            // the next 30s poll tick.
-                            window.dispatchEvent(
-                              new CustomEvent('aimms:proposals-refresh')
-                            );
+                            // the next 30s poll tick. Gated on tool/step
+                            // events so the flag-off wire stays inert.
+                            if (sawToolEvents) {
+                              window.dispatchEvent(
+                                new CustomEvent('aimms:proposals-refresh')
+                              );
+                            }
                             break;
                           }
 
@@ -2021,6 +2031,7 @@ export function useAIChat(config: AIChatConfig = {}) {
                           case AGUIEventType.STEP_STARTED:
                           case AGUIEventType.STEP_FINISHED:
                             // Progress events - could be used for UI feedback
+                            sawToolEvents = true;
                             break;
 
                           case AGUIEventType.ERROR: {

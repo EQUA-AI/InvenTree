@@ -168,6 +168,44 @@ class TestMiddlewareEmission:
             _run(scenario())
         assert emitter.events[-1].data["status"] == "error"
 
+    def test_unexpected_authorize_error_still_pairs_the_events(self) -> None:
+        """A DB error inside authorization must not strand an unpaired
+        TOOL_CALL_START on the wire."""
+        from unittest.mock import patch
+
+        import pytest
+        from ai.core.tools.invocation_guard import CapabilityInvocationMiddleware
+
+        emitter = _Emitter()
+
+        class _Fn:
+            name = "get_part"
+
+        class _Context:
+            function = _Fn()
+            arguments: ClassVar[dict] = {}
+            result = None
+
+        async def _next(context):
+            await asyncio.sleep(0)
+            return None
+
+        async def scenario():
+            with (
+                patch(
+                    "ai.core.tools.invocation_guard.authorize_invocation",
+                    side_effect=RuntimeError("db down"),
+                ),
+                bind_tool_event_sink(emitter, "t1", "r1"),
+            ):
+                await CapabilityInvocationMiddleware().process(_Context(), _next)
+
+        with pytest.raises(RuntimeError):
+            _run(scenario())
+        kinds = [e.event_type for e in emitter.events]
+        assert kinds == [EventType.TOOL_CALL_START, EventType.TOOL_CALL_END]
+        assert emitter.events[-1].data["status"] == "error"
+
     def test_unbound_sink_is_a_no_op(self) -> None:
         from unittest.mock import patch
 

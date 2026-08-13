@@ -536,7 +536,7 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
         # drawer shows.
         from ai.core.voice.wire import VoiceTurnResponse
 
-        return VoiceTurnResponse(
+        payload = VoiceTurnResponse(
             session_id=str(session.id),
             thread_id=result.thread_id,
             turn_id=result.turn_id,
@@ -545,8 +545,14 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
             response_state=result.response_state,
             replayed=result.replayed,
             spoken=spoken,
-            pending_question=result.pending_question,
+            pending_question=None,
         ).model_dump(mode="json")
+        # The S22 question payload passes through VERBATIM — the question
+        # schema owns its shape (the generated VoicePendingQuestion models
+        # it with optional fields); round-tripping it through the model
+        # would add None-valued keys the historic wire never carried.
+        payload["pending_question"] = result.pending_question
+        return payload
 
 
 class WalkthroughRequest(BaseModel):

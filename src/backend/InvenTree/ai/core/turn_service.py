@@ -170,17 +170,22 @@ def coalesce_text_deltas(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     must keep TODAY'S single-delta shape so idempotency replay stays
     byte-compatible with every existing turn and stale client, and canonical
     JSON growth stays zero. Consecutive TEXT_MESSAGE_CONTENT records with
-    the same messageId merge into one; when a MESSAGES_SNAPSHOT follows
-    (the S45 reconciliation event), its assistant content becomes the
-    merged delta and the snapshot record itself is dropped from storage —
-    replay then emits exactly the final text.
+    the same messageId merge into one. When a MESSAGES_SNAPSHOT (the S45
+    reconciliation event) carries the final assistant text, it supersedes
+    EVERY delta of the final message — S46 tool records split the deltas
+    into non-adjacent groups, and rewriting only the last group would
+    replay superseded text alongside the final one. If no delta exists at
+    all, the snapshot record is KEPT: it is then the only carrier of the
+    turn's text, and the client renders it via its MESSAGES_SNAPSHOT case.
     """
     snapshot_content: str | None = None
+    snapshot_record: dict[str, Any] | None = None
     for record in events:
         if record.get("type") == EventType.MESSAGES_SNAPSHOT.value:
             for entry in record.get("messages") or []:
                 if isinstance(entry, dict) and entry.get("role") == "assistant":
                     snapshot_content = str(entry.get("content") or "")
+                    snapshot_record = record
 
     coalesced: list[dict[str, Any]] = []
     for record in events:
@@ -198,13 +203,28 @@ def coalesce_text_deltas(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         coalesced.append(record)
 
-    if snapshot_content is not None:
-        for index in range(len(coalesced) - 1, -1, -1):
-            if coalesced[index].get("type") == EventType.TEXT_MESSAGE_CONTENT.value:
-                replaced = dict(coalesced[index])
-                replaced["delta"] = snapshot_content
-                coalesced[index] = replaced
-                break
+    if snapshot_content is None:
+        return coalesced
+
+    text_indices = [
+        index
+        for index, record in enumerate(coalesced)
+        if record.get("type") == EventType.TEXT_MESSAGE_CONTENT.value
+    ]
+    if not text_indices:
+        if snapshot_record is not None:
+            coalesced.append(snapshot_record)
+        return coalesced
+
+    final_message_id = coalesced[text_indices[-1]].get("messageId")
+    superseded = [
+        index for index in text_indices if coalesced[index].get("messageId") == final_message_id
+    ]
+    replaced = dict(coalesced[superseded[0]])
+    replaced["delta"] = snapshot_content
+    coalesced[superseded[0]] = replaced
+    for index in reversed(superseded[1:]):
+        del coalesced[index]
     return coalesced
 
 
@@ -1918,7 +1938,7 @@ class NormalizedTurnService:
                     from ai.core.tool_events import bind_tool_event_sink
 
                     with _ExitStack() as sink_stack:
-                        if _get_settings().feature_tool_events:
+                        if getattr(_get_settings(), "feature_tool_events", False):
                             sink_stack.enter_context(
                                 bind_tool_event_sink(isolated_emitter, thread.pk, f"run:{turn.pk}")
                             )
@@ -1932,23 +1952,30 @@ class NormalizedTurnService:
                             chunks.append(str(chunk))
 
                 streamed_text = "".join(chunks)
-                # S45/S22: the deterministic question replacement is applied
-                # HERE for both paths — wf8's own application (classic path)
-                # already replaced the text, and the shared helper is
-                # idempotent (it renders from the pending proposal, ignoring
-                # the input), so streamed turns get the identical replacement
-                # without the workflow retro-editing its stream.
+                # S45: the post-hoc question replacement and the snapshot
+                # reconciliation run ONLY when the token-streaming rail could
+                # have produced the text (flag on, non-voice). Flag off, wf8's
+                # own in-workflow application already produced the final text
+                # and the classic path must stay byte-identical (ships-dark);
+                # voice keeps the workflow's voice-trimmed rendering — a
+                # second render would re-trim an already-trimmed proposal
+                # (the trim loop-guard is not idempotent).
+                streaming_reconcile = (
+                    getattr(_get_settings(), "feature_token_streaming", False)
+                    and modality != TurnModality.VOICE
+                )
                 message = streamed_text
-                try:
-                    from ai.core.workflows.wf8_lookup import apply_question_replacement
+                if streaming_reconcile:
+                    try:
+                        from ai.core.workflows.wf8_lookup import apply_question_replacement
 
-                    message = apply_question_replacement(
-                        message,
-                        modality="voice" if modality == TurnModality.VOICE else "text",
-                        context=workflow_context,
-                    )
-                except Exception:  # pragma: no cover - replacement is fail-soft
-                    logger.warning("question replacement failed", exc_info=False)
+                        message = apply_question_replacement(
+                            message,
+                            modality="text",
+                            context=workflow_context,
+                        )
+                    except Exception:  # pragma: no cover - replacement is fail-soft
+                        logger.warning("question replacement failed", exc_info=False)
                 grounding_meta = None
                 try:
                     # S27 seam: after message assembly, before the canonical
@@ -2013,12 +2040,13 @@ class NormalizedTurnService:
                     logger.warning("manual grounding evaluation failed", exc_info=False)
                 # S45 reconciliation: whenever the FINAL message differs from
                 # what was emitted as text (question replacement, grounding
-                # enforce-downgrade — a mismatch that predates streaming and
-                # was latent on the single-delta path too), one
-                # MESSAGES_SNAPSHOT tells the client to replace the bubble
-                # wholesale. Emitted before events freeze so replay carries
-                # the truth.
-                if message != streamed_text:
+                # enforce-downgrade), one MESSAGES_SNAPSHOT tells the client
+                # to replace the bubble wholesale. Emitted before events
+                # freeze so replay carries the truth. Same gate as the
+                # replacement above: flag off, the wire and storage must stay
+                # byte-identical to the pre-S45 shape (the latent
+                # enforce-downgrade divergence stays latent until the flip).
+                if streaming_reconcile and message != streamed_text:
                     try:
                         await isolated_emitter.emit(
                             AGUIEvent(
@@ -2061,7 +2089,10 @@ class NormalizedTurnService:
             )
             if question_resolution is not None:
                 canonical["question_resolution"] = question_resolution.audit_payload()
-            canonical["events"] = coalesce_text_deltas(capture.events)
+            # Live alias: the arming and manifest seams below append to
+            # capture.events and must land in the canonical; the coalesced
+            # freeze happens immediately before the terminal write.
+            canonical["events"] = capture.events
             canonical = await self._transform_proposals(
                 canonical,
                 actor=actor,
@@ -2080,6 +2111,9 @@ class NormalizedTurnService:
             )
             message = str(canonical.get("message") or "")
             response_state = str(canonical.get("response_state") or TurnState.COMPLETE)
+            # S45: final freeze — every seam has run; collapse streamed
+            # deltas for durable storage (replay byte-compatibility).
+            canonical["events"] = coalesce_text_deltas(capture.events)
             finalized = await self._call_sync(
                 repository.terminal,
                 turn.pk,
@@ -2088,7 +2122,7 @@ class NormalizedTurnService:
                 output_content=message,
                 output_metadata=_terminal_output_metadata({
                     "response_state": response_state,
-                    "events": coalesce_text_deltas(capture.events),
+                    "events": canonical["events"],
                     "spoken_summary": str(canonical.get("spoken_summary") or ""),
                     # S22: the card and its resolution ride message metadata so
                     # the /threads projection can reproduce them on reload.

@@ -78,7 +78,8 @@ def test_clarify_is_suppressed_for_social_turns():
 
     from ai.core.workflows import wf8_lookup
 
-    source = inspect.getsource(wf8_lookup.T1LookupWorkflow.execute)
+    # S45 moved the clarify gating into the shared _prepare_run helper.
+    source = inspect.getsource(wf8_lookup.T1LookupWorkflow._prepare_run)
     assert "not _is_social_turn(query)" in source
 
 

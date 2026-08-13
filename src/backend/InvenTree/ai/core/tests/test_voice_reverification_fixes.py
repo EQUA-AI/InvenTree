@@ -292,7 +292,8 @@ def test_category_hint_is_gated_on_tools_not_on_the_clarify_flag():
 
     from ai.core.workflows import wf8_lookup
 
-    source = inspect.getsource(wf8_lookup.T1LookupWorkflow.execute)
+    # S45 moved the shared pre-run machinery into _prepare_run.
+    source = inspect.getsource(wf8_lookup.T1LookupWorkflow._prepare_run)
     assert "if enforce_selection and runtime_tools:" in source
 
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import sys
 import uuid
 from collections.abc import AsyncIterator  # noqa: TC003
@@ -1256,12 +1257,24 @@ async def switch_data_mode() -> dict[str, Any]:
 
 _CONFIG_SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
 
+#: Credential SHAPES inside string values: a SAS/API signature in a query
+#: string or connection string, or userinfo credentials embedded in a URL.
+#: Name-based redaction alone is one operator habit away from leaking — an
+#: endpoint pasted WITH its ?sig=... survives a name check.
+_CONFIG_SECRET_VALUE = re.compile(
+    r"(?i)(?:sig|sharedaccesskey|accountkey|apikey|api-key|password|secret|token)="
+    r"|://[^/@\s]+:[^/@\s]+@"
+)
+
 
 def _redact_config(value: Any, name: str = "") -> Any:
-    """Redact secret-shaped values from a settings dump (S44)."""
-    upper = name.upper()
-    if any(marker in upper for marker in _CONFIG_SECRET_MARKERS):
-        return "***" if value not in (None, "") else value
+    """Redact secret-shaped values from a settings dump (S44).
+
+    Name markers redact only STRING values — feature_token_streaming and
+    the token-budget numbers are flags the endpoint exists to expose, not
+    secrets. Every string additionally gets a value-shape scan so a
+    credential pasted into a non-secret-named field never ships.
+    """
     if isinstance(value, dict):
         return {key: _redact_config(item, key) for key, item in value.items()}
     if isinstance(value, list):
@@ -1269,6 +1282,12 @@ def _redact_config(value: Any, name: str = "") -> Any:
     # pydantic SecretStr dumps as the masked literal already, but be safe.
     if value.__class__.__name__ == "SecretStr":
         return "***"
+    if isinstance(value, str) and value:
+        upper = name.upper()
+        if any(marker in upper for marker in _CONFIG_SECRET_MARKERS):
+            return "***"
+        if _CONFIG_SECRET_VALUE.search(value):
+            return "***"
     return value
 
 

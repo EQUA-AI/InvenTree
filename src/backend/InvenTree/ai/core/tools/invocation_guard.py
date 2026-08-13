@@ -319,6 +319,13 @@ class CapabilityInvocationMiddleware(FunctionMiddleware):
                     if sink is not None:
                         await sink.ended(tool_call_id, tool_id, "denied", _elapsed_ms())
                     raise
+            except Exception:
+                # An unexpected authorize failure (DB error in the permission
+                # profile, scope precheck) must not strand an unpaired
+                # TOOL_CALL_START on the wire.
+                if sink is not None:
+                    await sink.ended(tool_call_id, tool_id, "error", _elapsed_ms())
+                raise
             try:
                 await next(context)
             except Exception:

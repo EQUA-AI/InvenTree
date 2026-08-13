@@ -63,6 +63,60 @@ class TestCoalesceTextDeltas:
         assert len(deltas) == 1
         assert deltas[0]["delta"] == "Which machine?"
 
+    def test_snapshot_supersedes_all_groups_split_by_tool_events(self) -> None:
+        """S46 tool records split the deltas; superseded text must not survive."""
+        events = [
+            {"type": EventType.TEXT_MESSAGE_START.value, "messageId": "m1"},
+            _delta("m1", "Let me check that. "),
+            {"type": EventType.TOOL_CALL_START.value, "toolCallId": "c1"},
+            {"type": EventType.TOOL_CALL_END.value, "toolCallId": "c1"},
+            _delta("m1", "Stock is 40 units."),
+            {"type": EventType.TEXT_MESSAGE_END.value, "messageId": "m1"},
+            {
+                "type": EventType.MESSAGES_SNAPSHOT.value,
+                "messages": [{"role": "assistant", "content": "FINAL corrected answer."}],
+            },
+        ]
+        out = coalesce_text_deltas(events)
+        deltas = [r for r in out if r["type"] == EventType.TEXT_MESSAGE_CONTENT.value]
+        assert [r["delta"] for r in deltas] == ["FINAL corrected answer."]
+        # Tool records and the START/END frame survive in order.
+        assert [r["type"] for r in out] == [
+            EventType.TEXT_MESSAGE_START.value,
+            EventType.TEXT_MESSAGE_CONTENT.value,
+            EventType.TOOL_CALL_START.value,
+            EventType.TOOL_CALL_END.value,
+            EventType.TEXT_MESSAGE_END.value,
+        ]
+
+    def test_snapshot_only_supersedes_the_final_message(self) -> None:
+        """An earlier message (other messageId) keeps its own text."""
+        events = [
+            _delta("social", "Hi there. "),
+            _delta("m1", "raw "),
+            _delta("m1", "paraphrase"),
+            {
+                "type": EventType.MESSAGES_SNAPSHOT.value,
+                "messages": [{"role": "assistant", "content": "Final."}],
+            },
+        ]
+        out = coalesce_text_deltas(events)
+        assert [r["delta"] for r in out] == ["Hi there. ", "Final."]
+
+    def test_snapshot_kept_when_no_text_delta_exists(self) -> None:
+        """With no delta carrier the snapshot IS the turn's text — keep it."""
+        snapshot = {
+            "type": EventType.MESSAGES_SNAPSHOT.value,
+            "messages": [{"role": "assistant", "content": "Which machine?"}],
+        }
+        events = [
+            {"type": EventType.RUN_STARTED.value},
+            snapshot,
+            {"type": EventType.RUN_FINISHED.value},
+        ]
+        out = coalesce_text_deltas(events)
+        assert snapshot in out
+
     def test_single_delta_turn_is_byte_stable(self) -> None:
         """Today's stored shape must pass through untouched."""
         events = [
@@ -168,6 +222,39 @@ class TestExecuteStreaming:
             _collect(workflow.execute_streaming(query="how many parts?"))
         assert getattr(excinfo.value, "failure_class", None) == "provider_outage"
 
+    def test_usage_extracted_from_real_maf_update_contents(self) -> None:
+        """Real MAF updates carry usage as UsageContent in contents — the
+        response-shaped ``usage_details`` attribute never exists on them."""
+        from agent_framework import (
+            AgentRunResponseUpdate,
+            UsageContent,
+            UsageDetails,
+        )
+
+        terminal = AgentRunResponseUpdate(
+            contents=[
+                UsageContent(
+                    details=UsageDetails(
+                        input_token_count=7,
+                        output_token_count=3,
+                        total_token_count=10,
+                    )
+                )
+            ]
+        )
+        agent = _FakeAgent([_FakeUpdate("answer"), terminal])
+        workflow = _workflow_with_prepared(agent)
+        recorded = {}
+
+        def record(source, metrics):
+            recorded[source] = metrics
+
+        with patch("ai.core.workflows.wf8_lookup.record_usage", side_effect=record):
+            chunks = _collect(workflow.execute_streaming(query="how many parts?"))
+        assert chunks == ["answer"]
+        assert recorded["wf8_lookup"].get("input_token_count") == 7
+        assert recorded["wf8_lookup"].get("output_token_count") == 3
+
 
 class TestGuards:
     """Source-inspection: the branch guards that keep streaming scoped."""
@@ -194,3 +281,31 @@ class TestGuards:
         assert source.index("message != streamed_text") < source.index(
             "response = _canonical_response_for_legacy(\n                    message"
         )
+
+    def test_reconciliation_and_replacement_are_flag_gated(self) -> None:
+        """Flags off, the classic wire/storage shape must stay byte-identical:
+        no post-hoc question replacement (wf8 already applied its own — a
+        second voice render would re-trim a trimmed proposal) and no
+        MESSAGES_SNAPSHOT emit."""
+        import inspect
+
+        from ai.core import turn_service
+
+        source = inspect.getsource(turn_service.NormalizedTurnService)
+        gate = source.index("streaming_reconcile = (")
+        assert "feature_token_streaming" in source[gate : gate + 300]
+        assert "modality != TurnModality.VOICE" in source[gate : gate + 300]
+        # Both consumers sit BEHIND the gate assignment.
+        assert gate < source.index("if streaming_reconcile:")
+        assert gate < source.index("if streaming_reconcile and message != streamed_text:")
+
+    def test_root_failure_paths_close_the_open_step(self) -> None:
+        """Every failure handler must pair STEP_STARTED before its error
+        event — an unpaired step would persist in the failed turn's replay."""
+        import inspect
+
+        from ai.core.workflows import root as root_module
+
+        source = inspect.getsource(root_module.RootWorkflow)
+        # Success path + TimeoutError handler + generic Exception handler.
+        assert source.count("await _step(None)") >= 3
