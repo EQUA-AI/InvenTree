@@ -45,12 +45,12 @@ if TYPE_CHECKING:
 from ai.core.questions.resolution import (
     QuestionResolution as _QuestionResolution,
 )
-from ai.core.turn.events import (
+from ai.core.turn.events import (  # noqa: F401
     _event_from_record,
     _EventCapture,
     coalesce_text_deltas,
 )
-from ai.core.turn.finalize import _terminal_output_metadata
+from ai.core.turn.finalize import _terminal_output_metadata  # noqa: F401
 from ai.core.turn.history import (  # noqa: F401
     _HISTORY_PROTECTED_NEWEST,
     _HISTORY_TRUNCATION_MARKER,
@@ -1161,7 +1161,7 @@ class NormalizedTurnService:
         the workflow intersects it with the actor's authorized record roots.
         """
 
-        from ai.core.turn import execution, intake, pending, routing
+        from ai.core.turn import execution, finalize, intake, pending, routing
 
         run = await intake.begin(
             self,
@@ -1182,7 +1182,6 @@ class NormalizedTurnService:
                 run.thread.pk, run.turn.pk, run.replayed_canonical, replayed=True
             )
 
-        repository = run.repository
         thread = run.thread
         turn = run.turn
         isolated_emitter = emitter or InMemoryEventEmitter()
@@ -1206,72 +1205,8 @@ class NormalizedTurnService:
             await pending.resolve_preconditions(self, run)
             await routing.build_route(self, run)
             canonical = await execution.build_canonical(self, run)
-            # S22 arming choke point: a producer proposed a question via the
-            # promotion ContextVar; the turn service owns the invariants, so
-            # the record save, the persisted QUESTION event, and the canonical
-            # audit copy all happen here — before events are frozen into the
-            # canonical.
-            canonical = await self._arm_pending_question(
-                canonical,
-                thread_id=thread.pk,
-                turn_id=turn.pk,
-                content=content,
-                modality=modality,
-                emitter=isolated_emitter,
-            )
-            if run.question_resolution is not None:
-                canonical["question_resolution"] = run.question_resolution.audit_payload()
-            # Live alias: the arming and manifest seams below append to
-            # capture.events and must land in the canonical; the coalesced
-            # freeze happens immediately before the terminal write.
-            canonical["events"] = capture.events
-            canonical = await self._transform_proposals(
-                canonical,
-                actor=actor,
-                trusted_context=trusted_context,
-            )
-            # S28: server-observed entity manifest, after proposals so the
-            # manifest reflects the final canonical. The event lands in the
-            # live stream AND capture.events (same list as
-            # canonical["events"]), so replay reproduces the chips.
-            canonical = await self._attach_entity_manifest(
-                canonical,
-                diagnostic_context=run.diagnostic_context,
-                thread_id=thread.pk,
-                turn_id=turn.pk,
-                emitter=isolated_emitter,
-            )
-            message = str(canonical.get("message") or "")
-            response_state = str(canonical.get("response_state") or TurnState.COMPLETE)
-            # S45: final freeze — every seam has run; collapse streamed
-            # deltas for durable storage (replay byte-compatibility).
-            canonical["events"] = coalesce_text_deltas(capture.events)
-            finalized = await self._call_sync(
-                repository.terminal,
-                turn.pk,
-                state=response_state,
-                canonical_result=canonical,
-                output_content=message,
-                output_metadata=_terminal_output_metadata({
-                    "response_state": response_state,
-                    "events": canonical["events"],
-                    "spoken_summary": str(canonical.get("spoken_summary") or ""),
-                    # S22: the card and its resolution ride message metadata so
-                    # the /threads projection can reproduce them on reload.
-                    **({"question": canonical["question"]} if canonical.get("question") else {}),
-                    **(
-                        {"question_resolution": canonical["question_resolution"]}
-                        if canonical.get("question_resolution")
-                        else {}
-                    ),
-                    # S27: the grounding assessment persists with the turn so
-                    # the shadow soak can be audited from stored data alone.
-                    **({"grounding": canonical["grounding"]} if canonical.get("grounding") else {}),
-                    # S28: chips reload from the same metadata on /threads.
-                    **({"entities": canonical["entities"]} if canonical.get("entities") else {}),
-                }),
-                workflow_id=capture.workflow_id or "",
-            )
+            canonical = await finalize.enrich_canonical(self, run, canonical)
+            finalized, _, response_state = await finalize.complete(self, run, canonical)
             # One rendered line per turn. Fields go in the message, not extra={},
             # because stdlib logging discards extra entirely -- which is why the
             # 2026-07-26 session left only 2 of 36 turns attributable, and both
@@ -1307,36 +1242,18 @@ class NormalizedTurnService:
                     thread_id=thread.pk,
                 )
             )
-            response = _canonical_terminal_response(
-                TurnState.CANCELED,
-                "The request was canceled before a complete answer was produced.",
+            canonical = finalize.failure_canonical(
+                run,
+                state=TurnState.CANCELED,
+                message="The request was canceled before a complete answer was produced.",
             )
-            canonical = {
-                "thread_id": thread.pk,
-                "turn_id": turn.pk,
-                "message": response.detailed_response,
-                "agent": "root_workflow",
-                "workflow_used": capture.workflow_id,
-                "response_state": TurnState.CANCELED,
-                "canonical_response": response.model_dump(mode="json"),
-                "spoken_summary": "",
-                "reasoning_provenance": None,
-                "route": None,
-                "events": coalesce_text_deltas(capture.events),
-            }
             await asyncio.shield(
-                self._call_sync(
-                    repository.terminal,
-                    turn.pk,
+                finalize.persist_terminal(
+                    self,
+                    run,
+                    canonical,
                     state=TurnState.CANCELED,
-                    canonical_result=canonical,
-                    output_content=response.detailed_response,
-                    output_metadata=_terminal_output_metadata({
-                        "response_state": TurnState.CANCELED,
-                        "events": coalesce_text_deltas(capture.events),
-                        "spoken_summary": "",
-                    }),
-                    workflow_id=capture.workflow_id or "",
+                    output_content=str(canonical["message"]),
                 )
             )
             raise
@@ -1351,35 +1268,19 @@ class NormalizedTurnService:
                     thread_id=thread.pk,
                 )
             )
-            response = _canonical_terminal_response(
-                TurnState.INCOMPLETE,
-                "The bounded diagnostic review ended before a complete answer was produced.",
-            )
-            canonical = {
-                "thread_id": thread.pk,
-                "turn_id": turn.pk,
-                "message": response.detailed_response,
-                "agent": "root_workflow",
-                "workflow_used": capture.workflow_id,
-                "response_state": TurnState.INCOMPLETE,
-                "canonical_response": response.model_dump(mode="json"),
-                "spoken_summary": "",
-                "reasoning_provenance": None,
-                "route": None,
-                "events": coalesce_text_deltas(capture.events),
-            }
-            finalized = await self._call_sync(
-                repository.terminal,
-                turn.pk,
+            canonical = finalize.failure_canonical(
+                run,
                 state=TurnState.INCOMPLETE,
-                canonical_result=canonical,
-                output_content=response.detailed_response,
-                output_metadata=_terminal_output_metadata({
-                    "response_state": TurnState.INCOMPLETE,
-                    "events": coalesce_text_deltas(capture.events),
-                    "spoken_summary": "",
-                }),
-                workflow_id=capture.workflow_id or "",
+                message=(
+                    "The bounded diagnostic review ended before a complete answer was produced."
+                ),
+            )
+            finalized = await finalize.persist_terminal(
+                self,
+                run,
+                canonical,
+                state=TurnState.INCOMPLETE,
+                output_content=str(canonical["message"]),
             )
             return self._result_from_canonical(thread.pk, finalized.pk, canonical, replayed=False)
         except (IdempotencyConflict, TurnAlreadyRunning):
@@ -1433,32 +1334,15 @@ class NormalizedTurnService:
                     thread_id=thread.pk,
                 )
             )
-            response = _canonical_terminal_response(TurnState.FAILED, failed_message)
-            canonical = {
-                "thread_id": thread.pk,
-                "turn_id": turn.pk,
-                "message": response.detailed_response,
-                "agent": "root_workflow",
-                "workflow_used": capture.workflow_id,
-                "response_state": TurnState.FAILED,
-                "canonical_response": response.model_dump(mode="json"),
-                "spoken_summary": "",
-                "reasoning_provenance": None,
-                "route": None,
-                "events": coalesce_text_deltas(capture.events),
-            }
-            await self._call_sync(
-                repository.terminal,
-                turn.pk,
+            canonical = finalize.failure_canonical(
+                run, state=TurnState.FAILED, message=failed_message
+            )
+            await finalize.persist_terminal(
+                self,
+                run,
+                canonical,
                 state=TurnState.FAILED,
-                canonical_result=canonical,
-                output_content=response.detailed_response,
-                output_metadata=_terminal_output_metadata({
-                    "response_state": TurnState.FAILED,
-                    "events": coalesce_text_deltas(capture.events),
-                    "spoken_summary": "",
-                }),
-                workflow_id=capture.workflow_id or "",
+                output_content=str(canonical["message"]),
             )
             raise TurnExecutionFailed("AI turn failed") from None
         finally:
