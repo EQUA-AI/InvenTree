@@ -925,6 +925,33 @@ function ChatMessageItem({
                 : '0 1px 3px rgba(0, 0, 0, 0.08)'
             }}
           >
+            {!isUser && (message.toolActivity?.length ?? 0) > 0 && (
+              <Group gap={6} mb={6} wrap='wrap'>
+                {message.toolActivity?.map((activity) => (
+                  <Badge
+                    key={activity.id}
+                    size='xs'
+                    variant='light'
+                    color={
+                      activity.status === 'running'
+                        ? 'blue'
+                        : activity.status === 'ok'
+                          ? 'teal'
+                          : activity.status === 'denied'
+                            ? 'yellow'
+                            : 'red'
+                    }
+                    leftSection={
+                      activity.status === 'running' ? (
+                        <Loader size={8} />
+                      ) : undefined
+                    }
+                  >
+                    {activity.name}
+                  </Badge>
+                ))}
+              </Group>
+            )}
             {message.content ? (
               isUser ? (
                 <Text

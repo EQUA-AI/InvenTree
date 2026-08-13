@@ -1909,14 +1909,27 @@ class NormalizedTurnService:
                     workflow_id=workflow_context.get("pinned_workflow_id"),
                     correlation_id=correlation_id,
                 ):
-                    async for chunk in workflow.run_stream(
-                        message=routing_content,
-                        emitter=isolated_emitter,
-                        thread_id=thread.pk,
-                        user_id=actor.user_pk,
-                        context=workflow_context,
-                    ):
-                        chunks.append(str(chunk))
+                    # S46: bind the content-free tool-event sink for this
+                    # turn (flag-gated). The invocation-guard middleware
+                    # emits through it from any agent-framework depth.
+                    from contextlib import ExitStack as _ExitStack
+
+                    from ai.core.config import get_settings as _get_settings
+                    from ai.core.tool_events import bind_tool_event_sink
+
+                    with _ExitStack() as sink_stack:
+                        if _get_settings().feature_tool_events:
+                            sink_stack.enter_context(
+                                bind_tool_event_sink(isolated_emitter, thread.pk, f"run:{turn.pk}")
+                            )
+                        async for chunk in workflow.run_stream(
+                            message=routing_content,
+                            emitter=isolated_emitter,
+                            thread_id=thread.pk,
+                            user_id=actor.user_pk,
+                            context=workflow_context,
+                        ):
+                            chunks.append(str(chunk))
 
                 streamed_text = "".join(chunks)
                 # S45/S22: the deterministic question replacement is applied

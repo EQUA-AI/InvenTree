@@ -176,6 +176,22 @@ class RootWorkflow:
                 return None
             return max(0.001, deadline - asyncio.get_running_loop().time())
 
+        # S46: content-free step events (names only), same flag as the tool
+        # events. current_step pairing guarantees every STARTED gets a
+        # FINISHED even across stage hops.
+        step_events_on = settings.feature_tool_events
+        current_step: str | None = None
+
+        async def _step(name: str | None) -> None:
+            nonlocal current_step
+            if not step_events_on:
+                return
+            if current_step:
+                await run_ctx.emit(EventType.STEP_FINISHED, {"stepName": current_step})
+            if name:
+                await run_ctx.emit(EventType.STEP_STARTED, {"stepName": name})
+            current_step = name
+
         try:
             # Emit run started
             await run_ctx.emit_run_started()
@@ -183,6 +199,7 @@ class RootWorkflow:
             # Step 1: Gather context
             # We gather context before routing to help the router make better decisions
             stage = "context"
+            await _step("context")
             await run_ctx.emit_thinking("Gathering context...")
 
             aggregated_context = await asyncio.wait_for(
@@ -199,6 +216,7 @@ class RootWorkflow:
 
             # Step 2: Route
             stage = "routing"
+            await _step("routing")
             await run_ctx.emit_thinking("Routing request...")
 
             server_pin = aggregated_context.get("pinned_workflow_id")
@@ -248,6 +266,7 @@ class RootWorkflow:
 
             # Step 3: Execute Workflow
             stage = "workflow_execution"
+            await _step("workflow_execution")
             workflow_id = decision.get_workflow_id()
 
             # A server-owned pin wins over this router's own choice. Voice turns
@@ -372,6 +391,7 @@ class RootWorkflow:
                 await run_ctx.emit_text_end()
                 yield response
 
+            await _step(None)
             await run_ctx.emit_run_finished()
 
         except asyncio.CancelledError:

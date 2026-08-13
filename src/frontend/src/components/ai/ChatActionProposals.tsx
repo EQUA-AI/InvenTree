@@ -297,7 +297,15 @@ export function ChatActionProposalList() {
   useEffect(() => {
     void refresh();
     const interval = window.setInterval(() => void refresh(), 30_000);
-    return () => window.clearInterval(interval);
+    // S46: a finished chat turn nudges an immediate refresh so a proposal
+    // minted by the turn you just watched appears now; the poll stays as
+    // the backstop until S49's STATE_DELTA replaces it.
+    const onTurnFinished = () => void refresh();
+    window.addEventListener('aimms:proposals-refresh', onTurnFinished);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('aimms:proposals-refresh', onTurnFinished);
+    };
   }, [refresh]);
 
   if (proposals.length === 0) {

@@ -368,6 +368,16 @@ export interface ChatMessage {
   questionResolution?: QuestionResolution;
   /** S28: server-observed entity chips (records this turn was about). */
   entities?: EntityChip[];
+  /** S46: live tool activity for this turn (never persisted; content-free). */
+  toolActivity?: ToolActivityEntry[];
+}
+
+/** S46: one tool call's lifecycle as shown in the activity strip. */
+export interface ToolActivityEntry {
+  id: string;
+  name: string;
+  status: 'running' | 'ok' | 'denied' | 'error';
+  durationMs?: number;
 }
 
 /** S28 entity chip: server-mapped model + pk, never model-invented. */
@@ -1192,6 +1202,11 @@ export function useAIChat(config: AIChatConfig = {}) {
         );
         const now = new Date().toISOString();
 
+        // S46: toolActivity is a live-turn affordance — never persisted
+        // (no schema-version burden, no stale spinners on reload).
+        const persistable = currentMessages.map(
+          ({ toolActivity: _toolActivity, ...rest }) => rest
+        );
         const updatedThread: StoredThread = {
           id: activeThreadId,
           title:
@@ -1200,7 +1215,7 @@ export function useAIChat(config: AIChatConfig = {}) {
             (currentMessages[0]
               ? generateThreadTitle(currentMessages[0].content)
               : 'New Chat'),
-          messages: currentMessages,
+          messages: persistable,
           createdAt: prev[existingIndex]?.createdAt || now,
           updatedAt: now,
           isPersisted:
@@ -1459,6 +1474,26 @@ export function useAIChat(config: AIChatConfig = {}) {
     (messageId: string, entities: EntityChip[]) => {
       setMessages((prev) =>
         prev.map((msg) => (msg.id === messageId ? { ...msg, entities } : msg))
+      );
+    },
+    []
+  );
+
+  /** S46: upsert one tool call's lifecycle entry, keyed by toolCallId. */
+  const upsertToolActivity = useCallback(
+    (messageId: string, entry: ToolActivityEntry) => {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id !== messageId) return msg;
+          const activity = [...(msg.toolActivity ?? [])];
+          const index = activity.findIndex((item) => item.id === entry.id);
+          if (index >= 0) {
+            activity[index] = { ...activity[index], ...entry };
+          } else {
+            activity.push(entry);
+          }
+          return { ...msg, toolActivity: activity };
+        })
       );
     },
     []
@@ -1731,16 +1766,38 @@ export function useAIChat(config: AIChatConfig = {}) {
                           }
 
                           case AGUIEventType.TOOL_CALL_START: {
+                            // S46: structured side-channel, never message
+                            // content — the old 🔧 string injection baked
+                            // tool noise into persisted threads and the
+                            // copy payload.
                             const toolEvent = event as AGUIToolCallStartEvent;
-                            console.debug(
-                              '[AG-UI] Tool call started:',
-                              toolEvent.toolCallName
-                            );
-                            // Optionally show tool call in UI
-                            appendToMessage(
-                              assistantMessage.id,
-                              `\n🔧 Calling: ${toolEvent.toolCallName}...\n`
-                            );
+                            upsertToolActivity(assistantMessage.id, {
+                              id: toolEvent.toolCallId,
+                              name: toolEvent.toolCallName,
+                              status: 'running'
+                            });
+                            break;
+                          }
+
+                          case AGUIEventType.TOOL_CALL_END: {
+                            const endEvent = event as unknown as {
+                              toolCallId?: string;
+                              toolCallName?: string;
+                              status?: string;
+                              durationMs?: number;
+                            };
+                            if (endEvent.toolCallId) {
+                              upsertToolActivity(assistantMessage.id, {
+                                id: endEvent.toolCallId,
+                                name: endEvent.toolCallName ?? '',
+                                status:
+                                  endEvent.status === 'denied' ||
+                                  endEvent.status === 'error'
+                                    ? endEvent.status
+                                    : 'ok',
+                                durationMs: endEvent.durationMs
+                              });
+                            }
                             break;
                           }
 
@@ -1759,6 +1816,12 @@ export function useAIChat(config: AIChatConfig = {}) {
                             console.debug(
                               '[AG-UI] Run finished:',
                               finishEvent.runId
+                            );
+                            // S46: nudge the proposals panel — a proposal
+                            // minted by THIS turn should appear now, not on
+                            // the next 30s poll tick.
+                            window.dispatchEvent(
+                              new CustomEvent('aimms:proposals-refresh')
                             );
                             break;
                           }

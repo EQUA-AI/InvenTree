@@ -273,6 +273,13 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("FEATURE_TOKEN_STREAMING", "AIMMS_FEATURE_TOKEN_STREAMING"),
     )
+    # S46: content-free tool-call + step events on the chat stream. Names,
+    # ids, status and duration ONLY — arguments and results never leave the
+    # server (fault discipline).
+    feature_tool_events: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_TOOL_EVENTS", "AIMMS_FEATURE_TOOL_EVENTS"),
+    )
     # S40: NLI groundedness cascade. Dark this phase — the model deps ship in
     # the never-installed ai/requirements-eval.txt and only the offline
     # eval harness exists; live cascade wiring is Phase 8.

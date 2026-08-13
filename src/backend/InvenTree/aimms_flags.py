@@ -410,6 +410,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='S45 real token streaming on the wf8 text rail',
     ),
     FlagEntry(
+        'FEATURE_TOOL_EVENTS',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_tool_events',
+        description='S46 content-free tool/step events on the chat stream',
+    ),
+    FlagEntry(
         'AIMMS_MANUAL_GROUNDING_MODE',
         'literal',
         'shadow',

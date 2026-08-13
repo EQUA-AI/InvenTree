@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -277,8 +278,23 @@ class CapabilityInvocationMiddleware(FunctionMiddleware):
         tool_id = tool_name(context.function)
         # S36: one span per tool invocation. Name and decision code only —
         # arguments and results never reach span attributes.
+        import time as _time
+
         from ai.core.correlation import current_correlation
+        from ai.core.tool_events import current_tool_event_sink
         from ai.core.tracing import set_span_attrs, turn_span
+
+        # S46: content-free lifecycle events through the turn-scoped sink
+        # (None when the flag is off or outside a bound turn). Name, id,
+        # status, duration only — never arguments or results.
+        sink = current_tool_event_sink.get()
+        tool_call_id = uuid.uuid4().hex
+        started_at = _time.perf_counter()
+        if sink is not None:
+            await sink.started(tool_call_id, tool_id)
+
+        def _elapsed_ms() -> float:
+            return (_time.perf_counter() - started_at) * 1000
 
         with turn_span(
             "aimms.tool", tool_name=tool_id, correlation_id=current_correlation()
@@ -300,8 +316,17 @@ class CapabilityInvocationMiddleware(FunctionMiddleware):
                 )
                 set_span_attrs(span, decision_code=exc.reason_code)
                 if enforced:
+                    if sink is not None:
+                        await sink.ended(tool_call_id, tool_id, "denied", _elapsed_ms())
                     raise
-            await next(context)
+            try:
+                await next(context)
+            except Exception:
+                if sink is not None:
+                    await sink.ended(tool_call_id, tool_id, "error", _elapsed_ms())
+                raise
+            if sink is not None:
+                await sink.ended(tool_call_id, tool_id, "ok", _elapsed_ms())
             # A None/blank tool result must still yield a tool message: the
             # provider rejects an assistant tool_call whose response message
             # is missing, and the framework drops contentless results from
