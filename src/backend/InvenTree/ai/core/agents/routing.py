@@ -121,6 +121,10 @@ class FastPathRouter:
     """
 
     # Patterns for stock queries
+    STOCK_GROUP_PATTERNS: ClassVar[list[str]] = [
+        r"how many\s+(.+?)\s+do we have\s+(?:in stock|available|on hand)(?:\?|$)",
+    ]
+
     STOCK_PATTERNS: ClassVar[list[str]] = [
         r"(?:how much|how many|what(?:'s| is) the)\s+(?:stock|inventory|quantity)\s+(?:of|for)\s+(.+?)(?:\?|$)",
         r"(?:do we have|is there|check)\s+(?:any\s+)?(.+?)\s+(?:in stock|available|on hand)",
@@ -155,6 +159,7 @@ class FastPathRouter:
     def compile_patterns(cls) -> dict[str, list[re.Pattern]]:
         """Compile all patterns for efficient matching."""
         return {
+            "stock_group": [re.compile(p, re.IGNORECASE) for p in cls.STOCK_GROUP_PATTERNS],
             "stock": [re.compile(p, re.IGNORECASE) for p in cls.STOCK_PATTERNS],
             "part": [re.compile(p, re.IGNORECASE) for p in cls.PART_PATTERNS],
             "bom": [re.compile(p, re.IGNORECASE) for p in cls.BOM_PATTERNS],
@@ -220,6 +225,28 @@ class FastPathRouter:
         """Execute the appropriate InvenTree query."""
         try:
             client = await self._get_client()
+
+            if category == "stock_group":
+                # This wording asks for the total across every matching part,
+                # not the stock of the first fuzzy-search hit. Search results
+                # carry InvenTree's authoritative per-part `in_stock` figure.
+                parts = await client.search_parts(entity, limit=100)
+                if not parts or len(parts) >= 100:
+                    # At the provider cap we cannot prove the set is complete;
+                    # fall through to the normal aggregate-capable workflow.
+                    return None
+                quantities = [part.get("in_stock") for part in parts]
+                if any(
+                    not isinstance(quantity, (int, float)) or isinstance(quantity, bool)
+                    for quantity in quantities
+                ):
+                    return None
+                return {
+                    "type": "stock_group",
+                    "label": entity,
+                    "part_count": len(parts),
+                    "total_quantity": sum(float(quantity) for quantity in quantities),
+                }
 
             if category == "stock":
                 # Search for part and get stock levels

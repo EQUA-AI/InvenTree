@@ -65,6 +65,10 @@ function sseBody(events: SSEEvent[] = goldenEvents): string {
     .join('')}data: [DONE]\n\n`;
 }
 
+function aguiBody(events: SSEEvent[]): string {
+  return events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('');
+}
+
 async function observeRequest(request: Request): Promise<ObservedRequest> {
   let body: Record<string, unknown> | undefined;
   if (request.postData()) {
@@ -337,6 +341,328 @@ test('typed chat uses authoritative server history and renders ordered AG-UI eve
   expect(stored.some((thread: any) => thread.id === 'legacy-local-only')).toBe(
     true
   );
+});
+
+test('tool activity strip shows the completed duration', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  await mockChatFoundation(page);
+
+  await page.route('**/api/ai/chat/stream', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: sseBody([
+        goldenEvents[0],
+        {
+          type: 'TOOL_CALL_START',
+          threadId,
+          runId: 'run-golden',
+          toolCallId: 'tool-search-work-orders',
+          toolCallName: 'search_work_orders'
+        },
+        {
+          type: 'TOOL_CALL_END',
+          threadId,
+          runId: 'run-golden',
+          toolCallId: 'tool-search-work-orders',
+          toolCallName: 'search_work_orders',
+          status: 'ok',
+          durationMs: 428.7
+        },
+        ...goldenEvents.slice(2)
+      ])
+    });
+  });
+
+  await page.reload();
+  await openChat(page);
+  await page.getByPlaceholder('Type a message...').fill('List work orders');
+  await page.getByLabel('send-ai-chat-message').click();
+
+  const activity = page.getByText('search_work_orders (429 ms)', {
+    exact: true
+  });
+  await expect(activity).toBeVisible();
+  await activity.hover();
+  await expect(
+    page.getByText('search_work_orders completed in 429 ms', { exact: true })
+  ).toBeVisible();
+});
+
+test('persisted structured question renders its prompt exactly once', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  await mockChatFoundation(page);
+  await seedLegacyHistory(page);
+
+  await page.route('**/api/ai/threads**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith(`/threads/${threadId}`)) {
+      await route.fulfill({
+        json: {
+          thread_id: threadId,
+          title: 'Question conversation',
+          summary: 'Question conversation',
+          created_at: '2026-07-15T00:00:00Z',
+          updated_at: '2026-07-15T00:01:00Z',
+          messages: [
+            {
+              id: 'question-message',
+              role: 'assistant',
+              content: 'Which machine do you mean?\n\n1. Pump A\n2. Pump B',
+              timestamp: '2026-07-15T00:01:00Z',
+              question: {
+                kind: 'clarification_question',
+                interrupt_id: 'interrupt-question-once',
+                question_text: 'Which machine do you mean?',
+                options: [
+                  { id: 'machine:1', kind: 'machine', label: 'Pump A' },
+                  { id: 'machine:2', kind: 'machine', label: 'Pump B' }
+                ],
+                expires_at: '2099-01-01T00:00:00Z',
+                source: 'manual_search_ambiguity'
+              }
+            }
+          ]
+        }
+      });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        threads: [
+          {
+            thread_id: threadId,
+            title: 'Question conversation',
+            message_count: 1,
+            turn_count: 1,
+            summary: 'Question conversation',
+            created_at: '2026-07-15T00:00:00Z',
+            last_activity: '2026-07-15T00:01:00Z',
+            is_persisted: true
+          }
+        ],
+        sync_token: null,
+        has_more: false
+      }
+    });
+  });
+
+  await page.reload();
+  await openChat(page);
+
+  await expect(
+    page.getByText('Which machine do you mean?', { exact: true })
+  ).toHaveCount(1);
+  await expect(page.getByText('Pump A', { exact: true })).toBeVisible();
+  await expect(page.getByText('Pump B', { exact: true })).toBeVisible();
+});
+
+test('auto wire waits for capability sync before its first send', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  await seedLegacyHistory(page);
+
+  await page.route('**/api/approvals/count/**', async (route) => {
+    await route.fulfill({ json: { count: 0 } });
+  });
+
+  let releaseThreadSync: (() => void) | undefined;
+  const heldThreadSync = new Promise<void>((resolve) => {
+    releaseThreadSync = resolve;
+  });
+  await page.route('**/api/ai/threads**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname.endsWith(`/threads/${threadId}`)) {
+      if (request.method() === 'PUT') {
+        await route.fulfill({
+          json: { thread_id: threadId, title: 'Server conversation' }
+        });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          thread_id: threadId,
+          title: 'Server conversation',
+          summary: 'Server conversation',
+          created_at: '2026-07-15T00:00:00Z',
+          updated_at: '2026-07-15T00:01:00Z',
+          messages: []
+        }
+      });
+      return;
+    }
+
+    await heldThreadSync;
+    await route.fulfill({
+      json: {
+        threads: [
+          {
+            thread_id: threadId,
+            title: 'Server conversation',
+            message_count: 0,
+            turn_count: 0,
+            summary: 'Server conversation',
+            created_at: '2026-07-15T00:00:00Z',
+            last_activity: '2026-07-15T00:01:00Z',
+            is_persisted: true
+          }
+        ],
+        sync_token: null,
+        has_more: false,
+        capabilities: { agui: true }
+      }
+    });
+  });
+
+  let aguiRequests = 0;
+  let legacyRequests = 0;
+  await page.route('**/api/ai/agui', async (route) => {
+    aguiRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: aguiBody([goldenEvents[0], ...goldenEvents.slice(2)])
+    });
+  });
+  await page.route('**/api/ai/chat/stream', async (route) => {
+    legacyRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: sseBody()
+    });
+  });
+
+  await page.evaluate(() => localStorage.removeItem('aimms.wire'));
+  await page.reload();
+  await openChat(page);
+
+  const composer = page.getByPlaceholder('Type a message...');
+  await expect(composer).toBeDisabled();
+  releaseThreadSync?.();
+  await expect(composer).toBeEnabled();
+
+  await composer.fill('Use the advertised wire');
+  await page.getByLabel('send-ai-chat-message').click();
+  await expect(
+    page.getByText('Golden typed response', { exact: true })
+  ).toBeVisible();
+  expect(aguiRequests).toBe(1);
+  expect(legacyRequests).toBe(0);
+});
+
+test('proposal refresh event renders a newly available card within two seconds', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  await mockChatFoundation(page);
+
+  let proposalReads = 0;
+  let proposalAvailable = false;
+  await page.route('**/api/aichat/proposals/**', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    proposalReads += 1;
+    await route.fulfill({
+      json: {
+        results: !proposalAvailable
+          ? []
+          : [
+              {
+                id: 'proposal-phase-9-refresh',
+                action_type: 'work_order.hold',
+                state: 'proposed',
+                work_order_id: 130,
+                target_version: 1,
+                preview: {
+                  reference: 'WO-000130',
+                  title: 'Phase 9 immediate proposal',
+                  current_status: 'in_progress',
+                  resulting_status: 'on_hold'
+                },
+                reason: 'Awaiting a replacement belt',
+                expires_at: '2099-01-01T00:00:00Z',
+                receipt: null,
+                failure_code: null
+              }
+            ]
+      }
+    });
+  });
+
+  await page.reload();
+  await openChat(page);
+  await page.getByRole('tab', { name: 'Approvals', exact: true }).click();
+  await expect.poll(() => proposalReads).toBeGreaterThanOrEqual(1);
+
+  const readsBeforeRefresh = proposalReads;
+  proposalAvailable = true;
+  const started = Date.now();
+  await page.evaluate(() =>
+    window.dispatchEvent(new CustomEvent('aimms:proposals-refresh'))
+  );
+  await expect(
+    page.getByText('Phase 9 immediate proposal', { exact: true })
+  ).toBeVisible({ timeout: 2_000 });
+  expect(Date.now() - started).toBeLessThanOrEqual(2_000);
+  expect(proposalReads).toBeGreaterThan(readsBeforeRefresh);
+});
+
+test('AG-UI endpoint removal falls back once and latches legacy', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  await mockChatFoundation(page);
+
+  let aguiRequests = 0;
+  let legacyRequests = 0;
+  await page.route('**/api/ai/agui', async (route) => {
+    aguiRequests += 1;
+    await route.fulfill({ status: 404, body: 'Not Found' });
+  });
+  await page.route('**/api/ai/chat/stream', async (route) => {
+    legacyRequests += 1;
+    const responseEvents = goldenEvents.map((event) =>
+      event.type === 'TEXT_MESSAGE_CONTENT'
+        ? { ...event, delta: `Legacy response ${legacyRequests}` }
+        : event
+    );
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: sseBody(responseEvents)
+    });
+  });
+
+  await page.evaluate(() => localStorage.setItem('aimms.wire', 'agui'));
+  await page.reload();
+  await openChat(page);
+  const composer = page.getByPlaceholder('Type a message...');
+  await expect(composer).toBeEnabled();
+
+  await composer.fill('First turn after flag removal');
+  await page.getByLabel('send-ai-chat-message').click();
+  await expect(
+    page.getByText('Legacy response 1', { exact: true })
+  ).toBeVisible();
+
+  await composer.fill('Second turn after flag removal');
+  await page.getByLabel('send-ai-chat-message').click();
+  await expect(
+    page.getByText('Legacy response 2', { exact: true })
+  ).toBeVisible();
+
+  expect(aguiRequests).toBe(1);
+  expect(legacyRequests).toBe(2);
+  await page.evaluate(() => localStorage.removeItem('aimms.wire'));
 });
 
 test('typed chat reuses its idempotency key and removes partial output on retry', async ({

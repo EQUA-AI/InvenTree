@@ -69,6 +69,9 @@ class ToolCaptureLedger:
         citations = _manuals_citations(payload)
         if citations:
             capture["citations"] = citations
+        machine_candidates = _manuals_machine_candidates(payload)
+        if str(tool_id) == "search_manuals" and machine_candidates:
+            capture["machine_candidates"] = machine_candidates
         self.captures.append(capture)
         _harvest_observed(payload, self.observed, depth=0)
 
@@ -82,6 +85,14 @@ class ToolCaptureLedger:
     def observed_values(self) -> frozenset[str]:
         """Identifier-like strings some tool actually returned this turn."""
         return frozenset(self.observed)
+
+    def manuals_machine_candidates(self) -> list[dict[str, Any]]:
+        """Return the first captured ambiguous manual-machine option set."""
+        for capture in self.captures:
+            candidates = capture.get("machine_candidates")
+            if isinstance(candidates, list) and len(candidates) >= 2:
+                return candidates
+        return []
 
 
 def _manuals_citations(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -106,6 +117,30 @@ def _manuals_citations(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "asset_id": str(citation.get("asset_id") or ""),
             })
     return citations
+
+
+def _manuals_machine_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Shape-check RBAC-scoped candidates returned by an ambiguous search."""
+
+    if payload.get("machine_filter") != "ambiguous":
+        return []
+    candidates = payload.get("machine_candidates")
+    if not isinstance(candidates, list):
+        return []
+    result: list[dict[str, Any]] = []
+    for candidate in candidates[:4]:
+        if not isinstance(candidate, dict):
+            continue
+        machine_id = candidate.get("machine_id")
+        name = str(candidate.get("name") or "").strip()
+        if not isinstance(machine_id, int) or isinstance(machine_id, bool) or not name:
+            continue
+        result.append({
+            "machine_id": machine_id,
+            "name": name[:255],
+            "serial": str(candidate.get("serial") or "")[:255],
+        })
+    return result if len(result) >= 2 else []
 
 
 def _harvest_observed(value: Any, into: set[str], *, depth: int) -> None:

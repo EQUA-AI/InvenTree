@@ -1061,6 +1061,9 @@ figure from an earlier turn as if you had just verified it."""
             # search_manuals). The deterministic question replaces the model's
             # paraphrase so the visible text and the persisted options agree;
             # the turn service consumes the proposal and arms the slot.
+            from ai.core.questions.promotion import promote_captured_manual_question
+
+            promote_captured_manual_question(modality=modality)
             response_text = self._apply_question_proposal(
                 response_text, modality=modality, context=context
             )

@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 # Minimum character threshold - below this, local extraction is "insufficient"
 # ---------------------------------------------------------------------------
 _MIN_TEXT_CHARS = 200
+_MAX_UPLOADED_CONTENT_CHARS = 64 * 1024
 
 # ---------------------------------------------------------------------------
 # Table-detection heuristics
@@ -877,11 +878,53 @@ class WF6DocumentWorkflow:
                     except Exception:
                         return pdf_bytes.decode("latin-1", errors="ignore"), None
 
-        # Priority 2: Caller-provided text
+        # Priority 2: browser uploads whose paths were resolved and authorized
+        # by the mounted HTTP boundary. Never read paths from client context.
+        uploaded_files = context.get("uploaded_files")
+        if isinstance(uploaded_files, list) and uploaded_files:
+            sections: list[str] = []
+            first_outcome: _ExtractionOutcome | None = None
+            remaining = _MAX_UPLOADED_CONTENT_CHARS
+            for uploaded in uploaded_files:
+                if not isinstance(uploaded, dict):
+                    continue
+                raw_path = uploaded.get("path")
+                if not isinstance(raw_path, str) or not raw_path:
+                    continue
+                path = Path(raw_path)
+                if not path.is_file():
+                    continue
+
+                filename = str(uploaded.get("filename") or path.name)
+                extension = path.suffix.lower()
+                if extension == ".pdf":
+                    outcome = extract_text_from_pdf_bytes(path.read_bytes())
+                    text = outcome.text
+                    if first_outcome is None:
+                        first_outcome = outcome
+                elif extension in {".txt", ".md", ".csv"}:
+                    text = path.read_text(encoding="utf-8", errors="replace")
+                else:
+                    text = f"[Binary file content is not extractable: {filename}]"
+
+                header = f"File: {filename}\n"
+                available = remaining - len(header)
+                if available <= 0:
+                    break
+                section = header + text[:available]
+                sections.append(section)
+                remaining -= len(section)
+                if remaining <= 0:
+                    break
+
+            if sections:
+                return "\n\n".join(sections), first_outcome
+
+        # Priority 3: Caller-provided text
         if document_content:
             return document_content, None
 
-        # Priority 3: File path on disk
+        # Priority 4: File path on disk
         if file_path:
             path = Path(file_path)
             if path.suffix.lower() in {".txt", ".md", ".csv"}:
@@ -891,11 +934,11 @@ class WF6DocumentWorkflow:
                 return outcome.text, outcome
             return f"[Binary file: {path.name}]", None
 
-        # Priority 4: Email
+        # Priority 5: Email
         if email_id:
             return await self._get_email_content(email_id), None
 
-        # Priority 5: Fallback to query itself
+        # Priority 6: Fallback to query itself
         logger.warning("No document content found - using query as content")
         return query, None
 

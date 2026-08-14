@@ -246,11 +246,16 @@ class RootWorkflow:
             # Deterministic fast-path answer for permitted voice lookups: skip
             # the LLM tool loop entirely. Permission-gated because the fast path
             # bypasses the per-tool RBAC filter (routing executed the reads).
+            from ai.core.workflows.fast_path import voice_fast_path_enabled
+
             if (
                 decision.use_fast_path
                 and decision.fast_path_result
                 and aggregated_context.get("modality") == "voice"
-                and get_settings().feature_voice_fast_path
+                and voice_fast_path_enabled(
+                    decision.fast_path_result,
+                    global_enabled=get_settings().feature_voice_fast_path,
+                )
             ):
                 bypass = await self._maybe_fast_path_answer(decision.fast_path_result)
                 if bypass is not None:

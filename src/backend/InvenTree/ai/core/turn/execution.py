@@ -39,10 +39,24 @@ logger = logging.getLogger("ai.core.turn_service")
 WorkflowContext = dict[str, Any]
 
 
+def _effective_pinned_workflow(run: TurnRun) -> str | None:
+    """Return the server-owned workflow pin for this turn."""
+
+    if run.server_pinned_workflow is not None:
+        return run.server_pinned_workflow
+    uploaded_files = run.metadata.get("uploaded_files")
+    if isinstance(uploaded_files, list) and uploaded_files:
+        # `_turn_metadata` authorized these paths against the durable thread.
+        # Client context is nested separately and can never reach this branch.
+        return "wf6"
+    return None
+
+
 async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[str, Any]:
     """Dispatch the routed turn to exactly one canonical-producing branch."""
 
     route_mode = getattr(getattr(run.route, "mode", None), "value", None)
+    pinned_workflow = _effective_pinned_workflow(run)
     if run.injection_canonical is not None:
         # Refusal wins over every other branch, including a pending write.
         return run.injection_canonical
@@ -61,7 +75,7 @@ async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[
             locale=getattr(run.trusted_context, "locale", "en"),
         )
     if (
-        run.server_pinned_workflow is None
+        pinned_workflow is None
         and route_mode == "reasoning"
         and service.reasoning_adapter is not None
     ):
@@ -76,7 +90,7 @@ async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[
             diagnostic_context=run.diagnostic_context,
             emitter=run.emitter,
         )
-    if run.server_pinned_workflow is None and route_mode == "advisory_intent":
+    if pinned_workflow is None and route_mode == "advisory_intent":
         canonical = None
         if run.modality == TurnModality.VOICE:
             from ai.core.turn_service import _log_voice_write_confirmation_shadow
@@ -132,10 +146,12 @@ def _assemble_workflow_context(service: NormalizedTurnService, run: TurnRun) -> 
 
     workflow_context: WorkflowContext = dict(run.trusted)
     workflow_context["modality"] = run.modality
-    if run.server_pinned_workflow is not None:
+    pinned_workflow = _effective_pinned_workflow(run)
+    if pinned_workflow is not None:
         # A trusted in-process caller selected the workflow itself;
-        # its pin wins over routing the same way the voice pin does.
-        workflow_context["pinned_workflow_id"] = run.server_pinned_workflow
+        # or server-authorized uploads selected the document workflow.
+        # Either pin wins over routing the same way the voice pin does.
+        workflow_context["pinned_workflow_id"] = pinned_workflow
         if run.server_generation_target is not None:
             workflow_context["server_generation_target"] = dict(run.server_generation_target)
     elif run.modality == TurnModality.VOICE:
@@ -228,8 +244,10 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
     message = streamed_text
     if streaming_reconcile:
         try:
+            from ai.core.questions.promotion import promote_captured_manual_question
             from ai.core.workflows.wf8_lookup import apply_question_replacement
 
+            promote_captured_manual_question(modality="text")
             message = apply_question_replacement(
                 message,
                 modality="text",

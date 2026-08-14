@@ -17,6 +17,7 @@ from typing import Any
 #: Views required to surface each fast-path result type.
 FAST_PATH_REQUIRED_VIEWS: dict[str, frozenset[tuple[str, str]]] = {
     "stock_check": frozenset({("part", "view"), ("stock", "view")}),
+    "stock_group": frozenset({("part", "view"), ("stock", "view")}),
     "part_details": frozenset({("part", "view")}),
     "bom": frozenset({("part", "view")}),
     "location": frozenset({("part", "view"), ("stock", "view")}),
@@ -31,10 +32,32 @@ def fast_path_permitted(result_type: str, profile: frozenset[tuple[str, str]]) -
     return required.issubset(profile)
 
 
+def voice_fast_path_enabled(result: dict[str, Any], *, global_enabled: bool) -> bool:
+    """Whether this result may bypass the voice model loop.
+
+    The general fast path stays behind its quality kill switch. Group-stock
+    answers are the narrow exception: they are bounded, server-summed, and
+    fall back rather than claiming a total at the provider result cap.
+    """
+
+    return global_enabled or result.get("type") == "stock_group"
+
+
 def _part_label(part: dict[str, Any]) -> str:
     if not isinstance(part, dict):
         return "the part"
     return str(part.get("name") or part.get("IPN") or part.get("full_name") or "the part")
+
+
+def _format_quantity(value: Any) -> str | None:
+    """Format one finite stock quantity without inventing precision."""
+
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    numeric = float(value)
+    if not numeric.is_integer():
+        return f"{numeric:,.2f}".rstrip("0").rstrip(".")
+    return f"{int(numeric):,}"
 
 
 def format_fast_path_answer(result: dict[str, Any]) -> str | None:
@@ -53,6 +76,15 @@ def format_fast_path_answer(result: dict[str, Any]) -> str | None:
     if rtype == "stock_check":
         total = result.get("total_quantity", 0)
         return f"{label} has {total} in stock."
+
+    if rtype == "stock_group":
+        total = _format_quantity(result.get("total_quantity"))
+        part_count = result.get("part_count")
+        group_label = str(result.get("label") or "matching parts").strip()
+        if total is None or not isinstance(part_count, int) or part_count < 1:
+            return None
+        noun = "part" if part_count == 1 else "parts"
+        return f"We have {total} {group_label} in stock across {part_count} {noun}."
 
     if rtype == "part_details":
         details = result.get("part") or {}

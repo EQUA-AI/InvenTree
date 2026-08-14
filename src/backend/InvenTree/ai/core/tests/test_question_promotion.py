@@ -5,6 +5,9 @@
 from __future__ import annotations
 
 import os
+from contextvars import copy_context
+from types import SimpleNamespace
+from unittest.mock import patch
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ai.core.tests.settings")
 os.environ.setdefault("INVENTREE_TOKEN", "test-token")
@@ -16,6 +19,7 @@ django.setup()
 
 from ai.core.questions.promotion import (
     consume_question_proposal,
+    promote_captured_manual_question,
     promote_lexicon_options,
     promote_machine_candidates,
     set_question_proposal,
@@ -26,6 +30,7 @@ from ai.core.questions.schema import (
     render_question_text,
 )
 from ai.core.tools.capabilities import matched_machine_terms
+from ai.core.tools.capture_ledger import bind_tool_captures, record_tool_result
 
 CANDIDATES = [
     {"machine_id": 42, "name": "Influent Pump Station No. 1", "serial": "TC-INF-PS1-001"},
@@ -75,6 +80,34 @@ def test_proposal_contextvar_is_consume_once():
     set_question_proposal({"source": "manual_search_ambiguity"})
     assert consume_question_proposal() == {"source": "manual_search_ambiguity"}
     assert consume_question_proposal() is None
+
+
+def test_captured_manual_ambiguity_promotes_across_child_context():
+    bind_tool_captures()
+    child = copy_context()
+    child.run(
+        record_tool_result,
+        "search_manuals",
+        {
+            "chunks": [],
+            "machine_filter": "ambiguous",
+            "machine_candidates": CANDIDATES[:2],
+        },
+    )
+
+    with patch(
+        "ai.core.config.get_settings",
+        return_value=SimpleNamespace(feature_question_cards=True),
+    ):
+        assert promote_captured_manual_question(modality="text") is True
+
+    proposal = consume_question_proposal()
+    assert proposal is not None
+    assert proposal["source"] == "manual_search_ambiguity"
+    assert [option["id"] for option in proposal["options"]] == [
+        "machine:42",
+        "machine:43",
+    ]
 
 
 def test_question_payload_carries_no_stale_client_keys():

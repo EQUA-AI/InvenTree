@@ -1249,6 +1249,45 @@ class ServerPinnedWorkflowTests(SimpleTestCase):
         self.assertEqual(len(workflow.calls), 1)
         self.assertEqual(workflow.calls[0]["context"]["pinned_workflow_id"], "wf7")
 
+    def test_authorized_upload_forces_document_workflow(self) -> None:
+        async def exercise():
+            repository = _Repository()
+            workflow = _Workflow()
+            service = _TestTurnService(
+                workflow_factory=lambda: workflow,
+                repository_factory=lambda actor, context: repository,  # noqa: ARG005
+                complexity_router=object(),
+                reasoning_adapter=object(),
+            )
+            service._route_turn = lambda **kwargs: SimpleNamespace(  # noqa: ARG005
+                mode=SimpleNamespace(value="reasoning"),
+                target_workflow_id="wf1",
+                to_dict=lambda: {"mode": "reasoning"},
+            )
+            result = await service.process(
+                actor=_principal(),
+                thread_id="thread_normalized",
+                content="What is in this file?",
+                modality="text",
+                trusted_context=_context(),
+                modality_metadata={
+                    "uploaded_files": [
+                        {
+                            "path": "/server-authorized/manual.pdf",
+                            "filename": "manual.pdf",
+                        }
+                    ]
+                },
+                idempotency_key="upload:1:run",
+                correlation_id=_context().correlation_id,
+            )
+            return result, workflow
+
+        result, workflow = asyncio.run(exercise())
+        self.assertEqual(result.message, "Normalized response")
+        self.assertEqual(len(workflow.calls), 1)
+        self.assertEqual(workflow.calls[0]["context"]["pinned_workflow_id"], "wf6")
+
     def test_blank_pin_is_rejected(self) -> None:
         service = _TestTurnService(
             workflow_factory=lambda: None,

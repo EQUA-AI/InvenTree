@@ -954,7 +954,7 @@ export function useAIChat(config: AIChatConfig = {}) {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(isLoggedIn);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   // HITL (Human-in-the-Loop) state

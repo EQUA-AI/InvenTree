@@ -104,6 +104,12 @@ interface ApprovalDetailItem extends ApprovalListItem {
   canceled_reason?: string | null;
 }
 
+function formatToolDuration(durationMs?: number): string | null {
+  if (durationMs === undefined || !Number.isFinite(durationMs)) return null;
+  if (durationMs < 1000) return `${Math.round(durationMs)} ms`;
+  return `${(durationMs / 1000).toFixed(1)} s`;
+}
+
 function unwrapResults<T>(data: unknown): T[] {
   if (Array.isArray(data)) return data as T[];
 
@@ -927,29 +933,42 @@ function ChatMessageItem({
           >
             {!isUser && (message.toolActivity?.length ?? 0) > 0 && (
               <Group gap={6} mb={6} wrap='wrap'>
-                {message.toolActivity?.map((activity) => (
-                  <Badge
-                    key={activity.id}
-                    size='xs'
-                    variant='light'
-                    color={
-                      activity.status === 'running'
-                        ? 'blue'
-                        : activity.status === 'ok'
-                          ? 'teal'
-                          : activity.status === 'denied'
-                            ? 'yellow'
-                            : 'red'
-                    }
-                    leftSection={
-                      activity.status === 'running' ? (
-                        <Loader size={8} />
-                      ) : undefined
-                    }
-                  >
-                    {activity.name}
-                  </Badge>
-                ))}
+                {message.toolActivity?.map((activity) => {
+                  const duration = formatToolDuration(activity.durationMs);
+                  return (
+                    <Tooltip
+                      key={activity.id}
+                      label={
+                        duration
+                          ? `${activity.name} completed in ${duration}`
+                          : activity.name
+                      }
+                      disabled={!duration}
+                    >
+                      <Badge
+                        size='xs'
+                        variant='light'
+                        color={
+                          activity.status === 'running'
+                            ? 'blue'
+                            : activity.status === 'ok'
+                              ? 'teal'
+                              : activity.status === 'denied'
+                                ? 'yellow'
+                                : 'red'
+                        }
+                        leftSection={
+                          activity.status === 'running' ? (
+                            <Loader size={8} />
+                          ) : undefined
+                        }
+                      >
+                        {activity.name}
+                        {duration ? ` (${duration})` : ''}
+                      </Badge>
+                    </Tooltip>
+                  );
+                })}
               </Group>
             )}
             {message.content ? (
@@ -964,11 +983,11 @@ function ChatMessageItem({
                 >
                   {message.content}
                 </Text>
-              ) : (
+              ) : message.question ? null : (
                 <MarkdownMessage content={message.content} />
               )
             ) : (
-              message.isStreaming && <TypingIndicator />
+              message.isStreaming && !message.question && <TypingIndicator />
             )}
             {/* Structured question card (S22/S23): message-anchored so the
                 frozen card survives reload; the singleton governs armedness. */}
@@ -1286,7 +1305,7 @@ export function AIChatDrawer({
   const handleSendMessage = useCallback(
     (messageText?: string) => {
       const text = messageText || inputValue;
-      if (!text.trim() || isLoading) return;
+      if (!text.trim() || isLoading || isSyncing) return;
       const fileIds = attachedFiles.map((f) => f.file_id);
       // S14 B5: the routing hint travels as visible message text — a hint the
       // server may use for routing/narrowing, never an authority claim. It is
@@ -1304,6 +1323,7 @@ export function AIChatDrawer({
     [
       inputValue,
       isLoading,
+      isSyncing,
       sendMessage,
       attachedFiles,
       routingHint,
@@ -1639,10 +1659,13 @@ export function AIChatDrawer({
                         radius='xl'
                         withBorder
                         style={{
-                          cursor: 'pointer',
+                          cursor: isSyncing ? 'not-allowed' : 'pointer',
+                          pointerEvents: isSyncing ? 'none' : undefined,
+                          opacity: isSyncing ? 0.6 : 1,
                           transition: 'all 0.2s ease',
                           borderColor: 'var(--mantine-color-gray-3)'
                         }}
+                        aria-disabled={isSyncing}
                         onClick={() => handleSendMessage(suggestion.message)}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.borderColor =
@@ -1873,7 +1896,7 @@ export function AIChatDrawer({
                     variant='subtle'
                     color='gray'
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={isLoading || isUploading}
+                    disabled={isLoading || isUploading || isSyncing}
                     loading={isUploading}
                   >
                     <IconPaperclip size={18} />
@@ -1896,7 +1919,7 @@ export function AIChatDrawer({
                   autosize
                   minRows={1}
                   maxRows={4}
-                  disabled={isLoading || activeThreadShared}
+                  disabled={isLoading || isSyncing || activeThreadShared}
                   styles={{
                     input: {
                       border: 'none',
@@ -1936,7 +1959,9 @@ export function AIChatDrawer({
                         variant='filled'
                         color='blue'
                         onClick={() => handleSendMessage()}
-                        disabled={!inputValue.trim() || activeThreadShared}
+                        disabled={
+                          !inputValue.trim() || isSyncing || activeThreadShared
+                        }
                         style={{
                           transition: 'transform 0.2s ease',
                           transform: inputValue.trim()

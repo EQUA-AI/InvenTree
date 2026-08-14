@@ -44,6 +44,11 @@ from ai.core.auth import AIPrincipal, principal_context  # noqa: E402
 from ai.core.streaming import AGUIEvent, EventType  # noqa: E402
 from ai.core.trusted_context import TrustedTurnContext  # noqa: E402
 from ai.core.turn_service import NormalizedTurnService  # noqa: E402
+from ai.core.workflows.wf6_documents import (  # noqa: E402
+    ExtractionMode,
+    WF6DocumentWorkflow,
+    _ExtractionOutcome,
+)
 from aichat.services import BeginTurnResult  # noqa: E402
 
 
@@ -204,7 +209,8 @@ class TypedChatGoldenTests(SimpleTestCase):
                 upload = Path(directory) / "manual.pdf"
                 upload.write_bytes(b"golden-pdf")
 
-                async def metadata(principal, request):  # noqa: RUF029
+                async def metadata(principal, request):
+                    await asyncio.sleep(0)
                     return {
                         "untrusted_client_context": dict(request.context or {}),
                         "uploaded_files": [
@@ -260,6 +266,7 @@ class TypedChatGoldenTests(SimpleTestCase):
         self.assertEqual(call["user_id"], "1")
         self.assertEqual(context["actor"], "user:1")
         self.assertEqual(context["allowed_capabilities"], ["chat.unscoped.read"])
+        self.assertEqual(context["pinned_workflow_id"], "wf6")
         self.assertNotIn("display_preference", context)
         self.assertEqual(
             context["untrusted_client_context"],
@@ -281,6 +288,45 @@ class TypedChatGoldenTests(SimpleTestCase):
                 }
             ],
         )
+
+    def test_wf6_reads_authorized_uploaded_pdf_content(self) -> None:
+        async def exercise() -> tuple[str, _ExtractionOutcome | None]:
+            workflow = WF6DocumentWorkflow()
+            with TemporaryDirectory() as directory:
+                upload = Path(directory) / "manual.pdf"
+                upload.write_bytes(b"%PDF-1.7\n")
+                outcome = _ExtractionOutcome(
+                    text="PHASE 9 UNIQUE UPLOAD MARKER",
+                    mode=ExtractionMode.PYPDF,
+                    page_count=1,
+                )
+                with patch(
+                    "ai.core.workflows.wf6_documents.extract_text_from_pdf_bytes",
+                    return_value=outcome,
+                ):
+                    return await workflow._resolve_content(
+                        document_content=None,
+                        file_path=None,
+                        email_id=None,
+                        query="What is in this file?",
+                        context={
+                            "uploaded_files": [
+                                {
+                                    "path": str(upload),
+                                    "filename": "manual.pdf",
+                                }
+                            ]
+                        },
+                    )
+
+        content, outcome = asyncio.run(exercise())
+        self.assertEqual(
+            content,
+            "File: manual.pdf\nPHASE 9 UNIQUE UPLOAD MARKER",
+        )
+        self.assertIsNotNone(outcome)
+        assert outcome is not None
+        self.assertEqual(outcome.mode, ExtractionMode.PYPDF)
 
     def test_sse_headers_and_event_order(self) -> None:
         """Streaming preserves the current AG-UI ordering and media contract."""

@@ -44,6 +44,29 @@ def consume_question_proposal() -> dict | None:
     return proposal
 
 
+def promote_captured_manual_question(*, modality: str) -> bool:
+    """Promote tool-captured ambiguity after returning to the parent context."""
+
+    from ai.core.config import get_settings
+
+    if not get_settings().feature_question_cards:
+        return False
+    from ai.core.tools.capture_ledger import current_tool_captures
+
+    ledger = current_tool_captures()
+    if ledger is None:
+        return False
+    options = promote_machine_candidates(ledger.manuals_machine_candidates(), modality=modality)
+    if len(options) < 2:
+        return False
+    set_question_proposal({
+        "source": "manual_search_ambiguity",
+        "question_text": "Which machine do you mean?",
+        "options": options,
+    })
+    return True
+
+
 def _slugify(term: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", term.casefold()).strip("-")
 
@@ -128,6 +151,7 @@ __all__ = [
     "consume_question_proposal",
     "options_cap",
     "pending_question_proposal",
+    "promote_captured_manual_question",
     "promote_lexicon_options",
     "promote_machine_candidates",
     "set_question_proposal",
