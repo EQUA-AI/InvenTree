@@ -172,7 +172,12 @@ class AzureOpenAIEmbeddingClient:
             from ai.core.integrations.model_pins import record_resolved_model
 
             record_resolved_model(self._deployment, str(getattr(response, "model", "") or ""))
-            return [item.embedding for item in response.data]
+            # Order by the SDK's required per-item index — the wire array
+            # carries no ordering contract (review finding F-20).
+            items = list(response.data)
+            if items and all(isinstance(getattr(item, "index", None), int) for item in items):
+                items.sort(key=lambda item: item.index)
+            return [item.embedding for item in items]
         except ControlledDocumentIngestionError:
             raise
         except Exception as exc:

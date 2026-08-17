@@ -67,7 +67,12 @@ def test_probe_verifies_matching_dimensions_and_index():
         embedding_client_factory=_Embedder,
         index_dimensions_reader=lambda _s: 8,
     )
-    assert report == {"embedding": "verified", "index": "verified", "chat": "disabled"}
+    assert report == {
+        "embedding": "verified",
+        "index": "verified",
+        "chat": "disabled",
+        "attachment_embedding": "dark",
+    }
 
 
 def test_probe_refuses_dimension_drift():
@@ -238,3 +243,97 @@ def test_terminal_metadata_carries_model_versions():
     stamped = _terminal_output_metadata({"a": 1})
     assert stamped["a"] == 1
     assert stamped["model_versions"] == {"dep": "model-x"}
+
+
+# ---------------------------------------------------------------------------
+# Attachment plane (Cohere Embed v4) pins — hardening pass, spec §9
+# ---------------------------------------------------------------------------
+
+
+def _attachment_settings(**overrides) -> Settings:
+    """Governed base plus a lit attachment plane pinned at 8 dims."""
+    base = {
+        "FEATURE_ATTACHMENT_RAG_INGEST": True,
+        "COHERE_EMBED_ENDPOINT": "https://cohere.example",
+        "COHERE_EMBED_DIMENSIONS": 8,
+    }
+    base.update(overrides)
+    return _settings(**base)
+
+
+class _CohereEmbedder:
+    def __init__(self, dimensions=8):
+        self.dimensions = dimensions
+
+    def embed_batch(self, inputs):
+        record_resolved_model("embed-v-4-0", "embed-v-4-0-2026-01")
+        return [[0.5] * self.dimensions for _ in inputs]
+
+
+def test_attachment_probe_dark_when_flags_off():
+    report = run_boot_probes(
+        settings=_settings(),
+        embedding_client_factory=_Embedder,
+        index_dimensions_reader=lambda _s: 8,
+    )
+    assert report["attachment_embedding"] == "dark"
+
+
+def test_attachment_probe_verifies_the_cohere_pin():
+    report = run_boot_probes(
+        settings=_attachment_settings(),
+        embedding_client_factory=_Embedder,
+        index_dimensions_reader=lambda _s: 8,
+        attachment_embedding_client_factory=_CohereEmbedder,
+    )
+    assert report["attachment_embedding"] == "verified"
+    assert resolved_model_versions()["embed-v-4-0"] == "embed-v-4-0-2026-01"
+
+
+def test_attachment_probe_refuses_dimension_drift():
+    with pytest.raises(ModelPinError) as excinfo:
+        run_boot_probes(
+            settings=_attachment_settings(),
+            embedding_client_factory=_Embedder,
+            index_dimensions_reader=lambda _s: 8,
+            attachment_embedding_client_factory=lambda: _CohereEmbedder(dimensions=4),
+        )
+    assert excinfo.value.code == "EMBEDDING_DIMENSION_DRIFT"
+
+
+def test_attachment_probe_unreachable_endpoint_is_fatal():
+    with pytest.raises(ModelPinError) as excinfo:
+        run_boot_probes(
+            settings=_attachment_settings(),
+            embedding_client_factory=_Embedder,
+            index_dimensions_reader=lambda _s: 8,
+            attachment_embedding_client_factory=_FailingEmbedder,
+        )
+    assert excinfo.value.code == "EMBEDDING_PROBE_UNREACHABLE"
+
+
+def test_gemini_dimension_pin_is_drift_fatal():
+    """The media plane has no resolved-model identity; width is the pin."""
+    from types import SimpleNamespace
+
+    from ai.core.integrations.embeddings_gemini import (
+        GeminiEmbeddingClient,
+        MediaEmbeddingError,
+    )
+
+    client = GeminiEmbeddingClient(
+        project_id="p",
+        location="us-central1",
+        model="gemini-embedding-2-preview",
+        dimensions=3072,
+    )
+    client._client = SimpleNamespace(
+        models=SimpleNamespace(
+            embed_content=lambda **_kwargs: SimpleNamespace(
+                embeddings=[SimpleNamespace(values=[0.5] * 1536)]
+            )
+        )
+    )
+    with pytest.raises(MediaEmbeddingError) as excinfo:
+        client.embed_texts(["probe"])
+    assert excinfo.value.code == "MEDIA_EMBEDDING_DIMENSION_DRIFT"

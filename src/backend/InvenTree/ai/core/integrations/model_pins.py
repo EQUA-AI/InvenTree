@@ -137,18 +137,23 @@ def run_boot_probes(
     embedding_client_factory: Callable[[], Any] | None = None,
     index_dimensions_reader: Callable[[Settings], int | None] | None = None,
     chat_prober: Callable[[Settings, str, str], None] | None = None,
+    attachment_embedding_client_factory: Callable[[], Any] | None = None,
 ) -> dict[str, str]:
     """Run the S17 startup probes and return a bounded outcome report.
 
     Every skip is loud (WARNING log + report entry) so a dark plane is always
     distinguishable from a verified one. A genuine pin violation raises
-    :class:`ModelPinError`, which the caller must let abort startup.
+    :class:`ModelPinError`, which the caller must let abort startup. The
+    attachment plane (Cohere Embed v4) is probed only when its flags are on.
     """
     if settings is None:
         from ai.core.config import get_settings
 
         settings = get_settings()
     report: dict[str, str] = {"embedding": "skipped", "index": "skipped", "chat": "skipped"}
+    report["attachment_embedding"] = _probe_attachment_plane(
+        settings, attachment_embedding_client_factory
+    )
 
     if not settings.embedding_boot_probe_enabled:
         report["embedding"] = "disabled"
@@ -230,12 +235,54 @@ def run_boot_probes(
         report["chat"] = "verified"
 
     logger.info(
-        "model-pin boot probe embedding=%s index=%s chat=%s",
+        "model-pin boot probe embedding=%s index=%s chat=%s attachment=%s",
         report["embedding"],
         report["index"],
         report["chat"],
+        report["attachment_embedding"],
     )
     return report
+
+
+def _probe_attachment_plane(
+    settings: Settings,
+    client_factory: Callable[[], Any] | None,
+) -> str:
+    """Probe the attachment-RAG embedding plane (Cohere Embed v4) when lit.
+
+    Same drift contract as the governed plane: a wrong-width vector aborts
+    startup; unreachable providers abort too (better a refused boot than a
+    corpus embedded against the wrong pin). Dark flags skip silently — the
+    plane is structurally off.
+    """
+    if not (settings.feature_attachment_rag_ingest or settings.feature_attachment_rag_retrieval):
+        return "dark"
+    if not settings.embedding_boot_probe_enabled:
+        logger.warning("attachment embedding boot probe disabled by configuration")
+        return "disabled"
+    if client_factory is None:
+        from ai.core.integrations.embeddings_cohere import CohereEmbeddingClient
+
+        client_factory = CohereEmbeddingClient.from_settings
+    try:
+        vectors = client_factory().embed_batch([_PROBE_TEXT])
+    except ModelPinError:
+        raise
+    except Exception as exc:
+        raise ModelPinError(
+            "Attachment embedding boot probe could not reach the endpoint",
+            code="EMBEDDING_PROBE_UNREACHABLE",
+        ) from exc
+    expected_dims = settings.cohere_embed_dimensions
+    if len(vectors) != 1 or len(vectors[0]) != expected_dims:
+        observed = len(vectors[0]) if vectors else 0
+        raise ModelPinError(
+            f"Attachment embedding model {settings.cohere_embed_model!r} produced "
+            f"{observed}-dimension vectors; the attachment index is configured "
+            f"for {expected_dims}",
+            code="EMBEDDING_DIMENSION_DRIFT",
+        )
+    return "verified"
 
 
 __all__ = [

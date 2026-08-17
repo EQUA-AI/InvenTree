@@ -104,9 +104,69 @@ def test_env_names_are_unique() -> None:
     assert len(names) == len(set(names))
 
 
-@pytest.mark.parametrize("entry", [e for e in ai_flags() if e.kind == "bool"][:5])
-def test_spot_check_env_round_trip(entry) -> None:
-    """A handful of live instantiations prove the names actually bind."""
+#: Companion env each validator-coupled flag needs to round-trip alone. Any
+#: new flag whose model validator demands providers MUST add its companions
+#: here, or this parametrized check fails with the validator's own message.
+_VOICE_COMPANIONS: dict[str, object] = {
+    "AZURE_VOICELIVE_ENDPOINT": "aimms-foundry.services.ai.azure.com",
+}
+
+_COMPANION_ENV: dict[str, dict[str, object]] = {
+    "FEATURE_VOICE_LIVE": dict(_VOICE_COMPANIONS),
+    "FEATURE_VOICE_LIVE_WEBRTC": {
+        **_VOICE_COMPANIONS,
+        "FEATURE_VOICE_LIVE": True,
+    },
+    "FEATURE_VOICE_LIVE_RELAY": {
+        **_VOICE_COMPANIONS,
+        "FEATURE_VOICE_LIVE": True,
+    },
+    "FEATURE_VOICE_NATIVE_STS": {
+        **_VOICE_COMPANIONS,
+        "FEATURE_VOICE_LIVE": True,
+        "AZURE_VOICELIVE_MODEL": "gpt-realtime",
+        "AZURE_VOICELIVE_TRANSCRIPTION_MODEL": "whisper-1",
+    },
+    "FEATURE_VOICE_LIVE_DIAGNOSIS": {
+        "AZURE_OPENAI_ENDPOINT": "https://example.openai.azure.com",
+    },
+    "FEATURE_ATTACHMENT_RAG_INGEST": {
+        "COHERE_EMBED_ENDPOINT": "https://cohere.example",
+        "AZURE_SEARCH_ENDPOINT": "https://search.example",
+    },
+    "FEATURE_ATTACHMENT_RAG_RETRIEVAL": {
+        "COHERE_EMBED_ENDPOINT": "https://cohere.example",
+        "AZURE_SEARCH_ENDPOINT": "https://search.example",
+    },
+    "FEATURE_MEDIA_RAG_INGEST": {
+        "GCP_PROJECT_ID": "example-project",
+        "GCP_LOCATION": "us-central1",
+        "GCP_CREDENTIALS_PATH": "/tmp/wif.json",
+        "AZURE_SEARCH_ENDPOINT": "https://search.example",
+    },
+    "FEATURE_MEDIA_RAG_RETRIEVAL": {
+        "GCP_PROJECT_ID": "example-project",
+        "GCP_LOCATION": "us-central1",
+        "GCP_CREDENTIALS_PATH": "/tmp/wif.json",
+        "AZURE_SEARCH_ENDPOINT": "https://search.example",
+    },
+}
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [e for e in ai_flags() if e.kind == "bool"],
+    ids=lambda e: e.env_name,
+)
+def test_every_bool_flag_env_round_trips(entry) -> None:
+    """EVERY bool flag instantiates live — not a positional sample.
+
+    The previous [:5] slice silently excluded validator-coupled flags by
+    registry order alone (review finding R0-7); companions make each flag
+    constructible in isolation.
+    """
     flipped = not entry.default
-    settings = Settings(_env_file=None, **{entry.env_name: flipped})
+    env = {entry.env_name: flipped}
+    env.update(_COMPANION_ENV.get(entry.env_name, {}))
+    settings = Settings(_env_file=None, **env)
     assert getattr(settings, entry.ai_field) == flipped

@@ -234,3 +234,15 @@ class ClientSerializer(serializers.ModelSerializer):
             'updated_at',
         )
         read_only_fields = ('pk', 'created_at', 'updated_at')
+
+    def validate_code(self, value):
+        """Refuse code changes after creation.
+
+        The code is the scope-token identifier: every granted actor scope and
+        every stamped ``client_codes`` value in the RAG registry/index names
+        it. A rename would orphan (or cross-assign) all of them; a governed
+        rename needs a dedicated migration command, not a PATCH.
+        """
+        if self.instance is not None and value != self.instance.code:
+            raise serializers.ValidationError('Client code is immutable once created.')
+        return value

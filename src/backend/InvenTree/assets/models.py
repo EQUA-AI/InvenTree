@@ -45,6 +45,22 @@ class Client(models.Model):
         """Readable identity for admin and logs."""
         return self.name
 
+    def save(self, *args, **kwargs):
+        """Enforce code immutability at the ORM layer.
+
+        The serializer and admin already refuse edits; this belt covers direct
+        ORM writes. Every granted scope and every stamped RAG ``client_codes``
+        value names this slug — a rename orphans or cross-assigns them all. A
+        governed rename needs a dedicated command that re-stamps everything.
+        """
+        if self.pk is not None:
+            original = (
+                Client.objects.filter(pk=self.pk).values_list('code', flat=True).first()
+            )
+            if original is not None and original != self.code:
+                raise ValueError('Client.code is immutable once created')
+        super().save(*args, **kwargs)
+
 
 def get_default_client() -> Client:
     """Return the deployment's default internal tenant, creating it if absent.

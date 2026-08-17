@@ -27,6 +27,10 @@ class FlagBridgeTests(SimpleTestCase):
             'AIMMS_RISK_RADAR_ENABLED',
             'AIMMS_COMMAND_CENTER_ENABLED',
             'AIMMS_RISK_NOTIFICATIONS_ENABLED',
+            # R1 attachment RAG: the ONLY gate between an upload and the
+            # ingest task — deleting its registry entry must fail a test.
+            'AIMMS_ATTACHMENT_RAG_ENABLED',
+            'AIMMS_MEDIA_RAG_ENABLED',
         ):
             self.assertTrue(hasattr(settings, name), name)
             self.assertIsInstance(getattr(settings, name), bool, name)
@@ -44,9 +48,10 @@ class FlagBridgeTests(SimpleTestCase):
             self.assertTrue(hasattr(settings, name), name)
 
     def test_risk_rules_list_is_a_parsed_list(self):
-        """The rules enablement is a LIST — the consumer iterates rule codes,
-        so a raw comma string would iterate characters and enable nothing
-        while looking configured.
+        """The rules enablement is a LIST, never a raw comma string.
+
+        The consumer iterates rule codes; a raw string would iterate
+        characters and enable nothing while looking configured.
         """
         value = settings.AIMMS_RISK_RULES_ENABLED
         self.assertIsInstance(value, list)

@@ -769,6 +769,143 @@ class Settings(BaseSettings):
     )
 
     # -------------------------------------------------------------------------
+    # Attachment RAG (R0): auto-ingested uploads, two embedding spaces.
+    # Text space = Cohere Embed v4 (Azure Foundry serverless); media space =
+    # Gemini Embedding 2 (Vertex AI). Both dark by default; every flag fails
+    # closed at startup when its provider configuration is incomplete. The
+    # governed controlled-document corpus (text-embedding-3-large) is separate
+    # and untouched -- the alias guard below keeps the indexes distinct.
+    # -------------------------------------------------------------------------
+    feature_attachment_rag_ingest: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_ATTACHMENT_RAG_INGEST", "AIMMS_FEATURE_ATTACHMENT_RAG_INGEST"
+        ),
+    )
+    feature_attachment_rag_retrieval: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_ATTACHMENT_RAG_RETRIEVAL", "AIMMS_FEATURE_ATTACHMENT_RAG_RETRIEVAL"
+        ),
+    )
+    feature_media_rag_ingest: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_MEDIA_RAG_INGEST", "AIMMS_FEATURE_MEDIA_RAG_INGEST"),
+    )
+    feature_media_rag_retrieval: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_MEDIA_RAG_RETRIEVAL", "AIMMS_FEATURE_MEDIA_RAG_RETRIEVAL"
+        ),
+    )
+    azure_search_attachment_docs_index: str = Field(
+        default="aimms-attachment-docs-v1", alias="AZURE_SEARCH_ATTACHMENT_DOCS_INDEX"
+    )
+    azure_search_media_index: str = Field(
+        default="aimms-media-evidence-v1", alias="AZURE_SEARCH_MEDIA_INDEX"
+    )
+    cohere_embed_endpoint: str = Field(default="", alias="COHERE_EMBED_ENDPOINT")
+    cohere_embed_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("COHERE_EMBED_KEY", "COHERE_EMBED_API_KEY"),
+    )
+    cohere_embed_model: str = Field(default="embed-v-4-0", alias="COHERE_EMBED_MODEL")
+    cohere_embed_dimensions: int = Field(default=1536, ge=1, alias="COHERE_EMBED_DIMENSIONS")
+    gcp_project_id: str = Field(default="", alias="GCP_PROJECT_ID")
+    gcp_location: str = Field(default="", alias="GCP_LOCATION")
+    # wif = Workload Identity Federation external_account JSON (keyless, prod);
+    # sa_key = service-account key file (local dev only).
+    gcp_auth_mode: Literal["wif", "sa_key"] = Field(default="wif", alias="GCP_AUTH_MODE")
+    gcp_credentials_path: str = Field(default="", alias="GCP_CREDENTIALS_PATH")
+    gemini_embed_model: str = Field(
+        default="gemini-embedding-2-preview", alias="GEMINI_EMBED_MODEL"
+    )
+    gemini_embed_dimensions: int = Field(default=3072, ge=1, alias="GEMINI_EMBED_DIMENSIONS")
+    rag_max_doc_mb: int = Field(default=50, ge=1, alias="RAG_MAX_DOC_MB")
+    rag_max_video_mb: int = Field(default=500, ge=1, alias="RAG_MAX_VIDEO_MB")
+    # Gemini Embedding 2 accepts clips of at most 120 s per call.
+    rag_video_segment_s: int = Field(default=60, ge=10, le=120, alias="RAG_VIDEO_SEGMENT_S")
+    rag_video_overlap_s: int = Field(default=5, ge=0, alias="RAG_VIDEO_OVERLAP_S")
+    # In-flight ingest rows older than this are claimable again (stale-worker
+    # takeover) and eligible for the resume sweep. Invariant: keep this ABOVE
+    # the django-q per-task timeout + cluster retry (stock 90+300; the
+    # recommended 600s timeout floors retry at 720 -> 1320), or a takeover can
+    # race a still-alive worker.
+    rag_stale_claim_s: int = Field(default=1800, ge=600, alias="RAG_STALE_CLAIM_S")
+
+    @field_validator(
+        "azure_search_attachment_docs_index",
+        "azure_search_media_index",
+        # The governed/legacy index names participate in the alias guards, so
+        # they must be stripped too — a padded governed name must not let the
+        # auto-ingested corpus alias it (review finding F-01).
+        "azure_search_controlled_documents_index",
+        "azure_search_documents_index",
+        "cohere_embed_endpoint",
+        "cohere_embed_model",
+        "gcp_project_id",
+        "gcp_location",
+        "gcp_credentials_path",
+        "gemini_embed_model",
+        mode="after",
+    )
+    @classmethod
+    def normalize_attachment_rag_setting(cls, value: str) -> str:
+        """Trim attachment-RAG identifiers; whitespace must not defeat the guards."""
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_attachment_rag(self) -> "Settings":
+        """Fail closed on incomplete providers or index aliasing across trust tiers."""
+        rag_indexes = [
+            name
+            for name in (
+                self.azure_search_attachment_docs_index,
+                self.azure_search_media_index,
+                self.azure_search_controlled_documents_index,
+                self.azure_search_documents_index,
+            )
+            if name
+        ]
+        if len(rag_indexes) != len(set(rag_indexes)):
+            raise ValueError(
+                "Attachment/media/controlled Search indexes must be distinct: "
+                "auto-ingested content may never alias a governed index"
+            )
+        if self.rag_video_overlap_s >= self.rag_video_segment_s:
+            raise ValueError("RAG_VIDEO_OVERLAP_S must be smaller than RAG_VIDEO_SEGMENT_S")
+        if self.feature_attachment_rag_ingest or self.feature_attachment_rag_retrieval:
+            if not self.cohere_embed_endpoint.startswith("https://"):
+                raise ValueError(
+                    "COHERE_EMBED_ENDPOINT (https) is required when attachment RAG is enabled"
+                )
+            if not self.cohere_embed_model:
+                raise ValueError("COHERE_EMBED_MODEL is required when attachment RAG is enabled")
+            if not self.azure_search_endpoint or not self.azure_search_attachment_docs_index:
+                raise ValueError(
+                    "AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_ATTACHMENT_DOCS_INDEX are "
+                    "required when attachment RAG is enabled"
+                )
+        if self.feature_media_rag_ingest or self.feature_media_rag_retrieval:
+            if not self.gcp_project_id or not self.gcp_location:
+                raise ValueError(
+                    "GCP_PROJECT_ID and GCP_LOCATION are required when media RAG is enabled"
+                )
+            if not self.gcp_credentials_path:
+                raise ValueError(
+                    "GCP_CREDENTIALS_PATH is required when media RAG is enabled "
+                    "(WIF external_account JSON or a local-dev service-account key)"
+                )
+            if not self.gemini_embed_model:
+                raise ValueError("GEMINI_EMBED_MODEL is required when media RAG is enabled")
+            if not self.azure_search_endpoint or not self.azure_search_media_index:
+                raise ValueError(
+                    "AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_MEDIA_INDEX are required "
+                    "when media RAG is enabled"
+                )
+        return self
+
+    # -------------------------------------------------------------------------
     # Conversation Persistence Configuration
     # -------------------------------------------------------------------------
     # The quarantined conversation-persistence/search plane and its settings

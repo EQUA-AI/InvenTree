@@ -91,6 +91,32 @@ class DocIntelligenceClient:
         )
         return result
 
+    def analyze_layout_markdown(
+        self,
+        data: bytes,
+        *,
+        content_type: str = "application/octet-stream",
+    ) -> AnalyzeResult:
+        """Run ``prebuilt-layout`` with Markdown output (attachment-RAG doc path).
+
+        Markdown output turns DI headings into chunker section boundaries and
+        preserves tables; ``result.content`` is the Markdown body and
+        ``result.pages`` retains span/page structure.
+        """
+        poller = self._client.begin_analyze_document(
+            "prebuilt-layout",
+            body=data,
+            content_type=content_type,
+            output_content_format="markdown",
+        )
+        result = poller.result()
+        logger.info(
+            "DI markdown analysis complete - %d pages, %d chars",
+            len(result.pages) if result.pages else 0,
+            len(result.content) if result.content else 0,
+        )
+        return result
+
     def extract_text(self, pdf_bytes: bytes, *, model_id: str = "prebuilt-layout") -> str:
         """Convenience: return just the full text content string."""
         result = self.analyze_pdf(pdf_bytes, model_id=model_id)

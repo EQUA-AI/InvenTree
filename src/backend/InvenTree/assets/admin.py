@@ -14,6 +14,12 @@ class ClientAdmin(admin.ModelAdmin):
     search_fields = ('name', 'code')
     ordering = ('name',)
 
+    def get_readonly_fields(self, request, obj=None):
+        """The code is the scope-token identifier — immutable once created."""
+        if obj is not None:
+            return (*self.readonly_fields, 'code')
+        return self.readonly_fields
+
 
 @admin.register(AssetMachine)
 class AssetMachineAdmin(admin.ModelAdmin):

@@ -66,3 +66,54 @@ class ThreadGrantMigrationTests(TransactionTestCase):
         )
 
         MigrationExecutor(connection).migrate(self.migrate_to)
+
+
+@tag('migration_test')
+class AttachmentRagMigrationTests(TransactionTestCase):
+    """Prove 0018-0020 create the RAG registry additively and reverse cleanly."""
+
+    migrate_from = [('aichat', '0017_thread_summary_watermark')]
+    migrate_to = [('aichat', '0020_attachment_ingest_claimed_at')]
+
+    def _columns(self, table: str) -> set[str]:
+        """Introspect a table's column names."""
+        with connection.cursor() as cursor:
+            return {
+                column.name
+                for column in connection.introspection.get_table_description(
+                    cursor, table
+                )
+            }
+
+    def test_registry_tables_round_trip(self) -> None:
+        """Registry tables appear with the hardening columns and reverse."""
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        tables = set(connection.introspection.table_names())
+        self.assertNotIn('aichat_attachmentingest', tables)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        tables = set(connection.introspection.table_names())
+        for table in (
+            'aichat_attachmentingest',
+            'aichat_attachmentchunk',
+            'aichat_mediasegment',
+        ):
+            self.assertIn(table, tables)
+        columns = self._columns('aichat_attachmentingest')
+        # 0019's additive extractor + 0020's additive claim fence.
+        self.assertIn('extractor', columns)
+        self.assertIn('claimed_at', columns)
+        self.assertIn('client_codes', columns)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_from)
+        self.assertNotIn(
+            'aichat_attachmentingest',
+            set(connection.introspection.table_names()),
+        )
+
+        MigrationExecutor(connection).migrate(self.migrate_to)

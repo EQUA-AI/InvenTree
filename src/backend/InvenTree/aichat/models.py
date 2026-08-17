@@ -6,6 +6,8 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
+from pgvector.django import VectorField
+
 
 def _stable_id(prefix: str) -> str:
     """Return a non-sequential public identifier."""
@@ -677,3 +679,184 @@ class ChatActionProposal(models.Model):
     def __str__(self) -> str:
         """Return a safe diagnostic representation."""
         return f'{self.action_type} wo={self.target_work_order_id} ({self.state})'
+
+
+class AttachmentIngestState(models.TextChoices):
+    """Lifecycle states for one auto-ingested attachment revision (R0)."""
+
+    PENDING = 'pending', 'Pending'
+    EXTRACTING = 'extracting', 'Extracting'
+    EMBEDDING = 'embedding', 'Embedding'
+    INDEXED = 'indexed', 'Indexed'
+    FAILED = 'failed', 'Failed'
+    SUPERSEDED = 'superseded', 'Superseded'
+    DELETED = 'deleted', 'Deleted'
+    #: Terminal router outcome (R1, decision #10): reachable content the v1
+    #: pipeline deliberately does not ingest, with a value-free reason code.
+    SKIPPED = 'skipped', 'Skipped'
+
+
+class AttachmentIngestPipeline(models.TextChoices):
+    """Which extraction/embedding path an attachment routed through."""
+
+    DOC = 'doc', 'Document'
+    IMAGE = 'image', 'Image'
+    VIDEO = 'video', 'Video'
+
+
+class AttachmentExtractor(models.TextChoices):
+    """Which extraction leg produced the indexed text (R1, decision #12)."""
+
+    DI_LAYOUT = 'di_layout', 'Document Intelligence layout'
+    DIRECT = 'direct', 'Direct text read'
+    PYPDF_OVERRIDE = 'pypdf_override', 'pypdf (explicit override)'
+
+
+class AttachmentIngest(models.Model):
+    """System-of-record row for one (attachment, content-sha) ingestion.
+
+    Deliberately separate from ``ControlledDocument``: auto-ingested uploads
+    carry no curation provenance and must never satisfy a
+    ``maintenance_authorized`` filter. ``promoted_controlled_document`` is the
+    reserved linkage for the deferred upload→governed promotion flow.
+    """
+
+    #: Loose reference (no FK) mirroring Attachment.model_id semantics; the
+    #: attachment row may outlive or predate this registry on either env.
+    attachment_id = models.PositiveIntegerField(db_index=True)
+    model_type = models.CharField(max_length=100)
+    model_id = models.PositiveIntegerField()
+    #: Client codes whose actors may retrieve this content (stamped at last
+    #: projection; recomputed on MachinePart/client changes).
+    client_codes = models.JSONField(default=list, blank=True)
+    promoted_controlled_document = models.ForeignKey(
+        ControlledDocument,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='promoted_from_ingests',
+    )
+    source_sha256 = models.CharField(max_length=64)
+    pipeline = models.CharField(max_length=8, choices=AttachmentIngestPipeline.choices)
+    state = models.CharField(
+        max_length=16,
+        choices=AttachmentIngestState.choices,
+        default=AttachmentIngestState.PENDING,
+        db_index=True,
+    )
+    #: Value-free failure code only — provider errors can carry credentials.
+    error_code = models.CharField(max_length=64, blank=True, default='')
+    chunk_count = models.PositiveIntegerField(default=0)
+    segment_count = models.PositiveIntegerField(default=0)
+    embedding_model = models.CharField(max_length=128, blank=True, default='')
+    embedding_dimensions = models.PositiveIntegerField(default=0)
+    search_index_name = models.CharField(max_length=128, blank=True, default='')
+    #: Extraction provenance; silent quality divergence is worse than latency,
+    #: so pypdf appears here only via the explicit backfill override.
+    extractor = models.CharField(
+        max_length=16, choices=AttachmentExtractor.choices, blank=True, default=''
+    )
+    attempts = models.PositiveIntegerField(default=0)
+    #: Set only by the atomic claim (and renewed by the indexed short-circuit).
+    #: Winner ordering keys on this, not ``created_at``, because a content
+    #: revert re-claims an *old* row — registry-row age is not content recency.
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Registry uniqueness and owner lookup indexes."""
+
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(
+                fields=['model_type', 'model_id'], name='aichat_att_ingest_owner_idx'
+            )
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['attachment_id', 'source_sha256'],
+                name='aichat_att_ingest_sha_uniq',
+            ),
+            models.CheckConstraint(
+                condition=~Q(source_sha256=''), name='aichat_att_ingest_sha_not_empty'
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'attachment {self.attachment_id} {self.pipeline} ({self.state})'
+
+
+class AttachmentChunk(models.Model):
+    """One embedded text chunk projected into the attachment-docs index."""
+
+    ingest = models.ForeignKey(
+        AttachmentIngest, on_delete=models.CASCADE, related_name='chunks'
+    )
+    chunk_index = models.PositiveIntegerField()
+    page_number = models.PositiveIntegerField(null=True, blank=True)
+    section_path = models.CharField(max_length=512, blank=True, default='')
+    content = models.TextField()
+    token_count = models.PositiveIntegerField(default=0)
+    #: Cohere Embed v4 vector; populated by the embedding stage, so nullable.
+    embedding = VectorField(dimensions=1536, null=True, blank=True)
+    search_doc_id = models.CharField(max_length=256, blank=True, default='')
+
+    class Meta:
+        """Chunk identity within one ingest."""
+
+        ordering = ['ingest', 'chunk_index']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ingest', 'chunk_index'], name='aichat_att_chunk_idx_uniq'
+            )
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'ingest {self.ingest_id} chunk {self.chunk_index}'
+
+
+class MediaSegmentType(models.TextChoices):
+    """What one media-space vector represents."""
+
+    IMAGE = 'image', 'Image'
+    VIDEO_SEGMENT = 'video_segment', 'Video segment'
+
+
+class MediaSegment(models.Model):
+    """One embedded image or video segment projected into the media index."""
+
+    ingest = models.ForeignKey(
+        AttachmentIngest, on_delete=models.CASCADE, related_name='segments'
+    )
+    media_type = models.CharField(max_length=16, choices=MediaSegmentType.choices)
+    segment_index = models.PositiveIntegerField(default=0)
+    timecode_start_s = models.FloatField(null=True, blank=True)
+    timecode_end_s = models.FloatField(null=True, blank=True)
+    caption = models.TextField(blank=True, default='')
+    ocr_text = models.TextField(blank=True, default='')
+    transcript = models.TextField(blank=True, default='')
+    #: Media-relative path (attachment thumbnail or extracted keyframe) —
+    #: never a raw filesystem path.
+    thumbnail_path = models.CharField(max_length=512, blank=True, default='')
+    #: Gemini Embedding 2 vector; populated by the embedding stage, so nullable.
+    embedding = VectorField(dimensions=3072, null=True, blank=True)
+    search_doc_id = models.CharField(max_length=256, blank=True, default='')
+
+    class Meta:
+        """Segment identity within one ingest."""
+
+        ordering = ['ingest', 'segment_index']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ingest', 'segment_index'], name='aichat_media_seg_idx_uniq'
+            )
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return (
+            f'ingest {self.ingest_id} segment {self.segment_index} ({self.media_type})'
+        )

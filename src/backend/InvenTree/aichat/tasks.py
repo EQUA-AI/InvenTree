@@ -226,3 +226,85 @@ def _compact_locked(thread_id) -> None:
     ).update(summary=summary_text, summary_through_sequence=batch_high)
     if not updated:
         logger.info('Thread compaction lost a watermark race thread=%s', thread_id)
+
+
+# =========================================================================
+# R1: attachment RAG ingestion (offloaded via group='ai-ingest')
+# =========================================================================
+
+
+def ingest_attachment(attachment_id):
+    """Ingest one uploaded attachment into the attachment-docs corpus.
+
+    Value-free logging only: ingestion errors are recorded on the registry
+    row as codes; the exception surfaces so django-q marks the task failed.
+    """
+    from aichat.services.attachment_ingestion import run_ingest
+
+    row = run_ingest(attachment_id)
+    if row is not None:
+        logger.info(
+            'Attachment ingest finished: attachment=%s state=%s code=%s',
+            attachment_id,
+            row.state,
+            row.error_code or '-',
+        )
+
+
+def purge_attachment(attachment_id):
+    """Purge index documents and chunk copies for a deleted attachment."""
+    from aichat.services.attachment_ingestion import purge_attachment_artifacts
+
+    deleted = purge_attachment_artifacts(attachment_id)
+    logger.info(
+        'Attachment purge finished: attachment=%s index_docs_deleted=%d',
+        attachment_id,
+        deleted,
+    )
+
+
+def restamp_part_client_codes(part_id):
+    """Recompute one part's derived client codes (metadata-only merge)."""
+    from aichat.services.attachment_ingestion import (
+        restamp_part_client_codes as restamp,
+    )
+
+    touched = restamp(part_id)
+    if touched:
+        logger.info('Client codes re-stamped: part=%s ingests=%d', part_id, touched)
+
+
+def restamp_machine_client_codes(machine_id):
+    """Re-stamp a machine's docs and its installed parts' docs."""
+    from aichat.services.attachment_ingestion import (
+        restamp_machine_client_codes as restamp,
+    )
+
+    touched = restamp(machine_id)
+    if touched:
+        logger.info(
+            'Client codes re-stamped: machine=%s ingests=%d', machine_id, touched
+        )
+
+
+ATTACHMENT_RAG_SWEEP_INTERVAL_MINUTES = 10
+
+
+@scheduled_task(ScheduledTask.MINUTES, ATTACHMENT_RAG_SWEEP_INTERVAL_MINUTES)
+def sweep_attachment_rag():
+    """Stale-resume + orphan reconciliation for the attachment-RAG registry.
+
+    A timeout-killed ingest leaves its row in-flight forever otherwise: the
+    broker redelivery no-ops against the fresh claim and acks. Orphan purge
+    runs even while the flag is dark (denial ≡ nonexistence).
+    """
+    from aichat.services.attachment_ingestion import resume_stalled_ingests
+
+    counts = resume_stalled_ingests()
+    if any(counts.values()):
+        logger.info(
+            'Attachment RAG sweep: resumed=%d stalled=%d orphans=%d',
+            counts['resumed'],
+            counts['stalled'],
+            counts['orphans'],
+        )
