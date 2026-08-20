@@ -234,8 +234,8 @@ items:
 
   - id: attachment-interval-grounded
     question: >-
-      What do the uploaded documents say about how often the HX-200 plate
-      pack should be leak-inspected?
+      According to the uploaded HX-200 documents, how often should the
+      plate pack be leak-inspected?
     expected_behavior: answer
     ground_truth: >-
       Every 6 months (visual leak inspection; full teardown every 36 months),
