@@ -94,7 +94,7 @@ def _throttle() -> None:
 
 def _ask(client, question: str) -> str:
     _throttle()
-    for _attempt in range(4):
+    for _attempt in range(6):
         response = client.post(
             CHAT_PATH,
             json={"message": question, "idempotency_key": f"golden:{uuid.uuid4()}"},
@@ -104,8 +104,10 @@ def _ask(client, question: str) -> str:
         # The boundary serializes turns per user and answers 409 while a prior
         # turn's tail (grounding audit, compaction) is still finalizing. That
         # is a retryable pacing state, not an evaluation of this item — only a
-        # 409 is retried; every other status still fails conservatively.
-        time.sleep(15)
+        # 409 is retried; every other status still fails conservatively. The
+        # tail after a citation-heavy turn was measured at ~70 s live, so the
+        # window must comfortably exceed it.
+        time.sleep(20)
     response.raise_for_status()
     payload = response.json()
     return str(payload.get("message") or payload.get("response") or "")
