@@ -220,8 +220,8 @@ items:
 
   - id: attachment-torque-grounded
     question: >-
-      What torque should the HX-200 heat exchanger frame bolts be tightened
-      to?
+      According to the uploaded HX-200 documents, what torque should the
+      frame bolts be tightened to?
     expected_behavior: answer
     ground_truth: >-
       38 Nm in a cross pattern (from the uploaded HX-200 maintenance manual
@@ -233,7 +233,9 @@ items:
     dataset: live
 
   - id: attachment-interval-grounded
-    question: "How often should the HX-200 plate pack be leak-inspected?"
+    question: >-
+      What do the uploaded documents say about how often the HX-200 plate
+      pack should be leak-inspected?
     expected_behavior: answer
     ground_truth: >-
       Every 6 months (visual leak inspection; full teardown every 36 months),
@@ -245,8 +247,8 @@ items:
 
   - id: attachment-datasheet-grounded
     question: >-
-      What is the shelf life of the HX-200 gasket set in its original
-      packaging?
+      What shelf life does the uploaded datasheet give for the HX-200
+      gasket set?
     expected_behavior: answer
     ground_truth: >-
       4 years from the manufacture date (uploaded gasket datasheet fixture,

@@ -146,7 +146,12 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
         # analytics 2 = 16 <= MAX_INITIAL_TOOLS. search_part_documents is
         # deprecated (R2) and unwired at R5, relaxing the pack back to 2.
         ("get_part_attachments", "search_part_documents", "search_attachment_docs"),
-        ("attachment", "document", "drawing", "datasheet", "pdf", "file"),
+        # "uploaded"/"documents": how operators actually name the attachment
+        # corpus ("the uploaded datasheet", "what do the uploaded documents
+        # say") — without them a spec question phrased that way selected no
+        # documents pack at all (live golden finding, 2026-08-20). Terms
+        # match on word boundaries, so the plural needs its own entry.
+        ("attachment", "document", "documents", "drawing", "datasheet", "pdf", "file", "uploaded"),
     ),
     "procurement.read": (
         ToolEffect.READ,

@@ -300,7 +300,7 @@ def test_datasheet_phrasing_carries_the_attachment_tool_when_lit(monkeypatch):
     capability_catalog.cache_clear()
     try:
         selected = select_capabilities(
-            "find the datasheet for the HX-200 gasket",
+            "what do the uploaded documents say about the HX-200 gasket?",
             profile=PROFILE,
             authenticated=True,
         )
