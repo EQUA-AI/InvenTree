@@ -421,3 +421,142 @@ def test_fresh_profile_bypasses_request_role_cache(monkeypatch):
 
     assert granted == frozenset({("part", "view")})
     assert revoked == frozenset()
+
+
+# ---------------------------------------------------------------------------
+# attachment_corpus_access (R2): per-call flag re-check, query/site inputs,
+# maintenance scope, and any_of role exposure.
+# ---------------------------------------------------------------------------
+
+from contextlib import contextmanager
+
+from ai.core import config as _config
+
+
+@contextmanager
+def _attachment_catalog(monkeypatch, *, flag=True, site_key="site-a"):
+    """Build the catalog under the given flag/site settings; always restore.
+
+    The catalog caches the policy branch, so both directions clear it -- and
+    the teardown clear keeps a lit catalog from leaking into other tests.
+    """
+    monkeypatch.setattr(
+        _config,
+        "get_settings",
+        lambda: SimpleNamespace(
+            single_site_policy_key=site_key,
+            feature_attachment_rag_retrieval=flag,
+        ),
+    )
+    capability_catalog.cache_clear()
+    try:
+        yield
+    finally:
+        capability_catalog.cache_clear()
+
+
+def _scope_resolvable(monkeypatch, value: bool):
+    monkeypatch.setattr(invocation_guard, "_has_maintenance_scope", AsyncMock(return_value=value))
+
+
+async def _invoke_attachment(arguments):
+    token = principal_context.set(_principal())
+    try:
+        with bind_capability_run(
+            workflow="wf8",
+            modality="text",
+            selected_tools=[_tool("search_attachment_docs")],
+        ):
+            return await authorize_invocation("search_attachment_docs", arguments)
+    finally:
+        principal_context.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_attachment_guard_denies_while_the_flag_is_dark(monkeypatch):
+    """Default catalog: the policy itself is DISABLED, so dispatch never runs."""
+    _profile(monkeypatch, ("part", "view"))
+    with (
+        _attachment_catalog(monkeypatch, flag=False),
+        pytest.raises(CapabilityAuthorizationError) as error,
+    ):
+        await _invoke_attachment({"query": "seal replacement"})
+
+    assert error.value.reason_code == "policy_disabled"
+
+
+@pytest.mark.asyncio
+async def test_attachment_guard_recheck_catches_a_mid_process_flag_flip(monkeypatch):
+    """Catalog lit, settings flipped dark afterwards: the per-call arm denies."""
+    _profile(monkeypatch, ("part", "view"))
+    _scope_resolvable(monkeypatch, True)
+    with _attachment_catalog(monkeypatch, flag=True):
+        capability_catalog()  # build the lit catalog
+        monkeypatch.setattr(
+            _config,
+            "get_settings",
+            lambda: SimpleNamespace(
+                single_site_policy_key="site-a",
+                feature_attachment_rag_retrieval=False,
+            ),
+        )
+        with pytest.raises(CapabilityAuthorizationError) as error:
+            await _invoke_attachment({"query": "seal replacement"})
+
+    assert error.value.reason_code == "attachment_retrieval_disabled"
+
+
+@pytest.mark.asyncio
+async def test_attachment_guard_rejects_a_blank_query(monkeypatch):
+    _profile(monkeypatch, ("part", "view"))
+    _scope_resolvable(monkeypatch, True)
+    with _attachment_catalog(monkeypatch), pytest.raises(CapabilityAuthorizationError) as error:
+        await _invoke_attachment({"query": "   "})
+
+    assert error.value.reason_code == "invalid_document_query"
+
+
+@pytest.mark.asyncio
+async def test_attachment_guard_denies_an_unconfigured_site_scope(monkeypatch):
+    _profile(monkeypatch, ("part", "view"))
+    _scope_resolvable(monkeypatch, True)
+    with (
+        _attachment_catalog(monkeypatch, site_key=""),
+        pytest.raises(CapabilityAuthorizationError) as error,
+    ):
+        await _invoke_attachment({"query": "seal replacement"})
+
+    assert error.value.reason_code == "site_scope_unconfigured"
+
+
+@pytest.mark.asyncio
+async def test_attachment_guard_denies_an_unresolvable_scope(monkeypatch):
+    """client_codes derive from scope_for_actor, so no scope means no corpus."""
+    _profile(monkeypatch, ("part", "view"))
+    _scope_resolvable(monkeypatch, False)
+    with _attachment_catalog(monkeypatch), pytest.raises(CapabilityAuthorizationError) as error:
+        await _invoke_attachment({"query": "seal replacement"})
+
+    assert error.value.reason_code == "maintenance_scope_unresolved"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("granted", [("part", "view"), ("work_order", "view")])
+async def test_attachment_guard_authorizes_either_single_role(monkeypatch, granted):
+    """any_of exposure: either arm's role alone admits the call."""
+    _profile(monkeypatch, granted)
+    _scope_resolvable(monkeypatch, True)
+    with _attachment_catalog(monkeypatch):
+        entry = await _invoke_attachment({"query": "seal replacement"})
+
+    assert entry.authorization.authorizer == "attachment_corpus_access"
+
+
+@pytest.mark.asyncio
+async def test_attachment_guard_requires_at_least_one_arm_role(monkeypatch):
+    _profile(monkeypatch, ("stock", "view"))
+    _scope_resolvable(monkeypatch, True)
+    with _attachment_catalog(monkeypatch), pytest.raises(CapabilityAuthorizationError) as error:
+        await _invoke_attachment({"query": "seal replacement"})
+
+    assert error.value.reason_code == "alternative_permission_missing"

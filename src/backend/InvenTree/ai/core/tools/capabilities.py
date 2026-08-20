@@ -20,9 +20,11 @@ logger = logging.getLogger(__name__)
 
 CATALOG_VERSION = "1"
 #: Ceiling on one run's model-visible schema. A primary pack plus two adjacent
-#: packs plus the SQL escape hatch is 15 tools at worst (parts 5 + stock 6 +
-#: bom-or-documents 2 + analytics 2), so this leaves headroom while staying
-#: well under the full read surface (28 tools).
+#: packs plus the SQL escape hatch is 16 tools at worst (parts 5 + stock 6 +
+#: documents 3 + analytics 2 -- documents.read grew to 3 with the R2
+#: attachment tool; it relaxes back to 2 when search_part_documents is
+#: unwired at R5), exactly at the ceiling while staying well under the full
+#: read surface.
 MAX_INITIAL_TOOLS = 16
 
 
@@ -135,7 +137,15 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
     ),
     "documents.read": (
         ToolEffect.READ,
-        ("get_part_attachments", "search_part_documents"),
+        # search_attachment_docs (R2 attachment corpus) lives here, not in
+        # manuals.read: the manuals worst-case stack is exactly at
+        # MAX_INITIAL_TOOLS and the explicit-manuals rider always re-appends
+        # that pack, so a second manuals tool would force the trim loop.
+        # This pack's terms are the attachment corpus's own doc_type
+        # vocabulary. Worst case here: parts 5 + stock 6 + documents 3 +
+        # analytics 2 = 16 <= MAX_INITIAL_TOOLS. search_part_documents is
+        # deprecated (R2) and unwired at R5, relaxing the pack back to 2.
+        ("get_part_attachments", "search_part_documents", "search_attachment_docs"),
         ("attachment", "document", "drawing", "datasheet", "pdf", "file"),
     ),
     "procurement.read": (
@@ -1016,6 +1026,26 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
             all_of=(("work_order", "view"),),
             authorizer="controlled_corpus_access",
         )
+    if tool_id == "search_attachment_docs":
+        # R2 attachment-corpus retrieval, dark behind its flag. The DISABLED
+        # branch is cached by capability_catalog() -- acceptable because env
+        # flags are process-stable; the guard arm and the tool itself re-check
+        # per call. any_of, not all_of: either role exposes the tool, and the
+        # tool always restricts its model_type filter to the granted arms
+        # (part:view -> part docs, work_order:view -> machine docs), so a
+        # single-role user can never receive the other arm's documents.
+        from ai.core.config import get_settings
+
+        if not get_settings().feature_attachment_rag_retrieval:
+            return AuthorizationPolicy(
+                kind=PolicyKind.DISABLED,
+                reason="FEATURE_ATTACHMENT_RAG_RETRIEVAL is off",
+            )
+        return AuthorizationPolicy(
+            kind=PolicyKind.RESOURCE_AUTHORIZER,
+            any_of=(("part", "view"), ("work_order", "view")),
+            authorizer="attachment_corpus_access",
+        )
     if requirement is not None:
         return AuthorizationPolicy(
             kind=PolicyKind.NATIVE_PERMISSION,
@@ -1047,6 +1077,7 @@ def _catalog_tools() -> tuple[Any, ...]:
     by name (wf2-wf6 share the inventory toolset) and each entry's authorized
     workflows come from its pack, not from membership in this list.
     """
+    from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
     from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
     from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
     from ai.core.integrations.email.tools import EMAIL_TOOLS
@@ -1062,6 +1093,7 @@ def _catalog_tools() -> tuple[Any, ...]:
         *KANBAN_TOOLS,
         *DOCUMENT_SEARCH_TOOLS,
         *CONTROLLED_CORPUS_TOOLS,
+        *ATTACHMENT_CORPUS_TOOLS,
         # Specialist rails (wf2/wf3/wf4/wf6) below; the wf8 prefix above keeps
         # the existing catalog order stable for the manifest.
         *INVENTORY_TOOLS,

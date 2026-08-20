@@ -73,7 +73,7 @@ class AttachmentRagMigrationTests(TransactionTestCase):
     """Prove 0018-0020 create the RAG registry additively and reverse cleanly."""
 
     migrate_from = [('aichat', '0017_thread_summary_watermark')]
-    migrate_to = [('aichat', '0020_attachment_ingest_claimed_at')]
+    migrate_to = [('aichat', '0021_retrievalmiss_corpus_part_filter')]
 
     def _columns(self, table: str) -> set[str]:
         """Introspect a table's column names."""
@@ -107,6 +107,10 @@ class AttachmentRagMigrationTests(TransactionTestCase):
         self.assertIn('extractor', columns)
         self.assertIn('claimed_at', columns)
         self.assertIn('client_codes', columns)
+        # 0021's additive R2 ledger columns.
+        miss_columns = self._columns('aichat_retrievalmiss')
+        self.assertIn('corpus', miss_columns)
+        self.assertIn('part_filter', miss_columns)
 
         executor = MigrationExecutor(connection)
         executor.loader.build_graph()

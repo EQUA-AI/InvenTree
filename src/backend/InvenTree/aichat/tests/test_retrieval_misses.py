@@ -81,9 +81,14 @@ class RetrievalMissLedgerTests(TestCase):
                 'machine_filter',
                 'document_class',
                 'scope_key',
+                'corpus',
+                'part_filter',
                 'created_at',
             },
         )
+        # Governed searches keep the pre-R2 defaults on the new columns.
+        self.assertEqual(row.corpus, 'governed')
+        self.assertEqual(row.part_filter, '')
 
     def test_hit_search_records_count_and_top_score(self):
         rows = [
@@ -109,6 +114,51 @@ class RetrievalMissLedgerTests(TestCase):
         row = RetrievalMiss.objects.get()
         self.assertEqual(row.machine_filter, 'ambiguous')
         self.assertEqual(row.hit_count, 0)
+
+    def test_attachment_corpus_rows_carry_their_surface(self):
+        """R2: the attachment tool's rows stay separable from governed ones."""
+        from aichat.services.retrieval_misses import record_search
+
+        record_search(
+            user=self.user,
+            query='What is the gasket shelf life?',
+            hit_count=0,
+            top_score=None,
+            machine_filter='not_requested',
+            document_class='datasheet',
+            scope_key='site-under-test',
+            corpus='attachment',
+            part_filter='ambiguous',
+        )
+        row = RetrievalMiss.objects.get()
+        self.assertEqual(row.corpus, 'attachment')
+        self.assertEqual(row.part_filter, 'ambiguous')
+        self.assertEqual(row.document_class, 'datasheet')
+
+    def test_rollup_corpus_option_slices_one_surface(self):
+        """--corpus restricts totals and rows to that retrieval surface."""
+        from aichat.services.retrieval_misses import record_search
+
+        self._search(query='Governed miss')
+        record_search(
+            user=self.user,
+            query='Attachment miss',
+            hit_count=0,
+            top_score=None,
+            machine_filter='not_requested',
+            document_class=None,
+            scope_key='site-under-test',
+            corpus='attachment',
+        )
+        out = StringIO()
+        call_command('retrieval_misses', '--json', '--corpus', 'attachment', stdout=out)
+        import json
+
+        report = json.loads(out.getvalue())
+        self.assertEqual(report['corpus'], 'attachment')
+        self.assertEqual(report['total_searches'], 1)
+        self.assertEqual(report['total_misses'], 1)
+        self.assertEqual(report['top_unanswered'][0]['query'], 'Attachment miss')
 
     def test_ledger_failure_never_fails_the_search(self):
         with mock.patch.object(

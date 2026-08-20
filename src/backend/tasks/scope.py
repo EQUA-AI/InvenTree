@@ -204,6 +204,45 @@ def work_order_scope_filter(actor) -> Q:
     return predicate
 
 
+def client_codes_for_actor(actor) -> frozenset[str]:
+    """Return the client codes named by the actor's resolved scopes.
+
+    The code-valued form of :func:`machine_scope_filter`, for boundaries that
+    are stamped by client *code* rather than joined by client id -- the
+    attachment-RAG search indexes carry ``client_codes`` so retrieval filters
+    must be authored in that vocabulary. The same fail-closed rules apply:
+
+    * Scopes carrying a ``site_key`` are skipped, exactly as in
+      :func:`machine_scope_filter` -- a site-qualified grant authorizes no
+      machine row, so it must not widen a search filter either.
+    * Customer-only scopes contribute nothing: codes ride client grants.
+    * An empty result raises rather than returning an empty set, because an
+      empty filter clause must never be silently omitted downstream.
+
+    Raises:
+        ScopeError: When the actor's scope cannot be resolved, or when the
+            resolved scopes name no active client.
+    """
+    client_ids = {
+        scope.client_id
+        for scope in scope_for_actor(actor)
+        if scope.site_key is None and scope.client_id is not None
+    }
+    if not client_ids:
+        raise ScopeError('Maintenance actor scope names no client')
+
+    from assets.models import Client
+
+    codes = frozenset(
+        Client.objects.filter(pk__in=client_ids, active=True).values_list(
+            'code', flat=True
+        )
+    )
+    if not codes:
+        raise ScopeError('Maintenance actor scope names no client')
+    return codes
+
+
 def single_site_scope_resolver(actor) -> set[MaintenanceScope]:
     """Grant the deployment's one internal tenant to authorized operators.
 

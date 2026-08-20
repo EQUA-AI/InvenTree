@@ -93,6 +93,7 @@ def text_chat_tools() -> tuple[Any, ...]:
     so this union — and the voice gate catalog built from it — is
     structurally free of them.
     """
+    from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
     from ai.core.integrations.controlled_document_corpus import (
         CONTROLLED_CORPUS_TOOLS,
     )
@@ -111,6 +112,7 @@ def text_chat_tools() -> tuple[Any, ...]:
         *KANBAN_TOOLS,
         *DOCUMENT_SEARCH_TOOLS,
         *CONTROLLED_CORPUS_TOOLS,
+        *ATTACHMENT_CORPUS_TOOLS,
     )
     unique: dict[str, Any] = {}
     for tool in ordered:

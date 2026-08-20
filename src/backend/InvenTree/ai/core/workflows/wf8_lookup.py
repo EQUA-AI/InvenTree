@@ -22,6 +22,7 @@ from typing import Any
 from agent_framework import ChatAgent, ChatMessage, Role, TextContent
 from agent_framework.azure import AzureOpenAIChatClient
 from ai.core.config import get_settings
+from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
 from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
 from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
@@ -317,9 +318,9 @@ through the governed action surface; never claim to have made a change.
 Kanban statuses are: backlog, in-progress, review, done
 Kanban priorities are: low, medium, high
 
-You have access to indexed technical documentation (equipment manuals, datasheets, specs):
-- Use search_part_documents to find relevant manual sections for diagnosis
-- ALWAYS search documentation FIRST when asked about troubleshooting, error codes, maintenance, or operating procedures
+You have access to indexed technical documentation in two corpora of different authority:
+- search_manuals covers the CONTROLLED corpus: reviewed, revision-tracked manuals. Search it FIRST when asked about troubleshooting, error codes, maintenance, or operating procedures.
+- search_attachment_docs, when available in your tools, covers UPLOADED documents (manuals, datasheets, catalogues attached to parts and machines) that have NOT been through controlled-document review. Use it as a supplement when the controlled corpus does not answer, and attribute anything drawn from it as coming from an "uploaded document (uncontrolled)". If it is not among your tools, do not attempt it.
 - ALWAYS cite the source: include the document title and any page/section references from the results
 - When diagnosing faults, search for the error code AND the symptom description
 
@@ -354,7 +355,9 @@ HAVING. A threshold compared against a single stock row is wrong — it misses a
 whose stock is split across several locations or batches.
 
 When you answer from documentation or manuals, always cite the source: name the document
-title and any page or section reference the search result carries. For troubleshooting,
+title and any page or section reference the search result carries. Search the controlled
+corpus (search_manuals) before the uploaded-attachment corpus, and attribute anything
+drawn from an attachment as an "uploaded document (uncontrolled)". For troubleshooting,
 maintenance, or operating procedures, answer only what a returned document directly
 supports; if the manuals do not cover it, say so plainly — on this machinery a wrong
 procedure can injure someone, and declining is always acceptable.
@@ -393,7 +396,8 @@ answer and the written one are the same text, so never promise details "in the c
 have not just said. Only describe data as approximate or out of date if the tool result actually
 says so; do not add hedges of your own.
 
-When an answer comes from a manual, say which document it came from. For troubleshooting or
+When an answer comes from a manual, say which document it came from. If it came from an
+uploaded document rather than a controlled manual, say so. For troubleshooting or
 procedures, answer only what a returned document directly supports; if the manuals do not
 cover it, say so plainly — a wrong procedure on this machinery can injure someone, and
 declining is always acceptable.
@@ -443,6 +447,7 @@ figure from an earlier turn as if you had just verified it."""
                 + KANBAN_TOOLS
                 + DOCUMENT_SEARCH_TOOLS
                 + CONTROLLED_CORPUS_TOOLS
+                + ATTACHMENT_CORPUS_TOOLS
             )
         if not T1LookupWorkflow.VOICE_BASE_TOOLS:
             T1LookupWorkflow.VOICE_BASE_TOOLS = read_tools(T1LookupWorkflow.BASE_TOOLS)

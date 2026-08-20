@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
 from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
 from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
@@ -59,15 +60,16 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
         + KANBAN_TOOLS
         + DOCUMENT_SEARCH_TOOLS
         + CONTROLLED_CORPUS_TOOLS
+        + ATTACHMENT_CORPUS_TOOLS
     )
     catalog = capability_catalog()
 
     # 61 wf8 tools (delete_kanban_card is withheld) + the specialist writes
     # wf2/wf3/wf4/wf6 carry: parts/stock/company/sales writes and the nine
-    # purchase-order write tools.
-    assert len(wf8_tools) == 55
-    assert len(catalog) == 91
-    assert tuple(entry.tool for entry in catalog[:55]) == wf8_tools
+    # purchase-order write tools. R2 added search_attachment_docs.
+    assert len(wf8_tools) == 56
+    assert len(catalog) == 92
+    assert tuple(entry.tool for entry in catalog[:56]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -94,7 +96,9 @@ def test_catalog_has_expected_stable_pack_shapes():
         "parts.read": 5,
         "stock.read": 6,
         "bom.read": 2,
-        "documents.read": 2,
+        # 3 since R2: search_attachment_docs joins the legacy pair; the pack
+        # relaxes back to 2 when search_part_documents is unwired at R5.
+        "documents.read": 3,
         "procurement.read": 5,
         "sales.read": 4,
         "build.read": 3,
@@ -128,9 +132,11 @@ def test_every_catalog_entry_has_an_explicit_policy():
     policies = {entry.tool_id: entry.authorization for entry in catalog}
 
     assert all(entry.authorization.kind in PolicyKind for entry in catalog)
-    assert not {
+    # search_attachment_docs is DELIBERATELY dark until its retrieval flag
+    # flips (R2 rollout); everything else must carry a live policy.
+    assert {
         entry.tool_id for entry in catalog if entry.authorization.kind is PolicyKind.DISABLED
-    }
+    } == {"search_attachment_docs"}
     for tool in EMAIL_TOOLS:
         permission = "view" if tool in EMAIL_TOOLS[:3] else "send"
         policy = policies[tool.__name__]
@@ -206,14 +212,45 @@ def test_protected_resource_tools_have_resource_authorizers():
     assert policies["search_manuals"].all_of == (("work_order", "view"),)
 
 
+def test_attachment_docs_policy_follows_the_retrieval_flag(monkeypatch):
+    """Dark by default; flag-on grants the any_of two-arm authorizer policy.
+
+    The catalog is process-cached, so both directions clear it -- and the
+    teardown clear keeps the flag-on catalog from leaking into other tests.
+    """
+    from ai.core import config as ai_config
+
+    policies = {entry.tool_id: entry.authorization for entry in capability_catalog()}
+    dark = policies["search_attachment_docs"]
+    assert dark.kind is PolicyKind.DISABLED
+    assert "FEATURE_ATTACHMENT_RAG_RETRIEVAL" in (dark.reason or "")
+
+    real_settings = ai_config.get_settings()
+    lit_settings = SimpleNamespace(**{
+        **{name: getattr(real_settings, name) for name in ("single_site_policy_key",)},
+        "feature_attachment_rag_retrieval": True,
+    })
+    monkeypatch.setattr(ai_config, "get_settings", lambda: lit_settings)
+    capability_catalog.cache_clear()
+    try:
+        policies = {entry.tool_id: entry.authorization for entry in capability_catalog()}
+        lit = policies["search_attachment_docs"]
+        assert lit.kind is PolicyKind.RESOURCE_AUTHORIZER
+        assert lit.authorizer == "attachment_corpus_access"
+        assert lit.any_of == (("part", "view"), ("work_order", "view"))
+        assert lit.all_of == ()
+    finally:
+        capability_catalog.cache_clear()
+
+
 def test_contract_manifest_is_stable_and_complete():
     first = catalog_manifest()
     second = catalog_manifest()
 
     assert first == second
     assert manifest_json() == manifest_json()
-    # Matches the catalog pin: 91 entries (wf8 55 + specialist writes + packs).
-    assert len(first) == 91
+    # Matches the catalog pin: 92 entries (wf8 56 + specialist writes + packs).
+    assert len(first) == 92
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)

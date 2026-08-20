@@ -515,6 +515,18 @@ class RetrievalMiss(models.Model):
     machine_filter = models.CharField(max_length=16, blank=True, default='')
     document_class = models.CharField(max_length=128, blank=True, default='')
     scope_key = models.CharField(max_length=255, blank=True, default='')
+    #: Which retrieval surface wrote the row: 'governed' (controlled manuals)
+    #: or 'attachment' (R2 uploaded-document corpus). Keeps the two rollup
+    #: vocabularies separable without prefix hacks in document_class.
+    #: db_default keeps the column insertable by pre-R2 code — the postgres
+    #: server is shared by aimms-experimental and aimms-dev, so the OTHER env
+    #: keeps writing ledger rows during the deploy window (dark-safe rule).
+    corpus = models.CharField(
+        max_length=32, blank=True, default='governed', db_default='governed'
+    )
+    #: The attachment tool's part-narrowing outcome; same vocabulary as
+    #: machine_filter. Empty for governed-corpus rows.
+    part_filter = models.CharField(max_length=16, blank=True, default='', db_default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

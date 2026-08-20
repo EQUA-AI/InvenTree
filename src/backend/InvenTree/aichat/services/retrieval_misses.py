@@ -24,8 +24,17 @@ def record_search(
     machine_filter: str,
     document_class: str | None,
     scope_key: str,
+    corpus: str = 'governed',
+    part_filter: str = '',
 ) -> None:
-    """Persist one search outcome; query metadata only, never answer text."""
+    """Persist one search outcome; query metadata only, never answer text.
+
+    ``corpus`` names which retrieval surface wrote the row (``governed`` for
+    the controlled manuals, ``attachment`` for the R2 uploaded-document
+    corpus) so rollups stay separable; ``part_filter`` mirrors the attachment
+    tool's part-narrowing outcome. Both default to the pre-R2 shape so
+    existing callers are untouched.
+    """
     try:
         from aichat.models import RetrievalMiss
 
@@ -37,6 +46,8 @@ def record_search(
             machine_filter=str(machine_filter or '')[:16],
             document_class=str(document_class or '')[:128],
             scope_key=str(scope_key or '')[:255],
+            corpus=str(corpus or 'governed')[:32],
+            part_filter=str(part_filter or '')[:16],
         )
     except Exception as exc:
         from ai.core.faults import fault_location

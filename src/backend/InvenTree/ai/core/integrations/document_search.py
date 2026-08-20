@@ -99,6 +99,9 @@ async def search_part_documents(  # noqa: RUF029 - async is the tool-call contra
     top_k: int = 5,
 ) -> dict[str, Any]:
     """
+    Deprecated: prefer search_attachment_docs (scoped, cited, fenced);
+    removal is scheduled for R5.
+
     Search indexed part documentation (user manuals, datasheets,
     technical specs) to answer questions about equipment operation,
     troubleshooting, error codes, maintenance, and wiring.

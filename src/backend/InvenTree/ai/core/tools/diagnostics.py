@@ -476,6 +476,12 @@ def _fence_untrusted_content(value: str) -> str:
     return f"{UNTRUSTED_CONTENT_BEGIN}\n{escaped}\n{UNTRUSTED_CONTENT_END}"
 
 
+#: Public name for reuse by other ai.core retrieval surfaces (attachment
+#: corpus, R2+). Same-package import only -- Django apps keep their own
+#: byte-identical copies by design (see assets/ai_read.py).
+fence_untrusted_content = _fence_untrusted_content
+
+
 class ProductionDiagnosticReader:
     """Lazy adapter to read-only functions owned by the repair domain service."""
 
@@ -1105,5 +1111,6 @@ __all__ = [
     "ReaderResult",
     "SearchApprovedManualsArguments",
     "build_diagnostic_context",
+    "fence_untrusted_content",
     "get_diagnostic_tool_registry",
 ]

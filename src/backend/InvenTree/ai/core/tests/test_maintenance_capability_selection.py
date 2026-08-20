@@ -254,3 +254,70 @@ def test_an_explicit_manuals_term_always_carries_search_manuals(question):
     selected = select_capabilities(question, profile=PROFILE, authenticated=True)
 
     assert "search_manuals" in set(selected.tool_ids), (question, selected.pack_ids)
+
+
+# ---------------------------------------------------------------------------
+# R2: search_attachment_docs joins documents.read behind its retrieval flag
+# ---------------------------------------------------------------------------
+
+
+def test_manuals_pack_stays_single_tool():
+    """The manuals stack is budgeted exactly at MAX_INITIAL_TOOLS with ONE
+    tool; the attachment tool must live in documents.read, never here."""
+    _effect, tool_ids, _terms = capabilities._PACK_SPECS["manuals.read"]
+    assert tool_ids == ("search_manuals",)
+    assert "search_attachment_docs" in capabilities._PACK_SPECS["documents.read"][1]
+
+
+def test_attachment_docs_is_dark_by_default():
+    """Flag off: the catalog policy is DISABLED, so the tool is never
+    model-visible regardless of pack selection."""
+    from ai.core.tools.capabilities import exposure_authorized
+
+    catalog = {entry.tool_id: entry for entry in capability_catalog()}
+    entry = catalog["search_attachment_docs"]
+    assert entry.pack_id == "documents.read"
+    assert entry.authorization.kind is PolicyKind.DISABLED
+    assert not exposure_authorized(entry, PROFILE, authenticated=True)
+
+
+def test_datasheet_phrasing_carries_the_attachment_tool_when_lit(monkeypatch):
+    """Flag on: documents.read selection includes the new tool for a profile
+    holding either arm role."""
+    from types import SimpleNamespace
+
+    from ai.core import config as ai_config
+    from ai.core.tools.capabilities import exposure_authorized
+
+    monkeypatch.setattr(
+        ai_config,
+        "get_settings",
+        lambda: SimpleNamespace(
+            feature_attachment_rag_retrieval=True,
+            single_site_policy_key="site-a",
+        ),
+    )
+    capability_catalog.cache_clear()
+    try:
+        selected = select_capabilities(
+            "find the datasheet for the HX-200 gasket",
+            profile=PROFILE,
+            authenticated=True,
+        )
+        assert "documents.read" in selected.pack_ids
+        assert "search_attachment_docs" in selected.tool_ids
+        catalog = {entry.tool_id: entry for entry in capability_catalog()}
+        assert exposure_authorized(catalog["search_attachment_docs"], PROFILE, authenticated=True)
+        # any_of: a single arm role suffices for exposure.
+        assert exposure_authorized(
+            catalog["search_attachment_docs"],
+            frozenset({("part", "view")}),
+            authenticated=True,
+        )
+        assert not exposure_authorized(
+            catalog["search_attachment_docs"],
+            frozenset({("stock", "view")}),
+            authenticated=True,
+        )
+    finally:
+        capability_catalog.cache_clear()

@@ -52,6 +52,87 @@ def test_trap_items_exist_for_every_trap_type():
     assert {"absent_spec", "ambiguous_symptom", "wrong_machine"} <= present
 
 
+def test_attachment_fixture_items_pin_the_fixture_set():
+    """R2 items pin the reserved fixture-set version, never the index name."""
+    items = schema_mod.load_items()
+    attachment_items = [i for i in items if i.id.startswith("attachment-")]
+    assert len(attachment_items) >= 4
+    assert {i.corpus_version for i in attachment_items} == {"aimms-attachment-fixtures-v1"}
+    assert any(i.trap_type == "absent_spec" for i in attachment_items)
+
+
+def test_attachment_fixture_documents_exist():
+    """The pinned fixture set is only usable if its documents ship with the
+    repo — the seed command reads them and cannot regenerate them."""
+    import pathlib
+
+    import ai.core.evals as evals_pkg
+
+    fixtures = (
+        pathlib.Path(evals_pkg.__file__).resolve().parent / "golden" / "fixtures" / "attachments"
+    )
+    expected = {
+        "eval-hx200-manual.md",
+        "eval-hx200-gasket-datasheet.md",
+        "eval-zr9-offlimits-manual.md",
+    }
+    present = {p.name for p in fixtures.glob("*.md")}
+    assert expected <= present, f"missing fixture documents: {expected - present}"
+
+
+def test_corpus_env_is_set_valued():
+    """AIMMS_GOLDEN_CORPUS pins several corpora at once (comma-separated):
+    items skip only when their pin is absent from the set; a single value
+    and an unset env behave exactly as before."""
+    from ai.core.evals.run_golden import run_items
+
+    def _item(item_id, corpus_version):
+        return schema_mod.GoldenItem(
+            id=item_id,
+            question="q?",
+            expected_behavior="answer",
+            ground_truth="a",
+            ground_truth_keys=(),
+            trap_type="none",
+            locale="en",
+            corpus_version=corpus_version,
+            dataset="demo",
+        )
+
+    items = [
+        _item("governed", "eaits-manuals-v4a"),
+        _item("attachment", "aimms-attachment-fixtures-v1"),
+        _item("stale", "eaits-manuals-v3"),
+        _item("unpinned", ""),
+    ]
+
+    class _NeverCalled:
+        def post(self, *a, **k):  # pragma: no cover - skip paths only
+            raise AssertionError("no HTTP expected")
+
+    scores = run_items(
+        _NeverCalled(),
+        items,
+        "eaits-manuals-v4a,aimms-attachment-fixtures-v1",
+        "live",  # every item above is demo/unpinned -> dataset skip catches
+        False,
+    )
+    by_id = {score.item_id: score for score in scores}
+    # Both pinned-and-deployed corpora pass the corpus gate (they then skip
+    # on the dataset gate, proving the corpus gate admitted them).
+    assert "corpus" not in by_id["governed"].detail
+    assert "corpus" not in by_id["attachment"].detail
+    assert by_id["stale"].outcome == "skip"
+    assert "corpus" in by_id["stale"].detail
+    # Single-value env keeps the original semantics.
+    single = run_items(_NeverCalled(), items, "eaits-manuals-v4a", "live", False)
+    single_by_id = {score.item_id: score for score in single}
+    assert "corpus" in single_by_id["attachment"].detail
+    # Unset env skips nothing on corpus grounds.
+    unset = run_items(_NeverCalled(), items, "", "live", False)
+    assert all("corpus" not in score.detail for score in unset)
+
+
 def test_judge_schema_is_strict():
     assert judge_mod.JUDGE_SCHEMA["additionalProperties"] is False
     assert set(judge_mod.JUDGE_SCHEMA["required"]) == set(judge_mod.JUDGE_SCHEMA["properties"])

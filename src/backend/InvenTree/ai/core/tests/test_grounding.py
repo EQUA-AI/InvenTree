@@ -75,6 +75,43 @@ class TestCaptureLedger:
         citations = ledger.manuals_citations()
         assert {c["asset_id"] for c in citations} == {"SER-PS1-001"}
 
+    def test_attachment_citations_carry_the_trust_tier(self) -> None:
+        """R2: attachment-corpus citations join the pool with their tier."""
+        ledger = ToolCaptureLedger()
+        result = _manuals_result(asset_id="PVS351-UL-2012-0173")
+        for chunk in result["chunks"]:
+            chunk["citation"]["access_class"] = "attachment_uploaded"
+            chunk["citation"]["source_file_name"] = "UL1741_UserManual.pdf"
+        ledger.record("documents.read:search_attachment_docs", result)
+        citations = ledger.manuals_citations()
+        assert {c["access_class"] for c in citations} == {"attachment_uploaded"}
+        assert {c["source_file_name"] for c in citations} == {"UL1741_UserManual.pdf"}
+
+    def test_governed_citations_default_to_an_empty_tier(self) -> None:
+        """Governed rows carry no access_class field; the capture stays ''."""
+        ledger = _ledger_with_manuals()
+        citations = ledger.manuals_citations()
+        assert {c["access_class"] for c in citations} == {""}
+        assert {c["source_file_name"] for c in citations} == {""}
+
+    def test_attachment_tool_machine_candidates_are_captured(self) -> None:
+        """The candidates gate admits both retrieval tools, nothing else."""
+        payload = {
+            "chunks": [],
+            "total": 0,
+            "machine_filter": "ambiguous",
+            "machine_candidates": [
+                {"machine_id": 1, "name": "Pump A", "serial": "A"},
+                {"machine_id": 2, "name": "Pump B", "serial": "B"},
+            ],
+        }
+        ledger = ToolCaptureLedger()
+        ledger.record("search_attachment_docs", payload)
+        assert len(ledger.manuals_machine_candidates()) == 2
+        other = ToolCaptureLedger()
+        other.record("some_other_tool", payload)
+        assert other.manuals_machine_candidates() == []
+
     def test_generic_results_feed_observed_values(self) -> None:
         ledger = ToolCaptureLedger()
         ledger.record(

@@ -17,8 +17,12 @@ Environment:
     AIMMS_GOLDEN_ORIGIN        Origin header value; defaults to the base
                                URL (the boundary rejects absent/foreign
                                Origins on POST)
-    AIMMS_GOLDEN_CORPUS        deployed corpus version; corpus-pinned items
-                               whose pin differs are SKIPPED with a report
+    AIMMS_GOLDEN_CORPUS        deployed corpus version(s), comma-separated —
+                               e.g. "eaits-manuals-v4a,aimms-attachment-
+                               fixtures-v1" pins the governed index AND the
+                               attachment eval fixture set; corpus-pinned
+                               items whose pin is absent from the set are
+                               SKIPPED with a report
     AIMMS_GOLDEN_DATASET       what the deployment's data is: demo | live |
                                all (default demo). Items pinned to the other
                                dataset SKIP with a report — demo ground
@@ -113,9 +117,13 @@ def _proposal_ids(client) -> set[str] | None:
 def run_items(
     client, items, corpus: str, dataset: str, locale_ready: bool
 ) -> list[judge_mod.ItemScore]:
+    # AIMMS_GOLDEN_CORPUS is set-valued (comma-separated) so one run can pin
+    # several corpora at once — the governed index name AND the attachment
+    # fixture-set version (decision #13). A single value behaves as before.
+    corpus_versions = {value.strip() for value in corpus.split(",") if value.strip()}
     scores: list[judge_mod.ItemScore] = []
     for item in items:
-        if item.corpus_version and corpus and item.corpus_version != corpus:
+        if item.corpus_version and corpus_versions and item.corpus_version not in corpus_versions:
             scores.append(
                 judge_mod.ItemScore(
                     item.id, "-", "skip", f"corpus {item.corpus_version} != deployed {corpus}"

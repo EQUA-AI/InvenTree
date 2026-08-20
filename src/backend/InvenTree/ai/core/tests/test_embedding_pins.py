@@ -290,6 +290,23 @@ def test_attachment_probe_verifies_the_cohere_pin():
     assert resolved_model_versions()["embed-v-4-0"] == "embed-v-4-0-2026-01"
 
 
+def test_attachment_probe_runs_for_a_retrieval_only_deployment():
+    """R2 flip shape: retrieval on, ingest off, still boot-pinned.
+
+    A deployment serving queries embeds them with the same pinned model, so
+    the probe must not go dark just because ingestion is."""
+    report = run_boot_probes(
+        settings=_attachment_settings(
+            FEATURE_ATTACHMENT_RAG_INGEST=False,
+            FEATURE_ATTACHMENT_RAG_RETRIEVAL=True,
+        ),
+        embedding_client_factory=_Embedder,
+        index_dimensions_reader=lambda _s: 8,
+        attachment_embedding_client_factory=_CohereEmbedder,
+    )
+    assert report["attachment_embedding"] == "verified"
+
+
 def test_attachment_probe_refuses_dimension_drift():
     with pytest.raises(ModelPinError) as excinfo:
         run_boot_probes(

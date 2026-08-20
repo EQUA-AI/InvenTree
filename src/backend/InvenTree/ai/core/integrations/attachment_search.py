@@ -113,6 +113,15 @@ class AttachmentSearchProjection:
         )
         return self._client
 
+    def client(self) -> Any:
+        """Return the underlying SearchClient for read-side (retrieval) use.
+
+        The attachment corpus tool (R2) queries the same index this projection
+        writes; sharing one accessor keeps the alias-refusal guard and the
+        key-or-managed-identity credential logic from forking.
+        """
+        return self._get_client()
+
     def close(self) -> None:
         """Release the underlying SearchClient (it owns a connection pool)."""
         import contextlib

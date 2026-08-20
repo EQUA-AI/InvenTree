@@ -145,6 +145,19 @@ def test_search_manuals_is_not_fenced():
             pass  # unconfigured corpus backends, not the fence
 
 
+def test_search_attachment_docs_is_not_fenced():
+    """Attachment-corpus retrieval (R2) is a read; it must survive the fence."""
+    from ai.core.integrations import attachment_corpus
+
+    with read_only_tool_fence():
+        try:
+            asyncio.run(_call(attachment_corpus.search_attachment_docs, query="seal replacement"))
+        except PermissionError:  # pragma: no cover - would be the defect
+            pytest.fail("search_attachment_docs was blocked by the read-only fence")
+        except Exception:
+            pass  # dark flag/unconfigured backends, not the fence
+
+
 def test_confirmed_write_exception_reopens_the_fence_for_one_call():
     """A confirmed Tier-3 write must still be able to execute."""
     from ai.core.integrations import kanban_tools

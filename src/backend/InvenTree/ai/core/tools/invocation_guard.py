@@ -229,6 +229,24 @@ async def authorize_invocation(tool_id: str, arguments: Any) -> CapabilityEntry:
 
         if not (get_settings().single_site_policy_key or "").strip():
             _deny("site_scope_unconfigured")
+    elif policy.authorizer == "attachment_corpus_access":
+        # R2 attachment-corpus search. Re-checks the retrieval flag per call
+        # (the catalog's DISABLED branch is process-cached), then the same
+        # query/site-key inputs as the controlled corpus, then a resolvable
+        # maintenance scope -- the tool's client_codes filter derives from
+        # scope_for_actor, so an actor who could never pass it is refused
+        # before dispatch rather than reading as "no documents exist".
+        from ai.core.config import get_settings
+
+        if not get_settings().feature_attachment_rag_retrieval:
+            _deny("attachment_retrieval_disabled")
+        query = arguments_dict.get("query")
+        if not isinstance(query, str) or not query.strip():
+            _deny("invalid_document_query")
+        if not (get_settings().single_site_policy_key or "").strip():
+            _deny("site_scope_unconfigured")
+        if not await _has_maintenance_scope():
+            _deny("maintenance_scope_unresolved")
     elif policy.kind is PolicyKind.RESOURCE_AUTHORIZER:
         _deny("unknown_resource_authorizer")
 

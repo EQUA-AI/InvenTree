@@ -70,7 +70,7 @@ class ToolCaptureLedger:
         if citations:
             capture["citations"] = citations
         machine_candidates = _manuals_machine_candidates(payload)
-        if str(tool_id) == "search_manuals" and machine_candidates:
+        if str(tool_id) in {"search_manuals", "search_attachment_docs"} and machine_candidates:
             capture["machine_candidates"] = machine_candidates
         self.captures.append(capture)
         _harvest_observed(payload, self.observed, depth=0)
@@ -115,6 +115,11 @@ def _manuals_citations(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 # Machine identity (serial) of the cited chunk, for the
                 # cross-machine grounding fence (P8-W0a).
                 "asset_id": str(citation.get("asset_id") or ""),
+                # Trust tier + source file: distinguish attachment-corpus
+                # citations (access_class=attachment_uploaded, R2) from the
+                # governed corpus (which leaves both empty) in captures.
+                "access_class": str(citation.get("access_class") or ""),
+                "source_file_name": str(citation.get("source_file_name") or ""),
             })
     return citations
 

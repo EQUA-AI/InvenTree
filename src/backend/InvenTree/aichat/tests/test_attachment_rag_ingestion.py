@@ -56,6 +56,11 @@ class FakeEmbeddingClient:
         self.calls += 1
         return [[0.5] * self.dimensions for _ in texts]
 
+    def embed_query(self, text):
+        """Return one query vector and count the call (retrieval side, R2)."""
+        self.calls += 1
+        return [0.5] * self.dimensions
+
 
 class FakeProjection:
     """Records projection operations in order."""

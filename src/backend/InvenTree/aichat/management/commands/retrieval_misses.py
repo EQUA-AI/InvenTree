@@ -35,23 +35,34 @@ class Command(BaseCommand):
             ),
         )
         parser.add_argument(
+            '--corpus',
+            choices=['governed', 'attachment'],
+            default=None,
+            help=(
+                'Restrict the report to one retrieval surface: governed '
+                '(controlled manuals) or attachment (uploaded documents, R2). '
+                'Default reports across both.'
+            ),
+        )
+        parser.add_argument(
             '--json', action='store_true', help='Emit machine-readable JSON'
         )
 
     def handle(self, *args, **options) -> None:
         """Aggregate zero-hit queries by frequency within the window."""
         since = timezone.now() - timedelta(days=max(1, options['days']))
+        base = RetrievalMiss.objects.filter(created_at__gte=since)
+        if options['corpus']:
+            base = base.filter(corpus=options['corpus'])
         misses = (
-            RetrievalMiss.objects
-            .filter(hit_count=0, created_at__gte=since)
+            base
+            .filter(hit_count=0)
             .values('query')
             .annotate(asked=Count('id'), last_asked=Max('created_at'))
             .order_by('-asked', '-last_asked')[: max(1, options['top'])]
         )
-        total_searches = RetrievalMiss.objects.filter(created_at__gte=since).count()
-        total_misses = RetrievalMiss.objects.filter(
-            hit_count=0, created_at__gte=since
-        ).count()
+        total_searches = base.count()
+        total_misses = base.filter(hit_count=0).count()
         rows = [
             {
                 'query': row['query'],
@@ -66,9 +77,7 @@ class Command(BaseCommand):
         weak_threshold = options.get('weak')
         if weak_threshold is not None:
             weak_filter = Q(top_score__isnull=True) | Q(top_score__lt=weak_threshold)
-            weak_qs = RetrievalMiss.objects.filter(
-                weak_filter, hit_count__gt=0, created_at__gte=since
-            )
+            weak_qs = base.filter(weak_filter, hit_count__gt=0)
             weak_total = weak_qs.count()
             weak = (
                 weak_qs
@@ -99,6 +108,8 @@ class Command(BaseCommand):
                 'total_misses': total_misses,
                 'top_unanswered': rows,
             }
+            if options['corpus']:
+                report['corpus'] = options['corpus']
             if weak_threshold is not None:
                 report['weak_threshold'] = weak_threshold
                 report['total_weak'] = weak_total
