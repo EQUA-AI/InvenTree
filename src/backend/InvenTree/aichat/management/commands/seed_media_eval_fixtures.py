@@ -162,8 +162,17 @@ class Command(BaseCommand):
             if owner is None:
                 self.stdout.write(f'{file_name}: owner absent (would create)')
                 continue
+            # The storage layer may dedupe-suffix file names (the two envs
+            # share one media file share), so an endswith match on the
+            # original name can never be idempotent there — the fixture
+            # comment is the stable identity (live finding, 2026-08-21:
+            # a re-run double-seeded the HX-200 photo on dev).
+            stem = file_name.rsplit('.', 1)[0]
             existing = Attachment.objects.filter(
-                model_type=model_type, model_id=owner.pk, attachment__endswith=file_name
+                model_type=model_type,
+                model_id=owner.pk,
+                comment=f'RAG eval fixture ({_FIXTURE_SET_VERSION})',
+                attachment__contains=stem,
             ).first()
             if dry_run:
                 state = 'attached' if existing else 'would attach + ingest'

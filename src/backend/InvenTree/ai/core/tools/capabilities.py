@@ -1696,6 +1696,18 @@ def _ordered_pack_ids(
         and "manuals.read" in _ADJACENT_PACKS.get(primary, frozenset())
     ):
         selected.append("manuals.read")
+    # Same rider for the single-tool evidence pack, WITHOUT the topology
+    # gate: maintenance/machines deliberately carry no edge into
+    # evidence.read (their worst stacks already sit at MAX_INITIAL_TOOLS),
+    # so "the evidence photos on work order WO-104" scores maintenance as
+    # primary and the pack the user NAMED was unreachable (live golden,
+    # 2026-08-21 — media-nameplate-grounded abstained). The rider costs one
+    # tool; maintenance 6 + machines 9 + evidence 1 lands exactly on the
+    # budget, and any rarer overflow falls to the trim loop, which drops
+    # the lowest-scoring adjacent, never the explicitly-named pack a higher
+    # score protects.
+    if "evidence.read" not in selected and scores.get("evidence.read", 0) > 0:
+        selected.append("evidence.read")
     return tuple(selected)
 
 

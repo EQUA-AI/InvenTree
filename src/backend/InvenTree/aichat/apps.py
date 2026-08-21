@@ -84,8 +84,9 @@ class AIChatConfig(AppConfig):
                 if get_doc_intelligence_client() is None:
                     logger.error(
                         'Media RAG is enabled but Document Intelligence is not '
-                        'configured; every image ingest will fail '
-                        '(AZURE_DOC_INTELLIGENCE_ENDPOINT/_KEY)'
+                        'configured on THIS process; image ingests executed '
+                        'here will fail. Harmless on a web app whose worker '
+                        'carries AZURE_DOC_INTELLIGENCE_ENDPOINT/_KEY.'
                     )
         except Exception as exc:
             locations: list[str] = []

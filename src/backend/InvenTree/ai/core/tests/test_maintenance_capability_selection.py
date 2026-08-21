@@ -420,3 +420,39 @@ def test_photo_phrasing_selects_evidence_primary_with_adjacency_when_lit(monkeyp
         )
     finally:
         capability_catalog.cache_clear()
+
+
+def test_maintenance_primary_photo_question_keeps_evidence_via_rider(monkeypatch):
+    """The explicit-evidence rider: a WO-shaped photo question scores
+    maintenance as primary (whose adjacency deliberately omits evidence.read
+    for budget), but the sentence NAMED photos — the rider re-appends the
+    single-tool pack, landing exactly on the budget (live golden finding,
+    2026-08-21: media-nameplate-grounded abstained without it)."""
+    from types import SimpleNamespace
+
+    from ai.core import config as ai_config
+
+    monkeypatch.setattr(
+        ai_config,
+        "get_settings",
+        lambda: SimpleNamespace(
+            feature_attachment_rag_retrieval=False,
+            feature_media_rag_retrieval=True,
+            single_site_policy_key="site-a",
+        ),
+    )
+    capability_catalog.cache_clear()
+    try:
+        selected = select_capabilities(
+            "According to the evidence photos on work order WO-EVAL-HX200, "
+            "what is the maximum working pressure on the nameplate?",
+            profile=PROFILE,
+            authenticated=True,
+        )
+        assert "evidence.read" in selected.pack_ids, selected.pack_ids
+        assert "search_evidence_media" in selected.tool_ids
+        assert len(selected.tool_ids) <= MAX_INITIAL_TOOLS
+        # The rider must not have evicted the packs the shape scored.
+        assert MAINTENANCE_TOOL_IDS.issubset(set(selected.tool_ids))
+    finally:
+        capability_catalog.cache_clear()
