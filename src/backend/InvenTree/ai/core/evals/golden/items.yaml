@@ -305,7 +305,10 @@ items:
       16 bar, read from the nameplate photo's OCR text (the fixture plate
       reads "MAX WORKING PRESSURE: 16 BAR"), citing the photo file and its
       work order.
-    ground_truth_keys: ["HX-200"]
+    # The value is the key: media citations name the photo FILE and work
+    # order (spellings "hx200"/"WO-EVAL-HX200"), so a machine-name key is
+    # judge-brittle (live finding, 2026-08-21).
+    ground_truth_keys: ["16 bar"]
     trap_type: none
     corpus_version: aimms-media-fixtures-v1
     dataset: live
