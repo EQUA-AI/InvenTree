@@ -1,24 +1,47 @@
-"""Backfill existing part/machine attachments through the R1 doc pipeline.
+"""Backfill existing attachments through the attachment-RAG pipelines.
 
-Docs only (decision #8): media backfills with its own phase (R3/R4). Runs the
-same idempotent ``run_ingest`` the receiver path uses, so re-runs short-circuit
-on already-indexed (attachment, sha) pairs. ``--allow-pypdf`` is the explicit
+Docs landed in R1; image media (workorder/workorderstepexecution/assetmachine
+owners) in R3; video backfills with R4. Runs the same idempotent
+``run_ingest`` the receiver path uses, so re-runs short-circuit on
+already-indexed (attachment, sha) pairs. ``--allow-pypdf`` is the explicit
 extraction override (decision #12) — never a silent fallback.
 """
 
 from django.core.management.base import BaseCommand, CommandError
 
-#: Doc-shaped extensions worth walking. XLSX is included deliberately so the
-#: decision-#11 exclusion is *recorded* on registry rows, not silently dropped.
-_BACKFILL_EXTENSIONS = ('.pdf', '.docx', '.md', '.markdown', '.txt', '.xlsx')
+#: Extensions worth walking. XLSX is included deliberately so the decision-#11
+#: exclusion is *recorded* on registry rows, not silently dropped; likewise
+#: the non-embeddable raster/video formats record their skips (R3).
+_BACKFILL_EXTENSIONS = (
+    '.pdf',
+    '.docx',
+    '.md',
+    '.markdown',
+    '.txt',
+    '.xlsx',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+    '.gif',
+    '.bmp',
+    '.tif',
+    '.tiff',
+    '.mp4',
+    '.mov',
+    '.m4v',
+    '.avi',
+    '.mkv',
+    '.webm',
+)
 
 
 class Command(BaseCommand):
     """Walk existing attachments through the attachment-RAG doc pipeline."""
 
     help = (
-        'Backfill existing part/assetmachine document attachments into the '
-        'attachment-RAG corpus (docs only; media backfills with R3/R4).'
+        'Backfill existing attachments into the attachment-RAG corpora '
+        '(docs since R1, images since R3; video backfills with R4).'
     )
 
     def add_arguments(self, parser):
@@ -27,8 +50,11 @@ class Command(BaseCommand):
             '--model-type',
             nargs='+',
             default=['part', 'assetmachine'],
-            choices=['part', 'assetmachine'],
-            help='Owning model types to walk (default: part assetmachine)',
+            choices=['part', 'assetmachine', 'workorder', 'workorderstepexecution'],
+            help=(
+                'Owning model types to walk (default: part assetmachine; '
+                'media owners are opt-in)'
+            ),
         )
         parser.add_argument(
             '--since',
@@ -67,11 +93,20 @@ class Command(BaseCommand):
 
         from aichat.services.attachment_ingestion import (
             AttachmentIngestionError,
+            media_ingest_enabled,
             route_attachment,
             run_ingest,
             structural_skip_reason,
         )
         from common.models import Attachment
+
+        ai_settings = None
+        try:
+            from ai.core.config import get_settings
+
+            ai_settings = get_settings()
+        except Exception:
+            ai_settings = None
 
         dry_run = options['dry_run']
         if not dry_run and not getattr(
@@ -95,10 +130,13 @@ class Command(BaseCommand):
             rows = rows.filter(upload_date__gte=since)
 
         counts = {'ingested': 0, 'skipped': 0, 'failed': 0, 'filtered': 0}
-        # One embedding client + one projection for the whole run (F-19):
-        # built lazily on the first live ingest, closed in the finally.
+        # One client set for the whole run (F-19): the doc pair on the first
+        # live candidate, the media pair on the first image candidate; all
+        # closed in the finally.
         shared_embedder = None
         shared_projection = None
+        shared_media_embedder = None
+        shared_media_projection = None
         processed = 0
         try:
             for attachment in rows.iterator():
@@ -132,7 +170,16 @@ class Command(BaseCommand):
                         'ingested' if decision.action == 'ingest' else 'skipped'
                     ] += 1
                     continue
-                if shared_embedder is None:
+                is_image_candidate = name.lower().endswith((
+                    '.png',
+                    '.jpg',
+                    '.jpeg',
+                    '.webp',
+                ))
+                if shared_embedder is None and not is_image_candidate:
+                    # Doc pair only for doc-shaped candidates: a media-only
+                    # backfill must not require (or crash building) the
+                    # Cohere client it will never use (review finding, R3).
                     from ai.core.integrations.attachment_search import (
                         AttachmentSearchProjection,
                     )
@@ -142,12 +189,28 @@ class Command(BaseCommand):
 
                     shared_embedder = CohereEmbeddingClient.from_settings()
                     shared_projection = AttachmentSearchProjection.from_settings()
+                if (
+                    shared_media_embedder is None
+                    and is_image_candidate
+                    and media_ingest_enabled(ai_settings)
+                ):
+                    from ai.core.integrations.attachment_search import (
+                        MediaSearchProjection,
+                    )
+                    from ai.core.integrations.embeddings_gemini import (
+                        GeminiEmbeddingClient,
+                    )
+
+                    shared_media_embedder = GeminiEmbeddingClient.from_settings()
+                    shared_media_projection = MediaSearchProjection.from_settings()
                 try:
                     row = run_ingest(
                         attachment.pk,
                         allow_pypdf=options['allow_pypdf'],
                         embedding_client=shared_embedder,
                         projection=shared_projection,
+                        media_embedding_client=shared_media_embedder,
+                        media_projection=shared_media_projection,
                     )
                 except AttachmentIngestionError as exc:
                     counts['failed'] += 1
@@ -163,9 +226,12 @@ class Command(BaseCommand):
                     continue
                 if row.state == 'indexed':
                     counts['ingested'] += 1
-                    self.stdout.write(
-                        f'{attachment.pk}\t{name}\tINDEXED chunks={row.chunk_count}'
+                    detail = (
+                        f'segments={row.segment_count}'
+                        if row.pipeline in ('image', 'video')
+                        else f'chunks={row.chunk_count}'
                     )
+                    self.stdout.write(f'{attachment.pk}\t{name}\tINDEXED {detail}')
                 elif row.state == 'skipped':
                     counts['skipped'] += 1
                     self.stdout.write(f'{attachment.pk}\t{name}\t{row.error_code}')
@@ -175,7 +241,12 @@ class Command(BaseCommand):
                         f'{attachment.pk}\t{name}\t{row.state.upper()} {row.error_code}'
                     )
         finally:
-            for client in (shared_embedder, shared_projection):
+            for client in (
+                shared_embedder,
+                shared_projection,
+                shared_media_embedder,
+                shared_media_projection,
+            ):
                 closer = getattr(client, 'close', None)
                 if callable(closer):
                     closer()

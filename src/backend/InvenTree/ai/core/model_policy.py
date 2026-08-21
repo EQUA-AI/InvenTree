@@ -35,6 +35,7 @@ class ModelPurpose(StrEnum):
     GROUNDING_AUDIT = "grounding_audit"
     CLOSEOUT_BINDING = "closeout_binding"
     SUMMARIZATION = "summarization"
+    MEDIA_CAPTION = "media_caption"
 
 
 def _closeout_override() -> str:
@@ -64,6 +65,9 @@ def _legacy_choice(settings, purpose: ModelPurpose, modality: str) -> str:
     if purpose is ModelPurpose.SUMMARIZATION:
         # New in S38; no legacy caller existed, so legacy == policy.
         return fast or standard
+    if purpose is ModelPurpose.MEDIA_CAPTION:
+        # New in R3; vision needs the full tier, so legacy == policy.
+        return standard
     raise ValueError(f"unknown model purpose: {purpose}")  # pragma: no cover
 
 
@@ -88,6 +92,8 @@ def _policy_choice(settings, purpose: ModelPurpose, modality: str) -> str:
         return _closeout_override() or fast
     if purpose is ModelPurpose.SUMMARIZATION:
         return fast or standard
+    if purpose is ModelPurpose.MEDIA_CAPTION:
+        return standard
     raise ValueError(f"unknown model purpose: {purpose}")  # pragma: no cover
 
 

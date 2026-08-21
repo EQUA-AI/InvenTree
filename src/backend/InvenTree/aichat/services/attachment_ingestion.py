@@ -50,17 +50,33 @@ STAMP_VERSION = 2
 FLAG_DEPENDENT_SKIPS = (
     'ATTACHMENT_SKIP_PIPELINE_DISABLED',
     'ATTACHMENT_SKIP_MEDIA_PIPELINE_DARK',
+    'ATTACHMENT_SKIP_VIDEO_PIPELINE_DARK',
 )
 
-#: The media revival clause stays inert until the R3 change that makes the
-#: router consult ``feature_media_rag_ingest`` — flipping the media flag
-#: before then would otherwise re-read every media file on every save.
-MEDIA_ROUTER_HONORS_FLAG = False
+#: R3: the router's image arm consults ``media_ingest_enabled`` — the SAME
+#: helper the receiver revival predicate reads — so dark stamps revive with
+#: exactly one re-offload when the flag pair flips, and never before.
+MEDIA_ROUTER_HONORS_FLAG = True
+
+#: The video revival clause stays inert until the R4 change that makes the
+#: router ingest video — flipping the media flags before then must not
+#: re-offload every video on every save (the distinct skip code exists so
+#: image-flag flips cannot revive video stamps).
+VIDEO_ROUTER_HONORS_FLAG = False
 
 #: Sniff window: PDF headers may legally sit up to 1024 bytes in.
 HEAD_BYTES = 1024
 
 ACCESS_CLASS = 'attachment_uploaded'
+
+#: Trust tier for auto-ingested evidence media (decision #16): a single class
+#: for WO/step evidence and machine reference photos alike — never
+#: ``maintenance_authorized``.
+EVIDENCE_ACCESS_CLASS = 'evidence_recording'
+
+#: Owners whose media the pipeline ingests (spec §5.2); part imagery stays
+#: excluded (decision #10, ``ATTACHMENT_SKIP_PART_IMAGE``).
+_MEDIA_MODEL_TYPES = ('workorder', 'workorderstepexecution', 'assetmachine')
 
 #: Fallback client code for parts with no MachinePart linkage (§5.1): keeps
 #: today's internal visibility until a part is linked to client machines.
@@ -128,6 +144,38 @@ def _sniff_kind(head: bytes) -> str:
     return 'binary'
 
 
+def _image_mime(head: bytes) -> str | None:
+    """MIME type for the raster formats the image pipeline ingests (R3).
+
+    Deliberately narrower than ``_sniff_kind``'s ``image`` bucket: Gemini
+    media-embedding support for GIF/BMP/TIFF is unverified, so those record a
+    terminal ``ATTACHMENT_SKIP_UNSUPPORTED_TYPE`` instead of failing live.
+    """
+    if head.startswith(b'\x89PNG'):
+        return 'image/png'
+    if head.startswith(b'\xff\xd8\xff'):
+        return 'image/jpeg'
+    if head.startswith(b'RIFF') and head[8:12] == b'WEBP':
+        return 'image/webp'
+    return None
+
+
+def media_ingest_enabled(settings) -> bool:
+    """The media router arm's gate: Django co-gate AND the AI-plane flag.
+
+    One shared predicate by design — the receiver revival clause
+    (``receivers._flag_dependent_skip_matches``) must read EXACTLY the
+    expression the router enforces, or a partial flip re-offloads every media
+    save forever. The Django flag is checked first: it cannot throw, so a
+    dark Django plane suppresses without touching AI config.
+    """
+    from django.conf import settings as django_settings
+
+    if not getattr(django_settings, 'AIMMS_MEDIA_RAG_ENABLED', False):
+        return False
+    return bool(getattr(settings, 'feature_media_rag_ingest', False))
+
+
 #: Fallback structural cap when the AI config cannot load: the receiver must
 #: still offload so the task fails LOUDLY instead of the config error being
 #: silently swallowed on the request path (review finding F-15).
@@ -171,13 +219,27 @@ def route_attachment(attachment, head: bytes) -> RouteDecision:
 
     if model_type == 'repairpacket':
         return RouteDecision('skip', 'doc', kind, 'ATTACHMENT_SKIP_REPAIRPACKET')
-    if model_type in ('workorder', 'workorderstepexecution'):
-        if kind in ('image', 'video', 'audio'):
+    if kind == 'image' and model_type in _MEDIA_MODEL_TYPES:
+        # R3 media arm: evidence photos on WO/step/machine owners.
+        if _image_mime(head) is None:
             return RouteDecision(
-                'skip',
-                'image' if kind == 'image' else 'video',
-                kind,
-                'ATTACHMENT_SKIP_MEDIA_PIPELINE_DARK',
+                'skip', 'image', kind, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE'
+            )
+        if not media_ingest_enabled(get_settings()):
+            return RouteDecision(
+                'skip', 'image', kind, 'ATTACHMENT_SKIP_MEDIA_PIPELINE_DARK'
+            )
+        return RouteDecision('ingest', 'image', kind)
+    if kind == 'video' and model_type in _MEDIA_MODEL_TYPES:
+        # Dark until R4 (VIDEO_ROUTER_HONORS_FLAG).
+        return RouteDecision(
+            'skip', 'video', kind, 'ATTACHMENT_SKIP_VIDEO_PIPELINE_DARK'
+        )
+    if model_type in ('workorder', 'workorderstepexecution'):
+        if kind == 'audio':
+            # Terminal: no pipeline ever ingests bare audio files.
+            return RouteDecision(
+                'skip', 'doc', kind, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE'
             )
         # Plausible service reports; revisit via the retrieval-miss ledger.
         return RouteDecision('skip', 'doc', kind, 'ATTACHMENT_SKIP_WORKORDER_DOC')
@@ -189,15 +251,12 @@ def route_attachment(attachment, head: bytes) -> RouteDecision:
         # chunk; row-windowed table chunking is the R5 item.
         return RouteDecision('skip', 'doc', 'xlsx', 'ATTACHMENT_SKIP_XLSX')
     if kind == 'image':
-        if model_type == 'part':
-            return RouteDecision('skip', 'image', kind, 'ATTACHMENT_SKIP_PART_IMAGE')
-        return RouteDecision(
-            'skip', 'image', kind, 'ATTACHMENT_SKIP_MEDIA_PIPELINE_DARK'
-        )
+        # Only parts reach here (media owners took the R3 arm above):
+        # part imagery stays excluded (decision #10).
+        return RouteDecision('skip', 'image', kind, 'ATTACHMENT_SKIP_PART_IMAGE')
     if kind == 'video':
-        return RouteDecision(
-            'skip', 'video', kind, 'ATTACHMENT_SKIP_MEDIA_PIPELINE_DARK'
-        )
+        # Part videos: no pipeline (current or planned) ingests them.
+        return RouteDecision('skip', 'video', kind, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE')
     if kind == 'audio':
         return RouteDecision('skip', 'doc', kind, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE')
     if kind == 'empty':
@@ -259,7 +318,47 @@ def derive_client_codes(model_type: str, model_id: int) -> list[str]:
                 )
             )
         )
+    if model_type == 'workorder':
+        from tasks.models import WorkOrder
+
+        work_order = (
+            WorkOrder.objects
+            .select_related('machine__client')
+            .filter(pk=model_id)
+            .first()
+        )
+        return _work_order_client_codes(work_order)
+    if model_type == 'workorderstepexecution':
+        from tasks.procedure_models import WorkOrderStepExecution
+
+        execution = (
+            WorkOrderStepExecution.objects
+            .select_related('application__work_order__machine__client')
+            .filter(pk=model_id)
+            .first()
+        )
+        if execution is None:
+            return []
+        return _work_order_client_codes(execution.application.work_order)
     return []
+
+
+def _work_order_client_codes(work_order) -> list[str]:
+    """Evidence scope for one work order, mirroring ``scope_for_work_order``.
+
+    Customer-attributed WOs stamp an empty set (deliberately fail-closed):
+    client-scoped actors cannot see those WOs at all and customer scopes
+    carry no client codes, so stamping the machine code would
+    cross-client-widen. Missing machine/client links likewise fail closed.
+    """
+    if work_order is None:
+        return []
+    if work_order.customer_id:
+        return []
+    machine = work_order.machine
+    if machine is None or machine.client is None:
+        return []
+    return [machine.client.code]
 
 
 _DOC_TYPE_KEYWORDS = (
@@ -441,6 +540,55 @@ def search_document_id(attachment_id: int, source_sha256: str, position: int) ->
     return f'att-{attachment_id}-{source_sha256[:12]}-c{position}'
 
 
+def media_search_document_id(attachment_id: int, source_sha256: str) -> str:
+    """Deterministic media Search key: ``att-{id}-{sha12}-img`` (R4 adds -s{n})."""
+    return f'att-{attachment_id}-{source_sha256[:12]}-img'
+
+
+def _media_owner_coordinates(model_type: str, model_id: int) -> dict[str, object]:
+    """Resolve the WO/step/machine coordinates stamped onto media documents."""
+    coordinates: dict[str, object] = {
+        'work_order_id': None,
+        'step_execution_id': None,
+        'asset_id': '',
+        'machine_name': '',
+    }
+    work_order = None
+    if model_type == 'workorder':
+        from tasks.models import WorkOrder
+
+        work_order = (
+            WorkOrder.objects.select_related('machine').filter(pk=model_id).first()
+        )
+        coordinates['work_order_id'] = model_id
+    elif model_type == 'workorderstepexecution':
+        from tasks.procedure_models import WorkOrderStepExecution
+
+        execution = (
+            WorkOrderStepExecution.objects
+            .select_related('application__work_order__machine')
+            .filter(pk=model_id)
+            .first()
+        )
+        coordinates['step_execution_id'] = model_id
+        if execution is not None:
+            work_order = execution.application.work_order
+            coordinates['work_order_id'] = work_order.pk
+    elif model_type == 'assetmachine':
+        from assets.models import AssetMachine
+
+        machine = AssetMachine.objects.filter(pk=model_id).first()
+        if machine is not None:
+            coordinates['asset_id'] = machine.serial or ''
+            coordinates['machine_name'] = machine.name
+        return coordinates
+    machine = work_order.machine if work_order is not None else None
+    if machine is not None:
+        coordinates['asset_id'] = machine.serial or ''
+        coordinates['machine_name'] = machine.name
+    return coordinates
+
+
 def build_search_documents(
     *,
     ingest,
@@ -501,6 +649,127 @@ def build_search_documents(
             'embedding_dimensions': embedding_dimensions,
         })
     return documents
+
+
+def extract_image_text(data: bytes, *, mime_type: str) -> str:
+    """OCR one evidence photo with DI ``prebuilt-read`` (fail-closed, R3).
+
+    An image with no legible text returns an empty string — a legitimate
+    outcome. Provider failure fails the ingest (decision #12 parity: silent
+    quality divergence is worse than latency); capped retries cover outages.
+    """
+    from ai.core.integrations.doc_intelligence import get_doc_intelligence_client
+
+    client = get_doc_intelligence_client()
+    if client is None:
+        raise AttachmentIngestionError(
+            'Document Intelligence is not configured',
+            code='ATTACHMENT_EXTRACTION_UNAVAILABLE',
+        )
+    try:
+        result = client.analyze_read_text(data, content_type=mime_type)
+    except Exception as exc:
+        from ai.core.faults import log_fault
+
+        log_fault(
+            logger,
+            'Document Intelligence OCR failed',
+            exc,
+            stage='attachment_extract',
+            level=logging.WARNING,
+        )
+        raise AttachmentIngestionError(
+            'Image OCR failed', code='ATTACHMENT_EXTRACTION_FAILED'
+        ) from None
+    return (result.content or '').strip()
+
+
+def _exif_recorded_at(data: bytes) -> datetime | None:
+    """Best-effort EXIF capture timestamp (DateTimeOriginal, then DateTime).
+
+    Computed at projection time, never stored in the registry — a rebuild can
+    re-derive it from source bytes. Never fatal; EXIF times are tz-naive by
+    spec and are stamped as UTC for lack of better information.
+    """
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        with Image.open(BytesIO(data)) as image:
+            exif = image.getexif()
+            raw = None
+            try:
+                raw = exif.get_ifd(0x8769).get(36867)  # Exif IFD: DateTimeOriginal
+            except Exception:
+                raw = None
+            raw = raw or exif.get(306)  # IFD0: DateTime
+        if not raw:
+            return None
+        return datetime.strptime(str(raw).strip(), '%Y:%m:%d %H:%M:%S').replace(
+            tzinfo=UTC
+        )
+    except Exception:
+        return None
+
+
+def build_media_documents(
+    *,
+    ingest,
+    attachment,
+    caption: str,
+    ocr_text: str,
+    vector,
+    client_codes: list[str],
+    scope_key: str,
+    thumbnail_path: str,
+    recorded_at: datetime | None,
+    embedding_model: str,
+    embedding_dimensions: int,
+    indexed_at: datetime,
+) -> list[dict[str, object]]:
+    """Assemble the single §5.2 image document (R4 adds video segments)."""
+    file_name = PurePosixPath(attachment.attachment.name or '').name
+    uploaded_at = None
+    if attachment.upload_date:
+        uploaded_at = datetime.combine(
+            attachment.upload_date, dt_time.min, tzinfo=UTC
+        ).isoformat()
+    coordinates = _media_owner_coordinates(ingest.model_type, ingest.model_id)
+    return [
+        {
+            'id': media_search_document_id(ingest.attachment_id, ingest.source_sha256),
+            'attachment_id': ingest.attachment_id,
+            'source_sha256': ingest.source_sha256,
+            'media_type': 'image',
+            'model_type': ingest.model_type,
+            'model_id': ingest.model_id,
+            'work_order_id': coordinates['work_order_id'],
+            'step_execution_id': coordinates['step_execution_id'],
+            'asset_id': coordinates['asset_id'],
+            'machine_name': coordinates['machine_name'],
+            'client_codes': list(client_codes),
+            'scope_key': scope_key,
+            'access_class': EVIDENCE_ACCESS_CLASS,
+            'is_current': True,
+            'timecode_start_s': None,
+            'timecode_end_s': None,
+            'duration_s': None,
+            'segment_index': 0,
+            'segment_count': 1,
+            'caption': caption,
+            'ocr_text': ocr_text,
+            'transcript': '',
+            'thumbnail_path': thumbnail_path,
+            'source_file_name': file_name,
+            'recorded_at': recorded_at.isoformat() if recorded_at else None,
+            'uploaded_at': uploaded_at,
+            'indexed_at': indexed_at.isoformat(),
+            'media_vector': vector,
+            'embedding_model': embedding_model,
+            'embedding_dimensions': embedding_dimensions,
+        }
+    ]
 
 
 def compute_sha256(data: bytes) -> str:
@@ -699,6 +968,8 @@ def run_ingest(
     allow_pypdf: bool = False,
     embedding_client=None,
     projection=None,
+    media_embedding_client=None,
+    media_projection=None,
     force: bool = False,
 ):
     """Ingest one attachment revision end-to-end; returns the registry row.
@@ -716,9 +987,11 @@ def run_ingest(
     from ai.core.config import get_settings
     from aichat.models import (
         AttachmentChunk,
+        AttachmentExtractor,
         AttachmentIngest,
         AttachmentIngestPipeline,
         AttachmentIngestState,
+        MediaSegment,
     )
     from common.models import Attachment
 
@@ -742,7 +1015,13 @@ def run_ingest(
         )
 
     settings = get_settings()
-    doc_cap = settings.rag_max_doc_mb * _MB
+    is_image = decision.pipeline == AttachmentIngestPipeline.IMAGE
+    content_cap = (
+        settings.rag_max_image_mb if is_image else settings.rag_max_doc_mb
+    ) * _MB
+    oversize_code = (
+        'ATTACHMENT_SKIP_IMAGE_OVERSIZE' if is_image else 'ATTACHMENT_SKIP_DOC_OVERSIZE'
+    )
     size_hint = attachment.file_size or 0
     if not size_hint:
         from django.core.files.storage import default_storage
@@ -751,10 +1030,10 @@ def run_ingest(
             size_hint = default_storage.size(attachment.attachment.name)
         except Exception:
             size_hint = 0
-    if size_hint > doc_cap:
+    if size_hint > content_cap:
         return _record_skip(
             attachment,
-            RouteDecision('skip', 'doc', decision.kind, 'ATTACHMENT_SKIP_DOC_OVERSIZE'),
+            RouteDecision('skip', decision.pipeline, decision.kind, oversize_code),
             _stream_sha256(attachment),
             mtime=mtime,
         )
@@ -766,11 +1045,11 @@ def run_ingest(
 
     data = _read_attachment_bytes(attachment)
     source_sha256 = compute_sha256(data)
-    if len(data) > doc_cap:
+    if len(data) > content_cap:
         # The pre-read hint was stale or absent; the cap binds on real bytes.
         return _record_skip(
             attachment,
-            RouteDecision('skip', 'doc', decision.kind, 'ATTACHMENT_SKIP_DOC_OVERSIZE'),
+            RouteDecision('skip', decision.pipeline, decision.kind, oversize_code),
             source_sha256,
             mtime=mtime,
         )
@@ -799,7 +1078,7 @@ def run_ingest(
         defaults={
             'model_type': attachment.model_type,
             'model_id': attachment.model_id,
-            'pipeline': AttachmentIngestPipeline.DOC,
+            'pipeline': decision.pipeline,
         },
     )
 
@@ -839,6 +1118,11 @@ def run_ingest(
         state=AttachmentIngestState.EXTRACTING,
         attempts=F('attempts') + 1,
         error_code='',
+        # The row follows THIS run's route decision: a router-semantics
+        # change across deploys may re-route identical bytes, and purge
+        # paths pick the serving index by row.pipeline — a stale value
+        # would purge the wrong index (review finding, R3).
+        pipeline=decision.pipeline,
         updated_at=now,
         claimed_at=now,
     )
@@ -848,96 +1132,221 @@ def run_ingest(
     row.refresh_from_db()
     fence = row.attempts
 
-    try:
-        markdown, extractor, page_starts = extract_markdown(
-            data, decision.kind, allow_pypdf=allow_pypdf
-        )
-        if not markdown.strip():
-            # Owner-authorized skip: the generic _record_skip refuses to touch
-            # in-flight rows, but this run owns the claim.
-            reason = 'ATTACHMENT_SKIP_EMPTY_CONTENT'
-            if _fenced_update(
-                row.pk, fence, state=AttachmentIngestState.SKIPPED, error_code=reason
-            ):
-                _stamp_metadata(
-                    attachment.pk,
-                    _build_stamp(
-                        attachment, source_sha256, 'skipped', reason=reason, mtime=mtime
-                    ),
-                )
-            row.refresh_from_db()
-            return row
-        if not _fenced_update(row.pk, fence, extractor=extractor):
-            return row  # stale takeover owns the row; walk away
+    def _projection_for(pipeline_value):
+        """Lazy per-pipeline projection cache (F-19: built only when used)."""
+        nonlocal projection, media_projection
+        if str(pipeline_value) in (
+            AttachmentIngestPipeline.IMAGE,
+            AttachmentIngestPipeline.VIDEO,
+        ):
+            if media_projection is None:
+                from ai.core.integrations.attachment_search import MediaSearchProjection
 
-        from ai.core.integrations.controlled_document_ingestion import (
-            chunk_markdown_sections,
-            parse_markdown_sections,
-        )
-
-        sections = parse_markdown_sections(markdown)
-        chunks = chunk_markdown_sections(sections)
-        section_pages = _section_page_map(markdown, sections, page_starts)
-
-        if not _fenced_update(row.pk, fence, state=AttachmentIngestState.EMBEDDING):
-            return row
-        if embedding_client is None:
-            from ai.core.integrations.embeddings_cohere import CohereEmbeddingClient
-
-            embedding_client = CohereEmbeddingClient.from_settings()
-        vectors = embedding_client.embed_documents([chunk.text for chunk in chunks])
-
-        client_codes = derive_client_codes(attachment.model_type, attachment.model_id)
-        doc_type = classify_doc_type(
-            PurePosixPath(attachment.attachment.name or '').name, _tag_names(attachment)
-        )
-        indexed_at = datetime.now(UTC)
-        documents = build_search_documents(
-            ingest=row,
-            attachment=attachment,
-            chunks=chunks,
-            vectors=vectors,
-            client_codes=client_codes,
-            scope_key=scope_key,
-            doc_type=doc_type,
-            section_pages=section_pages,
-            embedding_model=embedding_client.model,
-            embedding_dimensions=embedding_client.dimensions,
-            indexed_at=indexed_at,
-        )
-
-        row.chunks.all().delete()
-        AttachmentChunk.objects.bulk_create([
-            AttachmentChunk(
-                ingest=row,
-                chunk_index=position,
-                page_number=section_pages.get(chunk.section_id),
-                section_path=chunk.section_path[:512],
-                content=chunk.text,
-                token_count=chunk.token_count,
-                embedding=vector,
-                search_doc_id=search_document_id(
-                    row.attachment_id, source_sha256, position
-                ),
-            )
-            for position, (chunk, vector) in enumerate(
-                zip(chunks, vectors, strict=True)
-            )
-        ])
-
+                media_projection = MediaSearchProjection.from_settings()
+            return media_projection
         if projection is None:
             from ai.core.integrations.attachment_search import (
                 AttachmentSearchProjection,
             )
 
             projection = AttachmentSearchProjection.from_settings()
+        return projection
+
+    try:
+        if is_image:
+            mime_type = _image_mime(head) or 'application/octet-stream'
+            ocr_text = extract_image_text(data, mime_type=mime_type)
+            if not _fenced_update(row.pk, fence, extractor=AttachmentExtractor.DI_READ):
+                return row  # stale takeover owns the row; walk away
+
+            from ai.core.integrations.image_caption import (
+                ImageCaptionError,
+                caption_image,
+            )
+
+            try:
+                caption = caption_image(data, mime_type=mime_type)
+            except ImageCaptionError as caption_exc:
+                raise AttachmentIngestionError(
+                    'Image captioning failed', code=caption_exc.code
+                ) from caption_exc
+
+            if not _fenced_update(row.pk, fence, state=AttachmentIngestState.EMBEDDING):
+                return row
+            if media_embedding_client is None:
+                from ai.core.integrations.embeddings_gemini import GeminiEmbeddingClient
+
+                media_embedding_client = GeminiEmbeddingClient.from_settings()
+            vector = media_embedding_client.embed_image(data, mime_type=mime_type)
+
+            client_codes = derive_client_codes(
+                attachment.model_type, attachment.model_id
+            )
+            indexed_at = datetime.now(UTC)
+            recorded_at = _exif_recorded_at(data)
+            # Thumbnail race, layer 1: rebuild_attachment (group 'attachments')
+            # usually lands during the slow provider calls above — re-read.
+            # Layer 2 is the empty-tolerant contract ('' means no thumbnail);
+            # layer 3 is the sweep's heal_media_thumbnails.
+            try:
+                attachment.refresh_from_db(fields=['thumbnail'])
+            except Exception:
+                pass
+            thumbnail_path = (getattr(attachment.thumbnail, 'name', '') or '')[:512]
+
+            # Atomic rewrite: a stale twin still in flight can interleave
+            # here (its fence check passed BEFORE the takeover). The unique
+            # (ingest, segment_index) constraint makes the loser's create
+            # fail — treat that as losing the race and walk away, leaving
+            # the fresh owner's segment intact.
+            from django.db import IntegrityError, transaction
+
+            try:
+                with transaction.atomic():
+                    row.segments.all().delete()
+                    MediaSegment.objects.create(
+                        ingest=row,
+                        media_type='image',
+                        segment_index=0,
+                        caption=caption,
+                        ocr_text=ocr_text,
+                        thumbnail_path=thumbnail_path,
+                        embedding=vector,
+                        search_doc_id=media_search_document_id(
+                            row.attachment_id, source_sha256
+                        ),
+                    )
+            except IntegrityError:
+                return row
+            documents = build_media_documents(
+                ingest=row,
+                attachment=attachment,
+                caption=caption,
+                ocr_text=ocr_text,
+                vector=vector,
+                client_codes=client_codes,
+                scope_key=scope_key,
+                thumbnail_path=thumbnail_path,
+                recorded_at=recorded_at,
+                embedding_model=media_embedding_client.model,
+                embedding_dimensions=media_embedding_client.dimensions,
+                indexed_at=indexed_at,
+            )
+            own_projection = _projection_for(AttachmentIngestPipeline.IMAGE)
+            terminal_fields = {
+                'client_codes': client_codes,
+                'chunk_count': 0,
+                'segment_count': 1,
+                'embedding_model': media_embedding_client.model,
+                'embedding_dimensions': media_embedding_client.dimensions,
+                'search_index_name': own_projection.index_name,
+            }
+        else:
+            markdown, extractor, page_starts = extract_markdown(
+                data, decision.kind, allow_pypdf=allow_pypdf
+            )
+            if not markdown.strip():
+                # Owner-authorized skip: the generic _record_skip refuses to touch
+                # in-flight rows, but this run owns the claim.
+                reason = 'ATTACHMENT_SKIP_EMPTY_CONTENT'
+                if _fenced_update(
+                    row.pk,
+                    fence,
+                    state=AttachmentIngestState.SKIPPED,
+                    error_code=reason,
+                ):
+                    _stamp_metadata(
+                        attachment.pk,
+                        _build_stamp(
+                            attachment,
+                            source_sha256,
+                            'skipped',
+                            reason=reason,
+                            mtime=mtime,
+                        ),
+                    )
+                row.refresh_from_db()
+                return row
+            if not _fenced_update(row.pk, fence, extractor=extractor):
+                return row  # stale takeover owns the row; walk away
+
+            from ai.core.integrations.controlled_document_ingestion import (
+                chunk_markdown_sections,
+                parse_markdown_sections,
+            )
+
+            sections = parse_markdown_sections(markdown)
+            chunks = chunk_markdown_sections(sections)
+            section_pages = _section_page_map(markdown, sections, page_starts)
+
+            if not _fenced_update(row.pk, fence, state=AttachmentIngestState.EMBEDDING):
+                return row
+            if embedding_client is None:
+                from ai.core.integrations.embeddings_cohere import CohereEmbeddingClient
+
+                embedding_client = CohereEmbeddingClient.from_settings()
+            vectors = embedding_client.embed_documents([chunk.text for chunk in chunks])
+
+            client_codes = derive_client_codes(
+                attachment.model_type, attachment.model_id
+            )
+            doc_type = classify_doc_type(
+                PurePosixPath(attachment.attachment.name or '').name,
+                _tag_names(attachment),
+            )
+            indexed_at = datetime.now(UTC)
+            documents = build_search_documents(
+                ingest=row,
+                attachment=attachment,
+                chunks=chunks,
+                vectors=vectors,
+                client_codes=client_codes,
+                scope_key=scope_key,
+                doc_type=doc_type,
+                section_pages=section_pages,
+                embedding_model=embedding_client.model,
+                embedding_dimensions=embedding_client.dimensions,
+                indexed_at=indexed_at,
+            )
+
+            row.chunks.all().delete()
+            AttachmentChunk.objects.bulk_create([
+                AttachmentChunk(
+                    ingest=row,
+                    chunk_index=position,
+                    page_number=section_pages.get(chunk.section_id),
+                    section_path=chunk.section_path[:512],
+                    content=chunk.text,
+                    token_count=chunk.token_count,
+                    embedding=vector,
+                    search_doc_id=search_document_id(
+                        row.attachment_id, source_sha256, position
+                    ),
+                )
+                for position, (chunk, vector) in enumerate(
+                    zip(chunks, vectors, strict=True)
+                )
+            ])
+
+            own_projection = _projection_for(AttachmentIngestPipeline.DOC)
+            terminal_fields = {
+                'client_codes': client_codes,
+                'chunk_count': len(chunks),
+                'embedding_model': embedding_client.model,
+                'embedding_dimensions': embedding_client.dimensions,
+                'search_index_name': own_projection.index_name,
+            }
+
         # Zero-gap supersede (decision #15): new revision live before the old
         # one disappears.
-        projection.upsert_documents(documents)
+        own_projection.upsert_documents(documents)
 
         # Winner/loser resolution (F-06/C2): newest CLAIM wins — registry-row
         # age inverts on content reverts. Losers remove exactly their own
         # documents; a blanket prune could hit a revision it never observed.
+        # Peers purge from the index matching THEIR pipeline: an attachment
+        # whose content was replaced photo↔pdf has revisions in different
+        # indexes (R3).
         peers = list(
             AttachmentIngest.objects
             .filter(attachment_id=attachment.pk)
@@ -952,33 +1361,41 @@ def run_ingest(
         )
         newest = max([row, *peers], key=_claim_order)
         if newest.pk == row.pk:
-            for peer_sha in sorted({
-                peer.source_sha256
-                for peer in peers
-                if peer.source_sha256 != source_sha256
-            }):
+            for peer in sorted(
+                (p for p in peers if p.source_sha256 != source_sha256),
+                key=lambda p: (p.source_sha256, p.pk),
+            ):
                 # is_current belt-and-braces (F-09) before each purge, so the
                 # R2 filter stays correct even mid-failure.
-                projection.mark_sha_stale(
-                    attachment_id=attachment.pk, source_sha256=peer_sha
+                peer_projection = _projection_for(peer.pipeline)
+                peer_projection.mark_sha_stale(
+                    attachment_id=attachment.pk, source_sha256=peer.source_sha256
                 )
-                projection.purge_sha(
-                    attachment_id=attachment.pk, source_sha256=peer_sha
+                peer_projection.purge_sha(
+                    attachment_id=attachment.pk, source_sha256=peer.source_sha256
                 )
             won = _fenced_update(
                 row.pk,
                 fence,
                 state=AttachmentIngestState.INDEXED,
-                client_codes=client_codes,
-                chunk_count=len(chunks),
-                embedding_model=embedding_client.model,
-                embedding_dimensions=embedding_client.dimensions,
-                search_index_name=projection.index_name,
                 error_code='',
+                **terminal_fields,
             )
             if not won:
-                # A same-sha takeover owns the row now; its run finishes the
-                # bookkeeping. Its documents are ours (deterministic IDs).
+                # A same-sha takeover owns the row now (its run finishes the
+                # bookkeeping; the documents are shared, deterministic IDs) —
+                # UNLESS the attachment was purged mid-run: then nobody else
+                # will remove the documents this run just resurrected, and
+                # the orphan sweep skips DELETED tombstones (review finding,
+                # R3 — the doc path carried the same race).
+                row.refresh_from_db()
+                if row.state == AttachmentIngestState.DELETED:
+                    own_projection.mark_sha_stale(
+                        attachment_id=attachment.pk, source_sha256=source_sha256
+                    )
+                    own_projection.purge_sha(
+                        attachment_id=attachment.pk, source_sha256=source_sha256
+                    )
                 return row
             AttachmentIngest.objects.filter(attachment_id=attachment.pk).exclude(
                 pk=row.pk
@@ -997,13 +1414,26 @@ def run_ingest(
                 attachment.pk,
                 _build_stamp(attachment, source_sha256, 'indexed', mtime=mtime),
             )
+            # Belt for the purge race's other interleaving: the delete
+            # receiver's purge can remove the serving documents and only
+            # then tombstone rows — if the attachment vanished mid-run, the
+            # documents this run upserted must not outlive it (the orphan
+            # sweep skips DELETED tombstones). Idempotent against a purge
+            # that runs later anyway.
+            if not Attachment.objects.filter(pk=attachment.pk).exists():
+                own_projection.mark_sha_stale(
+                    attachment_id=attachment.pk, source_sha256=source_sha256
+                )
+                own_projection.purge_sha(
+                    attachment_id=attachment.pk, source_sha256=source_sha256
+                )
         else:
             # A newer claim exists: this revision already lost. Remove exactly
             # our own documents and step aside.
-            projection.mark_sha_stale(
+            own_projection.mark_sha_stale(
                 attachment_id=attachment.pk, source_sha256=source_sha256
             )
-            projection.purge_sha(
+            own_projection.purge_sha(
                 attachment_id=attachment.pk, source_sha256=source_sha256
             )
             _fenced_update(row.pk, fence, state=AttachmentIngestState.SUPERSEDED)
@@ -1031,24 +1461,62 @@ def _tag_names(attachment) -> list[str]:
         return []
 
 
-def purge_attachment_artifacts(attachment_id: int, *, projection=None) -> int:
-    """Delete index documents and chunk copies for a removed attachment.
+def purge_attachment_artifacts(
+    attachment_id: int, *, projection=None, media_projection=None
+) -> int:
+    """Delete index documents and chunk/segment copies for a removed attachment.
 
-    Registry rows survive as ``deleted`` tombstones (audit trail); chunk
-    content rows are removed. Index deletion happens first — rows only reach
-    the terminal state once the serving layer can no longer answer with them.
+    Registry rows survive as ``deleted`` tombstones (audit trail); chunk and
+    segment content rows are removed explicitly (tombstoned rows never
+    cascade). Index deletion happens first — rows only reach the terminal
+    state once the serving layer can no longer answer with them. Each serving
+    index is purged only when rows of its pipeline family exist (F-19: no
+    SearchClients on no-op paths).
     """
-    from aichat.models import AttachmentChunk, AttachmentIngest, AttachmentIngestState
+    from aichat.models import (
+        AttachmentChunk,
+        AttachmentIngest,
+        AttachmentIngestPipeline,
+        AttachmentIngestState,
+        MediaSegment,
+    )
 
     rows = AttachmentIngest.objects.filter(attachment_id=attachment_id)
     if not rows.exists():
         return 0
-    if projection is None:
-        from ai.core.integrations.attachment_search import AttachmentSearchProjection
+    deleted = 0
+    if rows.filter(pipeline=AttachmentIngestPipeline.DOC).exists():
+        if projection is None:
+            from ai.core.integrations.attachment_search import (
+                AttachmentSearchProjection,
+            )
 
-        projection = AttachmentSearchProjection.from_settings()
-    deleted = projection.purge_attachment(attachment_id=attachment_id)
+            projection = AttachmentSearchProjection.from_settings()
+        deleted += projection.purge_attachment(attachment_id=attachment_id)
+    if (
+        rows
+        .filter(
+            pipeline__in=[
+                AttachmentIngestPipeline.IMAGE,
+                AttachmentIngestPipeline.VIDEO,
+            ]
+        )
+        # Only rows that could have projected: recorded dark-mode skips must
+        # not force a media-index client (the index may not even exist on a
+        # media-dark deployment, and a raising purge would wedge the delete
+        # path forever — review finding, R3).
+        .exclude(
+            state__in=[AttachmentIngestState.SKIPPED, AttachmentIngestState.PENDING]
+        )
+        .exists()
+    ):
+        if media_projection is None:
+            from ai.core.integrations.attachment_search import MediaSearchProjection
+
+            media_projection = MediaSearchProjection.from_settings()
+        deleted += media_projection.purge_attachment(attachment_id=attachment_id)
     AttachmentChunk.objects.filter(ingest__attachment_id=attachment_id).delete()
+    MediaSegment.objects.filter(ingest__attachment_id=attachment_id).delete()
     rows.update(state=AttachmentIngestState.DELETED)
     return deleted
 
@@ -1085,14 +1553,24 @@ def restamp_part_client_codes(part_id: int, *, projection=None) -> int:
 
 
 def restamp_machine_client_codes(machine_id: int, *, projection=None) -> int:
-    """Re-stamp a machine's docs and every installed part's docs (§6.5)."""
-    from aichat.models import AttachmentIngest, AttachmentIngestState
+    """Re-stamp a machine's docs, media, and installed parts' docs (§6.5)."""
+    from aichat.models import (
+        AttachmentIngest,
+        AttachmentIngestPipeline,
+        AttachmentIngestState,
+    )
     from assets.models import MachinePart
 
     touched = 0
     machine_rows = AttachmentIngest.objects.filter(
         model_type='assetmachine',
         model_id=machine_id,
+        # Docs only: media rows live in the media index and are re-stamped by
+        # the media loop below. Without this filter the doc-index merge
+        # no-ops on media rows while still updating the registry, and the
+        # media loop's change check then skips them — the media index would
+        # keep the OLD tenant's codes forever (review finding, R3).
+        pipeline=AttachmentIngestPipeline.DOC,
         state=AttachmentIngestState.INDEXED,
     )
     if machine_rows.exists():
@@ -1112,6 +1590,51 @@ def restamp_machine_client_codes(machine_id: int, *, projection=None) -> int:
             row.client_codes = codes
             row.save(update_fields=['client_codes', 'updated_at'])
             touched += 1
+    media_projection = None
+    media_rows = AttachmentIngest.objects.filter(
+        model_type='assetmachine',
+        model_id=machine_id,
+        pipeline__in=[AttachmentIngestPipeline.IMAGE, AttachmentIngestPipeline.VIDEO],
+        state=AttachmentIngestState.INDEXED,
+    )
+    if media_rows.exists():
+        codes = derive_client_codes('assetmachine', machine_id)
+        for row in media_rows:
+            if media_projection is None:
+                from ai.core.integrations.attachment_search import MediaSearchProjection
+
+                media_projection = MediaSearchProjection.from_settings()
+            # Scope AND coordinates: a machine rename/serial correction must
+            # reach the serving documents (asset_id feeds retrieval narrowing
+            # and the cross-machine grounding fence). The projection diffs
+            # against the index, so an unchanged document costs one read and
+            # no write.
+            coordinates = _media_owner_coordinates(row.model_type, row.model_id)
+            touched += media_projection.merge_media_metadata(
+                attachment_id=row.attachment_id,
+                fields={
+                    'client_codes': list(codes),
+                    'asset_id': coordinates['asset_id'],
+                    'machine_name': coordinates['machine_name'],
+                },
+            )
+            if list(row.client_codes or []) != codes:
+                row.client_codes = codes
+                row.save(update_fields=['client_codes', 'updated_at'])
+    # A machine client change reaches WO/step evidence too (their codes derive
+    # from this machine unless customer-attributed).
+    try:
+        from tasks.models import WorkOrder
+
+        work_order_ids = WorkOrder.objects.filter(machine_id=machine_id).values_list(
+            'pk', flat=True
+        )
+    except Exception:
+        work_order_ids = []
+    for work_order_id in work_order_ids:
+        touched += restamp_work_order_media_client_codes(
+            work_order_id, media_projection=media_projection
+        )
     part_ids = MachinePart.objects.filter(machine_id=machine_id).values_list(
         'part_id', flat=True
     )
@@ -1121,6 +1644,66 @@ def restamp_machine_client_codes(machine_id: int, *, projection=None) -> int:
         # zero when nothing changed).
         restamped = restamp_part_client_codes(part_id, projection=projection)
         touched += restamped
+    return touched
+
+
+def restamp_work_order_media_client_codes(
+    work_order_id: int, *, media_projection=None
+) -> int:
+    """Re-stamp a work order's indexed evidence media (§6.5, R3).
+
+    Covers WO-owned rows and the WO's step-execution rows; recomputes the
+    fail-closed scope per row (a customer attribution or machine/client
+    change may shrink codes to ``[]`` — the merge replaces the field, which
+    is exactly the fail-closed direction).
+    """
+    from django.db.models import Q
+
+    from tasks.procedure_models import WorkOrderStepExecution
+
+    from aichat.models import (
+        AttachmentIngest,
+        AttachmentIngestPipeline,
+        AttachmentIngestState,
+    )
+
+    media_pipelines = [AttachmentIngestPipeline.IMAGE, AttachmentIngestPipeline.VIDEO]
+    step_ids = list(
+        WorkOrderStepExecution.objects.filter(
+            application__work_order_id=work_order_id
+        ).values_list('pk', flat=True)
+    )
+    rows = AttachmentIngest.objects.filter(
+        Q(model_type='workorder', model_id=work_order_id)
+        | Q(model_type='workorderstepexecution', model_id__in=step_ids),
+        pipeline__in=media_pipelines,
+        state=AttachmentIngestState.INDEXED,
+    )
+    touched = 0
+    for row in rows:
+        codes = derive_client_codes(row.model_type, row.model_id)
+        if media_projection is None:
+            # Constructed only once a row actually exists (F-19); the
+            # receiver's existence gate keeps no-media saves row-free.
+            from ai.core.integrations.attachment_search import MediaSearchProjection
+
+            media_projection = MediaSearchProjection.from_settings()
+        # Scope AND coordinates: a WO reassigned to another machine must
+        # re-stamp asset_id/machine_name or its photos keep citing (and
+        # narrowing under) the old machine. Index-diffed: unchanged
+        # documents cost one read, no write.
+        coordinates = _media_owner_coordinates(row.model_type, row.model_id)
+        touched += media_projection.merge_media_metadata(
+            attachment_id=row.attachment_id,
+            fields={
+                'client_codes': list(codes),
+                'asset_id': coordinates['asset_id'],
+                'machine_name': coordinates['machine_name'],
+            },
+        )
+        if list(row.client_codes or []) != codes:
+            row.client_codes = codes
+            row.save(update_fields=['client_codes', 'updated_at'])
     return touched
 
 
@@ -1164,6 +1747,59 @@ def reconcile_orphaned_ingests(*, projection=None, dry_run: bool = False) -> int
                 stage='attachment_sweep',
             )
     return purged
+
+
+def heal_media_thumbnails(*, limit: int = 200, media_projection=None) -> int:
+    """Backfill thumbnail references for early-indexed media segments (R3).
+
+    Thumbnail race, layer 3: a photo ingested while ``rebuild_attachment``
+    was still queued served with an empty ``thumbnail_path``; once the
+    thumbnail exists this merges the reference into the segment row and the
+    serving document. Metadata-only — no re-extract, no re-embed.
+    """
+    from aichat.models import (
+        AttachmentIngestPipeline,
+        AttachmentIngestState,
+        MediaSegment,
+    )
+    from common.models import Attachment
+
+    healed = 0
+    segments = MediaSegment.objects.filter(
+        thumbnail_path='',
+        ingest__state=AttachmentIngestState.INDEXED,
+        ingest__pipeline=AttachmentIngestPipeline.IMAGE,
+    ).select_related('ingest')[:limit]
+    for segment in segments:
+        attachment = Attachment.objects.filter(pk=segment.ingest.attachment_id).first()
+        if attachment is None:
+            continue
+        thumbnail_path = (getattr(attachment.thumbnail, 'name', '') or '')[:512]
+        if not thumbnail_path:
+            continue
+        if media_projection is None:
+            # Constructed only once a healable row actually exists (F-19).
+            from ai.core.integrations.attachment_search import MediaSearchProjection
+
+            media_projection = MediaSearchProjection.from_settings()
+        try:
+            media_projection.merge_thumbnail(
+                search_doc_id=segment.search_doc_id, thumbnail_path=thumbnail_path
+            )
+            # Inside the same guard: a concurrent purge can delete the
+            # segment row, and save(update_fields=...) raises on zero rows —
+            # one lost row must not abort the whole batch.
+            segment.thumbnail_path = thumbnail_path
+            segment.save(update_fields=['thumbnail_path'])
+        except Exception as exc:
+            from ai.core.faults import log_fault
+
+            log_fault(
+                logger, 'Media thumbnail heal failed', exc, stage='attachment_sweep'
+            )
+            continue
+        healed += 1
+    return healed
 
 
 def resume_stalled_ingests() -> dict[str, int]:
@@ -1213,5 +1849,24 @@ def resume_stalled_ingests() -> dict[str, int]:
             error_code='ATTACHMENT_INGEST_STALLED',
             updated_at=timezone.now(),
         )
+    try:
+        from ai.core.config import get_settings as _get_ai_settings
+
+        heal_enabled = media_ingest_enabled(_get_ai_settings())
+    except Exception:
+        heal_enabled = False
+    if heal_enabled:
+        try:
+            counts['thumbnails'] = heal_media_thumbnails()
+        except Exception as exc:
+            from ai.core.faults import log_fault
+
+            log_fault(
+                logger,
+                'Media thumbnail heal sweep failed',
+                exc,
+                stage='attachment_sweep',
+            )
+            counts['thumbnails'] = 0
     counts['orphans'] = reconcile_orphaned_ingests()
     return counts

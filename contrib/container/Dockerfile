@@ -149,6 +149,11 @@ COPY src/backend/InvenTree ${INVENTREE_BACKEND_DIR}/InvenTree
 COPY src/backend/tasks ${INVENTREE_BACKEND_DIR}/tasks
 COPY src/backend/requirements.txt ${INVENTREE_BACKEND_DIR}/requirements.txt
 
+# GCP WIF executable credential source (attachment-RAG R3): ACA has no IMDS,
+# so external_account JSONs point google-auth at this helper instead.
+COPY contrib/container/gcp-entra-token.sh /usr/local/bin/gcp-entra-token
+RUN chmod +x /usr/local/bin/gcp-entra-token
+
 # Copy compiled dependencies from prebuild image
 ENV PATH=/root/.local/bin:$PATH
 

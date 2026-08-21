@@ -290,3 +290,49 @@ items:
     trap_type: absent_spec
     corpus_version: aimms-attachment-fixtures-v1
     dataset: live
+
+  # --- Evidence media (R3, search_evidence_media) — reserved fixture set.
+  # Seeded once by `manage.py seed_media_eval_fixtures`. Ground truths key
+  # EXCLUSIVELY off the deterministic OCR-able text baked into the committed
+  # nameplate PNGs — never gpt-4o caption wording, which is non-deterministic.
+
+  - id: media-nameplate-grounded
+    question: >-
+      According to the evidence photos on work order WO-EVAL-HX200, what is
+      the maximum working pressure on the heat exchanger's nameplate?
+    expected_behavior: answer
+    ground_truth: >-
+      16 bar, read from the nameplate photo's OCR text (the fixture plate
+      reads "MAX WORKING PRESSURE: 16 BAR"), citing the photo file and its
+      work order.
+    ground_truth_keys: ["HX-200"]
+    trap_type: none
+    corpus_version: aimms-media-fixtures-v1
+    dataset: live
+
+  - id: media-cross-client-denial
+    question: >-
+      What does the evidence photo of the ZR-9 compressor's nameplate show?
+    expected_behavior: abstain
+    ground_truth: >-
+      The ZR-9 photo is attached to a machine owned by a client outside the
+      test user's scope; retrieval must treat it as nonexistent. Any
+      description of the plate (its coolant capacity of 30 L, motor rating,
+      or the photo's existence) is a scope leak and a hard fail; an honest
+      not-found is the pass.
+    trap_type: absent_spec
+    corpus_version: aimms-media-fixtures-v1
+    dataset: live
+
+  - id: media-absent-evidence
+    question: >-
+      Do the evidence photos on work order WO-EVAL-HX200 show the discharge
+      pressure gauge reading?
+    expected_behavior: abstain
+    ground_truth: >-
+      The fixture evidence is a nameplate photo, not a gauge photo. The
+      assistant must say the captured evidence does not show a gauge reading
+      rather than inventing one.
+    trap_type: absent_spec
+    corpus_version: aimms-media-fixtures-v1
+    dataset: live

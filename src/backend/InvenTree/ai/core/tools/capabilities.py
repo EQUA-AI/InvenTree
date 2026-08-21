@@ -310,6 +310,29 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
             "documentation",
         ),
     ),
+    "evidence.read": (
+        ToolEffect.READ,
+        ("search_evidence_media",),
+        # Evidence-media phrasing (R3): how operators name captured evidence
+        # ("the photo of the nameplate", "what evidence was recorded on the
+        # pump job"). Word-boundary matched; plurals need their own entries.
+        # "image"/"images" deliberately included — no other pack claims them.
+        (
+            "photo",
+            "photos",
+            "picture",
+            "pictures",
+            "photograph",
+            "photographed",
+            "evidence",
+            "image",
+            "images",
+            "recording",
+            "recordings",
+            "snapshot",
+            "snapshots",
+        ),
+    ),
     # --- Specialist write packs (execution-plan S11) -------------------------
     #
     # wf2/wf3/wf4/wf6 already carry these tools at runtime; before S11 the
@@ -452,6 +475,16 @@ _ADJACENT_PACKS: dict[str, frozenset[str]] = {
     "maintenance.read": frozenset({"machines.read", "manuals.read"}),
     "machines.read": frozenset({"maintenance.read", "manuals.read"}),
     "manuals.read": frozenset({"machines.read"}),
+    # Evidence questions almost always name the job or the asset ("what did
+    # the tech photograph on WO-104"), so evidence-primary pulls both
+    # maintenance and machines. Worst evidence-primary stack:
+    # evidence 1 + maintenance 6 + machines 9 = 16 <= MAX_INITIAL_TOOLS.
+    # Deliberately NO reverse edges: maintenance- and machines-primary worst
+    # stacks already sit at exactly 16, and a 17th tool trips the trim loop.
+    # If live goldens show maintenance-primary photo questions losing the
+    # tool, the fix is an explicit-evidence rider (manuals-rider clone), not
+    # an adjacency edge.
+    "evidence.read": frozenset({"maintenance.read", "machines.read"}),
 }
 
 #: Packs inside the InvenTree data graph, where a read-only SQL fallback makes
@@ -1051,6 +1084,28 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
             any_of=(("part", "view"), ("work_order", "view")),
             authorizer="attachment_corpus_access",
         )
+    if tool_id == "search_evidence_media":
+        # R3 evidence-media retrieval, dark behind its flag. Same caching
+        # caveat as the attachment branch (env flags are process-stable; the
+        # guard arm and the tool re-check per call). all_of, not any_of: one
+        # role grants the whole corpus — every owner type (workorder / step /
+        # assetmachine media) is an evidence surface under maintenance scope,
+        # and part-owned media never ingests, so there is no second arm.
+        # This branch must sit BEFORE the requirement fallthrough: the rbac
+        # map row (text-chat filtering) would otherwise claim the tool as
+        # NATIVE_PERMISSION and lose the flag gate + authorizer.
+        from ai.core.config import get_settings
+
+        if not get_settings().feature_media_rag_retrieval:
+            return AuthorizationPolicy(
+                kind=PolicyKind.DISABLED,
+                reason="FEATURE_MEDIA_RAG_RETRIEVAL is off",
+            )
+        return AuthorizationPolicy(
+            kind=PolicyKind.RESOURCE_AUTHORIZER,
+            all_of=(("work_order", "view"),),
+            authorizer="evidence_media_access",
+        )
     if requirement is not None:
         return AuthorizationPolicy(
             kind=PolicyKind.NATIVE_PERMISSION,
@@ -1088,6 +1143,7 @@ def _catalog_tools() -> tuple[Any, ...]:
     from ai.core.integrations.email.tools import EMAIL_TOOLS
     from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
+    from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
     from ai.core.tools.inventree.write.purchase_orders import PURCHASE_ORDER_WRITE_TOOLS
 
     ordered: list[Any] = []
@@ -1099,6 +1155,7 @@ def _catalog_tools() -> tuple[Any, ...]:
         *DOCUMENT_SEARCH_TOOLS,
         *CONTROLLED_CORPUS_TOOLS,
         *ATTACHMENT_CORPUS_TOOLS,
+        *EVIDENCE_MEDIA_TOOLS,
         # Specialist rails (wf2/wf3/wf4/wf6) below; the wf8 prefix above keeps
         # the existing catalog order stable for the manifest.
         *INVENTORY_TOOLS,

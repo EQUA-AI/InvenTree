@@ -322,3 +322,130 @@ class AttachmentSearchProjection:
             f"attachment_id eq {int(attachment_id)} and source_sha256 eq '{escaped_sha}'",
             code="ATTACHMENT_SEARCH_PRUNE_FAILED",
         )
+
+
+class MediaSearchProjection(AttachmentSearchProjection):
+    """Media-evidence index adapter (image/video segments, R3).
+
+    Same zero-gap supersede + purge contract as the docs projection; only the
+    bound index differs. Keys are ``att-{attachment_id}-{sha256[:12]}-img``
+    (R4 adds ``-s{n}`` segments), so every inherited operation — keyed on
+    ``id``/``attachment_id``/``source_sha256``/``client_codes``/``is_current``
+    — is schema-agnostic against the media index.
+    """
+
+    @classmethod
+    def from_settings(cls) -> MediaSearchProjection:
+        """Build the adapter from the media-RAG Search configuration."""
+        from ai.core.config import get_settings
+
+        settings = get_settings()
+        index_name = settings.azure_search_media_index
+        if not settings.azure_search_endpoint or not index_name:
+            raise AttachmentIndexingError(
+                "Media Search configuration is unavailable",
+                code="ATTACHMENT_SEARCH_CONFIG_INVALID",
+            )
+        # Defense in depth beyond the startup validator's distinctness check:
+        # the media projection must alias neither the governed/legacy document
+        # indexes nor the attachment-docs index (stripped comparison, F-01).
+        reserved = {
+            (settings.azure_search_controlled_documents_index or "").strip(),
+            (getattr(settings, "azure_search_documents_index", "") or "").strip(),
+            (settings.azure_search_attachment_docs_index or "").strip(),
+        }
+        if index_name.strip() in reserved - {""}:
+            raise AttachmentIndexingError(
+                "Media index must not alias another document index",
+                code="ATTACHMENT_SEARCH_INDEX_ALIASED",
+            )
+        return cls(
+            endpoint=settings.azure_search_endpoint,
+            index_name=index_name,
+            api_key=settings.azure_search_api_key,
+        )
+
+    def merge_media_metadata(self, *, attachment_id: int, fields: dict) -> int:
+        """Metadata-only re-stamp of scope/coordinate fields (§6.5, R3).
+
+        Diffs against the index first: documents already carrying the given
+        values are untouched, so a no-op restamp costs one read and no
+        writes. Replaces each given field wholesale (merge, not upsert) —
+        shrink-to-empty is the fail-closed direction.
+        """
+        client = self._get_client()
+        select_fields = ["id", *fields.keys()]
+        merged_total = 0
+        try:
+            for _page in range(_MAX_PRUNE_PAGES):
+                rows = client.search(
+                    search_text="*",
+                    filter=f"attachment_id eq {int(attachment_id)}",
+                    select=select_fields,
+                    top=_PRUNE_PAGE,
+                )
+                updates = []
+                for row in rows:
+                    changed = {
+                        key: value
+                        for key, value in fields.items()
+                        if (
+                            list(row.get(key) or []) != list(value)
+                            if isinstance(value, list)
+                            else row.get(key) != value
+                        )
+                    }
+                    if changed:
+                        updates.append({"id": row["id"], **changed})
+                if not updates:
+                    return merged_total
+                merged = client.merge_documents(documents=updates)
+                if not self._all_succeeded(merged):
+                    raise AttachmentIndexingError(
+                        "Media metadata re-stamp failed",
+                        code="ATTACHMENT_SEARCH_MERGE_FAILED",
+                    )
+                merged_total += len(updates)
+        except AttachmentIndexingError:
+            raise
+        except Exception as exc:
+            from ai.core.faults import log_fault
+
+            log_fault(logger, "Media metadata re-stamp failed", exc, stage="attachment_project")
+            raise AttachmentIndexingError(
+                "Media metadata re-stamp failed",
+                code="ATTACHMENT_SEARCH_MERGE_FAILED",
+            ) from exc
+        raise AttachmentIndexingError(
+            "Media metadata re-stamp exhausted the page cap",
+            code="ATTACHMENT_SEARCH_PAGE_CAP_EXHAUSTED",
+        )
+
+    def merge_thumbnail(self, *, search_doc_id: str, thumbnail_path: str) -> None:
+        """Backfill one document's thumbnail reference (sweep heal, R3).
+
+        The 256px thumbnail is generated asynchronously by
+        ``rebuild_attachment``; segments indexed before it lands carry an
+        empty ``thumbnail_path`` and are healed here. Merge, not upsert —
+        the document must already exist.
+        """
+        client = self._get_client()
+        try:
+            merged = client.merge_documents(
+                documents=[{"id": search_doc_id, "thumbnail_path": thumbnail_path}]
+            )
+            if not self._all_succeeded(merged):
+                raise AttachmentIndexingError(
+                    "Media thumbnail re-stamp failed",
+                    code="ATTACHMENT_SEARCH_MERGE_FAILED",
+                )
+        except AttachmentIndexingError:
+            raise
+        except Exception as exc:
+            from ai.core.faults import log_fault
+
+            log_fault(logger, "Media thumbnail re-stamp failed", exc, stage="attachment_project")
+            raise AttachmentIndexingError(
+                "Media thumbnail re-stamp failed",
+                code="ATTACHMENT_SEARCH_MERGE_FAILED",
+            ) from exc

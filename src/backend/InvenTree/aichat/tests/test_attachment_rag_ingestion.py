@@ -27,6 +27,8 @@ _MD = b'# Press Manual\n\n## Safety\n\nLock out power before service.\n'
 _PDF_HEAD = b'%PDF-1.7\n1 0 obj\n<<>>\nendobj\n'
 _PNG_HEAD = b'\x89PNG\r\n\x1a\n' + b'\x00' * 32
 _XLSX_HEAD = b'PK\x03\x04' + b'\x00' * 32
+_WAV_HEAD = b'RIFF\x00\x00\x00\x00WAVEfmt ' + b'\x00' * 32
+_MP4_HEAD = b'\x00\x00\x00\x18ftypmp42' + b'\x00' * 32
 
 
 def _ai_settings(**overrides) -> Settings:
@@ -354,8 +356,13 @@ class ReceiverTests(RagFixtureTestCase):
         self.assertEqual(len(self._ingest_offloads(off)), 1)
 
     @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
-    def test_media_dark_stamp_stays_suppressed_until_r3(self):
-        """MEDIA_PIPELINE_DARK stamps stay terminal while the router gate holds."""
+    def test_media_dark_stamp_revives_only_on_full_flag_conjunction(self):
+        """MEDIA_PIPELINE_DARK stamps revive exactly when BOTH media flags are on.
+
+        The receiver revival clause reads ``media_ingest_enabled`` — the SAME
+        predicate the R3 router enforces — so a partial flip (either plane
+        alone) keeps suppressing, and the full conjunction re-offloads once.
+        """
         from aichat.services.attachment_ingestion import _build_stamp, storage_mtime
 
         attachment = _make_attachment(
@@ -378,15 +385,31 @@ class ReceiverTests(RagFixtureTestCase):
             GCP_PROJECT_ID='p',
             GCP_LOCATION='us-central1',
             GCP_CREDENTIALS_PATH='/tmp/wif.json',
+            AZURE_OPENAI_ENDPOINT='https://openai.example',
         )
+        # AI-plane flag on, Django co-gate off: still suppressed.
         with (
             mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
             mock.patch('ai.core.config.get_settings', return_value=media_on),
         ):
             attachment.save()
-        # MEDIA_ROUTER_HONORS_FLAG is False until R3: still suppressed, so a
-        # media-flag flip today cannot trigger per-save re-reads.
         self.assertEqual(self._ingest_offloads(off), [])
+        # Django co-gate on, AI-plane flag off: still suppressed.
+        with (
+            override_settings(AIMMS_MEDIA_RAG_ENABLED=True),
+            mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
+            mock.patch('ai.core.config.get_settings', return_value=_ai_settings()),
+        ):
+            attachment.save()
+        self.assertEqual(self._ingest_offloads(off), [])
+        # Both planes on: the stamp stops matching and revives exactly once.
+        with (
+            override_settings(AIMMS_MEDIA_RAG_ENABLED=True),
+            mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
+            mock.patch('ai.core.config.get_settings', return_value=media_on),
+        ):
+            attachment.save()
+        self.assertEqual(len(self._ingest_offloads(off)), 1)
 
     @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
     def test_broken_ai_config_fails_loudly_not_silently(self):
@@ -729,7 +752,10 @@ class BackfillCommandTests(RagFixtureTestCase):
         report = out.getvalue()
         self.assertIn('INGEST', report)
         self.assertIn('ATTACHMENT_SKIP_XLSX', report)
-        self.assertNotIn('photo.png', report)  # media excluded from doc backfill
+        # R3: image extensions are walked and report their route decision
+        # (part imagery stays excluded, so the decision here is the skip).
+        # Storage may dedupe-suffix the stem, so match the walked line.
+        self.assertRegex(report, r'photo\S*\.png\tATTACHMENT_SKIP_PART_IMAGE')
         self.assertFalse(AttachmentIngest.objects.exists())
 
     def test_live_run_requires_django_flag(self):
@@ -1093,6 +1119,40 @@ class WorkOrderOwnerTests(RagFixtureTestCase):
         row, _e, _p = self._run(attachment.pk)
         self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
         self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_REPAIRPACKET')
+
+    def test_workorder_audio_is_terminal_unsupported(self):
+        """WO/step audio records a TERMINAL unsupported-type skip (R3).
+
+        Not a media-dark code: no pipeline (current or planned) ingests bare
+        audio files, so a media-flag flip must never revive these stamps.
+        """
+        for model_type in ('workorder', 'workorderstepexecution'):
+            with self.subTest(model_type=model_type):
+                attachment = _make_attachment(
+                    model_type, 778, 'note.wav', _WAV_HEAD
+                )
+                row, _e, _p = self._run(attachment.pk)
+                self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
+                self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE')
+                self.assertEqual(row.pipeline, 'doc')
+
+    def test_workorder_video_records_video_dark_skip(self):
+        """WO/step video skips under the DISTINCT video-dark code (R3).
+
+        Separate from the image code on purpose: image-flag flips must not
+        revive video stamps before the R4 router change.
+        """
+        for model_type in ('workorder', 'workorderstepexecution'):
+            with self.subTest(model_type=model_type):
+                attachment = _make_attachment(
+                    model_type, 779, 'clip.mp4', _MP4_HEAD
+                )
+                row, _e, _p = self._run(attachment.pk)
+                self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
+                self.assertEqual(
+                    row.error_code, 'ATTACHMENT_SKIP_VIDEO_PIPELINE_DARK'
+                )
+                self.assertEqual(row.pipeline, 'video')
 
 
 class DocumentIntelligenceTests(RagFixtureTestCase):

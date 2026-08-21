@@ -287,6 +287,19 @@ def restamp_machine_client_codes(machine_id):
         )
 
 
+def restamp_work_order_media(work_order_id):
+    """Re-stamp a work order's evidence media codes (metadata-only merge)."""
+    from aichat.services.attachment_ingestion import (
+        restamp_work_order_media_client_codes as restamp,
+    )
+
+    touched = restamp(work_order_id)
+    if touched:
+        logger.info(
+            'Client codes re-stamped: work_order=%s ingests=%d', work_order_id, touched
+        )
+
+
 ATTACHMENT_RAG_SWEEP_INTERVAL_MINUTES = 10
 
 
@@ -303,8 +316,9 @@ def sweep_attachment_rag():
     counts = resume_stalled_ingests()
     if any(counts.values()):
         logger.info(
-            'Attachment RAG sweep: resumed=%d stalled=%d orphans=%d',
+            'Attachment RAG sweep: resumed=%d stalled=%d orphans=%d thumbnails=%d',
             counts['resumed'],
             counts['stalled'],
             counts['orphans'],
+            counts.get('thumbnails', 0),
         )

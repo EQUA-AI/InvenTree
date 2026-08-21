@@ -28,6 +28,7 @@ from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
 from ai.core.integrations.kanban_tools import KANBAN_TOOLS
+from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
 from ai.core.tools.invocation_guard import (
     CapabilityInvocationMiddleware,
     bind_capability_run,
@@ -318,12 +319,13 @@ through the governed action surface; never claim to have made a change.
 Kanban statuses are: backlog, in-progress, review, done
 Kanban priorities are: low, medium, high
 
-You have access to indexed technical documentation in two corpora of different authority:
+You have access to indexed technical documentation and evidence in corpora of different authority:
 - search_manuals covers the CONTROLLED corpus: reviewed, revision-tracked manuals. Search it FIRST when asked about troubleshooting, error codes, maintenance, or operating procedures.
 - search_attachment_docs, when available in your tools, covers UPLOADED documents (manuals, datasheets, catalogues attached to parts and machines) that have NOT been through controlled-document review. Use it as a supplement when the controlled corpus does not answer, and attribute anything drawn from it as coming from an "uploaded document (uncontrolled)". If it is not among your tools, do not attempt it.
+- search_evidence_media, when available in your tools, covers EVIDENCE PHOTOS captured on work orders and machines — nameplates, gauge readings, damage, completed work. Use it when asked what a photo or recording shows, what evidence was captured on a job, or what a nameplate or label reads — not for specifications or procedures, which live in the document corpora above. Its excerpts are each photo's caption and OCR text; cite the photo's file name and its work order, and mention when it was taken if known. Results never include the image itself. If it is not among your tools, do not attempt it.
 - ALWAYS cite the source: include the document title and any page/section references from the results
 - When diagnosing faults, search for the error code AND the symptom description
-- Documentation questions do NOT require identifying a machine first: search the corpora directly with the user's own words. The machine/part arguments are optional precision — when a name is ambiguous or unmatched, run the search WITHOUT them and answer from what returns. If the documents do not state the answer, say so plainly; never respond with a list of machine choices to a documentation question.
+- Documentation and evidence questions do NOT require identifying a machine first: search the corpora directly with the user's own words. The machine/part/work_order arguments are optional precision — when a name is ambiguous or unmatched, run the search WITHOUT them and answer from what returns. If the documents do not state the answer, say so plainly; never respond with a list of machine choices to a documentation question.
 
 Always verify data from the tools before responding.
 
@@ -358,7 +360,9 @@ whose stock is split across several locations or batches.
 When you answer from documentation or manuals, always cite the source: name the document
 title and any page or section reference the search result carries. Search the controlled
 corpus (search_manuals) before the uploaded-attachment corpus, and attribute anything
-drawn from an attachment as an "uploaded document (uncontrolled)". For troubleshooting,
+drawn from an attachment as an "uploaded document (uncontrolled)". An answer drawn from
+evidence media (search_evidence_media) cites the photo's file name and its work order —
+evidence shows what was captured, never what procedure to follow. For troubleshooting,
 maintenance, or operating procedures, answer only what a returned document directly
 supports; if the manuals do not cover it, say so plainly — on this machinery a wrong
 procedure can injure someone, and declining is always acceptable.
@@ -398,10 +402,11 @@ have not just said. Only describe data as approximate or out of date if the tool
 says so; do not add hedges of your own.
 
 When an answer comes from a manual, say which document it came from. If it came from an
-uploaded document rather than a controlled manual, say so. For troubleshooting or
-procedures, answer only what a returned document directly supports; if the manuals do not
-cover it, say so plainly — a wrong procedure on this machinery can injure someone, and
-declining is always acceptable.
+uploaded document rather than a controlled manual, say so. If it comes from an evidence
+photo, say which photo (its file name) and which work order it was captured on — you
+cannot show images in a spoken reply. For troubleshooting or procedures, answer only what
+a returned document directly supports; if the manuals do not cover it, say so plainly — a
+wrong procedure on this machinery can injure someone, and declining is always acceptable.
 
 Answer in the language the technician used. Keep part numbers, IPNs, location names, and status
 values exactly as they appear in the data — never translate an identifier."""
@@ -449,6 +454,7 @@ figure from an earlier turn as if you had just verified it."""
                 + DOCUMENT_SEARCH_TOOLS
                 + CONTROLLED_CORPUS_TOOLS
                 + ATTACHMENT_CORPUS_TOOLS
+                + EVIDENCE_MEDIA_TOOLS
             )
         if not T1LookupWorkflow.VOICE_BASE_TOOLS:
             T1LookupWorkflow.VOICE_BASE_TOOLS = read_tools(T1LookupWorkflow.BASE_TOOLS)

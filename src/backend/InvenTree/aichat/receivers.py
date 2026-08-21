@@ -36,16 +36,35 @@ def _rag_enabled() -> bool:
     return bool(getattr(django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False))
 
 
+def _restamp_enabled() -> bool:
+    """Gate for the scope re-stamp receivers: attachment OR media plane.
+
+    Re-stamps must keep flowing as long as EITHER corpus can serve — a
+    deployment that turns the doc plane off while media retrieval stays lit
+    would otherwise stop propagating client/coordinate changes into content
+    it is still serving (review finding, R3).
+    """
+    return _rag_enabled() or bool(
+        getattr(django_settings, 'AIMMS_MEDIA_RAG_ENABLED', False)
+    )
+
+
 def _flag_dependent_skip_matches(reason: str) -> bool:
     """Whether a flag-dependent skip stamp still suppresses offloads.
 
     Revival semantics (F-08/F-10/C4): a ``PIPELINE_DISABLED`` skip stops
-    matching the moment the ingest flag turns on; the media clause stays
-    inert until the R3 router change (``MEDIA_ROUTER_HONORS_FLAG``). A broken
-    AI config must return False — the offloaded task then fails loudly,
-    instead of the stamp silently re-creating the F-15 swallow.
+    matching the moment the ingest flag turns on; the media clause reads
+    ``media_ingest_enabled`` — the EXACT predicate the router enforces (R3),
+    so a flag-pair flip revives each stamp once and a partial flip revives
+    nothing; the video clause stays inert until the R4 router change
+    (``VIDEO_ROUTER_HONORS_FLAG``). A broken AI config must return False —
+    the offloaded task then fails loudly, instead of the stamp silently
+    re-creating the F-15 swallow.
     """
-    from aichat.services.attachment_ingestion import MEDIA_ROUTER_HONORS_FLAG
+    from aichat.services.attachment_ingestion import (
+        VIDEO_ROUTER_HONORS_FLAG,
+        media_ingest_enabled,
+    )
 
     try:
         from ai.core.config import get_settings
@@ -56,9 +75,11 @@ def _flag_dependent_skip_matches(reason: str) -> bool:
     if reason == 'ATTACHMENT_SKIP_PIPELINE_DISABLED':
         return not settings.feature_attachment_rag_ingest
     if reason == 'ATTACHMENT_SKIP_MEDIA_PIPELINE_DARK':
-        if not MEDIA_ROUTER_HONORS_FLAG:
+        return not media_ingest_enabled(settings)
+    if reason == 'ATTACHMENT_SKIP_VIDEO_PIPELINE_DARK':
+        if not VIDEO_ROUTER_HONORS_FLAG:
             return True
-        return not settings.feature_media_rag_ingest
+        return not media_ingest_enabled(settings)
     return True
 
 
@@ -186,7 +207,7 @@ def machine_part_changed(sender, instance, **kwargs):
 def asset_machine_saved(sender, instance, **kwargs):
     """Re-stamp machine and installed-part docs after a possible client change."""
     try:
-        if not _rag_enabled():
+        if not _restamp_enabled():
             return
         from aichat.models import AttachmentIngest
         from assets.models import MachinePart
@@ -195,13 +216,73 @@ def asset_machine_saved(sender, instance, **kwargs):
             model_type='assetmachine', model_id=instance.pk
         ).exists()
         has_linked_parts = MachinePart.objects.filter(machine_id=instance.pk).exists()
+        has_wo_media = False
         if not has_docs and not has_linked_parts:
+            # A machine client change also reaches WO/step evidence (R3).
+            try:
+                from django.db.models import Q
+
+                from tasks.models import WorkOrder
+                from tasks.procedure_models import WorkOrderStepExecution
+
+                work_order_ids = list(
+                    WorkOrder.objects.filter(machine_id=instance.pk).values_list(
+                        'pk', flat=True
+                    )
+                )
+                step_ids = WorkOrderStepExecution.objects.filter(
+                    application__work_order_id__in=work_order_ids
+                ).values_list('pk', flat=True)
+                has_wo_media = AttachmentIngest.objects.filter(
+                    Q(model_type='workorder', model_id__in=work_order_ids)
+                    | Q(model_type='workorderstepexecution', model_id__in=step_ids)
+                ).exists()
+            except Exception:
+                has_wo_media = False
+        if not has_docs and not has_linked_parts and not has_wo_media:
             return
         from aichat import tasks as aichat_tasks
         from InvenTree.tasks import offload_task
 
         offload_task(
             aichat_tasks.restamp_machine_client_codes,
+            instance.pk,
+            force_async=True,
+            group=_INGEST_GROUP,
+        )
+    except Exception as exc:
+        _log_receiver_fault('Client-code re-stamp scheduling failed (ignored)', exc)
+
+
+def work_order_saved(sender, instance, **kwargs):
+    """Re-stamp a work order's evidence media after machine/customer changes.
+
+    Existence-gated like the machine receiver: no SearchClients, no offloads,
+    unless indexed media rows for this WO or its step executions exist.
+    """
+    try:
+        if not _restamp_enabled():
+            return
+        from tasks.procedure_models import WorkOrderStepExecution
+
+        from aichat.models import AttachmentIngest
+
+        step_ids = WorkOrderStepExecution.objects.filter(
+            application__work_order_id=instance.pk
+        ).values_list('pk', flat=True)
+        from django.db.models import Q
+
+        has_media = AttachmentIngest.objects.filter(
+            Q(model_type='workorder', model_id=instance.pk)
+            | Q(model_type='workorderstepexecution', model_id__in=step_ids)
+        ).exists()
+        if not has_media:
+            return
+        from aichat import tasks as aichat_tasks
+        from InvenTree.tasks import offload_task
+
+        offload_task(
+            aichat_tasks.restamp_work_order_media,
             instance.pk,
             force_async=True,
             group=_INGEST_GROUP,

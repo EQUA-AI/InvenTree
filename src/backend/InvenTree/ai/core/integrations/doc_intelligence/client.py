@@ -117,6 +117,31 @@ class DocIntelligenceClient:
         )
         return result
 
+    def analyze_read_text(
+        self,
+        data: bytes,
+        *,
+        content_type: str,
+    ) -> AnalyzeResult:
+        """Run ``prebuilt-read`` OCR over an image (attachment-RAG media path).
+
+        ``result.content`` is the plain recognized text (nameplates, gauges,
+        labels); an image with no legible text yields an empty string, which
+        is a legitimate outcome, not a failure.
+        """
+        poller = self._client.begin_analyze_document(
+            "prebuilt-read",
+            body=data,
+            content_type=content_type,
+        )
+        result = poller.result()
+        logger.info(
+            "DI read analysis complete - %d pages, %d chars",
+            len(result.pages) if result.pages else 0,
+            len(result.content) if result.content else 0,
+        )
+        return result
+
     def extract_text(self, pdf_bytes: bytes, *, model_id: str = "prebuilt-layout") -> str:
         """Convenience: return just the full text content string."""
         result = self.analyze_pdf(pdf_bytes, model_id=model_id)

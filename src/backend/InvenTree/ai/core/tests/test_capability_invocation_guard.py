@@ -446,6 +446,9 @@ def _attachment_catalog(monkeypatch, *, flag=True, site_key="site-a"):
         lambda: SimpleNamespace(
             single_site_policy_key=site_key,
             feature_attachment_rag_retrieval=flag,
+            # The media policy branch reads its flag during the same catalog
+            # build; dark here so these tests pin the attachment arm alone.
+            feature_media_rag_retrieval=False,
         ),
     )
     capability_catalog.cache_clear()
@@ -560,3 +563,136 @@ async def test_attachment_guard_requires_at_least_one_arm_role(monkeypatch):
         await _invoke_attachment({"query": "seal replacement"})
 
     assert error.value.reason_code == "alternative_permission_missing"
+
+
+# ---------------------------------------------------------------------------
+# evidence_media_access (R3): per-call flag re-check, query/site inputs,
+# maintenance scope, and single-arm work_order:view exposure.
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _media_catalog(monkeypatch, *, flag=True, site_key="site-a"):
+    """The _attachment_catalog twin for the media retrieval flag.
+
+    The catalog caches the policy branch, so both directions clear it -- and
+    the teardown clear keeps a lit catalog from leaking into other tests.
+    """
+    monkeypatch.setattr(
+        _config,
+        "get_settings",
+        lambda: SimpleNamespace(
+            single_site_policy_key=site_key,
+            # Dark so these tests pin the media arm alone.
+            feature_attachment_rag_retrieval=False,
+            feature_media_rag_retrieval=flag,
+        ),
+    )
+    capability_catalog.cache_clear()
+    try:
+        yield
+    finally:
+        capability_catalog.cache_clear()
+
+
+async def _invoke_media(arguments):
+    token = principal_context.set(_principal())
+    try:
+        with bind_capability_run(
+            workflow="wf8",
+            modality="text",
+            selected_tools=[_tool("search_evidence_media")],
+        ):
+            return await authorize_invocation("search_evidence_media", arguments)
+    finally:
+        principal_context.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_media_guard_denies_while_the_flag_is_dark(monkeypatch):
+    """Default catalog: the policy itself is DISABLED, so dispatch never runs."""
+    _profile(monkeypatch, ("work_order", "view"))
+    with (
+        _media_catalog(monkeypatch, flag=False),
+        pytest.raises(CapabilityAuthorizationError) as error,
+    ):
+        await _invoke_media({"query": "nameplate photo"})
+
+    assert error.value.reason_code == "policy_disabled"
+
+
+@pytest.mark.asyncio
+async def test_media_guard_recheck_catches_a_mid_process_flag_flip(monkeypatch):
+    """Catalog lit, settings flipped dark afterwards: the per-call arm denies."""
+    _profile(monkeypatch, ("work_order", "view"))
+    _scope_resolvable(monkeypatch, True)
+    with _media_catalog(monkeypatch, flag=True):
+        capability_catalog()  # build the lit catalog
+        monkeypatch.setattr(
+            _config,
+            "get_settings",
+            lambda: SimpleNamespace(
+                single_site_policy_key="site-a",
+                feature_attachment_rag_retrieval=False,
+                feature_media_rag_retrieval=False,
+            ),
+        )
+        with pytest.raises(CapabilityAuthorizationError) as error:
+            await _invoke_media({"query": "nameplate photo"})
+
+    assert error.value.reason_code == "media_retrieval_disabled"
+
+
+@pytest.mark.asyncio
+async def test_media_guard_rejects_a_blank_query(monkeypatch):
+    _profile(monkeypatch, ("work_order", "view"))
+    _scope_resolvable(monkeypatch, True)
+    with _media_catalog(monkeypatch), pytest.raises(CapabilityAuthorizationError) as error:
+        await _invoke_media({"query": "   "})
+
+    assert error.value.reason_code == "invalid_media_query"
+
+
+@pytest.mark.asyncio
+async def test_media_guard_denies_an_unconfigured_site_scope(monkeypatch):
+    _profile(monkeypatch, ("work_order", "view"))
+    _scope_resolvable(monkeypatch, True)
+    with (
+        _media_catalog(monkeypatch, site_key=""),
+        pytest.raises(CapabilityAuthorizationError) as error,
+    ):
+        await _invoke_media({"query": "nameplate photo"})
+
+    assert error.value.reason_code == "site_scope_unconfigured"
+
+
+@pytest.mark.asyncio
+async def test_media_guard_denies_an_unresolvable_scope(monkeypatch):
+    """client_codes derive from scope_for_actor, so no scope means no corpus."""
+    _profile(monkeypatch, ("work_order", "view"))
+    _scope_resolvable(monkeypatch, False)
+    with _media_catalog(monkeypatch), pytest.raises(CapabilityAuthorizationError) as error:
+        await _invoke_media({"query": "nameplate photo"})
+
+    assert error.value.reason_code == "maintenance_scope_unresolved"
+
+
+@pytest.mark.asyncio
+async def test_media_guard_requires_the_work_order_role(monkeypatch):
+    """all_of exposure: unlike the attachment arm, part:view admits nothing."""
+    _profile(monkeypatch, ("part", "view"))
+    _scope_resolvable(monkeypatch, True)
+    with _media_catalog(monkeypatch), pytest.raises(CapabilityAuthorizationError) as error:
+        await _invoke_media({"query": "nameplate photo"})
+
+    assert error.value.reason_code == "required_permission_missing"
+
+
+@pytest.mark.asyncio
+async def test_media_guard_authorizes_a_scoped_query(monkeypatch):
+    _profile(monkeypatch, ("work_order", "view"))
+    _scope_resolvable(monkeypatch, True)
+    with _media_catalog(monkeypatch):
+        entry = await _invoke_media({"query": "nameplate photo"})
+
+    assert entry.authorization.authorizer == "evidence_media_access"

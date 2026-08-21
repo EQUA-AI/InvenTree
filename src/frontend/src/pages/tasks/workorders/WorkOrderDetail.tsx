@@ -23,6 +23,7 @@ import {
   IconHistory,
   IconLayoutKanban,
   IconPackage,
+  IconPaperclip,
   IconShieldCheck
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
@@ -31,6 +32,7 @@ import type { ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
+import { ModelType } from '@lib/enums/ModelType';
 import { apiUrl } from '@lib/functions/Api';
 import type { BoardCard, WorkOrderPart } from '@lib/types/Tasks';
 
@@ -44,6 +46,7 @@ import type {
   WorkOrderSummary
 } from '@lib/types/WorkOrderOverview';
 import PageTitle from '../../../components/nav/PageTitle';
+import { AttachmentTable } from '../../../tables/general/AttachmentTable';
 
 import { useApi } from '../../../contexts/ApiContext';
 import { InvestigationSection } from '../../maintenance/workorders/components/InvestigationSection';
@@ -246,6 +249,13 @@ export default function WorkOrderDetail() {
 
       <SectionCard title={t`Activity`} icon={<IconHistory size={18} />}>
         <EventTimeline events={workOrder.events} />
+      </SectionCard>
+
+      <SectionCard title={t`Attachments`} icon={<IconPaperclip size={18} />}>
+        <AttachmentTable
+          model_type={ModelType.workorder}
+          model_id={workOrder.id}
+        />
       </SectionCard>
 
       {workOrder.canonical_commands_enabled && !workOrder.repair_packet && (

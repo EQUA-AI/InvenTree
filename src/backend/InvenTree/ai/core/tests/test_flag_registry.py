@@ -143,6 +143,8 @@ _COMPANION_ENV: dict[str, dict[str, object]] = {
         "GCP_LOCATION": "us-central1",
         "GCP_CREDENTIALS_PATH": "/tmp/wif.json",
         "AZURE_SEARCH_ENDPOINT": "https://search.example",
+        # The image path hard-depends on gpt-4o captions (R3 validator).
+        "AZURE_OPENAI_ENDPOINT": "https://openai.example",
     },
     "FEATURE_MEDIA_RAG_RETRIEVAL": {
         "GCP_PROJECT_ID": "example-project",

@@ -72,6 +72,7 @@ def test_probe_verifies_matching_dimensions_and_index():
         "index": "verified",
         "chat": "disabled",
         "attachment_embedding": "dark",
+        "media_embedding": "dark",
     }
 
 
@@ -354,3 +355,99 @@ def test_gemini_dimension_pin_is_drift_fatal():
     with pytest.raises(MediaEmbeddingError) as excinfo:
         client.embed_texts(["probe"])
     assert excinfo.value.code == "MEDIA_EMBEDDING_DIMENSION_DRIFT"
+
+
+# ---------------------------------------------------------------------------
+# Media plane (Gemini Embedding 2) boot probe — R3
+# ---------------------------------------------------------------------------
+
+
+def _media_settings(**overrides) -> Settings:
+    """Governed base plus a lit media plane pinned at 3072 dims (Gemini)."""
+    base = {
+        "FEATURE_MEDIA_RAG_RETRIEVAL": True,
+        "GCP_PROJECT_ID": "example-project",
+        "GCP_LOCATION": "us-central1",
+        "GCP_CREDENTIALS_PATH": "/secrets/wif-external-account.json",
+    }
+    base.update(overrides)
+    return _settings(**base)
+
+
+class _GeminiQueryEmbedder:
+    def __init__(self, dimensions=3072):
+        self.dimensions = dimensions
+
+    def embed_query(self, text):
+        return [0.5] * self.dimensions
+
+
+class _FailingQueryEmbedder:
+    def embed_query(self, text):
+        raise RuntimeError("network down")
+
+
+def test_media_probe_dark_when_flags_off():
+    report = run_boot_probes(
+        settings=_settings(),
+        embedding_client_factory=_Embedder,
+        index_dimensions_reader=lambda _s: 8,
+    )
+    assert report["media_embedding"] == "dark"
+
+
+def test_media_probe_disabled_when_boot_probe_flag_off():
+    report = run_boot_probes(
+        settings=_media_settings(EMBEDDING_BOOT_PROBE_ENABLED=False),
+        embedding_client_factory=_FailingEmbedder,
+        media_embedding_client_factory=_FailingQueryEmbedder,
+    )
+    assert report["media_embedding"] == "disabled"
+
+
+def test_media_probe_verifies_the_gemini_width_pin():
+    """One embed_query round-trip at the pinned width reports verified."""
+    report = run_boot_probes(
+        settings=_media_settings(),
+        embedding_client_factory=_Embedder,
+        index_dimensions_reader=lambda _s: 8,
+        media_embedding_client_factory=_GeminiQueryEmbedder,
+    )
+    assert report["media_embedding"] == "verified"
+    assert "media_embedding" in report
+
+
+def test_media_probe_runs_for_an_ingest_only_deployment():
+    """Either media flag lights the plane; ingest-only must still boot-pin."""
+    report = run_boot_probes(
+        settings=_media_settings(
+            FEATURE_MEDIA_RAG_RETRIEVAL=False,
+            FEATURE_MEDIA_RAG_INGEST=True,
+        ),
+        embedding_client_factory=_Embedder,
+        index_dimensions_reader=lambda _s: 8,
+        media_embedding_client_factory=_GeminiQueryEmbedder,
+    )
+    assert report["media_embedding"] == "verified"
+
+
+def test_media_probe_refuses_dimension_drift():
+    with pytest.raises(ModelPinError) as excinfo:
+        run_boot_probes(
+            settings=_media_settings(),
+            embedding_client_factory=_Embedder,
+            index_dimensions_reader=lambda _s: 8,
+            media_embedding_client_factory=lambda: _GeminiQueryEmbedder(dimensions=1536),
+        )
+    assert excinfo.value.code == "EMBEDDING_DIMENSION_DRIFT"
+
+
+def test_media_probe_unreachable_endpoint_is_fatal():
+    with pytest.raises(ModelPinError) as excinfo:
+        run_boot_probes(
+            settings=_media_settings(),
+            embedding_client_factory=_Embedder,
+            index_dimensions_reader=lambda _s: 8,
+            media_embedding_client_factory=_FailingQueryEmbedder,
+        )
+    assert excinfo.value.code == "EMBEDDING_PROBE_UNREACHABLE"

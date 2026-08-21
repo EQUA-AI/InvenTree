@@ -720,6 +720,7 @@ class AttachmentExtractor(models.TextChoices):
     """Which extraction leg produced the indexed text (R1, decision #12)."""
 
     DI_LAYOUT = 'di_layout', 'Document Intelligence layout'
+    DI_READ = 'di_read', 'Document Intelligence read (OCR)'
     DIRECT = 'direct', 'Direct text read'
     PYPDF_OVERRIDE = 'pypdf_override', 'pypdf (explicit override)'
 

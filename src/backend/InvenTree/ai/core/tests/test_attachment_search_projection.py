@@ -9,6 +9,7 @@ from ai.core.config import Settings
 from ai.core.integrations.attachment_search import (
     AttachmentIndexingError,
     AttachmentSearchProjection,
+    MediaSearchProjection,
 )
 
 
@@ -22,6 +23,7 @@ class FakeSearchClient:
         self.filters: list[str] = []
         self.search_pages: list[list[dict]] = []
         self.fail_upload = False
+        self.fail_merge = False
 
     def search(self, *, search_text, filter, select, top):
         self.filters.append(filter)
@@ -38,6 +40,8 @@ class FakeSearchClient:
         return [{"succeeded": True} for _ in documents]
 
     def merge_documents(self, *, documents):
+        if self.fail_merge:
+            return [{"succeeded": False}]
         self.merged.append(list(documents))
         return [{"succeeded": True} for _ in documents]
 
@@ -179,3 +183,102 @@ def test_close_releases_the_client():
     projection.close()
     assert fake.closed is True
     assert projection._client is None
+
+
+# ---------------------------------------------------------------------------
+# Media-evidence projection (R3): binding, alias refusal, thumbnail heal
+# ---------------------------------------------------------------------------
+
+
+def _media_settings_stub(**overrides) -> SimpleNamespace:
+    stub = SimpleNamespace(
+        azure_search_endpoint="https://search.example",
+        azure_search_api_key="",
+        azure_search_attachment_docs_index="aimms-attachment-docs-v1",
+        azure_search_controlled_documents_index="eaits-manuals-v4a",
+        azure_search_documents_index="",
+        azure_search_media_index="aimms-media-evidence-v1",
+    )
+    for key, value in overrides.items():
+        setattr(stub, key, value)
+    return stub
+
+
+def make_media_projection() -> tuple[MediaSearchProjection, FakeSearchClient]:
+    projection = MediaSearchProjection(
+        endpoint="https://search.example", index_name="aimms-media-evidence-v1"
+    )
+    fake = FakeSearchClient()
+    projection._client = fake
+    return projection, fake
+
+
+def test_media_from_settings_binds_the_media_index(monkeypatch):
+    monkeypatch.setattr("ai.core.config.get_settings", _media_settings_stub)
+    projection = MediaSearchProjection.from_settings()
+    assert isinstance(projection, MediaSearchProjection)
+    assert projection.index_name == "aimms-media-evidence-v1"
+
+
+def test_media_from_settings_refuses_alias_of_attachment_docs_index(monkeypatch):
+    # Settings refuses this pairing at construction (startup distinctness),
+    # so the adapter's defense-in-depth check is exercised with a stub.
+    monkeypatch.setattr(
+        "ai.core.config.get_settings",
+        lambda: _media_settings_stub(azure_search_media_index="aimms-attachment-docs-v1"),
+    )
+    with pytest.raises(AttachmentIndexingError) as excinfo:
+        MediaSearchProjection.from_settings()
+    assert excinfo.value.code == "ATTACHMENT_SEARCH_INDEX_ALIASED"
+
+
+def test_media_from_settings_refuses_alias_of_governed_index(monkeypatch):
+    monkeypatch.setattr(
+        "ai.core.config.get_settings",
+        lambda: _media_settings_stub(azure_search_media_index="eaits-manuals-v4a"),
+    )
+    with pytest.raises(AttachmentIndexingError) as excinfo:
+        MediaSearchProjection.from_settings()
+    assert excinfo.value.code == "ATTACHMENT_SEARCH_INDEX_ALIASED"
+
+
+def test_media_from_settings_requires_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        "ai.core.config.get_settings",
+        lambda: _media_settings_stub(azure_search_endpoint=""),
+    )
+    with pytest.raises(AttachmentIndexingError) as excinfo:
+        MediaSearchProjection.from_settings()
+    assert excinfo.value.code == "ATTACHMENT_SEARCH_CONFIG_INVALID"
+
+
+def test_merge_thumbnail_merges_exactly_one_document():
+    projection, fake = make_media_projection()
+    projection.merge_thumbnail(
+        search_doc_id="att-5-abcdef123456-img",
+        thumbnail_path="attachments/thumbs/5.webp",
+    )
+    assert fake.merged == [
+        [{"id": "att-5-abcdef123456-img", "thumbnail_path": "attachments/thumbs/5.webp"}]
+    ]
+
+
+def test_merge_thumbnail_unsucceeded_result_raises():
+    projection, fake = make_media_projection()
+    fake.fail_merge = True
+    with pytest.raises(AttachmentIndexingError) as excinfo:
+        projection.merge_thumbnail(search_doc_id="att-5-abc-img", thumbnail_path="t.webp")
+    assert excinfo.value.code == "ATTACHMENT_SEARCH_MERGE_FAILED"
+
+
+def test_merge_thumbnail_provider_exception_raises_value_free():
+    projection, fake = make_media_projection()
+
+    def _boom(*, documents):
+        raise RuntimeError("endpoint=secret")
+
+    fake.merge_documents = _boom
+    with pytest.raises(AttachmentIndexingError) as excinfo:
+        projection.merge_thumbnail(search_doc_id="att-5-abc-img", thumbnail_path="t.webp")
+    assert excinfo.value.code == "ATTACHMENT_SEARCH_MERGE_FAILED"
+    assert "secret" not in str(excinfo.value)

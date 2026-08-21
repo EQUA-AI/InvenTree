@@ -94,6 +94,77 @@ class TestCaptureLedger:
         assert {c["access_class"] for c in citations} == {""}
         assert {c["source_file_name"] for c in citations} == {""}
 
+    def test_governed_citations_default_the_media_keys_to_empty(self) -> None:
+        """R3 additive keys: governed and doc rows carry '' for every media
+        coordinate, so the capture shape stays uniform across corpora."""
+        ledger = _ledger_with_manuals()
+        for citation in ledger.manuals_citations():
+            for key in (
+                "media_type",
+                "work_order_id",
+                "timecode_start_s",
+                "timecode_end_s",
+            ):
+                assert citation[key] == "", key
+
+    def test_media_citations_carry_their_evidence_coordinates(self) -> None:
+        """R3: an evidence-media result joins the pool with its media keys."""
+        payload = {
+            "chunks": [
+                {
+                    "excerpt": "Nameplate: Flygt NP 3301, 415 V",
+                    "score": 2.7,
+                    "citation": {
+                        "document": "nameplate-hx200",
+                        "source_file_name": "nameplate-hx200.png",
+                        "chunk_id": "att-9-abc123def456-img-0",
+                        "access_class": "evidence_recording",
+                        "media_type": "image",
+                        "work_order_id": 104,
+                        "timecode_start_s": None,
+                        "timecode_end_s": None,
+                        "asset_id": "SER-PS1-001",
+                        "excerpt_hash": "abc",
+                    },
+                }
+            ],
+            "total": 1,
+            "machine_filter": "HX-200",
+            "work_order_filter": "WO-EVAL-HX200",
+        }
+        ledger = ToolCaptureLedger()
+        ledger.record("evidence.read:search_evidence_media", payload)
+        citations = ledger.manuals_citations()
+        assert [c["chunk_id"] for c in citations] == ["att-9-abc123def456-img-0"]
+        citation = citations[0]
+        assert citation["access_class"] == "evidence_recording"
+        assert citation["media_type"] == "image"
+        assert citation["work_order_id"] == "104"
+        # An image has no timecodes; None projects to the same '' default.
+        assert citation["timecode_start_s"] == ""
+        assert citation["timecode_end_s"] == ""
+        # thumbnail_path is deliberately not captured: the stored path embeds
+        # the uploader-chosen filename (review finding, R3).
+        assert "thumbnail_path" not in citation
+        assert citation["asset_id"] == "SER-PS1-001"
+        # The cited work-order id counts as observed once a tool returned it.
+        assert "104" in ledger.observed_values()
+
+    def test_media_tool_machine_candidates_are_captured(self) -> None:
+        """The candidates gate accepts the R3 tool id alongside the R2 pair."""
+        payload = {
+            "chunks": [],
+            "total": 0,
+            "machine_filter": "ambiguous",
+            "machine_candidates": [
+                {"machine_id": 1, "name": "Pump A", "serial": "A"},
+                {"machine_id": 2, "name": "Pump B", "serial": "B"},
+            ],
+        }
+        ledger = ToolCaptureLedger()
+        ledger.record("search_evidence_media", payload)
+        assert len(ledger.manuals_machine_candidates()) == 2
+
     def test_attachment_tool_machine_candidates_are_captured(self) -> None:
         """The candidates gate admits both retrieval tools, nothing else."""
         payload = {

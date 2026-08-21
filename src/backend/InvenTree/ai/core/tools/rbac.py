@@ -40,6 +40,7 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
     from ai.core.integrations import controlled_document_corpus as cdt
     from ai.core.integrations import inventory_tools as it
     from ai.core.integrations import kanban_tools as kt
+    from ai.core.integrations import media_corpus as mc
     from ai.core.tools.inventree.read import machines as mt
     from ai.core.tools.inventree.read import maintenance as wt
     from ai.core.tools.inventree.write import purchase_orders as po
@@ -162,6 +163,12 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
         # Controlled-document corpus search: readable by maintenance staff;
         # the site-key filter inside the tool is the content boundary.
         cdt.search_manuals: ("work_order", "view"),
+        # Evidence-media corpus search (R3): a single work_order:view arm —
+        # all three owner types are evidence surfaces under maintenance
+        # scope; the in-tool client_codes filter is the content boundary.
+        # (search_attachment_docs stays unmapped: its EITHER-role any_of is
+        # inexpressible as one pair and lives in the catalog policy instead.)
+        mc.search_evidence_media: ("work_order", "view"),
         # Email stays AIMMS-native (_native_tool_map): Gmail is not an InvenTree
         # model and has no ruleset to map onto.
         # query_database / list_database_tables are intentionally unmapped:

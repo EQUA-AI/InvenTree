@@ -158,6 +158,19 @@ def test_search_attachment_docs_is_not_fenced():
             pass  # dark flag/unconfigured backends, not the fence
 
 
+def test_search_evidence_media_is_not_fenced():
+    """Evidence-media retrieval (R3) is a read; it must survive the fence."""
+    from ai.core.integrations import media_corpus
+
+    with read_only_tool_fence():
+        try:
+            asyncio.run(_call(media_corpus.search_evidence_media, query="nameplate photo"))
+        except PermissionError:  # pragma: no cover - would be the defect
+            pytest.fail("search_evidence_media was blocked by the read-only fence")
+        except Exception:
+            pass  # dark flag/unconfigured backends, not the fence
+
+
 def test_confirmed_write_exception_reopens_the_fence_for_one_call():
     """A confirmed Tier-3 write must still be able to execute."""
     from ai.core.integrations import kanban_tools

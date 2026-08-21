@@ -31,9 +31,12 @@ def record_search(
 
     ``corpus`` names which retrieval surface wrote the row (``governed`` for
     the controlled manuals, ``attachment`` for the R2 uploaded-document
-    corpus) so rollups stay separable; ``part_filter`` mirrors the attachment
-    tool's part-narrowing outcome. Both default to the pre-R2 shape so
-    existing callers are untouched.
+    corpus, ``media`` for the R3 evidence-media corpus) so rollups stay
+    separable; ``part_filter`` mirrors the attachment tool's part-narrowing
+    outcome — for ``corpus='media'`` it carries the WORK-ORDER narrowing
+    outcome instead (documented convention; a dedicated column is a deferred
+    dark-safe migration). ``document_class`` carries ``media_type`` for media
+    rows. All default to the pre-R2 shape so existing callers are untouched.
     """
     try:
         from aichat.models import RetrievalMiss

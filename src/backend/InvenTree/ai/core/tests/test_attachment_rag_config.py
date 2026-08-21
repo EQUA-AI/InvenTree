@@ -27,6 +27,7 @@ def test_rag_flags_default_dark():
     assert s.azure_search_media_index == "aimms-media-evidence-v1"
     assert s.cohere_embed_dimensions == 1536
     assert s.gemini_embed_dimensions == 3072
+    assert s.rag_max_image_mb == 25
 
 
 def test_attachment_flag_without_cohere_fails_closed():
@@ -67,6 +68,17 @@ def test_media_flag_requires_credentials_path():
             FEATURE_MEDIA_RAG_INGEST=True,
             GCP_PROJECT_ID="example-project",
             GCP_LOCATION="us-central1",
+        )
+
+
+def test_media_ingest_requires_caption_endpoint():
+    with pytest.raises(ValidationError, match="AZURE_OPENAI_ENDPOINT"):
+        _settings(
+            FEATURE_MEDIA_RAG_INGEST=True,
+            GCP_PROJECT_ID="example-project",
+            GCP_LOCATION="us-central1",
+            GCP_CREDENTIALS_PATH="/secrets/wif-external-account.json",
+            AZURE_SEARCH_ENDPOINT="https://example.search.windows.net",
         )
 
 

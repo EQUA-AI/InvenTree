@@ -43,6 +43,7 @@ def _settings(**overrides) -> Settings:
         (ModelPurpose.GROUNDING_AUDIT, "text", FAST),
         (ModelPurpose.CLOSEOUT_BINDING, "text", FAST),
         (ModelPurpose.SUMMARIZATION, "text", FAST),
+        (ModelPurpose.MEDIA_CAPTION, "text", STANDARD),
     ],
 )
 @pytest.mark.parametrize("enforce", [False, True])

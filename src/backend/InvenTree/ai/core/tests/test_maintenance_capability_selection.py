@@ -294,6 +294,9 @@ def test_datasheet_phrasing_carries_the_attachment_tool_when_lit(monkeypatch):
         "get_settings",
         lambda: SimpleNamespace(
             feature_attachment_rag_retrieval=True,
+            # The media policy branch reads its own flag during the same
+            # catalog build; dark here so this test pins the R2 tool alone.
+            feature_media_rag_retrieval=False,
             single_site_policy_key="site-a",
         ),
     )
@@ -317,6 +320,102 @@ def test_datasheet_phrasing_carries_the_attachment_tool_when_lit(monkeypatch):
         assert not exposure_authorized(
             catalog["search_attachment_docs"],
             frozenset({("stock", "view")}),
+            authenticated=True,
+        )
+    finally:
+        capability_catalog.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# R3: search_evidence_media rides the evidence.read pack behind its flag
+# ---------------------------------------------------------------------------
+
+
+def test_evidence_pack_stays_single_tool_with_job_and_asset_adjacency():
+    """Worst evidence-primary stack: evidence 1 + maintenance 6 + machines 9
+    = 16 tools, exactly MAX_INITIAL_TOOLS -- a second evidence tool or a new
+    adjacency edge would trip the trim loop."""
+    _effect, tool_ids, _terms = capabilities._PACK_SPECS["evidence.read"]
+    assert tool_ids == ("search_evidence_media",)
+    assert capabilities._ADJACENT_PACKS["evidence.read"] == frozenset({
+        "maintenance.read",
+        "machines.read",
+    })
+
+
+def test_evidence_pack_is_not_a_sql_escape_hatch():
+    """query_database applies no client-code scope, so it must not stand in
+    for the evidence corpus."""
+    assert "evidence.read" not in capabilities._SQL_HATCH_PACKS
+
+
+def test_evidence_media_is_dark_by_default():
+    """Flag off: the catalog policy is DISABLED, so the tool is never
+    model-visible regardless of pack selection."""
+    from ai.core.tools.capabilities import exposure_authorized
+
+    catalog = {entry.tool_id: entry for entry in capability_catalog()}
+    entry = catalog["search_evidence_media"]
+    assert entry.pack_id == "evidence.read"
+    assert entry.authorization.kind is PolicyKind.DISABLED
+    assert not exposure_authorized(entry, PROFILE, authenticated=True)
+    # The pack still scores; the DISABLED policy is what withholds the tool.
+    selected = select_capabilities(
+        "any photos or pictures of the nameplate captured on the machine during the repair?",
+        profile=PROFILE,
+        authenticated=True,
+    )
+    assert selected.pack_ids[0] == "evidence.read", selected.pack_ids
+    assert "search_evidence_media" not in selected.tool_ids
+
+
+def test_photo_phrasing_selects_evidence_primary_with_adjacency_when_lit(monkeypatch):
+    """Flag on: an evidence question leads the evidence pack, pulls the
+    maintenance and machines packs alongside, and still fits the budget."""
+    from types import SimpleNamespace
+
+    from ai.core import config as ai_config
+    from ai.core.tools.capabilities import exposure_authorized
+
+    monkeypatch.setattr(
+        ai_config,
+        "get_settings",
+        lambda: SimpleNamespace(
+            feature_attachment_rag_retrieval=False,
+            feature_media_rag_retrieval=True,
+            single_site_policy_key="site-a",
+        ),
+    )
+    capability_catalog.cache_clear()
+    try:
+        selected = select_capabilities(
+            "any photos or pictures of the nameplate captured on the machine during the repair?",
+            profile=PROFILE,
+            authenticated=True,
+        )
+        assert selected.pack_ids[0] == "evidence.read", selected.pack_ids
+        assert set(selected.pack_ids) == {
+            "evidence.read",
+            "maintenance.read",
+            "machines.read",
+        }, selected.pack_ids
+        assert "search_evidence_media" in selected.tool_ids
+        # The worst evidence-primary stack lands exactly on the budget, so
+        # nothing was trimmed and every drill-down survives.
+        assert len(selected.tool_ids) <= MAX_INITIAL_TOOLS
+        assert MAINTENANCE_TOOL_IDS.issubset(set(selected.tool_ids))
+
+        catalog = {entry.tool_id: entry for entry in capability_catalog()}
+        assert exposure_authorized(catalog["search_evidence_media"], PROFILE, authenticated=True)
+        # all_of: work_order:view alone admits; part:view alone does not.
+        assert exposure_authorized(
+            catalog["search_evidence_media"],
+            frozenset({("work_order", "view")}),
+            authenticated=True,
+        )
+        assert not exposure_authorized(
+            catalog["search_evidence_media"],
+            frozenset({("part", "view")}),
             authenticated=True,
         )
     finally:

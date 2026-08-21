@@ -817,11 +817,13 @@ class Settings(BaseSettings):
     # sa_key = service-account key file (local dev only).
     gcp_auth_mode: Literal["wif", "sa_key"] = Field(default="wif", alias="GCP_AUTH_MODE")
     gcp_credentials_path: str = Field(default="", alias="GCP_CREDENTIALS_PATH")
-    gemini_embed_model: str = Field(
-        default="gemini-embedding-2-preview", alias="GEMINI_EMBED_MODEL"
-    )
+    # Decision #17: pinned to the GA ID (GA 2026-04-22) before any media
+    # backfill; the boot probe + pre-flip smoke validate reachability and the
+    # 3072 width live, and fail closed on drift.
+    gemini_embed_model: str = Field(default="gemini-embedding-2", alias="GEMINI_EMBED_MODEL")
     gemini_embed_dimensions: int = Field(default=3072, ge=1, alias="GEMINI_EMBED_DIMENSIONS")
     rag_max_doc_mb: int = Field(default=50, ge=1, alias="RAG_MAX_DOC_MB")
+    rag_max_image_mb: int = Field(default=25, ge=1, alias="RAG_MAX_IMAGE_MB")
     rag_max_video_mb: int = Field(default=500, ge=1, alias="RAG_MAX_VIDEO_MB")
     # Gemini Embedding 2 accepts clips of at most 120 s per call.
     rag_video_segment_s: int = Field(default=60, ge=10, le=120, alias="RAG_VIDEO_SEGMENT_S")
@@ -903,6 +905,16 @@ class Settings(BaseSettings):
                     "AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_MEDIA_INDEX are required "
                     "when media RAG is enabled"
                 )
+        if self.feature_media_rag_ingest and not self.azure_openai_endpoint:
+            # The image path hard-depends on gpt-4o captions; flag-on without
+            # the endpoint would fail every ingest at runtime instead of at
+            # boot (fail-closed-at-startup contract). Retrieval alone does
+            # not caption, so only the ingest flag binds. DI is validated in
+            # the aichat boot probe (its settings live in a separate class).
+            raise ValueError(
+                "AZURE_OPENAI_ENDPOINT is required when media RAG ingest is "
+                "enabled (image captions)"
+            )
         return self
 
     # -------------------------------------------------------------------------

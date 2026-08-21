@@ -138,6 +138,7 @@ def run_boot_probes(
     index_dimensions_reader: Callable[[Settings], int | None] | None = None,
     chat_prober: Callable[[Settings, str, str], None] | None = None,
     attachment_embedding_client_factory: Callable[[], Any] | None = None,
+    media_embedding_client_factory: Callable[[], Any] | None = None,
 ) -> dict[str, str]:
     """Run the S17 startup probes and return a bounded outcome report.
 
@@ -154,6 +155,7 @@ def run_boot_probes(
     report["attachment_embedding"] = _probe_attachment_plane(
         settings, attachment_embedding_client_factory
     )
+    report["media_embedding"] = _probe_media_plane(settings, media_embedding_client_factory)
 
     if not settings.embedding_boot_probe_enabled:
         report["embedding"] = "disabled"
@@ -235,11 +237,12 @@ def run_boot_probes(
         report["chat"] = "verified"
 
     logger.info(
-        "model-pin boot probe embedding=%s index=%s chat=%s attachment=%s",
+        "model-pin boot probe embedding=%s index=%s chat=%s attachment=%s media=%s",
         report["embedding"],
         report["index"],
         report["chat"],
         report["attachment_embedding"],
+        report["media_embedding"],
     )
     return report
 
@@ -280,6 +283,46 @@ def _probe_attachment_plane(
             f"Attachment embedding model {settings.cohere_embed_model!r} produced "
             f"{observed}-dimension vectors; the attachment index is configured "
             f"for {expected_dims}",
+            code="EMBEDDING_DIMENSION_DRIFT",
+        )
+    return "verified"
+
+
+def _probe_media_plane(
+    settings: Settings,
+    client_factory: Callable[[], Any] | None,
+) -> str:
+    """Probe the media-RAG embedding plane (Gemini, Vertex AI) when lit.
+
+    One ``embed_query`` round-trip validates the whole WIF credential chain,
+    the pinned model's reachability (decision #17), and the 3072-dimension
+    width in one shot. Same abort contract as the other planes: better a
+    refused boot than a corpus embedded against the wrong pin.
+    """
+    if not (settings.feature_media_rag_ingest or settings.feature_media_rag_retrieval):
+        return "dark"
+    if not settings.embedding_boot_probe_enabled:
+        logger.warning("media embedding boot probe disabled by configuration")
+        return "disabled"
+    if client_factory is None:
+        from ai.core.integrations.embeddings_gemini import GeminiEmbeddingClient
+
+        client_factory = GeminiEmbeddingClient.from_settings
+    try:
+        vector = client_factory().embed_query(_PROBE_TEXT)
+    except ModelPinError:
+        raise
+    except Exception as exc:
+        raise ModelPinError(
+            "Media embedding boot probe could not reach the endpoint",
+            code="EMBEDDING_PROBE_UNREACHABLE",
+        ) from exc
+    expected_dims = settings.gemini_embed_dimensions
+    if len(vector or []) != expected_dims:
+        raise ModelPinError(
+            f"Media embedding model {settings.gemini_embed_model!r} produced "
+            f"{len(vector or [])}-dimension vectors; the media index is "
+            f"configured for {expected_dims}",
             code="EMBEDDING_DIMENSION_DRIFT",
         )
     return "verified"

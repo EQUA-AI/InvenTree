@@ -182,7 +182,10 @@ REGISTRY: tuple[FlagEntry, ...] = (
         False,
         'django',
         config_key='aimms_media_rag_enabled',
-        description='Media (image/video) RAG ingest receivers/tasks (Django plane, R0)',
+        description=(
+            'Media (image) RAG ingest arm — Django-plane co-gate ANDed with '
+            'FEATURE_MEDIA_RAG_INGEST (R3; video R4)'
+        ),
     ),
     FlagEntry(
         'FEATURE_THREAD_SHARING',
@@ -463,7 +466,7 @@ REGISTRY: tuple[FlagEntry, ...] = (
         False,
         'ai',
         ai_field='feature_media_rag_ingest',
-        description='Image/video RAG ingestion (R3/R4, dark)',
+        description='Image RAG ingestion router arm (R3; video R4)',
     ),
     FlagEntry(
         'FEATURE_MEDIA_RAG_RETRIEVAL',

@@ -101,6 +101,7 @@ def text_chat_tools() -> tuple[Any, ...]:
     from ai.core.integrations.email.tools import EMAIL_TOOLS
     from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
+    from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
     from ai.core.tools.inventree.write.purchase_orders import (
         PURCHASE_ORDER_WRITE_TOOLS,
     )
@@ -113,6 +114,7 @@ def text_chat_tools() -> tuple[Any, ...]:
         *DOCUMENT_SEARCH_TOOLS,
         *CONTROLLED_CORPUS_TOOLS,
         *ATTACHMENT_CORPUS_TOOLS,
+        *EVIDENCE_MEDIA_TOOLS,
     )
     unique: dict[str, Any] = {}
     for tool in ordered:

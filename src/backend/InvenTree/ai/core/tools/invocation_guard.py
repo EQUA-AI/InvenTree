@@ -247,6 +247,23 @@ async def authorize_invocation(tool_id: str, arguments: Any) -> CapabilityEntry:
             _deny("site_scope_unconfigured")
         if not await _has_maintenance_scope():
             _deny("maintenance_scope_unresolved")
+    elif policy.authorizer == "evidence_media_access":
+        # R3 evidence-media search. Same four checks as the attachment arm
+        # with media vocabulary; the maintenance-scope precheck is even more
+        # load-bearing here -- every media document is client-coded, so an
+        # actor whose scope cannot resolve would read as "no evidence exists"
+        # instead of being refused before dispatch.
+        from ai.core.config import get_settings
+
+        if not get_settings().feature_media_rag_retrieval:
+            _deny("media_retrieval_disabled")
+        query = arguments_dict.get("query")
+        if not isinstance(query, str) or not query.strip():
+            _deny("invalid_media_query")
+        if not (get_settings().single_site_policy_key or "").strip():
+            _deny("site_scope_unconfigured")
+        if not await _has_maintenance_scope():
+            _deny("maintenance_scope_unresolved")
     elif policy.kind is PolicyKind.RESOURCE_AUTHORIZER:
         _deny("unknown_resource_authorizer")
 

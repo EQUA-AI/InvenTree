@@ -40,6 +40,9 @@ _HARVEST_KEYS = frozenset({
     "document_id",
     "revision",
     "chunk_id",
+    # R3: a work-order id an evidence-media citation carried counts as
+    # observed when the model repeats it.
+    "work_order_id",
 })
 _MAX_HARVEST_DEPTH = 6
 
@@ -70,7 +73,10 @@ class ToolCaptureLedger:
         if citations:
             capture["citations"] = citations
         machine_candidates = _manuals_machine_candidates(payload)
-        if str(tool_id) in {"search_manuals", "search_attachment_docs"} and machine_candidates:
+        if (
+            str(tool_id) in {"search_manuals", "search_attachment_docs", "search_evidence_media"}
+            and machine_candidates
+        ):
             capture["machine_candidates"] = machine_candidates
         self.captures.append(capture)
         _harvest_observed(payload, self.observed, depth=0)
@@ -120,6 +126,12 @@ def _manuals_citations(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 # governed corpus (which leaves both empty) in captures.
                 "access_class": str(citation.get("access_class") or ""),
                 "source_file_name": str(citation.get("source_file_name") or ""),
+                # R3 evidence-media coordinates; every earlier corpus leaves
+                # these empty (additive keys with safe defaults).
+                "media_type": str(citation.get("media_type") or ""),
+                "work_order_id": str(citation.get("work_order_id") or ""),
+                "timecode_start_s": str(citation.get("timecode_start_s") or ""),
+                "timecode_end_s": str(citation.get("timecode_end_s") or ""),
             })
     return citations
 

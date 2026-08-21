@@ -67,12 +67,26 @@ class AIChatConfig(AppConfig):
         """
         from django.conf import settings as django_settings
 
-        if not getattr(django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False):
+        if not (
+            getattr(django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False)
+            or getattr(django_settings, 'AIMMS_MEDIA_RAG_ENABLED', False)
+        ):
             return
         try:
             from ai.core.config import get_settings
 
             get_settings()
+            if getattr(django_settings, 'AIMMS_MEDIA_RAG_ENABLED', False):
+                from ai.core.integrations.doc_intelligence import (
+                    get_doc_intelligence_client,
+                )
+
+                if get_doc_intelligence_client() is None:
+                    logger.error(
+                        'Media RAG is enabled but Document Intelligence is not '
+                        'configured; every image ingest will fail '
+                        '(AZURE_DOC_INTELLIGENCE_ENDPOINT/_KEY)'
+                    )
         except Exception as exc:
             locations: list[str] = []
             errors = getattr(exc, 'errors', None)
@@ -154,4 +168,27 @@ class AIChatConfig(AppConfig):
         except Exception:  # pragma: no cover - startup must not depend on AI config
             logger.warning(
                 'Could not register attachment RAG re-stamp receivers', exc_info=True
+            )
+
+        try:
+            from django.db.models.signals import post_save
+
+            from tasks.models import WorkOrder
+
+            from aichat import receivers
+
+            post_save.connect(
+                receivers.work_order_saved,
+                sender=WorkOrder,
+                dispatch_uid='aichat.attachment_rag_workorder_saved',
+            )
+        except (ImportError, RuntimeError) as exc:
+            # Expected in AI-only settings where the tasks app is absent.
+            logger.info(
+                'Attachment RAG work-order re-stamp receiver not registered',
+                extra={'error_type': type(exc).__name__},
+            )
+        except Exception:  # pragma: no cover - startup must not depend on AI config
+            logger.warning(
+                'Could not register attachment RAG work-order receiver', exc_info=True
             )
