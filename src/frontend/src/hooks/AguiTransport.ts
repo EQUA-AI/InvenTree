@@ -57,6 +57,7 @@ export interface AguiTurnCallbacks {
   }): void;
   onQuestion(value: Record<string, unknown>): void;
   onEntities(entities: unknown[]): void;
+  onMediaEvidence(entries: unknown[]): void;
   onProvenance(evidence: unknown[], confidence: string): void;
   onProposalsRefresh(): void;
 }
@@ -136,6 +137,11 @@ function dispatchCustom(
     case 'aimms.entities': {
       const entities = (value as { entities?: unknown[] })?.entities;
       callbacks.onEntities(Array.isArray(entities) ? entities : []);
+      break;
+    }
+    case 'aimms.mediaEvidence': {
+      const entries = (value as { media_evidence?: unknown[] })?.media_evidence;
+      callbacks.onMediaEvidence(Array.isArray(entries) ? entries : []);
       break;
     }
     case 'aimms.provenance': {

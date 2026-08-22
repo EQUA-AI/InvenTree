@@ -384,6 +384,9 @@ REGISTRY: tuple[FlagEntry, ...] = (
         ai_field='feature_entity_manifest',
     ),
     FlagEntry(
+        'FEATURE_MEDIA_EVIDENCE', 'bool', True, 'ai', ai_field='feature_media_evidence'
+    ),
+    FlagEntry(
         'FEATURE_HISTORY_ENRICHMENT',
         'bool',
         False,

@@ -69,6 +69,7 @@ import { VoiceSessionControl } from '../ai/VoiceSessionControl';
 import { VoiceTranscript } from '../ai/VoiceTranscript';
 import { CitationList } from '../aichat/CitationList';
 import { EntityChips } from '../aichat/EntityChips';
+import { EvidenceChips } from '../aichat/EvidenceChips';
 import { InlineMarkdown, MarkdownMessage } from '../aichat/MarkdownMessage';
 import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
@@ -1004,6 +1005,10 @@ function ChatMessageItem({
                 this turn was actually about. */}
             {!isUser && !message.isStreaming && message.entities && (
               <EntityChips entities={message.entities} />
+            )}
+            {/* R4: server-verified media evidence (photos / video segments). */}
+            {!isUser && !message.isStreaming && message.mediaEvidence && (
+              <EvidenceChips items={message.mediaEvidence} />
             )}
             {/* Diagnosis-rail provenance (S10): a cited answer shows its
                 sources; an uncited one is visibly flagged, never implied. */}

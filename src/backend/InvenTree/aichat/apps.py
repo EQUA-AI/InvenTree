@@ -88,6 +88,14 @@ class AIChatConfig(AppConfig):
                         'here will fail. Harmless on a web app whose worker '
                         'carries AZURE_DOC_INTELLIGENCE_ENDPOINT/_KEY.'
                     )
+                from aichat.services.video_tools import ffmpeg_available
+
+                if not ffmpeg_available():
+                    logger.error(
+                        'Media RAG is enabled but ffmpeg/ffprobe is not on '
+                        'PATH in THIS image; video ingests will fail. Every '
+                        'app sharing this image is affected.'
+                    )
         except Exception as exc:
             locations: list[str] = []
             errors = getattr(exc, 'errors', None)

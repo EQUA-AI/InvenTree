@@ -53,6 +53,7 @@ export type AimmsCustomChannel =
   | 'aimms.toolStatus'
   | 'aimms.question'
   | 'aimms.entities'
+  | 'aimms.mediaEvidence'
   | 'aimms.provenance'
   | 'aimms.stateDelta'
   | 'aimms.proposalsRefresh'

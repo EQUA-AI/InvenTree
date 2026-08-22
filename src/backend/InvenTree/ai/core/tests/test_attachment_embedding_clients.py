@@ -158,6 +158,36 @@ def test_gemini_embeds_image_bytes():
     assert models.calls[0]["contents"] is not None
 
 
+def test_gemini_embeds_video_segment_bytes():
+    """R4: one clip goes up as a bare Part (not a batch) at the pinned width."""
+    models = _FakeGeminiModels()
+    client = _gemini(models=models)
+    vector = client.embed_video_segment(
+        b"\x00\x00\x00\x18ftypmp42 fake clip", mime_type="video/mp4"
+    )
+    assert len(vector) == 8
+    contents = models.calls[0]["contents"]
+    assert contents is not None
+    assert not isinstance(contents, list)
+    assert models.calls[0]["config"].output_dimensionality == 8
+
+
+def test_gemini_video_segment_refuses_cardinality_drift():
+    """A multi-embedding response for one clip is malformed, never truncated."""
+
+    class _TwoVectorModels(_FakeGeminiModels):
+        def embed_content(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(
+                embeddings=[SimpleNamespace(values=[0.5] * self.dimensions) for _ in range(2)]
+            )
+
+    client = _gemini(models=_TwoVectorModels())
+    with pytest.raises(MediaEmbeddingError) as excinfo:
+        client.embed_video_segment(b"clip bytes", mime_type="video/mp4")
+    assert excinfo.value.code == "MEDIA_EMBEDDING_MALFORMED"
+
+
 def test_gemini_wraps_provider_errors_value_free():
     class _DownModels(_FakeGeminiModels):
         def embed_content(self, **kwargs):

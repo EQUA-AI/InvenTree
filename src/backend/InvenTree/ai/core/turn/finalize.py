@@ -88,9 +88,15 @@ async def enrich_canonical(
     # manifest reflects the final canonical. The event lands in the
     # live stream AND capture.events (same list as canonical["events"]),
     # so replay reproduces the chips.
-    return await service._attach_entity_manifest(
+    canonical = await service._attach_entity_manifest(
         canonical,
         diagnostic_context=run.diagnostic_context,
+        thread_id=run.thread.pk,
+        turn_id=run.turn.pk,
+        emitter=run.emitter,
+    )
+    return await service._attach_media_evidence(
+        canonical,
         thread_id=run.thread.pk,
         turn_id=run.turn.pk,
         emitter=run.emitter,
@@ -165,6 +171,11 @@ async def persist_terminal(
             **({"grounding": canonical["grounding"]} if canonical.get("grounding") else {}),
             # S28: chips reload from the same metadata on /threads.
             **({"entities": canonical["entities"]} if canonical.get("entities") else {}),
+            **(
+                {"media_evidence": canonical["media_evidence"]}
+                if canonical.get("media_evidence")
+                else {}
+            ),
         }),
         workflow_id=(run.capture.workflow_id if run.capture else None) or "",
     )

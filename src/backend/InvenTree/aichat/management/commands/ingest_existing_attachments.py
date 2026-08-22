@@ -170,13 +170,28 @@ class Command(BaseCommand):
                         'ingested' if decision.action == 'ingest' else 'skipped'
                     ] += 1
                     continue
-                is_image_candidate = name.lower().endswith((
+                is_media_candidate = name.lower().endswith((
                     '.png',
                     '.jpg',
                     '.jpeg',
                     '.webp',
+                    '.mp4',
+                    '.mov',
+                    '.m4v',
                 ))
-                if shared_embedder is None and not is_image_candidate:
+                # avi/mkv/webm are walked so their exclusions get RECORDED,
+                # but they can never reach the media pipeline (R4 mp4/mov
+                # allowlist) — build no clients for them in either direction.
+                is_video_skip_candidate = name.lower().endswith((
+                    '.avi',
+                    '.mkv',
+                    '.webm',
+                ))
+                if (
+                    shared_embedder is None
+                    and not is_media_candidate
+                    and not is_video_skip_candidate
+                ):
                     # Doc pair only for doc-shaped candidates: a media-only
                     # backfill must not require (or crash building) the
                     # Cohere client it will never use (review finding, R3).
@@ -191,7 +206,7 @@ class Command(BaseCommand):
                     shared_projection = AttachmentSearchProjection.from_settings()
                 if (
                     shared_media_embedder is None
-                    and is_image_candidate
+                    and is_media_candidate
                     and media_ingest_enabled(ai_settings)
                 ):
                     from ai.core.integrations.attachment_search import (

@@ -1,5 +1,6 @@
 """R1 attachment RAG: receivers, router skips, doc path, scope, purge, backfill."""
 
+import contextlib
 import tempfile
 from unittest import mock
 
@@ -11,10 +12,12 @@ from django.test import TestCase, override_settings
 from ai.core.config import Settings
 from aichat.models import AttachmentChunk, AttachmentIngest, AttachmentIngestState
 from aichat.services.attachment_ingestion import (
+    FLAG_DEPENDENT_SKIPS,
     AttachmentIngestionError,
     derive_client_codes,
     purge_attachment_artifacts,
     restamp_part_client_codes,
+    route_attachment,
     run_ingest,
 )
 from assets.models import AssetMachine, Client, MachinePart
@@ -29,6 +32,12 @@ _PNG_HEAD = b'\x89PNG\r\n\x1a\n' + b'\x00' * 32
 _XLSX_HEAD = b'PK\x03\x04' + b'\x00' * 32
 _WAV_HEAD = b'RIFF\x00\x00\x00\x00WAVEfmt ' + b'\x00' * 32
 _MP4_HEAD = b'\x00\x00\x00\x18ftypmp42' + b'\x00' * 32
+_MOV_HEAD = b'\x00\x00\x00\x14ftypqt  ' + b'\x00' * 32
+_M4A_HEAD = b'\x00\x00\x00\x18ftypM4A ' + b'\x00' * 32
+_AVI_HEAD = b'RIFF\x00\x00\x00\x00AVI LIST' + b'\x00' * 32
+#: A real EBML (MKV/WebM) prelude: \x9f is an orphan UTF-8 continuation byte,
+#: so the head can never masquerade as text.
+_EBML_HEAD = b'\x1aE\xdf\xa3\x9fB\x86\x81\x01B\xf7\x81\x01B\x82\x84webm' + b'\x00' * 16
 
 
 def _ai_settings(**overrides) -> Settings:
@@ -41,6 +50,19 @@ def _ai_settings(**overrides) -> Settings:
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)
+
+
+def _media_ai_settings(**overrides) -> Settings:
+    """Media-RAG-lit AI configuration (mirrors the R3 media suite helper)."""
+    values = {
+        'FEATURE_MEDIA_RAG_INGEST': True,
+        'GCP_PROJECT_ID': 'proj',
+        'GCP_LOCATION': 'us-central1',
+        'GCP_CREDENTIALS_PATH': '/tmp/wif.json',
+        'AZURE_OPENAI_ENDPOINT': 'https://openai.example',
+    }
+    values.update(overrides)
+    return _ai_settings(**values)
 
 
 class FakeEmbeddingClient:
@@ -365,9 +387,7 @@ class ReceiverTests(RagFixtureTestCase):
         """
         from aichat.services.attachment_ingestion import _build_stamp, storage_mtime
 
-        attachment = _make_attachment(
-            'workorder', 4242, 'evidence.png', _PNG_HEAD
-        )
+        attachment = _make_attachment('workorder', 4242, 'evidence.png', _PNG_HEAD)
         attachment.refresh_from_db()
         stamp = _build_stamp(
             attachment,
@@ -387,6 +407,55 @@ class ReceiverTests(RagFixtureTestCase):
             GCP_CREDENTIALS_PATH='/tmp/wif.json',
             AZURE_OPENAI_ENDPOINT='https://openai.example',
         )
+        # AI-plane flag on, Django co-gate off: still suppressed.
+        with (
+            mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
+            mock.patch('ai.core.config.get_settings', return_value=media_on),
+        ):
+            attachment.save()
+        self.assertEqual(self._ingest_offloads(off), [])
+        # Django co-gate on, AI-plane flag off: still suppressed.
+        with (
+            override_settings(AIMMS_MEDIA_RAG_ENABLED=True),
+            mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
+            mock.patch('ai.core.config.get_settings', return_value=_ai_settings()),
+        ):
+            attachment.save()
+        self.assertEqual(self._ingest_offloads(off), [])
+        # Both planes on: the stamp stops matching and revives exactly once.
+        with (
+            override_settings(AIMMS_MEDIA_RAG_ENABLED=True),
+            mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
+            mock.patch('ai.core.config.get_settings', return_value=media_on),
+        ):
+            attachment.save()
+        self.assertEqual(len(self._ingest_offloads(off)), 1)
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_video_dark_stamp_revives_only_on_full_flag_conjunction(self):
+        """VIDEO_PIPELINE_DARK stamps revive exactly when BOTH media flags are on.
+
+        The R4 clone of the media matrix: the receiver revival clause reads
+        ``media_ingest_enabled`` — the SAME predicate the video router arm
+        enforces — so a partial flip (either plane alone) keeps suppressing,
+        and the full conjunction re-offloads once.
+        """
+        from aichat.services.attachment_ingestion import _build_stamp, storage_mtime
+
+        attachment = _make_attachment('workorder', 4243, 'clip.mp4', _MP4_HEAD)
+        attachment.refresh_from_db()
+        stamp = _build_stamp(
+            attachment,
+            'x' * 64,
+            'skipped',
+            reason='ATTACHMENT_SKIP_VIDEO_PIPELINE_DARK',
+            mtime=storage_mtime(attachment),
+        )
+        Attachment.objects.filter(pk=attachment.pk).update(
+            metadata={'ai_ingest': stamp}
+        )
+        attachment.refresh_from_db()
+        media_on = _media_ai_settings()
         # AI-plane flag on, Django co-gate off: still suppressed.
         with (
             mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
@@ -800,6 +869,105 @@ class BackfillCommandTests(RagFixtureTestCase):
         self.assertEqual(projection_factory.call_count, 1)
         self.assertTrue(projection.closed)
 
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True, AIMMS_MEDIA_RAG_ENABLED=True)
+    def test_mp4_candidate_builds_only_the_media_pair(self):
+        """A video backfill builds the Gemini/media pair and never Cohere (R4)."""
+        from io import StringIO
+
+        from aichat.services.video_tools import VideoProbe
+
+        _make_attachment('workorder', 784, 'clip.mp4', _MP4_HEAD)
+        fake_gemini = mock.Mock(model='fake-gemini', dimensions=3072)
+        # No video stream: the run records an owner-authorized terminal skip
+        # without needing the ffmpeg loop or the caption/OCR providers.
+        audio_only = VideoProbe(
+            duration_s=5.0,
+            recorded_at=None,
+            width=None,
+            height=None,
+            has_video_stream=False,
+        )
+        out = StringIO()
+        with (
+            mock.patch(
+                'ai.core.config.get_settings', return_value=_media_ai_settings()
+            ),
+            mock.patch(
+                'ai.core.integrations.embeddings_gemini.GeminiEmbeddingClient.'
+                'from_settings',
+                return_value=fake_gemini,
+            ) as gemini_factory,
+            mock.patch(
+                'ai.core.integrations.attachment_search.MediaSearchProjection.'
+                'from_settings',
+                return_value=FakeProjection(),
+            ) as media_projection_factory,
+            mock.patch(
+                'ai.core.integrations.embeddings_cohere.CohereEmbeddingClient.'
+                'from_settings',
+                side_effect=AssertionError('no Cohere client for a video backfill'),
+            ),
+            mock.patch(
+                'ai.core.integrations.attachment_search.AttachmentSearchProjection.'
+                'from_settings',
+                side_effect=AssertionError('no docs projection for a video backfill'),
+            ),
+            mock.patch(
+                'aichat.services.video_tools.probe_video', return_value=audio_only
+            ),
+        ):
+            call_command(
+                'ingest_existing_attachments', '--model-type', 'workorder', stdout=out
+            )
+        self.assertEqual(gemini_factory.call_count, 1)
+        self.assertEqual(media_projection_factory.call_count, 1)
+        self.assertRegex(
+            out.getvalue(), r'clip\S*\.mp4\tATTACHMENT_SKIP_UNSUPPORTED_TYPE'
+        )
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True, AIMMS_MEDIA_RAG_ENABLED=True)
+    def test_avi_candidate_builds_neither_client_pair(self):
+        """.avi is walked for the RECORDED skip but constructs no clients (R4)."""
+        from io import StringIO
+
+        _make_attachment('workorder', 785, 'legacy.avi', _AVI_HEAD)
+        out = StringIO()
+        factories = (
+            'ai.core.integrations.embeddings_cohere.CohereEmbeddingClient.'
+            'from_settings',
+            'ai.core.integrations.attachment_search.AttachmentSearchProjection.'
+            'from_settings',
+            'ai.core.integrations.embeddings_gemini.GeminiEmbeddingClient.'
+            'from_settings',
+            'ai.core.integrations.attachment_search.MediaSearchProjection.'
+            'from_settings',
+        )
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch(
+                    'ai.core.config.get_settings', return_value=_media_ai_settings()
+                )
+            )
+            for target in factories:
+                stack.enter_context(
+                    mock.patch(
+                        target,
+                        side_effect=AssertionError(
+                            'no client for an avi skip candidate'
+                        ),
+                    )
+                )
+            call_command(
+                'ingest_existing_attachments', '--model-type', 'workorder', stdout=out
+            )
+        self.assertRegex(
+            out.getvalue(), r'legacy\S*\.avi\tATTACHMENT_SKIP_UNSUPPORTED_TYPE'
+        )
+        row = AttachmentIngest.objects.get(model_type='workorder', model_id=785)
+        self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
+        self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE')
+        self.assertEqual(row.pipeline, 'video')
+
 
 class ClaimProtocolTests(RagFixtureTestCase):
     """F-04/F-06: atomic claim, cap-for-all-states, force, winner/loser."""
@@ -821,9 +989,7 @@ class ClaimProtocolTests(RagFixtureTestCase):
     def test_fresh_in_flight_twin_is_not_reclaimed(self):
         """A fresh EXTRACTING row means a twin owns it: no duplicate work."""
         attachment = _make_attachment('part', self.part.pk, 'twin.md', _MD)
-        self._seed_row(
-            attachment, state=AttachmentIngestState.EXTRACTING, attempts=1
-        )
+        self._seed_row(attachment, state=AttachmentIngestState.EXTRACTING, attempts=1)
         row, embedder, projection = self._run(attachment.pk)
         self.assertEqual(embedder.calls, 0)
         self.assertEqual(projection.operations, [])
@@ -895,16 +1061,14 @@ class ClaimProtocolTests(RagFixtureTestCase):
         class TakeoverEmbedder(FakeEmbeddingClient):
             def embed_documents(self, texts):
                 """Simulate a stale-takeover twin bumping the claim mid-run."""
-                AttachmentIngest.objects.filter(
-                    attachment_id=attachment.pk
-                ).update(attempts=5)
+                AttachmentIngest.objects.filter(attachment_id=attachment.pk).update(
+                    attempts=5
+                )
                 return super().embed_documents(texts)
 
         projection = FakeProjection()
         row, _e, _p = self._run(
-            attachment.pk,
-            embedding_client=TakeoverEmbedder(),
-            projection=projection,
+            attachment.pk, embedding_client=TakeoverEmbedder(), projection=projection
         )
         row.refresh_from_db()
         # The fenced INDEXED write must have matched zero rows: state stays
@@ -1053,9 +1217,7 @@ class OversizeTests(RagFixtureTestCase):
     def test_doc_cap_skips_without_full_read(self):
         """An over-cap doc records its skip via streaming only."""
         attachment = _make_attachment('part', self.part.pk, 'big.md', _MD)
-        Attachment.objects.filter(pk=attachment.pk).update(
-            file_size=51 * 1024 * 1024
-        )
+        Attachment.objects.filter(pk=attachment.pk).update(file_size=51 * 1024 * 1024)
         with mock.patch(
             'aichat.services.attachment_ingestion._read_attachment_bytes',
             side_effect=AssertionError('full read must not happen'),
@@ -1069,13 +1231,9 @@ class OversizeTests(RagFixtureTestCase):
         from aichat.services.attachment_ingestion import structural_skip_reason
 
         attachment = _make_attachment('part', self.part.pk, 'huge.md', _MD)
-        Attachment.objects.filter(pk=attachment.pk).update(
-            file_size=501 * 1024 * 1024
-        )
+        Attachment.objects.filter(pk=attachment.pk).update(file_size=501 * 1024 * 1024)
         attachment.refresh_from_db()
-        with mock.patch(
-            'ai.core.config.get_settings', return_value=_ai_settings()
-        ):
+        with mock.patch('ai.core.config.get_settings', return_value=_ai_settings()):
             self.assertEqual(structural_skip_reason(attachment), 'oversize')
         row, _e, _p = self._run(attachment.pk)
         self.assertIsNone(row)
@@ -1128,31 +1286,113 @@ class WorkOrderOwnerTests(RagFixtureTestCase):
         """
         for model_type in ('workorder', 'workorderstepexecution'):
             with self.subTest(model_type=model_type):
-                attachment = _make_attachment(
-                    model_type, 778, 'note.wav', _WAV_HEAD
-                )
+                attachment = _make_attachment(model_type, 778, 'note.wav', _WAV_HEAD)
                 row, _e, _p = self._run(attachment.pk)
                 self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
                 self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE')
                 self.assertEqual(row.pipeline, 'doc')
 
-    def test_workorder_video_records_video_dark_skip(self):
-        """WO/step video skips under the DISTINCT video-dark code (R3).
+    def test_workorder_video_records_video_dark_skip_while_media_is_off(self):
+        """WO/step MP4s still skip VIDEO_PIPELINE_DARK with the media flags off.
 
-        Separate from the image code on purpose: image-flag flips must not
-        revive video stamps before the R4 router change.
+        The R4 router arm gates on the SAME media conjunction as the image
+        arm; an ftyp-mp4 head on a dark deployment stays a revivable skip.
         """
         for model_type in ('workorder', 'workorderstepexecution'):
             with self.subTest(model_type=model_type):
-                attachment = _make_attachment(
-                    model_type, 779, 'clip.mp4', _MP4_HEAD
-                )
+                attachment = _make_attachment(model_type, 779, 'clip.mp4', _MP4_HEAD)
                 row, _e, _p = self._run(attachment.pk)
                 self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
-                self.assertEqual(
-                    row.error_code, 'ATTACHMENT_SKIP_VIDEO_PIPELINE_DARK'
-                )
+                self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_VIDEO_PIPELINE_DARK')
                 self.assertEqual(row.pipeline, 'video')
+
+    def test_workorder_video_routes_to_ingest_under_full_conjunction(self):
+        """With BOTH media planes lit, WO/step MP4s route to the video pipeline."""
+        for model_type in ('workorder', 'workorderstepexecution'):
+            with self.subTest(model_type=model_type):
+                attachment = _make_attachment(model_type, 780, 'clip.mp4', _MP4_HEAD)
+                with (
+                    override_settings(AIMMS_MEDIA_RAG_ENABLED=True),
+                    mock.patch(
+                        'ai.core.config.get_settings', return_value=_media_ai_settings()
+                    ),
+                ):
+                    decision = route_attachment(attachment, _MP4_HEAD)
+                self.assertEqual(
+                    (decision.action, decision.pipeline), ('ingest', 'video')
+                )
+
+    def test_video_brand_matrix_pins_the_container_allowlist(self):
+        """mp42/qt ingest; M4A and RIFF/AVI are terminal regardless of flags."""
+        cases = (
+            (_MP4_HEAD, 'ingest', ''),
+            (_MOV_HEAD, 'ingest', ''),
+            (_M4A_HEAD, 'skip', 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE'),
+            (_AVI_HEAD, 'skip', 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE'),
+        )
+        attachment = _make_attachment('workorder', 781, 'clip.mp4', _MP4_HEAD)
+        for head, action, reason in cases:
+            with self.subTest(magic=head[8:12]):
+                with (
+                    override_settings(AIMMS_MEDIA_RAG_ENABLED=True),
+                    mock.patch(
+                        'ai.core.config.get_settings', return_value=_media_ai_settings()
+                    ),
+                ):
+                    decision = route_attachment(attachment, head)
+                self.assertEqual(decision.action, action)
+                self.assertEqual(decision.pipeline, 'video')
+                self.assertEqual(decision.reason, reason)
+                if action == 'skip':
+                    # Terminal means terminal: the allowlist binds BEFORE the
+                    # flag gate, so a dark deployment records the same code
+                    # (never a dark skip a later flag flip would revive).
+                    with mock.patch(
+                        'ai.core.config.get_settings', return_value=_ai_settings()
+                    ):
+                        dark = route_attachment(attachment, head)
+                    self.assertEqual(dark.reason, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE')
+                    self.assertNotIn(decision.reason, FLAG_DEPENDENT_SKIPS)
+
+    def test_ebml_head_stays_binary_and_routes_workorder_doc(self):
+        """MKV/WebM never reach the video arm: EBML sniffs binary → WO doc skip."""
+        from aichat.services.attachment_ingestion import _sniff_kind
+
+        self.assertEqual(_sniff_kind(_EBML_HEAD), 'binary')
+        attachment = _make_attachment('workorder', 782, 'clip.mkv', _EBML_HEAD)
+        with (
+            override_settings(AIMMS_MEDIA_RAG_ENABLED=True),
+            mock.patch(
+                'ai.core.config.get_settings', return_value=_media_ai_settings()
+            ),
+        ):
+            decision = route_attachment(attachment, _EBML_HEAD)
+        self.assertEqual(decision.action, 'skip')
+        self.assertEqual(decision.reason, 'ATTACHMENT_SKIP_WORKORDER_DOC')
+
+    def test_video_byte_cap_records_video_oversize(self):
+        """A video whose storage size exceeds the byte cap records its skip.
+
+        The size hint is cleared so the cap binds on the storage-reported
+        size (the stale/absent-hint path) — with an accurate hint the same
+        cap already binds structurally, row-free.
+        """
+        content = _MP4_HEAD + b'\x00' * (2 * 1024 * 1024)
+        attachment = _make_attachment('workorder', 783, 'big.mp4', content)
+        Attachment.objects.filter(pk=attachment.pk).update(file_size=0)
+        with (
+            override_settings(
+                AIMMS_ATTACHMENT_RAG_ENABLED=True, AIMMS_MEDIA_RAG_ENABLED=True
+            ),
+            mock.patch(
+                'ai.core.config.get_settings',
+                return_value=_media_ai_settings(RAG_MAX_VIDEO_MB=1),
+            ),
+        ):
+            row = run_ingest(attachment.pk)
+        self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
+        self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_VIDEO_OVERSIZE')
+        self.assertEqual(row.pipeline, 'video')
 
 
 class DocumentIntelligenceTests(RagFixtureTestCase):
@@ -1191,7 +1431,9 @@ class DocumentIntelligenceTests(RagFixtureTestCase):
         }
         self.assertIn(1, pages.values())
         self.assertIn(2, pages.values())
-        doc_pages = {doc['section_path']: doc['page_number'] for doc in projection.documents}
+        doc_pages = {
+            doc['section_path']: doc['page_number'] for doc in projection.documents
+        }
         self.assertEqual(pages, doc_pages)
         troubleshoot = [p for s, p in pages.items() if 'Troubleshoot' in s]
         self.assertEqual(troubleshoot, [2])
@@ -1349,9 +1591,7 @@ class RestampReceiverTests(RagFixtureTestCase):
             state=AttachmentIngestState.INDEXED,
         )
         with mock.patch('InvenTree.tasks.offload_task', return_value=True) as off:
-            MachinePart.objects.create(
-                machine=self.machine, part=self.part_unlinked
-            )
+            MachinePart.objects.create(machine=self.machine, part=self.part_unlinked)
         restamps = [
             call
             for call in off.call_args_list
@@ -1370,8 +1610,7 @@ class RestampReceiverTests(RagFixtureTestCase):
         restamps = [
             call
             for call in off.call_args_list
-            if call.args
-            and call.args[0] is aichat_tasks.restamp_machine_client_codes
+            if call.args and call.args[0] is aichat_tasks.restamp_machine_client_codes
         ]
         self.assertEqual(len(restamps), 1)
 
@@ -1379,9 +1618,7 @@ class RestampReceiverTests(RagFixtureTestCase):
         """No-op restamps build zero SearchClients (F-19)."""
         from aichat.services.attachment_ingestion import restamp_machine_client_codes
 
-        attachment = _make_attachment(
-            'assetmachine', self.machine.pk, 'm-doc.md', _MD
-        )
+        attachment = _make_attachment('assetmachine', self.machine.pk, 'm-doc.md', _MD)
         row, _e, _p = self._run(attachment.pk)
         self.assertEqual(row.client_codes, ['acme'])
         # Codes unchanged: no projection may be constructed at all.
@@ -1395,13 +1632,9 @@ class RestampReceiverTests(RagFixtureTestCase):
         # Codes changed: exactly one shared projection serves machine + parts.
         AttachmentIngest.objects.filter(pk=row.pk).update(client_codes=['stale'])
         projection = FakeProjection()
-        touched = restamp_machine_client_codes(
-            self.machine.pk, projection=projection
-        )
+        touched = restamp_machine_client_codes(self.machine.pk, projection=projection)
         self.assertEqual(touched, 1)
-        self.assertEqual(
-            projection.operations, [('merge', attachment.pk, ('acme',))]
-        )
+        self.assertEqual(projection.operations, [('merge', attachment.pk, ('acme',))])
 
 
 class TaskWrapperTests(RagFixtureTestCase):

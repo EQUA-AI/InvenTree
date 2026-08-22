@@ -475,6 +475,12 @@ class Settings(BaseSettings):
         default=True,
         validation_alias=AliasChoices("FEATURE_ENTITY_MANIFEST", "AIMMS_FEATURE_ENTITY_MANIFEST"),
     )
+    # R4 media-evidence chips: additive + inert on stale clients, so the
+    # default is on and the flag is purely a kill switch (S28 posture).
+    feature_media_evidence: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("FEATURE_MEDIA_EVIDENCE", "AIMMS_FEATURE_MEDIA_EVIDENCE"),
+    )
     # S27: cite-or-downgrade for manuals-grounded wf8 answers. shadow logs a
     # content-free would_downgrade line and persists the assessment; enforce
     # replaces confirmed-ungrounded answers with the downgrade template.
@@ -828,6 +834,14 @@ class Settings(BaseSettings):
     # Gemini Embedding 2 accepts clips of at most 120 s per call.
     rag_video_segment_s: int = Field(default=60, ge=10, le=120, alias="RAG_VIDEO_SEGMENT_S")
     rag_video_overlap_s: int = Field(default=5, ge=0, alias="RAG_VIDEO_OVERLAP_S")
+    # Bounds worst-case ingest wall clock and provider calls: segments =
+    # 1 + floor((D - overlap)/(segment - overlap)); 900 s -> 17 segments at
+    # defaults. A duration cap (not a segment-count cap) keeps the invariant
+    # "index the whole video or skip it" — a partially indexed video would
+    # make a retrieval miss indistinguishable from absence.
+    rag_video_max_duration_s: int = Field(
+        default=900, ge=120, le=7200, alias="RAG_VIDEO_MAX_DURATION_S"
+    )
     # In-flight ingest rows older than this are claimable again (stale-worker
     # takeover) and eligible for the resume sweep. Invariant: keep this ABOVE
     # the django-q per-task timeout + cluster retry (stock 90+300; the

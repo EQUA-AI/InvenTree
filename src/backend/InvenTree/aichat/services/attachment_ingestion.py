@@ -13,8 +13,10 @@ and unresolved scope refuses to project (denial ≡ nonexistence).
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from datetime import time as dt_time
@@ -58,11 +60,11 @@ FLAG_DEPENDENT_SKIPS = (
 #: exactly one re-offload when the flag pair flips, and never before.
 MEDIA_ROUTER_HONORS_FLAG = True
 
-#: The video revival clause stays inert until the R4 change that makes the
-#: router ingest video — flipping the media flags before then must not
-#: re-offload every video on every save (the distinct skip code exists so
-#: image-flag flips cannot revive video stamps).
-VIDEO_ROUTER_HONORS_FLAG = False
+#: R4: the router's video arm consults ``media_ingest_enabled`` — the SAME
+#: helper the receiver revival predicate reads — so dark video stamps revive
+#: with exactly one re-offload wherever this code deploys with the media
+#: flags on, and never before.
+VIDEO_ROUTER_HONORS_FLAG = True
 
 #: Sniff window: PDF headers may legally sit up to 1024 bytes in.
 HEAD_BYTES = 1024
@@ -83,6 +85,12 @@ _MEDIA_MODEL_TYPES = ('workorder', 'workorderstepexecution', 'assetmachine')
 INTERNAL_CLIENT_CODE = 'internal'
 
 _MB = 1024 * 1024
+
+# Inline ``Part.from_bytes`` request bound from the R4 design. Source videos
+# may be 500 MB, but one high-bitrate 60 s clip must never become an
+# unbounded allocation or request payload. A future GCS-URI transport can
+# replace this ceiling without changing the segmentation contract.
+VIDEO_SEGMENT_MAX_BYTES = 55 * _MB
 
 _DOC_EXTENSIONS = {'.pdf', '.docx', '.md', '.markdown', '.txt'}
 _IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff'}
@@ -160,6 +168,39 @@ def _image_mime(head: bytes) -> str | None:
     return None
 
 
+#: ftyp major brands the video pipeline accepts as MP4-family (R4).
+_MP4_BRANDS = {
+    b'isom',
+    b'iso2',
+    b'iso4',
+    b'iso5',
+    b'iso6',
+    b'mp41',
+    b'mp42',
+    b'avc1',
+    b'mp4v',
+    b'M4V ',
+}
+
+
+def _video_mime(head: bytes) -> str | None:
+    """MIME type for the containers the video pipeline ingests (R4).
+
+    Deliberately narrower than ``_sniff_kind``'s ``video`` bucket: only
+    ftyp-based MP4/MOV are verified against Gemini video embedding; RIFF/AVI
+    and unknown ftyp brands (incl. audio-only ``M4A ``) record a terminal
+    ``ATTACHMENT_SKIP_UNSUPPORTED_TYPE`` instead of failing live.
+    """
+    if head[4:8] != b'ftyp':
+        return None
+    brand = head[8:12]
+    if brand == b'qt  ':
+        return 'video/quicktime'
+    if brand in _MP4_BRANDS:
+        return 'video/mp4'
+    return None
+
+
 def media_ingest_enabled(settings) -> bool:
     """The media router arm's gate: Django co-gate AND the AI-plane flag.
 
@@ -231,10 +272,16 @@ def route_attachment(attachment, head: bytes) -> RouteDecision:
             )
         return RouteDecision('ingest', 'image', kind)
     if kind == 'video' and model_type in _MEDIA_MODEL_TYPES:
-        # Dark until R4 (VIDEO_ROUTER_HONORS_FLAG).
-        return RouteDecision(
-            'skip', 'video', kind, 'ATTACHMENT_SKIP_VIDEO_PIPELINE_DARK'
-        )
+        # R4 video arm: evidence recordings on WO/step/machine owners.
+        if _video_mime(head) is None:
+            return RouteDecision(
+                'skip', 'video', kind, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE'
+            )
+        if not media_ingest_enabled(get_settings()):
+            return RouteDecision(
+                'skip', 'video', kind, 'ATTACHMENT_SKIP_VIDEO_PIPELINE_DARK'
+            )
+        return RouteDecision('ingest', 'video', kind)
     if model_type in ('workorder', 'workorderstepexecution'):
         if kind == 'audio':
             # Terminal: no pipeline ever ingests bare audio files.
@@ -540,9 +587,13 @@ def search_document_id(attachment_id: int, source_sha256: str, position: int) ->
     return f'att-{attachment_id}-{source_sha256[:12]}-c{position}'
 
 
-def media_search_document_id(attachment_id: int, source_sha256: str) -> str:
-    """Deterministic media Search key: ``att-{id}-{sha12}-img`` (R4 adds -s{n})."""
-    return f'att-{attachment_id}-{source_sha256[:12]}-img'
+def media_search_document_id(
+    attachment_id: int, source_sha256: str, *, segment_index: int | None = None
+) -> str:
+    """Deterministic media Search key: ``-img`` (image) or ``-s{n}`` (video)."""
+    if segment_index is None:
+        return f'att-{attachment_id}-{source_sha256[:12]}-img'
+    return f'att-{attachment_id}-{source_sha256[:12]}-s{segment_index}'
 
 
 def _media_owner_coordinates(model_type: str, model_id: int) -> dict[str, object]:
@@ -713,22 +764,38 @@ def _exif_recorded_at(data: bytes) -> datetime | None:
         return None
 
 
+@dataclass(frozen=True)
+class MediaDocSegment:
+    """One projected media document's per-segment values (image or video)."""
+
+    media_type: str
+    segment_index: int | None  # None -> the single-image ``-img`` key
+    timecode_start_s: float | None
+    timecode_end_s: float | None
+    caption: str
+    ocr_text: str
+    vector: object
+    thumbnail_path: str
+
+
 def build_media_documents(
     *,
     ingest,
     attachment,
-    caption: str,
-    ocr_text: str,
-    vector,
+    segments: Sequence[MediaDocSegment],
     client_codes: list[str],
     scope_key: str,
-    thumbnail_path: str,
     recorded_at: datetime | None,
     embedding_model: str,
     embedding_dimensions: int,
     indexed_at: datetime,
 ) -> list[dict[str, object]]:
-    """Assemble the single §5.2 image document (R4 adds video segments)."""
+    """Assemble the §5.2 media documents (one per image / video segment).
+
+    ``duration_s`` is per-DOCUMENT segment duration, computed at projection
+    time from the nominal timecodes (no model field, no migration); images
+    carry None throughout the timecode trio.
+    """
     file_name = PurePosixPath(attachment.attachment.name or '').name
     uploaded_at = None
     if attachment.upload_date:
@@ -736,12 +803,20 @@ def build_media_documents(
             attachment.upload_date, dt_time.min, tzinfo=UTC
         ).isoformat()
     coordinates = _media_owner_coordinates(ingest.model_type, ingest.model_id)
-    return [
-        {
-            'id': media_search_document_id(ingest.attachment_id, ingest.source_sha256),
+    documents: list[dict[str, object]] = []
+    for segment in segments:
+        duration_s = None
+        if segment.timecode_start_s is not None and segment.timecode_end_s is not None:
+            duration_s = round(segment.timecode_end_s - segment.timecode_start_s, 3)
+        documents.append({
+            'id': media_search_document_id(
+                ingest.attachment_id,
+                ingest.source_sha256,
+                segment_index=segment.segment_index,
+            ),
             'attachment_id': ingest.attachment_id,
             'source_sha256': ingest.source_sha256,
-            'media_type': 'image',
+            'media_type': segment.media_type,
             'model_type': ingest.model_type,
             'model_id': ingest.model_id,
             'work_order_id': coordinates['work_order_id'],
@@ -752,24 +827,24 @@ def build_media_documents(
             'scope_key': scope_key,
             'access_class': EVIDENCE_ACCESS_CLASS,
             'is_current': True,
-            'timecode_start_s': None,
-            'timecode_end_s': None,
-            'duration_s': None,
-            'segment_index': 0,
-            'segment_count': 1,
-            'caption': caption,
-            'ocr_text': ocr_text,
+            'timecode_start_s': segment.timecode_start_s,
+            'timecode_end_s': segment.timecode_end_s,
+            'duration_s': duration_s,
+            'segment_index': segment.segment_index or 0,
+            'segment_count': len(segments),
+            'caption': segment.caption,
+            'ocr_text': segment.ocr_text,
             'transcript': '',
-            'thumbnail_path': thumbnail_path,
+            'thumbnail_path': segment.thumbnail_path,
             'source_file_name': file_name,
             'recorded_at': recorded_at.isoformat() if recorded_at else None,
             'uploaded_at': uploaded_at,
             'indexed_at': indexed_at.isoformat(),
-            'media_vector': vector,
+            'media_vector': segment.vector,
             'embedding_model': embedding_model,
             'embedding_dimensions': embedding_dimensions,
-        }
-    ]
+        })
+    return documents
 
 
 def compute_sha256(data: bytes) -> str:
@@ -788,6 +863,47 @@ def _read_attachment_bytes(attachment) -> bytes:
         raise AttachmentIngestionError(
             'Attachment source cannot be read', code='ATTACHMENT_SOURCE_UNAVAILABLE'
         ) from exc
+
+
+@contextlib.contextmanager
+def _video_source(attachment):
+    """Yield a real filesystem path for ffmpeg without buffering the file.
+
+    Stock ``FileSystemStorage`` exposes ``.path()`` (the Azure Files mount);
+    a storage backend without local paths spills to a temp file via 1 MB
+    blocks (the ``_stream_sha256`` idiom) and cleans up afterwards.
+    """
+    from django.core.files.storage import default_storage
+
+    name = attachment.attachment.name
+    try:
+        source_path = default_storage.path(name)
+    except NotImplementedError:
+        source_path = None
+    if source_path is not None:
+        yield source_path
+        return
+    import tempfile
+
+    suffix = PurePosixPath(name or '').suffix or '.bin'
+    handle = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)  # noqa: SIM115
+    try:
+        with default_storage.open(name) as source:
+            while True:
+                block = source.read(_MB)
+                if not block:
+                    break
+                handle.write(block)
+        handle.close()
+        yield handle.name
+    finally:
+        import contextlib as _contextlib
+        import os
+
+        with _contextlib.suppress(Exception):
+            handle.close()
+        with _contextlib.suppress(Exception):
+            os.unlink(handle.name)
 
 
 def _read_attachment_head(attachment, length: int = HEAD_BYTES) -> bytes:
@@ -823,6 +939,24 @@ def _stream_sha256(attachment) -> str:
             'Attachment source cannot be read', code='ATTACHMENT_SOURCE_UNAVAILABLE'
         ) from exc
     return digest.hexdigest()
+
+
+def _read_video_segment_bytes(
+    path: str, *, max_bytes: int = VIDEO_SEGMENT_MAX_BYTES
+) -> bytes:
+    """Read one private scratch clip with a hard inline-request ceiling."""
+    try:
+        with open(path, 'rb') as handle:
+            data = handle.read(max_bytes + 1)
+    except OSError:
+        raise AttachmentIngestionError(
+            'Video segment cannot be read', code='ATTACHMENT_VIDEO_SEGMENT_FAILED'
+        ) from None
+    if len(data) > max_bytes:
+        raise AttachmentIngestionError(
+            'Video segment exceeds inline limit', code='ATTACHMENT_SKIP_VIDEO_OVERSIZE'
+        )
+    return data
 
 
 def storage_mtime(attachment) -> str | None:
@@ -1016,12 +1150,16 @@ def run_ingest(
 
     settings = get_settings()
     is_image = decision.pipeline == AttachmentIngestPipeline.IMAGE
-    content_cap = (
-        settings.rag_max_image_mb if is_image else settings.rag_max_doc_mb
-    ) * _MB
-    oversize_code = (
-        'ATTACHMENT_SKIP_IMAGE_OVERSIZE' if is_image else 'ATTACHMENT_SKIP_DOC_OVERSIZE'
-    )
+    is_video = decision.pipeline == AttachmentIngestPipeline.VIDEO
+    if is_image:
+        content_cap = settings.rag_max_image_mb * _MB
+        oversize_code = 'ATTACHMENT_SKIP_IMAGE_OVERSIZE'
+    elif is_video:
+        content_cap = settings.rag_max_video_mb * _MB
+        oversize_code = 'ATTACHMENT_SKIP_VIDEO_OVERSIZE'
+    else:
+        content_cap = settings.rag_max_doc_mb * _MB
+        oversize_code = 'ATTACHMENT_SKIP_DOC_OVERSIZE'
     size_hint = attachment.file_size or 0
     if not size_hint:
         from django.core.files.storage import default_storage
@@ -1043,16 +1181,36 @@ def run_ingest(
             'Site scope is unresolved', code='ATTACHMENT_INGEST_SCOPE_UNRESOLVED'
         )
 
-    data = _read_attachment_bytes(attachment)
-    source_sha256 = compute_sha256(data)
-    if len(data) > content_cap:
-        # The pre-read hint was stale or absent; the cap binds on real bytes.
-        return _record_skip(
-            attachment,
-            RouteDecision('skip', decision.pipeline, decision.kind, oversize_code),
-            source_sha256,
-            mtime=mtime,
-        )
+    if is_video:
+        # A video is never buffered into RAM (500 MB cap): identity streams
+        # and the post-read cap binds on the storage-reported size; ffmpeg
+        # reads the storage path directly inside the video branch.
+        data = b''
+        source_sha256 = _stream_sha256(attachment)
+        from django.core.files.storage import default_storage
+
+        try:
+            actual_size = default_storage.size(attachment.attachment.name)
+        except Exception:
+            actual_size = size_hint
+        if actual_size > content_cap:
+            return _record_skip(
+                attachment,
+                RouteDecision('skip', decision.pipeline, decision.kind, oversize_code),
+                source_sha256,
+                mtime=mtime,
+            )
+    else:
+        data = _read_attachment_bytes(attachment)
+        source_sha256 = compute_sha256(data)
+        if len(data) > content_cap:
+            # The pre-read hint was stale or absent; the cap binds on bytes.
+            return _record_skip(
+                attachment,
+                RouteDecision('skip', decision.pipeline, decision.kind, oversize_code),
+                source_sha256,
+                mtime=mtime,
+            )
 
     indexed_row = AttachmentIngest.objects.filter(
         attachment_id=attachment.pk,
@@ -1081,6 +1239,7 @@ def run_ingest(
             'pipeline': decision.pipeline,
         },
     )
+    row_was_indexed = row.state == AttachmentIngestState.INDEXED
 
     # Atomic claim (F-04/F-06): exactly one worker may own a row at a time;
     # the attempts cap binds in every non-indexed state; SKIPPED is claimable
@@ -1221,12 +1380,20 @@ def run_ingest(
             documents = build_media_documents(
                 ingest=row,
                 attachment=attachment,
-                caption=caption,
-                ocr_text=ocr_text,
-                vector=vector,
+                segments=[
+                    MediaDocSegment(
+                        media_type='image',
+                        segment_index=None,
+                        timecode_start_s=None,
+                        timecode_end_s=None,
+                        caption=caption,
+                        ocr_text=ocr_text,
+                        vector=vector,
+                        thumbnail_path=thumbnail_path,
+                    )
+                ],
                 client_codes=client_codes,
                 scope_key=scope_key,
-                thumbnail_path=thumbnail_path,
                 recorded_at=recorded_at,
                 embedding_model=media_embedding_client.model,
                 embedding_dimensions=media_embedding_client.dimensions,
@@ -1237,6 +1404,224 @@ def run_ingest(
                 'client_codes': client_codes,
                 'chunk_count': 0,
                 'segment_count': 1,
+                'embedding_model': media_embedding_client.model,
+                'embedding_dimensions': media_embedding_client.dimensions,
+                'search_index_name': own_projection.index_name,
+            }
+        elif is_video:
+            mime_type = _video_mime(head) or 'application/octet-stream'
+            import os
+            import tempfile
+
+            from django.core.files.base import ContentFile
+            from django.core.files.storage import default_storage
+
+            from ai.core.integrations.image_caption import (
+                ImageCaptionError,
+                caption_image,
+            )
+            from aichat.services import video_tools
+
+            with _video_source(attachment) as source_path:
+                try:
+                    probe = video_tools.probe_video(source_path)
+                except video_tools.VideoToolError as video_exc:
+                    raise AttachmentIngestionError(
+                        'Video probe failed', code=video_exc.code
+                    ) from video_exc
+                skip_reason = ''
+                if not probe.has_video_stream:
+                    # Audio-only mp4 that survived the brand allowlist.
+                    skip_reason = 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE'
+                elif probe.duration_s > settings.rag_video_max_duration_s:
+                    # Oversize in the time dimension (bounds provider calls).
+                    skip_reason = 'ATTACHMENT_SKIP_VIDEO_OVERSIZE'
+                if skip_reason:
+                    # Owner-authorized skip: this run owns the claim.
+                    if _fenced_update(
+                        row.pk,
+                        fence,
+                        state=AttachmentIngestState.SKIPPED,
+                        error_code=skip_reason,
+                    ):
+                        _stamp_metadata(
+                            attachment.pk,
+                            _build_stamp(
+                                attachment,
+                                source_sha256,
+                                'skipped',
+                                reason=skip_reason,
+                                mtime=mtime,
+                            ),
+                        )
+                    row.refresh_from_db()
+                    return row
+
+                windows = video_tools.plan_segments(
+                    probe.duration_s,
+                    window_s=settings.rag_video_segment_s,
+                    overlap_s=settings.rag_video_overlap_s,
+                )
+                if not _fenced_update(
+                    row.pk, fence, extractor=AttachmentExtractor.FFMPEG
+                ):
+                    return row  # stale takeover owns the row; walk away
+                if media_embedding_client is None:
+                    from ai.core.integrations.embeddings_gemini import (
+                        GeminiEmbeddingClient,
+                    )
+
+                    media_embedding_client = GeminiEmbeddingClient.from_settings()
+                client_codes = derive_client_codes(
+                    attachment.model_type, attachment.model_id
+                )
+                indexed_at = datetime.now(UTC)
+                recorded_at = probe.recorded_at
+                sha12 = source_sha256[:12]
+                # The router trusts the ftyp brand, never the uploader's
+                # extension. Keep ffmpeg's output container and Gemini's
+                # declared MIME tied to that same verified source of truth.
+                clip_suffix = '.mov' if mime_type == 'video/quicktime' else '.mp4'
+                records: list[MediaDocSegment] = []
+                with tempfile.TemporaryDirectory() as workdir:
+                    for index, (start, end) in enumerate(windows):
+                        # Per-iteration heartbeat: doubles as the stale-
+                        # takeover walk-away AND keeps the rag_stale_claim_s
+                        # clock fresh across a long loop.
+                        if not _fenced_update(
+                            row.pk, fence, state=AttachmentIngestState.EMBEDDING
+                        ):
+                            return row
+                        clip_path = os.path.join(workdir, f'clip-{index}{clip_suffix}')
+                        frame_path = os.path.join(workdir, f'frame-{index}.jpg')
+                        try:
+                            video_tools.cut_segment(
+                                source_path, start, end - start, clip_path
+                            )
+                            clip_bytes = _read_video_segment_bytes(clip_path)
+                            video_tools.extract_keyframe(
+                                clip_path, (end - start) / 2, frame_path
+                            )
+                        except AttachmentIngestionError as segment_exc:
+                            if segment_exc.code != 'ATTACHMENT_SKIP_VIDEO_OVERSIZE':
+                                raise
+                            if row_was_indexed:
+                                # A forced refresh must not demote the
+                                # currently serving revision to SKIPPED.
+                                raise
+                            # This source/window will exceed the inline limit
+                            # on every retry, so terminate as an oversize skip.
+                            if _fenced_update(
+                                row.pk,
+                                fence,
+                                state=AttachmentIngestState.SKIPPED,
+                                error_code=segment_exc.code,
+                            ):
+                                _purge_keyframe_files(
+                                    attachment.pk, sha12=source_sha256[:12]
+                                )
+                                _stamp_metadata(
+                                    attachment.pk,
+                                    _build_stamp(
+                                        attachment,
+                                        source_sha256,
+                                        'skipped',
+                                        reason=segment_exc.code,
+                                        mtime=mtime,
+                                    ),
+                                )
+                            row.refresh_from_db()
+                            return row
+                        except video_tools.VideoToolError as video_exc:
+                            raise AttachmentIngestionError(
+                                'Video segmentation failed', code=video_exc.code
+                            ) from video_exc
+                        with open(frame_path, 'rb') as frame_handle:
+                            frame_bytes = frame_handle.read()
+                        ocr_text = extract_image_text(
+                            frame_bytes, mime_type='image/jpeg'
+                        )
+                        try:
+                            caption = caption_image(frame_bytes, mime_type='image/jpeg')
+                        except ImageCaptionError as caption_exc:
+                            raise AttachmentIngestionError(
+                                'Image captioning failed', code=caption_exc.code
+                            ) from caption_exc
+                        vector = media_embedding_client.embed_video_segment(
+                            clip_bytes, mime_type=mime_type
+                        )
+                        # Server-derived keyframe path (never uploader text);
+                        # delete-then-save defeats storage dedupe-suffixing so
+                        # the name stays deterministic across retries. A write
+                        # failure is FATAL: an INDEXED segment always has a
+                        # real thumbnail_path.
+                        rel = f'ai/keyframes/{attachment.pk}/{sha12}-s{index}.jpg'
+                        if default_storage.exists(rel):
+                            default_storage.delete(rel)
+                        default_storage.save(rel, ContentFile(frame_bytes))
+                        records.append(
+                            MediaDocSegment(
+                                media_type='video_segment',
+                                segment_index=index,
+                                timecode_start_s=start,
+                                timecode_end_s=end,
+                                caption=caption,
+                                ocr_text=ocr_text,
+                                vector=vector,
+                                thumbnail_path=rel,
+                            )
+                        )
+                        # Bound peak scratch disk to ~one clip.
+                        with contextlib.suppress(OSError):
+                            os.unlink(clip_path)
+                        with contextlib.suppress(OSError):
+                            os.unlink(frame_path)
+
+            # Atomic N-segment rewrite; the (ingest, segment_index) unique
+            # constraint turns a stale-twin interleave into an IntegrityError
+            # walk-away, leaving the fresh owner's rows intact.
+            from django.db import IntegrityError, transaction
+
+            try:
+                with transaction.atomic():
+                    row.segments.all().delete()
+                    MediaSegment.objects.bulk_create([
+                        MediaSegment(
+                            ingest=row,
+                            media_type='video_segment',
+                            segment_index=record.segment_index,
+                            timecode_start_s=record.timecode_start_s,
+                            timecode_end_s=record.timecode_end_s,
+                            caption=record.caption,
+                            ocr_text=record.ocr_text,
+                            thumbnail_path=record.thumbnail_path,
+                            embedding=record.vector,
+                            search_doc_id=media_search_document_id(
+                                row.attachment_id,
+                                source_sha256,
+                                segment_index=record.segment_index,
+                            ),
+                        )
+                        for record in records
+                    ])
+            except IntegrityError:
+                return row
+            documents = build_media_documents(
+                ingest=row,
+                attachment=attachment,
+                segments=records,
+                client_codes=client_codes,
+                scope_key=scope_key,
+                recorded_at=recorded_at,
+                embedding_model=media_embedding_client.model,
+                embedding_dimensions=media_embedding_client.dimensions,
+                indexed_at=indexed_at,
+            )
+            own_projection = _projection_for(AttachmentIngestPipeline.VIDEO)
+            terminal_fields = {
+                'client_codes': client_codes,
+                'chunk_count': 0,
+                'segment_count': len(records),
                 'embedding_model': media_embedding_client.model,
                 'embedding_dimensions': media_embedding_client.dimensions,
                 'search_index_name': own_projection.index_name,
@@ -1374,6 +1759,8 @@ def run_ingest(
                 peer_projection.purge_sha(
                     attachment_id=attachment.pk, source_sha256=peer.source_sha256
                 )
+                if str(peer.pipeline) == AttachmentIngestPipeline.VIDEO:
+                    _purge_keyframe_files(attachment.pk, sha12=peer.source_sha256[:12])
             won = _fenced_update(
                 row.pk,
                 fence,
@@ -1396,6 +1783,8 @@ def run_ingest(
                     own_projection.purge_sha(
                         attachment_id=attachment.pk, source_sha256=source_sha256
                     )
+                    if is_video:
+                        _purge_keyframe_files(attachment.pk, sha12=source_sha256[:12])
                 return row
             AttachmentIngest.objects.filter(attachment_id=attachment.pk).exclude(
                 pk=row.pk
@@ -1427,6 +1816,8 @@ def run_ingest(
                 own_projection.purge_sha(
                     attachment_id=attachment.pk, source_sha256=source_sha256
                 )
+                if is_video:
+                    _purge_keyframe_files(attachment.pk, sha12=source_sha256[:12])
         else:
             # A newer claim exists: this revision already lost. Remove exactly
             # our own documents and step aside.
@@ -1436,6 +1827,8 @@ def run_ingest(
             own_projection.purge_sha(
                 attachment_id=attachment.pk, source_sha256=source_sha256
             )
+            if is_video:
+                _purge_keyframe_files(attachment.pk, sha12=source_sha256[:12])
             _fenced_update(row.pk, fence, state=AttachmentIngestState.SUPERSEDED)
         row.refresh_from_db()
         return row
@@ -1443,9 +1836,16 @@ def run_ingest(
         code = getattr(exc, 'code', '') or 'ATTACHMENT_INGEST_FAILED'
         # Fenced (never demote a takeover's fresh state); raise regardless so
         # the failure stays visible to django-q and callers.
-        _fenced_update(
+        failed_while_owned = _fenced_update(
             row.pk, fence, state=AttachmentIngestState.FAILED, error_code=str(code)[:64]
         )
+        if is_video and failed_while_owned and not row_was_indexed:
+            # Earlier segments persist keyframes synchronously. A terminal
+            # failure owns no serving rows, so remove this revision's partial
+            # files; a stale worker whose fence failed must not delete paths
+            # a takeover may already be using. A forced re-ingest of an
+            # INDEXED revision keeps its existing serving keyframes.
+            _purge_keyframe_files(attachment.pk, sha12=source_sha256[:12])
         if isinstance(exc, AttachmentIngestionError):
             raise
         raise AttachmentIngestionError(
@@ -1459,6 +1859,33 @@ def _tag_names(attachment) -> list[str]:
         return [str(tag) for tag in attachment.tags.names()]
     except Exception:
         return []
+
+
+def _purge_keyframe_files(attachment_id: int, *, sha12: str | None = None) -> None:
+    """Best-effort removal of derived keyframe files (R4).
+
+    File cleanup must NEVER wedge a purge (the R3 lesson): every failure is
+    logged value-free and swallowed. ``sha12`` scopes the delete to one
+    superseded revision; without it the whole attachment's keyframes go.
+    Empty directories may linger (FileSystemStorage deletes files only) —
+    harmless.
+    """
+    from django.core.files.storage import default_storage
+
+    directory = f'ai/keyframes/{attachment_id}'
+    try:
+        _dirs, files = default_storage.listdir(directory)
+    except Exception:
+        return  # never written (or storage cannot list) — nothing to do
+    for name in files:
+        if sha12 is not None and not name.startswith(f'{sha12}-'):
+            continue
+        try:
+            default_storage.delete(f'{directory}/{name}')
+        except Exception as exc:
+            from ai.core.faults import log_fault
+
+            log_fault(logger, 'Keyframe cleanup failed', exc, stage='attachment_sweep')
 
 
 def purge_attachment_artifacts(
@@ -1517,6 +1944,7 @@ def purge_attachment_artifacts(
         deleted += media_projection.purge_attachment(attachment_id=attachment_id)
     AttachmentChunk.objects.filter(ingest__attachment_id=attachment_id).delete()
     MediaSegment.objects.filter(ingest__attachment_id=attachment_id).delete()
+    _purge_keyframe_files(attachment_id)
     rows.update(state=AttachmentIngestState.DELETED)
     return deleted
 
@@ -1765,6 +2193,9 @@ def heal_media_thumbnails(*, limit: int = 200, media_projection=None) -> int:
     from common.models import Attachment
 
     healed = 0
+    # IMAGE only by design: video keyframes are written synchronously in-run
+    # (write failure fails the ingest), so an INDEXED video segment can never
+    # have an empty thumbnail_path — there is no async producer to wait for.
     segments = MediaSegment.objects.filter(
         thumbnail_path='',
         ingest__state=AttachmentIngestState.INDEXED,

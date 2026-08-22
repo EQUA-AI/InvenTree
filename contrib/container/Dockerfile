@@ -71,6 +71,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client mariadb-client \
     # font support
     fontconfig fonts-freefont-ttf fonts-terminus fonts-noto-core fonts-noto-cjk \
+    # Video segmentation (attachment-RAG R4): ffmpeg + ffprobe
+    ffmpeg \
     # Cleanup
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

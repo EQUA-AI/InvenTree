@@ -899,6 +899,7 @@ async def get_thread(
                     "provenance": _persisted_provenance(message.metadata),
                     # S28: server-observed entity chips survive reload.
                     "entities": message.metadata.get("entities"),
+                    "media_evidence": message.metadata.get("media_evidence"),
                 }
                 for message in selected
             ],

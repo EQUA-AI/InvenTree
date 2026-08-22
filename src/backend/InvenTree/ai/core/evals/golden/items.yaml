@@ -341,3 +341,42 @@ items:
     trap_type: absent_spec
     corpus_version: aimms-media-fixtures-v1
     dataset: live
+
+  # --- Video evidence (R4, search_evidence_media video arm) — reserved set.
+  # Seeded once by `manage.py seed_video_eval_fixtures`. Ground truths key
+  # EXCLUSIVELY off the deterministic scene overlays baked into the frozen
+  # recording (OCR anchors) + nominal timecode windows — never captions.
+
+  - id: video-seal-segment-grounded
+    question: >-
+      In the recording on work order WO-EVAL-HX200-VIDEO, show where the
+      seal was replaced.
+    expected_behavior: answer
+    ground_truth: >-
+      The seal replacement is in the middle portion of the recording — the
+      segment whose keyframe overlay reads "SEAL REPLACEMENT" (nominal
+      window overlapping roughly 45-90 seconds; the matching indexed
+      segments span 55-115s and/or 0-60s windows that overlap that scene).
+      A correct answer cites a video segment with a time range overlapping
+      the 45-90 second scene and mentions the seal replacement; citing the
+      coupling-inspection or torque-check scene instead is wrong.
+    ground_truth_keys: ["seal"]
+    trap_type: none
+    corpus_version: aimms-video-fixtures-v1
+    dataset: live
+
+  - id: video-wrong-scene-discrimination
+    question: >-
+      In the recording on work order WO-EVAL-HX200-VIDEO, when was the
+      torque checked?
+    expected_behavior: answer
+    ground_truth: >-
+      The torque check is the final scene — the segment whose keyframe
+      overlay reads "TORQUE CHECK", with a time range in the last part of
+      the recording (a window overlapping roughly 90-130 seconds, e.g.
+      110-130s). Pointing at the seal-replacement or coupling-inspection
+      scene instead is wrong.
+    ground_truth_keys: ["torque"]
+    trap_type: none
+    corpus_version: aimms-video-fixtures-v1
+    dataset: live

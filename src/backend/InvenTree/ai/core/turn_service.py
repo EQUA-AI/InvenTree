@@ -391,6 +391,46 @@ class NormalizedTurnService:
             logger.warning("entity manifest attachment failed", exc_info=False)
         return canonical
 
+    async def _attach_media_evidence(
+        self,
+        canonical: dict[str, Any],
+        *,
+        thread_id: str,
+        turn_id: str,
+        emitter: EventEmitter | None,
+    ) -> dict[str, Any]:
+        """Attach the R4 server-authored media-evidence manifest; fail-soft."""
+        try:
+            from ai.core.config import get_settings
+            from ai.core.media_evidence import build_media_evidence
+
+            if not get_settings().feature_media_evidence:
+                return canonical
+            from ai.core.tools.capture_ledger import current_tool_captures
+
+            ledger = current_tool_captures()
+            if ledger is None:
+                return canonical
+            entries = build_media_evidence(ledger.manuals_citations())
+            if not entries:
+                return canonical
+            canonical["media_evidence"] = entries
+            event = AGUIEvent(
+                event_type=EventType.STATE_DELTA,
+                # SSE hygiene: kind/media_evidence only — never content/
+                # delta/choices/message, which stale clients render as text.
+                data={"kind": "media_evidence", "media_evidence": entries},
+                thread_id=thread_id,
+                run_id=f"mediaEvidence:{turn_id}",
+            )
+            if emitter is not None:
+                await emitter.emit(event)
+            elif isinstance(canonical.get("events"), list):
+                canonical["events"].append(event.to_dict())
+        except Exception:  # pragma: no cover - chips must never fail a turn
+            logger.warning("media evidence attachment failed", exc_info=False)
+        return canonical
+
     async def _build_diagnostic_context(
         self,
         *,

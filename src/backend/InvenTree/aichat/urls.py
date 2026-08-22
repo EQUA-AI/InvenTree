@@ -9,6 +9,7 @@ from aichat.api import (
     ProposalListCreateView,
     ProposalRejectView,
 )
+from aichat.media_stream import EvidenceMediaStreamView
 
 app_name = 'aichat'
 
@@ -30,4 +31,9 @@ urlpatterns = [
         name='proposal-reject',
     ),
     path('feedback/', MessageFeedbackView.as_view(), name='message-feedback'),
+    path(
+        'evidence/media/<int:attachment_id>/',
+        EvidenceMediaStreamView.as_view(),
+        name='evidence-media-stream',
+    ),
 ]

@@ -548,17 +548,19 @@ async def search_evidence_media(
     top_k: int = 5,
 ) -> dict[str, Any]:
     """
-    Search evidence photos captured on work orders and machines at this site.
+    Search evidence photos and video segments captured on work orders and
+    machines at this site.
 
-    This corpus holds automatically ingested evidence media — photos of
-    nameplates, gauges, damage and completed work uploaded to work orders,
-    procedure steps and machines. Its excerpts are each photo's caption and
-    OCR text, fenced as untrusted content. Use it for "what does the photo
-    show", "what evidence was captured on this job" or "what does the
-    nameplate read" — NOT for specifications or procedures, which live in
-    search_manuals and search_attachment_docs. Results never include the
-    image itself. Cite the photo's file name and its work order (and when
-    it was taken, if known) in every answer drawn from them.
+    This corpus holds automatically ingested evidence media — photos and
+    repair recordings uploaded to work orders, procedure steps and machines.
+    Its excerpts are each item's caption and OCR text, fenced as untrusted
+    content. Use it for "what does the photo show", "show where the seal was
+    replaced" or "what does the nameplate read" — NOT for specifications or
+    procedures, which live in search_manuals and search_attachment_docs.
+    Video hits carry timecode_start_s/timecode_end_s into the original
+    recording. Results never include the media itself. Cite the file name,
+    the work order, and for video the segment's time range (and when it was
+    taken, if known) in every answer drawn from them.
 
     Args:
       query: What to look for, in natural language.

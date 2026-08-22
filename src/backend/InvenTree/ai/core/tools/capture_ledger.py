@@ -43,6 +43,8 @@ _HARVEST_KEYS = frozenset({
     # R3: a work-order id an evidence-media citation carried counts as
     # observed when the model repeats it.
     "work_order_id",
+    # R4: likewise an attachment id (the evidence deep link's anchor).
+    "attachment_id",
 })
 _MAX_HARVEST_DEPTH = 6
 
@@ -101,6 +103,11 @@ class ToolCaptureLedger:
         return []
 
 
+def _stringify(value: Any) -> str:
+    """None-aware capture stringification: only missing values collapse."""
+    return "" if value is None else str(value)
+
+
 def _manuals_citations(payload: dict[str, Any]) -> list[dict[str, Any]]:
     """Extract the search_manuals citation dicts, shape-checked."""
     chunks = payload.get("chunks")
@@ -126,12 +133,18 @@ def _manuals_citations(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 # governed corpus (which leaves both empty) in captures.
                 "access_class": str(citation.get("access_class") or ""),
                 "source_file_name": str(citation.get("source_file_name") or ""),
-                # R3 evidence-media coordinates; every earlier corpus leaves
-                # these empty (additive keys with safe defaults).
+                # R3/R4 evidence-media coordinates; every earlier corpus
+                # leaves these empty (additive keys with safe defaults).
+                # Timecodes and segment_index are None-aware, not falsy-
+                # collapsed: 0.0 / 0 are legitimate first-segment values (R4).
                 "media_type": str(citation.get("media_type") or ""),
                 "work_order_id": str(citation.get("work_order_id") or ""),
-                "timecode_start_s": str(citation.get("timecode_start_s") or ""),
-                "timecode_end_s": str(citation.get("timecode_end_s") or ""),
+                "timecode_start_s": _stringify(citation.get("timecode_start_s")),
+                "timecode_end_s": _stringify(citation.get("timecode_end_s")),
+                "attachment_id": str(citation.get("attachment_id") or ""),
+                "model_type": str(citation.get("model_type") or ""),
+                "model_id": str(citation.get("model_id") or ""),
+                "segment_index": _stringify(citation.get("segment_index")),
             })
     return citations
 

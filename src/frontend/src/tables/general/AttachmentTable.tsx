@@ -35,6 +35,7 @@ import {
   useDeleteApiFormModal,
   useEditApiFormModal
 } from '../../hooks/UseForm';
+import { useGlobalSettingsState } from '../../states/SettingsStates';
 import { useUserState } from '../../states/UserState';
 
 /**
@@ -128,6 +129,10 @@ export function AttachmentTable({
 }>): ReactNode {
   const api = useApi();
   const user = useUserState();
+  const globalSettings = useGlobalSettingsState();
+  const uploadMaxMb = Number(
+    globalSettings.getSetting('INVENTREE_UPLOAD_MAX_SIZE', '10') || '10'
+  );
   const table = useTable(`${model_type}-attachments`);
 
   const tableColumns = useMemo(() => attachmentTableColumns(), []);
@@ -171,7 +176,9 @@ export function AttachmentTable({
 
       api
         .post(url, formData, {
-          timeout: 30 * 1000,
+          // R4: size-derived ceiling (30 s base + 1 s/MiB ~= a 1 MiB/s
+          // floor) — a flat 30 s cannot complete a large video upload.
+          timeout: 30_000 + Math.ceil(file.size / (1024 * 1024)) * 1000,
           onUploadProgress: (progressEvent) => {
             const progress = 100 * (progressEvent?.progress ?? 0);
             notifications.update({
@@ -399,6 +406,14 @@ export function AttachmentTable({
           <Paper p='md' shadow='xs' radius='md'>
             <Dropzone
               onDrop={uploadFiles}
+              onReject={() => {
+                notifications.show({
+                  title: t`File too large`,
+                  message: t`The file exceeds the configured upload size limit`,
+                  color: 'red'
+                });
+              }}
+              maxSize={uploadMaxMb * 1024 * 1024}
               loading={isUploading}
               key='attachment-dropzone'
             >

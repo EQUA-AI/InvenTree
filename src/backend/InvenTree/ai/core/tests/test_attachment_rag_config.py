@@ -120,6 +120,15 @@ def test_segment_length_respects_gemini_cap():
         _settings(RAG_VIDEO_SEGMENT_S=180)
 
 
+def test_video_duration_cap_default_and_bounds():
+    """R4: the ingest-bounding duration cap defaults to 900 s within [120, 7200]."""
+    assert _settings().rag_video_max_duration_s == 900
+    with pytest.raises(ValidationError):
+        _settings(RAG_VIDEO_MAX_DURATION_S=119)
+    with pytest.raises(ValidationError):
+        _settings(RAG_VIDEO_MAX_DURATION_S=7201)
+
+
 def test_padded_governed_name_cannot_bypass_alias_guard():
     """F-01: whitespace must not defeat the trust-tier separation."""
     with pytest.raises(ValidationError, match="must be distinct"):

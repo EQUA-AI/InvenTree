@@ -180,6 +180,15 @@ class TestDispositions:
             _record(EventType.STATE_DELTA, kind="entity_manifest", entities=[{"model": "part"}])
         )
         assert entities[0]["name"] == "aimms.entities"
+        media = _t().translate(
+            _record(
+                EventType.STATE_DELTA,
+                kind="media_evidence",
+                media_evidence=[{"attachment_id": 9, "segment_index": 4}],
+            )
+        )
+        assert media[0]["name"] == "aimms.mediaEvidence"
+        assert media[0]["value"]["media_evidence"] == [{"attachment_id": 9, "segment_index": 4}]
         provenance = _t().translate(
             _record(
                 EventType.STATE_DELTA,
@@ -300,6 +309,7 @@ def test_custom_channels_are_frozen_and_generated() -> None:
         "aimms.toolStatus",
         "aimms.question",
         "aimms.entities",
+        "aimms.mediaEvidence",
         "aimms.provenance",
         "aimms.stateDelta",
         "aimms.proposalsRefresh",

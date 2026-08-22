@@ -1,11 +1,16 @@
-"""R3 media RAG: router matrix, image path, supersede, heal, restamp, purge."""
+"""R3/R4 media RAG: router matrix, image + video paths, supersede, heal, purge."""
 
 import contextlib
+import hashlib
 import uuid
+from datetime import UTC, datetime
+from pathlib import PurePath
 from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 
@@ -27,6 +32,7 @@ from aichat.services.attachment_ingestion import (
     FLAG_DEPENDENT_SKIPS,
     AttachmentIngestionError,
     _media_owner_coordinates,
+    _video_source,
     derive_client_codes,
     heal_media_thumbnails,
     media_search_document_id,
@@ -54,6 +60,17 @@ _WEBP = b'RIFF\x00\x00\x00\x00WEBPVP8 ' + b'\x00' * 64
 _GIF = b'GIF89a' + b'\x00' * 64
 _BMP = b'BM' + b'\x00' * 64
 _MP4 = b'\x00\x00\x00\x18ftypmp42' + b'\x00' * 64
+_MP4_ALT = b'\x00\x00\x00\x18ftypmp42' + b'take-two-rev' + b'\x00' * 52
+
+#: Sentinels the fake ffmpeg tools write, so keyframe/clip plumbing is provable.
+_CLIP_SENTINEL = b'CLIP-SENTINEL-BYTES-0000'
+_FRAME_SENTINEL = b'\xff\xd8\xff\xe0KEYFRAME-SENTINEL'
+
+#: The container creation_time the fake probe reports.
+_RECORDED_AT = datetime(2026, 3, 14, 10, 30, tzinfo=UTC)
+
+#: The nominal 130 s plan at the 60/5 defaults.
+_EXPECTED_WINDOWS = [(0.0, 60.0), (55.0, 115.0), (110.0, 130.0)]
 
 _MEDIA_OWNERS = ('workorder', 'workorderstepexecution', 'assetmachine')
 
@@ -116,11 +133,17 @@ class FakeGeminiClient:
     def __init__(self):
         """Initialize recorders."""
         self.image_calls = []
+        self.video_calls = []
         self.query_calls = 0
 
     def embed_image(self, data, *, mime_type):
         """Return one fixed-width image vector and record the call."""
         self.image_calls.append((len(data), mime_type))
+        return [0.25] * self.dimensions
+
+    def embed_video_segment(self, data, *, mime_type):
+        """Return one fixed-width clip vector and record the call (R4)."""
+        self.video_calls.append((len(data), mime_type))
         return [0.25] * self.dimensions
 
     def embed_query(self, text):
@@ -141,10 +164,12 @@ class FakeMediaProjection(FakeProjection):
 
     def merge_media_metadata(self, *, attachment_id, fields):
         """Record a scope/coordinate merge; pretend one document changed."""
-        frozen = tuple(sorted(
-            (key, tuple(value) if isinstance(value, list) else value)
-            for key, value in fields.items()
-        ))
+        frozen = tuple(
+            sorted(
+                (key, tuple(value) if isinstance(value, list) else value)
+                for key, value in fields.items()
+            )
+        )
         self.operations.append(('merge_metadata', attachment_id, frozen))
         return 1
 
@@ -165,6 +190,47 @@ def _image_providers(ocr='Nameplate SN-100 480V', caption='Motor nameplate photo
         ) as caption_mock,
     ):
         yield fake_di, caption_mock
+
+
+@contextlib.contextmanager
+def _video_tool_fakes(
+    *, duration_s=130.0, recorded_at=_RECORDED_AT, has_video_stream=True
+):
+    """Fake the local ffmpeg toolchain for one video ingest.
+
+    Yields:
+        dict: the recorded ``cut``/``keyframe`` call arguments.
+    """
+    from aichat.services.video_tools import VideoProbe
+
+    probe = VideoProbe(
+        duration_s=duration_s,
+        recorded_at=recorded_at,
+        width=1280,
+        height=720,
+        has_video_stream=has_video_stream,
+    )
+    calls = {'cut': [], 'keyframe': [], 'clip_suffixes': []}
+
+    def fake_cut(path, start_s, duration, out_path):
+        calls['cut'].append((start_s, duration))
+        calls['clip_suffixes'].append(PurePath(out_path).suffix)
+        with open(out_path, 'wb') as handle:
+            handle.write(_CLIP_SENTINEL)
+
+    def fake_keyframe(path, at_s, out_path):
+        calls['keyframe'].append(at_s)
+        with open(out_path, 'wb') as handle:
+            handle.write(_FRAME_SENTINEL)
+
+    with (
+        mock.patch('aichat.services.video_tools.probe_video', return_value=probe),
+        mock.patch('aichat.services.video_tools.cut_segment', side_effect=fake_cut),
+        mock.patch(
+            'aichat.services.video_tools.extract_keyframe', side_effect=fake_keyframe
+        ),
+    ):
+        yield calls
 
 
 class MediaFixtureTestCase(RagFixtureTestCase):
@@ -220,10 +286,7 @@ class MediaFixtureTestCase(RagFixtureTestCase):
             idempotency_key='media-tests',
         )
         cls.step = WorkOrderStepExecution.objects.create(
-            application=application,
-            step_key=uuid.uuid4(),
-            sequence=1,
-            step_snapshot={},
+            application=application, step_key=uuid.uuid4(), sequence=1, step_snapshot={}
         )
         application_customer = WorkOrderProcedureApplication.objects.create(
             work_order=cls.work_order_customer,
@@ -307,17 +370,22 @@ class MediaRouterTests(MediaFixtureTestCase):
         # Terminal means terminal: no flag flip may ever revive these stamps.
         self.assertNotIn('ATTACHMENT_SKIP_UNSUPPORTED_TYPE', FLAG_DEPENDENT_SKIPS)
 
-    def test_media_owner_video_stays_dark_until_r4(self):
-        """Video on media owners skips VIDEO_PIPELINE_DARK even with flags on."""
+    def test_media_owner_video_ingests_only_under_full_conjunction(self):
+        """MP4 on every media owner ingests iff BOTH flags are on (R4)."""
         for model_type in _MEDIA_OWNERS:
             attachment = _make_attachment(model_type, 4302, 'clip.mp4', _MP4)
             with self.subTest(model_type=model_type):
                 decision = self._route(attachment, _MP4)
-                self.assertEqual(decision.action, 'skip')
-                self.assertEqual(decision.pipeline, 'video')
                 self.assertEqual(
-                    decision.reason, 'ATTACHMENT_SKIP_VIDEO_PIPELINE_DARK'
+                    (decision.action, decision.pipeline), ('ingest', 'video')
                 )
+                for media_on, django_on in ((True, False), (False, True)):
+                    dark = self._route(
+                        attachment, _MP4, media_on=media_on, django_on=django_on
+                    )
+                    self.assertEqual(dark.action, 'skip')
+                    self.assertEqual(dark.pipeline, 'video')
+                    self.assertEqual(dark.reason, 'ATTACHMENT_SKIP_VIDEO_PIPELINE_DARK')
 
     def test_part_image_stays_excluded_with_flags_on(self):
         """Part imagery keeps its decision-#10 skip regardless of media flags."""
@@ -329,9 +397,7 @@ class MediaRouterTests(MediaFixtureTestCase):
 
     def test_gif_machine_upload_records_skip_row(self):
         """The terminal unsupported skip is recorded on a registry row."""
-        attachment = _make_attachment(
-            'assetmachine', self.machine.pk, 'anim.gif', _GIF
-        )
+        attachment = _make_attachment('assetmachine', self.machine.pk, 'anim.gif', _GIF)
         row, _embedder, _projection = self._run_media(attachment.pk)
         self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
         self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE')
@@ -439,12 +505,8 @@ class MediaImageIngestTests(MediaFixtureTestCase):
 
     def test_image_oversize_records_image_skip(self):
         """The image cap binds with its own code and no provider work."""
-        attachment = _make_attachment(
-            'workorder', self.work_order.pk, 'huge.png', _PNG
-        )
-        Attachment.objects.filter(pk=attachment.pk).update(
-            file_size=2 * 1024 * 1024
-        )
+        attachment = _make_attachment('workorder', self.work_order.pk, 'huge.png', _PNG)
+        Attachment.objects.filter(pk=attachment.pk).update(file_size=2 * 1024 * 1024)
         with mock.patch(
             'aichat.services.attachment_ingestion.extract_image_text',
             side_effect=AssertionError('no OCR for an oversize skip'),
@@ -513,9 +575,7 @@ class MediaImageIngestTests(MediaFixtureTestCase):
             'workorder', self.work_order.pk, 'nocap.png', _PNG
         )
         fake_di = mock.Mock(
-            analyze_read_text=mock.Mock(
-                return_value=SimpleNamespace(content='text')
-            )
+            analyze_read_text=mock.Mock(return_value=SimpleNamespace(content='text'))
         )
         with (
             mock.patch(
@@ -573,6 +633,398 @@ class MediaImageIngestTests(MediaFixtureTestCase):
                 ('mark_stale', attachment.pk, first.source_sha256),
                 ('purge_sha', attachment.pk, first.source_sha256),
             ],
+        )
+
+
+class MediaVideoIngestTests(MediaFixtureTestCase):
+    """The R4 video path: segmentation E2E, in-run skips, failure, cleanup."""
+
+    def test_video_source_does_not_swallow_body_not_implemented(self):
+        """Only storage.path may trigger spill fallback, never the with-body."""
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'body-error.mp4', _MP4
+        )
+        with self.assertRaisesRegex(NotImplementedError, 'body sentinel'):
+            with _video_source(attachment):
+                raise NotImplementedError('body sentinel')
+
+    def test_sniffed_brand_controls_clip_container_not_uploader_extension(self):
+        """Renamed MP4/MOV files emit clips matching their verified MIME."""
+        cases = (
+            ('renamed-evidence.bin', _MP4, '.mp4', 'video/mp4'),
+            (
+                'misnamed-evidence.mp4',
+                b'\x00\x00\x00\x18ftypqt  ' + b'\x00' * 64,
+                '.mov',
+                'video/quicktime',
+            ),
+        )
+        for name, content, expected_suffix, expected_mime in cases:
+            with self.subTest(name=name):
+                attachment = _make_attachment(
+                    'workorder', self.work_order.pk, name, content
+                )
+                with _image_providers(), _video_tool_fakes() as calls:
+                    row, embedder, _projection = self._run_media(attachment.pk)
+                self.assertEqual(row.state, AttachmentIngestState.INDEXED)
+                self.assertEqual(calls['clip_suffixes'], [expected_suffix] * 3)
+                self.assertEqual(
+                    embedder.video_calls, [(len(_CLIP_SENTINEL), expected_mime)] * 3
+                )
+
+    def test_workorder_video_multi_segment_end_to_end(self):
+        """A 130 s WO recording lands as three segments with full doc pins."""
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'seal-swap.mp4', _MP4
+        )
+        sha = hashlib.sha256(_MP4).hexdigest()
+        sha12 = sha[:12]
+        with (
+            _image_providers(
+                ocr='SEAL REPLACEMENT', caption='Seal replacement recording'
+            ),
+            _video_tool_fakes() as calls,
+        ):
+            row, embedder, projection = self._run_media(attachment.pk)
+        self.assertEqual(row.state, AttachmentIngestState.INDEXED)
+        self.assertEqual(row.pipeline, 'video')
+        self.assertEqual(row.extractor, 'ffmpeg')
+        self.assertEqual(row.chunk_count, 0)
+        self.assertEqual(row.segment_count, 3)
+        self.assertEqual(row.source_sha256, sha)
+        self.assertEqual(row.embedding_model, 'fake-gemini')
+        self.assertEqual(row.embedding_dimensions, 3072)
+        self.assertEqual(row.search_index_name, 'aimms-media-evidence-v1')
+        self.assertEqual(row.client_codes, ['acme'])
+        # ffmpeg saw the NOMINAL plan; keyframes sit at each clip midpoint.
+        self.assertEqual(calls['cut'], [(0.0, 60.0), (55.0, 60.0), (110.0, 20.0)])
+        self.assertEqual(calls['keyframe'], [30.0, 30.0, 10.0])
+        self.assertEqual(embedder.video_calls, [(len(_CLIP_SENTINEL), 'video/mp4')] * 3)
+        self.assertEqual(embedder.image_calls, [])
+        self.assertEqual(projection.operations, [('upsert', 3)])
+
+        segments = list(
+            MediaSegment.objects.filter(ingest=row).order_by('segment_index')
+        )
+        self.assertEqual(len(segments), 3)
+        for index, (segment, (start, end)) in enumerate(
+            zip(segments, _EXPECTED_WINDOWS, strict=True)
+        ):
+            self.assertEqual(segment.media_type, 'video_segment')
+            self.assertEqual(segment.segment_index, index)
+            self.assertEqual(segment.timecode_start_s, start)
+            self.assertEqual(segment.timecode_end_s, end)
+            self.assertEqual(segment.caption, 'Seal replacement recording')
+            self.assertEqual(segment.ocr_text, 'SEAL REPLACEMENT')
+            self.assertEqual(
+                segment.search_doc_id, f'att-{attachment.pk}-{sha12}-s{index}'
+            )
+            self.assertEqual(
+                segment.search_doc_id,
+                media_search_document_id(attachment.pk, sha, segment_index=index),
+            )
+            self.assertEqual(
+                segment.thumbnail_path,
+                f'ai/keyframes/{attachment.pk}/{sha12}-s{index}.jpg',
+            )
+            # The keyframe FILE exists under MEDIA_ROOT with the fake's bytes.
+            with default_storage.open(segment.thumbnail_path) as handle:
+                self.assertEqual(handle.read(), _FRAME_SENTINEL)
+
+        docs = projection.documents
+        self.assertEqual(len(docs), 3)
+        self.assertEqual(len(_MEDIA_DOC_KEYS), 30)
+        for index, doc in enumerate(docs):
+            start, end = _EXPECTED_WINDOWS[index]
+            self.assertEqual(set(doc), _MEDIA_DOC_KEYS)
+            self.assertEqual(doc['id'], f'att-{attachment.pk}-{sha12}-s{index}')
+            self.assertEqual(doc['media_type'], 'video_segment')
+            self.assertEqual(doc['model_type'], 'workorder')
+            self.assertEqual(doc['work_order_id'], self.work_order.pk)
+            self.assertIsNone(doc['step_execution_id'])
+            self.assertEqual(doc['access_class'], 'evidence_recording')
+            self.assertEqual(doc['client_codes'], ['acme'])
+            self.assertEqual(doc['scope_key'], 'site-a')
+            self.assertTrue(doc['is_current'])
+            self.assertEqual(doc['timecode_start_s'], start)
+            self.assertEqual(doc['timecode_end_s'], end)
+            self.assertEqual(doc['duration_s'], round(end - start, 3))
+            self.assertEqual(doc['segment_index'], index)
+            self.assertEqual(doc['segment_count'], 3)
+            self.assertEqual(doc['caption'], 'Seal replacement recording')
+            self.assertEqual(doc['ocr_text'], 'SEAL REPLACEMENT')
+            self.assertEqual(doc['transcript'], '')
+            self.assertEqual(
+                doc['thumbnail_path'],
+                f'ai/keyframes/{attachment.pk}/{sha12}-s{index}.jpg',
+            )
+            self.assertEqual(doc['source_file_name'], 'seal-swap.mp4')
+            self.assertEqual(doc['recorded_at'], _RECORDED_AT.isoformat())
+            self.assertTrue(doc['uploaded_at'])
+            self.assertTrue(doc['indexed_at'])
+            self.assertEqual(len(doc['media_vector']), 3072)
+            self.assertEqual(doc['embedding_model'], 'fake-gemini')
+            self.assertEqual(doc['embedding_dimensions'], 3072)
+        self.assertEqual(docs[0]['duration_s'], 60.0)
+        self.assertEqual(docs[2]['duration_s'], 20.0)
+
+        attachment.refresh_from_db()
+        stamp = attachment.metadata['ai_ingest']
+        self.assertEqual(stamp['state'], 'indexed')
+        self.assertEqual(stamp['sha'], sha)
+
+    def test_audio_only_mp4_records_terminal_unsupported_skip(self):
+        """No video stream: an owner-authorized terminal SKIPPED row."""
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'voice-note.mp4', _MP4
+        )
+        with _video_tool_fakes(has_video_stream=False):
+            row, embedder, projection = self._run_media(attachment.pk)
+        self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
+        self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE')
+        self.assertEqual(row.pipeline, 'video')
+        self.assertEqual(embedder.video_calls, [])
+        self.assertEqual(projection.operations, [])
+        attachment.refresh_from_db()
+        stamp = attachment.metadata['ai_ingest']
+        self.assertEqual(stamp['state'], 'skipped')
+        self.assertEqual(stamp['reason'], 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE')
+
+    def test_overlong_video_records_video_oversize_skip(self):
+        """Beyond the duration cap the run skips before any provider work."""
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'marathon.mp4', _MP4
+        )
+        with _video_tool_fakes(duration_s=2000.0) as calls:
+            row, embedder, projection = self._run_media(attachment.pk)
+        self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
+        self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_VIDEO_OVERSIZE')
+        self.assertEqual(row.pipeline, 'video')
+        self.assertEqual(calls['cut'], [])
+        self.assertEqual(embedder.video_calls, [])
+        self.assertEqual(projection.operations, [])
+        attachment.refresh_from_db()
+        stamp = attachment.metadata['ai_ingest']
+        self.assertEqual(stamp['state'], 'skipped')
+        self.assertEqual(stamp['reason'], 'ATTACHMENT_SKIP_VIDEO_OVERSIZE')
+
+    def test_oversize_segment_is_terminal_skip_without_provider_retry(self):
+        """A deterministic inline-byte overflow skips the whole video once."""
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'high-bitrate.mp4', _MP4
+        )
+        overflow = AttachmentIngestionError(
+            'Video segment exceeds inline limit', code='ATTACHMENT_SKIP_VIDEO_OVERSIZE'
+        )
+        with (
+            _image_providers(),
+            _video_tool_fakes() as calls,
+            mock.patch(
+                'aichat.services.attachment_ingestion._read_video_segment_bytes',
+                side_effect=overflow,
+            ),
+        ):
+            row, embedder, projection = self._run_media(attachment.pk)
+        self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
+        self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_VIDEO_OVERSIZE')
+        self.assertEqual(row.attempts, 1)
+        self.assertEqual(calls['cut'], [(0.0, 60.0)])
+        self.assertEqual(calls['keyframe'], [])
+        self.assertEqual(embedder.video_calls, [])
+        self.assertEqual(projection.operations, [])
+        attachment.refresh_from_db()
+        self.assertEqual(
+            attachment.metadata['ai_ingest']['reason'], 'ATTACHMENT_SKIP_VIDEO_OVERSIZE'
+        )
+
+    def test_segment_failure_fails_run_then_retry_reindexes_same_ids(self):
+        """A mid-loop embed failure upserts NOTHING; the retry is idempotent."""
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'flaky.mp4', _MP4
+        )
+        sha = hashlib.sha256(_MP4).hexdigest()
+
+        class FlakyGemini(FakeGeminiClient):
+            def embed_video_segment(self, data, *, mime_type):
+                """Blow up on the third segment's embedding call."""
+                if len(self.video_calls) == 2:
+                    raise RuntimeError('provider blew up mid-video')
+                return super().embed_video_segment(data, mime_type=mime_type)
+
+        failing_projection = FakeMediaProjection()
+        with (
+            _image_providers(),
+            _video_tool_fakes(),
+            self.assertRaises(AttachmentIngestionError),
+        ):
+            self._run_media(
+                attachment.pk,
+                media_embedding_client=FlakyGemini(),
+                media_projection=failing_projection,
+            )
+        row = AttachmentIngest.objects.get(
+            attachment_id=attachment.pk, source_sha256=sha
+        )
+        self.assertEqual(row.state, AttachmentIngestState.FAILED)
+        self.assertEqual(row.attempts, 1)
+        self.assertEqual(failing_projection.operations, [])
+        self.assertEqual(MediaSegment.objects.filter(ingest=row).count(), 0)
+        for index in range(2):
+            self.assertFalse(
+                default_storage.exists(
+                    f'ai/keyframes/{attachment.pk}/{sha[:12]}-s{index}.jpg'
+                )
+            )
+
+        with _image_providers(), _video_tool_fakes():
+            retried, _embedder, projection = self._run_media(attachment.pk)
+        self.assertEqual(retried.pk, row.pk)
+        self.assertEqual(retried.state, AttachmentIngestState.INDEXED)
+        self.assertEqual(retried.attempts, 2)
+        self.assertEqual(projection.operations, [('upsert', 3)])
+        self.assertEqual(
+            [doc['id'] for doc in projection.documents],
+            [f'att-{attachment.pk}-{sha[:12]}-s{index}' for index in range(3)],
+        )
+
+    def test_failed_force_refresh_preserves_serving_keyframes(self):
+        """An indexed revision keeps its thumbnails if a forced refresh fails."""
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'force-refresh.mp4', _MP4
+        )
+        sha12 = hashlib.sha256(_MP4).hexdigest()[:12]
+        with _image_providers(), _video_tool_fakes():
+            indexed, _embedder, _projection = self._run_media(attachment.pk)
+        self.assertEqual(indexed.state, AttachmentIngestState.INDEXED)
+        keyframes = [
+            f'ai/keyframes/{attachment.pk}/{sha12}-s{index}.jpg' for index in range(3)
+        ]
+        for rel in keyframes:
+            self.assertTrue(default_storage.exists(rel))
+
+        class FailingGemini(FakeGeminiClient):
+            def embed_video_segment(self, data, *, mime_type):
+                raise RuntimeError('forced refresh failed')
+
+        with (
+            _image_providers(),
+            _video_tool_fakes(),
+            self.assertRaises(AttachmentIngestionError),
+        ):
+            self._run_media(
+                attachment.pk, force=True, media_embedding_client=FailingGemini()
+            )
+        for rel in keyframes:
+            self.assertTrue(default_storage.exists(rel))
+
+    def test_purge_removes_keyframe_files_segments_and_media_docs(self):
+        """Deleting the attachment removes the derived keyframe files too."""
+        attachment = _make_attachment('workorder', self.work_order.pk, 'gone.mp4', _MP4)
+        sha12 = hashlib.sha256(_MP4).hexdigest()[:12]
+        with _image_providers(), _video_tool_fakes():
+            row, _embedder, _projection = self._run_media(attachment.pk)
+        self.assertEqual(row.state, AttachmentIngestState.INDEXED)
+        keyframes = [
+            f'ai/keyframes/{attachment.pk}/{sha12}-s{index}.jpg' for index in range(3)
+        ]
+        for rel in keyframes:
+            self.assertTrue(default_storage.exists(rel))
+        media_projection = FakeMediaProjection()
+        with mock.patch(
+            'ai.core.integrations.attachment_search.AttachmentSearchProjection.'
+            'from_settings',
+            side_effect=AssertionError('no docs client for a media-only purge'),
+        ):
+            purged = purge_attachment_artifacts(
+                attachment.pk, media_projection=media_projection
+            )
+        self.assertEqual(purged, 1)
+        self.assertIn(('purge', attachment.pk), media_projection.operations)
+        for rel in keyframes:
+            self.assertFalse(default_storage.exists(rel))
+        row.refresh_from_db()
+        self.assertEqual(row.state, AttachmentIngestState.DELETED)
+        self.assertEqual(MediaSegment.objects.filter(ingest=row).count(), 0)
+
+    def test_new_sha_prunes_only_the_old_shas_keyframes(self):
+        """The winner's peer purge is sha12-scoped: other prefixes survive."""
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'rev-a.mp4', _MP4
+        )
+        old_sha12 = hashlib.sha256(_MP4).hexdigest()[:12]
+        new_sha12 = hashlib.sha256(_MP4_ALT).hexdigest()[:12]
+        with _image_providers(), _video_tool_fakes():
+            first, _e, _p = self._run_media(attachment.pk)
+        self.assertEqual(first.state, AttachmentIngestState.INDEXED)
+        # A foreign-prefix file in the same directory must NOT be pruned.
+        foreign = f'ai/keyframes/{attachment.pk}/ffffffffffff-s0.jpg'
+        default_storage.save(foreign, ContentFile(b'unrelated revision keyframe'))
+        with mock.patch('InvenTree.tasks.offload_task', return_value=True):
+            attachment.attachment.save(
+                'rev-b.mp4', SimpleUploadedFile('rev-b.mp4', _MP4_ALT)
+            )
+        with _image_providers(), _video_tool_fakes():
+            second, _e2, projection2 = self._run_media(attachment.pk)
+        self.assertEqual(second.state, AttachmentIngestState.INDEXED)
+        first.refresh_from_db()
+        self.assertEqual(first.state, AttachmentIngestState.SUPERSEDED)
+        self.assertEqual(
+            projection2.operations,
+            [
+                ('upsert', 3),
+                ('mark_stale', attachment.pk, first.source_sha256),
+                ('purge_sha', attachment.pk, first.source_sha256),
+            ],
+        )
+        for index in range(3):
+            self.assertFalse(
+                default_storage.exists(
+                    f'ai/keyframes/{attachment.pk}/{old_sha12}-s{index}.jpg'
+                )
+            )
+            self.assertTrue(
+                default_storage.exists(
+                    f'ai/keyframes/{attachment.pk}/{new_sha12}-s{index}.jpg'
+                )
+            )
+        self.assertTrue(default_storage.exists(foreign))
+
+    def test_conflicting_segment_row_walks_away_without_upserting(self):
+        """A real (ingest, segment_index) conflict aborts atomically: no docs."""
+        attachment = _make_attachment('workorder', self.work_order.pk, 'twin.mp4', _MP4)
+        real_id = media_search_document_id
+        state = {'injected': False}
+
+        def inject_conflict(attachment_id, source_sha256, *, segment_index=None):
+            """Insert a conflicting row between the delete and the bulk insert."""
+            if not state['injected']:
+                state['injected'] = True
+                twin_row = AttachmentIngest.objects.get(
+                    attachment_id=attachment_id, source_sha256=source_sha256
+                )
+                MediaSegment.objects.create(
+                    ingest=twin_row, media_type='video_segment', segment_index=0
+                )
+            return real_id(attachment_id, source_sha256, segment_index=segment_index)
+
+        with (
+            _image_providers(),
+            _video_tool_fakes(),
+            mock.patch(
+                'aichat.services.attachment_ingestion.media_search_document_id',
+                side_effect=inject_conflict,
+            ),
+        ):
+            row, _embedder, projection = self._run_media(attachment.pk)
+        self.assertTrue(state['injected'])
+        row.refresh_from_db()
+        # Walk-away: the run neither indexed nor upserted anything, and the
+        # stamp never claims success.
+        self.assertEqual(row.state, AttachmentIngestState.EMBEDDING)
+        self.assertEqual(projection.operations, [])
+        attachment.refresh_from_db()
+        self.assertNotEqual(
+            (attachment.metadata or {}).get('ai_ingest', {}).get('state'), 'indexed'
         )
 
 
@@ -672,9 +1124,7 @@ class MediaThumbnailTests(MediaFixtureTestCase):
             ],
         )
         segment.refresh_from_db()
-        self.assertEqual(
-            segment.thumbnail_path, 'attachments/thumbs/early.thumb.png'
-        )
+        self.assertEqual(segment.thumbnail_path, 'attachments/thumbs/early.thumb.png')
 
     def test_heal_without_thumbnail_builds_no_client(self):
         """While the thumbnail is still absent the heal constructs nothing."""
@@ -699,9 +1149,7 @@ class MediaOwnerDerivationTests(MediaFixtureTestCase):
 
     def test_workorder_codes_derive_from_machine_client(self):
         """A machine-attributed WO stamps the machine's client code."""
-        self.assertEqual(
-            derive_client_codes('workorder', self.work_order.pk), ['acme']
-        )
+        self.assertEqual(derive_client_codes('workorder', self.work_order.pk), ['acme'])
 
     def test_customer_attributed_workorder_fails_closed(self):
         """A customer-attributed WO stamps [] — never the machine's code."""
@@ -717,9 +1165,7 @@ class MediaOwnerDerivationTests(MediaFixtureTestCase):
 
     def test_broken_chains_fail_closed(self):
         """Machineless WOs and missing rows all derive [] (never widen)."""
-        self.assertEqual(
-            derive_client_codes('workorder', self.work_order_bare.pk), []
-        )
+        self.assertEqual(derive_client_codes('workorder', self.work_order_bare.pk), [])
         self.assertEqual(derive_client_codes('workorder', 999999), [])
         self.assertEqual(derive_client_codes('workorderstepexecution', 999999), [])
 
@@ -729,8 +1175,7 @@ class MediaOwnerDerivationTests(MediaFixtureTestCase):
             derive_client_codes('workorderstepexecution', self.step.pk), ['acme']
         )
         self.assertEqual(
-            derive_client_codes('workorderstepexecution', self.step_customer.pk),
-            [],
+            derive_client_codes('workorderstepexecution', self.step_customer.pk), []
         )
 
     def test_media_owner_coordinates_for_all_owners(self):
@@ -790,9 +1235,7 @@ class MediaPurgeTests(MediaFixtureTestCase):
 
     def test_purge_deletes_segments_and_hits_media_index_only(self):
         """A media-only attachment purges the media index, never the docs one."""
-        attachment = _make_attachment(
-            'workorder', self.work_order.pk, 'gone.png', _PNG
-        )
+        attachment = _make_attachment('workorder', self.work_order.pk, 'gone.png', _PNG)
         with _image_providers():
             row, _embedder, _projection = self._run_media(attachment.pk)
         self.assertEqual(MediaSegment.objects.filter(ingest=row).count(), 1)
@@ -828,8 +1271,7 @@ class MediaPurgeTests(MediaFixtureTestCase):
         self.assertEqual(purged, 1)
         self.assertIn(('purge', attachment.pk), projection.operations)
         self.assertEqual(
-            AttachmentChunk.objects.filter(ingest__attachment_id=attachment.pk)
-            .count(),
+            AttachmentChunk.objects.filter(ingest__attachment_id=attachment.pk).count(),
             0,
         )
 
@@ -913,9 +1355,7 @@ class WorkOrderRestampTests(MediaFixtureTestCase):
         media_projection = media_factory.return_value
         self.assertGreaterEqual(touched, 1)
         # The docs projection never saw the media row...
-        self.assertNotIn(
-            ('merge', attachment.pk, ('zeta',)), doc_projection.operations
-        )
+        self.assertNotIn(('merge', attachment.pk, ('zeta',)), doc_projection.operations)
         # ...and the media projection re-stamped scope AND coordinates.
         metadata_ops = [
             op for op in media_projection.operations if op[0] == 'merge_metadata'
@@ -934,9 +1374,7 @@ class WorkOrderRestampTests(MediaFixtureTestCase):
         receiver's existence gate; a no-op restamp merges nothing and never
         touches the registry row.
         """
-        attachment = _make_attachment(
-            'workorder', self.work_order.pk, 'noop.png', _PNG
-        )
+        attachment = _make_attachment('workorder', self.work_order.pk, 'noop.png', _PNG)
         with _image_providers():
             row, _embedder, _projection = self._run_media(attachment.pk)
         self.assertEqual(row.client_codes, ['acme'])
@@ -965,8 +1403,7 @@ class WorkOrderRestampTests(MediaFixtureTestCase):
             return [
                 call
                 for call in mocked.call_args_list
-                if call.args
-                and call.args[0] is aichat_tasks.restamp_work_order_media
+                if call.args and call.args[0] is aichat_tasks.restamp_work_order_media
             ]
 
         with mock.patch('InvenTree.tasks.offload_task', return_value=True) as off:

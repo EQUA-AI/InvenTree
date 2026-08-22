@@ -95,7 +95,7 @@ class TestCaptureLedger:
         assert {c["source_file_name"] for c in citations} == {""}
 
     def test_governed_citations_default_the_media_keys_to_empty(self) -> None:
-        """R3 additive keys: governed and doc rows carry '' for every media
+        """R3/R4 additive keys: governed and doc rows carry '' for every media
         coordinate, so the capture shape stays uniform across corpora."""
         ledger = _ledger_with_manuals()
         for citation in ledger.manuals_citations():
@@ -104,11 +104,15 @@ class TestCaptureLedger:
                 "work_order_id",
                 "timecode_start_s",
                 "timecode_end_s",
+                "attachment_id",
+                "model_type",
+                "model_id",
+                "segment_index",
             ):
                 assert citation[key] == "", key
 
     def test_media_citations_carry_their_evidence_coordinates(self) -> None:
-        """R3: an evidence-media result joins the pool with its media keys."""
+        """R3/R4: an evidence-media result joins the pool with its media keys."""
         payload = {
             "chunks": [
                 {
@@ -123,6 +127,10 @@ class TestCaptureLedger:
                         "work_order_id": 104,
                         "timecode_start_s": None,
                         "timecode_end_s": None,
+                        "attachment_id": 9,
+                        "model_type": "workorder",
+                        "model_id": 104,
+                        "segment_index": None,
                         "asset_id": "SER-PS1-001",
                         "excerpt_hash": "abc",
                     },
@@ -143,12 +151,57 @@ class TestCaptureLedger:
         # An image has no timecodes; None projects to the same '' default.
         assert citation["timecode_start_s"] == ""
         assert citation["timecode_end_s"] == ""
+        # R4 deep-link coordinates ride the capture; an image has no segment.
+        assert citation["attachment_id"] == "9"
+        assert citation["model_type"] == "workorder"
+        assert citation["model_id"] == "104"
+        assert citation["segment_index"] == ""
         # thumbnail_path is deliberately not captured: the stored path embeds
         # the uploader-chosen filename (review finding, R3).
         assert "thumbnail_path" not in citation
         assert citation["asset_id"] == "SER-PS1-001"
         # The cited work-order id counts as observed once a tool returned it.
         assert "104" in ledger.observed_values()
+        # R4: so does the attachment id (new harvest key).
+        assert "9" in ledger.observed_values()
+
+    def test_video_segment_zero_coordinates_survive_capture(self) -> None:
+        """R4 pin: 0.0/0 are legitimate first-segment values and must NOT
+        collapse to the '' missing-value default (None-aware stringify)."""
+        payload = {
+            "chunks": [
+                {
+                    "excerpt": "Operator torques the seal housing bolts.",
+                    "score": 2.9,
+                    "citation": {
+                        "document": "seal-video-hx200",
+                        "source_file_name": "seal-video-hx200.mp4",
+                        "chunk_id": "att-9-abc123def456-s0",
+                        "access_class": "evidence_recording",
+                        "media_type": "video_segment",
+                        "work_order_id": 104,
+                        "timecode_start_s": 0.0,
+                        "timecode_end_s": 60.0,
+                        "attachment_id": 9,
+                        "model_type": "workorder",
+                        "model_id": 104,
+                        "segment_index": 0,
+                        "asset_id": "SER-PS1-001",
+                        "excerpt_hash": "abc",
+                    },
+                }
+            ],
+            "total": 1,
+            "machine_filter": "HX-200",
+        }
+        ledger = ToolCaptureLedger()
+        ledger.record("evidence.read:search_evidence_media", payload)
+        citation = ledger.manuals_citations()[0]
+        assert citation["timecode_start_s"] == "0.0"
+        assert citation["timecode_end_s"] == "60.0"
+        assert citation["segment_index"] == "0"
+        assert citation["attachment_id"] == "9"
+        assert "9" in ledger.observed_values()
 
     def test_media_tool_machine_candidates_are_captured(self) -> None:
         """The candidates gate accepts the R3 tool id alongside the R2 pair."""

@@ -411,6 +411,7 @@ export function ApiForm({
     const method = props.method?.toLowerCase() ?? 'get';
 
     let hasFiles = false;
+    let totalFileBytes = 0;
 
     let jsonData = { ...data };
     const formData = new FormData();
@@ -423,6 +424,7 @@ export function ApiForm({
 
       if (field_type == 'file upload' && !!value) {
         hasFiles = true;
+        totalFileBytes += Number((value as File)?.size ?? 0) || 0;
       }
 
       // Special consideration for various field types
@@ -473,7 +475,12 @@ export function ApiForm({
      * - If the form contains files, use a longer timeout
      * - Otherwise, use the default timeout
      */
-    const timeout = props.timeout ?? (hasFiles ? 30000 : undefined);
+    // R4: size-derived ceiling for file uploads (30 s base + 1 s/MiB).
+    const timeout =
+      props.timeout ??
+      (hasFiles
+        ? 30_000 + Math.ceil(totalFileBytes / (1024 * 1024)) * 1000
+        : undefined);
 
     return api({
       method: method,

@@ -373,6 +373,8 @@ export interface ChatMessage {
   questionResolution?: QuestionResolution;
   /** S28: server-observed entity chips (records this turn was about). */
   entities?: EntityChip[];
+  /** R4: server-verified media evidence (photos/video segments retrieved). */
+  mediaEvidence?: MediaEvidenceItem[];
   /** S46: live tool activity for this turn (never persisted; content-free). */
   toolActivity?: ToolActivityEntry[];
 }
@@ -391,6 +393,19 @@ export interface EntityChip {
   pk: number;
   label: string;
   source?: string;
+}
+
+/** R4 media-evidence chip: server-verified retrieval hit, never model text. */
+export interface MediaEvidenceItem {
+  attachment_id: number;
+  model_type: string;
+  model_id?: number | null;
+  work_order_id?: number | null;
+  media_type: string;
+  timecode_start_s?: number | null;
+  timecode_end_s?: number | null;
+  segment_index: number;
+  label: string;
 }
 
 /** S22 question card payload (server-derived; refs never reach the client). */
@@ -492,6 +507,7 @@ interface ServerMessage {
   question_resolution?: QuestionResolution;
   provenance?: { confidence?: string; evidence?: DiagnosisEvidence[] } | null;
   entities?: EntityChip[] | null;
+  media_evidence?: MediaEvidenceItem[] | null;
 }
 
 /**
@@ -650,7 +666,11 @@ async function fetchServerThread(
           : undefined,
         confidence: m.provenance?.confidence ?? undefined,
         // S28: chips reload from persisted metadata.
-        entities: Array.isArray(m.entities) ? m.entities : undefined
+        entities: Array.isArray(m.entities) ? m.entities : undefined,
+        // R4: media-evidence chips reload the same way.
+        mediaEvidence: Array.isArray(m.media_evidence)
+          ? m.media_evidence
+          : undefined
       })
     );
 
@@ -1518,6 +1538,18 @@ export function useAIChat(config: AIChatConfig = {}) {
     []
   );
 
+  /** R4: attach server-verified media evidence to its message. */
+  const attachMediaEvidence = useCallback(
+    (messageId: string, mediaEvidence: MediaEvidenceItem[]) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, mediaEvidence } : msg
+        )
+      );
+    },
+    []
+  );
+
   /** S46: upsert one tool call's lifecycle entry, keyed by toolCallId. */
   const upsertToolActivity = useCallback(
     (messageId: string, entry: ToolActivityEntry) => {
@@ -1742,6 +1774,17 @@ export function useAIChat(config: AIChatConfig = {}) {
                               e &&
                               typeof e.model === 'string' &&
                               Number.isInteger(e.pk)
+                          )
+                        );
+                      },
+                      onMediaEvidence: (entries) => {
+                        attachMediaEvidence(
+                          assistantMessage.id,
+                          (entries as MediaEvidenceItem[]).filter(
+                            (e) =>
+                              e &&
+                              Number.isInteger(e.attachment_id) &&
+                              e.attachment_id > 0
                           )
                         );
                       },
@@ -2075,6 +2118,25 @@ export function useAIChat(config: AIChatConfig = {}) {
                                     e &&
                                     typeof e.model === 'string' &&
                                     Number.isInteger(e.pk)
+                                )
+                              );
+                            }
+                            // R4: server-verified media evidence for this turn.
+                            const mediaEvent = event as unknown as {
+                              kind?: string;
+                              media_evidence?: MediaEvidenceItem[];
+                            };
+                            if (
+                              mediaEvent.kind === 'media_evidence' &&
+                              Array.isArray(mediaEvent.media_evidence)
+                            ) {
+                              attachMediaEvidence(
+                                assistantMessage.id,
+                                mediaEvent.media_evidence.filter(
+                                  (e) =>
+                                    e &&
+                                    Number.isInteger(e.attachment_id) &&
+                                    e.attachment_id > 0
                                 )
                               );
                             }

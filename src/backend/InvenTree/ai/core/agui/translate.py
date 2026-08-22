@@ -29,6 +29,7 @@ CUSTOM_CHANNELS = (
     "aimms.toolStatus",
     "aimms.question",
     "aimms.entities",
+    "aimms.mediaEvidence",
     "aimms.provenance",
     "aimms.stateDelta",
     "aimms.proposalsRefresh",
@@ -282,6 +283,14 @@ class SpecTranslator:
                 return [
                     self._custom(
                         "aimms.entities", {"entities": payload.get("entities") or []}, record
+                    )
+                ]
+            if kind == "media_evidence":
+                return [
+                    self._custom(
+                        "aimms.mediaEvidence",
+                        {"media_evidence": payload.get("media_evidence") or []},
+                        record,
                     )
                 ]
             if kind == "diagnosis_provenance":

@@ -722,6 +722,7 @@ class AttachmentExtractor(models.TextChoices):
     DI_LAYOUT = 'di_layout', 'Document Intelligence layout'
     DI_READ = 'di_read', 'Document Intelligence read (OCR)'
     DIRECT = 'direct', 'Direct text read'
+    FFMPEG = 'ffmpeg', 'FFmpeg segmentation'
     PYPDF_OVERRIDE = 'pypdf_override', 'pypdf (explicit override)'
 
 
