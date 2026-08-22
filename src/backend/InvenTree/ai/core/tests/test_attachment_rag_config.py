@@ -121,12 +121,12 @@ def test_segment_length_respects_gemini_cap():
 
 
 def test_video_duration_cap_default_and_bounds():
-    """R4: the ingest-bounding duration cap defaults to 900 s within [120, 7200]."""
+    """R4: the duration cap is configurable only within the worker-safe bound."""
     assert _settings().rag_video_max_duration_s == 900
     with pytest.raises(ValidationError):
         _settings(RAG_VIDEO_MAX_DURATION_S=119)
     with pytest.raises(ValidationError):
-        _settings(RAG_VIDEO_MAX_DURATION_S=7201)
+        _settings(RAG_VIDEO_MAX_DURATION_S=901)
 
 
 def test_padded_governed_name_cannot_bypass_alias_guard():

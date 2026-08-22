@@ -264,6 +264,10 @@ class ArgvPinTests(SimpleTestCase):
         self.assertEqual(argv[argv.index('-ss') + 1], '55.000')
         self.assertEqual(argv[argv.index('-i') + 1], '/media/src.mov')
         self.assertEqual(argv[argv.index('-t') + 1], '60.000')
+        map_positions = [index for index, value in enumerate(argv) if value == '-map']
+        self.assertEqual([argv[index + 1] for index in map_positions], ['0:v:0', '0:a:0?'])
+        self.assertIn('-dn', argv)
+        self.assertIn('-sn', argv)
         self.assertEqual(argv[argv.index('-c') + 1], 'copy')
         self.assertEqual(argv[-1], '/tmp/clip-1.mov')
         self.assertEqual(run.call_args.kwargs['timeout'], CUT_TIMEOUT_S)

@@ -7,6 +7,7 @@ suffix), the 416 boundary, malformed-header fallback, and the guarantee
 that the stored filename never leaves the server.
 """
 
+import hashlib
 import tempfile
 from unittest import mock
 
@@ -14,6 +15,13 @@ from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
+from InvenTree.permissions import IsAuthenticatedOrReadScope
+from aichat.media_stream import EvidenceMediaStreamView
+from aichat.models import (
+    AttachmentIngest,
+    AttachmentIngestPipeline,
+    AttachmentIngestState,
+)
 from common.models import Attachment
 from part.models import Part
 
@@ -24,15 +32,25 @@ _BODY = bytes(range(256)) * 16
 _STEM = 'wo104-seal-video'
 
 
-def _make_attachment(name, content, part):
+def _make_attachment(name, content, part, *, pipeline=None):
     """Create an attachment with background offloads suppressed."""
     with mock.patch('InvenTree.tasks.offload_task', return_value=True):
-        return Attachment.objects.create(
+        attachment = Attachment.objects.create(
             model_type='part',
             model_id=part.pk,
             attachment=SimpleUploadedFile(name, content),
             comment='evidence stream test',
         )
+    if pipeline is not None:
+        AttachmentIngest.objects.create(
+            attachment_id=attachment.pk,
+            model_type=attachment.model_type,
+            model_id=attachment.model_id,
+            source_sha256=hashlib.sha256(content).hexdigest(),
+            pipeline=pipeline,
+            state=AttachmentIngestState.INDEXED,
+        )
+    return attachment
 
 
 def _url(attachment_id):
@@ -58,8 +76,15 @@ class EvidenceMediaStreamTests(TestCase):
             username='evidence-viewer', password='pw'
         )
         cls.part = Part.objects.create(name='Seal Kit', description='seals')
-        cls.video = _make_attachment(f'{_STEM}.mp4', _BODY, cls.part)
-        cls.image = _make_attachment('nameplate-hx200.png', _BODY[:512], cls.part)
+        cls.video = _make_attachment(
+            f'{_STEM}.mp4', _BODY, cls.part, pipeline=AttachmentIngestPipeline.VIDEO
+        )
+        cls.image = _make_attachment(
+            'nameplate-hx200.png',
+            _BODY[:512],
+            cls.part,
+            pipeline=AttachmentIngestPipeline.IMAGE,
+        )
 
     def setUp(self):
         """Authenticated session by default; the anon test logs out."""
@@ -71,6 +96,13 @@ class EvidenceMediaStreamTests(TestCase):
         response = self.client.get(_url(self.video.pk))
         self.assertIn(response.status_code, (401, 403))
 
+    def test_permission_matches_attachment_read_scope(self):
+        """OAuth tokens traverse the same read-scope permission as attachments."""
+        self.assertEqual(
+            EvidenceMediaStreamView.permission_classes,
+            [IsAuthenticatedOrReadScope],
+        )
+
     def test_missing_attachment_is_404(self):
         """No row: value-free 404."""
         response = self.client.get(_url(999999))
@@ -78,9 +110,31 @@ class EvidenceMediaStreamTests(TestCase):
 
     def test_row_with_storage_file_gone_is_404(self):
         """A dangling DB row (file deleted from storage) degrades to 404."""
-        orphan = _make_attachment('gone-clip.mp4', _BODY, self.part)
+        orphan = _make_attachment(
+            'gone-clip.mp4',
+            _BODY,
+            self.part,
+            pipeline=AttachmentIngestPipeline.VIDEO,
+        )
         default_storage.delete(orphan.attachment.name)
         response = self.client.get(_url(orphan.pk))
+        self.assertEqual(response.status_code, 404)
+
+    def test_generic_attachment_is_not_a_media_proxy(self):
+        """An authenticated caller cannot stream an unindexed document here."""
+        document = _make_attachment('service-report.pdf', b'%PDF-test', self.part)
+        response = self.client.get(_url(document.pk))
+        self.assertEqual(response.status_code, 404)
+
+    def test_indexed_media_with_unsupported_suffix_is_404(self):
+        """Only the closed image/video content-type allowlist is streamable."""
+        renamed = _make_attachment(
+            'recording.bin',
+            _BODY,
+            self.part,
+            pipeline=AttachmentIngestPipeline.VIDEO,
+        )
+        response = self.client.get(_url(renamed.pk))
         self.assertEqual(response.status_code, 404)
 
     def test_full_video_response(self):
@@ -90,6 +144,7 @@ class EvidenceMediaStreamTests(TestCase):
         self.assertEqual(response['Content-Length'], str(len(_BODY)))
         self.assertEqual(response['Accept-Ranges'], 'bytes')
         self.assertEqual(response['Cache-Control'], 'private, no-store')
+        self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
         self.assertEqual(response['Content-Type'], 'video/mp4')
         self.assertEqual(_body(response), _BODY)
 
@@ -154,6 +209,14 @@ class EvidenceMediaStreamTests(TestCase):
     def test_malformed_range_is_ignored_not_rejected(self):
         """RFC 9110: an unparsable Range header yields the full 200."""
         response = self.client.get(_url(self.video.pk), HTTP_RANGE='bytes=abc')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_body(response), _BODY)
+
+    def test_unbounded_integer_range_is_ignored_without_500(self):
+        """Digit runs beyond the bounded grammar degrade to a full response."""
+        response = self.client.get(
+            _url(self.video.pk), HTTP_RANGE=f"bytes={'9' * 5000}-"
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(_body(response), _BODY)
 

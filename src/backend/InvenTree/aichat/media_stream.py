@@ -22,8 +22,9 @@ import re
 
 from django.http import HttpResponse, StreamingHttpResponse
 
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
+
+from InvenTree.permissions import IsAuthenticatedOrReadScope
 
 _BLOCK = 1024 * 1024
 
@@ -38,7 +39,7 @@ _CONTENT_TYPES = {
     '.gif': 'image/gif',
 }
 
-_RANGE_RE = re.compile(r'^bytes=(\d*)-(\d*)$')
+_RANGE_RE = re.compile(r'^bytes=(\d{1,19})?-(\d{1,19})?$')
 
 
 def _iter_file(handle, *, start: int, end: int):
@@ -59,7 +60,7 @@ def _iter_file(handle, *, start: int, end: int):
 class EvidenceMediaStreamView(APIView):
     """Stream one attachment's media file with single-range HTTP 206 support."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrReadScope]
 
     def get(self, request, attachment_id: int):
         """Serve the file whole (200) or a single byte range (206/416)."""
@@ -73,16 +74,35 @@ class EvidenceMediaStreamView(APIView):
         """Build a whole or ranged response for GET/HEAD."""
         from django.core.files.storage import default_storage
 
+        from aichat.models import (
+            AttachmentIngest,
+            AttachmentIngestPipeline,
+            AttachmentIngestState,
+        )
         from common.models import Attachment
 
+        is_indexed_media = AttachmentIngest.objects.filter(
+            attachment_id=attachment_id,
+            pipeline__in=[
+                AttachmentIngestPipeline.IMAGE,
+                AttachmentIngestPipeline.VIDEO,
+            ],
+            state=AttachmentIngestState.INDEXED,
+        ).exists()
         attachment = Attachment.objects.filter(pk=attachment_id).first()
         name = getattr(getattr(attachment, 'attachment', None), 'name', '') or ''
-        if attachment is None or not name or not default_storage.exists(name):
+        suffix = ('.' + name.rsplit('.', 1)[-1].lower()) if '.' in name else ''
+        if (
+            not is_indexed_media
+            or attachment is None
+            or not name
+            or suffix not in _CONTENT_TYPES
+            or not default_storage.exists(name)
+        ):
             return HttpResponse(status=404)
 
         size = default_storage.size(name)
-        suffix = ('.' + name.rsplit('.', 1)[-1].lower()) if '.' in name else ''
-        content_type = _CONTENT_TYPES.get(suffix, 'application/octet-stream')
+        content_type = _CONTENT_TYPES[suffix]
 
         start, end = 0, size - 1
         status = 200
@@ -102,6 +122,7 @@ class EvidenceMediaStreamView(APIView):
                 response['Content-Range'] = f'bytes */{size}'
                 response['Accept-Ranges'] = 'bytes'
                 response['Cache-Control'] = 'private, no-store'
+                response['X-Content-Type-Options'] = 'nosniff'
                 return response
             status = 206
         # A malformed Range header is ignored (200 full), per RFC 9110.
@@ -117,6 +138,7 @@ class EvidenceMediaStreamView(APIView):
             response = HttpResponse(status=status, content_type=content_type)
         response['Accept-Ranges'] = 'bytes'
         response['Cache-Control'] = 'private, no-store'
+        response['X-Content-Type-Options'] = 'nosniff'
         response['Content-Length'] = str(end - start + 1)
         if status == 206:
             response['Content-Range'] = f'bytes {start}-{end}/{size}'

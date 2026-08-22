@@ -773,6 +773,33 @@ class MediaVideoIngestTests(MediaFixtureTestCase):
         self.assertEqual(stamp['state'], 'indexed')
         self.assertEqual(stamp['sha'], sha)
 
+    def test_storage_returned_keyframe_name_is_projected(self):
+        """A storage dedupe suffix cannot leave INDEXED thumbnails dangling."""
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'storage-name.mp4', _MP4
+        )
+        real_save = default_storage.save
+
+        def save_under_returned_name(name, content, max_length=None):
+            stored_name = name.replace('.jpg', '-stored.jpg')
+            return real_save(stored_name, content, max_length=max_length)
+
+        with (
+            _image_providers(),
+            _video_tool_fakes(),
+            mock.patch.object(
+                default_storage, 'save', side_effect=save_under_returned_name
+            ),
+        ):
+            row, _embedder, projection = self._run_media(attachment.pk)
+        self.assertEqual(row.state, AttachmentIngestState.INDEXED)
+        segments = list(row.segments.order_by('segment_index'))
+        self.assertEqual(len(segments), 3)
+        for segment, document in zip(segments, projection.documents, strict=True):
+            self.assertTrue(segment.thumbnail_path.endswith('-stored.jpg'))
+            self.assertEqual(document['thumbnail_path'], segment.thumbnail_path)
+            self.assertTrue(default_storage.exists(segment.thumbnail_path))
+
     def test_audio_only_mp4_records_terminal_unsupported_skip(self):
         """No video stream: an owner-authorized terminal SKIPPED row."""
         attachment = _make_attachment(

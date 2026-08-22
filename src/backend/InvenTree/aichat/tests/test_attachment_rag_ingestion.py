@@ -1553,6 +1553,38 @@ class SweepTests(RagFixtureTestCase):
         self.assertEqual(row.state, AttachmentIngestState.FAILED)
         self.assertEqual(row.error_code, 'ATTACHMENT_INGEST_STALLED')
 
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_terminalized_stalled_video_removes_partial_keyframes(self):
+        """A killed video worker cannot leave terminal partial keyframes."""
+        from datetime import timedelta
+
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+        from django.utils import timezone
+
+        from aichat.services.attachment_ingestion import resume_stalled_ingests
+
+        attachment = _make_attachment('part', self.part.pk, 'stalled.mp4', _MP4_HEAD)
+        source_sha256 = 'd' * 64
+        row = AttachmentIngest.objects.create(
+            attachment_id=attachment.pk,
+            model_type='part',
+            model_id=self.part.pk,
+            source_sha256=source_sha256,
+            pipeline='video',
+            state=AttachmentIngestState.EMBEDDING,
+            attempts=3,
+        )
+        keyframe = f'ai/keyframes/{attachment.pk}/{source_sha256[:12]}-s0.jpg'
+        default_storage.save(keyframe, ContentFile(b'partial-keyframe'))
+        AttachmentIngest.objects.filter(pk=row.pk).update(
+            updated_at=timezone.now() - timedelta(seconds=4000)
+        )
+        with mock.patch('ai.core.config.get_settings', return_value=_ai_settings()):
+            counts = resume_stalled_ingests()
+        self.assertEqual(counts['stalled'], 1)
+        self.assertFalse(default_storage.exists(keyframe))
+
     def test_orphaned_rows_are_purged(self):
         """Rows whose attachment vanished are purged (denial ≡ nonexistence)."""
         from aichat.services.attachment_ingestion import reconcile_orphaned_ingests

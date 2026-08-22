@@ -1558,7 +1558,12 @@ def run_ingest(
                         rel = f'ai/keyframes/{attachment.pk}/{sha12}-s{index}.jpg'
                         if default_storage.exists(rel):
                             default_storage.delete(rel)
-                        default_storage.save(rel, ContentFile(frame_bytes))
+                        stored_rel = default_storage.save(rel, ContentFile(frame_bytes))
+                        if not stored_rel or len(stored_rel) > 512:
+                            raise AttachmentIngestionError(
+                                'Video keyframe storage name is invalid',
+                                code='ATTACHMENT_VIDEO_KEYFRAME_FAILED',
+                            )
                         records.append(
                             MediaDocSegment(
                                 media_type='video_segment',
@@ -1568,7 +1573,7 @@ def run_ingest(
                                 caption=caption,
                                 ocr_text=ocr_text,
                                 vector=vector,
-                                thumbnail_path=rel,
+                                thumbnail_path=stored_rel,
                             )
                         )
                         # Bound peak scratch disk to ~one clip.
@@ -2244,7 +2249,11 @@ def resume_stalled_ingests() -> dict[str, int]:
     from django.conf import settings as django_settings
     from django.utils import timezone
 
-    from aichat.models import AttachmentIngest, AttachmentIngestState
+    from aichat.models import (
+        AttachmentIngest,
+        AttachmentIngestPipeline,
+        AttachmentIngestState,
+    )
 
     counts = {'resumed': 0, 'stalled': 0, 'orphans': 0}
     if getattr(django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False):
@@ -2275,11 +2284,31 @@ def resume_stalled_ingests() -> dict[str, int]:
             counts['resumed'] += 1
         # The state+staleness filter is the atomicity condition: a live worker
         # keeps updated_at fresh via its fenced writes and is never touched.
-        counts['stalled'] = stalled.filter(attempts__gte=MAX_INGEST_ATTEMPTS).update(
-            state=AttachmentIngestState.FAILED,
-            error_code='ATTACHMENT_INGEST_STALLED',
-            updated_at=timezone.now(),
+        terminal_rows = list(
+            stalled.filter(attempts__gte=MAX_INGEST_ATTEMPTS).values(
+                'pk', 'attachment_id', 'source_sha256', 'pipeline'
+            )
         )
+        terminalized_at = timezone.now()
+        for terminal_row in terminal_rows:
+            terminalized = AttachmentIngest.objects.filter(
+                pk=terminal_row['pk'],
+                state__in=in_flight,
+                updated_at__lt=stale_before,
+                attempts__gte=MAX_INGEST_ATTEMPTS,
+            ).update(
+                state=AttachmentIngestState.FAILED,
+                error_code='ATTACHMENT_INGEST_STALLED',
+                updated_at=terminalized_at,
+            )
+            if not terminalized:
+                continue
+            counts['stalled'] += 1
+            if terminal_row['pipeline'] == AttachmentIngestPipeline.VIDEO:
+                _purge_keyframe_files(
+                    terminal_row['attachment_id'],
+                    sha12=terminal_row['source_sha256'][:12],
+                )
     try:
         from ai.core.config import get_settings as _get_ai_settings
 

@@ -840,7 +840,7 @@ class Settings(BaseSettings):
     # "index the whole video or skip it" — a partially indexed video would
     # make a retrieval miss indistinguishable from absence.
     rag_video_max_duration_s: int = Field(
-        default=900, ge=120, le=7200, alias="RAG_VIDEO_MAX_DURATION_S"
+        default=900, ge=120, le=900, alias="RAG_VIDEO_MAX_DURATION_S"
     )
     # In-flight ingest rows older than this are claimable again (stale-worker
     # takeover) and eligible for the resume sweep. Invariant: keep this ABOVE
