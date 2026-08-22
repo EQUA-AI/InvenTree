@@ -941,6 +941,11 @@ class MediaVideoIngestTests(MediaFixtureTestCase):
             self._run_media(
                 attachment.pk, force=True, media_embedding_client=FailingGemini()
             )
+        indexed.refresh_from_db()
+        self.assertEqual(indexed.state, AttachmentIngestState.INDEXED)
+        self.assertEqual(indexed.error_code, '')
+        self.assertEqual(indexed.segment_count, 3)
+        self.assertEqual(MediaSegment.objects.filter(ingest=indexed).count(), 3)
         for rel in keyframes:
             self.assertTrue(default_storage.exists(rel))
 

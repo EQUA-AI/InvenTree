@@ -1841,8 +1841,16 @@ def run_ingest(
         code = getattr(exc, 'code', '') or 'ATTACHMENT_INGEST_FAILED'
         # Fenced (never demote a takeover's fresh state); raise regardless so
         # the failure stays visible to django-q and callers.
+        terminal_state = (
+            AttachmentIngestState.INDEXED
+            if row_was_indexed
+            else AttachmentIngestState.FAILED
+        )
         failed_while_owned = _fenced_update(
-            row.pk, fence, state=AttachmentIngestState.FAILED, error_code=str(code)[:64]
+            row.pk,
+            fence,
+            state=terminal_state,
+            error_code='' if row_was_indexed else str(code)[:64],
         )
         if is_video and failed_while_owned and not row_was_indexed:
             # Earlier segments persist keyframes synchronously. A terminal
