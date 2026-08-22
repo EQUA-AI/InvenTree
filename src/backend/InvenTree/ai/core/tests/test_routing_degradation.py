@@ -106,6 +106,51 @@ async def test_unified_router_degrades_to_llm_classification():
     assert decision is expected
 
 
+async def test_explicit_uploaded_document_question_routes_to_lookup():
+    """Document questions bypass probabilistic diagnostic classification."""
+    router = UnifiedRouter()
+
+    async def _unexpected(*args, **kwargs):  # noqa: RUF029
+        pytest.fail("explicit document lookup reached a probabilistic router")
+
+    router.fast_path.try_fast_path = _unexpected
+    router.semantic.route = _unexpected
+    router.classifier.classify = _unexpected
+
+    decision = await router.route(
+        "According to the uploaded HX-200 documents, how often should the plate pack be leak-inspected?",
+        "thread-1",
+    )
+
+    assert decision.workflow_type is WorkflowType.T1_LOOKUP
+    assert decision.get_workflow_id() == "wf8"
+    assert decision.confidence == pytest.approx(1.0)
+
+
+async def test_incoming_document_processing_is_not_forced_to_lookup():
+    """An uploaded document processing command still reaches downstream routing."""
+    router = UnifiedRouter()
+
+    async def _no_fast(*args, **kwargs):  # noqa: RUF029
+        return None
+
+    expected = RoutingDecision(
+        workflow_type=WorkflowType.T7_DOCUMENTS,
+        confidence=0.9,
+        reasoning="incoming document",
+    )
+
+    async def _document_route(*args, **kwargs):  # noqa: RUF029
+        return expected
+
+    router.fast_path.try_fast_path = _no_fast
+    router.semantic.route = _document_route
+
+    decision = await router.route("Process this uploaded invoice", "thread-1")
+
+    assert decision is expected
+
+
 async def test_unified_router_answers_general_when_every_strategy_dies():
     """Routing as a whole may never raise; the floor is a GENERAL decision."""
     router = UnifiedRouter()

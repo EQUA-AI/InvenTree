@@ -7,7 +7,8 @@ Branch: `equa/customizations`
 
 - Feature commit: `8c465d2c5fec2c61cd2d36604e42ccb1c92fe96e`
 - Review hardening commit: `46464f4f668e1bfc258b674a17e2d4a789e144c9`
-- Remote branch verified at the review hardening commit.
+- Forced-refresh serving-state fix and rollout ledger commit: `bae974cfc5b226645e21898a876807cc9a0bf0c7`
+- Remote branch verified at the forced-refresh fix commit.
 - Build context created with `git archive`; unrelated untracked `contrib/install-cloud-clis.sh` was excluded.
 
 ## Local gates
@@ -15,6 +16,8 @@ Branch: `equa/customizations`
 - Authoritative pre-review suite: 153 passed, 5 skipped, 53 subtests.
 - Post-review focused suite: 54 passed, 1 skipped, 25 subtests.
 - Authoritative post-review suite: 159 passed, 5 skipped, 53 subtests.
+- Post-deployment routing fix slice: 59 passed, 1 skipped (routing degradation, maintenance capability selection, golden-set unit tests).
+- Authoritative post-routing-fix suite: 159 passed, 5 skipped, 53 subtests.
 - Frontend TypeScript: clean.
 - Wire contract drift check: clean.
 - Migration state check: clean.
@@ -78,17 +81,24 @@ The live `aimms-media-evidence-v1` Search index already contains the required vi
 ## Rollout gates
 
 - [x] ACR production image build `ch48` succeeded from `git archive` of `46464f4f6` in 10m01s. Both repositories use digest `sha256:e358b1c143170c2a33f078c373bd7ad8ccd39974fb0f725148124c50b418fb6d`.
+- [x] ACR production image build `ch49` succeeded from `git archive` of `bae974cfc` in 9m51s. Both repositories use digest `sha256:56f55b04006c972fd4ac56cf33291f2d539eab6cd8feaf5929a885cf0e3f1f06`; the unrelated installer exclusion assertion passed. This canary was superseded at 0% after golden exposed the routing defect below; it never received public traffic.
 - [x] Zero-traffic experimental web revision `aimms-experimental--r4e46464f` healthy at 0%, labeled `run4`; old revision remains at 100%. ffprobe 7.1.5 and migration 0023 verified.
 - [x] Experimental worker revision `inventree-worker--r4e46464f` healthy with `INVENTREE_BACKGROUND_TIMEOUT=900` and `RAG_STALE_CLAIM_S=2400`.
 - [x] Pre-spike worker baseline peaked at 1,702,604,800 bytes / 80% on 2 GiB. Remediation applied before video: `inventree-worker--r4e46464m4`, 2 vCPU / 4 GiB, healthy.
 - [x] Experimental `INVENTREE_UPLOAD_MAX_SIZE=500` preflight applied; 60/5 segmentation, 900-second duration, 500 MB video cap, and keyframe storage verified.
 - [x] 499 MiB multipart upload passed through direct zero-traffic revision ingress: HTTP 201, 68.508 s, 7,637,632 B/s, 523,239,991 multipart bytes; attachment ID 12 on WO ID 132.
 - [x] Web upload measurements: baseline overlay used 7,609,167,872 B; peak 8,657,936,384 B (about 1.05 GiB growth); `/tmp` peak exactly 523,239,424 B; process RSS/HWM stayed 380,864 KiB; 11.46 GB ephemeral remained free; both buffers returned to zero/baseline after response. Media share grew to 623,181,824 B.
-- [~] Worker resource/provider gate: organic preview ingest reached indexed with 11 HTTP 200 embedding calls and zero restarts. A one-off GA reindex at `GCP_LOCATION=us` also passed; immutable redeployment with that location and the forced-refresh fix remains pending.
+- [x] Final experimental web `aimms-experimental--r4bae974` is healthy at 0% with the final digest, 1 vCPU / 2 GiB, `GCP_LOCATION=us`, `gemini-embedding-2`, and 900/2400-second timeouts. `aimms-experimental--0000054` remains at 100% pending cutover.
+- [x] Final experimental worker `inventree-worker--r4bae974` is healthy with the final digest, 2 vCPU / 4 GiB, `GCP_LOCATION=us`, `gemini-embedding-2`, and 900/2400-second timeouts; container restart count is zero.
+- [x] Final worker preflight passed: ffprobe 7.1.5, all ingest flags enabled, 60/5 segmentation, 900-second duration, 500 MB upload cap, and writable keyframe storage.
+- [x] Worker resource/provider gate: organic preview ingest reached indexed with 11 HTTP 200 embedding calls and zero restarts; final immutable worker retained attachment 12 as indexed with 11 GA segments at 3072 dimensions.
 - [x] Live Gemini video embedding smoke passed: attachment 12 indexed all 11 segments with `gemini-embedding-2` at 3072 dimensions and Search upsert HTTP 200.
+- [x] `aimms-video-fixtures-v1` seeded through the final worker as attachment 13: three indexed GA segments with OCR anchors `COUPLING INSPECTION`, `SEAL REPLACEMENT`, and `TORQUE CHECK`; all vectors and keyframes verified.
+- [x] Final web media stream matrix passed for attachment 13: HEAD 200, `bytes=0-99` GET 206 with exactly 100 bytes, unsatisfiable range 416, and correct `Accept-Ranges`, `Content-Range`, private/no-store, and nosniff headers.
+- [x] Frozen-fixture seal query passed through final web: answer identified 00:55-01:55; `/threads` replay persisted attachment 13 segment 1 (`55-115s`) as the primary server-authored media-evidence chip.
 - [ ] 10-minute seal query returned the correct segment.
-- [ ] Evidence chip modal Range seek passed.
-- [ ] Experimental golden + red-team gate passed.
+- [~] Evidence chip modal Range seek: authenticated server-side Range and manifest gates passed; post-cutover browser chip/modal/currentTime canary pending because the browser session cookie is host-only and the integrated browser cannot clone it to the direct revision host.
+- [~] Experimental golden + red-team gate failed closed on the first final-image run: 10 pass, 1 fail, 4 warn, 15 dataset skips; red-team 0 fails. `attachment-interval-grounded` consistently routed explicit uploaded-document wording to wf1 diagnostics and returned an unrelated machine-clarification response. Root cause is before the healthy attachment corpus/tool/wf8 prompt: the probabilistic intent classifier can override its prompt instruction. A deterministic explicit existing-document lookup -> wf8 route and regressions now pass locally; a new immutable image and rerun are required.
 - [ ] Experimental soak clean.
 - [ ] Dev web and worker promoted with the same digest.
 - [ ] Dev preflight, fixture seed, E2E, golden/red-team, and soak passed.

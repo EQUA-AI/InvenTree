@@ -721,6 +721,29 @@ class SemanticRouter:
         return None
 
 
+_DOCUMENT_REFERENCE = re.compile(
+    r"\b(?:manuals?|documentation|documents?|datasheets?|uploaded\s+(?:files?|pdfs?|documents?))\b",
+    re.IGNORECASE,
+)
+_DOCUMENT_LOOKUP_CUE = re.compile(
+    r"\b(?:according\s+to|per\s+the|what\s+(?:does|do)|how\s+often|recommended|specified|states?|says?|interval|procedure|instructions?)\b",
+    re.IGNORECASE,
+)
+_INCOMING_DOCUMENT_ACTION = re.compile(
+    r"^\s*(?:process|extract|parse|ingest|upload|summari[sz]e|analy[sz]e)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_explicit_document_lookup(message: str) -> bool:
+    """Return whether the user asks what an existing document says."""
+    return bool(
+        not _INCOMING_DOCUMENT_ACTION.search(message)
+        and _DOCUMENT_REFERENCE.search(message)
+        and _DOCUMENT_LOOKUP_CUE.search(message)
+    )
+
+
 class UnifiedRouter:
     """
     Unified router that combines FastPath, Semantic, and LLM routing.
@@ -746,6 +769,14 @@ class UnifiedRouter:
         turn. The routers guard themselves too, but this boundary is what makes
         the property structural instead of a habit every router must remember.
         """
+        if _is_explicit_document_lookup(message):
+            return RoutingDecision(
+                workflow_type=WorkflowType.T1_LOOKUP,
+                confidence=1.0,
+                reasoning="Explicit existing-document lookup",
+                use_fast_path=False,
+            )
+
         # 1. Fast Path (regex)
         try:
             fast_result = await self.fast_path.try_fast_path(message, thread_id)
