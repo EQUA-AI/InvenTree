@@ -78,6 +78,30 @@ def test_repair_keyword_alone_does_not_select_reasoning() -> None:
     assert RouteReason.REPAIR_PLANNING in planning.reason_codes
 
 
+def test_explicit_uploaded_document_leak_question_stays_fast() -> None:
+    """A document interval lookup wins over the diagnostic leak keyword."""
+    decision = VoiceComplexityRouter().route(
+        "According to the uploaded HX-200 documents, how often should the plate pack be leak-inspected?",
+        trusted_context(),
+    )
+
+    assert decision.mode is RouteMode.FAST_PATH
+    assert decision.target_workflow_id == "wf8"
+    assert decision.reason_codes == (RouteReason.SIMPLE_LOOKUP,)
+
+
+def test_document_write_command_keeps_effect_precedence() -> None:
+    """A document reference never turns a procurement command into a lookup."""
+    decision = VoiceComplexityRouter().route(
+        "Create a purchase order according to the uploaded documents",
+        trusted_context(),
+    )
+
+    assert decision.mode is RouteMode.ADVISORY_INTENT
+    assert decision.target_workflow_id is None
+    assert RouteReason.EFFECT_INTENT in decision.reason_codes
+
+
 @pytest.mark.parametrize(
     "content",
     (

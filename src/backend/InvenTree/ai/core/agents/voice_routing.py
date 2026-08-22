@@ -387,6 +387,24 @@ class VoiceComplexityRouter:
                 target_workflow_id=None,
             )
 
+        from ai.core.agents.routing import is_explicit_document_lookup
+
+        if is_explicit_document_lookup(content):
+            reasons = [RouteReason.SIMPLE_LOOKUP]
+            if low_confidence:
+                reasons.append(RouteReason.LOW_TRANSCRIPTION_CONFIDENCE)
+            if elevated_risk:
+                reasons.append(RouteReason.ELEVATED_RISK)
+            effort = (
+                ReasoningEffort.HIGH if low_confidence or elevated_risk else ReasoningEffort.LOW
+            )
+            return self._decision(
+                RouteMode.FAST_PATH,
+                effort,
+                reasons,
+                target_workflow_id=self.FAST_WORKFLOW_ID,
+            )
+
         complex_reasons = self._complex_content_reasons(content)
         if complex_reasons:
             self._append_context_reasons(

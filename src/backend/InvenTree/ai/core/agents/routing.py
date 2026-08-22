@@ -736,7 +736,7 @@ _DOCUMENT_ACTION_REQUEST = re.compile(
 )
 
 
-def _is_explicit_document_lookup(message: str) -> bool:
+def is_explicit_document_lookup(message: str) -> bool:
     """Return whether the user asks what an existing document says."""
     return bool(
         not _DOCUMENT_ACTION_REQUEST.search(message)
@@ -770,7 +770,7 @@ class UnifiedRouter:
         turn. The routers guard themselves too, but this boundary is what makes
         the property structural instead of a habit every router must remember.
         """
-        if _is_explicit_document_lookup(message):
+        if is_explicit_document_lookup(message):
             return RoutingDecision(
                 workflow_type=WorkflowType.T1_LOOKUP,
                 confidence=1.0,
