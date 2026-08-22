@@ -726,11 +726,12 @@ _DOCUMENT_REFERENCE = re.compile(
     re.IGNORECASE,
 )
 _DOCUMENT_LOOKUP_CUE = re.compile(
-    r"\b(?:according\s+to|per\s+the|what\s+(?:does|do)|how\s+often|recommended|specified|states?|says?|interval|procedure|instructions?)\b",
+    r"\b(?:according\s+to|based\s+on|per\s+(?:the\s+)?|what\s+(?:does|do)|how\s+often|where\s+in)\b",
     re.IGNORECASE,
 )
-_INCOMING_DOCUMENT_ACTION = re.compile(
-    r"^\s*(?:process|extract|parse|ingest|upload|summari[sz]e|analy[sz]e)\b",
+_DOCUMENT_ACTION_REQUEST = re.compile(
+    r"^\s*(?:(?:please|kindly)\s+|(?:(?:can|could|would|will)\s+you\s+))?"
+    r"(?:process|extract|parse|ingest|upload|summari[sz]e|analy[sz]e|create|generate|send|email|order|buy|purchase|update|delete|approve|reject)\b",
     re.IGNORECASE,
 )
 
@@ -738,7 +739,7 @@ _INCOMING_DOCUMENT_ACTION = re.compile(
 def _is_explicit_document_lookup(message: str) -> bool:
     """Return whether the user asks what an existing document says."""
     return bool(
-        not _INCOMING_DOCUMENT_ACTION.search(message)
+        not _DOCUMENT_ACTION_REQUEST.search(message)
         and _DOCUMENT_REFERENCE.search(message)
         and _DOCUMENT_LOOKUP_CUE.search(message)
     )

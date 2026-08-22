@@ -106,7 +106,14 @@ async def test_unified_router_degrades_to_llm_classification():
     assert decision is expected
 
 
-async def test_explicit_uploaded_document_question_routes_to_lookup():
+@pytest.mark.parametrize(
+    "message",
+    [
+        "According to the uploaded HX-200 documents, how often should the plate pack be leak-inspected?",
+        "What does the uploaded HX-200 manual say about frame-bolt torque?",
+    ],
+)
+async def test_explicit_uploaded_document_question_routes_to_lookup(message):
     """Document questions bypass probabilistic diagnostic classification."""
     router = UnifiedRouter()
 
@@ -117,27 +124,37 @@ async def test_explicit_uploaded_document_question_routes_to_lookup():
     router.semantic.route = _unexpected
     router.classifier.classify = _unexpected
 
-    decision = await router.route(
-        "According to the uploaded HX-200 documents, how often should the plate pack be leak-inspected?",
-        "thread-1",
-    )
+    decision = await router.route(message, "thread-1")
 
     assert decision.workflow_type is WorkflowType.T1_LOOKUP
     assert decision.get_workflow_id() == "wf8"
     assert decision.confidence == pytest.approx(1.0)
 
 
-async def test_incoming_document_processing_is_not_forced_to_lookup():
-    """An uploaded document processing command still reaches downstream routing."""
+@pytest.mark.parametrize(
+    ("message", "workflow_type"),
+    [
+        (
+            "Could you process this uploaded manual according to its instructions?",
+            WorkflowType.T7_DOCUMENTS,
+        ),
+        (
+            "Create a purchase order according to the uploaded documents",
+            WorkflowType.T4_PROCUREMENT,
+        ),
+    ],
+)
+async def test_document_actions_are_not_forced_to_lookup(message, workflow_type):
+    """Document processing and write commands still reach downstream routing."""
     router = UnifiedRouter()
 
     async def _no_fast(*args, **kwargs):  # noqa: RUF029
         return None
 
     expected = RoutingDecision(
-        workflow_type=WorkflowType.T7_DOCUMENTS,
+        workflow_type=workflow_type,
         confidence=0.9,
-        reasoning="incoming document",
+        reasoning="document action",
     )
 
     async def _document_route(*args, **kwargs):  # noqa: RUF029
@@ -146,7 +163,7 @@ async def test_incoming_document_processing_is_not_forced_to_lookup():
     router.fast_path.try_fast_path = _no_fast
     router.semantic.route = _document_route
 
-    decision = await router.route("Process this uploaded invoice", "thread-1")
+    decision = await router.route(message, "thread-1")
 
     assert decision is expected
 
