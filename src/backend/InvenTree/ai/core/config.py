@@ -201,7 +201,7 @@ class Settings(BaseSettings):
     # 0 = unlimited. Shadow logs budget.would_block; enforce returns the
     # typed 429. An abuse control, not billing — see middleware/budget.py.
     ai_user_daily_token_budget: int = Field(
-        default=500_000, ge=0, alias="AI_USER_DAILY_TOKEN_BUDGET"
+        default=1_000_000, ge=0, alias="AI_USER_DAILY_TOKEN_BUDGET"
     )
     ai_budget_exempt_user_ids: str = Field(default="", alias="AI_BUDGET_EXEMPT_USER_IDS")
     feature_token_budget_shadow: bool = Field(
