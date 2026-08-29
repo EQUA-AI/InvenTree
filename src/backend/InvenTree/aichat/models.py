@@ -96,6 +96,17 @@ class ChatThread(models.Model):
     summary_through_sequence = models.PositiveBigIntegerField(default=0)
     last_workflow = models.CharField(max_length=100, blank=True, default='')
     next_sequence = models.PositiveBigIntegerField(default=1)
+    # S1 (analysis rail): the durable, non-authorizing active analysis scope.
+    # ``analysis_scope`` only narrows which assets analysis answers may draw
+    # on — the authorization boundary stays ``scope_key``/``scope_hash``
+    # above plus the per-record scope resolvers, re-derived every turn. An
+    # empty payload at version 0 reads as ``legacy_unconfirmed``; pre-typed
+    # threads are never silently converted. Updates are owner-only and
+    # optimistic (``analysis_scope_version`` check under row lock); shape
+    # validation lives in ``ai.core.analysis.scope``, not the database.
+    analysis_scope = models.JSONField(default=dict, blank=True)
+    analysis_scope_version = models.PositiveBigIntegerField(default=0)
+    analysis_scope_hash = models.CharField(max_length=64, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -146,10 +157,16 @@ class ThreadGrantAccess(models.TextChoices):
 class ChatThreadGrant(models.Model):
     """An explicit, logged, revocable read grant on another user's thread.
 
-    Mirrors the dropped ``ScopedConversationGrant`` semantics (B6): grant
-    rows are audit records and are never hard-deleted — revocation stamps
-    ``revoked_at``; expiry is optional. Only explicit single-thread READS
-    honor a grant; every write path stays owner-only.
+    Mirrors the dropped ``ScopedConversationGrant`` semantics (B6): while
+    the thread lives, grant rows are audit records — revocation stamps
+    ``revoked_at``, never deletes; expiry is optional. Only explicit
+    single-thread READS honor a grant; every write path stays owner-only.
+
+    When the thread itself is purged (user deletion or 400-day retention,
+    S16), the audit obligation transfers to ``ChatThreadGrantTombstone``
+    rows and the grant rows are then hard-deleted with the thread — the
+    ``PROTECT`` below guarantees no path can delete a thread without going
+    through that reconciliation.
     """
 
     thread = models.ForeignKey(
@@ -317,6 +334,114 @@ class ChatTurn(models.Model):
     def __str__(self) -> str:
         """Return a safe diagnostic representation."""
         return f'{self.thread_id} turn {self.pk} ({self.state})'
+
+
+def generate_evidence_set_id() -> str:
+    """The opaque model-visible evidence-set handle; also the DB pk."""
+    return _stable_id('set')
+
+
+class ChatEvidenceSet(models.Model):
+    """Durable evidence for one aggregate/population claim (S10, §7.6).
+
+    Written ONLY inside ``ThreadRepository.terminal()``'s transaction, so a
+    failed or canceled turn can never leave orphan evidence. The pk is the
+    pre-minted opaque ``set_...`` handle the model/UI reference; the language
+    model itself only ever saw the digest (operation, result, counts).
+
+    ``authorization_scope_hash`` is server-only: it never appears in any
+    model-visible or client-visible payload (the ``contracts.retrieval``
+    split), and the read endpoint reauthorizes every member live instead of
+    trusting it.
+    """
+
+    id = models.CharField(
+        primary_key=True,
+        max_length=80,
+        default=generate_evidence_set_id,
+        editable=False,
+    )
+    turn = models.ForeignKey(
+        ChatTurn, on_delete=models.CASCADE, related_name='evidence_sets'
+    )
+    authorization_scope_hash = models.CharField(max_length=64, blank=True, default='')
+    analysis_scope_hash = models.CharField(max_length=64, blank=True, default='')
+    source_class = models.CharField(max_length=64)
+    filters = models.JSONField(default=dict, blank=True)
+    population_count = models.PositiveIntegerField()
+    evaluated_count = models.PositiveIntegerField()
+    displayed_count = models.PositiveIntegerField(default=0)
+    complete_population = models.BooleanField()
+    high_watermarks = models.JSONField(default=dict, blank=True)
+    snapshot_hash = models.CharField(max_length=64, blank=True, default='')
+    supports_expansion = models.BooleanField(default=False)
+    member_count = models.PositiveIntegerField(default=0)
+    member_cap = models.PositiveIntegerField(default=25000)
+    calculation = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Indexes per Migration 3; the cap is a hard §7.6 envelope."""
+
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['turn'], name='aichat_evset_turn_idx'),
+            models.Index(fields=['source_class'], name='aichat_evset_class_idx'),
+            models.Index(fields=['snapshot_hash'], name='aichat_evset_snap_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(member_count__lte=models.F('member_cap')),
+                name='aichat_evset_members_within_cap',
+            ),
+            models.CheckConstraint(
+                condition=Q(member_cap__lte=25000),
+                name='aichat_evset_cap_within_envelope',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'{self.pk} ({self.source_class}, {self.member_count} members)'
+
+
+class ChatEvidenceSetMember(models.Model):
+    """One evaluated operand of an expandable evidence set (§7.6).
+
+    Stores references only — source class, object id, and a version/
+    lifecycle marker. NO source text columns exist by design: the read
+    endpoint resolves labels live from the record after reauthorizing the
+    viewer, so revocation is indistinguishable from deletion and nothing
+    here can leak.
+    """
+
+    set = models.ForeignKey(
+        ChatEvidenceSet, on_delete=models.CASCADE, related_name='members'
+    )
+    ordinal = models.PositiveIntegerField()
+    source_class = models.CharField(max_length=64)
+    source_object_id = models.CharField(max_length=64)
+    source_version = models.CharField(max_length=128, blank=True, default='')
+
+    class Meta:
+        """Uniqueness and the exact-expansion lookup index (Migration 3)."""
+
+        ordering = ['ordinal']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['set', 'ordinal'], name='aichat_evidence_member_ordinal_uniq'
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['source_class', 'source_object_id'],
+                name='aichat_evidence_member_src_idx',
+            )
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'{self.set_id}#{self.ordinal} ({self.source_class})'
 
 
 class ControlledDocumentState(models.TextChoices):
@@ -527,6 +652,19 @@ class RetrievalMiss(models.Model):
     #: The attachment tool's part-narrowing outcome; same vocabulary as
     #: machine_filter. Empty for governed-corpus rows.
     part_filter = models.CharField(max_length=16, blank=True, default='', db_default='')
+    #: S5 shadow evidence: the analysis-scope identity active for the search
+    #: (empty when the turn had no typed scope). ``scope_hash`` is the thread
+    #: scope's canonical hash — content-free, never query or answer text.
+    #: db_default keeps every column insertable by pre-S5 code during the
+    #: shared-postgres deploy window (same dark-safe rule as ``corpus``).
+    scope_hash = models.CharField(max_length=64, blank=True, default='', db_default='')
+    #: all_authorized_assets / explicit_assets / legacy_unconfirmed.
+    scope_mode = models.CharField(max_length=32, blank=True, default='', db_default='')
+    #: Whether enforce mode actually constrained this search.
+    scope_enforced = models.BooleanField(default=False, db_default=False)
+    #: How many returned/candidate rows fell outside the explicit scope
+    #: (shadow: would have been excluded; enforce: were excluded).
+    out_of_scope_hits = models.PositiveIntegerField(default=0, db_default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -874,3 +1012,525 @@ class MediaSegment(models.Model):
         return (
             f'ingest {self.ingest_id} segment {self.segment_index} ({self.media_type})'
         )
+
+
+class AIQuotaProfile(models.TextChoices):
+    """The finite quota profiles (S12, §8.9 — no blanket exemptions)."""
+
+    STANDARD = 'standard', 'Standard'
+    EVALUATION = 'evaluation', 'Evaluation'
+    SERVICE = 'service', 'Service'
+
+
+class AIQuotaPolicy(models.Model):
+    """One versioned, immutable quota policy (S12 Migration 4).
+
+    Every ENFORCEABLE policy version carries explicit numeric caps at all
+    three levels — a missing level must fail validation, never inherit an
+    unlimited default (§8.9). Rows are append-only: a change is a new
+    version, and ``active`` retires old ones without rewriting history.
+    """
+
+    profile = models.CharField(max_length=16, choices=AIQuotaProfile.choices)
+    version = models.PositiveIntegerField()
+    #: Daily token caps (UTC day). Non-null by construction — the ORM level
+    #: of the "missing level fails" rule; 0 is a deliberate hard-zero cap.
+    user_daily_tokens = models.PositiveBigIntegerField()
+    tenant_daily_tokens = models.PositiveBigIntegerField()
+    deployment_daily_tokens = models.PositiveBigIntegerField()
+    requests_per_minute = models.PositiveIntegerField()
+    requests_per_hour = models.PositiveIntegerField()
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+
+    class Meta:
+        """Policy identity plus the dedicated management permissions."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['profile', 'version'], name='aichat_quota_policy_ver_uniq'
+            )
+        ]
+        permissions = [
+            ('assign_quota_policy', 'Can assign AI quota policies to users'),
+            ('view_quota_reports', 'Can view AI quota operational reports'),
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'quota policy {self.profile} v{self.version}'
+
+
+class AIQuotaAssignment(models.Model):
+    """One expiring, auditable policy assignment (server-side only)."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='ai_quota_assignments',
+    )
+    policy = models.ForeignKey(
+        AIQuotaPolicy, on_delete=models.PROTECT, related_name='assignments'
+    )
+    #: Expiring by construction — an assignment without an end date is not
+    #: representable (the anti-"blanket exemption" rule).
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    reason = models.CharField(max_length=255, blank=True, default='')
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Lookup path: the resolver reads (user, expires_at)."""
+
+        indexes = [models.Index(fields=['user', 'expires_at'])]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'quota assignment user={self.user_id} policy={self.policy_id}'
+
+
+class AIQuotaReservationState(models.TextChoices):
+    """Reservation lifecycle for reconciliation."""
+
+    RESERVED = 'reserved', 'Reserved'
+    SETTLED = 'settled', 'Settled'
+    EXPIRED = 'expired', 'Expired'
+
+
+class AIQuotaReservation(models.Model):
+    """Best-effort durable mirror of one turn's cache reservation (S12).
+
+    The live counters stay in the shared cache; these rows exist for
+    reconciliation and audit — writing one never blocks a turn, and a stale
+    RESERVED row is expired by the scheduled reconciliation task.
+    """
+
+    idempotency_key = models.CharField(max_length=255, unique=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    policy_version = models.PositiveIntegerField(default=0)
+    #: ModelPurpose value or 'turn' for the whole-turn envelope.
+    purpose = models.CharField(max_length=64, blank=True, default='')
+    reserved_tokens = models.PositiveBigIntegerField(default=0)
+    settled_tokens = models.PositiveBigIntegerField(null=True, blank=True)
+    state = models.CharField(
+        max_length=16,
+        choices=AIQuotaReservationState.choices,
+        default=AIQuotaReservationState.RESERVED,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    settled_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        """Reconciliation scans (state, expires_at)."""
+
+        indexes = [models.Index(fields=['state', 'expires_at'])]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'quota reservation {self.idempotency_key} ({self.state})'
+
+
+class AIQuotaAuditAction(models.TextChoices):
+    """What a quota audit row records."""
+
+    ASSIGNED = 'assigned', 'Policy assigned'
+    REVOKED = 'revoked', 'Assignment revoked'
+    POLICY_CREATED = 'policy_created', 'Policy created'
+    POLICY_DEACTIVATED = 'policy_deactivated', 'Policy deactivated'
+
+
+class AIQuotaAuditEvent(models.Model):
+    """Immutable audit row for every quota management action (S12)."""
+
+    action = models.CharField(max_length=32, choices=AIQuotaAuditAction.choices)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    target_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    policy = models.ForeignKey(
+        AIQuotaPolicy,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    #: Short content-free detail (reason codes, expiry dates) — never text
+    #: that could carry user content.
+    detail = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Windowed reads (retention purge, reports) scan by time."""
+
+        indexes = [
+            models.Index(fields=['created_at'], name='aichat_quota_audit_time_idx')
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'quota audit {self.action} at {self.created_at}'
+
+
+class AIPilotStopRole(models.TextChoices):
+    """The five Q43 stop-authority roles.
+
+    Each may STOP unilaterally; clearing requires a recorded approval
+    from all five.
+    """
+
+    ENGINEERING = 'engineering', 'Engineering owner'
+    PRODUCT = 'product', 'Product owner'
+    MAINTENANCE_SAFETY = 'maintenance_safety', 'Maintenance/safety authority'
+    DOCUMENT_CONTROL = 'document_control', 'Document-control/data owner'
+    SECURITY_PRIVACY = 'security_privacy', 'Security/privacy owner'
+
+
+class AIPilotStopReason(models.TextChoices):
+    """The Q50 automatic-stop list, code for code — content-free by design."""
+
+    POPULATION_DISCLOSURE = (
+        'population_disclosure',
+        'Cross-scope or incomplete population disclosure',
+    )
+    UNSAFE_PROCEDURAL_CONTENT = (
+        'unsafe_procedural_content',
+        'Unsafe uncited procedural content',
+    )
+    UNAUTHORIZED_EFFECT = 'unauthorized_effect', 'Unauthorized effect or rail bypass'
+    FABRICATED_LIVE_STATE = 'fabricated_live_state', 'Fabricated current-state claim'
+    STALE_DOMAIN_CONTAMINATION = (
+        'stale_domain_contamination',
+        'Stale-domain contamination',
+    )
+    EVAL_FIXTURE_LEAK = (
+        'eval_fixture_leak',
+        'Eval fixture returned to a non-eval principal',
+    )
+    ENFORCE_FAIL_OPEN = 'enforce_fail_open', 'Enforce-mode limiter store failed open'
+    MODEL_PIN_MISMATCH = (
+        'model_pin_mismatch',
+        'Model identity mismatch in a frozen window',
+    )
+    MANUAL = 'manual', 'Owner judgment'
+
+
+class AIPilotStopLatch(models.Model):
+    """One durable pilot-stop episode (S15, §15.4/§16).
+
+    Append-only: engaging creates the single active row (the partial
+    unique constraint makes double-engage structurally impossible);
+    clearing sets ``cleared_at`` when approvals exist for ALL FIVE roles —
+    rows are never deleted. The AI plane's fail-closed admission gate
+    reads this state through a cached loader.
+    """
+
+    reason_code = models.CharField(max_length=40, choices=AIPilotStopReason.choices)
+    source = models.CharField(max_length=16, default='manual')  # manual | automatic
+    #: Codes/identifiers only — never prose, prompts, or source text.
+    detail = models.CharField(max_length=255, blank=True, default='')
+    engaged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    engaged_role = models.CharField(
+        max_length=32, blank=True, default='', choices=AIPilotStopRole.choices
+    )
+    active = models.BooleanField(default=True)
+    engaged_at = models.DateTimeField(auto_now_add=True)
+    cleared_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """One active episode; cleared rows keep their timestamp."""
+
+        ordering = ['-engaged_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['active'],
+                condition=Q(active=True),
+                name='aichat_pilot_latch_one_active',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    (Q(active=True) & Q(cleared_at__isnull=True))
+                    | (Q(active=False) & Q(cleared_at__isnull=False))
+                ),
+                name='aichat_pilot_latch_cleared_state',
+            ),
+        ]
+        permissions = [
+            ('manage_pilot_stop', 'Can set or clear the AI pilot stop latch')
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        state = 'ACTIVE' if self.active else 'cleared'
+        return f'pilot latch {self.reason_code} ({state})'
+
+
+class AIPilotStopApproval(models.Model):
+    """One immutable recorded restart approval — one per role per episode."""
+
+    latch = models.ForeignKey(
+        AIPilotStopLatch, on_delete=models.CASCADE, related_name='approvals'
+    )
+    role = models.CharField(max_length=32, choices=AIPilotStopRole.choices)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    #: A content-free reference (dossier/document id) backing the approval.
+    reference = models.CharField(max_length=100, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Each role approves an episode at most once."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['latch', 'role'], name='aichat_pilot_approval_role_uniq'
+            )
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'pilot restart approval {self.role}'
+
+
+class AIRequestRejection(models.Model):
+    """Content-free ledger of typed pre-turn rejections (S15, §8.10).
+
+    429/503 rejections happen before any ``ChatTurn`` exists, so without
+    this row the operations report's error denominator undercounts.
+    Written best-effort by the rejection paths — a write failure must
+    never block or alter the rejection response.
+    """
+
+    code = models.CharField(max_length=40)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Report queries scan by code and window."""
+
+        indexes = [
+            models.Index(
+                fields=['code', 'created_at'], name='aichat_rejection_code_idx'
+            )
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'request rejection {self.code}'
+
+
+class ChatThreadTombstone(models.Model):
+    """Non-content receipt of a purged thread (S16, Q48).
+
+    Written by every thread purge — immediate user deletion and scheduled
+    400-day expiry alike — so grant/audit integrity survives content
+    removal. Deliberately carries NO title, summary, or scope key: counts
+    and hashes only. Tombstones themselves purge 400 days after
+    ``deleted_at``.
+    """
+
+    #: The purged thread's original primary key.
+    thread_id = models.CharField(max_length=80, unique=True)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    namespace = models.CharField(max_length=16)
+    scope_hash = models.CharField(max_length=64)
+    thread_created_at = models.DateTimeField()
+    deleted_at = models.DateTimeField(auto_now_add=True)
+    #: Why the thread was purged: ``user_delete`` | ``retention_expiry``.
+    reason = models.CharField(max_length=32)
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    message_count = models.PositiveIntegerField(default=0)
+    turn_count = models.PositiveIntegerField(default=0)
+    had_grants = models.BooleanField(default=False)
+
+    class Meta:
+        """The tombstone purge scans by deletion time."""
+
+        indexes = [
+            models.Index(fields=['deleted_at'], name='aichat_tombstone_time_idx')
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'thread tombstone {self.thread_id} ({self.reason})'
+
+
+class ChatThreadGrantTombstone(models.Model):
+    """Audit record of one grant that existed when its thread was purged.
+
+    ``ChatThreadGrant`` rows cannot outlive their thread (FK integrity), so
+    the "grant audit rows survive" promise transfers here at purge time:
+    who held access, who granted it, and when it was revoked — queryable
+    per grantee, with zero content. Cascades with its thread tombstone.
+    """
+
+    tombstone = models.ForeignKey(
+        ChatThreadTombstone, on_delete=models.CASCADE, related_name='grants'
+    )
+    grantee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    access = models.CharField(max_length=16)
+    granted_at = models.DateTimeField()
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'grant tombstone on {self.tombstone.thread_id}'
+
+
+class AIUsageMonthlyAggregate(models.Model):
+    """Sanitized monthly usage aggregate — the 13-month store (S16, Q48).
+
+    Written by the 90-day detail scrub BEFORE the per-turn
+    ``metadata['usage']`` blobs are removed, then retained thirteen months.
+    ``user_id`` is a raw integer, not a foreign key: the aggregate is
+    content-free and must survive account deletion, and a nullable FK
+    would break upsert uniqueness under Postgres NULL-distinctness.
+    """
+
+    #: First day of the UTC month this row aggregates.
+    month = models.DateField()
+    #: ``turn_usage`` (ChatMessage usage metadata) | ``quota_reservation``.
+    source = models.CharField(max_length=32)
+    user_id = models.IntegerField(null=True, blank=True)
+    #: Per-source breakdown key: usage-event source name or reservation
+    #: purpose; empty for the per-user total row.
+    dimension = models.CharField(max_length=64, blank=True, default='')
+    turn_count = models.PositiveIntegerField(default=0)
+    input_tokens = models.PositiveBigIntegerField(default=0)
+    output_tokens = models.PositiveBigIntegerField(default=0)
+    cached_input_tokens = models.PositiveBigIntegerField(default=0)
+    total_tokens = models.PositiveBigIntegerField(default=0)
+    reserved_tokens = models.PositiveBigIntegerField(default=0)
+    settled_tokens = models.PositiveBigIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """One row per (month, source, user, dimension); purge scans by month."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['month', 'source', 'user_id', 'dimension'],
+                name='aichat_usage_agg_uniq',
+            )
+        ]
+        indexes = [models.Index(fields=['month'], name='aichat_usage_agg_month_idx')]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'usage aggregate {self.source} {self.month}'
+
+
+class AIRetentionOutbox(models.Model):
+    """Retryable record of one external deletion the purge owes (S16).
+
+    Filesystem and search-index removals cannot ride a database
+    transaction, so each is recorded here and driven to completion with
+    backoff; a missing target is success (idempotent). ``failed_permanent``
+    rows are the failure metric the operations report surfaces.
+    """
+
+    #: ``upload_dir`` today; ``search_index`` reserved for thread-linked
+    #: index artifacts added later.
+    kind = models.CharField(max_length=32)
+    #: The deletion target: the thread id for ``upload_dir``.
+    reference = models.CharField(max_length=255)
+    state = models.CharField(max_length=16, default='pending')
+    attempts = models.PositiveSmallIntegerField(default=0)
+    next_attempt_at = models.DateTimeField()
+    last_error_code = models.CharField(max_length=64, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Idempotent enqueue; the processor claims due pending rows."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['kind', 'reference'],
+                condition=Q(state='pending'),
+                name='aichat_outbox_pending_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['state', 'next_attempt_at'], name='aichat_outbox_claim_idx'
+            )
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'retention outbox {self.kind}:{self.reference} ({self.state})'
