@@ -44,7 +44,9 @@ MAX_TEXT_CHARS = 2000
 #: by ``tasks/tests/test_ai_read.py`` so removing an exclusion is a decision.
 EXCLUDED_FIELDS = {
     'WorkOrder.customer': 'tenant identity, mirrors the Client.name exclusion',
-    'WorkOrder.description': 'free text; the reviewed snapshot omits it',
+    # A16/Q14 (S5b): 'WorkOrder.description' left this table by owner
+    # decision — projected FENCED and capped in work_order_overview.
+    # Embedded instructions remain untrusted data; the fence is the control.
     'WorkOrder.service_quote': 'commercial value',
     'WorkOrder.company_contact_phone': 'personal data',
     'RepairPacket.diagnosis': 'bulk generated JSON; only generation_status shows',
@@ -126,17 +128,53 @@ def work_orders_in_scope(user, *, query: str | None = None, limit: int = 10):
     an unmatched or foreign reference yields nothing rather than reaching
     another tenant's job.
     """
+    return work_orders_page(user, query=query, limit=limit)['rows']
+
+
+def work_orders_page(
+    user,
+    *,
+    query: str | None = None,
+    limit: int = 10,
+    scope_machine_ids=None,
+    scope_date_from: str | None = None,
+    scope_date_to: str | None = None,
+    enforce: bool = False,
+) -> dict[str, Any]:
+    """The page-shaped work-order list with honest coverage (S5, §7.4).
+
+    ``population_count`` is a real server-side COUNT over the authorized,
+    filtered population; ``rows`` is the bounded display page. The two are
+    never conflated — a page of 25 from 400 reports 400/25, not "25".
+
+    The ``scope_*`` kwargs carry the thread's analysis scope (plain values —
+    this module never imports ``ai.*``): with ``enforce`` the machine/date
+    narrowing joins the query AFTER the authorization predicate; without it
+    the page only counts how many returned rows fall outside the scope
+    (shadow evidence). ``None`` scope means no analysis narrowing at all.
+    """
+    empty = {
+        'rows': [],
+        'population_count': 0,
+        'returned_count': 0,
+        'complete_population': True,
+        'display_truncated': False,
+        'out_of_scope_count': 0,
+        'applied_filters': {},
+        'high_watermark': None,
+    }
     if not maintenance_ai_read_enabled():
-        return []
+        return empty
     if not getattr(user, 'is_authenticated', False):
-        return []
+        return empty
 
     try:
         predicate = work_order_scope_filter(user)
     except ScopeError:
-        return []
+        return empty
 
     rows = WorkOrder.objects.filter(predicate).select_related('machine', 'assigned_to')
+    applied_filters: dict[str, Any] = {'date_field': 'created_at'}
     if query:
         from django.db.models import Q
 
@@ -147,8 +185,47 @@ def work_orders_in_scope(user, *, query: str | None = None, limit: int = 10):
                 | Q(title__icontains=term)
                 | Q(machine__name__icontains=term)
             )
+            applied_filters['query_applied'] = True
+    scope_ids = (
+        None if scope_machine_ids is None else {int(pk) for pk in scope_machine_ids}
+    )
+    if scope_ids is not None and enforce:
+        # Analysis-scope narrowing is applied ON TOP of authorization,
+        # never instead of it (the scope is narrowing, not authority).
+        rows = rows.filter(machine_id__in=scope_ids)
+        applied_filters['machine_ids'] = sorted(scope_ids)
+        if scope_date_from:
+            rows = rows.filter(created_at__date__gte=scope_date_from)
+            applied_filters['from'] = scope_date_from
+        if scope_date_to:
+            rows = rows.filter(created_at__date__lt=scope_date_to)
+            applied_filters['to'] = scope_date_to
+
+    from django.db.models import Max
+
+    population_count = rows.count()
+    high_watermark = rows.aggregate(Max('updated_at'))['updated_at__max']
     bounded = max(1, min(int(limit or 10), MAX_SEARCH_RESULTS))
-    return list(rows.order_by('-created_at')[:bounded])
+    page = list(rows.order_by('-created_at')[:bounded])
+
+    out_of_scope = 0
+    if scope_ids is not None and not enforce:
+        out_of_scope = sum(
+            1
+            for wo in page
+            if wo.machine_id is not None and wo.machine_id not in scope_ids
+        )
+
+    return {
+        'rows': page,
+        'population_count': population_count,
+        'returned_count': len(page),
+        'complete_population': len(page) == population_count,
+        'display_truncated': len(page) < population_count,
+        'out_of_scope_count': out_of_scope,
+        'applied_filters': applied_filters,
+        'high_watermark': _iso(high_watermark),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +233,20 @@ def work_orders_in_scope(user, *, query: str | None = None, limit: int = 10):
 # ---------------------------------------------------------------------------
 
 
-def work_order_row(work_order) -> dict[str, Any]:
+def _identity_label(identity, user_obj) -> str | None:
+    """Render an FK identity per the S5b rule (Q15/A16).
+
+    Role label by default; a caller-supplied ``identity(kind, subject)``
+    pseudonymizer where sequence distinction matters. Never the username.
+    """
+    if user_obj is None:
+        return None
+    if identity is None:
+        return 'technician'
+    return identity('user', user_obj.pk)
+
+
+def work_order_row(work_order, *, identity=None) -> dict[str, Any]:
     """A disambiguating identity line for reference resolution.
 
     ``board_status`` (the kanban column) and ``lifecycle_status`` (the
@@ -165,6 +255,10 @@ def work_order_row(work_order) -> dict[str, Any]:
     answer "nothing is in progress" while the board showed five cards in
     the In Progress column (live finding, 2026-08-06) — the reader needs
     both to answer either meaning honestly.
+
+    S5b additions: ``machine_id`` (a label alone was a dead end for the
+    analytics rail) and the four analytics timestamps; ``assigned_to``
+    became a role label/pseudonym (Q15 — identities are omitted by default).
     """
     return {
         'work_order_id': work_order.pk,
@@ -174,18 +268,24 @@ def work_order_row(work_order) -> dict[str, Any]:
         'lifecycle_status': work_order.lifecycle_status,
         'work_order_type': work_order.work_order_type,
         'priority': work_order.priority,
-        'assigned_to': (
-            work_order.assigned_to.get_username() if work_order.assigned_to_id else None
+        'assigned': work_order.assigned_to_id is not None,
+        'assigned_to': _identity_label(
+            identity, work_order.assigned_to if work_order.assigned_to_id else None
         ),
+        'machine_id': work_order.machine_id,
         'machine': fence(work_order.machine.name, limit=255)
         if work_order.machine_id
         else None,
         'due_date': _iso(work_order.due_date),
+        'created_at': _iso(work_order.created_at),
+        'updated_at': _iso(work_order.updated_at),
+        'actual_started_at': _iso(work_order.actual_started_at),
+        'actual_completed_at': _iso(work_order.actual_completed_at),
     }
 
 
 def work_order_history(
-    user, work_order, *, limit: int = 15
+    user, work_order, *, limit: int = 15, identity=None
 ) -> list[dict[str, Any]] | None:
     """Append-only audit events for one already-authorized work order.
 
@@ -215,12 +315,33 @@ def work_order_history(
             'event_type': event.event_type,
             'from_status': event.from_status or None,
             'to_status': event.to_status or None,
-            'actor': event.actor.get_username() if event.actor_id else None,
+            # S5b (Q15): pseudonym/role, never the username. Event sequences
+            # are where DISTINCTION matters ("the same person moved it
+            # twice"), so callers pass a thread-stable pseudonymizer.
+            'actor': _identity_label(identity, event.actor if event.actor_id else None),
             'reason': fence(event.reason, limit=500) if event.reason else None,
             'created_at': _iso(event.created_at),
         }
         for event in events
     ]
+
+
+def work_order_history_page(
+    user, work_order, *, limit: int = 15, identity=None
+) -> dict[str, Any] | None:
+    """The audit history with honest coverage (S5); ``None`` = not available."""
+    from tasks.workorder_models import WorkOrderEvent
+
+    events = work_order_history(user, work_order, limit=limit, identity=identity)
+    if events is None:
+        return None
+    population_count = WorkOrderEvent.objects.filter(work_order=work_order).count()
+    return {
+        'events': events,
+        'population_count': population_count,
+        'returned_count': len(events),
+        'display_truncated': population_count > len(events),
+    }
 
 
 def work_order_overview(work_order) -> dict[str, Any]:
@@ -241,6 +362,9 @@ def work_order_overview(work_order) -> dict[str, Any]:
         'work_order_id': work_order.pk,
         'reference': work_order.reference or '',
         'title': fence(work_order.title, limit=255),
+        # A16/Q14 (S5b): the owner-approved exposure — fenced and capped;
+        # embedded instructions in the narrative remain untrusted data.
+        'description': fence(work_order.description) or None,
         'lifecycle_status': work_order.lifecycle_status,
         'work_order_type': work_order.work_order_type,
         'priority': work_order.priority,
@@ -251,15 +375,60 @@ def work_order_overview(work_order) -> dict[str, Any]:
         }
         if work_order.machine_id
         else None,
-        'assigned_to': (
-            work_order.assigned_to.get_username() if work_order.assigned_to_id else None
+        'assigned': work_order.assigned_to_id is not None,
+        'assigned_to': _identity_label(
+            None, work_order.assigned_to if work_order.assigned_to_id else None
         ),
         'due_date': _iso(work_order.due_date),
+        'created_at': _iso(work_order.created_at),
+        'updated_at': _iso(work_order.updated_at),
+        'actual_started_at': _iso(work_order.actual_started_at),
+        'actual_completed_at': _iso(work_order.actual_completed_at),
         'scheduled_start': _iso(work_order.scheduled_start),
         'scheduled_end': _iso(work_order.scheduled_end),
         'estimated_minutes': work_order.estimated_minutes,
         'parts': parts,
         'parts_truncated': lines.count() > MAX_PARTS,
+    }
+
+
+def work_order_closeout(work_order) -> dict[str, Any] | None:
+    """The EFFECTIVE structured closeout, evidence stages separated (S5b).
+
+    Built exclusively on ``closeout_amend.effective_closeout()`` so applied
+    amendments supersede the base row — the raw pre-amendment row is never
+    projected. Every narrative field is fenced and capped; stages are never
+    filled from one another ("component replaced" is an action, not proof of
+    cause; "done" is an administrative status, not proof of sustained
+    operation). ``verified`` distinguishes reviewed evidence from an
+    unreviewed writeup; compliance/causal conclusions require it.
+    """
+    from .workorder_models import WorkOrderCloseout
+
+    try:
+        closeout = work_order.structured_closeout
+    except WorkOrderCloseout.DoesNotExist:
+        return None
+    from .services.closeout_amend import effective_closeout_overview
+
+    fields = effective_closeout_overview(closeout)
+    return {
+        'work_order_id': work_order.pk,
+        'cause': fence(str(fields.get('cause') or '')) or None,
+        'action': fence(str(fields.get('action') or '')) or None,
+        'result': fence(str(fields.get('result') or '')) or None,
+        'verification_summary': fence(str(fields.get('verification_summary') or ''))
+        or None,
+        'downtime_minutes': fields.get('downtime_minutes'),
+        'follow_up_required': bool(fields.get('follow_up_required')),
+        'follow_up': fence(str(fields.get('follow_up') or '')) or None,
+        'completed_at': _iso(closeout.completed_at),
+        'verified': closeout.verified_at is not None,
+        'verified_at': _iso(closeout.verified_at),
+        'amended': fields['amended'],
+        'amendment_count': fields['amendment_count'],
+        'version': closeout.version,
+        'content_hash': closeout.content_hash or None,
     }
 
 
@@ -370,13 +539,14 @@ def open_repairs_for_machine(user, machine) -> dict[str, Any]:
     from repair.services import repair_start_readiness
 
     terminal = (PacketStatus.CLOSED, PacketStatus.CANCELED)
-    packets = (
+    rows = (
         RepairPacket.objects
         .filter(machine=machine)
         .exclude(status__in=terminal)
         .select_related('work_order')
-        .order_by('-created_at')[:MAX_OPEN_REPAIRS]
     )
+    population_count = rows.count()
+    packets = rows.order_by('-created_at')[:MAX_OPEN_REPAIRS]
 
     repairs = []
     for packet in packets:
@@ -401,7 +571,14 @@ def open_repairs_for_machine(user, machine) -> dict[str, Any]:
             ],
         })
 
-    return {'machine_id': machine.pk, 'repairs': repairs, 'total': len(repairs)}
+    # S5 coverage vocabulary: 'total' was the truncated page length.
+    return {
+        'machine_id': machine.pk,
+        'repairs': repairs,
+        'population_count': population_count,
+        'returned_count': len(repairs),
+        'display_truncated': population_count > len(repairs),
+    }
 
 
 def authorized_machine(user, machine_id):
@@ -442,9 +619,12 @@ __all__ = [
     'fence',
     'maintenance_ai_read_enabled',
     'open_repairs_for_machine',
+    'work_order_closeout',
+    'work_order_history_page',
     'work_order_overview',
     'work_order_readiness',
     'work_order_repair_state',
     'work_order_row',
     'work_orders_in_scope',
+    'work_orders_page',
 ]

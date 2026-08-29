@@ -270,3 +270,39 @@ def single_site_scope_resolver(actor) -> set[MaintenanceScope]:
     if client is None:
         return set()
     return {MaintenanceScope(customer_id=None, site_key=None, client_id=client.pk)}
+
+
+def granted_client_scope_resolver(actor) -> set[MaintenanceScope]:
+    """Explicit ``ClientScopeGrant`` rows win; no rows falls back single-site.
+
+    The S6 control (spec: "the authorization relation … is the control, not
+    names"): a user WITH grant rows is scoped to exactly those active
+    clients — the dedicated solar-evaluation user holds grants for both
+    ``internal`` and ``eval-fixtures``, so the golden set stays whole while
+    every ungranted user simply never has ``eval-fixtures`` in a filter. A
+    user with NO rows resolves through ``single_site_scope_resolver``
+    unchanged, which keeps every existing operator (and the
+    part-verification reuse of this setting) behavior-identical.
+
+    Same role gate on both branches; same fail-closed construction.
+    """
+    if actor is None or not getattr(actor, 'is_active', False):
+        return set()
+
+    from assets.models import ClientScopeGrant
+    from users.permissions import check_user_role
+
+    if not check_user_role(actor, 'work_order', 'view'):
+        return set()
+
+    granted = set(
+        ClientScopeGrant.objects.filter(user=actor, client__active=True).values_list(
+            'client_id', flat=True
+        )
+    )
+    if not granted:
+        return single_site_scope_resolver(actor)
+    return {
+        MaintenanceScope(customer_id=None, site_key=None, client_id=client_id)
+        for client_id in granted
+    }

@@ -312,7 +312,8 @@ class WorkOrderSearchTests(MaintenanceAiReadTestCase):
         row = ai_read.work_order_row(self.wo)
         self.assertEqual(row['board_status'], WorkOrder.STATUS_IN_PROGRESS)
         self.assertEqual(row['lifecycle_status'], self.wo.lifecycle_status)
-        self.assertEqual(row['assigned_to'], self.actor.get_username())
+        # S5b (Q15): a role label, never the username.
+        self.assertEqual(row['assigned_to'], 'technician')
 
 
 class WorkOrderHistoryTests(MaintenanceAiReadTestCase):
@@ -354,6 +355,7 @@ class WorkOrderHistoryTests(MaintenanceAiReadTestCase):
         self.assertEqual(len(ai_read.work_order_history(granted, self.wo)), 1)
 
     def test_history_projects_bounded_events_for_a_granted_actor(self):
+        """A granted actor reads bounded events with redacted identities."""
         self._seed_event()
         granted = self._grant_audit(self.actor)
         events = ai_read.work_order_history(granted, self.wo)
@@ -362,7 +364,8 @@ class WorkOrderHistoryTests(MaintenanceAiReadTestCase):
         self.assertEqual(event['event_type'], 'status_changed')
         self.assertEqual(event['from_status'], 'backlog')
         self.assertEqual(event['to_status'], 'in-progress')
-        self.assertEqual(event['actor'], self.actor.get_username())
+        # S5b (Q15): role label by default; pseudonyms only via the wrapper.
+        self.assertEqual(event['actor'], 'technician')
         self.assertIn('Technician started the job', event['reason'])
         self.assertTrue(event['created_at'])
         self.assertNotIn('metadata', event)
@@ -380,7 +383,11 @@ class OverviewProjectionTests(MaintenanceAiReadTestCase):
         )
 
     def test_overview_is_exactly_the_reviewed_allow_list(self):
-        """Every projected key is named; ``description`` is not among them."""
+        """Every projected key is named.
+
+        S5b added the fenced description, the assignment presence flag, and
+        the four analytics timestamps.
+        """
         overview = ai_read.work_order_overview(self.wo)
         self.assertEqual(
             set(overview),
@@ -388,13 +395,19 @@ class OverviewProjectionTests(MaintenanceAiReadTestCase):
                 'work_order_id',
                 'reference',
                 'title',
+                'description',
                 'lifecycle_status',
                 'work_order_type',
                 'priority',
                 'lifecycle_version',
                 'machine',
+                'assigned',
                 'assigned_to',
                 'due_date',
+                'created_at',
+                'updated_at',
+                'actual_started_at',
+                'actual_completed_at',
                 'scheduled_start',
                 'scheduled_end',
                 'estimated_minutes',
@@ -613,7 +626,7 @@ class OpenRepairsForMachineTests(MaintenanceAiReadTestCase):
         """Closed and canceled repairs are history, not open work."""
         result = ai_read.open_repairs_for_machine(self.actor, self.machine)
         self.assertEqual(result['machine_id'], self.machine.pk)
-        self.assertEqual(result['total'], 1)
+        self.assertEqual(result['population_count'], 1)
         self.assertEqual(
             [row['packet_id'] for row in result['repairs']], [self.open_packet.pk]
         )
@@ -706,9 +719,10 @@ class ExcludedFieldsTests(RepairStateTests):
 
     def test_exclusions_are_documented_decisions(self):
         """Removing an exclusion must show up as an edit to this table."""
+        # A16/Q14 (S5b): 'WorkOrder.description' deliberately LEFT this
+        # table — projected fenced in work_order_overview; pinned below.
         for key in (
             'WorkOrder.customer',
-            'WorkOrder.description',
             'WorkOrder.service_quote',
             'WorkOrder.company_contact_phone',
             'RepairPacket.diagnosis',
@@ -732,7 +746,6 @@ class ExcludedFieldsTests(RepairStateTests):
             }
         )
         for forbidden in (
-            HIDDEN_DESCRIPTION,  # WorkOrder.description
             HIDDEN_QUOTE,  # WorkOrder.service_quote
             HIDDEN_PHONE,  # WorkOrder.company_contact_phone
             HIDDEN_CUSTOMER_NAME,  # WorkOrder.customer -- tenant identity
@@ -745,3 +758,28 @@ class ExcludedFieldsTests(RepairStateTests):
         ):
             with self.subTest(field=forbidden):
                 self.assertNotIn(forbidden, blob)
+
+    def test_description_is_projected_fenced_and_only_in_the_overview(self):
+        """A16/Q14 (S5b): the owner-approved exposure, fenced and capped.
+
+        Absent from the row projection — the overview is the reviewed home.
+        """
+        overview = ai_read.work_order_overview(self.wo)
+        self.assertIn(HIDDEN_DESCRIPTION, overview['description'])
+        self.assertTrue(
+            overview['description'].startswith(ai_read.UNTRUSTED_CONTENT_BEGIN)
+        )
+        self.assertNotIn('description', ai_read.work_order_row(self.wo))
+
+    def test_identities_render_as_roles_never_usernames(self):
+        """Q15 (S5b): assigned_to is a role label; the username never leaves."""
+        self.wo.assigned_to = self.actor
+        self.wo.save(update_fields=['assigned_to'])
+        row = ai_read.work_order_row(self.wo)
+        self.assertTrue(row['assigned'])
+        self.assertEqual(row['assigned_to'], 'technician')
+        blob = json.dumps({
+            'row': row,
+            'overview': ai_read.work_order_overview(self.wo),
+        })
+        self.assertNotIn(self.actor.get_username(), blob)

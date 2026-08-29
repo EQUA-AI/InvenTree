@@ -647,21 +647,32 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
 
     @staticmethod
     def get_structured_closeout(obj) -> dict | None:
-        """Return the immutable structured closeout when completed."""
+        """Return the effective structured closeout when completed.
+
+        Applied amendments supersede the immutable base row, matching the AI
+        projection (``tasks.ai_read.work_order_closeout``); ``amended`` and
+        ``amendment_count`` make a governed correction visible instead of
+        silently changing values.
+        """
+        from .services.closeout_amend import effective_closeout_overview
+
         closeout = getattr(obj, 'structured_closeout', None)
         if closeout is None:
             return None
+        fields = effective_closeout_overview(closeout)
         return {
             'id': closeout.pk,
-            'cause': closeout.cause,
-            'action': closeout.action,
-            'result': closeout.result,
-            'verification_summary': closeout.verification_summary,
-            'downtime_minutes': closeout.downtime_minutes,
-            'follow_up_required': closeout.follow_up_required,
-            'follow_up': closeout.follow_up,
+            'cause': fields['cause'],
+            'action': fields['action'],
+            'result': fields['result'],
+            'verification_summary': fields['verification_summary'],
+            'downtime_minutes': fields['downtime_minutes'],
+            'follow_up_required': fields['follow_up_required'],
+            'follow_up': fields['follow_up'],
             'completed_at': closeout.completed_at,
             'verified_at': closeout.verified_at,
+            'amended': fields['amended'],
+            'amendment_count': fields['amendment_count'],
         }
 
     @staticmethod

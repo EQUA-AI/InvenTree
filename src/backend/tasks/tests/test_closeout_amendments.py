@@ -2,6 +2,7 @@
 
 from django.core.exceptions import PermissionDenied
 from django.test import TestCase, override_settings
+from django.urls import reverse
 
 from tasks.closeout_models import CloseoutAmendment, CloseoutAmendmentStatus
 from tasks.models import WorkOrderCloseout, WorkOrderEvent
@@ -12,6 +13,7 @@ from tasks.services.closeout_amend import (
     VerificationError,
     decide_amendment,
     effective_closeout,
+    effective_closeout_overview,
     propose_amendment,
     verify_closeout,
 )
@@ -269,3 +271,80 @@ class AmendmentTest(CompletedCloseoutMixin, TestCase):
         effective = effective_closeout(self.closeout)
         self.assertEqual(effective['cause'], 'Bearing wear, not filter')
         self.assertEqual(effective['result'], 'Restored flow (corrected: 22 GPM)')
+
+
+@override_settings(**AMEND_FLAGS)
+class OverviewEffectiveCloseoutTest(CompletedCloseoutMixin, TestCase):
+    """The REST overview projects the effective closeout, with provenance."""
+
+    AMENDED_RESULT = 'Restored flow (corrected: 22 GPM)'
+
+    def setUp(self):
+        self.build_completed('overview-amend-user')
+        self.requester = self.make_scoped_user(
+            'overview-req', permissions=['amend_closeout']
+        )
+        self.approver = self.make_scoped_user(
+            'overview-sup', permissions=['verify_closeout', 'amend_closeout']
+        )
+        self.url = reverse(
+            'kanban-card-overview', kwargs={'pk': self.work_order.pk}
+        )
+        self.client.force_login(self.actor)
+
+    def overview_closeout(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        return response.json()['structured_closeout']
+
+    def amend(self, *, approve, key='overview-amend'):
+        proposal = propose_amendment(
+            work_order_id=self.work_order.pk,
+            actor=self.requester,
+            changes={'result': {'to': self.AMENDED_RESULT}},
+            reason='Technician misread the gauge',
+            expected_version=self.work_order.lifecycle_version,
+            idempotency_key=key,
+        )
+        decide_amendment(
+            work_order_id=self.work_order.pk,
+            amendment_id=proposal.metadata['amendment_id'],
+            actor=self.approver,
+            approve=approve,
+            expected_version=self.work_order.lifecycle_version,
+            idempotency_key=f'decide-{key}',
+        )
+
+    def test_unamended_payload_matches_the_base_row(self):
+        payload = self.overview_closeout()
+        for field, value in VALID_CLOSEOUT.items():
+            self.assertEqual(payload[field], value)
+        self.assertFalse(payload['amended'])
+        self.assertEqual(payload['amendment_count'], 0)
+
+    def test_applied_amendment_supersedes_and_is_visible(self):
+        self.amend(approve=True)
+        payload = self.overview_closeout()
+        self.assertEqual(payload['result'], self.AMENDED_RESULT)
+        self.assertEqual(payload['cause'], VALID_CLOSEOUT['cause'])
+        self.assertTrue(payload['amended'])
+        self.assertEqual(payload['amendment_count'], 1)
+
+    def test_rejected_amendment_leaves_raw_values(self):
+        self.amend(approve=False)
+        payload = self.overview_closeout()
+        self.assertEqual(payload['result'], VALID_CLOSEOUT['result'])
+        self.assertFalse(payload['amended'])
+        self.assertEqual(payload['amendment_count'], 0)
+
+    def test_applied_amendments_prefers_the_prefetched_attr(self):
+        self.amend(approve=True)
+        closeout = WorkOrderCloseout.objects.get(pk=self.closeout.pk)
+        # Simulate the list-endpoint Prefetch(to_attr='applied_amendments'):
+        # an (empty) prefetched list must win over the real applied row, with
+        # zero queries.
+        closeout.applied_amendments = []
+        with self.assertNumQueries(0):
+            overview = effective_closeout_overview(closeout)
+        self.assertEqual(overview['result'], VALID_CLOSEOUT['result'])
+        self.assertFalse(overview['amended'])

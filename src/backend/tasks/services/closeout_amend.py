@@ -82,17 +82,47 @@ def base_closeout_fields(closeout) -> dict:
     return {name: getattr(closeout, name) for name in AMENDABLE_FIELDS}
 
 
+def applied_amendments(closeout) -> list:
+    """Applied amendments, newest first, honouring a ``to_attr`` prefetch.
+
+    List endpoints avoid a query per row with
+    ``Prefetch('...amendments', queryset=<applied, newest first>,
+    to_attr='applied_amendments')``; single-object callers fall back to one
+    query here.
+    """
+    prefetched = getattr(closeout, 'applied_amendments', None)
+    if prefetched is not None:
+        return list(prefetched)
+    return list(
+        closeout.amendments.filter(status=CloseoutAmendmentStatus.APPLIED).order_by(
+            '-applied_at', '-pk'
+        )
+    )
+
+
+def _effective_fields(closeout, applied) -> dict:
+    fields = base_closeout_fields(closeout)
+    if applied and applied[0].effective_snapshot:
+        fields.update(applied[0].effective_snapshot.get('closeout', {}))
+    return fields
+
+
 def effective_closeout(closeout) -> dict:
     """Overlay the latest applied amendment onto the immutable original."""
-    fields = base_closeout_fields(closeout)
-    latest = (
-        closeout.amendments
-        .filter(status=CloseoutAmendmentStatus.APPLIED)
-        .order_by('-applied_at', '-pk')
-        .first()
-    )
-    if latest and latest.effective_snapshot:
-        fields.update(latest.effective_snapshot.get('closeout', {}))
+    return _effective_fields(closeout, applied_amendments(closeout))
+
+
+def effective_closeout_overview(closeout) -> dict:
+    """Effective field values plus ``amended``/``amendment_count`` provenance.
+
+    The REST projection helper: read surfaces must show the governed
+    correction rather than the superseded original, and must say that a
+    correction happened rather than changing values silently.
+    """
+    applied = applied_amendments(closeout)
+    fields = _effective_fields(closeout, applied)
+    fields['amended'] = bool(applied)
+    fields['amendment_count'] = len(applied)
     return fields
 
 

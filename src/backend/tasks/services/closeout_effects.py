@@ -74,16 +74,21 @@ def _execute_notification(effect: CloseoutEffect) -> str:
 
 def _execute_memory_draft(effect: CloseoutEffect) -> str:
     """Create the governed, draft-only learning candidate (FR-CO-015)."""
+    from tasks.services.closeout_amend import effective_closeout
+
     closeout = effect.closeout
+    # Draft from the effective closeout: a learning candidate must never
+    # resurrect narrative that an applied amendment superseded.
+    fields = effective_closeout(closeout)
     draft, _created = CloseoutLearningDraft.objects.get_or_create(
         closeout=closeout,
         draft_type='problem_solution',
         defaults={
             'payload': {
-                'cause': closeout.cause,
-                'action': closeout.action,
-                'result': closeout.result,
-                'verification_summary': closeout.verification_summary,
+                'cause': fields['cause'],
+                'action': fields['action'],
+                'result': fields['result'],
+                'verification_summary': fields['verification_summary'],
                 'machine': (
                     closeout.work_order.machine.name
                     if closeout.work_order.machine_id

@@ -21,8 +21,6 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
 from asgiref.sync import async_to_sync
-from tasks.models import WorkOrder
-from tasks.scope import MaintenanceScope
 
 from ai.core.auth import AIPrincipal, principal_context
 from ai.core.integrations.kanban_tools import (
@@ -32,6 +30,8 @@ from ai.core.integrations.kanban_tools import (
     list_kanban_cards,
 )
 from assets.models import AssetMachine, Client
+from tasks.models import WorkOrder
+from tasks.scope import MaintenanceScope
 
 # The tools reload the acting user from the database by primary key, so an
 # in-memory ``maintenance_scopes`` attribute never reaches them. Grants are
@@ -129,7 +129,8 @@ class KanbanToolScopeTest(TestCase):
         """The board is the actor's board, not the plant's."""
         result = self._call(list_kanban_cards)
 
-        self.assertEqual(result['count'], 1)
+        self.assertEqual(result['returned_count'], 1)
+        self.assertEqual(result['population_count'], 1)
         self.assertEqual([c['id'] for c in result['cards']], [self.card_a.pk])
 
     def test_summary_counts_only_the_actors_clients_cards(self):
@@ -146,7 +147,9 @@ class KanbanToolScopeTest(TestCase):
         result = self._call(get_kanban_card, work_order_id=self.card_a.pk)
 
         self.assertEqual(result.get('id'), self.card_a.pk)
-        self.assertEqual(result.get('title'), 'Card A')
+        # S5b: card titles ride the shared fence like every free-text field.
+        self.assertIn('Card A', result.get('title'))
+        self.assertTrue(result.get('title').startswith('[UNTRUSTED-CONTENT-BEGIN]'))
 
     def test_check_stock_reaches_the_actors_own_card(self):
         """The stock re-check works inside the boundary."""
@@ -191,7 +194,7 @@ class KanbanToolScopeTest(TestCase):
         listed = self._call(list_kanban_cards, None)
         summary = self._call(get_kanban_summary, None)
 
-        self.assertEqual(listed, {'count': 0, 'cards': []})
+        self.assertEqual((listed['returned_count'], listed['cards']), (0, []))
         self.assertEqual(summary['total_active'], 0)
 
     def test_no_principal_gets_the_not_found_error_for_a_real_card(self):
@@ -211,7 +214,7 @@ class KanbanToolScopeTest(TestCase):
 
         result = self._call(list_kanban_cards, stale)
 
-        self.assertEqual(result, {'count': 0, 'cards': []})
+        self.assertEqual((result['returned_count'], result['cards']), (0, []))
 
     def test_ungranted_actor_sees_an_empty_board_not_everything(self):
         """A resolver returning no scopes is a denial, not a wildcard."""
@@ -220,7 +223,7 @@ class KanbanToolScopeTest(TestCase):
         listed = self._call(list_kanban_cards)
         fetched = self._call(get_kanban_card, work_order_id=self.card_a.pk)
 
-        self.assertEqual(listed, {'count': 0, 'cards': []})
+        self.assertEqual((listed['returned_count'], listed['cards']), (0, []))
         self.assertIn('error', fetched)
 
     def test_site_qualified_grant_contributes_no_rows(self):
@@ -238,4 +241,51 @@ class KanbanToolScopeTest(TestCase):
 
         result = self._call(list_kanban_cards)
 
-        self.assertEqual(result, {'count': 0, 'cards': []})
+        self.assertEqual((result['returned_count'], result['cards']), (0, []))
+
+
+class KanbanProjectionSentinelTests(KanbanToolScopeTest):
+    """S5b: the card projection is an allow-list; withheld fields stay out."""
+
+    def test_withheld_fields_never_appear(self):
+        """Commercial/contact/identity fields are excluded (recon defect fix)."""
+        import json
+
+        from tasks.models import WorkOrder
+
+        WorkOrder.objects.filter(pk=self.card_a.pk).update(
+            description='Hidden card description body',
+            assignee='Hidden Assignee Name',
+            company='Hidden Kanban Co',
+            company_contact_name='Hidden Contact',
+            company_contact_phone='+00-HIDDEN-PHONE',
+            service_quote='QUOTE-HIDDEN-11',
+        )
+        result = self._call(get_kanban_card, work_order_id=self.card_a.pk)
+        blob = json.dumps(result)
+        self.assertIn('Hidden card description body', blob)  # fenced, allowed
+        self.assertIn('[UNTRUSTED-CONTENT-BEGIN]', result['description'])
+        for forbidden in (
+            'Hidden Assignee Name',
+            'Hidden Kanban Co',
+            'Hidden Contact',
+            '+00-HIDDEN-PHONE',
+            'QUOTE-HIDDEN-11',
+        ):
+            with self.subTest(field=forbidden):
+                self.assertNotIn(forbidden, blob)
+        self.assertTrue(result['assigned'])
+
+    def test_excluded_fields_registry_documents_the_decisions(self):
+        """Removing an exclusion must show up as an edit to the registry."""
+        from ai.core.integrations.kanban_tools import EXCLUDED_FIELDS
+
+        for key in (
+            'WorkOrder.company',
+            'WorkOrder.company_contact_name',
+            'WorkOrder.company_contact_phone',
+            'WorkOrder.service_quote',
+            'WorkOrder.assignee',
+        ):
+            with self.subTest(key=key):
+                self.assertIn(key, EXCLUDED_FIELDS)
