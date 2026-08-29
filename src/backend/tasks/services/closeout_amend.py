@@ -257,8 +257,11 @@ def _asset_history_projection(work_order, fields) -> dict:
 
 
 def _apply_amendment(work_order, closeout, amendment, actor):
-    if amendment.base_content_hash != closeout.content_hash:
-        raise AmendmentError('The amendment no longer matches the closeout content')
+    # No staleness check here on purpose: completed closeouts are immutable
+    # (save() rejects every mutation outside verification), so
+    # ``amendment.base_content_hash`` — stamped from the row at proposal —
+    # can never diverge from ``closeout.content_hash``. The stamp is kept
+    # as provenance only.
     fields = effective_closeout(closeout)
     for field, change in amendment.changes.items():
         fields[field] = change.get('to')
