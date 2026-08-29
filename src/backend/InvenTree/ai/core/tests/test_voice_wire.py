@@ -68,6 +68,7 @@ def test_session_payload_dump_matches_the_historic_dict_shape() -> None:
         "turn_count": 2,
         "policy_version": "v1",
         "terminal_reason": None,
+        "analysis_scope_version": 0,
     }
 
 

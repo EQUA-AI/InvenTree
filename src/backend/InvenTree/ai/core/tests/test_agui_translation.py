@@ -315,4 +315,39 @@ def test_custom_channels_are_frozen_and_generated() -> None:
         "aimms.proposalsRefresh",
         "aimms.hitl",
         "aimms.custom",
+        # S10/S11: the consolidated evidence attachment + content-free
+        # progress stages ride dedicated channels on the AG-UI wire.
+        "aimms.evidenceAnalysis",
+        "aimms.analysisProgress",
     )
+
+
+def test_state_delta_evidence_analysis_maps_to_its_channel() -> None:
+    """S10: the attachment forwards as ONE object, minus the kind tag."""
+    adapter = _t()
+    events = adapter.translate({
+        "type": "STATE_DELTA",
+        "timestamp": TS_MS,
+        "kind": "evidence_analysis",
+        "response_version": 2,
+        "claims": [],
+        "citations": [],
+    })
+    assert [event["type"] for event in events] == ["CUSTOM"]
+    assert events[0]["name"] == "aimms.evidenceAnalysis"
+    assert events[0]["value"]["response_version"] == 2
+    assert "kind" not in events[0]["value"]
+
+
+def test_state_delta_analysis_progress_maps_to_its_channel() -> None:
+    """S10: progress is stage-only — a closed enum, content-free."""
+    adapter = _t()
+    events = adapter.translate({
+        "type": "STATE_DELTA",
+        "timestamp": TS_MS,
+        "kind": "analysis_progress",
+        "stage": "reviewing_records",
+    })
+    assert [event["type"] for event in events] == ["CUSTOM"]
+    assert events[0]["name"] == "aimms.analysisProgress"
+    assert events[0]["value"] == {"stage": "reviewing_records"}

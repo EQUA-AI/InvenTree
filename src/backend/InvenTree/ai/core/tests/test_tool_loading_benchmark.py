@@ -64,7 +64,7 @@ def test_offline_benchmark_meets_static_selection_gates(_pinned_lexicons):
     # arrived via CONTROLLED_CORPUS_TOOLS; 56 since R2 added
     # search_attachment_docs via ATTACHMENT_CORPUS_TOOLS; 57 since R3 added
     # search_evidence_media via EVIDENCE_MEDIA_TOOLS.
-    assert report["baseline"]["tool_count"] == 57
+    assert report["baseline"]["tool_count"] == 59
     assert report["baseline"]["measurement"] == (
         "normalized_local_contract_bytes_not_provider_tokens"
     )

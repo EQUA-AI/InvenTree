@@ -41,6 +41,7 @@ EXPECTED_MAINTENANCE_TOOL_IDS = frozenset({
     "get_work_order_repair_state",
     "get_open_repairs_for_machine",
     "get_work_order_history",
+    "get_work_order_closeout",
 })
 
 PROFILE = frozenset({
@@ -69,7 +70,7 @@ def test_maintenance_tools_are_on_the_shared_read_surface():
 
 
 def test_catalog_carries_exactly_the_five_maintenance_tools():
-    """The pack is the six ai_read delegates -- no more, no fewer."""
+    """The pack is the seven ai_read delegates -- no more, no fewer."""
     pack_tool_ids = {
         entry.tool_id for entry in capability_catalog() if entry.pack_id == "maintenance.read"
     }

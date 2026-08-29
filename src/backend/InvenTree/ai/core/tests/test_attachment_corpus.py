@@ -480,13 +480,13 @@ def test_empty_doc_type_result_degrades_to_unfiltered(retrieval_on):
     _search, _embed, result = _run(search_client=search_client, doc_type="datasheet")
     assert search_client.calls == 2
     assert "doc_type eq" not in search_client.all_kwargs[1]["filter"]
-    assert result["total"] == 1
+    assert result["returned_count"] == 1
 
 
 def test_doc_type_with_hits_does_not_retry(retrieval_on):
     search_client, _embed, result = _run(doc_type="manual")
     assert search_client.calls == 1
-    assert result["total"] == 1
+    assert result["returned_count"] == 1
 
 
 def test_excerpt_is_fenced_and_hashed_over_raw_truncation(retrieval_on):
@@ -629,3 +629,26 @@ def test_granted_arms_role_mapping(monkeypatch):
 
 def test_granted_arms_superuser_short_circuits():
     assert corpus_mod._granted_arms(_user()) == ("part", "assetmachine")
+
+
+def test_filter_scope_asset_floor_allows_unstamped_and_scoped_only():
+    """S5: the analysis-scope serial floor — scoped serials or unstamped."""
+    built = attachment_corpus_filter(
+        scope_key=SCOPE_KEY,
+        client_codes={"acme"},
+        model_types=("part", "assetmachine"),
+        scope_asset_ids=("SR-2", "SR-1"),
+    )
+    assert built.endswith(
+        "and (asset_id eq '' or asset_id eq null or search.in(asset_id, 'SR-1,SR-2', ','))"
+    )
+
+
+def test_filter_serial_less_scope_floor_allows_only_unstamped():
+    built = attachment_corpus_filter(
+        scope_key=SCOPE_KEY,
+        client_codes={"acme"},
+        model_types=("part",),
+        scope_asset_ids=(),
+    )
+    assert built.endswith("and (asset_id eq '' or asset_id eq null)")

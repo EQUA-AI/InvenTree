@@ -154,6 +154,8 @@ def test_create_get_end_lifecycle_and_credential_free_payload():
         "turn_count",
         "policy_version",
         "terminal_reason",
+        # §13.3-10 scope binding: an integer version, no provider authority.
+        "analysis_scope_version",
     }, "payload grew a field; verify it cannot carry provider authority"
 
     fetched = _run(principal, lambda: get_voice_session(created["id"]), settings)

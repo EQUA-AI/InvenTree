@@ -231,13 +231,13 @@ def test_class_narrowing_degrades_instead_of_reporting_an_empty_manual(site_scop
     _, _, result = _run(search_client=search_client, document_class="technical_manual")
     assert search_client.calls == 2
     assert "document_class eq" not in search_client.kwargs["filter"]
-    assert result["total"] == 1
+    assert result["returned_count"] == 1
 
 
 def test_class_narrowing_with_hits_does_not_retry(site_scope):
     search_client, _, result = _run(document_class="technical_manual")
     assert search_client.calls == 1
-    assert result["total"] == 1
+    assert result["returned_count"] == 1
 
 
 def test_live_ingested_document_class_is_allowlisted(site_scope):
@@ -252,7 +252,7 @@ def test_live_ingested_document_class_is_allowlisted(site_scope):
     live_class = "controlled_operations_maintenance_diagnostics_repair_knowledge"
     search_client, _, result = _run(document_class=live_class)
     assert search_client.kwargs["filter"] == (f"{BASE_FILTER} and document_class eq '{live_class}'")
-    assert result["total"] == 1
+    assert result["returned_count"] == 1
     # Widening the allowlist must not have weakened the refusal for classes
     # that exist nowhere.
     refused = _SearchClient()
@@ -309,7 +309,7 @@ def test_ambiguous_machine_returns_candidates_without_searching(site_scope):
     )
     assert result == {
         "chunks": [],
-        "total": 0,
+        "returned_count": 0,
         "machine_filter": "ambiguous",
         "machine_candidates": candidates,
     }
@@ -357,10 +357,13 @@ def test_hybrid_query_kwargs_and_citation_payload(site_scope):
     assert "section_path" in kwargs["select"]
     assert "source_blob_path" not in kwargs["select"]
 
-    assert result["total"] == 1
+    assert result["returned_count"] == 1
     assert result["machine_filter"] == "not_requested"
     chunk = result["chunks"][0]
-    assert chunk["excerpt"] == "Pump 2 tripped after seal leakage and rising current."
+    # S5: the excerpt is fenced (the one previously-unfenced retrieval text).
+    assert chunk["excerpt"].startswith("[UNTRUSTED-CONTENT-BEGIN]")
+    assert "Pump 2 tripped after seal leakage and rising current." in chunk["excerpt"]
+    assert chunk["excerpt"].endswith("[UNTRUSTED-CONTENT-END]")
     assert chunk["score"] == pytest.approx(2.5)
     citation = chunk["citation"]
     assert citation["document_id"] == "aimms-tc-inf-ps1-manual"
@@ -371,8 +374,10 @@ def test_hybrid_query_kwargs_and_citation_payload(site_scope):
     )
     assert citation["chunk_id"] == "16:0000"
     assert citation["as_of"] == "2026-07-26"
+    # The hash covers the RAW truncated text (the grounding auditor's
+    # excerpt identity), not the fenced rendering.
     assert citation["excerpt_hash"] == (
-        hashlib.sha256(chunk["excerpt"].encode("utf-8")).hexdigest()
+        hashlib.sha256(b"Pump 2 tripped after seal leakage and rising current.").hexdigest()
     )
     # No registry row exists in this world, so the friendly title derives
     # from the source file name.
@@ -394,7 +399,9 @@ def test_excerpt_is_truncated_and_hashed_over_the_truncation(site_scope):
     search_client = _SearchClient(rows=[_row(chunk="x" * 9000)])
     _, _, result = _run(search_client=search_client)
     chunk = result["chunks"][0]
-    assert len(chunk["excerpt"]) == 8000
+    # Fenced excerpt: 8000 raw chars plus the fence markers and newlines.
+    assert "x" * 8000 in chunk["excerpt"]
+    assert "x" * 8001 not in chunk["excerpt"]
     assert chunk["citation"]["excerpt_hash"] == (
         hashlib.sha256(("x" * 8000).encode("utf-8")).hexdigest()
     )
@@ -456,3 +463,118 @@ def test_canonical_env_names_win_over_aliases(monkeypatch, tmp_path):
     )
     assert settings.azure_search_api_key == "canonical-key"
     assert settings.azure_openai_embedding_deployment == "canonical-embedding"
+
+
+# ---------------------------------------------------------------------------
+# S5 (WP-A3): analysis-scope enforcement — no-broadening pins
+# ---------------------------------------------------------------------------
+from ai.core.analysis.scope_context import (  # noqa: E402
+    TurnScopeContext,
+    turn_scope_context,
+)
+
+
+def _scope(serials=("PS1-0001",), *, enforce=True, shadow=True, machine_ids=(4,)):
+    return TurnScopeContext(
+        mode="explicit_assets",
+        machine_ids=frozenset(machine_ids),
+        machine_serials=frozenset(serials),
+        date_from=None,
+        date_to=None,
+        source_classes=frozenset({"controlled_document"}),
+        scope_hash="d" * 64,
+        scope_version=2,
+        snapshot_id="snap_deadbeefdeadbeefdead",
+        thread_pk=1,
+        display_label="Pump bay",
+        shadow=shadow,
+        enforce=enforce,
+    )
+
+
+@pytest.fixture
+def _reset_scope():
+    token = turn_scope_context.set(None)
+    yield
+    turn_scope_context.reset(token)
+
+
+def test_corpus_filter_scope_serials_use_search_in():
+    assert corpus_filter(scope_key=SCOPE_KEY, asset_ids=("B-2", "A-1")) == (
+        f"{BASE_FILTER} and search.in(asset_id, 'A-1,B-2', ',')"
+    )
+    # The multi-valued scope clause wins over a resolver-derived single id.
+    assert "search.in(asset_id" in corpus_filter(
+        scope_key=SCOPE_KEY, asset_id="X", asset_ids=("A-1",)
+    )
+
+
+def test_enforced_scope_drives_the_filter_and_ignores_the_model_name(site_scope, _reset_scope):
+    """§8.4: the model-supplied machine name is never the scope mechanism."""
+    turn_scope_context.set(_scope())
+    resolver_calls = []
+
+    def resolver(actor, name):
+        resolver_calls.append(name)
+        return []
+
+    search_client, _, result = _run(machine="Some Other Machine", machine_resolver=resolver)
+    assert resolver_calls == [], "name resolution must not run under an enforced scope"
+    assert "search.in(asset_id, 'PS1-0001', ',')" in search_client.kwargs["filter"]
+    assert result["machine_filter"] == "scope_applied"
+
+
+def test_enforced_scope_zero_hits_never_broaden(site_scope, _reset_scope):
+    """The site-wide name-degrade is structurally unreachable under enforce."""
+    turn_scope_context.set(_scope())
+    search_client = _SearchClient(rows=[])
+    client, _, result = _run(search_client=search_client)
+    # One search (plus no class retry without a class arg): every call keeps
+    # the scope clause — nothing ever ran without it.
+    assert client.calls == 1
+    assert "search.in(asset_id, 'PS1-0001', ',')" in client.kwargs["filter"]
+    assert result["returned_count"] == 0
+    assert "no_relevant_passage_retrieved" in result["retrieval"]["warnings"]
+
+
+def test_enforced_scope_class_fallback_keeps_the_asset_floor(site_scope, _reset_scope):
+    """Degrade #2 (class removal) survives, but inside the scope floor."""
+    turn_scope_context.set(_scope())
+
+    class _TwoCallClient(_SearchClient):
+        def __init__(self):
+            super().__init__(rows=[])
+            self.filters = []
+
+        def search(self, **kwargs):
+            self.calls += 1
+            self.kwargs = kwargs
+            self.filters.append(kwargs["filter"])
+            return [] if self.calls == 1 else [_row()]
+
+    client = _TwoCallClient()
+    _, _, result = _run(search_client=client, document_class="procedure")
+    assert client.calls == 2
+    assert all("search.in(asset_id, 'PS1-0001', ',')" in f for f in client.filters), (
+        "the class retry may widen the class, never the asset scope"
+    )
+    assert result["returned_count"] == 1
+
+
+def test_serial_less_enforced_scope_is_applicability_unresolved(site_scope, _reset_scope):
+    """A scoped machine without a serial never triggers fleet-wide search."""
+    turn_scope_context.set(_scope(serials=()))
+    search_client, embed, result = _run()
+    assert search_client.calls == 0, "no search may run"
+    assert embed.calls == [], "no embedding may run"
+    assert result["scope_miss"] is True
+    assert result["applicability"] == "unresolved"
+    assert result["machine_filter"] == "scope_unresolved"
+
+
+def test_shadow_scope_keeps_legacy_behavior(site_scope, _reset_scope):
+    """Shadow observes: the legacy name-degrade result is unchanged."""
+    turn_scope_context.set(_scope(enforce=False))
+    search_client, _, result = _run()
+    assert "search.in(asset_id" not in search_client.kwargs["filter"]
+    assert result["returned_count"] == 1

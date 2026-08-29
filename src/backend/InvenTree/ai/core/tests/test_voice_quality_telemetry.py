@@ -65,10 +65,15 @@ def test_job_vocabulary_reaches_the_kanban_pack(query):
     assert "kanban.read" in selected.pack_ids, (query, selected.pack_ids)
 
 
-def test_work_order_still_prefers_the_build_pack():
-    """'work order' belongs to build.read; the new terms must not steal it."""
+def test_build_order_still_prefers_the_build_pack():
+    """Build phrasing belongs to build.read; the new terms must not steal it.
+
+    On this fork a "work order" is a maintenance job (maintenance.read owns the
+    term since 50fc35031); a manufacturing job is a build. Mirrors the canonical
+    pins in test_maintenance_capability_selection.py.
+    """
     selected = capabilities.select_capabilities(
-        "show me work order WO-42",
+        "show me build order BO-42",
         profile=ALL_VIEW | frozenset({("kanban", "view")}),
         authenticated=True,
     )

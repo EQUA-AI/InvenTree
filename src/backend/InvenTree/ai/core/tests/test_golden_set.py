@@ -57,7 +57,7 @@ def test_attachment_fixture_items_pin_the_fixture_set():
     items = schema_mod.load_items()
     attachment_items = [i for i in items if i.id.startswith("attachment-")]
     assert len(attachment_items) >= 4
-    assert {i.corpus_version for i in attachment_items} == {"aimms-attachment-fixtures-v1"}
+    assert {i.corpus_version for i in attachment_items} == {"aimms-attachment-fixtures-v2"}
     assert any(i.trap_type == "absent_spec" for i in attachment_items)
 
 
@@ -101,7 +101,7 @@ def test_corpus_env_is_set_valued():
 
     items = [
         _item("governed", "eaits-manuals-v4a"),
-        _item("attachment", "aimms-attachment-fixtures-v1"),
+        _item("attachment", "aimms-attachment-fixtures-v2"),
         _item("stale", "eaits-manuals-v3"),
         _item("unpinned", ""),
     ]
@@ -113,7 +113,7 @@ def test_corpus_env_is_set_valued():
     scores = run_items(
         _NeverCalled(),
         items,
-        "eaits-manuals-v4a,aimms-attachment-fixtures-v1",
+        "eaits-manuals-v4a,aimms-attachment-fixtures-v2",
         "live",  # every item above is demo/unpinned -> dataset skip catches
         False,
     )

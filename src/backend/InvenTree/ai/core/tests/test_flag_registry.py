@@ -83,7 +83,7 @@ def test_prefixed_env_name_is_accepted_for_every_ai_flag() -> None:
 def test_django_entries_are_structurally_complete() -> None:
     for entry in django_flags():
         assert entry.config_key, f"{entry.env_name}: django entry without config_key"
-        assert entry.kind in ("bool", "str", "csv"), (
+        assert entry.kind in ("bool", "str", "csv", "int"), (
             f"{entry.env_name}: unsupported django kind {entry.kind}"
         )
 

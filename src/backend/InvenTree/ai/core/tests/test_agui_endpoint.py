@@ -225,6 +225,73 @@ def test_camelcase_and_snake_case_both_accepted() -> None:
     assert isinstance(_input().messages[0], AGUIInputMessage)
 
 
+def test_expected_scope_version_accepts_both_aliases() -> None:
+    """S1: the scope staleness field parses camelCase and snake_case alike."""
+    camel = RunAgentInput.model_validate({
+        "threadId": "t",
+        "runId": "r",
+        "forwardedProps": {"expectedScopeVersion": 3},
+    })
+    snake = RunAgentInput.model_validate({
+        "thread_id": "t",
+        "run_id": "r",
+        "forwarded_props": {"expected_scope_version": 3},
+    })
+    assert camel.forwarded_props.expected_scope_version == 3
+    assert snake.forwarded_props.expected_scope_version == 3
+    assert _input().forwarded_props.expected_scope_version is None
+
+
+def _run_route_with_scope(run_input: RunAgentInput, *, server_version: int):
+    """Drive the route with a fake repository serving one scope version."""
+    fake = _FakeTurnService()
+    repository = SimpleNamespace(get_scope=lambda _thread_id: {"version": server_version})
+
+    async def fake_metadata(principal, request):
+        await asyncio.sleep(0)
+        return {}
+
+    async def scenario():
+        with (
+            patch(
+                "ai.core.config.get_settings",
+                return_value=SimpleNamespace(feature_agui_endpoint=True),
+            ),
+            patch("ai.core.app._principal", side_effect=_principal_stub),
+            patch("ai.core.app._repository", return_value=repository),
+            patch("ai.core.app.get_turn_service", return_value=fake),
+            patch("ai.core.app._turn_metadata", side_effect=fake_metadata),
+            patch(
+                "ai.core.trusted_context.build_trusted_turn_context",
+                return_value={"server_policy_key": "k", "locale": "en"},
+            ),
+            patch("ai.core.trusted_context.resolve_actor_locale", return_value="en"),
+        ):
+            response = await run_agui(_request(run_input.model_dump(by_alias=True)))
+            return response, await _drain(response)
+
+    return scenario, fake
+
+
+def test_stale_scope_version_is_409_before_the_turn_service() -> None:
+    """S1: a stale expected version never reaches the model."""
+    run_input = _input(forwardedProps={"expectedScopeVersion": 2})
+    scenario, fake = _run_route_with_scope(run_input, server_version=3)
+    with pytest.raises(HTTPException) as excinfo:
+        asyncio.run(scenario())
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.detail == "scope_version_conflict"
+    assert fake.calls == []
+
+
+def test_matching_scope_version_streams_normally() -> None:
+    run_input = _input(forwardedProps={"expectedScopeVersion": 3})
+    scenario, fake = _run_route_with_scope(run_input, server_version=3)
+    _response, frames = asyncio.run(scenario())
+    assert len(fake.calls) == 1
+    assert any("RUN_STARTED" in frame for frame in frames)
+
+
 def test_rate_limit_maps_cover_agui() -> None:
     import inspect
 

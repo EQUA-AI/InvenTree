@@ -40,6 +40,18 @@ def test_canonical_response_schema_is_strict_mode_valid() -> None:
     _assert_strict(strict_provider_schema(CanonicalTurnResponse))
 
 
+def test_synthesis_claim_set_schema_is_strict_mode_valid() -> None:
+    """S10: the synthesis emission schema must survive strict mode up front.
+
+    A provider strict-schema regression here must surface before the
+    executor exists — a failure degrades the rail to its deterministic
+    claim fallback, never to a 400 at dispatch.
+    """
+    from ai.core.analysis.schemas import SynthesisClaimSet
+
+    _assert_strict(strict_provider_schema(SynthesisClaimSet))
+
+
 def test_every_registry_tool_schema_is_strict_mode_valid() -> None:
     registry = get_diagnostic_tool_registry(safety_p0_enabled=True)
     checked = 0

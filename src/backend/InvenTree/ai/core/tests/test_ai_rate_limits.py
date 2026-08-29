@@ -65,10 +65,10 @@ async def _run(
     if principal is not None:
         scope[AI_PRINCIPAL_SCOPE_KEY] = principal
 
-    async def receive():  # noqa: RUF029
+    async def receive():  # noqa: RUF029 - ASGI receive contract is async
         return {"type": "http.request", "body": b"", "more_body": False}
 
-    async def send(message):  # noqa: RUF029
+    async def send(message):  # noqa: RUF029 - ASGI send contract is async
         messages.append(message)
 
     await middleware(scope, receive, send)
@@ -160,7 +160,10 @@ def test_mounted_endpoint_rule_applies_to_api_ai_chat(monkeypatch) -> None:
     messages = asyncio.run(_run(middleware, path="/api/ai/chat", principal=principal))
     assert _status(messages) == 429
     body = next(message["body"] for message in messages if message["type"] == "http.response.body")
-    assert json.loads(body)["error"] == "rate_limit_exceeded"
+    payload = json.loads(body)
+    assert payload["error"] == "rate_limit_exceeded"
+    # S12/A13: every limiter response carries a machine-readable code.
+    assert payload["code"] == "rate_limited"
     headers = dict(
         next(message["headers"] for message in messages if message["type"] == "http.response.start")
     )
@@ -222,3 +225,35 @@ def test_shadow_logs_divergence_but_keeps_the_bucket_decision(monkeypatch, caplo
         assert _status(asyncio.run(_run(middleware, principal=principal))) == 200
 
     assert any("rate_limit.shadow divergence" in r.getMessage() for r in caplog.records)
+
+
+def test_cors_is_outermost_so_limiter_responses_carry_cors_headers() -> None:
+    """S12 ordering invariant (app.py): Starlette's add_middleware inserts at
+    the top of the stack, so user_middleware[0] is the OUTERMOST layer. CORS
+    must be outermost — a 429/503 the rate limiter writes itself must still
+    traverse CORSMiddleware, or a cross-origin frontend can never read
+    Retry-After off it."""
+    from ai.core.app import app
+    from starlette.middleware.cors import CORSMiddleware
+
+    classes = [entry.cls for entry in app.user_middleware]
+    assert CORSMiddleware in classes
+    assert RateLimitMiddleware in classes
+    assert classes.index(CORSMiddleware) < classes.index(RateLimitMiddleware), (
+        "CORSMiddleware must be outermost (added last), wrapping RateLimitMiddleware"
+    )
+
+
+def test_quota_preflight_is_rate_limit_exempt_but_never_budgeted() -> None:
+    """An over-cap user must be able to READ why (exempt from the limiter),
+    and the preflight itself must never spend budget."""
+    from ai.core.app import app
+    from ai.core.middleware.rate_limit import _BUDGETED_ENDPOINTS
+
+    exempt = next(
+        entry.kwargs["exempt_paths"]
+        for entry in app.user_middleware
+        if entry.cls is RateLimitMiddleware
+    )
+    assert "/quota/preflight" in exempt
+    assert _BUDGETED_ENDPOINTS.fullmatch("/quota/preflight") is None

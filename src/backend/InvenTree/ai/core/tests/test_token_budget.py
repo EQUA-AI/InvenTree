@@ -211,7 +211,9 @@ def test_middleware_returns_typed_429_when_enforced(monkeypatch):
     assert status == 429
     body = json.loads(next(m["body"] for m in messages if m["type"] == "http.response.body"))
     assert body["error"] == "token_budget_exhausted"
-    assert body["code"] == "rate_limited"
+    # S12: the wire-typed code. Distinct from "rate_limited" — the client
+    # must not auto-retry a spent budget (reset is at UTC midnight).
+    assert body["code"] == "token_budget_exhausted"
     assert body["retry_after"] > 0
     headers = dict(next(m["headers"] for m in messages if m["type"] == "http.response.start"))
     assert b"Retry-After" in headers
@@ -224,3 +226,272 @@ def test_middleware_returns_typed_429_when_enforced(monkeypatch):
     # their own threads and capability probes.
     reads = asyncio.run(_run(middleware, _principal(), path="/threads"))
     assert next(m["status"] for m in reads if m["type"] == "http.response.start") == 200
+
+
+# --------------------------------------------------------------------------- #
+# S12 (WP-B2): reservation/settlement engine + profile-resolved caps           #
+# --------------------------------------------------------------------------- #
+from ai.core.quota import reservation as resv
+from ai.core.quota.assignment_source import PolicySnapshot
+
+_SNAPSHOT = PolicySnapshot(
+    profile="evaluation",
+    version=2,
+    user_cap=1_000,
+    tenant_cap=2_500,
+    global_cap=10_000,
+    requests_per_minute=200,
+    requests_per_hour=2_000,
+)
+
+
+def _quota_settings(**overrides) -> Settings:
+    base = {
+        "AI_USER_DAILY_TOKEN_BUDGET": 1000,
+        "FEATURE_TOKEN_BUDGET_SHADOW": True,
+        "FEATURE_TOKEN_BUDGET_ENFORCE": False,
+        "FEATURE_AI_QUOTA_PROFILES": True,
+        "AI_QUOTA_TURN_RESERVE_TOKENS": 500,
+        "AI_DEPLOYMENT_ENV": "testenv",
+    }
+    base.update(overrides)
+    return Settings(_env_file=None, **base)
+
+
+class TestReservation:
+    def _reserve(self, key: str = "turn-1", user="7", tenant="site-a"):
+        return resv.reserve_turn(
+            user_pk=user, tenant_id=tenant, snapshot=_SNAPSHOT, idempotency_key=key
+        )
+
+    def test_reserve_then_settle_actuals(self, monkeypatch):
+        monkeypatch.setattr("ai.core.config.get_settings", _quota_settings)
+        reservation = self._reserve()
+        assert reservation is not None and reservation.worst_case == 500
+        usages = {
+            u.level: u
+            for u in resv.level_usage(user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT)
+        }
+        assert usages["user"].reserved == 500
+        assert usages["tenant"].reserved == 500
+        assert usages["global"].reserved == 500
+
+        charged = resv.settle_turn(reservation, ledger_tokens=200, outcome="executed")
+        assert charged == 200
+        usages = {
+            u.level: u
+            for u in resv.level_usage(user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT)
+        }
+        assert usages["user"].used == 200
+        assert usages["user"].reserved == 0
+
+    def test_reserve_and_settle_are_idempotent(self, monkeypatch):
+        monkeypatch.setattr("ai.core.config.get_settings", _quota_settings)
+        first = self._reserve("turn-x")
+        assert first is not None
+        assert self._reserve("turn-x") is None, "same turn must not double-reserve"
+        assert resv.settle_turn(first, ledger_tokens=100, outcome="executed") == 100
+        assert resv.settle_turn(first, ledger_tokens=100, outcome="executed") == 0
+        usages = {
+            u.level: u
+            for u in resv.level_usage(user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT)
+        }
+        assert usages["user"].used == 100
+
+    def test_empty_ledger_executed_turn_charges_worst_case(self, monkeypatch):
+        """The uninstrumented-rail bound: no ledger evidence => full envelope."""
+        monkeypatch.setattr("ai.core.config.get_settings", _quota_settings)
+        reservation = self._reserve("turn-legacy")
+        assert resv.settle_turn(reservation, ledger_tokens=0, outcome="executed") == 500
+
+    def test_replay_and_preemption_charge_zero(self, monkeypatch):
+        monkeypatch.setattr("ai.core.config.get_settings", _quota_settings)
+        for key, outcome in (("turn-r", "replayed"), ("turn-p", "preempted")):
+            reservation = self._reserve(key)
+            assert resv.settle_turn(reservation, ledger_tokens=0, outcome=outcome) == 0
+        usages = {
+            u.level: u
+            for u in resv.level_usage(user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT)
+        }
+        assert usages["user"].used == 0
+        assert usages["user"].reserved == 0
+
+    def test_negative_reserved_counter_is_clamped(self, monkeypatch):
+        monkeypatch.setattr("ai.core.config.get_settings", _quota_settings)
+        reservation = self._reserve("turn-drift")
+        from django.core.cache import cache
+
+        cache.clear()  # simulate a flush between reserve and settle
+        resv.settle_turn(reservation, ledger_tokens=50, outcome="executed")
+        usages = {
+            u.level: u
+            for u in resv.level_usage(user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT)
+        }
+        assert usages["user"].reserved == 0, "drifted counter must clamp, not go negative"
+
+    def test_concurrent_reservations_never_lose_updates(self, monkeypatch):
+        monkeypatch.setattr("ai.core.config.get_settings", _quota_settings)
+        import threading
+
+        def worker(i: int) -> None:
+            self._reserve(f"turn-c{i}")
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        usages = {
+            u.level: u
+            for u in resv.level_usage(user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT)
+        }
+        assert usages["user"].reserved == 8 * 500
+
+
+class TestProfileBudget:
+    def _patch_profile(self, monkeypatch, snapshot=_SNAPSHOT):
+        monkeypatch.setattr("ai.core.quota.profiles.resolve_profile", lambda _pk: snapshot)
+
+    def test_committed_usage_blocks_at_the_user_cap(self, monkeypatch):
+        monkeypatch.setattr(
+            "ai.core.config.get_settings",
+            lambda: _quota_settings(FEATURE_TOKEN_BUDGET_ENFORCE=True),
+        )
+        self._patch_profile(monkeypatch)
+        # Two reservations commit 1000 against the 1000-token user cap.
+        resv.reserve_turn(
+            user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT, idempotency_key="pb-1"
+        )
+        resv.reserve_turn(
+            user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT, idempotency_key="pb-2"
+        )
+        decision = budget.check_budget("7", now=T0, tenant_id="site-a")
+        assert decision.blocked
+        assert not decision.store_unavailable
+
+    def test_tenant_ceiling_blocks_an_under_cap_user(self, monkeypatch):
+        """A13: the tenant level is real — user B is blocked by A's spend."""
+        monkeypatch.setattr(
+            "ai.core.config.get_settings",
+            lambda: _quota_settings(FEATURE_TOKEN_BUDGET_ENFORCE=True),
+        )
+        self._patch_profile(monkeypatch)
+        for i in range(5):  # 2500 committed against the 2500 tenant cap
+            resv.reserve_turn(
+                user_pk=f"a{i}",
+                tenant_id="site-a",
+                snapshot=_SNAPSHOT,
+                idempotency_key=f"tc-{i}",
+            )
+        decision = budget.check_budget("fresh-user", now=T0, tenant_id="site-a")
+        assert decision.blocked
+        # A different tenant is unaffected.
+        other = budget.check_budget("fresh-user", now=T0, tenant_id="site-b")
+        assert not other.blocked
+
+    def test_shadow_logs_would_block_by_level(self, monkeypatch, caplog):
+        monkeypatch.setattr("ai.core.config.get_settings", _quota_settings)
+        self._patch_profile(monkeypatch)
+        resv.reserve_turn(
+            user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT, idempotency_key="sw-1"
+        )
+        resv.reserve_turn(
+            user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT, idempotency_key="sw-2"
+        )
+        with caplog.at_level(logging.WARNING, logger="ai.core.middleware.budget"):
+            decision = budget.check_budget("7", now=T0, tenant_id="site-a")
+        assert not decision.blocked
+        assert any("quota.would_block level=user" in r.getMessage() for r in caplog.records)
+
+    def test_enforce_fails_closed_when_the_source_is_down(self, monkeypatch):
+        from ai.core.quota.profiles import QuotaSourceUnavailable
+
+        monkeypatch.setattr(
+            "ai.core.config.get_settings",
+            lambda: _quota_settings(FEATURE_TOKEN_BUDGET_ENFORCE=True),
+        )
+
+        def broken(_pk):
+            raise QuotaSourceUnavailable("db down")
+
+        monkeypatch.setattr("ai.core.quota.profiles.resolve_profile", broken)
+        decision = budget.check_budget("7", now=T0, tenant_id="site-a")
+        assert decision.blocked
+        assert decision.store_unavailable
+
+    def test_shadow_fails_open_when_the_source_is_down(self, monkeypatch):
+        from ai.core.quota.profiles import QuotaSourceUnavailable
+
+        monkeypatch.setattr("ai.core.config.get_settings", _quota_settings)
+
+        def broken(_pk):
+            raise QuotaSourceUnavailable("db down")
+
+        monkeypatch.setattr("ai.core.quota.profiles.resolve_profile", broken)
+        decision = budget.check_budget("7", now=T0, tenant_id="site-a")
+        assert not decision.blocked
+        assert not decision.store_unavailable
+
+    def test_middleware_returns_typed_503_when_store_unavailable(self, monkeypatch):
+        from ai.core.quota.profiles import QuotaSourceUnavailable
+
+        monkeypatch.setattr(
+            "ai.core.config.get_settings",
+            lambda: _quota_settings(
+                FEATURE_TOKEN_BUDGET_ENFORCE=True,
+                FEATURE_DISTRIBUTED_RATE_LIMIT_SHADOW=False,
+                FEATURE_DISTRIBUTED_RATE_LIMIT_ENFORCE=False,
+            ),
+        )
+
+        def broken(_pk):
+            raise QuotaSourceUnavailable("db down")
+
+        monkeypatch.setattr("ai.core.quota.profiles.resolve_profile", broken)
+
+        async def app(_scope, _receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        limiter = RateLimiter()
+        middleware = RateLimitMiddleware(
+            app,
+            limiter=limiter,
+            exempt_paths=set(),
+            windowed=WindowedRateLimiter(limiter.config, store=InMemoryRateLimitStore()),
+        )
+        messages = asyncio.run(_run(middleware, _principal()))
+        status = next(m["status"] for m in messages if m["type"] == "http.response.start")
+        assert status == 503
+        body = json.loads(next(m["body"] for m in messages if m["type"] == "http.response.body"))
+        assert body["code"] == "quota_store_unavailable"
+
+
+class TestTurnSettleIntegration:
+    def test_settle_runs_before_the_ledger_drain_and_both_count(self, monkeypatch):
+        """_settle_turn_quota charges v2 actuals AND the v1 counter, once."""
+        from types import SimpleNamespace
+
+        from ai.core.turn_service import _settle_turn_quota
+
+        monkeypatch.setattr("ai.core.config.get_settings", _quota_settings)
+        reservation = resv.reserve_turn(
+            user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT, idempotency_key="int-1"
+        )
+        ledger = TurnUsageLedger()
+        ledger.record("wf8", {"total_tokens": 321})
+        token = turn_usage_ledger.set(ledger)
+        try:
+            actor = SimpleNamespace(user_pk="7", scope="site-a")
+            result = SimpleNamespace(replayed=False)
+            _settle_turn_quota(actor, reservation, result, False)
+        finally:
+            turn_usage_ledger.reset(token)
+        usages = {
+            u.level: u
+            for u in resv.level_usage(user_pk="7", tenant_id="site-a", snapshot=_SNAPSHOT)
+        }
+        assert usages["user"].used == 321
+        assert usages["user"].reserved == 0
+        assert budget.current_spend("7") == 321, "the v1 counter still runs in parallel"
+        assert not ledger.events, "the drain must still clear the ledger"

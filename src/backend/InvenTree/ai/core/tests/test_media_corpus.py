@@ -417,7 +417,7 @@ def test_work_order_view_grant_passes_single_arm(retrieval_on, monkeypatch):
         "search.in(model_type, 'workorder,workorderstepexecution,assetmachine', ',')"
         in search_client.kwargs["filter"]
     )
-    assert result["total"] == 1
+    assert result["returned_count"] == 1
 
 
 def test_granted_checks_work_order_view(monkeypatch):
@@ -481,7 +481,7 @@ def test_ambiguous_work_order_returns_candidates_without_searching(retrieval_on)
     assert result["work_order_filter"] == "ambiguous"
     assert len(result["work_order_candidates"]) == 2
     assert result["chunks"] == []
-    assert result["total"] == 0
+    assert result["returned_count"] == 0
     assert result["machine_filter"] == "not_requested"
     assert search_client.calls == 0
     assert embedding_client.queries == []
@@ -513,7 +513,7 @@ def test_unresolvable_work_order_degrades_to_broad_search(retrieval_on):
     )
     assert result["work_order_filter"] == "not_applied"
     assert "work_order_id" not in search_client.kwargs["filter"]
-    assert result["total"] == 1
+    assert result["returned_count"] == 1
 
 
 def test_work_order_resolver_runs_for_granted_non_superuser(retrieval_on, monkeypatch):
@@ -632,13 +632,13 @@ def test_empty_media_type_result_degrades_to_unfiltered(retrieval_on):
     _search, _embed, result = _run(search_client=search_client, media_type="video_segment")
     assert search_client.calls == 2
     assert "media_type eq" not in search_client.all_kwargs[1]["filter"]
-    assert result["total"] == 1
+    assert result["returned_count"] == 1
 
 
 def test_media_type_with_hits_does_not_retry(retrieval_on):
     search_client, _embed, result = _run(media_type="image")
     assert search_client.calls == 1
-    assert result["total"] == 1
+    assert result["returned_count"] == 1
 
 
 def test_excerpt_joins_caption_ocr_transcript_dropping_empty(retrieval_on):
@@ -829,3 +829,16 @@ def test_ledger_row_on_ambiguous_machine_carries_wo_outcome(retrieval_on, monkey
     assert row["machine_filter"] == "ambiguous"
     assert row["part_filter"] == "not_requested"  # no WO hint was passed
     assert row["hit_count"] == 0
+
+
+def test_filter_scope_asset_floor_allows_unstamped_and_scoped_only():
+    """S5: the analysis-scope serial floor — scoped serials or unstamped."""
+    built = evidence_media_filter(
+        scope_key=SCOPE_KEY,
+        client_codes={"acme"},
+        model_types=("workorder",),
+        scope_asset_ids=("SR-2", "SR-1"),
+    )
+    assert built.endswith(
+        "and (asset_id eq '' or asset_id eq null or search.in(asset_id, 'SR-1,SR-2', ','))"
+    )

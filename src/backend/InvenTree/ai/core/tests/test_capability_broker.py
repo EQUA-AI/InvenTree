@@ -14,6 +14,7 @@ from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
 from ai.core.integrations.kanban_tools import KANBAN_READ_TOOLS, KANBAN_TOOLS
 from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
+from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
 from ai.core.tools import capabilities
 from ai.core.tools.capabilities import (
     MAX_INITIAL_TOOLS,
@@ -63,16 +64,17 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
         + CONTROLLED_CORPUS_TOOLS
         + ATTACHMENT_CORPUS_TOOLS
         + EVIDENCE_MEDIA_TOOLS
+        + SOURCE_INVENTORY_TOOLS
     )
     catalog = capability_catalog()
 
     # 61 wf8 tools (delete_kanban_card is withheld) + the specialist writes
     # wf2/wf3/wf4/wf6 carry: parts/stock/company/sales writes and the nine
     # purchase-order write tools. R2 added search_attachment_docs; R3 added
-    # search_evidence_media.
-    assert len(wf8_tools) == 57
-    assert len(catalog) == 93
-    assert tuple(entry.tool for entry in catalog[:57]) == wf8_tools
+    # search_evidence_media; S8a added list_document_sources.
+    assert len(wf8_tools) == 59
+    assert len(catalog) == 95
+    assert tuple(entry.tool for entry in catalog[:59]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -117,11 +119,14 @@ def test_catalog_has_expected_stable_pack_shapes():
         # Maintenance work orders: search plus the per-order drill-downs
         # (overview, readiness, repair state) and the per-machine open-repairs
         # view -- a job question is unanswerable without the full set.
-        "maintenance.read": 6,
+        "maintenance.read": 7,
         # Controlled documentation is a single site-scoped retrieval tool.
         "manuals.read": 1,
         # Evidence-media retrieval (R3) is likewise a single-tool pack.
         "evidence.read": 1,
+        # S8a registry inventory is a single-tool pack; reachability comes
+        # from the sources-primary rider, not term sprawl.
+        "sources.read": 1,
         # Specialist write packs (S11): catalogued so wf2/wf3/wf4/wf6 can be
         # enforced at all. Not selectable -- _pack_scores only scores reads.
         "parts.write": 6,
@@ -200,6 +205,7 @@ def test_protected_resource_tools_have_resource_authorizers():
         # guard branch is deliberately shared rather than duplicated.
         "search_work_orders",
         "get_work_order_history",
+        "get_work_order_closeout",
         "get_work_order_overview",
         "get_work_order_readiness",
         "get_work_order_repair_state",
@@ -296,7 +302,7 @@ def test_contract_manifest_is_stable_and_complete():
     assert first == second
     assert manifest_json() == manifest_json()
     # Matches the catalog pin: 93 entries (wf8 57 + specialist writes + packs).
-    assert len(first) == 93
+    assert len(first) == 95
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)
@@ -864,9 +870,10 @@ def test_tool_budget_holds_for_every_selectable_pack_combination():
 
     assert worst <= MAX_INITIAL_TOOLS
     # Informational pin: update alongside deliberate pack-size changes.
-    # 16 = maintenance(6) + machines(9) + SQL(1) after the manuals-rider
-    # adjacency change kept manuals reachable from a maintenance primary.
-    assert worst == 16
+    # 17 = maintenance(7, +closeout S5b) + machines(9) + SQL(1) after the
+    # manuals-rider adjacency change kept manuals reachable from a
+    # maintenance primary.
+    assert worst == 17
 
 
 def test_forced_budget_trims_weakest_adjacent_and_terminates(monkeypatch, caplog):

@@ -141,8 +141,19 @@ def test_injection_guard_runs_before_pending_writes_and_routing():
 
     stage_source = inspect.getsource(pending.resolve_preconditions)
     guard = stage_source.index("_refuse_instruction_override")
+    safety = stage_source.index("_refuse_unsafe_shortcut")
     write = stage_source.index("_resolve_pending_voice_write")
-    assert guard < write, "injection guard must precede pending-write resolution"
+    assert guard < safety, "injection guard must precede the safety guard"
+    assert safety < write, "safety guard must precede pending-write resolution"
+
+    from ai.core.turn import execution
+
+    dispatch_source = inspect.getsource(execution.build_canonical)
+    injection_branch = dispatch_source.index("injection_canonical is not None")
+    safety_branch = dispatch_source.index("safety_response is not None")
+    write_branch = dispatch_source.index("write_canonical is not None")
+    assert injection_branch < safety_branch, "injection refusal outranks the safety refusal"
+    assert safety_branch < write_branch, "safety refusal outranks a pending write"
 
     orchestrator = inspect.getsource(turn_service.NormalizedTurnService._process_turn)
     pending_call = orchestrator.index("pending.resolve_preconditions")
