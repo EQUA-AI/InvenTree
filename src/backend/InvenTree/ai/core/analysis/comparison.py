@@ -247,9 +247,68 @@ def evaluate_comparison_gate(user: Any, *, query: str, scope: Any = None) -> Com
     return _gate_unmet(rule=rule, explicit=explicit_pk is not None, skipped=skipped, facets=facets)
 
 
+#: The ONLY statuses a comparison may state (§8.5). Compliance verdicts
+#: are structurally absent — no status and no template can say one.
+COMPARISON_STATUSES = (
+    "documented_match",
+    "documented_deviation",
+    "possible_documented_alignment",
+    "not_recorded",
+    "not_applicable",
+    "cannot_determine",
+)
+
+
+def derive_step_statuses(candidate: ComparisonCandidate) -> dict[str, Any]:
+    """Deterministic status derivation, ordered Application → Steps → Deviations.
+
+    Pure server logic — no model choice anywhere. A ``documented_match``
+    or ``documented_deviation`` can only come from a PRESENT structured
+    record (a completed/failed execution or an explicit deviation row);
+    a step with no recorded execution is ``not_recorded``, which is NOT
+    noncompliance (the renderer pins that sentence). The prose fallback
+    route derives nothing: the §8.5 fallback is deliberately
+    ``cannot_determine``-heavy, so it tallies exactly one
+    ``cannot_determine``.
+
+    A drifted application snapshot keeps its statuses — they compare the
+    record against the revision AS APPLIED — and the answer carries the
+    drift limitation note instead of silently re-anchoring.
+    """
+    counts: dict[str, int] = dict.fromkeys(COMPARISON_STATUSES, 0)
+    if candidate.route != "structured" or candidate.steps is None:
+        counts["cannot_determine"] = 1
+        return {"rows": [], "counts": counts, "total_steps": 0}
+
+    deviation_steps = {
+        entry["step_key"]
+        for entry in candidate.deviations.get("deviations") or ()
+        if entry.get("step_key")
+    }
+    rows: list[dict[str, Any]] = []
+    for step in candidate.steps.get("steps") or ():
+        if (
+            step["step_key"] in deviation_steps
+            or step["status"] == "failed"
+            or step["passed"] is False
+        ):
+            status = "documented_deviation"
+        elif step["status"] == "completed":
+            status = "documented_match"
+        elif step["status"] == "not_applicable":
+            status = "not_applicable"
+        else:
+            status = "not_recorded"
+        counts[status] += 1
+        rows.append({"key": str(step["sequence"]), "status": status})
+    return {"rows": rows, "counts": counts, "total_steps": len(rows)}
+
+
 __all__ = [
+    "COMPARISON_STATUSES",
     "ComparisonCandidate",
     "ComparisonSelection",
+    "derive_step_statuses",
     "evaluate_comparison_gate",
     "explicit_work_order_pk",
 ]

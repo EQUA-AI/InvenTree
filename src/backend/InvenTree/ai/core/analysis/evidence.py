@@ -70,6 +70,8 @@ CalculationOperation = Literal[
     "bucket_count",
     "interval_stats",
     "duration_stats",
+    # S9 comparison: the deterministic per-status tally.
+    "comparison_statuses",
 ]
 
 
@@ -577,6 +579,8 @@ _GROUP_ROW_VALUE_TYPES: dict[str, ValueType] = {
     "median_days": "decimal",
     "mean_days": "decimal",
     "max_days": "decimal",
+    # S9 comparison step rows:
+    "status": "enum",
 }
 
 
@@ -661,6 +665,41 @@ def fact_from_dataset_profile(
     )
 
 
+def fact_from_procedure_application(
+    store: EvidenceStore,
+    application: Mapping[str, Any],
+    *,
+    retrieval_id: str,
+    as_of: str,
+) -> str:
+    """The applied procedure revision (tasks reader projection) → one fact.
+
+    Governed content, byte-anchored: ``controlled=True`` with the revision
+    ``content_hash`` as the source revision — S9's stage-1 evidence.
+    """
+    values: dict[str, FactValue] = {
+        "procedure_code": _value("identifier", application.get("procedure_code") or ""),
+        "procedure_name": _value("text", application.get("procedure_name") or ""),
+        "revision": _value("int", application.get("revision")),
+        "content_hash": _value("identifier", application.get("content_hash") or ""),
+        "drift_status": _value("enum", application.get("drift_status")),
+        "applied_at": _value("datetime", application.get("applied_at")),
+        "step_count": _value("int", application.get("step_count", 0)),
+    }
+    return store.add_fact(
+        kind="record_field",
+        source_class="procedure_application",
+        source_id=str(application.get("application_id")),
+        source_revision=str(application.get("content_hash") or ""),
+        locator={"field": "procedure_application"},
+        retrieval_id=retrieval_id,
+        as_of=as_of,
+        authorization_class="maintenance_authorized",
+        values=values,
+        controlled=True,
+    )
+
+
 def fact_from_applicability_claim(
     store: EvidenceStore,
     claim: Any,
@@ -721,6 +760,7 @@ __all__ = [
     "fact_from_applicability_claim",
     "fact_from_dataset_profile",
     "fact_from_manual_citation",
+    "fact_from_procedure_application",
     "facts_from_group_rows",
     "facts_from_inventory_rows",
     "facts_from_maintenance_record_row",

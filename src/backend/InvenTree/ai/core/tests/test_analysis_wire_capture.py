@@ -251,17 +251,18 @@ def test_trend_intent_serves_the_validated_series(monkeypatch) -> None:
 
 
 def test_unrouted_intents_defensively_abstain() -> None:
-    # Routing never sends an unshipped intent here (it keeps the legacy
-    # rail); reaching this branch requires a settings race between routing
-    # and dispatch. The defensive tail must be an honest abstention under
-    # EVERY gate mode — and the typed "capability boundary" refusal no
-    # longer exists (owner 2026-08-29).
+    # Routing never sends a non-analysis intent here; reaching this branch
+    # requires a settings race between routing and dispatch. The defensive
+    # tail must be an honest abstention under EVERY gate mode — and the
+    # typed "capability boundary" refusal no longer exists (owner
+    # 2026-08-29). After S9 every analysis family has a shipped executor,
+    # so the probe intent is a non-analysis one.
     for gate_mode in ("shadow", "off", "enforce"):
         with mock.patch("ai.core.config.get_settings", lambda m=gate_mode: _settings(m)):
             canonical = asyncio.run(
                 _run_analysis_branch(
                     _service(),
-                    _run(intent="manual_wo_comparison", emitter=RecordingEmitter()),
+                    _run(intent="diagnostic", emitter=RecordingEmitter()),
                 )
             )
         assert canonical["workflow_used"] == "analysis_unavailable", gate_mode

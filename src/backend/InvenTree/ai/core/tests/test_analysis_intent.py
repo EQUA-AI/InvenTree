@@ -314,12 +314,11 @@ class TestRoutingIntegration:
         assert run.route.to_dict()["task_intent"] == run.task_intent.intent.value
         assert factory_calls == []
 
-    def test_unshipped_analysis_intents_keep_the_legacy_route(self) -> None:
-        # Owner invariant (2026-08-29): an analysis question whose executor
-        # has not shipped is NEVER refused — it keeps the legacy full-tool
-        # rail (diagnostic context intact) even under full enforce. After
-        # S7 the only unshipped analysis intent is manual_wo_comparison
-        # (S9 flips it, and this pin then retires).
+    def test_comparison_routes_under_enforce(self) -> None:
+        # S9: manual_wo_comparison has a shipped validated executor — the
+        # unshipped-intent legacy pin retired with it (every analysis
+        # family now routes; the no-refusal invariant lives on in the
+        # gate-rollback and holdback pins below).
         run, factory_calls = self._run_build_route(
             shadow=True,
             enforce=True,
@@ -327,8 +326,8 @@ class TestRoutingIntegration:
         )
         assert run.task_intent is not None
         assert run.task_intent.intent.value == "manual_wo_comparison"
-        assert run.route.mode.value == "fast_path"
-        assert factory_calls == ["built"]
+        assert run.route.mode.value == "analysis"
+        assert factory_calls == []
 
     def test_shipped_aggregate_routes_under_enforce(self) -> None:
         # S7: fleet_aggregate has a shipped validated executor — under full

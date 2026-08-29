@@ -48,10 +48,13 @@ class AnalysisRetrievalIncomplete(Exception):
     the ``IncompleteReason`` wire vocabulary.
     """
 
-    def __init__(self, code: str, message: str = "") -> None:
-        """Store the wire code alongside the human message."""
+    def __init__(self, code: str, message: str = "", *, facets: tuple[str, ...] = ()) -> None:
+        """Store the wire code (and optionally the unmet facet names)."""
         super().__init__(message or code)
         self.code = code
+        #: S9: a gate-unmet outcome names WHICH required facets were
+        #: missing; the executor emits one IncompleteReason per name.
+        self.facets = tuple(facets)
 
 
 def operand_hash(rows: Iterable[tuple[Any, Any]]) -> str:

@@ -35,6 +35,7 @@ FACET_PLANS: dict[str, tuple[str, ...]] = {
     "source_inventory": ("availability", "coverage", "limitations"),
     "fleet_aggregate": ("profile", "aggregate", "limitations"),
     "trend_analysis": ("timeline", "limitations"),
+    "manual_wo_comparison": ("comparison", "limitations"),
 }
 
 #: Display cap for per-record claims inside one answer.
@@ -321,6 +322,142 @@ def deterministic_claims(
                     evidence_classification="insufficient",
                     calculation_output_refs=[bucket_calcs[0].calculation_id],
                     render_template="analysis.null_date_note",
+                )
+            )
+        facets.append(
+            _facet(
+                "limitations",
+                "answered" if limitation_ids else "not_applicable",
+                limitation_ids,
+            )
+        )
+
+    elif intent == "manual_wo_comparison":
+        comparison_calcs = [
+            calc for calc in store.calculations.values() if calc.operation == "comparison_statuses"
+        ]
+        application_facts = [
+            fact for fact in store.facts.values() if fact.source_class == "procedure_application"
+        ]
+        wo_facts = [
+            fact
+            for fact in store.facts.values()
+            if fact.source_class == "work_order" and fact.kind == "record_field"
+        ]
+        step_rows = [fact for fact in store.facts.values() if fact.kind == "group_row"]
+        passage_facts = [fact for fact in store.facts.values() if fact.kind == "manual_passage"]
+        applicability_facts = [
+            fact for fact in store.facts.values() if fact.kind == "applicability"
+        ]
+
+        comparison_ids: list[str] = []
+        drift = False
+        not_recorded = 0
+        if comparison_calcs and application_facts and wo_facts:
+            calc = comparison_calcs[0]
+            drift = calc.rendered_values().get("drift") == "yes"
+            raw = calc.values.get("not_recorded")
+            not_recorded = int(raw.raw or 0) if raw is not None else 0
+            claim_id = _next_id()
+            comparison_ids.append(claim_id)
+            claims.append(
+                _claim(
+                    claim_id=claim_id,
+                    claim_type="calculation",
+                    evidence_classification="calculated",
+                    fact_refs=[wo_facts[0].fact_id, application_facts[0].fact_id],
+                    calculation_output_refs=[calc.calculation_id],
+                    evidence_refs=([calc.evidence_set_handle] if calc.evidence_set_handle else []),
+                    entity_refs=list(wo_facts[0].entity_refs),
+                    render_template="analysis.comparison_summary",
+                )
+            )
+            if step_rows:
+                claim_id = _next_id()
+                comparison_ids.append(claim_id)
+                claims.append(
+                    _claim(
+                        claim_id=claim_id,
+                        claim_type="calculation",
+                        evidence_classification="calculated",
+                        fact_refs=[fact.fact_id for fact in step_rows],
+                        calculation_output_refs=[calc.calculation_id],
+                        evidence_refs=(
+                            [calc.evidence_set_handle] if calc.evidence_set_handle else []
+                        ),
+                        render_template="analysis.comparison_breakdown",
+                    )
+                )
+        elif passage_facts:
+            claim_id = _next_id()
+            comparison_ids.append(claim_id)
+            claims.append(
+                _claim(
+                    claim_id=claim_id,
+                    fact_refs=[
+                        passage_facts[0].fact_id,
+                        *[fact.fact_id for fact in applicability_facts[:1]],
+                    ],
+                    render_template="analysis.verified_manual_passage",
+                )
+            )
+            claim_id = _next_id()
+            comparison_ids.append(claim_id)
+            claims.append(
+                _claim(
+                    claim_id=claim_id,
+                    claim_role="limitation",
+                    claim_type="limitation",
+                    evidence_classification="insufficient",
+                    render_template="analysis.manual_comparison_note",
+                )
+            )
+        facets.append(
+            _facet(
+                "comparison",
+                "answered" if comparison_ids else "unavailable",
+                comparison_ids,
+            )
+        )
+
+        limitation_ids = []
+        if comparison_ids and comparison_calcs:
+            if not_recorded > 0:
+                claim_id = _next_id()
+                limitation_ids.append(claim_id)
+                claims.append(
+                    _claim(
+                        claim_id=claim_id,
+                        claim_role="limitation",
+                        claim_type="limitation",
+                        evidence_classification="insufficient",
+                        calculation_output_refs=[comparison_calcs[0].calculation_id],
+                        render_template="analysis.not_recorded_note",
+                    )
+                )
+            if drift:
+                claim_id = _next_id()
+                limitation_ids.append(claim_id)
+                claims.append(
+                    _claim(
+                        claim_id=claim_id,
+                        claim_role="limitation",
+                        claim_type="limitation",
+                        evidence_classification="insufficient",
+                        render_template="analysis.drift_note",
+                    )
+                )
+        if comparison_ids:
+            # §8.5: the compliance boundary is ALWAYS rendered.
+            claim_id = _next_id()
+            limitation_ids.append(claim_id)
+            claims.append(
+                _claim(
+                    claim_id=claim_id,
+                    claim_role="limitation",
+                    claim_type="limitation",
+                    evidence_classification="insufficient",
+                    render_template="analysis.compliance_disabled_note",
                 )
             )
         facets.append(

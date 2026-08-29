@@ -49,6 +49,7 @@ ANALYSIS_GROUPING_UNAVAILABLE = "analysis_grouping_unavailable"
 ANALYSIS_SNAPSHOT_CHANGED = "analysis_snapshot_changed"
 ANALYSIS_POPULATION_CAP = "analysis_population_cap"
 ANALYSIS_BUCKET_RANGE = "analysis_bucket_range"
+ANALYSIS_COMPARISON_GATE = "analysis_comparison_gate"
 
 _TEMPLATES: dict[str, dict[str, str]] = {
     RESPOND_IN_LOCALE: {
@@ -302,6 +303,21 @@ _TEMPLATES: dict[str, dict[str, str]] = {
             "vuelva a preguntar."
         ),
     },
+    ANALYSIS_COMPARISON_GATE: {
+        "en": (
+            "A record-to-procedure comparison needs specific evidence that "
+            "is not available here: the missing facets are named in the "
+            "response details. No comparison was produced and no compliance "
+            "conclusion was inferred."
+        ),
+        "es": (
+            "Una comparación entre registro y procedimiento necesita "
+            "evidencia específica que no está disponible aquí: los "
+            "aspectos faltantes se nombran en los "  # codespell:ignore aspectos
+            "detalles de la respuesta. No se produjo ninguna comparación "
+            "ni se infirió conclusión de cumplimiento alguna."
+        ),
+    },
     ANALYSIS_PARTIAL_NOTICE: {
         "en": (
             "This is a partial answer: some parts of the question did not "
@@ -367,6 +383,7 @@ __all__ = [
     "ADVISORY_VOICE_READONLY",
     "ANALYSIS_ABSTAIN",
     "ANALYSIS_BUCKET_RANGE",
+    "ANALYSIS_COMPARISON_GATE",
     "ANALYSIS_DOWNGRADE",
     "ANALYSIS_FAIL_CLOSED",
     "ANALYSIS_GROUPING_UNAVAILABLE",

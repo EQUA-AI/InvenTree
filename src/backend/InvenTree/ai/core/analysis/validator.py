@@ -386,12 +386,43 @@ def check_facets(
     return results or [CheckResult("C08", CheckOutcome.PASS, "facets")]
 
 
+#: S9: templates that may only ever speak from the deterministic status
+#: tally — a match or deviation can never be derived from absence, and the
+#: tally is the single server derivation that guarantees it.
+_COMPARISON_TEMPLATES = frozenset({
+    "analysis.comparison_summary",
+    "analysis.comparison_breakdown",
+})
+
+
 def check_contradiction(claims: Sequence[AnalysisClaim], store: EvidenceStore) -> list[CheckResult]:
-    """C09: categorical absence/count claims agree with retrieval facts."""
+    """C09: categorical absence/count claims agree with retrieval facts.
+
+    S9 extension: a comparison claim must cite a ``comparison_statuses``
+    calculation — the deterministic tally in which ``documented_match`` /
+    ``documented_deviation`` come only from PRESENT structured records and
+    ``not_recorded`` is pinned as non-noncompliance. A comparison claim
+    without that basis (a model organizing around it) downgrades.
+    """
     from ai.core.analysis.renderer import RENDER_TEMPLATES
 
     results: list[CheckResult] = []
     for claim in claims:
+        if claim.render_template in _COMPARISON_TEMPLATES:
+            tally_cited = any(
+                (calculation := store.calculations.get(ref)) is not None
+                and calculation.operation == "comparison_statuses"
+                for ref in claim.calculation_output_refs
+            )
+            if not tally_cited:
+                results.append(
+                    CheckResult(
+                        "C09",
+                        CheckOutcome.DOWNGRADE,
+                        "comparison_without_statuses",
+                        (claim.claim_id,),
+                    )
+                )
         template = RENDER_TEMPLATES.get(claim.render_template)
         if template is None or template.categorical_kind is None:
             continue

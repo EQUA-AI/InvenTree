@@ -547,6 +547,169 @@ def _retrieve_trend(
     return result
 
 
+def _retrieve_comparison(
+    user: Any, store: EvidenceStore, *, scope: TurnScopeContext | None, query: str, run: Any
+) -> dict[str, Any]:
+    """manual_wo_comparison: the §8.5 gate → deterministic statuses → facts."""
+    from ai.core.analysis.comparison import (
+        derive_step_statuses,
+        evaluate_comparison_gate,
+    )
+    from ai.core.analysis.evidence import (
+        fact_from_applicability_claim,
+        fact_from_procedure_application,
+    )
+    from django.utils import timezone
+
+    as_of = timezone.now().isoformat()
+    selection = evaluate_comparison_gate(user, query=query, scope=scope)
+    if selection.candidate is None:
+        raise AnalysisRetrievalIncomplete(
+            "comparison_gate_unmet",
+            "a required comparison facet is missing",
+            facets=selection.missing_facets,
+        )
+    candidate = selection.candidate
+    snapshot_label = getattr(scope, "snapshot_id", None)
+    retrieval_id = f"ret_comparison_{snapshot_label or 'unscoped'}"
+
+    statuses = derive_step_statuses(candidate)
+    wo_fact = facts_from_work_order_row(
+        store,
+        candidate.evidence["work_order"],
+        retrieval_id=retrieval_id,
+        as_of=as_of,
+        source_revision=str(snapshot_label or ""),
+    )
+    step_facts: list[str] = []
+    if candidate.route == "structured":
+        fact_from_procedure_application(
+            store, candidate.application, retrieval_id=retrieval_id, as_of=as_of
+        )
+        step_facts = facts_from_group_rows(
+            store,
+            statuses["rows"],
+            retrieval_id=retrieval_id,
+            as_of=as_of,
+            source_class="step_execution",
+            source_revision=str(candidate.application.get("content_hash") or ""),
+            grouping="comparison_step",
+        )
+    else:
+        # Manual route: pinned passages from the VERIFIED revision, plus
+        # the applicability fact the C07 extension demands.
+        from ai.core.integrations.controlled_document_corpus import (
+            search_pinned_document,
+        )
+
+        try:
+            pinned = search_pinned_document(
+                user=user,
+                document_row=candidate.manual_document,
+                query=query,
+                top_k=3,
+            )
+        except Exception:
+            raise AnalysisRetrievalIncomplete(
+                "comparison_gate_unmet",
+                "the verified manual could not be searched",
+                facets=("manual_passage",),
+            ) from None
+        chunks = pinned.get("chunks") or ()
+        if not chunks:
+            raise AnalysisRetrievalIncomplete(
+                "comparison_gate_unmet",
+                "no relevant passage in the verified manual",
+                facets=("manual_passage",),
+            )
+        for chunk in chunks:
+            citation = chunk.get("citation") or {}
+            fact_from_manual_citation(store, citation, retrieval_id=retrieval_id, as_of=as_of)
+        try:
+            from aichat.services.applicability import applicability_for
+
+            claim_row = applicability_for(candidate.manual_document).first()
+        except Exception:
+            claim_row = None
+        if claim_row is not None:
+            fact_from_applicability_claim(store, claim_row, retrieval_id=retrieval_id, as_of=as_of)
+
+    manifest = build_manifest(
+        snapshot_id=str(snapshot_label or ""),
+        operands=selection.version_rows,
+        sources={"work_order": {"completed_at": candidate.completed_at}},
+        plan={
+            "plan_version": 1,
+            "intent": "manual_wo_comparison",
+            "route": candidate.route,
+            "rule": selection.rule or "explicit_reference",
+            "population_type": "work_orders",
+        },
+        as_of=as_of,
+        document_pins=selection.document_pins,
+        notes=("row_pinned_only",),
+    )
+    run.query_plan = manifest
+
+    pending = store.open_evidence_set(
+        source_class="work_order",
+        filters={"rule": selection.rule or "explicit_reference"},
+        population_count=1,
+        evaluated_count=1,
+        complete_population=True,
+        snapshot_hash=manifest.operand_hash,
+        high_watermarks={},
+        calculation={
+            "operation": "comparison_statuses",
+            "result": str(statuses["total_steps"]),
+        },
+    )
+    pending.add_member(
+        "work_order",
+        str(candidate.work_order_id),
+        str(candidate.evidence["work_order"].get("updated_at") or ""),
+    )
+    pending.displayed_count = 1
+    values = {status: FactValue("int", count) for status, count in statuses["counts"].items()}
+    values["total_steps"] = FactValue("int", statuses["total_steps"])
+    values["drift"] = FactValue("bool", candidate.drift)
+    store.add_calculation(
+        operation="comparison_statuses",
+        input_refs=(wo_fact, *step_facts),
+        values=values,
+        evidence_set_handle=pending.handle,
+        complete_population=True,
+    )
+    store.record_envelope({
+        "retrieval_id": retrieval_id,
+        "source_class": "work_order",
+        "operation": "comparison",
+        "coverage": {
+            "population_count": 1,
+            "returned_count": 1,
+            "complete_population": True,
+        },
+    })
+    store.set_primary_coverage({
+        "population_count": 1,
+        "returned_count": 1,
+        "complete_population": True,
+        "display_truncated": False,
+        "date_field": "actual_completed_at",
+        "timezone": timezone.get_current_timezone_name(),
+        "filters": [
+            f"route: {candidate.route}",
+            f"rule: {selection.rule or 'explicit_reference'}",
+            *[f"skipped:{pk}:{reason}" for pk, reason in selection.skipped],
+        ],
+        "as_of": as_of,
+        "snapshot_label": snapshot_label,
+        "excluded_null_date_count": None,
+        "incomplete_reason": None,
+    })
+    return {"route": candidate.route, "work_order_id": candidate.work_order_id}
+
+
 def _retrieve_manual(user: Any, store: EvidenceStore, *, query: str) -> dict[str, Any]:
     """manual_fact: the §8.4 fallback orchestrator → controlled facts."""
     from ai.core.analysis.source_gateway import retrieve_manual_fact
@@ -800,6 +963,7 @@ async def run_analysis(
     if not shadow:
         await _emit_progress(run, "reviewing_records", emitted)
     vocabulary_code: str | None = None
+    vocabulary_facets: tuple[str, ...] = ()
     try:
         async with asyncio.timeout(deadline_s):
             if intent == "record_retrieval":
@@ -821,10 +985,20 @@ async def run_analysis(
                 await service._call_sync(
                     _retrieve_trend, user, store, scope=scope, query=run.routing_content, run=run
                 )
+            elif intent == "manual_wo_comparison":
+                await service._call_sync(
+                    _retrieve_comparison,
+                    user,
+                    store,
+                    scope=scope,
+                    query=run.routing_content,
+                    run=run,
+                )
     except TimeoutError:
         timed_out = True
     except AnalysisRetrievalIncomplete as exc:
         vocabulary_code = exc.code
+        vocabulary_facets = exc.facets
     except Exception:
         logger.warning("analysis retrieval failed", exc_info=True)
         retrieval_failed = True
@@ -842,6 +1016,7 @@ async def run_analysis(
         # code renders its own named message, not the generic abstain.
         from ai.core.i18n_templates import (
             ANALYSIS_BUCKET_RANGE,
+            ANALYSIS_COMPARISON_GATE,
             ANALYSIS_GROUPING_UNAVAILABLE,
             ANALYSIS_POPULATION_CAP,
             ANALYSIS_SNAPSHOT_CHANGED,
@@ -852,6 +1027,7 @@ async def run_analysis(
             "bucket_range_exceeded": ANALYSIS_BUCKET_RANGE,
             "population_cap_exceeded": ANALYSIS_POPULATION_CAP,
             "snapshot_changed": ANALYSIS_SNAPSHOT_CHANGED,
+            "comparison_gate_unmet": ANALYSIS_COMPARISON_GATE,
         }.get(vocabulary_code, ANALYSIS_ABSTAIN)
         response = _template_response(
             kind_state="incomplete",
@@ -860,7 +1036,12 @@ async def run_analysis(
                 "The requested analysis is typed as unavailable "
                 f"({vocabulary_code}); nothing was estimated."
             ),
-            incomplete_reasons=[{"code": vocabulary_code, "facet": facet} for facet in facet_plan],
+            # S9: a gate-unmet outcome names the MISSING facets, not the
+            # intent's answer plan.
+            incomplete_reasons=[
+                {"code": vocabulary_code, "facet": facet}
+                for facet in (vocabulary_facets or facet_plan)
+            ],
         )
         return _outcome_from_response(
             response,

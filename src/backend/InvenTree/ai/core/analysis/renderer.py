@@ -206,6 +206,63 @@ def _t_duration_stats(slots, paraphrase, marker, locale):
     )
 
 
+def _t_comparison_summary(slots, paraphrase, marker, locale):
+    return (
+        f"Work order {slots['reference']} was compared against "
+        f"{slots['procedure_code']} revision {slots['revision']}: "
+        f"{slots['documented_match']} of {slots['total_steps']} steps are "
+        f"documented as performed, {slots['documented_deviation']} carry a "
+        f"documented deviation, and {slots['not_recorded']} have no recorded "
+        f"execution state{_clause(paraphrase)}.{marker}"
+    )
+
+
+def _t_comparison_breakdown(slots, paraphrase, marker, locale, rows):
+    lines = [f"Per-step record over {slots['total_steps']} steps{_clause(paraphrase)}:{marker}"]
+    for row in rows:
+        lines.append(f"- step {row.get('key', '')}: {row.get('status', '')}")
+    return "\n".join(lines)
+
+
+def _t_not_recorded_note(slots, paraphrase, marker, locale):
+    return (
+        f"Note: {slots['not_recorded']} steps have no recorded execution "
+        f"state. Absence of a record is not noncompliance, and no conclusion "
+        f"is drawn from it.{marker}"
+    )
+
+
+def _t_drift_note(slots, paraphrase, marker, locale):
+    return (
+        "Note: the applied procedure snapshot has drifted from the current "
+        f"revision; statuses compare the record against the revision as "
+        f"applied.{marker}"
+    )
+
+
+def _t_compliance_disabled_note(slots, paraphrase, marker, locale):
+    return (
+        "Compliance verdicts are not produced by this system: recorded "
+        "execution evidence is presented as-is, and conformity judgments "
+        f"remain with qualified site authority.{marker}"
+    )
+
+
+def _t_verified_manual_passage(slots, paraphrase, marker, locale):
+    return (
+        f"From {slots['document']} (revision {slots['revision']}), verified "
+        f"applicable to the selected equipment{_clause(paraphrase)}.{marker}"
+    )
+
+
+def _t_manual_comparison_note(slots, paraphrase, marker, locale):
+    return (
+        "No structured execution record exists for this work order; the "
+        "controlled passage is shown for reference and a match status "
+        f"cannot be determined from prose narratives.{marker}"
+    )
+
+
 def _t_population_note(slots, paraphrase, marker, locale):
     return (
         f"Note: {slots['unassigned_machine_count']} work orders have no "
@@ -356,6 +413,58 @@ RENDER_TEMPLATES: dict[str, RenderTemplate] = {
             ),
             build=_t_duration_stats,
             requires_complete_population=True,
+        ),
+        RenderTemplate(
+            key="analysis.comparison_summary",
+            required_slots=(
+                "reference",
+                "procedure_code",
+                "revision",
+                "documented_match",
+                "documented_deviation",
+                "not_recorded",
+                "total_steps",
+            ),
+            build=_t_comparison_summary,
+            paraphrase_slot=True,
+            requires_complete_population=True,
+            requires_controlled_source=True,
+        ),
+        RenderTemplate(
+            key="analysis.comparison_breakdown",
+            required_slots=("total_steps",),
+            build=_t_comparison_breakdown,
+            paraphrase_slot=True,
+            requires_complete_population=True,
+            iterates_rows=True,
+        ),
+        RenderTemplate(
+            key="analysis.not_recorded_note",
+            required_slots=("not_recorded",),
+            build=_t_not_recorded_note,
+        ),
+        RenderTemplate(
+            key="analysis.drift_note",
+            required_slots=(),
+            build=_t_drift_note,
+        ),
+        RenderTemplate(
+            key="analysis.compliance_disabled_note",
+            required_slots=(),
+            build=_t_compliance_disabled_note,
+        ),
+        RenderTemplate(
+            key="analysis.verified_manual_passage",
+            required_slots=("document", "revision"),
+            build=_t_verified_manual_passage,
+            paraphrase_slot=True,
+            requires_controlled_source=True,
+            requires_verified_applicability=True,
+        ),
+        RenderTemplate(
+            key="analysis.manual_comparison_note",
+            required_slots=(),
+            build=_t_manual_comparison_note,
         ),
         RenderTemplate(
             key="analysis.population_note",

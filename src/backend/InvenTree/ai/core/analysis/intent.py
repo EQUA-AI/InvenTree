@@ -65,16 +65,18 @@ ANALYSIS_INTENTS = frozenset({
 
 #: Intents with a SHIPPED validated executor — the ONLY intents the routing
 #: override may send to RouteMode.ANALYSIS. S7 added FLEET_AGGREGATE and
-#: TREND_ANALYSIS; S9 adds MANUAL_WO_COMPARISON. An analysis intent NOT in
-#: this set keeps the legacy full-tool rail end-to-end (owner decision
-#: 2026-08-29: a user-visible refusal of an analysis question must be
-#: structurally unrepresentable).
+#: TREND_ANALYSIS; S9 added MANUAL_WO_COMPARISON — every analysis family
+#: now has a validated executor, and per-intent staging/rollback rides
+#: ``AIMMS_ANALYSIS_INTENT_HOLDBACK`` (a held-back intent keeps the legacy
+#: rail; owner decision 2026-08-29: a user-visible refusal of an analysis
+#: question must be structurally unrepresentable).
 ANALYSIS_ROUTED_INTENTS = frozenset({
     TaskIntent.RECORD_RETRIEVAL,
     TaskIntent.MANUAL_FACT,
     TaskIntent.SOURCE_INVENTORY,
     TaskIntent.FLEET_AGGREGATE,
     TaskIntent.TREND_ANALYSIS,
+    TaskIntent.MANUAL_WO_COMPARISON,
 })
 
 
