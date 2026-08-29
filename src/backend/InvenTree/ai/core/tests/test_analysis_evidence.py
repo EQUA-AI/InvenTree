@@ -9,8 +9,11 @@ from ai.core.analysis.evidence import (
     EvidenceStore,
     FactValue,
     coverage_fact,
+    fact_from_dataset_profile,
     fact_from_manual_citation,
+    facts_from_group_rows,
     facts_from_inventory_rows,
+    facts_from_maintenance_record_row,
     facts_from_work_order_row,
 )
 
@@ -196,3 +199,117 @@ class TestSynthesisViewFence:
         assert '"41"' not in json.dumps(view["evidence_sets"])
         assert view["render_templates"] == ["analysis.record_count"]
         assert view["coverage"] == {"population_count": 1, "returned_count": 1}
+
+
+class TestAnalyticsAdapters:
+    """The S7 fact kinds: records, group rows, dataset profiles."""
+
+    def test_maintenance_record_adapter_is_its_own_population(self) -> None:
+        store = EvidenceStore()
+        fact_id = facts_from_maintenance_record_row(
+            store,
+            {
+                "record_id": 9,
+                "machine_id": 12,
+                "date": "2026-01-15",
+                "summary": "[UNTRUSTED-CONTENT-BEGIN]\nService\n[UNTRUSTED-CONTENT-END]",
+                "details": None,
+                "updated_at": "2026-01-15T08:00:00+00:00",
+            },
+            retrieval_id="ret_rec",
+            as_of=AS_OF,
+            source_revision="snap_1",
+        )
+        fact = store.facts[fact_id]
+        assert fact.kind == "maintenance_record"
+        assert fact.source_class == "maintenance_record"
+        assert fact.machine_id == 12
+        assert fact.entity_refs == ("machine:12",)
+        assert "details" not in fact.values
+
+    def test_group_rows_cover_every_cell_and_only_known_cells(self) -> None:
+        store = EvidenceStore()
+        fact_ids = facts_from_group_rows(
+            store,
+            [
+                {
+                    "key": 12,
+                    "label": "Feed Pump East",
+                    "group_count": 7,
+                    "smuggled_column": "EVIL-999",
+                },
+                {"key": 15, "label": "Inverter Hall", "group_count": 3},
+            ],
+            retrieval_id="ret_agg",
+            as_of=AS_OF,
+            source_class="work_order",
+            source_revision="snap_1",
+            grouping="machine",
+        )
+        assert len(fact_ids) == 2
+        first = store.facts[fact_ids[0]]
+        assert first.kind == "group_row"
+        assert first.machine_id == 12
+        assert first.entity_refs == ("machine:12",)
+        index = store.inserted_value_index()
+        assert {"7", "3", "Feed Pump East", "Inverter Hall"} <= index
+        # A column outside the cell vocabulary never enters the store.
+        assert "EVIL-999" not in index
+
+    def test_bucket_rows_carry_no_machine_entity(self) -> None:
+        store = EvidenceStore()
+        fact_ids = facts_from_group_rows(
+            store,
+            [{"bucket": "2026-01-01", "group_count": 0}],
+            retrieval_id="ret_tl",
+            as_of=AS_OF,
+            source_class="work_order",
+            source_revision="snap_1",
+            grouping="bucket",
+        )
+        fact = store.facts[fact_ids[0]]
+        assert fact.entity_refs == ()
+        assert fact.rendered_values()["group_count"] == "0"
+
+    def test_dataset_profile_adapter_carries_honest_counts(self) -> None:
+        store = EvidenceStore()
+        fact_id = fact_from_dataset_profile(
+            store,
+            {
+                "population_type": "work_orders",
+                "population_count": 402,
+                "null_date_count": 5,
+                "unassigned_machine_count": 2,
+                "distinct_machine_count": 37,
+                "date_field": "actual_completed_at",
+                "timezone": "America/New_York",
+                "complete_population": True,
+                "date_min": "2016-02-01T00:00:00+00:00",
+                "date_max": "2026-02-10T09:00:00+00:00",
+                "high_watermark": "2026-02-11T00:00:00+00:00",
+            },
+            retrieval_id="ret_prof",
+            as_of=AS_OF,
+        )
+        fact = store.facts[fact_id]
+        assert fact.kind == "dataset_profile"
+        rendered = fact.rendered_values()
+        assert rendered["population_count"] == "402"
+        assert rendered["unassigned_machine_count"] == "2"
+        assert rendered["complete_population"] == "yes"
+        assert fact.source_revision == "2026-02-11T00:00:00+00:00"
+
+    def test_new_calculation_operations_are_typed(self) -> None:
+        store = EvidenceStore()
+        calc_id = store.add_calculation(
+            operation="duration_stats",
+            input_refs=(),
+            values={
+                "qualifying_count": FactValue("int", 12),
+                "median_minutes": FactValue("decimal", "95.0"),
+            },
+            complete_population=True,
+        )
+        calculation = store.calculations[calc_id]
+        assert calculation.operation == "duration_stats"
+        assert calculation.rendered_values()["median_minutes"] == "95"

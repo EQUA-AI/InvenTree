@@ -124,6 +124,9 @@ def build_analysis_entity_manifest(
         for ref in fact.entity_refs:
             if ref.startswith("machine:") and rendered.get("machine"):
                 labels.setdefault(ref, rendered["machine"])
+            elif ref.startswith("machine:") and rendered.get("label"):
+                # S7 group rows carry the machine name as the group label.
+                labels.setdefault(ref, rendered["label"])
             elif ref.startswith("workorder:") and rendered.get("reference"):
                 labels.setdefault(ref, rendered["reference"])
 

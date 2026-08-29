@@ -49,9 +49,26 @@ FactKind = Literal[
     "source_state",
     "manual_passage",
     "inventory_entry",
+    # S7 complete-population analytics:
+    "maintenance_record",
+    "group_row",
+    "dataset_profile",
 ]
 
-CalculationOperation = Literal["count", "latest", "min", "max"]
+CalculationOperation = Literal[
+    "count",
+    "latest",
+    "min",
+    "max",
+    # S7 complete-population analytics:
+    "sum",
+    "mean",
+    "median",
+    "group_count",
+    "bucket_count",
+    "interval_stats",
+    "duration_stats",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -504,6 +521,144 @@ def facts_from_inventory_rows(
     return fact_ids
 
 
+def facts_from_maintenance_record_row(
+    store: EvidenceStore,
+    row: Mapping[str, Any],
+    *,
+    retrieval_id: str,
+    as_of: str,
+    source_revision: str,
+) -> str:
+    """One maintenance-record projection (tasks/ai_analytics.py) → one fact.
+
+    The record is its machine's plant history — a distinct population from
+    work orders (A7) — so it carries its own source class and never masquerades
+    as a ``record_field`` work-order fact. Narratives arrive already fenced.
+    """
+    machine_id = row.get("machine_id")
+    values: dict[str, FactValue] = {
+        "date": _value("date", row.get("date")),
+        "summary": _value("text", row.get("summary") or ""),
+        "updated_at": _value("datetime", row.get("updated_at")),
+    }
+    if row.get("details"):
+        values["details"] = _value("text", row.get("details"))
+    entity_refs: list[str] = []
+    if machine_id is not None:
+        entity_refs.append(f"machine:{machine_id}")
+    return store.add_fact(
+        kind="maintenance_record",
+        source_class="maintenance_record",
+        source_id=str(row.get("record_id")),
+        source_revision=source_revision,
+        locator={"field": "maintenance_record_row"},
+        retrieval_id=retrieval_id,
+        as_of=as_of,
+        authorization_class="maintenance_authorized",
+        values=values,
+        entity_refs=entity_refs,
+        machine_id=machine_id if isinstance(machine_id, int) else None,
+    )
+
+
+#: How a group/bucket row's cells become typed values. This map IS the cell
+#: vocabulary — a key outside it never enters the store, so a stray column
+#: cannot smuggle text into a rendered table.
+_GROUP_ROW_VALUE_TYPES: dict[str, ValueType] = {
+    "key": "identifier",
+    "label": "text",
+    "bucket": "date",
+    "group_count": "int",
+    "event_count": "int",
+    "interval_count": "int",
+    "min_days": "decimal",
+    "median_days": "decimal",
+    "mean_days": "decimal",
+    "max_days": "decimal",
+}
+
+
+def facts_from_group_rows(
+    store: EvidenceStore,
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    retrieval_id: str,
+    as_of: str,
+    source_class: str,
+    source_revision: str,
+    grouping: str,
+) -> list[str]:
+    """Aggregate/timeline group rows → one fact per row (S7).
+
+    Every cell a breakdown table will ever show is server-inserted here
+    first, which is what lets the C05 value-closure hold for an iterated
+    table by construction. ``grouping='machine'`` rows carry the machine
+    entity so chips and reauthorization see them.
+    """
+    fact_ids: list[str] = []
+    for index, row in enumerate(rows):
+        values: dict[str, FactValue] = {}
+        for name, value_type in _GROUP_ROW_VALUE_TYPES.items():
+            if name in row and row[name] is not None:
+                values[name] = _value(value_type, row[name])
+        machine_id = row.get("key") if grouping == "machine" else None
+        entity_refs: list[str] = []
+        if isinstance(machine_id, int):
+            entity_refs.append(f"machine:{machine_id}")
+        else:
+            machine_id = None
+        fact_ids.append(
+            store.add_fact(
+                kind="group_row",
+                source_class=source_class,
+                source_id=str(row.get("key", row.get("bucket", index))),
+                source_revision=source_revision,
+                locator={"field": "group_row", "grouping": grouping, "index": index},
+                retrieval_id=retrieval_id,
+                as_of=as_of,
+                authorization_class="maintenance_authorized",
+                values=values,
+                entity_refs=entity_refs,
+                machine_id=machine_id,
+            )
+        )
+    return fact_ids
+
+
+def fact_from_dataset_profile(
+    store: EvidenceStore,
+    profile: Mapping[str, Any],
+    *,
+    retrieval_id: str,
+    as_of: str,
+) -> str:
+    """A dataset profile (§8.3 op 1) → one fact of honest counts."""
+    values: dict[str, FactValue] = {
+        "population_count": _value("int", profile.get("population_count", 0)),
+        "null_date_count": _value("int", profile.get("null_date_count", 0)),
+        "unassigned_machine_count": _value("int", profile.get("unassigned_machine_count", 0)),
+        "distinct_machine_count": _value("int", profile.get("distinct_machine_count", 0)),
+        "date_field": _value("enum", profile.get("date_field")),
+        "timezone": _value("text", profile.get("timezone")),
+        "complete_population": _value("bool", bool(profile.get("complete_population", False))),
+    }
+    if profile.get("date_min"):
+        values["date_min"] = _value("datetime", profile.get("date_min"))
+    if profile.get("date_max"):
+        values["date_max"] = _value("datetime", profile.get("date_max"))
+    return store.add_fact(
+        kind="dataset_profile",
+        source_class=str(profile.get("population_type") or "work_order"),
+        source_id=retrieval_id,
+        source_revision=str(profile.get("high_watermark") or ""),
+        locator={"field": "dataset_profile"},
+        retrieval_id=retrieval_id,
+        as_of=as_of,
+        authorization_class="maintenance_authorized",
+        values=values,
+    )
+
+
 __all__ = [
     "EVIDENCE_SET_MEMBER_CAP",
     "CalculationOutput",
@@ -512,8 +667,11 @@ __all__ = [
     "PendingEvidenceSet",
     "TypedFact",
     "coverage_fact",
+    "fact_from_dataset_profile",
     "fact_from_manual_citation",
+    "facts_from_group_rows",
     "facts_from_inventory_rows",
+    "facts_from_maintenance_record_row",
     "facts_from_work_order_row",
     "mint_evidence_set_handle",
 ]

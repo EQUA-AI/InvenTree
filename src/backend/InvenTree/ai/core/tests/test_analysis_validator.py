@@ -15,6 +15,7 @@ from ai.core.analysis.evidence import (
     EvidenceStore,
     FactValue,
     coverage_fact,
+    fact_from_dataset_profile,
     fact_from_manual_citation,
     facts_from_work_order_row,
 )
@@ -23,6 +24,7 @@ from ai.core.analysis.schemas import AnalysisClaim, AnalysisFacet
 from ai.core.analysis.scope_context import TurnScopeContext
 from ai.core.analysis.validator import (
     CheckOutcome,
+    check_population,
     shadow_scan_legacy,
     validate_analysis,
 )
@@ -232,6 +234,52 @@ def test_incomplete_population_presented_as_complete_is_downgraded() -> None:
     verdict = _validate(store, claims, rendered)
     assert "incomplete_population" in verdict.codes()
     assert verdict.outcome is CheckOutcome.ABSTAIN  # only answer claim dropped
+
+
+def test_dataset_profile_fact_vouches_for_completeness() -> None:
+    """S7: a complete dataset profile satisfies C06 like a coverage fact."""
+    store = EvidenceStore()
+    fact_id = fact_from_dataset_profile(
+        store,
+        {
+            "population_type": "work_orders",
+            "population_count": 402,
+            "complete_population": True,
+            "date_field": "created_at",
+            "timezone": "UTC",
+        },
+        retrieval_id="ret_prof",
+        as_of=AS_OF,
+    )
+    claims = [
+        _claim(
+            fact_refs=[fact_id],
+            render_template="analysis.record_count",
+        )
+    ]
+    results = check_population(claims, store)
+    assert all(result.outcome is CheckOutcome.PASS for result in results)
+
+    incomplete = fact_from_dataset_profile(
+        store,
+        {
+            "population_type": "work_orders",
+            "population_count": 25,
+            "complete_population": False,
+            "date_field": "created_at",
+            "timezone": "UTC",
+        },
+        retrieval_id="ret_prof2",
+        as_of=AS_OF,
+    )
+    claims = [
+        _claim(
+            fact_refs=[incomplete],
+            render_template="analysis.record_count",
+        )
+    ]
+    codes = [result.code for result in check_population(claims, store)]
+    assert "incomplete_population" in codes
 
 
 def test_uncited_chip_is_dropped() -> None:

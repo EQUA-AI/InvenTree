@@ -305,9 +305,11 @@ def check_population(claims: Sequence[AnalysisClaim], store: EvidenceStore) -> l
                 complete = True
         for ref in claim.fact_refs:
             fact = store.facts.get(ref)
+            # `dataset_profile` (S7) carries the same honest counts a
+            # coverage fact does — both may vouch for completeness.
             if (
                 fact is not None
-                and fact.kind == "coverage"
+                and fact.kind in ("coverage", "dataset_profile")
                 and fact.rendered_values().get("complete_population") == "yes"
             ):
                 complete = True
