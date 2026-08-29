@@ -25,7 +25,11 @@ CATALOG_VERSION = "1"
 #: attachment tool; it relaxes back to 2 when search_part_documents is
 #: unwired at R5), exactly at the ceiling while staying well under the full
 #: read surface.
-MAX_INITIAL_TOOLS = 16
+#: Raised 16 -> 17 with S5b: the maintenance.read pack gained the
+#: owner-approved get_work_order_closeout (A16/Q14), growing the worst-case
+#: stack (maintenance 7 + machines 9 + SQL 1). A one-tool schema increase is
+#: a deliberate decision, not drift — the budget test pins the new worst case.
+MAX_INITIAL_TOOLS = 17
 
 
 class ToolEffect(StrEnum):
@@ -266,6 +270,7 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
             "get_work_order_repair_state",
             "get_open_repairs_for_machine",
             "get_work_order_history",
+            "get_work_order_closeout",
         ),
         # A work order here is a MAINTENANCE job. Terms deliberately not shared
         # with any other pack: "job"/"task" stay on kanban (board phrasing),
@@ -308,6 +313,21 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
             "handbook",
             "knowledge base",
             "documentation",
+        ),
+    ),
+    "sources.read": (
+        ToolEffect.READ,
+        ("list_document_sources",),
+        # S8a: registry-inventory phrasing. Deliberately NARROW — the
+        # sources-primary rider in select_capabilities (keyed on the shared
+        # is_source_inventory_question shape) is what makes inventory
+        # questions reach this pack; term sprawl here would hijack content
+        # questions that belong to manuals/documents.
+        (
+            "revisions",
+            "revision",
+            "on file",
+            "indexed",
         ),
     ),
     "evidence.read": (
@@ -485,6 +505,13 @@ _ADJACENT_PACKS: dict[str, frozenset[str]] = {
     # tool, the fix is an explicit-evidence rider (manuals-rider clone), not
     # an adjacency edge.
     "evidence.read": frozenset({"maintenance.read", "machines.read"}),
+    # S8a: an inventory-primary turn keeps machine-name resolution and the
+    # content search beside the registry listing. Worst sources-primary
+    # stack: sources 1 + machines 9 + manuals 1 = 11 <= MAX_INITIAL_TOOLS.
+    # Deliberately NO reverse edges — manuals/maintenance/machines worst
+    # stacks already sit at the budget; inventory reachability comes from
+    # the sources-primary rider, not from adjacency.
+    "sources.read": frozenset({"machines.read", "manuals.read"}),
 }
 
 #: Packs inside the InvenTree data graph, where a read-only SQL fallback makes
@@ -1021,6 +1048,7 @@ _MAINTENANCE_READ_TOOL_IDS = frozenset({
     "get_work_order_repair_state",
     "get_open_repairs_for_machine",
     "get_work_order_history",
+    "get_work_order_closeout",
 })
 
 
@@ -1144,6 +1172,7 @@ def _catalog_tools() -> tuple[Any, ...]:
     from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
     from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
+    from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
     from ai.core.tools.inventree.write.purchase_orders import PURCHASE_ORDER_WRITE_TOOLS
 
     ordered: list[Any] = []
@@ -1156,6 +1185,7 @@ def _catalog_tools() -> tuple[Any, ...]:
         *CONTROLLED_CORPUS_TOOLS,
         *ATTACHMENT_CORPUS_TOOLS,
         *EVIDENCE_MEDIA_TOOLS,
+        *SOURCE_INVENTORY_TOOLS,
         # Specialist rails (wf2/wf3/wf4/wf6) below; the wf8 prefix above keeps
         # the existing catalog order stable for the manifest.
         *INVENTORY_TOOLS,
@@ -1790,6 +1820,23 @@ def _carried_scores(query: str, context: Mapping[str, Any] | None) -> dict[str, 
     return {}
 
 
+#: S3: typed analysis task intent → the packs that answer it (primary
+#: first). Deliberately bypasses ``_ADJACENT_PACKS`` topology: analytics
+#: and maintenance are not lexical neighbours, but an aggregate question
+#: needs both. Only ANALYSIS_INTENTS appear here — everything else keeps
+#: lexical selection.
+_INTENT_PACKS: dict[str, tuple[str, ...]] = {
+    "fleet_aggregate": ("analytics.read", "maintenance.read"),
+    "trend_analysis": ("analytics.read", "maintenance.read"),
+    "record_retrieval": ("maintenance.read", "machines.read"),
+    "manual_wo_comparison": ("maintenance.read", "manuals.read"),
+    # S8a: inventory questions get the registry tool FIRST; manuals rides
+    # along for the follow-up content question.
+    "source_inventory": ("sources.read", "machines.read", "manuals.read"),
+    "manual_fact": ("manuals.read", "machines.read"),
+}
+
+
 def select_capabilities(
     query: str,
     *,
@@ -1797,6 +1844,7 @@ def select_capabilities(
     context: Mapping[str, Any] | None = None,
     profile: frozenset[tuple[str, str]] = frozenset(),
     authenticated: bool = False,
+    task_intent: str | None = None,
 ) -> CapabilitySelection:
     """Select one stable read pack plus the reviewed adjacent packs.
 
@@ -1804,6 +1852,12 @@ def select_capabilities(
     at all does selection fall back to the replayed transcript, so an anaphoric
     follow-up ("and where are those located?") inherits the subject of the turn
     it refers to instead of dead-ending on a tool-less clarification.
+
+    ``task_intent`` (S3, server-derived) outranks both the lexical scores and
+    the ``lookup_type`` hint for analysis intents — these are exactly the
+    questions the lexical signals misroute — and the history-subject
+    carryover never runs for them, so a prior off-domain turn cannot pull an
+    analysis question with it.
     """
     normalized = " ".join(query.casefold().split())
     if _write_intent(normalized) is not None:
@@ -1839,38 +1893,61 @@ def select_capabilities(
         scores["analytics.read"] = scores.get("analytics.read", 0) + _SHAPE_SCORE
         signals.append("shape")
 
-    primary = _LOOKUP_PACKS.get(lookup_type or "")
-    if primary is None and scores:
-        primary = sorted(
-            scores,
-            key=lambda pack_id: (pack_id == "analytics.read", -scores[pack_id], pack_id),
-        )[0]
-    if primary is None:
-        # Nothing in this message names a subject. Before giving up, inherit the
-        # subject from the replayed transcript: "and where are those located?"
-        # is a real question whose noun lives in the previous turn, and handing
-        # it a tool-less clarification turn is how a follow-up dead-ends. Only
-        # this otherwise-empty path consults history, so an ordinary turn still
-        # scores on its own words.
-        carried = _carried_scores(normalized, context)
-        if carried:
-            scores = carried
-            signals.append("history_subject")
+    intent_packs = _INTENT_PACKS.get(task_intent or "")
+    if intent_packs:
+        # S3: typed-intent selection. Seeds the scores so the trim loop can
+        # still rank, but the pack tuple itself is direct — no lexical
+        # primary, no adjacency walk, and (critically) no history-subject
+        # carryover for analysis turns.
+        signals.append("task_intent")
+        for pack_id in intent_packs:
+            scores[pack_id] = scores.get(pack_id, 0) + _SHAPE_SCORE
+        pack_ids: tuple[str, ...] = intent_packs
+    else:
+        primary = _LOOKUP_PACKS.get(lookup_type or "")
+        # S8a sources-primary rider: an inventory-shaped sentence's best tool
+        # IS the inventory tool, and position 0 is structurally protected
+        # from the trim loop (it drops from pack_ids[1:] only) — an appended
+        # score-0 pack would be the first casualty on exactly the stacks
+        # that need it. The shape is shared with the intent classifier so
+        # routing and selection cannot drift.
+        from ai.core.analysis.intent import is_source_inventory_question
+
+        if primary is None and is_source_inventory_question(normalized):
+            primary = "sources.read"
+            scores["sources.read"] = scores.get("sources.read", 0) + _SHAPE_SCORE
+            signals.append("source_inventory_shape")
+        if primary is None and scores:
             primary = sorted(
                 scores,
                 key=lambda pack_id: (pack_id == "analytics.read", -scores[pack_id], pack_id),
             )[0]
-    if primary is None:
-        return CapabilitySelection(
-            pack_ids=(),
-            tool_ids=(),
-            tools=(),
-            reason="no_capability_match",
-            clarification_required=True,
-            signals=tuple(signals),
-        )
+        if primary is None:
+            # Nothing in this message names a subject. Before giving up, inherit the
+            # subject from the replayed transcript: "and where are those located?"
+            # is a real question whose noun lives in the previous turn, and handing
+            # it a tool-less clarification turn is how a follow-up dead-ends. Only
+            # this otherwise-empty path consults history, so an ordinary turn still
+            # scores on its own words.
+            carried = _carried_scores(normalized, context)
+            if carried:
+                scores = carried
+                signals.append("history_subject")
+                primary = sorted(
+                    scores,
+                    key=lambda pack_id: (pack_id == "analytics.read", -scores[pack_id], pack_id),
+                )[0]
+        if primary is None:
+            return CapabilitySelection(
+                pack_ids=(),
+                tool_ids=(),
+                tools=(),
+                reason="no_capability_match",
+                clarification_required=True,
+                signals=tuple(signals),
+            )
 
-    pack_ids = _ordered_pack_ids(primary, scores, max_adjacent=2 if widened else 1)
+        pack_ids = _ordered_pack_ids(primary, scores, max_adjacent=2 if widened else 1)
     if widened:
         with_hatch = _with_sql_escape_hatch(pack_ids)
         if with_hatch != pack_ids:

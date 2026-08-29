@@ -49,6 +49,11 @@ _HARVEST_KEYS = frozenset({
 _MAX_HARVEST_DEPTH = 6
 
 
+#: S5: internal retrieval metadata entries are tiny dicts, but bound them
+#: anyway — the ledger's contract is that nothing in it can grow unbounded.
+_MAX_RETRIEVAL_METAS = 64
+
+
 @dataclass
 class ToolCaptureLedger:
     """Bounded per-turn record of tool results."""
@@ -56,6 +61,11 @@ class ToolCaptureLedger:
     captures: list[dict[str, Any]] = field(default_factory=list)
     total_bytes: int = 0
     observed: set[str] = field(default_factory=set)
+    #: S5: the INTERNAL half of each retrieval envelope (authorization scope
+    #: hash, raw client codes) — server-only coordinates that must never
+    #: transit the model payload. Evidence records and telemetry read them
+    #: from here (A15).
+    retrieval_meta: list[dict[str, Any]] = field(default_factory=list)
 
     def record(self, tool_id: str, result: Any) -> None:
         """Record one tool result; oversized or excess results are dropped."""
@@ -101,6 +111,18 @@ class ToolCaptureLedger:
             if isinstance(candidates, list) and len(candidates) >= 2:
                 return candidates
         return []
+
+    def record_retrieval(self, tool_id: str, meta: dict[str, Any]) -> None:
+        """Record one internal retrieval-envelope meta; excess is dropped."""
+        if len(self.retrieval_meta) >= _MAX_RETRIEVAL_METAS:
+            return
+        if not isinstance(meta, dict):
+            return
+        self.retrieval_meta.append({"tool_id": str(tool_id), **meta})
+
+    def retrieval_metas(self) -> list[dict[str, Any]]:
+        """Every internal retrieval meta recorded this turn, in call order."""
+        return list(self.retrieval_meta)
 
 
 def _stringify(value: Any) -> str:
@@ -216,6 +238,16 @@ def record_tool_result(tool_id: str, result: Any) -> None:
         logger.debug("tool capture failed", exc_info=False)
 
 
+def record_retrieval_meta(tool_id: str, meta: dict[str, Any]) -> None:
+    """Record one internal retrieval meta; a no-op when unbound. Never raises."""
+    try:
+        ledger = tool_capture_ledger.get()
+        if ledger is not None:
+            ledger.record_retrieval(tool_id, meta)
+    except Exception:  # pragma: no cover - observation must never kill a turn
+        logger.debug("retrieval meta capture failed", exc_info=False)
+
+
 def current_tool_captures() -> ToolCaptureLedger | None:
     """The bound ledger, or None."""
     try:
@@ -230,6 +262,7 @@ __all__ = [
     "ToolCaptureLedger",
     "bind_tool_captures",
     "current_tool_captures",
+    "record_retrieval_meta",
     "record_tool_result",
     "tool_capture_ledger",
 ]

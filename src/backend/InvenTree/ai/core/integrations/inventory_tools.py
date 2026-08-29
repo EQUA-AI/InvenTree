@@ -47,6 +47,7 @@ from ai.core.tools.inventree.read.machines import (
 )
 from ai.core.tools.inventree.read.maintenance import (
     get_open_repairs_for_machine,
+    get_work_order_closeout,
     get_work_order_history,
     get_work_order_overview,
     get_work_order_readiness,
@@ -327,6 +328,7 @@ INVENTORY_TOOLS = [
     get_work_order_repair_state,
     get_open_repairs_for_machine,
     get_work_order_history,
+    get_work_order_closeout,
     # Direct read-only SQL (RBAC-checked per table, read-only transaction)
     list_database_tables,
     query_database,
@@ -381,6 +383,7 @@ INVENTORY_READ_TOOLS = [
     get_work_order_repair_state,
     get_open_repairs_for_machine,
     get_work_order_history,
+    get_work_order_closeout,
     list_database_tables,
     query_database,
 ]
@@ -400,6 +403,7 @@ __all__ = [
     "get_stock_quantity",
     "get_supplier_parts",
     "get_where_used",
+    "get_work_order_closeout",
     "get_work_order_history",
     "get_work_order_overview",
     "get_work_order_readiness",

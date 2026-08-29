@@ -88,7 +88,7 @@ def _extract_text_ocr(
 
 
 @ai_function
-async def read_pdf_text(  # noqa: RUF029 - async is the tool-call contract; sync would move execution to a thread
+async def read_pdf_text(  # noqa: RUF029 - ai_function contract is async
     file_path: str,
     *,
     min_text_chars: int = 200,

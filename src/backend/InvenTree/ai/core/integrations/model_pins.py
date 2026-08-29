@@ -72,6 +72,39 @@ def record_resolved_model(deployment: str, model: str) -> None:
             model,
             previous,
         )
+    # S15/Q50(c): during a frozen evaluation window a provider-side model
+    # swap is a critical event — a replica refusing to BOOT (the fatal probe)
+    # does not stop replicas already serving; the latch does. Fail-soft: pin
+    # reporting must never break model resolution itself.
+    try:
+        from ai.core.pilot_latch import report_critical_event
+
+        if previous is not None:
+            report_critical_event("model_pin_mismatch", f"{deployment} changed mid-process")
+        else:
+            expected = _expected_identity(deployment)
+            if expected and model != expected:
+                report_critical_event("model_pin_mismatch", f"{deployment} != pinned identity")
+    except Exception:  # pragma: no cover - reporting is best-effort
+        pass
+
+
+def _expected_identity(deployment: str) -> str:
+    """The pinned identity for a deployment alias, '' when unpinned."""
+    try:
+        from ai.core.config import get_settings
+
+        settings = get_settings()
+        by_deployment = {
+            settings.azure_openai_deployment: settings.azure_openai_expected_model,
+            settings.azure_openai_fast_deployment: settings.azure_openai_expected_fast_model,
+            settings.azure_openai_embedding_deployment: (
+                settings.azure_openai_expected_embedding_model
+            ),
+        }
+        return str(by_deployment.get(deployment) or "")
+    except Exception:  # pragma: no cover
+        return ""
 
 
 def resolved_model_versions() -> dict[str, str]:

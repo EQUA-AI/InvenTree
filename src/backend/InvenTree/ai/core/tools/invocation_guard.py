@@ -73,7 +73,7 @@ def bind_capability_run(
         capability_run_context.reset(token)
 
 
-_catalog_index: tuple[int, dict[str, CapabilityEntry]] | None = None
+_catalog_index: tuple[tuple[CapabilityEntry, ...], dict[str, CapabilityEntry]] | None = None
 
 
 def _catalog_by_id() -> dict[str, CapabilityEntry]:
@@ -82,11 +82,15 @@ def _catalog_by_id() -> dict[str, CapabilityEntry]:
     Keyed on the identity of the (lru-cached) catalog tuple rather than a
     separate lru_cache, so ``capability_catalog.cache_clear()`` (used by tests
     and governance-flag changes) automatically invalidates this index too.
+    The cached tuple itself is held (not its ``id()``): after a cache_clear
+    the freed tuple's address can be REUSED by the next build, and an id-keyed
+    index then served stale policies (surfaced by the S8a catalog growth).
+    Holding the reference makes the ``is`` comparison sound.
     """
     global _catalog_index
     catalog = capability_catalog()
-    if _catalog_index is None or _catalog_index[0] != id(catalog):
-        _catalog_index = (id(catalog), {entry.tool_id: entry for entry in catalog})
+    if _catalog_index is None or _catalog_index[0] is not catalog:
+        _catalog_index = (catalog, {entry.tool_id: entry for entry in catalog})
     return _catalog_index[1]
 
 

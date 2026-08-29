@@ -63,23 +63,96 @@ async def search_work_orders(query: str | None = None, limit: int = 10) -> dict[
       limit: Maximum rows to return (default 10, max 25).
 
     Returns:
-      Dictionary with 'count' and 'work_orders'. Each row has work_order_id,
-      reference, title, lifecycle_status, work_order_type, priority, machine
-      and due_date.
+      Dictionary with 'work_orders' (the returned page; each row has
+      work_order_id, reference, title, lifecycle_status, work_order_type,
+      priority, machine and due_date), 'returned_count' (rows in this page),
+      'population_count' (ALL matching work orders — use this number, never
+      the page length, when stating how many exist), and a 'retrieval'
+      envelope whose coverage says whether the page is complete.
     """
+
+    from ai.core.analysis.scope_context import current_turn_scope
+
+    scope = current_turn_scope()
+    scope_kwargs: dict[str, Any] = {}
+    if scope is not None and scope.explicit:
+        # S5 (WP-A3): the thread's analysis scope narrows the reader ON TOP
+        # of authorization — enforced when the flag is on, counted (shadow)
+        # otherwise. Plain kwargs: the reader never imports ai.*.
+        scope_kwargs = {
+            "scope_machine_ids": scope.machine_ids,
+            "scope_date_from": scope.date_from,
+            "scope_date_to": scope.date_to,
+            "enforce": scope.enforce,
+        }
 
     @sync_to_async
     def _query():
         from tasks import ai_read
 
+        empty = {
+            "rows": [],
+            "population_count": 0,
+            "returned_count": 0,
+            "complete_population": True,
+            "display_truncated": False,
+            "out_of_scope_count": 0,
+            "applied_filters": {},
+            "high_watermark": None,
+        }
         user = _current_user()
         if user is None:
-            return []
-        rows = ai_read.work_orders_in_scope(user, query=query, limit=limit)
-        return [ai_read.work_order_row(work_order) for work_order in rows]
+            return empty, []
+        result = ai_read.work_orders_page(user, query=query, limit=limit, **scope_kwargs)
+        if scope_kwargs:
+            # Shadow evidence for the S5 rollout soak (content-free).
+            from aichat.services.retrieval_misses import record_search
 
-    work_orders = await _query()
-    return {"count": len(work_orders), "work_orders": work_orders}
+            record_search(
+                user=user,
+                query=query or "",
+                hit_count=result["returned_count"],
+                top_score=None,
+                machine_filter="scope_applied" if scope.enforce else "not_applied",
+                document_class=None,
+                scope_key="",
+                corpus="reader",
+                scope_hash=scope.scope_hash,
+                scope_mode=scope.mode,
+                scope_enforced=scope.enforce,
+                out_of_scope_hits=result["out_of_scope_count"],
+            )
+        return result, [ai_read.work_order_row(work_order) for work_order in result["rows"]]
+
+    page, work_orders = await _query()
+    from ai.core.contracts.retrieval import build_envelope, coverage, record_envelope
+
+    warnings: tuple[str, ...] = ()
+    if scope_kwargs and scope.enforce:
+        warnings = (f"narrowed_to_analysis_scope:{len(scope.machine_ids)}_machines",)
+    envelope = build_envelope(
+        source_class="work_order",
+        population_type="work_orders",
+        operation="search",
+        filters=page["applied_filters"],
+        coverage=coverage(
+            population_count=page["population_count"],
+            returned_count=page["returned_count"],
+            complete_population=page["complete_population"],
+            display_truncated=page["display_truncated"],
+        ),
+        source_revision={"high_watermark": page["high_watermark"]},
+        warnings=warnings,
+    )
+    record_envelope("search_work_orders", envelope, out_of_scope_count=page["out_of_scope_count"])
+    return {
+        "returned_count": page["returned_count"],
+        "population_count": page["population_count"],
+        "complete_population": page["complete_population"],
+        "display_truncated": page["display_truncated"],
+        "work_orders": work_orders,
+        "retrieval": envelope,
+    }
 
 
 @ai_function
@@ -106,6 +179,11 @@ async def get_work_order_overview(work_order_id: int) -> dict[str, Any]:
         _user, work_order = _resolve(work_order_id)
         if work_order is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(work_order.machine_id)
+        if miss is not None:
+            return miss
         return ai_read.work_order_overview(work_order)
 
     result = await _fetch()
@@ -137,6 +215,11 @@ async def get_work_order_readiness(work_order_id: int, action: str = "start") ->
         user, work_order = _resolve(work_order_id)
         if work_order is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(work_order.machine_id)
+        if miss is not None:
+            return miss
         try:
             return ai_read.work_order_readiness(user, work_order, action=action)
         except Exception:
@@ -172,6 +255,11 @@ async def get_work_order_repair_state(work_order_id: int) -> dict[str, Any]:
         _user, work_order = _resolve(work_order_id)
         if work_order is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(work_order.machine_id)
+        if miss is not None:
+            return miss
         return ai_read.work_order_repair_state(work_order)
 
     result = await _fetch()
@@ -205,6 +293,11 @@ async def get_open_repairs_for_machine(machine_id: int) -> dict[str, Any]:
         machine = ai_read.authorized_machine(user, machine_id)
         if machine is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(machine.pk)
+        if miss is not None:
+            return miss
         return ai_read.open_repairs_for_machine(user, machine)
 
     result = await _fetch()
@@ -225,8 +318,11 @@ async def get_work_order_history(work_order_id: int, limit: int = 15) -> dict[st
       limit: Maximum events to return, newest first (default 15, max 50).
 
     Returns:
-      Dictionary with 'count' and 'events' (each with event_type, from_status,
-      to_status, actor, reason and created_at), or an error if not available.
+      Dictionary with 'events' (the returned page, newest first; each with
+      event_type, from_status, to_status, actor, reason and created_at),
+      'returned_count', and 'population_count' (ALL events on the job — use
+      this, never the page length, when stating how many happened), or an
+      error if not available.
     """
 
     @sync_to_async
@@ -236,12 +332,89 @@ async def get_work_order_history(work_order_id: int, limit: int = 15) -> dict[st
         user, work_order = _resolve(work_order_id)
         if work_order is None:
             return None
-        return ai_read.work_order_history(user, work_order, limit=limit)
+        from ai.core.analysis.scope_context import scope_miss_for_machine
 
-    events = await _fetch()
-    if events is None:
+        miss = scope_miss_for_machine(work_order.machine_id)
+        if miss is not None:
+            return miss
+        # S5b (Q15): event sequences need DISTINCTION ("the same person
+        # moved it twice"), so actors render as thread-stable pseudonyms.
+        from ai.core.analysis.pseudonyms import thread_pseudonymizer
+        from ai.core.analysis.scope_context import current_turn_scope
+
+        scope = current_turn_scope()
+        identity = thread_pseudonymizer(scope.thread_pk if scope is not None else None)
+        return ai_read.work_order_history_page(user, work_order, limit=limit, identity=identity)
+
+    page = await _fetch()
+    if page is None:
         return {"error": _NOT_FOUND}
-    return {"count": len(events), "events": events}
+    if page.get("scope_miss"):
+        return page
+    from ai.core.contracts.retrieval import build_envelope, coverage, record_envelope
+
+    envelope = build_envelope(
+        source_class="work_order",
+        population_type="work_order_events",
+        operation="list",
+        filters={"work_order_id": work_order_id},
+        coverage=coverage(
+            population_count=page["population_count"],
+            returned_count=page["returned_count"],
+            complete_population=page["population_count"] == page["returned_count"],
+            display_truncated=page["display_truncated"],
+        ),
+    )
+    record_envelope("get_work_order_history", envelope)
+    return {
+        "returned_count": page["returned_count"],
+        "population_count": page["population_count"],
+        "display_truncated": page["display_truncated"],
+        "events": page["events"],
+        "retrieval": envelope,
+    }
+
+
+@ai_function
+async def get_work_order_closeout(work_order_id: int) -> dict[str, Any]:
+    """
+    Get the verified structured closeout of one completed work order: cause, action, result and verification.
+
+    Answers "what was actually wrong", "what was done" and "was it verified".
+    Returns the EFFECTIVE closeout (applied amendments supersede the original
+    writeup). Treat each stage separately: an action is not proof of cause,
+    and an administrative "done" is not proof of sustained operation. Only
+    rely on cause/verification statements when 'verified' is true.
+
+    Args:
+      work_order_id: The work order's ID, typically from search_work_orders.
+
+    Returns:
+      Dictionary with cause, action, result, verification_summary,
+      downtime_minutes, follow_up fields, completed_at, verified/verified_at,
+      amended/amendment_count and version — or 'no_closeout': true when the
+      job has no structured closeout, or an error if not available.
+    """
+
+    @sync_to_async
+    def _fetch():
+        from tasks import ai_read
+
+        _user, work_order = _resolve(work_order_id)
+        if work_order is None:
+            return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(work_order.machine_id)
+        if miss is not None:
+            return miss
+        closeout = ai_read.work_order_closeout(work_order)
+        if closeout is None:
+            return {"work_order_id": work_order.pk, "no_closeout": True}
+        return closeout
+
+    result = await _fetch()
+    return result if result is not None else {"error": _NOT_FOUND}
 
 
 MAINTENANCE_READ_TOOLS = [
@@ -251,11 +424,13 @@ MAINTENANCE_READ_TOOLS = [
     get_work_order_repair_state,
     get_open_repairs_for_machine,
     get_work_order_history,
+    get_work_order_closeout,
 ]
 
 __all__ = [
     "MAINTENANCE_READ_TOOLS",
     "get_open_repairs_for_machine",
+    "get_work_order_closeout",
     "get_work_order_history",
     "get_work_order_overview",
     "get_work_order_readiness",

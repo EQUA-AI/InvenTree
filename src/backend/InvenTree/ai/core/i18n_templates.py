@@ -28,6 +28,21 @@ TURN_FAILED_RATE_LIMITED = "turn_failed_rate_limited"
 TURN_FAILED_CONFIG_GATE = "turn_failed_config_gate"
 TURN_FAILED_INTERNAL = "turn_failed_internal"
 TURN_INCOMPLETE = "turn_incomplete"
+# S4: the deterministic unsafe-shortcut refusal. English-only BY DECISION
+# (record Q30): detection is multilingual, but a safety refusal ships only
+# in reviewed language — the unconditional English fallback in
+# ``deterministic_template`` is the intended behavior for es/de/fr until
+# their translations pass human review.
+SAFETY_SHORTCUT_REFUSAL = "safety_shortcut_refusal"
+# S10: deterministic evidence-gate text. The validator/renderer never let
+# the model author these outcomes; the wording deliberately claims only
+# what the gate verified (e.g. "no relevant passage retrieved" is never
+# rewritten as "the manual does not contain it").
+ANALYSIS_DOWNGRADE = "analysis_downgrade"
+ANALYSIS_ABSTAIN = "analysis_abstain"
+ANALYSIS_CAPABILITY_BOUNDARY = "analysis_capability_boundary"
+ANALYSIS_PARTIAL_NOTICE = "analysis_partial_notice"
+ANALYSIS_FAIL_CLOSED = "analysis_fail_closed"
 
 _TEMPLATES: dict[str, dict[str, str]] = {
     RESPOND_IN_LOCALE: {
@@ -52,6 +67,25 @@ _TEMPLATES: dict[str, dict[str, str]] = {
     SAFETY_BOUNDARY: {
         "en": "This response does not change or confirm any safety status.",
         "es": "Esta respuesta no cambia ni confirma ningún estado de seguridad.",
+    },
+    SAFETY_SHORTCUT_REFUSAL: {
+        # Four parts, ~120 words, zero operational steps, and it NEVER
+        # echoes the request (Q86 gate; injection-refusal echo rule).
+        "en": (
+            "I can't help skip, shorten, or work around an isolation, "
+            "lockout, stored-energy wait, interlock, protective-equipment, "
+            "or verification step. Those controls are required in full "
+            "every time, and no chat answer changes that. The controlled "
+            "procedure for this equipment is the authority: follow the "
+            "current approved revision of the applicable safety or "
+            "isolation procedure, carried out only by a person qualified "
+            "and authorized for that work. If a required step seems "
+            "impractical, unclear, or impossible in the field, stop and "
+            "raise it with your qualified site authority before "
+            "proceeding — they can assess the situation and approve any "
+            "change through the proper process. I can help you locate the "
+            "applicable controlled document or its current revision."
+        ),
     },
     ADVISORY_VOICE_ACTION: {
         "en": (
@@ -186,6 +220,62 @@ _TEMPLATES: dict[str, dict[str, str]] = {
         "de": ("Der Diagnosevorgang schlug fehl, bevor eine vollständige Antwort erstellt wurde."),
         "fr": ("Le tour de diagnostic a échoué avant de produire une réponse complète."),
     },
+    ANALYSIS_DOWNGRADE: {
+        "en": (
+            "Part of this answer could not be verified against the retrieved "
+            "records and was removed. The statements shown are limited to "
+            "verified evidence."
+        ),
+        "es": (
+            "Parte de esta respuesta no pudo verificarse con los registros "
+            "recuperados y fue eliminada. Las afirmaciones mostradas se "
+            "limitan a la evidencia verificada."
+        ),
+    },
+    ANALYSIS_ABSTAIN: {
+        "en": (
+            "The available evidence does not support a reliable answer to "
+            "this question, so no conclusion was produced."
+        ),
+        "es": (
+            "La evidencia disponible no respalda una respuesta fiable a esta "
+            "pregunta, por lo que no se produjo ninguna conclusión."
+        ),
+    },
+    ANALYSIS_CAPABILITY_BOUNDARY: {
+        "en": (
+            "That kind of analysis is not available yet. I can look up "
+            "individual records, document facts, and source availability "
+            "within your analysis scope."
+        ),
+        "es": (
+            "Ese tipo de análisis aún no está disponible. Puedo consultar "
+            "registros individuales, datos de documentos y la disponibilidad "
+            "de fuentes dentro de tu ámbito de análisis."
+        ),
+    },
+    ANALYSIS_PARTIAL_NOTICE: {
+        "en": (
+            "This is a partial answer: some parts of the question did not "
+            "finish in time. Only fully verified parts are shown."
+        ),
+        "es": (
+            "Esta es una respuesta parcial: algunas partes de la pregunta no "
+            "terminaron a tiempo. Solo se muestran las partes totalmente "
+            "verificadas."
+        ),
+    },
+    ANALYSIS_FAIL_CLOSED: {
+        "en": (
+            "This answer could not be safely verified and was withheld. "
+            "Please try again, or consult the authoritative records directly."
+        ),
+        "es": (
+            "Esta respuesta no pudo verificarse de forma segura y fue "
+            "retenida. Inténtalo de nuevo o consulta directamente los "
+            "registros autorizados."
+        ),
+    },
     # Exhausted-bound reasoning turns (timeout / round cap): the safe
     # incomplete canonical, in the user's chat language.
     TURN_INCOMPLETE: {
@@ -227,11 +317,17 @@ __all__ = [
     "ADVISORY_TEXT",
     "ADVISORY_VOICE_ACTION",
     "ADVISORY_VOICE_READONLY",
+    "ANALYSIS_ABSTAIN",
+    "ANALYSIS_CAPABILITY_BOUNDARY",
+    "ANALYSIS_DOWNGRADE",
+    "ANALYSIS_FAIL_CLOSED",
+    "ANALYSIS_PARTIAL_NOTICE",
     "GROUNDING_CROSS_MACHINE",
     "GROUNDING_DOWNGRADE",
     "QUESTION_DECLINED_ACK",
     "RESPOND_IN_LOCALE",
     "SAFETY_BOUNDARY",
+    "SAFETY_SHORTCUT_REFUSAL",
     "TURN_FAILED_CONFIG_GATE",
     "TURN_FAILED_INTERNAL",
     "TURN_FAILED_PROVIDER_OUTAGE",

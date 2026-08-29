@@ -29,6 +29,7 @@ from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
 from ai.core.integrations.kanban_tools import KANBAN_TOOLS
 from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
+from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
 from ai.core.tools.invocation_guard import (
     CapabilityInvocationMiddleware,
     bind_capability_run,
@@ -457,6 +458,7 @@ figure from an earlier turn as if you had just verified it."""
                 + CONTROLLED_CORPUS_TOOLS
                 + ATTACHMENT_CORPUS_TOOLS
                 + EVIDENCE_MEDIA_TOOLS
+                + SOURCE_INVENTORY_TOOLS
             )
         if not T1LookupWorkflow.VOICE_BASE_TOOLS:
             T1LookupWorkflow.VOICE_BASE_TOOLS = read_tools(T1LookupWorkflow.BASE_TOOLS)
@@ -825,6 +827,9 @@ figure from an earlier turn as if you had just verified it."""
                 context=context,
                 profile=profile,
                 authenticated=get_current_principal() is not None,
+                # S3: server-derived typed intent from the routing stage; an
+                # enum value riding the trusted workflow context, never text.
+                task_intent=(context or {}).get("task_intent"),
             )
             current_bytes = serialized_contract_bytes(current_tools)
             selected_bytes = serialized_contract_bytes(selection.tools)
@@ -852,6 +857,7 @@ figure from an earlier turn as if you had just verified it."""
                     # context to resolve against. Without these a wrong selection
                     # can only be reproduced by guessing at the phrasing.
                     "selection_signals": selection.signals,
+                    "task_intent": (context or {}).get("task_intent"),
                     "history_messages": (
                         len(history)
                         if isinstance(history := (context or {}).get("conversation_history"), list)

@@ -120,6 +120,7 @@ def evidence_media_filter(
     step_execution_id: int | None = None,
     asset_id: str | None = None,
     media_type: str | None = None,
+    scope_asset_ids: tuple[str, ...] | None = None,
 ) -> str:
     """Build the non-negotiable media filter from server-side values only.
 
@@ -127,6 +128,10 @@ def evidence_media_filter(
     ``model_types`` are mandatory: an empty set refuses rather than widening,
     mirroring ``machine_scope_filter``'s ``pk__in=[]`` reasoning — a missing
     clause would read as "everyone's".
+
+    ``scope_asset_ids`` (S5 enforce) is the analysis-scope serial FLOOR —
+    see ``attachment_corpus_filter``: machine-stamped chunks must belong to
+    a scoped machine; unstamped chunks stay reachable.
     """
     if not scope_key:
         raise MediaRetrievalError(
@@ -163,6 +168,15 @@ def evidence_media_filter(
         clauses.append(f"asset_id eq '{_odata_literal(asset_id)}'")
     if media_type:
         clauses.append(f"media_type eq '{_odata_literal(media_type)}'")
+    if scope_asset_ids is not None:
+        joined_serials = ",".join(_odata_literal(item) for item in sorted(scope_asset_ids))
+        if joined_serials:
+            clauses.append(
+                f"(asset_id eq '' or asset_id eq null or "
+                f"search.in(asset_id, '{joined_serials}', ','))"
+            )
+        else:
+            clauses.append("(asset_id eq '' or asset_id eq null)")
     return " and ".join(clauses)
 
 
@@ -297,7 +311,7 @@ def search_corpus_media(
             )
             return {
                 "chunks": [],
-                "total": 0,
+                "returned_count": 0,
                 "machine_filter": "not_requested",
                 "work_order_filter": "ambiguous",
                 "work_order_candidates": candidates,
@@ -342,7 +356,7 @@ def search_corpus_media(
             _propose_machine_question(candidates)
             return {
                 "chunks": [],
-                "total": 0,
+                "returned_count": 0,
                 "machine_filter": "ambiguous",
                 "machine_candidates": candidates,
                 "work_order_filter": work_order_filter,
@@ -361,6 +375,15 @@ def search_corpus_media(
             code="MEDIA_QUERY_EMBEDDING_FAILED",
         ) from exc
 
+    # S5 (WP-A3): the analysis-scope serial floor rides every run under an
+    # ENFORCED explicit scope (see attachment_corpus for the rationale).
+    from ai.core.analysis.scope_context import current_turn_scope as _current_scope
+
+    scope_context = _current_scope()
+    scope_asset_ids: tuple[str, ...] | None = None
+    if scope_context is not None and scope_context.explicit and scope_context.enforce:
+        scope_asset_ids = tuple(sorted(scope_context.machine_serials))
+
     def _run(type_filter: str | None):
         filter_expression = evidence_media_filter(
             scope_key=scope_key,
@@ -369,6 +392,7 @@ def search_corpus_media(
             work_order_id=work_order_id,
             asset_id=asset_id,
             media_type=type_filter,
+            scope_asset_ids=scope_asset_ids,
         )
         try:
             from azure.search.documents.models import VectorizedQuery
@@ -455,6 +479,20 @@ def search_corpus_media(
                 "excerpt_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             },
         })
+    scope_fields: dict[str, Any] = {}
+    if scope_context is not None:
+        scope_fields = {
+            "scope_hash": scope_context.scope_hash,
+            "scope_mode": scope_context.mode,
+            "scope_enforced": scope_asset_ids is not None,
+        }
+        if scope_context.explicit and not scope_context.enforce:
+            scope_fields["out_of_scope_hits"] = sum(
+                1
+                for chunk in chunks
+                if chunk["citation"]["asset_id"]
+                and chunk["citation"]["asset_id"] not in scope_context.machine_serials
+            )
     _record_search_outcome(
         user=user,
         query=query,
@@ -465,12 +503,48 @@ def search_corpus_media(
         scope_key=scope_key,
         corpus="media",
         part_filter=work_order_filter,
+        **scope_fields,
     )
+    # S5 §7.4: semantic retrieval never evaluates a population (see
+    # controlled_document_corpus for the vocabulary rationale).
+    from ai.core.contracts.retrieval import (
+        NO_RELEVANT_PASSAGE,
+        build_envelope,
+        record_envelope,
+    )
+
+    envelope = build_envelope(
+        source_class="evidence_media",
+        population_type="media_segments",
+        operation="semantic_search",
+        filters={
+            "machine_filter": machine_filter,
+            "work_order_filter": work_order_filter,
+            "media_type": media_type or None,
+        },
+        coverage={
+            "population_count": len(chunks),
+            "returned_count": len(chunks),
+            "complete_population": False,
+            "display_truncated": False,
+            "cursor": None,
+        },
+        source_state={
+            "registered": True,
+            "attached": True,
+            "indexed": True,
+            "searchable_now": True,
+            "current": True,
+        },
+        warnings=() if chunks else (NO_RELEVANT_PASSAGE,),
+    )
+    record_envelope("search_evidence_media", envelope)
     return {
         "chunks": chunks,
-        "total": len(chunks),
+        "returned_count": len(chunks),
         "machine_filter": machine_filter,
         "work_order_filter": work_order_filter,
+        "retrieval": envelope,
     }
 
 

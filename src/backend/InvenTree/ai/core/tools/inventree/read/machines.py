@@ -73,23 +73,87 @@ async def search_machines(query: str | None = None, limit: int = 10) -> dict[str
       limit: Maximum machines to return (default 10, max 25).
 
     Returns:
-      Dictionary with 'count' and 'machines'. Each machine has machine_id,
-      name, location, manufacturer, model, serial and active. Location is
-      included to disambiguate similarly named assets.
+      Dictionary with 'machines' (the returned page; each machine has
+      machine_id, name, location, manufacturer, model, serial and active —
+      location disambiguates similarly named assets), 'returned_count',
+      'population_count' (ALL matching machines — use this, never the page
+      length, when stating how many exist), and a 'retrieval' envelope.
     """
+
+    from ai.core.analysis.scope_context import current_turn_scope
+
+    scope = current_turn_scope()
+    scope_kwargs: dict[str, Any] = {}
+    if scope is not None and scope.explicit:
+        # S5 (WP-A3): analysis-scope narrowing on top of authorization.
+        scope_kwargs = {"scope_machine_ids": scope.machine_ids, "enforce": scope.enforce}
 
     @sync_to_async
     def _query():
         from assets import ai_read
 
+        empty = {
+            "rows": [],
+            "population_count": 0,
+            "returned_count": 0,
+            "complete_population": True,
+            "display_truncated": False,
+            "out_of_scope_count": 0,
+            "applied_filters": {},
+            "high_watermark": None,
+        }
         user = _current_user()
         if user is None:
-            return []
-        rows = ai_read.machines_in_scope(user, query=query, limit=limit)
-        return [ai_read.machine_search_row(machine) for machine in rows]
+            return empty, []
+        result = ai_read.machines_page(user, query=query, limit=limit, **scope_kwargs)
+        if scope_kwargs:
+            from aichat.services.retrieval_misses import record_search
 
-    machines = await _query()
-    return {"count": len(machines), "machines": machines}
+            record_search(
+                user=user,
+                query=query or "",
+                hit_count=result["returned_count"],
+                top_score=None,
+                machine_filter="scope_applied" if scope.enforce else "not_applied",
+                document_class=None,
+                scope_key="",
+                corpus="reader",
+                scope_hash=scope.scope_hash,
+                scope_mode=scope.mode,
+                scope_enforced=scope.enforce,
+                out_of_scope_hits=result["out_of_scope_count"],
+            )
+        return result, [ai_read.machine_search_row(machine) for machine in result["rows"]]
+
+    page, machines = await _query()
+    from ai.core.contracts.retrieval import build_envelope, coverage, record_envelope
+
+    warnings: tuple[str, ...] = ()
+    if scope_kwargs and scope.enforce:
+        warnings = (f"narrowed_to_analysis_scope:{len(scope.machine_ids)}_machines",)
+    envelope = build_envelope(
+        source_class="machine",
+        population_type="machines",
+        operation="search",
+        filters=page["applied_filters"],
+        coverage=coverage(
+            population_count=page["population_count"],
+            returned_count=page["returned_count"],
+            complete_population=page["complete_population"],
+            display_truncated=page["display_truncated"],
+        ),
+        source_revision={"high_watermark": page["high_watermark"]},
+        warnings=warnings,
+    )
+    record_envelope("search_machines", envelope, out_of_scope_count=page["out_of_scope_count"])
+    return {
+        "returned_count": page["returned_count"],
+        "population_count": page["population_count"],
+        "complete_population": page["complete_population"],
+        "display_truncated": page["display_truncated"],
+        "machines": machines,
+        "retrieval": envelope,
+    }
 
 
 @ai_function
@@ -115,6 +179,11 @@ async def get_machine_overview(machine_id: int) -> dict[str, Any]:
         user, machine = _resolve(machine_id)
         if machine is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(machine.pk)
+        if miss is not None:
+            return miss
         return ai_read.machine_overview(user, machine)
 
     result = await _fetch()
@@ -145,6 +214,11 @@ async def get_machine_health(machine_id: int) -> dict[str, Any]:
         _user, machine = _resolve(machine_id)
         if machine is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(machine.pk)
+        if miss is not None:
+            return miss
         return ai_read.machine_health(machine)
 
     result = await _fetch()
@@ -175,6 +249,11 @@ async def get_machine_signals(machine_id: int) -> dict[str, Any]:
         _user, machine = _resolve(machine_id)
         if machine is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(machine.pk)
+        if miss is not None:
+            return miss
         return ai_read.machine_signals(machine)
 
     result = await _fetch()
@@ -209,6 +288,11 @@ async def get_machine_signal_trend(
         _user, machine = _resolve(machine_id)
         if machine is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(machine.pk)
+        if miss is not None:
+            return miss
         return ai_read.machine_signal_trend(machine, binding_id=binding_id, hours=hours)
 
     result = await _fetch()
@@ -244,6 +328,11 @@ async def get_machine_anomalies(
         _user, machine = _resolve(machine_id)
         if machine is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(machine.pk)
+        if miss is not None:
+            return miss
         return ai_read.machine_anomalies(machine, include_resolved=include_resolved, limit=limit)
 
     result = await _fetch()
@@ -274,6 +363,11 @@ async def get_machine_parts(machine_id: int, limit: int = 50) -> dict[str, Any]:
         _user, machine = _resolve(machine_id)
         if machine is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(machine.pk)
+        if miss is not None:
+            return miss
         return ai_read.machine_installed_parts(machine, limit=limit)
 
     result = await _fetch()
@@ -303,6 +397,11 @@ async def get_machine_maintenance_history(machine_id: int, limit: int = 25) -> d
         user, machine = _resolve(machine_id)
         if machine is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(machine.pk)
+        if miss is not None:
+            return miss
         return ai_read.machine_maintenance_history(user, machine, limit=limit)
 
     result = await _fetch()
@@ -333,6 +432,11 @@ async def get_machine_attachments(machine_id: int, limit: int = 50) -> dict[str,
         _user, machine = _resolve(machine_id)
         if machine is None:
             return None
+        from ai.core.analysis.scope_context import scope_miss_for_machine
+
+        miss = scope_miss_for_machine(machine.pk)
+        if miss is not None:
+            return miss
         return ai_read.machine_attachments(machine, limit=limit)
 
     result = await _fetch()

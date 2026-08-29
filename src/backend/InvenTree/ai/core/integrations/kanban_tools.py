@@ -24,23 +24,40 @@ logger = logging.getLogger(__name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
+#: S5b: fields deliberately withheld from the card projection, mirroring the
+#: ``tasks.ai_read.EXCLUDED_FIELDS`` decisions — this module historically
+#: dumped raw model fields and was the one AI-exposed work-order projection
+#: outside the allow-list discipline (recon finding, WP-A4). Pinned by
+#: ``tasks/tests/test_kanban_tool_scope.py``.
+EXCLUDED_FIELDS = {
+    "WorkOrder.company": "tenant identity (mirrors Client.name exclusion)",
+    "WorkOrder.company_contact_name": "personal data",
+    "WorkOrder.company_contact_phone": "personal data",
+    "WorkOrder.service_quote": "commercial value",
+    "WorkOrder.assignee": "identity; presence/role only (Q15)",
+}
+
 
 def _card_to_dict(work_order, include_parts: bool = True) -> dict[str, Any]:
-    """Serialize a WorkOrder model instance to a plain dict."""
+    """Serialize a WorkOrder to the ALLOW-LISTED card projection (S5b).
+
+    Free text rides the shared fence; commercial/contact/identity fields are
+    withheld per ``EXCLUDED_FIELDS``.
+    """
+    from tasks.ai_read import fence
+
     data = {
         "id": work_order.id,
-        "title": work_order.title,
-        "description": work_order.description,
+        "title": fence(work_order.title, limit=255),
+        # A16/Q14: fenced and capped; embedded instructions stay data.
+        "description": fence(work_order.description) or None,
         "status": work_order.status,
         "priority": work_order.priority,
         "due_date": work_order.due_date.isoformat() if work_order.due_date else None,
-        "assignee": work_order.assignee,
+        # S5b (Q15): presence, never the recorded free-text name.
+        "assigned": bool((work_order.assignee or "").strip()),
         "tags": list(work_order.tags) if work_order.tags else [],
-        "company": work_order.company,
-        "company_contact_name": work_order.company_contact_name,
-        "company_contact_phone": work_order.company_contact_phone,
         "job_number": work_order.job_number,
-        "service_quote": work_order.service_quote,
         "is_active": work_order.is_active,
         "created_at": work_order.created_at.isoformat() if work_order.created_at else None,
         "updated_at": work_order.updated_at.isoformat() if work_order.updated_at else None,
@@ -138,7 +155,9 @@ async def list_kanban_cards(
       - limit: max number of cards to return (default 50)
 
     Returns:
-      Dictionary with 'count' and 'cards' list.
+      Dictionary with 'cards' (the returned page), 'returned_count', and
+      'population_count' (ALL matching cards — use this, never the page
+      length, when stating how many exist), plus a 'retrieval' envelope.
     """
 
     @sync_to_async
@@ -173,11 +192,32 @@ async def list_kanban_cards(
                 | Q(job_number__icontains=search)
             )
 
-        qs = qs.order_by("-created_at")[:limit]
-        return [_card_to_dict(c) for c in qs]
+        population_count = qs.count()
+        page = qs.order_by("-created_at")[:limit]
+        return population_count, [_card_to_dict(c) for c in page]
 
-    work_orders = await _query()
-    return {"count": len(work_orders), "cards": work_orders}
+    population_count, cards = await _query()
+    from ai.core.contracts.retrieval import build_envelope, coverage, record_envelope
+
+    envelope = build_envelope(
+        source_class="kanban_card",
+        population_type="work_orders",
+        operation="list",
+        filters={"query_applied": bool(search or status or priority or assignee or company)},
+        coverage=coverage(
+            population_count=population_count,
+            returned_count=len(cards),
+            complete_population=population_count == len(cards),
+        ),
+    )
+    record_envelope("list_kanban_cards", envelope)
+    return {
+        "returned_count": len(cards),
+        "population_count": population_count,
+        "display_truncated": population_count > len(cards),
+        "cards": cards,
+        "retrieval": envelope,
+    }
 
 
 @ai_function
@@ -302,13 +342,16 @@ async def get_kanban_summary() -> dict[str, Any]:
 
         today = datetime.date.today()
         overdue = active.filter(due_date__lt=today).exclude(status="done")
+        overdue_count = overdue.count()
         overdue_cards = [_card_to_dict(c) for c in overdue[:20]]
 
         return {
             "total_active": active.count(),
             "status_counts": status_counts,
             "priority_counts": priority_counts,
-            "overdue_count": len(overdue_cards),
+            # S5 coverage vocabulary: the POPULATION count, not the page.
+            "overdue_count": overdue_count,
+            "overdue_returned": len(overdue_cards),
             "overdue_cards": overdue_cards,
         }
 

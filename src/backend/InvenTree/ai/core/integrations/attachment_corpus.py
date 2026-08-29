@@ -116,6 +116,7 @@ def attachment_corpus_filter(
     part_id: int | None = None,
     asset_id: str | None = None,
     doc_type: str | None = None,
+    scope_asset_ids: tuple[str, ...] | None = None,
 ) -> str:
     """Build the non-negotiable attachment filter from server-side values only.
 
@@ -123,6 +124,12 @@ def attachment_corpus_filter(
     ``model_types`` are mandatory: an empty set refuses rather than widening,
     mirroring ``machine_scope_filter``'s ``pk__in=[]`` reasoning -- a missing
     clause would read as "everyone's".
+
+    ``scope_asset_ids`` (S5 enforce) is a narrowing FLOOR from the analysis
+    scope's server-resolved serials: machine-stamped chunks must belong to a
+    scoped machine, while unstamped chunks (part documents, WO media whose
+    owner has no serial) stay reachable — degrade steps may drop narrowing
+    precision but can never step outside the scoped assets.
     """
     if not scope_key:
         raise AttachmentRetrievalError(
@@ -163,6 +170,17 @@ def attachment_corpus_filter(
         clauses.append(f"asset_id eq '{_odata_literal(asset_id)}'")
     if doc_type:
         clauses.append(f"doc_type eq '{_odata_literal(doc_type)}'")
+    if scope_asset_ids is not None:
+        joined_serials = ",".join(_odata_literal(item) for item in sorted(scope_asset_ids))
+        if joined_serials:
+            clauses.append(
+                f"(asset_id eq '' or asset_id eq null or "
+                f"search.in(asset_id, '{joined_serials}', ','))"
+            )
+        else:
+            # Serial-less explicit scope: only unstamped chunks are provably
+            # inside it; machine-stamped chunks cannot be verified in-scope.
+            clauses.append("(asset_id eq '' or asset_id eq null)")
     return " and ".join(clauses)
 
 
@@ -291,7 +309,7 @@ def search_corpus_attachments(
             )
             return {
                 "chunks": [],
-                "total": 0,
+                "returned_count": 0,
                 "machine_filter": "not_requested",
                 "part_filter": "ambiguous",
                 "part_candidates": part_candidates,
@@ -337,7 +355,7 @@ def search_corpus_attachments(
             _propose_machine_question(candidates)
             return {
                 "chunks": [],
-                "total": 0,
+                "returned_count": 0,
                 "machine_filter": "ambiguous",
                 "machine_candidates": candidates,
                 "part_filter": part_filter,
@@ -356,6 +374,17 @@ def search_corpus_attachments(
             code="ATTACHMENT_QUERY_EMBEDDING_FAILED",
         ) from exc
 
+    # S5 (WP-A3): an ENFORCED explicit analysis scope adds the serial floor —
+    # degrades below may drop narrowing precision (drop asset/doc-type) but
+    # the floor rides every run, so they can never step outside the scoped
+    # assets. Shadow observes; unscoped turns are untouched.
+    from ai.core.analysis.scope_context import current_turn_scope as _current_scope
+
+    scope_context = _current_scope()
+    scope_asset_ids: tuple[str, ...] | None = None
+    if scope_context is not None and scope_context.explicit and scope_context.enforce:
+        scope_asset_ids = tuple(sorted(scope_context.machine_serials))
+
     def _run(type_filter: str | None):
         filter_expression = attachment_corpus_filter(
             scope_key=scope_key,
@@ -364,6 +393,7 @@ def search_corpus_attachments(
             part_id=part_id,
             asset_id=asset_id,
             doc_type=type_filter,
+            scope_asset_ids=scope_asset_ids,
         )
         try:
             from azure.search.documents.models import VectorizedQuery
@@ -435,6 +465,20 @@ def search_corpus_attachments(
                 "excerpt_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             },
         })
+    scope_fields: dict[str, Any] = {}
+    if scope_context is not None:
+        scope_fields = {
+            "scope_hash": scope_context.scope_hash,
+            "scope_mode": scope_context.mode,
+            "scope_enforced": scope_asset_ids is not None,
+        }
+        if scope_context.explicit and not scope_context.enforce:
+            scope_fields["out_of_scope_hits"] = sum(
+                1
+                for chunk in chunks
+                if chunk["citation"]["asset_id"]
+                and chunk["citation"]["asset_id"] not in scope_context.machine_serials
+            )
     _record_search_outcome(
         user=user,
         query=query,
@@ -445,12 +489,48 @@ def search_corpus_attachments(
         scope_key=scope_key,
         corpus="attachment",
         part_filter=part_filter,
+        **scope_fields,
     )
+    # S5 §7.4: semantic retrieval never evaluates a population (see
+    # controlled_document_corpus for the vocabulary rationale).
+    from ai.core.contracts.retrieval import (
+        NO_RELEVANT_PASSAGE,
+        build_envelope,
+        record_envelope,
+    )
+
+    envelope = build_envelope(
+        source_class="asset_attachment",
+        population_type="document_chunks",
+        operation="semantic_search",
+        filters={
+            "machine_filter": machine_filter,
+            "part_filter": part_filter,
+            "doc_type": doc_type or None,
+        },
+        coverage={
+            "population_count": len(chunks),
+            "returned_count": len(chunks),
+            "complete_population": False,
+            "display_truncated": False,
+            "cursor": None,
+        },
+        source_state={
+            "registered": True,
+            "attached": True,
+            "indexed": True,
+            "searchable_now": True,
+            "current": True,
+        },
+        warnings=() if chunks else (NO_RELEVANT_PASSAGE,),
+    )
+    record_envelope("search_attachment_docs", envelope)
     return {
         "chunks": chunks,
-        "total": len(chunks),
+        "returned_count": len(chunks),
         "machine_filter": machine_filter,
         "part_filter": part_filter,
+        "retrieval": envelope,
     }
 
 

@@ -82,6 +82,19 @@ def _embed_query(text: str) -> list[float] | None:
             model=settings.azure_openai_embedding_deployment,
             input=[text],
         )
+        # S12 (WP-B2): query-time embeddings are provider spend the turn
+        # ledger was blind to (a no-op outside a bound turn).
+        from ai.core.usage import record_usage
+
+        usage = getattr(resp, "usage", None)
+        if usage is not None:
+            record_usage(
+                "embeddings",
+                {
+                    "input_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+                    "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+                },
+            )
         return resp.data[0].embedding
     except Exception as e:
         logger.warning("Embedding failed, falling back to keyword search: %s", e)
@@ -94,7 +107,7 @@ def _embed_query(text: str) -> list[float] | None:
 
 
 @ai_function
-async def search_part_documents(  # noqa: RUF029 - async is the tool-call contract
+async def search_part_documents(  # noqa: RUF029 - ai_function contract is async
     query: str,
     top_k: int = 5,
 ) -> dict[str, Any]:

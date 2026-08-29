@@ -74,9 +74,23 @@ _SELECT_FIELDS = [
 
 
 def corpus_filter(
-    *, scope_key: str, asset_id: str | None = None, document_class: str | None = None
+    *,
+    scope_key: str,
+    asset_id: str | None = None,
+    document_class: str | None = None,
+    asset_ids: tuple[str, ...] | None = None,
+    fleet_wide: bool = False,
 ) -> str:
-    """Build the non-negotiable corpus filter from server-side values only."""
+    """Build the non-negotiable corpus filter from server-side values only.
+
+    ``asset_ids`` (S5 enforce mode) narrows to the analysis scope's
+    server-resolved machine serials — a multi-valued alternative to the
+    single resolver-derived ``asset_id``; passing both is a programming
+    error and the multi-valued clause wins. ``fleet_wide`` (S8a §8.4 step 4)
+    selects ONLY blank-stamp site-wide documents — a source-class change,
+    never an asset-scope widening, because a blank-stamp document has no
+    asset by construction.
+    """
     if not scope_key:
         raise ControlledDocumentSearchError(
             "Controlled-document site scope is not configured",
@@ -91,20 +105,29 @@ def corpus_filter(
     else:  # pragma: no cover - grows only by decision
         quoted = ",".join(_odata_literal(item) for item in _READABLE_ACCESS_CLASSES)
         clauses.append(f"search.in(access_class, '{quoted}', ',')")
-    if asset_id:
+    if fleet_wide:
+        clauses.append("asset_id eq ''")
+    elif asset_ids:
+        joined = ",".join(_odata_literal(item) for item in sorted(asset_ids))
+        clauses.append(f"search.in(asset_id, '{joined}', ',')")
+    elif asset_id:
         clauses.append(f"asset_id eq '{_odata_literal(asset_id)}'")
     if document_class:
         clauses.append(f"document_class eq '{_odata_literal(document_class)}'")
     return " and ".join(clauses)
 
 
-def _display_title(row: dict[str, Any]) -> str:
+def _display_title(row: dict[str, Any], *, scope_key: str) -> str:
     """Best-effort friendly document name for a citation.
 
     The registry is authoritative when present, but it does not exist on
     every deployment's database (and is empty on ones whose documents were
     indexed before the table was migrated), so the fallback derives a title
     from the source file name.
+
+    ``scope_key`` is part of the lookup (S8a, §8.4): an identical
+    document_id/revision registered under ANOTHER deployment boundary must
+    never supply this boundary's labels or locators.
     """
     document_id = str(row.get("document_id") or "")
     revision = str(row.get("document_revision") or "")
@@ -113,7 +136,7 @@ def _display_title(row: dict[str, Any]) -> str:
 
         registered = (
             ControlledDocument.objects
-            .filter(document_id=document_id, revision=revision)
+            .filter(scope_key=scope_key, document_id=document_id, revision=revision)
             .values_list("title", flat=True)
             .first()
         )
@@ -140,11 +163,19 @@ def search_corpus(
     embedding_client: EmbeddingClient | None = None,
     embedding_dimensions: int = 3072,
     machine_resolver=None,
+    asset_ids: tuple[str, ...] | None = None,
+    fleet_wide: bool = False,
 ) -> dict[str, Any]:
     """Search the current, site-scoped controlled documents and cite chunks.
 
     ``machine_resolver`` exists for tests; production resolution always goes
     through ``assets.ai_read.machines_in_scope`` under the acting user.
+
+    ``asset_ids`` and ``fleet_wide`` are SERVER-SIDE ONLY (never exposed on
+    the ``search_manuals`` model schema): the S8a fallback orchestrator
+    passes the frozen asset-set serials explicitly, or requests the labeled
+    blank-stamp site-wide step. An explicit ``asset_ids`` wins over both the
+    bound scope context and machine-name resolution.
     """
     if not isinstance(query, str) or not query.strip() or len(query) > 4000:
         raise ControlledDocumentSearchError(
@@ -172,9 +203,50 @@ def search_corpus(
             code="CONTROLLED_DOCUMENT_SCOPE_UNCONFIGURED",
         )
 
+    # S5 (WP-A3): under an ENFORCED explicit analysis scope, the asset
+    # filter comes from the scope's server-resolved serials — the
+    # model-supplied machine name is never the scope mechanism (§8.4), and
+    # the site-wide name-degrade below is structurally unreachable. A scoped
+    # machine without a stable serial cannot be mapped to documents:
+    # applicability is unresolved, and the answer is a typed miss, never a
+    # fleet-wide search.
+    from ai.core.analysis.scope_context import current_turn_scope
+
+    scope_context = current_turn_scope()
+    scope_asset_ids: tuple[str, ...] | None = None
+    if asset_ids is not None or fleet_wide:
+        # S8a orchestrator call: the caller already froze the asset set (or
+        # asked for the labeled site-wide step); nothing here may widen it.
+        scope_asset_ids = tuple(sorted(asset_ids)) if asset_ids else None
+    elif scope_context is not None and scope_context.explicit and scope_context.enforce:
+        if scope_context.machine_serials:
+            scope_asset_ids = tuple(sorted(scope_context.machine_serials))
+        else:
+            _record_search_outcome(
+                user=user,
+                query=query,
+                hit_count=0,
+                top_score=None,
+                machine_filter="scope_unresolved",
+                document_class=document_class,
+                scope_key=scope_key,
+                **_scope_ledger_fields(scope_context, enforced=True),
+            )
+            return {
+                "chunks": [],
+                "returned_count": 0,
+                "machine_filter": "scope_unresolved",
+                "applicability": "unresolved",
+                "scope_miss": True,
+            }
+
     asset_id: str | None = None
     machine_filter = "not_requested"
-    if machine:
+    if fleet_wide:
+        machine_filter = "fleet_wide"
+    elif scope_asset_ids is not None:
+        machine_filter = "scope_applied" if asset_ids is None else "explicit_asset_set"
+    elif machine:
         machine_filter = "not_applied"
         resolver = machine_resolver
         if resolver is None:
@@ -209,7 +281,7 @@ def search_corpus(
             _propose_machine_question(candidates)
             return {
                 "chunks": [],
-                "total": 0,
+                "returned_count": 0,
                 "machine_filter": "ambiguous",
                 "machine_candidates": candidates,
             }
@@ -225,7 +297,11 @@ def search_corpus(
 
     def _run(class_filter: str | None):
         filter_expression = corpus_filter(
-            scope_key=scope_key, asset_id=asset_id, document_class=class_filter
+            scope_key=scope_key,
+            asset_id=asset_id,
+            document_class=class_filter,
+            asset_ids=scope_asset_ids,
+            fleet_wide=fleet_wide,
         )
         try:
             from azure.search.documents.models import VectorizedQuery
@@ -262,17 +338,40 @@ def search_corpus(
         # (found 2026-08-06: every chunk classed
         # ``controlled_operations_maintenance_diagnostics_repair_knowledge``),
         # so an allowlisted narrowing filtered out everything and the model
-        # honestly reported an empty manual. Degrade to the site-wide result.
+        # honestly reported an empty manual. Degrade to the class-free result.
+        # S5: under an enforced scope this is SOURCE-CLASS fallback only —
+        # ``scope_asset_ids`` still rides ``_run``, so the retry can widen
+        # the document class but never the asset scope (the no-broadening
+        # invariant).
         rows = _run(None)
+    if scope_context is not None and scope_context.explicit and scope_context.shadow:
+        # Shadow evidence: whether the legacy result would have changed under
+        # the scope's serial filter. Content-free — counts only.
+        out_of_scope_rows = sum(
+            1
+            for row in rows
+            if str(row.get("asset_id") or "")
+            and str(row.get("asset_id")) not in scope_context.machine_serials
+        )
+        if out_of_scope_rows and not scope_context.enforce:
+            logger.info("scope.shadow.manuals out_of_scope=%d of=%d", out_of_scope_rows, len(rows))
+    else:
+        out_of_scope_rows = 0
+
+    from ai.core.tools.diagnostics import fence_untrusted_content
 
     chunks: list[dict[str, Any]] = []
     for row in rows:
         text = str(row.get("chunk") or "")[:8000]
         chunks.append({
-            "excerpt": text,
+            # S5: the one previously-unfenced retrieval text. The citation's
+            # excerpt_hash stays over the RAW truncated text (the grounding
+            # auditor's excerpt identity), only the model-visible excerpt is
+            # fenced.
+            "excerpt": fence_untrusted_content(text),
             "score": row.get("@search.score", 0),
             "citation": {
-                "document": _display_title(row),
+                "document": _display_title(row, scope_key=scope_key),
                 "document_id": str(row.get("document_id") or ""),
                 "revision": str(row.get("document_revision") or ""),
                 "section_id": str(row.get("section_id") or ""),
@@ -294,11 +393,142 @@ def search_corpus(
         machine_filter=machine_filter,
         document_class=document_class,
         scope_key=scope_key,
+        out_of_scope_hits=out_of_scope_rows,
+        **_scope_ledger_fields(scope_context, enforced=scope_asset_ids is not None),
+    )
+    # S5 §7.4: semantic retrieval never evaluates a population, so
+    # complete_population is ALWAYS False here — zero hits mean "no relevant
+    # passage retrieved", the strongest absence statement this surface makes.
+    from ai.core.contracts.retrieval import (
+        NO_RELEVANT_PASSAGE,
+        build_envelope,
+        record_envelope,
+    )
+
+    envelope = build_envelope(
+        source_class="controlled_document",
+        population_type="document_chunks",
+        operation="semantic_search",
+        filters={
+            "machine_filter": machine_filter,
+            "document_class": document_class or None,
+        },
+        coverage={
+            "population_count": len(chunks),
+            "returned_count": len(chunks),
+            "complete_population": False,
+            "display_truncated": False,
+            "cursor": None,
+        },
+        source_state={
+            "registered": True,
+            "indexed": True,
+            "searchable_now": True,
+            "current": True,
+            # S8a: computed, not asserted — "attached" means the hits carry
+            # an ingest-time asset stamp; ``applicable`` stays False (the
+            # build_envelope default) until S8b's verified relation exists.
+            "attached": any(bool(row.get("asset_id")) for row in rows),
+        },
+        warnings=() if chunks else (NO_RELEVANT_PASSAGE,),
+    )
+    record_envelope("search_manuals", envelope)
+    return {
+        "chunks": chunks,
+        "returned_count": len(chunks),
+        "machine_filter": machine_filter,
+        "retrieval": envelope,
+    }
+
+
+def search_pinned_document(
+    *,
+    user,
+    document_row,
+    query: str,
+    top_k: int = 5,
+    search_client: SearchClient | None = None,
+    embedding_client: EmbeddingClient | None = None,
+) -> dict[str, Any]:
+    """Exact-revision search adapted to the corpus result shape (S8a).
+
+    ``document_row`` is a SERVER-resolved ``ControlledDocument`` registry
+    row (``source_gateway.resolve_selected_document``); this wires the
+    four-way pin — scope_key + document_id + revision + content hash —
+    back into production, with excerpts fenced exactly like the corpus
+    path (the hash stays over the raw truncated text).
+    """
+    from ai.core.integrations.controlled_document_search import (
+        search_selected_document,
+    )
+    from ai.core.tools.diagnostics import fence_untrusted_content
+
+    kwargs: dict[str, Any] = {}
+    if search_client is not None:
+        kwargs["search_client"] = search_client
+    if embedding_client is not None:
+        kwargs["embedding_client"] = embedding_client
+    pinned = search_selected_document(document=document_row, query=query, top_k=top_k, **kwargs)
+
+    chunks: list[dict[str, Any]] = []
+    for row in pinned.get("chunks") or ():
+        citation = dict(row.get("citation") or {})
+        citation.setdefault("document", document_row.title)
+        citation.setdefault("revision", document_row.revision)
+        citation["pinned"] = True
+        chunks.append({
+            "excerpt": fence_untrusted_content(str(row.get("chunk") or "")),
+            "score": row.get("score", 0),
+            "citation": citation,
+        })
+
+    _record_search_outcome(
+        user=user,
+        query=query,
+        hit_count=len(chunks),
+        top_score=max((float(row["score"] or 0) for row in chunks), default=None),
+        machine_filter="document_pinned",
+        document_class=None,
+        scope_key=document_row.scope_key,
+    )
+    from ai.core.contracts.retrieval import (
+        NO_RELEVANT_PASSAGE,
+        build_envelope,
+        record_envelope,
+    )
+
+    envelope = build_envelope(
+        source_class="controlled_document",
+        population_type="document_chunks",
+        operation="pinned_search",
+        filters={"document_id": document_row.document_id, "revision": document_row.revision},
+        coverage={
+            "population_count": len(chunks),
+            "returned_count": len(chunks),
+            "complete_population": False,
+            "display_truncated": False,
+            "cursor": None,
+        },
+        source_state={
+            "registered": True,
+            "indexed": True,
+            "searchable_now": True,
+            "current": True,
+            "attached": bool(document_row.asset_id),
+        },
+        warnings=() if chunks else (NO_RELEVANT_PASSAGE,),
+    )
+    record_envelope(
+        "search_manuals",
+        envelope,
+        pinned_sha_prefix=(document_row.source_sha256 or "")[:12],
     )
     return {
         "chunks": chunks,
-        "total": len(chunks),
-        "machine_filter": machine_filter,
+        "returned_count": len(chunks),
+        "machine_filter": "document_pinned",
+        "pinned_revision": document_row.revision,
+        "retrieval": envelope,
     }
 
 
@@ -307,6 +537,17 @@ def _record_search_outcome(**kwargs) -> None:
     from aichat.services.retrieval_misses import record_search
 
     record_search(**kwargs)
+
+
+def _scope_ledger_fields(scope_context, *, enforced: bool) -> dict[str, Any]:
+    """The S5 scope columns for a RetrievalMiss row; empty when unscoped."""
+    if scope_context is None:
+        return {}
+    return {
+        "scope_hash": scope_context.scope_hash,
+        "scope_mode": scope_context.mode,
+        "scope_enforced": bool(enforced),
+    }
 
 
 def _propose_machine_question(candidates: list[dict[str, Any]]) -> None:
@@ -363,6 +604,7 @@ async def search_manuals(
     query: str,
     machine: str | None = None,
     document_class: str | None = None,
+    document: str | None = None,
     top_k: int = 5,
 ) -> dict[str, Any]:
     """
@@ -381,13 +623,18 @@ async def search_manuals(
                       procedure, specification, knowledge_base or
                       controlled_operations_maintenance_diagnostics_repair_knowledge.
                       A class with no hits degrades to the site-wide result.
+      document: ONLY when the user names a specific document ("the HX-200
+                manual", an exact document id): pin the search to that
+                document's current controlled revision. An unresolved name
+                falls back to the normal search with the miss recorded;
+                an ambiguous name returns document_candidates to pick from.
       top_k: Maximum passages to return (default 5, max 5).
 
     Returns:
       Dictionary with 'chunks' (each an excerpt with a citation naming the
       document, section and revision), 'total' and 'machine_filter'
-      (applied / not_applied / ambiguous -- ambiguous includes
-      machine_candidates to pick from).
+      (applied / not_applied / ambiguous / document_pinned -- ambiguous
+      includes machine_candidates to pick from).
     """
 
     @sync_to_async
@@ -398,8 +645,39 @@ async def search_manuals(
                 "success": False,
                 "error": "No authenticated user is available for this search.",
             }
+        pin_attempted = None
+        if document:
+            # S8a revision pinning BEFORE semantic retrieval: the name is a
+            # registry lookup key inside scope_key — narrowing only.
+            from ai.core.analysis.source_gateway import (
+                AmbiguousDocumentRef,
+                resolve_selected_document,
+            )
+            from ai.core.config import get_settings
+
+            scope_key = get_settings().single_site_policy_key or ""
+            resolved = resolve_selected_document(scope_key=scope_key, document_ref=document)
+            if isinstance(resolved, AmbiguousDocumentRef):
+                return {
+                    "chunks": [],
+                    "returned_count": 0,
+                    "machine_filter": "ambiguous",
+                    "document_candidates": [
+                        {"document_id": doc_id, "title": title, "revision": revision}
+                        for doc_id, title, revision in resolved.candidates
+                    ],
+                }
+            if resolved is not None:
+                try:
+                    return search_pinned_document(
+                        user=user, document_row=resolved, query=query, top_k=top_k
+                    )
+                except ControlledDocumentSearchError:
+                    pin_attempted = "unavailable"
+            else:
+                pin_attempted = "unresolved"
         try:
-            return search_corpus(
+            result = search_corpus(
                 user=user,
                 query=query,
                 machine=machine,
@@ -417,6 +695,12 @@ async def search_manuals(
                 level=logging.WARNING,
             )
             return {"success": False, "error": str(exc), "code": exc.code}
+        if pin_attempted:
+            # The degrade is visible, not silent: the model must not present
+            # a corpus hit as the pinned document's content.
+            result = dict(result)
+            result["pin_attempted"] = pin_attempted
+        return result
 
     return await _run()
 
@@ -429,4 +713,5 @@ __all__ = [
     "corpus_filter",
     "search_corpus",
     "search_manuals",
+    "search_pinned_document",
 ]

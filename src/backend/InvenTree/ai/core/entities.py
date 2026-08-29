@@ -103,4 +103,60 @@ def build_entity_manifest(
     return entities
 
 
-__all__ = ["MAX_ENTITIES", "SERVER_MODEL_MAP", "build_entity_manifest"]
+def build_analysis_entity_manifest(
+    claims: Any, store: Any, scope: Any = None
+) -> list[dict[str, Any]]:
+    """Chips for the analysis rail (S10): claim entity refs ONLY.
+
+    No fleet-root fallback exists here by design (§8.6): inputs are the
+    validated claims' ``entity_refs`` (``"machine:12"`` — server-minted by
+    the evidence adapters) plus the explicit-scope focus machines. Labels
+    resolve from the store's fact values; an unmapped ref is dropped and the
+    validator's C10 check flags it. Each chip carries ``ref`` so C10 can
+    join chips back to claims.
+    """
+    entities: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    labels: dict[str, str] = {}
+    for fact in getattr(store, "facts", {}).values():
+        rendered = fact.rendered_values()
+        for ref in fact.entity_refs:
+            if ref.startswith("machine:") and rendered.get("machine"):
+                labels.setdefault(ref, rendered["machine"])
+            elif ref.startswith("workorder:") and rendered.get("reference"):
+                labels.setdefault(ref, rendered["reference"])
+
+    def _add(ref: str) -> None:
+        if ref in seen or len(entities) >= MAX_ENTITIES:
+            return
+        kind, _, raw_pk = str(ref).partition(":")
+        model = SERVER_MODEL_MAP.get(kind.strip().lower())
+        if model is None or not raw_pk.isdigit():
+            return
+        seen.add(ref)
+        label = labels.get(ref) or f"{model} #{raw_pk}"
+        entities.append({
+            "model": model,
+            "pk": int(raw_pk),
+            "label": str(label)[:_MAX_LABEL_CHARS],
+            "source": "claim_evidence",
+            "ref": ref,
+        })
+
+    for claim in claims:
+        for ref in getattr(claim, "entity_refs", ()):
+            _add(ref)
+    if scope is not None and getattr(scope, "explicit", False):
+        for machine_id in getattr(scope, "machine_ids", ()) or ():
+            _add(f"machine:{machine_id}")
+
+    return entities
+
+
+__all__ = [
+    "MAX_ENTITIES",
+    "SERVER_MODEL_MAP",
+    "build_analysis_entity_manifest",
+    "build_entity_manifest",
+]

@@ -412,7 +412,7 @@ async def mark_email_processed(
 
 @ai_function
 @guard_write_tool
-async def send_email(  # noqa: RUF029 - async is the tool-call contract; awaited directly by generate_and_send_document
+async def send_email(  # noqa: RUF029 - ai_function contract is async
     to: str | list[str],
     subject: str,
     body: str,
