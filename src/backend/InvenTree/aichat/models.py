@@ -4,7 +4,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
-from django.db.models import Q
+from django.db.models import F, Q
 
 from pgvector.django import VectorField
 
@@ -561,6 +561,213 @@ class ControlledDocument(models.Model):
     def __str__(self) -> str:
         """Return a safe diagnostic representation."""
         return f'{self.document_id} revision {self.revision}'
+
+
+class ApplicabilityKind(models.TextChoices):
+    """How one document revision claims to apply to equipment (S8b, A6)."""
+
+    EXACT_MACHINE = 'exact_machine', 'Exact machine'
+    INVERTER_MODEL = 'inverter_model', 'Inverter model'
+    FIRMWARE_CONFIG = 'firmware_config', 'Firmware / configuration'
+    FLEET_WIDE = 'fleet_wide', 'Fleet-wide'
+
+
+class ApplicabilityState(models.TextChoices):
+    """Lifecycle of one applicability claim. Append-only in spirit."""
+
+    PROPOSED = 'proposed', 'Proposed'
+    VERIFIED = 'verified', 'Verified'
+    REVOKED = 'revoked', 'Revoked'
+    SUPERSEDED = 'superseded', 'Superseded'
+
+
+class ControlledDocumentApplicability(models.Model):
+    """Verified applicability of one document revision to equipment (S8b).
+
+    Deliberately in ``aichat`` with TEXT/INT-keyed machine targets rather
+    than an FK into ``assets`` — the app has zero schema edges toward
+    ``assets`` (AI-only settings run without it) and that stays true. The
+    intra-app FK is PROTECT: an applicability claim pins its exact
+    document row, and ``document_content_sha256`` copies the revision's
+    content hash at proposal time so a re-ingest with different bytes
+    silently invalidates every old verification (byte-anchored, never
+    name-anchored).
+
+    Nothing automated reaches ``verified``: a human with
+    ``verify_document_applicability`` verifies, the proposer can never be
+    that human (DB-enforced), and model/configuration kinds additionally
+    require a distinct engineering countersign
+    (``countersign_document_applicability``) before the state machine
+    activates the row. Model inference and serial backfills only ever
+    create ``proposed`` rows.
+
+    Targets use non-null defaults (``0`` / ``''``) instead of NULLs so the
+    live-row partial-unique works identically on every backend.
+    """
+
+    document = models.ForeignKey(
+        ControlledDocument,
+        on_delete=models.PROTECT,
+        related_name='applicability_claims',
+    )
+    document_content_sha256 = models.CharField(max_length=64)
+    kind = models.CharField(max_length=20, choices=ApplicabilityKind.choices)
+
+    #: assets.AssetMachine pk (0 = not a machine target). Int-keyed on
+    #: purpose: no cross-app FK, and pk resolution stays authorization-
+    #: checked at read time via the maintenance scope helpers.
+    target_machine_id = models.PositiveIntegerField(default=0)
+    #: The machine serial as stamped on documents (verbatim operator text).
+    target_serial = models.CharField(max_length=255, blank=True, default='')
+    target_model = models.CharField(max_length=255, blank=True, default='')
+    target_config = models.JSONField(default=dict, blank=True)
+
+    proposed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='applicability_proposals',
+    )
+    proposal_basis = models.TextField()
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='applicability_verifications',
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+    countersigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='applicability_countersigns',
+    )
+    countersigned_at = models.DateTimeField(null=True, blank=True)
+
+    effective_from = models.DateField(null=True, blank=True)
+    effective_to = models.DateField(null=True, blank=True)
+
+    state = models.CharField(
+        max_length=16,
+        choices=ApplicabilityState.choices,
+        default=ApplicabilityState.PROPOSED,
+        db_index=True,
+    )
+    revoke_reason = models.TextField(blank=True, default='')
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    superseded_by = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='supersedes',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model metadata: the verification workflow's DB-level teeth."""
+
+        ordering = ['-created_at']
+        permissions = [
+            (
+                'verify_document_applicability',
+                'Can verify document applicability claims',
+            ),
+            (
+                'countersign_document_applicability',
+                'Can engineering-countersign model/configuration applicability',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['target_machine_id', 'state'], name='aichat_docappl_machine_idx'
+            ),
+            models.Index(
+                fields=['target_serial', 'state'], name='aichat_docappl_serial_idx'
+            ),
+        ]
+        constraints = [
+            # One LIVE claim per (document, kind, target tuple).
+            models.UniqueConstraint(
+                fields=[
+                    'document',
+                    'kind',
+                    'target_machine_id',
+                    'target_serial',
+                    'target_model',
+                ],
+                condition=Q(state='verified'),
+                name='aichat_docappl_live_uniq',
+            ),
+            # Per-kind target coherence: a claim names exactly the target
+            # shape its kind means, nothing more.
+            models.CheckConstraint(
+                condition=(
+                    ~Q(kind='exact_machine')
+                    | (Q(target_machine_id__gt=0) & Q(target_model=''))
+                ),
+                name='aichat_docappl_machine_target',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(kind__in=['inverter_model', 'firmware_config'])
+                    | (~Q(target_model='') & Q(target_machine_id=0))
+                ),
+                name='aichat_docappl_model_target',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(kind='fleet_wide')
+                    | (
+                        Q(target_machine_id=0)
+                        & Q(target_model='')
+                        & Q(target_serial='')
+                    )
+                ),
+                name='aichat_docappl_fleet_target',
+            ),
+            # Two-party: the proposer can never verify their own claim.
+            models.CheckConstraint(
+                condition=(
+                    Q(verified_by__isnull=True) | ~Q(verified_by=F('proposed_by'))
+                ),
+                name='aichat_docappl_two_party',
+            ),
+            # verified state requires the verification record...
+            models.CheckConstraint(
+                condition=(
+                    ~Q(state='verified')
+                    | (Q(verified_by__isnull=False) & Q(verified_at__isnull=False))
+                ),
+                name='aichat_docappl_verified_rec',
+            ),
+            # ...and model/configuration kinds require the countersign.
+            models.CheckConstraint(
+                condition=(
+                    ~(
+                        Q(state='verified')
+                        & Q(kind__in=['inverter_model', 'firmware_config'])
+                    )
+                    | Q(countersigned_by__isnull=False)
+                ),
+                name='aichat_docappl_countersign',
+            ),
+            models.CheckConstraint(
+                condition=(~Q(state='revoked') | Q(revoked_at__isnull=False)),
+                name='aichat_docappl_revoked_rec',
+            ),
+            models.CheckConstraint(
+                condition=~Q(document_content_sha256=''),
+                name='aichat_docappl_sha_not_empty',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'{self.document_id}:{self.kind}:{self.state}'
 
 
 class MessageFeedbackRating(models.TextChoices):
