@@ -98,11 +98,13 @@ def _settings(mode: str):
 
 @pytest.fixture(autouse=True)
 def _seams(monkeypatch):
+    from ai.core.tests.test_analysis_comparison import fake_comparison
     from ai.core.tests.test_analysis_tables import fake_aggregate, fake_trend
 
     monkeypatch.setattr(executor_module, "_retrieve_records", _fake_records)
     monkeypatch.setattr(executor_module, "_retrieve_aggregate", fake_aggregate)
     monkeypatch.setattr(executor_module, "_retrieve_trend", fake_trend)
+    monkeypatch.setattr(executor_module, "_retrieve_comparison", fake_comparison)
     monkeypatch.setattr(executor_module, "synthesize_claims", lambda *_a, **_k: None)
     monkeypatch.setattr(executor_module, "_reauthorize", lambda _user, _store: True)
 
@@ -241,6 +243,26 @@ def test_trend_intent_serves_the_validated_series(monkeypatch) -> None:
     assert canonical["workflow_used"] == "analysis_executor"
     assert canonical["response_state"] == "complete"
     assert "Series by month" in canonical["message"]
+    assert run.extras["evidence_sets"]
+    content_events = [
+        event
+        for event in emitter.events
+        if "TEXT_MESSAGE_CONTENT" in str(event.get("type") or event.get("event_type"))
+    ]
+    assert len(content_events) == 1
+
+
+def test_comparison_intent_serves_the_validated_statuses(monkeypatch) -> None:
+    # S9 per-intent wire pin: manual_wo_comparison under gate enforce is a
+    # full validated evidence answer with the six-status vocabulary.
+    emitter = RecordingEmitter()
+    canonical, run = _branch("enforce", emitter=emitter, intent="manual_wo_comparison")
+
+    assert canonical["workflow_used"] == "analysis_executor"
+    assert canonical["response_state"] == "complete"
+    assert "was compared against" in canonical["message"]
+    assert "documented_deviation" in canonical["message"]
+    assert "Compliance verdicts are not produced" in canonical["message"]
     assert run.extras["evidence_sets"]
     content_events = [
         event
