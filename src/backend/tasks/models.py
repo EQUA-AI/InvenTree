@@ -174,6 +174,12 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
                 name='tasks_wo_assignee_lifecycle',
             ),
             models.Index(fields=['due_date'], name='tasks_wo_due_date'),
+            # S7 analytics: the completion and schedule clocks carry the
+            # complete-population date windows at the 25k envelope.
+            models.Index(
+                fields=['actual_completed_at'], name='tasks_wo_actual_completed'
+            ),
+            models.Index(fields=['scheduled_start'], name='tasks_wo_sched_start'),
         ]
 
         db_table = 'tasks_workorder'

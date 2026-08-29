@@ -258,6 +258,11 @@ class AssetMaintenanceRecord(models.Model):
         """Model metadata."""
 
         ordering = ['-date']
+        indexes = [
+            # S7 analytics: per-machine date windows over the record
+            # population at the 25k envelope.
+            models.Index(fields=['machine', 'date'], name='assets_maint_machine_date')
+        ]
         verbose_name = _('Maintenance Record')
         verbose_name_plural = _('Maintenance Records')
 
