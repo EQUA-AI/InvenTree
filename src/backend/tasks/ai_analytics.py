@@ -914,6 +914,130 @@ def select_comparison_candidate(
     }
 
 
+def authorized_maintenance_record(user, record_id):
+    """Load one record scope-safely; denial never discloses existence."""
+    if not maintenance_ai_read_enabled():
+        return None
+    if not getattr(user, 'is_authenticated', False):
+        return None
+
+    from assets.models import AssetMaintenanceRecord
+
+    try:
+        pk = int(record_id)
+    except (TypeError, ValueError):
+        return None
+    record = (
+        AssetMaintenanceRecord.objects.select_related('machine').filter(pk=pk).first()
+    )
+    if record is None:
+        return None
+    try:
+        require_maintenance_record_scope(user, record)
+    except ScopeError:
+        return None
+    return record
+
+
+def _operand_versions(
+    rows,
+    *,
+    date_field: str,
+    date_from: str | None,
+    date_to: str | None,
+    date_only: bool,
+    scope_machine_ids,
+    require_machine: bool,
+    limit: int | None,
+) -> dict[str, Any]:
+    """The shared operand scan: ordered ``(pk, updated_at)`` version rows.
+
+    The snapshot hash is computed over this list (see
+    ``ai/core/analysis/snapshot.py`` — the vocabulary is ``pk:updated_at``
+    for both populations). ``limit`` fetches one extra row so overflow is
+    a fact, never a guess.
+    """
+    window, _echo = _window_filter(date_field, date_from, date_to, date_only=date_only)
+    if window:
+        rows = rows.filter(**window)
+    if require_machine:
+        rows = rows.filter(machine_id__isnull=False)
+    scope_ids = (
+        None if scope_machine_ids is None else {int(pk) for pk in scope_machine_ids}
+    )
+    if scope_ids is not None:
+        rows = rows.filter(machine_id__in=scope_ids)
+
+    ordered = rows.order_by('pk').values_list('pk', 'updated_at')
+    fetched = list(ordered[: limit + 1] if limit is not None else ordered)
+    overflow = limit is not None and len(fetched) > limit
+    if overflow:
+        fetched = fetched[:limit]
+    return {
+        'available': True,
+        'rows': [
+            (pk, updated.isoformat() if updated else '') for pk, updated in fetched
+        ],
+        'overflow': overflow,
+    }
+
+
+def work_order_operand_versions(
+    user,
+    *,
+    date_field: str = 'created_at',
+    date_from: str | None = None,
+    date_to: str | None = None,
+    scope_machine_ids=None,
+    require_machine: bool = False,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Version rows for the work-order population under the same filters.
+
+    ``require_machine`` mirrors the machine-grouped aggregate (Q17:
+    unassigned orders are outside every per-asset population, so they are
+    outside its membership too).
+    """
+    rows = _authorized_work_orders(user)
+    if rows is None:
+        return {'available': False, 'rows': [], 'overflow': False}
+    _require_date_field(date_field)
+    return _operand_versions(
+        rows,
+        date_field=date_field,
+        date_from=date_from,
+        date_to=date_to,
+        date_only=False,
+        scope_machine_ids=scope_machine_ids,
+        require_machine=require_machine,
+        limit=limit,
+    )
+
+
+def maintenance_record_operand_versions(
+    user,
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    scope_machine_ids=None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Version rows for the maintenance-record population (``date`` clock)."""
+    rows = _authorized_maintenance_records(user)
+    if rows is None:
+        return {'available': False, 'rows': [], 'overflow': False}
+    return _operand_versions(
+        rows,
+        date_field='date',
+        date_from=date_from,
+        date_to=date_to,
+        date_only=True,
+        scope_machine_ids=scope_machine_ids,
+        require_machine=False,
+        limit=limit,
+    )
+
+
 def get_maintenance_evidence(user, work_order_id, *, identity=None) -> dict[str, Any]:
     """The S9 evidence bundle (§8.3 op 7): distinct stages, never blended.
 
@@ -973,11 +1097,14 @@ __all__ = [
     'PopulationType',
     'TimeBucket',
     'aggregate_work_orders',
+    'authorized_maintenance_record',
     'get_maintenance_evidence',
     'get_repeat_intervals',
     'get_work_order_dataset_profile',
     'get_work_order_durations',
     'get_work_order_timeline',
+    'maintenance_record_operand_versions',
     'plant_timezone',
     'select_comparison_candidate',
+    'work_order_operand_versions',
 ]

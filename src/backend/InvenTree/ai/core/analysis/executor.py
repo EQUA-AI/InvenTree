@@ -22,10 +22,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from ai.core.analysis.evidence import (
+    EVIDENCE_SET_MEMBER_CAP,
     EvidenceStore,
     FactValue,
     coverage_fact,
+    fact_from_dataset_profile,
     fact_from_manual_citation,
+    facts_from_group_rows,
     facts_from_inventory_rows,
     facts_from_work_order_row,
 )
@@ -40,6 +43,7 @@ from ai.core.analysis.schemas import (
     AnalysisFacet,
     CanonicalEvidenceAnalysisResponseV2,
 )
+from ai.core.analysis.snapshot import AnalysisRetrievalIncomplete, build_manifest
 from ai.core.analysis.synthesis import (
     FACET_PLANS,
     deterministic_claims,
@@ -194,6 +198,353 @@ def _retrieve_records(
     return page
 
 
+def _scope_narrowing(scope: TurnScopeContext | None) -> dict[str, Any]:
+    """The enforce-only analysis-scope narrowing kwargs for analytics ops."""
+    enforce = bool(scope is not None and scope.enforce and scope.explicit)
+    if not enforce:
+        return {"scope_machine_ids": None, "date_from": None, "date_to": None}
+    return {
+        "scope_machine_ids": sorted(scope.machine_ids) if scope.machine_ids else None,
+        "date_from": getattr(scope, "date_from", None),
+        "date_to": getattr(scope, "date_to", None),
+    }
+
+
+def _snapshot_scan(scan_versions, *, compute):
+    """Scan → compute → rescan, retried once; §8.3.5 snapshot v1.
+
+    ``scan_versions()`` returns the operand-version dict from the tasks
+    scans; ``compute()`` runs the aggregation. A changed operand list after
+    compute retries the whole read once; a second divergence is the typed
+    ``snapshot_changed``. Overflow past the membership envelope is the
+    typed ``population_cap_exceeded`` (§7.6: larger exact-audit
+    calculations abstain).
+    """
+    for _attempt in range(2):
+        versions = scan_versions()
+        if not versions.get("available"):
+            return versions, None
+        if versions.get("overflow"):
+            raise AnalysisRetrievalIncomplete(
+                "population_cap_exceeded",
+                f"population exceeds the {EVIDENCE_SET_MEMBER_CAP} member envelope",
+            )
+        computed = compute()
+        recheck = scan_versions()
+        if recheck.get("rows") == versions.get("rows"):
+            return versions, computed
+    raise AnalysisRetrievalIncomplete(
+        "snapshot_changed", "operand versions changed during analysis; retried once"
+    )
+
+
+_VOCABULARY_CODES = frozenset({"grouping_unavailable", "bucket_range_exceeded"})
+
+
+def _vocabulary_incomplete(exc: Exception) -> AnalysisRetrievalIncomplete:
+    """Map a tasks vocabulary error onto the wire incomplete vocabulary."""
+    code = str(getattr(exc, "code", "") or "")
+    if code not in _VOCABULARY_CODES:
+        code = "grouping_unavailable"
+    return AnalysisRetrievalIncomplete(code, str(exc))
+
+
+def _retrieve_aggregate(
+    user: Any, store: EvidenceStore, *, scope: TurnScopeContext | None, query: str, run: Any
+) -> dict[str, Any]:
+    """fleet_aggregate: profile + one grouped count over the population."""
+    from ai.core.analysis.plans import build_aggregate_plan
+    from django.utils import timezone
+    from tasks.ai_analytics import (
+        AnalyticsRequestError,
+        aggregate_work_orders,
+        get_work_order_dataset_profile,
+        work_order_operand_versions,
+    )
+
+    as_of = timezone.now().isoformat()
+    plan = build_aggregate_plan(query)
+    narrowing = _scope_narrowing(scope)
+    grouping = plan["grouping"]
+    date_field = plan["date_field"]
+
+    profile: dict[str, Any] = {}
+
+    def _compute() -> dict[str, Any]:
+        nonlocal profile
+        profile = get_work_order_dataset_profile(user, date_field=date_field, **narrowing)
+        return aggregate_work_orders(user, grouping=grouping, date_field=date_field, **narrowing)
+
+    try:
+        versions, result = _snapshot_scan(
+            lambda: work_order_operand_versions(
+                user,
+                date_field=date_field,
+                require_machine=(grouping == "machine"),
+                limit=EVIDENCE_SET_MEMBER_CAP,
+                **narrowing,
+            ),
+            compute=_compute,
+        )
+    except AnalyticsRequestError as exc:
+        raise _vocabulary_incomplete(exc) from exc
+
+    snapshot_label = getattr(scope, "snapshot_id", None)
+    retrieval_id = f"ret_aggregate_{snapshot_label or 'unscoped'}"
+    if result is None or not result.get("available"):
+        store.set_primary_coverage({
+            "population_count": 0,
+            "returned_count": 0,
+            "complete_population": False,
+            "display_truncated": False,
+            "date_field": date_field,
+            "timezone": None,
+            "filters": [],
+            "as_of": as_of,
+            "snapshot_label": snapshot_label,
+            "excluded_null_date_count": None,
+            "incomplete_reason": "analytics_unavailable",
+        })
+        return result or {}
+
+    manifest = build_manifest(
+        snapshot_id=str(snapshot_label or ""),
+        operands=versions["rows"],
+        sources={"work_order": {"high_watermark": result.get("high_watermark")}},
+        plan=plan,
+        as_of=as_of,
+        notes=("row_pinned_only",),
+    )
+    run.query_plan = manifest
+
+    profile_fact = fact_from_dataset_profile(store, profile, retrieval_id=retrieval_id, as_of=as_of)
+    group_facts = facts_from_group_rows(
+        store,
+        result.get("groups") or (),
+        retrieval_id=retrieval_id,
+        as_of=as_of,
+        source_class="work_order",
+        source_revision=manifest.operand_hash,
+        grouping=grouping,
+    )
+    pending = store.open_evidence_set(
+        source_class="work_order",
+        filters=dict(result.get("applied_filters") or {}),
+        population_count=int(result.get("population_count") or 0),
+        evaluated_count=int(result.get("evaluated_count") or 0),
+        complete_population=bool(result.get("complete_population")),
+        snapshot_hash=manifest.operand_hash,
+        high_watermarks={"updated_at": result.get("high_watermark")},
+        calculation={
+            "operation": "group_count",
+            "result": str(int(result.get("total_group_count") or 0)),
+        },
+    )
+    for pk, version in versions["rows"]:
+        pending.add_member("work_order", str(pk), version)
+    pending.displayed_count = len(result.get("groups") or ())
+    store.add_calculation(
+        operation="group_count",
+        input_refs=(profile_fact, *group_facts),
+        values={
+            "population_count": FactValue("int", int(result.get("population_count") or 0)),
+            "total_group_count": FactValue("int", int(result.get("total_group_count") or 0)),
+            "shown_group_count": FactValue("int", len(result.get("groups") or ())),
+            "remainder_group_count": FactValue(
+                "int", int(result.get("remainder_group_count") or 0)
+            ),
+            "remainder_count": FactValue("int", int(result.get("remainder_count") or 0)),
+            "unassigned_machine_count": FactValue(
+                "int", int(result.get("unassigned_machine_count") or 0)
+            ),
+        },
+        evidence_set_handle=pending.handle,
+        complete_population=bool(result.get("complete_population")),
+    )
+    store.record_envelope({
+        "retrieval_id": retrieval_id,
+        "source_class": "work_order",
+        "operation": "aggregate",
+        "coverage": {
+            "population_count": int(result.get("population_count") or 0),
+            "returned_count": len(result.get("groups") or ()),
+            "complete_population": bool(result.get("complete_population")),
+        },
+    })
+    store.set_primary_coverage({
+        "population_count": int(result.get("population_count") or 0),
+        "returned_count": len(result.get("groups") or ()),
+        "complete_population": bool(result.get("complete_population")),
+        "display_truncated": bool(result.get("groups_truncated")),
+        "date_field": result.get("date_field"),
+        "timezone": result.get("timezone"),
+        "filters": [
+            f"{key}: {value}" for key, value in (result.get("applied_filters") or {}).items()
+        ],
+        "as_of": as_of,
+        "snapshot_label": snapshot_label,
+        "excluded_null_date_count": None,
+        "incomplete_reason": None,
+    })
+    return result
+
+
+def _retrieve_trend(
+    user: Any, store: EvidenceStore, *, scope: TurnScopeContext | None, query: str, run: Any
+) -> dict[str, Any]:
+    """trend_analysis: a zero-filled bucket series over one population."""
+    import datetime as _datetime
+
+    from ai.core.analysis.plans import build_trend_plan, default_trend_window
+    from django.utils import timezone
+    from tasks.ai_analytics import (
+        AnalyticsRequestError,
+        get_work_order_timeline,
+        maintenance_record_operand_versions,
+        plant_timezone,
+        work_order_operand_versions,
+    )
+
+    as_of = timezone.now().isoformat()
+    plan = build_trend_plan(query)
+    narrowing = _scope_narrowing(scope)
+    population = plan["population_type"]
+    date_field = plan["date_field"]
+    bucket = plan["bucket"]
+
+    # An unbounded trend would refuse on the bucket cap; the domain default
+    # is the last twelve full months, always echoed in the filters.
+    if not narrowing.get("date_from") and not narrowing.get("date_to"):
+        tz, _tzname = plant_timezone()
+        today = _datetime.datetime.now(tz).date()
+        narrowing["date_from"], narrowing["date_to"] = default_trend_window(today)
+        plan["window_default"] = "last_12_months"
+
+    if population == "maintenance_records":
+
+        def _scan() -> dict[str, Any]:
+            return maintenance_record_operand_versions(
+                user,
+                limit=EVIDENCE_SET_MEMBER_CAP,
+                date_from=narrowing["date_from"],
+                date_to=narrowing["date_to"],
+                scope_machine_ids=narrowing["scope_machine_ids"],
+            )
+
+    else:
+
+        def _scan() -> dict[str, Any]:
+            return work_order_operand_versions(
+                user, date_field=date_field, limit=EVIDENCE_SET_MEMBER_CAP, **narrowing
+            )
+
+    try:
+        versions, result = _snapshot_scan(
+            _scan,
+            compute=lambda: get_work_order_timeline(
+                user,
+                bucket=bucket,
+                population=population,
+                date_field=date_field,
+                **narrowing,
+            ),
+        )
+    except AnalyticsRequestError as exc:
+        raise _vocabulary_incomplete(exc) from exc
+
+    snapshot_label = getattr(scope, "snapshot_id", None)
+    retrieval_id = f"ret_trend_{snapshot_label or 'unscoped'}"
+    source_class = "maintenance_record" if population == "maintenance_records" else "work_order"
+    if result is None or not result.get("available"):
+        store.set_primary_coverage({
+            "population_count": 0,
+            "returned_count": 0,
+            "complete_population": False,
+            "display_truncated": False,
+            "date_field": date_field,
+            "timezone": None,
+            "filters": [],
+            "as_of": as_of,
+            "snapshot_label": snapshot_label,
+            "excluded_null_date_count": None,
+            "incomplete_reason": "analytics_unavailable",
+        })
+        return result or {}
+
+    manifest = build_manifest(
+        snapshot_id=str(snapshot_label or ""),
+        operands=versions["rows"],
+        sources={source_class: {"high_watermark": result.get("high_watermark")}},
+        plan=plan,
+        as_of=as_of,
+        notes=("row_pinned_only",),
+    )
+    run.query_plan = manifest
+
+    bucket_facts = facts_from_group_rows(
+        store,
+        result.get("buckets") or (),
+        retrieval_id=retrieval_id,
+        as_of=as_of,
+        source_class=source_class,
+        source_revision=manifest.operand_hash,
+        grouping="bucket",
+    )
+    pending = store.open_evidence_set(
+        source_class=source_class,
+        filters=dict(result.get("applied_filters") or {}),
+        population_count=int(result.get("population_count") or 0),
+        evaluated_count=int(result.get("evaluated_count") or 0),
+        complete_population=bool(result.get("complete_population")),
+        snapshot_hash=manifest.operand_hash,
+        high_watermarks={"updated_at": result.get("high_watermark")},
+        calculation={
+            "operation": "bucket_count",
+            "result": str(int(result.get("bucket_count") or 0)),
+        },
+    )
+    for pk, version in versions["rows"]:
+        pending.add_member(source_class, str(pk), version)
+    pending.displayed_count = len(result.get("buckets") or ())
+    store.add_calculation(
+        operation="bucket_count",
+        input_refs=tuple(bucket_facts),
+        values={
+            "population_count": FactValue("int", int(result.get("population_count") or 0)),
+            "bucket_count": FactValue("int", int(result.get("bucket_count") or 0)),
+            "null_date_count": FactValue("int", int(result.get("null_date_count") or 0)),
+        },
+        evidence_set_handle=pending.handle,
+        complete_population=bool(result.get("complete_population")),
+    )
+    store.record_envelope({
+        "retrieval_id": retrieval_id,
+        "source_class": source_class,
+        "operation": "timeline",
+        "coverage": {
+            "population_count": int(result.get("population_count") or 0),
+            "returned_count": len(result.get("buckets") or ()),
+            "complete_population": bool(result.get("complete_population")),
+        },
+    })
+    store.set_primary_coverage({
+        "population_count": int(result.get("population_count") or 0),
+        "returned_count": len(result.get("buckets") or ()),
+        "complete_population": bool(result.get("complete_population")),
+        "display_truncated": False,
+        "date_field": result.get("date_field"),
+        "timezone": result.get("timezone"),
+        "filters": [
+            f"{key}: {value}" for key, value in (result.get("applied_filters") or {}).items()
+        ],
+        "as_of": as_of,
+        "snapshot_label": snapshot_label,
+        "excluded_null_date_count": int(result.get("null_date_count") or 0),
+        "incomplete_reason": None,
+    })
+    return result
+
+
 def _retrieve_manual(user: Any, store: EvidenceStore, *, query: str) -> dict[str, Any]:
     """manual_fact: the §8.4 fallback orchestrator → controlled facts."""
     from ai.core.analysis.source_gateway import retrieve_manual_fact
@@ -299,6 +650,17 @@ def _reauthorize(user: Any, store: EvidenceStore) -> bool:
 
             for machine_id in machine_ids:
                 if authorized_machine(user, machine_id) is None:
+                    return False
+        record_ids = {
+            fact.source_id
+            for fact in store.facts.values()
+            if fact.source_class == "maintenance_record" and fact.kind == "maintenance_record"
+        }
+        if record_ids:
+            from tasks.ai_analytics import authorized_maintenance_record
+
+            for record_id in record_ids:
+                if authorized_maintenance_record(user, record_id) is None:
                     return False
         return True
     except Exception:
@@ -435,6 +797,7 @@ async def run_analysis(
 
     if not shadow:
         await _emit_progress(run, "reviewing_records", emitted)
+    vocabulary_code: str | None = None
     try:
         async with asyncio.timeout(deadline_s):
             if intent == "record_retrieval":
@@ -443,8 +806,23 @@ async def run_analysis(
                 await service._call_sync(_retrieve_manual, user, store, query=run.routing_content)
             elif intent == "source_inventory":
                 await service._call_sync(_retrieve_inventory, user, store)
+            elif intent == "fleet_aggregate":
+                await service._call_sync(
+                    _retrieve_aggregate,
+                    user,
+                    store,
+                    scope=scope,
+                    query=run.routing_content,
+                    run=run,
+                )
+            elif intent == "trend_analysis":
+                await service._call_sync(
+                    _retrieve_trend, user, store, scope=scope, query=run.routing_content, run=run
+                )
     except TimeoutError:
         timed_out = True
+    except AnalysisRetrievalIncomplete as exc:
+        vocabulary_code = exc.code
     except Exception:
         logger.warning("analysis retrieval failed", exc_info=True)
         retrieval_failed = True
@@ -454,6 +832,33 @@ async def run_analysis(
 
     facet_plan = FACET_PLANS.get(intent, ("records",))
     incomplete_reasons: list[dict[str, str]] = []
+
+    if vocabulary_code is not None:
+        # S7: a TYPED honest unavailability (unsupported grouping, series
+        # past the bucket cap, population past the membership envelope, a
+        # snapshot that would not hold still). Never an estimate.
+        response = _template_response(
+            kind_state="incomplete",
+            message=deterministic_template(ANALYSIS_ABSTAIN, locale),
+            reasoning=(
+                "The requested analysis is typed as unavailable "
+                f"({vocabulary_code}); nothing was estimated."
+            ),
+            incomplete_reasons=[{"code": vocabulary_code, "facet": facet} for facet in facet_plan],
+        )
+        return _outcome_from_response(
+            response,
+            turn_state="incomplete",
+            store=store,
+            scope=scope,
+            gate={"verdict": "abstain", "codes": [vocabulary_code]},
+            entities=[],
+            emitted=emitted,
+            claims=[],
+            ordinals=None,
+            no_data_reason=vocabulary_code,
+            persist_evidence=False,
+        )
 
     if retrieval_failed or (timed_out and not store.facts):
         code = "retrieval_timeout" if timed_out else "capability_boundary"

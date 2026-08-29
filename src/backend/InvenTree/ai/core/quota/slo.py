@@ -16,8 +16,10 @@ SLO_TARGETS: dict[str, tuple[int, int, int]] = {
     "deterministic": (1, 2, 5),
 }
 
-#: Task intents that classify as server aggregate/trend work.
-_AGGREGATE_INTENTS = frozenset({"fleet_aggregate", "trend", "comparison"})
+#: Task intents that classify as server aggregate/trend work. Values are
+#: real ``TaskIntent`` members (S7 fixed the phantom "trend"/"comparison"
+#: strings that silently classed trend turns as lookups).
+_AGGREGATE_INTENTS = frozenset({"fleet_aggregate", "trend_analysis"})
 
 #: Deterministic boundary responses (no model in the loop).
 _DETERMINISTIC_WORKFLOWS = frozenset({

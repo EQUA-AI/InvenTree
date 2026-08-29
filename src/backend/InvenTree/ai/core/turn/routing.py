@@ -72,8 +72,17 @@ async def build_route(service: NormalizedTurnService, run: TurnRun) -> None:
     # serve it (enforce): a gate rollback to shadow/off automatically
     # returns every analysis intent to the legacy rail instead of an
     # abstention — the no-refusal invariant survives misconfiguration.
+    # The per-intent HOLDBACK (S7 rollout) works the same way: a held-back
+    # intent keeps the legacy rail (where the shadow scans keep soaking
+    # it), so each new executor's enforce flip is one env edit per intent.
+    from ai.core.analysis.intent import held_back_intents
+
+    holdback = held_back_intents(settings)
+    intent_held_back = run.task_intent is not None and run.task_intent.intent.value in holdback
     gate_enforce = str(getattr(settings, "evidence_gate_mode", "off") or "off") == "enforce"
-    analysis_turn = intent_enforce and gate_enforce and _analysis_override_applies(run)
+    analysis_turn = (
+        intent_enforce and gate_enforce and not intent_held_back and _analysis_override_applies(run)
+    )
     if analysis_turn:
         run.diagnostic_context = None
     else:
@@ -119,7 +128,12 @@ async def build_route(service: NormalizedTurnService, run: TurnRun) -> None:
                     # Content-free divergence record: what enforce WOULD
                     # have re-routed away from the legacy decision (reason
                     # names WHICH precondition kept the legacy route).
-                    reason = "router_dark" if not intent_enforce else "gate_not_enforce"
+                    if not intent_enforce:
+                        reason = "router_dark"
+                    elif not gate_enforce:
+                        reason = "gate_not_enforce"
+                    else:
+                        reason = "intent_holdback"
                     logger.info(
                         "analysis_router.divergence intent=%s effect=%s "
                         "legacy_mode=%s legacy_wf=%s source=%s confidence=%.2f "

@@ -925,6 +925,13 @@ class ThreadRepository:
                 if machine is None:
                     return None
                 return machine.name
+            if source_class == 'maintenance_record':
+                from tasks.ai_analytics import authorized_maintenance_record
+
+                record = authorized_maintenance_record(actor_user, object_id)
+                if record is None:
+                    return None
+                return f'{record.date.isoformat()} — {record.summary}'[:255]
         except ImportError:
             return None
         return None

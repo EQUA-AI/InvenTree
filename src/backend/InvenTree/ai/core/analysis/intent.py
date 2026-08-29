@@ -64,7 +64,7 @@ ANALYSIS_INTENTS = frozenset({
 })
 
 #: Intents with a SHIPPED validated executor — the ONLY intents the routing
-#: override may send to RouteMode.ANALYSIS. S7 adds FLEET_AGGREGATE and
+#: override may send to RouteMode.ANALYSIS. S7 added FLEET_AGGREGATE and
 #: TREND_ANALYSIS; S9 adds MANUAL_WO_COMPARISON. An analysis intent NOT in
 #: this set keeps the legacy full-tool rail end-to-end (owner decision
 #: 2026-08-29: a user-visible refusal of an analysis question must be
@@ -73,7 +73,22 @@ ANALYSIS_ROUTED_INTENTS = frozenset({
     TaskIntent.RECORD_RETRIEVAL,
     TaskIntent.MANUAL_FACT,
     TaskIntent.SOURCE_INVENTORY,
+    TaskIntent.FLEET_AGGREGATE,
+    TaskIntent.TREND_ANALYSIS,
 })
+
+
+def held_back_intents(settings: Any) -> frozenset[str]:
+    """Intent values the deployment holds on the legacy rail (S7 rollout).
+
+    ``AIMMS_ANALYSIS_INTENT_HOLDBACK`` is a csv of intent VALUES. A
+    held-back intent keeps the legacy rail exactly like an unshipped one —
+    the legacy shadow scans keep soaking it — so ops can stage each new
+    executor's enforce flip (and roll one back) per intent, without a
+    deploy. Default empty: nothing held back, no barrier.
+    """
+    raw = str(getattr(settings, "aimms_analysis_intent_holdback", "") or "")
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
 
 
 @dataclass(frozen=True, slots=True)

@@ -234,7 +234,15 @@ class TestCapabilitySelection:
 class TestRoutingIntegration:
     """Shadow keeps the legacy route; enforce swaps to the analysis rail."""
 
-    def _run_build_route(self, *, shadow: bool, enforce: bool, content: str, gate: str = "enforce"):
+    def _run_build_route(
+        self,
+        *,
+        shadow: bool,
+        enforce: bool,
+        content: str,
+        gate: str = "enforce",
+        holdback: str = "",
+    ):
         from types import SimpleNamespace
 
         from ai.core.turn import routing as routing_stage
@@ -280,6 +288,7 @@ class TestRoutingIntegration:
             feature_ai_analysis_router_shadow=shadow,
             feature_ai_analysis_router_enforce=enforce,
             evidence_gate_mode=gate,
+            aimms_analysis_intent_holdback=holdback,
         )
         with mock.patch("ai.core.config.get_settings", return_value=settings):
             asyncio.run(routing_stage.build_route(_Service(), run))
@@ -306,11 +315,41 @@ class TestRoutingIntegration:
         assert factory_calls == []
 
     def test_unshipped_analysis_intents_keep_the_legacy_route(self) -> None:
-        # Owner invariant (2026-08-29): fleet/trend/comparison questions are
-        # NEVER refused — until S7/S9 executors ship they keep the legacy
-        # full-tool rail (diagnostic context intact) even under full enforce.
+        # Owner invariant (2026-08-29): an analysis question whose executor
+        # has not shipped is NEVER refused — it keeps the legacy full-tool
+        # rail (diagnostic context intact) even under full enforce. After
+        # S7 the only unshipped analysis intent is manual_wo_comparison
+        # (S9 flips it, and this pin then retires).
+        run, factory_calls = self._run_build_route(
+            shadow=True,
+            enforce=True,
+            content="Did work order WO-1234 follow the service manual procedure?",
+        )
+        assert run.task_intent is not None
+        assert run.task_intent.intent.value == "manual_wo_comparison"
+        assert run.route.mode.value == "fast_path"
+        assert factory_calls == ["built"]
+
+    def test_shipped_aggregate_routes_under_enforce(self) -> None:
+        # S7: fleet_aggregate has a shipped validated executor — under full
+        # enforce it takes the analysis rail like record_retrieval does.
         run, factory_calls = self._run_build_route(
             shadow=True, enforce=True, content="How many work orders were opened last month?"
+        )
+        assert run.task_intent is not None
+        assert run.task_intent.intent.value == "fleet_aggregate"
+        assert run.route.mode.value == "analysis"
+        assert factory_calls == []
+
+    def test_holdback_keeps_a_shipped_intent_on_the_legacy_route(self) -> None:
+        # S7 rollout knob: a held-back intent behaves exactly like an
+        # unshipped one — legacy rail, diagnostic context built, no refusal
+        # — so ops can stage each executor's enforce flip per intent.
+        run, factory_calls = self._run_build_route(
+            shadow=True,
+            enforce=True,
+            content="How many work orders were opened last month?",
+            holdback="fleet_aggregate, trend_analysis",
         )
         assert run.task_intent is not None
         assert run.task_intent.intent.value == "fleet_aggregate"

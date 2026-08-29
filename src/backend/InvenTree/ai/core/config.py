@@ -220,6 +220,13 @@ class Settings(BaseSettings):
             "FEATURE_AI_ANALYSIS_ROUTER_ENFORCE", "AIMMS_FEATURE_AI_ANALYSIS_ROUTER_ENFORCE"
         ),
     )
+    # S7 rollout: csv of intent VALUES held on the legacy rail despite a
+    # shipped executor — the per-intent enforce stage/rollback knob (see
+    # analysis.intent.held_back_intents). Empty = nothing held back.
+    aimms_analysis_intent_holdback: str = Field(
+        default="",
+        validation_alias=AliasChoices("AIMMS_ANALYSIS_INTENT_HOLDBACK"),
+    )
     feature_distributed_rate_limit_shadow: bool = Field(
         default=True,
         validation_alias=AliasChoices(

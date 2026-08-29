@@ -196,6 +196,13 @@ class IncompleteReason(_StrictAnalysisModel):
     """A typed reason a facet did not complete (partial-state contract)."""
 
     code: Literal[
+        # S7 analytics: a snapshot that would not hold still after one
+        # retry; a grouping/series the vocabulary honestly refuses.
+        "snapshot_changed",
+        "grouping_unavailable",
+        "bucket_range_exceeded",
+        # S9 comparison (reserved until the gate ships):
+        "comparison_gate_unmet",
         "retrieval_timeout",
         "synthesis_timeout",
         "facet_budget_exhausted",

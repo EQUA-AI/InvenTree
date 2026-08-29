@@ -212,7 +212,8 @@ def test_unrouted_intents_defensively_abstain() -> None:
         with mock.patch("ai.core.config.get_settings", lambda m=gate_mode: _settings(m)):
             canonical = asyncio.run(
                 _run_analysis_branch(
-                    _service(), _run(intent="fleet_aggregate", emitter=RecordingEmitter())
+                    _service(),
+                    _run(intent="manual_wo_comparison", emitter=RecordingEmitter()),
                 )
             )
         assert canonical["workflow_used"] == "analysis_unavailable", gate_mode

@@ -242,6 +242,17 @@ REGISTRY: tuple[FlagEntry, ...] = (
             'RouteMode.ANALYSIS (dark until the Phase-4 evidence gate)'
         ),
     ),
+    FlagEntry(
+        'AIMMS_ANALYSIS_INTENT_HOLDBACK',
+        'str',
+        '',
+        'ai',
+        ai_field='aimms_analysis_intent_holdback',
+        description=(
+            'S7 rollout: csv of intent values held on the legacy rail '
+            'despite a shipped executor (per-intent stage/rollback)'
+        ),
+    ),
     # --- ai plane (pydantic Settings fields; canonical env name = alias) ---
     FlagEntry(
         'FEATURE_WF1_DIAGNOSTICS',
