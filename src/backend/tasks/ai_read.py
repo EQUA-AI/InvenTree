@@ -60,6 +60,7 @@ EXCLUDED_FIELDS = {
     'RepairPacket.created_by': 'author identity, not maintenance data',
     'Approval.*': 'approvals payload travels its own governed rail',
     'Attachment.attachment': 'file body / storage path',
+    'AssetMaintenanceRecord.performed_by': 'free-text identity; role labels only',
 }
 
 #: Fence markers, byte-identical across every AIMMS surface. Redeclared rather

@@ -41,7 +41,12 @@ from django.conf import settings
 
 from .ai_read import PAGE_DATE_FIELDS, fence, maintenance_ai_read_enabled
 from .models import WorkOrder
-from .scope import ScopeError, work_order_scope_filter
+from .scope import (
+    ScopeError,
+    maintenance_record_scope_filter,
+    require_maintenance_record_scope,
+    work_order_scope_filter,
+)
 
 #: Display-group policy (owner-flagged defaults, 2026-08-29): a readable
 #: answer shows at most this many groups; the hard cap bounds the query and
@@ -57,8 +62,10 @@ class AnalyticsRequestError(Exception):
     """A typed vocabulary failure the analysis rail renders as a limitation.
 
     ``code`` is one of ``grouping_unavailable`` / ``date_field_unavailable``
-    / ``window_invalid`` — never free text. Authorization failures do NOT
-    raise: they return the unavailable shape, so denial stays silent.
+    / ``window_invalid`` / ``bucket_range_exceeded`` /
+    ``population_unavailable`` / ``selection_rule_unavailable`` — never free
+    text. Authorization failures do NOT raise: they return the unavailable
+    shape, so denial stays silent.
     """
 
     def __init__(self, code: str, message: str) -> None:
@@ -108,6 +115,26 @@ _WORK_ORDER_GROUP_COLUMNS: dict[Grouping, tuple[str, str | None]] = {
     Grouping.COMPONENT_LABEL: ('affected_component', None),
 }
 
+#: The maintenance-record population groups by its machine only: `summary`
+#: and `details` are narratives, `performed_by` is an identity — absent.
+_MAINTENANCE_RECORD_GROUP_COLUMNS: dict[Grouping, tuple[str, str | None]] = {
+    Grouping.MACHINE: ('machine_id', 'machine__name')
+}
+
+#: Repeat-interval analysis groups by stable event identity, nothing else.
+_INTERVAL_GROUPINGS = frozenset({Grouping.MACHINE, Grouping.COMPONENT_REF})
+
+#: Deterministic comparison candidate-selection rules (S9 entry point):
+#: rule name → extra ORM filters on the completed-work-order base. The rule
+#: table is the control — a model never orders or picks candidates.
+_COMPARISON_RULES: dict[str, dict[str, Any]] = {
+    'most_recent_completed_corrective': {'work_order_type': 'corrective'},
+    'most_recent_completed': {},
+}
+
+#: How many ordered candidates the S9 gate may iterate before abstaining.
+MAX_COMPARISON_CANDIDATES = 5
+
 
 def plant_timezone() -> tuple[ZoneInfo, str]:
     """The deployment's analytics clock, as ``(tzinfo, IANA name)``.
@@ -155,13 +182,19 @@ def _window_boundary(day: datetime.date, tz: ZoneInfo) -> datetime.datetime:
 
 
 def _window_filter(
-    date_field: str, date_from: str | None, date_to: str | None
+    date_field: str,
+    date_from: str | None,
+    date_to: str | None,
+    *,
+    date_only: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Build the half-open ``[from, to)`` datetime filter in the plant zone.
+    """Build the half-open ``[from, to)`` filter in the plant zone.
 
     Returns ``(orm_filter_kwargs, applied_filter_echo)``. Calendar dates are
     interpreted as plant-timezone midnights, so "July" means July on the
-    plant's clock, not the server's.
+    plant's clock, not the server's. ``date_only`` targets a ``DateField``
+    (maintenance-record dates): calendar values compare directly and no
+    clock conversion applies.
     """
     tz, tzname = plant_timezone()
     from_date = _parse_window_date(date_from, edge='date_from')
@@ -174,10 +207,14 @@ def _window_filter(
     orm: dict[str, Any] = {}
     echo: dict[str, Any] = {'date_field': date_field, 'timezone': tzname}
     if from_date:
-        orm[f'{date_field}__gte'] = _window_boundary(from_date, tz)
+        orm[f'{date_field}__gte'] = (
+            from_date if date_only else _window_boundary(from_date, tz)
+        )
         echo['from'] = from_date.isoformat()
     if to_date:
-        orm[f'{date_field}__lt'] = _window_boundary(to_date, tz)
+        orm[f'{date_field}__lt'] = (
+            to_date if date_only else _window_boundary(to_date, tz)
+        )
         echo['to'] = to_date.isoformat()
     return orm, echo
 
@@ -394,15 +431,553 @@ def aggregate_work_orders(
     }
 
 
+def _require_population(population: str) -> PopulationType:
+    """Coerce a population selector; typed error keeps 'both' unsayable."""
+    try:
+        return PopulationType(str(population))
+    except ValueError:
+        raise AnalyticsRequestError(
+            'population_unavailable', f'{population!r} is not a named event population'
+        ) from None
+
+
+def _authorized_maintenance_records(user):
+    """The actor's authorized record queryset, or ``None`` fail-closed."""
+    if not maintenance_ai_read_enabled():
+        return None
+    if not getattr(user, 'is_authenticated', False):
+        return None
+
+    from assets.models import AssetMaintenanceRecord
+
+    try:
+        predicate = maintenance_record_scope_filter(user)
+    except ScopeError:
+        return None
+    return AssetMaintenanceRecord.objects.filter(predicate)
+
+
+def _population_queryset(user, population: PopulationType):
+    """Authorized rows for one named population, or ``None`` fail-closed."""
+    if population is PopulationType.WORK_ORDERS:
+        return _authorized_work_orders(user)
+    return _authorized_maintenance_records(user)
+
+
+def _population_date_field(population: PopulationType, date_field: str | None) -> str:
+    """Resolve and validate the event clock for one population."""
+    if population is PopulationType.WORK_ORDERS:
+        return _require_date_field(date_field or 'created_at')
+    resolved = date_field or 'date'
+    if resolved != 'date':
+        raise AnalyticsRequestError(
+            'date_field_unavailable',
+            f'{resolved!r} is not the maintenance-record event date',
+        )
+    return resolved
+
+
+# --- calendar buckets -------------------------------------------------------
+
+
+def _truncate_day(day: datetime.date, bucket: TimeBucket) -> datetime.date:
+    """The bucket-start date containing ``day`` (ISO weeks; calendar units)."""
+    if bucket is TimeBucket.WEEK:
+        return day - datetime.timedelta(days=day.weekday())
+    if bucket is TimeBucket.MONTH:
+        return day.replace(day=1)
+    quarter_month = ((day.month - 1) // 3) * 3 + 1
+    return day.replace(month=quarter_month, day=1)
+
+
+def _advance_day(day: datetime.date, bucket: TimeBucket) -> datetime.date:
+    """The next bucket-start after ``day`` (itself a bucket start)."""
+    if bucket is TimeBucket.WEEK:
+        return day + datetime.timedelta(days=7)
+    months = 1 if bucket is TimeBucket.MONTH else 3
+    month_index = day.month - 1 + months
+    return day.replace(
+        year=day.year + month_index // 12, month=month_index % 12 + 1, day=1
+    )
+
+
+def _bucket_expression(bucket: TimeBucket, date_field: str, tz: ZoneInfo):
+    """The ORM Trunc expression matching :func:`_truncate_day` exactly.
+
+    ``tzinfo`` only applies under ``USE_TZ`` (Django rejects it otherwise);
+    the naive test convention truncates on the stored clock, which is what
+    :func:`_window_boundary` stored.
+    """
+    from django.db.models.functions import TruncMonth, TruncQuarter, TruncWeek
+
+    trunc = {
+        TimeBucket.WEEK: TruncWeek,
+        TimeBucket.MONTH: TruncMonth,
+        TimeBucket.QUARTER: TruncQuarter,
+    }[bucket]
+    if getattr(settings, 'USE_TZ', True):
+        return trunc(date_field, tzinfo=tz)
+    return trunc(date_field)
+
+
+def _bucket_date(value, tz: ZoneInfo) -> datetime.date:
+    """Normalize a Trunc result (datetime or date, aware or naive) to a date."""
+    if isinstance(value, datetime.datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(tz)
+        return value.date()
+    return value
+
+
+def get_work_order_timeline(
+    user,
+    *,
+    bucket: str,
+    population: str = 'work_orders',
+    date_field: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    scope_machine_ids=None,
+) -> dict[str, Any]:
+    """Zero-filled calendar series over one population (§8.3 op 3).
+
+    Every bucket between the first and last is present — a silent gap and a
+    zero month must be distinguishable. Series longer than ``MAX_BUCKETS``
+    are a typed refusal, never a silently clipped chart. Null event dates
+    are excluded from the series and counted.
+    """
+    operation = 'timeline'
+    population_type = _require_population(population)
+    rows = _population_queryset(user, population_type)
+    if rows is None:
+        return _unavailable(population_type, operation)
+
+    try:
+        bucket_key = TimeBucket(str(bucket))
+    except ValueError:
+        raise AnalyticsRequestError(
+            'window_invalid', f'{bucket!r} is not an approved time bucket'
+        ) from None
+    resolved_field = _population_date_field(population_type, date_field)
+    date_only = population_type is PopulationType.MAINTENANCE_RECORDS
+
+    from django.db.models import Count, Max
+
+    window, applied_filters = _window_filter(
+        resolved_field, date_from, date_to, date_only=date_only
+    )
+    if window:
+        rows = rows.filter(**window)
+    applied_filters['bucket'] = str(bucket_key)
+
+    scope_ids = (
+        None if scope_machine_ids is None else {int(pk) for pk in scope_machine_ids}
+    )
+    if scope_ids is not None:
+        rows = rows.filter(machine_id__in=scope_ids)
+        applied_filters['machine_ids'] = sorted(scope_ids)
+
+    population_count = rows.count()
+    null_dates = rows.filter(**{f'{resolved_field}__isnull': True}).count()
+    high_watermark = rows.aggregate(hw=Max('updated_at'))['hw']
+
+    tz, _tzname = plant_timezone()
+    dated = rows.exclude(**{f'{resolved_field}__isnull': True})
+    counted = (
+        dated
+        .annotate(bucket_start=_bucket_expression(bucket_key, resolved_field, tz))
+        .values('bucket_start')
+        .annotate(n=Count('pk'))
+        .order_by('bucket_start')
+    )
+    by_start: dict[datetime.date, int] = {
+        _bucket_date(entry['bucket_start'], tz): entry['n']
+        for entry in counted
+        if entry['bucket_start'] is not None
+    }
+
+    from_date = _parse_window_date(date_from, edge='date_from')
+    to_date = _parse_window_date(date_to, edge='date_to')
+    starts = sorted(by_start)
+    first = _truncate_day(from_date, bucket_key) if from_date else None
+    if first is None and starts:
+        first = starts[0]
+    last = (
+        _truncate_day(to_date - datetime.timedelta(days=1), bucket_key)
+        if to_date
+        else None
+    )
+    if last is None and starts:
+        last = starts[-1]
+
+    buckets: list[dict[str, Any]] = []
+    if first is not None and last is not None and first <= last:
+        cursor = first
+        while cursor <= last:
+            if len(buckets) >= MAX_BUCKETS:
+                raise AnalyticsRequestError(
+                    'bucket_range_exceeded',
+                    f'series exceeds {MAX_BUCKETS} {bucket_key} buckets; '
+                    'narrow the window or widen the bucket',
+                )
+            buckets.append({
+                'bucket': cursor.isoformat(),
+                'group_count': by_start.get(cursor, 0),
+            })
+            cursor = _advance_day(cursor, bucket_key)
+
+    return {
+        'operation': operation,
+        'population_type': str(population_type),
+        'available': True,
+        'bucket': str(bucket_key),
+        'population_count': population_count,
+        'evaluated_count': population_count,
+        'complete_population': True,
+        'date_field': resolved_field,
+        'timezone': applied_filters['timezone'],
+        'buckets': buckets,
+        'bucket_count': len(buckets),
+        'null_date_count': null_dates,
+        'applied_filters': applied_filters,
+        'high_watermark': high_watermark.isoformat() if high_watermark else None,
+    }
+
+
+def get_repeat_intervals(
+    user,
+    *,
+    grouping: str = 'machine',
+    population: str = 'work_orders',
+    date_field: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    scope_machine_ids=None,
+) -> dict[str, Any]:
+    """Consecutive-event intervals per group (§8.3 op 4).
+
+    The grouping rule and the event clock are explicit in the result; an
+    interval is the gap between successive events of the SAME group under
+    that rule, nothing more — recurrence of a fault is a human conclusion.
+    Groups are ranked by event count and capped like the aggregate.
+    """
+    import itertools
+    import statistics
+
+    operation = 'repeat_intervals'
+    population_type = _require_population(population)
+    rows = _population_queryset(user, population_type)
+    if rows is None:
+        return _unavailable(population_type, operation)
+
+    columns = (
+        _WORK_ORDER_GROUP_COLUMNS
+        if population_type is PopulationType.WORK_ORDERS
+        else _MAINTENANCE_RECORD_GROUP_COLUMNS
+    )
+    try:
+        grouping_key = Grouping(str(grouping))
+    except ValueError:
+        grouping_key = None
+    if (
+        grouping_key is None
+        or grouping_key not in _INTERVAL_GROUPINGS
+        or grouping_key not in columns
+    ):
+        raise AnalyticsRequestError(
+            'grouping_unavailable',
+            f'{grouping!r} is not an approved interval grouping for {population_type}',
+        )
+    key_column, label_column = columns[grouping_key]
+    resolved_field = _population_date_field(population_type, date_field)
+    date_only = population_type is PopulationType.MAINTENANCE_RECORDS
+
+    from django.db.models import Max
+
+    window, applied_filters = _window_filter(
+        resolved_field, date_from, date_to, date_only=date_only
+    )
+    if window:
+        rows = rows.filter(**window)
+    applied_filters['grouping'] = str(grouping_key)
+
+    unassigned = 0
+    if grouping_key is Grouping.MACHINE:
+        unassigned = rows.filter(machine_id__isnull=True).count()
+        rows = rows.filter(machine_id__isnull=False)
+
+    scope_ids = (
+        None if scope_machine_ids is None else {int(pk) for pk in scope_machine_ids}
+    )
+    if scope_ids is not None:
+        rows = rows.filter(machine_id__in=scope_ids)
+        applied_filters['machine_ids'] = sorted(scope_ids)
+
+    null_dates = rows.filter(**{f'{resolved_field}__isnull': True}).count()
+    dated = rows.exclude(**{f'{resolved_field}__isnull': True})
+    population_count = dated.count()
+    high_watermark = rows.aggregate(hw=Max('updated_at'))['hw']
+
+    label_by_key: dict[Any, str | None] = {}
+    events_by_key: dict[Any, list[Any]] = {}
+    value_columns = (
+        (key_column, resolved_field)
+        if label_column is None
+        else (key_column, label_column, resolved_field)
+    )
+    for entry in dated.values_list(*value_columns).order_by(key_column, resolved_field):
+        key = entry[0]
+        when = entry[-1]
+        events_by_key.setdefault(key, []).append(when)
+        if label_column is not None and key not in label_by_key:
+            label_by_key[key] = fence(str(entry[1] or ''), limit=255) or None
+
+    def _days_between(earlier, later) -> float:
+        if isinstance(earlier, datetime.datetime):
+            return round((later - earlier).total_seconds() / 86400.0, 1)
+        return float((later - earlier).days)
+
+    ranked = sorted(
+        events_by_key.items(), key=lambda item: (-len(item[1]), str(item[0]))
+    )
+    groups: list[dict[str, Any]] = []
+    for key, events in ranked[:HARD_GROUP_CAP]:
+        gaps = [
+            _days_between(earlier, later)
+            for earlier, later in itertools.pairwise(events)
+        ]
+        groups.append({
+            'key': key if key is not None else '',
+            'label': label_by_key.get(key)
+            if label_column is not None
+            else str(key or ''),
+            'event_count': len(events),
+            'interval_count': len(gaps),
+            'min_days': min(gaps) if gaps else None,
+            'median_days': round(statistics.median(gaps), 1) if gaps else None,
+            'mean_days': round(statistics.fmean(gaps), 1) if gaps else None,
+            'max_days': max(gaps) if gaps else None,
+        })
+
+    shown_events = sum(row['event_count'] for row in groups)
+    return {
+        'operation': operation,
+        'population_type': str(population_type),
+        'available': True,
+        'grouping': str(grouping_key),
+        'population_count': population_count,
+        'evaluated_count': population_count,
+        'complete_population': True,
+        'date_field': resolved_field,
+        'timezone': applied_filters['timezone'],
+        'groups': groups,
+        'total_group_count': len(events_by_key),
+        'groups_truncated': len(events_by_key) > len(groups),
+        'remainder_group_count': max(0, len(events_by_key) - len(groups)),
+        'remainder_count': max(0, population_count - shown_events),
+        'unassigned_machine_count': unassigned,
+        'null_date_count': null_dates,
+        'applied_filters': applied_filters,
+        'high_watermark': high_watermark.isoformat() if high_watermark else None,
+    }
+
+
+def get_work_order_durations(
+    user,
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    scope_machine_ids=None,
+) -> dict[str, Any]:
+    """Execution-duration statistics (§8.3 op 5): both actuals, or excluded.
+
+    Only rows carrying BOTH ``actual_started_at`` and ``actual_completed_at``
+    qualify; the missing and the impossible (completed before started) are
+    counted, never imputed. The window means the completion clock.
+    """
+    import statistics
+
+    operation = 'work_order_durations'
+    rows = _authorized_work_orders(user)
+    if rows is None:
+        return _unavailable(PopulationType.WORK_ORDERS, operation)
+
+    from django.db.models import Max
+
+    window, applied_filters = _window_filter('actual_completed_at', date_from, date_to)
+    if window:
+        rows = rows.filter(**window)
+
+    scope_ids = (
+        None if scope_machine_ids is None else {int(pk) for pk in scope_machine_ids}
+    )
+    if scope_ids is not None:
+        rows = rows.filter(machine_id__in=scope_ids)
+        applied_filters['machine_ids'] = sorted(scope_ids)
+
+    population_count = rows.count()
+    high_watermark = rows.aggregate(hw=Max('updated_at'))['hw']
+
+    paired = rows.exclude(actual_started_at__isnull=True).exclude(
+        actual_completed_at__isnull=True
+    )
+    durations: list[float] = []
+    invalid = 0
+    for started, completed in paired.values_list(
+        'actual_started_at', 'actual_completed_at'
+    ):
+        minutes = (completed - started).total_seconds() / 60.0
+        if minutes < 0:
+            invalid += 1
+            continue
+        durations.append(minutes)
+
+    qualifying = len(durations)
+    return {
+        'operation': operation,
+        'population_type': str(PopulationType.WORK_ORDERS),
+        'available': True,
+        'population_count': population_count,
+        'evaluated_count': population_count,
+        'complete_population': True,
+        'date_field': 'actual_completed_at',
+        'timezone': applied_filters['timezone'],
+        'qualifying_count': qualifying,
+        'excluded_missing_count': max(0, population_count - qualifying - invalid),
+        'excluded_invalid_count': invalid,
+        'min_minutes': round(min(durations), 1) if durations else None,
+        'median_minutes': round(statistics.median(durations), 1) if durations else None,
+        'mean_minutes': round(statistics.fmean(durations), 1) if durations else None,
+        'max_minutes': round(max(durations), 1) if durations else None,
+        'applied_filters': applied_filters,
+        'high_watermark': high_watermark.isoformat() if high_watermark else None,
+    }
+
+
+def select_comparison_candidate(
+    user,
+    *,
+    rule: str = 'most_recent_completed_corrective',
+    machine_id=None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, Any]:
+    """Deterministically ordered comparison candidates (§8.3 op 6).
+
+    The rule table picks and orders — never a model. Returns an ordered
+    candidate id list so the S9 gate can try the next candidate when one
+    lacks required facets; a known-insufficient record is never "used
+    anyway". Candidates are completed orders with a real completion time.
+    """
+    operation = 'select_comparison_candidate'
+    rows = _authorized_work_orders(user)
+    if rows is None:
+        return _unavailable(PopulationType.WORK_ORDERS, operation)
+
+    rule_name = str(rule)
+    rule_filters = _COMPARISON_RULES.get(rule_name)
+    if rule_filters is None:
+        raise AnalyticsRequestError(
+            'selection_rule_unavailable',
+            f'{rule!r} is not a deterministic selection rule',
+        )
+
+    window, applied_filters = _window_filter('actual_completed_at', date_from, date_to)
+    rows = rows.filter(
+        lifecycle_status='completed', actual_completed_at__isnull=False, **rule_filters
+    )
+    if window:
+        rows = rows.filter(**window)
+    applied_filters['rule'] = rule_name
+    if machine_id is not None:
+        rows = rows.filter(machine_id=int(machine_id))
+        applied_filters['machine_ids'] = [int(machine_id)]
+
+    population_count = rows.count()
+    candidates = list(
+        rows.order_by('-actual_completed_at', '-pk').values_list('pk', flat=True)[
+            :MAX_COMPARISON_CANDIDATES
+        ]
+    )
+    return {
+        'operation': operation,
+        'population_type': str(PopulationType.WORK_ORDERS),
+        'available': True,
+        'rule': rule_name,
+        'population_count': population_count,
+        'complete_population': True,
+        'candidates': candidates,
+        'returned_count': len(candidates),
+        'date_field': 'actual_completed_at',
+        'timezone': applied_filters['timezone'],
+        'applied_filters': applied_filters,
+    }
+
+
+def get_maintenance_evidence(user, work_order_id, *, identity=None) -> dict[str, Any]:
+    """The S9 evidence bundle (§8.3 op 7): distinct stages, never blended.
+
+    One authorized work order with its effective closeout, its linked
+    maintenance record (enrichment — withheld when the record's own machine
+    scope denies the actor, without hiding the work order), and structured
+    procedure/deviation presence counts. Symptom, cause, action, outcome and
+    administrative status arrive as separate fields; none is ever filled
+    from another.
+    """
+    from .ai_read import authorized_work_order, work_order_closeout, work_order_row
+
+    operation = 'maintenance_evidence'
+    work_order = authorized_work_order(user, work_order_id)
+    if work_order is None:
+        return _unavailable(PopulationType.WORK_ORDERS, operation)
+
+    record = getattr(work_order, 'maintenance_record', None)
+    record_row = None
+    record_withheld = False
+    if record is not None:
+        try:
+            require_maintenance_record_scope(user, record)
+        except ScopeError:
+            record_withheld = True
+        else:
+            record_row = {
+                'record_id': record.pk,
+                'machine_id': record.machine_id,
+                'date': record.date.isoformat(),
+                'summary': fence(record.summary, limit=255),
+                'details': fence(record.details) or None,
+                'created_at': record.created_at.isoformat(),
+                'updated_at': record.updated_at.isoformat(),
+            }
+
+    return {
+        'operation': operation,
+        'population_type': str(PopulationType.WORK_ORDERS),
+        'available': True,
+        'work_order': work_order_row(work_order, identity=identity),
+        'closeout': work_order_closeout(work_order),
+        'maintenance_record': record_row,
+        'maintenance_record_withheld': record_withheld,
+        'procedure_application_count': work_order.procedure_applications.count(),
+        'deviation_count': work_order.deviations.count(),
+    }
+
+
 __all__ = [
     'HARD_GROUP_CAP',
     'MAX_BUCKETS',
+    'MAX_COMPARISON_CANDIDATES',
     'MAX_OUTPUT_GROUPS',
     'AnalyticsRequestError',
     'Grouping',
     'PopulationType',
     'TimeBucket',
     'aggregate_work_orders',
+    'get_maintenance_evidence',
+    'get_repeat_intervals',
     'get_work_order_dataset_profile',
+    'get_work_order_durations',
+    'get_work_order_timeline',
     'plant_timezone',
+    'select_comparison_candidate',
 ]

@@ -425,6 +425,221 @@ class GroupCapTests(TestCase):
         self.assertEqual(result['remainder_count'], 6)
 
 
+class TimelineTests(AnalyticsTestCase):
+    """Zero-filled calendar series with honest gaps."""
+
+    def test_month_series_zero_fills_the_window(self):
+        """December exists as a zero, not as silence."""
+        result = ai_analytics.get_work_order_timeline(
+            self.actor,
+            bucket='month',
+            date_field='actual_completed_at',
+            date_from='2025-12-01',
+            date_to='2026-03-01',
+        )
+        self.assertTrue(result['available'])
+        self.assertEqual(
+            [(row['bucket'], row['group_count']) for row in result['buckets']],
+            [('2025-12-01', 0), ('2026-01-01', 1), ('2026-02-01', 1)],
+        )
+        self.assertEqual(result['population_count'], 2)
+
+    def test_null_event_dates_are_counted_outside_the_series(self):
+        """The never-completed order is a count, never a bucket member."""
+        result = ai_analytics.get_work_order_timeline(
+            self.actor, bucket='month', date_field='actual_completed_at'
+        )
+        self.assertEqual(result['null_date_count'], 1)
+        self.assertEqual(result['population_count'], 3)
+        self.assertEqual(sum(row['group_count'] for row in result['buckets']), 2)
+
+    def test_maintenance_record_series_uses_the_record_date(self):
+        """The records population buckets by its own calendar date."""
+        result = ai_analytics.get_work_order_timeline(
+            self.actor, bucket='month', population='maintenance_records'
+        )
+        self.assertEqual(result['population_type'], 'maintenance_records')
+        self.assertEqual(result['date_field'], 'date')
+        self.assertEqual(
+            [(row['bucket'], row['group_count']) for row in result['buckets']],
+            [('2026-01-01', 1)],
+        )
+
+    def test_record_population_rejects_other_clocks(self):
+        """`created_at` on records is bookkeeping, not the event date."""
+        with self.assertRaises(ai_analytics.AnalyticsRequestError) as caught:
+            ai_analytics.get_work_order_timeline(
+                self.actor,
+                bucket='month',
+                population='maintenance_records',
+                date_field='created_at',
+            )
+        self.assertEqual(caught.exception.code, 'date_field_unavailable')
+
+    def test_union_population_is_unsayable(self):
+        """There is no 'both'; the vocabulary refuses it."""
+        with self.assertRaises(ai_analytics.AnalyticsRequestError) as caught:
+            ai_analytics.get_work_order_timeline(
+                self.actor, bucket='month', population='both'
+            )
+        self.assertEqual(caught.exception.code, 'population_unavailable')
+
+    def test_over_long_series_is_a_typed_refusal(self):
+        """53 weekly buckets: refuse with the reason, never clip silently."""
+        with self.assertRaises(ai_analytics.AnalyticsRequestError) as caught:
+            ai_analytics.get_work_order_timeline(
+                self.actor,
+                bucket='week',
+                date_field='actual_completed_at',
+                date_from='2025-01-01',
+                date_to='2026-01-01',
+            )
+        self.assertEqual(caught.exception.code, 'bucket_range_exceeded')
+
+
+class RepeatIntervalTests(AnalyticsTestCase):
+    """Per-group consecutive-event gaps with explicit rules."""
+
+    def test_machine_intervals_over_completions(self):
+        """Three completions on one machine yield two exact gaps."""
+        for day, hour in ((1, 3), (11, 3)):
+            self._work_order(
+                title=f'Repeat corrective {day}',
+                machine=self.machine_one,
+                lifecycle_status='completed',
+                actual_completed_at=_dt(2026, 2, day, hour),
+            )
+        result = ai_analytics.get_repeat_intervals(
+            self.actor, grouping='machine', date_field='actual_completed_at'
+        )
+        self.assertTrue(result['available'])
+        by_key = {row['key']: row for row in result['groups']}
+        pump = by_key[self.machine_one.pk]
+        self.assertEqual(pump['event_count'], 3)
+        self.assertEqual(pump['interval_count'], 2)
+        self.assertEqual(pump['min_days'], 10.0)
+        self.assertEqual(pump['max_days'], 17.0)
+        self.assertEqual(pump['median_days'], 13.5)
+        singleton = by_key[self.machine_two.pk]
+        self.assertEqual(singleton['event_count'], 1)
+        self.assertEqual(singleton['interval_count'], 0)
+        self.assertIsNone(singleton['median_days'])
+
+    def test_record_population_intervals_use_calendar_days(self):
+        """Maintenance-record gaps are whole calendar days."""
+        AssetMaintenanceRecord.objects.create(
+            machine=self.machine_one,
+            date=datetime.date(2026, 1, 25),
+            summary='Follow-up service',
+        )
+        result = ai_analytics.get_repeat_intervals(
+            self.actor, grouping='machine', population='maintenance_records'
+        )
+        row = result['groups'][0]
+        self.assertEqual(row['key'], self.machine_one.pk)
+        self.assertEqual(row['event_count'], 2)
+        self.assertEqual(row['min_days'], 10.0)
+
+    def test_interval_grouping_allow_list_is_narrower(self):
+        """Priority groups an aggregate, but recurrence needs identity."""
+        with self.assertRaises(ai_analytics.AnalyticsRequestError) as caught:
+            ai_analytics.get_repeat_intervals(self.actor, grouping='priority')
+        self.assertEqual(caught.exception.code, 'grouping_unavailable')
+
+
+class DurationTests(AnalyticsTestCase):
+    """Both actuals or excluded — with the exclusions counted."""
+
+    def test_only_fully_timed_orders_qualify(self):
+        """One 120-minute job; the untimed and half-timed are counted out."""
+        result = ai_analytics.get_work_order_durations(self.actor)
+        self.assertTrue(result['available'])
+        self.assertEqual(result['population_count'], 3)
+        self.assertEqual(result['qualifying_count'], 1)
+        self.assertEqual(result['excluded_missing_count'], 2)
+        self.assertEqual(result['excluded_invalid_count'], 0)
+        self.assertEqual(result['min_minutes'], 120.0)
+        self.assertEqual(result['max_minutes'], 120.0)
+
+    def test_negative_durations_are_invalid_not_data(self):
+        """Completed-before-started is an exclusion, never a negative stat."""
+        self._work_order(
+            title='Clock skew job',
+            machine=self.machine_two,
+            actual_started_at=_dt(2026, 3, 1, 10),
+            actual_completed_at=_dt(2026, 3, 1, 8),
+        )
+        result = ai_analytics.get_work_order_durations(self.actor)
+        self.assertEqual(result['excluded_invalid_count'], 1)
+        self.assertEqual(result['qualifying_count'], 1)
+        self.assertEqual(result['mean_minutes'], 120.0)
+
+
+class ComparisonCandidateTests(AnalyticsTestCase):
+    """Deterministic candidate ordering for the S9 gate."""
+
+    def test_default_rule_orders_by_completion_desc(self):
+        """Most recent completed corrective first; the list is the loop."""
+        result = ai_analytics.select_comparison_candidate(self.actor)
+        self.assertTrue(result['available'])
+        self.assertEqual(result['rule'], 'most_recent_completed_corrective')
+        self.assertEqual(result['candidates'], [self.wo_feb.pk, self.wo_jan.pk])
+        self.assertEqual(result['population_count'], 2)
+
+    def test_machine_narrowing_applies(self):
+        """A machine-scoped comparison sees only that machine's jobs."""
+        result = ai_analytics.select_comparison_candidate(
+            self.actor, machine_id=self.machine_one.pk
+        )
+        self.assertEqual(result['candidates'], [self.wo_jan.pk])
+
+    def test_unknown_rule_is_typed(self):
+        """No rule in the table, no candidates — a typed refusal."""
+        with self.assertRaises(ai_analytics.AnalyticsRequestError) as caught:
+            ai_analytics.select_comparison_candidate(self.actor, rule='best_guess')
+        self.assertEqual(caught.exception.code, 'selection_rule_unavailable')
+
+
+class MaintenanceEvidenceTests(AnalyticsTestCase):
+    """The S9 bundle: distinct stages, enrichment scope-checked."""
+
+    def test_bundle_carries_separate_stages(self):
+        """Work order, closeout, linked record and presence counts apart."""
+        bundle = ai_analytics.get_maintenance_evidence(self.actor, self.wo_jan.pk)
+        self.assertTrue(bundle['available'])
+        self.assertEqual(bundle['work_order']['work_order_id'], self.wo_jan.pk)
+        self.assertIsNone(bundle['closeout'])
+        self.assertEqual(
+            bundle['maintenance_record']['record_id'], self.linked_record.pk
+        )
+        self.assertIn(
+            ai_read.UNTRUSTED_CONTENT_BEGIN, bundle['maintenance_record']['summary']
+        )
+        self.assertFalse(bundle['maintenance_record_withheld'])
+        self.assertEqual(bundle['procedure_application_count'], 0)
+        self.assertEqual(bundle['deviation_count'], 0)
+
+    def test_foreign_work_order_stays_silent(self):
+        """Denial is indistinguishable from absence."""
+        bundle = ai_analytics.get_maintenance_evidence(self.outsider, self.wo_jan.pk)
+        self.assertFalse(bundle['available'])
+
+    def test_record_enrichment_is_withheld_without_record_scope(self):
+        """A customer reaches the job, not the foreign machine's history."""
+        AssetMaintenanceRecord.objects.create(
+            machine=self.foreign_machine,
+            date=datetime.date(2026, 3, 5),
+            summary='Foreign enrichment',
+            work_order=self.customer_wo,
+        )
+        bundle = ai_analytics.get_maintenance_evidence(
+            self.customer_actor, self.customer_wo.pk
+        )
+        self.assertTrue(bundle['available'])
+        self.assertIsNone(bundle['maintenance_record'])
+        self.assertTrue(bundle['maintenance_record_withheld'])
+
+
 class PageDateFieldTests(AnalyticsTestCase):
     """The conversational page's new validated date-field selector."""
 
