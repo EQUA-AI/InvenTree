@@ -32,3 +32,4 @@ dist-ssr
 
 # Report generation
 stats.html
+flakiness-report/
