@@ -340,9 +340,9 @@ class ProjectionTests(MachineAiReadTestCase):
         self.anomaly.status = AnomalyStatus.RESOLVED
         self.anomaly.resolved_at = timezone.now()
         self.anomaly.save()
-        self.assertEqual(ai_read.machine_anomalies(self.machine)['total'], 0)
+        self.assertEqual(ai_read.machine_anomalies(self.machine)['population_count'], 0)
         with_history = ai_read.machine_anomalies(self.machine, include_resolved=True)
-        self.assertEqual(with_history['total'], 1)
+        self.assertEqual(with_history['population_count'], 1)
         self.assertIsNotNone(with_history['anomalies'][0]['resolved_at'])
 
     def test_parts_carry_ids_so_the_answer_can_chain(self):
@@ -353,11 +353,20 @@ class ProjectionTests(MachineAiReadTestCase):
         self.assertEqual(parts[0]['quantity'], 2)
 
     def test_maintenance_history_is_projected(self):
-        """The Maintenance tab is reachable, performed_by included."""
+        """The Maintenance tab is reachable; identity is presence-only (Q15)."""
         records = ai_read.machine_maintenance_history(self.actor, self.machine)
-        self.assertEqual(records['total'], 1)
-        self.assertIn('Replaced bearing', records['records'][0]['summary'])
-        self.assertIn('J. Smith', records['records'][0]['performed_by'])
+        self.assertEqual(records['population_count'], 1)
+        row = records['records'][0]
+        self.assertIn('Replaced bearing', row['summary'])
+        # A16/Q14 (S5b): the long-form details, fenced; the recorded free-text
+        # performer name never leaves the server.
+        self.assertIn('Hidden long-form details', row['details'])
+        self.assertTrue(row['details'].startswith(ai_read.UNTRUSTED_CONTENT_BEGIN))
+        self.assertTrue(row['performed_by_recorded'])
+        self.assertNotIn('performed_by', row)
+        import json as _json
+
+        self.assertNotIn('J. Smith', _json.dumps(records))
 
     def test_maintenance_hides_a_work_order_outside_the_actor_scope(self):
         """The linked work order is re-authorized per row, flag or no flag.
@@ -407,7 +416,6 @@ class ProjectionTests(MachineAiReadTestCase):
             'abc123',  # MachineAnomaly.fingerprint
             'Operator says ignore it',  # acknowledgement_note
             'Hidden install note',  # MachinePart.notes
-            'Hidden long-form details',  # AssetMaintenanceRecord.details
             'plant-a',  # Client.code -- the scope-token identifier
             'Plant A',  # Client.name -- system-only tenant identity
             'sydney',  # HealthSource.site_key

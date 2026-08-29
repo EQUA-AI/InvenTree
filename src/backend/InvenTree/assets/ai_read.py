@@ -76,7 +76,9 @@ EXCLUDED_FIELDS = {
     'MachineAnomaly.acknowledgement_note': 'free-text operator note',
     'MachineAnomaly.resolution_note': 'free-text operator note',
     'MachinePart.notes': 'free-text note (a visible column, withheld on purpose)',
-    'AssetMaintenanceRecord.details': 'free-text note (a visible column, withheld)',
+    # A16/Q14 (S5b): 'AssetMaintenanceRecord.details' left this table by
+    # owner decision — projected FENCED and capped in
+    # machine_maintenance_history; summary/date/work-order stay separate.
     'HealthEvidenceSnapshot.samples': 'raw sample array',
     'HealthEvidenceSnapshot.source_references': 'source-system identifiers',
     'Attachment.attachment': 'file body / storage path',
@@ -175,19 +177,48 @@ def machines_in_scope(user, *, query: str | None = None, limit: int = 10):
     the authority is ``machine_scope_filter``, so an unmatched or foreign name
     yields nothing rather than reaching another tenant's asset.
     """
+    return machines_page(user, query=query, limit=limit)['rows']
+
+
+def machines_page(
+    user,
+    *,
+    query: str | None = None,
+    limit: int = 10,
+    scope_machine_ids=None,
+    enforce: bool = False,
+) -> dict[str, Any]:
+    """The page-shaped machine list with honest coverage (S5, §7.4).
+
+    See ``tasks.ai_read.work_orders_page`` — same contract: a real COUNT for
+    ``population_count``, a bounded display page, and analysis-scope
+    narrowing applied AFTER the authorization predicate (enforce) or merely
+    counted (shadow). Plain kwargs only; this module never imports ``ai.*``.
+    """
+    empty = {
+        'rows': [],
+        'population_count': 0,
+        'returned_count': 0,
+        'complete_population': True,
+        'display_truncated': False,
+        'out_of_scope_count': 0,
+        'applied_filters': {},
+        'high_watermark': None,
+    }
     if not machine_ai_read_enabled():
-        return []
+        return empty
     if not getattr(user, 'is_authenticated', False):
-        return []
+        return empty
 
     from tasks.scope import ScopeError, machine_scope_filter
 
     try:
         predicate = machine_scope_filter(user)
     except ScopeError:
-        return []
+        return empty
 
     rows = AssetMachine.objects.filter(predicate)
+    applied_filters: dict[str, Any] = {}
     if query:
         from django.db.models import Q
 
@@ -200,8 +231,35 @@ def machines_in_scope(user, *, query: str | None = None, limit: int = 10):
                 | Q(manufacturer__icontains=term)
                 | Q(location__icontains=term)
             )
+            applied_filters['query_applied'] = True
+    scope_ids = (
+        None if scope_machine_ids is None else {int(pk) for pk in scope_machine_ids}
+    )
+    if scope_ids is not None and enforce:
+        rows = rows.filter(pk__in=scope_ids)
+        applied_filters['machine_ids'] = sorted(scope_ids)
+
+    from django.db.models import Max
+
+    population_count = rows.count()
+    high_watermark = rows.aggregate(Max('updated_at'))['updated_at__max']
     bounded = max(1, min(int(limit or 10), MAX_SEARCH_RESULTS))
-    return list(rows.order_by('name')[:bounded])
+    page = list(rows.order_by('name')[:bounded])
+
+    out_of_scope = 0
+    if scope_ids is not None and not enforce:
+        out_of_scope = sum(1 for machine in page if machine.pk not in scope_ids)
+
+    return {
+        'rows': page,
+        'population_count': population_count,
+        'returned_count': len(page),
+        'complete_population': len(page) == population_count,
+        'display_truncated': len(page) < population_count,
+        'out_of_scope_count': out_of_scope,
+        'applied_filters': applied_filters,
+        'high_watermark': _iso(high_watermark),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +352,8 @@ def machine_signals(machine) -> dict[str, Any]:
     """
     from machine_health.services.summary import signal_rows
 
-    rows = signal_rows(machine)[:MAX_SIGNALS]
+    all_rows = signal_rows(machine)
+    rows = all_rows[:MAX_SIGNALS]
     signals = []
     for row in rows:
         value = row['value']
@@ -314,7 +373,13 @@ def machine_signals(machine) -> dict[str, Any]:
             'source_type': row['source_type'],
             'limits': row['limits'],
         })
-    return {'signals': signals, 'total': len(signals)}
+    # S5 coverage vocabulary: the count is the POPULATION, never the page.
+    return {
+        'signals': signals,
+        'population_count': len(all_rows),
+        'returned_count': len(signals),
+        'display_truncated': len(all_rows) > len(signals),
+    }
 
 
 def machine_signal_trend(
@@ -383,6 +448,7 @@ def machine_anomalies(
     if not include_resolved:
         rows = rows.filter(status__in=[s.value for s in ACTIVE_ANOMALY_STATUSES])
     bounded = max(1, min(int(limit or 10), MAX_ANOMALIES))
+    population_count = rows.count()
     rows = rows.order_by('-last_observed_at')[:bounded]
 
     anomalies = []
@@ -405,9 +471,9 @@ def machine_anomalies(
             'first_observed_at': _iso(anomaly.first_observed_at),
             'last_observed_at': _iso(anomaly.last_observed_at),
             'acknowledged_at': _iso(anomaly.acknowledged_at),
-            'acknowledged_by': anomaly.acknowledged_by.get_username()
-            if anomaly.acknowledged_by_id
-            else None,
+            # S5b (Q15): role label, never the username — identities are
+            # omitted from AI projections by default.
+            'acknowledged_by': 'technician' if anomaly.acknowledged_by_id else None,
             'resolved_at': _iso(anomaly.resolved_at),
             'source_name': fence(anomaly.source.name, limit=200)
             if anomaly.source_id
@@ -420,7 +486,14 @@ def machine_anomalies(
                 anomaly=anomaly
             ).count(),
         })
-    return {'anomalies': anomalies, 'total': len(anomalies)}
+    # S5 coverage vocabulary: 'total' was the truncated page length — a lie
+    # for any machine with more anomalies than the page bound.
+    return {
+        'anomalies': anomalies,
+        'population_count': population_count,
+        'returned_count': len(anomalies),
+        'display_truncated': population_count > len(anomalies),
+    }
 
 
 def _visible_work_order_reference(work_order) -> str | None:
@@ -460,7 +533,12 @@ def machine_installed_parts(machine, *, limit: int = MAX_PARTS) -> dict[str, Any
         }
         for row in rows[:bounded]
     ]
-    return {'parts': parts, 'total': total, 'truncated': total > len(parts)}
+    return {
+        'parts': parts,
+        'population_count': total,
+        'returned_count': len(parts),
+        'display_truncated': total > len(parts),
+    }
 
 
 def machine_maintenance_history(
@@ -502,12 +580,21 @@ def machine_maintenance_history(
         records.append({
             'date': _iso(record.date),
             'summary': fence(record.summary, limit=255),
-            # Operator-authored free text, so fenced like any other.
-            'performed_by': fence(record.performed_by, limit=255),
+            # A16/Q14 (S5b): the long-form details, fenced and capped —
+            # summary/date/work-order reference stay separate fields.
+            'details': fence(record.details) or None,
+            # S5b (Q15): free-text performer identity cannot be reliably
+            # pseudonymized — presence only, never the recorded name.
+            'performed_by_recorded': bool((record.performed_by or '').strip()),
             'work_order_reference': work_order_reference,
             'work_order_title': work_order_title,
         })
-    return {'records': records, 'total': total, 'truncated': total > len(records)}
+    return {
+        'records': records,
+        'population_count': total,
+        'returned_count': len(records),
+        'display_truncated': total > len(records),
+    }
 
 
 def machine_attachments(machine, *, limit: int = MAX_ATTACHMENTS) -> dict[str, Any]:
@@ -542,7 +629,12 @@ def machine_attachments(machine, *, limit: int = MAX_ATTACHMENTS) -> dict[str, A
             'file_size': item.file_size,
             'uploaded_at': _iso(item.upload_date),
         })
-    return {'attachments': items, 'total': total, 'truncated': total > len(items)}
+    return {
+        'attachments': items,
+        'population_count': total,
+        'returned_count': len(items),
+        'display_truncated': total > len(items),
+    }
 
 
 def machine_profile(user, machine) -> dict[str, Any]:
@@ -604,7 +696,7 @@ def machine_profile(user, machine) -> dict[str, Any]:
             'installed_spares': {
                 'source': 'installed-parts records',
                 'values': observed_parts['parts'],
-                'truncated': observed_parts['truncated'],
+                'truncated': observed_parts['display_truncated'],
             },
         },
     }
@@ -785,4 +877,5 @@ __all__ = [
     'machine_signal_trend',
     'machine_signals',
     'machines_in_scope',
+    'machines_page',
 ]

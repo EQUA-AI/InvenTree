@@ -1,5 +1,6 @@
 """Database models for the assets (equipment machines) application."""
 
+from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -263,6 +264,44 @@ class AssetMaintenanceRecord(models.Model):
     def __str__(self) -> str:
         """Readable identity for admin and logs."""
         return f'{self.machine.name} — {self.summary} ({self.date})'
+
+
+class ClientScopeGrant(models.Model):
+    """One explicit user-to-client maintenance-scope grant (S6, WP-A5).
+
+    The isolation model is purely positive-grant: retrieval filters are
+    built from the actor's granted clients, so a client nobody is granted
+    (``eval-offlimits``) is unreachable and a client exactly one evaluation
+    user is granted (``eval-fixtures``) is invisible to everyone else.
+    Until S6 no user->client relation existed — the single-site resolver
+    granted every ordinary user the one deployment client. Grant rows are
+    consumed by ``tasks.scope.granted_client_scope_resolver``: a user WITH
+    rows gets exactly those clients; a user with none falls back to the
+    single-site behavior unchanged.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='aimms_client_grants',
+    )
+    client = models.ForeignKey(
+        Client, on_delete=models.CASCADE, related_name='scope_grants'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """One grant per (user, client)."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'client'], name='assets_client_grant_uniq'
+            )
+        ]
+
+    def __str__(self) -> str:
+        """Readable identity for admin and logs."""
+        return f'{self.user} -> {self.client.code}'
 
 
 # Machine health models live in their own module for readability but belong to

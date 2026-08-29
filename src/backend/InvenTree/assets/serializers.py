@@ -4,6 +4,7 @@ from django.conf import settings
 
 from rest_framework import serializers
 from tasks.scope import ScopeError, require_work_order_scope
+from tasks.services.closeout_amend import effective_closeout_overview
 
 from .models import (
     AssetMachine,
@@ -99,6 +100,7 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
     downtime_minutes = serializers.SerializerMethodField()
     verified = serializers.SerializerMethodField()
     follow_up_required = serializers.SerializerMethodField()
+    amended = serializers.SerializerMethodField()
 
     class Meta:
         """Metaclass defining serializer fields."""
@@ -120,6 +122,7 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
             'downtime_minutes',
             'verified',
             'follow_up_required',
+            'amended',
             'created_at',
             'updated_at',
         )
@@ -166,6 +169,22 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
             return None
         return getattr(work_order, 'structured_closeout', None)
 
+    def _closeout_overview(self, record):
+        """Effective closeout fields plus amendment provenance, memoised.
+
+        Applied amendments supersede the base row on every read surface; the
+        list endpoint prefetches them (``applied_amendments``) so this stays
+        query-free per row.
+        """
+        cache = self.__dict__.setdefault('_closeout_overview_cache', {})
+        if id(record) in cache:
+            return cache[id(record)]
+
+        closeout = self._closeout(self._visible_work_order(record))
+        overview = effective_closeout_overview(closeout) if closeout else None
+        cache[id(record)] = overview
+        return overview
+
     def to_representation(self, instance):
         """Withhold the work-order id when the link itself is not visible."""
         data = super().to_representation(instance)
@@ -200,9 +219,9 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
         return completed_at.isoformat() if completed_at else None
 
     def get_downtime_minutes(self, record) -> int | None:
-        """Downtime captured by the structured closeout, when recorded."""
-        closeout = self._closeout(self._visible_work_order(record))
-        return closeout.downtime_minutes if closeout else None
+        """Effective downtime from the structured closeout, when recorded."""
+        overview = self._closeout_overview(record)
+        return overview['downtime_minutes'] if overview else None
 
     def get_verified(self, record) -> bool:
         """Whether a supervisor verified the closeout (return to service)."""
@@ -210,9 +229,14 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
         return bool(closeout and closeout.verified_at)
 
     def get_follow_up_required(self, record) -> bool:
-        """Whether the closeout raised follow-up work."""
-        closeout = self._closeout(self._visible_work_order(record))
-        return bool(closeout and closeout.follow_up_required)
+        """Whether the effective closeout raises follow-up work."""
+        overview = self._closeout_overview(record)
+        return bool(overview and overview['follow_up_required'])
+
+    def get_amended(self, record) -> bool:
+        """Whether an applied amendment supersedes the closeout base row."""
+        overview = self._closeout_overview(record)
+        return bool(overview and overview['amended'])
 
 
 class ClientSerializer(serializers.ModelSerializer):

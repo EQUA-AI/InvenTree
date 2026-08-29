@@ -10,6 +10,7 @@ read the history but not the work order never receives its id.
 from django.test import override_settings
 from django.utils import timezone
 
+from tasks.closeout_models import CloseoutAmendment, CloseoutAmendmentStatus
 from tasks.models import WorkOrder, WorkOrderCloseout, WorkOrderLifecycle, WorkOrderType
 from tasks.scope import MaintenanceScope
 
@@ -126,13 +127,46 @@ class MaintenanceRecordProjectionTest(InvenTreeAPITestCase):
         self.assertFalse(row['verified'])
         self.assertFalse(row['follow_up_required'])
 
+    def test_applied_amendment_projects_effective_values(self):
+        """The blade shows amended closeout facts, marked as amended."""
+        closeout = self.work_order.structured_closeout
+        CloseoutAmendment.objects.create(
+            closeout=closeout,
+            changes={
+                'downtime_minutes': {'from': 432, 'to': 318},
+                'follow_up_required': {'from': True, 'to': False},
+            },
+            base_content_hash=closeout.content_hash,
+            reason='Downtime double-counted the stable run',
+            requested_by=self.user,
+            status=CloseoutAmendmentStatus.APPLIED,
+            effective_snapshot={
+                'closeout': {'downtime_minutes': 318, 'follow_up_required': False}
+            },
+            effective_snapshot_hash='1' * 64,
+            decided_by=self.user,
+            applied_at=self.completed_at,
+        )
+
+        row = self._rows()['Pump 2 seal and wear-ring repair']
+
+        self.assertEqual(row['downtime_minutes'], 318)
+        self.assertFalse(row['follow_up_required'])
+        self.assertTrue(row['amended'])
+
+        legacy = self._rows()['Legacy paper record']
+        self.assertFalse(legacy['amended'])
+
     def test_projection_does_not_scale_queries_with_rows(self):
         """Adding history rows must not add a query per row."""
 
         def fetch():
             self.get(self.url, {'machine': self.machine.pk}, expected_code=200)
 
-        with self.assertNumQueriesLessThan(15):
+        # 16: the closeout-amendment prefetch adds exactly one query to the
+        # request, independent of row count — the flat-count property below
+        # is what this test protects.
+        with self.assertNumQueriesLessThan(16):
             fetch()
 
         for index in range(8):
@@ -154,7 +188,7 @@ class MaintenanceRecordProjectionTest(InvenTreeAPITestCase):
                 work_order=work_order,
             )
 
-        with self.assertNumQueriesLessThan(15):
+        with self.assertNumQueriesLessThan(16):
             fetch()
 
     @override_settings(

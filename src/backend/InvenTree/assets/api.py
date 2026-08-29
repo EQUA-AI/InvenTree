@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from django.db.models import Prefetch
 from django.urls import include, path
 
 from django_filters.rest_framework import FilterSet, filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from tasks.closeout_models import CloseoutAmendment, CloseoutAmendmentStatus
 
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
@@ -191,14 +193,27 @@ class MachinePartDetail(RetrieveUpdateDestroyAPI):
 class AssetMaintenanceRecordList(ListCreateAPI):
     """List and create maintenance records.
 
-    The work order and its structured closeout are joined so the blade renders
-    reference, type, lifecycle, completion, downtime and verification without a
-    query per row.
+    The work order and its structured closeout are joined, and applied
+    closeout amendments are prefetched into ``applied_amendments`` (consumed
+    by ``tasks.services.closeout_amend.applied_amendments``), so the blade
+    renders reference, type, lifecycle, completion, downtime and verification
+    without a query per row.
     """
 
-    queryset = AssetMaintenanceRecord.objects.select_related(
-        'work_order', 'work_order__structured_closeout'
-    ).all()
+    queryset = (
+        AssetMaintenanceRecord.objects
+        .select_related('work_order', 'work_order__structured_closeout')
+        .prefetch_related(
+            Prefetch(
+                'work_order__structured_closeout__amendments',
+                queryset=CloseoutAmendment.objects.filter(
+                    status=CloseoutAmendmentStatus.APPLIED
+                ).order_by('-applied_at', '-pk'),
+                to_attr='applied_amendments',
+            )
+        )
+        .all()
+    )
     serializer_class = AssetMaintenanceRecordSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,
