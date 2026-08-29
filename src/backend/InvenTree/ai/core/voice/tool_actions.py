@@ -102,6 +102,7 @@ def text_chat_tools() -> tuple[Any, ...]:
     from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
     from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
+    from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
     from ai.core.tools.inventree.write.purchase_orders import (
         PURCHASE_ORDER_WRITE_TOOLS,
     )
@@ -115,6 +116,7 @@ def text_chat_tools() -> tuple[Any, ...]:
         *CONTROLLED_CORPUS_TOOLS,
         *ATTACHMENT_CORPUS_TOOLS,
         *EVIDENCE_MEDIA_TOOLS,
+        *SOURCE_INVENTORY_TOOLS,
     )
     unique: dict[str, Any] = {}
     for tool in ordered:
@@ -197,7 +199,7 @@ def _capture_proxy(tool: Any, captured: list[_CapturedAction]) -> Callable[..., 
     signature = inspect.signature(tool)
 
     @functools.wraps(tool)
-    async def capture(*args: Any, **kwargs: Any) -> dict[str, bool]:  # noqa: RUF029
+    async def capture(*args: Any, **kwargs: Any) -> dict[str, bool]:  # noqa: RUF029 - wrapped tool contract is async
         bound = signature.bind(*args, **kwargs)
         arguments = dict(bound.arguments)
         json.dumps(arguments)
@@ -419,25 +421,33 @@ class VoiceToolActionResolver:
             return None
 
         agent = await self._get_agent()
+        # S12 (WP-B2): every binding pass is a real provider call the turn
+        # ledger was blind to — voice turns run inside a bound ledger, so
+        # recording here closes a documented uncounted-spend source.
+        from ai.core.usage import maf_response_usage_metrics, record_usage
+
         try:
             action_proxies = [_capture_proxy(tool, captured) for tool in authorized_actions]
-            await agent.run(content, tools=action_proxies)
+            response = await agent.run(content, tools=action_proxies)
+            record_usage("voice_tool_actions", maf_response_usage_metrics(response))
             if not captured:
                 authorized_reads = _related_reads(
                     authorized_actions,
                     [tool for tool in authorized if not is_action_tool(tool)],
                 )
                 if authorized_reads:
-                    await agent.run(
+                    response = await agent.run(
                         content,
                         tools=[*authorized_reads, *action_proxies],
                     )
+                    record_usage("voice_tool_actions", maf_response_usage_metrics(response))
             if not captured and authorized_actions != all_actions:
                 # The domain shortlist can be wrong -- "Email the requested part
                 # change" shortlists email when the action is create_part -- so
                 # one widening pass over every authorized action is kept.
                 all_action_proxies = [_capture_proxy(tool, captured) for tool in all_actions]
-                await agent.run(content, tools=all_action_proxies)
+                response = await agent.run(content, tools=all_action_proxies)
+                record_usage("voice_tool_actions", maf_response_usage_metrics(response))
             # The fourth pass (every action plus every read) is deliberately
             # gone. It was the most expensive rung and the least likely to bind
             # anything the previous three could not; together with four loops at

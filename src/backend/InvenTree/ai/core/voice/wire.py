@@ -42,6 +42,10 @@ class VoiceSessionPayload(BaseModel):
     turn_count: int
     policy_version: str
     terminal_reason: str | None
+    # The thread analysis-scope version this session is bound to (§13.3
+    # pattern 10). A later material scope change makes turn submissions
+    # return 409 VOICE_SCOPE_CHANGED until the session is recreated.
+    analysis_scope_version: int = 0
 
 
 class VoiceSpokenPayload(BaseModel):
@@ -112,6 +116,7 @@ SERVER_VOICE_ERROR_CODES: tuple[str, ...] = (
     "VOICE_TRANSPORT_UNAVAILABLE",
     "VOICE_TRANSCRIPT_INCOMPLETE",
     "VOICE_RESPONSE_INCOMPLETE",
+    "VOICE_SCOPE_CHANGED",
 )
 
 

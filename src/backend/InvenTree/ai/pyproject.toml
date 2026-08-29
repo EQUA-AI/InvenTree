@@ -152,6 +152,12 @@ addopts = [
     "-v",
     "--tb=short",
     "--strict-markers",
+    # The AI island manages its own file-backed SQLite (ai/core/tests/settings.py)
+    # so sync_to_async executor threads share one DB. pytest-django (installed by
+    # the main backend's requirements-dev.txt, not ours) would otherwise block
+    # that with its global DB guard.
+    "-p",
+    "no:django",
 ]
 markers = [
     "unit: Unit tests (no external dependencies)",

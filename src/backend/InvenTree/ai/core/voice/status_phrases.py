@@ -26,6 +26,11 @@ TURN_FAILED = "Sorry, I could not process that. Please try again."
 #: exhausted, terminal replay); silence here would strand an eyes-free user.
 ANSWER_INCOMPLETE = "I could not finish that answer. Please try again."
 
+#: Spoken when the conversation's machine selection changed after this voice
+#: session was bound to it (§13.3 pattern 10); the session refuses further
+#: turns until the user acknowledges by restarting voice.
+SCOPE_CHANGED = "The machine selection changed. Please restart voice to continue."
+
 #: Seconds of processing before the thinking phrase is spoken. Short turns
 #: finish first and are never preceded by filler.
 #: Raised from 2.5 s after measurement: 30 of 32 turns in the 2026-07-26 test
@@ -45,6 +50,7 @@ LOCALIZED_STATUS_PHRASES: dict[str, dict[str, str]] = {
         ANSWER_IN_CHAT: "La respuesta está lista en el chat.",
         TURN_FAILED: "Lo siento, no pude procesarlo. Inténtalo de nuevo.",
         ANSWER_INCOMPLETE: ("No pude terminar esa respuesta. Inténtalo de nuevo."),
+        SCOPE_CHANGED: ("La selección de máquinas cambió. Reinicia la voz para continuar."),
     },
 }
 
@@ -66,6 +72,6 @@ def localized_status_phrase(phrase: str, locale: str | None) -> str:
 
 #: The complete allow-list; anything not present here is not a status phrase.
 ALLOWED_STATUS_PHRASES = frozenset(
-    {THINKING, ANSWER_IN_CHAT, TURN_FAILED, ANSWER_INCOMPLETE}
+    {THINKING, ANSWER_IN_CHAT, TURN_FAILED, ANSWER_INCOMPLETE, SCOPE_CHANGED}
     | {localized for table in LOCALIZED_STATUS_PHRASES.values() for localized in table.values()}
 )

@@ -24,6 +24,10 @@ class RouteMode(StrEnum):
     FAST_PATH = "fast_path"
     REASONING = "reasoning"
     ADVISORY_INTENT = "advisory_intent"
+    # S3: the evidence-analysis rail. Set only by the flag-gated override in
+    # ``turn/routing.py`` (typed task intent, read-only, TEXT) — the
+    # complexity router itself never selects it.
+    ANALYSIS = "analysis"
 
 
 class ReasoningEffort(StrEnum):
@@ -61,6 +65,8 @@ class RouteReason(StrEnum):
     SIMPLE_LOOKUP = "simple_lookup"
     SIMPLE_FACT = "simple_fact"
     GENERAL_REQUEST = "general_request"
+    # S3: a typed analysis task intent overrode the legacy route.
+    ANALYSIS_INTENT = "analysis_intent"
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +200,10 @@ class VoiceRouteDecision:
     effort: ReasoningEffort
     reason_codes: tuple[RouteReason, ...]
     target_workflow_id: str | None
+    # S3: content-free intent record when the typed classifier ran; None on
+    # legacy turns so persisted route dicts stay byte-identical.
+    task_intent: str | None = None
+    effect_intent: str | None = None
     proposal_creation_allowed: bool = field(default=False, init=False)
     action_execution_allowed: bool = field(default=False, init=False)
 
@@ -208,6 +218,10 @@ class VoiceRouteDecision:
         )
         if self.mode is RouteMode.ADVISORY_INTENT and self.target_workflow_id is not None:
             raise ValueError("advisory intent cannot select an execution workflow")
+        # S3: the analysis rail never executes a workflow directly — its
+        # branch in ``execution.build_canonical`` is the only consumer.
+        if self.mode is RouteMode.ANALYSIS and self.target_workflow_id is not None:
+            raise ValueError("analysis mode cannot select an execution workflow")
 
     @property
     def route_mode(self) -> RouteMode:
@@ -226,7 +240,7 @@ class VoiceRouteDecision:
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-safe routing record without free-form reasoning."""
-        return {
+        record = {
             "mode": self.mode.value,
             "effort": self.effort.value,
             "reason_codes": [reason.value for reason in self.reason_codes],
@@ -234,6 +248,12 @@ class VoiceRouteDecision:
             "proposal_creation_allowed": self.proposal_creation_allowed,
             "action_execution_allowed": self.action_execution_allowed,
         }
+        # S3: only when the typed classifier ran — legacy records unchanged.
+        if self.task_intent is not None:
+            record["task_intent"] = self.task_intent
+        if self.effect_intent is not None:
+            record["effect_intent"] = self.effect_intent
+        return record
 
 
 def _normalized_tuple(values: tuple[str, ...]) -> tuple[str, ...]:
@@ -387,9 +407,12 @@ class VoiceComplexityRouter:
                 target_workflow_id=None,
             )
 
-        from ai.core.agents.routing import is_explicit_document_lookup
+        from ai.core.agents.routing import (
+            is_document_inventory_question,
+            is_explicit_document_lookup,
+        )
 
-        if is_explicit_document_lookup(content):
+        if is_document_inventory_question(content) or is_explicit_document_lookup(content):
             reasons = [RouteReason.SIMPLE_LOOKUP]
             if low_confidence:
                 reasons.append(RouteReason.LOW_TRANSCRIPTION_CONFIDENCE)

@@ -45,6 +45,19 @@ class AzureOpenAIEmbeddingClient:
     async def embed(self, inputs: list[str]) -> list[list[float]]:
         """Generate embeddings for a list of texts."""
         response = await self.client.embeddings.create(input=inputs, model=self.deployment_name)
+        # S12 (WP-B2): routing embeddings are provider spend the turn ledger
+        # was blind to (a no-op outside a bound turn).
+        from ai.core.usage import record_usage
+
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            record_usage(
+                "embeddings",
+                {
+                    "input_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+                    "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+                },
+            )
         return [data.embedding for data in response.data]
 
 
@@ -745,6 +758,22 @@ def is_explicit_document_lookup(message: str) -> bool:
     )
 
 
+def is_document_inventory_question(message: str) -> bool:
+    """Return whether the user asks WHICH documents exist (S8a).
+
+    "What manuals do you have for the HX-200?" names documents but carries
+    no content cue, so it used to fall through to semantic search and get a
+    similarity answer to a registry question. The shape itself is shared
+    with the intent classifier (``TaskIntent.SOURCE_INVENTORY``) so routing
+    and classification cannot drift.
+    """
+    from ai.core.analysis.intent import is_source_inventory_question
+
+    return bool(
+        not _DOCUMENT_ACTION_REQUEST.search(message) and is_source_inventory_question(message)
+    )
+
+
 class UnifiedRouter:
     """
     Unified router that combines FastPath, Semantic, and LLM routing.
@@ -770,6 +799,15 @@ class UnifiedRouter:
         turn. The routers guard themselves too, but this boundary is what makes
         the property structural instead of a habit every router must remember.
         """
+        # Inventory first: a pure inventory shape ("what manuals do you
+        # have") is registry work; content shapes keep their exact path.
+        if is_document_inventory_question(message):
+            return RoutingDecision(
+                workflow_type=WorkflowType.T1_LOOKUP,
+                confidence=1.0,
+                reasoning="Document inventory question",
+                use_fast_path=False,
+            )
         if is_explicit_document_lookup(message):
             return RoutingDecision(
                 workflow_type=WorkflowType.T1_LOOKUP,

@@ -18,7 +18,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import re
 import sys
 import uuid
 from collections.abc import AsyncIterator  # noqa: TC003
@@ -40,6 +39,8 @@ from ai.core.middleware import (
     get_rate_limiter,
     get_retry_stats,
 )
+from ai.core.pilot_latch import PilotLatchUnavailable, PilotStopped
+from ai.core.quota.admission import AdmissionSaturated
 from ai.core.streaming import AGUIEvent, EventType, InMemoryEventEmitter, SSEEventStream
 from ai.core.trusted_context import build_trusted_turn_context, resolve_actor_locale
 from ai.core.turn_service import (
@@ -56,7 +57,16 @@ from aichat.services import (
     ThreadRepository,
 )
 from asgiref.sync import sync_to_async
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -95,6 +105,11 @@ class ChatRequest(BaseModel):
     modality_metadata: dict[str, Any] | None = None
     idempotency_key: str | None = None
     correlation_id: str | None = None
+    # S1: client staleness detector for the thread analysis scope. When set,
+    # a mismatch with the server's current scope version returns 409
+    # ``scope_version_conflict`` before any model call. Detection only — it
+    # grants nothing, and legacy clients simply omit it.
+    expected_scope_version: int | None = None
 
 
 class ChatResponse(BaseModel):
@@ -137,6 +152,10 @@ class ThreadInfo(BaseModel):
     is_persisted: bool = False
     # S32b: set on rows in the shared_threads list; owned rows omit it.
     shared: bool = False
+    # S1: compact active-analysis-scope summary (mode/version/display_label);
+    # old clients ignore the key. The full payload lives on
+    # ``GET /threads/{id}/scope``.
+    active_scope: dict[str, Any] | None = None
 
 
 class ThreadSyncResponse(BaseModel):
@@ -197,6 +216,17 @@ def _principal() -> AIPrincipal:
     if not isinstance(principal, AIPrincipal):
         raise HTTPException(status_code=401, detail="AI authentication required")
     return principal
+
+
+def _record_rejection(code: str, principal: AIPrincipal | None) -> None:
+    """Best-effort §8.10 rejection ledger row; never blocks the response."""
+    import contextlib
+
+    from ai.core.pilot_latch import record_request_rejection
+
+    # Telemetry only — a ledger failure must never alter the rejection.
+    with contextlib.suppress(Exception):
+        record_request_rejection(code, getattr(principal, "user_pk", None))
 
 
 def _repository(principal: AIPrincipal) -> ThreadRepository:
@@ -313,33 +343,16 @@ from ai.core.agui.routes import router as _agui_router  # noqa: E402
 
 app.include_router(_agui_router)
 
-# Configure CORS - restrict to InvenTree frontend origins
-# Set CORS_ALLOWED_ORIGINS env var for production:
-#   CORS_ALLOWED_ORIGINS="https://your-inventree-domain.com,https://app.inventree.com"
+# Middleware ORDER INVARIANT (S12): Starlette's add_middleware inserts at the
+# top of the stack, so the LAST middleware added is the OUTERMOST. CORS must
+# be added last (outermost) so responses the rate limiter/budget gate writes
+# itself — 429s and 503s — still traverse CORSMiddleware and carry the
+# expose_headers (Retry-After, X-RateLimit-Remaining) cross-origin. With the
+# previous order those limiter responses bypassed CORS entirely and a
+# cross-origin frontend could not read Retry-After off a 429.
+
+# Configure Rate Limiting (added FIRST = runs inside CORS)
 settings = get_settings()
-logger.info(f"CORS allowed origins: {settings.cors_allowed_origins}")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_allowed_origins,
-    allow_credentials=settings.cors_allow_credentials,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],  # PUT needed for uploads
-    allow_headers=[
-        "Content-Type",
-        "Accept",
-        "Authorization",
-        "X-User-ID",
-        "X-Request-ID",
-        "X-CSRFToken",
-        "Idempotency-Key",
-    ],
-    expose_headers=[
-        "X-RateLimit-Remaining",
-        "Retry-After",
-    ],
-)
-
-# Configure Rate Limiting
 rate_limit_config = RateLimitConfig(
     max_requests_per_minute=20,
     max_requests_per_hour=200,
@@ -362,7 +375,35 @@ app.add_middleware(
         "/workflows",
         "/rate-limit/stats",
         "/retry/stats",
+        # S12: an over-cap user must be able to read WHY — the quota
+        # preflight is never rate limited (and never budgeted).
+        "/quota/preflight",
     },
+)
+
+# Configure CORS - restrict to InvenTree frontend origins
+# Set CORS_ALLOWED_ORIGINS env var for production:
+#   CORS_ALLOWED_ORIGINS="https://your-inventree-domain.com,https://app.inventree.com"
+logger.info(f"CORS allowed origins: {settings.cors_allowed_origins}")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allowed_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],  # PUT needed for uploads
+    allow_headers=[
+        "Content-Type",
+        "Accept",
+        "Authorization",
+        "X-User-ID",
+        "X-Request-ID",
+        "X-CSRFToken",
+        "Idempotency-Key",
+    ],
+    expose_headers=[
+        "X-RateLimit-Remaining",
+        "Retry-After",
+    ],
 )
 
 
@@ -571,6 +612,27 @@ def _server_correlation_id(principal: Any, idempotency_key: str, client_value: s
     return minted
 
 
+async def _reject_stale_scope_version(
+    principal: AIPrincipal, thread_id: str | None, expected_version: int | None
+) -> None:
+    """409 when the client's scope version is stale, BEFORE any model call.
+
+    A pure staleness detector (S1): it grants nothing, and a client that
+    never sends ``expected_scope_version`` is unaffected. Raced updates
+    between this check and turn intake are harmless — the turn still binds
+    the then-current scope atomically and is labeled with that version.
+    """
+    if expected_version is None or not thread_id:
+        return
+    repository = _repository(principal)
+    try:
+        payload = await sync_to_async(repository.get_scope, thread_sensitive=True)(thread_id)
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    if payload["version"] != expected_version:
+        raise HTTPException(status_code=409, detail="scope_version_conflict")
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     """Adapt typed REST chat to the shared normalized turn service."""
@@ -578,6 +640,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     principal = _principal()
     if "user_id" in request.model_fields_set:
         _observe_legacy_identity(request.user_id, source="body")
+    await _reject_stale_scope_version(principal, request.thread_id, request.expected_scope_version)
     idempotency_key = request.idempotency_key or str(uuid.uuid4())
     correlation_id = _server_correlation_id(principal, idempotency_key, request.correlation_id)
     try:
@@ -607,6 +670,26 @@ async def chat(request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=404, detail="Thread not found") from None
     except (IdempotencyConflict, TurnAlreadyRunning):
         raise HTTPException(status_code=409, detail="Idempotency conflict") from None
+    except AdmissionSaturated as exc:
+        # S13: typed backpressure — no provider call started, short jittered
+        # retry, no durable queue.
+        raise HTTPException(
+            status_code=503,
+            detail="ai_capacity_busy",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from None
+    except PilotStopped as exc:
+        # S15: the pilot is stopped — non-retryable, no Retry-After.
+        _record_rejection(exc.code, principal)
+        raise HTTPException(status_code=503, detail=exc.code) from None
+    except PilotLatchUnavailable as exc:
+        # S15: fail CLOSED while the armed latch is unreadable.
+        _record_rejection(exc.code, principal)
+        raise HTTPException(
+            status_code=503,
+            detail=exc.code,
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from None
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except Exception:
@@ -650,6 +733,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     principal = _principal()
     if "user_id" in request.model_fields_set:
         _observe_legacy_identity(request.user_id, source="body")
+    await _reject_stale_scope_version(principal, request.thread_id, request.expected_scope_version)
     idempotency_key = request.idempotency_key or str(uuid.uuid4())
     correlation_id = _server_correlation_id(principal, idempotency_key, request.correlation_id)
     try:
@@ -709,6 +793,42 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                     AGUIEvent(
                         event_type=EventType.RUN_ERROR,
                         data={"message": "Idempotency conflict", "code": "idempotency_conflict"},
+                        thread_id=thread_id,
+                    )
+                )
+            except AdmissionSaturated as exc:
+                # S13: typed backpressure on the streaming rail.
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={
+                            "message": "The AI service is at capacity. Please retry shortly.",
+                            "code": "ai_capacity_busy",
+                            "retry_after": exc.retry_after,
+                        },
+                        thread_id=thread_id,
+                    )
+                )
+            except PilotStopped as exc:
+                # S15: the pilot is stopped — typed, non-retryable.
+                _record_rejection(exc.code, principal)
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={"message": "The AI pilot is stopped.", "code": exc.code},
+                        thread_id=thread_id,
+                    )
+                )
+            except PilotLatchUnavailable as exc:
+                _record_rejection(exc.code, principal)
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={
+                            "message": "The AI pilot gate is unavailable.",
+                            "code": exc.code,
+                            "retry_after": exc.retry_after,
+                        },
                         thread_id=thread_id,
                     )
                 )
@@ -818,6 +938,7 @@ async def list_threads(
             last_activity=thread.updated_at.isoformat(),
             is_persisted=True,
             shared=shared,
+            active_scope=repository.scope_summary(thread),
         )
 
     def materialize() -> tuple[list[ThreadInfo], int, list[ThreadInfo]]:
@@ -837,7 +958,15 @@ async def list_threads(
         sync_token=None,
         has_more=total > len(threads),
         shared_threads=shared_threads,
-        capabilities={"agui": bool(getattr(get_settings(), "feature_agui_endpoint", False))},
+        capabilities={
+            "agui": bool(getattr(get_settings(), "feature_agui_endpoint", False)),
+            # S1: the scope endpoints exist — the frontend gates the whole
+            # scope-banner flow on this advertisement (no endpoint probing).
+            "thread_scope": True,
+            # S10: evidence-set expansion endpoints exist while the gate is
+            # not "off" (rows only exist once the executor writes them).
+            "evidence_sets": getattr(get_settings(), "evidence_gate_mode", "off") != "off",
+        },
     )
 
 
@@ -900,6 +1029,14 @@ async def get_thread(
                     # S28: server-observed entity chips survive reload.
                     "entities": message.metadata.get("entities"),
                     "media_evidence": message.metadata.get("media_evidence"),
+                    # S10/S11: the consolidated evidence attachment reloads
+                    # with the SAME object shape the live wires delivered.
+                    "evidence_analysis": message.metadata.get("evidence_analysis"),
+                    # S14: the server-declared capability tier and resolved
+                    # model identities stamped on the turn — the battery
+                    # runner verifies both from the wire (content-free).
+                    "capability_tier": message.metadata.get("capability_tier"),
+                    "model_versions": message.metadata.get("model_versions"),
                 }
                 for message in selected
             ],
@@ -908,12 +1045,119 @@ async def get_thread(
             "updated_at": thread.updated_at.isoformat(),
             "is_persisted": True,
             "shared": shared,
+            # S1: compact scope summary; the full payload (and update path)
+            # lives on the dedicated /threads/{id}/scope endpoints.
+            "active_scope": repository.scope_summary(thread),
         }
 
     try:
         return await sync_to_async(materialize, thread_sensitive=True)()
     except (ThreadNotFound, ScopedThreadRejected):
         raise HTTPException(status_code=404, detail="Thread not found") from None
+
+
+#: Evidence-set cursors are actor/thread/set-bound and expire (S10 §7.6).
+_EVIDENCE_CURSOR_SALT = "aimms.evidence-set-cursor"
+_EVIDENCE_CURSOR_MAX_AGE_S = 3600
+
+
+def _evidence_not_found() -> HTTPException:
+    """One generic 404 for EVERY failure mode — nothing is disclosed."""
+    return HTTPException(status_code=404, detail="Not found")
+
+
+@app.get("/threads/{thread_id}/evidence-sets/{set_id}")
+async def get_evidence_set(thread_id: str, set_id: str, response: Response) -> dict[str, Any]:
+    """The set header: counts, coverage, calculation — never scope hashes."""
+    principal = _principal()
+    repository = _repository(principal)
+
+    def materialize() -> dict[str, Any]:
+        """Materialize."""
+        row = repository.evidence_set(thread_id, set_id)
+        return {
+            "set_id": row.pk,
+            "source_class": row.source_class,
+            "filters": row.filters,
+            "population_count": row.population_count,
+            "evaluated_count": row.evaluated_count,
+            "displayed_count": row.displayed_count,
+            "complete_population": row.complete_population,
+            "supports_expansion": row.supports_expansion,
+            "member_count": row.member_count,
+            "member_cap": row.member_cap,
+            "calculation": row.calculation,
+            "created_at": row.created_at.isoformat(),
+        }
+
+    try:
+        payload = await sync_to_async(materialize, thread_sensitive=True)()
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise _evidence_not_found() from None
+    response.headers["Cache-Control"] = "private, no-store"
+    return payload
+
+
+@app.get("/threads/{thread_id}/evidence-sets/{set_id}/members")
+async def get_evidence_set_members(
+    thread_id: str,
+    set_id: str,
+    response: Response,
+    cursor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    """One page of exact membership, reauthorized per member at read time."""
+    from django.core import signing
+
+    principal = _principal()
+    repository = _repository(principal)
+
+    after_ordinal = 0
+    if cursor:
+        try:
+            claims = signing.loads(
+                cursor, salt=_EVIDENCE_CURSOR_SALT, max_age=_EVIDENCE_CURSOR_MAX_AGE_S
+            )
+        except signing.BadSignature:
+            raise _evidence_not_found() from None
+        if (
+            claims.get("actor") != principal.user_pk
+            or claims.get("thread") != thread_id
+            or claims.get("set") != set_id
+        ):
+            raise _evidence_not_found()
+        after_ordinal = int(claims.get("after") or 0)
+
+    def materialize() -> dict[str, Any]:
+        """Materialize."""
+        row = repository.evidence_set(thread_id, set_id)
+        members = repository.evidence_set_members(
+            thread_id, set_id, after_ordinal=after_ordinal, limit=limit
+        )
+        next_cursor = None
+        if len(members) == limit and members:
+            next_cursor = signing.dumps(
+                {
+                    "actor": principal.user_pk,
+                    "thread": thread_id,
+                    "set": set_id,
+                    "after": members[-1]["member_index"],
+                },
+                salt=_EVIDENCE_CURSOR_SALT,
+            )
+        return {
+            "members": members,
+            "population_count": row.population_count,
+            "complete": bool(row.supports_expansion and row.member_count == row.evaluated_count),
+            "next_cursor": next_cursor,
+        }
+
+    try:
+        payload = await sync_to_async(materialize, thread_sensitive=True)()
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise _evidence_not_found() from None
+    response.headers["Cache-Control"] = "private, no-store"
+    return payload
 
 
 @app.delete("/threads/{thread_id}")
@@ -943,6 +1187,189 @@ async def update_thread(
     except (ThreadNotFound, ScopedThreadRejected):
         raise HTTPException(status_code=404, detail="Thread not found") from None
     return {"thread_id": thread.pk, "title": thread.title, "updated": True}
+
+
+class ThreadScopeUpdateRequest(BaseModel):
+    """Replace a thread's analysis scope under optimistic concurrency (S1)."""
+
+    expected_version: int
+    scope: dict[str, Any]
+
+
+@app.get("/quota/preflight")
+async def quota_preflight(
+    estimated_tokens: int | None = None,
+    estimated_requests: int | None = None,
+) -> dict[str, Any]:
+    """The S12 read-only quota preflight (rate-limit-exempt, never budgeted).
+
+    Reports the caller's effective profile, per-level token usage
+    (used/reserved/remaining/cap), the request-rate windows on the spending
+    rail, counter-store health — and whether an estimated run fits. An
+    over-cap user always gets a 200 here: the endpoint exists so a blocked
+    caller can read WHY (and a battery runner can fail before Q01, not at
+    Q173).
+    """
+    principal = _principal()
+
+    def _read() -> dict[str, Any]:
+        from ai.core.middleware.budget import seconds_to_utc_midnight
+        from ai.core.middleware.rate_limit_store import CacheRateLimitStore
+        from ai.core.quota.profiles import (
+            QuotaSourceUnavailable,
+            resolve_profile,
+            standard_snapshot,
+        )
+        from ai.core.quota.reservation import level_usage
+        from ai.core.quota.wire import (
+            QuotaPreflightPayload,
+            QuotaStoreStatus,
+            QuotaTokenLevel,
+            QuotaWindowStatus,
+        )
+
+        store_healthy = True
+        try:
+            snapshot = resolve_profile(principal.user_pk)
+        except QuotaSourceUnavailable:
+            store_healthy = False
+            snapshot = standard_snapshot()
+
+        usages = level_usage(
+            user_pk=principal.user_pk,
+            tenant_id=str(getattr(principal, "scope", "") or "default"),
+            snapshot=snapshot,
+        )
+        if usages is None:
+            store_healthy = False
+            usages = ()
+        reset_after = seconds_to_utc_midnight()
+        tokens = {
+            usage.level: QuotaTokenLevel(
+                used=usage.used,
+                reserved=usage.reserved,
+                remaining=max(0, usage.cap - usage.committed) if usage.cap else 0,
+                cap=usage.cap,
+                reset_after_s=reset_after,
+            )
+            for usage in usages
+        }
+
+        store = CacheRateLimitStore()
+        requests: dict[str, QuotaWindowStatus] = {}
+        for name, window_seconds, limit in (
+            ("per_minute", 60, snapshot.requests_per_minute),
+            ("per_hour", 3600, snapshot.requests_per_hour),
+        ):
+            used = store.peek(
+                scope="user",
+                endpoint="/chat",
+                key=principal.rate_limit_key,
+                window_seconds=window_seconds,
+            )
+            if used is None:
+                store_healthy = False
+                used = 0
+            requests[name] = QuotaWindowStatus(
+                limit=limit,
+                used=used,
+                remaining=max(0, limit - used),
+                reset_after_s=window_seconds,
+            )
+
+        # A per-process cache (LocMem) cannot back enforcement — surface it
+        # (the Part-4 backend check, made observable).
+        from django.core.cache import caches
+
+        backend = type(caches["default"]).__module__
+        shared = "locmem" not in backend and "dummy" not in backend
+
+        fits: bool | None = None
+        if estimated_tokens is not None or estimated_requests is not None:
+            fits = True
+            if estimated_tokens is not None:
+                user_level = tokens.get("user")
+                if user_level is not None and user_level.cap:
+                    fits = fits and estimated_tokens <= user_level.remaining
+            if estimated_requests is not None:
+                fits = fits and estimated_requests <= requests["per_hour"].remaining
+
+        # S15: latch visibility for battery runners and dashboards. Fail-soft
+        # read — null means "could not read", never "clear".
+        pilot_stopped: bool | None = None
+        try:
+            from ai.core.pilot_latch import load_latch_state
+
+            pilot_stopped = load_latch_state().latched
+        except Exception:
+            pilot_stopped = None
+
+        return QuotaPreflightPayload(
+            profile=snapshot.profile,
+            policy_version=snapshot.version,
+            tokens=tokens,
+            requests=requests,
+            store=QuotaStoreStatus(healthy=store_healthy, shared=shared),
+            fits=fits,
+            pilot_stopped=pilot_stopped,
+        ).model_dump()
+
+    return await asyncio.to_thread(_read)
+
+
+@app.get("/threads/{thread_id}/scope")
+async def get_thread_scope(thread_id: str) -> dict[str, Any]:
+    """Return the active analysis scope (owner, or shared read-only)."""
+
+    repository = _repository(_principal())
+    try:
+        return await sync_to_async(repository.get_scope, thread_sensitive=True)(thread_id)
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+
+
+@app.put("/threads/{thread_id}/scope")
+async def set_thread_scope(thread_id: str, request: ThreadScopeUpdateRequest) -> dict[str, Any]:
+    """Replace the analysis scope on an owned thread.
+
+    409 ``scope_version_conflict`` reports a stale ``expected_version`` (the
+    client refreshes and asks the user to resend). 400
+    ``scope_update_rejected`` covers every authorization failure without
+    disclosing which asset id failed or whether it exists.
+    """
+    from ai.core.analysis.scope import ScopeValidationError
+    from aichat.services.threads import (
+        InvalidBoundary,
+        ScopeUpdateRejected,
+        ScopeVersionConflict,
+    )
+
+    repository = _repository(_principal())
+
+    def perform() -> dict[str, Any]:
+        """Materialize the thread if needed, then update its scope.
+
+        A client-minted thread id has no server row until its first turn,
+        and the machine-page launch flow sets scope BEFORE the first send
+        (the ``/upload`` precedent). ``get_or_create`` keeps namespace and
+        collision safety: a foreign existing id still resolves to
+        ``ThreadNotFound``, never to another principal's thread.
+        """
+        repository.get_or_create(thread_id)
+        return repository.set_scope(
+            thread_id, request.scope, expected_version=request.expected_version
+        )
+
+    try:
+        return await sync_to_async(perform, thread_sensitive=True)()
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    except ScopeVersionConflict:
+        raise HTTPException(status_code=409, detail="scope_version_conflict") from None
+    except ScopeUpdateRejected:
+        raise HTTPException(status_code=400, detail="scope_update_rejected") from None
+    except (ScopeValidationError, InvalidBoundary) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 class ThreadShareRequest(BaseModel):
@@ -1268,40 +1695,10 @@ async def switch_data_mode() -> dict[str, Any]:
     )
 
 
-_CONFIG_SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
-
-#: Credential SHAPES inside string values: a SAS/API signature in a query
-#: string or connection string, or userinfo credentials embedded in a URL.
-#: Name-based redaction alone is one operator habit away from leaking — an
-#: endpoint pasted WITH its ?sig=... survives a name check.
-_CONFIG_SECRET_VALUE = re.compile(
-    r"(?i)(?:sig|sharedaccesskey|accountkey|apikey|api-key|password|secret|token)="
-    r"|://[^/@\s]+:[^/@\s]+@"
-)
-
-
-def _redact_config(value: Any, name: str = "") -> Any:
-    """Redact secret-shaped values from a settings dump (S44).
-
-    Name markers redact only STRING values — feature_token_streaming and
-    the token-budget numbers are flags the endpoint exists to expose, not
-    secrets. Every string additionally gets a value-shape scan so a
-    credential pasted into a non-secret-named field never ships.
-    """
-    if isinstance(value, dict):
-        return {key: _redact_config(item, key) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_redact_config(item, name) for item in value]
-    # pydantic SecretStr dumps as the masked literal already, but be safe.
-    if value.__class__.__name__ == "SecretStr":
-        return "***"
-    if isinstance(value, str) and value:
-        upper = name.upper()
-        if any(marker in upper for marker in _CONFIG_SECRET_MARKERS):
-            return "***"
-        if _CONFIG_SECRET_VALUE.search(value):
-            return "***"
-    return value
+# S15 (WP-B5): the redaction authority moved to ai.core.config so the
+# evaluation_dossier command shares the EXACT same masking; behavior here
+# is byte-identical.
+from ai.core.config import redact_config as _redact_config  # noqa: E402
 
 
 @app.get("/config/effective")

@@ -46,10 +46,15 @@ def _terminal_output_metadata(base: dict[str, Any]) -> dict[str, Any]:
     if versions:
         metadata["model_versions"] = versions
     try:
-        if get_settings().feature_turn_usage_persistence:
+        settings = get_settings()
+        if settings.feature_turn_usage_persistence:
             usage = drain_turn_usage()
             if usage:
                 metadata["usage"] = usage
+        # A12: the SERVER's declared capability tier, recorded per turn so
+        # tier-conditional scoring never infers it from anything else.
+        # getattr: injected test settings stubs may predate the field.
+        metadata["capability_tier"] = int(getattr(settings, "capability_tier", 0))
     except Exception:  # pragma: no cover - telemetry must never fail a turn
         pass
     return metadata
@@ -176,6 +181,22 @@ async def persist_terminal(
                 if canonical.get("media_evidence")
                 else {}
             ),
+            # S10: the consolidated evidence attachment reloads byte-faithfully
+            # (same object shape as the live wires), and the gate's verdict
+            # blob persists so the shadow soak is auditable from stored data.
+            **(
+                {"evidence_analysis": canonical["evidence_analysis"]}
+                if canonical.get("evidence_analysis")
+                else {}
+            ),
+            **(
+                {"evidence_gate": canonical["evidence_gate"]}
+                if canonical.get("evidence_gate")
+                else {}
+            ),
         }),
         workflow_id=(run.capture.workflow_id if run.capture else None) or "",
+        # S10: evidence-set rows ride the SAME transaction as the terminal
+        # write — failed/canceled turns pass nothing and leave no orphans.
+        evidence_sets=run.extras.get("evidence_sets") or None,
     )

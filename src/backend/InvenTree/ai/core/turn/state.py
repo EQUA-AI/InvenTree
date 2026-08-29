@@ -56,5 +56,16 @@ class TurnRun:
     routing_content: str = ""
     diagnostic_context: Any = None
     route: Any = None
+    # S1+ analysis rail: typed per-turn state (never smuggled via ``extras``).
+    # ``analysis_scope`` is the immutable scope snapshot ``begin_turn`` bound
+    # under the thread row lock — None on threads without typed scope. The
+    # remaining fields are populated by the analysis stages as they land
+    # (intent S3, plan/retrieval S5+, validation S10, safety S4).
+    analysis_scope: dict[str, Any] | None = None
+    task_intent: Any = None
+    query_plan: Any = None
+    retrieval_snapshot: Any = None
+    validation_result: Any = None
+    safety_response: Any = None
     # Non-init bookkeeping placeholder (kept for future stages).
     extras: dict[str, Any] = field(default_factory=dict)

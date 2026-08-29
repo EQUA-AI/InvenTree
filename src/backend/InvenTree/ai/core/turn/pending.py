@@ -1,8 +1,8 @@
-"""Pending-resolution stage: injection → voice write → question (S47).
+"""Pending-resolution stage: injection → safety → voice write → question (S47/S4).
 
-The ORDERING here is the security control and is preserved verbatim from the
-pre-extraction code: an injected turn may neither confirm a stored write nor
-reach a workflow, and it still CLOSES both pending windows.
+The ORDERING here is the security control: an injected or safety-refused
+turn may neither confirm a stored write nor reach a workflow, and it still
+CLOSES both pending windows.
 """
 
 from __future__ import annotations
@@ -44,6 +44,25 @@ async def resolve_preconditions(service: NormalizedTurnService, run: TurnRun) ->
         run.write_canonical = None
         run.question_resolution = None
     else:
+        # S4: a request to skip or defeat a safety control is refused
+        # deterministically, for BOTH modalities, before a pending write
+        # could be confirmed or routing could reach a workflow. A
+        # bypass-phrased "confirmation" must refuse AND close the window —
+        # never execute.
+        run.safety_response = await service._refuse_unsafe_shortcut(
+            content=run.content,
+            modality=run.modality,
+            thread_id=run.thread.pk,
+            turn_id=run.turn.pk,
+            emitter=run.emitter,
+            locale=getattr(run.trusted_context, "locale", "en"),
+        )
+        if run.safety_response is not None:
+            service._abandon_pending_voice_write(modality=run.modality, thread_id=run.thread.pk)
+            service._abandon_pending_question(thread_id=run.thread.pk)
+            run.write_canonical = None
+            run.question_resolution = None
+            return
         run.write_canonical = await service._resolve_pending_voice_write(
             actor=run.actor,
             trusted_context=run.trusted_context,

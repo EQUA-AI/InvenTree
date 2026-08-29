@@ -60,6 +60,9 @@ async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[
     if run.injection_canonical is not None:
         # Refusal wins over every other branch, including a pending write.
         return run.injection_canonical
+    if run.safety_response is not None:
+        # S4: the unsafe-shortcut refusal is final — nothing follows it.
+        return run.safety_response
     if run.write_canonical is not None:
         # A pending write confirmation resolved; it supersedes routing.
         return run.write_canonical
@@ -74,6 +77,13 @@ async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[
             emitter=run.emitter,
             locale=getattr(run.trusted_context, "locale", "en"),
         )
+    if pinned_workflow is None and route_mode == "analysis":
+        # S3/S10: the analysis rail. Reachable only under the routing enforce
+        # flag. The evidence gate (AIMMS_EVIDENCE_GATE_MODE) decides what runs:
+        # off keeps the deterministic abstention byte-identically (also the
+        # incident-rollback posture); shadow dark-rehearses the full executor
+        # and still serves the abstention; enforce serves the validated v2.
+        return await _run_analysis_branch(service, run)
     if (
         pinned_workflow is None
         and route_mode == "reasoning"
@@ -141,6 +151,152 @@ async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[
     return await _run_legacy_workflow(service, run)
 
 
+async def _run_analysis_branch(service: NormalizedTurnService, run: TurnRun) -> dict[str, Any]:
+    """Dispatch RouteMode.ANALYSIS per the evidence gate mode (S10)."""
+    from ai.core.config import get_settings
+
+    locale = getattr(run.trusted_context, "locale", "en")
+    gate_mode = str(getattr(get_settings(), "evidence_gate_mode", "off") or "off")
+    intent_value = run.task_intent.intent.value if run.task_intent is not None else "general"
+    from ai.core.analysis.executor import TIER1_INTENTS
+
+    shadow_gate_blob: dict[str, Any] | None = None
+    if gate_mode != "off" and intent_value in TIER1_INTENTS:
+        # The executor needs the same per-turn bindings as the legacy rail.
+        await _bind_turn_capture_and_scope(service, run)
+        from ai.core.analysis.executor import run_analysis
+
+        if gate_mode == "enforce":
+            outcome = await run_analysis(service, run)
+            run.validation_result = outcome
+            run.extras["evidence_sets"] = outcome.evidence_set_specs
+            response = outcome.response
+            await service._emit_canonical_events(
+                emitter=run.emitter,
+                thread_id=run.thread.pk,
+                run_id=f"analysis:{run.turn.pk}",
+                workflow_id="analysis_executor",
+                workflow_name="ANALYSIS_EXECUTOR",
+                message=response.detailed_response,
+                response_state=str(response.response_state),
+            )
+            if run.emitter is not None:
+                # The consolidated attachment: ONE object shape on every
+                # envelope (STATE_DELTA kind / aimms.evidenceAnalysis /
+                # persisted metadata). Unknown kinds are inert on old clients.
+                try:
+                    await run.emitter.emit(
+                        AGUIEvent(
+                            event_type=EventType.STATE_DELTA,
+                            data={"kind": "evidence_analysis", **outcome.attachment},
+                            thread_id=run.thread.pk,
+                            run_id=f"analysis:{run.turn.pk}",
+                        )
+                    )
+                except Exception:  # pragma: no cover - emission is fail-soft
+                    logger.warning("evidence_analysis emission failed", exc_info=False)
+            return {
+                "thread_id": run.thread.pk,
+                "turn_id": run.turn.pk,
+                "message": response.detailed_response,
+                "agent": "analysis_executor",
+                "workflow_used": "analysis_executor",
+                # Durable lifecycle value: wire "partial" maps to INCOMPLETE.
+                "response_state": outcome.turn_state,
+                "canonical_response": response.model_dump(mode="json"),
+                "spoken_summary": response.spoken_summary,
+                "reasoning_provenance": None,
+                "route": run.route.to_dict(),
+                "evidence_analysis": outcome.attachment,
+                "evidence_gate": outcome.gate,
+                "entities": outcome.entities,
+            }
+        # shadow: full dark rehearsal — run everything, persist the verdict,
+        # serve the abstention unchanged.
+        try:
+            outcome = await run_analysis(service, run, shadow=True)
+            run.validation_result = outcome
+            shadow_gate_blob = {**outcome.gate, "mode": "shadow_rehearsal"}
+            logger.info(
+                "evidence_gate.shadow rehearsal verdict=%s intent=%s",
+                outcome.gate.get("verdict"),
+                intent_value,
+            )
+        except Exception:  # pragma: no cover - shadow must never fail a turn
+            logger.warning("evidence gate shadow rehearsal failed", exc_info=False)
+
+    from ai.core.turn.responses import (
+        _canonical_analysis_capability_boundary,
+        _canonical_analysis_unavailable,
+    )
+
+    tier23 = intent_value in ("fleet_aggregate", "trend_analysis", "manual_wo_comparison")
+    if gate_mode != "off" and tier23:
+        response = _canonical_analysis_capability_boundary(locale=locale)
+        workflow_used = "analysis_capability_boundary"
+    else:
+        response = _canonical_analysis_unavailable(locale=locale)
+        workflow_used = "analysis_unavailable"
+    await service._emit_canonical_events(
+        emitter=run.emitter,
+        thread_id=run.thread.pk,
+        run_id=f"analysis:{run.turn.pk}",
+        workflow_id=workflow_used,
+        workflow_name="ANALYSIS_EXECUTOR",
+        message=response.detailed_response,
+        response_state=response.response_state.value,
+    )
+    canonical = {
+        "thread_id": run.thread.pk,
+        "turn_id": run.turn.pk,
+        "message": response.detailed_response,
+        "agent": "analysis_executor",
+        "workflow_used": workflow_used,
+        "response_state": response.response_state.value,
+        "canonical_response": response.model_dump(mode="json"),
+        "spoken_summary": response.spoken_summary,
+        "reasoning_provenance": None,
+        "route": run.route.to_dict(),
+    }
+    if shadow_gate_blob is not None:
+        canonical["evidence_gate"] = shadow_gate_blob
+    return canonical
+
+
+async def _bind_turn_capture_and_scope(service: NormalizedTurnService, run: TurnRun):
+    """Bind the capture ledger + analysis-scope context for this turn.
+
+    Shared by the legacy rail and the analysis executor so the two branches
+    cannot drift (same ContextVar discipline, same serial resolution, same
+    fail-soft posture). Logger identity is preserved (S47 review finding).
+    """
+    from ai.core.tools.capture_ledger import bind_tool_captures
+
+    capture_ledger = bind_tool_captures()
+    from ai.core.analysis.scope_context import bind_turn_scope, resolve_scope_serials
+
+    scope_context = bind_turn_scope(
+        run.analysis_scope, thread_pk=run.thread.pk, turn_pk=run.turn.pk
+    )
+    if scope_context is not None and scope_context.active:
+        try:
+            actor_user = await service._call_sync(service._rehydrate_user_for_grounding, run.actor)
+            serials: frozenset[str] = frozenset()
+            if actor_user is not None:
+                serials = await service._call_sync(
+                    resolve_scope_serials, actor_user, sorted(scope_context.machine_ids)
+                )
+            scope_context = bind_turn_scope(
+                run.analysis_scope,
+                thread_pk=run.thread.pk,
+                turn_pk=run.turn.pk,
+                serials=serials,
+            )
+        except Exception:  # pragma: no cover - scope carry must fail soft
+            logger.warning("scope serial resolution failed", exc_info=False)
+    return capture_ledger, scope_context
+
+
 def _assemble_workflow_context(service: NormalizedTurnService, run: TurnRun) -> WorkflowContext:
     """Build the trusted workflow context; the pin-override rules live here."""
 
@@ -179,9 +335,15 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
     # S27: fresh capture ledger for this turn; the invocation
     # middleware records every tool result into it so grounding
     # can compare the answer against what the server returned.
-    from ai.core.tools.capture_ledger import bind_tool_captures
-
-    capture_ledger = bind_tool_captures()
+    # S5: the per-turn analysis-scope context binds beside it (same
+    # ContextVar discipline — rebind every turn, propagate through
+    # sync_to_async into every tool body and corpus call). Serial resolution
+    # runs only when an explicit scope could actually be consulted; a
+    # resolution failure binds a serial-less context, which narrows rather
+    # than widens (the corpus treats it as applicability-unresolved).
+    # S10: the binding is shared with the analysis executor so the two
+    # branches cannot drift.
+    capture_ledger, scope_context = await _bind_turn_capture_and_scope(service, run)
     workflow_context = _assemble_workflow_context(service, run)
     # Server-derived (owner-scoped rows from our own store), so it sits
     # alongside the other trusted fields. Its *content* is still
@@ -189,6 +351,12 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
     history = await service._conversation_history(run.repository, run.thread.pk)
     if history:
         workflow_context["conversation_history"] = history
+    # S3: the typed task intent rides the trusted context so wf8's
+    # capability selection can prefer the matching packs (and skip the
+    # history-subject carryover for analysis intents). Server-derived,
+    # content-free — an enum value, never text.
+    if run.task_intent is not None:
+        workflow_context["task_intent"] = run.task_intent.intent.value
     if run.question_resolution is not None and run.question_resolution.outcome == "selected":
         # Trusted context: the selected option's server-persisted
         # ref, so wf8 can pin e.g. the machine filter exactly.
@@ -229,6 +397,18 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
                 chunks.append(str(chunk))
 
     streamed_text = "".join(chunks)
+    # S5: the per-turn retrieval snapshot — the scope identity plus every
+    # internal envelope meta the tools recorded. Server-only (feeds evidence
+    # records and telemetry, A15); it never enters the canonical payload.
+    try:
+        run.retrieval_snapshot = {
+            "snapshot_id": getattr(scope_context, "snapshot_id", None),
+            "scope_hash": getattr(scope_context, "scope_hash", None),
+            "scope_version": getattr(scope_context, "scope_version", None),
+            "envelopes": capture_ledger.retrieval_metas(),
+        }
+    except Exception:  # pragma: no cover - bookkeeping must fail soft
+        logger.warning("retrieval snapshot assembly failed", exc_info=False)
     # S45: the post-hoc question replacement and the snapshot
     # reconciliation run ONLY when the token-streaming rail could
     # have produced the text (flag on, non-voice). Flag off, wf8's
@@ -332,6 +512,42 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
             )
         except Exception:  # pragma: no cover - advisory event
             logger.warning("messages snapshot emit failed", exc_info=False)
+    # S10 (WP-A7): the evidence-gate SHADOW soak. The analysis route gets no
+    # traffic while the routing enforce flag is dark, so the soak that
+    # decides the enforce flip runs HERE, over real legacy wf8 answers on
+    # ANALYSIS-intent turns: the cheap deterministic prose scans (closure,
+    # absence-vs-coverage), logged content-free and persisted beside the
+    # grounding blob. Telemetry only — the answer is never changed.
+    evidence_gate_blob: dict[str, Any] | None = None
+    try:
+        from ai.core.config import get_settings as _settings_for_gate
+
+        if str(getattr(_settings_for_gate(), "evidence_gate_mode", "off")) != "off" and (
+            run.task_intent is not None and getattr(run.task_intent, "intent", None) is not None
+        ):
+            from ai.core.analysis.intent import ANALYSIS_INTENTS
+
+            if run.task_intent.intent in ANALYSIS_INTENTS:
+                from ai.core.analysis.validator import shadow_scan_legacy
+
+                known_values = frozenset(str(value) for value in capture_ledger.observed_values())
+                envelopes = capture_ledger.retrieval_metas()
+                scan = shadow_scan_legacy(
+                    message=message,
+                    known_values=known_values,
+                    envelopes=envelopes,
+                    intent=run.task_intent.intent.value,
+                )
+                if scan is not None:
+                    evidence_gate_blob = scan
+                    if scan["would_fail"]:
+                        logger.info(
+                            "evidence_gate.shadow would_fail=%s intent=%s",
+                            ",".join(scan["would_fail"]),
+                            run.task_intent.intent.value,
+                        )
+    except Exception:  # pragma: no cover - the soak must never fail a turn
+        logger.warning("evidence gate shadow scan failed", exc_info=False)
     response = _canonical_response_for_legacy(message, speakable=run.modality == TurnModality.VOICE)
     canonical: dict[str, Any] = {
         "thread_id": run.thread.pk,
@@ -347,4 +563,6 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
     }
     if grounding_meta is not None:
         canonical["grounding"] = grounding_meta
+    if evidence_gate_blob is not None:
+        canonical["evidence_gate"] = evidence_gate_blob
     return canonical

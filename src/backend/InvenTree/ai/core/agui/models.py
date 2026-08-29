@@ -52,6 +52,14 @@ class AGUIForwardedProps(BaseModel):
         None, validation_alias=AliasChoices("idempotencyKey", "idempotency_key")
     )
     file_ids: list[str] | None = Field(None, validation_alias=AliasChoices("fileIds", "file_ids"))
+    # S1: client staleness detector for the thread analysis scope. A
+    # mismatch with the server's current version is a 409 before any model
+    # call; detection only — it grants nothing, and clients that omit it
+    # are unaffected.
+    expected_scope_version: int | None = Field(
+        None,
+        validation_alias=AliasChoices("expectedScopeVersion", "expected_scope_version"),
+    )
 
 
 class RunAgentInput(BaseModel):

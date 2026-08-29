@@ -35,6 +35,8 @@ CUSTOM_CHANNELS = (
     "aimms.proposalsRefresh",
     "aimms.hitl",
     "aimms.custom",
+    "aimms.evidenceAnalysis",
+    "aimms.analysisProgress",
 )
 
 #: Classic base-envelope keys that are NOT part of a record's payload.
@@ -301,6 +303,19 @@ class SpecTranslator:
                             "confidence": payload.get("confidence"),
                             "evidence": payload.get("evidence") or [],
                         },
+                        record,
+                    )
+                ]
+            if kind == "evidence_analysis":
+                # S10/S11: the consolidated attachment rides ONE object shape
+                # on every envelope — forward the payload minus the kind tag.
+                forwarded = {key: value for key, value in payload.items() if key != "kind"}
+                return [self._custom("aimms.evidenceAnalysis", forwarded, record)]
+            if kind == "analysis_progress":
+                return [
+                    self._custom(
+                        "aimms.analysisProgress",
+                        {"stage": payload.get("stage")},
                         record,
                     )
                 ]

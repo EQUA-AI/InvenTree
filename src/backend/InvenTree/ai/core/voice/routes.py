@@ -139,7 +139,25 @@ def _session_payload(session, settings) -> dict[str, Any]:
         turn_count=session.turn_count,
         policy_version=session.policy_version,
         terminal_reason=session.terminal_reason or None,
+        analysis_scope_version=getattr(session, "analysis_scope_version", 0),
     ).model_dump(mode="json")
+
+
+def _thread_scope_version(thread_id: str, owner_pk) -> int:
+    """The thread's current analysis-scope version, 0 when it does not exist.
+
+    Owner-bound: a session binds only to a version the actor could read.
+    Sync ORM — call from a ``sync_to_async`` context.
+    """
+    from aichat.models import ChatThread
+
+    return (
+        ChatThread.objects
+        .filter(id=thread_id, owner_id=owner_pk)
+        .values_list("analysis_scope_version", flat=True)
+        .first()
+        or 0
+    )
 
 
 async def _owned_session(principal: AIPrincipal, session_id: str, settings):
@@ -201,6 +219,7 @@ async def create_voice_session(request: VoiceSessionCreateRequest) -> dict:
             scope_key=principal.scope,
             policy_version=principal.policy_version,
             limits=_limits(settings),
+            analysis_scope_version=_thread_scope_version(thread_id, principal.user_pk),
         )
 
     try:
@@ -319,7 +338,9 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
     except TranscriptEventError:
         raise HTTPException(status_code=422, detail="VOICE_TRANSCRIPT_INCOMPLETE") from None
 
-    from ai.core.app import get_turn_service
+    from ai.core.app import _record_rejection, get_turn_service
+    from ai.core.pilot_latch import PilotLatchUnavailable, PilotStopped
+    from ai.core.quota.admission import AdmissionSaturated
     from ai.core.trusted_context import build_trusted_turn_context, resolve_actor_locale
     from ai.core.turn_service import IdempotencyConflict, TurnAlreadyRunning
     from ai.core.voice import status_phrases
@@ -398,6 +419,18 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
     # provider speech slot must be handed over in order.
     lock = _turn_locks.setdefault(str(session.id), asyncio.Lock())
     async with lock:
+        # §13.3 pattern 10: the session is bound to one analysis-scope
+        # version. A material change (e.g. a text-rail scope edit) refuses
+        # further voice turns — no turn executes, no turn is counted — until
+        # the user acknowledges by restarting voice, which re-binds.
+        current_scope_version = await sync_to_async(
+            lambda: _thread_scope_version(session.thread_id, principal.user_pk),
+            thread_sensitive=True,
+        )()
+        if current_scope_version != session.analysis_scope_version:
+            await _speak_status(VoiceUtteranceType.FAILURE_STATUS, status_phrases.SCOPE_CHANGED)
+            raise HTTPException(status_code=409, detail="VOICE_SCOPE_CHANGED")
+
         interim_task = asyncio.create_task(_interim_status()) if send_control is not None else None
 
         async def _finish_interim() -> bool:
@@ -450,6 +483,28 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
         except (IdempotencyConflict, TurnAlreadyRunning):
             await _finish_interim()
             raise HTTPException(status_code=409, detail="IDEMPOTENCY_CONFLICT") from None
+        except AdmissionSaturated as exc:
+            # S13: typed backpressure — voice turn submission shares the
+            # model-turn admission gate; session signaling stays separate.
+            await _finish_interim()
+            raise HTTPException(
+                status_code=503,
+                detail="ai_capacity_busy",
+                headers={"Retry-After": str(exc.retry_after)},
+            ) from None
+        except PilotStopped as exc:
+            # S15: the pilot is stopped — typed, non-retryable, every rail.
+            await _finish_interim()
+            _record_rejection(exc.code, principal)
+            raise HTTPException(status_code=503, detail=exc.code) from None
+        except PilotLatchUnavailable as exc:
+            await _finish_interim()
+            _record_rejection(exc.code, principal)
+            raise HTTPException(
+                status_code=503,
+                detail=exc.code,
+                headers={"Retry-After": str(exc.retry_after)},
+            ) from None
         except ValueError:
             await _finish_interim()
             raise HTTPException(status_code=422, detail="VOICE_TRANSCRIPT_INCOMPLETE") from None

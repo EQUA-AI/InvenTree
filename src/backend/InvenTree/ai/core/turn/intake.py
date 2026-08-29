@@ -108,6 +108,10 @@ async def begin(
         repository=repository,
         thread=thread,
         turn=begin_result.turn,
+        # S1: the scope snapshot ``begin_turn`` bound atomically with turn
+        # creation. Replay carries the ORIGINAL turn's snapshot — a scope
+        # change after the fact never rebinds a turn.
+        analysis_scope=begin_result.scope_snapshot,
     )
 
     if begin_result.replayed:

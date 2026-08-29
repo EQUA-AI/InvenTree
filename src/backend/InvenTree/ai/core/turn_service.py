@@ -130,6 +130,68 @@ def _log_voice_write_confirmation_shadow(content: str, thread_id: int) -> None:
     )
 
 
+def _reserve_turn_quota(actor: Any, idempotency_key: str) -> Any:
+    """S12: reserve the worst-case turn envelope (sync, off-loop, fail-open)."""
+    try:
+        from ai.core.quota.profiles import resolve_profile
+        from ai.core.quota.reservation import reserve_turn
+
+        snapshot = resolve_profile(getattr(actor, "user_pk", None))
+        return reserve_turn(
+            user_pk=getattr(actor, "user_pk", None),
+            tenant_id=str(getattr(actor, "scope", "") or "default"),
+            snapshot=snapshot,
+            idempotency_key=idempotency_key,
+        )
+    except Exception:
+        # Reservation is accounting, never a gate: the pre-turn block lives
+        # in check_budget (where enforce fails closed). Here we fail open.
+        logger.warning("turn quota reservation failed (fail-open)", exc_info=False)
+        return None
+
+
+def _settle_turn_quota(actor: Any, reservation: Any, result: Any, preempted: bool) -> None:
+    """S12+S37 terminal accounting: settle the reservation, then drain the ledger.
+
+    Order matters: ``record_turn_spend`` clears the ledger's events, so the
+    settle must read the totals first. Both run in one thread hop.
+    """
+    try:
+        if reservation is not None:
+            from ai.core.quota.reservation import settle_turn
+            from ai.core.usage import turn_usage_ledger
+
+            ledger = None
+            try:
+                ledger = turn_usage_ledger.get()
+            except Exception:
+                ledger = None
+            totals = ledger.totals() if ledger is not None else {}
+            tokens = totals.get("total_tokens") or (
+                totals.get("input_tokens", 0) + totals.get("output_tokens", 0)
+            )
+            if preempted:
+                outcome = "preempted"
+            elif getattr(result, "replayed", False):
+                outcome = "replayed"
+            else:
+                outcome = "executed"
+            settle_turn(reservation, ledger_tokens=int(tokens or 0), outcome=outcome)
+    except Exception:  # pragma: no cover - accounting must never fail a turn
+        logger.warning("turn quota settle failed (fail-open)", exc_info=False)
+    # S13: release the admission slots taken at the top of process(); a
+    # flags-off or never-acquired turn makes this a no-op.
+    try:
+        from ai.core.quota.admission import release_admission
+
+        release_admission(getattr(actor, "user_pk", None))
+    except Exception:  # pragma: no cover
+        logger.warning("admission release failed", exc_info=False)
+    from ai.core.middleware.budget import record_turn_spend
+
+    record_turn_spend(getattr(actor, "user_pk", None))
+
+
 class NormalizedTurnService:
     """Authorize, persist, execute, and finalize one normalized turn."""
 
@@ -364,6 +426,21 @@ class NormalizedTurnService:
 
             if not get_settings().feature_entity_manifest:
                 return canonical
+            if canonical.get("entities") is not None:
+                # S10: the analysis rail's VALIDATED chips are already set
+                # (claim entity refs, no fleet-root fallback) — keep them,
+                # but still emit the same STATE_DELTA so live/reload agree.
+                entities = canonical["entities"]
+                if entities and emitter is not None:
+                    await emitter.emit(
+                        AGUIEvent(
+                            event_type=EventType.STATE_DELTA,
+                            data={"kind": "entity_manifest", "entities": entities},
+                            thread_id=thread_id,
+                            run_id=f"entities:{turn_id}",
+                        )
+                    )
+                return canonical
             from ai.core.tools.capture_ledger import current_tool_captures
 
             ledger = current_tool_captures()
@@ -545,6 +622,54 @@ class NormalizedTurnService:
             workflow_id="injection_refused",
             workflow_name="INJECTION_REFUSED",
         )
+
+    async def _refuse_unsafe_shortcut(
+        self,
+        *,
+        content: str,
+        modality: str,
+        thread_id: Any,
+        turn_id: Any,
+        emitter: Any,
+        locale: str = "en",
+    ) -> dict[str, Any] | None:
+        """Refuse a request to skip or defeat a safety control (S4).
+
+        Returns the deterministic refusal canonical, or ``None`` to continue
+        normally. BOTH modalities — the battery's Q86 arrived as text.
+        Content-only, unflagged, and enforced on ship (monotonic rollback
+        floor): no configuration can restore the speculative-RCA behavior.
+        """
+        from ai.core.analysis.safety_policy import has_unsafe_shortcut
+
+        if not has_unsafe_shortcut(content):
+            return None
+        from ai.core.turn.responses import _canonical_safety_refusal
+
+        # Bounded and transcript-free: the refused text is never echoed back.
+        logger.warning("safety.shortcut.refused thread_id=%s turn_id=%s", thread_id, turn_id)
+        response = _canonical_safety_refusal(voice=modality == TurnModality.VOICE, locale=locale)
+        await self._emit_canonical_events(
+            emitter=emitter,
+            thread_id=thread_id,
+            run_id=f"safety_refusal:{turn_id}",
+            workflow_id="safety_refusal",
+            workflow_name="SAFETY_POLICY",
+            message=response.detailed_response,
+            response_state=response.response_state.value,
+        )
+        return {
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "message": response.detailed_response,
+            "agent": "safety_policy",
+            "workflow_used": "safety_refusal",
+            "response_state": response.response_state.value,
+            "canonical_response": response.model_dump(mode="json"),
+            "spoken_summary": response.spoken_summary,
+            "reasoning_provenance": None,
+            "route": None,
+        }
 
     def _abandon_pending_voice_write(self, *, modality: str, thread_id: Any) -> None:
         """Close the confirmation window without confirming anything.
@@ -1143,6 +1268,42 @@ class NormalizedTurnService:
         from ai.core.tracing import set_span_attrs, turn_span
 
         with turn_span("aimms.turn", correlation_id=correlation_id, modality=modality) as span:
+            # S13: the admission lease guards concurrency BEFORE any
+            # reservation or provider work. A rejection raises the typed
+            # saturation error with nothing held (acquire released its own
+            # partial counts); the routes convert it to 503 ai_capacity_busy.
+            import time as _time
+
+            # S15 (§15.4): the pilot-stop latch refuses BEFORE any lease or
+            # reservation is taken. Inert while the flag is dark; fail-CLOSED
+            # when armed (the deliberate inverse of admission's fail-open
+            # ADR). One check here covers every rail.
+            from ai.core.pilot_latch import PilotStopped, check_pilot_admission
+            from ai.core.quota.admission import AdmissionSaturated, acquire_admission
+
+            try:
+                await asyncio.to_thread(check_pilot_admission)
+            except PilotStopped as stop:
+                set_span_attrs(span, pilot_stop_reason=stop.reason_code or "latched")
+                raise
+
+            process_started = _time.perf_counter()
+            admission = await asyncio.to_thread(acquire_admission, getattr(actor, "user_pk", None))
+            if not admission.admitted:
+                set_span_attrs(span, admission_outcome=admission.outcome)
+                raise AdmissionSaturated(admission.retry_after)
+            # S12: reserve the worst-case turn envelope before execution
+            # (flag-gated, fail-open, off-loop). The settle in the finally
+            # below replaces it with actuals — or the full worst case for an
+            # executed turn whose ledger stayed empty, which conservatively
+            # bounds every uninstrumented rail.
+            from ai.core.config import get_settings as _settings_for_quota
+
+            reservation = None
+            if getattr(_settings_for_quota(), "feature_ai_quota_profiles", False):
+                reservation = await asyncio.to_thread(_reserve_turn_quota, actor, idempotency_key)
+            result = None
+            preempted = False
             try:
                 result = await self._process_turn(
                     actor=actor,
@@ -1157,20 +1318,32 @@ class NormalizedTurnService:
                     server_pinned_workflow=server_pinned_workflow,
                     server_generation_target=server_generation_target,
                 )
+            except TurnAlreadyRunning:
+                # An idempotency conflict never executed anything: the
+                # reservation is released without charge.
+                preempted = True
+                raise
             finally:
                 # S37: one budget increment per turn, whatever the outcome —
                 # the tokens were spent either way. Replays and validation
                 # rejections have empty ledgers and write nothing. Off-loop:
-                # the cache write must never stall the event loop.
-                from ai.core.middleware.budget import record_turn_spend
+                # the cache write must never stall the event loop. The S12
+                # settle runs FIRST (same thread hop) because
+                # record_turn_spend drains the ledger it also needs.
+                await asyncio.to_thread(_settle_turn_quota, actor, reservation, result, preempted)
+            from ai.core.quota.slo import slo_breach, slo_class_for
 
-                await asyncio.to_thread(record_turn_spend, getattr(actor, "user_pk", None))
+            slo_class = slo_class_for(getattr(result, "workflow_used", None), None)
             set_span_attrs(
                 span,
                 thread_id=getattr(result, "thread_id", None),
                 turn_id=getattr(result, "turn_id", None),
                 workflow_id=getattr(result, "workflow_used", None),
                 response_state=getattr(result, "response_state", None),
+                admission_outcome=admission.outcome,
+                quota_profile=getattr(reservation, "profile", None),
+                slo_class=slo_class,
+                slo_breach=slo_breach(_time.perf_counter() - process_started, slo_class) or "none",
             )
             return result
 
@@ -1273,6 +1446,25 @@ class NormalizedTurnService:
                 provenance.get("tool_rounds", "-"),
                 ",".join(provenance.get("tool_names") or ()) or "-",
             )
+            # S13: one content-free SLO line per turn against the §8.9 table
+            # (the root-span attrs are set in process(), which owns the span).
+            try:
+                from ai.core.quota.slo import slo_breach, slo_class_for
+
+                duration_s = time.perf_counter() - turn_started
+                slo_class = slo_class_for(
+                    canonical.get("workflow_used"),
+                    run.task_intent.intent.value if run.task_intent is not None else None,
+                )
+                breach = slo_breach(duration_s, slo_class)
+                logger.info(
+                    "turn.slo class=%s duration_ms=%d breach=%s",
+                    slo_class,
+                    int(duration_s * 1000),
+                    breach or "-",
+                )
+            except Exception:  # pragma: no cover - telemetry must never raise
+                logger.debug("slo recording failed", exc_info=False)
             return self._result_from_canonical(thread.pk, finalized.pk, canonical, replayed=False)
         except asyncio.CancelledError:
             await isolated_emitter.emit(

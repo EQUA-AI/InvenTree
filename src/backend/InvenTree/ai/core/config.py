@@ -5,6 +5,7 @@ Centralized typed configuration using pydantic-settings.
 Loads from environment variables with validation.
 """
 
+import re as _re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -185,6 +186,40 @@ class Settings(BaseSettings):
     # fixed-window limiter next to the legacy in-process buckets and logs any
     # divergence; enforce hands the 429 decision to the windowed limiter.
     # Both off reverts to the per-process buckets alone.
+    # S1 (analysis rail): server-owned thread analysis scope. Shadow stores
+    # scopes, snapshots them per turn, and logs would-be out-of-scope
+    # results without changing answers; enforce (S5) makes readers reject
+    # out-of-scope results under an explicit scope. Enforce is part of the
+    # rollback floor: once enabled in a deployment it is not turned back off.
+    feature_ai_thread_scope_shadow: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_AI_THREAD_SCOPE_SHADOW", "AIMMS_FEATURE_AI_THREAD_SCOPE_SHADOW"
+        ),
+    )
+    feature_ai_thread_scope_enforce: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_AI_THREAD_SCOPE_ENFORCE", "AIMMS_FEATURE_AI_THREAD_SCOPE_ENFORCE"
+        ),
+    )
+    # S3 (analysis rail): typed task/effect intent ahead of complexity
+    # routing. Shadow classifies, records span attrs, and logs divergence
+    # from the legacy route without changing it; enforce routes analysis
+    # intents (read-only, TEXT) to RouteMode.ANALYSIS — dark until the
+    # evidence gate (Phase 4) gives that rail something real to execute.
+    feature_ai_analysis_router_shadow: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_AI_ANALYSIS_ROUTER_SHADOW", "AIMMS_FEATURE_AI_ANALYSIS_ROUTER_SHADOW"
+        ),
+    )
+    feature_ai_analysis_router_enforce: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_AI_ANALYSIS_ROUTER_ENFORCE", "AIMMS_FEATURE_AI_ANALYSIS_ROUTER_ENFORCE"
+        ),
+    )
     feature_distributed_rate_limit_shadow: bool = Field(
         default=True,
         validation_alias=AliasChoices(
@@ -216,6 +251,56 @@ class Settings(BaseSettings):
             "FEATURE_TOKEN_BUDGET_ENFORCE", "AIMMS_FEATURE_TOKEN_BUDGET_ENFORCE"
         ),
     )
+    # S12: finite quota profiles (standard/evaluation/service). The flag
+    # switches check_budget from the v1 single-cap counter to profile-resolved
+    # caps + reservation/settlement accounting; whether a block is REAL stays
+    # governed by the token-budget shadow/enforce pair above (no third
+    # enforce flag). Enforcement additionally requires the verified shared
+    # cache backend (Part-4 admin item) — LocMem is disqualifying.
+    feature_ai_quota_profiles: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_AI_QUOTA_PROFILES", "AIMMS_FEATURE_AI_QUOTA_PROFILES"
+        ),
+    )
+    # S13: shared-cache active-turn admission control. Shadow logs
+    # admission.would_reject; enforce returns typed 503 ai_capacity_busy.
+    # Admission FAILS OPEN on store errors even under enforce (availability
+    # protection, not a security boundary — see quota/admission.py ADR).
+    feature_ai_admission_control_shadow: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_AI_ADMISSION_CONTROL_SHADOW", "AIMMS_FEATURE_AI_ADMISSION_CONTROL_SHADOW"
+        ),
+    )
+    feature_ai_admission_control_enforce: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_AI_ADMISSION_CONTROL_ENFORCE", "AIMMS_FEATURE_AI_ADMISSION_CONTROL_ENFORCE"
+        ),
+    )
+    # S12/S13 numeric knobs — deliberately NOT in the aimms_flags registry
+    # (same decision as AI_USER_DAILY_TOKEN_BUDGET: the registry's closure
+    # test governs FEATURE_* names; plain limits live as Settings only).
+    ai_quota_policy_cache_ttl_s: int = Field(default=60, ge=1, alias="AI_QUOTA_POLICY_CACHE_TTL_S")
+    #: Worst-case per-turn token reservation (configured bound, never p95).
+    ai_quota_turn_reserve_tokens: int = Field(
+        default=32_000, ge=0, alias="AI_QUOTA_TURN_RESERVE_TOKENS"
+    )
+    #: Deployment/environment namespace for quota + admission counters, so
+    #: shared stores (one Redis serving several envs) never cross-count.
+    ai_deployment_env: str = Field(default="default", alias="AI_DEPLOYMENT_ENV")
+    ai_admission_max_active_per_user: int = Field(
+        default=2, ge=1, alias="AI_ADMISSION_MAX_ACTIVE_PER_USER"
+    )
+    #: Pilot operating envelope: five concurrent in-flight turns (§8.9).
+    ai_admission_max_active_global: int = Field(
+        default=5, ge=1, alias="AI_ADMISSION_MAX_ACTIVE_GLOBAL"
+    )
+    ai_admission_retry_after_s: int = Field(default=5, ge=1, alias="AI_ADMISSION_RETRY_AFTER_S")
+    #: Lease TTL must exceed the hard turn deadline (turn_wall_clock_cap_s,
+    #: 240s) plus cleanup grace so a leaked lease self-clears.
+    ai_admission_lease_ttl_s: int = Field(default=300, ge=60, alias="AI_ADMISSION_LEASE_TTL_S")
     # S37: deterministic model tiering through one policy table
     # (ai/core/model_policy.py). Shadow logs any legacy-vs-policy divergence
     # (the initial table is the identity, so a divergence means a policy
@@ -489,6 +574,65 @@ class Settings(BaseSettings):
         default="shadow",
         validation_alias=AliasChoices("AIMMS_MANUAL_GROUNDING_MODE", "MANUAL_GROUNDING_MODE"),
     )
+    # S10: the evidence-analysis gate. off keeps the ANALYSIS route abstaining
+    # byte-identically; shadow runs the deterministic closure scans over
+    # legacy wf8 ANALYSIS-intent answers (persisted soak blob) and
+    # dark-rehearses the full executor when the analysis route is reached;
+    # enforce serves the validated v2 response. Serving v2 additionally
+    # requires FEATURE_AI_ANALYSIS_ROUTER_ENFORCE; both flips are HUMAN-gated
+    # after the shadow soak review.
+    evidence_gate_mode: Literal["off", "shadow", "enforce"] = Field(
+        default="shadow",
+        validation_alias=AliasChoices("AIMMS_EVIDENCE_GATE_MODE", "EVIDENCE_GATE_MODE"),
+    )
+    # S14/A12: the declared capability tier — a DEPLOYMENT profile, never
+    # inferred from users, quota profiles, or prompts. 0 (default) declares
+    # nothing and validates nothing; tiers >= 1 require the
+    # aimms_capability.TIER_REQUIREMENTS to hold, checked by the model
+    # validator below (startup fails on an unsatisfiable declaration). The
+    # tier is stamped on every terminal turn's metadata.
+    capability_tier: int = Field(
+        default=0,
+        ge=0,
+        le=3,
+        validation_alias=AliasChoices("AIMMS_CAPABILITY_TIER", "CAPABILITY_TIER"),
+    )
+    # S15/§15.4: arm the fail-closed pilot-stop admission gate. Dark by
+    # default; the latch state, set/clear commands, and reports all work
+    # regardless — only the per-turn check is gated. Deliberately the
+    # INVERSE of admission control's fail-open ADR: with the flag on, an
+    # unreadable latch refuses new turns (pilot_latch_unavailable).
+    feature_ai_pilot_stop_latch: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_AI_PILOT_STOP_LATCH", "AIMMS_FEATURE_AI_PILOT_STOP_LATCH"
+        ),
+    )
+    # S16/Q48: the Django plane runs the purge jobs; this mirror exists so
+    # the AI plane's tier validation can enforce the retention_cleanup
+    # requirement (tier >= 1 needs retention OPERATING in the deployment).
+    feature_ai_retention_jobs: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_AI_RETENTION_JOBS", "AIMMS_FEATURE_AI_RETENTION_JOBS"
+        ),
+    )
+    # Bounded staleness for the cached latch read; engage_latch writes the
+    # cache directly, so automatic stops propagate near-instantly and this
+    # TTL only bounds MANUAL DB edits' propagation.
+    ai_pilot_latch_cache_ttl_s: int = Field(
+        default=10, ge=1, le=300, alias="AI_PILOT_LATCH_CACHE_TTL_S"
+    )
+    # Deliberately NOT in the flag REGISTRY (AI_USER_DAILY_TOKEN_BUDGET
+    # precedent): numeric tuning knobs, not feature flags. Defaults follow
+    # the §8.9 SLO table — synthesis-class p95 for the turn, p50 for the
+    # single synthesis call — under the 240s hard turn cap.
+    analysis_turn_deadline_s: float = Field(
+        default=45.0, ge=1.0, le=240.0, alias="ANALYSIS_TURN_DEADLINE_S"
+    )
+    analysis_synthesis_timeout_s: float = Field(
+        default=20.0, ge=1.0, le=120.0, alias="ANALYSIS_SYNTHESIS_TIMEOUT_S"
+    )
     # S26: when a medium/high-confidence diagnosis cites no history and never
     # consulted the history tools, the server retrieves history evidence and
     # runs ONE stateless full-transcript continuation. Dark by default; flip
@@ -623,11 +767,41 @@ class Settings(BaseSettings):
         default=False, alias="VOICE_LIVE_STORE_RAW_AUDIO"
     )
     # WS5 critical-term policy: transcripts below this ASR confidence are held
-    # for confirmation (unknown confidence always counts as below). Served to
-    # the client via the capability probe so there is one source of truth.
+    # for confirmation. A transcript with NO confidence value is not held —
+    # providers that omit the field would otherwise hold every utterance —
+    # and the server routing default matches (absent -> 1.0). Served to the
+    # client via the capability probe so there is one source of truth.
     voice_confidence_floor: float = Field(
         default=0.85, ge=0.0, le=1.0, alias="AIMMS_VOICE_CONFIDENCE_FLOOR"
     )
+
+    @model_validator(mode="after")
+    def validate_capability_tier(self) -> "Settings":
+        """A12: a declared tier this build cannot satisfy fails startup.
+
+        Validates the registry flags THIS plane bridges (the Django system
+        check covers its own subset); tier 0 declares nothing and stays
+        inert. The rollback-floor marker is a Django-DB setting, so armed
+        floor enforcement rides the Django check, not this validator.
+        """
+        if self.capability_tier <= 0:
+            return self
+        from aimms_capability import validate_capability_profile
+        from aimms_flags import ai_flags
+
+        flag_view: dict[str, object] = {
+            entry.env_name: getattr(self, entry.ai_field)
+            for entry in ai_flags()
+            if entry.ai_field and hasattr(self, entry.ai_field)
+        }
+        flag_view["MODEL_VERSION_BOOT_PROBE_ENABLED"] = self.model_version_boot_probe_enabled
+        violations = validate_capability_profile(self.capability_tier, flag_view)
+        if violations:
+            raise ValueError(
+                f"AIMMS_CAPABILITY_TIER={self.capability_tier} is not satisfiable: "
+                + "; ".join(violations)
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_voice_live_transport(self) -> "Settings":
@@ -1094,3 +1268,43 @@ def get_devui_settings() -> DevUISettings:
 
 # Default settings instance
 settings = get_settings()
+
+
+# --------------------------------------------------------------------------- #
+# S44/S15: the ONE redaction authority for settings dumps. Used by the
+# staff-gated /config/effective endpoint and the evaluation_dossier command.
+# --------------------------------------------------------------------------- #
+CONFIG_SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
+
+#: Credential SHAPES inside string values: a SAS/API signature in a query
+#: string or connection string, or userinfo credentials embedded in a URL.
+#: Name-based redaction alone is one operator habit away from leaking — an
+#: endpoint pasted WITH its ?sig=... survives a name check.
+CONFIG_SECRET_VALUE = _re.compile(
+    r"(?i)(?:sig|sharedaccesskey|accountkey|apikey|api-key|password|secret|token)="
+    r"|://[^/@\s]+:[^/@\s]+@"
+)
+
+
+def redact_config(value, name: str = ""):
+    """Redact secret-shaped values from a settings dump (S44).
+
+    Name markers redact only STRING values — feature flags and budget
+    numbers are what the dump exists to expose, not secrets. Every string
+    additionally gets a value-shape scan so a credential pasted into a
+    non-secret-named field never ships.
+    """
+    if isinstance(value, dict):
+        return {key: redact_config(item, key) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact_config(item, name) for item in value]
+    # pydantic SecretStr dumps as the masked literal already, but be safe.
+    if value.__class__.__name__ == "SecretStr":
+        return "***"
+    if isinstance(value, str) and value:
+        upper = name.upper()
+        if any(marker in upper for marker in CONFIG_SECRET_MARKERS):
+            return "***"
+        if CONFIG_SECRET_VALUE.search(value):
+            return "***"
+    return value

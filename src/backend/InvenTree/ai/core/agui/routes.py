@@ -56,11 +56,15 @@ async def run_agui(request: Request) -> StreamingResponse:
     from ai.core.app import (
         ChatRequest,
         _principal,
+        _record_rejection,
+        _reject_stale_scope_version,
         _server_correlation_id,
         _turn_metadata,
         get_turn_service,
     )
     from ai.core.config import get_settings
+    from ai.core.pilot_latch import PilotLatchUnavailable, PilotStopped
+    from ai.core.quota.admission import AdmissionSaturated
     from ai.core.trusted_context import build_trusted_turn_context, resolve_actor_locale
     from ai.core.turn_service import TurnAlreadyRunning, TurnExecutionFailed
     from aichat.services import (
@@ -83,6 +87,11 @@ async def run_agui(request: Request) -> StreamingResponse:
         raise HTTPException(status_code=422, detail="Request body must be JSON") from None
 
     principal = _principal()
+    # S1: scope staleness detector — 409 before any model call, mirroring
+    # /chat and /chat/stream. Omitted version (legacy clients) is a no-op.
+    await _reject_stale_scope_version(
+        principal, run_input.thread_id, run_input.forwarded_props.expected_scope_version
+    )
     try:
         content = derive_user_message(run_input)
     except ValueError as exc:
@@ -163,6 +172,42 @@ async def run_agui(request: Request) -> StreamingResponse:
                         data={
                             "message": "Idempotency conflict",
                             "code": "idempotency_conflict",
+                        },
+                        thread_id=thread_id,
+                    )
+                )
+            except AdmissionSaturated as exc:
+                # S13: typed backpressure on the AG-UI rail.
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={
+                            "message": "The AI service is at capacity. Please retry shortly.",
+                            "code": "ai_capacity_busy",
+                            "retry_after": exc.retry_after,
+                        },
+                        thread_id=thread_id,
+                    )
+                )
+            except PilotStopped as exc:
+                # S15: the pilot is stopped — typed, non-retryable.
+                _record_rejection(exc.code, principal)
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={"message": "The AI pilot is stopped.", "code": exc.code},
+                        thread_id=thread_id,
+                    )
+                )
+            except PilotLatchUnavailable as exc:
+                _record_rejection(exc.code, principal)
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={
+                            "message": "The AI pilot gate is unavailable.",
+                            "code": exc.code,
+                            "retry_after": exc.retry_after,
                         },
                         thread_id=thread_id,
                     )
