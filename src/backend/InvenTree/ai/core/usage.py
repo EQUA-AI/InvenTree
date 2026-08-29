@@ -14,11 +14,21 @@ compare. Non-canonical int keys (``history_messages`` …) stay as per-event
 detail. Three named string fields survive per event: ``source``, ``model``,
 ``deployment``.
 
-Known-uncounted sources (by name, so the gap is explicit): embeddings,
-reflection repair calls, legacy workflows wf1-wf6, voice tool_actions, and
-closeout extraction (it runs in the closeout wizard REST path, where no
-turn ledger is bound). wf8 and the routing classifier record only on
-success — failed provider calls are uncounted on those rails.
+Accounting status by source (S12 keeps this list honest — the spec's bar is
+"counted or explicitly bounded"):
+
+- COUNTED: wf8, Luna, routing classifier, grounding, intent classifier,
+  voice tool_actions, reflection repair, and query-time embeddings
+  (``document_search`` + the routing embedder).
+- EXPLICITLY BOUNDED, not instrumented: legacy workflows wf1-wf6 and failed
+  provider calls on every rail — under ``FEATURE_AI_QUOTA_PROFILES`` an
+  executed turn whose ledger stayed empty settles at the configured
+  worst case (``ai/core/quota/reservation.py``), so these rails can never
+  exceed the reservation envelope.
+- OUT OF USER QUOTA by design: closeout extraction (closeout wizard REST
+  path, no turn ledger bound) and index-build embeddings
+  (``controlled_document_indexing`` runs in django-q workers,
+  operator-triggered).
 
 Fail-soft by construction: recording never raises, an unbound ledger is a
 no-op, and the event list is bounded. Usage is telemetry — it must never be

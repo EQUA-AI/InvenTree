@@ -255,6 +255,11 @@ CORRECTED_ARGUMENTS: [JSON or "N/A"]"""
             )
 
             response = await agent.run(prompt)
+            # S12 (WP-B2): reflection repair is a real provider call the
+            # turn ledger was blind to.
+            from ai.core.usage import maf_response_usage_metrics, record_usage
+
+            record_usage("reflection_repair", maf_response_usage_metrics(response))
             response_text = ""
             if response.messages:
                 last_msg = response.messages[-1]

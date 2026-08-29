@@ -39,6 +39,25 @@ _ALLOWED_ATTRS = frozenset({
     "aimms.proposal_id",
     "aimms.action_type",
     "aimms.turn_sequence",
+    # S0 (analysis rail): content-free scope/intent/validation telemetry.
+    # Enum codes, versions, counts, and hash PREFIXES only — never machine
+    # names, filters, claims, or any other scope/answer content.
+    "aimms.task_intent",
+    "aimms.effect_intent",
+    "aimms.scope_mode",
+    "aimms.scope_version",
+    "aimms.scope_hash_prefix",
+    "aimms.scope_machine_count",
+    "aimms.scope_rejections",
+    "aimms.validator_outcome",
+    "aimms.coverage_complete",
+    "aimms.quota_profile",
+    "aimms.admission_outcome",
+    # S15: the content-free Q50 reason code on a pilot-stop rejection span.
+    "aimms.pilot_stop_reason",
+    # S13: latency class + worst threshold crossed (enum codes, §8.9 table).
+    "aimms.slo_class",
+    "aimms.slo_breach",
 })
 
 _MAX_ATTR_LEN = 128

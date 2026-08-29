@@ -114,14 +114,26 @@ class BudgetDecision:
     used: int
     cap: int
     retry_after: int
+    #: S12 enforce-mode fail-closed marker: the quota store/policy source is
+    #: down and enforcement cannot be evaluated — the middleware returns a
+    #: typed 503 ``quota_store_unavailable``, never a silent pass.
+    store_unavailable: bool = False
 
 
-def check_budget(user_pk, now: float | None = None) -> BudgetDecision:
+def check_budget(user_pk, now: float | None = None, tenant_id: str | None = None) -> BudgetDecision:
     """Evaluate the user's spend against the configured daily cap.
 
     ``blocked`` already folds in the enforce flag, exemptions, an unlimited
     cap (0), and the fail-open posture; the middleware only has to honor it.
     Shadow logging happens here so every caller gets it for free.
+
+    With ``FEATURE_AI_QUOTA_PROFILES`` on, the check switches to the
+    profile-resolved caps at all three levels (user/tenant/deployment)
+    against the reserve-then-settle counters; the v1 single-cap path stays
+    byte-identical when the flag is off. In BOTH paths, whether a block is
+    real is governed by the same shadow/enforce pair; the profile path adds
+    the fail-closed posture — under enforce, a store failure is
+    ``store_unavailable``, never a pass.
     """
     try:
         from ai.core.config import get_settings
@@ -131,18 +143,41 @@ def check_budget(user_pk, now: float | None = None) -> BudgetDecision:
         shadow = bool(getattr(settings, "feature_token_budget_shadow", False))
         enforce = bool(getattr(settings, "feature_token_budget_enforce", False))
         exempt_raw = str(getattr(settings, "ai_budget_exempt_user_ids", "") or "")
+        profiles_on = bool(getattr(settings, "feature_ai_quota_profiles", False))
     except Exception:  # pragma: no cover - config absent in minimal envs
         return BudgetDecision(blocked=False, used=0, cap=0, retry_after=0)
 
-    if cap <= 0 or (not shadow and not enforce):
+    if not shadow and not enforce:
         return BudgetDecision(blocked=False, used=0, cap=cap, retry_after=0)
+    # Exemptions survive the profile flip as a migration bridge; retiring
+    # them in favor of assigned profiles is a deployment cleanup step.
     exempt = {part.strip() for part in exempt_raw.split(",") if part.strip()}
     if str(user_pk) in exempt:
         return BudgetDecision(blocked=False, used=0, cap=cap, retry_after=0)
 
+    if profiles_on:
+        return _check_profile_budget(
+            user_pk, tenant_id=tenant_id, shadow=shadow, enforce=enforce, now=now
+        )
+
+    if cap <= 0:
+        return BudgetDecision(blocked=False, used=0, cap=cap, retry_after=0)
     used = current_spend(user_pk, now)
     if used is None:
         # Cache failure: fail open, already fault-logged by current_spend.
+        # S15/Q50(b): under ENFORCE that fail-open is itself a critical
+        # event (a regression of the Q44 posture) — report it; hardening
+        # the v1 path to fail closed stays S12 scope, so the request
+        # behavior here is unchanged.
+        if enforce:
+            try:
+                from ai.core.pilot_latch import report_critical_event
+
+                report_critical_event(
+                    "enforce_fail_open", "token budget store unreadable under enforce"
+                )
+            except Exception:  # pragma: no cover - reporting is best-effort
+                pass
         return BudgetDecision(blocked=False, used=0, cap=cap, retry_after=0)
     if used < cap:
         return BudgetDecision(blocked=False, used=used, cap=cap, retry_after=0)
@@ -151,6 +186,53 @@ def check_budget(user_pk, now: float | None = None) -> BudgetDecision:
     if shadow and not enforce:
         logger.warning("budget.would_block user=%s used=%d cap=%d", user_pk, used, cap)
     return BudgetDecision(blocked=enforce, used=used, cap=cap, retry_after=retry_after)
+
+
+def _check_profile_budget(
+    user_pk, *, tenant_id: str | None, shadow: bool, enforce: bool, now: float | None
+) -> BudgetDecision:
+    """S12: committed (used+reserved) vs the profile caps at every level."""
+    from ai.core.quota.profiles import QuotaSourceUnavailable, resolve_profile
+    from ai.core.quota.reservation import level_usage
+
+    try:
+        snapshot = resolve_profile(user_pk)
+    except QuotaSourceUnavailable as exc:
+        logger.error("quota policy resolution failed %s", fault_location(exc))
+        if enforce:
+            return BudgetDecision(
+                blocked=True, used=0, cap=0, retry_after=60, store_unavailable=True
+            )
+        return BudgetDecision(blocked=False, used=0, cap=0, retry_after=0)
+
+    usages = level_usage(user_pk=user_pk, tenant_id=tenant_id or "default", snapshot=snapshot)
+    if usages is None:
+        if enforce:
+            return BudgetDecision(
+                blocked=True, used=0, cap=0, retry_after=60, store_unavailable=True
+            )
+        return BudgetDecision(blocked=False, used=0, cap=snapshot.user_cap, retry_after=0)
+
+    user_usage = next(usage for usage in usages if usage.level == "user")
+    for usage in usages:
+        if usage.cap > 0 and usage.committed >= usage.cap:
+            retry_after = seconds_to_utc_midnight(now)
+            if shadow and not enforce:
+                logger.warning(
+                    "quota.would_block level=%s user=%s committed=%d cap=%d profile=%s",
+                    usage.level,
+                    user_pk,
+                    usage.committed,
+                    usage.cap,
+                    snapshot.profile,
+                )
+            return BudgetDecision(
+                blocked=enforce,
+                used=user_usage.used,
+                cap=user_usage.cap,
+                retry_after=retry_after,
+            )
+    return BudgetDecision(blocked=False, used=user_usage.used, cap=user_usage.cap, retry_after=0)
 
 
 __all__ = [

@@ -294,6 +294,19 @@ class WindowedRateLimiter:
         # the shared store.
         self._stats = RateLimitStats()
 
+    def _report_enforce_fail_open(self) -> None:
+        """Report a store fail-open under enforce; never raises."""
+        try:
+            from ai.core.config import get_settings
+
+            if not getattr(get_settings(), "feature_distributed_rate_limit_enforce", False):
+                return
+            from ai.core.pilot_latch import report_critical_event
+
+            report_critical_event("enforce_fail_open", "rate-limit store unreadable under enforce")
+        except Exception:  # pragma: no cover - reporting is best-effort
+            pass
+
     def check_rate_limit(
         self, user_id: str, endpoint: str, now: float | None = None
     ) -> RateLimitResult:
@@ -321,6 +334,13 @@ class WindowedRateLimiter:
         minute_count = self.store.increment(
             scope="user", endpoint=endpoint, key=user_id, window_seconds=60, now=now
         )
+        if minute_count is None:
+            # S15/Q50(b): a store outage while distributed limiting is in
+            # ENFORCE silently fails open — report the critical event
+            # (admission control's own store_error stays exempt: its
+            # fail-open is a recorded availability ADR, and Q50 names the
+            # budget/rate stores only). Request behavior unchanged here.
+            self._report_enforce_fail_open()
         remaining = -1 if minute_count is None else max(0, minute_limit - minute_count)
         if minute_count is not None and minute_count > minute_limit:
             self._stats.record_rejected("user", endpoint)
@@ -435,6 +455,36 @@ class RateLimitStats:
 #: budget gate applies only here — see the middleware comment. Matched with
 #: fullmatch: a new spending route MUST be added as a literal alternative
 #: (S49 added /agui) or it silently bypasses the budget.
+
+
+def _admission_peek_saturated(user_pk) -> int | None:
+    """S13 pre-stream peek: retry-after seconds when clearly saturated, else None.
+
+    Read-only (no slot taken, nothing to release) and enforce-only — shadow
+    saturation is the authoritative acquire's business. Fail-open on any
+    store or config error, like admission itself.
+    """
+    try:
+        from ai.core.config import get_settings
+        from ai.core.quota.admission import _keys, _retry_after
+
+        settings = get_settings()
+        if not getattr(settings, "feature_ai_admission_control_enforce", False):
+            return None
+        user_cap = int(getattr(settings, "ai_admission_max_active_per_user", 0) or 0)
+        global_cap = int(getattr(settings, "ai_admission_max_active_global", 0) or 0)
+        from django.core.cache import cache
+
+        user_key, global_key = _keys(user_pk)
+        if user_cap and int(cache.get(user_key) or 0) >= user_cap:
+            return _retry_after()
+        if global_cap and int(cache.get(global_key) or 0) >= global_cap:
+            return _retry_after()
+        return None
+    except Exception:
+        return None
+
+
 _BUDGETED_ENDPOINTS = re.compile(r"/chat|/chat/stream|/voice/sessions/[^/]+/turns|/agui")
 
 
@@ -577,17 +627,59 @@ class RateLimitMiddleware:
         if _BUDGETED_ENDPOINTS.fullmatch(endpoint):
             from ai.core.middleware.budget import check_budget
 
-            budget = await asyncio.to_thread(check_budget, getattr(principal, "user_pk", None))
+            budget = await asyncio.to_thread(
+                check_budget,
+                getattr(principal, "user_pk", None),
+                None,
+                getattr(principal, "scope", None),
+            )
+            if budget.store_unavailable:
+                # S12 enforce fails CLOSED: the quota store is down, so the
+                # ceiling cannot be evaluated — a typed 503, never a pass.
+                await _send_json(
+                    send,
+                    status=503,
+                    content={
+                        "error": "quota_store_unavailable",
+                        "code": "quota_store_unavailable",
+                        "retry_after": budget.retry_after,
+                    },
+                    headers={"Retry-After": str(budget.retry_after)},
+                )
+                return
             if budget.blocked:
                 await _send_json(
                     send,
                     status=429,
                     content={
                         "error": "token_budget_exhausted",
-                        "code": "rate_limited",
+                        # S12: the wire-typed code (QUOTA_ERROR_CODES). The
+                        # frontend must NOT auto-retry this one — the reset
+                        # is at UTC midnight, not seconds away.
+                        "code": "token_budget_exhausted",
                         "retry_after": budget.retry_after,
                     },
                     headers={"Retry-After": str(budget.retry_after)},
+                )
+                return
+
+            # S13: a READ-ONLY admission peek so a clearly saturated stream
+            # gets its 503 before the SSE handshake. GET only, no incr — the
+            # authoritative acquire (and its release) lives in
+            # turn_service.process(); the peek->acquire race is benign.
+            saturated = await asyncio.to_thread(
+                _admission_peek_saturated, getattr(principal, "user_pk", None)
+            )
+            if saturated is not None:
+                await _send_json(
+                    send,
+                    status=503,
+                    content={
+                        "error": "ai_capacity_busy",
+                        "code": "ai_capacity_busy",
+                        "retry_after": saturated,
+                    },
+                    headers={"Retry-After": str(saturated)},
                 )
                 return
 
@@ -605,6 +697,10 @@ class RateLimitMiddleware:
                 status=429,
                 content={
                     "error": "rate_limit_exceeded",
+                    # S12: every limiter response carries a machine-readable
+                    # code (A13). Bounded retry honoring Retry-After is the
+                    # correct client behavior for this one.
+                    "code": "rate_limited",
                     "message": f"Too many requests. Please retry after {int(result.retry_after)} seconds.",
                     "retry_after": int(result.retry_after) + 1,
                 },
