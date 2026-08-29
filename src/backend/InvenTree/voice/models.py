@@ -92,6 +92,11 @@ class VoiceSession(models.Model):
     )
     azure_session_id = models.CharField(max_length=128, blank=True)
     policy_version = models.CharField(max_length=64)
+    # The thread's analysis-scope version this session is bound to (§13.3
+    # pattern 10): a material scope change after creation refuses further
+    # turns until the user acknowledges by restarting voice. 0 = the thread
+    # did not exist (or had never been scoped) at session creation.
+    analysis_scope_version = models.PositiveBigIntegerField(default=0, db_default=0)
     correlation_id = models.UUIDField(default=uuid.uuid4, editable=False)
     terminal_reason = models.CharField(max_length=64, blank=True)
     turn_count = models.PositiveIntegerField(default=0)

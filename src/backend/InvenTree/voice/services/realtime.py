@@ -74,7 +74,13 @@ def _sha256(text: str) -> str:
 
 
 def create_session(
-    *, owner, thread_id: str, scope_key: str, policy_version: str, limits: SessionLimits
+    *,
+    owner,
+    thread_id: str,
+    scope_key: str,
+    policy_version: str,
+    limits: SessionLimits,
+    analysis_scope_version: int = 0,
 ) -> VoiceSession:
     """Create one owned session after enforcing the concurrency limit."""
     if not scope_key:
@@ -96,6 +102,7 @@ def create_session(
             scope_key=scope_key,
             scope_hash=_sha256(scope_key),
             policy_version=policy_version,
+            analysis_scope_version=analysis_scope_version,
         )
 
 
