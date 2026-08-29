@@ -18,18 +18,35 @@ AIMMS_MAINTENANCE_AI_READ_ENABLED=True
 AIMMS_MAINTENANCE_SCOPE_RESOLVER=tasks.scope.granted_client_scope_resolver
 AIMMS_DIAGNOSTIC_CAPABILITY_RESOLVER=repair.diagnostic_scope.single_site_diagnostic_capability_resolver
 AIMMS_SINGLE_SITE_CLIENT_CODE=<pilot client code>
+AIMMS_PLANT_TIMEZONE=<IANA name, e.g. Australia/Sydney>
 FEATURE_AI_ANALYSIS_ROUTER_ENFORCE=1
 AIMMS_EVIDENCE_GATE_MODE=enforce
 AIMMS_MANUAL_GROUNDING_MODE=enforce
 MODEL_VERSION_BOOT_PROBE_ENABLED=1
 FEATURE_TYPED_TURN_FAILURES=1
+# S7/S9 per-intent staging: intents listed here keep the legacy rail
+# (shadow-soaked) despite their shipped executors. Clear one name from
+# the csv to flip that intent to validated answers; re-add it to roll
+# one intent back without a deploy. Empty = everything validated.
+AIMMS_ANALYSIS_INTENT_HOLDBACK=fleet_aggregate,trend_analysis,manual_wo_comparison
 ```
 
 Notes: router enforce + gate enforce ship together, but the coupling is
 now STRUCTURAL — a later rollback of the gate automatically returns
-every analysis intent to the legacy rail (no refusals possible). Fleet /
-trend / comparison questions stay on the legacy rail until the S7/S9
-executors land.
+every analysis intent to the legacy rail (no refusals possible).
+`AIMMS_PLANT_TIMEZONE` is the analytics calendar (time buckets, date
+windows); empty falls back to the server `TIME_ZONE` and every answer
+names the zone it used.
+
+**S7/S9 rollout (per intent, no deploys):** ship with the holdback csv
+above; watch the legacy shadow scans + `analysis_router.divergence
+reason=intent_holdback` lines for a few days; then clear
+`fleet_aggregate`, later `trend_analysis`, later `manual_wo_comparison`
+— one env edit each. Gate for the first flip: the 25k benchmark
+(`manage.py test tasks.tests.test_analytics_load --keepdb` on the
+production-shaped DB) passes its five criteria. S9's manual route also
+wants verified applicability rows (Phase B½ below) before it can serve
+manual comparisons; structured-procedure comparisons work without them.
 
 ## Phase B — scope enforcement (gated)
 
@@ -44,6 +61,26 @@ FEATURE_AI_THREAD_SCOPE_ENFORCE=1
 After ~1 week of clean operation: `manage.py arm_rollback_floor --yes`
 (one-way: scope enforcement, the unsafe-shortcut guard, and fixture
 isolation become permanent).
+
+### Phase B½ — verified applicability (S8b, human workflow)
+
+No env flip — a staffing prerequisite plus data work. Grant
+`aichat.verify_document_applicability` (maintenance management) and
+`aichat.countersign_document_applicability` (engineering) to NAMED
+humans; the proposer can never verify their own claim, and
+model/configuration claims need both signatures. Then:
+
+```
+manage.py applicability_backfill --by <proposer> --json   # dry run
+manage.py applicability_backfill --by <proposer> --yes    # proposed rows
+manage.py applicability_report                            # the human queue
+manage.py applicability_verify --claim <id> --by <verifier>
+```
+
+Verified rows flip document `applicable` states from unresolved to
+verified, open the serial-less machines' verified-document route, and
+are what S9's manual-route comparisons require. Without named holders
+everything stays `proposed` and nothing changes — by design.
 
 ## Phase C — user features
 
@@ -123,8 +160,13 @@ AI_RATE_GLOBAL_PER_MINUTE=300
 ## Smoke checks per phase
 
 - A: an individual-record analysis question returns a validated evidence
-  answer; a fleet-count question returns a legacy-rail answer (never a
-  refusal).
+  answer; a fleet-count question returns a legacy-rail answer while its
+  intent is held back (never a refusal). After clearing an intent from
+  the holdback csv: "how many work orders per machine" returns a
+  validated breakdown table naming its date field and timezone; a
+  "per technician" grouping returns the named grouping-unavailable
+  message; "did WO-… follow the procedure" returns the six-status
+  comparison with the compliance-disabled boundary.
 - B: asking about an out-of-scope machine yields the recoverable
   scope-miss offer, not silence.
 - C: streaming visible on legacy answers; a share/revoke round-trip.
