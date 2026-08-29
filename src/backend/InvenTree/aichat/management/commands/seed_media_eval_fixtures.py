@@ -9,7 +9,7 @@ image would silently change sha, mutating the fixture set unversioned.
 Idempotent by construction — entities are ``get_or_create``d and re-running
 ``run_ingest`` on unchanged bytes short-circuits on the sha.
 
-Fixture-set version: ``aimms-media-fixtures-v1``. Changing any fixture's
+Fixture-set version: ``aimms-media-fixtures-v2``. Changing any fixture's
 content requires a NEW version (new files, new pin in items.yaml, new value
 in ``AIMMS_GOLDEN_CORPUS``) — never an in-place edit. The doc fixture set
 (``aimms-attachment-fixtures-v1``) stays frozen; this command reuses its
@@ -36,7 +36,7 @@ _FIXTURES = (
     ('eval-zr9-offlimits-nameplate.png', 'offlimits'),
 )
 
-_FIXTURE_SET_VERSION = 'aimms-media-fixtures-v1'
+_FIXTURE_SET_VERSION = 'aimms-media-fixtures-v2'
 
 _EVAL_WO_REFERENCE = 'WO-EVAL-HX200'
 
@@ -63,6 +63,11 @@ class Command(BaseCommand):
             '--dry-run',
             action='store_true',
             help='Report what would be created/ingested without writing',
+        )
+        parser.add_argument(
+            '--break-glass',
+            action='store_true',
+            help='Explicitly allow seeding on a non-DEBUG deployment',
         )
 
     def handle(self, *args, **options):
@@ -100,19 +105,18 @@ class Command(BaseCommand):
 
         from tasks.models import WorkOrder
 
-        from assets.models import AssetMachine, Client, get_default_client
+        from aichat.services import eval_fixtures
+        from assets.models import AssetMachine
         from common.models import Attachment
 
         if dry_run:
             self.stdout.write(f'DRY RUN — fixture set {_FIXTURE_SET_VERSION}')
-        internal = get_default_client()
-        if dry_run:
-            offlimits = Client.objects.filter(code='eval-offlimits').first()
         else:
-            offlimits, _ = Client.objects.get_or_create(
-                code='eval-offlimits',
-                defaults={'name': 'RAG Eval Off-Limits Client', 'active': True},
+            eval_fixtures.refuse_production(
+                break_glass=options.get('break_glass', False)
             )
+        # S6: evaluation entities belong to the dedicated eval-fixtures client.
+        eval_client, offlimits = eval_fixtures.ensure_eval_clients(dry_run=dry_run)
 
         # Same eval entities as seed_attachment_eval_fixtures, by name.
         if dry_run:
@@ -125,7 +129,7 @@ class Command(BaseCommand):
             hx200, _ = AssetMachine.objects.get_or_create(
                 name='RAG Eval HX-200 Heat Exchanger',
                 defaults={
-                    'client': internal,
+                    'client': eval_client,
                     'serial': 'EVAL-HX200',
                     'manufacturer': 'Eval Fixtures',
                     'model': 'HX-200',
@@ -149,6 +153,17 @@ class Command(BaseCommand):
                     'machine': hx200,
                 },
             )
+            # S6 repair branch: re-point a pre-S6 HX-200 row and restamp its
+            # attachment/media client_codes synchronously (the WO's scope is
+            # DERIVED from the machine's client, so it follows for free).
+            manifest: list[dict] = []
+            if eval_fixtures.repoint_machine(hx200, eval_client, manifest):
+                for line in eval_fixtures.restamp_fixture_scope(
+                    machine_pks=(hx200.pk,), work_order_pks=(work_order.pk,)
+                ):
+                    self.stdout.write(line)
+            if manifest:
+                self.stdout.write(eval_fixtures.render_manifest(manifest))
 
         owners = {'workorder': work_order, 'offlimits': zr9}
 

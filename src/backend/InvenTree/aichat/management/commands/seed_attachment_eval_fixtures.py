@@ -7,13 +7,20 @@ part carrying small fictional documents checked into
 entities are ``get_or_create``d and re-running ``run_ingest`` on an unchanged
 document short-circuits on its sha.
 
-Fixture-set version: ``aimms-attachment-fixtures-v1``. Changing any fixture's
+Fixture-set version: ``aimms-attachment-fixtures-v2``. Changing any fixture's
 content requires a NEW version (new file revisions, new pin in items.yaml,
-new value in ``AIMMS_GOLDEN_CORPUS``) — never an in-place edit.
+new value in ``AIMMS_GOLDEN_CORPUS``) — never an in-place edit. v1 -> v2 is
+the S6 OWNERSHIP change: the HX-200 machine and gasket part moved from the
+default ``internal`` client to the dedicated ``eval-fixtures`` client, so
+the pinned answers are only reproducible under the new scope configuration
+(deployments still on v1 SKIP rather than fail).
 
 The ZR-9 fixture lands on a machine owned by a dedicated ``eval-offlimits``
 client that no operator scope grants, powering the cross-client denial item:
-retrieval must treat that document as nonexistent.
+retrieval must treat that document as nonexistent. Since S6 the HX-200
+fixtures are likewise invisible to ordinary users — they belong to
+``eval-fixtures``, granted only to the designated evaluation user — while
+``eval-offlimits`` stays granted to NOBODY (the adversarial control).
 """
 
 from __future__ import annotations
@@ -32,7 +39,7 @@ _FIXTURES = (
     ('eval-zr9-offlimits-manual.md', 'offlimits'),
 )
 
-_FIXTURE_SET_VERSION = 'aimms-attachment-fixtures-v1'
+_FIXTURE_SET_VERSION = 'aimms-attachment-fixtures-v2'
 
 
 def _fixtures_dir() -> Path:
@@ -63,12 +70,21 @@ class Command(BaseCommand):
             action='store_true',
             help='Report what would be created/ingested without writing',
         )
+        parser.add_argument(
+            '--break-glass',
+            action='store_true',
+            help='Explicitly allow seeding on a non-DEBUG deployment',
+        )
 
     def handle(self, *args, **options):
         """Create eval entities, attach fixture docs, run the real ingest."""
         from django.conf import settings as django_settings
 
+        from aichat.services import eval_fixtures
+
         dry_run = options['dry_run']
+        if not dry_run:
+            eval_fixtures.refuse_production(break_glass=options['break_glass'])
         if not dry_run and not getattr(
             django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False
         ):
@@ -84,24 +100,19 @@ class Command(BaseCommand):
         if missing:
             raise CommandError(f'Fixture documents missing: {", ".join(missing)}')
 
-        from assets.models import AssetMachine, Client, get_default_client
+        from assets.models import AssetMachine
         from common.models import Attachment
         from part.models import Part
 
         if dry_run:
             self.stdout.write(f'DRY RUN — fixture set {_FIXTURE_SET_VERSION}')
-        internal = get_default_client()
-        if dry_run:
-            offlimits = Client.objects.filter(code='eval-offlimits').first()
-        else:
-            offlimits, _ = Client.objects.get_or_create(
-                code='eval-offlimits',
-                defaults={'name': 'RAG Eval Off-Limits Client', 'active': True},
-            )
+        # S6: evaluation entities belong to the dedicated eval-fixtures
+        # client, never the default internal tenant.
+        eval_client, offlimits = eval_fixtures.ensure_eval_clients(dry_run=dry_run)
 
         owners = {}
         machine_defaults = {
-            'client': internal,
+            'client': eval_client,
             'serial': 'EVAL-HX200',
             'manufacturer': 'Eval Fixtures',
             'model': 'HX-200',
@@ -133,6 +144,25 @@ class Command(BaseCommand):
                 name='RAG Eval HX-200 Gasket Set',
                 defaults={'description': 'Reserved attachment-RAG eval fixture part'},
             )
+            # S6 repair branch: get_or_create defaults are CREATE-only, so a
+            # pre-S6 HX-200 row still owned by 'internal' is explicitly
+            # re-pointed (manifest + save(), never QuerySet.update()), and
+            # the gasket part is installed on the machine so its documents
+            # follow the eval client instead of the 'internal' fallback.
+            manifest: list[dict] = []
+            moved = eval_fixtures.repoint_machine(
+                owners['machine'], eval_client, manifest
+            )
+            eval_fixtures.ensure_gasket_link(
+                owners['part'], owners['machine'], manifest
+            )
+            if moved:
+                for line in eval_fixtures.restamp_fixture_scope(
+                    machine_pks=(owners['machine'].pk,)
+                ):
+                    self.stdout.write(line)
+            if manifest:
+                self.stdout.write(eval_fixtures.render_manifest(manifest))
 
         from aichat.services.attachment_ingestion import run_ingest
 

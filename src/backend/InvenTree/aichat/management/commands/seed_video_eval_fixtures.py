@@ -9,7 +9,7 @@ are ``get_or_create``d, attachment identity is the fixture comment + name
 stem (the shared media share dedupe-suffixes filenames — 2026-08-21 lesson),
 and ``run_ingest`` short-circuits on unchanged bytes.
 
-Fixture-set version: ``aimms-video-fixtures-v1``. Changing the fixture means
+Fixture-set version: ``aimms-video-fixtures-v2``. Changing the fixture means
 a NEW version — never an in-place edit. The photo set
 (``aimms-media-fixtures-v1``) and its HX-200 machine/WO-EVAL-HX200 are NEVER
 touched: the video work order uses a dedicated machine so machine-scoped
@@ -25,7 +25,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 _FIXTURE_FILE = 'eval-hx200-seal-video.mp4'
 
-_FIXTURE_SET_VERSION = 'aimms-video-fixtures-v1'
+_FIXTURE_SET_VERSION = 'aimms-video-fixtures-v2'
 
 _EVAL_WO_REFERENCE = 'WO-EVAL-HX200-VIDEO'
 
@@ -56,6 +56,11 @@ class Command(BaseCommand):
             '--dry-run',
             action='store_true',
             help='Report what would be created/ingested without writing',
+        )
+        parser.add_argument(
+            '--break-glass',
+            action='store_true',
+            help='Explicitly allow seeding on a non-DEBUG deployment',
         )
 
     def handle(self, *args, **options):
@@ -90,7 +95,8 @@ class Command(BaseCommand):
 
         from tasks.models import WorkOrder
 
-        from assets.models import AssetMachine, get_default_client
+        from aichat.services import eval_fixtures
+        from assets.models import AssetMachine
         from common.models import Attachment
 
         if dry_run:
@@ -98,11 +104,15 @@ class Command(BaseCommand):
             hx200 = AssetMachine.objects.filter(name=_VIDEO_MACHINE_NAME).first()
             work_order = WorkOrder.objects.filter(reference=_EVAL_WO_REFERENCE).first()
         else:
-            internal = get_default_client()
+            eval_fixtures.refuse_production(
+                break_glass=options.get('break_glass', False)
+            )
+            # S6: the video fixture machine belongs to eval-fixtures too.
+            eval_client, _offlimits = eval_fixtures.ensure_eval_clients(dry_run=False)
             hx200, _ = AssetMachine.objects.get_or_create(
                 name=_VIDEO_MACHINE_NAME,
                 defaults={
-                    'client': internal,
+                    'client': eval_client,
                     'serial': _VIDEO_MACHINE_SERIAL,
                     'manufacturer': 'Eval Fixtures',
                     'model': 'HX-200',
@@ -117,6 +127,16 @@ class Command(BaseCommand):
                     'machine': hx200,
                 },
             )
+            # S6 repair branch: a pre-S6 video machine still owned by
+            # 'internal' is explicitly re-pointed and restamped.
+            manifest: list[dict] = []
+            if eval_fixtures.repoint_machine(hx200, eval_client, manifest):
+                for line in eval_fixtures.restamp_fixture_scope(
+                    machine_pks=(hx200.pk,), work_order_pks=(work_order.pk,)
+                ):
+                    self.stdout.write(line)
+            if manifest:
+                self.stdout.write(eval_fixtures.render_manifest(manifest))
             moved_existing_work_order = (
                 not work_order_created and work_order.machine_id != hx200.pk
             )

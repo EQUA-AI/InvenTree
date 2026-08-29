@@ -9,6 +9,7 @@ One committed artifact — ``src/frontend/lib/types/AimmsWire.generated.ts``
 - ``RiskFindingSerializer.Meta.fields``      -> ``RISK_FINDING_FIELDS``
 - ``ai.core.voice.wire`` pydantic models     -> interfaces
 - ``SERVER_VOICE_ERROR_CODES``               -> ``ServerVoiceErrorCode``
+- ``ai.core.analysis.scope``/``.wire``       -> scope unions + interfaces
 
 The output is byte-deterministic (definition order, forced ``en`` labels),
 so ``--check`` can compare bytes: CI runs it and fails on drift, making the
@@ -79,10 +80,24 @@ def _ts_type(annotation) -> str:
     return 'unknown'
 
 
-def _emit_model_interface(model_cls) -> str:
+def _emit_model_interface(
+    model_cls,
+    overrides: dict[str, str] | None = None,
+    optional_fields: tuple[str, ...] = (),
+) -> str:
+    """Emit one interface; ``overrides`` maps a field name to a full TS type.
+
+    The wire name is the field's alias when one is declared (``from`` is a
+    Python keyword, so its model field is ``from_`` with ``alias='from'``).
+    ``optional_fields`` marks REQUEST-model fields as ``?`` — response
+    models keep every field required because the server always emits them.
+    """
     rows = []
     for field_name, field in model_cls.model_fields.items():
-        rows.append(f'  {field_name}: {_ts_type(field.annotation)};')
+        wire_name = field.alias or field_name
+        ts_type = (overrides or {}).get(field_name) or _ts_type(field.annotation)
+        marker = '?' if field_name in optional_fields else ''
+        rows.append(f'  {wire_name}{marker}: {ts_type};')
     body = '\n'.join(rows)
     return f'export interface {model_cls.__name__} {{\n{body}\n}}\n'
 
@@ -175,6 +190,135 @@ class Command(BaseCommand):
             'export type ServerVoiceErrorCode =\n'
             f'  | {_ts_string_union(list(SERVER_VOICE_ERROR_CODES))};\n'
         )
+
+        sections.append('// --- Analysis scope (ai.core.analysis.scope / .wire) ---\n')
+        from ai.core.analysis.scope import SOURCE_CLASSES, WIRE_MODES
+        from ai.core.analysis.wire import (
+            SCOPE_ERROR_CODES,
+            ActiveScopeSummary,
+            AnalysisScopeDateWindow,
+            AnalysisScopePayload,
+            AnalysisScopeUpdate,
+            ThreadScopePayload,
+            ThreadScopeUpdateRequest,
+        )
+
+        sections.append(
+            f'export type AnalysisScopeMode =\n  | {_ts_string_union(list(WIRE_MODES))};\n'
+        )
+        sections.append(
+            f'export type AnalysisSourceClass =\n  | {_ts_string_union(list(SOURCE_CLASSES))};\n'
+        )
+        sections.append(_emit_model_interface(AnalysisScopeDateWindow))
+        sections.append(
+            _emit_model_interface(
+                AnalysisScopePayload,
+                overrides={
+                    'mode': 'AnalysisScopeMode',
+                    'source_classes': 'AnalysisSourceClass[]',
+                },
+            )
+        )
+        sections.append(
+            _emit_model_interface(
+                AnalysisScopeUpdate,
+                overrides={
+                    'mode': 'AnalysisScopeMode',
+                    'source_classes': 'AnalysisSourceClass[] | null',
+                },
+                optional_fields=(
+                    'machine_ids',
+                    'date_window',
+                    'source_classes',
+                    'display_label',
+                ),
+            )
+        )
+        sections.append(
+            _emit_model_interface(
+                ActiveScopeSummary, overrides={'mode': 'AnalysisScopeMode'}
+            )
+        )
+        sections.append(_emit_model_interface(ThreadScopePayload))
+        sections.append(_emit_model_interface(ThreadScopeUpdateRequest))
+        sections.append(
+            f'export type ScopeErrorCode =\n  | {_ts_string_union(list(SCOPE_ERROR_CODES))};\n'
+        )
+
+        sections.append('// --- Quota / admission (ai.core.quota.wire) ---\n')
+        from ai.core.quota.wire import (
+            QUOTA_ERROR_CODES,
+            QuotaPreflightPayload,
+            QuotaStoreStatus,
+            QuotaTokenLevel,
+            QuotaWindowStatus,
+        )
+
+        sections.append(
+            f'export type QuotaErrorCode =\n  | {_ts_string_union(list(QUOTA_ERROR_CODES))};\n'
+        )
+        from ai.core.pilot_latch import PILOT_ERROR_CODES
+
+        sections.append(
+            f'export type PilotErrorCode =\n  | {_ts_string_union(list(PILOT_ERROR_CODES))};\n'
+        )
+        sections.append(_emit_model_interface(QuotaWindowStatus))
+        sections.append(_emit_model_interface(QuotaTokenLevel))
+        sections.append(_emit_model_interface(QuotaStoreStatus))
+        sections.append(
+            _emit_model_interface(
+                QuotaPreflightPayload,
+                overrides={
+                    'tokens': 'Record<string, QuotaTokenLevel>',
+                    'requests': 'Record<string, QuotaWindowStatus>',
+                    'store': 'QuotaStoreStatus',
+                },
+            )
+        )
+
+        sections.append(
+            '// --- Evidence analysis v2 (ai.core.analysis.schemas / .wire) ---\n'
+        )
+        from ai.core.analysis.schemas import EvidenceClassification
+        from ai.core.analysis.wire import (
+            ANALYSIS_NO_DATA_REASONS,
+            ANALYSIS_PROGRESS_STAGES,
+            AnalysisIncompleteReasonPayload,
+            AnalysisScopeStamp,
+            CitationLocator,
+            CitationManifestEntry,
+            ClaimPayload,
+            EvidenceSetMember,
+            EvidenceSetPage,
+            RetrievalCoveragePayload,
+        )
+
+        classification_values = [str(choice.value) for choice in EvidenceClassification]
+        sections.append(
+            'export type EvidenceClassification =\n'
+            f'  | {_ts_string_union(classification_values)};\n'
+        )
+        sections.append(
+            'export type AnalysisProgressStage =\n'
+            f'  | {_ts_string_union(list(ANALYSIS_PROGRESS_STAGES))};\n'
+        )
+        sections.append(
+            'export type AnalysisNoDataReason =\n'
+            f'  | {_ts_string_union(list(ANALYSIS_NO_DATA_REASONS))};\n'
+        )
+        sections.append(_emit_model_interface(RetrievalCoveragePayload))
+        sections.append(_emit_model_interface(CitationLocator))
+        sections.append(_emit_model_interface(CitationManifestEntry))
+        sections.append(
+            _emit_model_interface(
+                ClaimPayload,
+                overrides={'evidence_classification': 'EvidenceClassification'},
+            )
+        )
+        sections.append(_emit_model_interface(AnalysisScopeStamp))
+        sections.append(_emit_model_interface(AnalysisIncompleteReasonPayload))
+        sections.append(_emit_model_interface(EvidenceSetMember))
+        sections.append(_emit_model_interface(EvidenceSetPage))
 
         return '\n'.join(sections)
 
