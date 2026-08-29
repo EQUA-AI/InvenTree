@@ -40,6 +40,10 @@ MAX_PARTS = 50
 MAX_OPEN_REPAIRS = 10
 MAX_TEXT_CHARS = 2000
 
+#: Work-order timestamps a date window may mean (S7, §7.3). An allow-list so
+#: the kwarg can never smuggle an ORM path; ``ai_analytics`` shares it.
+PAGE_DATE_FIELDS = frozenset({'created_at', 'actual_completed_at', 'scheduled_start'})
+
 #: Fields deliberately withheld from every projection, with the reason. Pinned
 #: by ``tasks/tests/test_ai_read.py`` so removing an exclusion is a decision.
 EXCLUDED_FIELDS = {
@@ -140,6 +144,7 @@ def work_orders_page(
     scope_date_from: str | None = None,
     scope_date_to: str | None = None,
     enforce: bool = False,
+    date_field: str = 'created_at',
 ) -> dict[str, Any]:
     """The page-shaped work-order list with honest coverage (S5, §7.4).
 
@@ -152,6 +157,11 @@ def work_orders_page(
     narrowing joins the query AFTER the authorization predicate; without it
     the page only counts how many returned rows fall outside the scope
     (shadow evidence). ``None`` scope means no analysis narrowing at all.
+
+    ``date_field`` selects which event timestamp the date window means (S7,
+    §7.3 domain defaults) from a validated allow-list; an unknown value falls
+    back to ``created_at``. The applied field is always echoed in
+    ``applied_filters`` so the answer can name it.
     """
     empty = {
         'rows': [],
@@ -173,8 +183,11 @@ def work_orders_page(
     except ScopeError:
         return empty
 
+    if date_field not in PAGE_DATE_FIELDS:
+        date_field = 'created_at'
+
     rows = WorkOrder.objects.filter(predicate).select_related('machine', 'assigned_to')
-    applied_filters: dict[str, Any] = {'date_field': 'created_at'}
+    applied_filters: dict[str, Any] = {'date_field': date_field}
     if query:
         from django.db.models import Q
 
@@ -195,10 +208,10 @@ def work_orders_page(
         rows = rows.filter(machine_id__in=scope_ids)
         applied_filters['machine_ids'] = sorted(scope_ids)
         if scope_date_from:
-            rows = rows.filter(created_at__date__gte=scope_date_from)
+            rows = rows.filter(**{f'{date_field}__date__gte': scope_date_from})
             applied_filters['from'] = scope_date_from
         if scope_date_to:
-            rows = rows.filter(created_at__date__lt=scope_date_to)
+            rows = rows.filter(**{f'{date_field}__date__lt': scope_date_to})
             applied_filters['to'] = scope_date_to
 
     from django.db.models import Max
@@ -614,6 +627,7 @@ __all__ = [
     'MAX_OPEN_REPAIRS',
     'MAX_PARTS',
     'MAX_SEARCH_RESULTS',
+    'PAGE_DATE_FIELDS',
     'authorized_machine',
     'authorized_work_order',
     'fence',

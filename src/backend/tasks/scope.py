@@ -150,6 +150,28 @@ def require_machine_scope(actor, machine) -> MaintenanceScope:
     return scope
 
 
+def scope_for_maintenance_record(record) -> MaintenanceScope:
+    """Resolve one maintenance record's boundary: its machine's client.
+
+    A record is plant history about an asset — its ``machine`` FK is non-null
+    by schema — so it rides :func:`scope_for_machine` unchanged. A linked work
+    order never widens or narrows the record itself: the order's customer is a
+    sales claim about that job, and a denial there withholds enrichment only,
+    which the enrichment site enforces.
+    """
+    if record is None:
+        raise ScopeError('Maintenance-record scope is unresolved: no record supplied')
+    return scope_for_machine(getattr(record, 'machine', None))
+
+
+def require_maintenance_record_scope(actor, record) -> MaintenanceScope:
+    """Require the record's exact scope to be authorized for the actor."""
+    scope = scope_for_maintenance_record(record)
+    if scope not in scope_for_actor(actor):
+        raise ScopeError('Actor and maintenance-record scopes do not match')
+    return scope
+
+
 def machine_scope_filter(actor) -> Q:
     """Return a queryset predicate selecting exactly the actor's machines.
 
@@ -177,6 +199,28 @@ def machine_scope_filter(actor) -> Q:
             continue
         if scope.client_id is not None:
             predicate |= Q(client_id=scope.client_id)
+    return predicate
+
+
+def maintenance_record_scope_filter(actor) -> Q:
+    """Return a queryset predicate selecting exactly the actor's records.
+
+    The set form of :func:`require_maintenance_record_scope`, and never wider
+    than it: a record belongs to its machine's client, full stop. The same
+    fail-closed rules as :func:`machine_scope_filter` apply — ``pk__in=[]``
+    base, site-qualified grants skipped — and customer-only scopes contribute
+    nothing, because a customer is a claim about a work order, never about a
+    machine or its history.
+
+    Raises:
+        ScopeError: When the actor's own scope cannot be resolved.
+    """
+    predicate = Q(pk__in=[])
+    for scope in scope_for_actor(actor):
+        if scope.site_key is not None:
+            continue
+        if scope.client_id is not None:
+            predicate |= Q(machine__client_id=scope.client_id)
     return predicate
 
 

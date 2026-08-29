@@ -89,6 +89,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='Tenant code the single-site resolver grants',
     ),
     FlagEntry(
+        'AIMMS_PLANT_TIMEZONE',
+        'str',
+        '',
+        'django',
+        config_key='aimms_plant_timezone',
+        description='IANA timezone for analytics time buckets; empty = TIME_ZONE',
+    ),
+    FlagEntry(
         'AIMMS_CLOSEOUT_EXTRACTION_ENABLED',
         'bool',
         False,
