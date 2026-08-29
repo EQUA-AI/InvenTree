@@ -239,13 +239,11 @@ def test_search_documents_and_manifest_carry_the_stamp():
 def test_terminal_metadata_carries_model_versions():
     from ai.core.turn_service import _terminal_output_metadata
 
-    # S14 stamps the declared capability tier on every terminal turn.
-    assert _terminal_output_metadata({"a": 1}) == {"a": 1, "capability_tier": 0}
+    assert _terminal_output_metadata({"a": 1}) == {"a": 1}
     record_resolved_model("dep", "model-x")
     stamped = _terminal_output_metadata({"a": 1})
     assert stamped["a"] == 1
     assert stamped["model_versions"] == {"dep": "model-x"}
-    assert stamped["capability_tier"] == 0
 
 
 # ---------------------------------------------------------------------------

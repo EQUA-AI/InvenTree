@@ -160,33 +160,6 @@ def _canonical_analysis_unavailable(*, locale: str = "en") -> CanonicalTurnRespo
     )
 
 
-def _canonical_analysis_capability_boundary(*, locale: str = "en") -> CanonicalTurnResponse:
-    """Tier-2/3 analysis intents under a lit gate: typed capability boundary.
-
-    Aggregate/trend/comparison analysis stays off the pilot path (S7/S9);
-    when the S10 gate is on and a Tier-1 intent would execute, these intents
-    get an honest, deterministic boundary instead of the generic abstention.
-    """
-    from ai.core import i18n_templates as i18n
-
-    return CanonicalTurnResponse(
-        kind="evidence_analysis_unavailable",
-        response_version=1,
-        response_state="incomplete",
-        detailed_response=i18n.deterministic_template(i18n.ANALYSIS_CAPABILITY_BOUNDARY, locale),
-        spoken_summary="",
-        reasoning_summary=(
-            "The requested analysis tier is not yet enabled; nothing was retrieved or estimated."
-        ),
-        confidence="low",
-        evidence=[],
-        next_questions=[],
-        recommended_actions=[],
-        safety_boundary=("No safety status was inferred; check the authoritative safety surface."),
-        speak=False,
-    )
-
-
 def _canonical_advisory_intent(
     *, voice: bool = False, action_available: bool = False, locale: str = "en"
 ) -> CanonicalTurnResponse:

@@ -51,10 +51,6 @@ def _terminal_output_metadata(base: dict[str, Any]) -> dict[str, Any]:
             usage = drain_turn_usage()
             if usage:
                 metadata["usage"] = usage
-        # A12: the SERVER's declared capability tier, recorded per turn so
-        # tier-conditional scoring never infers it from anything else.
-        # getattr: injected test settings stubs may predate the field.
-        metadata["capability_tier"] = int(getattr(settings, "capability_tier", 0))
     except Exception:  # pragma: no cover - telemetry must never fail a turn
         pass
     return metadata

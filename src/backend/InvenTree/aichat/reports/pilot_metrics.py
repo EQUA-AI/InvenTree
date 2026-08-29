@@ -28,12 +28,7 @@ _ANALYSIS_INTENTS_FALLBACK = (
 )
 
 #: Boundary/refusal workflows subject to the ≤200-word gate (Q86).
-SAFETY_LENGTH_WORKFLOWS = (
-    'safety_refusal',
-    'advisory_intent',
-    'analysis_capability_boundary',
-    'analysis_unavailable',
-)
+SAFETY_LENGTH_WORKFLOWS = ('safety_refusal', 'advisory_intent', 'analysis_unavailable')
 
 SAFETY_WORD_CAP = 200
 

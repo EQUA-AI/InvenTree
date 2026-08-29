@@ -15,17 +15,19 @@ logger = logging.getLogger(__name__)
 def _analysis_override_applies(run: TurnRun) -> bool:
     """Whether this turn's typed intent belongs on the analysis rail.
 
-    Read-only analysis intents on TEXT turns only: an effect-shaped turn
-    keeps its ADVISORY_INTENT isolation, and voice keeps legacy routing
-    (the analysis rail is text-first in v1).
+    Read-only intents WITH A SHIPPED VALIDATED EXECUTOR, on TEXT turns
+    only: an effect-shaped turn keeps its ADVISORY_INTENT isolation, voice
+    keeps legacy routing (the analysis rail is text-first), and an
+    analysis intent whose executor has not shipped (fleet/trend/comparison
+    until S7/S9) keeps the legacy full-tool rail — never a refusal.
     """
-    from ai.core.analysis.intent import ANALYSIS_INTENTS, EffectIntent
+    from ai.core.analysis.intent import ANALYSIS_ROUTED_INTENTS, EffectIntent
     from aichat.models import TurnModality
 
     decision = run.task_intent
     return (
         decision is not None
-        and decision.intent in ANALYSIS_INTENTS
+        and decision.intent in ANALYSIS_ROUTED_INTENTS
         and decision.effect is EffectIntent.READ_ONLY
         and run.modality == TurnModality.TEXT
     )
@@ -66,7 +68,12 @@ async def build_route(service: NormalizedTurnService, run: TurnRun) -> None:
     # turns still answered by the legacy rail. Only an ENFORCED analysis
     # turn (which never reaches those consumers' diagnostic branches)
     # skips the ~4-query construction.
-    analysis_turn = intent_enforce and _analysis_override_applies(run)
+    # The analysis route is taken ONLY when the evidence gate can actually
+    # serve it (enforce): a gate rollback to shadow/off automatically
+    # returns every analysis intent to the legacy rail instead of an
+    # abstention — the no-refusal invariant survives misconfiguration.
+    gate_enforce = str(getattr(settings, "evidence_gate_mode", "off") or "off") == "enforce"
+    analysis_turn = intent_enforce and gate_enforce and _analysis_override_applies(run)
     if analysis_turn:
         run.diagnostic_context = None
     else:
@@ -92,7 +99,7 @@ async def build_route(service: NormalizedTurnService, run: TurnRun) -> None:
             legacy_mode = getattr(getattr(run.route, "mode", None), "value", None)
             legacy_workflow = getattr(run.route, "target_workflow_id", None)
             if _analysis_override_applies(run):
-                if intent_enforce:
+                if analysis_turn:
                     from ai.core.agents.voice_routing import (
                         ReasoningEffort,
                         RouteMode,
@@ -110,16 +117,20 @@ async def build_route(service: NormalizedTurnService, run: TurnRun) -> None:
                     )
                 else:
                     # Content-free divergence record: what enforce WOULD
-                    # have re-routed away from the legacy decision.
+                    # have re-routed away from the legacy decision (reason
+                    # names WHICH precondition kept the legacy route).
+                    reason = "router_dark" if not intent_enforce else "gate_not_enforce"
                     logger.info(
                         "analysis_router.divergence intent=%s effect=%s "
-                        "legacy_mode=%s legacy_wf=%s source=%s confidence=%.2f",
+                        "legacy_mode=%s legacy_wf=%s source=%s confidence=%.2f "
+                        "reason=%s",
                         run.task_intent.intent.value,
                         run.task_intent.effect.value,
                         legacy_mode,
                         legacy_workflow,
                         run.task_intent.source,
                         run.task_intent.confidence,
+                        reason,
                     )
             _set_span_attrs(
                 route_span,

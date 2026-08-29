@@ -89,14 +89,6 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='Tenant code the single-site resolver grants',
     ),
     FlagEntry(
-        'AIMMS_GOVERNED_KANBAN_WRITES',
-        'bool',
-        False,
-        'django',
-        config_key='aimms_governed_kanban_writes',
-        description='Disable direct-ORM kanban write tools (S12)',
-    ),
-    FlagEntry(
         'AIMMS_CLOSEOUT_EXTRACTION_ENABLED',
         'bool',
         False,
@@ -584,19 +576,6 @@ REGISTRY: tuple[FlagEntry, ...] = (
         ai_field='voice_confidence_floor',
     ),
     FlagEntry(
-        'AIMMS_CAPABILITY_TIER',
-        'int',
-        0,
-        'both',
-        config_key='aimms_capability_tier',
-        ai_field='capability_tier',
-        description=(
-            'S14/A12: declared capability tier (0 = none). Tiers >= 1 require '
-            'the aimms_capability.TIER_REQUIREMENTS to hold at startup; never '
-            'inferred from users, quota profiles, or prompts.'
-        ),
-    ),
-    FlagEntry(
         'FEATURE_AI_PILOT_STOP_LATCH',
         'bool',
         False,
@@ -604,7 +583,8 @@ REGISTRY: tuple[FlagEntry, ...] = (
         config_key='feature_ai_pilot_stop_latch',
         ai_field='feature_ai_pilot_stop_latch',
         description=(
-            'S15/§15.4: arm the fail-closed pilot-stop admission gate. The '
+            'Production emergency stop (kill switch): arm the fail-closed '
+            'admission gate. The '
             'latch models and pilot_stop/pilot_resume commands work with the '
             'flag DARK (operator drills); only the per-turn check is gated. '
             'Enable on the pilot deployment after verifying the shared cache.'
@@ -631,10 +611,9 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description=(
             'S16/Q48: run the scheduled retention purge/reconciliation jobs '
             '(400-day transcripts, 90-day detail, aggregates). Dark by '
-            'default; the uploads TTL sweep and outbox drain run regardless. '
-            'Tier >= 1 requires this ON (retention_cleanup requirement) — '
-            'retention must be OPERATING, not merely shipped, on a declared '
-            'pilot deployment. Day counts are code constants, not settings.'
+            'default AND by owner decision (2026-08-29: data kept); the '
+            'uploads TTL sweep and outbox drain run regardless. Day counts '
+            'are code constants, not settings.'
         ),
     ),
 )

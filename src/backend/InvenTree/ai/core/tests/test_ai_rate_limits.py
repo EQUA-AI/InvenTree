@@ -257,3 +257,16 @@ def test_quota_preflight_is_rate_limit_exempt_but_never_budgeted() -> None:
     )
     assert "/quota/preflight" in exempt
     assert _BUDGETED_ENDPOINTS.fullmatch("/quota/preflight") is None
+
+
+def test_rate_limits_are_settings_knobs() -> None:
+    """WP-B3: the historic literals are env-tunable without code churn."""
+    from ai.core.app import rate_limit_config
+    from ai.core.config import Settings
+
+    settings = Settings(_env_file=None, AI_RATE_CHAT_PER_MINUTE=30, AI_RATE_CHAT_PER_HOUR=600)
+    assert settings.ai_rate_chat_per_minute == 30
+    assert settings.ai_rate_chat_per_hour == 600
+    # The app singleton was built from the default knobs.
+    assert rate_limit_config.endpoint_limits["/chat"]["per_minute"] == 10
+    assert rate_limit_config.max_requests_per_hour == 200

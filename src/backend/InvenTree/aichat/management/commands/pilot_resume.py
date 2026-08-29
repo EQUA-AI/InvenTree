@@ -14,8 +14,8 @@ class Command(BaseCommand):
     """Record one role's restart approval."""
 
     help = (
-        'Record one stop-authority approval to restart the pilot; the fifth '
-        'distinct role clears the latch.'
+        'Record one stop-authority approval to restart AI service; the fifth '
+        'distinct role clears the emergency stop.'
     )
 
     def add_arguments(self, parser):

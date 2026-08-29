@@ -234,7 +234,7 @@ class TestCapabilitySelection:
 class TestRoutingIntegration:
     """Shadow keeps the legacy route; enforce swaps to the analysis rail."""
 
-    def _run_build_route(self, *, shadow: bool, enforce: bool, content: str):
+    def _run_build_route(self, *, shadow: bool, enforce: bool, content: str, gate: str = "enforce"):
         from types import SimpleNamespace
 
         from ai.core.turn import routing as routing_stage
@@ -279,6 +279,7 @@ class TestRoutingIntegration:
         settings = SimpleNamespace(
             feature_ai_analysis_router_shadow=shadow,
             feature_ai_analysis_router_enforce=enforce,
+            evidence_gate_mode=gate,
         )
         with mock.patch("ai.core.config.get_settings", return_value=settings):
             asyncio.run(routing_stage.build_route(_Service(), run))
@@ -294,13 +295,36 @@ class TestRoutingIntegration:
         assert factory_calls == ["built"]
 
     def test_enforce_routes_analysis_and_skips_context(self) -> None:
+        # A ROUTED intent (record_retrieval — shipped executor) under full
+        # enforce (router + evidence gate) takes the analysis rail.
         run, factory_calls = self._run_build_route(
-            shadow=True, enforce=True, content="How many work orders were opened last month?"
+            shadow=True, enforce=True, content="Show me work order WO-1234"
         )
         assert run.route.mode.value == "analysis"
         assert run.route.target_workflow_id is None
         assert run.route.to_dict()["task_intent"] == run.task_intent.intent.value
         assert factory_calls == []
+
+    def test_unshipped_analysis_intents_keep_the_legacy_route(self) -> None:
+        # Owner invariant (2026-08-29): fleet/trend/comparison questions are
+        # NEVER refused — until S7/S9 executors ship they keep the legacy
+        # full-tool rail (diagnostic context intact) even under full enforce.
+        run, factory_calls = self._run_build_route(
+            shadow=True, enforce=True, content="How many work orders were opened last month?"
+        )
+        assert run.task_intent is not None
+        assert run.task_intent.intent.value == "fleet_aggregate"
+        assert run.route.mode.value == "fast_path"
+        assert factory_calls == ["built"]
+
+    def test_gate_rollback_returns_analysis_to_legacy(self) -> None:
+        # An incident rollback of the evidence gate (enforce -> shadow) must
+        # return EVERY analysis intent to the legacy rail, never abstain.
+        run, factory_calls = self._run_build_route(
+            shadow=True, enforce=True, gate="shadow", content="Show me work order WO-1234"
+        )
+        assert run.route.mode.value == "fast_path"
+        assert factory_calls == ["built"]
 
     def test_enforce_leaves_non_analysis_turns_alone(self) -> None:
         run, factory_calls = self._run_build_route(

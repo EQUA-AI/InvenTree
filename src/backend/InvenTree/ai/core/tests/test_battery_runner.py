@@ -55,7 +55,6 @@ class FakeServer:
                 },
                 "incomplete_reasons": [],
             },
-            "capability_tier": 0,
             "model_versions": {"chat": "gpt-5.6-luna-2026-05-01"},
         }
 

@@ -2,8 +2,8 @@
 
 Once ``arm_rollback_floor`` writes the one-way marker, attempting to run
 below the floor — scope enforcement off, or fixture isolation pointed at
-a non-granted resolver — fails the Django system check loudly at EVERY
-tier including 0. The floor's other leg (the unsafe-shortcut guard) is
+a non-granted resolver — fails the Django system check loudly in every
+configuration. The floor's other leg (the unsafe-shortcut guard) is
 code-bound: the island CI pin proves no registry entry can dark it.
 """
 
@@ -21,7 +21,7 @@ def _aimms_errors():
     return [
         check
         for check in registry.run_checks(tags=['aimms'])
-        if check.id in ('aichat.E020', 'aichat.E021')
+        if check.id == 'aichat.E021'
     ]
 
 
@@ -40,12 +40,12 @@ class RollbackFloorCheckTests(TestCase):
             ROLLBACK_FLOOR, ('scope_enforce', 'shortcut_guard', 'fixture_isolation')
         )
 
-    def test_unarmed_tier_zero_checks_nothing(self):
+    def test_unarmed_floor_checks_nothing(self):
         """Today's dark deployment stays inert."""
         self.assertEqual(_aimms_errors(), [])
 
-    def test_armed_floor_fails_loudly_below_the_floor_even_at_tier_zero(self):
-        """Arming binds the floor legs regardless of tier."""
+    def test_armed_floor_fails_loudly_below_the_floor(self):
+        """Arming binds the floor legs in every configuration."""
         _arm_floor()
         errors = _aimms_errors()
         named = {error.msg.split(':', 1)[0] for error in errors}
@@ -77,12 +77,6 @@ class RollbackFloorCheckTests(TestCase):
         with override_settings(FEATURE_AI_THREAD_SCOPE_ENFORCE=False):
             named = {error.msg.split(':', 1)[0] for error in _aimms_errors()}
             self.assertEqual(named, {'scope_enforce'})
-
-    @override_settings(AIMMS_CAPABILITY_TIER='not-a-number')
-    def test_non_integer_tier_is_a_typed_error(self):
-        """A malformed tier is one E020, not a crash."""
-        errors = _aimms_errors()
-        self.assertEqual([error.id for error in errors], ['aichat.E020'])
 
 
 class ArmRollbackFloorCommandTests(TestCase):

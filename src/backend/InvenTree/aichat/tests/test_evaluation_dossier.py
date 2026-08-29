@@ -40,7 +40,9 @@ class EvaluationDossierTests(TestCase):
 
     def test_version_is_stable_across_invocations(self):
         """Same pins -> same evaluation version (§13.5)."""
-        self.assertEqual(_dossier()['evaluation_version'], _dossier()['evaluation_version'])
+        self.assertEqual(
+            _dossier()['evaluation_version'], _dossier()['evaluation_version']
+        )
 
     def test_version_moves_when_a_pin_changes(self):
         """A material change (a corpus row) yields a NEW version."""
@@ -73,7 +75,9 @@ class EvaluationDossierTests(TestCase):
 
         self.assertIsNone(CONFIG_SECRET_VALUE.search(rendered.replace('"api-key"', '')))
         # Named secret fields are masked or empty, never populated.
-        for match in re.finditer(r'"(\w*(?:key|token|secret|password)\w*)":\s*"([^"]*)"', rendered, re.I):
+        for match in re.finditer(
+            r'"(\w*(?:key|token|secret|password)\w*)":\s*"([^"]*)"', rendered, re.I
+        ):
             self.assertIn(match.group(2), ('', '***'), match.group(1))
 
     def test_flags_carry_registry_and_effective_values(self):
@@ -85,7 +89,7 @@ class EvaluationDossierTests(TestCase):
         self.assertEqual(len(rows), len(REGISTRY))
         by_name = {row['env_name']: row for row in rows}
         self.assertIn('AIMMS_EVIDENCE_GATE_MODE', by_name)
-        self.assertEqual(by_name['AIMMS_CAPABILITY_TIER']['effective'], 0)
+        self.assertFalse(by_name['FEATURE_AI_RETENTION_JOBS']['effective'])
         self.assertFalse(by_name['FEATURE_AI_PILOT_STOP_LATCH']['effective'])
 
     def test_fixture_sets_name_all_four_seeders(self):

@@ -40,7 +40,6 @@ SAFETY_SHORTCUT_REFUSAL = "safety_shortcut_refusal"
 # rewritten as "the manual does not contain it").
 ANALYSIS_DOWNGRADE = "analysis_downgrade"
 ANALYSIS_ABSTAIN = "analysis_abstain"
-ANALYSIS_CAPABILITY_BOUNDARY = "analysis_capability_boundary"
 ANALYSIS_PARTIAL_NOTICE = "analysis_partial_notice"
 ANALYSIS_FAIL_CLOSED = "analysis_fail_closed"
 
@@ -242,18 +241,6 @@ _TEMPLATES: dict[str, dict[str, str]] = {
             "pregunta, por lo que no se produjo ninguna conclusión."
         ),
     },
-    ANALYSIS_CAPABILITY_BOUNDARY: {
-        "en": (
-            "That kind of analysis is not available yet. I can look up "
-            "individual records, document facts, and source availability "
-            "within your analysis scope."
-        ),
-        "es": (
-            "Ese tipo de análisis aún no está disponible. Puedo consultar "
-            "registros individuales, datos de documentos y la disponibilidad "
-            "de fuentes dentro de tu ámbito de análisis."
-        ),
-    },
     ANALYSIS_PARTIAL_NOTICE: {
         "en": (
             "This is a partial answer: some parts of the question did not "
@@ -318,7 +305,6 @@ __all__ = [
     "ADVISORY_VOICE_ACTION",
     "ADVISORY_VOICE_READONLY",
     "ANALYSIS_ABSTAIN",
-    "ANALYSIS_CAPABILITY_BOUNDARY",
     "ANALYSIS_DOWNGRADE",
     "ANALYSIS_FAIL_CLOSED",
     "ANALYSIS_PARTIAL_NOTICE",

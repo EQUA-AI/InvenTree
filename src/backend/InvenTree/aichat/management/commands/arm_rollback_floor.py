@@ -1,8 +1,8 @@
 """Arm the AIMMS rollback floor (§14 monotonic safety, human-gated).
 
-Writes the durable floor marker. Once armed, the capability-profile system
+Writes the durable floor marker. Once armed, the rollback-floor system
 check requires scope enforcement, the unsafe-shortcut guard, and fixture
-isolation to hold at EVERY tier — attempting to disable them afterwards
+isolation to hold in EVERY configuration — attempting to disable them afterwards
 fails ``manage.py check`` and startup loudly. There is deliberately no
 disarm command: rollback below the floor is prohibited by design; undoing
 it requires a deliberate, auditable database edit.
@@ -18,8 +18,8 @@ class Command(BaseCommand):
 
     help = (
         'Arm the AIMMS rollback floor: scope enforcement, the unsafe-shortcut '
-        'guard, and fixture isolation become mandatory at every capability '
-        'tier. One-way by design; requires --yes.'
+        'guard, and fixture isolation become mandatory in every '
+        'configuration. One-way by design; requires --yes.'
     )
 
     def add_arguments(self, parser):
@@ -43,7 +43,7 @@ class Command(BaseCommand):
         if not options['yes']:
             raise CommandError(
                 'Arming is one-way (no disarm command). Re-run with --yes to '
-                f'require {", ".join(ROLLBACK_FLOOR)} at every tier.'
+                f'require {", ".join(ROLLBACK_FLOOR)} permanently.'
             )
         InvenTreeSetting.set_setting(ROLLBACK_FLOOR_SETTING, 'true', None)
         self.stdout.write(

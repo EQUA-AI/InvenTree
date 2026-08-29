@@ -29,6 +29,7 @@ from ai.core.analysis.evidence import (
     facts_from_inventory_rows,
     facts_from_work_order_row,
 )
+from ai.core.analysis.intent import ANALYSIS_ROUTED_INTENTS
 from ai.core.analysis.renderer import (
     RenderError,
     assign_ordinals,
@@ -62,7 +63,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-TIER1_INTENTS = frozenset({"record_retrieval", "manual_fact", "source_inventory"})
+#: String view of the shipped-executor set (single source of truth in
+#: ``analysis.intent`` — routing and dispatch can never drift).
+TIER1_INTENTS = frozenset(member.value for member in ANALYSIS_ROUTED_INTENTS)
 
 _SAFETY_BOUNDARY = "Advisory; verify the cited source before acting. No safety status was inferred."
 

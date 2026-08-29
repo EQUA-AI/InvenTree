@@ -29,7 +29,7 @@ def standard_snapshot() -> PolicySnapshot:
     """The built-in default: the v1 budget/rate limits as a policy.
 
     Mirrors ``ai_user_daily_token_budget`` (1M/day) and the standard chat
-    route windows (10/min, 100/hour) so flipping ``FEATURE_AI_QUOTA_PROFILES``
+    route windows (the ai_rate_chat_* knobs) so flipping ``FEATURE_AI_QUOTA_PROFILES``
     without any policy rows changes no user-visible limit.
     """
     from ai.core.config import get_settings
@@ -44,8 +44,8 @@ def standard_snapshot() -> PolicySnapshot:
         # envelope — finite, high enough to be invisible in normal use.
         tenant_cap=user_cap * 10 if user_cap else 0,
         global_cap=user_cap * 10 if user_cap else 0,
-        requests_per_minute=10,
-        requests_per_hour=100,
+        requests_per_minute=int(getattr(settings, "ai_rate_chat_per_minute", 10)),
+        requests_per_hour=int(getattr(settings, "ai_rate_chat_per_hour", 100)),
     )
 
 

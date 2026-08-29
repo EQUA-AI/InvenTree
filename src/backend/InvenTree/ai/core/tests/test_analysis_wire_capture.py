@@ -202,21 +202,21 @@ def test_gate_off_is_byte_identical_abstention() -> None:
     assert run.extras == {}
 
 
-def test_tier23_intents_get_the_typed_capability_boundary() -> None:
-    emitter = RecordingEmitter()
-    run = _run(intent="fleet_aggregate", emitter=emitter)
-    with mock.patch("ai.core.config.get_settings", lambda: _settings("shadow")):
-        canonical = asyncio.run(_run_analysis_branch(_service(), run))
-    assert canonical["workflow_used"] == "analysis_capability_boundary"
-    assert "not available yet" in canonical["message"]
-    # Gate off keeps the generic abstention for the same intent.
-    with mock.patch("ai.core.config.get_settings", lambda: _settings("off")):
-        canonical_off = asyncio.run(
-            _run_analysis_branch(
-                _service(), _run(intent="fleet_aggregate", emitter=RecordingEmitter())
+def test_unrouted_intents_defensively_abstain() -> None:
+    # Routing never sends an unshipped intent here (it keeps the legacy
+    # rail); reaching this branch requires a settings race between routing
+    # and dispatch. The defensive tail must be an honest abstention under
+    # EVERY gate mode — and the typed "capability boundary" refusal no
+    # longer exists (owner 2026-08-29).
+    for gate_mode in ("shadow", "off", "enforce"):
+        with mock.patch("ai.core.config.get_settings", lambda m=gate_mode: _settings(m)):
+            canonical = asyncio.run(
+                _run_analysis_branch(
+                    _service(), _run(intent="fleet_aggregate", emitter=RecordingEmitter())
+                )
             )
-        )
-    assert canonical_off["workflow_used"] == "analysis_unavailable"
+        assert canonical["workflow_used"] == "analysis_unavailable", gate_mode
+        assert "analysis_capability_boundary" not in str(canonical)
 
 
 def test_legacy_rail_runs_the_shadow_prose_scan() -> None:

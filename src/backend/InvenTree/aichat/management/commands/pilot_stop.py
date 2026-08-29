@@ -15,8 +15,9 @@ class Command(BaseCommand):
     """Engage the latch, or print its state with --status."""
 
     help = (
-        'Engage the AI pilot-stop latch (any one owner; content-free reason '
-        'code required) or report its state with --status.'
+        'Engage the AI emergency stop (any one owner; content-free reason '
+        'code required) or report its state with --status. Arm the flag '
+        'only after verifying the shared cache backend on both planes.'
     )
 
     def add_arguments(self, parser):

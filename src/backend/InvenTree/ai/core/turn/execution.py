@@ -225,18 +225,16 @@ async def _run_analysis_branch(service: NormalizedTurnService, run: TurnRun) -> 
         except Exception:  # pragma: no cover - shadow must never fail a turn
             logger.warning("evidence gate shadow rehearsal failed", exc_info=False)
 
-    from ai.core.turn.responses import (
-        _canonical_analysis_capability_boundary,
-        _canonical_analysis_unavailable,
-    )
+    from ai.core.turn.responses import _canonical_analysis_unavailable
 
-    tier23 = intent_value in ("fleet_aggregate", "trend_analysis", "manual_wo_comparison")
-    if gate_mode != "off" and tier23:
-        response = _canonical_analysis_capability_boundary(locale=locale)
-        workflow_used = "analysis_capability_boundary"
-    else:
-        response = _canonical_analysis_unavailable(locale=locale)
-        workflow_used = "analysis_unavailable"
+    # Defensive only: routing sends a turn here exclusively when the intent
+    # has a shipped executor AND the gate is at enforce, so this tail is
+    # reachable only through a settings race between routing and dispatch.
+    # It must degrade to an honest abstention, never a crash — and a typed
+    # "capability boundary" refusal no longer exists (owner 2026-08-29:
+    # unshipped analysis intents keep the legacy rail instead).
+    response = _canonical_analysis_unavailable(locale=locale)
+    workflow_used = "analysis_unavailable"
     await service._emit_canonical_events(
         emitter=run.emitter,
         thread_id=run.thread.pk,

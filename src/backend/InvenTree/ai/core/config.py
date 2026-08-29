@@ -290,6 +290,14 @@ class Settings(BaseSettings):
     #: Deployment/environment namespace for quota + admission counters, so
     #: shared stores (one Redis serving several envs) never cross-count.
     ai_deployment_env: str = Field(default="default", alias="AI_DEPLOYMENT_ENV")
+    # Rate-limit knobs (defaults = the historic literals; deployment env
+    # raises them — deliberately NOT registry flags, the numeric-knob
+    # precedent). The chat pair governs /chat, /chat/stream, and /agui.
+    ai_rate_chat_per_minute: int = Field(default=10, ge=1, alias="AI_RATE_CHAT_PER_MINUTE")
+    ai_rate_chat_per_hour: int = Field(default=100, ge=1, alias="AI_RATE_CHAT_PER_HOUR")
+    ai_rate_user_per_minute: int = Field(default=20, ge=1, alias="AI_RATE_USER_PER_MINUTE")
+    ai_rate_user_per_hour: int = Field(default=200, ge=1, alias="AI_RATE_USER_PER_HOUR")
+    ai_rate_global_per_minute: int = Field(default=100, ge=1, alias="AI_RATE_GLOBAL_PER_MINUTE")
     ai_admission_max_active_per_user: int = Field(
         default=2, ge=1, alias="AI_ADMISSION_MAX_ACTIVE_PER_USER"
     )
@@ -585,18 +593,6 @@ class Settings(BaseSettings):
         default="shadow",
         validation_alias=AliasChoices("AIMMS_EVIDENCE_GATE_MODE", "EVIDENCE_GATE_MODE"),
     )
-    # S14/A12: the declared capability tier — a DEPLOYMENT profile, never
-    # inferred from users, quota profiles, or prompts. 0 (default) declares
-    # nothing and validates nothing; tiers >= 1 require the
-    # aimms_capability.TIER_REQUIREMENTS to hold, checked by the model
-    # validator below (startup fails on an unsatisfiable declaration). The
-    # tier is stamped on every terminal turn's metadata.
-    capability_tier: int = Field(
-        default=0,
-        ge=0,
-        le=3,
-        validation_alias=AliasChoices("AIMMS_CAPABILITY_TIER", "CAPABILITY_TIER"),
-    )
     # S15/§15.4: arm the fail-closed pilot-stop admission gate. Dark by
     # default; the latch state, set/clear commands, and reports all work
     # regardless — only the per-turn check is gated. Deliberately the
@@ -608,9 +604,9 @@ class Settings(BaseSettings):
             "FEATURE_AI_PILOT_STOP_LATCH", "AIMMS_FEATURE_AI_PILOT_STOP_LATCH"
         ),
     )
-    # S16/Q48: the Django plane runs the purge jobs; this mirror exists so
-    # the AI plane's tier validation can enforce the retention_cleanup
-    # requirement (tier >= 1 needs retention OPERATING in the deployment).
+    # S16/Q48: the Django plane runs the purge jobs; this mirror exists for
+    # both-plane registry parity only. Dark by owner decision (2026-08-29):
+    # data is kept — nothing forces these jobs on.
     feature_ai_retention_jobs: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -774,34 +770,6 @@ class Settings(BaseSettings):
     voice_confidence_floor: float = Field(
         default=0.85, ge=0.0, le=1.0, alias="AIMMS_VOICE_CONFIDENCE_FLOOR"
     )
-
-    @model_validator(mode="after")
-    def validate_capability_tier(self) -> "Settings":
-        """A12: a declared tier this build cannot satisfy fails startup.
-
-        Validates the registry flags THIS plane bridges (the Django system
-        check covers its own subset); tier 0 declares nothing and stays
-        inert. The rollback-floor marker is a Django-DB setting, so armed
-        floor enforcement rides the Django check, not this validator.
-        """
-        if self.capability_tier <= 0:
-            return self
-        from aimms_capability import validate_capability_profile
-        from aimms_flags import ai_flags
-
-        flag_view: dict[str, object] = {
-            entry.env_name: getattr(self, entry.ai_field)
-            for entry in ai_flags()
-            if entry.ai_field and hasattr(self, entry.ai_field)
-        }
-        flag_view["MODEL_VERSION_BOOT_PROBE_ENABLED"] = self.model_version_boot_probe_enabled
-        violations = validate_capability_profile(self.capability_tier, flag_view)
-        if violations:
-            raise ValueError(
-                f"AIMMS_CAPABILITY_TIER={self.capability_tier} is not satisfiable: "
-                + "; ".join(violations)
-            )
-        return self
 
     @model_validator(mode="after")
     def validate_voice_live_transport(self) -> "Settings":

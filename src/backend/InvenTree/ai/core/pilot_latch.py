@@ -1,4 +1,4 @@
-"""The fail-closed pilot-stop admission gate (S15, §15.4/§16).
+"""Production emergency stop (kill switch): the fail-closed admission gate.
 
 One check in ``NormalizedTurnService.process`` — BEFORE the admission
 lease — covers every rail (HTTP, SSE, AG-UI, voice). Deliberately the

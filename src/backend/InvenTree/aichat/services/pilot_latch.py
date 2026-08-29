@@ -1,4 +1,4 @@
-"""Pilot-stop latch service (S15, §14/§15.4/§16, Q43/Q50).
+"""Production emergency-stop (kill switch) service — durable state + owner alerting.
 
 The Django-plane authority for the durable latch: engage (any one owner,
 or an automatic Q50 trigger), record restart approvals (clearing requires

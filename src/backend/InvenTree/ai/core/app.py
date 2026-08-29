@@ -353,15 +353,19 @@ app.include_router(_agui_router)
 
 # Configure Rate Limiting (added FIRST = runs inside CORS)
 settings = get_settings()
+_chat_limits = {
+    "per_minute": settings.ai_rate_chat_per_minute,
+    "per_hour": settings.ai_rate_chat_per_hour,
+}
 rate_limit_config = RateLimitConfig(
-    max_requests_per_minute=20,
-    max_requests_per_hour=200,
-    global_max_requests_per_minute=100,
+    max_requests_per_minute=settings.ai_rate_user_per_minute,
+    max_requests_per_hour=settings.ai_rate_user_per_hour,
+    global_max_requests_per_minute=settings.ai_rate_global_per_minute,
     endpoint_limits={
-        "/chat": {"per_minute": 10, "per_hour": 100},
-        "/chat/stream": {"per_minute": 10, "per_hour": 100},
+        "/chat": dict(_chat_limits),
+        "/chat/stream": dict(_chat_limits),
         # S49: the AG-UI adapter is the same model rail as /chat/stream.
-        "/agui": {"per_minute": 10, "per_hour": 100},
+        "/agui": dict(_chat_limits),
     },
 )
 app.add_middleware(
@@ -545,46 +549,6 @@ async def upload_file(
         content_type=file.content_type or "application/octet-stream",
         thread_id=thread_id,
     )
-
-
-@app.post("/upload/cleanup")
-async def cleanup_uploads(
-    max_age_hours: int = Query(default=UPLOAD_TTL_HOURS, ge=1, le=168),
-) -> dict[str, Any]:
-    """
-    Remove uploaded files older than max_age_hours.
-    Called periodically or manually.
-    """
-    import time
-
-    if not _principal().is_staff:
-        raise HTTPException(status_code=403, detail="Staff access required")
-
-    upload_dir = _get_upload_dir()
-    cutoff = time.time() - (max_age_hours * 3600)
-    removed = 0
-    errors = 0
-
-    for thread_dir in upload_dir.iterdir():
-        if not thread_dir.is_dir():
-            continue
-        for fpath in thread_dir.iterdir():
-            try:
-                if fpath.stat().st_mtime < cutoff:
-                    fpath.unlink()
-                    removed += 1
-            except OSError:
-                logger.warning("AI upload cleanup failed for one file")
-                errors += 1
-        # Remove empty thread dirs
-        try:
-            if not any(thread_dir.iterdir()):
-                thread_dir.rmdir()
-        except Exception:
-            pass
-
-    logger.info(f"Upload cleanup: removed {removed} files, {errors} errors")
-    return {"removed": removed, "errors": errors, "max_age_hours": max_age_hours}
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -1032,10 +996,8 @@ async def get_thread(
                     # S10/S11: the consolidated evidence attachment reloads
                     # with the SAME object shape the live wires delivered.
                     "evidence_analysis": message.metadata.get("evidence_analysis"),
-                    # S14: the server-declared capability tier and resolved
-                    # model identities stamped on the turn — the battery
-                    # runner verifies both from the wire (content-free).
-                    "capability_tier": message.metadata.get("capability_tier"),
+                    # S14: the resolved model identities stamped on the
+                    # turn — the battery runner verifies pins from the wire.
                     "model_versions": message.metadata.get("model_versions"),
                 }
                 for message in selected

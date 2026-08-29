@@ -386,7 +386,6 @@ def _artifacts_for_turn(
         route=None,  # not exposed to non-staff principals; layer 2 skips honestly
         proposal_ids_delta=delta,
         turn_metadata={
-            "capability_tier": last_assistant.get("capability_tier"),
             "model_versions": last_assistant.get("model_versions"),
         },
     )
