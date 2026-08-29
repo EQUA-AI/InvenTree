@@ -13,8 +13,10 @@ item = soft warn, never a hard fail.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +24,36 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from .schema import GoldenItem
+
+# --------------------------------------------------------------------------- #
+# Judge token accounting (S14/S15). The judge runs OUT-OF-PROCESS from the
+# server — no turn ledger exists to record into — so spend accumulates here
+# and the runners drain it into their reports/journals. Shared by the golden
+# judge below and the battery judge (battery_judge.py).
+# --------------------------------------------------------------------------- #
+_USAGE_LOCK = threading.Lock()
+_JUDGE_USAGE = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+
+def record_judge_usage(response: Any) -> None:
+    """Accumulate one judge response's token usage; missing usage counts calls."""
+    usage = getattr(response, "usage", None)
+    with _USAGE_LOCK:
+        _JUDGE_USAGE["calls"] += 1
+        if usage is not None:
+            _JUDGE_USAGE["prompt_tokens"] += int(getattr(usage, "prompt_tokens", 0) or 0)
+            _JUDGE_USAGE["completion_tokens"] += int(getattr(usage, "completion_tokens", 0) or 0)
+            _JUDGE_USAGE["total_tokens"] += int(getattr(usage, "total_tokens", 0) or 0)
+
+
+def drain_judge_usage() -> dict[str, int]:
+    """Return-and-reset the accumulated judge spend."""
+    with _USAGE_LOCK:
+        drained = dict(_JUDGE_USAGE)
+        for key in _JUDGE_USAGE:
+            _JUDGE_USAGE[key] = 0
+    return drained
+
 
 JUDGE_SCHEMA = {
     "type": "object",
@@ -102,7 +134,25 @@ def default_judge_call(payload: str) -> dict[str, Any]:
             "json_schema": {"name": "golden_verdict", "strict": True, "schema": JUDGE_SCHEMA},
         },
     )
+    record_judge_usage(response)
     return json.loads(response.choices[0].message.content)
+
+
+def judge_fingerprint(extra: tuple[str, ...] = ()) -> str:
+    """A stable identity for the judge contract (§13.5 calibration gating).
+
+    sha256 over the system prompt, the strict schema, and the resolved
+    deployment — a calibration artifact is valid only for the exact judge
+    it measured. ``extra`` lets the battery judge fold its own prompt in.
+    """
+    _, _, _, deployment = _judge_client_config()
+    digest = hashlib.sha256()
+    digest.update(_JUDGE_SYSTEM_PROMPT.encode("utf-8"))
+    digest.update(json.dumps(JUDGE_SCHEMA, sort_keys=True).encode("utf-8"))
+    digest.update(deployment.encode("utf-8"))
+    for part in extra:
+        digest.update(part.encode("utf-8"))
+    return digest.hexdigest()
 
 
 @dataclass(frozen=True)
@@ -161,4 +211,13 @@ def score_item(item: GoldenItem, verdict: dict[str, Any]) -> ItemScore:
     return ItemScore(item.id, kind, "fail", f"unknown verdict {kind!r}")
 
 
-__all__ = ["JUDGE_SCHEMA", "ItemScore", "default_judge_call", "judge_item", "score_item"]
+__all__ = [
+    "JUDGE_SCHEMA",
+    "ItemScore",
+    "default_judge_call",
+    "drain_judge_usage",
+    "judge_fingerprint",
+    "judge_item",
+    "record_judge_usage",
+    "score_item",
+]

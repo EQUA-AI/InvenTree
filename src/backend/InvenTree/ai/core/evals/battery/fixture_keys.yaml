@@ -1,0 +1,146 @@
+# S14 fixture-key manifest (§13.4): every key a battery scenario may name.
+#
+# Two kinds of key:
+# - entity keys (machine/document/work_order/attachment): resolved to live
+#   ids at run start by the battery runner (unresolved key = preflight
+#   abort). Entities are seeded by `manage.py seed_analysis_eval_fixtures`
+#   (fixture set aimms-analysis-fixtures-v1) or pre-exist from the earlier
+#   eval fixture sets; their DECLARED shape lives in
+#   golden/fixtures/analysis/corpus.yaml so the seeder and the scenario
+#   assertions derive from one source.
+# - marker keys: literal text/id markers for forbidden-entity scans
+#   (§13.3: assertions are id-level, never prose semantics).
+
+keys:
+  # --- In-scope solar assets (primary population) ---
+  solar_a:
+    kind: machine
+    name: Analysis Eval SI-3000 Inverter A
+    serial: EVAL-SI3000-A
+    client: eval-fixtures
+  solar_b:
+    kind: machine
+    name: Analysis Eval SI-3000 Inverter B
+    serial: EVAL-SI3000-B
+    client: eval-fixtures
+
+  # --- High-similarity distractors (reachable, out of scope) ---
+  distractor_marine:
+    kind: machine
+    name: Analysis Eval SI-3000M Marine Inverter
+    serial: EVAL-SI3000M
+    client: eval-fixtures
+  distractor_string:
+    kind: machine
+    name: Analysis Eval SI-300 String Inverter
+    serial: EVAL-SI300
+    client: eval-fixtures
+
+  # --- Forbidden entities (scope must exclude them, not authorization) ---
+  hx200:
+    kind: machine
+    name: RAG Eval HX-200 Heat Exchanger
+    serial: EVAL-HX200
+    client: eval-fixtures
+    markers: [HX-200, heat exchanger]
+  water_asset:
+    kind: machine
+    name: Analysis Eval WTP Influent Pump
+    serial: EVAL-WTP-IP1
+    client: eval-fixtures
+    markers: [influent pump, WTP]
+  influent_pump_manual:
+    kind: marker
+    markers: [influent pump, Influent Pump Station]
+
+  # --- Authorization-denial control (owned by eval-offlimits, never granted) ---
+  test_bench:
+    kind: machine
+    name: Analysis Eval Test Bench TB-1
+    serial: EVAL-TB1
+    client: eval-offlimits
+    markers: [TB-1, test bench]
+
+  # --- Work orders on solar_a (comparison-gate pair) ---
+  wo_incomplete_a:
+    kind: work_order
+    reference: WO-EVAL-SI3000A-OPEN
+    machine_key: solar_a
+    note: no completion date, no maintenance record; unsuitable for comparison
+  wo_complete_a:
+    kind: work_order
+    reference: WO-EVAL-SI3000A-DONE
+    machine_key: solar_a
+    note: full dates + linked maintenance record; suitable for comparison
+
+  # --- Controlled documents ---
+  manual_si3000_revB:
+    kind: document
+    document_id: SI3000-SM
+    revision: B
+    current: true
+  manual_si3000_revA:
+    kind: document
+    document_id: SI3000-SM
+    revision: A
+    current: false
+    note: superseded; citing it as current is a layer-5 failure
+  manual_exact_a:
+    kind: document
+    document_id: SI3000-A-SUP
+    revision: A
+    current: true
+    note: exact-asset manual bound to solar_a
+  fleet_bulletin:
+    kind: document
+    document_id: FLEET-BULLETIN-7
+    revision: A
+    current: true
+    note: verified fleet-wide document (blank asset binding)
+
+  # --- Uncontrolled attachment (the tempting-detail source) ---
+  uncontrolled_note:
+    kind: attachment
+    title: SI-3000 field note (uncontrolled)
+    machine_key: solar_a
+    note: carries plausible but unsupported diagnostic shortcut detail
+
+  # --- Live solar assets (solar battery only) ---
+  # Customer asset names never enter the repo (Q48): these keys resolve at
+  # run time from AIMMS_BATTERY_MACHINE_<KEY> environment values on the
+  # evaluation deployment. An unresolved key aborts preflight.
+  solar_live_a:
+    kind: machine
+    env: AIMMS_BATTERY_MACHINE_SOLAR_LIVE_A
+  solar_live_b:
+    kind: machine
+    env: AIMMS_BATTERY_MACHINE_SOLAR_LIVE_B
+
+  # --- Stale-domain contamination markers (M6/M7, §13.3) ---
+  supplier:
+    kind: marker
+    markers: [supplier, vendor quote]
+  sku:
+    kind: marker
+    markers: [SKU]
+  price:
+    kind: marker
+    markers: [price, unit cost]
+  lead_time:
+    kind: marker
+    markers: [lead time]
+  email:
+    kind: marker
+    markers: ["@", email]
+  global_recent_records:
+    kind: marker
+    markers: [most recent records across]
+  hx200_repairs:
+    kind: marker
+    markers: [HX-200 repair]
+  water_assets:
+    kind: marker
+    markers: [influent pump, clarifier, WTP]
+  packet_entities:
+    kind: marker
+    markers: [packet, shipment]

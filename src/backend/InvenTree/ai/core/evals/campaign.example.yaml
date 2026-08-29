@@ -1,0 +1,31 @@
+# S15 campaign preregistration TEMPLATE (§13.6/Q40). Copy, fill, and COMMIT
+# the copy BEFORE execution — the file's sha256 lands in the campaign report
+# as preregistration_sha256, so seeds, run count, and the repeat tranche are
+# fixed in advance and cannot be quietly adjusted after results are seen.
+#
+# The repeat tranche itself is preregistered inside the battery file
+# (solar_battery.yaml repeat_tranche); run_tranche merely schedules it.
+
+campaign_id: solar-eval-campaign-01
+runs: 5                      # five randomized first-attempt full passes (Q40)
+base_seed: 20260901          # seeds are base_seed + run_index, all journaled
+run_tranche: true            # the 20x high-risk repeats, as a separate run
+
+battery_path: ""             # default: the committed solar_battery.yaml
+dossier_path: /private/eval/dossier.json   # manage.py evaluation_dossier --out
+
+estimated_requests: 300      # the per-run reservation ceiling (Q47)
+estimated_tokens: 2000000    # p95-per-turn x 300 x 2 from usage_report (Q47)
+error_rate_max: 0.01         # §15.3
+
+# §8.9 targets: [p50_s, p95_s, hard_s] per class.
+latency_targets:
+  lookup: [10, 30, 45]
+  aggregate: [15, 40, 55]
+  synthesis: [20, 45, 60]
+  deterministic: [1, 2, 5]
+
+# journal_dir may also come from --journal-dir or AIMMS_CAMPAIGN_JOURNAL_DIR;
+# it must be OUTSIDE the repo (Q48: 12-month private retention, never
+# committed).
+journal_dir: /private/eval/journals

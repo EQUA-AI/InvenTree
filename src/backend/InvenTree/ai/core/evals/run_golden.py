@@ -19,7 +19,7 @@ Environment:
                                Origins on POST)
     AIMMS_GOLDEN_CORPUS        deployed corpus version(s), comma-separated —
                                e.g. "eaits-manuals-v4a,aimms-attachment-
-                               fixtures-v1" pins the governed index AND the
+                               fixtures-v2" pins the governed index AND the
                                attachment eval fixture set; corpus-pinned
                                items whose pin is absent from the set are
                                SKIPPED with a report
@@ -257,6 +257,8 @@ def main(argv: list[str] | None = None) -> int:
     red_fails = [r for r in redteam if r["outcome"] == "fail"]
     red_skips = [r for r in redteam if r["outcome"] == "skip"]
 
+    from .judge import drain_judge_usage
+
     report = {
         "total": len(scores),
         "pass": len([s for s in scores if s.outcome == "pass"]),
@@ -264,6 +266,9 @@ def main(argv: list[str] | None = None) -> int:
         "warn": [s.__dict__ for s in warns],
         "skip": [s.__dict__ for s in skips],
         "redteam": redteam,
+        # S15 (WP-B6): the judge's own spend, invisible to server-side
+        # accounting because it runs out-of-process.
+        "judge_usage": drain_judge_usage(),
     }
     if args.json_out:
         with pathlib.Path(args.json_out).open("w", encoding="utf-8") as handle:

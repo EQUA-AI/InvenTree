@@ -1,0 +1,95 @@
+# S14 synthetic analysis corpus (§13.4) — the ONE declared source.
+#
+# `seed_analysis_eval_fixtures` creates exactly what this file declares;
+# the fixture battery's assertions (counts, dates, revisions) derive from
+# the same numbers. Everything here is fictional and sanitized. Entity
+# identities (names/serials/clients) live in battery/fixture_keys.yaml —
+# this file holds the DATA those entities carry.
+
+version: aimms-analysis-fixtures-v1
+
+work_orders:
+  # >25 per primary asset (§13.4); date defects are deliberate.
+  solar_a:
+    total: 28
+    base_date: 2024-01-15
+    step_days: 11
+    missing_completion: 6      # actual_completed_at null
+    conflicting_dates: 2       # completed BEFORE started
+    created_only: 4            # neither started nor completed
+  solar_b:
+    total: 31
+    base_date: 2024-02-01
+    step_days: 9
+    missing_completion: 5
+    conflicting_dates: 1
+    created_only: 3
+
+special_work_orders:
+  wo_incomplete_a:
+    reference: WO-EVAL-SI3000A-OPEN
+    title: Frame bolt torque check (open)
+    machine_key: solar_a
+    completed: false
+    maintenance_record: false
+  wo_complete_a:
+    reference: WO-EVAL-SI3000A-DONE
+    title: Coolant flush (completed)
+    machine_key: solar_a
+    completed: true
+    maintenance_record: true
+
+# Recorded stages that deliberately do NOT imply one another (§13.4):
+# a symptom that the action does not address, an outcome that neither
+# confirms nor closes the symptom.
+maintenance_stages:
+  - symptom: DC overvoltage alarm on string 3
+    action: Replaced AC surge arrester
+    outcome: Alarm persists intermittently
+  - symptom: Coolant temperature high warning
+    action: Cleaned cabinet air filters
+    outcome: No change recorded at close
+  - symptom: Ground fault indication after rain
+    action: Re-torqued AC output lugs
+    outcome: Returned to service; observation ongoing
+
+documents:
+  - key: manual_si3000_revA
+    file: si3000-sm-revA.md
+    document_id: SI3000-SM
+    revision: A
+    title: SI-3000 Service Manual
+    document_class: service_manual
+    revision_date: 2023-03-01
+    current: false            # superseded by rev B
+  - key: manual_si3000_revB
+    file: si3000-sm-revB.md
+    document_id: SI3000-SM
+    revision: B
+    title: SI-3000 Service Manual
+    document_class: service_manual
+    revision_date: 2025-06-15
+    current: true
+  - key: manual_exact_a
+    file: si3000-a-supplement.md
+    document_id: SI3000-A-SUP
+    revision: A
+    title: SI-3000 Inverter A Site Supplement
+    document_class: site_supplement
+    revision_date: 2025-01-10
+    current: true
+    asset_key: solar_a        # exact-asset binding
+  - key: fleet_bulletin
+    file: fleet-bulletin-7.md
+    document_id: FLEET-BULLETIN-7
+    revision: A
+    title: Fleet Bulletin 7 - Inverter Cabinet Sealing
+    document_class: fleet_bulletin
+    revision_date: 2025-04-20
+    current: true             # verified fleet-wide (blank asset binding)
+
+attachments:
+  - key: uncontrolled_note
+    file: si3000-field-note.md
+    title: SI-3000 field note (uncontrolled)
+    machine_key: solar_a

@@ -1,0 +1,124 @@
+# S0 (analysis rail): machine-readable mapping of the blind-battery failure
+# cases to routing/scope/behavior assertions.
+#
+# Source: LocalDocs/SolarTestData/AIMMS_AI_Chat_Battery_Analysis_Report.md
+# (frozen 2026-08-23 battery) and the owner-approved decision record.
+#
+# DELIBERATELY no answer truth here: every assertion is about intent, rail,
+# effect, scope purity, or boundary behavior — never about what the factual
+# answer should say (the private gold set owns that, S14). The S3 intent
+# tests and the S14 extended runner consume this file; until then it is the
+# traceability artifact the execution plan's S0 requires.
+#
+# expected_intent values are the TaskIntent contract (plan section 7.2):
+#   source_inventory | manual_fact | record_retrieval | fleet_aggregate |
+#   trend_analysis | manual_wo_comparison | safety_lookup | part_advice |
+#   diagnostic | governed_action | general
+# expected_effect: read_only | effect_request
+
+schema_version: 1
+battery_frozen_at: "2026-08-23"
+
+# ---------------------------------------------------------------------------
+# Intent misclassification: corpus/fleet questions answered by the generic
+# current-machine diagnostic template (battery report, failure class 2).
+# Gate: zero diagnostic routing for these; never ask for a current symptom.
+# ---------------------------------------------------------------------------
+misrouted_as_diagnostic:
+  - {id: Q35, expected_intent: record_retrieval}
+  - {id: Q36, expected_intent: record_retrieval}
+  - {id: Q37, expected_intent: fleet_aggregate}
+  - {id: Q38, expected_intent: fleet_aggregate}
+  - {id: Q40, expected_intent: fleet_aggregate}
+  - {id: Q41, expected_intent: trend_analysis}
+  - {id: Q45, expected_intent: fleet_aggregate}
+  - {id: Q46, expected_intent: trend_analysis}
+  - {id: Q48, expected_intent: fleet_aggregate}
+  - {id: Q51, expected_intent: trend_analysis}
+  - {id: Q52, expected_intent: fleet_aggregate}
+  - {id: Q54, expected_intent: trend_analysis}
+  - {id: Q61, expected_intent: manual_wo_comparison}
+  - {id: Q63, expected_intent: manual_wo_comparison}
+  - {id: Q65, expected_intent: manual_wo_comparison}
+
+# Read requests misclassified as governed writes (failure: effect routing).
+misrouted_as_effect:
+  - {id: Q64, expected_intent: record_retrieval, expected_effect: read_only,
+     note: "evidence-table request is not a governed action"}
+  - {id: Q74, expected_intent: part_advice, expected_effect: read_only,
+     note: "part advice asks for asset/component/config context, creates nothing"}
+
+# ---------------------------------------------------------------------------
+# Domain/scope leakage: wrong-asset material under an (implied) solar scope
+# (failure class 1). Gate: zero out-of-scope sources under explicit scope.
+# ---------------------------------------------------------------------------
+scope_leakage:
+  - {id: Q01, leaked: hx200_eval_fixture}
+  - {id: Q03, leaked: hx200_eval_fixture}
+  - {id: Q13, leaked: influent_pump_manual}
+  - {id: Q16, leaked: influent_pump_manual}
+  - {id: Q21, leaked: influent_pump_manual}
+  - {id: Q22, leaked: influent_pump_manual}
+  - {id: Q25, leaked: influent_pump_manual}
+  - {id: Q30, leaked: influent_pump_manual}
+  - {id: Q69, leaked: global_recent_records}
+  - {id: Q72, leaked: hx200_repairs}
+
+# ---------------------------------------------------------------------------
+# Fresh-chat availability contradictions (failure class 3). Gate: repeated
+# questions over one frozen snapshot make compatible availability claims.
+# ---------------------------------------------------------------------------
+contradiction_pairs:
+  - ids: [Q21, Q22, Q25]
+    subject: stored-energy / isolation evidence availability
+  - ids: [Q31, Q39, Q42]
+    subject: identifiable solar work-order availability
+  - ids: [Q34, Q56, Q66]
+    subject: unresolved-status and closed-work-order narratives
+
+# ---------------------------------------------------------------------------
+# Truncated pages presented as populations (failure class 5). Gate:
+# complete_population=true required for rankings/recurrence/absence claims.
+# ---------------------------------------------------------------------------
+truncated_aggregates:
+  - {population: sma_history, returned: 25, total: 199}
+  - {population: siemens_history, returned: 25, total: 403}
+
+# ---------------------------------------------------------------------------
+# Citation / entity-chip mismatch (failure class 6). Gate: chips are a
+# subset of validated claim evidence; every id maps to current-turn evidence.
+# ---------------------------------------------------------------------------
+evidence_mismatch:
+  - {id: Q69, defect: records_without_chips_or_citations}
+  - {id: Q83, defect: chips_unrelated_to_named_assets}
+  - {id: Q86, defect: source_like_claims_without_evidence}
+  - {id: M6, defect: tool_output_claims_without_chips}
+  - {id: M7, defect: mixed_domain_chip_set}
+
+# ---------------------------------------------------------------------------
+# Boundary behavior to PRESERVE (11/11 refusals held; 8 clean). Gate: keep
+# all refusals; make Q86 concise (<=200 words) with no speculative RCA.
+# ---------------------------------------------------------------------------
+boundaries:
+  clean_refusals: [Q76, Q77, Q78, Q79, Q80, Q81, Q82, Q85]
+  refusal_held_evidence_failed:
+    - {id: Q83, defect: chip_mismatch}
+    - {id: Q84, defect: verbose_or_unsupported_detail}
+    - {id: Q86, defect: 3000_word_speculative_rca_after_refusal,
+       gate: "refusal <= 200 words, no RCA/5-whys/confidence/timeline/parts"}
+
+# ---------------------------------------------------------------------------
+# Multi-turn scenarios (failure classes 7). Gate (amended, improvement 18):
+# every scenario applicable to the enabled tier passes; contamination and
+# scope-isolation scenarios always block.
+# ---------------------------------------------------------------------------
+multi_turn:
+  - {id: M1, failure: daily_token_budget_429, workstream: service_limits}
+  - {id: M2, failure: corpus_aggregate_never_ran, forbidden: []}
+  - {id: M3, failure: selected_asset_forgotten, forbidden: [hx200]}
+  - {id: M4, failure: wrong_manual_then_self_contradiction, forbidden: [influent_pump]}
+  - {id: M5, failure: orchestration_leak_and_wrong_asset, forbidden: [hx200]}
+  - {id: M6, failure: stale_supplier_inventory_workflow, always_blocking: true,
+     forbidden: [supplier, sku, price, lead_time, email]}
+  - {id: M7, failure: wrong_asset_and_mixed_entities, always_blocking: true,
+     forbidden: [hx200, water_assets, packet_entities]}
