@@ -61,6 +61,12 @@ EXCLUDED_FIELDS = {
     'Approval.*': 'approvals payload travels its own governed rail',
     'Attachment.attachment': 'file body / storage path',
     'AssetMaintenanceRecord.performed_by': 'free-text identity; role labels only',
+    # S9: procedure-execution projections — evidence of WHAT was recorded,
+    # never who, and never raw operator readings.
+    'WorkOrderStepExecution.completed_by': 'identity; presence boolean only',
+    'WorkOrderStepExecution.value': 'operator-captured readings; closeout rail owns them',
+    'WorkOrderDeviation.actor': 'identity; deviations answer what, not who',
+    'WorkOrderDeviation.approval': 'approvals payload travels its own governed rail',
 }
 
 #: Fence markers, byte-identical across every AIMMS surface. Redeclared rather
@@ -595,6 +601,130 @@ def open_repairs_for_machine(user, machine) -> dict[str, Any]:
     }
 
 
+def _bounded_json(value, *, limit: int = 500) -> str | None:
+    """A structured expected/actual payload as fenced, capped text."""
+    if value is None:
+        return None
+    import json
+
+    try:
+        text = json.dumps(value, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        text = str(value)
+    return fence(text, limit=limit) or None
+
+
+def work_order_procedure_application(work_order) -> dict[str, Any] | None:
+    """The PRIMARY structured procedure application, revision-pinned (S9).
+
+    §8.5 evidence stage 1: which governed revision this work order was
+    executed against, byte-anchored (``content_hash``) with the applied
+    snapshot hash and the drift verdict. ``None`` means no structured
+    application exists — the comparison gate then degrades to the
+    deliberately ``cannot_determine``-heavy prose path, never guesses.
+    """
+    application = (
+        work_order.procedure_applications
+        .select_related('revision', 'revision__procedure')
+        .order_by('-primary', 'sequence', 'pk')
+        .first()
+    )
+    if application is None:
+        return None
+    revision = application.revision
+    return {
+        'application_id': application.pk,
+        'primary': application.primary,
+        'sequence': application.sequence,
+        'procedure_code': revision.procedure.code,
+        'procedure_name': fence(revision.procedure.name, limit=255),
+        'revision_id': revision.pk,
+        'revision': revision.revision,
+        'revision_status': revision.status,
+        'content_version': revision.content_version,
+        'content_hash': revision.content_hash or None,
+        'snapshot_hash': application.snapshot_hash or None,
+        'policy_version': application.policy_version,
+        'drift_status': application.drift_status,
+        'applied_at': _iso(application.applied_at),
+        'step_count': application.step_executions.count(),
+    }
+
+
+def work_order_step_executions(application) -> dict[str, Any]:
+    """EVERY recorded step execution for one application (S9).
+
+    §8.5 evidence stage 2, complete-population by construction: the
+    comparison statuses need every step, so there is no display page here
+    — an application's step list is bounded by its authored procedure.
+    ``not recorded`` is derivable (a step with no completion), never
+    stated as compliance or noncompliance by this projection.
+    """
+    rows = application.step_executions.order_by('sequence', 'pk')
+    steps = [
+        {
+            'step_key': str(step.step_key),
+            'sequence': step.sequence,
+            'status': step.status,
+            'passed': step.passed,
+            'completed': step.completed_at is not None,
+            'completed_at': _iso(step.completed_at),
+            'title': fence(
+                str((step.step_snapshot or {}).get('title') or ''), limit=255
+            )
+            or None,
+            'note': fence(step.note, limit=500) or None,
+            'disposition_reason': fence(step.disposition_reason, limit=500) or None,
+            'version': step.version,
+        }
+        for step in rows
+    ]
+    return {
+        'application_id': application.pk,
+        'steps': steps,
+        'population_count': len(steps),
+        'complete_population': True,
+    }
+
+
+def work_order_deviations(work_order, *, limit: int = 50) -> dict[str, Any]:
+    """Explicit recorded deviations for one work order (S9).
+
+    §8.5 evidence stage 3: a ``documented_deviation`` status may only ever
+    come from one of these rows (or a conflicting structured execution) —
+    never from absence. String keys stay strings (they are recorded
+    coordinates, not FKs); approval is a presence boolean.
+    """
+    rows = work_order.deviations.order_by('-created_at', '-pk')
+    population_count = rows.count()
+    bounded = max(1, min(int(limit or 50), 100))
+    deviations = [
+        {
+            'deviation_id': deviation.pk,
+            'category': deviation.category,
+            'application_key': deviation.application_key or None,
+            'step_key': deviation.step_key or None,
+            'resource_key': deviation.resource_key or None,
+            'expected': _bounded_json(deviation.expected),
+            'actual': _bounded_json(deviation.actual),
+            'reason': fence(deviation.reason, limit=500),
+            'resolution': fence(deviation.resolution, limit=500) or None,
+            'approved': deviation.approval_id is not None,
+            'created_at': _iso(deviation.created_at),
+            'resolved_at': _iso(deviation.resolved_at),
+        }
+        for deviation in rows[:bounded]
+    ]
+    return {
+        'work_order_id': work_order.pk,
+        'deviations': deviations,
+        'population_count': population_count,
+        'returned_count': len(deviations),
+        'display_truncated': population_count > len(deviations),
+        'complete_population': population_count == len(deviations),
+    }
+
+
 def authorized_machine(user, machine_id):
     """Load one machine under the maintenance flag; denial stays silent.
 
@@ -635,11 +765,14 @@ __all__ = [
     'maintenance_ai_read_enabled',
     'open_repairs_for_machine',
     'work_order_closeout',
+    'work_order_deviations',
     'work_order_history_page',
     'work_order_overview',
+    'work_order_procedure_application',
     'work_order_readiness',
     'work_order_repair_state',
     'work_order_row',
+    'work_order_step_executions',
     'work_orders_in_scope',
     'work_orders_page',
 ]
