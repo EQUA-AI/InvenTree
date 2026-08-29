@@ -26,6 +26,10 @@ def record_search(
     scope_key: str,
     corpus: str = 'governed',
     part_filter: str = '',
+    scope_hash: str = '',
+    scope_mode: str = '',
+    scope_enforced: bool = False,
+    out_of_scope_hits: int = 0,
 ) -> None:
     """Persist one search outcome; query metadata only, never answer text.
 
@@ -37,6 +41,11 @@ def record_search(
     outcome instead (documented convention; a dedicated column is a deferred
     dark-safe migration). ``document_class`` carries ``media_type`` for media
     rows. All default to the pre-R2 shape so existing callers are untouched.
+
+    The four ``scope_*`` fields are the S5 shadow evidence: which analysis
+    scope was active, whether enforcement constrained the search, and how
+    many candidate rows fell outside an explicit scope. Content-free — the
+    hash is the thread scope's canonical digest, never machine names.
     """
     try:
         from aichat.models import RetrievalMiss
@@ -51,6 +60,10 @@ def record_search(
             scope_key=str(scope_key or '')[:255],
             corpus=str(corpus or 'governed')[:32],
             part_filter=str(part_filter or '')[:16],
+            scope_hash=str(scope_hash or '')[:64],
+            scope_mode=str(scope_mode or '')[:32],
+            scope_enforced=bool(scope_enforced),
+            out_of_scope_hits=max(0, int(out_of_scope_hits)),
         )
     except Exception as exc:
         from ai.core.faults import fault_location

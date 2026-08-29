@@ -124,6 +124,49 @@ def merge_protected_fields(prior: dict, fresh: dict) -> dict:
     return merged
 
 
+#: Substrings that read as tool/system directives when a summary is later
+#: replayed as context (§13.3 P6). The strict response schema bounds the
+#: SHAPE of summarizer output, not its strings — this scrub bounds those.
+_TOOL_DIRECTIVE_MARKERS = ('tool_call', 'function_call', 'system:', '<tool', 'invoke ')
+
+
+def strip_tool_directives(body: dict) -> dict:
+    """Drop summary strings that carry tool/system directive markers.
+
+    List items containing a marker are removed; marker-bearing scalar
+    string fields are blanked. Deterministic and lossy on purpose — a
+    summary line that looks like an instruction is worth less than the
+    injection risk of replaying it.
+    """
+
+    def tainted(text: str) -> bool:
+        lowered = text.lower()
+        return any(marker in lowered for marker in _TOOL_DIRECTIVE_MARKERS)
+
+    cleaned: dict = {}
+    dropped = 0
+    for key, value in body.items():
+        if isinstance(value, str):
+            if tainted(value):
+                cleaned[key] = ''
+                dropped += 1
+            else:
+                cleaned[key] = value
+        elif isinstance(value, list):
+            kept = [
+                item for item in value if not (isinstance(item, str) and tainted(item))
+            ]
+            dropped += len(value) - len(kept)
+            cleaned[key] = kept
+        else:
+            cleaned[key] = value
+    if dropped:
+        logger.warning(
+            'Thread compaction stripped %d directive-marked summary item(s)', dropped
+        )
+    return cleaned
+
+
 def _summarize(transcript: list[dict], prior_body: dict) -> dict:
     """One strict-schema summarization call on the S37 SUMMARIZATION tier."""
     from openai import AzureOpenAI
@@ -215,7 +258,7 @@ def _compact_locked(thread_id) -> None:
     except Exception:
         logger.warning('Thread compaction summarize failed thread=%s', thread_id)
         return
-    merged = merge_protected_fields(prior_body, fresh)
+    merged = strip_tool_directives(merge_protected_fields(prior_body, fresh))
     label = str(merged.get('label') or '').strip()[:60]
     summary_text = label + '\n' + json.dumps(merged, ensure_ascii=True)
 
@@ -321,4 +364,97 @@ def sweep_attachment_rag():
             counts['stalled'],
             counts['orphans'],
             counts.get('thumbnails', 0),
+        )
+
+
+QUOTA_RECONCILE_INTERVAL_MINUTES = 5
+
+
+@scheduled_task(ScheduledTask.MINUTES, QUOTA_RECONCILE_INTERVAL_MINUTES)
+def reconcile_quota_reservations():
+    """Expire stale durable quota reservations and log the drift (S12).
+
+    The live counters expire in the cache on their own TTL; this sweep only
+    moves orphaned RESERVED rows (turn died before settling, worker crashed
+    between reserve and finally) to the terminal ``expired`` state so the
+    audit trail stays honest. It never touches cache counters and never
+    compensates ``used`` downward.
+    """
+    from django.utils import timezone
+
+    from aichat.models import AIQuotaReservation, AIQuotaReservationState
+
+    try:
+        expired = AIQuotaReservation.objects.filter(
+            state=AIQuotaReservationState.RESERVED, expires_at__lt=timezone.now()
+        ).update(state=AIQuotaReservationState.EXPIRED)
+    except Exception:
+        logger.exception('quota reservation reconciliation failed')
+        return
+    if expired:
+        logger.warning('quota reservation drift: expired %d orphaned rows', expired)
+
+
+RETENTION_OUTBOX_INTERVAL_MINUTES = 10
+
+
+@scheduled_task(ScheduledTask.DAILY)
+def run_retention_purge():
+    """Run the S16/Q48 retention purges (dark behind FEATURE_AI_RETENTION_JOBS).
+
+    Tier >= 1 requires this flag ON (the retention_cleanup capability
+    requirement): retention must be operating, not merely shipped, before
+    a pilot tier is declared. ``manage.py retention_purge`` is the paired
+    on-demand/dry-run command.
+    """
+    from django.conf import settings as django_settings
+
+    if not getattr(django_settings, 'FEATURE_AI_RETENTION_JOBS', False):
+        return
+    from aichat.services import retention
+
+    report = retention.run_all()
+    logger.info(
+        'retention run complete: families=%d errors=%s',
+        len(report['families']),
+        sorted(report['errors']) or 'none',
+    )
+
+
+@scheduled_task(ScheduledTask.HOURLY)
+def sweep_ai_upload_files():
+    """Enforce the 24-hour ai_uploads TTL and reconcile orphaned dirs.
+
+    Runs UNGATED, like the attachment-RAG orphan purge (denial ≡
+    nonexistence): a chat-local file for a deleted thread must not wait on
+    a feature flag. Hourly cadence bounds TTL overshoot to about an hour.
+    """
+    from aichat.services import retention
+
+    counts = retention.sweep_upload_dirs()
+    if counts['removed'] or counts['orphans'] or counts['failures']:
+        logger.info(
+            'ai_uploads sweep: removed=%d orphans=%d failures=%d',
+            counts['removed'],
+            counts['orphans'],
+            counts['failures'],
+        )
+
+
+@scheduled_task(ScheduledTask.MINUTES, RETENTION_OUTBOX_INTERVAL_MINUTES)
+def process_retention_outbox():
+    """Drain owed external deletions (retry with backoff).
+
+    Only rows the purges created exist, so this is effectively inert
+    while retention is dark.
+    """
+    from aichat.services import retention
+
+    counts = retention.process_retention_outbox()
+    if any(counts.values()):
+        logger.info(
+            'retention outbox: done=%d retried=%d failed_permanent=%d',
+            counts['done'],
+            counts['retried'],
+            counts['failed_permanent'],
         )

@@ -11,7 +11,7 @@ import builtins
 import hashlib
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -61,12 +61,34 @@ class TurnStateConflict(ThreadRepositoryError):  # noqa: N818
     """Raised when a terminal turn is asked to transition or change result."""
 
 
+class ScopeVersionConflict(ThreadRepositoryError):  # noqa: N818
+    """Raised when a scope update carries a stale expected version (S1)."""
+
+
+class ScopeUpdateRejected(ThreadRepositoryError):  # noqa: N818
+    """Raised when a scope update fails authorization — deliberately generic.
+
+    The message never discloses which candidate failed or whether it exists;
+    the previous scope is preserved unchanged (decision record Q6).
+    """
+
+
+#: Key under which ``begin_turn`` snapshots the thread's analysis scope into
+#: the stored turn context. Added only when a scope is actually set, so
+#: unscoped turns keep the exact client-supplied trusted context.
+ANALYSIS_SCOPE_SNAPSHOT_KEY = 'analysis_scope_snapshot'
+
+
 @dataclass(frozen=True, slots=True)
 class BeginTurnResult:
     """Result of beginning a new turn or replaying an existing turn."""
 
     turn: ChatTurn
     replayed: bool
+    #: The immutable analysis-scope snapshot bound to this turn (S1). None
+    #: for a thread without typed scope. On replay this is the ORIGINAL
+    #: turn's stored snapshot — a later scope change never rebinds a turn.
+    scope_snapshot: dict[str, Any] | None = None
 
 
 def scope_fingerprint(scope_key: str) -> str:
@@ -234,10 +256,22 @@ class ThreadRepository:
         return thread
 
     def delete(self, thread_id: str) -> None:
-        """Delete one boundary-visible transcript and its turns."""
-        with transaction.atomic():
-            thread = self._lock_thread(thread_id)
-            thread.delete()
+        """Purge one boundary-visible transcript through the retention path.
+
+        The retention service (S16) is the only correct deletion path: a
+        naked ``thread.delete()`` raises ``ProtectedError`` once any
+        ``ChatThreadGrant`` exists, and the immediate-deletion contract
+        requires the non-content tombstone, grant-audit transfer, proposal
+        scrub, voice cleanup, and upload-directory removal.
+        """
+        from aichat.services import retention
+
+        thread = self._get_thread(thread_id)
+        retention.purge_thread_now(
+            thread.pk,
+            actor_user_id=thread.owner_id,
+            reason=retention.TOMBSTONE_USER_DELETE,
+        )
 
     def _append_locked(
         self,
@@ -369,7 +403,31 @@ class ThreadRepository:
                     raise IdempotencyConflict(
                         'Idempotency key was used for a different request'
                     )
-                return BeginTurnResult(turn=existing, replayed=True)
+                stored = existing.trusted_context or {}
+                return BeginTurnResult(
+                    turn=existing,
+                    replayed=True,
+                    scope_snapshot=stored.get(ANALYSIS_SCOPE_SNAPSHOT_KEY),
+                )
+
+            # S1: snapshot the active analysis scope under the SAME row lock
+            # that creates the turn — one atomic operation, so a concurrent
+            # scope update lands strictly before or strictly after this turn
+            # and can never change what this turn was bound to. The snapshot
+            # is stored server-side; the client-supplied trusted context is
+            # persisted verbatim for unscoped threads (fingerprints cover
+            # client inputs only, so the snapshot never affects replay
+            # identity).
+            scope_snapshot: dict[str, Any] | None = None
+            if thread.analysis_scope_version > 0:
+                scope_snapshot = {
+                    'scope': dict(thread.analysis_scope or {}),
+                    'version': thread.analysis_scope_version,
+                    'hash': thread.analysis_scope_hash,
+                }
+            stored_context = dict(trusted_context)
+            if scope_snapshot is not None:
+                stored_context[ANALYSIS_SCOPE_SNAPSHOT_KEY] = scope_snapshot
 
             input_message = self._append_locked(
                 thread,
@@ -385,11 +443,13 @@ class ThreadRepository:
                 modality=modality,
                 request_fingerprint=request_fingerprint,
                 idempotency_key=idempotency_key,
-                trusted_context=dict(trusted_context),
+                trusted_context=stored_context,
                 modality_metadata=dict(modality_metadata or {}),
                 correlation_id=correlation_id,
             )
-            return BeginTurnResult(turn=turn, replayed=False)
+            return BeginTurnResult(
+                turn=turn, replayed=False, scope_snapshot=scope_snapshot
+            )
 
     def _turn_thread_id(self, turn_id: str) -> str:
         """Resolve a turn's parent id only through the complete boundary."""
@@ -418,8 +478,15 @@ class ThreadRepository:
         output_content: str | None = None,
         output_metadata: Mapping[str, Any] | None = None,
         workflow_id: str = '',
+        evidence_sets: Sequence[Mapping[str, Any]] | None = None,
     ) -> ChatTurn:
-        """Atomically persist the exact output and one terminal transition."""
+        """Atomically persist the exact output and one terminal transition.
+
+        ``evidence_sets`` (S10) are the analysis executor's pre-minted
+        ``ChatEvidenceSet`` row specs; they are written INSIDE this
+        transaction so failed/canceled turns leave no orphan evidence and a
+        mid-write crash rolls the terminal row back with them.
+        """
         if state not in TurnState.terminal_values():
             raise TurnStateConflict('A terminal state is required')
         if not isinstance(canonical_result, Mapping):
@@ -486,10 +553,62 @@ class ThreadRepository:
             if workflow_id:
                 thread.last_workflow = workflow_id
                 thread.save(update_fields=['last_workflow', 'updated_at'])
+            if evidence_sets:
+                # Fresh-write path only: the replay guard above already
+                # returned, so a replayed terminal never double-writes sets.
+                self._persist_evidence_sets(turn, evidence_sets)
             # S38: fresh-write path only — the replay guard above returned
             # already, so a replayed terminal can never re-trigger.
             self._maybe_schedule_compaction(thread)
             return turn
+
+    def _persist_evidence_sets(
+        self, turn: ChatTurn, specs: Sequence[Mapping[str, Any]]
+    ) -> None:
+        """Create evidence-set rows + members inside the caller's transaction."""
+        from aichat.models import ChatEvidenceSet, ChatEvidenceSetMember
+
+        for spec in specs:
+            members = list(spec.get('members') or ())
+            member_cap = int(spec.get('member_cap') or 25000)
+            if len(members) > member_cap:
+                raise InvalidBoundary('Evidence-set membership exceeds its cap')
+            ordinals = [int(member[0]) for member in members]
+            if ordinals != list(range(1, len(ordinals) + 1)):
+                raise InvalidBoundary('Evidence-set member ordinals must be dense')
+            evidence_set = ChatEvidenceSet.objects.create(
+                id=str(spec['id']),
+                turn=turn,
+                authorization_scope_hash=str(
+                    spec.get('authorization_scope_hash') or ''
+                ),
+                analysis_scope_hash=str(spec.get('analysis_scope_hash') or ''),
+                source_class=str(spec['source_class']),
+                filters=dict(spec.get('filters') or {}),
+                population_count=int(spec.get('population_count') or 0),
+                evaluated_count=int(spec.get('evaluated_count') or 0),
+                displayed_count=int(spec.get('displayed_count') or 0),
+                complete_population=bool(spec.get('complete_population')),
+                high_watermarks=dict(spec.get('high_watermarks') or {}),
+                snapshot_hash=str(spec.get('snapshot_hash') or ''),
+                supports_expansion=bool(spec.get('supports_expansion')),
+                member_count=len(members),
+                member_cap=member_cap,
+                calculation=dict(spec.get('calculation') or {}),
+            )
+            ChatEvidenceSetMember.objects.bulk_create(
+                (
+                    ChatEvidenceSetMember(
+                        set=evidence_set,
+                        ordinal=int(ordinal),
+                        source_class=str(source_class),
+                        source_object_id=str(source_object_id),
+                        source_version=str(source_version or ''),
+                    )
+                    for ordinal, source_class, source_object_id, source_version in members
+                ),
+                batch_size=1000,
+            )
 
     #: S38: summarize rarely and in large chunks (prefix-cache stability) —
     #: only once this many messages sit above the watermark.
@@ -551,6 +670,113 @@ class ThreadRepository:
         """Return a materialized, ordered transcript inside the boundary."""
         thread = self._get_thread(thread_id)
         return list(ChatMessage.objects.filter(thread=thread))
+
+    # ---- S1: server-owned active analysis scope --------------------------
+    #
+    # The scope narrows analysis retrieval; it authorizes nothing. Reads
+    # follow the same visibility as transcripts (owner, or shared read);
+    # writes stay owner-only because they ride ``_lock_thread``, exactly
+    # like rename/delete. Shape validation lives in
+    # ``ai.core.analysis.scope`` (stdlib-only, both planes import it).
+
+    def _actor_user(self):
+        """The acting Django user, for per-record authorization checks."""
+        if getattr(self.actor, 'is_authenticated', False):
+            return self.actor
+        from django.contrib.auth import get_user_model
+
+        return get_user_model().objects.filter(pk=self.actor_id, is_active=True).first()
+
+    def _scope_payload(self, thread: ChatThread, *, editable: bool) -> dict[str, Any]:
+        """Project one thread's stored scope for the wire."""
+        from ai.core.analysis import scope as scope_contract
+
+        stored = scope_contract.scope_from_stored(thread.analysis_scope)
+        return {
+            'thread_id': thread.pk,
+            'scope': scope_contract.scope_to_payload(stored),
+            'version': thread.analysis_scope_version,
+            'hash': thread.analysis_scope_hash,
+            'display_label': scope_contract.display_summary(stored),
+            'editable': editable,
+        }
+
+    def get_scope(self, thread_id: str) -> dict[str, Any]:
+        """Return the active analysis scope (owner, or shared read-only)."""
+        thread, shared = self.get_readable(thread_id)
+        return self._scope_payload(thread, editable=not shared)
+
+    def scope_summary(self, thread: ChatThread) -> dict[str, Any]:
+        """Compact scope projection for list/detail rows (no extra queries)."""
+        from ai.core.analysis import scope as scope_contract
+
+        stored = scope_contract.scope_from_stored(thread.analysis_scope)
+        return {
+            'mode': stored.mode,
+            'version': thread.analysis_scope_version,
+            'display_label': scope_contract.display_summary(stored),
+        }
+
+    def set_scope(
+        self,
+        thread_id: str,
+        requested_scope: Mapping[str, Any],
+        *,
+        expected_version: int,
+    ) -> dict[str, Any]:
+        """Replace the analysis scope under optimistic concurrency.
+
+        Explicit machine ids are re-authorized against the acting principal
+        before anything is stored; one unauthorized (or unknown — the two
+        are indistinguishable) id rejects the entire update generically and
+        preserves the previous scope. A stale ``expected_version`` raises
+        ``ScopeVersionConflict`` before any write. Per-turn reauthorization
+        at intake covers permissions revoked after this update.
+        """
+        from ai.core.analysis import scope as scope_contract
+
+        if not isinstance(expected_version, int) or isinstance(expected_version, bool):
+            raise InvalidBoundary('expected_version must be an integer')
+
+        normalized = scope_contract.normalize_scope_request(requested_scope)
+
+        if normalized.mode == scope_contract.MODE_EXPLICIT:
+            actor_user = self._actor_user()
+
+            def authorize(machine_id: int) -> bool:
+                """One candidate id is readable by the actor right now."""
+                if actor_user is None:
+                    return False
+                try:
+                    from assets.ai_read import authorized_machine
+                except ImportError:
+                    return False
+                return authorized_machine(actor_user, machine_id) is not None
+
+            try:
+                scope_contract.require_all_authorized(normalized.machine_ids, authorize)
+            except scope_contract.ScopeRejected as exc:
+                raise ScopeUpdateRejected('Scope update rejected') from exc
+
+        payload = scope_contract.scope_to_payload(normalized)
+        digest = scope_contract.scope_hash(normalized)
+
+        with transaction.atomic():
+            thread = self._lock_thread(thread_id)
+            if thread.analysis_scope_version != expected_version:
+                raise ScopeVersionConflict('Scope version is stale')
+            thread.analysis_scope = payload
+            thread.analysis_scope_version += 1
+            thread.analysis_scope_hash = digest
+            thread.save(
+                update_fields=[
+                    'analysis_scope',
+                    'analysis_scope_version',
+                    'analysis_scope_hash',
+                    'updated_at',
+                ]
+            )
+        return self._scope_payload(thread, editable=True)
 
     # ---- S32b (B6): explicit read-only sharing ---------------------------
     #
@@ -619,6 +845,89 @@ class ThreadRepository:
         """Return the transcript of one readable (owned or granted) thread."""
         thread, _ = self.get_readable(thread_id)
         return list(ChatMessage.objects.filter(thread=thread))
+
+    def evidence_set(self, thread_id: str, set_id: str):
+        """Resolve one evidence set inside the readable-thread boundary (S10).
+
+        Every failure mode — unknown thread, unknown set, a set belonging to
+        another thread — raises the same ``ThreadNotFound`` so the caller's
+        generic 404 discloses nothing.
+        """
+        from aichat.models import ChatEvidenceSet
+
+        thread, _ = self.get_readable(thread_id)
+        row = (
+            ChatEvidenceSet.objects
+            .filter(pk=str(set_id), turn__thread=thread)
+            .select_related('turn')
+            .first()
+        )
+        if row is None:
+            raise ThreadNotFound('Evidence set not found')
+        return row
+
+    def evidence_set_members(
+        self, thread_id: str, set_id: str, *, after_ordinal: int = 0, limit: int = 50
+    ) -> builtins.list[dict[str, Any]]:
+        """One page of members, each reauthorized LIVE for the actor (§7.6).
+
+        A member the actor can no longer read — revoked, deleted, or of an
+        unknown source class — projects only ``{member_index, available:
+        false}``-grade fields; the causes are indistinguishable by design.
+        Labels resolve from the live record (no text is stored to leak).
+        Digest-only sets 404 generically: expansion was never promised.
+        """
+        row = self.evidence_set(thread_id, set_id)
+        if not row.supports_expansion:
+            raise ThreadNotFound('Evidence set not found')
+        actor_user = self._actor_user()
+        members = list(
+            row.members.filter(ordinal__gt=int(after_ordinal)).order_by('ordinal')[
+                : max(1, int(limit))
+            ]
+        )
+        projected: builtins.list[dict[str, Any]] = []
+        for member in members:
+            label = self._resolve_member_label(
+                actor_user, member.source_class, member.source_object_id
+            )
+            available = label is not None
+            projected.append({
+                'member_index': member.ordinal,
+                'source_class': member.source_class,
+                'source_object_id': member.source_object_id if available else None,
+                'label': label,
+                'available': available,
+            })
+        return projected
+
+    @staticmethod
+    def _resolve_member_label(actor_user, source_class: str, object_id: str):
+        """Live per-record reauthorization; ``None`` means not available.
+
+        Unknown source classes fail closed — a class this method cannot
+        reauthorize is never shown.
+        """
+        if actor_user is None:
+            return None
+        try:
+            if source_class == 'work_order':
+                from tasks.ai_read import authorized_work_order
+
+                work_order = authorized_work_order(actor_user, object_id)
+                if work_order is None:
+                    return None
+                return work_order.reference or f'Work order {work_order.pk}'
+            if source_class in ('machine', 'asset_machine'):
+                from assets.ai_read import authorized_machine
+
+                machine = authorized_machine(actor_user, object_id)
+                if machine is None:
+                    return None
+                return machine.name
+        except ImportError:
+            return None
+        return None
 
     def list_shared(self) -> builtins.list[ChatThread]:
         """Threads shared with the actor inside this scope boundary."""

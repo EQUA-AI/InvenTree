@@ -55,6 +55,72 @@ class AIChatConfig(AppConfig):
 
         self._register_attachment_rag_receivers()
         self._probe_attachment_rag_config()
+        self._register_capability_profile_check()
+
+    def _register_capability_profile_check(self):
+        """A12: register the Django-plane capability-tier system check.
+
+        Validates the declared ``AIMMS_CAPABILITY_TIER`` (and, once armed,
+        the rollback floor) against the flags THIS plane bridges; the AI
+        plane's pydantic validator covers its own subset. Tier 0 with an
+        unarmed floor checks nothing — today's dark deployment is inert.
+        """
+        from django.core import checks
+
+        # ready() can run more than once in a process (test harnesses,
+        # re-setup); registering per call would multiply every E020/E021.
+        if getattr(AIChatConfig, '_capability_check_registered', False):
+            return
+        AIChatConfig._capability_check_registered = True
+
+        @checks.register('aimms')
+        def check_capability_profile(app_configs, **kwargs):
+            from django.conf import settings as django_settings
+
+            from aimms_capability import (
+                ROLLBACK_FLOOR_SETTING,
+                validate_capability_profile,
+            )
+            from aimms_flags import django_flags
+
+            try:
+                tier = int(getattr(django_settings, 'AIMMS_CAPABILITY_TIER', 0) or 0)
+            except (TypeError, ValueError):
+                return [
+                    checks.Error(
+                        'AIMMS_CAPABILITY_TIER is not an integer', id='aichat.E020'
+                    )
+                ]
+
+            floor_armed = False
+            try:
+                from common.models import InvenTreeSetting
+
+                floor_armed = str(
+                    InvenTreeSetting.get_setting(ROLLBACK_FLOOR_SETTING, '')
+                ).lower() in ('1', 'true', 'yes')
+            except Exception:
+                # The marker is a DB row; checks also run before migrations
+                # or without the common app. Unreadable = not armed here —
+                # the marker is re-read on every subsequent check.
+                floor_armed = False
+
+            if tier <= 0 and not floor_armed:
+                return []
+
+            sentinel = object()
+            flag_view = {}
+            for entry in django_flags():
+                value = getattr(django_settings, entry.env_name, sentinel)
+                if value is not sentinel:
+                    flag_view[entry.env_name] = value
+
+            return [
+                checks.Error(violation, id='aichat.E021')
+                for violation in validate_capability_profile(
+                    tier, flag_view, floor_armed=floor_armed
+                )
+            ]
 
     def _probe_attachment_rag_config(self):
         """Fail loudly at boot when RAG is enabled but its AI config is broken.
