@@ -74,6 +74,11 @@ class RenderTemplate:
     #: (which may carry digits) must not enter rendered text — chips and
     #: the expansion endpoint carry the human names.
     iterates_rows: bool = False
+    #: S8b (C07 extension): the claim must cite one VERIFIED applicability
+    #: fact whose machine entity matches a claim entity — procedural
+    #: statements about specific equipment need the verified relation, not
+    #: ingest provenance.
+    requires_verified_applicability: bool = False
 
 
 def _t_record_count(slots, paraphrase, marker, locale):

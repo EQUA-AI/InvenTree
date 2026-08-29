@@ -294,6 +294,73 @@ def verified_claims_for_targets(
     return _effective_window(rows, on_date)
 
 
+def live_claim_document_pks(document_pks, *, on_date=None) -> set[int]:
+    """Which of these document rows carry a live, byte-anchored claim.
+
+    The batch form for inventory listings: one query for a page of rows
+    instead of one per row.
+    """
+    from django.db.models import F
+
+    from aichat.models import ApplicabilityState, ControlledDocumentApplicability
+
+    rows = ControlledDocumentApplicability.objects.filter(
+        document_id__in=list(document_pks),
+        state=ApplicabilityState.VERIFIED,
+        document_content_sha256=F('document__source_sha256'),
+    )
+    return set(_effective_window(rows, on_date).values_list('document_id', flat=True))
+
+
+def verified_documents_for_machines(machine_ids, *, on_date=None) -> list:
+    """CURRENT document rows verified exact-machine for these machine pks.
+
+    The C9 serial-less re-route: a machine whose serial was never stamped
+    can still reach its verified documents by id. Distinct rows, newest
+    first, hash-anchored.
+    """
+    rows = verified_claims_for_targets(machine_ids=machine_ids, on_date=on_date).filter(
+        kind='exact_machine', document__is_current=True
+    )
+    documents: list = []
+    seen: set[int] = set()
+    for claim in rows.select_related('document').order_by('-created_at'):
+        if claim.document_id not in seen:
+            seen.add(claim.document_id)
+            documents.append(claim.document)
+    return documents
+
+
+def verified_model_documents(models, *, on_date=None) -> list:
+    """CURRENT document rows verified for these equipment models (§8.4).
+
+    The C9 preference-order step between exact-asset and fleet-wide: a
+    countersigned model/configuration mapping reaches its documents.
+    """
+    model_list = [str(model) for model in models if str(model or '').strip()]
+    if not model_list:
+        return []
+    from django.db.models import F
+
+    from aichat.models import ApplicabilityState, ControlledDocumentApplicability
+
+    rows = ControlledDocumentApplicability.objects.filter(
+        kind__in=['inverter_model', 'firmware_config'],
+        target_model__in=model_list,
+        state=ApplicabilityState.VERIFIED,
+        document_content_sha256=F('document__source_sha256'),
+        document__is_current=True,
+    )
+    rows = _effective_window(rows, on_date)
+    documents: list = []
+    seen: set[int] = set()
+    for claim in rows.select_related('document').order_by('-created_at'):
+        if claim.document_id not in seen:
+            seen.add(claim.document_id)
+            documents.append(claim.document)
+    return documents
+
+
 def safety_eligible(document, *, on_date=None) -> bool:
     """The stricter S8b predicate for safety/procedure pointers (§8.4).
 
@@ -318,10 +385,13 @@ __all__ = [
     'ApplicabilityStateConflict',
     'applicability_for',
     'countersign',
+    'live_claim_document_pks',
     'propose',
     'revoke',
     'safety_eligible',
     'supersede',
     'verified_claims_for_targets',
+    'verified_documents_for_machines',
+    'verified_model_documents',
     'verify',
 ]

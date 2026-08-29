@@ -9,10 +9,13 @@ similarity. Zero network calls happen on this path, which is what makes
 
 A11 source states are computed per row, honestly:
 
-- ``applicable`` is **always False** with an ``applicability_unresolved``
-  warning — verified applicability is S8b's normalized relation, which does
-  not exist yet. An association shown here is ingest metadata (the stamped
-  serial), never a verified claim that a document applies.
+- ``applicable`` resolves from S8b's verified relation
+  (``ControlledDocumentApplicability``): True only for a live,
+  byte-anchored, effective VERIFIED claim; everything else is unresolved
+  and the ``applicability_unresolved`` warning appears exactly when
+  unresolved rows exist. An ingest association (the stamped serial) is
+  provenance, never a verified claim — uncontrolled attachments and
+  thread uploads can never be applicable.
 - ``attached`` for controlled documents means "carries an ingest-time asset
   stamp" (the denormalized ``asset_id`` text), stated as such.
 
@@ -61,6 +64,9 @@ class AssetSet:
     serials: frozenset[str]
     serial_less: tuple[str, ...]  # names of machines without a stable serial
     warnings: tuple[str, ...]
+    #: Equipment model names (S8b): the verified model/configuration
+    #: preference-order step keys on these. Empty when unrecorded.
+    models: frozenset[str] = frozenset()
 
     @property
     def machine_pks(self) -> tuple[int, ...]:
@@ -96,6 +102,7 @@ def resolve_asset_set(user: Any, machine_ids: Sequence[int] | None = None) -> As
 
     machines: list[tuple[int, str, str]] = []
     serial_less: list[str] = []
+    models: set[str] = set()
     try:
         from assets.ai_read import authorized_machine
     except ImportError:  # pragma: no cover - assets app always present in prod
@@ -109,6 +116,9 @@ def resolve_asset_set(user: Any, machine_ids: Sequence[int] | None = None) -> As
             machines.append((machine.pk, machine.name, serial))
             if not serial:
                 serial_less.append(machine.name)
+            model = str(getattr(machine, "model", "") or "").strip()
+            if model:
+                models.add(model)
     if serial_less:
         warnings.append("serial_unresolved")
 
@@ -117,22 +127,47 @@ def resolve_asset_set(user: Any, machine_ids: Sequence[int] | None = None) -> As
         serials=frozenset(serial for _, _, serial in machines if serial),
         serial_less=tuple(serial_less),
         warnings=tuple(warnings),
+        models=frozenset(models),
     )
 
 
 # --- A11 state helpers (shared with the corpora) --------------------------
 
 
-def source_state_for_controlled_row(document: Any) -> dict[str, bool]:
-    """A11 states for one ``ControlledDocument`` row, computed not asserted."""
+def _document_has_live_applicability(document: Any) -> bool:
+    """S8b: one live, byte-anchored, effective verified claim exists.
+
+    Fail-soft toward ``False``: an environment without the aichat app (the
+    island test settings) resolves nothing — unresolved, never asserted.
+    """
+    try:
+        from aichat.services.applicability import applicability_for
+
+        return applicability_for(document).exists()
+    except Exception:
+        return False
+
+
+def source_state_for_controlled_row(
+    document: Any, *, applicable: bool | None = None
+) -> dict[str, bool]:
+    """A11 states for one ``ControlledDocument`` row, computed not asserted.
+
+    ``applicable`` resolves from the S8b verified relation — batch callers
+    pass the precomputed verdict; a lone call resolves it here. It is the
+    ONLY state a human decision (verification) feeds; everything else
+    derives from the row.
+    """
     state = str(getattr(document, "state", "") or "")
+    if applicable is None:
+        applicable = _document_has_live_applicability(document)
     return {
         "registered": True,
         # "Attached" = carries an ingest-time asset stamp; the stamp is
         # provenance text, not a verified relation (S8b).
         "attached": bool(getattr(document, "asset_id", "")),
         "indexed": state == "indexed",
-        "applicable": False,
+        "applicable": bool(applicable),
         "searchable_now": bool(
             getattr(document, "is_current", False)
             and state == "indexed"
@@ -219,6 +254,16 @@ def controlled_document_inventory(
     for row in rows:
         grouped.setdefault(row.document_id, []).append(row)
 
+    # S8b: one batch query resolves which shown revisions carry a live,
+    # byte-anchored verified claim.
+    try:
+        from aichat.services.applicability import live_claim_document_pks
+
+        live_pks = live_claim_document_pks([row.pk for row in rows])
+    except Exception:
+        live_pks = set()
+
+    unresolved_count = 0
     documents: list[dict[str, Any]] = []
     for document_id in document_ids:
         revisions = grouped.get(document_id, [])
@@ -268,9 +313,13 @@ def controlled_document_inventory(
             "associated_assets": (
                 [serial_names[asset_stamp]] if asset_stamp in serial_names else []
             ),
-            "source_state": source_state_for_controlled_row(newest),
-            "applicability": "unresolved",
+            "source_state": source_state_for_controlled_row(
+                newest, applicable=newest.pk in live_pks
+            ),
+            "applicability": "verified" if newest.pk in live_pks else "unresolved",
         }
+        if newest.pk not in live_pks:
+            unresolved_count += 1
         if include_superseded:
             entry["superseded_revisions"] = [
                 {
@@ -287,6 +336,7 @@ def controlled_document_inventory(
         "population_count": population_count,
         "returned_count": len(documents),
         "display_truncated": population_count > len(documents),
+        "unresolved_applicability_count": unresolved_count,
     }
 
 
@@ -462,7 +512,10 @@ def inventory(
     settings = get_settings()
     scope_key = str(getattr(settings, "single_site_policy_key", "") or "")
     sections: dict[str, Any] = {}
-    warnings: list[str] = [APPLICABILITY_UNRESOLVED, *asset_set.warnings]
+    # S8b: the blanket applicability warning became a RESOLVED verdict —
+    # it is appended below only when unresolved rows actually exist.
+    warnings: list[str] = [*asset_set.warnings]
+    unresolved_rows = False
 
     if "controlled_document" in wanted:
         section = controlled_document_inventory(
@@ -471,6 +524,9 @@ def inventory(
             include_superseded=include_superseded,
         )
         if not section.get("unavailable"):
+            section_unresolved = int(section.get("unresolved_applicability_count") or 0)
+            if section_unresolved:
+                unresolved_rows = True
             envelope = build_envelope(
                 source_class="controlled_document",
                 population_type="registry",
@@ -482,7 +538,7 @@ def inventory(
                     complete_population=True,
                     display_truncated=section["display_truncated"],
                 ),
-                warnings=(APPLICABILITY_UNRESOLVED,),
+                warnings=((APPLICABILITY_UNRESOLVED,) if section_unresolved else ()),
             )
             section["retrieval"] = envelope
             record_envelope(
@@ -499,6 +555,9 @@ def inventory(
         if "evidence_media" in wanted:
             pipelines.extend(("image", "video"))
         section = attachment_inventory(user=user, asset_set=asset_set, pipelines=pipelines)
+        if section.get("returned_count"):
+            # Uncontrolled sources can never be verified-applicable.
+            unresolved_rows = True
         envelope = build_envelope(
             source_class="asset_attachment",
             population_type="registry",
@@ -545,6 +604,11 @@ def inventory(
                 "available": "in_conversation_only",
                 "note": "thread uploads are never controlled evidence",
             }
+        if thread_files:
+            unresolved_rows = True
+
+    if unresolved_rows:
+        warnings.append(APPLICABILITY_UNRESOLVED)
 
     return {
         "sections": sections,
@@ -628,10 +692,62 @@ def retrieve_manual_fact(
     attempts: list[dict[str, Any]] = []
     asset_set = resolve_asset_set(user, machine_ids)
 
-    # A scoped machine without a stable serial cannot be mapped to documents:
-    # applicability is unresolved and NO controlled search runs (zero network
-    # calls) — narrowing, never widening.
+    if pinned_search is None:
+        from ai.core.integrations.controlled_document_search import (
+            search_selected_document as _default_pinned,
+        )
+
+        pinned_search = _default_pinned
+
+    def _finish(result: dict[str, Any], *, source_class: str, labels: list[str]) -> dict[str, Any]:
+        result = dict(result)
+        result["source_class"] = source_class
+        result["labels"] = labels
+        result["attempts"] = attempts
+        result.setdefault("warnings", [])
+        return result
+
+    def _try_verified_documents(
+        documents: Sequence[Any], *, step: str, label: str
+    ) -> dict[str, Any] | None:
+        """Pinned-revision search over verified document rows, best first."""
+        for document in list(documents)[:3]:
+            try:
+                pinned = pinned_search(document=document, query=query, top_k=top_k)
+            except Exception:
+                attempts.append({"step": step, "outcome": "unavailable", "hit_count": 0})
+                return None
+            chunk_count = len(pinned.get("chunks") or ())
+            attempts.append({
+                "step": step,
+                "outcome": "hit" if chunk_count else "no_relevant_passage",
+                "hit_count": chunk_count,
+            })
+            if chunk_count:
+                return _finish(dict(pinned), source_class="controlled_document", labels=[label])
+        return None
+
+    # A scoped machine without a stable serial cannot be mapped to documents
+    # BY SERIAL — but a verified exact-machine claim (keyed by machine id,
+    # S8b) still reaches its pinned revisions. Only when no verified route
+    # exists is applicability unresolved (zero network calls) — narrowing,
+    # never widening.
     if asset_set.machines and not asset_set.serials:
+        verified_documents: list[Any] = []
+        try:
+            from aichat.services.applicability import verified_documents_for_machines
+
+            verified_documents = verified_documents_for_machines(asset_set.machine_pks)
+        except Exception:
+            verified_documents = []
+        if verified_documents:
+            served = _try_verified_documents(
+                verified_documents,
+                step="verified_exact_controlled",
+                label="verified_exact_applicability",
+            )
+            if served is not None:
+                return served
         attempts.append({
             "step": "exact_asset_controlled",
             "outcome": "applicability_unresolved",
@@ -649,20 +765,6 @@ def retrieve_manual_fact(
         from ai.core.integrations.controlled_document_corpus import search_corpus
 
         corpus_search = search_corpus
-    if pinned_search is None:
-        from ai.core.integrations.controlled_document_search import (
-            search_selected_document,
-        )
-
-        pinned_search = search_selected_document
-
-    def _finish(result: dict[str, Any], *, source_class: str, labels: list[str]) -> dict[str, Any]:
-        result = dict(result)
-        result["source_class"] = source_class
-        result["labels"] = labels
-        result["attempts"] = attempts
-        result.setdefault("warnings", [])
-        return result
 
     settings_scope_key = ""
     try:
@@ -721,8 +823,7 @@ def retrieve_manual_fact(
                     "hit_count": 0,
                 })
 
-    # Step 2/3 — exact-asset controlled search (model/config applicability is
-    # honestly collapsed into this step until S8b exists).
+    # Step 2 — exact-asset controlled search.
     serials = tuple(sorted(asset_set.serials)) or None
     try:
         scoped = corpus_search(user=user, query=query, top_k=top_k, asset_ids=serials)
@@ -731,7 +832,7 @@ def retrieve_manual_fact(
             "step": "exact_asset_controlled",
             "outcome": "hit" if hit_count else "no_relevant_passage",
             "hit_count": hit_count,
-            "model_config_applicability": "unavailable_pre_s8b",
+            "model_config_applicability": "separate_step",
         })
         if hit_count:
             return _finish(scoped, source_class="controlled_document", labels=[])
@@ -741,6 +842,33 @@ def retrieve_manual_fact(
             "outcome": "search_failed",
             "hit_count": 0,
         })
+
+    # Step 3 — VERIFIED model/configuration applicability (S8b): documents
+    # a countersigned mapping ties to this asset set's equipment models,
+    # searched by pinned revision. Skipped entirely (no attempt entry) when
+    # the machines record no model — the step has nothing to key on.
+    if asset_set.models:
+        model_documents: list[Any] = []
+        try:
+            from aichat.services.applicability import verified_model_documents
+
+            model_documents = verified_model_documents(sorted(asset_set.models))
+        except Exception:
+            model_documents = []
+        if model_documents:
+            served = _try_verified_documents(
+                model_documents,
+                step="verified_model_config",
+                label="verified_model_configuration",
+            )
+            if served is not None:
+                return served
+        else:
+            attempts.append({
+                "step": "verified_model_config",
+                "outcome": "no_verified_mapping",
+                "hit_count": 0,
+            })
 
     # Step 4 — fleet-wide controlled documents, clearly labeled. Only when a
     # narrower asset step actually ran (otherwise step 2 WAS site-wide).

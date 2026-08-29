@@ -53,6 +53,8 @@ FactKind = Literal[
     "maintenance_record",
     "group_row",
     "dataset_profile",
+    # S8b verified applicability (C07 extension):
+    "applicability",
 ]
 
 CalculationOperation = Literal[
@@ -659,6 +661,55 @@ def fact_from_dataset_profile(
     )
 
 
+def fact_from_applicability_claim(
+    store: EvidenceStore,
+    claim: Any,
+    *,
+    retrieval_id: str,
+    as_of: str,
+) -> str:
+    """One VERIFIED ``ControlledDocumentApplicability`` row → one fact (S8b).
+
+    The C07-extension basis: a template that requires verified
+    applicability must cite one of these, and the fact carries the machine
+    entity so the check can match it against the claim's entities. The
+    revision pin is the copied content hash — byte-anchored like the row.
+    """
+    values: dict[str, FactValue] = {
+        "applicability_kind": _value("enum", getattr(claim, "kind", "")),
+        "applicability_state": _value("enum", getattr(claim, "state", "")),
+        "document_id": _value(
+            "identifier", getattr(getattr(claim, "document", None), "document_id", "")
+        ),
+        "revision": _value("identifier", getattr(getattr(claim, "document", None), "revision", "")),
+        "verified": _value("bool", str(getattr(claim, "state", "")) == "verified"),
+    }
+    if getattr(claim, "effective_from", None):
+        values["effective_from"] = _value("date", claim.effective_from.isoformat())
+    if getattr(claim, "effective_to", None):
+        values["effective_to"] = _value("date", claim.effective_to.isoformat())
+    machine_id = int(getattr(claim, "target_machine_id", 0) or 0)
+    entity_refs: list[str] = []
+    if machine_id > 0:
+        entity_refs.append(f"machine:{machine_id}")
+    if getattr(claim, "target_model", ""):
+        values["target_model"] = _value("text", claim.target_model)
+    return store.add_fact(
+        kind="applicability",
+        source_class="applicability",
+        source_id=str(getattr(claim, "pk", "")),
+        source_revision=str(getattr(claim, "document_content_sha256", "")),
+        locator={"field": "applicability_claim"},
+        retrieval_id=retrieval_id,
+        as_of=as_of,
+        authorization_class="maintenance_authorized",
+        values=values,
+        entity_refs=entity_refs,
+        machine_id=machine_id if machine_id > 0 else None,
+        controlled=True,
+    )
+
+
 __all__ = [
     "EVIDENCE_SET_MEMBER_CAP",
     "CalculationOutput",
@@ -667,6 +718,7 @@ __all__ = [
     "PendingEvidenceSet",
     "TypedFact",
     "coverage_fact",
+    "fact_from_applicability_claim",
     "fact_from_dataset_profile",
     "fact_from_manual_citation",
     "facts_from_group_rows",

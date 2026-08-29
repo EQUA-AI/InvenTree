@@ -152,6 +152,37 @@ def _display_title(row: dict[str, Any], *, scope_key: str) -> str:
     return f"{friendly} (rev {revision})" if revision else friendly
 
 
+def _hits_verified_applicable(rows, *, serials) -> bool:
+    """S8b: every hit document carries a live verified claim for the targets.
+
+    Conservative all-of over the hit set's ``(document_id, revision)``
+    pairs; fail-soft toward ``False`` (an environment without the aichat
+    tables resolves nothing). ``serials`` are the searched asset targets;
+    a fleet-wide search (no serials) accepts fleet-wide claims only —
+    the resolver always admits those.
+    """
+    if not rows:
+        return False
+    try:
+        from aichat.services.applicability import verified_claims_for_targets
+
+        pairs = {
+            (
+                str(row.get("document_id") or ""),
+                str(row.get("document_revision") or ""),
+            )
+            for row in rows
+        }
+        claims = verified_claims_for_targets(serials=tuple(serials or ()))
+        covered = {
+            (claim.document.document_id, claim.document.revision)
+            for claim in claims.select_related("document")
+        }
+        return pairs <= covered
+    except Exception:
+        return False
+
+
 def search_corpus(
     *,
     user,
@@ -426,9 +457,11 @@ def search_corpus(
             "searchable_now": True,
             "current": True,
             # S8a: computed, not asserted — "attached" means the hits carry
-            # an ingest-time asset stamp; ``applicable`` stays False (the
-            # build_envelope default) until S8b's verified relation exists.
+            # an ingest-time asset stamp. S8b: ``applicable`` is True only
+            # when EVERY hit document carries a live verified claim covering
+            # the searched asset targets (conservative all-of).
             "attached": any(bool(row.get("asset_id")) for row in rows),
+            "applicable": _hits_verified_applicable(rows, serials=scope_asset_ids),
         },
         warnings=() if chunks else (NO_RELEVANT_PASSAGE,),
     )

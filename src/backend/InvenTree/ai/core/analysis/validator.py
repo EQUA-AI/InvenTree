@@ -323,18 +323,52 @@ def check_population(claims: Sequence[AnalysisClaim], store: EvidenceStore) -> l
 
 
 def check_applicability(claims: Sequence[AnalysisClaim], store: EvidenceStore) -> list[CheckResult]:
-    """C07: procedural/manual claims require controlled current evidence."""
+    """C07: procedural/manual claims require controlled current evidence.
+
+    S8b extension: a template that requires VERIFIED applicability must
+    cite a verified applicability fact, and when that fact names a machine
+    the claim must name the same machine — the verified relation covers
+    exactly its target, never the neighborhood.
+    """
     from ai.core.analysis.renderer import RENDER_TEMPLATES
 
     results: list[CheckResult] = []
     for claim in claims:
         template = RENDER_TEMPLATES.get(claim.render_template)
-        if template is None or not template.requires_controlled_source:
+        if template is None:
             continue
-        if not any(store.facts[ref].controlled for ref in claim.fact_refs if ref in store.facts):
+        if template.requires_controlled_source and not any(
+            store.facts[ref].controlled for ref in claim.fact_refs if ref in store.facts
+        ):
             results.append(
                 CheckResult("C07", CheckOutcome.DOWNGRADE, "uncontrolled_source", (claim.claim_id,))
             )
+        if getattr(template, "requires_verified_applicability", False):
+            verified_facts = [
+                store.facts[ref]
+                for ref in claim.fact_refs
+                if ref in store.facts
+                and store.facts[ref].kind == "applicability"
+                and store.facts[ref].rendered_values().get("verified") == "yes"
+            ]
+            entity_matched = False
+            for fact in verified_facts:
+                if not fact.entity_refs:
+                    # Fleet/model-scoped verification names no machine.
+                    entity_matched = True
+                    break
+                if set(fact.entity_refs) & set(claim.entity_refs):
+                    entity_matched = True
+                    break
+            if not verified_facts or not entity_matched:
+                results.append(
+                    CheckResult(
+                        "C07",
+                        CheckOutcome.DOWNGRADE,
+                        "unverified_applicability",
+                        (claim.claim_id,),
+                    )
+                )
     return results or [CheckResult("C07", CheckOutcome.PASS, "applicability")]
 
 

@@ -326,12 +326,15 @@ def rejection_stats(since) -> dict[str, Any]:
 
 
 def applicability_stats() -> dict[str, Any]:
-    """The pre-S8b applicability proxy.
+    """Applicability posture: the provenance proxy plus the S8b relation.
 
-    Current documents with a blank asset binding, by class — annotated:
-    the verified relation is S8b scope.
+    The blank-asset-binding proxy stays (ingest provenance still matters
+    for the backfill queue); ``verified_rows_by_kind`` counts LIVE
+    verified claims, and ``proposed_rows`` is the human queue.
     """
-    from aichat.models import ControlledDocument
+    from django.db.models import Count
+
+    from aichat.models import ControlledDocument, ControlledDocumentApplicability
 
     unresolved: Counter[str] = Counter()
     total_current = 0
@@ -341,11 +344,22 @@ def applicability_stats() -> dict[str, Any]:
         total_current += 1
         if not row['asset_id']:
             unresolved[str(row['document_class'] or 'unknown')] += 1
+    verified_by_kind = {
+        entry['kind']: entry['n']
+        for entry in ControlledDocumentApplicability.objects
+        .filter(state='verified')
+        .values('kind')
+        .annotate(n=Count('pk'))
+        .order_by('kind')
+    }
+    proposed = ControlledDocumentApplicability.objects.filter(state='proposed').count()
     return {
         'current_documents': total_current,
         'blank_asset_binding': sum(unresolved.values()),
         'by_class': dict(unresolved),
-        'note': 'provenance-level proxy; verified applicability is S8b (off pilot path)',
+        'verified_rows_by_kind': verified_by_kind,
+        'proposed_rows': proposed,
+        'note': 'blank bindings are ingest provenance; verified rows are the S8b relation',
     }
 
 

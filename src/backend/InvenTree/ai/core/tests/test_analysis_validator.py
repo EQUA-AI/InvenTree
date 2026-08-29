@@ -282,6 +282,82 @@ def test_dataset_profile_fact_vouches_for_completeness() -> None:
     assert "incomplete_population" in codes
 
 
+def test_verified_applicability_requirement_gates_the_claim() -> None:
+    """S8b C07 extension: verified relation, matched to the claim's machine."""
+    from types import SimpleNamespace
+
+    from ai.core.analysis.evidence import fact_from_applicability_claim
+    from ai.core.analysis.renderer import RENDER_TEMPLATES, RenderTemplate
+    from ai.core.analysis.validator import check_applicability
+
+    template = RenderTemplate(
+        key="analysis.test_verified_procedure",
+        required_slots=(),
+        build=lambda _slots, _paraphrase, marker, _locale: f"ok.{marker}",
+        requires_verified_applicability=True,
+    )
+    RENDER_TEMPLATES[template.key] = template
+    try:
+        store = EvidenceStore()
+        verified_row = SimpleNamespace(
+            pk=7,
+            kind="exact_machine",
+            state="verified",
+            document=SimpleNamespace(document_id="doc-1", revision="2.0"),
+            effective_from=None,
+            effective_to=None,
+            target_machine_id=12,
+            target_model="",
+            document_content_sha256="b" * 64,
+        )
+        fact_id = fact_from_applicability_claim(
+            store, verified_row, retrieval_id="ret_appl", as_of=AS_OF
+        )
+
+        matched = _claim(
+            fact_refs=[fact_id],
+            entity_refs=["machine:12"],
+            render_template=template.key,
+        )
+        results = check_applicability([matched], store)
+        assert all(result.outcome is CheckOutcome.PASS for result in results)
+
+        # The verified relation covers ITS machine, never the neighbor's.
+        mismatched = _claim(
+            fact_refs=[fact_id],
+            entity_refs=["machine:99"],
+            render_template=template.key,
+        )
+        codes = [result.code for result in check_applicability([mismatched], store)]
+        assert "unverified_applicability" in codes
+
+        # A merely-proposed row never satisfies the requirement.
+        store2 = EvidenceStore()
+        proposed_row = SimpleNamespace(
+            pk=8,
+            kind="exact_machine",
+            state="proposed",
+            document=SimpleNamespace(document_id="doc-1", revision="2.0"),
+            effective_from=None,
+            effective_to=None,
+            target_machine_id=12,
+            target_model="",
+            document_content_sha256="b" * 64,
+        )
+        proposed_fact = fact_from_applicability_claim(
+            store2, proposed_row, retrieval_id="ret_appl", as_of=AS_OF
+        )
+        unproven = _claim(
+            fact_refs=[proposed_fact],
+            entity_refs=["machine:12"],
+            render_template=template.key,
+        )
+        codes = [result.code for result in check_applicability([unproven], store2)]
+        assert "unverified_applicability" in codes
+    finally:
+        RENDER_TEMPLATES.pop(template.key, None)
+
+
 def test_uncited_chip_is_dropped() -> None:
     """Poison 5: a chip for an entity no surviving claim cites."""
     store, claims, rendered = _grounded_case()
