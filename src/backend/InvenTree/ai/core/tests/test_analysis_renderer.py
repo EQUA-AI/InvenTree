@@ -97,9 +97,21 @@ def _claim(**overrides) -> AnalysisClaim:
 def test_template_literals_contain_no_digits_or_code_shaped_tokens() -> None:
     """The closure scan is sound only if templates author no values."""
     sentinel = "SLOTVALUE"
+    row_cells = (
+        "key",
+        "bucket",
+        "group_count",
+        "event_count",
+        "interval_count",
+        "median_days",
+    )
     for template in RENDER_TEMPLATES.values():
         slots = dict.fromkeys(template.required_slots, sentinel)
-        text = template.build(slots, "", "", "en")
+        if template.iterates_rows:
+            # S7 tables: the row-line literals must be value-free too.
+            text = template.build(slots, "", "", "en", [dict.fromkeys(row_cells, sentinel)])
+        else:
+            text = template.build(slots, "", "", "en")
         stripped = text.replace(sentinel, "")
         assert not _DIGIT_RE.search(stripped), (template.key, stripped)
         assert not _CODE_SHAPED_RE.search(stripped), (template.key, stripped)

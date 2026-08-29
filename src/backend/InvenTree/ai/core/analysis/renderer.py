@@ -67,6 +67,13 @@ class RenderTemplate:
     requires_controlled_source: bool = False
     categorical_kind: str | None = None  # "absence" | "count" | None
     calibrated: bool = False
+    #: S7: the claim's ``group_row`` facts render as table rows (one claim,
+    #: one table — budgets don't move). Slots resolve from CALCULATION refs
+    #: only, and the build fn receives ``rows`` as a fifth argument. Rows
+    #: display keys/counts, never fenced labels: an operator-authored name
+    #: (which may carry digits) must not enter rendered text — chips and
+    #: the expansion endpoint carry the human names.
+    iterates_rows: bool = False
 
 
 def _t_record_count(slots, paraphrase, marker, locale):
@@ -136,6 +143,77 @@ def _t_inference_note(slots, paraphrase, marker, locale):
     return (
         f"Based on the cited evidence, this may indicate {cleaned}; treat it "
         f"as an interpretation, not a documented fact.{marker}"
+    )
+
+
+def _t_aggregate_summary(slots, paraphrase, marker, locale):
+    return (
+        f"The complete population is {slots['population_count']} records by "
+        f"{slots['date_field']} ({slots['timezone']}){_clause(paraphrase)}.{marker}"
+    )
+
+
+def _t_group_breakdown(slots, paraphrase, marker, locale, rows):
+    lines = [
+        f"Breakdown by {slots['grouping']} across {slots['total_group_count']} "
+        f"groups, {slots['population_count']} records{_clause(paraphrase)}:{marker}"
+    ]
+    for row in rows:
+        lines.append(f"- {row.get('key', '')}: {row.get('group_count', '')}")
+    if slots.get("remainder_group_count") not in (None, "", "0"):
+        lines.append(
+            f"- plus {slots['remainder_count']} records across "
+            f"{slots['remainder_group_count']} further groups"
+        )
+    return "\n".join(lines)
+
+
+def _t_timeline_breakdown(slots, paraphrase, marker, locale, rows):
+    lines = [
+        f"Series by {slots['bucket']} over {slots['bucket_count']} buckets, "
+        f"{slots['population_count']} records{_clause(paraphrase)}:{marker}"
+    ]
+    for row in rows:
+        lines.append(f"- {row.get('bucket', '')}: {row.get('group_count', '')}")
+    return "\n".join(lines)
+
+
+def _t_interval_stats(slots, paraphrase, marker, locale, rows):
+    lines = [
+        f"Repeat intervals over {slots['population_count']} events{_clause(paraphrase)}:{marker}"
+    ]
+    for row in rows:
+        lines.append(
+            f"- {row.get('key', '')}: {row.get('event_count', '')} events, "
+            f"median {row.get('median_days', '')} days between events"
+        )
+    return "\n".join(lines)
+
+
+def _t_duration_stats(slots, paraphrase, marker, locale):
+    return (
+        f"Across {slots['qualifying_count']} fully timed work orders the "
+        f"median duration is {slots['median_minutes']} minutes (mean "
+        f"{slots['mean_minutes']}, range {slots['min_minutes']} to "
+        f"{slots['max_minutes']}); {slots['excluded_missing_count']} lacked "
+        f"timestamps and {slots['excluded_invalid_count']} were invalid, and "
+        f"none of those were estimated.{marker}"
+    )
+
+
+def _t_population_note(slots, paraphrase, marker, locale):
+    return (
+        f"Note: {slots['unassigned_machine_count']} work orders have no "
+        f"machine assigned; they are counted in totals but excluded from "
+        f"every per-machine grouping, and no machine was inferred.{marker}"
+    )
+
+
+def _t_null_date_note(slots, paraphrase, marker, locale):
+    return (
+        f"Note: {slots['null_date_count']} records have no value for the "
+        f"selected date field and are excluded from the series, not "
+        f"estimated into it.{marker}"
     )
 
 
@@ -219,6 +297,70 @@ RENDER_TEMPLATES: dict[str, RenderTemplate] = {
             build=_t_inference_note,
             paraphrase_slot=True,
             calibrated=True,
+        ),
+        RenderTemplate(
+            key="analysis.aggregate_summary",
+            required_slots=("population_count", "date_field", "timezone"),
+            build=_t_aggregate_summary,
+            paraphrase_slot=True,
+            requires_complete_population=True,
+            categorical_kind="count",
+        ),
+        RenderTemplate(
+            key="analysis.group_breakdown",
+            required_slots=(
+                "grouping",
+                "population_count",
+                "total_group_count",
+                "remainder_group_count",
+                "remainder_count",
+            ),
+            build=_t_group_breakdown,
+            paraphrase_slot=True,
+            requires_complete_population=True,
+            categorical_kind="count",
+            iterates_rows=True,
+        ),
+        RenderTemplate(
+            key="analysis.timeline_breakdown",
+            required_slots=("bucket", "bucket_count", "population_count"),
+            build=_t_timeline_breakdown,
+            paraphrase_slot=True,
+            requires_complete_population=True,
+            categorical_kind="count",
+            iterates_rows=True,
+        ),
+        RenderTemplate(
+            key="analysis.interval_stats",
+            required_slots=("population_count",),
+            build=_t_interval_stats,
+            paraphrase_slot=True,
+            requires_complete_population=True,
+            iterates_rows=True,
+        ),
+        RenderTemplate(
+            key="analysis.duration_stats",
+            required_slots=(
+                "qualifying_count",
+                "median_minutes",
+                "mean_minutes",
+                "min_minutes",
+                "max_minutes",
+                "excluded_missing_count",
+                "excluded_invalid_count",
+            ),
+            build=_t_duration_stats,
+            requires_complete_population=True,
+        ),
+        RenderTemplate(
+            key="analysis.population_note",
+            required_slots=("unassigned_machine_count",),
+            build=_t_population_note,
+        ),
+        RenderTemplate(
+            key="analysis.null_date_note",
+            required_slots=("null_date_count",),
+            build=_t_null_date_note,
         ),
         RenderTemplate(
             key="analysis.downgrade_limitation",
@@ -439,13 +581,18 @@ _REASONING_SUMMARY = (
 def _resolve_slots(
     claim: AnalysisClaim, template: RenderTemplate, store: EvidenceStore
 ) -> dict[str, str]:
-    """Fill template slots from the claim's referenced facts/calculations."""
+    """Fill template slots from the claim's referenced facts/calculations.
+
+    An iterating template resolves slots from its CALCULATION refs only —
+    its many row facts would otherwise collapse into one first-wins cell.
+    """
     available: dict[str, str] = {}
-    for ref in claim.fact_refs:
-        fact = store.facts.get(ref)
-        if fact is not None:
-            for name, rendered in fact.rendered_values().items():
-                available.setdefault(name, rendered)
+    if not template.iterates_rows:
+        for ref in claim.fact_refs:
+            fact = store.facts.get(ref)
+            if fact is not None:
+                for name, rendered in fact.rendered_values().items():
+                    available.setdefault(name, rendered)
     for ref in claim.calculation_output_refs:
         calculation = store.calculations.get(ref)
         if calculation is not None:
@@ -460,6 +607,21 @@ def _resolve_slots(
             )
         slots[name] = available[name]
     return slots
+
+
+def _resolve_rows(claim: AnalysisClaim, store: EvidenceStore) -> list[dict[str, str]]:
+    """The claim's ``group_row`` facts as rendered rows, in reference order.
+
+    Every cell string joins ``inserted_values``, which is what closes C05
+    over a whole table by construction: a rendered cell can only ever be a
+    server-rendered fact value.
+    """
+    rows: list[dict[str, str]] = []
+    for ref in claim.fact_refs:
+        fact = store.facts.get(ref)
+        if fact is not None and fact.kind == "group_row":
+            rows.append(fact.rendered_values())
+    return rows
 
 
 def render_answer(
@@ -483,7 +645,13 @@ def render_answer(
         slots = _resolve_slots(claim, template, store)
         paraphrase = claim.paraphrase if template.paraphrase_slot else ""
         marker = ordinals.marker_for(claim.claim_id)
-        text = template.build(slots, paraphrase, marker, locale or "en")
+        if template.iterates_rows:
+            rows = _resolve_rows(claim, store)
+            text = template.build(slots, paraphrase, marker, locale or "en", rows)
+            for row in rows:
+                inserted.update(row.values())
+        else:
+            text = template.build(slots, paraphrase, marker, locale or "en")
         segments.append(RenderedSegment(claim_id=claim.claim_id, text=text))
         inserted.update(slots.values())
         for ordinal in ordinals.by_claim.get(claim.claim_id, ()):
@@ -502,10 +670,13 @@ def render_answer(
 
     spoken_summary = ""
     if state == "complete":
+        # Iterating tables are unreadable as speech; the summary claim
+        # speaks for them.
         answer_segments = [
             segment
             for claim, segment in zip(claims, segments, strict=True)
             if claim.claim_role == "answer"
+            and not getattr(RENDER_TEMPLATES.get(claim.render_template), "iterates_rows", False)
         ]
         spoken_parts = [_MARKER_RE.sub("", segment.text).strip() for segment in answer_segments[:2]]
         spoken_summary = " ".join(part for part in spoken_parts if part)

@@ -98,15 +98,19 @@ def _settings(mode: str):
 
 @pytest.fixture(autouse=True)
 def _seams(monkeypatch):
+    from ai.core.tests.test_analysis_tables import fake_aggregate, fake_trend
+
     monkeypatch.setattr(executor_module, "_retrieve_records", _fake_records)
+    monkeypatch.setattr(executor_module, "_retrieve_aggregate", fake_aggregate)
+    monkeypatch.setattr(executor_module, "_retrieve_trend", fake_trend)
     monkeypatch.setattr(executor_module, "synthesize_claims", lambda *_a, **_k: None)
     monkeypatch.setattr(executor_module, "_reauthorize", lambda _user, _store: True)
 
 
-def _branch(mode: str, *, emitter, synthesize=None, monkeypatch=None):
+def _branch(mode: str, *, emitter, synthesize=None, monkeypatch=None, intent="record_retrieval"):
     if synthesize is not None and monkeypatch is not None:
         monkeypatch.setattr(executor_module, "synthesize_claims", synthesize)
-    run = _run(emitter=emitter)
+    run = _run(intent=intent, emitter=emitter)
     with mock.patch("ai.core.config.get_settings", lambda: _settings(mode)):
         canonical = asyncio.run(_run_analysis_branch(_service(), run))
     return canonical, run
@@ -200,6 +204,50 @@ def test_gate_off_is_byte_identical_abstention() -> None:
     assert "evidence_gate" not in canonical
     assert "evidence_analysis" not in canonical
     assert run.extras == {}
+
+
+def test_aggregate_intent_serves_the_validated_table(monkeypatch) -> None:
+    # S7 per-intent wire pin: fleet_aggregate under gate enforce is a full
+    # validated evidence answer — one buffered text event, one attachment.
+    emitter = RecordingEmitter()
+    canonical, run = _branch("enforce", emitter=emitter, intent="fleet_aggregate")
+
+    assert canonical["workflow_used"] == "analysis_executor"
+    assert canonical["response_state"] == "complete"
+    assert "Breakdown by machine" in canonical["message"]
+    assert run.extras["evidence_sets"]
+    content_events = [
+        event
+        for event in emitter.events
+        if "TEXT_MESSAGE_CONTENT" in str(event.get("type") or event.get("event_type"))
+    ]
+    assert len(content_events) == 1
+    deltas = [
+        (event.get("data") or event).get("kind")
+        for event in emitter.events
+        if "STATE_DELTA" in str(event.get("type") or event.get("event_type"))
+    ]
+    assert deltas.count("evidence_analysis") == 1
+    assert deltas.count("analysis_progress") == 3
+    agui = _translate_all(emitter.events)
+    assert "aimms.evidenceAnalysis" in agui
+
+
+def test_trend_intent_serves_the_validated_series(monkeypatch) -> None:
+    # S7 per-intent wire pin: trend_analysis mirrors the aggregate shape.
+    emitter = RecordingEmitter()
+    canonical, run = _branch("enforce", emitter=emitter, intent="trend_analysis")
+
+    assert canonical["workflow_used"] == "analysis_executor"
+    assert canonical["response_state"] == "complete"
+    assert "Series by month" in canonical["message"]
+    assert run.extras["evidence_sets"]
+    content_events = [
+        event
+        for event in emitter.events
+        if "TEXT_MESSAGE_CONTENT" in str(event.get("type") or event.get("event_type"))
+    ]
+    assert len(content_events) == 1
 
 
 def test_unrouted_intents_defensively_abstain() -> None:

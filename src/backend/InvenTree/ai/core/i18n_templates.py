@@ -42,6 +42,13 @@ ANALYSIS_DOWNGRADE = "analysis_downgrade"
 ANALYSIS_ABSTAIN = "analysis_abstain"
 ANALYSIS_PARTIAL_NOTICE = "analysis_partial_notice"
 ANALYSIS_FAIL_CLOSED = "analysis_fail_closed"
+# S7: typed honest unavailability for the analytics intents. Each names
+# exactly WHY, instead of the generic abstain — §8.3's "state that a
+# defensible normalized grouping is unavailable" made literal.
+ANALYSIS_GROUPING_UNAVAILABLE = "analysis_grouping_unavailable"
+ANALYSIS_SNAPSHOT_CHANGED = "analysis_snapshot_changed"
+ANALYSIS_POPULATION_CAP = "analysis_population_cap"
+ANALYSIS_BUCKET_RANGE = "analysis_bucket_range"
 
 _TEMPLATES: dict[str, dict[str, str]] = {
     RESPOND_IN_LOCALE: {
@@ -241,6 +248,60 @@ _TEMPLATES: dict[str, dict[str, str]] = {
             "pregunta, por lo que no se produjo ninguna conclusión."
         ),
     },
+    ANALYSIS_GROUPING_UNAVAILABLE: {
+        "en": (
+            "A defensible grouping for that dimension is not available: "
+            "groupings are limited to recorded structured fields, and "
+            "free text or personal identities are never grouped. No "
+            "grouping was invented."
+        ),
+        "es": (
+            "No hay una agrupación defendible para esa dimensión: las "
+            "agrupaciones se limitan a campos estructurados registrados, y "
+            "el texto libre o las identidades personales nunca se agrupan. "
+            "No se inventó ninguna agrupación."
+        ),
+    },
+    ANALYSIS_SNAPSHOT_CHANGED: {
+        "en": (
+            "The underlying records changed while this analysis was being "
+            "computed, and a single consistent snapshot could not be "
+            "re-established. Please ask again; nothing was estimated from "
+            "mixed states."
+        ),
+        "es": (
+            "Los registros subyacentes cambiaron mientras se calculaba este "
+            "análisis y no se pudo restablecer una instantánea consistente. "
+            "Vuelva a preguntar; no se estimó nada a partir de estados "
+            "mezclados."
+        ),
+    },
+    ANALYSIS_POPULATION_CAP: {
+        "en": (
+            "This population exceeds the supported exact-analysis envelope, "
+            "so a complete validated calculation was not produced. Narrow "
+            "the scope or date window and ask again."
+        ),
+        "es": (
+            "Esta población supera el límite admitido para análisis "
+            "exactos, por lo que no se produjo un cálculo validado "
+            "completo. Reduzca el alcance o la ventana de fechas y vuelva a "
+            "preguntar."
+        ),
+    },
+    ANALYSIS_BUCKET_RANGE: {
+        "en": (
+            "The requested series spans more time buckets than a single "
+            "answer supports. Narrow the window or use a wider bucket "
+            "(month or quarter) and ask again."
+        ),
+        "es": (
+            "La serie solicitada abarca más intervalos "  # codespell:ignore serie
+            "de tiempo de los que admite una sola respuesta. Reduzca la "
+            "ventana o use un intervalo más amplio (mes o trimestre) y "
+            "vuelva a preguntar."
+        ),
+    },
     ANALYSIS_PARTIAL_NOTICE: {
         "en": (
             "This is a partial answer: some parts of the question did not "
@@ -305,9 +366,13 @@ __all__ = [
     "ADVISORY_VOICE_ACTION",
     "ADVISORY_VOICE_READONLY",
     "ANALYSIS_ABSTAIN",
+    "ANALYSIS_BUCKET_RANGE",
     "ANALYSIS_DOWNGRADE",
     "ANALYSIS_FAIL_CLOSED",
+    "ANALYSIS_GROUPING_UNAVAILABLE",
     "ANALYSIS_PARTIAL_NOTICE",
+    "ANALYSIS_POPULATION_CAP",
+    "ANALYSIS_SNAPSHOT_CHANGED",
     "GROUNDING_CROSS_MACHINE",
     "GROUNDING_DOWNGRADE",
     "QUESTION_DECLINED_ACK",

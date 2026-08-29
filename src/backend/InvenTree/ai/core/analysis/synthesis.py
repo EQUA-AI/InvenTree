@@ -33,6 +33,8 @@ FACET_PLANS: dict[str, tuple[str, ...]] = {
     "record_retrieval": ("records", "coverage", "limitations"),
     "manual_fact": ("passage_fact", "applicability", "limitations"),
     "source_inventory": ("availability", "coverage", "limitations"),
+    "fleet_aggregate": ("profile", "aggregate", "limitations"),
+    "trend_analysis": ("timeline", "limitations"),
 }
 
 #: Display cap for per-record claims inside one answer.
@@ -193,6 +195,139 @@ def deterministic_claims(
                 "limitations",
                 "answered" if applicability_ids else "not_applicable",
                 applicability_ids,
+            )
+        )
+
+    elif intent == "fleet_aggregate":
+        profile_facts = [fact for fact in store.facts.values() if fact.kind == "dataset_profile"]
+        group_row_facts = [fact for fact in store.facts.values() if fact.kind == "group_row"]
+        group_calcs = [
+            calc for calc in store.calculations.values() if calc.operation == "group_count"
+        ]
+
+        profile_ids: list[str] = []
+        if profile_facts and group_calcs:
+            calc = group_calcs[0]
+            claim_id = _next_id()
+            profile_ids.append(claim_id)
+            claims.append(
+                _claim(
+                    claim_id=claim_id,
+                    claim_type="calculation",
+                    evidence_classification="calculated",
+                    fact_refs=[profile_facts[0].fact_id],
+                    calculation_output_refs=[calc.calculation_id],
+                    evidence_refs=([calc.evidence_set_handle] if calc.evidence_set_handle else []),
+                    render_template="analysis.aggregate_summary",
+                )
+            )
+        facets.append(_facet("profile", "answered" if profile_ids else "unavailable", profile_ids))
+
+        aggregate_ids: list[str] = []
+        if group_row_facts and group_calcs:
+            calc = group_calcs[0]
+            entity_refs: list[str] = []
+            for fact in group_row_facts:
+                for ref in fact.entity_refs:
+                    if ref not in entity_refs:
+                        entity_refs.append(ref)
+            claim_id = _next_id()
+            aggregate_ids.append(claim_id)
+            claims.append(
+                _claim(
+                    claim_id=claim_id,
+                    claim_type="calculation",
+                    evidence_classification="calculated",
+                    fact_refs=[fact.fact_id for fact in group_row_facts],
+                    calculation_output_refs=[calc.calculation_id],
+                    evidence_refs=([calc.evidence_set_handle] if calc.evidence_set_handle else []),
+                    entity_refs=entity_refs[:12],
+                    render_template="analysis.group_breakdown",
+                )
+            )
+        facets.append(
+            _facet(
+                "aggregate",
+                "answered" if aggregate_ids else "unavailable",
+                aggregate_ids,
+            )
+        )
+
+        limitation_ids: list[str] = []
+        unassigned = 0
+        if group_calcs:
+            raw = group_calcs[0].values.get("unassigned_machine_count")
+            unassigned = int(raw.raw or 0) if raw is not None else 0
+        if unassigned > 0:
+            claim_id = _next_id()
+            limitation_ids.append(claim_id)
+            claims.append(
+                _claim(
+                    claim_id=claim_id,
+                    claim_role="limitation",
+                    claim_type="limitation",
+                    evidence_classification="insufficient",
+                    calculation_output_refs=[group_calcs[0].calculation_id],
+                    render_template="analysis.population_note",
+                )
+            )
+        facets.append(
+            _facet(
+                "limitations",
+                "answered" if limitation_ids else "not_applicable",
+                limitation_ids,
+            )
+        )
+
+    elif intent == "trend_analysis":
+        bucket_row_facts = [fact for fact in store.facts.values() if fact.kind == "group_row"]
+        bucket_calcs = [
+            calc for calc in store.calculations.values() if calc.operation == "bucket_count"
+        ]
+
+        timeline_ids: list[str] = []
+        if bucket_row_facts and bucket_calcs:
+            calc = bucket_calcs[0]
+            claim_id = _next_id()
+            timeline_ids.append(claim_id)
+            claims.append(
+                _claim(
+                    claim_id=claim_id,
+                    claim_type="calculation",
+                    evidence_classification="calculated",
+                    fact_refs=[fact.fact_id for fact in bucket_row_facts],
+                    calculation_output_refs=[calc.calculation_id],
+                    evidence_refs=([calc.evidence_set_handle] if calc.evidence_set_handle else []),
+                    render_template="analysis.timeline_breakdown",
+                )
+            )
+        facets.append(
+            _facet("timeline", "answered" if timeline_ids else "unavailable", timeline_ids)
+        )
+
+        limitation_ids = []
+        null_dates = 0
+        if bucket_calcs:
+            raw = bucket_calcs[0].values.get("null_date_count")
+            null_dates = int(raw.raw or 0) if raw is not None else 0
+        if null_dates > 0:
+            claim_id = _next_id()
+            limitation_ids.append(claim_id)
+            claims.append(
+                _claim(
+                    claim_id=claim_id,
+                    claim_role="limitation",
+                    claim_type="limitation",
+                    evidence_classification="insufficient",
+                    calculation_output_refs=[bucket_calcs[0].calculation_id],
+                    render_template="analysis.null_date_note",
+                )
+            )
+        facets.append(
+            _facet(
+                "limitations",
+                "answered" if limitation_ids else "not_applicable",
+                limitation_ids,
             )
         )
 

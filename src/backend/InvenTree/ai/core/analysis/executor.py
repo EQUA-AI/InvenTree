@@ -347,6 +347,7 @@ def _retrieve_aggregate(
         operation="group_count",
         input_refs=(profile_fact, *group_facts),
         values={
+            "grouping": FactValue("enum", result.get("grouping")),
             "population_count": FactValue("int", int(result.get("population_count") or 0)),
             "total_group_count": FactValue("int", int(result.get("total_group_count") or 0)),
             "shown_group_count": FactValue("int", len(result.get("groups") or ())),
@@ -510,6 +511,7 @@ def _retrieve_trend(
         operation="bucket_count",
         input_refs=tuple(bucket_facts),
         values={
+            "bucket": FactValue("enum", result.get("bucket")),
             "population_count": FactValue("int", int(result.get("population_count") or 0)),
             "bucket_count": FactValue("int", int(result.get("bucket_count") or 0)),
             "null_date_count": FactValue("int", int(result.get("null_date_count") or 0)),
@@ -707,7 +709,7 @@ def _no_data_reason(intent: str, store: EvidenceStore, retrieval_failed: bool) -
     if retrieval_failed:
         return "retrieval_failure"
     coverage = store.coverage_meta() or {}
-    if intent == "record_retrieval":
+    if intent in ("record_retrieval", "fleet_aggregate", "trend_analysis"):
         if int(coverage.get("population_count") or 0) == 0 and coverage.get("complete_population"):
             return "complete_population_no_matches"
         if not coverage.get("complete_population") and not store.facts:
@@ -836,10 +838,24 @@ async def run_analysis(
     if vocabulary_code is not None:
         # S7: a TYPED honest unavailability (unsupported grouping, series
         # past the bucket cap, population past the membership envelope, a
-        # snapshot that would not hold still). Never an estimate.
+        # snapshot that would not hold still). Never an estimate — and each
+        # code renders its own named message, not the generic abstain.
+        from ai.core.i18n_templates import (
+            ANALYSIS_BUCKET_RANGE,
+            ANALYSIS_GROUPING_UNAVAILABLE,
+            ANALYSIS_POPULATION_CAP,
+            ANALYSIS_SNAPSHOT_CHANGED,
+        )
+
+        message_key = {
+            "grouping_unavailable": ANALYSIS_GROUPING_UNAVAILABLE,
+            "bucket_range_exceeded": ANALYSIS_BUCKET_RANGE,
+            "population_cap_exceeded": ANALYSIS_POPULATION_CAP,
+            "snapshot_changed": ANALYSIS_SNAPSHOT_CHANGED,
+        }.get(vocabulary_code, ANALYSIS_ABSTAIN)
         response = _template_response(
             kind_state="incomplete",
-            message=deterministic_template(ANALYSIS_ABSTAIN, locale),
+            message=deterministic_template(message_key, locale),
             reasoning=(
                 "The requested analysis is typed as unavailable "
                 f"({vocabulary_code}); nothing was estimated."
