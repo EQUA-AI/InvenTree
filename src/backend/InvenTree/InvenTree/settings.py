@@ -1414,6 +1414,13 @@ for _aimms_entry in _aimms_django_flags():
         _aimms_value = [
             code.strip() for code in str(_aimms_raw or '').split(',') if code.strip()
         ]
+    elif _aimms_entry.kind == 'int':
+        _aimms_value = get_setting(
+            _aimms_entry.env_name,
+            _aimms_entry.config_key,
+            _aimms_entry.default,
+            typecast=int,
+        )
     else:
         _aimms_value = get_setting(
             _aimms_entry.env_name, _aimms_entry.config_key, _aimms_entry.default

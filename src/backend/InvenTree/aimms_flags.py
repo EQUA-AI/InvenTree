@@ -196,6 +196,52 @@ REGISTRY: tuple[FlagEntry, ...] = (
         ai_field='feature_thread_sharing',
         description='B6 thread sharing (both planes read one env var)',
     ),
+    FlagEntry(
+        'FEATURE_AI_THREAD_SCOPE_SHADOW',
+        'bool',
+        True,
+        'both',
+        config_key='feature_ai_thread_scope_shadow',
+        ai_field='feature_ai_thread_scope_shadow',
+        description=(
+            'S1 analysis rail: store/resolve the thread analysis scope and '
+            'log would-be out-of-scope results without changing answers'
+        ),
+    ),
+    FlagEntry(
+        'FEATURE_AI_THREAD_SCOPE_ENFORCE',
+        'bool',
+        False,
+        'both',
+        config_key='feature_ai_thread_scope_enforce',
+        ai_field='feature_ai_thread_scope_enforce',
+        description=(
+            'S5 analysis rail: reject out-of-scope retrieval results under '
+            'an explicit analysis scope (rollback floor once enabled)'
+        ),
+    ),
+    FlagEntry(
+        'FEATURE_AI_ANALYSIS_ROUTER_SHADOW',
+        'bool',
+        True,
+        'ai',
+        ai_field='feature_ai_analysis_router_shadow',
+        description=(
+            'S3 analysis rail: classify task/effect intent and log '
+            'divergence from the legacy route without changing it'
+        ),
+    ),
+    FlagEntry(
+        'FEATURE_AI_ANALYSIS_ROUTER_ENFORCE',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_ai_analysis_router_enforce',
+        description=(
+            'S3 analysis rail: route read-only analysis intents to '
+            'RouteMode.ANALYSIS (dark until the Phase-4 evidence gate)'
+        ),
+    ),
     # --- ai plane (pydantic Settings fields; canonical env name = alias) ---
     FlagEntry(
         'FEATURE_WF1_DIAGNOSTICS',
@@ -291,6 +337,38 @@ REGISTRY: tuple[FlagEntry, ...] = (
         False,
         'ai',
         ai_field='feature_token_budget_enforce',
+    ),
+    FlagEntry(
+        'FEATURE_AI_QUOTA_PROFILES',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_ai_quota_profiles',
+        description=(
+            'S12: finite quota profiles (standard/evaluation/service) with '
+            'reservation/settlement accounting. Blocking stays governed by the '
+            'FEATURE_TOKEN_BUDGET_* pair; enforcement also requires the '
+            'verified shared cache backend.'
+        ),
+    ),
+    FlagEntry(
+        'FEATURE_AI_ADMISSION_CONTROL_SHADOW',
+        'bool',
+        True,
+        'ai',
+        ai_field='feature_ai_admission_control_shadow',
+        description='S13: log admission.would_reject without rejecting.',
+    ),
+    FlagEntry(
+        'FEATURE_AI_ADMISSION_CONTROL_ENFORCE',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_ai_admission_control_enforce',
+        description=(
+            'S13: reject saturated turns with typed 503 ai_capacity_busy. '
+            'Fails open on store errors (availability control).'
+        ),
     ),
     FlagEntry(
         'FEATURE_MODEL_TIERING_SHADOW',
@@ -488,6 +566,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='off | shadow | enforce; enforce flip is human-gated',
     ),
     FlagEntry(
+        'AIMMS_EVIDENCE_GATE_MODE',
+        'literal',
+        'shadow',
+        'ai',
+        ai_field='evidence_gate_mode',
+        description='S10 evidence gate: off | shadow | enforce; enforce is human-gated',
+    ),
+    FlagEntry(
         'AIMMS_CHAT_HISTORY_MESSAGES', 'int', 12, 'ai', ai_field='chat_history_messages'
     ),
     FlagEntry(
@@ -496,6 +582,60 @@ REGISTRY: tuple[FlagEntry, ...] = (
         0.85,
         'ai',
         ai_field='voice_confidence_floor',
+    ),
+    FlagEntry(
+        'AIMMS_CAPABILITY_TIER',
+        'int',
+        0,
+        'both',
+        config_key='aimms_capability_tier',
+        ai_field='capability_tier',
+        description=(
+            'S14/A12: declared capability tier (0 = none). Tiers >= 1 require '
+            'the aimms_capability.TIER_REQUIREMENTS to hold at startup; never '
+            'inferred from users, quota profiles, or prompts.'
+        ),
+    ),
+    FlagEntry(
+        'FEATURE_AI_PILOT_STOP_LATCH',
+        'bool',
+        False,
+        'both',
+        config_key='feature_ai_pilot_stop_latch',
+        ai_field='feature_ai_pilot_stop_latch',
+        description=(
+            'S15/§15.4: arm the fail-closed pilot-stop admission gate. The '
+            'latch models and pilot_stop/pilot_resume commands work with the '
+            'flag DARK (operator drills); only the per-turn check is gated. '
+            'Enable on the pilot deployment after verifying the shared cache.'
+        ),
+    ),
+    FlagEntry(
+        'AIMMS_PILOT_STOP_OWNERS',
+        'csv',
+        None,
+        'django',
+        config_key='aimms_pilot_stop_owners',
+        description=(
+            'Q43 Part-4 naming: role:username pairs for the five stop-authority '
+            'owners, e.g. engineering:alice,product:bob,... Feeds latch alerts.'
+        ),
+    ),
+    FlagEntry(
+        'FEATURE_AI_RETENTION_JOBS',
+        'bool',
+        False,
+        'both',
+        config_key='feature_ai_retention_jobs',
+        ai_field='feature_ai_retention_jobs',
+        description=(
+            'S16/Q48: run the scheduled retention purge/reconciliation jobs '
+            '(400-day transcripts, 90-day detail, aggregates). Dark by '
+            'default; the uploads TTL sweep and outbox drain run regardless. '
+            'Tier >= 1 requires this ON (retention_cleanup requirement) — '
+            'retention must be OPERATING, not merely shipped, on a declared '
+            'pilot deployment. Day counts are code constants, not settings.'
+        ),
     ),
 )
 
