@@ -31,7 +31,7 @@ class SeedVideoEvalFixturesTests(RagFixtureTestCase):
         out = StringIO()
         call_command('seed_video_eval_fixtures', '--dry-run', stdout=out)
         report = out.getvalue()
-        self.assertIn('aimms-video-fixtures-v1', report)
+        self.assertIn('aimms-video-fixtures-v2', report)
         self.assertIn('owner absent (would create)', report)
         self.assertFalse(
             WorkOrder.objects.filter(reference='WO-EVAL-HX200-VIDEO').exists()
@@ -102,7 +102,7 @@ class SeedVideoEvalFixturesTests(RagFixtureTestCase):
                 'restamp_work_order_media_client_codes'
             ) as restamp,
         ):
-            call_command('seed_video_eval_fixtures')
+            call_command('seed_video_eval_fixtures', '--break-glass')
 
         work_order.refresh_from_db()
         self.assertNotEqual(work_order.machine_id, photo_machine.pk)

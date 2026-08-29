@@ -13,8 +13,9 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.test import override_settings
 
-from ai.core.integrations.attachment_corpus import search_corpus_attachments
 from tasks.scope import MaintenanceScope
+
+from ai.core.integrations.attachment_corpus import search_corpus_attachments
 
 from .test_attachment_rag_ingestion import (
     FakeEmbeddingClient,
@@ -29,6 +30,20 @@ def _grant_resolver(actor):
     """Resolver seam: return whatever the test granted this username."""
     return _GRANTS.get(actor.get_username(), set())
 
+
+
+def _indistinguishable(result):
+    """Normalize a corpus result for denial==nonexistence comparison.
+
+    The S5 retrieval envelope mints a fresh random ``retrieval_id`` per call
+    — deliberately signal-free (every response gets one), so the
+    indistinguishability contract compares everything else byte-identically.
+    """
+    normalized = dict(result)
+    retrieval = dict(normalized.pop('retrieval', {}) or {})
+    retrieval.pop('retrieval_id', None)
+    normalized['retrieval'] = retrieval
+    return normalized
 
 class FakeSearchClient:
     """Records every filter; returns scripted rows."""
@@ -100,11 +115,12 @@ class AttachmentRetrievalScopeTests(RagFixtureTestCase):
     def test_foreign_and_missing_machines_are_indistinguishable(self):
         """Denial == nonexistence: zeta's machine and a fabricated name must
         produce byte-identical response shapes (both degrade site-wide, both
-        still carry the acme-only client filter)."""
+        still carry the acme-only client filter).
+        """
         foreign_client, foreign = self._search(machine='Press 2')
         missing_client, missing = self._search(machine='No Such Machine 999')
 
-        self.assertEqual(foreign, missing)
+        self.assertEqual(_indistinguishable(foreign), _indistinguishable(missing))
         self.assertEqual(foreign['machine_filter'], 'not_applied')
         self.assertEqual(foreign_client.filters, missing_client.filters)
         for built in foreign_client.filters + missing_client.filters:
@@ -122,7 +138,104 @@ class AttachmentRetrievalScopeTests(RagFixtureTestCase):
 
     def test_clientless_machine_never_appears_in_a_filter(self):
         """The orphan press resolves to no scope; narrowing degrades and the
-        client clause still names acme alone."""
+        client clause still names acme alone.
+        """
         search_client, result = self._search(machine='Orphan Press')
         self.assertEqual(result['machine_filter'], 'not_applied')
         self.assertNotIn('Orphan', search_client.filters[0])
+
+
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver',
+    AIMMS_SINGLE_SITE_CLIENT_CODE='acme',
+    AIMMS_MACHINE_AI_READ_ENABLED=True,
+)
+class EvalFixtureIsolationTests(RagFixtureTestCase):
+    """S6 (WP-A5): eval-fixtures isolation through the REAL grant resolver.
+
+    No resolver seam here — the production ``granted_client_scope_resolver``
+    reads real ``ClientScopeGrant`` rows, so these tests pin the actual
+    control: an ordinary user's filter can never name ``eval-fixtures``, the
+    designated evaluation user's filter names it alongside the site tenant,
+    and ``eval-offlimits`` stays granted to nobody.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        """The shared RAG world plus the eval client, machine, and users."""
+        super().setUpTestData()
+        from assets.models import AssetMachine, Client, ClientScopeGrant
+
+        cls.eval_client = Client.objects.create(
+            name='RAG Evaluation Fixtures', code='eval-fixtures'
+        )
+        cls.eval_machine = AssetMachine.objects.create(
+            name='RAG Eval HX-200 Heat Exchanger',
+            client=cls.eval_client,
+            serial='EVAL-HX200',
+        )
+        cls.ordinary = get_user_model().objects.create_superuser(
+            username='ordinary-solar', password='x'
+        )
+        cls.evaluator = get_user_model().objects.create_superuser(
+            username='solar-evaluation', password='x'
+        )
+        ClientScopeGrant.objects.create(user=cls.evaluator, client=cls.client_acme)
+        ClientScopeGrant.objects.create(user=cls.evaluator, client=cls.eval_client)
+
+    def _search_as(self, user, **kwargs):
+        search_client = FakeSearchClient(rows=kwargs.pop('rows', None))
+        ai_settings = _ai_settings(FEATURE_ATTACHMENT_RAG_RETRIEVAL=True)
+        with mock.patch('ai.core.config.get_settings', return_value=ai_settings):
+            result = search_corpus_attachments(
+                user=user,
+                query=kwargs.pop('query', 'heat exchanger seal'),
+                search_client=search_client,
+                embedding_client=FakeEmbeddingClient(),
+                **kwargs,
+            )
+        return search_client, result
+
+    def test_ordinary_user_filter_never_names_eval_fixtures(self):
+        """The leak S6 removes: broad queries cannot reach the fixtures."""
+        search_client, _result = self._search_as(self.ordinary)
+        built = search_client.filters[0]
+        self.assertIn("client_codes/any(c: search.in(c, 'acme', ','))", built)
+        self.assertNotIn('eval-fixtures', built)
+        self.assertNotIn('eval-offlimits', built)
+
+    def test_ordinary_user_cannot_narrow_to_the_eval_machine(self):
+        """The eval machine is invisible to an ungranted user.
+
+        Resolution fails exactly like a machine that does not exist.
+        """
+        eval_client_calls, eval_result = self._search_as(
+            self.ordinary, machine='RAG Eval HX-200 Heat Exchanger'
+        )
+        missing_calls, missing_result = self._search_as(
+            self.ordinary, machine='No Such Machine 999'
+        )
+        self.assertEqual(
+            _indistinguishable(eval_result), _indistinguishable(missing_result)
+        )
+        for built in eval_client_calls.filters + missing_calls.filters:
+            self.assertNotIn('EVAL-HX200', built)
+
+    def test_evaluation_user_reaches_both_clients(self):
+        """The eval user holds acme AND eval-fixtures.
+
+        The golden set stays whole while isolation binds everyone else.
+        """
+        search_client, _result = self._search_as(self.evaluator)
+        self.assertIn(
+            "client_codes/any(c: search.in(c, 'acme,eval-fixtures', ','))",
+            search_client.filters[0],
+        )
+
+    def test_evaluation_user_narrows_to_the_eval_machine(self):
+        """Granted scope makes the fixture machine's serial filter work."""
+        search_client, result = self._search_as(
+            self.evaluator, machine='RAG Eval HX-200 Heat Exchanger'
+        )
+        self.assertEqual(result['machine_filter'], 'applied')
+        self.assertIn("asset_id eq 'EVAL-HX200'", search_client.filters[0])

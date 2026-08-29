@@ -53,7 +53,7 @@ class RetrievalMissLedgerTests(TestCase):
 
     def test_zero_hit_search_writes_exactly_one_row_without_answer_text(self):
         result = self._search()
-        self.assertEqual(result['total'], 0)
+        self.assertEqual(result['returned_count'], 0)
         rows = list(RetrievalMiss.objects.all())
         self.assertEqual(len(rows), 1)
         row = rows[0]
@@ -83,6 +83,12 @@ class RetrievalMissLedgerTests(TestCase):
                 'scope_key',
                 'corpus',
                 'part_filter',
+                # S5 shadow evidence: scope identity + enforcement outcome —
+                # content-free coordinates, never query or answer text.
+                'scope_hash',
+                'scope_mode',
+                'scope_enforced',
+                'out_of_scope_hits',
                 'created_at',
             },
         )
@@ -96,7 +102,7 @@ class RetrievalMissLedgerTests(TestCase):
             {'chunk': 'Use thread locker', '@search.score': 1.5, 'document_id': 'd'},
         ]
         result = self._search(rows=rows)
-        self.assertEqual(result['total'], 2)
+        self.assertEqual(result['returned_count'], 2)
         row = RetrievalMiss.objects.get()
         self.assertEqual(row.hit_count, 2)
         self.assertEqual(row.top_score, 2.5)
@@ -165,7 +171,7 @@ class RetrievalMissLedgerTests(TestCase):
             RetrievalMiss.objects, 'create', side_effect=RuntimeError('db down')
         ):
             result = self._search()
-        self.assertEqual(result['total'], 0)
+        self.assertEqual(result['returned_count'], 0)
         self.assertEqual(RetrievalMiss.objects.count(), 0)
 
     def test_rollup_command_reports_top_unanswered(self):

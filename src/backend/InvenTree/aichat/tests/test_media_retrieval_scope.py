@@ -43,6 +43,20 @@ def _grant_resolver(actor):
     return _GRANTS.get(actor.get_username(), set())
 
 
+
+def _indistinguishable(result):
+    """Normalize a corpus result for denial==nonexistence comparison.
+
+    The S5 retrieval envelope mints a fresh random ``retrieval_id`` per call
+    — deliberately signal-free (every response gets one), so the
+    indistinguishability contract compares everything else byte-identically.
+    """
+    normalized = dict(result)
+    retrieval = dict(normalized.pop('retrieval', {}) or {})
+    retrieval.pop('retrieval_id', None)
+    normalized['retrieval'] = retrieval
+    return normalized
+
 class FakeSearchClient:
     """Records every filter; returns scripted rows."""
 
@@ -151,7 +165,7 @@ class MediaRetrievalScopeTests(RagFixtureTestCase):
         foreign_client, foreign = self._search(machine='Press 2')
         missing_client, missing = self._search(machine='No Such Machine 999')
 
-        self.assertEqual(foreign, missing)
+        self.assertEqual(_indistinguishable(foreign), _indistinguishable(missing))
         self.assertEqual(foreign['machine_filter'], 'not_applied')
         self.assertEqual(foreign_client.filters, missing_client.filters)
         for built in foreign_client.filters + missing_client.filters:
@@ -167,7 +181,7 @@ class MediaRetrievalScopeTests(RagFixtureTestCase):
         foreign_client, foreign = self._search(work_order=self.wo_zeta.reference)
         missing_client, missing = self._search(work_order='WO-NOPE-999')
 
-        self.assertEqual(foreign, missing)
+        self.assertEqual(_indistinguishable(foreign), _indistinguishable(missing))
         self.assertEqual(foreign['work_order_filter'], 'not_applied')
         self.assertEqual(foreign_client.filters, missing_client.filters)
         for built in foreign_client.filters + missing_client.filters:
