@@ -50,6 +50,8 @@ export interface AssetMaintenanceRecord {
   downtime_minutes: number | null;
   verified: boolean;
   follow_up_required: boolean;
+  /** Closeout values reflect an applied amendment, not the base row. */
+  amended: boolean;
   created_at: string;
   updated_at: string;
 }

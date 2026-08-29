@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
 import {
   ActionIcon,
+  Alert,
   Badge,
   Box,
   Button,
@@ -23,11 +24,13 @@ import {
   useMantineTheme
 } from '@mantine/core';
 import { useHotkeys, useLocalStorage } from '@mantine/hooks';
+import { showNotification } from '@mantine/notifications';
 import {
   IconCheck,
   IconChevronDown,
   IconCopy,
   IconEye,
+  IconFileExport,
   IconGripVertical,
   IconMessagePlus,
   IconMessages,
@@ -67,10 +70,15 @@ import { QuestionCard } from '../ai/QuestionCard';
 import { VoiceContextBadge } from '../ai/VoiceContextBadge';
 import { VoiceSessionControl } from '../ai/VoiceSessionControl';
 import { VoiceTranscript } from '../ai/VoiceTranscript';
+import { ActiveScopeBanner } from '../aichat/ActiveScopeBanner';
 import { CitationList } from '../aichat/CitationList';
+import { ClaimEvidence } from '../aichat/ClaimEvidence';
 import { EntityChips } from '../aichat/EntityChips';
 import { EvidenceChips } from '../aichat/EvidenceChips';
 import { InlineMarkdown, MarkdownMessage } from '../aichat/MarkdownMessage';
+import { RetrievalCoverage } from '../aichat/RetrievalCoverage';
+import type { EvidenceAnalysisAttachment } from '../aichat/evidenceAnalysis';
+import { composeAnswerMarkdown } from '../aichat/evidenceFormat';
 import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history';
@@ -753,14 +761,33 @@ function MessageActions({
   content,
   messageId,
   threadId,
+  evidenceAnalysis,
   onRegenerate
 }: Readonly<{
   content: string;
   messageId: string;
   threadId: string | null;
+  evidenceAnalysis?: EvidenceAnalysisAttachment;
   onRegenerate?: () => void;
 }>) {
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
+  // S11 (Q28): copy/export carry scope + as-of + coverage + citations,
+  // composed from the persisted manifest ONLY — live copy, reload copy and
+  // export are one function over one payload. The feedback SHA-256 below
+  // deliberately keeps hashing the RAW content (content-addressed ledger).
+  const exportable = evidenceAnalysis
+    ? composeAnswerMarkdown(content, evidenceAnalysis)
+    : content;
+
+  const download = () => {
+    const blob = new Blob([exportable], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `aimms-answer-${(threadId ?? 'thread').slice(0, 15)}-${messageId.slice(0, 12)}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
 
   // Persist the verdict to the durable ledger. Freshly streamed messages
   // carry client-generated ids that never exist server-side, so the exact
@@ -803,7 +830,7 @@ function MessageActions({
       }}
       className='message-actions'
     >
-      <CopyButton value={content}>
+      <CopyButton value={exportable}>
         {({ copied, copy }) => (
           <Tooltip label={copied ? t`Copied!` : t`Copy`} withArrow>
             <ActionIcon
@@ -840,6 +867,19 @@ function MessageActions({
           <IconThumbDown size={14} />
         </ActionIcon>
       </Tooltip>
+      {evidenceAnalysis && (
+        <Tooltip label={t`Export as Markdown`} withArrow>
+          <ActionIcon
+            aria-label='export-ai-chat-message'
+            size='xs'
+            variant='subtle'
+            color='gray'
+            onClick={download}
+          >
+            <IconFileExport size={14} />
+          </ActionIcon>
+        </Tooltip>
+      )}
       {onRegenerate && (
         <Tooltip label={t`Regenerate`} withArrow>
           <ActionIcon
@@ -863,20 +903,63 @@ function MessageActions({
 /**
  * Single chat message component - CopilotKit style
  */
+/** S11 (§8.8): the six DISTINCT no-data states; the client never converts
+ *  an empty result into "no records exist" on its own. */
+function noDataReasonLabel(
+  reason: NonNullable<EvidenceAnalysisAttachment['no_data_reason']>,
+  populationCount: number | null
+): string {
+  switch (reason) {
+    case 'complete_population_no_matches':
+      return populationCount != null
+        ? t`No matching records among the ${populationCount} evaluated.`
+        : t`No matching records in the fully evaluated population.`;
+    case 'outside_active_selection':
+      return t`This falls outside the active scope selection.`;
+    case 'unauthorized_or_unavailable':
+      return t`Source not available.`;
+    case 'retrieval_failure':
+      return t`The search could not be completed.`;
+    case 'unresolved_applicability':
+      return t`Could not determine which documents apply.`;
+    case 'incomplete_coverage':
+      return t`Coverage was incomplete; no conclusion was drawn.`;
+  }
+}
+
+/** S11: the CLOSED progress-stage enum, mapped client-side to localized
+ *  strings — server free text can never paint here. */
+function progressStageLabel(stage: string): string {
+  switch (stage) {
+    case 'confirming_scope':
+      return t`Confirming scope`;
+    case 'reviewing_records':
+      return t`Reviewing records`;
+    case 'validating_evidence':
+      return t`Validating evidence`;
+    default:
+      return t`Working`;
+  }
+}
+
 function ChatMessageItem({
   message,
   threadId,
+  aiHost,
   questionArmed,
   questionAnsweredLocally,
   questionResolution,
-  onQuestionAnswer
+  onQuestionAnswer,
+  onRegenerate
 }: Readonly<{
   message: ChatMessage;
   threadId: string | null;
+  aiHost: string;
   questionArmed?: boolean;
   questionAnsweredLocally?: boolean;
   questionResolution?: QuestionResolution;
   onQuestionAnswer?: (text: string) => void;
+  onRegenerate?: () => void;
 }>) {
   const theme = useMantineTheme();
   const isUser = message.role === 'user';
@@ -987,6 +1070,20 @@ function ChatMessageItem({
               ) : message.question ? null : (
                 <MarkdownMessage content={message.content} />
               )
+            ) : message.isStreaming && message.progressStage ? (
+              /* S11: buffered execution shows only the safe generated
+                 stages (plus cancel); no provisional text ever streams. */
+              <Group gap={6} wrap='nowrap'>
+                <Loader size='xs' />
+                <Text
+                  size='xs'
+                  c='dimmed'
+                  aria-live='polite'
+                  data-testid='analysis-progress'
+                >
+                  {progressStageLabel(message.progressStage)}
+                </Text>
+              </Group>
             ) : (
               message.isStreaming && !message.question && <TypingIndicator />
             )}
@@ -1010,10 +1107,62 @@ function ChatMessageItem({
             {!isUser && !message.isStreaming && message.mediaEvidence && (
               <EvidenceChips items={message.mediaEvidence} />
             )}
+            {/* S11: the v2 evidence-analysis block — partial banner,
+                distinct no-data state, coverage, and claim-level evidence.
+                Confidence is NEVER rendered here, even if redundantly sent. */}
+            {!isUser && !message.isStreaming && message.evidenceAnalysis && (
+              <Stack gap={6} mt={8}>
+                {message.evidenceAnalysis.response_state === 'partial' && (
+                  <Alert
+                    color='yellow'
+                    variant='light'
+                    p='xs'
+                    data-testid='analysis-partial'
+                  >
+                    <Text size='xs'>
+                      {t`Partial answer — some checks did not finish.`}
+                      {message.evidenceAnalysis.incomplete_reasons.length
+                        ? ` (${message.evidenceAnalysis.incomplete_reasons
+                            .map((reason) => reason.facet)
+                            .join(', ')})`
+                        : ''}
+                    </Text>
+                  </Alert>
+                )}
+                {message.evidenceAnalysis.no_data_reason && (
+                  <Text
+                    size='xs'
+                    c='dimmed'
+                    data-testid={`no-data-${message.evidenceAnalysis.no_data_reason}`}
+                  >
+                    {noDataReasonLabel(
+                      message.evidenceAnalysis.no_data_reason,
+                      message.evidenceAnalysis.coverage?.population_count ??
+                        null
+                    )}
+                  </Text>
+                )}
+                {message.evidenceAnalysis.coverage && (
+                  <RetrievalCoverage
+                    coverage={message.evidenceAnalysis.coverage}
+                  />
+                )}
+                {threadId && (
+                  <ClaimEvidence
+                    attachment={message.evidenceAnalysis}
+                    host={aiHost}
+                    threadId={threadId}
+                    messageId={message.id}
+                  />
+                )}
+              </Stack>
+            )}
             {/* Diagnosis-rail provenance (S10): a cited answer shows its
-                sources; an uncited one is visibly flagged, never implied. */}
+                sources; an uncited one is visibly flagged, never implied.
+                v1 only — a v2 attachment supersedes it entirely. */}
             {!isUser &&
               !message.isStreaming &&
+              !message.evidenceAnalysis &&
               message.evidence !== undefined && (
                 <Stack gap={4} mt={8}>
                   {message.confidence && (
@@ -1029,16 +1178,15 @@ function ChatMessageItem({
                   {message.evidence.length > 0 ? (
                     <CitationList
                       citations={message.evidence.map((entry, index) => ({
-                        id: index,
-                        turn_key: message.id,
-                        source_type: entry.source_type,
+                        // v1 adapter: ordinals ARE array order here (the
+                        // diagnosis rail has no server manifest).
+                        ordinal: index + 1,
+                        sourceType: entry.source_type,
                         available: true,
-                        as_of: entry.as_of,
-                        source_id: entry.source_id,
-                        source_revision: entry.source_revision,
-                        locator: entry.locator?.field
-                          ? { tool: entry.locator.field }
-                          : undefined
+                        asOf: entry.as_of,
+                        sourceTitle: entry.locator?.field ?? entry.source_type,
+                        sourceId: entry.source_id,
+                        sourceRevision: entry.source_revision
                       }))}
                     />
                   ) : (
@@ -1079,6 +1227,8 @@ function ChatMessageItem({
                 content={message.content}
                 messageId={message.id}
                 threadId={threadId}
+                evidenceAnalysis={message.evidenceAnalysis}
+                onRegenerate={onRegenerate}
               />
             </Box>
           )}
@@ -1120,6 +1270,13 @@ export function AIChatDrawer({
     activeThreadShared,
     shareThread,
     revokeThreadShare,
+    // S1: active analysis scope
+    activeScope,
+    scopeCapable,
+    scopeConflict,
+    setThreadScope,
+    resendLastTurn,
+    aiHost,
     // Structured questions (S22/S23)
     pendingQuestion,
     armQuestion,
@@ -1306,19 +1463,39 @@ export function AIChatDrawer({
     return () => clearInterval(id);
   }, [opened, refreshPendingApprovalCount]);
 
+  // S2: a scope PUT seeded by the routing hint is in flight before a send.
+  const [isApplyingScope, setIsApplyingScope] = useState(false);
+
   // Handle sending a message
   const handleSendMessage = useCallback(
-    (messageText?: string) => {
+    async (messageText?: string) => {
       const text = messageText || inputValue;
-      if (!text.trim() || isLoading || isSyncing) return;
+      if (!text.trim() || isLoading || isSyncing || isApplyingScope) return;
       const fileIds = attachedFiles.map((f) => f.file_id);
-      // S14 B5: the routing hint travels as visible message text — a hint the
-      // server may use for routing/narrowing, never an authority claim. It is
-      // consumed by the first message so follow-ups stay clean.
-      const outgoing = routingHint
-        ? `[Machine: ${routingHint.machineName}] ${text}`
-        : text;
-      sendMessage(outgoing, fileIds.length > 0 ? fileIds : undefined);
+      // S2: the machine hint is now a SCOPE SEED, never message text — it
+      // becomes a server-side explicit-assets scope on this thread before
+      // the first send. Failure narrows nothing, so the send proceeds
+      // unscoped with a visible notice (per-turn authorization is the real
+      // boundary); the typed text always goes out byte-identical.
+      if (routingHint && scopeCapable && !activeThreadShared) {
+        setIsApplyingScope(true);
+        try {
+          const result = await setThreadScope({
+            mode: 'explicit_assets',
+            machine_ids: [routingHint.machineId],
+            display_label: routingHint.machineName.slice(0, 120)
+          });
+          if (!result.ok) {
+            showNotification({
+              color: 'yellow',
+              message: t`Could not set the machine scope — sending without it.`
+            });
+          }
+        } finally {
+          setIsApplyingScope(false);
+        }
+      }
+      sendMessage(text, fileIds.length > 0 ? fileIds : undefined);
       if (routingHint) {
         clearRoutingHint();
       }
@@ -1329,7 +1506,11 @@ export function AIChatDrawer({
       inputValue,
       isLoading,
       isSyncing,
+      isApplyingScope,
       sendMessage,
+      setThreadScope,
+      scopeCapable,
+      activeThreadShared,
       attachedFiles,
       routingHint,
       clearRoutingHint
@@ -1382,6 +1563,15 @@ export function AIChatDrawer({
     createNewThread();
   }, [createNewThread]);
 
+  // S2: a machine hint aimed at a shared (read-only) thread hops to a new
+  // owned thread — the composer is disabled on shared transcripts, so the
+  // ask could never be sent there.
+  useEffect(() => {
+    if (opened && routingHint && activeThreadShared) {
+      handleNewThread();
+    }
+  }, [opened, routingHint, activeThreadShared, handleNewThread]);
+
   const handleClearChat = useCallback(() => {
     setAttachedFiles([]);
     clearChat();
@@ -1417,6 +1607,10 @@ export function AIChatDrawer({
       size={drawerWidth}
       position='right'
       onClose={handleClose}
+      // The live suites' resilient fallbacks read the transcript through
+      // this id; it was referenced by tests but never existed, so the
+      // fallback branch hung to the whole-test timeout (found 2026-08-28).
+      data-testid='ai-chat-drawer'
       withCloseButton={false}
       closeOnClickOutside={false}
       trapFocus={false}
@@ -1694,11 +1888,20 @@ export function AIChatDrawer({
               )}
 
               {/* Message list */}
-              {messages.map((message) => (
+              {messages.map((message, index) => (
                 <ChatMessageItem
                   key={message.id}
                   message={message}
                   threadId={activeThreadId}
+                  aiHost={aiHost}
+                  onRegenerate={
+                    // A regenerate is a NEW audited turn (fresh idempotency
+                    // key) appended to the thread — never an overwrite.
+                    message.role === 'assistant' &&
+                    index === messages.length - 1
+                      ? resendLastTurn
+                      : undefined
+                  }
                   questionArmed={
                     !!message.question &&
                     pendingQuestion?.interrupt_id ===
@@ -1742,6 +1945,20 @@ export function AIChatDrawer({
                   <Text size='xs' c='red.7'>
                     {error}
                   </Text>
+                  {/* S1: a scope-version conflict keeps the bounced turn
+                      for one-click resend after the refreshed scope. */}
+                  {scopeConflict && (
+                    <Button
+                      size='compact-xs'
+                      variant='light'
+                      color='red'
+                      mt={6}
+                      onClick={resendLastTurn}
+                      data-testid='ai-chat-scope-resend'
+                    >
+                      {t`Send again`}
+                    </Button>
+                  )}
                 </Paper>
               )}
             </Box>
@@ -1883,6 +2100,31 @@ export function AIChatDrawer({
                 </Badge>
               </Group>
             )}
+            {/* S2: the server-confirmed analysis scope, always visible
+                above the composer when the backend advertises the
+                capability. */}
+            {scopeCapable && (
+              <ActiveScopeBanner
+                scope={activeScope}
+                readOnly={activeThreadShared || activeScope?.editable === false}
+                busy={isApplyingScope}
+                hint={routingHint ?? undefined}
+                onSelectFleet={() => {
+                  void setThreadScope({ mode: 'all_authorized_assets' });
+                }}
+                onSelectHintMachine={
+                  routingHint
+                    ? () => {
+                        void setThreadScope({
+                          mode: 'explicit_assets',
+                          machine_ids: [routingHint.machineId],
+                          display_label: routingHint.machineName.slice(0, 120)
+                        });
+                      }
+                    : undefined
+                }
+              />
+            )}
             <Paper
               radius='xl'
               p='xs'
@@ -1965,7 +2207,10 @@ export function AIChatDrawer({
                         color='blue'
                         onClick={() => handleSendMessage()}
                         disabled={
-                          !inputValue.trim() || isSyncing || activeThreadShared
+                          !inputValue.trim() ||
+                          isSyncing ||
+                          activeThreadShared ||
+                          isApplyingScope
                         }
                         style={{
                           transition: 'transform 0.2s ease',

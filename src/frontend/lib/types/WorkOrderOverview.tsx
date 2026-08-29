@@ -135,6 +135,12 @@ export interface StructuredCloseoutOverview {
   follow_up: string;
   completed_at: string;
   verified_at: string | null;
+  /**
+   * Values reflect the latest applied closeout amendment, not the immutable
+   * base row; `amended` makes the governed correction visible.
+   */
+  amended: boolean;
+  amendment_count: number;
 }
 
 export interface WorkOrderOverview extends WorkOrder {

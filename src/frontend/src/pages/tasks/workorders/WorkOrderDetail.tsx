@@ -531,6 +531,11 @@ function CompletionCard({
         )}
         {closeout && (
           <Stack gap='xs'>
+            {closeout.amended && (
+              <Badge color='yellow' variant='light' w='fit-content'>
+                {t`Amended`}
+              </Badge>
+            )}
             <InfoItem label={t`Action`} value={closeout.action} />
             <InfoItem label={t`Result`} value={closeout.result} />
             <InfoItem

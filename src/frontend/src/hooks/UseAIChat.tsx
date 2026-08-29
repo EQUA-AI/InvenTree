@@ -91,6 +91,27 @@ function extractRetryAfter(response: Response): number | undefined {
 }
 
 /**
+ * S12: read the typed limiter body off a 429/503 without consuming it twice.
+ * Every limiter response carries a machine-readable `code` (QuotaErrorCode);
+ * the body's retry_after wins over the header because CORS can hide headers
+ * on some deployments.
+ */
+async function parseLimiterBody(
+  response: Response
+): Promise<{ code?: string; retryAfter?: number }> {
+  try {
+    const body = await response.clone().json();
+    const retryAfter =
+      typeof body?.retry_after === 'number'
+        ? body.retry_after
+        : extractRetryAfter(response);
+    return { code: body?.code, retryAfter };
+  } catch {
+    return { retryAfter: extractRetryAfter(response) };
+  }
+}
+
+/**
  * Sleep for a specified number of milliseconds
  */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -152,6 +173,18 @@ function generateIdempotencyKey(): string {
  */
 export { AGUIEventType } from '@lib/types/AimmsWire.generated';
 import { AGUIEventType } from '@lib/types/AimmsWire.generated';
+import type {
+  ActiveScopeSummary,
+  AnalysisProgressStage,
+  AnalysisScopeMode,
+  AnalysisScopeUpdate,
+  ThreadScopePayload
+} from '@lib/types/AimmsWire.generated';
+import {
+  type EvidenceAnalysisAttachment,
+  normalizeEvidenceAnalysis,
+  normalizeProgressStage
+} from '../components/aichat/evidenceAnalysis';
 
 /**
  * AG-UI Protocol Event interfaces
@@ -203,16 +236,20 @@ export function threadSummaryLabel(summary?: string | null): string {
 export class AIRunError extends Error {
   failureClass?: string;
   localizedMessage?: string;
+  /** S12: typed limiter Retry-After (seconds), for reset-time copy. */
+  retryAfter?: number;
 
   constructor(
     message: string,
     failureClass?: string,
-    localizedMessage?: string
+    localizedMessage?: string,
+    retryAfter?: number
   ) {
     super(message);
     this.name = 'AIRunError';
     this.failureClass = failureClass;
     this.localizedMessage = localizedMessage;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -377,6 +414,15 @@ export interface ChatMessage {
   mediaEvidence?: MediaEvidenceItem[];
   /** S46: live tool activity for this turn (never persisted; content-free). */
   toolActivity?: ToolActivityEntry[];
+  /**
+   * S11: the consolidated v2 evidence attachment (claims, ordinal citation
+   * manifest, coverage, turn-time scope stamp). Per-message immutable facts
+   * about a COMPLETED turn — persisted like `entities`, and the server
+   * projection overwrites the local copy on every sync.
+   */
+  evidenceAnalysis?: EvidenceAnalysisAttachment;
+  /** S11: live buffered-execution stage (closed enum; never persisted). */
+  progressStage?: AnalysisProgressStage;
 }
 
 /** S46: one tool call's lifecycle as shown in the activity strip. */
@@ -471,6 +517,22 @@ interface ServerThreadInfo {
   last_activity: string | null;
   is_persisted: boolean;
   shared?: boolean;
+  /** S1: compact analysis-scope summary (absent on older backends). */
+  active_scope?: ActiveScopeSummary | null;
+}
+
+/**
+ * S1: the active analysis scope of the current thread, as the UI consumes
+ * it. Server-only state — never written to localStorage (the sharedThreads
+ * precedent), so a scope change made elsewhere is authoritative on the
+ * next fetch and nothing stale survives a reload.
+ */
+export interface ActiveThreadScope {
+  mode: AnalysisScopeMode;
+  version: number;
+  displayLabel: string;
+  editable: boolean;
+  machineCount?: number;
 }
 
 /**
@@ -508,6 +570,9 @@ interface ServerMessage {
   provenance?: { confidence?: string; evidence?: DiagnosisEvidence[] } | null;
   entities?: EntityChip[] | null;
   media_evidence?: MediaEvidenceItem[] | null;
+  /** S11: the SAME object shape the live wires delivered (no re-nesting). */
+  evidence_analysis?: unknown;
+  response_state?: string;
 }
 
 /**
@@ -630,6 +695,8 @@ async function fetchServerThread(
   title: string;
   created_at: string;
   updated_at: string;
+  active_scope: ActiveScopeSummary | null;
+  shared: boolean;
 } | null> {
   try {
     const response = await fetch(
@@ -670,7 +737,11 @@ async function fetchServerThread(
         // R4: media-evidence chips reload the same way.
         mediaEvidence: Array.isArray(m.media_evidence)
           ? m.media_evidence
-          : undefined
+          : undefined,
+        // S11: the consolidated evidence attachment reloads byte-faithfully
+        // through the SAME normalizer every live wire uses (Q83).
+        evidenceAnalysis:
+          normalizeEvidenceAnalysis(m.evidence_analysis) ?? undefined
       })
     );
 
@@ -681,11 +752,101 @@ async function fetchServerThread(
         threadSummaryLabel(data.summary).substring(0, 50) ||
         'Chat',
       created_at: data.created_at,
-      updated_at: data.updated_at
+      updated_at: data.updated_at,
+      // S1: compact scope summary (absent on older backends).
+      active_scope: data.active_scope ?? null,
+      shared: Boolean(data.shared)
     };
   } catch (error) {
     console.error('Error fetching server thread:', error);
     return null;
+  }
+}
+
+/**
+ * S1: fetch the full analysis-scope payload for one thread. A 404 means
+ * the thread has no server row yet (or no scope) — rendered "unconfirmed".
+ */
+async function fetchThreadScope(
+  threadId: string,
+  host: string
+): Promise<ThreadScopePayload | null> {
+  try {
+    const response = await fetch(
+      `${host}/threads/${encodeURIComponent(threadId)}/scope`,
+      {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      }
+    );
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as ThreadScopePayload;
+  } catch (error) {
+    console.error('Error fetching thread scope:', error);
+    return null;
+  }
+}
+
+/** S1: machine-readable outcomes of a scope update. */
+type ScopeUpdateResult =
+  | { ok: true; payload: ThreadScopePayload }
+  | {
+      ok: false;
+      code:
+        | 'scope_version_conflict'
+        | 'scope_update_rejected'
+        | 'not_found'
+        | 'error';
+    };
+
+/**
+ * S1: replace a thread's analysis scope under optimistic concurrency. The
+ * server re-authorizes every referenced asset; a rejection is generic by
+ * design and must be surfaced without inventing detail.
+ */
+async function updateThreadScope(
+  threadId: string,
+  host: string,
+  expectedVersion: number,
+  scope: AnalysisScopeUpdate
+): Promise<ScopeUpdateResult> {
+  try {
+    const response = await fetch(
+      `${host}/threads/${encodeURIComponent(threadId)}/scope`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...csrfHeaders()
+        },
+        credentials: 'include',
+        body: JSON.stringify({ expected_version: expectedVersion, scope })
+      }
+    );
+    if (response.ok) {
+      return {
+        ok: true,
+        payload: (await response.json()) as ThreadScopePayload
+      };
+    }
+    const body = await response.json().catch(() => ({}));
+    const detail = typeof body?.detail === 'string' ? body.detail : '';
+    if (response.status === 409 && detail === 'scope_version_conflict') {
+      return { ok: false, code: 'scope_version_conflict' };
+    }
+    if (detail === 'scope_update_rejected') {
+      return { ok: false, code: 'scope_update_rejected' };
+    }
+    if (response.status === 404) {
+      return { ok: false, code: 'not_found' };
+    }
+    return { ok: false, code: 'error' };
+  } catch (error) {
+    console.error('Error updating thread scope:', error);
+    return { ok: false, code: 'error' };
   }
 }
 
@@ -954,6 +1115,63 @@ export function useAIChat(config: AIChatConfig = {}) {
   const [sharedThreads, setSharedThreads] = useState<ChatThread[]>([]);
   const [activeThreadShared, setActiveThreadShared] = useState(false);
 
+  // S1: the active thread's analysis scope. Server-only state (the
+  // sharedThreads precedent) — never localStorage. The version ref is what
+  // sends attach as `expected_scope_version`; null = never observed, and
+  // an unobserved version is OMITTED so brand-new client-minted threads
+  // don't 404 in the server's staleness check before their first turn.
+  const [activeScope, setActiveScope] = useState<ActiveThreadScope | null>(
+    null
+  );
+  const activeScopeVersionRef = useRef<number | null>(null);
+  const [scopeCapable, setScopeCapable] = useState<boolean>(() =>
+    Boolean(lastServerCapabilities.thread_scope)
+  );
+  // S1: a send bounced on scope_version_conflict; the bounced turn is kept
+  // for one-click resend once the refreshed scope has been reviewed.
+  const [scopeConflict, setScopeConflict] = useState(false);
+  const lastTurnRef = useRef<{ content: string; fileIds?: string[] } | null>(
+    null
+  );
+
+  const applyScopeState = useCallback((scope: ActiveThreadScope | null) => {
+    activeScopeVersionRef.current = scope ? scope.version : null;
+    setActiveScope(scope);
+  }, []);
+
+  const applyScopeSummary = useCallback(
+    (summary: ActiveScopeSummary | null | undefined, shared: boolean): void => {
+      if (!summary) {
+        applyScopeState(null);
+        return;
+      }
+      applyScopeState({
+        mode: summary.mode,
+        version: summary.version,
+        displayLabel: summary.display_label,
+        editable: !shared
+      });
+    },
+    [applyScopeState]
+  );
+
+  const applyScopePayload = useCallback(
+    (payload: ThreadScopePayload | null): void => {
+      if (!payload) {
+        applyScopeState(null);
+        return;
+      }
+      applyScopeState({
+        mode: payload.scope.mode,
+        version: payload.version,
+        displayLabel: payload.display_label,
+        editable: payload.editable,
+        machineCount: payload.scope.machine_ids.length
+      });
+    },
+    [applyScopeState]
+  );
+
   const [activeThreadId, setActiveThreadId] = useState<string>(() => {
     // Initialize with the most recent thread or create a new one
     const threads = loadStoredThreads();
@@ -1028,6 +1246,9 @@ export function useAIChat(config: AIChatConfig = {}) {
       if (!serverData) {
         return;
       }
+
+      // S1: the capability advertisement gates the whole scope feature.
+      setScopeCapable(Boolean(serverData.capabilities?.thread_scope));
 
       const localThreads = storedThreadsRef.current;
       setSharedThreads(
@@ -1107,6 +1328,8 @@ export function useAIChat(config: AIChatConfig = {}) {
           setStoredThreads(withAuthoritativeMessages);
           if (activeThreadIdRef.current === nextActiveThreadId) {
             setMessages(serverThread.messages);
+            // S1: the detail's scope summary is authoritative for the UI.
+            applyScopeSummary(serverThread.active_scope, serverThread.shared);
           }
         } else if (activeThreadIdRef.current === nextActiveThreadId) {
           setMessages([]);
@@ -1127,7 +1350,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       setIsSyncing(false);
       syncInProgressRef.current = false;
     }
-  }, [isLoggedIn, aiHost]);
+  }, [isLoggedIn, aiHost, applyScopeSummary]);
 
   /**
    * Load thread messages from server if not available locally
@@ -1143,6 +1366,11 @@ export function useAIChat(config: AIChatConfig = {}) {
         const expiresAt = last?.question?.expires_at;
         const unexpired = !expiresAt || new Date(expiresAt) > new Date();
         setPendingQuestion(last?.question && unexpired ? last.question : null);
+        // S1: scope rides the detail projection; only the active thread's
+        // scope may occupy the banner state.
+        if (activeThreadIdRef.current === threadId) {
+          applyScopeSummary(serverData.active_scope, serverData.shared);
+        }
         // Update stored thread with messages
         setStoredThreads((prev) => {
           const idx = prev.findIndex((t) => t.id === threadId);
@@ -1165,7 +1393,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       }
       return null;
     },
-    [aiHost]
+    [aiHost, applyScopeSummary]
   );
 
   // Sync on mount and when user changes
@@ -1263,8 +1491,13 @@ export function useAIChat(config: AIChatConfig = {}) {
 
         // S46: toolActivity is a live-turn affordance — never persisted
         // (no schema-version burden, no stale spinners on reload).
+        // S11: progressStage likewise (a transient buffered-execution label).
         const persistable = currentMessages.map(
-          ({ toolActivity: _toolActivity, ...rest }) => rest
+          ({
+            toolActivity: _toolActivity,
+            progressStage: _progressStage,
+            ...rest
+          }) => rest
         );
         const updatedThread: StoredThread = {
           id: activeThreadId,
@@ -1319,6 +1552,9 @@ export function useAIChat(config: AIChatConfig = {}) {
         activeThreadIdRef.current = threadId;
         setActiveThreadId(threadId);
         setActiveThreadShared(true);
+        // S1: clear synchronously so the outgoing thread's scope can never
+        // leak into this one while the detail fetch is in flight.
+        applyScopeState(null);
         setError(null);
         setIsLoading(true);
         try {
@@ -1339,6 +1575,8 @@ export function useAIChat(config: AIChatConfig = {}) {
       if (thread) {
         activeThreadIdRef.current = threadId;
         setActiveThreadId(threadId);
+        // S1: no cross-thread scope leakage (see the shared branch above).
+        applyScopeState(null);
         setError(null);
 
         // If thread has no messages locally but is persisted, load from server
@@ -1359,6 +1597,15 @@ export function useAIChat(config: AIChatConfig = {}) {
           }
         } else {
           setMessages(thread.messages);
+          // S1: local messages skip the detail fetch, so recover the scope
+          // in the background (404 → stays unconfirmed, which is correct).
+          if (thread.isPersisted) {
+            void fetchThreadScope(threadId, aiHost).then((payload) => {
+              if (activeThreadIdRef.current === threadId) {
+                applyScopePayload(payload);
+              }
+            });
+          }
         }
       }
     },
@@ -1368,7 +1615,10 @@ export function useAIChat(config: AIChatConfig = {}) {
       sharedThreads,
       activeThreadShared,
       saveCurrentThread,
-      loadThreadFromServer
+      loadThreadFromServer,
+      applyScopeState,
+      applyScopePayload,
+      aiHost
     ]
   );
 
@@ -1385,10 +1635,12 @@ export function useAIChat(config: AIChatConfig = {}) {
     activeThreadIdRef.current = newId;
     setActiveThreadId(newId);
     setActiveThreadShared(false);
+    // S1: a new thread starts unconfirmed — no scope carries over.
+    applyScopeState(null);
     setMessages([]);
     setError(null);
     return newId;
-  }, [messages, activeThreadShared, saveCurrentThread]);
+  }, [messages, activeThreadShared, saveCurrentThread, applyScopeState]);
 
   /**
    * Delete a thread (both locally and on server)
@@ -1550,6 +1802,32 @@ export function useAIChat(config: AIChatConfig = {}) {
     []
   );
 
+  /** S11: attach the consolidated v2 evidence attachment; clears progress. */
+  const attachEvidenceAnalysis = useCallback(
+    (messageId: string, attachment: EvidenceAnalysisAttachment) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId
+            ? { ...msg, evidenceAnalysis: attachment, progressStage: undefined }
+            : msg
+        )
+      );
+    },
+    []
+  );
+
+  /** S11: show one content-free buffered-execution stage (closed enum). */
+  const attachProgressStage = useCallback(
+    (messageId: string, stage: AnalysisProgressStage) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, progressStage: stage } : msg
+        )
+      );
+    },
+    []
+  );
+
   /** S46: upsert one tool call's lifecycle entry, keyed by toolCallId. */
   const upsertToolActivity = useCallback(
     (messageId: string, entry: ToolActivityEntry) => {
@@ -1605,6 +1883,58 @@ export function useAIChat(config: AIChatConfig = {}) {
     }
   }, []);
 
+  /** S1: re-fetch the active thread's full scope (null → unconfirmed). */
+  const refreshThreadScope = useCallback(async () => {
+    const threadId = activeThreadIdRef.current;
+    if (!threadId) return;
+    const payload = await fetchThreadScope(threadId, aiHost);
+    if (activeThreadIdRef.current === threadId) {
+      applyScopePayload(payload);
+    }
+  }, [aiHost, applyScopePayload]);
+
+  /**
+   * S1: replace the active thread's analysis scope. On a version conflict
+   * the update refreshes once and retries once; the caller sees only the
+   * final outcome. Success applies the canonical server payload, so the
+   * very next send carries the fresh `expected_scope_version`.
+   */
+  const setThreadScope = useCallback(
+    async (
+      scope: AnalysisScopeUpdate
+    ): Promise<{ ok: boolean; code?: string }> => {
+      const threadId = activeThreadIdRef.current;
+      if (!threadId) return { ok: false, code: 'error' };
+      let result = await updateThreadScope(
+        threadId,
+        aiHost,
+        activeScopeVersionRef.current ?? 0,
+        scope
+      );
+      if (!result.ok && result.code === 'scope_version_conflict') {
+        const current = await fetchThreadScope(threadId, aiHost);
+        if (activeThreadIdRef.current !== threadId) {
+          return { ok: false, code: 'error' };
+        }
+        applyScopePayload(current);
+        result = await updateThreadScope(
+          threadId,
+          aiHost,
+          current?.version ?? 0,
+          scope
+        );
+      }
+      if (result.ok) {
+        if (activeThreadIdRef.current === threadId) {
+          applyScopePayload(result.payload);
+        }
+        return { ok: true };
+      }
+      return { ok: false, code: result.code };
+    },
+    [aiHost, applyScopePayload]
+  );
+
   /**
    * Send a message and get AI response
    * Handles AG-UI protocol events from Microsoft Agent Framework
@@ -1614,6 +1944,10 @@ export function useAIChat(config: AIChatConfig = {}) {
       if (!userContent.trim() || isLoading) return;
 
       setError(null);
+      // S1: every send clears a standing conflict and becomes the turn a
+      // later conflict would offer to resend.
+      setScopeConflict(false);
+      lastTurnRef.current = { content: userContent.trim(), fileIds };
       // S22: any send disarms the card — the server slot is consume-on-read,
       // so whatever this message is, the question cannot be answered later.
       // Remember which card this send answered so its frozen state reads
@@ -1666,7 +2000,10 @@ export function useAIChat(config: AIChatConfig = {}) {
           message: userContent.trim(),
           thread_id: activeThreadId,
           file_ids: fileIds && fileIds.length > 0 ? fileIds : undefined,
-          idempotency_key: idempotencyKey
+          idempotency_key: idempotencyKey,
+          // S1: staleness detector — attached only once a server version has
+          // been observed, so brand-new client-minted threads send nothing.
+          expected_scope_version: activeScopeVersionRef.current ?? undefined
         };
 
         // Use streaming endpoint for real-time AG-UI events
@@ -1703,6 +2040,8 @@ export function useAIChat(config: AIChatConfig = {}) {
                     fileIds:
                       fileIds && fileIds.length > 0 ? fileIds : undefined,
                     idempotencyKey,
+                    expectedScopeVersion:
+                      activeScopeVersionRef.current ?? undefined,
                     signal: abortControllerRef.current!.signal,
                     csrfToken: getCsrfCookie() || undefined,
                     callbacks: {
@@ -1795,6 +2134,23 @@ export function useAIChat(config: AIChatConfig = {}) {
                           confidence
                         );
                       },
+                      // S11: the same normalizer as the legacy wire and the
+                      // reload projection — one payload, three envelopes.
+                      onEvidenceAnalysis: (value) => {
+                        const attachment = normalizeEvidenceAnalysis(value);
+                        if (attachment) {
+                          attachEvidenceAnalysis(
+                            assistantMessage.id,
+                            attachment
+                          );
+                        }
+                      },
+                      onAnalysisProgress: (stage) => {
+                        const normalized = normalizeProgressStage(stage);
+                        if (normalized) {
+                          attachProgressStage(assistantMessage.id, normalized);
+                        }
+                      },
                       onProposalsRefresh: () => {
                         window.dispatchEvent(
                           new CustomEvent('aimms:proposals-refresh')
@@ -1828,7 +2184,8 @@ export function useAIChat(config: AIChatConfig = {}) {
                     throw new AIRunError(
                       aguiError.message,
                       aguiError.failureClass,
-                      aguiError.localizedMessage
+                      aguiError.localizedMessage,
+                      aguiError.retryAfter
                     );
                   }
                   throw aguiError;
@@ -1848,16 +2205,35 @@ export function useAIChat(config: AIChatConfig = {}) {
                 credentials: 'include'
               });
 
-              // Check for rate limiting
+              // Check for rate limiting. S12: parse the typed body FIRST —
+              // a spent daily budget (`token_budget_exhausted`) resets at
+              // UTC midnight and must never be auto-retried, while a
+              // rate-window 429 (`rate_limited`) retries bounded.
               if (response.status === 429) {
-                if (retryAttempt >= retryConfig.maxAttempts - 1) {
-                  throw new Error('HTTP error! status: 429');
+                const limiter = await parseLimiterBody(response);
+                if (limiter.code === 'token_budget_exhausted') {
+                  throw new AIRunError(
+                    'Daily AI usage limit reached.',
+                    'token_budget_exhausted',
+                    undefined,
+                    limiter.retryAfter
+                  );
                 }
-                const retryAfter = extractRetryAfter(response);
+                if (
+                  retryAttempt >= retryConfig.maxAttempts - 1 ||
+                  (limiter.retryAfter ?? 0) > 60
+                ) {
+                  throw new AIRunError(
+                    'HTTP error! status: 429',
+                    'rate_limited',
+                    undefined,
+                    limiter.retryAfter
+                  );
+                }
                 const delay = calculateRetryDelay(
                   retryAttempt,
                   retryConfig,
-                  retryAfter
+                  limiter.retryAfter
                 );
                 console.warn(
                   `[AI Chat] Rate limited. Retrying in ${delay}ms (attempt ${retryAttempt + 1}/${retryConfig.maxAttempts})`
@@ -1865,6 +2241,61 @@ export function useAIChat(config: AIChatConfig = {}) {
                 await sleep(delay, abortControllerRef.current.signal);
                 retryAttempt++;
                 continue;
+              }
+
+              // S13: typed 503s. Capacity saturation retries after the
+              // server's short jittered Retry-After; an enforce-mode quota
+              // store outage is terminal (never auto-retried).
+              if (response.status === 503) {
+                const limiter = await parseLimiterBody(response);
+                if (limiter.code === 'quota_store_unavailable') {
+                  throw new AIRunError(
+                    'AI usage controls are unavailable.',
+                    'quota_store_unavailable',
+                    undefined,
+                    limiter.retryAfter
+                  );
+                }
+                if (
+                  limiter.code === 'ai_capacity_busy' &&
+                  retryAttempt < retryConfig.maxAttempts - 1
+                ) {
+                  const delay = calculateRetryDelay(
+                    retryAttempt,
+                    retryConfig,
+                    limiter.retryAfter
+                  );
+                  console.warn(
+                    `[AI Chat] Capacity busy. Retrying in ${delay}ms (attempt ${retryAttempt + 1}/${retryConfig.maxAttempts})`
+                  );
+                  await sleep(delay, abortControllerRef.current.signal);
+                  retryAttempt++;
+                  continue;
+                }
+                if (limiter.code === 'ai_capacity_busy') {
+                  throw new AIRunError(
+                    'The AI service is at capacity.',
+                    'ai_capacity_busy',
+                    undefined,
+                    limiter.retryAfter
+                  );
+                }
+                // Untyped 503: the generic retry path below handles it.
+              }
+
+              // S1: a scope-version conflict is terminal for this attempt
+              // and must surface distinctly — the generic throw below
+              // discards the body, which carries exactly the code we need.
+              // Any other 409 (idempotency conflict) keeps the old path.
+              if (response.status === 409) {
+                const body = await response.json().catch(() => ({}));
+                if (body?.detail === 'scope_version_conflict') {
+                  throw new AIRunError(
+                    'The conversation scope changed.',
+                    'scope_version_conflict'
+                  );
+                }
+                throw new Error('HTTP error! status: 409');
               }
 
               if (!response.ok) {
@@ -2139,6 +2570,32 @@ export function useAIChat(config: AIChatConfig = {}) {
                                     e.attachment_id > 0
                                 )
                               );
+                            }
+                            // S11: the consolidated v2 evidence attachment.
+                            const gateEvent = event as unknown as {
+                              kind?: string;
+                              stage?: unknown;
+                            };
+                            if (gateEvent.kind === 'evidence_analysis') {
+                              const attachment =
+                                normalizeEvidenceAnalysis(event);
+                              if (attachment) {
+                                attachEvidenceAnalysis(
+                                  assistantMessage.id,
+                                  attachment
+                                );
+                              }
+                            }
+                            // S11: content-free buffered-execution stages —
+                            // the client maps the CLOSED enum to localized
+                            // strings; server free text never paints.
+                            if (gateEvent.kind === 'analysis_progress') {
+                              const stage = normalizeProgressStage(
+                                gateEvent.stage
+                              );
+                              if (stage) {
+                                attachProgressStage(assistantMessage.id, stage);
+                              }
                             }
                             break;
                           }
@@ -2433,8 +2890,19 @@ export function useAIChat(config: AIChatConfig = {}) {
           // S38: prefer the server's copy in the user's chat language (it
           // matches the persisted failed-turn message); fall back to local
           // English strings for typed classes from older backends.
+          // S1: a scope-version conflict from any wire (legacy stream,
+          // axios detail, AG-UI failureClass) converges here.
+          const scopeConflictHit =
+            err.failureClass === 'scope_version_conflict' ||
+            (err.response?.status === 409 &&
+              err.response?.data?.detail === 'scope_version_conflict');
           let errorMsg = err.message || 'Failed to get AI response';
-          if (err.localizedMessage) {
+          if (scopeConflictHit) {
+            errorMsg =
+              'The conversation scope changed. Review the scope and send again.';
+            setScopeConflict(true);
+            void refreshThreadScope();
+          } else if (err.localizedMessage) {
             errorMsg = err.localizedMessage;
           } else if (err.failureClass === 'provider_outage') {
             errorMsg =
@@ -2442,13 +2910,29 @@ export function useAIChat(config: AIChatConfig = {}) {
           } else if (err.failureClass === 'rate_limited') {
             errorMsg =
               'The AI service is handling too many requests right now. Wait a moment and try again.';
+          } else if (err.failureClass === 'token_budget_exhausted') {
+            const resetAt = err.retryAfter
+              ? new Date(Date.now() + err.retryAfter * 1000).toLocaleTimeString(
+                  [],
+                  { hour: '2-digit', minute: '2-digit' }
+                )
+              : undefined;
+            errorMsg = resetAt
+              ? `The daily AI usage limit is reached. It resets at ${resetAt}.`
+              : 'The daily AI usage limit is reached. It resets at midnight UTC.';
+          } else if (err.failureClass === 'ai_capacity_busy') {
+            errorMsg =
+              'The AI service is at capacity right now. Please try again in a moment.';
+          } else if (err.failureClass === 'quota_store_unavailable') {
+            errorMsg =
+              'AI usage controls are temporarily unavailable, so requests are paused. Please try again later.';
           }
           setError(errorMsg);
           // Server-localized copy is complete on its own — prefixing it with
           // English would mix languages for non-English users (P8-W0e).
           updateMessage(
             assistantMessage.id,
-            err.localizedMessage
+            err.localizedMessage || scopeConflictHit
               ? errorMsg
               : `Sorry, I encountered an error: ${errorMsg}`
           );
@@ -2463,6 +2947,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       activeThreadId,
       mergedConfig,
       messages,
+      refreshThreadScope,
       addMessage,
       updateMessage,
       appendToMessage,
@@ -2592,6 +3077,18 @@ export function useAIChat(config: AIChatConfig = {}) {
     setHitlResult(null);
   }, []);
 
+  /**
+   * S1: replay the turn that bounced on a scope conflict. The replay is an
+   * ordinary send (new idempotency key, fresh observed version); the
+   * duplicate user bubble is an accepted v1 tradeoff.
+   */
+  const resendLastTurn = useCallback(() => {
+    const last = lastTurnRef.current;
+    if (last) {
+      void sendMessage(last.content, last.fileIds);
+    }
+  }, [sendMessage]);
+
   return {
     // Current thread state
     messages,
@@ -2619,6 +3116,17 @@ export function useAIChat(config: AIChatConfig = {}) {
     activeThreadShared,
     shareThread,
     revokeThreadShare,
+
+    // S1: active analysis scope
+    activeScope,
+    scopeCapable,
+    scopeConflict,
+    refreshThreadScope,
+    setThreadScope,
+    resendLastTurn,
+
+    // S11: the AI service host (evidence-set expansion fetches).
+    aiHost,
 
     // Sync functionality
     isSyncing,

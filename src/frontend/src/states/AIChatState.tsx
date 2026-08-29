@@ -1,12 +1,15 @@
 import { create } from 'zustand';
 
 /**
- * A visible routing hint carried into the AI chat drawer (S14 B5).
+ * A machine hint carried into the AI chat drawer (S14 B5, repurposed S2).
  *
- * The hint is display text only: it pre-fills context so the assistant knows
- * which machine the user is asking about, but every tool call re-authorizes
- * server-side under the acting user. A denied or out-of-scope machine stays
- * indistinguishable from a nonexistent one regardless of what the hint claims.
+ * The hint is the SCOPE SEED: the first send consumes it as a server-side
+ * `PUT /threads/{id}/scope` (explicit single-machine analysis scope) —
+ * never as message text. It grants nothing: the server re-authorizes the
+ * machine id on the scope update and again on every turn, and a denied or
+ * out-of-scope machine stays indistinguishable from a nonexistent one.
+ * Against a backend without the scope capability it degrades to its
+ * original role — a display-only chip.
  */
 export interface AIChatRoutingHint {
   machineId: number;

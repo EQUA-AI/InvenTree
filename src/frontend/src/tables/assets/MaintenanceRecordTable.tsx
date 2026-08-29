@@ -126,7 +126,16 @@ export function MaintenanceRecordTable({
         title: t`Downtime`,
         sortable: false,
         render: (record: AssetMaintenanceRecord) =>
-          formatDowntime(record.downtime_minutes)
+          record.amended ? (
+            <Group gap={4} wrap='nowrap'>
+              <Text size='sm'>{formatDowntime(record.downtime_minutes)}</Text>
+              <Badge size='xs' color='yellow' variant='light'>
+                {t`Amended`}
+              </Badge>
+            </Group>
+          ) : (
+            formatDowntime(record.downtime_minutes)
+          )
       },
       {
         accessor: 'verified',

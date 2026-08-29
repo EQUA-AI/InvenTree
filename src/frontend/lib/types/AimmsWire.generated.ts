@@ -58,7 +58,9 @@ export type AimmsCustomChannel =
   | 'aimms.stateDelta'
   | 'aimms.proposalsRefresh'
   | 'aimms.hitl'
-  | 'aimms.custom';
+  | 'aimms.custom'
+  | 'aimms.evidenceAnalysis'
+  | 'aimms.analysisProgress';
 
 // --- Proposal rail (aichat.models) ---
 
@@ -172,6 +174,7 @@ export interface VoiceSessionPayload {
   turn_count: number;
   policy_version: string;
   terminal_reason: string | null;
+  analysis_scope_version: number;
 }
 
 export interface VoiceSpokenPayload {
@@ -219,4 +222,198 @@ export type ServerVoiceErrorCode =
   | 'VOICE_SIGNALING_FAILED'
   | 'VOICE_TRANSPORT_UNAVAILABLE'
   | 'VOICE_TRANSCRIPT_INCOMPLETE'
-  | 'VOICE_RESPONSE_INCOMPLETE';
+  | 'VOICE_RESPONSE_INCOMPLETE'
+  | 'VOICE_SCOPE_CHANGED';
+
+// --- Analysis scope (ai.core.analysis.scope / .wire) ---
+
+export type AnalysisScopeMode =
+  | 'all_authorized_assets'
+  | 'explicit_assets'
+  | 'legacy_unconfirmed'
+  | 'site_group';
+
+export type AnalysisSourceClass =
+  | 'controlled_document'
+  | 'asset_attachment'
+  | 'work_order'
+  | 'maintenance_record';
+
+export interface AnalysisScopeDateWindow {
+  from: string | null;
+  to: string | null;
+}
+
+export interface AnalysisScopePayload {
+  schema_version: number;
+  mode: AnalysisScopeMode;
+  machine_ids: number[];
+  date_window: AnalysisScopeDateWindow;
+  source_classes: AnalysisSourceClass[];
+  display_label: string;
+}
+
+export interface AnalysisScopeUpdate {
+  mode: AnalysisScopeMode;
+  machine_ids?: number[] | null;
+  date_window?: AnalysisScopeDateWindow | null;
+  source_classes?: AnalysisSourceClass[] | null;
+  display_label?: string | null;
+}
+
+export interface ActiveScopeSummary {
+  mode: AnalysisScopeMode;
+  version: number;
+  display_label: string;
+}
+
+export interface ThreadScopePayload {
+  thread_id: string;
+  scope: AnalysisScopePayload;
+  version: number;
+  hash: string;
+  display_label: string;
+  editable: boolean;
+}
+
+export interface ThreadScopeUpdateRequest {
+  expected_version: number;
+  scope: AnalysisScopeUpdate;
+}
+
+export type ScopeErrorCode =
+  | 'scope_version_conflict'
+  | 'scope_update_rejected';
+
+// --- Quota / admission (ai.core.quota.wire) ---
+
+export type QuotaErrorCode =
+  | 'token_budget_exhausted'
+  | 'rate_limited'
+  | 'ai_capacity_busy'
+  | 'quota_store_unavailable';
+
+export type PilotErrorCode =
+  | 'pilot_stopped'
+  | 'pilot_latch_unavailable';
+
+export interface QuotaWindowStatus {
+  limit: number;
+  used: number;
+  remaining: number;
+  reset_after_s: number;
+}
+
+export interface QuotaTokenLevel {
+  used: number;
+  reserved: number;
+  remaining: number;
+  cap: number;
+  reset_after_s: number;
+}
+
+export interface QuotaStoreStatus {
+  healthy: boolean;
+  shared: boolean;
+}
+
+export interface QuotaPreflightPayload {
+  profile: string;
+  policy_version: number;
+  tokens: Record<string, QuotaTokenLevel>;
+  requests: Record<string, QuotaWindowStatus>;
+  store: QuotaStoreStatus;
+  fits: boolean | null;
+  pilot_stopped: boolean | null;
+}
+
+// --- Evidence analysis v2 (ai.core.analysis.schemas / .wire) ---
+
+export type EvidenceClassification =
+  | 'documented'
+  | 'calculated'
+  | 'inferred'
+  | 'insufficient';
+
+export type AnalysisProgressStage =
+  | 'confirming_scope'
+  | 'reviewing_records'
+  | 'validating_evidence';
+
+export type AnalysisNoDataReason =
+  | 'complete_population_no_matches'
+  | 'outside_active_selection'
+  | 'unauthorized_or_unavailable'
+  | 'retrieval_failure'
+  | 'unresolved_applicability'
+  | 'incomplete_coverage';
+
+export interface RetrievalCoveragePayload {
+  population_count: number;
+  returned_count: number;
+  complete_population: boolean;
+  display_truncated: boolean;
+  date_field: string | null;
+  timezone: string | null;
+  filters: string[];
+  as_of: string;
+  snapshot_label: string | null;
+  excluded_null_date_count: number | null;
+  incomplete_reason: string | null;
+}
+
+export interface CitationLocator {
+  page: number | null;
+  section: string | null;
+  field: string | null;
+}
+
+export interface CitationManifestEntry {
+  ordinal: number;
+  source_type: string;
+  source_id: string | null;
+  source_title: string | null;
+  source_revision: string | null;
+  source_class: string | null;
+  controlled: boolean;
+  as_of: string;
+  available: boolean;
+  locator: CitationLocator | null;
+  applicability: string | null;
+  evidence_set_id: string | null;
+  calculation: string | null;
+}
+
+export interface ClaimPayload {
+  claim_id: string;
+  claim_role: string;
+  claim_type: string;
+  evidence_classification: EvidenceClassification;
+  citation_ordinals: number[];
+  entity_refs: string[];
+}
+
+export interface AnalysisScopeStamp {
+  display_label: string;
+  version: number;
+}
+
+export interface AnalysisIncompleteReasonPayload {
+  code: string;
+  facet: string;
+}
+
+export interface EvidenceSetMember {
+  member_index: number;
+  source_class: string;
+  source_object_id: string | null;
+  label: string | null;
+  available: boolean;
+}
+
+export interface EvidenceSetPage {
+  members: EvidenceSetMember[];
+  population_count: number;
+  complete: boolean;
+  next_cursor: string | null;
+}

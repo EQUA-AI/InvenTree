@@ -17,16 +17,20 @@ import type { AimmsCustomChannel } from '@lib/types/AimmsWire.generated';
 export class AguiRunError extends Error {
   failureClass?: string;
   localizedMessage?: string;
+  /** S12: typed limiter Retry-After (seconds). */
+  retryAfter?: number;
 
   constructor(
     message: string,
     failureClass?: string,
-    localizedMessage?: string
+    localizedMessage?: string,
+    retryAfter?: number
   ) {
     super(message);
     this.name = 'AguiRunError';
     this.failureClass = failureClass;
     this.localizedMessage = localizedMessage;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -59,6 +63,10 @@ export interface AguiTurnCallbacks {
   onEntities(entities: unknown[]): void;
   onMediaEvidence(entries: unknown[]): void;
   onProvenance(evidence: unknown[], confidence: string): void;
+  /** S11: the consolidated evidence attachment (normalized hook-side). */
+  onEvidenceAnalysis(value: unknown): void;
+  /** S11: one content-free buffered-execution stage (closed enum). */
+  onAnalysisProgress(stage: unknown): void;
   onProposalsRefresh(): void;
 }
 
@@ -68,6 +76,8 @@ export interface AguiTurnOptions {
   message: string;
   fileIds?: string[];
   idempotencyKey: string;
+  /** S1: scope staleness detector; omitted when no version was observed. */
+  expectedScopeVersion?: number;
   signal: AbortSignal;
   csrfToken?: string;
   callbacks: AguiTurnCallbacks;
@@ -153,6 +163,16 @@ function dispatchCustom(
         Array.isArray(detail.evidence) ? detail.evidence : [],
         String(detail.confidence ?? '')
       );
+      break;
+    }
+    case 'aimms.evidenceAnalysis':
+      // Raw pass-through: normalization happens hook-side, exactly like
+      // onEntities filtering — one normalizer for every envelope.
+      callbacks.onEvidenceAnalysis(value ?? {});
+      break;
+    case 'aimms.analysisProgress': {
+      const detail = (value ?? {}) as { stage?: unknown };
+      callbacks.onAnalysisProgress(detail.stage);
       break;
     }
     case 'aimms.proposalsRefresh':
@@ -263,7 +283,8 @@ export async function runAguiTurn(options: AguiTurnOptions): Promise<void> {
       {
         forwardedProps: {
           idempotencyKey: options.idempotencyKey,
-          fileIds: options.fileIds
+          fileIds: options.fileIds,
+          expectedScopeVersion: options.expectedScopeVersion
         }
       },
       subscriber
@@ -294,6 +315,42 @@ export async function runAguiTurn(options: AguiTurnOptions): Promise<void> {
     // NEVER let the raw response body reach error copy.
     const resolvedStatus =
       httpStatus ?? Number(/^HTTP (\d{3}):/.exec(message)?.[1] ?? Number.NaN);
+    // S1: the scope-version conflict is a typed, non-retryable outcome —
+    // carry it as a failureClass so the hook's conflict UX can catch it.
+    if (resolvedStatus === 409 && /scope_version_conflict/.test(message)) {
+      throw new AguiRunError(
+        'The conversation scope changed.',
+        'scope_version_conflict'
+      );
+    }
+    // S12: extract the typed limiter code from the SDK's rejection message
+    // BEFORE flattening — a spent budget or an enforce-mode store outage
+    // must surface as its typed class, never as a generic retryable. The
+    // raw body still never reaches error copy (constant messages only).
+    if (resolvedStatus === 429 && /token_budget_exhausted/.test(message)) {
+      throw new AguiRunError(
+        'Daily AI usage limit reached.',
+        'token_budget_exhausted',
+        undefined,
+        Number(/"retry_after"\s*:\s*(\d+)/.exec(message)?.[1] ?? Number.NaN) ||
+          undefined
+      );
+    }
+    if (resolvedStatus === 503 && /quota_store_unavailable/.test(message)) {
+      throw new AguiRunError(
+        'AI usage controls are unavailable.',
+        'quota_store_unavailable'
+      );
+    }
+    if (resolvedStatus === 503 && /ai_capacity_busy/.test(message)) {
+      throw new AguiRunError(
+        'The AI service is at capacity.',
+        'ai_capacity_busy',
+        undefined,
+        Number(/"retry_after"\s*:\s*(\d+)/.exec(message)?.[1] ?? Number.NaN) ||
+          undefined
+      );
+    }
     if ([429, 500, 502, 503, 504].includes(resolvedStatus)) {
       throw new Error(`network error: HTTP ${resolvedStatus} (retryable)`);
     }

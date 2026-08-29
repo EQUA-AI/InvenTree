@@ -1,246 +1,22 @@
-import type { Page, Request } from '@playwright/test';
-
 import { expect, test } from '../baseFixtures.js';
 import { doCachedLogin } from '../login.js';
-
-const threadId = 'thread-playwright-golden';
-
-type SSEEvent = Record<string, unknown>;
-
-interface ObservedRequest {
-  url: string;
-  method: string;
-  headers: Record<string, string>;
-  body?: Record<string, unknown>;
-}
-
-interface FoundationObservations {
-  threadReads: ObservedRequest[];
-  threadMutations: ObservedRequest[];
-}
-
-const goldenEvents: SSEEvent[] = [
-  {
-    type: 'RUN_STARTED',
-    threadId,
-    runId: 'run-golden'
-  },
-  {
-    type: 'WORKFLOW_STARTED',
-    threadId,
-    runId: 'run-golden',
-    workflow_id: 'wf1',
-    workflow_name: 'T6_DIAGNOSTICS'
-  },
-  {
-    type: 'TEXT_MESSAGE_START',
-    threadId,
-    runId: 'run-golden',
-    messageId: 'message-golden',
-    role: 'assistant'
-  },
-  {
-    type: 'TEXT_MESSAGE_CONTENT',
-    threadId,
-    runId: 'run-golden',
-    messageId: 'message-golden',
-    delta: 'Golden typed response'
-  },
-  {
-    type: 'TEXT_MESSAGE_END',
-    threadId,
-    runId: 'run-golden',
-    messageId: 'message-golden'
-  },
-  {
-    type: 'RUN_FINISHED',
-    threadId,
-    runId: 'run-golden'
-  }
-];
-
-function sseBody(events: SSEEvent[] = goldenEvents): string {
-  return `${events
-    .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
-    .join('')}data: [DONE]\n\n`;
-}
-
-function aguiBody(events: SSEEvent[]): string {
-  return events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('');
-}
-
-async function observeRequest(request: Request): Promise<ObservedRequest> {
-  let body: Record<string, unknown> | undefined;
-  if (request.postData()) {
-    try {
-      body = request.postDataJSON() as Record<string, unknown>;
-    } catch {
-      // Multipart uploads are asserted from their raw body separately.
-    }
-  }
-
-  return {
-    url: request.url(),
-    method: request.method(),
-    headers: await request.allHeaders(),
-    body
-  };
-}
-
-async function mockChatFoundation(page: Page): Promise<FoundationObservations> {
-  const observations: FoundationObservations = {
-    threadReads: [],
-    threadMutations: []
-  };
-
-  await page.route('**/api/approvals/count/**', async (route) => {
-    await route.fulfill({ json: { count: 0 } });
-  });
-
-  await page.route('**/api/ai/threads**', async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const isThreadDetail = url.pathname.endsWith(`/threads/${threadId}`);
-
-    if (isThreadDetail && request.method() === 'PUT') {
-      observations.threadMutations.push(await observeRequest(request));
-      await route.fulfill({
-        json: {
-          thread_id: threadId,
-          title: url.searchParams.get('title'),
-          updated: true
-        }
-      });
-      return;
-    }
-
-    if (isThreadDetail && request.method() === 'DELETE') {
-      observations.threadMutations.push(await observeRequest(request));
-      await route.fulfill({
-        json: { status: 'deleted', thread_id: threadId }
-      });
-      return;
-    }
-
-    observations.threadReads.push(await observeRequest(request));
-
-    if (isThreadDetail) {
-      await route.fulfill({
-        json: {
-          thread_id: threadId,
-          title: 'Server conversation',
-          summary: 'Server conversation',
-          created_at: '2026-07-15T00:00:00Z',
-          updated_at: '2026-07-15T00:01:00Z',
-          messages: [
-            {
-              id: 'server-message',
-              role: 'assistant',
-              content: 'Durable server history',
-              timestamp: '2026-07-15T00:01:00Z'
-            }
-          ]
-        }
-      });
-      return;
-    }
-
-    await route.fulfill({
-      json: {
-        threads: [
-          {
-            thread_id: threadId,
-            title: 'Server conversation',
-            message_count: 1,
-            turn_count: 1,
-            summary: 'Server conversation',
-            created_at: '2026-07-15T00:00:00Z',
-            last_activity: '2026-07-15T00:01:00Z',
-            is_persisted: true
-          }
-        ],
-        sync_token: null,
-        has_more: false
-      }
-    });
-  });
-
-  return observations;
-}
-
-async function seedLegacyHistory(page: Page) {
-  await page.evaluate(
-    ({ durableThreadId }) => {
-      localStorage.setItem('ai-chat-drawer-active-tab', JSON.stringify('chat'));
-      localStorage.setItem(
-        'ai-chat-threads',
-        JSON.stringify([
-          {
-            id: durableThreadId,
-            title: 'Stale local server title',
-            messages: [
-              {
-                id: 'stale-message',
-                role: 'assistant',
-                content: 'Stale persisted local history',
-                timestamp: '2026-07-14T00:00:00Z'
-              }
-            ],
-            createdAt: '2026-07-14T00:00:00Z',
-            updatedAt: '2026-07-14T00:01:00Z',
-            isPersisted: true
-          },
-          {
-            id: 'legacy-local-only',
-            title: 'Legacy local conversation',
-            messages: [
-              {
-                id: 'legacy-message',
-                role: 'user',
-                content: 'Local-only compatible history',
-                timestamp: '2026-07-13T00:00:00Z'
-              }
-            ],
-            createdAt: '2026-07-13T00:00:00Z',
-            updatedAt: '2026-07-13T00:01:00Z'
-          }
-        ])
-      );
-    },
-    { durableThreadId: threadId }
-  );
-}
-
-async function openChat(page: Page) {
-  await page.getByLabel('open-ai-chat').click();
-  // 'AI Assistant' also appears in the nav button and menu entries, so the
-  // drawer-open assertion must not use a strict single-element match.
-  await expect(
-    page.getByText('AI Assistant', { exact: true }).first()
-  ).toBeVisible();
-}
-
-function expectCredentialedUnsafeRequest(request: ObservedRequest) {
-  expect(request.headers.cookie).toBeTruthy();
-  expect(request.headers['x-csrftoken']).toBeTruthy();
-  expect(request.headers['x-user-id']).toBeUndefined();
-}
-
-function expectNoCallerAuthority(request: ObservedRequest) {
-  expect(request.headers['x-user-id']).toBeUndefined();
-  expect(request.body).not.toHaveProperty('user_id');
-  expect(request.body).not.toHaveProperty('context');
-}
-
-function requiredRequest(
-  request: ObservedRequest | null,
-  description: string
-): ObservedRequest {
-  if (!request) {
-    throw new Error(`${description} was not observed`);
-  }
-  return request;
-}
+// S11 (WP-C1): the shared mocked-chat foundation lives in aichat_harness.ts
+// so the evidence suite exercises the SAME mocks; behavior here is
+// byte-identical to the pre-extraction inline definitions.
+import {
+  type ObservedRequest,
+  aguiBody,
+  expectCredentialedUnsafeRequest,
+  expectNoCallerAuthority,
+  goldenEvents,
+  mockChatFoundation,
+  observeRequest,
+  openChat,
+  requiredRequest,
+  seedLegacyHistory,
+  sseBody,
+  threadId
+} from './aichat_harness.js';
 
 test('typed chat uses authoritative server history and renders ordered AG-UI events', async ({
   browser
@@ -899,4 +675,298 @@ test('thread rename and delete use credentialed server mutations', async ({
     'PUT',
     'DELETE'
   ]);
+});
+
+/**
+ * S2: the scope banner renders the unconfirmed state for threads without a
+ * typed scope, and a new thread never inherits one.
+ */
+test('scope banner shows unconfirmed and resets on a new thread', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  await mockChatFoundation(page);
+
+  await page.reload();
+  await openChat(page);
+
+  await expect(page.getByTestId('ai-chat-scope-banner')).toBeVisible();
+  await expect(page.getByTestId('ai-chat-scope-label')).toContainText(
+    'Scope unconfirmed'
+  );
+
+  await page.getByLabel('new-ai-chat-thread').click();
+  await expect(page.getByTestId('ai-chat-scope-label')).toContainText(
+    'Scope unconfirmed'
+  );
+});
+
+/**
+ * S2: a machine launch sets the scope server-side BEFORE the first send —
+ * the typed text goes out byte-identical (no `[Machine: ...]` prefix) and
+ * carries the fresh scope version.
+ */
+test('machine hint becomes a server-side scope, never message text', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  const foundation = await mockChatFoundation(page);
+
+  let streamRequest: ObservedRequest | null = null;
+  await page.route('**/api/ai/chat/stream', async (route) => {
+    streamRequest = await observeRequest(route.request());
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: sseBody()
+    });
+  });
+  await page.route(/\/api\/barcode\//, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: 'Match found',
+        barcode: 'INV-AM1',
+        assetmachine: {
+          pk: 1,
+          api_url: '/api/assets/machines/1/',
+          web_url: '/web/machines/machine/1/',
+          instance: { pk: 1, name: 'Scan Target Machine' }
+        }
+      })
+    })
+  );
+
+  await page.getByLabel('barcode-scan-button-any').click();
+  await page.getByLabel('barcode-scan-keyboard-input').fill('INV-AM1');
+  await page.keyboard.press('Enter');
+  await page.getByTestId('ai-chat-routing-hint').waitFor();
+
+  const composer = page.getByPlaceholder(/Type a message|Answer the question/);
+  await composer.fill('What is wrong?');
+  await page.getByLabel('send-ai-chat-message').click();
+
+  await expect(
+    page.getByText('Golden typed response', { exact: true })
+  ).toBeVisible();
+
+  // Exactly one scope PUT, before the turn (proven by the version echo).
+  expect(foundation.scopeMutations).toHaveLength(1);
+  const scopePut = foundation.scopeMutations[0];
+  expectCredentialedUnsafeRequest(scopePut);
+  expect(scopePut.body?.expected_version).toBe(0);
+  expect(scopePut.body?.scope).toMatchObject({
+    mode: 'explicit_assets',
+    machine_ids: [1],
+    display_label: 'Scan Target Machine'
+  });
+
+  const sentTurn = requiredRequest(streamRequest, 'stream request');
+  expect(sentTurn.body?.message).toBe('What is wrong?');
+  expect(String(sentTurn.body?.message)).not.toContain('[Machine:');
+  expect(sentTurn.body?.expected_scope_version).toBe(1);
+
+  await expect(page.getByTestId('ai-chat-scope-label')).toContainText(
+    'Scan Target Machine'
+  );
+  await page.unroute(/\/api\/barcode\//);
+});
+
+/**
+ * S1/S2: a send bounced by 409 scope_version_conflict refreshes the scope
+ * and offers a one-click resend that carries the refreshed version.
+ */
+test('scope version conflict refreshes and resends', async ({ browser }) => {
+  const page = await doCachedLogin(browser);
+  const foundation = await mockChatFoundation(page);
+  foundation.scope.mode = 'all_authorized_assets';
+  foundation.scope.version = 2;
+  foundation.scope.displayLabel = 'Authorized fleet';
+
+  const streamBodies: ObservedRequest[] = [];
+  let bounced = false;
+  await page.route('**/api/ai/chat/stream', async (route) => {
+    streamBodies.push(await observeRequest(route.request()));
+    if (!bounced) {
+      bounced = true;
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'scope_version_conflict' })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: sseBody()
+    });
+  });
+
+  await page.reload();
+  await openChat(page);
+  await expect(page.getByTestId('ai-chat-scope-label')).toContainText(
+    'Authorized fleet'
+  );
+
+  const composer = page.getByPlaceholder(/Type a message|Answer the question/);
+  await composer.fill('Check the inverter');
+  await page.getByLabel('send-ai-chat-message').click();
+
+  await expect(
+    page.getByText(/The conversation scope changed/).first()
+  ).toBeVisible();
+  const resend = page.getByTestId('ai-chat-scope-resend');
+  await expect(resend).toBeVisible();
+  // The conflict handler re-fetched the authoritative scope.
+  await expect.poll(() => foundation.scopeReads.length).toBeGreaterThan(0);
+
+  await resend.click();
+  await expect(
+    page.getByText('Golden typed response', { exact: true })
+  ).toBeVisible();
+
+  expect(streamBodies).toHaveLength(2);
+  expect(streamBodies[1].body?.expected_scope_version).toBe(2);
+  expect(streamBodies[1].body?.message).toBe('Check the inverter');
+});
+
+/**
+ * S2: a reload restores the scope from the server, never localStorage.
+ */
+test('scope survives reload from the server', async ({ browser }) => {
+  const page = await doCachedLogin(browser);
+  const foundation = await mockChatFoundation(page);
+  foundation.scope.mode = 'explicit_assets';
+  foundation.scope.version = 3;
+  foundation.scope.machineIds = [7];
+  foundation.scope.displayLabel = 'Pump 7';
+
+  let streamRequest: ObservedRequest | null = null;
+  await page.route('**/api/ai/chat/stream', async (route) => {
+    streamRequest = await observeRequest(route.request());
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: sseBody()
+    });
+  });
+
+  await page.reload();
+  await openChat(page);
+
+  await expect(page.getByTestId('ai-chat-scope-label')).toContainText('Pump 7');
+
+  const composer = page.getByPlaceholder(/Type a message|Answer the question/);
+  await composer.fill('Show recent work');
+  await page.getByLabel('send-ai-chat-message').click();
+
+  await expect(
+    page.getByText('Golden typed response', { exact: true })
+  ).toBeVisible();
+  const sentTurn = requiredRequest(streamRequest, 'stream request');
+  expect(sentTurn.body?.expected_scope_version).toBe(3);
+});
+
+test('a spent daily token budget is terminal: one request, reset-time copy', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  await mockChatFoundation(page);
+
+  let streamCalls = 0;
+  await page.route('**/api/ai/chat/stream', async (route) => {
+    streamCalls++;
+    await route.fulfill({
+      status: 429,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: 'token_budget_exhausted',
+        code: 'token_budget_exhausted',
+        retry_after: 3600
+      })
+    });
+  });
+
+  await page.reload();
+  await openChat(page);
+  await page.getByPlaceholder('Type a message...').fill('Count the pumps');
+  await page.getByLabel('send-ai-chat-message').click();
+
+  await expect(page.getByText(/daily AI usage limit/i).first()).toBeVisible();
+  await expect(page.getByText(/resets at/i).first()).toBeVisible();
+  // S12: never auto-retried — the reset is hours away, not seconds.
+  expect(streamCalls).toBe(1);
+});
+
+test('a rate-window 429 retries bounded and then reports rate copy', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  await mockChatFoundation(page);
+
+  let streamCalls = 0;
+  await page.route('**/api/ai/chat/stream', async (route) => {
+    streamCalls++;
+    await route.fulfill({
+      status: 429,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: 'rate_limit_exceeded',
+        code: 'rate_limited',
+        retry_after: 1
+      })
+    });
+  });
+
+  await page.reload();
+  await openChat(page);
+  await page.getByPlaceholder('Type a message...').fill('Count the pumps');
+  await page.getByLabel('send-ai-chat-message').click();
+
+  await expect(page.getByText(/too many requests/i).first()).toBeVisible({
+    timeout: 15000
+  });
+  // Bounded retry: exactly maxAttempts requests, no more.
+  expect(streamCalls).toBe(3);
+});
+
+test('a capacity 503 retries after the server Retry-After and succeeds', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  await mockChatFoundation(page);
+
+  let streamCalls = 0;
+  await page.route('**/api/ai/chat/stream', async (route) => {
+    streamCalls++;
+    if (streamCalls === 1) {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: 'ai_capacity_busy',
+          code: 'ai_capacity_busy',
+          retry_after: 1
+        })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: sseBody()
+    });
+  });
+
+  await page.reload();
+  await openChat(page);
+  await page.getByPlaceholder('Type a message...').fill('Count the pumps');
+  await page.getByLabel('send-ai-chat-message').click();
+
+  await expect(
+    page.getByText('Golden typed response', { exact: true })
+  ).toBeVisible({ timeout: 15000 });
+  expect(streamCalls).toBe(2);
 });
