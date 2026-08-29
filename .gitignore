@@ -165,3 +165,9 @@ src/backend/InvenTree/ai/core/tools/Tools-Testing/
 # test results and logs
 _tests*.txt
 .codspeed/
+
+# Local test/scratch data (may contain customer material) - never committed
+/LocalTesting/
+
+# Accidental sqlite artifact from a ':memory:' DSN treated as a filename
+file:memorydb_default*
