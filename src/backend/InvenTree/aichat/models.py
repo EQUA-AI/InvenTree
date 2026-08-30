@@ -1109,6 +1109,13 @@ class AttachmentIngest(models.Model):
     segment_count = models.PositiveIntegerField(default=0)
     embedding_model = models.CharField(max_length=128, blank=True, default='')
     embedding_dimensions = models.PositiveIntegerField(default=0)
+    #: Which corpus-affecting settings produced this row's vectors/captions.
+    #: The homogeneity spine: a backfill re-forces exactly the stale profiles,
+    #: because ``run_ingest`` short-circuits on an INDEXED row with the same
+    #: sha and would otherwise leave R1-R4 content on the old profile forever.
+    embedding_profile = models.CharField(
+        max_length=32, blank=True, default='v1', db_default='v1'
+    )
     search_index_name = models.CharField(max_length=128, blank=True, default='')
     #: Extraction provenance; silent quality divergence is worse than latency,
     #: so pypdf appears here only via the explicit backfill override.
@@ -1120,6 +1127,14 @@ class AttachmentIngest(models.Model):
     #: Winner ordering keys on this, not ``created_at``, because a content
     #: revert re-claims an *old* row — registry-row age is not content recency.
     claimed_at = models.DateTimeField(null=True, blank=True)
+    #: EXIF/container capture time. Derived at projection time and never
+    #: stored before R5, so a rebuild that omitted it would NULL a live
+    #: citation field (Search upload is a full replace, not a merge).
+    media_recorded_at = models.DateTimeField(null=True, blank=True)
+    #: The ``as_of`` stamped onto projected documents. ``updated_at`` is
+    #: ``auto_now`` and is bumped by restamps, so a rebuild keyed on it would
+    #: silently rewrite every citation's as_of to the rebuild date.
+    indexed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1156,6 +1171,14 @@ class AttachmentChunk(models.Model):
     chunk_index = models.PositiveIntegerField()
     page_number = models.PositiveIntegerField(null=True, blank=True)
     section_path = models.CharField(max_length=512, blank=True, default='')
+    #: Stored, not derived. ``section_path`` joins ALL non-empty heading
+    #: levels while these are ``headings[:3]`` positionally, so splitting the
+    #: path is wrong for h2-first documents (the common DI-layout output),
+    #: level skips, and preamble text. Both are SearchableFields, so a
+    #: split-derived rebuild would silently mutate BM25 scoring.
+    heading_1 = models.CharField(max_length=256, blank=True, default='', db_default='')
+    heading_2 = models.CharField(max_length=256, blank=True, default='', db_default='')
+    heading_3 = models.CharField(max_length=256, blank=True, default='', db_default='')
     content = models.TextField()
     token_count = models.PositiveIntegerField(default=0)
     #: Cohere Embed v4 vector; populated by the embedding stage, so nullable.

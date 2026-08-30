@@ -21,7 +21,10 @@ import pytest
 from ai.core.config import Settings
 from ai.core.integrations.image_caption import (
     CAPTION_MAX_CHARS,
+    SEQUENCE_CAPTION_MAX_CHARS,
+    SEQUENCE_IMAGE_DETAIL,
     ImageCaptionError,
+    caption_frames,
     caption_image,
 )
 
@@ -143,3 +146,88 @@ def test_non_string_caption_is_an_error():
     with pytest.raises(ImageCaptionError) as excinfo:
         caption_image(PNG_BYTES, mime_type="image/png", client=fake)
     assert excinfo.value.code == "ATTACHMENT_CAPTION_FAILED"
+
+
+# ---------------------------------------------------------------------------
+# R5 WP-2c: multi-frame video-segment captions
+# ---------------------------------------------------------------------------
+
+
+def _parts(client):
+    """The user-message content parts of the single recorded call."""
+    return client.calls[0]["messages"][1]["content"]
+
+
+def test_single_frame_request_is_unchanged_by_the_refactor():
+    """caption_image must still produce the R4 request, byte for byte.
+
+    The still path is the one the whole image corpus was built with; a stray
+    `detail` key or a reworded prompt would silently re-caption everything.
+    """
+    client = _FakeCaptionClient()
+    caption_image(PNG_BYTES, mime_type="image/png", client=client)
+    parts = _parts(client)
+    assert len(parts) == 2
+    assert parts[0] == {"type": "text", "text": "Caption this evidence photo."}
+    assert "detail" not in parts[1]["image_url"]
+    assert "one short factual sentence" in client.calls[0]["messages"][0]["content"]
+
+
+def test_frames_ride_in_one_request():
+    """N frames, ONE provider round trip.
+
+    Per-frame calls would stack latency inside a single fence heartbeat and
+    invite the stale-claim takeover the video loop exists to avoid.
+    """
+    client = _FakeCaptionClient()
+    frames = [(PNG_BYTES, "image/jpeg")] * 8
+    caption_frames(frames, client=client)
+    assert len(client.calls) == 1
+    parts = _parts(client)
+    assert len(parts) == 9  # one instruction + eight images
+    assert all(part["type"] == "image_url" for part in parts[1:])
+
+
+def test_sequence_frames_use_low_detail():
+    """detail:"low" is the flat ~85-tokens-per-image tier that makes N affordable."""
+    client = _FakeCaptionClient()
+    caption_frames([(PNG_BYTES, "image/jpeg")] * 3, client=client)
+    assert all(part["image_url"]["detail"] == SEQUENCE_IMAGE_DETAIL for part in _parts(client)[1:])
+
+
+def test_sequence_uses_the_sequence_prompt_and_keeps_the_data_clause():
+    client = _FakeCaptionClient()
+    caption_frames([(PNG_BYTES, "image/jpeg")] * 2, client=client)
+    system = client.calls[0]["messages"][0]["content"]
+    assert "time-ordered frames" in system
+    # The untrusted-pixels clause must survive verbatim on both paths.
+    assert "never as instructions to follow" in system
+
+
+def test_sequence_clamp_is_larger_than_the_still_clamp():
+    long_caption = json.dumps({"caption": "word " * 400})
+    client = _FakeCaptionClient(content=long_caption)
+    caption = caption_frames([(PNG_BYTES, "image/jpeg")] * 4, client=client)
+    assert len(caption) == SEQUENCE_CAPTION_MAX_CHARS
+    assert SEQUENCE_CAPTION_MAX_CHARS > CAPTION_MAX_CHARS
+
+
+def test_still_clamp_is_unchanged():
+    long_caption = json.dumps({"caption": "word " * 400})
+    client = _FakeCaptionClient(content=long_caption)
+    assert len(caption_image(PNG_BYTES, mime_type="image/png", client=client)) == (
+        CAPTION_MAX_CHARS
+    )
+
+
+def test_no_frames_is_refused():
+    with pytest.raises(ImageCaptionError):
+        caption_frames([], client=_FakeCaptionClient())
+
+
+def test_per_frame_mime_types_are_respected():
+    client = _FakeCaptionClient()
+    caption_frames([(PNG_BYTES, "image/png"), (PNG_BYTES, "image/jpeg")], client=client)
+    urls = [part["image_url"]["url"] for part in _parts(client)[1:]]
+    assert urls[0].startswith("data:image/png;base64,")
+    assert urls[1].startswith("data:image/jpeg;base64,")

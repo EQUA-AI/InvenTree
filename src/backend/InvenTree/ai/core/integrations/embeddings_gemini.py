@@ -20,8 +20,10 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Conservative per-request text batch; media inputs are embedded one at a time.
-GEMINI_TEXT_BATCH_LIMIT = 32
+# Retired in R5: this model returns ONE mean-pooled vector per request, and the
+# SDK folds a list of strings into a single content, so there is no text batch
+# to size. Kept as a named constant only so an old pin cannot silently rebind.
+GEMINI_TEXT_BATCH_LIMIT = 1
 
 #: Vertex AI scope for explicitly-loaded credentials (SA keys are unscoped).
 _CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
@@ -68,6 +70,9 @@ class GeminiEmbeddingClient:
         dimensions: int,
         credentials_path: str = "",
         auth_mode: str = "wif",
+        task_conditioning: str = "off",
+        audio_track_extraction: bool = False,
+        auto_truncate: bool | None = None,
     ) -> None:
         self._project_id = project_id
         self._location = location
@@ -75,6 +80,13 @@ class GeminiEmbeddingClient:
         self._dimensions = dimensions
         self._credentials_path = credentials_path
         self._auth_mode = auth_mode
+        # R5 (WP-2a/2b). All three default to the R4 behaviour: no task
+        # conditioning, no audio fusion, and auto_truncate omitted entirely so
+        # the provider default applies. An unset knob must never appear in the
+        # request payload -- sending an explicit null is not the same thing.
+        self._task_conditioning = task_conditioning
+        self._audio_track_extraction = audio_track_extraction
+        self._auto_truncate = auto_truncate
         self._client: Any | None = None
 
     @property
@@ -110,6 +122,9 @@ class GeminiEmbeddingClient:
             dimensions=settings.gemini_embed_dimensions,
             credentials_path=settings.gcp_credentials_path,
             auth_mode=settings.gcp_auth_mode,
+            task_conditioning=settings.gemini_embed_task_conditioning,
+            audio_track_extraction=settings.gemini_audio_track_extraction,
+            auto_truncate=settings.gemini_auto_truncate,
         )
 
     def _load_credentials(self) -> Any:
@@ -193,14 +208,52 @@ class GeminiEmbeddingClient:
             with contextlib.suppress(Exception):
                 closer()
 
-    def _embed_contents(self, contents: Any) -> list[list[float]]:
+    def _config_kwargs(self, *, task_type: str | None, media: bool) -> dict[str, Any]:
+        """Build EmbedContentConfig kwargs, omitting every unset knob.
+
+        Omission matters: sending an explicit null is not the same as leaving a
+        field out, and the provider's default for ``auto_truncate`` (silent
+        truncation) is what R4 shipped. Only keys we deliberately set appear.
+        """
+        kwargs: dict[str, Any] = {"output_dimensionality": self._dimensions}
+        if task_type and self._task_conditioning == "task_type":
+            kwargs["task_type"] = task_type
+        if media:
+            # Vertex-only, and only meaningful for video parts. The config
+            # validator refuses this knob on a PREDICT-routed pin, where the
+            # SDK would silently drop it and the audio would never be sent.
+            if self._audio_track_extraction:
+                kwargs["audio_track_extraction"] = True
+            if self._auto_truncate is not None:
+                kwargs["auto_truncate"] = self._auto_truncate
+        return kwargs
+
+    def _conditioned(self, text: str, *, task_type: str | None) -> str:
+        """Apply literal-prefix conditioning when that is the configured mode.
+
+        Which of ``task_type`` and ``prefix`` the service actually honours is
+        settled by the WP-0a probe, not by the SDK: ``EmbedContentConfig`` will
+        send ``taskType`` either way. Both modes are implemented so the probe's
+        answer is a config change rather than a code change.
+        """
+        if self._task_conditioning != "prefix" or not task_type:
+            return text
+        if task_type == "RETRIEVAL_QUERY":
+            return f"task: search result | query: {text}"
+        return f"title: none | text: {text}"
+
+    def _embed_contents(
+        self, contents: Any, *, task_type: str | None = None, media: bool = False
+    ) -> list[list[float]]:
         """Embed one request worth of contents and enforce the dimension pin."""
         types = _genai_types()
         try:
             response = self._get_client().models.embed_content(
                 model=self._model,
                 contents=contents,
-                config=types.EmbedContentConfig(output_dimensionality=self._dimensions),
+                config=types.EmbedContentConfig(
+                    **self._config_kwargs(task_type=task_type, media=media)
+                ),
             )
         except MediaEmbeddingError:
             raise
@@ -229,11 +282,23 @@ class GeminiEmbeddingClient:
             vectors.append([float(value) for value in values])
         return vectors
 
-    def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        """Embed text (queries/captions) into the cross-modal space."""
+    def embed_texts(self, texts: list[str], *, task_type: str | None = None) -> list[list[float]]:
+        """Embed text (queries/captions) into the cross-modal space.
+
+        One request per text, deliberately. The SDK's ``t_contents`` folds a
+        list of strings into a SINGLE content carrying one part per string, and
+        this model returns one mean-pooled vector per content -- so a batched
+        call would yield one fused vector for N inputs and trip the cardinality
+        check below. Nothing called this with more than one text before R5, so
+        the defect was latent rather than live.
+        """
         vectors: list[list[float]] = []
-        for start in range(0, len(texts), GEMINI_TEXT_BATCH_LIMIT):
-            vectors.extend(self._embed_contents(texts[start : start + GEMINI_TEXT_BATCH_LIMIT]))
+        for text in texts:
+            vectors.extend(
+                self._embed_contents(
+                    self._conditioned(text, task_type=task_type), task_type=task_type
+                )
+            )
         if len(vectors) != len(texts):
             raise MediaEmbeddingError(
                 "Embedding response cardinality mismatch",
@@ -243,7 +308,11 @@ class GeminiEmbeddingClient:
 
     def embed_query(self, text: str) -> list[float]:
         """Embed a retrieval query; legal against media vectors (unified space)."""
-        return self.embed_texts([text])[0]
+        return self.embed_texts([text], task_type="RETRIEVAL_QUERY")[0]
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Embed corpus-side text with document-side conditioning."""
+        return self.embed_texts(texts, task_type="RETRIEVAL_DOCUMENT")
 
     def embed_image(self, data: bytes, *, mime_type: str) -> list[float]:
         """Embed one image (PNG/JPEG evidence photo or keyframe)."""
@@ -251,7 +320,7 @@ class GeminiEmbeddingClient:
 
         # Media call shape per Gemini Embedding 2 launch docs; live-validated in R3.
         part = types.Part.from_bytes(data=data, mime_type=mime_type)
-        vectors = self._embed_contents(part)
+        vectors = self._embed_contents(part, task_type="RETRIEVAL_DOCUMENT", media=True)
         if len(vectors) != 1:
             raise MediaEmbeddingError(
                 "Image embedding returned unexpected cardinality",
@@ -264,7 +333,7 @@ class GeminiEmbeddingClient:
         types = _genai_types()
 
         part = types.Part.from_bytes(data=data, mime_type=mime_type)
-        vectors = self._embed_contents(part)
+        vectors = self._embed_contents(part, task_type="RETRIEVAL_DOCUMENT", media=True)
         if len(vectors) != 1:
             raise MediaEmbeddingError(
                 "Video embedding returned unexpected cardinality",

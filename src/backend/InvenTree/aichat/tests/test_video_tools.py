@@ -22,6 +22,7 @@ from aichat.services.video_tools import (
     PROBE_TIMEOUT_S,
     VideoToolError,
     cut_segment,
+    extract_frames,
     extract_keyframe,
     ffmpeg_available,
     plan_segments,
@@ -376,3 +377,69 @@ class FfmpegAvailableTests(SimpleTestCase):
                 self.assertFalse(ffmpeg_available())
         with mock.patch(_WHICH, return_value=None):
             self.assertFalse(ffmpeg_available())
+
+
+class ExtractFramesTests(SimpleTestCase):
+    """R5 WP-2c: caption-input frame sampling (one ffmpeg run, temp-only)."""
+
+    def test_one_ffmpeg_run_for_n_frames(self):
+        """N frames must not become N subprocesses.
+
+        Per-frame runs would stack latency inside a single fence heartbeat and
+        invite the stale-claim takeover the video loop is built to avoid.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            written = [Path(workdir) / f'frame-{i:03d}.jpg' for i in range(1, 6)]
+            for path in written:
+                path.write_bytes(b'\xff\xd8jpeg')
+            with mock.patch(_RUN, return_value=_completed()) as run:
+                frames = extract_frames('/tmp/clip.mp4', 5, workdir)
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(len(frames), 5)
+
+    def test_frames_are_returned_in_time_order(self):
+        """Pattern numbering is sequential, so filename order is the timeline."""
+        with tempfile.TemporaryDirectory() as workdir:
+            for index in (3, 1, 2):
+                (Path(workdir) / f'frame-{index:03d}.jpg').write_bytes(b'\xff\xd8')
+            with mock.patch(_RUN, return_value=_completed()):
+                frames = extract_frames('/tmp/clip.mp4', 3, workdir)
+            self.assertEqual(
+                [Path(frame).name for frame in frames],
+                ['frame-001.jpg', 'frame-002.jpg', 'frame-003.jpg'],
+            )
+
+    def test_argv_is_a_list_with_an_explicit_frame_cap(self):
+        """No shell, explicit -frames:v, and a bounded scale for caption input."""
+        with tempfile.TemporaryDirectory() as workdir:
+            (Path(workdir) / 'frame-001.jpg').write_bytes(b'\xff\xd8')
+            with mock.patch(_RUN, return_value=_completed()) as run:
+                extract_frames('/tmp/clip.mp4', 1, workdir)
+            argv = run.call_args[0][0]
+            self.assertIsInstance(argv, list)
+            self.assertEqual(argv[0], 'ffmpeg')
+            self.assertIn('-frames:v', argv)
+            self.assertIn('1', argv)
+            # Caption input is deliberately smaller than the OCR keyframe.
+            self.assertTrue(any("min(640,iw)" in str(arg) for arg in argv))
+
+    def test_a_short_read_is_a_legitimate_outcome(self):
+        """A very short clip yields fewer frames; caption what came back."""
+        with tempfile.TemporaryDirectory() as workdir:
+            (Path(workdir) / 'frame-001.jpg').write_bytes(b'\xff\xd8')
+            with mock.patch(_RUN, return_value=_completed()):
+                self.assertEqual(len(extract_frames('/tmp/clip.mp4', 8, workdir)), 1)
+
+    def test_no_frames_written_is_a_value_free_failure(self):
+        """An empty sample is a bounded failure, never a silent empty caption."""
+        with tempfile.TemporaryDirectory() as workdir:
+            with mock.patch(_RUN, return_value=_completed()):
+                with self.assertRaises(VideoToolError) as ctx:
+                    extract_frames('/tmp/clip.mp4', 4, workdir)
+            self.assertEqual(ctx.exception.code, 'ATTACHMENT_VIDEO_FRAMES_FAILED')
+
+    def test_non_positive_count_is_refused(self):
+        """A zero count would build an ffmpeg argv that samples everything."""
+        with tempfile.TemporaryDirectory() as workdir:
+            with self.assertRaises(VideoToolError):
+                extract_frames('/tmp/clip.mp4', 0, workdir)

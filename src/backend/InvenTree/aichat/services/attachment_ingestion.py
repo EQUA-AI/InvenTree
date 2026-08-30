@@ -652,6 +652,7 @@ def build_search_documents(
     section_pages: dict[str, int],
     embedding_model: str,
     embedding_dimensions: int,
+    embedding_profile: str,
     indexed_at: datetime,
 ) -> list[dict[str, object]]:
     """Assemble §5.1 documents; the vector is attached per prepared chunk."""
@@ -698,6 +699,7 @@ def build_search_documents(
             'as_of': indexed_at_text,
             'embedding_model': embedding_model,
             'embedding_dimensions': embedding_dimensions,
+            'embedding_profile': embedding_profile,
         })
     return documents
 
@@ -788,6 +790,7 @@ def build_media_documents(
     recorded_at: datetime | None,
     embedding_model: str,
     embedding_dimensions: int,
+    embedding_profile: str,
     indexed_at: datetime,
 ) -> list[dict[str, object]]:
     """Assemble the §5.2 media documents (one per image / video segment).
@@ -843,6 +846,7 @@ def build_media_documents(
             'media_vector': segment.vector,
             'embedding_model': embedding_model,
             'embedding_dimensions': embedding_dimensions,
+            'embedding_profile': embedding_profile,
         })
     return documents
 
@@ -1149,6 +1153,17 @@ def run_ingest(
         )
 
     settings = get_settings()
+    # R5: the corpus profile for this run. Stamped on the registry row AND on
+    # every projected document, because ``run_ingest`` short-circuits on an
+    # INDEXED row with the same sha -- without a marker, a knob change would
+    # leave older content on the old profile with nothing able to find it.
+    from ai.core.integrations.rag_profile import (
+        media_embedding_profile,
+        text_embedding_profile,
+    )
+
+    text_profile = text_embedding_profile(settings)
+    media_profile = media_embedding_profile(settings)
     is_image = decision.pipeline == AttachmentIngestPipeline.IMAGE
     is_video = decision.pipeline == AttachmentIngestPipeline.VIDEO
     if is_image:
@@ -1397,6 +1412,7 @@ def run_ingest(
                 recorded_at=recorded_at,
                 embedding_model=media_embedding_client.model,
                 embedding_dimensions=media_embedding_client.dimensions,
+                embedding_profile=media_profile,
                 indexed_at=indexed_at,
             )
             own_projection = _projection_for(AttachmentIngestPipeline.IMAGE)
@@ -1406,6 +1422,7 @@ def run_ingest(
                 'segment_count': 1,
                 'embedding_model': media_embedding_client.model,
                 'embedding_dimensions': media_embedding_client.dimensions,
+                'embedding_profile': media_profile,
                 'search_index_name': own_projection.index_name,
             }
         elif is_video:
@@ -1418,7 +1435,7 @@ def run_ingest(
 
             from ai.core.integrations.image_caption import (
                 ImageCaptionError,
-                caption_image,
+                caption_frames,
             )
             from aichat.services import video_tools
 
@@ -1538,11 +1555,43 @@ def run_ingest(
                             ) from video_exc
                         with open(frame_path, 'rb') as frame_handle:
                             frame_bytes = frame_handle.read()
+                        # OCR keeps the untouched full-resolution midpoint
+                        # frame: nameplate serials and gauge faces are exactly
+                        # what a downscaled caption frame would lose.
                         ocr_text = extract_image_text(
                             frame_bytes, mime_type='image/jpeg'
                         )
+                        # Caption input. One mid-point frame describes 0.056%
+                        # of a 60 s window, so a short action is usually
+                        # invisible to the BM25 leg; sample more frames when
+                        # configured. All of them ride ONE vision call, so the
+                        # provider round-trips per window stay at 2 and the
+                        # fence heartbeat cadence above is unchanged.
+                        caption_input = [(frame_bytes, 'image/jpeg')]
+                        if settings.rag_video_caption_frames > 1:
+                            frames_dir = os.path.join(workdir, f'frames-{index}')
+                            os.makedirs(frames_dir, exist_ok=True)
+                            try:
+                                sampled = video_tools.extract_frames(
+                                    clip_path,
+                                    settings.rag_video_caption_frames,
+                                    frames_dir,
+                                )
+                            except video_tools.VideoToolError:
+                                # Frame sampling is an enrichment, not the
+                                # contract: fall back to the midpoint frame
+                                # rather than failing an otherwise good window.
+                                sampled = []
+                            if sampled:
+                                caption_input = []
+                                for sampled_path in sampled:
+                                    with open(sampled_path, 'rb') as sampled_handle:
+                                        caption_input.append((
+                                            sampled_handle.read(),
+                                            'image/jpeg',
+                                        ))
                         try:
-                            caption = caption_image(frame_bytes, mime_type='image/jpeg')
+                            caption = caption_frames(caption_input)
                         except ImageCaptionError as caption_exc:
                             raise AttachmentIngestionError(
                                 'Image captioning failed', code=caption_exc.code
@@ -1620,6 +1669,7 @@ def run_ingest(
                 recorded_at=recorded_at,
                 embedding_model=media_embedding_client.model,
                 embedding_dimensions=media_embedding_client.dimensions,
+                embedding_profile=media_profile,
                 indexed_at=indexed_at,
             )
             own_projection = _projection_for(AttachmentIngestPipeline.VIDEO)
@@ -1629,6 +1679,7 @@ def run_ingest(
                 'segment_count': len(records),
                 'embedding_model': media_embedding_client.model,
                 'embedding_dimensions': media_embedding_client.dimensions,
+                'embedding_profile': media_profile,
                 'search_index_name': own_projection.index_name,
             }
         else:
@@ -1696,6 +1747,7 @@ def run_ingest(
                 section_pages=section_pages,
                 embedding_model=embedding_client.model,
                 embedding_dimensions=embedding_client.dimensions,
+                embedding_profile=text_profile,
                 indexed_at=indexed_at,
             )
 
@@ -1724,6 +1776,7 @@ def run_ingest(
                 'chunk_count': len(chunks),
                 'embedding_model': embedding_client.model,
                 'embedding_dimensions': embedding_client.dimensions,
+                'embedding_profile': text_profile,
                 'search_index_name': own_projection.index_name,
             }
 

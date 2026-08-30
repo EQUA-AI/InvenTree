@@ -50,6 +50,7 @@ _DOCS_FIELDS = {
     'as_of',
     'embedding_model',
     'embedding_dimensions',
+    'embedding_profile',  # R5: shared _stamp_fields, both spaces
 }
 
 _MEDIA_FIELDS = {
@@ -83,6 +84,7 @@ _MEDIA_FIELDS = {
     'media_vector',
     'embedding_model',
     'embedding_dimensions',
+    'embedding_profile',  # R5: shared _stamp_fields, both spaces
 }
 
 

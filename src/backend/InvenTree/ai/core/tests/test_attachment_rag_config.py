@@ -154,3 +154,99 @@ def test_stale_claim_default_and_floor():
     assert _settings().rag_stale_claim_s == 1800
     with pytest.raises(ValidationError):
         _settings(RAG_STALE_CLAIM_S=60)
+
+
+# ---------------------------------------------------------------------------
+# R5: corpus-affecting knobs (WP-2)
+# ---------------------------------------------------------------------------
+
+#: A fully-provisioned media plane, so the R5 rules are what fails — not the
+#: pre-existing provider-completeness legs.
+_MEDIA_ON = {
+    "FEATURE_MEDIA_RAG_INGEST": True,
+    "GCP_PROJECT_ID": "example-project",
+    "GCP_LOCATION": "us-central1",
+    "GCP_CREDENTIALS_PATH": "/secrets/wif-external-account.json",
+    "AZURE_SEARCH_ENDPOINT": "https://example.search.windows.net",
+    "AZURE_OPENAI_ENDPOINT": "https://example.openai.azure.com",
+}
+
+
+def test_r5_corpus_knobs_default_to_r4_behaviour():
+    """Defaults must reproduce R4 exactly, or the rollout re-embeds for nothing."""
+    s = _settings()
+    assert s.gemini_embed_task_conditioning == "off"
+    assert s.gemini_audio_track_extraction is False
+    assert s.gemini_auto_truncate is None  # tri-state: unset omits the field
+    assert s.rag_video_caption_frames == 1
+
+
+def test_r5_corpus_knobs_round_trip():
+    s = _settings(
+        GEMINI_EMBED_TASK_CONDITIONING="task_type",
+        GEMINI_AUDIO_TRACK_EXTRACTION=True,
+        GEMINI_AUTO_TRUNCATE=False,
+        RAG_VIDEO_CAPTION_FRAMES=8,
+        **_MEDIA_ON,
+    )
+    assert s.gemini_embed_task_conditioning == "task_type"
+    assert s.gemini_audio_track_extraction is True
+    assert s.gemini_auto_truncate is False
+    assert s.rag_video_caption_frames == 8
+
+
+def test_audio_extraction_requires_media_plane():
+    with pytest.raises(ValidationError, match="require media RAG"):
+        _settings(GEMINI_AUDIO_TRACK_EXTRACTION=True)
+
+
+def test_auto_truncate_alone_requires_media_plane():
+    """The tri-state must not become a back door around the media gate."""
+    with pytest.raises(ValidationError, match="require media RAG"):
+        _settings(GEMINI_AUTO_TRUNCATE=False)
+
+
+def test_audio_extraction_refused_on_a_predict_routed_pin():
+    """F1: the SDK silently DROPS audio on the PREDICT path.
+
+    A deployment would believe narration was fused while nothing was sent.
+    Refuse at boot instead of shipping a setting that is a no-op.
+    """
+    with pytest.raises(ValidationError, match="silently drop"):
+        _settings(
+            GEMINI_AUDIO_TRACK_EXTRACTION=True,
+            GEMINI_EMBED_MODEL="gemini-embedding-001",
+            **_MEDIA_ON,
+        )
+
+
+def test_audio_extraction_refused_beyond_a_sixty_second_segment():
+    """60 s costs 6060 of 8192 tokens with audio; 120 s would truncate every window."""
+    with pytest.raises(ValidationError, match="RAG_VIDEO_SEGMENT_S <= 60"):
+        _settings(GEMINI_AUDIO_TRACK_EXTRACTION=True, RAG_VIDEO_SEGMENT_S=120, **_MEDIA_ON)
+
+
+def test_audio_extraction_allowed_at_sixty_seconds():
+    s = _settings(GEMINI_AUDIO_TRACK_EXTRACTION=True, RAG_VIDEO_SEGMENT_S=60, **_MEDIA_ON)
+    assert s.gemini_audio_track_extraction is True
+
+
+def test_task_conditioning_requires_media_plane():
+    with pytest.raises(ValidationError, match="GEMINI_EMBED_TASK_CONDITIONING"):
+        _settings(GEMINI_EMBED_TASK_CONDITIONING="task_type")
+
+
+def test_task_conditioning_rejects_an_unknown_mode():
+    with pytest.raises(ValidationError):
+        _settings(GEMINI_EMBED_TASK_CONDITIONING="retrieval", **_MEDIA_ON)
+
+
+def test_caption_frames_require_the_ingest_flag():
+    """Retrieval alone never captions, so only the ingest flag binds."""
+    with pytest.raises(ValidationError, match="RAG_VIDEO_CAPTION_FRAMES"):
+        _settings(RAG_VIDEO_CAPTION_FRAMES=4)
+
+
+def test_caption_frames_are_bounded():
+    with pytest.raises(ValidationError):
+        _settings(RAG_VIDEO_CAPTION_FRAMES=11, **_MEDIA_ON)

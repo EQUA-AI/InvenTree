@@ -977,6 +977,32 @@ class Settings(BaseSettings):
     # 3072 width live, and fail closed on drift.
     gemini_embed_model: str = Field(default="gemini-embedding-2", alias="GEMINI_EMBED_MODEL")
     gemini_embed_dimensions: int = Field(default=3072, ge=1, alias="GEMINI_EMBED_DIMENSIONS")
+    # R5 WP-2a. Asymmetric query/document conditioning for the media space.
+    # "off" reproduces R4 exactly. Which of the other two is real is a live
+    # question the WP-0a probe answers: the SDK will send ``taskType`` either
+    # way, but only the service decides whether it is honoured or ignored, and
+    # a rejection would fail the media boot probe on all four apps. Leave this
+    # "off" until the probe's cosine block says otherwise.
+    gemini_embed_task_conditioning: Literal["off", "task_type", "prefix"] = Field(
+        default="off", alias="GEMINI_EMBED_TASK_CONDITIONING"
+    )
+    # R5 WP-2b. Vertex-only: fuses the clip's audio track into the vector.
+    # Clips already carry audio (``cut_segment`` maps ``0:a:0?``), so today the
+    # narration is uploaded on every call and used by nothing. Budget at 60 s /
+    # 1 FPS: 66*60 video + 25*60 audio + 10*60 timestamps = 6060 of 8192.
+    gemini_audio_track_extraction: bool = Field(
+        default=False, alias="GEMINI_AUDIO_TRACK_EXTRACTION"
+    )
+    # Tri-state on purpose: None omits the field entirely (provider default,
+    # i.e. silent truncation), False turns an over-budget clip into a loud
+    # INVALID_ARGUMENT. Never send it accidentally.
+    gemini_auto_truncate: bool | None = Field(default=None, alias="GEMINI_AUTO_TRUNCATE")
+    # R5 WP-2c. Frames captioned per video window. 1 reproduces R4 exactly and
+    # describes 0.056% of a 60 s window, so a short action is usually invisible
+    # to the BM25 leg. Frames ride in ONE vision call (~85 tokens each at
+    # detail:"low"), keeping provider calls per window at 2 and the fence
+    # heartbeat cadence unchanged.
+    rag_video_caption_frames: int = Field(default=1, ge=1, le=10, alias="RAG_VIDEO_CAPTION_FRAMES")
     rag_max_doc_mb: int = Field(default=50, ge=1, alias="RAG_MAX_DOC_MB")
     rag_max_image_mb: int = Field(default=25, ge=1, alias="RAG_MAX_IMAGE_MB")
     rag_max_video_mb: int = Field(default=500, ge=1, alias="RAG_MAX_VIDEO_MB")
@@ -1078,6 +1104,44 @@ class Settings(BaseSettings):
                 "AZURE_OPENAI_ENDPOINT is required when media RAG ingest is "
                 "enabled (image captions)"
             )
+        # --- R5 corpus-affecting knobs -------------------------------------
+        # Guard the F1 trap: on the Vertex PREDICT dispatch path the SDK
+        # silently DROPS audio_track_extraction, so a deployment could believe
+        # audio was fused when nothing was sent. Mirror the SDK's own routing
+        # rule locally and refuse the combination outright rather than ship a
+        # setting that is a no-op. (t_is_vertex_embed_content_model: any
+        # "gemini" model except gemini-embedding-001.)
+        media_lit = self.feature_media_rag_ingest or self.feature_media_rag_retrieval
+        audio_requested = (
+            self.gemini_audio_track_extraction or self.gemini_auto_truncate is not None
+        )
+        if audio_requested:
+            if not media_lit:
+                raise ValueError(
+                    "GEMINI_AUDIO_TRACK_EXTRACTION/GEMINI_AUTO_TRUNCATE require "
+                    "media RAG ingest or retrieval to be enabled"
+                )
+            pin = self.gemini_embed_model.lower()
+            if "gemini" not in pin or pin == "gemini-embedding-001":
+                raise ValueError(
+                    "GEMINI_AUDIO_TRACK_EXTRACTION requires an embed_content-routed "
+                    "Gemini model; the configured pin would silently drop it"
+                )
+        if self.gemini_audio_track_extraction and self.rag_video_segment_s > 60:
+            # 60 s costs 6060 of 8192 tokens with audio; 120 s costs ~12120 and
+            # would truncate every window. Refuse at boot rather than emit an
+            # INVALID_ARGUMENT storm mid-backfill.
+            raise ValueError(
+                "GEMINI_AUDIO_TRACK_EXTRACTION requires RAG_VIDEO_SEGMENT_S <= 60 "
+                "(the shared 8192-token budget cannot hold a longer clip plus audio)"
+            )
+        if self.gemini_embed_task_conditioning != "off" and not media_lit:
+            raise ValueError(
+                "GEMINI_EMBED_TASK_CONDITIONING requires media RAG ingest or "
+                "retrieval to be enabled"
+            )
+        if self.rag_video_caption_frames > 1 and not self.feature_media_rag_ingest:
+            raise ValueError("RAG_VIDEO_CAPTION_FRAMES > 1 requires FEATURE_MEDIA_RAG_INGEST")
         return self
 
     # -------------------------------------------------------------------------

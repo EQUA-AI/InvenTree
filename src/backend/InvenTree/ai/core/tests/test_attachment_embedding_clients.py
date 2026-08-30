@@ -111,19 +111,21 @@ class _FakeGeminiModels:
 
     def embed_content(self, **kwargs):
         self.calls.append(kwargs)
-        contents = kwargs["contents"]
-        count = len(contents) if isinstance(contents, list) else 1
-        return SimpleNamespace(
-            embeddings=[SimpleNamespace(values=[0.5] * self.dimensions) for _ in range(count)]
-        )
+        # Reality, not convenience: gemini-embedding-2 mean-pools every part of
+        # a request into ONE vector. The SDK folds a list of strings into a
+        # single content, so a batched call returns one fused vector -- never
+        # one per input. A fake that returned len(contents) would hide a
+        # reintroduced batch behind a green test.
+        return SimpleNamespace(embeddings=[SimpleNamespace(values=[0.5] * self.dimensions)])
 
 
-def _gemini(dimensions: int = 8, models: _FakeGeminiModels | None = None):
+def _gemini(dimensions: int = 8, models: _FakeGeminiModels | None = None, **knobs):
     client = GeminiEmbeddingClient(
         project_id="example-project",
         location="us-central1",
         model="gemini-embedding-2-preview",
         dimensions=dimensions,
+        **knobs,
     )
     client._client = SimpleNamespace(models=models or _FakeGeminiModels(dimensions=dimensions))
     return client
@@ -134,8 +136,57 @@ def test_gemini_embeds_texts_and_pins_model():
     client = _gemini(models=models)
     vectors = client.embed_texts(["caption one", "caption two"])
     assert len(vectors) == 2
+    # One request per text: batching would fuse them into a single vector.
+    assert len(models.calls) == 2
+    assert [call["contents"] for call in models.calls] == ["caption one", "caption two"]
     assert models.calls[0]["model"] == "gemini-embedding-2-preview"
     assert models.calls[0]["config"].output_dimensionality == 8
+
+
+def test_gemini_omits_unset_knobs_from_the_payload():
+    """R4 defaults must produce an R4-identical request.
+
+    An explicitly-null field is not the same as an absent one, and the
+    provider default for auto_truncate (silent truncation) is what shipped.
+    """
+    models = _FakeGeminiModels()
+    client = _gemini(models=models)
+    client.embed_query("nameplate")
+    config = models.calls[0]["config"]
+    assert config.output_dimensionality == 8
+    assert getattr(config, "task_type", None) is None
+    assert getattr(config, "audio_track_extraction", None) is None
+    assert getattr(config, "auto_truncate", None) is None
+
+
+def test_gemini_task_type_conditioning_is_opt_in():
+    models = _FakeGeminiModels()
+    client = _gemini(models=models, task_conditioning="task_type")
+    client.embed_query("nameplate")
+    assert models.calls[0]["config"].task_type == "RETRIEVAL_QUERY"
+    assert models.calls[0]["contents"] == "nameplate"
+
+
+def test_gemini_prefix_conditioning_rewrites_the_text_instead():
+    """The two hypotheses are mutually exclusive on the wire."""
+    models = _FakeGeminiModels()
+    client = _gemini(models=models, task_conditioning="prefix")
+    client.embed_query("nameplate")
+    assert models.calls[0]["contents"] == "task: search result | query: nameplate"
+    assert getattr(models.calls[0]["config"], "task_type", None) is None
+
+
+def test_gemini_audio_knobs_reach_only_media_calls():
+    """Text calls must not carry video-only knobs."""
+    models = _FakeGeminiModels()
+    client = _gemini(models=models, audio_track_extraction=True, auto_truncate=False)
+    client.embed_query("nameplate")
+    assert getattr(models.calls[0]["config"], "audio_track_extraction", None) is None
+
+    client.embed_video_segment(b"clip", mime_type="video/mp4")
+    media_config = models.calls[1]["config"]
+    assert media_config.audio_track_extraction is True
+    assert media_config.auto_truncate is False
 
 
 def test_gemini_query_returns_single_vector():

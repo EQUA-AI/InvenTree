@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -243,6 +244,56 @@ def extract_keyframe(path: str, at_s: float, out_path: str) -> None:
     )
 
 
+def extract_frames(path: str, count: int, out_dir: str) -> list[str]:
+    """Evenly sample ``count`` JPEG frames across ``path`` in ONE ffmpeg run.
+
+    Caption input only. Deliberately smaller than :func:`extract_keyframe`
+    (640 px vs 1280 px, lower quality): these ride a vision call at
+    ``detail:"low"``, while OCR keeps the untouched full-resolution midpoint
+    keyframe. Frames land in the caller's temp workdir and are never persisted
+    or served -- ``thumbnail_path`` still points at the midpoint keyframe.
+
+    Returns the written paths in time order; a short read (ffmpeg produced
+    fewer frames than asked, e.g. a very short clip) is a legitimate outcome
+    and the caller captions whatever came back.
+    """
+    if count < 1:
+        raise VideoToolError(
+            'Frame count must be positive', code='ATTACHMENT_VIDEO_FRAMES_FAILED'
+        )
+    pattern = os.path.join(out_dir, 'frame-%03d.jpg')
+    _run(
+        [
+            'ffmpeg',
+            *_FFMPEG_BASE,
+            '-i',
+            path,
+            '-vf',
+            "thumbnail,scale='min(640,iw)':-2",
+            '-frames:v',
+            str(count),
+            '-q:v',
+            '6',
+            '-y',
+            pattern,
+        ],
+        timeout=KEYFRAME_TIMEOUT_S,
+        event='Video frame sampling failed',
+        code='ATTACHMENT_VIDEO_FRAMES_FAILED',
+    )
+    written = sorted(
+        os.path.join(out_dir, name)
+        for name in os.listdir(out_dir)
+        if name.startswith('frame-') and name.endswith('.jpg')
+    )
+    if not written:
+        raise VideoToolError(
+            'Video frame sampling produced no frames',
+            code='ATTACHMENT_VIDEO_FRAMES_FAILED',
+        )
+    return written
+
+
 __all__ = [
     'CUT_TIMEOUT_S',
     'KEYFRAME_TIMEOUT_S',
@@ -250,6 +301,7 @@ __all__ = [
     'VideoProbe',
     'VideoToolError',
     'cut_segment',
+    'extract_frames',
     'extract_keyframe',
     'ffmpeg_available',
     'plan_segments',

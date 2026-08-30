@@ -106,6 +106,9 @@ _MEDIA_DOC_KEYS = {
     'media_vector',
     'embedding_model',
     'embedding_dimensions',
+    # R5: which corpus-affecting settings produced this document, so a stale
+    # cohort is findable with one filtered $count.
+    'embedding_profile',
 }
 
 
@@ -186,7 +189,7 @@ def _image_providers(ocr='Nameplate SN-100 480V', caption='Motor nameplate photo
             return_value=fake_di,
         ),
         mock.patch(
-            'ai.core.integrations.image_caption.caption_image', return_value=caption
+            'ai.core.integrations.image_caption.caption_frames', return_value=caption
         ) as caption_mock,
     ):
         yield fake_di, caption_mock
@@ -535,7 +538,7 @@ class MediaImageIngestTests(MediaFixtureTestCase):
                 return_value=failing,
             ),
             mock.patch(
-                'ai.core.integrations.image_caption.caption_image',
+                'ai.core.integrations.image_caption.caption_frames',
                 side_effect=AssertionError('caption must not run after OCR failure'),
             ),
             self.assertLogs('inventree', level='WARNING') as captured,
@@ -583,7 +586,7 @@ class MediaImageIngestTests(MediaFixtureTestCase):
                 return_value=fake_di,
             ),
             mock.patch(
-                'ai.core.integrations.image_caption.caption_image',
+                'ai.core.integrations.image_caption.caption_frames',
                 side_effect=ImageCaptionError('caption failed'),
             ),
             self.assertRaises(AttachmentIngestionError) as caught,
@@ -733,7 +736,7 @@ class MediaVideoIngestTests(MediaFixtureTestCase):
 
         docs = projection.documents
         self.assertEqual(len(docs), 3)
-        self.assertEqual(len(_MEDIA_DOC_KEYS), 30)
+        self.assertEqual(len(_MEDIA_DOC_KEYS), 31)  # R5: +embedding_profile
         for index, doc in enumerate(docs):
             start, end = _EXPECTED_WINDOWS[index]
             self.assertEqual(set(doc), _MEDIA_DOC_KEYS)

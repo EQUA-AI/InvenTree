@@ -52,6 +52,12 @@ def _stamp_fields(m):
     return [
         m.SimpleField(name='embedding_model', type='Edm.String', filterable=True),
         m.SimpleField(name='embedding_dimensions', type='Edm.Int32', filterable=True),
+        # R5: which corpus-affecting settings produced this document. Filterable
+        # so `$count` where `embedding_profile ne '<current>'` is the one-query
+        # homogeneity proof the rollout gate needs. Lives here rather than in
+        # either builder so the two spaces can never diverge; documents indexed
+        # before R5 read null, which is itself the "not re-projected yet" signal.
+        m.SimpleField(name='embedding_profile', type='Edm.String', filterable=True),
     ]
 
 
