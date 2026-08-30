@@ -684,10 +684,13 @@ def build_search_documents(
             'is_current': True,
             'doc_type': doc_type,
             'source_file_name': file_name,
-            'section_path': chunk.section_path,
-            'heading_1': chunk.heading_1,
-            'heading_2': chunk.heading_2,
-            'heading_3': chunk.heading_3,
+            # Same slices the PG row takes, so a rebuild re-projecting from
+            # Postgres is byte-identical to the live document by construction
+            # rather than by two call sites happening to agree.
+            'section_path': chunk.section_path[:512],
+            'heading_1': chunk.heading_1[:256],
+            'heading_2': chunk.heading_2[:256],
+            'heading_3': chunk.heading_3[:256],
             'page_number': section_pages.get(chunk.section_id),
             'chunk_index': position,
             'token_count': chunk.token_count,
@@ -776,6 +779,10 @@ class MediaDocSegment:
     timecode_end_s: float | None
     caption: str
     ocr_text: str
+    #: Always '' on the live path today (R5 ships no transcription). Carried
+    #: as a field rather than hardcoded at the builder so a rebuild can
+    #: re-project R6 transcripts instead of silently blanking them.
+    transcript: str
     vector: object
     thumbnail_path: str
 
@@ -837,7 +844,7 @@ def build_media_documents(
             'segment_count': len(segments),
             'caption': segment.caption,
             'ocr_text': segment.ocr_text,
-            'transcript': '',
+            'transcript': segment.transcript,
             'thumbnail_path': segment.thumbnail_path,
             'source_file_name': file_name,
             'recorded_at': recorded_at.isoformat() if recorded_at else None,
@@ -1403,6 +1410,7 @@ def run_ingest(
                         timecode_end_s=None,
                         caption=caption,
                         ocr_text=ocr_text,
+                        transcript='',
                         vector=vector,
                         thumbnail_path=thumbnail_path,
                     )
@@ -1423,6 +1431,15 @@ def run_ingest(
                 'embedding_model': media_embedding_client.model,
                 'embedding_dimensions': media_embedding_client.dimensions,
                 'embedding_profile': media_profile,
+                # The as_of actually stamped on the documents. updated_at is
+                # auto_now and is bumped by restamps and by the INDEXED
+                # short-circuit, so a rebuild keyed on it would rewrite every
+                # citation's as_of to the rebuild date.
+                'indexed_at': indexed_at,
+                # EXIF / container capture time. Derived at projection time and
+                # never stored before R5; since a Search upload is a full
+                # replace, a rebuild that omitted it would NULL a live field.
+                'media_recorded_at': recorded_at,
                 'search_index_name': own_projection.index_name,
             }
         elif is_video:
@@ -1621,6 +1638,7 @@ def run_ingest(
                                 timecode_end_s=end,
                                 caption=caption,
                                 ocr_text=ocr_text,
+                                transcript='',
                                 vector=vector,
                                 thumbnail_path=stored_rel,
                             )
@@ -1680,6 +1698,15 @@ def run_ingest(
                 'embedding_model': media_embedding_client.model,
                 'embedding_dimensions': media_embedding_client.dimensions,
                 'embedding_profile': media_profile,
+                # The as_of actually stamped on the documents. updated_at is
+                # auto_now and is bumped by restamps and by the INDEXED
+                # short-circuit, so a rebuild keyed on it would rewrite every
+                # citation's as_of to the rebuild date.
+                'indexed_at': indexed_at,
+                # EXIF / container capture time. Derived at projection time and
+                # never stored before R5; since a Search upload is a full
+                # replace, a rebuild that omitted it would NULL a live field.
+                'media_recorded_at': recorded_at,
                 'search_index_name': own_projection.index_name,
             }
         else:
@@ -1758,6 +1785,15 @@ def run_ingest(
                     chunk_index=position,
                     page_number=section_pages.get(chunk.section_id),
                     section_path=chunk.section_path[:512],
+                    # Stored, not derived. section_path joins EVERY non-empty
+                    # heading level while these are headings[:3] positionally,
+                    # so splitting the path is wrong for h2-first documents,
+                    # level skips and preamble text -- and all three are
+                    # SearchableFields in the retrieval select list, so a
+                    # split-derived rebuild would silently mutate BM25 scoring.
+                    heading_1=chunk.heading_1[:256],
+                    heading_2=chunk.heading_2[:256],
+                    heading_3=chunk.heading_3[:256],
                     content=chunk.text,
                     token_count=chunk.token_count,
                     embedding=vector,
@@ -1777,6 +1813,10 @@ def run_ingest(
                 'embedding_model': embedding_client.model,
                 'embedding_dimensions': embedding_client.dimensions,
                 'embedding_profile': text_profile,
+                # As above. media_recorded_at is deliberately absent: a document
+                # has no capture time, and _fenced_update only touches the keys
+                # it is given, so omitting beats writing None.
+                'indexed_at': indexed_at,
                 'search_index_name': own_projection.index_name,
             }
 

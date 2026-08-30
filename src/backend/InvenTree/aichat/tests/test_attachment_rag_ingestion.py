@@ -640,6 +640,85 @@ class DocIngestTests(RagFixtureTestCase):
         self.assertEqual(stamp['v'], 2)
         self.assertIn('mtime', stamp)
 
+    def test_row_and_document_agree_on_headings_and_indexed_at(self):
+        """R5 WP-B: migration 0031's columns are actually written.
+
+        The columns landed in 0031 but nothing populated them, which made a
+        zero-provider rebuild lossy in three ways at once: blanked headings
+        (they are SearchableFields in the retrieval select list, so BM25 would
+        drift), a rewritten as_of, and a NULLed recorded_at. A rebuild can only
+        be faithful if the row and the projected document agree here.
+        """
+        attachment = _make_attachment(
+            'assetmachine', self.machine.pk, 'press-manual.md', _MD
+        )
+        row, _embedder, projection = self._run(attachment.pk)
+
+        self.assertIsNotNone(row.indexed_at)
+        chunks = list(AttachmentChunk.objects.filter(ingest=row).order_by('chunk_index'))
+        self.assertEqual(len(chunks), len(projection.documents))
+        for chunk, doc in zip(chunks, projection.documents, strict=True):
+            self.assertEqual(chunk.heading_1, doc['heading_1'])
+            self.assertEqual(chunk.heading_2, doc['heading_2'])
+            self.assertEqual(chunk.heading_3, doc['heading_3'])
+            self.assertEqual(chunk.section_path, doc['section_path'])
+            self.assertEqual(chunk.page_number, doc['page_number'])
+        # The stamped as_of must be the row's, not the rebuild clock.
+        #
+        # Compare instants, not strings: InvenTree/settings.py sets
+        # USE_TZ = bool(not TESTING), so the Django test runner reads this
+        # column back NAIVE while production (USE_TZ=True) reads it aware.
+        # The instant is identical either way. Noted here because it is a live
+        # trap for the rebuild command, which must normalise to UTC before
+        # isoformat() or it will emit a different string than the document it
+        # is supposed to reproduce.
+        from datetime import UTC, datetime
+
+        stored = row.indexed_at
+        stored = stored.replace(tzinfo=UTC) if stored.tzinfo is None else stored
+        projected = datetime.fromisoformat(projection.documents[0]['indexed_at'])
+        projected = (
+            projected.replace(tzinfo=UTC) if projected.tzinfo is None else projected
+        )
+        self.assertEqual(stored, projected)
+
+    def test_headings_are_populated_not_blank(self):
+        """A guard against the columns existing but staying empty."""
+        attachment = _make_attachment(
+            'assetmachine', self.machine.pk, 'press-manual.md', _MD
+        )
+        row, _embedder, _projection = self._run(attachment.pk)
+        headings = {
+            (c.heading_1, c.heading_2)
+            for c in AttachmentChunk.objects.filter(ingest=row)
+        }
+        self.assertTrue(
+            any(h1 or h2 for h1, h2 in headings),
+            'the markdown fixture has headings; none reached the rows',
+        )
+
+    def test_long_headings_truncate_identically_in_row_and_document(self):
+        """Row and document must agree by construction, not by coincidence.
+
+        The PG row has always sliced section_path to 512 while the projection
+        emitted it whole, so a rebuild was *guaranteed* to differ on any long
+        path. Both ends now take the same slice.
+        """
+        long_h1 = 'H' * 400
+        long_h2 = 'S' * 400
+        body = f'# {long_h1}\n\n## {long_h2}\n\nLock out power before service.\n'
+        attachment = _make_attachment(
+            'assetmachine', self.machine.pk, 'long.md', body.encode()
+        )
+        row, _embedder, projection = self._run(attachment.pk)
+        chunk = AttachmentChunk.objects.filter(ingest=row).first()
+        doc = projection.documents[0]
+        self.assertEqual(len(chunk.heading_1), 256)
+        self.assertEqual(chunk.heading_1, doc['heading_1'])
+        self.assertEqual(chunk.heading_2, doc['heading_2'])
+        self.assertLessEqual(len(chunk.section_path), 512)
+        self.assertEqual(chunk.section_path, doc['section_path'])
+
     def test_same_sha_short_circuits(self):
         """Identical content re-runs do not re-embed or re-project."""
         attachment = _make_attachment('part', self.part.pk, 'kit.md', _MD)

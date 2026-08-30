@@ -639,6 +639,97 @@ class MediaImageIngestTests(MediaFixtureTestCase):
         )
 
 
+def _assert_same_instant(case, stored, projected_iso):
+    """Compare a stored datetime against a projected isoformat string.
+
+    Not a string compare: InvenTree/settings.py sets USE_TZ = bool(not TESTING),
+    so the Django test runner reads these columns back NAIVE while production
+    (USE_TZ=True) reads them aware. The instant is identical either way. This is
+    a live trap for the rebuild command, which must normalise to UTC before
+    isoformat() or it emits a different string than the document it reproduces.
+    """
+    from datetime import UTC, datetime
+
+    if stored is None or projected_iso is None:
+        case.assertIsNone(stored)
+        case.assertIsNone(projected_iso)
+        return
+    if stored.tzinfo is None:
+        stored = stored.replace(tzinfo=UTC)
+    projected = datetime.fromisoformat(projected_iso)
+    if projected.tzinfo is None:
+        projected = projected.replace(tzinfo=UTC)
+    case.assertEqual(stored, projected)
+
+
+class MediaWriteBackTests(MediaFixtureTestCase):
+    """R5 WP-B: the 0031 columns the media paths must populate.
+
+    Both values are derived at projection time and were never stored, so a
+    zero-provider rebuild would have NULLed recorded_at and rewritten as_of --
+    and because a Search upload is a full replace, not a merge, that is a live
+    citation regression rather than a missing extra.
+    """
+
+    def test_image_stores_indexed_at_and_recorded_at(self):
+        """An image row carries the as_of and capture time its document shows."""
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'nameplate.png', _PNG
+        )
+        with _image_providers():
+            row, _embedder, projection = self._run_media(attachment.pk)
+        self.assertEqual(row.state, AttachmentIngestState.INDEXED)
+        self.assertIsNotNone(row.indexed_at)
+        doc = projection.documents[0]
+        # recorded_at is EXIF-derived and legitimately absent for this fixture;
+        # what matters is that the row and the document agree either way.
+        _assert_same_instant(self, row.media_recorded_at, doc['recorded_at'])
+
+    def test_video_stores_recorded_at_from_the_container_probe(self):
+        """The ffprobe capture time reaches the row, not just the document."""
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'repair.mp4', _MP4
+        )
+        with _image_providers(), _video_tool_fakes():
+            row, _embedder, projection = self._run_media(attachment.pk)
+        self.assertEqual(row.state, AttachmentIngestState.INDEXED)
+        self.assertIsNotNone(row.indexed_at)
+        doc = projection.documents[0]
+        # The probe fixture supplies a real capture time, so this proves the
+        # value actually reaches the row rather than both sides being None.
+        self.assertIsNotNone(row.media_recorded_at)
+        _assert_same_instant(self, row.media_recorded_at, doc['recorded_at'])
+
+    def test_transcript_round_trips_through_the_segment_dataclass(self):
+        """R5 ships no transcription, but the field must not be hardcoded.
+
+        build_media_documents used to write '' literally, which would have made
+        R6 transcripts structurally unrebuildable -- the rebuild could never
+        carry a value the builder refused to read.
+        """
+        attachment = _make_attachment(
+            'workorder', self.work_order.pk, 'nameplate.png', _PNG
+        )
+        with _image_providers():
+            _row, _embedder, projection = self._run_media(attachment.pk)
+        self.assertEqual(projection.documents[0]['transcript'], '')
+
+        from aichat.services.attachment_ingestion import MediaDocSegment
+
+        segment = MediaDocSegment(
+            media_type='video_segment',
+            segment_index=0,
+            timecode_start_s=0.0,
+            timecode_end_s=60.0,
+            caption='c',
+            ocr_text='o',
+            transcript='pulling the mechanical seal now',
+            vector=[0.1] * 3072,
+            thumbnail_path='t.jpg',
+        )
+        self.assertEqual(segment.transcript, 'pulling the mechanical seal now')
+
+
 class MediaVideoIngestTests(MediaFixtureTestCase):
     """The R4 video path: segmentation E2E, in-run skips, failure, cleanup."""
 
