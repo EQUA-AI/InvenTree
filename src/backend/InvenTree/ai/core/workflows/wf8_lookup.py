@@ -24,7 +24,6 @@ from agent_framework.azure import AzureOpenAIChatClient
 from ai.core.config import get_settings
 from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
 from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
-from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
 from ai.core.integrations.kanban_tools import KANBAN_TOOLS
@@ -454,7 +453,6 @@ figure from an earlier turn as if you had just verified it."""
                 INVENTORY_READ_TOOLS
                 + EMAIL_TOOLS
                 + KANBAN_TOOLS
-                + DOCUMENT_SEARCH_TOOLS
                 + CONTROLLED_CORPUS_TOOLS
                 + ATTACHMENT_CORPUS_TOOLS
                 + EVIDENCE_MEDIA_TOOLS

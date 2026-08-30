@@ -97,7 +97,6 @@ def text_chat_tools() -> tuple[Any, ...]:
     from ai.core.integrations.controlled_document_corpus import (
         CONTROLLED_CORPUS_TOOLS,
     )
-    from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
     from ai.core.integrations.email.tools import EMAIL_TOOLS
     from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
@@ -112,7 +111,6 @@ def text_chat_tools() -> tuple[Any, ...]:
         *PURCHASE_ORDER_WRITE_TOOLS,
         *EMAIL_TOOLS,
         *KANBAN_TOOLS,
-        *DOCUMENT_SEARCH_TOOLS,
         *CONTROLLED_CORPUS_TOOLS,
         *ATTACHMENT_CORPUS_TOOLS,
         *EVIDENCE_MEDIA_TOOLS,

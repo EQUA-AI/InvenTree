@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock
 import pytest
 from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
 from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
-from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
 from ai.core.integrations.kanban_tools import KANBAN_READ_TOOLS, KANBAN_TOOLS
@@ -60,7 +59,6 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
         INVENTORY_READ_TOOLS
         + EMAIL_TOOLS
         + KANBAN_TOOLS
-        + DOCUMENT_SEARCH_TOOLS
         + CONTROLLED_CORPUS_TOOLS
         + ATTACHMENT_CORPUS_TOOLS
         + EVIDENCE_MEDIA_TOOLS
@@ -71,10 +69,11 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
     # 61 wf8 tools (delete_kanban_card is withheld) + the specialist writes
     # wf2/wf3/wf4/wf6 carry: parts/stock/company/sales writes and the nine
     # purchase-order write tools. R2 added search_attachment_docs; R3 added
-    # search_evidence_media; S8a added list_document_sources.
-    assert len(wf8_tools) == 59
-    assert len(catalog) == 95
-    assert tuple(entry.tool for entry in catalog[:59]) == wf8_tools
+    # search_evidence_media; S8a added list_document_sources; R5 retired
+    # search_part_documents (59 -> 58, catalog 95 -> 94).
+    assert len(wf8_tools) == 58
+    assert len(catalog) == 94
+    assert tuple(entry.tool for entry in catalog[:58]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -101,9 +100,9 @@ def test_catalog_has_expected_stable_pack_shapes():
         "parts.read": 5,
         "stock.read": 6,
         "bom.read": 2,
-        # 3 since R2: search_attachment_docs joins the legacy pair; the pack
-        # relaxes back to 2 when search_part_documents is unwired at R5.
-        "documents.read": 3,
+        # Grew to 3 at R2 when search_attachment_docs joined the legacy pair;
+        # relaxed back to 2 at R5 when search_part_documents was retired.
+        "documents.read": 2,
         "procurement.read": 5,
         "sales.read": 4,
         "build.read": 3,
@@ -186,7 +185,6 @@ def test_protected_resource_tools_have_resource_authorizers():
         "get_part_attachments",
         "list_database_tables",
         "query_database",
-        "search_part_documents",
         # Machine reads are tenant-scoped, not role-scoped: a work_order:view
         # grant is global while asset rows belong to a customer or client, so
         # the role can only ever say "may read assets", never "may read this
@@ -301,8 +299,8 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    # Matches the catalog pin: 93 entries (wf8 57 + specialist writes + packs).
-    assert len(first) == 95
+    # Matches the catalog pin above: 94 entries (wf8 58 + specialist writes).
+    assert len(first) == 94
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)

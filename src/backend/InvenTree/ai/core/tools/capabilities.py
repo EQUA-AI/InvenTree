@@ -20,11 +20,11 @@ logger = logging.getLogger(__name__)
 
 CATALOG_VERSION = "1"
 #: Ceiling on one run's model-visible schema. A primary pack plus two adjacent
-#: packs plus the SQL escape hatch is 16 tools at worst (parts 5 + stock 6 +
-#: documents 3 + analytics 2 -- documents.read grew to 3 with the R2
-#: attachment tool; it relaxes back to 2 when search_part_documents is
-#: unwired at R5), exactly at the ceiling while staying well under the full
-#: read surface.
+#: packs plus the SQL escape hatch is 15 tools at worst on the documents stack
+#: (parts 5 + stock 6 + documents 2 + analytics 2 -- documents.read grew to 3
+#: with the R2 attachment tool and relaxed back to 2 when
+#: search_part_documents was unwired at R5), under the ceiling while staying
+#: well under the full read surface.
 #: Raised 16 -> 17 with S5b: the maintenance.read pack gained the
 #: owner-approved get_work_order_closeout (A16/Q14), growing the worst-case
 #: stack (maintenance 7 + machines 9 + SQL 1). A one-tool schema increase is
@@ -146,10 +146,10 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
         # MAX_INITIAL_TOOLS and the explicit-manuals rider always re-appends
         # that pack, so a second manuals tool would force the trim loop.
         # This pack's terms are the attachment corpus's own doc_type
-        # vocabulary. Worst case here: parts 5 + stock 6 + documents 3 +
-        # analytics 2 = 16 <= MAX_INITIAL_TOOLS. search_part_documents is
-        # deprecated (R2) and unwired at R5, relaxing the pack back to 2.
-        ("get_part_attachments", "search_part_documents", "search_attachment_docs"),
+        # vocabulary. Worst case here: parts 5 + stock 6 + documents 2 +
+        # analytics 2 = 15 <= MAX_INITIAL_TOOLS. search_part_documents
+        # (deprecated at R2) was unwired at R5, relaxing the pack to 2.
+        ("get_part_attachments", "search_attachment_docs"),
         # "uploaded"/"documents": how operators actually name the attachment
         # corpus ("the uploaded datasheet", "what do the uploaded documents
         # say") — without them a spec question phrased that way selected no
@@ -1144,12 +1144,6 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
             kind=PolicyKind.RESOURCE_AUTHORIZER,
             authorizer="database_relation_access",
         )
-    if tool_id == "search_part_documents":
-        return AuthorizationPolicy(
-            kind=PolicyKind.RESOURCE_AUTHORIZER,
-            all_of=(("part", "view"),),
-            authorizer="part_document_access",
-        )
     return AuthorizationPolicy(
         kind=PolicyKind.DISABLED,
         reason="No explicit InvenTree-managed AI capability permission exists",
@@ -1167,7 +1161,6 @@ def _catalog_tools() -> tuple[Any, ...]:
     """
     from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
     from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
-    from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
     from ai.core.integrations.email.tools import EMAIL_TOOLS
     from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
@@ -1181,7 +1174,6 @@ def _catalog_tools() -> tuple[Any, ...]:
         *INVENTORY_READ_TOOLS,
         *EMAIL_TOOLS,
         *KANBAN_TOOLS,
-        *DOCUMENT_SEARCH_TOOLS,
         *CONTROLLED_CORPUS_TOOLS,
         *ATTACHMENT_CORPUS_TOOLS,
         *EVIDENCE_MEDIA_TOOLS,

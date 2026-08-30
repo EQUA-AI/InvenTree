@@ -19,7 +19,7 @@ Accounting status by source (S12 keeps this list honest — the spec's bar is
 
 - COUNTED: wf8, Luna, routing classifier, grounding, intent classifier,
   voice tool_actions, reflection repair, and query-time embeddings
-  (``document_search`` + the routing embedder).
+  (the routing embedder; ``document_search`` was retired at R5).
 - EXPLICITLY BOUNDED, not instrumented: legacy workflows wf1-wf6 and failed
   provider calls on every rail — under ``FEATURE_AI_QUOTA_PROFILES`` an
   executed turn whose ledger stayed empty settles at the configured

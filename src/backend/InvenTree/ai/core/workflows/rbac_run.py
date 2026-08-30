@@ -30,7 +30,6 @@ def voice_read_tools(full_tools: Any | None = None) -> tuple:
     from ai.core.tools.rbac import read_tools
 
     if full_tools is None:
-        from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS
         from ai.core.integrations.email.tools import EMAIL_TOOLS
         from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
         from ai.core.integrations.kanban_tools import KANBAN_TOOLS
@@ -39,7 +38,6 @@ def voice_read_tools(full_tools: Any | None = None) -> tuple:
             *INVENTORY_READ_TOOLS,
             *EMAIL_TOOLS,
             *KANBAN_TOOLS,
-            *DOCUMENT_SEARCH_TOOLS,
         )
     return read_tools(tuple(full_tools))
 

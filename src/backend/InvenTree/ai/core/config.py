@@ -909,6 +909,10 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("AZURE_SEARCH_API_KEY", "AZURE_SEARCH_KEY"),
     )
+    # Retired at R5 with search_part_documents: no code reads this index any
+    # more. The field survives ONLY as a reserved alias name -- the distinctness
+    # validator below and the projections' alias guards still consult it so a
+    # stale env setting can never let auto-ingested content alias a legacy index.
     azure_search_documents_index: str = Field(default="", alias="AZURE_SEARCH_DOCUMENTS_INDEX")
     azure_search_controlled_documents_index: str = Field(
         default="", alias="AZURE_SEARCH_CONTROLLED_DOCUMENTS_INDEX"

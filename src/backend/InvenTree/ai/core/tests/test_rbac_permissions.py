@@ -23,7 +23,6 @@ from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS  # no
 from ai.core.integrations.controlled_document_corpus import (  # noqa: E402
     CONTROLLED_CORPUS_TOOLS,
 )
-from ai.core.integrations.document_search import DOCUMENT_SEARCH_TOOLS  # noqa: E402
 from ai.core.integrations.email.tools import EMAIL_TOOLS, send_email  # noqa: E402
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS  # noqa: E402
 from ai.core.integrations.kanban_tools import (  # noqa: E402
@@ -44,8 +43,7 @@ from ai.core.tools.rbac import (  # noqa: E402
 from django.test import SimpleTestCase  # noqa: E402
 
 # Deliberately unmapped in the list filter: query_database/list_database_tables
-# self-enforce per-table RBAC; search_part_documents is gated by the wf8 catalog
-# resource-authorizer and is a low-risk read elsewhere.
+# self-enforce per-table RBAC.
 # search_attachment_docs (R2) is unmapped because a single (role, action)
 # pair cannot express its EITHER-role exposure — the catalog policy's any_of
 # is the exposure gate, and the tool self-enforces per-arm by restricting its
@@ -54,7 +52,6 @@ from django.test import SimpleTestCase  # noqa: E402
 _UNMAPPED_ALLOWED = {
     "query_database",
     "list_database_tables",
-    "search_part_documents",
     "search_attachment_docs",
 }
 
@@ -74,7 +71,6 @@ class PermissionMapCompletenessTests(SimpleTestCase):
             set(INVENTORY_TOOLS)
             | set(EMAIL_TOOLS)
             | set(KANBAN_TOOLS)
-            | set(DOCUMENT_SEARCH_TOOLS)
             # search_manuals must stay mapped (work_order:view), never a
             # silent pass-through like the allowed database self-enforcers.
             | set(CONTROLLED_CORPUS_TOOLS)
