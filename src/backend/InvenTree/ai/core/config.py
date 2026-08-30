@@ -966,6 +966,12 @@ class Settings(BaseSettings):
     )
     cohere_embed_model: str = Field(default="embed-v-4-0", alias="COHERE_EMBED_MODEL")
     cohere_embed_dimensions: int = Field(default=1536, ge=1, alias="COHERE_EMBED_DIMENSIONS")
+    # R5 WP-A. The retired azure-ai-inference SDK hardcoded this; exposing it is
+    # the lever for the risk that actually bites -- Azure retiring the
+    # api-version, which on a dead SDK would have meant forking it.
+    cohere_embed_api_version: str = Field(
+        default="2024-05-01-preview", alias="COHERE_EMBED_API_VERSION"
+    )
     gcp_project_id: str = Field(default="", alias="GCP_PROJECT_ID")
     gcp_location: str = Field(default="", alias="GCP_LOCATION")
     # wif = Workload Identity Federation external_account JSON (keyless, prod);
@@ -1072,6 +1078,14 @@ class Settings(BaseSettings):
                 )
             if not self.cohere_embed_model:
                 raise ValueError("COHERE_EMBED_MODEL is required when attachment RAG is enabled")
+            # The client builds the route itself, so a path on the endpoint
+            # yields /embeddings/embeddings. Deliberately not a host allowlist:
+            # that would hard-code Azure topology into config validation.
+            tail = self.cohere_embed_endpoint.split("://", 1)[-1]
+            if "/embeddings" in tail or "/openai" in tail:
+                raise ValueError(
+                    "COHERE_EMBED_ENDPOINT must be the resource root, without an API path"
+                )
             if not self.azure_search_endpoint or not self.azure_search_attachment_docs_index:
                 raise ValueError(
                     "AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_ATTACHMENT_DOCS_INDEX are "

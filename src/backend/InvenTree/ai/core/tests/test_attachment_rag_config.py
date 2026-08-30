@@ -250,3 +250,48 @@ def test_caption_frames_require_the_ingest_flag():
 def test_caption_frames_are_bounded():
     with pytest.raises(ValidationError):
         _settings(RAG_VIDEO_CAPTION_FRAMES=11, **_MEDIA_ON)
+
+
+# ---------------------------------------------------------------------------
+# R5 WP-A: the Cohere transport port
+# ---------------------------------------------------------------------------
+
+_COHERE_ON = {
+    "FEATURE_ATTACHMENT_RAG_INGEST": True,
+    "COHERE_EMBED_ENDPOINT": "https://example.services.ai.azure.com",
+    "AZURE_SEARCH_ENDPOINT": "https://example.search.windows.net",
+}
+
+
+def test_cohere_api_version_defaults_to_the_frozen_sdk_value():
+    """The retired SDK hardcoded this; the default must reproduce it exactly."""
+    assert _settings().cohere_embed_api_version == "2024-05-01-preview"
+
+
+def test_cohere_api_version_is_overridable():
+    s = _settings(COHERE_EMBED_API_VERSION="2099-01-01", **_COHERE_ON)
+    assert s.cohere_embed_api_version == "2099-01-01"
+
+
+def test_cohere_endpoint_with_an_api_path_is_refused():
+    """The client builds the route, so a path here yields /embeddings/embeddings."""
+    with pytest.raises(ValidationError, match="without an API path"):
+        _settings(**{
+            **_COHERE_ON,
+            "COHERE_EMBED_ENDPOINT": "https://x.services.ai.azure.com/embeddings",
+        })
+
+
+def test_cohere_endpoint_with_an_openai_path_is_refused():
+    with pytest.raises(ValidationError, match="without an API path"):
+        _settings(**{
+            **_COHERE_ON,
+            "COHERE_EMBED_ENDPOINT": "https://x.services.ai.azure.com/openai/v1",
+        })
+
+
+def test_cohere_resource_root_is_accepted():
+    """Both live host shapes must pass; this is not a host allowlist."""
+    for host in ("example.services.ai.azure.com", "example.models.ai.azure.com"):
+        s = _settings(**{**_COHERE_ON, "COHERE_EMBED_ENDPOINT": f"https://{host}"})
+        assert s.cohere_embed_endpoint == f"https://{host}"

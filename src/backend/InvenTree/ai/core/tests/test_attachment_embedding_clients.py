@@ -21,27 +21,57 @@ from ai.core.integrations.embeddings_gemini import (
 
 
 class _FakeCohereInner:
-    """Records embed() calls and answers with fixed-width float vectors."""
+    """An httpx-shaped transport double recording requests at the WIRE level.
 
-    def __init__(self, dimensions: int = 8):
+    R5 WP-A replaced ``azure.ai.inference.EmbeddingsClient`` with raw HTTP over
+    the identical wire, so the seam moved from SDK kwargs to the request body.
+    Asserting here is strictly stronger: the frozen contract is what the
+    provider sees, not what a client library was asked for.
+    """
+
+    def __init__(self, dimensions: int = 8, status_code: int = 200):
         self.dimensions = dimensions
+        self.status_code = status_code
+        #: Decoded request bodies, in order — the old ``embed(**kwargs)`` shape.
         self.calls: list[dict] = []
+        #: Full request records for the byte-level wire pin.
+        self.requests: list[dict] = []
 
-    def embed(self, **kwargs):
-        self.calls.append(kwargs)
-        data = [
-            SimpleNamespace(embedding=[0.5] * self.dimensions, index=i)
-            for i in range(len(kwargs["input"]))
-        ]
-        return SimpleNamespace(data=data)
+    def post(self, path, *, params=None, headers=None, json=None):
+        import json as _json
+
+        self.calls.append(json)
+        self.requests.append({
+            "path": path,
+            "params": params or {},
+            "headers": headers or {},
+            "json": json,
+        })
+        if self.status_code != 200:
+            return SimpleNamespace(
+                status_code=self.status_code, json=lambda: {}, text="provider said no"
+            )
+        payload = {
+            "model": "embed-v4.0",
+            "data": [
+                {"index": i, "embedding": [0.5] * self.dimensions}
+                for i in range(len(json["input"]))
+            ],
+        }
+        del _json
+        return SimpleNamespace(status_code=200, json=lambda: payload)
+
+    def close(self):
+        self.closed = True
 
 
-def _cohere(dimensions: int = 8, inner: _FakeCohereInner | None = None):
+def _cohere(dimensions: int = 8, inner: _FakeCohereInner | None = None, **kw):
     client = CohereEmbeddingClient(
-        endpoint="https://example.models.ai.azure.com",
+        endpoint="https://example.services.ai.azure.com",
         model="embed-v-4-0",
         dimensions=dimensions,
         api_key="test",
+        **kw,
     )
     client._client = inner or _FakeCohereInner(dimensions=dimensions)
     return client
@@ -82,9 +112,10 @@ def test_cohere_refuses_dimension_drift():
 
 def test_cohere_refuses_non_float_payload():
     class _Base64Inner(_FakeCohereInner):
-        def embed(self, **kwargs):
-            self.calls.append(kwargs)
-            return SimpleNamespace(data=[SimpleNamespace(embedding="AAAA", index=0)])
+        def post(self, path, *, params=None, headers=None, json=None):
+            self.calls.append(json)
+            payload = {"model": "embed-v4.0", "data": [{"index": 0, "embedding": "AAAA"}]}
+            return SimpleNamespace(status_code=200, json=lambda: payload)
 
     client = _cohere(inner=_Base64Inner())
     with pytest.raises(AttachmentEmbeddingError) as excinfo:
@@ -94,7 +125,7 @@ def test_cohere_refuses_non_float_payload():
 
 def test_cohere_wraps_provider_errors_value_free():
     class _DownInner(_FakeCohereInner):
-        def embed(self, **kwargs):
+        def post(self, path, *, params=None, headers=None, json=None):
             raise RuntimeError("secret=abc123 leaked provider detail")
 
     client = _cohere(inner=_DownInner())
@@ -255,14 +286,17 @@ def test_cohere_reorders_by_item_index():
     """F-20: out-of-order provider responses must re-pair correctly."""
 
     class _ShuffledInner(_FakeCohereInner):
-        def embed(self, **kwargs):
-            self.calls.append(kwargs)
-            count = len(kwargs["input"])
-            data = [
-                SimpleNamespace(embedding=[float(i)] * self.dimensions, index=i)
-                for i in reversed(range(count))
-            ]
-            return SimpleNamespace(data=data)
+        def post(self, path, *, params=None, headers=None, json=None):
+            self.calls.append(json)
+            count = len(json["input"])
+            payload = {
+                "model": "embed-v4.0",
+                "data": [
+                    {"index": i, "embedding": [float(i)] * self.dimensions}
+                    for i in reversed(range(count))
+                ],
+            }
+            return SimpleNamespace(status_code=200, json=lambda: payload)
 
     client = _cohere(inner=_ShuffledInner())
     vectors = client.embed_documents(["a", "b", "c"])
@@ -279,10 +313,13 @@ def test_cohere_records_the_provider_resolved_model():
     )
 
     class _NamedInner(_FakeCohereInner):
-        def embed(self, **kwargs):
-            response = super().embed(**kwargs)
-            response.model = "embed-v-4-0-2026-01"
-            return response
+        def post(self, path, *, params=None, headers=None, json=None):
+            self.calls.append(json)
+            payload = {
+                "model": "embed-v-4-0-2026-01",
+                "data": [{"index": 0, "embedding": [0.5] * self.dimensions}],
+            }
+            return SimpleNamespace(status_code=200, json=lambda: payload)
 
     _reset_resolved_models()
     try:
@@ -375,3 +412,88 @@ def test_gemini_unreadable_credentials_fail_closed(tmp_path):
     with pytest.raises(MediaEmbeddingError) as excinfo:
         client._load_credentials()
     assert excinfo.value.code == "MEDIA_EMBEDDING_CONFIG_INVALID"
+
+
+# ---------------------------------------------------------------------------
+# R5 WP-A: the frozen wire contract
+# ---------------------------------------------------------------------------
+
+
+def test_cohere_wire_request_matches_the_frozen_sdk_contract():
+    """Pin the exact request azure-ai-inference 1.0.0b9 used to send.
+
+    This is the whole port claim in one assertion. The SDK was retired
+    2026-08-26 and replaced with raw HTTP over the identical wire; the live
+    swap was verified bit-identical (maxdiff 0.0) against it, which is only
+    meaningful for as long as the request stays byte-for-byte the same.
+    """
+    inner = _FakeCohereInner()
+    client = _cohere(inner=inner)
+    client.embed_documents(["alpha", "beta"])
+
+    request = inner.requests[0]
+    assert request["path"] == "/embeddings"
+    assert request["params"] == {"api-version": "2024-05-01-preview"}
+    assert request["headers"]["Authorization"] == "Bearer test"
+    assert request["json"] == {
+        "input": ["alpha", "beta"],
+        "model": "embed-v-4-0",
+        "dimensions": 8,
+        "input_type": "document",
+        "encoding_format": "float",
+    }
+
+
+def test_cohere_query_and_document_are_asymmetric_on_the_wire():
+    """`input_type` is honoured by the service, not decorative.
+
+    Measured live before the port: cos(query, document) = 0.871 on the same
+    text. A transport that dropped this field would silently halve retrieval
+    quality with no error anywhere.
+    """
+    inner = _FakeCohereInner()
+    client = _cohere(inner=inner)
+    client.embed_documents(["a"])
+    client.embed_query("a")
+    assert [call["input_type"] for call in inner.calls] == ["document", "query"]
+
+
+def test_cohere_api_version_is_configurable():
+    """The lever for the real risk: Azure retiring the api-version."""
+    inner = _FakeCohereInner()
+    client = _cohere(inner=inner, api_version="2099-01-01")
+    client.embed_documents(["a"])
+    assert inner.requests[0]["params"] == {"api-version": "2099-01-01"}
+
+
+def test_cohere_non_200_is_value_free():
+    """A provider error body echoes the endpoint; it must never reach a fault."""
+    client = _cohere(inner=_FakeCohereInner(status_code=503))
+    with pytest.raises(AttachmentEmbeddingError) as excinfo:
+        client.embed_documents(["one"])
+    assert excinfo.value.code == "ATTACHMENT_EMBEDDING_FAILED"
+    assert "provider said no" not in str(excinfo.value)
+
+
+def test_cohere_managed_identity_mints_a_token_per_request():
+    """Keyless is the deployed posture; a backfill outruns one token lifetime."""
+    minted: list[str] = []
+
+    def _provider() -> str:
+        minted.append(f"tok{len(minted)}")
+        return minted[-1]
+
+    client = CohereEmbeddingClient(
+        endpoint="https://example.services.ai.azure.com",
+        model="embed-v-4-0",
+        dimensions=8,
+    )
+    inner = _FakeCohereInner()
+    client._client = inner
+    client._token_provider = _provider
+
+    client.embed_documents(["a"])
+    client.embed_documents(["b"])
+    assert minted == ["tok0", "tok1"]
+    assert inner.requests[0]["headers"]["Authorization"] == "Bearer tok0"
+    assert inner.requests[1]["headers"]["Authorization"] == "Bearer tok1"
