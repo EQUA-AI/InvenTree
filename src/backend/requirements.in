@@ -86,7 +86,7 @@ tenacity                                # Retry policies (ai InvenTree client)
 azure-ai-documentintelligence>=1.0.0    # Azure Document Intelligence
 azure-identity>=1.15.0                  # Azure Identity
 azure-search-documents                  # Azure AI Search integration
-azure-ai-inference                      # Cohere Embed v4 embeddings (attachment RAG, R0)
+httpx                                   # Cohere Embed v4 wire + retry middleware (attachment RAG, R5)
 google-genai                            # Gemini Embedding 2 via Vertex AI (media RAG, R0)
 pgvector                                # Postgres vector columns for the RAG system of record
 openai>=1.12.0                          # OpenAI SDK

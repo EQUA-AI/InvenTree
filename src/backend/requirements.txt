@@ -181,16 +181,11 @@ azure-ai-documentintelligence==1.0.2 \
     --hash=sha256:4d75a2513f2839365ebabc0e0e1772f5601b3a8c9a71e75da12440da13b63484 \
     --hash=sha256:e1fb446abbdeccc9759d897898a0fe13141ed29f9ad11fc705f951925822ed59
     # via -r src/backend/requirements.in
-azure-ai-inference==1.0.0b9 \
-    --hash=sha256:1feb496bd84b01ee2691befc04358fa25d7c344d8288e99364438859ad7cd5a4 \
-    --hash=sha256:49823732e674092dad83bb8b0d1b65aa73111fab924d61349eb2a8cdc0493990
-    # via -r src/backend/requirements.in
 azure-core==1.41.0 \
     --hash=sha256:522b4011e8180b1a3dcd2024396a4e7fe9ac37fb8597db47163d230b5efe892d \
     --hash=sha256:f46ff5dfcd230f25cf1c19e8a34b8dc08a337b2503e268bb600a16c00db8ad5a
     # via
     #   azure-ai-documentintelligence
-    #   azure-ai-inference
     #   azure-identity
     #   azure-search-documents
 azure-identity==1.25.3 \
@@ -1252,6 +1247,7 @@ httpx==0.28.1 \
     --hash=sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc \
     --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
     # via
+    #   -r src/backend/requirements.in
     #   google-genai
     #   mcp
     #   openai
@@ -1285,7 +1281,6 @@ isodate==0.7.2 \
     --hash=sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6
     # via
     #   azure-ai-documentintelligence
-    #   azure-ai-inference
     #   azure-search-documents
     #   python3-saml
 jinja2==3.1.6 \
@@ -2989,7 +2984,6 @@ typing-extensions==4.16.0 \
     #   aiosignal
     #   anyio
     #   azure-ai-documentintelligence
-    #   azure-ai-inference
     #   azure-core
     #   azure-identity
     #   azure-search-documents
