@@ -655,7 +655,9 @@ class DocIngestTests(RagFixtureTestCase):
         row, _embedder, projection = self._run(attachment.pk)
 
         self.assertIsNotNone(row.indexed_at)
-        chunks = list(AttachmentChunk.objects.filter(ingest=row).order_by('chunk_index'))
+        chunks = list(
+            AttachmentChunk.objects.filter(ingest=row).order_by('chunk_index')
+        )
         self.assertEqual(len(chunks), len(projection.documents))
         for chunk, doc in zip(chunks, projection.documents, strict=True):
             self.assertEqual(chunk.heading_1, doc['heading_1'])
@@ -1789,3 +1791,399 @@ class TaskWrapperTests(RagFixtureTestCase):
         ) as sweep:
             aichat_tasks.sweep_attachment_rag()
         sweep.assert_called_once_with()
+
+
+_GIF_HEAD = b'GIF89a' + b'\x00' * 32
+_ZIP_HEAD = b'PK\x03\x04' + b'\x00' * 32
+
+#: The four client factories the backfill may construct; booby-trapped in the
+#: tests that assert a code path builds none of them.
+_CLIENT_FACTORIES = (
+    'ai.core.integrations.embeddings_cohere.CohereEmbeddingClient.from_settings',
+    'ai.core.integrations.attachment_search.AttachmentSearchProjection.from_settings',
+    'ai.core.integrations.embeddings_gemini.GeminiEmbeddingClient.from_settings',
+    'ai.core.integrations.attachment_search.MediaSearchProjection.from_settings',
+)
+
+
+def _report(output: str) -> dict:
+    """Parse the JSON report line the R5 command emits last."""
+    import json
+
+    return json.loads(output.strip().splitlines()[-1])
+
+
+class BackfillHardeningTests(RagFixtureTestCase):
+    """R5: census, force selectors, router-driven clients, stamp pre-filter."""
+
+    def _doc_pair(self, stack):
+        """Patch the doc client pair with fakes; return the factory mocks."""
+        embedder_factory = stack.enter_context(
+            mock.patch(
+                'ai.core.integrations.embeddings_cohere.CohereEmbeddingClient.'
+                'from_settings',
+                side_effect=FakeEmbeddingClient,
+            )
+        )
+        projection_factory = stack.enter_context(
+            mock.patch(
+                'ai.core.integrations.attachment_search.AttachmentSearchProjection.'
+                'from_settings',
+                side_effect=FakeProjection,
+            )
+        )
+        return embedder_factory, projection_factory
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_census_writes_nothing_and_builds_no_clients(self):
+        """Census routes all three pipelines without clients, rows, or TSV.
+
+        The Django flag is deliberately ON: with it off, ``run_ingest``
+        would refuse to write anyway and the writes-nothing assertion would
+        be enforced by the environment, not by the census branch under test.
+        """
+        from io import StringIO
+
+        walked = [
+            _make_attachment('part', self.part.pk, 'manual.md', _MD),
+            _make_attachment('part', self.part.pk, 'photo.png', _PNG_HEAD),
+            _make_attachment('workorder', 784, 'clip.mp4', _MP4_HEAD),
+        ]
+        out = StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+            )
+            for target in _CLIENT_FACTORIES:
+                stack.enter_context(
+                    mock.patch(
+                        target, side_effect=AssertionError('census built a client')
+                    )
+                )
+            call_command('ingest_existing_attachments', '--census', stdout=out)
+        self.assertFalse(AttachmentIngest.objects.exists())
+        for attachment in walked:
+            attachment.refresh_from_db()
+            self.assertNotIn('ai_ingest', attachment.metadata or {})
+        lines = out.getvalue().strip().splitlines()
+        self.assertEqual(len(lines), 1)  # the JSON report only, no TSV
+        report = _report(out.getvalue())
+        self.assertEqual(report['mode'], 'census')
+        self.assertEqual(report['by_pipeline'], {'doc': 1, 'image': 1, 'video': 1})
+        self.assertEqual(report['totals']['walked'], 3)
+        self.assertEqual(report['totals']['processed'], 3)
+
+    def test_census_and_dry_run_histograms_agree(self):
+        """The two read-only modes emit diffable, identical histogram legs."""
+        from io import StringIO
+
+        _make_attachment('part', self.part.pk, 'manual.md', _MD)
+        _make_attachment('part', self.part.pk, 'bom.xlsx', _XLSX_HEAD)
+        _make_attachment('part', self.part.pk, 'photo.png', _PNG_HEAD)
+        reports = {}
+        for flag in ('--census', '--dry-run'):
+            out = StringIO()
+            with mock.patch('ai.core.config.get_settings', return_value=_ai_settings()):
+                call_command('ingest_existing_attachments', flag, stdout=out)
+            reports[flag] = _report(out.getvalue())
+        for leg in ('by_pipeline', 'by_error_code', 'by_embedding_profile'):
+            self.assertEqual(reports['--census'][leg], reports['--dry-run'][leg], leg)
+        # Content pins so both-empty (identically broken) can never pass:
+        # manual.md -> ingest/doc, bom.xlsx -> skip/doc, photo.png -> skip/image.
+        self.assertEqual(reports['--census']['by_pipeline'], {'doc': 2, 'image': 1})
+        self.assertEqual(
+            reports['--census']['by_error_code'],
+            {'ATTACHMENT_SKIP_PART_IMAGE': 1, 'ATTACHMENT_SKIP_XLSX': 1},
+        )
+
+    def test_out_of_scope_owners_are_counted(self):
+        """An owner outside RECEIVER_MODEL_TYPES lands in the census report."""
+        from io import StringIO
+
+        _make_attachment('company', 1, 'contract.md', _MD)
+        out = StringIO()
+        with mock.patch('ai.core.config.get_settings', return_value=_ai_settings()):
+            call_command('ingest_existing_attachments', '--census', stdout=out)
+        report = _report(out.getvalue())
+        self.assertEqual(report['out_of_scope_owners'], {'company': 1})
+        # Walked and counted by owner, but never routed (filtered).
+        self.assertEqual(report['by_model_type'], {'company': 1})
+        self.assertEqual(report['totals']['filtered'], 1)
+        self.assertEqual(report['totals']['processed'], 0)
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_extension_outside_old_allowlist_is_recorded(self):
+        """R5: the allow-list is gone — the router decides, and it is RECORDED.
+
+        ``.rst`` was outside ``_BACKFILL_EXTENSIONS``: the old walk counted
+        it as ``filtered`` with no registry row, invisible to the tool meant
+        to prove completeness. Now it is walked, routed, and its skip is a
+        registry row — exactly what the receiver path would have written.
+        """
+        from io import StringIO
+
+        _make_attachment('part', self.part.pk, 'notes.rst', _MD)
+        out = StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+            )
+            for target in _CLIENT_FACTORIES:
+                stack.enter_context(
+                    mock.patch(
+                        target, side_effect=AssertionError('rst skip built a client')
+                    )
+                )
+            call_command('ingest_existing_attachments', stdout=out)
+        self.assertRegex(
+            out.getvalue(), r'notes\S*\.rst\tATTACHMENT_SKIP_UNSUPPORTED_TYPE'
+        )
+        row = AttachmentIngest.objects.get()
+        self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
+        self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE')
+        self.assertEqual(row.pipeline, 'doc')
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True, AIMMS_MEDIA_RAG_ENABLED=True)
+    def test_gif_builds_no_client_pair(self):
+        """The old coverage hole: .gif built a doc pair it could never use."""
+        from io import StringIO
+
+        _make_attachment('workorder', 786, 'anim.gif', _GIF_HEAD)
+        out = StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch(
+                    'ai.core.config.get_settings', return_value=_media_ai_settings()
+                )
+            )
+            for target in _CLIENT_FACTORIES:
+                stack.enter_context(
+                    mock.patch(
+                        target, side_effect=AssertionError('no client for a gif skip')
+                    )
+                )
+            call_command(
+                'ingest_existing_attachments', '--model-type', 'workorder', stdout=out
+            )
+        row = AttachmentIngest.objects.get(model_type='workorder', model_id=786)
+        self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
+        self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_UNSUPPORTED_TYPE')
+        self.assertEqual(row.pipeline, 'image')
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_force_unstamped_selects_and_converges(self):
+        """The 0031 repair selector: exact selection, then a zero-row rerun."""
+        from io import StringIO
+
+        _make_attachment('part', self.part.pk, 'manual.md', _MD)
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+            )
+            self._doc_pair(stack)
+            call_command('ingest_existing_attachments', stdout=StringIO())
+        row = AttachmentIngest.objects.get()
+        self.assertIsNotNone(row.indexed_at)
+        # Simulate a row written before WP-B wired the 0031 columns.
+        AttachmentIngest.objects.update(indexed_at=None)
+
+        out = StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+            )
+            embedder_factory, _ = self._doc_pair(stack)
+            call_command('ingest_existing_attachments', '--force-unstamped', stdout=out)
+        self.assertIn('selector: force-unstamped selected=1', out.getvalue())
+        self.assertEqual(embedder_factory.call_count, 1)
+        row.refresh_from_db()
+        self.assertIsNotNone(row.indexed_at)
+
+        out = StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+            )
+            for target in _CLIENT_FACTORIES:
+                stack.enter_context(
+                    mock.patch(
+                        target,
+                        side_effect=AssertionError('converged rerun built a client'),
+                    )
+                )
+            call_command('ingest_existing_attachments', '--force-unstamped', stdout=out)
+        self.assertIn('selector: force-unstamped selected=0', out.getvalue())
+        self.assertEqual(_report(out.getvalue())['totals']['walked'], 0)
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_force_stale_profile_reports_no_drift(self):
+        """No drift is a stated outcome, not an empty-looking run."""
+        from io import StringIO
+
+        _make_attachment('part', self.part.pk, 'manual.md', _MD)
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+            )
+            self._doc_pair(stack)
+            call_command('ingest_existing_attachments', stdout=StringIO())
+
+        out = StringIO()
+        with mock.patch('ai.core.config.get_settings', return_value=_ai_settings()):
+            call_command(
+                'ingest_existing_attachments', '--force-stale-profile', stdout=out
+            )
+        self.assertIn(
+            'selector: force-stale-profile selected=0 (no profile drift)',
+            out.getvalue(),
+        )
+        self.assertEqual(_report(out.getvalue())['totals']['walked'], 0)
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_stamp_prefilter_skips_without_reading_and_force_bypasses(self):
+        """A stamped row costs a stat, never a download; --force re-ingests."""
+        from io import StringIO
+
+        _make_attachment('part', self.part.pk, 'manual.md', _MD)
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+            )
+            self._doc_pair(stack)
+            call_command('ingest_existing_attachments', stdout=StringIO())
+
+        out = StringIO()
+        with (
+            mock.patch('ai.core.config.get_settings', return_value=_ai_settings()),
+            mock.patch(
+                'aichat.services.attachment_ingestion._read_attachment_head',
+                side_effect=AssertionError('stamped row was read'),
+            ),
+        ):
+            call_command('ingest_existing_attachments', stdout=out)
+        self.assertRegex(out.getvalue(), r'manual\S*\.md\tSTAMPED')
+        self.assertEqual(_report(out.getvalue())['totals']['stamp_skipped'], 1)
+
+        out = StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+            )
+            embedder_factory, _ = self._doc_pair(stack)
+            call_command('ingest_existing_attachments', '--force', stdout=out)
+        self.assertEqual(embedder_factory.call_count, 1)
+        self.assertRegex(out.getvalue(), r'manual\S*\.md\tINDEXED')
+        # The forced claim increments attempts; the non-force INDEXED
+        # short-circuit only renews claimed_at. Without this, a mutant that
+        # bypasses the stamp filter but passes force=False still prints
+        # INDEXED and builds the client pair (R5 review finding).
+        self.assertEqual(AttachmentIngest.objects.get().attempts, 2)
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_force_stale_profile_selects_drifted_rows_and_converges(self):
+        """The positive path: drift is selected, repaired, and converges."""
+        from io import StringIO
+
+        _make_attachment('part', self.part.pk, 'manual.md', _MD)
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+            )
+            self._doc_pair(stack)
+            call_command('ingest_existing_attachments', stdout=StringIO())
+        # Simulate a corpus embedded under a retired profile.
+        AttachmentIngest.objects.update(embedding_profile='v0-retired')
+
+        out = StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+            )
+            embedder_factory, _ = self._doc_pair(stack)
+            call_command(
+                'ingest_existing_attachments', '--force-stale-profile', stdout=out
+            )
+        self.assertIn('selector: force-stale-profile selected=1', out.getvalue())
+        self.assertEqual(embedder_factory.call_count, 1)
+        row = AttachmentIngest.objects.get()
+        self.assertEqual(row.embedding_profile, 'v1')
+
+        out = StringIO()
+        with mock.patch('ai.core.config.get_settings', return_value=_ai_settings()):
+            call_command(
+                'ingest_existing_attachments', '--force-stale-profile', stdout=out
+            )
+        self.assertIn(
+            'selector: force-stale-profile selected=0 (no profile drift)',
+            out.getvalue(),
+        )
+        self.assertEqual(_report(out.getvalue())['totals']['walked'], 0)
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_force_selector_widens_default_scope_to_media_owners(self):
+        """A selector-picked workorder row is walked without --model-type.
+
+        The docs-era default scope (part+assetmachine) silently dropped
+        selector-picked media rows — the exact rows the 0031 repair targets
+        (R5 review finding, HIGH). Under a force selector the default widens
+        to RECEIVER_MODEL_TYPES; an explicit --model-type still narrows, but
+        prints a WARNING with the dropped count.
+        """
+        import hashlib
+        from io import StringIO
+
+        attachment = _make_attachment('workorder', 787, 'photo.png', _PNG_HEAD)
+        AttachmentIngest.objects.create(
+            attachment_id=attachment.pk,
+            model_type='workorder',
+            model_id=787,
+            source_sha256=hashlib.sha256(_PNG_HEAD).hexdigest(),
+            pipeline='image',
+            state=AttachmentIngestState.INDEXED,
+            indexed_at=None,
+        )
+        out = StringIO()
+        with mock.patch('ai.core.config.get_settings', return_value=_ai_settings()):
+            call_command('ingest_existing_attachments', '--force-unstamped', stdout=out)
+        self.assertIn('selector: force-unstamped selected=1', out.getvalue())
+        self.assertEqual(_report(out.getvalue())['totals']['walked'], 1)
+
+        out = StringIO()
+        with mock.patch('ai.core.config.get_settings', return_value=_ai_settings()):
+            call_command(
+                'ingest_existing_attachments',
+                '--force-unstamped',
+                '--model-type',
+                'part',
+                stdout=out,
+            )
+        self.assertIn(
+            'selector: WARNING 1 selected row(s) fall outside --model-type',
+            out.getvalue(),
+        )
+        self.assertEqual(_report(out.getvalue())['totals']['walked'], 0)
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_model_type_all_reaches_repairpacket(self):
+        """'all' expands to RECEIVER_MODEL_TYPES and records the owner skip."""
+        from io import StringIO
+
+        _make_attachment('repairpacket', 42, 'packet.md', _MD)
+        out = StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+            )
+            for target in _CLIENT_FACTORIES:
+                stack.enter_context(
+                    mock.patch(
+                        target,
+                        side_effect=AssertionError('repairpacket skip built a client'),
+                    )
+                )
+            call_command(
+                'ingest_existing_attachments', '--model-type', 'all', stdout=out
+            )
+        row = AttachmentIngest.objects.get(model_type='repairpacket', model_id=42)
+        self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
+        self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_REPAIRPACKET')
