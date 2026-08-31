@@ -218,7 +218,8 @@ def test_filter_appends_narrowing_clauses_in_order():
         "and access_class eq 'attachment_uploaded' "
         "and model_type eq 'part' "
         "and client_codes/any(c: search.in(c, 'acme,zeta', ',')) "
-        "and part_id eq 123 and asset_id eq 'SN-100' "
+        "and part_id eq 123 "
+        "and (asset_id eq '' or asset_id eq null or asset_id eq 'SN-100') "
         "and doc_type eq 'datasheet'"
     )
 
@@ -231,7 +232,7 @@ def test_filter_doubles_odata_quotes():
         asset_id="SN'1",
     )
     assert "scope_key eq 'o''brien'" in built
-    assert "asset_id eq 'SN''1'" in built
+    assert "asset_id eq 'SN''1'" in built  # inside the other-owner exclusion group
 
 
 def test_filter_refuses_blank_scope_key():

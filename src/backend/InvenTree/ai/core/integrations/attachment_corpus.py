@@ -168,7 +168,15 @@ def attachment_corpus_filter(
     if part_id is not None:
         clauses.append(f"part_id eq {int(part_id)}")
     if asset_id:
-        clauses.append(f"asset_id eq '{_odata_literal(asset_id)}'")
+        # Other-owner EXCLUSION, not owner selection: part documents carry no
+        # asset stamp, and a machine hint ("the HX-200 gasket datasheet")
+        # must never hide the part-owned datasheet that HAS the answer — a
+        # bare equality clause did exactly that (live golden, 2026-09-01:
+        # three datasheet items abstained under machine narrowing). Same
+        # shape as the S5 serial floor below.
+        clauses.append(
+            f"(asset_id eq '' or asset_id eq null or asset_id eq '{_odata_literal(asset_id)}')"
+        )
     if doc_type:
         clauses.append(f"doc_type eq '{_odata_literal(doc_type)}'")
     if scope_asset_ids is not None:
