@@ -207,8 +207,12 @@ def _dewhitespaced(text: str) -> str:
     import unicodedata
 
     folded = unicodedata.normalize("NFKC", text).casefold()
+    # Hyphens AND unit separators: '38 N·m' must match key '38 Nm' (live
+    # finding, first 40-item run — the model writes SI middle dots).
     return "".join(
-        ch for ch in folded if not ch.isspace() and ch not in "-\u2010\u2011\u2012\u2013\u2014"
+        ch
+        for ch in folded
+        if not ch.isspace() and ch not in "-\u2010\u2011\u2012\u2013\u2014\u00b7\u22c5"
     )
 
 

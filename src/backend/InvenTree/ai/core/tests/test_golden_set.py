@@ -390,3 +390,11 @@ def test_cross_corpus_item_runs_only_with_every_pin_deployed():
         True,
     )
     assert [s.outcome for s in scores] == ["skip"]
+
+
+def test_literal_key_si_separator_variants_normalize():
+    """'38 N·m' and '38 N⋅m' match key '38 Nm' (live finding, R5 A/B run)."""
+    item = _item(ground_truth_keys=("38 Nm",))
+    assert judge_mod.literal_keys_present(item, "tighten to 38 N·m")
+    assert judge_mod.literal_keys_present(item, "tighten to 38 N⋅m")
+    assert not judge_mod.literal_keys_present(item, "tighten to 138 Nm")
