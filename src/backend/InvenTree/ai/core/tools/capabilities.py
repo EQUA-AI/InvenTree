@@ -1833,7 +1833,14 @@ _INTENT_PACKS: dict[str, tuple[str, ...]] = {
     # S8a: inventory questions get the registry tool FIRST; manuals rides
     # along for the follow-up content question.
     "source_inventory": ("sources.read", "machines.read", "manuals.read"),
-    "manual_fact": ("manuals.read", "machines.read"),
+    # documents.read rides along: R2's uploaded corpus is a manuals-question
+    # surface by design, and the typed intent REPLACES lexical selection, so
+    # omitting it here silently cut search_attachment_docs out of every
+    # "what does the uploaded manual say" turn (live golden finding,
+    # 2026-08-31: the ledger showed 45 attachment searches/hour collapse to
+    # ~1 the moment this path started serving). Budget: manuals 1 +
+    # documents 2 + machines 9 + SQL 1 = 13 <= 17.
+    "manual_fact": ("manuals.read", "documents.read", "machines.read"),
 }
 
 

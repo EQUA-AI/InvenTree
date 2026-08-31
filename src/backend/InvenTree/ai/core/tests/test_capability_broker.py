@@ -1462,3 +1462,33 @@ async def test_wf8_agent_is_toolless_guarded_and_bounded(monkeypatch):
     assert isinstance(captured["middleware"], CapabilityInvocationMiddleware)
     assert invocation_config.max_iterations == workflow.MAX_TOOL_ITERATIONS
     assert invocation_config.include_detailed_errors is False
+
+
+def test_manual_fact_intent_carries_the_uploaded_corpus(monkeypatch):
+    """The typed manual_fact intent must include documents.read.
+
+    The S3 intent tuple REPLACES lexical selection, so a tuple without
+    documents.read silently removes search_attachment_docs from every
+    uploaded-manual question (live golden regression, 2026-08-31).
+    """
+    from ai.core import config as ai_config
+
+    lit = SimpleNamespace(
+        single_site_policy_key="site-a",
+        feature_attachment_rag_retrieval=True,
+        feature_media_rag_retrieval=False,
+    )
+    monkeypatch.setattr(ai_config, "get_settings", lambda: lit)
+    capability_catalog.cache_clear()
+    try:
+        selection = select_capabilities(
+            "What minimum flow does the uploaded HX-200 manual require?",
+            profile=frozenset({("part", "view"), ("work_order", "view")}),
+            authenticated=True,
+            task_intent="manual_fact",
+        )
+        assert "documents.read" in selection.pack_ids
+        assert "search_attachment_docs" in selection.tool_ids
+        assert "search_manuals" in selection.tool_ids
+    finally:
+        capability_catalog.cache_clear()
