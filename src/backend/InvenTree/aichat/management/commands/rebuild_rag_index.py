@@ -48,11 +48,19 @@ _DATETIME_FIELDS = frozenset({'indexed_at', 'as_of', 'uploaded_at', 'recorded_at
 
 
 def _same_instant(a, b) -> bool:
+    """Millisecond-precision instant equality.
+
+    Azure AI Search stores DateTimeOffset at MILLISECOND precision (verified
+    live: PG's ``.874123`` comes back ``.874Z``), so sub-ms digits are lost
+    by the serving layer, not by the rebuild.
+    """
     from datetime import UTC, datetime
 
     def parse(value):
         parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.replace(microsecond=(parsed.microsecond // 1000) * 1000)
 
     try:
         return parse(a) == parse(b)
@@ -264,6 +272,7 @@ class Command(BaseCommand):
             }
         hard, drift = [], []
         missing = []
+        unverifiable_vectors = 0
         for built in documents:
             live = live_docs.pop(str(built['id']), None)
             if live is None:
@@ -272,15 +281,20 @@ class Command(BaseCommand):
             for key, value in built.items():
                 live_value = live.get(key)
                 if key in ('text_vector', 'media_vector'):
-                    same = (
-                        live_value is not None
-                        and len(live_value) == len(value)
-                        and all(
-                            # Exact on purpose: PG float4 <-> Edm.Single is
-                            # bit-identical, so equality IS the DR contract.
-                            float(a) == float(b)  # noqa: RUF069
-                            for a, b in zip(value, live_value, strict=True)
-                        )
+                    if live_value is None:
+                        # Vector fields are NOT retrievable from the live
+                        # index (verified live 2026-08-31): the serving layer
+                        # hides them, so read-back verification is
+                        # structurally impossible. Vector fidelity is pinned
+                        # by the CI round-trip test instead; count, never
+                        # fail.
+                        unverifiable_vectors += 1
+                        continue
+                    same = len(live_value) == len(value) and all(
+                        # Exact on purpose: PG float4 <-> Edm.Single is
+                        # bit-identical, so equality IS the DR contract.
+                        float(a) == float(b)  # noqa: RUF069
+                        for a, b in zip(value, live_value, strict=True)
                     )
                 elif key in _DATETIME_FIELDS and value and live_value:
                     same = _same_instant(value, live_value)
@@ -295,6 +309,7 @@ class Command(BaseCommand):
             'rederived_drift': drift,
             'missing_live_docs': missing,
             'extra_live_docs': sorted(live_docs),
+            'unverifiable_vectors': unverifiable_vectors,
         }
 
     # ------------------------------------------------------------------ #
