@@ -36,6 +36,13 @@ _MI_SCOPE = "https://cognitiveservices.azure.com/.default"
 #: hold an ingest claim past ``RAG_STALE_CLAIM_S``.
 _REQUEST_TIMEOUT_S = 120.0
 
+#: 429 backoff: a large document's sub-batches burst past the deployment's
+#: per-minute token cap; five retries with Retry-After honored rides out a
+#: full bucket refill without turning an outage into an unbounded stall.
+_THROTTLE_RETRIES = 5
+_THROTTLE_BASE_PAUSE_S = 15.0
+_THROTTLE_MAX_PAUSE_S = 120.0
+
 
 class AttachmentEmbeddingError(Exception):
     """A bounded attachment-embedding failure with a value-free code."""
@@ -173,18 +180,35 @@ class CohereEmbeddingClient:
                 # Verified bit-identical against it live before the swap, so
                 # no vector in the corpus is invalidated by this transport.
                 http = self._get_client()
-                raw = http.post(
-                    "/embeddings",
-                    params={"api-version": self._api_version},
-                    headers={"Authorization": self._auth_header()},
-                    json={
-                        "input": chunk,
-                        "model": self._model,
-                        "dimensions": self._dimensions,
-                        "input_type": input_type,
-                        "encoding_format": "float",
-                    },
-                )
+                raw = None
+                for attempt in range(_THROTTLE_RETRIES + 1):
+                    raw = http.post(
+                        "/embeddings",
+                        params={"api-version": self._api_version},
+                        headers={"Authorization": self._auth_header()},
+                        json={
+                            "input": chunk,
+                            "model": self._model,
+                            "dimensions": self._dimensions,
+                            "input_type": input_type,
+                            "encoding_format": "float",
+                        },
+                    )
+                    if raw.status_code != 429 or attempt == _THROTTLE_RETRIES:
+                        break
+                    # A 520-chunk manual bursts past the deployment's TPM cap
+                    # mid-attachment (live finding, R5 repair run): back-to-back
+                    # sub-batches leave no window for the bucket to refill.
+                    # Honor Retry-After when the provider sends one; embeddings
+                    # are idempotent, so a retry can never double-write.
+                    import time
+
+                    retry_after = raw.headers.get("retry-after", "")
+                    try:
+                        pause = min(float(retry_after), _THROTTLE_MAX_PAUSE_S)
+                    except ValueError:
+                        pause = _THROTTLE_BASE_PAUSE_S * (attempt + 1)
+                    time.sleep(max(pause, 1.0))
                 if raw.status_code != 200:
                     # Never interpolate the body: provider errors echo the
                     # endpoint and can carry credentials (faults.py convention).

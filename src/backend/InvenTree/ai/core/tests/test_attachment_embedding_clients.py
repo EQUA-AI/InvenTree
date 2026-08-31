@@ -497,3 +497,53 @@ def test_cohere_managed_identity_mints_a_token_per_request():
     assert minted == ["tok0", "tok1"]
     assert inner.requests[0]["headers"]["Authorization"] == "Bearer tok0"
     assert inner.requests[1]["headers"]["Authorization"] == "Bearer tok1"
+
+
+class _ThrottlingInner(_FakeCohereInner):
+    """429 with Retry-After for the first N calls, then healthy."""
+
+    def __init__(self, *, dimensions: int = 8, throttle_first: int = 2):
+        super().__init__(dimensions=dimensions)
+        self._throttle_first = throttle_first
+
+    def post(self, path, *, params=None, headers=None, json=None):
+        if len(self.requests) < self._throttle_first:
+            self.requests.append({"path": path, "json": json})
+            return SimpleNamespace(
+                status_code=429,
+                headers={"retry-after": "2"},
+                json=lambda: {},
+            )
+        return super().post(path, params=params, headers=headers, json=json)
+
+
+def test_cohere_429_backoff_retries_then_succeeds(monkeypatch):
+    """A TPM burst mid-attachment retries with Retry-After honored.
+
+    Live finding (R5 repair run): a 520-chunk manual's back-to-back
+    sub-batches burst past the deployment's per-minute cap; embeddings are
+    idempotent, so the transport rides out the refill instead of failing
+    the whole attachment.
+    """
+    import time as time_mod
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(time_mod, "sleep", sleeps.append)
+    inner = _ThrottlingInner(throttle_first=2)
+    client = _cohere(inner=inner)
+    vectors = client.embed_batch(["alpha", "beta"])
+    assert len(vectors) == 2
+    assert len(inner.requests) == 3  # 429, 429, 200
+    assert sleeps == [2.0, 2.0]  # Retry-After honored, not the base pause
+
+
+def test_cohere_429_exhaustion_still_fails_closed(monkeypatch):
+    """Permanent throttling fails with the same value-free code as before."""
+    import time as time_mod
+
+    monkeypatch.setattr(time_mod, "sleep", lambda _s: None)
+    inner = _ThrottlingInner(throttle_first=999)
+    client = _cohere(inner=inner)
+    with pytest.raises(AttachmentEmbeddingError):
+        client.embed_batch(["alpha"])
+    assert len(inner.requests) == 6  # initial + _THROTTLE_RETRIES
