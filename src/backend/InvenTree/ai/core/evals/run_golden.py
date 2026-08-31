@@ -133,10 +133,16 @@ def run_items(
     corpus_versions = {value.strip() for value in corpus.split(",") if value.strip()}
     scores: list[judge_mod.ItemScore] = []
     for item in items:
-        if item.corpus_version and corpus_versions and item.corpus_version not in corpus_versions:
+        pins = set(item.corpus_pins)
+        if pins and corpus_versions and not pins <= corpus_versions:
+            # A multi-pin (cross-corpus) item runs only when EVERY pinned set
+            # is deployed — an agreement question needs both corpora present.
             scores.append(
                 judge_mod.ItemScore(
-                    item.id, "-", "skip", f"corpus {item.corpus_version} != deployed {corpus}"
+                    item.id,
+                    "-",
+                    "skip",
+                    f"corpus {sorted(pins)} not all in deployed {corpus}",
                 )
             )
             continue
@@ -169,7 +175,7 @@ def run_items(
                 judge_mod.ItemScore(item.id, "-", "fail", f"judge failed: {type(exc).__name__}")
             )
             continue
-        scores.append(judge_mod.score_item(item, verdict))
+        scores.append(judge_mod.score_item(item, verdict, answer=answer))
     return scores
 
 
@@ -257,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     red_fails = [r for r in redteam if r["outcome"] == "fail"]
     red_skips = [r for r in redteam if r["outcome"] == "skip"]
 
-    from .judge import drain_judge_usage
+    from .judge import drain_judge_usage, drain_key_disagreements
 
     report = {
         "total": len(scores),
@@ -269,6 +275,9 @@ def main(argv: list[str] | None = None) -> int:
         # S15 (WP-B6): the judge's own spend, invisible to server-side
         # accounting because it runs out-of-process.
         "judge_usage": drain_judge_usage(),
+        # R5 WP-I: item ids where the judge's cited_keys_present disputed the
+        # authoritative literal check — a judge-calibration signal, not a gate.
+        "judge_key_disagreements": drain_key_disagreements(),
     }
     if args.json_out:
         with pathlib.Path(args.json_out).open("w", encoding="utf-8") as handle:

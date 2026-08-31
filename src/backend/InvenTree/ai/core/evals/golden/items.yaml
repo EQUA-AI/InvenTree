@@ -237,7 +237,10 @@ items:
       38 Nm in a cross pattern (from the uploaded HX-200 maintenance manual
       fixture), attributed as an uploaded document (uncontrolled) with the
       source file cited.
-    ground_truth_keys: ["HX-200"]
+    # R5 WP-I: was ["HX-200"] — a machine-name key, the documented
+    # judge-brittle class; the literal check made it deterministic-brittle
+    # too (citations spell "hx200"). The VALUE is the key.
+    ground_truth_keys: ["38 Nm"]
     trap_type: none
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
@@ -250,7 +253,8 @@ items:
     ground_truth: >-
       Every 6 months (visual leak inspection; full teardown every 36 months),
       grounded in the uploaded HX-200 manual fixture with the source cited.
-    ground_truth_keys: ["HX-200"]
+    # R5 WP-I: was ["HX-200"] — see attachment-torque-grounded.
+    ground_truth_keys: ["6 months"]
     trap_type: none
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
@@ -384,4 +388,147 @@ items:
     ground_truth_keys: ["torque"]
     trap_type: none
     corpus_version: aimms-video-fixtures-v2
+    dataset: live
+
+  # ------------------------------------------------------------------ #
+  # R5 WP-I: ten deterministic-key items against ALREADY-COMMITTED
+  # fixture text (no fixture-set version bump). Values as keys, never
+  # machine names — the 2026-08-21 finding: machine-name keys are
+  # judge-brittle; committed values are not.
+  # ------------------------------------------------------------------ #
+
+  - id: attachment-inlet-temp-grounded
+    question: >-
+      What is the maximum inlet temperature for the HX-200 according to the
+      uploaded manual?
+    expected_behavior: answer
+    ground_truth: >-
+      150 °C maximum inlet temperature (uploaded HX-200 manual fixture,
+      operating limits table), attributed as an uploaded document with the
+      source file cited.
+    ground_truth_keys: ["150 °C"]
+    trap_type: none
+    corpus_version: aimms-attachment-fixtures-v2
+    dataset: live
+
+  - id: attachment-min-flow-grounded
+    question: >-
+      What minimum flow does the uploaded HX-200 manual require to guard
+      against fouling?
+    expected_behavior: answer
+    ground_truth: >-
+      12 m³/h minimum flow, stated as the fouling guard in the uploaded
+      HX-200 manual fixture's operating limits.
+    ground_truth_keys: ["12 m³/h"]
+    trap_type: none
+    corpus_version: aimms-attachment-fixtures-v2
+    dataset: live
+
+  - id: attachment-overpressure-consequence
+    question: >-
+      According to the uploaded HX-200 documents, what happens if the maximum
+      operating pressure is exceeded?
+    expected_behavior: answer
+    ground_truth: >-
+      Exceeding the 16 bar maximum operating pressure voids the
+      pressure-vessel certification (uploaded HX-200 manual fixture).
+    ground_truth_keys: ["certification"]
+    trap_type: none
+    corpus_version: aimms-attachment-fixtures-v2
+    dataset: live
+
+  - id: attachment-cleaning-procedure
+    question: >-
+      How should the HX-200 gasket grooves be cleaned before seating new
+      gaskets, per the uploaded documents?
+    expected_behavior: answer
+    ground_truth: >-
+      With a non-metallic scraper and isopropyl alcohol before seating the
+      new gasket (uploaded HX-200 documentation).
+    ground_truth_keys: ["isopropyl"]
+    trap_type: none
+    corpus_version: aimms-attachment-fixtures-v2
+    dataset: live
+
+  - id: attachment-bolt-pattern
+    question: >-
+      In what pattern should the HX-200 frame bolts be tightened according to
+      the uploaded manual?
+    expected_behavior: answer
+    ground_truth: >-
+      In a cross pattern, to 38 Nm (uploaded HX-200 maintenance manual
+      fixture).
+    ground_truth_keys: ["cross pattern"]
+    trap_type: none
+    corpus_version: aimms-attachment-fixtures-v2
+    dataset: live
+
+  - id: attachment-teardown-interval
+    question: >-
+      How often does the uploaded HX-200 manual require a full plate-pack
+      teardown inspection?
+    expected_behavior: answer
+    ground_truth: >-
+      Every 36 months, or after any overpressure event (uploaded HX-200
+      manual fixture).
+    ground_truth_keys: ["36 months"]
+    trap_type: none
+    corpus_version: aimms-attachment-fixtures-v2
+    dataset: live
+
+  - id: attachment-gasket-material
+    question: >-
+      What gasket material and maximum continuous temperature does the
+      uploaded HX-200 gasket datasheet specify?
+    expected_behavior: answer
+    ground_truth: >-
+      EPDM (peroxide-cured) rated to 140 °C maximum continuous temperature
+      (uploaded gasket datasheet fixture).
+    ground_truth_keys: ["EPDM", "140 °C"]
+    trap_type: none
+    corpus_version: aimms-attachment-fixtures-v2
+    dataset: live
+
+  - id: attachment-gasket-set-contents
+    question: >-
+      What does one HX-200 gasket set contain according to the uploaded
+      datasheet?
+    expected_behavior: answer
+    ground_truth: >-
+      110 plate gaskets and 2 end gaskets per set (uploaded gasket datasheet
+      fixture).
+    ground_truth_keys: ["110"]
+    trap_type: none
+    corpus_version: aimms-attachment-fixtures-v2
+    dataset: live
+
+  - id: attachment-gasket-storage
+    question: >-
+      How should spare HX-200 gaskets be stored, per the uploaded datasheet?
+    expected_behavior: answer
+    ground_truth: >-
+      Below 25 °C (dark, original packaging; 4-year shelf life), per the
+      uploaded gasket datasheet fixture.
+    ground_truth_keys: ["25 °C"]
+    trap_type: none
+    corpus_version: aimms-attachment-fixtures-v2
+    dataset: live
+
+  - id: cross-corpus-pressure-agreement
+    question: >-
+      Do the uploaded HX-200 manual and the nameplate photo agree on the
+      maximum working pressure? State the value each source gives.
+    expected_behavior: answer
+    ground_truth: >-
+      Yes — both give 16 bar: the uploaded manual's operating limits table
+      and the nameplate photo's OCR text (MAX WORKING PRESSURE: 16 BAR),
+      with both sources cited.
+    ground_truth_keys: ["16 bar"]
+    trap_type: none
+    # Cross-corpus agreement item: runs only when BOTH fixture sets are
+    # deployed — from either corpus alone the value is answerable and the
+    # judge could not tell which source was used.
+    corpus_version:
+      - aimms-attachment-fixtures-v2
+      - aimms-media-fixtures-v2
     dataset: live

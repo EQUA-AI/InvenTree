@@ -33,7 +33,7 @@ GOLDEN_LIVE = os.environ.get("AIMMS_GOLDEN_LIVE") == "1" and bool(
 
 def test_items_load_and_validate():
     items = schema_mod.load_items()
-    assert len(items) >= 15, "the golden set must not silently shrink"
+    assert len(items) >= 38, "the golden set must not silently shrink"
     problems = schema_mod.validate_items(items)
     assert not problems, [f"{p.item_id}: {p.problem}" for p in problems]
 
@@ -154,18 +154,24 @@ def _item(**overrides) -> schema_mod.GoldenItem:
 
 
 def test_wrong_answer_is_a_hard_fail():
-    score = judge_mod.score_item(_item(), {"verdict": "wrong", "cited_keys_present": True})
+    score = judge_mod.score_item(
+        _item(), {"verdict": "wrong", "cited_keys_present": True}, answer="whatever"
+    )
     assert score.outcome == "fail"
 
 
 def test_abstain_on_trap_is_a_pass():
     item = _item(expected_behavior="abstain", trap_type="absent_spec")
-    score = judge_mod.score_item(item, {"verdict": "abstained", "cited_keys_present": True})
+    score = judge_mod.score_item(
+        item, {"verdict": "abstained", "cited_keys_present": True}, answer="cannot say"
+    )
     assert score.outcome == "pass"
 
 
 def test_abstain_on_answerable_is_a_warn_never_a_fail():
-    score = judge_mod.score_item(_item(), {"verdict": "abstained", "cited_keys_present": True})
+    score = judge_mod.score_item(
+        _item(), {"verdict": "abstained", "cited_keys_present": True}, answer="cannot say"
+    )
     assert score.outcome == "warn"
 
 
@@ -175,25 +181,95 @@ def test_correct_on_a_trap_passes_because_ground_truth_encodes_the_trap():
     a wrong-machine premise); fabrication contradicts the ground truth and
     comes back as 'wrong', which hard-fails."""
     item = _item(expected_behavior="abstain", trap_type="wrong_machine")
-    score = judge_mod.score_item(item, {"verdict": "correct", "cited_keys_present": True})
+    score = judge_mod.score_item(
+        item, {"verdict": "correct", "cited_keys_present": True}, answer="corrected"
+    )
     assert score.outcome == "pass"
 
 
 def test_wrong_on_a_trap_is_still_a_hard_fail():
     item = _item(expected_behavior="abstain", trap_type="absent_spec")
-    score = judge_mod.score_item(item, {"verdict": "wrong", "cited_keys_present": True})
+    score = judge_mod.score_item(
+        item, {"verdict": "wrong", "cited_keys_present": True}, answer="fabricated"
+    )
     assert score.outcome == "fail"
 
 
 def test_missing_required_citations_fail_a_correct_answer():
-    item = _item(ground_truth_keys=("manual:pump:seals",))
-    score = judge_mod.score_item(item, {"verdict": "correct", "cited_keys_present": False})
+    """R5 WP-I: the LITERAL check is authoritative — the judge saying the
+    keys are present cannot rescue an answer that lacks them."""
+    judge_mod.drain_key_disagreements()
+    item = _item(ground_truth_keys=("16 bar",))
+    score = judge_mod.score_item(
+        item,
+        {"verdict": "correct", "cited_keys_present": True},
+        answer="The plate shows a pressure rating.",
+    )
     assert score.outcome == "fail"
+    assert judge_mod.drain_key_disagreements() == ["x"]
+
+
+def test_literal_keys_beat_a_doubting_judge():
+    """Keys present literally pass even when the judge boolean disputes it,
+    and the disagreement is recorded for calibration (never a gate)."""
+    judge_mod.drain_key_disagreements()
+    item = _item(ground_truth_keys=("16 bar",))
+    score = judge_mod.score_item(
+        item,
+        {"verdict": "correct", "cited_keys_present": False},
+        answer="Max working pressure: 16bar (from the nameplate photo).",
+    )
+    assert score.outcome == "pass"
+    assert judge_mod.drain_key_disagreements() == ["x"]
+
+
+def test_literal_key_whitespace_and_case_normalize():
+    assert judge_mod.literal_keys_present(
+        _item(ground_truth_keys=("150 °C",)), "rated to 150°c inlet"
+    )
+    assert not judge_mod.literal_keys_present(
+        _item(ground_truth_keys=("150 °C",)), "rated to 160 °C inlet"
+    )
+
+
+def test_literal_key_unicode_unit_variants_normalize():
+    """NFKC folds the unit glyphs a model legitimately emits (R5 review)."""
+    assert judge_mod.literal_keys_present(
+        _item(ground_truth_keys=("12 m³/h",)), "minimum flow 12 m3/h"
+    )
+    assert judge_mod.literal_keys_present(_item(ground_truth_keys=("150 °C",)), "rated 150 ℃")
+    assert judge_mod.literal_keys_present(
+        _item(ground_truth_keys=("cross pattern",)), "tighten in a cross-pattern"
+    )
+
+
+def test_literal_key_digit_prefix_bleed_refused():
+    """'25 °C' must never pass on '125 °C' — the subtle-wrong-value class
+    the deterministic check exists to backstop (R5 review finding)."""
+    assert not judge_mod.literal_keys_present(
+        _item(ground_truth_keys=("25 °C",)), "store below 125 °C"
+    )
+    assert not judge_mod.literal_keys_present(
+        _item(ground_truth_keys=("16 bar",)), "rated at 116 bar"
+    )
+    assert judge_mod.literal_keys_present(
+        _item(ground_truth_keys=("25 °C",)), "store below 25 °C always"
+    )
+
+
+def test_no_item_keeps_a_machine_name_key():
+    """Values as keys, never machine names (documented judge-brittle class;
+    literal-authoritative scoring made it deterministic-brittle too)."""
+    for item in schema_mod.load_items():
+        for key in item.ground_truth_keys:
+            assert "hx-200" not in key.casefold().replace(" ", ""), item.id
 
 
 def test_clarify_expected_and_delivered_passes():
     item = _item(expected_behavior="clarify", ground_truth="")
-    score = judge_mod.score_item(item, {"verdict": "clarified", "cited_keys_present": True})
+    score = judge_mod.score_item(
+        item, {"verdict": "clarified", "cited_keys_present": True}, answer="which machine?"
+    )
     assert score.outcome == "pass"
 
 
@@ -246,3 +322,71 @@ def test_golden_set_against_live_deployment():
     from ai.core.evals.run_golden import main
 
     assert main([]) == 0
+
+
+# --- R5 WP-I: loader hardening + the seeder-scraped corpus allow-list -------
+
+
+def _scraped_fixture_versions() -> set[str]:
+    """Scrape _FIXTURE_SET_VERSION from the four seeders WITHOUT Django.
+
+    A seeder bump that forgets the golden pins must fail here loudly; regex
+    over the files keeps this always-on in the credential-free CI lane.
+    """
+    import pathlib
+    import re
+
+    commands = pathlib.Path(__file__).parents[3] / "aichat" / "management" / "commands"
+    versions = set()
+    for seeder in sorted(commands.glob("seed_*_eval_fixtures.py")):
+        match = re.search(r"_FIXTURE_SET_VERSION\s*=\s*'([^']+)'", seeder.read_text())
+        assert match, f"{seeder.name} lost its _FIXTURE_SET_VERSION pin"
+        versions.add(match.group(1))
+    assert len(versions) >= 4, "expected the four eval fixture seeders"
+    return versions
+
+
+def test_every_corpus_pin_names_a_known_fixture_set_or_governed_index():
+    items = schema_mod.load_items()
+    allowed = _scraped_fixture_versions() | {"eaits-manuals-v4a"}
+    problems = schema_mod.validate_items(items, allowed_corpora=allowed)
+    assert problems == []
+
+
+def test_unknown_item_fields_refuse_to_load(tmp_path):
+    """A typo'd key must never silently drop data (pre-R5 behavior)."""
+    bad = tmp_path / "items.yaml"
+    bad.write_text(
+        "items:\n"
+        "  - id: typo-item\n"
+        "    question: q\n"
+        "    expected_behavior: answer\n"
+        "    ground_truth: t\n"
+        "    ground_truth_key: [oops]\n"
+    )
+    with pytest.raises(ValueError, match="unknown"):
+        schema_mod.load_items(bad)
+
+
+def test_cross_corpus_item_runs_only_with_every_pin_deployed():
+    """Multi-pin items skip unless ALL pinned sets are in the corpus env."""
+    item = next(i for i in schema_mod.load_items() if len(i.corpus_pins) > 1)
+    assert set(item.corpus_pins) == {
+        "aimms-attachment-fixtures-v2",
+        "aimms-media-fixtures-v2",
+    }
+
+    class _NeverCalled:
+        def post(self, *a, **k):  # pragma: no cover - skip path only
+            raise AssertionError("no HTTP expected")
+
+    from ai.core.evals import run_golden as run_golden_mod
+
+    scores = run_golden_mod.run_items(
+        _NeverCalled(),
+        [item],
+        "aimms-attachment-fixtures-v2",  # only ONE of the two pins deployed
+        "live",
+        True,
+    )
+    assert [s.outcome for s in scores] == ["skip"]

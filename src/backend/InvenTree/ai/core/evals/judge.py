@@ -184,16 +184,77 @@ def judge_item(
     return (judge_call or default_judge_call)(payload)
 
 
-def score_item(item: GoldenItem, verdict: dict[str, Any]) -> ItemScore:
-    """Fold a judge verdict into the EX-ADR-002 outcome."""
+#: R5 WP-I: literal-vs-judge key disagreements, drained per run for judge
+#: calibration. Same module-global idiom as the usage accumulator above.
+_KEY_DISAGREEMENTS: list[str] = []
+
+
+def drain_key_disagreements() -> list[str]:
+    """Return and clear the item ids where the judge disputed the literal."""
+    drained = list(_KEY_DISAGREEMENTS)
+    _KEY_DISAGREEMENTS.clear()
+    return drained
+
+
+def _dewhitespaced(text: str) -> str:
+    """NFKC + casefold, strip whitespace and hyphen glyphs.
+
+    NFKC folds unit-glyph variants the model legitimately emits — U+2103 ℃
+    decomposes to °C, superscript ³ to 3 — so '12 m³/h' matches '12 m3/h'
+    and '150 °C' matches '150℃'. Hyphens go so 'cross pattern' matches
+    'cross-pattern'.
+    """
+    import unicodedata
+
+    folded = unicodedata.normalize("NFKC", text).casefold()
+    return "".join(
+        ch for ch in folded if not ch.isspace() and ch not in "-\u2010\u2011\u2012\u2013\u2014"
+    )
+
+
+def literal_keys_present(item: GoldenItem, answer: str) -> bool:
+    """Deterministic key check: every key appears literally in the answer.
+
+    Keys that BEGIN with a digit must not match inside a longer number —
+    '25 °C' must never pass on '125 °C' (digit-prefix bleed would hand the
+    subtle-wrong-value class back to the judge this check exists to
+    backstop).
+    """
+    import re
+
+    haystack = _dewhitespaced(answer)
+    for key in item.ground_truth_keys:
+        needle = _dewhitespaced(key)
+        if not needle:
+            continue
+        if needle[0].isdigit():
+            if not re.search(r"(?<![\d.,])" + re.escape(needle), haystack):
+                return False
+        elif needle not in haystack:
+            return False
+    return True
+
+
+def score_item(item: GoldenItem, verdict: dict[str, Any], *, answer: str) -> ItemScore:
+    """Fold a judge verdict into the EX-ADR-002 outcome.
+
+    R5 WP-I: the literal key check is AUTHORITATIVE — the judge boolean
+    demoted to a calibration counter after the 2026-08-21 finding that a
+    machine-name key was judge-brittle. Values-as-keys plus a deterministic
+    substring beat asking a model whether it saw them.
+    """
     kind = str(verdict.get("verdict") or "wrong")
     rationale = str(verdict.get("rationale") or "")
 
+    if item.ground_truth_keys:
+        literal = literal_keys_present(item, answer)
+        if bool(verdict.get("cited_keys_present")) is not literal:
+            _KEY_DISAGREEMENTS.append(item.id)
     if kind == "wrong":
         return ItemScore(item.id, kind, "fail", rationale)
     if kind == "correct":
-        if item.ground_truth_keys and not verdict.get("cited_keys_present"):
-            return ItemScore(item.id, kind, "fail", "required citation keys missing")
+        if item.ground_truth_keys and not literal:
+            return ItemScore(item.id, kind, "fail", "required citation keys missing (literal)")
         # Trap items included: their ground_truth text DESCRIBES the required
         # refusal/correction behavior, so "correct" means the answer matched
         # that contract (e.g. corrected a wrong-machine premise and supplied
@@ -216,8 +277,10 @@ __all__ = [
     "ItemScore",
     "default_judge_call",
     "drain_judge_usage",
+    "drain_key_disagreements",
     "judge_fingerprint",
     "judge_item",
+    "literal_keys_present",
     "record_judge_usage",
     "score_item",
 ]

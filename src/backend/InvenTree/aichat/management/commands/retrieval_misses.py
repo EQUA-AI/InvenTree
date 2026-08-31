@@ -36,12 +36,16 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--corpus',
-            choices=['governed', 'attachment'],
+            # R5 WP-I: 'media' was written by the R3 evidence corpus but never
+            # selectable here — its rows only ever appeared in the unfiltered
+            # rollup.
+            choices=['governed', 'attachment', 'media', 'all'],
             default=None,
             help=(
                 'Restrict the report to one retrieval surface: governed '
-                '(controlled manuals) or attachment (uploaded documents, R2). '
-                'Default reports across both.'
+                '(controlled manuals), attachment (uploaded documents, R2) '
+                "or media (evidence recordings, R3). Default and 'all' "
+                'report across every surface.'
             ),
         )
         parser.add_argument(
@@ -52,17 +56,28 @@ class Command(BaseCommand):
         """Aggregate zero-hit queries by frequency within the window."""
         since = timezone.now() - timedelta(days=max(1, options['days']))
         base = RetrievalMiss.objects.filter(created_at__gte=since)
-        if options['corpus']:
+        if options['corpus'] and options['corpus'] != 'all':
             base = base.filter(corpus=options['corpus'])
+        # R5 WP-I: ambiguity short-circuits write genuine hit_count=0 rows
+        # BEFORE any search runs (disambiguation turns, not corpus misses) —
+        # they inflated the numerator on exactly the corpus R5 is changing.
+        # Counted separately, never in the miss rows.
+        ambiguous_filter = Q(machine_filter='ambiguous') | Q(part_filter='ambiguous')
+        total_ambiguous = base.filter(ambiguous_filter, hit_count=0).count()
+        searchable = base.exclude(ambiguous_filter)
         misses = (
-            base
+            searchable
             .filter(hit_count=0)
             .values('query')
             .annotate(asked=Count('id'), last_asked=Max('created_at'))
             .order_by('-asked', '-last_asked')[: max(1, options['top'])]
         )
         total_searches = base.count()
-        total_misses = base.filter(hit_count=0).count()
+        total_misses = searchable.filter(hit_count=0).count()
+        corpora = sorted(
+            value or '(unset)'
+            for value in base.values_list('corpus', flat=True).distinct()
+        )
         rows = [
             {
                 'query': row['query'],
@@ -77,7 +92,7 @@ class Command(BaseCommand):
         weak_threshold = options.get('weak')
         if weak_threshold is not None:
             weak_filter = Q(top_score__isnull=True) | Q(top_score__lt=weak_threshold)
-            weak_qs = base.filter(weak_filter, hit_count__gt=0)
+            weak_qs = searchable.filter(weak_filter, hit_count__gt=0)
             weak_total = weak_qs.count()
             weak = (
                 weak_qs
@@ -106,6 +121,10 @@ class Command(BaseCommand):
                 'window_days': options['days'],
                 'total_searches': total_searches,
                 'total_misses': total_misses,
+                'total_ambiguous': total_ambiguous,
+                # The denominator's surfaces, so archived reports stay
+                # interpretable after corpus membership changes.
+                'corpora': corpora,
                 'top_unanswered': rows,
             }
             if options['corpus']:
@@ -118,7 +137,9 @@ class Command(BaseCommand):
             return
         self.stdout.write(
             f'{total_misses} zero-hit searches of {total_searches} total '
-            f'in the last {options["days"]} days'
+            f'({total_ambiguous} ambiguity short-circuits excluded) '
+            f'in the last {options["days"]} days '
+            f'[corpora: {", ".join(corpora) or "none"}]'
         )
         for row in rows:
             self.stdout.write(

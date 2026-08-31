@@ -27,12 +27,23 @@ class GoldenItem:
     ground_truth_keys: tuple[str, ...] = ()
     trap_type: str = "none"
     locale: str = "en"
-    corpus_version: str | None = None
+    #: R5 WP-I: a cross-corpus item pins a TUPLE — it runs only when every
+    #: pinned set is deployed (an agreement question needs both corpora).
+    corpus_version: str | tuple[str, ...] | None = None
     dataset: str = "demo"
 
     @property
     def is_trap(self) -> bool:
         return self.trap_type != "none"
+
+    @property
+    def corpus_pins(self) -> tuple[str, ...]:
+        """The item's corpus pins as a tuple ('' never appears)."""
+        if self.corpus_version is None:
+            return ()
+        if isinstance(self.corpus_version, str):
+            return (self.corpus_version,) if self.corpus_version else ()
+        return tuple(v for v in self.corpus_version if v)
 
 
 @dataclass(frozen=True)
@@ -60,11 +71,41 @@ def _load_yaml(path: Path) -> Any:
         return yaml.safe_load(handle)
 
 
+#: Every key an item mapping may carry. load_items reads with .get(), so
+#: before R5 a typo'd key (ground_truth_key:) was silently DROPPED and the
+#: item then ran against every deployment — hence the loud refusal below.
+ITEM_FIELDS = frozenset({
+    "id",
+    "question",
+    "expected_behavior",
+    "ground_truth",
+    "ground_truth_keys",
+    "trap_type",
+    "locale",
+    "corpus_version",
+    "dataset",
+})
+
+
+def _typed_corpus_version(value: Any) -> str | tuple[str, ...] | None:
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        return tuple(str(entry) for entry in value)
+    return str(value)
+
+
 def load_items(path: Path | None = None) -> list[GoldenItem]:
     """Load and type the golden items; raises on structural violations."""
     raw = _load_yaml(path or GOLDEN_DIR / "items.yaml")
     items = []
     for entry in raw.get("items") or []:
+        unknown = sorted(set(entry) - ITEM_FIELDS)
+        if unknown:
+            raise ValueError(
+                f"golden item {entry.get('id') or '?'} carries unknown "
+                f"field(s) {unknown}; a typo here would silently drop data"
+            )
         items.append(
             GoldenItem(
                 id=str(entry.get("id") or ""),
@@ -74,7 +115,7 @@ def load_items(path: Path | None = None) -> list[GoldenItem]:
                 ground_truth_keys=tuple(entry.get("ground_truth_keys") or ()),
                 trap_type=str(entry.get("trap_type") or "none"),
                 locale=str(entry.get("locale") or "en"),
-                corpus_version=entry.get("corpus_version"),
+                corpus_version=_typed_corpus_version(entry.get("corpus_version")),
                 dataset=str(entry.get("dataset") or "demo"),
             )
         )
@@ -95,8 +136,18 @@ def load_redteam(path: Path | None = None) -> list[RedTeamCase]:
     ]
 
 
-def validate_items(items: list[GoldenItem]) -> list[ValidationError]:
-    """Structural checks that keep the set curatable by non-engineers."""
+DATASETS = ("demo", "live")
+
+
+def validate_items(
+    items: list[GoldenItem], *, allowed_corpora: set[str] | None = None
+) -> list[ValidationError]:
+    """Structural checks that keep the set curatable by non-engineers.
+
+    ``allowed_corpora`` is optional because scraping the seeder versions
+    needs Django; the always-on CI test supplies it, the standalone runner
+    passes None.
+    """
     problems: list[ValidationError] = []
     seen: set[str] = set()
     for item in items:
@@ -118,6 +169,30 @@ def validate_items(items: list[GoldenItem]) -> list[ValidationError]:
             problems.append(
                 ValidationError(item.id, "answer items need ground_truth for the judge")
             )
+        if item.dataset not in DATASETS:
+            problems.append(ValidationError(item.id, f"dataset must be one of {DATASETS}"))
+        if not item.locale or not item.locale.replace("-", "").isalpha() or len(item.locale) > 8:
+            problems.append(ValidationError(item.id, "locale must be a short language tag"))
+        for key in item.ground_truth_keys:
+            if not isinstance(key, str) or not key.strip() or len(key) > 120:
+                problems.append(
+                    ValidationError(item.id, "ground_truth_keys must be short non-empty strings")
+                )
+                break
+        if item.ground_truth_keys and item.expected_behavior != "answer":
+            problems.append(
+                ValidationError(item.id, "ground_truth_keys only make sense on answer items")
+            )
+        if allowed_corpora is not None:
+            stray = [pin for pin in item.corpus_pins if pin not in allowed_corpora]
+            if stray:
+                problems.append(
+                    ValidationError(
+                        item.id,
+                        f"corpus_version pins unknown set(s) {stray}; bump the "
+                        "seeder and this allow-list together",
+                    )
+                )
     return problems
 
 
@@ -135,8 +210,10 @@ def validate_redteam(cases: list[RedTeamCase]) -> list[ValidationError]:
 
 
 __all__ = [
+    "DATASETS",
     "EXPECTED_BEHAVIORS",
     "GOLDEN_DIR",
+    "ITEM_FIELDS",
     "TRAP_TYPES",
     "GoldenItem",
     "RedTeamCase",
