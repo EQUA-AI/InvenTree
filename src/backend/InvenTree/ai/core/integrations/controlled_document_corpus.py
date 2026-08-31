@@ -30,6 +30,7 @@ from ai.core.integrations.controlled_document_search import (
     _odata_literal,
     _query_vector,
 )
+from ai.core.integrations.search_query import semantic_hybrid_kwargs
 from ai.core.maf_compat import ai_function
 from asgiref.sync import sync_to_async
 
@@ -335,24 +336,21 @@ def search_corpus(
             fleet_wide=fleet_wide,
         )
         try:
-            from azure.search.documents.models import VectorizedQuery
-
-            return list(
-                search_client.search(
-                    search_text=query,
-                    vector_queries=[
-                        VectorizedQuery(
-                            vector=vector, k_nearest_neighbors=top_k, fields="text_vector"
-                        )
-                    ],
-                    vector_filter_mode="preFilter",
-                    filter=filter_expression,
-                    top=top_k,
-                    query_type="semantic",
-                    semantic_configuration_name="semantic-default",
-                    select=_SELECT_FIELDS,
-                )
+            search_kwargs = semantic_hybrid_kwargs(
+                query=query,
+                vector=vector,
+                vector_field="text_vector",
+                filter_expression=filter_expression,
+                select=_SELECT_FIELDS,
+                top=top_k,
             )
+        except ValueError as exc:
+            # The builder's wildcard/blank guard, mapped to the typed refusal.
+            raise ControlledDocumentSearchError(
+                "query is invalid", code="CONTROLLED_DOCUMENT_QUERY_INVALID"
+            ) from exc
+        try:
+            return list(search_client.search(**search_kwargs))
         except ControlledDocumentSearchError:
             raise
         except Exception as exc:

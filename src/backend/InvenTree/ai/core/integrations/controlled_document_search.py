@@ -9,6 +9,7 @@ from ai.core.integrations.controlled_document_indexing import (
     AzureOpenAIEmbeddingClient,
     ControlledDocumentIngestionError,
 )
+from ai.core.integrations.search_query import semantic_hybrid_kwargs
 
 if TYPE_CHECKING:
     from aichat.models import ControlledDocument
@@ -193,24 +194,21 @@ def search_selected_document(
         dimensions=embedding_dimensions,
     )
     try:
-        from azure.search.documents.models import VectorizedQuery
-
-        rows = search_client.search(
-            search_text=query,
-            vector_queries=[
-                VectorizedQuery(
-                    vector=vector,
-                    k_nearest_neighbors=top_k,
-                    fields="text_vector",
-                )
-            ],
-            vector_filter_mode="preFilter",
-            filter=selected_document_filter(document),
-            top=top_k,
-            query_type="semantic",
-            semantic_configuration_name="semantic-default",
+        search_kwargs = semantic_hybrid_kwargs(
+            query=query,
+            vector=vector,
+            vector_field="text_vector",
+            filter_expression=selected_document_filter(document),
             select=_SELECT_FIELDS,
+            top=top_k,
         )
+    except ValueError as exc:
+        # The builder's wildcard/blank guard, mapped to the typed refusal.
+        raise ControlledDocumentSearchError(
+            "query is invalid", code="CONTROLLED_DOCUMENT_QUERY_INVALID"
+        ) from exc
+    try:
+        rows = search_client.search(**search_kwargs)
     except ControlledDocumentSearchError:
         raise
     except Exception as exc:

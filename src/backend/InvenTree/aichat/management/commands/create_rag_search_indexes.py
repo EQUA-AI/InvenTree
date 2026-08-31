@@ -12,9 +12,9 @@ import json
 
 from django.core.management.base import BaseCommand, CommandError
 
-VECTOR_PROFILE = 'vector-default'
-HNSW_NAME = 'hnsw-default'
-SEMANTIC_CONFIG = 'semantic-default'
+# R5 WP-E: the wiring names live in the shared query-builder leaf so the
+# index definition and every retrieval call site provably share them.
+from ai.core.integrations.search_query import HNSW_NAME, SEMANTIC_CONFIG, VECTOR_PROFILE
 
 
 def _index_models():

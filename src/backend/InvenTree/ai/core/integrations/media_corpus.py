@@ -46,6 +46,7 @@ from ai.core.integrations.controlled_document_search import (
     SearchClient,
     _odata_literal,
 )
+from ai.core.integrations.search_query import semantic_hybrid_kwargs
 from ai.core.maf_compat import ai_function
 from ai.core.tools.diagnostics import fence_untrusted_content
 from asgiref.sync import sync_to_async
@@ -121,6 +122,8 @@ def evidence_media_filter(
     asset_id: str | None = None,
     media_type: str | None = None,
     scope_asset_ids: tuple[str, ...] | None = None,
+    attachment_id: int | None = None,
+    timecode_window: tuple[float, float] | None = None,
 ) -> str:
     """Build the non-negotiable media filter from server-side values only.
 
@@ -177,6 +180,13 @@ def evidence_media_filter(
             )
         else:
             clauses.append("(asset_id eq '' or asset_id eq null)")
+    # R5 WP-F: appended AFTER every existing clause so the pinned filter
+    # strings stay byte-identical whenever the expansion is not in play.
+    if attachment_id is not None:
+        clauses.append(f"attachment_id eq {int(attachment_id)}")
+    if timecode_window is not None:
+        low, high = timecode_window
+        clauses.append(f"timecode_start_s ge {float(low)} and timecode_start_s le {float(high)}")
     return " and ".join(clauses)
 
 
@@ -395,26 +405,20 @@ def search_corpus_media(
             scope_asset_ids=scope_asset_ids,
         )
         try:
-            from azure.search.documents.models import VectorizedQuery
-
-            return list(
-                search_client.search(
-                    search_text=query,
-                    vector_queries=[
-                        VectorizedQuery(
-                            vector=vector,
-                            k_nearest_neighbors=top_k,
-                            fields="media_vector",
-                        )
-                    ],
-                    vector_filter_mode="preFilter",
-                    filter=filter_expression,
-                    top=top_k,
-                    query_type="semantic",
-                    semantic_configuration_name="semantic-default",
-                    select=_SELECT_FIELDS,
-                )
+            search_kwargs = semantic_hybrid_kwargs(
+                query=query,
+                vector=vector,
+                vector_field="media_vector",
+                filter_expression=filter_expression,
+                select=_SELECT_FIELDS,
+                top=top_k,
             )
+        except ValueError as exc:
+            # The builder's wildcard/blank guard: '*' passes the tool's own
+            # entry validation, so map it to the typed refusal here.
+            raise MediaRetrievalError("query is invalid", code="MEDIA_QUERY_INVALID") from exc
+        try:
+            return list(search_client.search(**search_kwargs))
         except MediaRetrievalError:
             raise
         except Exception as exc:
@@ -423,6 +427,84 @@ def search_corpus_media(
                 code="MEDIA_SEARCH_FAILED",
             ) from exc
 
+    def _adjacent_rows(primaries):
+        """±1 segment neighbours for video primaries, timecode-banded.
+
+        ``segment_index`` is sortable but NOT filterable (Azure 400s such a
+        filter), so the server-side band is on timecodes — stride-free:
+        ``window = rag_video_segment_s`` provably covers ±1 regardless of
+        the stride the attachment was ingested with — and the exact ±1 pick
+        happens in Python on the returned ``segment_index``. The fetch
+        reuses the server-authored filter builder with _run's own argument
+        set (including its deliberate omission of step_execution_id):
+        fetching by id alone would be a scope bypass.
+        """
+        from ai.core.integrations.search_query import filter_only_kwargs
+
+        seen = {str(row.get("id") or "") for row in primaries}
+        neighbours: list[tuple[dict[str, Any], str]] = []
+        for primary in primaries:
+            if str(primary.get("media_type") or "") != "video_segment":
+                continue
+            start = primary.get("timecode_start_s")
+            if start is None:
+                continue
+            # Band width from the PRIMARY'S OWN segment duration when it is
+            # known: the attachment may have been ingested under a different
+            # RAG_VIDEO_SEGMENT_S than today's, and stride = duration -
+            # overlap <= duration, so [start - dur, start + dur] provably
+            # contains both +-1 starts at any legal overlap. The configured
+            # value is only the fallback for rows without timecodes.
+            end = primary.get("timecode_end_s")
+            duration = (
+                float(end) - float(start)
+                if end is not None and float(end) > float(start)
+                else float(settings.rag_video_segment_s)
+            )
+            window = max(duration, 1.0)
+            filter_expression = evidence_media_filter(
+                scope_key=scope_key,
+                client_codes=client_codes,
+                model_types=model_types,
+                work_order_id=work_order_id,
+                asset_id=asset_id,
+                media_type=None,
+                scope_asset_ids=scope_asset_ids,
+                attachment_id=int(primary.get("attachment_id") or 0),
+                timecode_window=(
+                    max(0.0, float(start) - window),
+                    float(start) + window,
+                ),
+            )
+            fetched = search_client.search(
+                **filter_only_kwargs(
+                    filter_expression=filter_expression,
+                    select=_SELECT_FIELDS,
+                    # Generous: at a high-overlap stride the band can hold
+                    # many segments and the +-1 pick below is by
+                    # segment_index, so truncation — not ordering — was the
+                    # only way to lose a neighbour. 1000 comfortably exceeds
+                    # max_duration/min_stride.
+                    top=1000,
+                    order_by=["timecode_start_s asc"],
+                )
+            )
+            wanted = {
+                int(primary.get("segment_index") or 0) - 1,
+                int(primary.get("segment_index") or 0) + 1,
+            }
+            for candidate in fetched:
+                candidate_id = str(candidate.get("id") or "")
+                if candidate_id in seen:
+                    continue
+                if (
+                    str(candidate.get("media_type") or "") == "video_segment"
+                    and int(candidate.get("segment_index") or 0) in wanted
+                ):
+                    seen.add(candidate_id)
+                    neighbours.append((candidate, str(primary.get("id") or "")))
+        return neighbours
+
     rows = _run(media_type)
     if not rows and media_type:
         # Type narrowing is a precision hint, exactly like work-order and
@@ -430,55 +512,17 @@ def search_corpus_media(
         # reports none. Degrade to the un-narrowed result.
         rows = _run(None)
 
-    chunks: list[dict[str, Any]] = []
-    for row in rows:
-        parts = [
-            str(row.get(field) or "").strip() for field in ("caption", "ocr_text", "transcript")
-        ]
-        text = "\n".join(part for part in parts if part)[:_EXCERPT_MAX_CHARS]
-        chunks.append({
-            # Hash over the raw truncation (pre-fence) so the grounding
-            # auditor's excerpt identity is independent of fence markers.
-            "excerpt": fence_untrusted_content(text),
-            "score": row.get("@search.score", 0),
-            "citation": {
-                # The free-text citation fields — display title, file name —
-                # come from the uploader's filename, the same attacker-
-                # writable tier as the pixels, and get the same fence.
-                # Server-stamped coordinates (ids, tier, serial, timecodes,
-                # dates) stay raw. Thumbnails are deliberately NOT returned:
-                # the stored path embeds the uploader-chosen filename
-                # (thumb_{basename}), which would put attacker-authored text
-                # into the payload unfenced. The UI resolves the thumbnail
-                # from attachment_id via the authenticated attachment API.
-                "document": fence_untrusted_content(_display_title(row)[:255]),
-                "source_file_name": fence_untrusted_content(
-                    str(row.get("source_file_name") or "")[:255]
-                ),
-                "attachment_id": int(row.get("attachment_id") or 0),
-                "model_type": str(row.get("model_type") or ""),
-                "model_id": int(row.get("model_id") or 0),
-                "media_type": str(row.get("media_type") or ""),
-                "work_order_id": row.get("work_order_id"),
-                "step_execution_id": row.get("step_execution_id"),
-                "segment_index": int(row.get("segment_index") or 0),
-                "timecode_start_s": row.get("timecode_start_s"),
-                "timecode_end_s": row.get("timecode_end_s"),
-                "chunk_id": str(row.get("id") or ""),
-                # The media index has no as_of field; the citation's temporal
-                # anchor is the upload date, falling back to indexing time.
-                "as_of": str(row.get("uploaded_at") or row.get("indexed_at") or ""),
-                "recorded_at": str(row.get("recorded_at") or ""),
-                # Evidence tier, surfaced so the model and the grounding rail
-                # can distinguish it from both document corpora.
-                "access_class": str(row.get("access_class") or _ACCESS_CLASS),
-                # The indexed machine identity (serial) so downstream
-                # grounding can fence a citation from the WRONG machine's
-                # evidence. Empty when the owner has no machine.
-                "asset_id": str(row.get("asset_id") or ""),
-                "excerpt_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-            },
-        })
+    adjacent: list[tuple[dict[str, Any], str]] = []
+    if getattr(settings, "rag_media_adjacent_segments", 0) > 0:
+        try:
+            adjacent = _adjacent_rows(rows)
+        except Exception:
+            # Never raise: a future Azure 400 on the expansion must not take
+            # down primary media retrieval. Value-free by construction.
+            logger.warning("media adjacency expansion failed (ignored)")
+            adjacent = []
+
+    chunks: list[dict[str, Any]] = [_row_chunk(row) for row in rows]
     scope_fields: dict[str, Any] = {}
     if scope_context is not None:
         scope_fields = {
@@ -539,9 +583,25 @@ def search_corpus_media(
         warnings=() if chunks else (NO_RELEVANT_PASSAGE,),
     )
     record_envelope("search_evidence_media", envelope)
+    # R5 WP-F: neighbours are appended AFTER every primary — build_media_evidence
+    # walks in order and hard-stops at its chip cap, so within ONE call ordering
+    # protects the budget. Known limitation: across multiple media searches in
+    # one turn the capture ledger interleaves calls, so an earlier call's
+    # neighbour can still take a chip ahead of a later call's primary. score=None (a filter-only fetch scores every doc 1.0, which
+    # would blind the --weak miss report), and the marker rides the CHUNK, not
+    # the 17-key citation, which is a pinned wire contract. Every ledger and
+    # envelope count above is primary-only by construction (computed before
+    # this append); adjacent_count is the one new sibling.
+    adjacent_chunks: list[dict[str, Any]] = []
+    for row, primary_chunk_id in adjacent:
+        chunk = _row_chunk(row)
+        chunk["score"] = None
+        chunk["adjacent_to"] = primary_chunk_id
+        adjacent_chunks.append(chunk)
     return {
-        "chunks": chunks,
+        "chunks": chunks + adjacent_chunks,
         "returned_count": len(chunks),
+        "adjacent_count": len(adjacent_chunks),
         "machine_filter": machine_filter,
         "work_order_filter": work_order_filter,
         "retrieval": envelope,
@@ -611,6 +671,59 @@ def _current_user():
     if principal is None:
         return None
     return get_user_model().objects.filter(pk=principal.user_pk).first()
+
+
+def _row_chunk(row: dict[str, Any]) -> dict[str, Any]:
+    """One fenced excerpt + 17-key citation from one Search row.
+
+    Shared by the primary result loop and the R5 WP-F adjacency expansion so
+    the pinned citation wire contract cannot fork between them.
+    """
+    parts = [str(row.get(field) or "").strip() for field in ("caption", "ocr_text", "transcript")]
+    text = "\n".join(part for part in parts if part)[:_EXCERPT_MAX_CHARS]
+    return {
+        # Hash over the raw truncation (pre-fence) so the grounding
+        # auditor's excerpt identity is independent of fence markers.
+        "excerpt": fence_untrusted_content(text),
+        "score": row.get("@search.score", 0),
+        "citation": {
+            # The free-text citation fields — display title, file name —
+            # come from the uploader's filename, the same attacker-
+            # writable tier as the pixels, and get the same fence.
+            # Server-stamped coordinates (ids, tier, serial, timecodes,
+            # dates) stay raw. Thumbnails are deliberately NOT returned:
+            # the stored path embeds the uploader-chosen filename
+            # (thumb_{basename}), which would put attacker-authored text
+            # into the payload unfenced. The UI resolves the thumbnail
+            # from attachment_id via the authenticated attachment API.
+            "document": fence_untrusted_content(_display_title(row)[:255]),
+            "source_file_name": fence_untrusted_content(
+                str(row.get("source_file_name") or "")[:255]
+            ),
+            "attachment_id": int(row.get("attachment_id") or 0),
+            "model_type": str(row.get("model_type") or ""),
+            "model_id": int(row.get("model_id") or 0),
+            "media_type": str(row.get("media_type") or ""),
+            "work_order_id": row.get("work_order_id"),
+            "step_execution_id": row.get("step_execution_id"),
+            "segment_index": int(row.get("segment_index") or 0),
+            "timecode_start_s": row.get("timecode_start_s"),
+            "timecode_end_s": row.get("timecode_end_s"),
+            "chunk_id": str(row.get("id") or ""),
+            # The media index has no as_of field; the citation's temporal
+            # anchor is the upload date, falling back to indexing time.
+            "as_of": str(row.get("uploaded_at") or row.get("indexed_at") or ""),
+            "recorded_at": str(row.get("recorded_at") or ""),
+            # Evidence tier, surfaced so the model and the grounding rail
+            # can distinguish it from both document corpora.
+            "access_class": str(row.get("access_class") or _ACCESS_CLASS),
+            # The indexed machine identity (serial) so downstream
+            # grounding can fence a citation from the WRONG machine's
+            # evidence. Empty when the owner has no machine.
+            "asset_id": str(row.get("asset_id") or ""),
+            "excerpt_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        },
+    }
 
 
 @ai_function

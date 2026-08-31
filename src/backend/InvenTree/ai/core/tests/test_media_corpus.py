@@ -842,3 +842,133 @@ def test_filter_scope_asset_floor_allows_unstamped_and_scoped_only():
     assert built.endswith(
         "and (asset_id eq '' or asset_id eq null or search.in(asset_id, 'SR-1,SR-2', ','))"
     )
+
+
+# ---------------------------------------------------------------------------
+# R5 WP-F: ±1 adjacent-segment expansion on timecodes
+# ---------------------------------------------------------------------------
+
+
+def _video_row(index, start, **overrides):
+    """A video-segment row at the given segment index and timecode."""
+    return _row(
+        id=f"att-12-6f1c2b3d4e5a-s{index}",
+        attachment_id=12,
+        media_type="video_segment",
+        segment_index=index,
+        segment_count=11,
+        timecode_start_s=float(start),
+        timecode_end_s=float(start) + 60.0,
+        **overrides,
+    )
+
+
+class _AdjacencySearchClient(_SearchClient):
+    """Semantic calls serve primaries; filter-only calls serve neighbours."""
+
+    def __init__(self, primary_rows, neighbour_rows):
+        super().__init__(rows=primary_rows)
+        self._neighbour_rows = list(neighbour_rows)
+
+    def search(self, **kwargs):
+        self.calls += 1
+        self.kwargs = kwargs
+        self.all_kwargs.append(kwargs)
+        if kwargs.get("query_type") == "semantic":
+            return list(self._rows)
+        return list(self._neighbour_rows)
+
+
+@pytest.fixture
+def adjacency_on(monkeypatch):
+    """Retrieval on with the WP-F knobs present (they are AI-plane config)."""
+    monkeypatch.setattr(
+        config,
+        "get_settings",
+        lambda: _settings(rag_media_adjacent_segments=1, rag_video_segment_s=60),
+    )
+    _stub_scope(monkeypatch)
+
+
+def test_filter_appends_adjacency_clauses_last():
+    """attachment_id + timecode band ride AFTER every pinned clause."""
+    built = evidence_media_filter(
+        scope_key=SCOPE_KEY,
+        client_codes={"acme"},
+        model_types=("workorder", "workorderstepexecution", "assetmachine"),
+        attachment_id=12,
+        timecode_window=(215.0, 335.0),
+    )
+    assert built == (
+        BASE_FILTER
+        + " and attachment_id eq 12"
+        + " and timecode_start_s ge 215.0 and timecode_start_s le 335.0"
+    )
+
+
+def test_adjacency_appends_neighbours_after_primaries(adjacency_on):
+    """±1 neighbours arrive appended, score-free, chunk-marked, scope-filtered."""
+    primary = _video_row(5, 275.0)
+    neighbours = [
+        _video_row(4, 220.0),
+        _video_row(5, 275.0),  # the primary itself — deduped
+        _video_row(6, 330.0),
+        _video_row(8, 440.0),  # inside nothing: index not in ±1
+    ]
+    search_client = _AdjacencySearchClient([primary], neighbours)
+    _search, _embed, result = _run(search_client=search_client)
+
+    assert result["returned_count"] == 1  # primary-only, the pinned meaning
+    assert result["adjacent_count"] == 2
+    chunks = result["chunks"]
+    assert len(chunks) == 3
+    assert chunks[0]["citation"]["segment_index"] == 5  # primaries first
+    assert [c["citation"]["segment_index"] for c in chunks[1:]] == [4, 6]
+    for neighbour in chunks[1:]:
+        assert neighbour["score"] is None
+        assert neighbour["adjacent_to"] == primary["id"]
+        # The 17-key citation wire contract must not fork for neighbours.
+        assert set(neighbour["citation"]) == set(chunks[0]["citation"])
+    assert "adjacent_to" not in chunks[0]
+    # The envelope and ledger counted primaries only.
+    assert result["retrieval"]["coverage"]["population_count"] == 1
+
+    fetch_kwargs = search_client.all_kwargs[1]
+    assert "query_type" not in fetch_kwargs  # filter-only, unranked
+    assert fetch_kwargs["order_by"] == ["timecode_start_s asc"]
+    assert fetch_kwargs["filter"].startswith(BASE_FILTER)  # scope clauses intact
+    assert "attachment_id eq 12" in fetch_kwargs["filter"]
+    assert "timecode_start_s ge 215.0" in fetch_kwargs["filter"]
+
+
+def test_photo_primary_issues_no_second_search_call(adjacency_on):
+    """Image hits have no neighbours; the expansion must not fetch."""
+    search_client = _AdjacencySearchClient([_row()], [])
+    _search, _embed, result = _run(search_client=search_client)
+    assert search_client.calls == 1
+    assert result["adjacent_count"] == 0
+
+
+def test_adjacency_fetch_failure_degrades_to_primaries(adjacency_on):
+    """An expansion fault must never take down primary retrieval."""
+
+    class _NeighbourBoom(_AdjacencySearchClient):
+        def search(self, **kwargs):
+            if kwargs.get("query_type") != "semantic":
+                raise RuntimeError("azure said 400")
+            return super().search(**kwargs)
+
+    search_client = _NeighbourBoom([_video_row(5, 275.0)], [])
+    _search, _embed, result = _run(search_client=search_client)
+    assert result["returned_count"] == 1
+    assert result["adjacent_count"] == 0
+    assert len(result["chunks"]) == 1
+
+
+def test_adjacency_dark_when_knob_absent(retrieval_on):
+    """Settings without the knob (pre-WP-F shape) never expand."""
+    search_client = _AdjacencySearchClient([_video_row(5, 275.0)], [_video_row(4, 220.0)])
+    _search, _embed, result = _run(search_client=search_client)
+    assert search_client.calls == 1
+    assert "adjacent_count" in result
+    assert result["adjacent_count"] == 0

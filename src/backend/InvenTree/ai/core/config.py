@@ -1013,6 +1013,12 @@ class Settings(BaseSettings):
     # detail:"low"), keeping provider calls per window at 2 and the fence
     # heartbeat cadence unchanged.
     rag_video_caption_frames: int = Field(default=1, ge=1, le=10, alias="RAG_VIDEO_CAPTION_FRAMES")
+    # R5 WP-F: ±N adjacent-segment expansion on video evidence hits. Capped at
+    # 1 — the band arithmetic in media_corpus is provably sufficient only for
+    # the immediate neighbours.
+    rag_media_adjacent_segments: int = Field(
+        default=1, ge=0, le=1, alias="RAG_MEDIA_ADJACENT_SEGMENTS"
+    )
     rag_max_doc_mb: int = Field(default=50, ge=1, alias="RAG_MAX_DOC_MB")
     rag_max_image_mb: int = Field(default=25, ge=1, alias="RAG_MAX_IMAGE_MB")
     rag_max_video_mb: int = Field(default=500, ge=1, alias="RAG_MAX_VIDEO_MB")
