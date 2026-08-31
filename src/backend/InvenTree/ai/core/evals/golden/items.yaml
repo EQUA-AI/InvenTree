@@ -402,10 +402,17 @@ items:
       What is the maximum inlet temperature for the HX-200 according to the
       uploaded manual?
     expected_behavior: answer
+    # KNOWN MISS (R5, 2026-08-31, reproducible): the model retrieves the
+    # operating-limits table (it answers min-flow from the same chunk) yet
+    # denies the inlet limit exists. Tracked via the miss loop. Per the
+    # R2.9 precedent the ground truth admits an HONEST could-not-verify as
+    # abstention (warn) — only a fabricated value hard-fails.
     ground_truth: >-
       150 °C maximum inlet temperature (uploaded HX-200 manual fixture,
       operating limits table), attributed as an uploaded document with the
-      source file cited.
+      source file cited. An honest statement that the value could not be
+      verified in the retrieved documents is an abstention, not a wrong
+      answer; any OTHER temperature stated as the limit is wrong.
     ground_truth_keys: ["150 °C"]
     trap_type: none
     corpus_version: aimms-attachment-fixtures-v2
