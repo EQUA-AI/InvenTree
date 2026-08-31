@@ -31,9 +31,60 @@ def _log_receiver_fault(event: str, exc: BaseException) -> None:
         logger.warning('%s (fault detail unavailable)', event)
 
 
+def _effective_ai_flags() -> tuple[bool, bool, bool, bool]:
+    """The four POST-DEGRADE AI-plane flags; fail-LOUD all-True on error.
+
+    R5 posture C: the Django pair defaults on but has no degrade concept
+    (settings.py cannot consult the AI plane at boot), so every Django-side
+    gate must AND the effective AI value — otherwise a provider-less fork
+    writes a registry row plus a metadata stamp on EVERY upload.
+
+    Exception semantics are deliberately the OPPOSITE of a degrade: a
+    DEGRADED plane (constructible settings, missing providers) reads dark
+    and stays quiet, but a BROKEN config (constructor raises — explicit
+    flag without providers, malformed values) reads all-True so the offload
+    still fires and the task fails LOUDLY (F-15: a misconfigured-but-enabled
+    deployment must never become silent never-ingestion).
+    """
+    try:
+        from ai.core.config import get_settings
+
+        settings = get_settings()
+        return (
+            bool(settings.feature_attachment_rag_ingest),
+            bool(settings.feature_attachment_rag_retrieval),
+            bool(settings.feature_media_rag_ingest),
+            bool(settings.feature_media_rag_retrieval),
+        )
+    except Exception:
+        return (True, True, True, True)
+
+
+def _any_ingest_effective() -> bool:
+    """True when ANY ingest pipeline can actually run (post-degrade).
+
+    Mirrors the router: the doc arm needs the effective attachment-ingest
+    flag; the media arms need the Django media co-gate AND the effective
+    media-ingest flag. The receiver is the SOLE live enqueue point for BOTH,
+    so gating on the attachment bit alone would silence all media ingest on
+    an attachment-dark/media-lit deployment (R5 review finding, HIGH).
+    """
+    flags = _effective_ai_flags()
+    if flags[0]:
+        return True
+    return bool(getattr(django_settings, 'AIMMS_MEDIA_RAG_ENABLED', False)) and flags[2]
+
+
 def _rag_enabled() -> bool:
-    """Django-plane gate (bridged registry flag); unbridged ⇒ structurally off."""
-    return bool(getattr(django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False))
+    """Django-plane master gate ANDed with any effective ingest arm (R5).
+
+    Unbridged ⇒ structurally off; a degraded AI plane reads as off, so
+    default-on can never enqueue ingests a deployment cannot run — while a
+    RAISING config still offloads loudly (see _effective_ai_flags).
+    """
+    if not bool(getattr(django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False)):
+        return False
+    return _any_ingest_effective()
 
 
 def _restamp_enabled() -> bool:
@@ -42,11 +93,16 @@ def _restamp_enabled() -> bool:
     Re-stamps must keep flowing as long as EITHER corpus can serve — a
     deployment that turns the doc plane off while media retrieval stays lit
     would otherwise stop propagating client/coordinate changes into content
-    it is still serving (review finding, R3).
+    it is still serving (review finding, R3). R5: restamps write to Search,
+    so at least one EFFECTIVE AI-plane flag must be lit too — a provider-less
+    fork must not enqueue restamp tasks that can only fail.
     """
-    return _rag_enabled() or bool(
-        getattr(django_settings, 'AIMMS_MEDIA_RAG_ENABLED', False)
-    )
+    django_lit = bool(
+        getattr(django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False)
+    ) or bool(getattr(django_settings, 'AIMMS_MEDIA_RAG_ENABLED', False))
+    if not django_lit:
+        return False
+    return any(_effective_ai_flags())
 
 
 def _flag_dependent_skip_matches(reason: str) -> bool:

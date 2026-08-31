@@ -1543,7 +1543,11 @@ class WorkOrderRestampTests(MediaFixtureTestCase):
             pipeline='image',
             state=AttachmentIngestState.INDEXED,
         )
-        with mock.patch('InvenTree.tasks.offload_task', return_value=True) as off:
+        with (
+            mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
+            # R5: _restamp_enabled ANDs the effective AI plane; pin it lit.
+            mock.patch('ai.core.config.get_settings', return_value=_ai_settings()),
+        ):
             self.work_order.save()
         offloads = _restamp_offloads(off)
         self.assertEqual(len(offloads), 1)

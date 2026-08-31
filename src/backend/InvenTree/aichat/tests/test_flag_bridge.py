@@ -15,8 +15,13 @@ from django.test import SimpleTestCase
 class FlagBridgeTests(SimpleTestCase):
     """Every bridged name exists with a fail-closed default."""
 
-    def test_boolean_flags_exist_and_default_off(self):
-        """Feature booleans are declared and off unless the env says otherwise."""
+    def test_boolean_flags_exist_and_bridge_as_bools(self):
+        """Feature booleans are declared and bridge as real bools.
+
+        R5 renamed this from ...default_off: the RAG pair now defaults ON,
+        so "off unless the env says otherwise" stopped being true — the
+        assertions below were always type/existence checks, never values.
+        """
         for name in (
             'AIMMS_WORK_ORDERS_ENABLED',
             'AIMMS_MACHINE_AI_READ_ENABLED',

@@ -160,15 +160,17 @@ _COMPANION_ENV: dict[str, dict[str, object]] = {
     [e for e in ai_flags() if e.kind == "bool"],
     ids=lambda e: e.env_name,
 )
-def test_every_bool_flag_env_round_trips(entry) -> None:
-    """EVERY bool flag instantiates live — not a positional sample.
+@pytest.mark.parametrize("value", [True, False], ids=["on", "off"])
+def test_every_bool_flag_env_round_trips(entry, value) -> None:
+    """EVERY bool flag instantiates live IN BOTH DIRECTIONS.
 
     The previous [:5] slice silently excluded validator-coupled flags by
     registry order alone (review finding R0-7); companions make each flag
-    constructible in isolation.
+    constructible in isolation. R5 default-on made `not entry.default` stop
+    covering the on-path for the RAG quartet — hence both values, always.
+    An explicit env value (either direction) must never be degraded.
     """
-    flipped = not entry.default
-    env = {entry.env_name: flipped}
+    env = {entry.env_name: value}
     env.update(_COMPANION_ENV.get(entry.env_name, {}))
     settings = Settings(_env_file=None, **env)
-    assert getattr(settings, entry.ai_field) == flipped
+    assert getattr(settings, entry.ai_field) == value

@@ -41,8 +41,15 @@ class SeedVideoEvalFixturesTests(RagFixtureTestCase):
         )
         self.assertFalse(AttachmentIngest.objects.exists())
 
+    @override_settings(
+        AIMMS_ATTACHMENT_RAG_ENABLED=False, AIMMS_MEDIA_RAG_ENABLED=False
+    )
     def test_live_run_requires_the_full_flag_conjunction(self):
-        """A live run refuses while ANY of the three media planes is dark."""
+        """A live run refuses while ANY of the three media planes is dark.
+
+        R5 default-on: the dark Django pair must be EXPLICIT now, or the
+        refusal message only names the (degraded) AI flag.
+        """
         with (
             mock.patch('ai.core.config.get_settings', return_value=_ai_settings()),
             self.assertRaises(CommandError) as caught,

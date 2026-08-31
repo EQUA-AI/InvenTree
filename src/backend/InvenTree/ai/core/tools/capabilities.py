@@ -1102,11 +1102,16 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
         # single-role user can never receive the other arm's documents.
         from ai.core.config import get_settings
 
-        if not get_settings().feature_attachment_rag_retrieval:
-            return AuthorizationPolicy(
-                kind=PolicyKind.DISABLED,
-                reason="FEATURE_ATTACHMENT_RAG_RETRIEVAL is off",
-            )
+        settings = get_settings()
+        if not settings.feature_attachment_rag_retrieval:
+            # R5: say WHY it is off — a degraded default is not an operator
+            # choice, and the old string blamed an env var nobody set.
+            reason = "FEATURE_ATTACHMENT_RAG_RETRIEVAL is off"
+            if getattr(settings, "rag_flag_degraded", lambda _f: False)(
+                "feature_attachment_rag_retrieval"
+            ):
+                reason += " (degraded: providers incomplete)"
+            return AuthorizationPolicy(kind=PolicyKind.DISABLED, reason=reason)
         return AuthorizationPolicy(
             kind=PolicyKind.RESOURCE_AUTHORIZER,
             any_of=(("part", "view"), ("work_order", "view")),
@@ -1124,11 +1129,14 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
         # NATIVE_PERMISSION and lose the flag gate + authorizer.
         from ai.core.config import get_settings
 
-        if not get_settings().feature_media_rag_retrieval:
-            return AuthorizationPolicy(
-                kind=PolicyKind.DISABLED,
-                reason="FEATURE_MEDIA_RAG_RETRIEVAL is off",
-            )
+        settings = get_settings()
+        if not settings.feature_media_rag_retrieval:
+            reason = "FEATURE_MEDIA_RAG_RETRIEVAL is off"
+            if getattr(settings, "rag_flag_degraded", lambda _f: False)(
+                "feature_media_rag_retrieval"
+            ):
+                reason += " (degraded: providers incomplete)"
+            return AuthorizationPolicy(kind=PolicyKind.DISABLED, reason=reason)
         return AuthorizationPolicy(
             kind=PolicyKind.RESOURCE_AUTHORIZER,
             all_of=(("work_order", "view"),),

@@ -171,20 +171,24 @@ REGISTRY: tuple[FlagEntry, ...] = (
     FlagEntry(
         'AIMMS_ATTACHMENT_RAG_ENABLED',
         'bool',
-        False,
+        True,
         'django',
         config_key='aimms_attachment_rag_enabled',
-        description='Attachment RAG ingest receivers/tasks (Django plane, R0)',
+        description=(
+            'Attachment RAG ingest receivers/tasks (Django plane; default-on '
+            'since R5 — the receiver additionally requires the effective '
+            'AI-plane ingest flag, which self-degrades without providers)'
+        ),
     ),
     FlagEntry(
         'AIMMS_MEDIA_RAG_ENABLED',
         'bool',
-        False,
+        True,
         'django',
         config_key='aimms_media_rag_enabled',
         description=(
-            'Media (image) RAG ingest arm — Django-plane co-gate ANDed with '
-            'FEATURE_MEDIA_RAG_INGEST (R3; video R4)'
+            'Media RAG ingest arm — Django-plane co-gate ANDed with '
+            'FEATURE_MEDIA_RAG_INGEST (R3; video R4; default-on since R5)'
         ),
     ),
     FlagEntry(
@@ -539,34 +543,46 @@ REGISTRY: tuple[FlagEntry, ...] = (
     FlagEntry(
         'FEATURE_ATTACHMENT_RAG_INGEST',
         'bool',
-        False,
+        True,
         'ai',
         ai_field='feature_attachment_rag_ingest',
-        description='Attachment RAG doc-pipeline ingestion (R0, dark)',
+        description=(
+            'Attachment RAG doc-pipeline ingestion (default-on since R5; '
+            'degrades off without providers unless explicitly set)'
+        ),
     ),
     FlagEntry(
         'FEATURE_ATTACHMENT_RAG_RETRIEVAL',
         'bool',
-        False,
+        True,
         'ai',
         ai_field='feature_attachment_rag_retrieval',
-        description='search_attachment_docs tool exposure (R2)',
+        description=(
+            'search_attachment_docs tool exposure (R2; default-on since R5, '
+            'provider-degrading)'
+        ),
     ),
     FlagEntry(
         'FEATURE_MEDIA_RAG_INGEST',
         'bool',
-        False,
+        True,
         'ai',
         ai_field='feature_media_rag_ingest',
-        description='Image RAG ingestion router arm (R3; video R4)',
+        description=(
+            'Image/video RAG ingestion router arm (R3/R4; default-on since '
+            'R5, provider-degrading)'
+        ),
     ),
     FlagEntry(
         'FEATURE_MEDIA_RAG_RETRIEVAL',
         'bool',
-        False,
+        True,
         'ai',
         ai_field='feature_media_rag_retrieval',
-        description='search_evidence_media tool exposure (R3)',
+        description=(
+            'search_evidence_media tool exposure (R3; default-on since R5, '
+            'provider-degrading)'
+        ),
     ),
     FlagEntry(
         'AIMMS_MANUAL_GROUNDING_MODE',

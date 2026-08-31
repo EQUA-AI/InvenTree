@@ -44,6 +44,10 @@ def _ai_settings(**overrides) -> Settings:
     """Valid attachment-RAG configuration; individual tests override pieces."""
     values = {
         'FEATURE_ATTACHMENT_RAG_INGEST': True,
+        # R5 default-on: pin the media pair EXPLICITLY dark so these tests
+        # assert flag semantics, not the provider-degrade's side effect.
+        'FEATURE_MEDIA_RAG_INGEST': False,
+        'FEATURE_MEDIA_RAG_RETRIEVAL': False,
         'COHERE_EMBED_ENDPOINT': 'https://cohere.example',
         'AZURE_SEARCH_ENDPOINT': 'https://search.example',
         'single_site_policy_key': 'site-a',
@@ -195,6 +199,49 @@ class ReceiverTests(RagFixtureTestCase):
             if call.args and call.args[0] is aichat_tasks.ingest_attachment
         ]
 
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_django_flag_alone_does_not_offload_when_ai_plane_is_dark(self):
+        """R5 default-on cross-plane AND: Django True + dark AI plane = no
+        offload — otherwise every provider-less fork writes a registry row
+        plus a metadata stamp on EVERY upload."""
+        dark = mock.Mock()
+        dark.feature_attachment_rag_ingest = False
+        dark.feature_attachment_rag_retrieval = False
+        dark.feature_media_rag_ingest = False
+        dark.feature_media_rag_retrieval = False
+        with (
+            mock.patch('ai.core.config.get_settings', return_value=dark),
+            mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
+        ):
+            Attachment.objects.create(
+                model_type='part',
+                model_id=self.part.pk,
+                attachment=SimpleUploadedFile('and-fix.md', _MD),
+                comment='test',
+            )
+        self.assertEqual(self._ingest_offloads(off), [])
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    def test_broken_ai_config_still_offloads_loudly(self):
+        """A RAISING config is not a degrade: the offload fires so the task
+        fails loudly (F-15) — only a constructible-but-provider-less plane
+        reads dark at the receiver."""
+        with (
+            mock.patch('ai.core.config.get_settings', side_effect=RuntimeError('boom')),
+            mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
+        ):
+            Attachment.objects.create(
+                model_type='part',
+                model_id=self.part.pk,
+                attachment=SimpleUploadedFile('broken-cfg.md', _MD),
+                comment='test',
+            )
+        # The documented double-save fires twice here: a raising config also
+        # disables the stamp dedupe (fail-closed), so BOTH saves offload —
+        # loud is the property, the exact count is the double-save's.
+        self.assertGreaterEqual(len(self._ingest_offloads(off)), 1)
+
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=False)
     def test_flag_off_never_offloads(self):
         """Dark flag means the receiver never offloads."""
         with mock.patch('InvenTree.tasks.offload_task', return_value=True) as off:
@@ -407,8 +454,10 @@ class ReceiverTests(RagFixtureTestCase):
             GCP_CREDENTIALS_PATH='/tmp/wif.json',
             AZURE_OPENAI_ENDPOINT='https://openai.example',
         )
-        # AI-plane flag on, Django co-gate off: still suppressed.
+        # AI-plane flag on, Django co-gate EXPLICITLY off (R5 default-on):
+        # still suppressed.
         with (
+            override_settings(AIMMS_MEDIA_RAG_ENABLED=False),
             mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
             mock.patch('ai.core.config.get_settings', return_value=media_on),
         ):
@@ -456,8 +505,10 @@ class ReceiverTests(RagFixtureTestCase):
         )
         attachment.refresh_from_db()
         media_on = _media_ai_settings()
-        # AI-plane flag on, Django co-gate off: still suppressed.
+        # AI-plane flag on, Django co-gate EXPLICITLY off (R5 default-on):
+        # still suppressed.
         with (
+            override_settings(AIMMS_MEDIA_RAG_ENABLED=False),
             mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
             mock.patch('ai.core.config.get_settings', return_value=media_on),
         ):
@@ -908,8 +959,13 @@ class BackfillCommandTests(RagFixtureTestCase):
         self.assertRegex(report, r'photo\S*\.png\tATTACHMENT_SKIP_PART_IMAGE')
         self.assertFalse(AttachmentIngest.objects.exists())
 
+    @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=False)
     def test_live_run_requires_django_flag(self):
-        """Live backfill refuses while the Django flag is dark."""
+        """Live backfill refuses while the Django flag is dark.
+
+        R5 default-on: the dark state must now be EXPLICIT — relying on the
+        default would silently start a live backfill with unmocked clients.
+        """
         with self.assertRaises(CommandError):
             call_command('ingest_existing_attachments')
 
@@ -1703,7 +1759,10 @@ class RestampReceiverTests(RagFixtureTestCase):
             pipeline='doc',
             state=AttachmentIngestState.INDEXED,
         )
-        with mock.patch('InvenTree.tasks.offload_task', return_value=True) as off:
+        with (
+            mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
+            mock.patch('ai.core.config.get_settings', return_value=_ai_settings()),
+        ):
             MachinePart.objects.create(machine=self.machine, part=self.part_unlinked)
         restamps = [
             call
@@ -1718,7 +1777,11 @@ class RestampReceiverTests(RagFixtureTestCase):
         """A machine save with linked parts offloads the machine re-stamp."""
         from aichat import tasks as aichat_tasks
 
-        with mock.patch('InvenTree.tasks.offload_task', return_value=True) as off:
+        with (
+            mock.patch('InvenTree.tasks.offload_task', return_value=True) as off,
+            # R5: _restamp_enabled ANDs the effective AI plane; pin it lit.
+            mock.patch('ai.core.config.get_settings', return_value=_ai_settings()),
+        ):
             self.machine.save()
         restamps = [
             call

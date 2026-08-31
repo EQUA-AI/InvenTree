@@ -2357,7 +2357,17 @@ def resume_stalled_ingests() -> dict[str, int]:
     )
 
     counts = {'resumed': 0, 'stalled': 0, 'orphans': 0}
-    if getattr(django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False):
+    # R5: AND any effective ingest arm — with default-on Django flags, a
+    # provider-less deployment must not run reconciliation that can only
+    # enqueue work its providers cannot serve; the registry holds image and
+    # video rows too, so the attachment bit alone would strand stalled
+    # media ingests in a media-only deployment (review finding).
+    from aichat.receivers import _any_ingest_effective
+
+    if (
+        getattr(django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False)
+        and _any_ingest_effective()
+    ):
         from ai.core.config import get_settings
 
         stale_before = timezone.now() - timedelta(

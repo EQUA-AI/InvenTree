@@ -325,7 +325,15 @@ class Command(BaseCommand):
     def _seed_attachment(self, corpus, machines, dry_run):
         from django.conf import settings as django_settings
 
-        if not getattr(django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False):
+        from aichat.receivers import _any_ingest_effective
+
+        if (
+            not getattr(django_settings, 'AIMMS_ATTACHMENT_RAG_ENABLED', False)
+            or not _any_ingest_effective()
+        ):
+            # R5: also skip on a degraded plane — the note would otherwise
+            # seed with a PIPELINE_DISABLED registry row that fails the
+            # fixture-index audit.
             self.stdout.write(
                 'attachment note SKIPPED: AIMMS_ATTACHMENT_RAG_ENABLED is off '
                 '(registry-only seeding; enable the flag to ingest the note)'

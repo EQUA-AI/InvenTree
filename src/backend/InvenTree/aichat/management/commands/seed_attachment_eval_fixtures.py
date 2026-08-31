@@ -92,6 +92,18 @@ class Command(BaseCommand):
                 'AIMMS_ATTACHMENT_RAG_ENABLED is off; seeding would create '
                 'attachments that never ingest. Enable the flag first.'
             )
+        if not dry_run:
+            # R5 posture C: the Django flag defaults on, so also require an
+            # EFFECTIVE ingest arm — seeding against a degraded plane would
+            # create attachments whose only registry record is a
+            # PIPELINE_DISABLED skip.
+            from aichat.receivers import _any_ingest_effective
+
+            if not _any_ingest_effective():
+                raise CommandError(
+                    'No ingest pipeline is effective (providers incomplete '
+                    'or flags degraded); fix the AI-plane configuration first.'
+                )
 
         fixtures_dir = _fixtures_dir()
         missing = [

@@ -25,6 +25,9 @@ _MEDIA_ON = {
 
 
 def _settings(**overrides) -> Settings:
+    # R5 note: a bare construction now means DEGRADED defaults (default-on
+    # flags knocked dark for missing providers) — still the v1 baseline
+    # profile, because the profile hashes knobs, not flags.
     """Isolated settings keyed by env alias; the dev .env must not leak in."""
     return Settings(_env_file=None, **overrides)
 

@@ -239,6 +239,18 @@ class Command(BaseCommand):
                 'AIMMS_ATTACHMENT_RAG_ENABLED is off; enable the Django-plane '
                 'flag or use --dry-run/--census'
             )
+        if live:
+            # R5 posture C: with default-on Django flags, a provider-degraded
+            # deployment must refuse a live walk rather than stream, hash and
+            # skip-stamp the whole corpus for pipelines that cannot run.
+            from aichat.receivers import _any_ingest_effective
+
+            if not _any_ingest_effective():
+                raise CommandError(
+                    'No ingest pipeline is effective (providers incomplete or '
+                    'flags degraded); fix the AI-plane configuration or use '
+                    '--dry-run/--census'
+                )
 
         selector_active = options['force_unstamped'] or options['force_stale_profile']
         if options['model_type'] is None:

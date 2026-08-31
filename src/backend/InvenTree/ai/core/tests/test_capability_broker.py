@@ -223,19 +223,28 @@ def test_protected_resource_tools_have_resource_authorizers():
 
 
 def test_attachment_docs_policy_follows_the_retrieval_flag(monkeypatch):
-    """Dark by default; flag-on grants the any_of two-arm authorizer policy.
+    """Explicitly dark refuses; flag-on grants the any_of two-arm policy.
 
     The catalog is process-cached, so both directions clear it -- and the
     teardown clear keeps the flag-on catalog from leaking into other tests.
+    R5 default-on: BOTH phases use explicit stubs — the dark phase must not
+    depend on this machine's providers happening to degrade the default.
     """
     from ai.core import config as ai_config
 
+    real_settings = ai_config.get_settings()
+    dark_settings = SimpleNamespace(
+        single_site_policy_key=real_settings.single_site_policy_key,
+        feature_attachment_rag_retrieval=False,
+        feature_media_rag_retrieval=False,
+    )
+    monkeypatch.setattr(ai_config, "get_settings", lambda: dark_settings)
+    capability_catalog.cache_clear()
     policies = {entry.tool_id: entry.authorization for entry in capability_catalog()}
     dark = policies["search_attachment_docs"]
     assert dark.kind is PolicyKind.DISABLED
     assert "FEATURE_ATTACHMENT_RAG_RETRIEVAL" in (dark.reason or "")
 
-    real_settings = ai_config.get_settings()
     lit_settings = SimpleNamespace(**{
         **{name: getattr(real_settings, name) for name in ("single_site_policy_key",)},
         "feature_attachment_rag_retrieval": True,
@@ -259,20 +268,28 @@ def test_attachment_docs_policy_follows_the_retrieval_flag(monkeypatch):
 
 
 def test_evidence_media_policy_follows_the_retrieval_flag(monkeypatch):
-    """Dark by default; flag-on grants the single-arm work_order authorizer.
+    """Explicitly dark refuses; flag-on grants the single-arm authorizer.
 
     all_of, not any_of: one role grants the whole evidence corpus -- every
     owner type is an evidence surface under maintenance scope, and part-owned
-    media never ingests, so there is no second arm.
+    media never ingests, so there is no second arm. R5 default-on: both
+    phases use explicit stubs (see the attachment twin).
     """
     from ai.core import config as ai_config
 
+    real_settings = ai_config.get_settings()
+    dark_settings = SimpleNamespace(
+        single_site_policy_key=real_settings.single_site_policy_key,
+        feature_attachment_rag_retrieval=False,
+        feature_media_rag_retrieval=False,
+    )
+    monkeypatch.setattr(ai_config, "get_settings", lambda: dark_settings)
+    capability_catalog.cache_clear()
     policies = {entry.tool_id: entry.authorization for entry in capability_catalog()}
     dark = policies["search_evidence_media"]
     assert dark.kind is PolicyKind.DISABLED
     assert "FEATURE_MEDIA_RAG_RETRIEVAL" in (dark.reason or "")
 
-    real_settings = ai_config.get_settings()
     lit_settings = SimpleNamespace(**{
         **{name: getattr(real_settings, name) for name in ("single_site_policy_key",)},
         "feature_attachment_rag_retrieval": False,

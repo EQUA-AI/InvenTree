@@ -17,17 +17,58 @@ def _settings(**overrides) -> Settings:
     return Settings(_env_file=None, **overrides)
 
 
-def test_rag_flags_default_dark():
+def test_rag_flags_default_on_but_degrade_without_providers():
+    """R5 posture C: the defaults are True, and a provider-less construction
+    degrades every one of them to False — quietly, with the degrade recorded.
+    This is also the CI-collection safety property: config.py constructs a
+    module-level Settings() with no providers at import time."""
     s = _settings()
     assert s.feature_attachment_rag_ingest is False
     assert s.feature_attachment_rag_retrieval is False
     assert s.feature_media_rag_ingest is False
     assert s.feature_media_rag_retrieval is False
+    for field in (
+        "feature_attachment_rag_ingest",
+        "feature_attachment_rag_retrieval",
+        "feature_media_rag_ingest",
+        "feature_media_rag_retrieval",
+    ):
+        assert s.rag_flag_degraded(field), field
     assert s.azure_search_attachment_docs_index == "aimms-attachment-docs-v1"
     assert s.azure_search_media_index == "aimms-media-evidence-v1"
     assert s.cohere_embed_dimensions == 1536
     assert s.gemini_embed_dimensions == 3072
     assert s.rag_max_image_mb == 25
+
+
+def test_rag_flags_default_on_with_full_providers():
+    """With both planes' providers present, nothing degrades: all four ON."""
+    s = _settings(
+        COHERE_EMBED_ENDPOINT="https://cohere.example",
+        AZURE_SEARCH_ENDPOINT="https://search.example",
+        GCP_PROJECT_ID="proj",
+        GCP_LOCATION="us-central1",
+        GCP_CREDENTIALS_PATH="/tmp/wif.json",
+        AZURE_OPENAI_ENDPOINT="https://openai.example",
+    )
+    assert s.feature_attachment_rag_ingest is True
+    assert s.feature_attachment_rag_retrieval is True
+    assert s.feature_media_rag_ingest is True
+    assert s.feature_media_rag_retrieval is True
+    assert s.__dict__.get("_rag_degraded", ()) == ()
+
+
+def test_explicit_false_is_never_degraded_or_overridden():
+    """An operator's explicit off stays off and is NOT marked as degraded."""
+    s = _settings(FEATURE_ATTACHMENT_RAG_INGEST=False)
+    assert s.feature_attachment_rag_ingest is False
+    assert not s.rag_flag_degraded("feature_attachment_rag_ingest")
+
+
+def test_explicit_true_without_providers_still_fails_closed_media():
+    """The operator invariant survives posture C on the media plane too."""
+    with pytest.raises(ValidationError, match="GCP_PROJECT_ID"):
+        _settings(FEATURE_MEDIA_RAG_RETRIEVAL=True)
 
 
 def test_attachment_flag_without_cohere_fails_closed():
@@ -196,14 +237,23 @@ def test_r5_corpus_knobs_round_trip():
 
 
 def test_audio_extraction_requires_media_plane():
+    """Explicitly dark media plane (R5 default-on) still refuses the knob."""
     with pytest.raises(ValidationError, match="require media RAG"):
-        _settings(GEMINI_AUDIO_TRACK_EXTRACTION=True)
+        _settings(
+            GEMINI_AUDIO_TRACK_EXTRACTION=True,
+            FEATURE_MEDIA_RAG_INGEST=False,
+            FEATURE_MEDIA_RAG_RETRIEVAL=False,
+        )
 
 
 def test_auto_truncate_alone_requires_media_plane():
     """The tri-state must not become a back door around the media gate."""
     with pytest.raises(ValidationError, match="require media RAG"):
-        _settings(GEMINI_AUTO_TRUNCATE=False)
+        _settings(
+            GEMINI_AUTO_TRUNCATE=False,
+            FEATURE_MEDIA_RAG_INGEST=False,
+            FEATURE_MEDIA_RAG_RETRIEVAL=False,
+        )
 
 
 def test_audio_extraction_refused_on_a_predict_routed_pin():
@@ -233,7 +283,11 @@ def test_audio_extraction_allowed_at_sixty_seconds():
 
 def test_task_conditioning_requires_media_plane():
     with pytest.raises(ValidationError, match="GEMINI_EMBED_TASK_CONDITIONING"):
-        _settings(GEMINI_EMBED_TASK_CONDITIONING="task_type")
+        _settings(
+            GEMINI_EMBED_TASK_CONDITIONING="task_type",
+            FEATURE_MEDIA_RAG_INGEST=False,
+            FEATURE_MEDIA_RAG_RETRIEVAL=False,
+        )
 
 
 def test_task_conditioning_rejects_an_unknown_mode():
@@ -244,7 +298,11 @@ def test_task_conditioning_rejects_an_unknown_mode():
 def test_caption_frames_require_the_ingest_flag():
     """Retrieval alone never captions, so only the ingest flag binds."""
     with pytest.raises(ValidationError, match="RAG_VIDEO_CAPTION_FRAMES"):
-        _settings(RAG_VIDEO_CAPTION_FRAMES=4)
+        _settings(
+            RAG_VIDEO_CAPTION_FRAMES=4,
+            FEATURE_MEDIA_RAG_INGEST=False,
+            FEATURE_MEDIA_RAG_RETRIEVAL=False,
+        )
 
 
 def test_caption_frames_are_bounded():

@@ -126,8 +126,23 @@ class AIChatConfig(AppConfig):
         try:
             from ai.core.config import get_settings
 
-            get_settings()
-            if getattr(django_settings, 'AIMMS_MEDIA_RAG_ENABLED', False):
+            settings = get_settings()
+            degraded = tuple(settings.__dict__.get('_rag_degraded', ()))
+            if degraded:
+                # R5 posture C: default-on flags quietly degraded for missing
+                # providers. Names only — value-free by construction — so a
+                # degraded boot is visible in the probe line operators watch.
+                logger.warning(
+                    'Attachment RAG default-on flags degraded off '
+                    '(providers incomplete): %s',
+                    ','.join(degraded),
+                )
+            if getattr(django_settings, 'AIMMS_MEDIA_RAG_ENABLED', False) and getattr(
+                settings, 'feature_media_rag_ingest', False
+            ):
+                # R5: the EFFECTIVE (post-degrade) flag — a default-on but
+                # provider-degraded deployment must not log false ERRORs
+                # claiming image/video ingests will fail (they never run).
                 from ai.core.integrations.doc_intelligence import (
                     get_doc_intelligence_client,
                 )

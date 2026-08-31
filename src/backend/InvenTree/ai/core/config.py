@@ -5,6 +5,7 @@ Centralized typed configuration using pydantic-settings.
 Loads from environment variables with validation.
 """
 
+import logging
 import re as _re
 from functools import lru_cache
 from pathlib import Path
@@ -29,6 +30,7 @@ class Settings(BaseSettings):
         env_file=_AI_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
+        validate_by_name=True,
         case_sensitive=False,
     )
 
@@ -930,29 +932,32 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Attachment RAG (R0): auto-ingested uploads, two embedding spaces.
     # Text space = Cohere Embed v4 (Azure Foundry serverless); media space =
-    # Gemini Embedding 2 (Vertex AI). Both dark by default; every flag fails
-    # closed at startup when its provider configuration is incomplete. The
-    # governed controlled-document corpus (text-embedding-3-large) is separate
-    # and untouched -- the alias guard below keeps the indexes distinct.
+    # Gemini Embedding 2 (Vertex AI). ON by default since R5 (posture C):
+    # a DEFAULTED flag quietly degrades to False when its plane's providers
+    # are incomplete, while an EXPLICITLY SET truthy flag still fails closed
+    # at startup — the operator invariant survives, and provider-less forks
+    # and CI construct Settings without providers. The governed
+    # controlled-document corpus (text-embedding-3-large) is separate and
+    # untouched -- the alias guard below keeps the indexes distinct.
     # -------------------------------------------------------------------------
     feature_attachment_rag_ingest: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices(
             "FEATURE_ATTACHMENT_RAG_INGEST", "AIMMS_FEATURE_ATTACHMENT_RAG_INGEST"
         ),
     )
     feature_attachment_rag_retrieval: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices(
             "FEATURE_ATTACHMENT_RAG_RETRIEVAL", "AIMMS_FEATURE_ATTACHMENT_RAG_RETRIEVAL"
         ),
     )
     feature_media_rag_ingest: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices("FEATURE_MEDIA_RAG_INGEST", "AIMMS_FEATURE_MEDIA_RAG_INGEST"),
     )
     feature_media_rag_retrieval: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices(
             "FEATURE_MEDIA_RAG_RETRIEVAL", "AIMMS_FEATURE_MEDIA_RAG_RETRIEVAL"
         ),
@@ -1061,9 +1066,70 @@ class Settings(BaseSettings):
         """Trim attachment-RAG identifiers; whitespace must not defeat the guards."""
         return value.strip()
 
+    def rag_flag_degraded(self, field: str) -> bool:
+        """True when a DEFAULTED RAG flag was degraded off for missing providers."""
+        return field in self.__dict__.get("_rag_degraded", ())
+
+    def _attachment_providers_complete(self) -> bool:
+        if not self.cohere_embed_endpoint.startswith("https://"):
+            return False
+        if not self.cohere_embed_model:
+            return False
+        tail = self.cohere_embed_endpoint.split("://", 1)[-1]
+        if "/embeddings" in tail or "/openai" in tail:
+            return False
+        return bool(self.azure_search_endpoint and self.azure_search_attachment_docs_index)
+
+    def _media_providers_complete(self, *, ingest: bool) -> bool:
+        if not (self.gcp_project_id and self.gcp_location and self.gcp_credentials_path):
+            return False
+        if not self.gemini_embed_model:
+            return False
+        if not (self.azure_search_endpoint and self.azure_search_media_index):
+            return False
+        # gpt-4o captions: an ingest-lit plane without the endpoint would
+        # fail every image ingest at runtime.
+        return not (ingest and not self.azure_openai_endpoint)
+
     @model_validator(mode="after")
     def validate_attachment_rag(self) -> "Settings":
-        """Fail closed on incomplete providers or index aliasing across trust tiers."""
+        """Fail closed on incomplete providers or index aliasing across trust tiers.
+
+        R5 posture C runs FIRST: each RAG flag that is True purely by DEFAULT
+        (not in ``model_fields_set`` — env-sourced values, true or false, are
+        always in the set) degrades to False when its plane's providers are
+        incomplete. Everything after this block — the provider raises and the
+        R5 knob-coherence clauses — reads post-degrade values, so an
+        explicitly set flag keeps the original fail-closed behavior verbatim.
+        This degrade is also load-bearing for CI: config constructs a module-
+        level Settings() with no providers at import time.
+        """
+        degraded: list[str] = []
+        attachment_ok = self._attachment_providers_complete()
+        for field in ("feature_attachment_rag_ingest", "feature_attachment_rag_retrieval"):
+            if getattr(self, field) and field not in self.model_fields_set and not attachment_ok:
+                # Plain assignment would add the field to the very set we
+                # consult; __setattr__ on the dict keeps "defaulted" intact.
+                object.__setattr__(self, field, False)
+                degraded.append(field)
+        for field, needs_ingest in (
+            ("feature_media_rag_ingest", True),
+            ("feature_media_rag_retrieval", False),
+        ):
+            if (
+                getattr(self, field)
+                and field not in self.model_fields_set
+                and not self._media_providers_complete(ingest=needs_ingest)
+            ):
+                object.__setattr__(self, field, False)
+                degraded.append(field)
+        if degraded:
+            self.__dict__["_rag_degraded"] = tuple(degraded)
+            # One bounded, value-free line: names only, never configuration.
+            logging.getLogger(__name__).warning(
+                "RAG default-on flags degraded off (providers incomplete): %s",
+                ",".join(degraded),
+            )
         rag_indexes = [
             name
             for name in (
