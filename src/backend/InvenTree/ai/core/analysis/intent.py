@@ -194,6 +194,14 @@ _SAFETY_LOOKUP = re.compile(
     re.IGNORECASE,
 )
 
+#: Deontic/prescription markers: the sentence asks what a source demands,
+#: not what happened. Word-boundary matched; used only beside a doc noun.
+_DOC_PRESCRIPTION = re.compile(
+    r"\b(?:should|must|shall|supposed to|require[sd]?|recommend(?:s|ed)?|"
+    r"specif(?:y|ies|ied)|prescrib(?:e|es|ed)|mandate[sd]?|calls? for)\b",  # codespell:ignore specif
+    re.IGNORECASE,
+)
+
 _PART_ADVICE = re.compile(
     r"(?:\b(?:what|which)\b[^.?!]{0,30}\b(?:replacement\s+)?parts?\b"
     r"[^.?!]{0,40}\b(?:order|use|need|replace|recommend|suitable|"
@@ -261,13 +269,26 @@ def classify_rules(text: str) -> IntentDecision | None:
         return _rules_decision(TaskIntent.MANUAL_WO_COMPARISON, "comparison_rules")
     if has_records and _TREND.search(content):
         return _rules_decision(TaskIntent.TREND_ANALYSIS, "trend_rules")
-    if _AGGREGATE.search(content) and (has_records or has_docs):
+    # A deontic marker beside a DOC noun means the question asks what the
+    # document PRESCRIBES ("how often does the uploaded manual require a
+    # teardown?"), not how often something happened — the doc arm sent both
+    # R5 golden interval items to the records executor's intent, whose pack
+    # carries no document tools (live, 2026-09-01). The marker, not the doc
+    # noun alone, is the discriminator: doc-anchored EVENT counts ("how
+    # often was each pump inspected per the procedures?") are genuine
+    # records aggregates and keep the doc arm (adversarial review,
+    # 2026-09-01).
+    doc_prescription = has_docs and _DOC_PRESCRIPTION.search(content) is not None
+    if _AGGREGATE.search(content) and (has_records or has_docs) and not doc_prescription:
         return _rules_decision(TaskIntent.FLEET_AGGREGATE, "aggregate_rules")
     if _SOURCE_INVENTORY.search(content):
         return _rules_decision(TaskIntent.SOURCE_INVENTORY, "inventory_rules")
     if _SAFETY_LOOKUP.search(content):
         return _rules_decision(TaskIntent.SAFETY_LOOKUP, "safety_lookup_rules")
-    if has_docs and not has_records and _QUESTION_SHAPE.search(content):
+    # ``doc_prescription`` lifts the record-noun bar: "how often does the
+    # manual require maintenance?" names a record noun, but the deontic
+    # marker pins the manual as the subject (adversarial review, 2026-09-01).
+    if has_docs and (not has_records or doc_prescription) and _QUESTION_SHAPE.search(content):
         return _rules_decision(TaskIntent.MANUAL_FACT, "manual_fact_rules")
     if has_records and (_RETRIEVAL_SHAPE.search(content) or presentation):
         # "Create me a table of the maintenance records" is a presentation

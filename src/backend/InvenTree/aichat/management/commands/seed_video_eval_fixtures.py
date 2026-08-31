@@ -29,7 +29,17 @@ _FIXTURE_SET_VERSION = 'aimms-video-fixtures-v2'
 
 _EVAL_WO_REFERENCE = 'WO-EVAL-HX200-VIDEO'
 
-_VIDEO_MACHINE_NAME = 'RAG Eval HX-200 Video Heat Exchanger'
+# R5: the name and model must not contain the literal 'HX-200' — the R2
+# attachment machine already owns that string, and the machine resolver
+# (assets.ai_read.machines_page) icontains-matches name/serial/model, so the
+# old 'RAG Eval HX-200 Video Heat Exchanger' made every bare "HX-200" query
+# AMBIGUOUS and short-circuited retrieval into a clarification turn (live
+# golden, 2026-09-01). The serial keeps its hyphenated 'EVAL-HX200-VIDEO'
+# form: 'HX-200' is not a substring of it, and the golden items cite the
+# work-order reference, never the machine name.
+_VIDEO_MACHINE_NAME = 'RAG Eval Video Heat Exchanger'
+
+_VIDEO_MACHINE_MODEL = 'HX-V200'
 
 _VIDEO_MACHINE_SERIAL = 'EVAL-HX200-VIDEO'
 
@@ -101,7 +111,10 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(f'DRY RUN — fixture set {_FIXTURE_SET_VERSION}')
-            hx200 = AssetMachine.objects.filter(name=_VIDEO_MACHINE_NAME).first()
+            hx200 = (
+                AssetMachine.objects.filter(serial=_VIDEO_MACHINE_SERIAL).first()
+                or AssetMachine.objects.filter(name=_VIDEO_MACHINE_NAME).first()
+            )
             work_order = WorkOrder.objects.filter(reference=_EVAL_WO_REFERENCE).first()
         else:
             eval_fixtures.refuse_production(
@@ -109,15 +122,26 @@ class Command(BaseCommand):
             )
             # S6: the video fixture machine belongs to eval-fixtures too.
             eval_client, _offlimits = eval_fixtures.ensure_eval_clients(dry_run=False)
-            hx200, _ = AssetMachine.objects.get_or_create(
-                name=_VIDEO_MACHINE_NAME,
-                defaults={
-                    'client': eval_client,
-                    'serial': _VIDEO_MACHINE_SERIAL,
-                    'manufacturer': 'Eval Fixtures',
-                    'model': 'HX-200',
-                },
-            )
+            # Serial-first: the machine's name changed in R5 (collision
+            # repair above), and a name-keyed get_or_create would duplicate
+            # every pre-R5 seed. The repair branch renames in place.
+            hx200 = AssetMachine.objects.filter(serial=_VIDEO_MACHINE_SERIAL).first()
+            if hx200 is None:
+                hx200, _ = AssetMachine.objects.get_or_create(
+                    name=_VIDEO_MACHINE_NAME,
+                    defaults={
+                        'client': eval_client,
+                        'serial': _VIDEO_MACHINE_SERIAL,
+                        'manufacturer': 'Eval Fixtures',
+                        'model': _VIDEO_MACHINE_MODEL,
+                    },
+                )
+            elif (
+                hx200.name != _VIDEO_MACHINE_NAME or hx200.model != _VIDEO_MACHINE_MODEL
+            ):
+                hx200.name = _VIDEO_MACHINE_NAME
+                hx200.model = _VIDEO_MACHINE_MODEL
+                hx200.save(update_fields=['name', 'model'])
             work_order, work_order_created = WorkOrder.objects.get_or_create(
                 reference=_EVAL_WO_REFERENCE,
                 defaults={

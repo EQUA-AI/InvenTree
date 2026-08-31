@@ -114,7 +114,7 @@ class SeedVideoEvalFixturesTests(RagFixtureTestCase):
         work_order.refresh_from_db()
         self.assertNotEqual(work_order.machine_id, photo_machine.pk)
         self.assertEqual(
-            work_order.machine.name, 'RAG Eval HX-200 Video Heat Exchanger'
+            work_order.machine.name, 'RAG Eval Video Heat Exchanger'
         )
         self.assertEqual(work_order.machine.serial, 'EVAL-HX200-VIDEO')
         restamp.assert_called_once_with(work_order.pk)

@@ -1492,3 +1492,101 @@ def test_manual_fact_intent_carries_the_uploaded_corpus(monkeypatch):
         assert "search_manuals" in selection.tool_ids
     finally:
         capability_catalog.cache_clear()
+
+
+def test_typed_intent_naming_evidence_carries_the_evidence_pack(monkeypatch):
+    """The explicit-evidence rider must fire on the typed path too.
+
+    The lexical rider (2026-08-21) exists because a sentence NAMING photos
+    or recordings must keep search_evidence_media reachable; the S3 intent
+    tuple bypassed it, so "does the nameplate photo agree with the manual"
+    (manual_fact) and "show the recording on WO-…" (record_retrieval) both
+    lost the tool (live golden, 2026-09-01).
+    """
+    from ai.core import config as ai_config
+
+    lit = SimpleNamespace(
+        single_site_policy_key="site-a",
+        feature_attachment_rag_retrieval=True,
+        feature_media_rag_retrieval=True,
+    )
+    monkeypatch.setattr(ai_config, "get_settings", lambda: lit)
+    capability_catalog.cache_clear()
+    try:
+        for intent, query in (
+            (
+                "manual_fact",
+                "Do the uploaded manual and the nameplate photo agree on the pressure?",
+            ),
+            (
+                "record_retrieval",
+                "In the recording on work order WO-104, show where the seal was replaced.",
+            ),
+        ):
+            selection = select_capabilities(
+                query,
+                profile=frozenset({("part", "view"), ("work_order", "view")}),
+                authenticated=True,
+                task_intent=intent,
+            )
+            assert "evidence.read" in selection.pack_ids, (intent, selection.pack_ids)
+            assert "search_evidence_media" in selection.tool_ids, intent
+            assert "evidence_rider" in selection.signals
+            assert len(selection.tool_ids) <= MAX_INITIAL_TOOLS, (
+                intent,
+                len(selection.tool_ids),
+            )
+    finally:
+        capability_catalog.cache_clear()
+
+
+def test_typed_intent_without_evidence_words_stays_pure(monkeypatch):
+    """A records question with no evidence noun must not grow the pack.
+
+    The rider is keyword-gated by design — pure analysis intents keep the
+    exact tuple the S3 design pinned ("no lexical primary, no adjacency
+    walk").
+    """
+    from ai.core import config as ai_config
+
+    lit = SimpleNamespace(
+        single_site_policy_key="site-a",
+        feature_attachment_rag_retrieval=True,
+        feature_media_rag_retrieval=True,
+    )
+    monkeypatch.setattr(ai_config, "get_settings", lambda: lit)
+    capability_catalog.cache_clear()
+    try:
+        selection = select_capabilities(
+            "How many work orders were opened for each inverter last year?",
+            profile=frozenset({("part", "view"), ("work_order", "view")}),
+            authenticated=True,
+            task_intent="fleet_aggregate",
+        )
+        assert "evidence.read" not in selection.pack_ids
+        assert "evidence_rider" not in selection.signals
+    finally:
+        capability_catalog.cache_clear()
+
+
+def test_typed_evidence_rider_never_exposes_a_dark_media_tool(monkeypatch):
+    """Rider + FEATURE_MEDIA_RAG_RETRIEVAL off: the pack rides, the tool stays dark."""
+    from ai.core import config as ai_config
+
+    dark = SimpleNamespace(
+        single_site_policy_key="site-a",
+        feature_attachment_rag_retrieval=True,
+        feature_media_rag_retrieval=False,
+    )
+    monkeypatch.setattr(ai_config, "get_settings", lambda: dark)
+    capability_catalog.cache_clear()
+    try:
+        selection = select_capabilities(
+            "In the recording on work order WO-104, show where the seal was replaced.",
+            profile=frozenset({("part", "view"), ("work_order", "view")}),
+            authenticated=True,
+            task_intent="record_retrieval",
+        )
+        assert "search_evidence_media" not in selection.tool_ids
+    finally:
+        capability_catalog.cache_clear()

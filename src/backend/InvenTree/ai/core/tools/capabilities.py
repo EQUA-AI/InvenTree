@@ -1910,6 +1910,22 @@ def select_capabilities(
         for pack_id in intent_packs:
             scores[pack_id] = scores.get(pack_id, 0) + _SHAPE_SCORE
         pack_ids: tuple[str, ...] = intent_packs
+        # The explicit-evidence rider applies to the typed path too. A typed
+        # intent replaces lexical selection wholesale, which silently
+        # re-created the exact abstention the lexical rider below was built
+        # for (2026-08-21): "the nameplate photo" typed manual_fact and "the
+        # recording on WO-…" typed record_retrieval both lost
+        # search_evidence_media, so every cross-corpus golden abstained or
+        # fabricated a retrieval failure (live, 2026-09-01). Fires only when
+        # the sentence itself scored an evidence term, so pure-records
+        # analysis intents stay untouched. Budget: worst typed stack is
+        # record_retrieval (maintenance 7 + machines 9) + evidence 1 = 17
+        # before the SQL hatch; the trim loop then evicts the score-0
+        # analytics hatch first, so the named-evidence rider survives at
+        # exactly MAX_INITIAL_TOOLS.
+        if "evidence.read" not in pack_ids and scores.get("evidence.read", 0) > 0:
+            pack_ids = (*pack_ids, "evidence.read")
+            signals.append("evidence_rider")
     else:
         primary = _LOOKUP_PACKS.get(lookup_type or "")
         # S8a sources-primary rider: an inventory-shaped sentence's best tool

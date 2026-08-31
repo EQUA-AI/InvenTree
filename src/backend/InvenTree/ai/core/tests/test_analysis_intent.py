@@ -109,6 +109,54 @@ class TestFamilies:
         assert decision is not None
         assert decision.intent is TaskIntent.SOURCE_INVENTORY
 
+    def test_doc_prescription_frequency_is_manual_fact_not_aggregate(self) -> None:
+        """ "How often" beside a DOC noun asks what the doc prescribes.
+
+        The aggregate branch's doc arm sent both R5 golden interval items
+        ("how often does the uploaded manual require a teardown?") to
+        fleet_aggregate, whose records executor and intent pack carry no
+        document tools (live, 2026-09-01). Aggregates are records-only.
+        """
+        decision = classify_rules(
+            "How often does the uploaded HX-200 manual require a full teardown?"
+        )
+        assert decision is not None
+        assert decision.intent is TaskIntent.MANUAL_FACT
+
+    def test_records_frequency_stays_fleet_aggregate(self) -> None:
+        decision = classify_rules("How often were repairs logged for the inverters?")
+        assert decision is not None
+        assert decision.intent is TaskIntent.FLEET_AGGREGATE
+
+    def test_doc_prescription_with_record_noun_is_still_manual_fact(self) -> None:
+        """A deontic marker pins the doc as subject even past a record noun.
+
+        "maintenance" is a _RECORD_NOUN, so the plain manual-fact arm's
+        ``not has_records`` bar rejected this shape and the aggregate branch
+        claimed it (adversarial review, 2026-09-01).
+        """
+        decision = classify_rules("How often does the manual require maintenance on the HX-200?")
+        assert decision is not None
+        assert decision.intent is TaskIntent.MANUAL_FACT
+
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            # Doc-anchored EVENT counts are records aggregates: the doc noun
+            # is only a source/time anchor and there is no deontic marker
+            # (adversarial review, 2026-09-01 — the records-only draft of
+            # the aggregate branch misrouted all three to manual_fact or
+            # diagnostic).
+            "How often was each pump inspected per the procedures?",
+            "How many teardowns did we do on the HX-200 since the last manual revision?",
+            "Per the datasheets, how often do these motors overheat across the fleet?",
+        ],
+    )
+    def test_doc_anchored_event_counts_stay_fleet_aggregate(self, prompt: str) -> None:
+        decision = classify_rules(prompt)
+        assert decision is not None
+        assert decision.intent is TaskIntent.FLEET_AGGREGATE
+
     def test_manual_fact_without_history_nouns(self) -> None:
         decision = classify_rules("What torque does the manual specify for the terminals?")
         assert decision is not None
