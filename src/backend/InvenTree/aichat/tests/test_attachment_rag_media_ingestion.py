@@ -1550,3 +1550,204 @@ class WorkOrderRestampTests(MediaFixtureTestCase):
         self.assertEqual(offloads[0].args[1], self.work_order.pk)
         self.assertTrue(offloads[0].kwargs['force_async'])
         self.assertEqual(offloads[0].kwargs['group'], 'ai-ingest')
+
+
+class _FakeSearchReadClient:
+    """Read-side stub: canned docs per (attachment_id, sha) filter."""
+
+    def __init__(self, docs_by_filter):
+        self.docs_by_filter = docs_by_filter
+        self.calls = []
+
+    def search(self, *, search_text, filter, select, top):
+        self.calls.append(filter)
+        for (attachment_id, sha), docs in self.docs_by_filter.items():
+            if f'attachment_id eq {attachment_id}' in filter and sha in filter:
+                return list(docs)
+        return []
+
+
+class _FakeReadProjection:
+    """MediaSearchProjection stand-in exposing only client() and close()."""
+
+    def __init__(self, docs_by_filter):
+        self._client = _FakeSearchReadClient(docs_by_filter)
+        self.closed = False
+
+    def client(self):
+        return self._client
+
+    def close(self):
+        self.closed = True
+
+
+class MediaReverseProjectionTests(MediaFixtureTestCase):
+    """R5 WP-R: the exact, zero-provider-call media half of the 0031 repair."""
+
+    def _seed_row(self, *, attachment_id, pipeline='image', indexed_at=None, sha=None):
+        """One INDEXED registry row shaped like a pre-0031-write survivor."""
+        sha = sha or hashlib.sha256(f'm{attachment_id}'.encode()).hexdigest()
+        return AttachmentIngest.objects.create(
+            attachment_id=attachment_id,
+            model_type='workorder',
+            model_id=attachment_id,
+            source_sha256=sha,
+            pipeline=pipeline,
+            state=AttachmentIngestState.INDEXED,
+            indexed_at=indexed_at,
+        )
+
+    def _run(self, projection, *args):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        with mock.patch(
+            'ai.core.integrations.attachment_search.MediaSearchProjection.'
+            'from_settings',
+            return_value=projection,
+        ):
+            call_command('reverse_project_media_stamps', *args, stdout=out)
+        return out.getvalue()
+
+    def test_stamps_exactly_the_null_media_rows(self):
+        """Null media rows get the index stamp; doc and stamped rows do not."""
+        target = self._seed_row(attachment_id=901)
+        already = self._seed_row(
+            attachment_id=902, indexed_at=datetime(2026, 8, 1, 12, 0, 0)
+        )
+        doc_row = self._seed_row(attachment_id=903, pipeline='doc')
+        projection = _FakeReadProjection(
+            {
+                (901, target.source_sha256): [
+                    {
+                        'id': 'a',
+                        'indexed_at': '2026-08-21T04:51:01Z',
+                        'recorded_at': None,
+                    },
+                    {
+                        'id': 'b',
+                        'indexed_at': '2026-08-21T04:51:01Z',
+                        'recorded_at': None,
+                    },
+                ]
+            }
+        )
+        output = self._run(projection)
+        self.assertIn('selected: 1', output)
+        target.refresh_from_db()
+        self.assertIsNotNone(target.indexed_at)
+        self.assertEqual((target.indexed_at.year, target.indexed_at.hour), (2026, 4))
+        doc_row.refresh_from_db()
+        self.assertIsNone(doc_row.indexed_at)
+        already.refresh_from_db()
+        self.assertEqual(already.indexed_at.day, 1)  # untouched
+        self.assertTrue(projection.closed)
+
+    def test_second_run_selects_nothing(self):
+        """Convergence: after a stamp run the selector is empty, no client."""
+        target = self._seed_row(attachment_id=911)
+        projection = _FakeReadProjection(
+            {
+                (911, target.source_sha256): [
+                    {
+                        'id': 'a',
+                        'indexed_at': '2026-08-21T04:51:01Z',
+                        'recorded_at': None,
+                    }
+                ]
+            }
+        )
+        self._run(projection)
+        boobytrap = mock.Mock(
+            side_effect=AssertionError('converged rerun built a projection')
+        )
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        with mock.patch(
+            'ai.core.integrations.attachment_search.MediaSearchProjection.'
+            'from_settings',
+            boobytrap,
+        ):
+            call_command('reverse_project_media_stamps', stdout=out)
+        self.assertIn('selected: 0', out.getvalue())
+        boobytrap.assert_not_called()
+
+    def test_dry_run_reports_and_writes_nothing(self):
+        """--dry-run emits would_stamp and leaves the column NULL."""
+        target = self._seed_row(attachment_id=921)
+        projection = _FakeReadProjection(
+            {
+                (921, target.source_sha256): [
+                    {
+                        'id': 'a',
+                        'indexed_at': '2026-08-21T04:51:01Z',
+                        'recorded_at': None,
+                    }
+                ]
+            }
+        )
+        output = self._run(projection, '--dry-run')
+        self.assertIn('would_stamp', output)
+        target.refresh_from_db()
+        self.assertIsNone(target.indexed_at)
+
+    def test_conflicting_index_docs_refuse(self):
+        """Segments disagreeing on indexed_at refuse rather than guess."""
+        from django.core.management.base import CommandError
+
+        target = self._seed_row(attachment_id=931)
+        projection = _FakeReadProjection(
+            {
+                (931, target.source_sha256): [
+                    {
+                        'id': 'a',
+                        'indexed_at': '2026-08-21T04:51:01Z',
+                        'recorded_at': None,
+                    },
+                    {
+                        'id': 'b',
+                        'indexed_at': '2026-08-22T09:00:00Z',
+                        'recorded_at': None,
+                    },
+                ]
+            }
+        )
+        with self.assertRaises(CommandError):
+            self._run(projection)
+        target.refresh_from_db()
+        self.assertIsNone(target.indexed_at)
+
+    def test_missing_live_documents_report_loudly(self):
+        """An INDEXED row with no live documents is a failure, not a guess."""
+        from django.core.management.base import CommandError
+
+        target = self._seed_row(attachment_id=941)
+        projection = _FakeReadProjection({})
+        with self.assertRaises(CommandError):
+            self._run(projection)
+        target.refresh_from_db()
+        self.assertIsNone(target.indexed_at)
+
+    def test_recorded_at_written_when_index_carries_it(self):
+        """A non-null recorded_at reverse-projects into media_recorded_at."""
+        target = self._seed_row(attachment_id=951)
+        projection = _FakeReadProjection(
+            {
+                (951, target.source_sha256): [
+                    {
+                        'id': 'a',
+                        'indexed_at': '2026-08-21T04:51:01Z',
+                        'recorded_at': '2026-07-04T10:30:00Z',
+                    }
+                ]
+            }
+        )
+        self._run(projection)
+        target.refresh_from_db()
+        self.assertIsNotNone(target.media_recorded_at)
+        self.assertEqual(target.media_recorded_at.month, 7)
