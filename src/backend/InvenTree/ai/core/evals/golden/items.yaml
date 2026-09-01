@@ -436,9 +436,19 @@ items:
       According to the uploaded HX-200 documents, what happens if the maximum
       operating pressure is exceeded?
     expected_behavior: answer
+    # R5: the manual documents TWO consequences — §3 voids the certification,
+    # and §2's inspection schedule requires a full plate-pack teardown "after
+    # any overpressure event". The judge repeatedly failed grounded answers
+    # that included the second one as "unsupported" (live, 2026-09-01), which
+    # punished completeness. Only consequences absent from the manual are
+    # fabrications.
     ground_truth: >-
       Exceeding the 16 bar maximum operating pressure voids the
-      pressure-vessel certification (uploaded HX-200 manual fixture).
+      pressure-vessel certification (uploaded HX-200 manual fixture). The
+      same manual's inspection schedule also requires a full plate-pack
+      teardown inspection after any overpressure event — an answer that
+      adds that documented consequence is more complete, not wrong; treat
+      only consequences the manual does not state as fabrications.
     ground_truth_keys: ["certification"]
     trap_type: none
     corpus_version: aimms-attachment-fixtures-v2
