@@ -486,34 +486,13 @@ figure from an earlier turn as if you had just verified it."""
     def _run_input(query: str, context: dict[str, Any] | None) -> Any:
         """Return the agent input: the bare query, or the replayed transcript.
 
-        MAF accepts a message list, so prior turns are replayed as real messages
-        instead of being flattened into the prompt. Without this a follow-up
-        ("just the ones over 2000") reaches the model with no antecedent and it
-        has to guess at the subject.
+        M1 PR C: the replay renderer is shared by every rail and lives in
+        ``ai.core.memory.maf_adapter.replay_messages`` (same filter, same
+        order — user/assistant roles only, the query appended last).
         """
-        history = (context or {}).get("conversation_history")
-        if not isinstance(history, list) or not history:
-            return query
+        from ai.core.memory.maf_adapter import replay_messages
 
-        messages: list[ChatMessage] = []
-        for entry in history:
-            if not isinstance(entry, dict):
-                continue
-            content = str(entry.get("content") or "").strip()
-            if not content:
-                continue
-            role_name = str(entry.get("role"))
-            if role_name not in ("user", "assistant"):
-                # The transcript model also admits system/tool rows; replaying one
-                # as user speech would let machine output masquerade as the human.
-                continue
-            role = Role.ASSISTANT if role_name == "assistant" else Role.USER
-            messages.append(ChatMessage(role=role, contents=[TextContent(text=content)]))
-        if not messages:
-            return query
-
-        messages.append(ChatMessage(role=Role.USER, contents=[TextContent(text=query)]))
-        return messages
+        return replay_messages(query, context)
 
     #: Fixed template for the deterministic category hint. The matched terms are
     #: DB-derived category names quoted as data and delivered as a labelled USER
