@@ -30,6 +30,29 @@ _DETERMINISTIC_WORKFLOWS = frozenset({
 })
 
 
+#: M1 (plan §9.5 / GR-31): per-stage targets beside the turn classes —
+#: (p50_s, p95_s, hard_s). The memory section is budgeted at 150 ms p95
+#: in-region with a 400 ms hard cap (the builder degrades past it).
+STAGE_TARGETS: dict[str, tuple[float, float, float]] = {
+    "memory_context": (0.10, 0.15, 0.40),
+}
+
+
+def stage_breach(duration_s: float, stage: str) -> str | None:
+    """The worst stage threshold ``duration_s`` crossed, or None inside p50."""
+    targets = STAGE_TARGETS.get(stage)
+    if targets is None:
+        return None
+    p50, p95, hard = targets
+    if duration_s > hard:
+        return "hard"
+    if duration_s > p95:
+        return "p95"
+    if duration_s > p50:
+        return "p50"
+    return None
+
+
 def slo_class_for(workflow_id: str | None, task_intent: str | None) -> str:
     """Map a turn's route to its §8.9 latency class."""
     if workflow_id in _DETERMINISTIC_WORKFLOWS:
@@ -56,4 +79,4 @@ def slo_breach(duration_s: float, slo_class: str) -> str | None:
     return None
 
 
-__all__ = ["SLO_TARGETS", "slo_breach", "slo_class_for"]
+__all__ = ["SLO_TARGETS", "STAGE_TARGETS", "slo_breach", "slo_class_for", "stage_breach"]

@@ -21,6 +21,8 @@ CANONICAL_KEYS = (
     'output_tokens',
     'cached_input_tokens',
     'total_tokens',
+    # M1 PR F: cache writes, when the provider reports them.
+    'cache_write_tokens',
 )
 
 
@@ -51,12 +53,57 @@ class Command(BaseCommand):
         per_user_day = defaultdict(lambda: dict.fromkeys(CANONICAL_KEYS, 0))
         per_source = defaultdict(lambda: dict.fromkeys(CANONICAL_KEYS, 0))
         turns = 0
+        # M1 PR F (§9.8): the builder's context_builder event, folded into
+        # a content-free sections block, plus the estimator's error against
+        # the provider count on single-call turns (provider_calls == 1).
+        sections = {
+            'turns': 0,
+            'recent_turns': 0,
+            'summary_present': 0,
+            'dropped_turns': 0,
+            'section_tokens': 0,
+            'wall_ms_total': 0,
+            'degraded': 0,
+        }
+        estimator_samples: list[float] = []
         for row in rows:
             usage = (row['metadata'] or {}).get('usage') or {}
             totals = usage.get('totals') or {}
             if not isinstance(totals, dict):
                 continue
             turns += 1
+            events = [e for e in (usage.get('events') or []) if isinstance(e, dict)]
+            builder = next(
+                (e for e in events if str(e.get('source') or '') == 'context_builder'),
+                None,
+            )
+            provider_calls = [
+                e
+                for e in events
+                if str(e.get('source') or '')
+                not in ('context_builder', 'history_replay', 'quota_reservation')
+                and isinstance(e.get('input_tokens'), int)
+            ]
+            if builder is not None:
+                sections['turns'] += 1
+                for key in (
+                    'recent_turns',
+                    'summary_present',
+                    'dropped_turns',
+                    'section_tokens',
+                ):
+                    value = builder.get(key)
+                    if isinstance(value, int):
+                        sections[key] += value
+                if isinstance(builder.get('wall_ms'), int):
+                    sections['wall_ms_total'] += builder['wall_ms']
+                if isinstance(builder.get('degraded'), int):
+                    sections['degraded'] += builder['degraded']
+                estimate = builder.get('history_token_estimate')
+                if len(provider_calls) == 1 and isinstance(estimate, int):
+                    actual = provider_calls[0]['input_tokens']
+                    if actual > 0:
+                        estimator_samples.append(abs(estimate - actual) / actual)
             user = row['thread__owner__username'] or '-'
             day = row['created_at'].strftime('%Y-%m-%d')
             bucket = per_user_day[user, day]
@@ -68,6 +115,10 @@ class Command(BaseCommand):
                 if not isinstance(event, dict):
                     continue
                 source = str(event.get('source') or '-')
+                if source in ('context_builder', 'history_replay'):
+                    # Telemetry events, not provider calls: folded into the
+                    # sections block above, never into the token tables.
+                    continue
                 source_bucket = per_source[source]
                 for key in CANONICAL_KEYS:
                     value = event.get(key)
@@ -77,6 +128,15 @@ class Command(BaseCommand):
         def hit_rate(bucket):
             base = bucket['input_tokens']
             return round(bucket['cached_input_tokens'] / base, 4) if base else None
+
+        def write_ratio(bucket):
+            base = bucket['input_tokens']
+            write = bucket.get('cache_write_tokens')
+            return (
+                round(write / base, 4)
+                if base and isinstance(write, int) and write
+                else None
+            )
 
         report = {
             'since': since.isoformat(),
@@ -91,9 +151,30 @@ class Command(BaseCommand):
                 for (user, day), bucket in sorted(per_user_day.items())
             ],
             'per_source': [
-                {'source': source, **bucket, 'cached_hit_rate': hit_rate(bucket)}
+                {
+                    'source': source,
+                    **bucket,
+                    'cached_hit_rate': hit_rate(bucket),
+                    'cache_write_ratio': write_ratio(bucket),
+                }
                 for source, bucket in sorted(per_source.items())
             ],
+            'sections': {
+                **sections,
+                'wall_ms_mean': (
+                    round(sections['wall_ms_total'] / sections['turns'], 1)
+                    if sections['turns']
+                    else None
+                ),
+            },
+            'estimator_error': {
+                'samples': len(estimator_samples),
+                'mean_abs_relative': (
+                    round(sum(estimator_samples) / len(estimator_samples), 4)
+                    if estimator_samples
+                    else None
+                ),
+            },
         }
 
         if options['json']:

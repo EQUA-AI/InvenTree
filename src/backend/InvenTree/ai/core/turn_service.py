@@ -355,15 +355,43 @@ class NormalizedTurnService:
             question_resolution_present=resolution is not None,
             actor_role=actor_role,
         )
-        bundle = await self._context_assembler().build(
-            repository=run.repository,
-            thread_id=run.thread.pk,
-            turn_id=str(getattr(run.turn, "pk", "") or ""),
-            settings=settings,
-            call_sync=self._call_sync,
-            task_intent=str(getattr(intent, "value", "") or "") or None,
-            routing_fields=routing_fields,
-        )
+        from ai.core.quota.slo import stage_breach
+        from ai.core.tracing import set_span_attrs, turn_span
+
+        # M1 PR F (plan §9.5): one child span per turn carrying the budget
+        # telemetry — counts, milliseconds, enum codes (GR-40).
+        correlation_id = getattr(run, "correlation_id", None)
+        with turn_span("aimms.memory_context", correlation_id=correlation_id) as span:
+            bundle = await self._context_assembler().build(
+                repository=run.repository,
+                thread_id=run.thread.pk,
+                turn_id=str(getattr(run.turn, "pk", "") or ""),
+                settings=settings,
+                call_sync=self._call_sync,
+                task_intent=str(getattr(intent, "value", "") or "") or None,
+                routing_fields=routing_fields,
+            )
+            breach = stage_breach(bundle.wall_ms / 1000.0, "memory_context")
+            set_span_attrs(
+                span,
+                **{
+                    "aimms.memory_db_round_trips": int(bundle.db_round_trips),
+                    "aimms.memory_wall_ms": int(bundle.wall_ms),
+                    "aimms.memory_degrade_reason": str(bundle.degrade_reason),
+                    "aimms.topology_depth": 0,
+                    **({"aimms.memory_stage_breach": breach} if breach else {}),
+                },
+            )
+            if breach:
+                logger.info(
+                    "memory_context.slo stage=memory_context breach=%s wall_ms=%d round_trips=%d "
+                    "degrade=%s correlation_id=%s",
+                    breach,
+                    int(bundle.wall_ms),
+                    int(bundle.db_round_trips),
+                    bundle.degrade_reason,
+                    correlation_id or "-",
+                )
         run.context_bundle = bundle
         self._record_context_builder_usage(bundle)
         return bundle

@@ -299,6 +299,7 @@ def usage_stats(since) -> dict[str, Any]:
     from aichat.models import ChatMessage
 
     totals: Counter[str] = Counter()
+    sections: Counter[str] = Counter()
     turns = 0
     rows = ChatMessage.objects.filter(
         metadata__has_key='usage', created_at__gte=since
@@ -312,7 +313,26 @@ def usage_stats(since) -> dict[str, Any]:
         for key, value in blob.items():
             if isinstance(value, int):
                 totals[str(key)] += value
-    return {'turns_with_usage': turns, 'totals': dict(totals)}
+        # M1 PR F (§9.8): the builder's content-free sections block.
+        for event in usage.get('events') or []:
+            if not isinstance(event, dict) or event.get('source') != 'context_builder':
+                continue
+            sections['turns'] += 1
+            for key in (
+                'recent_turns',
+                'summary_present',
+                'dropped_turns',
+                'section_tokens',
+                'degraded',
+            ):
+                value = event.get(key)
+                if isinstance(value, int):
+                    sections[key] += value
+    return {
+        'turns_with_usage': turns,
+        'totals': dict(totals),
+        'sections': dict(sections),
+    }
 
 
 def rejection_stats(since) -> dict[str, Any]:

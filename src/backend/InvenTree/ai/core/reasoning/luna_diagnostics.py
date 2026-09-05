@@ -487,6 +487,12 @@ def _usage_metrics(response: Any) -> dict[str, int]:
     cached = _item_value(details, "cached_tokens") if details is not None else None
     if type(cached) is int and cached >= 0:
         metrics["cached_input_tokens"] = cached
+    # M1 PR F: the cache-write counter, when the Responses wire carries one.
+    for key in ("cache_write_tokens", "cache_creation_input_tokens"):
+        write = _item_value(details, key) if details is not None else None
+        if type(write) is int and write >= 0:
+            metrics["cache_write_tokens"] = write
+            break
     return metrics
 
 

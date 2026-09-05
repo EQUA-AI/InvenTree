@@ -55,6 +55,10 @@ CANONICAL_TOKEN_KEYS = (
     "output_tokens",
     "cached_input_tokens",
     "total_tokens",
+    # M1 PR F (GR-33): prompt-cache writes, reported only by providers that
+    # expose them (Azure's prompt_tokens_details.cache_write_tokens). Absent
+    # stays absent — usage_report prints n/a, never zero.
+    "cache_write_tokens",
 )
 
 #: Vocabulary normalization applied at record time. Left side: keys emitted
@@ -69,6 +73,9 @@ _CANONICAL_RENAMES = {
     "cached_tokens": "cached_input_tokens",
     "prompt_tokens": "input_tokens",
     "completion_tokens": "output_tokens",
+    "cache_write_input_token_count": "cache_write_tokens",
+    "cache_creation_input_tokens": "cache_write_tokens",
+    "prompt_tokens_details.cache_write_tokens": "cache_write_tokens",
 }
 
 #: The only non-integer fields an event may carry besides ``source``.
@@ -186,6 +193,15 @@ def maf_response_usage_metrics(response: Any) -> dict[str, int]:
         metrics["cached_input_token_count"] = cached
     if input_tokens is not None and cached is not None:
         metrics["uncached_input_token_count"] = max(input_tokens - cached, 0)
+    # M1 PR F: a cache-write counter, when the provider surfaces one
+    # (nested under prompt_tokens_details on the Azure wire).
+    nested = counts.get("prompt_tokens_details")
+    if isinstance(nested, dict):
+        for key in ("cache_write_tokens", "cache_creation_input_tokens"):
+            value = nested.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                metrics["cache_write_input_token_count"] = value
+                break
     return metrics
 
 

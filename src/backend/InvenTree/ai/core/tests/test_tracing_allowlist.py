@@ -74,6 +74,12 @@ def test_the_vocabulary_is_frozen():
             "aimms.pilot_stop_reason",
             "aimms.slo_class",
             "aimms.slo_breach",
+            # M1 PR F (§9.5): memory-section budget telemetry.
+            "aimms.memory_db_round_trips",
+            "aimms.memory_wall_ms",
+            "aimms.memory_degrade_reason",
+            "aimms.topology_depth",
+            "aimms.memory_stage_breach",
         })
         == _ALLOWED_ATTRS
     )

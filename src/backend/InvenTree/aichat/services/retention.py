@@ -544,6 +544,18 @@ def _aggregate_usage_month(month: date, month_qs) -> None:
             }
         return buckets[key]
 
+    # M1 PR F (§9.8): the builder's sections fold into their own aggregate
+    # source (dimension = section name; total_tokens = estimated section
+    # tokens) so the memory layer's cost stays visible after the detail rows
+    # are scrubbed. Same transaction, no schema change.
+    section_buckets: dict[tuple[int | None, str], dict] = {}
+
+    def section_bucket(user_id: int | None, dimension: str) -> dict:
+        key = (user_id, dimension)
+        if key not in section_buckets:
+            section_buckets[key] = {'turn_count': 0, 'total_tokens': 0}
+        return section_buckets[key]
+
     for row in month_qs.values('thread__owner_id', 'metadata').iterator():
         usage = (row['metadata'] or {}).get('usage') or {}
         totals = usage.get('totals') or {}
@@ -552,6 +564,21 @@ def _aggregate_usage_month(month: date, month_qs) -> None:
         user_id = row['thread__owner_id']
         total_bucket = bucket(user_id, '')
         total_bucket['turn_count'] += 1
+        for event in usage.get('events') or []:
+            if not isinstance(event, dict) or event.get('source') != 'context_builder':
+                continue
+            for dimension, tokens_key, count_key in (
+                ('recent_turns', 'section_tokens', 'recent_turns'),
+                ('thread_summary', None, 'summary_present'),
+            ):
+                present = event.get(count_key)
+                if not isinstance(present, int) or present <= 0:
+                    continue
+                target = section_bucket(user_id, dimension)
+                target['turn_count'] += 1
+                tokens = event.get(tokens_key) if tokens_key else None
+                if isinstance(tokens, int):
+                    target['total_tokens'] += tokens
         for key in (
             'input_tokens',
             'output_tokens',
@@ -585,6 +612,16 @@ def _aggregate_usage_month(month: date, month_qs) -> None:
                 **values,
             )
             for (user_id, dimension), values in buckets.items()
+        ])
+        AIUsageMonthlyAggregate.objects.bulk_create([
+            AIUsageMonthlyAggregate(
+                month=month,
+                source='context_sections',
+                user_id=user_id,
+                dimension=dimension,
+                **values,
+            )
+            for (user_id, dimension), values in section_buckets.items()
         ])
     logger.info(
         'retention_usage_aggregated month=%s rows=%d', month.isoformat(), len(buckets)

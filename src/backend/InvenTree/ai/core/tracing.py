@@ -58,6 +58,13 @@ _ALLOWED_ATTRS = frozenset({
     # S13: latency class + worst threshold crossed (enum codes, §8.9 table).
     "aimms.slo_class",
     "aimms.slo_breach",
+    # M1 PR F (plan §9.5 / GR-40): the memory section's budget telemetry —
+    # counts, milliseconds and an enum reason; never an item or its text.
+    "aimms.memory_db_round_trips",
+    "aimms.memory_wall_ms",
+    "aimms.memory_degrade_reason",
+    "aimms.topology_depth",
+    "aimms.memory_stage_breach",
 })
 
 _MAX_ATTR_LEN = 128
