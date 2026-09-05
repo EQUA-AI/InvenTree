@@ -220,11 +220,18 @@ below cites its `followup_parity` run id (GR-47) and gets its own
 revision so a rollback is one `ingress traffic set`.
 
 ```
-# FEATURE_MEMORY_RAIL_REPLAY=0          # replay the bundle on wf2/wf3/wf4/wf6 and wf1 step 1; wf8 ungated, wf9 history-free by design
-# AIMMS_PROMPT_CACHE_KEY_DEPLOYMENTS=   # csv of deployments that receive prompt_cache_key=<client>:<thread>:<mode>; empty = no key sent
-# AIMMS_PROMPT_CACHE_RETENTION=         # "" (provider default 5-10 min) | in_memory | 24h — rides only where the key rides
-# FEATURE_PROMPT_CACHE_STABLE_TOOLS=0    # wf8 keeps the thread's earlier packs so consecutive turns share one tool prefix (GR-33)
+FEATURE_MEMORY_RAIL_REPLAY=1           # replay the bundle on wf2/wf3/wf4/wf6 and wf1 step 1; wf8 ungated, wf9 history-free by design
+AIMMS_PROMPT_CACHE_KEY_DEPLOYMENTS=<standard>,<fast>   # csv of deployments that receive prompt_cache_key=<client>:<thread>:<mode>; empty = no key sent
+AIMMS_PROMPT_CACHE_RETENTION=24h       # "" (provider default 5-10 min) | in_memory | 24h — rides only where the key rides
+FEATURE_PROMPT_CACHE_STABLE_TOOLS=1    # wf8 keeps the thread's earlier packs so consecutive turns share one tool prefix (GR-33)
 ```
+
+Posture 2026-09-05: all four ON on the dev pair (`aimms-dev--0000091` /
+`aimms-dev-worker--0000021`, key deployments `gpt-5.1,gpt-4.1`); the
+experimental pair still runs the pre-Part-C image with the four dark —
+its flip (key deployments `gpt-5.6-luna,gpt-4.1`; luna accepts key + 24h
+on 2025-04-01-preview, 1,939 of 1,942 cached on the probe) rides the next
+experimental deploy together with the granted scope resolver.
 
 Cache facts measured on dev 2026-09-05: Azure accepts `prompt_cache_key` and
 `prompt_cache_retention=24h` on api-version 2024-10-21 for gpt-5.1 and gpt-4.1
@@ -242,8 +249,16 @@ Neither knob is read on the worker path.
 
 - `FEATURE_AI_RETENTION_JOBS` — data is kept (2026-08-29); only the
   ungated 24h upload sweep + deletion outbox run regardless.
-- `FEATURE_AI_QUOTA_PROFILES` — skipped (the v1 budget + admission
-  envelope suffices).
+- `FEATURE_AI_QUOTA_PROFILES` — was skipped (the v1 budget + admission
+  envelope suffices for users); switched ON on both pairs 2026-09-05 for the
+  M1 battery, whose preflight refuses any profile but `evaluation`. Users
+  without an assignment keep the standard limits (identical to v1); only the
+  battery principal carries a 14-day `evaluation` assignment. Two more
+  battery prerequisites ride with it: `MODEL_VERSION_BOOT_PROBE_ENABLED=1`
+  with the three `AZURE_OPENAI_EXPECTED_*` pins (needs image `771528213`
+  or later — earlier probes sent a 1-token cap that gpt-5.x rejects and
+  refused the boot), and a shared Django cache (`INVENTREE_CACHE_HOST`)
+  because the preflight refuses a LocMem counter store — still open.
 - NLI groundedness, wf8 fast tier, history enrichment, guided
   procedures — out of scope, dark.
 - `FEATURE_MODEL_TIERING_ENFORCE` is set on aimms-experimental (P5) and
