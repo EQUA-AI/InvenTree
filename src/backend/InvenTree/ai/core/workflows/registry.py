@@ -103,6 +103,7 @@ CONTEXT_BUNDLES_BY_WORKFLOW: dict[str, list[str]] = {
     "wf6": ["user_profile"],
     "wf7": ["user_profile"],
     "wf8": ["user_profile"],
+    "wf9": ["user_profile"],
 }
 
 # ``WorkflowType.T6_DIAGNOSTICS`` intentionally retains its public value
@@ -311,6 +312,7 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
     from ai.core.workflows.wf6_documents import WF6DocumentWorkflow
     from ai.core.workflows.wf7_repair_packet import WF7RepairPacketWorkflow
     from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+    from ai.core.workflows.wf9_rag_retrieval import RagRetrievalWorkflow
 
     # WF8: T1 Lookup (fast-path)
     registry.register(
@@ -323,6 +325,19 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             cacheable=True,
             requires_hitl=False,
             tags=["read-only", "fast", "phase-1"],
+        )
+    )
+
+    registry.register(
+        WorkflowDefinition(
+            workflow_id="wf9",
+            name="RAG Retrieval",
+            description="Read-only cited retrieval from technical and evidence corpora",
+            tier=WorkflowTier.T1_SINGLE_AGENT,
+            builder=RagRetrievalWorkflow,
+            cacheable=False,
+            requires_hitl=False,
+            tags=["read-only", "rag", "retrieval", "internal"],
         )
     )
 

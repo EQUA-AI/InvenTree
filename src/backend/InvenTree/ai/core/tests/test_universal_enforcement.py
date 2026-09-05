@@ -123,6 +123,7 @@ def test_no_call_site_omits_workflow_or_context(module_name: str) -> None:
         "wf4_procurement",
         "wf6_documents",
         "wf8_lookup",
+        "wf9_rag_retrieval",
     ],
 )
 def test_no_agent_is_constructed_with_a_toolset(module_name: str) -> None:
@@ -151,6 +152,16 @@ def test_specialist_write_packs_are_not_reachable_from_wf8() -> None:
         assert "wf8" not in pack_workflows(pack_id)
         assert "general" not in pack_workflows(pack_id)
     assert pack_workflows("procurement.write") == frozenset({"wf4"})
+
+
+def test_wf9_is_limited_to_rag_retrieval_packs() -> None:
+    """The retrieval rail must never acquire unrelated read or write tools."""
+
+    from ai.core.tools.capabilities import _PACK_SPECS
+
+    allowed = {"documents.read", "manuals.read", "evidence.read"}
+    for pack_id in _PACK_SPECS:
+        assert ("wf9" in pack_workflows(pack_id)) is (pack_id in allowed)
 
 
 def test_every_effectful_pack_has_an_explicit_fail_closed_workflow_map() -> None:
@@ -246,4 +257,4 @@ def test_every_catalogued_rail_is_enforced_by_default() -> None:
         for token in settings.capability_broker_enforced_workflows.split(",")
         if token.strip()
     }
-    assert configured == {"wf8", "general", "wf2", "wf3", "wf4", "wf6"}
+    assert configured == {"wf8", "general", "wf9", "wf2", "wf3", "wf4", "wf6"}

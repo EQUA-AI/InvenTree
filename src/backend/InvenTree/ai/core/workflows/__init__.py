@@ -87,6 +87,12 @@ from ai.core.workflows.wf8_lookup import (
     create_t1_lookup_workflow,
     t1_lookup_builder,
 )
+from ai.core.workflows.wf9_rag_retrieval import (
+    RAG_RETRIEVAL_TOOLS,
+    RagRetrievalResult,
+    RagRetrievalWorkflow,
+    create_rag_retrieval_workflow,
+)
 
 __all__ = [  # noqa: RUF022
     # Registry
@@ -145,4 +151,8 @@ __all__ = [  # noqa: RUF022
     "LookupResult",
     "create_t1_lookup_workflow",
     "t1_lookup_builder",
+    "RAG_RETRIEVAL_TOOLS",
+    "RagRetrievalResult",
+    "RagRetrievalWorkflow",
+    "create_rag_retrieval_workflow",
 ]

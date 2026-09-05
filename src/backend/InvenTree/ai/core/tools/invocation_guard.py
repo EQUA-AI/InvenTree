@@ -295,12 +295,12 @@ def _enforced_workflows() -> frozenset[str]:
 
         raw = get_settings().capability_broker_enforced_workflows
     except Exception:  # pragma: no cover - config absent in minimal envs
-        raw = "wf8,general"
+        raw = "wf8,general,wf9"
     configured = frozenset(part.strip() for part in str(raw or "").split(",") if part.strip())
     # A blank or malformed value must not silently make the guard advisory on
     # the rails it already protects, so the soaked defaults are a floor rather
     # than a default the operator can erase.
-    return configured | frozenset({"wf8", "general"})
+    return configured | frozenset({"wf8", "general", "wf9"})
 
 
 class CapabilityInvocationMiddleware(FunctionMiddleware):

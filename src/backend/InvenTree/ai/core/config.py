@@ -143,10 +143,10 @@ class Settings(BaseSettings):
     # denial reason, but the call proceeds. The specialist rails soaked
     # shadow-first (S11) and were flipped live 2026-08-06 with zero denials
     # observed; enforcement everywhere is now the DEFAULT. The env var
-    # remains an override, and the floor union in the guard keeps wf8/general
+    # remains an override, and the floor union in the guard keeps wf8/general/wf9
     # enforced no matter what an operator sets.
     capability_broker_enforced_workflows: str = Field(
-        default="wf8,general,wf2,wf3,wf4,wf6",
+        default="wf8,general,wf9,wf2,wf3,wf4,wf6",
         alias="CAPABILITY_BROKER_ENFORCED_WORKFLOWS",
     )
     # Capability selection v2: score the aggregation/threshold *shape* of a question

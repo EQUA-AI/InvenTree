@@ -426,13 +426,16 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
     ),
 }
 
-#: Which workflows may invoke each effectful pack. ``authorize_invocation``
+#: Which workflows may invoke each explicitly scoped pack. ``authorize_invocation``
 #: denies a call whose bound workflow is absent here, so omission must fail
-#: closed rather than grant a newly added or misspelled write pack to all rails.
+#: closed rather than grant a newly added or misspelled pack to all rails.
 _DEFAULT_PACK_WORKFLOWS = frozenset({"wf8", "general"})
 _SPECIALIST_WORKFLOWS = frozenset({"wf2", "wf3", "wf4", "wf6"})
 _ALL_PACK_WORKFLOWS = _DEFAULT_PACK_WORKFLOWS | _SPECIALIST_WORKFLOWS
 _PACK_WORKFLOWS: dict[str, frozenset[str]] = {
+    "documents.read": _ALL_PACK_WORKFLOWS | frozenset({"wf9"}),
+    "manuals.read": _ALL_PACK_WORKFLOWS | frozenset({"wf9"}),
+    "evidence.read": _ALL_PACK_WORKFLOWS | frozenset({"wf9"}),
     # Email is part of the research rail as well as the everyday assistant.
     "email.write": frozenset({"wf3", "wf8", "general"}),
     "parts.write": _SPECIALIST_WORKFLOWS,
