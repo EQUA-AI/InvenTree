@@ -110,6 +110,23 @@ async def enrich_canonical(
     return await _attach_context_used(run, canonical)
 
 
+def _context_used_is_informative(record: dict[str, Any]) -> bool:
+    """Whether the record discloses anything beyond "nothing was used"."""
+    recent = record.get("recent_turns") or {}
+    if isinstance(recent, dict) and int(recent.get("used") or 0) > 0:
+        return True
+    if record.get("summary") not in (None, "none"):
+        return True
+    corpora = record.get("corpora") or {}
+    if isinstance(corpora, dict) and any(
+        (entry or {}).get("state") != "not_consulted" for entry in corpora.values()
+    ):
+        return True
+    if record.get("preferences_used") or record.get("facts_used"):
+        return True
+    return bool(record.get("truncation"))
+
+
 async def _attach_context_used(run: TurnRun, canonical: CanonicalTurn) -> CanonicalTurn:
     """M1 PR G (§9.11 / GR-16): the bounded Context used record.
 
@@ -127,7 +144,11 @@ async def _attach_context_used(run: TurnRun, canonical: CanonicalTurn) -> Canoni
         logger.warning("context_used record failed", exc_info=False)
         return canonical
     canonical["context_used"] = record
-    if run.emitter is not None:
+    if run.emitter is not None and _context_used_is_informative(record):
+        # The live frame follows the entity-manifest/media idiom: only when
+        # there is something to disclose. A first turn that used nothing
+        # keeps the AG-UI order golden (RUN_FINISHED last); the persisted
+        # record still reloads through /threads.
         from ai.core.streaming import AGUIEvent, EventType
 
         try:

@@ -122,3 +122,25 @@ def test_the_state_delta_carries_the_same_record(monkeypatch):
     # No bundle -> no record, no event, no failure.
     bare = type("Run", (), {"context_bundle": None})()
     assert asyncio.run(finalize._attach_context_used(bare, {"x": 1})) == {"x": 1}
+
+    # A turn that used nothing persists the record but stays silent on the
+    # live stream (the AG-UI order golden keeps RUN_FINISHED last).
+    class _EmptyBundle:
+        def context_used(self, snapshot):
+            return {
+                "recent_turns": {"used": 0, "available": 0},
+                "summary": "none",
+                "corpora": {"controlled": {"state": "not_consulted", "n": 0}},
+                "truncation": {},
+            }
+
+    quiet = type("Run", (), {})()
+    quiet.context_bundle = _EmptyBundle()
+    quiet.retrieval_snapshot = None
+    quiet.emitter = _Emitter()
+    quiet.thread = run.thread
+    quiet.turn = run.turn
+    before = len(emitted)
+    canonical = asyncio.run(finalize._attach_context_used(quiet, {}))
+    assert canonical["context_used"]["recent_turns"] == {"used": 0, "available": 0}
+    assert len(emitted) == before
