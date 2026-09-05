@@ -57,7 +57,7 @@ def test_no_evidence_decline_prefers_grounded_records():
     """When the fallback yields text, it replaces the false-absence decline."""
     workflow = T6DiagnosticsWorkflow.__new__(T6DiagnosticsWorkflow)
 
-    async def fake_agent_step(agent, query, name, step):  # noqa: RUF029
+    async def fake_agent_step(agent, query, name, step, context=None):  # noqa: RUF029
         return (
             "INSUFFICIENT_EVIDENCE: Maintenance records are missing",
             mock.Mock(),
@@ -87,7 +87,7 @@ def test_no_evidence_decline_stands_when_no_machine_matches():
     """A None fallback keeps the existing honest decline wording."""
     workflow = T6DiagnosticsWorkflow.__new__(T6DiagnosticsWorkflow)
 
-    async def fake_agent_step(agent, query, name, step):  # noqa: RUF029
+    async def fake_agent_step(agent, query, name, step, context=None):  # noqa: RUF029
         return ("INSUFFICIENT_EVIDENCE: nothing identifiable", mock.Mock())
 
     async def fake_fallback(query):  # noqa: RUF029

@@ -51,6 +51,49 @@ def rbac_base_tools(full_tools: Any, context: dict[str, Any] | None) -> tuple:
     return tuple(full_tools)
 
 
+def replay_enabled() -> bool:
+    """FEATURE_MEMORY_RAIL_REPLAY, re-read per call (a kill switch, no restart)."""
+    from ai.core.config import get_settings
+
+    try:
+        return bool(getattr(get_settings(), "feature_memory_rail_replay", False))
+    except Exception:
+        return False
+
+
+def rail_input(query: str, context: dict[str, Any] | None, *, replay_history: bool) -> Any:
+    """The agent input for a rail: the bare query, or the replayed transcript.
+
+    Replay happens ONLY at a site that opted in (``replay_history=True``:
+    the first user-facing step of wf2/wf3/wf4/wf6) AND while the flag is
+    on; bare sub-steps stay history-free by design (plan §9.3 row 3).
+    The renderer is the same one wf8 uses (``maf_adapter.replay_messages``).
+    """
+    if not replay_history or not replay_enabled():
+        return query
+    from ai.core.memory.maf_adapter import replay_messages
+
+    return replay_messages(query, context)
+
+
+def _run_kwargs(agent: Any, context: dict[str, Any] | None) -> dict[str, Any]:
+    """``additional_chat_options`` for the workflow cache lineage (GR-33), or {}."""
+    try:
+        from ai.core.agents.factory import prompt_cache_options
+        from ai.core.config import get_settings
+
+        deployment = str(getattr(getattr(agent, "chat_client", None), "model_id", "") or "")
+        options = prompt_cache_options(
+            deployment,
+            client_code=str(getattr(get_settings(), "single_site_client_code", "") or ""),
+            thread_id=str((context or {}).get("thread_id") or ""),
+            mode="workflow",
+        )
+    except Exception:
+        return {}
+    return {"additional_chat_options": options} if options else {}
+
+
 async def run_with_rbac(
     agent: Any,
     query: str,
@@ -58,6 +101,7 @@ async def run_with_rbac(
     workflow: str,
     full_tools: Any,
     context: dict[str, Any] | None = None,
+    replay_history: bool = False,
 ) -> Any:
     """Run a tools-less agent with only the tools the current user may use.
 
@@ -65,13 +109,18 @@ async def run_with_rbac(
     narrowed to the read-only surface first. Either way the per-user RBAC filter
     is applied before the tools reach the model, and the run is bound so the
     invocation guard can re-authorize each call against ``workflow``.
+
+    ``replay_history`` (M1 PR E) replays the builder's transcript ONCE, at the
+    calling site, when ``FEATURE_MEMORY_RAIL_REPLAY`` is on; the default keeps
+    the rail history-free.
     """
     from ai.core.tools.invocation_guard import bind_capability_run
     from ai.core.tools.rbac import tools_for_current_user
 
     base = rbac_base_tools(full_tools, context)
     tools = await tools_for_current_user(base)
+    run_input = rail_input(query, context, replay_history=replay_history)
     with bind_capability_run(
         workflow=workflow, modality=modality_of(context), selected_tools=tools
     ):
-        return await agent.run(query, tools=tools)
+        return await agent.run(run_input, tools=tools, **_run_kwargs(agent, context))

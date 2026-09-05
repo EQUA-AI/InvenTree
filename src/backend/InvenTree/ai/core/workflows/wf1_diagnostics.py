@@ -310,11 +310,18 @@ class T6DiagnosticsWorkflow:
         query: str,
         agent_name: str,
         step_number: int,
+        context: dict[str, Any] | None = None,
     ) -> tuple[str, DiagnosisStep]:
-        """Run a single diagnostic agent step."""
+        """Run a single diagnostic agent step.
+
+        M1 PR E (plan §9.3 row 6): ``recent_turns`` replay ONLY at step 1
+        (the first ``agent.run``); the chained sub-steps stay history-free.
+        """
+        from ai.core.workflows.rbac_run import rail_input
+
         agent = await agent_wrapper.get_agent()
 
-        response = await agent.run(query)
+        response = await agent.run(rail_input(query, context, replay_history=step_number == 1))
         response_text = ""
         if response.messages:
             last_msg = response.messages[-1]
@@ -397,6 +404,7 @@ class T6DiagnosticsWorkflow:
                 analysis_query,
                 "ProblemAnalysis",
                 1,
+                context=context,
             )
             steps.append(analysis_step)
 
@@ -757,15 +765,19 @@ Recommend practical solutions to address the identified root causes."""
         self,
         query: str,
         thread_id: str = "",
+        context: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
-        """Execute with streaming response."""
+        """Execute with streaming response (replay only at step 1, M1 PR E)."""
         yield "🔍 **Starting Diagnostic Analysis**\n\n"
         yield "📋 Step 1: Analyzing problem...\n"
 
         # Run problem analysis
         analysis_query = f"Analyze this manufacturing problem:\n\n{query}"
         agent = await self.problem_agent.get_agent()
-        response = await agent.run(analysis_query)
+        # M1 PR E: replay only here (the first step); steps 2-3 stay bare.
+        from ai.core.workflows.rbac_run import rail_input
+
+        response = await agent.run(rail_input(analysis_query, context, replay_history=True))
         if response.messages:
             last_msg = response.messages[-1]
             content = last_msg.text if hasattr(last_msg, "text") else str(last_msg)

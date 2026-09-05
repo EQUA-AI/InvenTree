@@ -296,6 +296,7 @@ Format purchase orders clearly with:
                 workflow="wf4",
                 full_tools=[*INVENTORY_TOOLS, *PURCHASE_ORDER_WRITE_TOOLS],
                 context=context,
+                replay_history=True,  # M1 PR E: the first user-facing step
             )
             response_text = ""
             if response.messages:
@@ -382,6 +383,7 @@ Format purchase orders clearly with:
                 workflow="wf4",
                 full_tools=[*INVENTORY_TOOLS, *PURCHASE_ORDER_WRITE_TOOLS],
                 context=context,
+                replay_history=True,  # M1 PR E: the first user-facing step
             )
             if response.messages:
                 last_msg = response.messages[-1]

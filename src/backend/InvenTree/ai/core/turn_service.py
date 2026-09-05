@@ -1130,6 +1130,7 @@ class NormalizedTurnService:
         route: Any,
         diagnostic_context: Any | None,
         emitter: EventEmitter,
+        conversation: str = "",
     ) -> dict[str, Any]:
         """Invoke the Foundry adapter and return the durable wrapper.
 
@@ -1231,6 +1232,7 @@ class NormalizedTurnService:
             correlation_id=trusted_context.correlation_id,
             locale=getattr(trusted_context, "locale", "en"),
             machine_match=machine_match,
+            conversation=conversation,
         )
         outcome = await self.reasoning_adapter.reason(
             envelope=envelope,

@@ -428,6 +428,13 @@ REGISTRY: tuple[FlagEntry, ...] = (
         ai_field='feature_thread_compaction',
     ),
     FlagEntry(
+        'FEATURE_MEMORY_RAIL_REPLAY',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_memory_rail_replay',
+    ),
+    FlagEntry(
         'FEATURE_NLI_GROUNDEDNESS',
         'bool',
         False,

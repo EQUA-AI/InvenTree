@@ -245,7 +245,12 @@ class T2PartsAnalysisWorkflow:
 
             # Run analysis with per-user RBAC-filtered tools (voice read-only).
             response = await run_with_rbac(
-                agent, query, workflow="wf2", full_tools=INVENTORY_TOOLS, context=context
+                agent,
+                query,
+                workflow="wf2",
+                full_tools=INVENTORY_TOOLS,
+                context=context,
+                replay_history=True,  # M1 PR E: the first user-facing step
             )
             response_text = ""
             if response.messages:
@@ -342,7 +347,12 @@ class T2PartsAnalysisWorkflow:
             agent = await agent_wrapper.get_agent()
 
             response = await run_with_rbac(
-                agent, query, workflow="wf2", full_tools=INVENTORY_TOOLS, context=context
+                agent,
+                query,
+                workflow="wf2",
+                full_tools=INVENTORY_TOOLS,
+                context=context,
+                replay_history=True,  # M1 PR E: the first user-facing step
             )
             if response.messages:
                 last_msg = response.messages[-1]

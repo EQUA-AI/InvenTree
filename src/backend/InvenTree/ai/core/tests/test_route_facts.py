@@ -187,11 +187,13 @@ def test_terminal_write_persists_both_facts_on_the_assistant_message():
         # A typed intent (the shadow rules classifier) or null when the
         # router is dark — never anything outside the contract vocabulary.
         assert message.metadata["task_intent"] in (None, *TASK_INTENTS)
-        # Nothing populates the classifier's summary slot today (M1 PR E does).
-        assert message.metadata["conversation_summary_present"] is False
         assert message.metadata["workflow_id"] == "wf8"
         # And the owner projection reproduces them byte-for-byte.
         assert _route_facts(message.metadata, shared=False) == {
             "task_intent": message.metadata["task_intent"],
-            "conversation_summary_present": False,
+            "conversation_summary_present": message.metadata["conversation_summary_present"],
         }
+    # M1 PR E: the classifier's summary slot is fed by the builder — empty on
+    # the first turn (no prior exchange to digest), populated from the second.
+    assert assistant[0].metadata["conversation_summary_present"] is False
+    assert assistant[1].metadata["conversation_summary_present"] is True

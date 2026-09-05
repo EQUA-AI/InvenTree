@@ -960,6 +960,7 @@ class WF6DocumentWorkflow:
                 workflow="wf6",
                 full_tools=INVENTORY_TOOLS,
                 context=context,
+                replay_history=True,  # M1 PR E: the first user-facing step
             )
 
             response_text = self._extract_response_text(response)

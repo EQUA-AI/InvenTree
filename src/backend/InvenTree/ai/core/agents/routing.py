@@ -832,10 +832,14 @@ class UnifiedRouter:
         # 3. LLM Classification. classify() answers GENERAL on its own
         # failures; this guard exists so routing as a whole can never raise.
         try:
+            # M1 PR E (plan §9.3 row 5): typed trusted fields and the
+            # builder's fenced thread summary only. str(context) used to dump
+            # the whole workflow context — client hints and raw history —
+            # into the prompt, unbudgeted and unfenced.
             return await self.classifier.classify(
                 query=message,
-                user_context=str(context) if context else "",
-                conversation_summary=context.get("summary", "") if context else "",
+                user_context=str((context or {}).get("routing_context") or ""),
+                conversation_summary=str((context or {}).get("thread_summary") or ""),
             )
         except Exception as e:
             log_fault(logger, "Intent classification failed", e, stage="routing")

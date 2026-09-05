@@ -328,6 +328,7 @@ class T3ResearchWorkflow:
                 workflow="wf3",
                 full_tools=[*INVENTORY_TOOLS, *EMAIL_TOOLS],
                 context=context,
+                replay_history=True,  # M1 PR E: the first user-facing step
             )
             response_text = ""
             if response.messages:

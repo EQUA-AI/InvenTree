@@ -368,6 +368,16 @@ class Settings(BaseSettings):
             "FEATURE_THREAD_COMPACTION", "AIMMS_FEATURE_THREAD_COMPACTION"
         ),
     )
+    # M1 PR E (plan §9.3): replay the builder's transcript into the
+    # enumerated rails beyond wf8 (rbac_run specialists, the reasoning
+    # envelope's conversation section, wf1's first step). Dark until the D5
+    # entry baseline is journaled; wf8 is ungated (it always replayed).
+    feature_memory_rail_replay: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_MEMORY_RAIL_REPLAY", "AIMMS_FEATURE_MEMORY_RAIL_REPLAY"
+        ),
+    )
     # S45: real token streaming on the wf8/general fast TEXT rail. Dark by
     # default; the reasoning rail, voice turns, and replay stay single-delta
     # structurally regardless of this flag.
