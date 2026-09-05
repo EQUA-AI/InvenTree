@@ -232,7 +232,19 @@ def _turn_rows(case: Any, username: str) -> list[dict[str, Any]]:
                 'usage_present': bool(totals),
             })
 
-    asyncio.run(drive())
+    # The RBAC tool filter reads the boundary's principal ContextVar, which
+    # the HTTP layer binds per request. An in-process drive that leaves it
+    # unbound hands every rail ZERO tools, so the prompt never reaches the
+    # provider's 1,024-token cache floor and every turn reports cached=n/a
+    # (seen live on aimms-dev, 2026-09-05, while the same turns through the
+    # API cached 2,560+ tokens). Bind it exactly as the boundary does.
+    from ai.core.auth import principal_context
+
+    token = principal_context.set(principal)
+    try:
+        asyncio.run(drive())
+    finally:
+        principal_context.reset(token)
     return rows
 
 

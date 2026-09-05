@@ -181,7 +181,10 @@ class TurnRowsTest(SimpleTestCase):
 
         class _Service:
             async def process(self, **kwargs):
-                calls.append(kwargs)
+                # The RBAC filter reads this ContextVar: the drive must bind it.
+                from ai.core.auth import get_current_principal
+
+                calls.append({**kwargs, 'bound_principal': get_current_principal()})
 
         def fake_metadata(thread_id):
             # sync_to_async runs this in a worker thread: no running loop here.
@@ -236,3 +239,9 @@ class TurnRowsTest(SimpleTestCase):
         self.assertTrue(all(r['usage_present'] for r in rows))
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[1]['content'], 'b')
+        # Bound exactly as the boundary does, and released afterwards.
+        from ai.core.auth import get_current_principal
+
+        self.assertIs(calls[0]['bound_principal'], calls[0]['actor'])
+        self.assertIs(calls[1]['bound_principal'], calls[1]['actor'])
+        self.assertIsNone(get_current_principal())
