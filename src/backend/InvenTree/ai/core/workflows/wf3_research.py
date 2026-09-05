@@ -19,8 +19,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent
-from agent_framework.azure import AzureOpenAIChatClient
+from ai.core.agents.factory import AgentSpec, build_agent
 from ai.core.config import get_settings
 from ai.core.integrations.email import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
@@ -29,6 +28,8 @@ from ai.core.workflows.rbac_run import run_with_rbac
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from agent_framework import ChatAgent
 
 logger = logging.getLogger(__name__)
 
@@ -98,16 +99,14 @@ Be thorough but concise in your findings."""
     async def get_agent(self) -> ChatAgent:
         if self._agent is None:
             settings = get_settings()
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Inventory Research Agent",
-                middleware=CapabilityInvocationMiddleware(),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Inventory Research Agent",
+                    middleware=CapabilityInvocationMiddleware(),
+                    workflow="wf3",
+                )
             )
         return self._agent
 
@@ -142,16 +141,14 @@ Focus on actionable supplier intelligence."""
     async def get_agent(self) -> ChatAgent:
         if self._agent is None:
             settings = get_settings()
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Supplier Research Agent",
-                middleware=CapabilityInvocationMiddleware(),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Supplier Research Agent",
+                    middleware=CapabilityInvocationMiddleware(),
+                    workflow="wf3",
+                )
             )
         return self._agent
 
@@ -186,16 +183,14 @@ Focus on extracting actionable intelligence from communications."""
     async def get_agent(self) -> ChatAgent:
         if self._agent is None:
             settings = get_settings()
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Email Research Agent",
-                middleware=CapabilityInvocationMiddleware(),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Email Research Agent",
+                    middleware=CapabilityInvocationMiddleware(),
+                    workflow="wf3",
+                )
             )
         return self._agent
 
@@ -230,16 +225,14 @@ Format your synthesis with:
     async def get_agent(self) -> ChatAgent:
         if self._agent is None:
             settings = get_settings()
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Synthesis Agent",
-                middleware=CapabilityInvocationMiddleware(),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Synthesis Agent",
+                    middleware=CapabilityInvocationMiddleware(),
+                    workflow="wf3",
+                )
             )
         return self._agent
 
@@ -621,22 +614,19 @@ Format your response with:
 - Recommendations
 - Any caveats or additional research needed"""
 
-        chat_client = AzureOpenAIChatClient(
-            deployment_name=settings.azure_openai_deployment,
-            endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-        )
-
-        return ChatAgent(
-            chat_client=chat_client,
-            instructions=combined_prompt,
-            name="AIMMS Research Agent",
-            description="Multi-source research: suppliers, specifications, pricing",
-            # Tools-less by construction (S11): a constructor toolset is
-            # unioned into every run, so the per-user RBAC filter in
-            # run_with_rbac would never see it. Composed callers dispatch
-            # through run_with_rbac like every other rail.
-            middleware=CapabilityInvocationMiddleware(),
+        return build_agent(
+            AgentSpec(
+                deployment=settings.azure_openai_deployment,
+                instructions=combined_prompt,
+                name="AIMMS Research Agent",
+                description="Multi-source research: suppliers, specifications, pricing",
+                # Tools-less by construction (S11): a constructor toolset is
+                # unioned into every run, so the per-user RBAC filter in
+                # run_with_rbac would never see it. Composed callers dispatch
+                # through run_with_rbac like every other rail.
+                middleware=CapabilityInvocationMiddleware(),
+                workflow="wf3",
+            )
         )
 
 

@@ -128,22 +128,27 @@ def test_no_call_site_omits_workflow_or_context(module_name: str) -> None:
 )
 def test_no_agent_is_constructed_with_a_toolset(module_name: str) -> None:
     """A constructor toolset is unioned into every run, bypassing the filter."""
+    # M1 PR A: rails describe agents with AgentSpec; the factory is the only
+    # ChatAgent( site (test_agent_factory pins that), so the scan moves here.
     tree = ast.parse((WORKFLOW_DIR / f"{module_name}.py").read_text())
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "ChatAgent"
-        ):
-            keywords = {keyword.arg for keyword in node.keywords}
-            assert "tools" not in keywords, (
-                f"{module_name}:{node.lineno} attaches a constructor toolset, "
-                "which bypasses run_with_rbac"
-            )
-            assert "middleware" in keywords, (
-                f"{module_name}:{node.lineno} builds an agent without the "
-                "capability invocation middleware"
-            )
+    specs = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "AgentSpec"
+    ]
+    assert specs, f"{module_name} builds no agent through the factory"
+    for node in specs:
+        keywords = {keyword.arg for keyword in node.keywords}
+        assert "constructor_tools" not in keywords, (
+            f"{module_name}:{node.lineno} attaches a constructor toolset, "
+            "which bypasses run_with_rbac"
+        )
+        assert "middleware" in keywords, (
+            f"{module_name}:{node.lineno} builds an agent without the "
+            "capability invocation middleware"
+        )
 
 
 def test_specialist_write_packs_are_not_reachable_from_wf8() -> None:

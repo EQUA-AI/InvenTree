@@ -1438,6 +1438,9 @@ async def test_wf8_agent_is_toolless_guarded_and_bounded(monkeypatch):
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
+    from ai.core.agents import factory
+    from ai.core.integrations import azure_openai_client
+
     monkeypatch.setattr(
         wf8_lookup,
         "get_settings",
@@ -1447,18 +1450,26 @@ async def test_wf8_agent_is_toolless_guarded_and_bounded(monkeypatch):
             azure_openai_api_key="test-key",
         ),
     )
+    # M1 PR A: construction happens in the factory; patch its seams.
     monkeypatch.setattr(
-        wf8_lookup,
-        "AzureOpenAIChatClient",
-        lambda **_kwargs: FakeClient(),
+        azure_openai_client, "AzureOpenAIChatClient", lambda **_kwargs: FakeClient()
     )
-    monkeypatch.setattr(wf8_lookup, "ChatAgent", FakeAgent)
+    monkeypatch.setattr(
+        azure_openai_client,
+        "get_settings",
+        lambda: SimpleNamespace(
+            azure_openai_endpoint="https://example.invalid", azure_openai_api_key="k"
+        ),
+    )
+    monkeypatch.setattr(factory, "ChatAgent", FakeAgent)
 
     workflow = wf8_lookup.T1LookupWorkflow()
     agent = await workflow._get_agent()
 
     assert isinstance(agent, FakeAgent)
-    assert "tools" not in captured
+    assert captured["tools"] is None
+    assert captured["context_providers"] is None
+    assert captured["chat_message_store_factory"] is None
     assert isinstance(captured["middleware"], CapabilityInvocationMiddleware)
     assert invocation_config.max_iterations == workflow.MAX_TOOL_ITERATIONS
     assert invocation_config.include_detailed_errors is False

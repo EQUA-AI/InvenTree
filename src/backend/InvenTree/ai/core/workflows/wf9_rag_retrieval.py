@@ -8,8 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from agent_framework import ChatAgent, Role
-from agent_framework.azure import AzureOpenAIChatClient
-from ai.core.config import get_settings
+from ai.core.agents.factory import AgentSpec, build_agent
 from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
 from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
 from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
@@ -75,23 +74,18 @@ identifiers exactly as returned by the tools."""
 
     async def _get_agent(self) -> ChatAgent:
         if self._agent is None:
-            settings = get_settings()
             deployment = select_deployment(ModelPurpose.WF8_PRIMARY, modality="text")
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            invocation_config = getattr(chat_client, "function_invocation_config", None)
-            if invocation_config is not None:
-                invocation_config.max_iterations = self.MAX_TOOL_ITERATIONS
-                invocation_config.include_detailed_errors = False
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="AIMMS RAG Retrieval Agent",
-                description="Read-only retrieval of cited technical and evidence material",
-                middleware=CapabilityInvocationMiddleware(),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="AIMMS RAG Retrieval Agent",
+                    description="Read-only retrieval of cited technical and evidence material",
+                    middleware=CapabilityInvocationMiddleware(),
+                    max_tool_iterations=self.MAX_TOOL_ITERATIONS,
+                    include_detailed_errors=False,
+                    workflow="wf9",
+                )
             )
 
         return self._agent

@@ -10,8 +10,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent
-from agent_framework.azure import AzureOpenAIChatClient
+from ai.core.agents.factory import AgentSpec, build_agent
 from ai.core.config import get_settings
 from ai.core.tools.capabilities import tool_name
 from ai.core.tools.rbac import (
@@ -373,24 +372,20 @@ class VoiceToolActionResolver:
         if self._agent is not None:
             return self._agent
         settings = get_settings()
-        chat_client = AzureOpenAIChatClient(
-            deployment_name=settings.azure_openai_fast_deployment,
-            endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-        )
-        invocation_config = getattr(chat_client, "function_invocation_config", None)
-        if invocation_config is not None:
-            # 3, not 8: this planner resolves ids for ONE tool call. Eight
-            # iterations mostly bought retries of failing lookups (the live test
-            # hit "Maximum consecutive function call errors reached (3)" after
-            # ~26 s of them) on a path whose output is a fixed refusal string.
-            invocation_config.max_iterations = 3
-            invocation_config.include_detailed_errors = False
-        self._agent = ChatAgent(
-            chat_client=chat_client,
-            instructions=_PLANNER_INSTRUCTIONS,
-            name="Voice Action Planner",
-            description="Plans one RBAC-authorized text-tool action for verbal confirmation",
+        # 3, not 8: this planner resolves ids for ONE tool call. Eight
+        # iterations mostly bought retries of failing lookups (the live test
+        # hit "Maximum consecutive function call errors reached (3)" after
+        # ~26 s of them) on a path whose output is a fixed refusal string.
+        self._agent = build_agent(
+            AgentSpec(
+                deployment=settings.azure_openai_fast_deployment,
+                instructions=_PLANNER_INSTRUCTIONS,
+                name="Voice Action Planner",
+                description="Plans one RBAC-authorized text-tool action for verbal confirmation",
+                max_tool_iterations=3,
+                include_detailed_errors=False,
+                workflow="voice",
+            )
         )
         return self._agent
 

@@ -880,6 +880,13 @@ class Settings(BaseSettings):
     azure_summarization_reasoning_effort: Literal["low", "medium", "high"] = Field(
         default="low", alias="AZURE_SUMMARIZATION_REASONING_EFFORT"
     )
+    # M1 (plan §9.9 / GR-33): deployments allowed to receive ``prompt_cache_key``
+    # via ``additional_chat_options``. Comma-separated; empty = dark (an
+    # unsupported parameter 400s the turn, so this ships off until the B8
+    # probe passes on the deployment).
+    aimms_prompt_cache_key_deployments: str = Field(
+        default="", alias="AIMMS_PROMPT_CACHE_KEY_DEPLOYMENTS"
+    )
     azure_openai_embedding_deployment: str = Field(
         # Must agree with controlled_document_embedding_dimensions below: the
         # live index stores 3072-dimension text-embedding-3-large vectors. The

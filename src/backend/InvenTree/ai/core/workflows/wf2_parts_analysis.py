@@ -17,8 +17,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent
-from agent_framework.azure import AzureOpenAIChatClient
+from ai.core.agents.factory import AgentSpec, build_agent
 from ai.core.config import get_settings
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
 from ai.core.tools.invocation_guard import CapabilityInvocationMiddleware
@@ -26,6 +25,8 @@ from ai.core.workflows.rbac_run import run_with_rbac
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from agent_framework import ChatAgent
 
 logger = logging.getLogger(__name__)
 
@@ -93,20 +94,17 @@ Format your analysis clearly with:
         if self._agent is None:
             settings = get_settings()
 
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-
             # Built tools-less; the per-user-filtered toolset is supplied per
             # run via run_with_rbac (MAF unions constructor + run-time tools).
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Parts Analysis Agent",
-                description="Analyzes part compatibility and alternatives",
-                middleware=CapabilityInvocationMiddleware(),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Parts Analysis Agent",
+                    description="Analyzes part compatibility and alternatives",
+                    middleware=CapabilityInvocationMiddleware(),
+                    workflow="wf2",
+                )
             )
 
         return self._agent
@@ -150,18 +148,15 @@ Provide your analysis with:
         if self._agent is None:
             settings = get_settings()
 
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="BOM Analysis Agent",
-                description="Analyzes and validates Bills of Materials",
-                middleware=CapabilityInvocationMiddleware(),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="BOM Analysis Agent",
+                    description="Analyzes and validates Bills of Materials",
+                    middleware=CapabilityInvocationMiddleware(),
+                    workflow="wf2",
+                )
             )
 
         return self._agent
@@ -413,22 +408,19 @@ Analyze the user's request and provide thorough analysis with:
 - Detailed recommendations
 - Action items if applicable"""
 
-        chat_client = AzureOpenAIChatClient(
-            deployment_name=settings.azure_openai_deployment,
-            endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-        )
-
-        return ChatAgent(
-            chat_client=chat_client,
-            instructions=combined_prompt,
-            name="AIMMS Parts Analyst",
-            description="BOM analysis, compatibility checks, alternative parts",
-            # Deliberately tools-less (S11). A constructor toolset bypasses
-            # run_with_rbac entirely: MAF unions it into every run, so the
-            # per-user filter never sees it. Composed callers must dispatch
-            # through run_with_rbac like every other rail.
-            middleware=CapabilityInvocationMiddleware(),
+        return build_agent(
+            AgentSpec(
+                deployment=settings.azure_openai_deployment,
+                instructions=combined_prompt,
+                name="AIMMS Parts Analyst",
+                description="BOM analysis, compatibility checks, alternative parts",
+                # Deliberately tools-less (S11). A constructor toolset bypasses
+                # run_with_rbac entirely: MAF unions it into every run, so the
+                # per-user filter never sees it. Composed callers must dispatch
+                # through run_with_rbac like every other rail.
+                middleware=CapabilityInvocationMiddleware(),
+                workflow="wf2",
+            )
         )
 
 

@@ -35,8 +35,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent
-from agent_framework.azure import AzureOpenAIChatClient
+from ai.core.agents.factory import AgentSpec, build_agent
 from ai.core.config import get_settings
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
 from ai.core.tools.invocation_guard import CapabilityInvocationMiddleware
@@ -44,6 +43,8 @@ from ai.core.workflows.rbac_run import run_with_rbac
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from agent_framework import ChatAgent
 
 logger = logging.getLogger(__name__)
 
@@ -240,16 +241,14 @@ Analyze the document and respond with:
     async def get_agent(self) -> ChatAgent:
         if self._agent is None:
             settings = get_settings()
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Document Classification Agent",
-                middleware=CapabilityInvocationMiddleware(),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Document Classification Agent",
+                    middleware=CapabilityInvocationMiddleware(),
+                    workflow="wf6",
+                )
             )
         return self._agent
 
@@ -312,16 +311,14 @@ Format your extraction as structured data with clear sections."""
     async def get_agent(self) -> ChatAgent:
         if self._agent is None:
             settings = get_settings()
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Data Extraction Agent",
-                middleware=CapabilityInvocationMiddleware(),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Data Extraction Agent",
+                    middleware=CapabilityInvocationMiddleware(),
+                    workflow="wf6",
+                )
             )
         return self._agent
 
@@ -368,16 +365,14 @@ Report Format:
     async def get_agent(self) -> ChatAgent:
         if self._agent is None:
             settings = get_settings()
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Data Validation Agent",
-                middleware=CapabilityInvocationMiddleware(),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Data Validation Agent",
+                    middleware=CapabilityInvocationMiddleware(),
+                    workflow="wf6",
+                )
             )
         return self._agent
 
@@ -1006,17 +1001,15 @@ class WF6DocumentWorkflow:
         else:
             system_prompt = CONVERSATIONAL_SYSTEM_PROMPT
 
-        chat_client = AzureOpenAIChatClient(
-            deployment_name=settings.azure_openai_deployment,
-            endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-        )
         # Tools-less: run_with_rbac supplies the per-user-filtered toolset.
-        return ChatAgent(
-            chat_client=chat_client,
-            instructions=system_prompt,
-            name="Document Processing Agent",
-            middleware=CapabilityInvocationMiddleware(),
+        return build_agent(
+            AgentSpec(
+                deployment=settings.azure_openai_deployment,
+                instructions=system_prompt,
+                name="Document Processing Agent",
+                middleware=CapabilityInvocationMiddleware(),
+                workflow="wf6",
+            )
         )
 
     # ------------------------------------------------------------------
@@ -1405,21 +1398,19 @@ class WF6DocumentBuilder:
             "- Validation results\n"
             "- Recommended actions"
         )
-        chat_client = AzureOpenAIChatClient(
-            deployment_name=settings.azure_openai_deployment,
-            endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-        )
-        return ChatAgent(
-            chat_client=chat_client,
-            instructions=combined_prompt,
-            name="AIMMS Document Agent",
-            description="Document processing and analysis",
-            # Tools-less by construction (S11): a constructor toolset is
-            # unioned into every run, so the per-user RBAC filter in
-            # run_with_rbac would never see it. Composed callers dispatch
-            # through run_with_rbac like every other rail.
-            middleware=CapabilityInvocationMiddleware(),
+        return build_agent(
+            AgentSpec(
+                deployment=settings.azure_openai_deployment,
+                instructions=combined_prompt,
+                name="AIMMS Document Agent",
+                description="Document processing and analysis",
+                # Tools-less by construction (S11): a constructor toolset is
+                # unioned into every run, so the per-user RBAC filter in
+                # run_with_rbac would never see it. Composed callers dispatch
+                # through run_with_rbac like every other rail.
+                middleware=CapabilityInvocationMiddleware(),
+                workflow="wf6",
+            )
         )
 
 

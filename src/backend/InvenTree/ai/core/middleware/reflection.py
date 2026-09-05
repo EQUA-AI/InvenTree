@@ -22,12 +22,13 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from agent_framework import ChatAgent
-from agent_framework.azure import AzureOpenAIChatClient
+from ai.core.agents.factory import AgentSpec, build_agent
 from ai.core.config import get_settings
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from agent_framework import ChatAgent
 
 logger = logging.getLogger(__name__)
 
@@ -149,16 +150,13 @@ CORRECTED_ARGUMENTS: [JSON or "N/A"]"""
         if self._reflection_agent is None:
             settings = get_settings()
 
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-
-            self._reflection_agent = ChatAgent(
-                chat_client=chat_client,
-                instructions="You are an error analysis specialist. Always respond in the specified format.",
-                name="Reflection Agent",
+            self._reflection_agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions="You are an error analysis specialist. Always respond in the specified format.",
+                    name="Reflection Agent",
+                    workflow="reflection",
+                )
             )
 
         return self._reflection_agent

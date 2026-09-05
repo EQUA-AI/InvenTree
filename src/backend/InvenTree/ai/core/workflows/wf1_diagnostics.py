@@ -19,12 +19,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from agent_framework import ChatAgent
-from agent_framework.azure import AzureOpenAIChatClient
+from ai.core.agents.factory import AgentSpec, build_agent
 from ai.core.config import get_settings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from agent_framework import ChatAgent
 
 logger = logging.getLogger(__name__)
 
@@ -155,15 +156,13 @@ Never invent symptoms, components or causes to fill the format."""
     async def get_agent(self) -> ChatAgent:
         if self._agent is None:
             settings = get_settings()
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Problem Analysis Agent",
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Problem Analysis Agent",
+                    workflow="wf1",
+                )
             )
         return self._agent
 
@@ -211,16 +210,14 @@ Format your diagnosis:
     async def get_agent(self) -> ChatAgent:
         if self._agent is None:
             settings = get_settings()
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Technical Diagnostics Agent",
-                tools=list(LEGACY_DIAGNOSTIC_TOOLS),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Technical Diagnostics Agent",
+                    constructor_tools=tuple(LEGACY_DIAGNOSTIC_TOOLS),
+                    workflow="wf1",
+                )
             )
         return self._agent
 
@@ -268,16 +265,14 @@ Format your recommendations:
     async def get_agent(self) -> ChatAgent:
         if self._agent is None:
             settings = get_settings()
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Solution Recommendation Agent",
-                tools=list(LEGACY_DIAGNOSTIC_TOOLS),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Solution Recommendation Agent",
+                    constructor_tools=tuple(LEGACY_DIAGNOSTIC_TOOLS),
+                    workflow="wf1",
+                )
             )
         return self._agent
 
@@ -845,18 +840,15 @@ Provide thorough analysis with:
 - Solutions prioritized by impact
 - Required resources and estimated time"""
 
-        chat_client = AzureOpenAIChatClient(
-            deployment_name=settings.azure_openai_deployment,
-            endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-        )
-
-        return ChatAgent(
-            chat_client=chat_client,
-            instructions=combined_prompt,
-            name="AIMMS Diagnostics Agent",
-            description="Equipment diagnostics and troubleshooting",
-            tools=list(LEGACY_DIAGNOSTIC_TOOLS),
+        return build_agent(
+            AgentSpec(
+                deployment=settings.azure_openai_deployment,
+                instructions=combined_prompt,
+                name="AIMMS Diagnostics Agent",
+                description="Equipment diagnostics and troubleshooting",
+                constructor_tools=tuple(LEGACY_DIAGNOSTIC_TOOLS),
+                workflow="wf1",
+            )
         )
 
 

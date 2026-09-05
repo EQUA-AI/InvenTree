@@ -124,7 +124,7 @@ def test_planner_iterations_are_capped_low():
     from ai.core.voice import tool_actions
 
     source = inspect.getsource(tool_actions.VoiceToolActionResolver)
-    assert "max_iterations = 3" in source
+    assert "max_tool_iterations=3" in source
 
 
 # --------------------------------------------------------------------------- #

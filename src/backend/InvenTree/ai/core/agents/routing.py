@@ -18,15 +18,16 @@ import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
-from agent_framework import ChatAgent
-from agent_framework.azure import AzureOpenAIChatClient
 from ai.core.config import get_settings
 from ai.core.faults import log_fault
 from ai.core.integrations.data_provider import get_data_provider
 from openai import AsyncAzureOpenAI
+
+if TYPE_CHECKING:
+    from agent_framework import ChatAgent
 
 logger = logging.getLogger(__name__)
 
@@ -383,24 +384,20 @@ Only output the JSON object, no other text."""
     async def _get_agent(self) -> ChatAgent:
         """Get or create the classification agent."""
         if self._agent is None:
-            settings = get_settings()
-
             # Classification is a short JSON label, not reasoning. Running it on
             # the main deployment (a reasoning model in this deployment) put a
             # slow round trip in front of every turn the regex and semantic
             # routers missed; the fast deployment answers the same question.
+            from ai.core.agents.factory import AgentSpec, build_agent
             from ai.core.model_policy import ModelPurpose, select_deployment
 
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=select_deployment(ModelPurpose.FALLBACK_CLASSIFIER),
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions="You are an intent classifier. Always respond with valid JSON only.",
-                name="Intent Classifier",
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=select_deployment(ModelPurpose.FALLBACK_CLASSIFIER),
+                    instructions="You are an intent classifier. Always respond with valid JSON only.",
+                    name="Intent Classifier",
+                    workflow="routing",
+                )
             )
 
         return self._agent

@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 from agent_framework import ChatAgent, ChatMessage, Role, TextContent
-from agent_framework.azure import AzureOpenAIChatClient
+from ai.core.agents.factory import AgentSpec, build_agent
 from ai.core.config import get_settings
 from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
 from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
@@ -151,6 +151,13 @@ class _PreparedLookupRun:
     runtime_tools: list[Any]
     modality: str
     enforce: bool
+    #: M1 (GR-33): ``additional_chat_options`` for this run — the prompt cache
+    #: key when the deployment is listed, else empty (nothing is sent).
+    chat_options: dict[str, Any] = field(default_factory=dict)
+
+    def run_kwargs(self) -> dict[str, Any]:
+        """Extra ``agent.run`` kwargs: only ``additional_chat_options`` when set."""
+        return {"additional_chat_options": dict(self.chat_options)} if self.chat_options else {}
 
 
 def question_text_for_proposal(proposal: dict[str, Any], modality: str) -> str | None:
@@ -444,6 +451,8 @@ figure from an earlier turn as if you had just verified it."""
     def __init__(self):
         """Initialize the T1 lookup workflow."""
         self._agent: ChatAgent | None = None
+        # M1 (GR-33): deployment per cached agent variant (see _get_agent).
+        self._agent_deployments: dict[str, str] = {}
         self._read_agent: ChatAgent | None = None
         self._voice_agent: ChatAgent | None = None
         self._clarify_agent: ChatAgent | None = None
@@ -725,8 +734,6 @@ figure from an earlier turn as if you had just verified it."""
         if cached is not None:
             return cached
 
-        settings = get_settings()
-
         # S37: voice keeps the fast deployment for latency, text the
         # standard one, now decided by the shared policy table. Note the
         # choice is baked into the cached agent at first build per variant —
@@ -738,44 +745,44 @@ figure from an earlier turn as if you had just verified it."""
         )
 
         # Create Azure OpenAI chat client
-        chat_client = AzureOpenAIChatClient(
-            deployment_name=deployment,
-            endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-        )
-        invocation_config = getattr(chat_client, "function_invocation_config", None)
-        if invocation_config is not None:
-            invocation_config.max_iterations = self.MAX_TOOL_ITERATIONS
-            invocation_config.include_detailed_errors = False
-
-        agent = ChatAgent(
-            chat_client=chat_client,
-            instructions=(
-                self.CLARIFY_SYSTEM_PROMPT
-                if clarify
-                else self.VOICE_SYSTEM_PROMPT
-                if voice
-                else self.READ_SYSTEM_PROMPT
-                if read_only
-                else self.SYSTEM_PROMPT
-            ),
-            name=(
-                "T1 Clarification Agent"
-                if clarify
-                else "T1 Lookup Agent (Voice)"
-                if voice
-                else "T1 Read Agent"
-                if read_only
-                else "T1 Lookup Agent"
-            ),
-            description=(
-                "Fast read-only inventory lookups, spoken"
-                if voice
-                else "Fast inventory lookups, email, PDF generation, and kanban management"
-            ),
-            middleware=CapabilityInvocationMiddleware(),
+        agent = build_agent(
+            AgentSpec(
+                deployment=deployment,
+                instructions=(
+                    self.CLARIFY_SYSTEM_PROMPT
+                    if clarify
+                    else self.VOICE_SYSTEM_PROMPT
+                    if voice
+                    else self.READ_SYSTEM_PROMPT
+                    if read_only
+                    else self.SYSTEM_PROMPT
+                ),
+                name=(
+                    "T1 Clarification Agent"
+                    if clarify
+                    else "T1 Lookup Agent (Voice)"
+                    if voice
+                    else "T1 Read Agent"
+                    if read_only
+                    else "T1 Lookup Agent"
+                ),
+                description=(
+                    "Fast read-only inventory lookups, spoken"
+                    if voice
+                    else "Fast inventory lookups, email, PDF generation, and kanban management"
+                ),
+                middleware=CapabilityInvocationMiddleware(),
+                max_tool_iterations=self.MAX_TOOL_ITERATIONS,
+                include_detailed_errors=False,
+                workflow="wf8",
+            )
         )
 
+        # The deployment rides beside the cached agent so the prompt-cache key
+        # (M1, GR-33) can be scoped to it at run time without a second lookup.
+        self._agent_deployments[
+            "clarify" if clarify else "voice" if voice else "read" if read_only else "default"
+        ] = deployment
         if clarify:
             self._clarify_agent = agent
         elif voice:
@@ -884,6 +891,7 @@ figure from an earlier turn as if you had just verified it."""
         lookup_type: LookupType,
         context: dict[str, Any] | None,
         start_time: float,
+        thread_id: str = "",
     ) -> LookupResult | _PreparedLookupRun:
         """Shared pre-run machinery for execute() and execute_streaming().
 
@@ -993,12 +1001,32 @@ figure from an earlier turn as if you had just verified it."""
             run_input = self._with_category_hint(run_input, query, context)
             run_input = self._with_question_resolution(run_input, context)
             run_input = self._with_locale_hint(run_input, context)
+        # M1 (GR-33): one cache lineage per thread and prompt variant; dark
+        # unless the deployment is listed (see prompt_cache_options).
+        from ai.core.agents.factory import prompt_cache_options
+
+        mode = (
+            "clarify"
+            if clarify
+            else "voice"
+            if (voice_read_only and not clarify)
+            else "read"
+            if (enforce_selection and not voice_read_only and not clarify)
+            else "default"
+        )
+        chat_options = prompt_cache_options(
+            self._agent_deployments.get(mode, ""),
+            client_code=str(getattr(get_settings(), "single_site_client_code", "") or ""),
+            thread_id=thread_id,
+            mode=mode,
+        )
         return _PreparedLookupRun(
             agent=agent,
             run_input=run_input,
             runtime_tools=runtime_tools,
             modality=modality,
             enforce=enforce,
+            chat_options=chat_options,
         )
 
     async def execute(
@@ -1051,6 +1079,7 @@ figure from an earlier turn as if you had just verified it."""
                 lookup_type=lookup_type,
                 context=context,
                 start_time=start_time,
+                thread_id=thread_id,
             )
             if isinstance(prepared, LookupResult):
                 return prepared
@@ -1060,7 +1089,9 @@ figure from an earlier turn as if you had just verified it."""
             with bind_capability_run(
                 workflow="wf8", modality=modality, selected_tools=runtime_tools
             ):
-                response = await prepared.agent.run(prepared.run_input, tools=runtime_tools)
+                response = await prepared.agent.run(
+                    prepared.run_input, tools=runtime_tools, **prepared.run_kwargs()
+                )
 
             # Extract response text
             response_text = ""
@@ -1187,6 +1218,7 @@ figure from an earlier turn as if you had just verified it."""
                 lookup_type=lookup_type,
                 context=context,
                 start_time=start_time,
+                thread_id=thread_id,
             )
         except Exception as exc:
             _raise_classified(exc)
@@ -1205,7 +1237,7 @@ figure from an earlier turn as if you had just verified it."""
                 selected_tools=prepared.runtime_tools,
             ):
                 async for update in prepared.agent.run_stream(
-                    prepared.run_input, tools=prepared.runtime_tools
+                    prepared.run_input, tools=prepared.runtime_tools, **prepared.run_kwargs()
                 ):
                     # Streamed updates carry usage as UsageContent inside
                     # contents, never as a usage_details attribute — the
@@ -1288,28 +1320,24 @@ class T1LookupWorkflowBuilder:
         This allows the workflow to be composed into larger workflows
         using the MAF agent composition patterns.
         """
-        settings = get_settings()
 
         # Create Azure OpenAI chat client. An explicit builder override wins;
         # otherwise the S37 policy table decides (text-shaped wf8).
         from ai.core.model_policy import ModelPurpose, select_deployment
 
-        chat_client = AzureOpenAIChatClient(
-            deployment_name=self._model_deployment or select_deployment(ModelPurpose.WF8_PRIMARY),
-            endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-        )
-
-        agent = ChatAgent(
-            chat_client=chat_client,
-            instructions=self._system_prompt or T1LookupWorkflow.SYSTEM_PROMPT,
-            name="AIMMS Lookup Agent",
-            description="Fast inventory lookups: stock levels, part details, BOM queries",
-            # Tools-less by construction (S11). This composition path attached
-            # the FULL write toolset with no per-user filter and no middleware —
-            # the widest of the bypasses, on the everyday rail. Composed callers
-            # dispatch through run_with_rbac like the serving path does.
-            middleware=CapabilityInvocationMiddleware(),
+        agent = build_agent(
+            AgentSpec(
+                deployment=self._model_deployment or select_deployment(ModelPurpose.WF8_PRIMARY),
+                instructions=self._system_prompt or T1LookupWorkflow.SYSTEM_PROMPT,
+                name="AIMMS Lookup Agent",
+                description="Fast inventory lookups: stock levels, part details, BOM queries",
+                # Tools-less by construction (S11). This composition path attached
+                # the FULL write toolset with no per-user filter and no middleware —
+                # the widest of the bypasses, on the everyday rail. Composed callers
+                # dispatch through run_with_rbac like the serving path does.
+                middleware=CapabilityInvocationMiddleware(),
+                workflow="wf8",
+            )
         )
 
         return agent

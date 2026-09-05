@@ -20,8 +20,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent
-from agent_framework.azure import AzureOpenAIChatClient
+from ai.core.agents.factory import AgentSpec, build_agent
 from ai.core.config import get_settings
 from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
 from ai.core.tools.inventree.write.purchase_orders import PURCHASE_ORDER_WRITE_TOOLS
@@ -30,6 +29,8 @@ from ai.core.workflows.rbac_run import run_with_rbac
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
+
+    from agent_framework import ChatAgent
 
 logger = logging.getLogger(__name__)
 
@@ -240,19 +241,16 @@ Format purchase orders clearly with:
         if self._agent is None:
             settings = get_settings()
 
-            chat_client = AzureOpenAIChatClient(
-                deployment_name=settings.azure_openai_deployment,
-                endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-            )
-
             # Tools-less: run_with_rbac supplies the per-user-filtered toolset.
-            self._agent = ChatAgent(
-                chat_client=chat_client,
-                instructions=self.SYSTEM_PROMPT,
-                name="Procurement Agent",
-                description="Handles procurement and purchase orders",
-                middleware=CapabilityInvocationMiddleware(),
+            self._agent = build_agent(
+                AgentSpec(
+                    deployment=settings.azure_openai_deployment,
+                    instructions=self.SYSTEM_PROMPT,
+                    name="Procurement Agent",
+                    description="Handles procurement and purchase orders",
+                    middleware=CapabilityInvocationMiddleware(),
+                    workflow="wf4",
+                )
             )
 
         return self._agent
@@ -444,22 +442,19 @@ class T4ProcurementBuilder:
         """Convert workflow to a composable agent."""
         settings = get_settings()
 
-        chat_client = AzureOpenAIChatClient(
-            deployment_name=settings.azure_openai_deployment,
-            endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-        )
-
-        return ChatAgent(
-            chat_client=chat_client,
-            instructions=T4ProcurementWorkflow.SYSTEM_PROMPT,
-            name="AIMMS Procurement Agent",
-            description="Procurement workflows with human-in-the-loop approval",
-            # Tools-less by construction (S11): a constructor toolset is
-            # unioned into every run, so the per-user RBAC filter in
-            # run_with_rbac would never see it. Composed callers dispatch
-            # through run_with_rbac like every other rail.
-            middleware=CapabilityInvocationMiddleware(),
+        return build_agent(
+            AgentSpec(
+                deployment=settings.azure_openai_deployment,
+                instructions=T4ProcurementWorkflow.SYSTEM_PROMPT,
+                name="AIMMS Procurement Agent",
+                description="Procurement workflows with human-in-the-loop approval",
+                # Tools-less by construction (S11): a constructor toolset is
+                # unioned into every run, so the per-user RBAC filter in
+                # run_with_rbac would never see it. Composed callers dispatch
+                # through run_with_rbac like every other rail.
+                middleware=CapabilityInvocationMiddleware(),
+                workflow="wf4",
+            )
         )
 
 
