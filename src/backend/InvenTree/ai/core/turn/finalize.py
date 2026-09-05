@@ -17,6 +17,7 @@ canonical dicts and metadata blobs by hand. Byte-shape invariants:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from ai.core.turn.events import coalesce_text_deltas
@@ -28,6 +29,10 @@ if TYPE_CHECKING:
     from ai.core.turn.state import TurnRun
     from ai.core.turn.types import CanonicalTurn
     from ai.core.turn_service import NormalizedTurnService
+
+
+#: The finalize stage keeps the pre-extraction logger identity (S47 convention).
+logger = logging.getLogger("ai.core.turn_service")
 
 
 def _terminal_output_metadata(base: dict[str, Any]) -> dict[str, Any]:
@@ -96,12 +101,47 @@ async def enrich_canonical(
         turn_id=run.turn.pk,
         emitter=run.emitter,
     )
-    return await service._attach_media_evidence(
+    canonical = await service._attach_media_evidence(
         canonical,
         thread_id=run.thread.pk,
         turn_id=run.turn.pk,
         emitter=run.emitter,
     )
+    return await _attach_context_used(run, canonical)
+
+
+async def _attach_context_used(run: TurnRun, canonical: CanonicalTurn) -> CanonicalTurn:
+    """M1 PR G (§9.11 / GR-16): the bounded Context used record.
+
+    Computed from the turn's ContextBundle and the retrieval snapshot
+    nothing read before; ids and counts only. Rides the canonical (so it
+    persists with the turn) and one STATE_DELTA on the live stream, the
+    evidence_analysis idiom. Fail-soft: a record failure never fails a turn.
+    """
+    bundle = getattr(run, "context_bundle", None)
+    if bundle is None:
+        return canonical
+    try:
+        record = bundle.context_used(getattr(run, "retrieval_snapshot", None))
+    except Exception:  # pragma: no cover - telemetry must never fail a turn
+        logger.warning("context_used record failed", exc_info=False)
+        return canonical
+    canonical["context_used"] = record
+    if run.emitter is not None:
+        from ai.core.streaming import AGUIEvent, EventType
+
+        try:
+            await run.emitter.emit(
+                AGUIEvent(
+                    event_type=EventType.STATE_DELTA,
+                    data={"kind": "context_used", **record},
+                    thread_id=run.thread.pk,
+                    run_id=f"contextUsed:{run.turn.pk}",
+                )
+            )
+        except Exception:  # pragma: no cover - emission is fail-soft
+            logger.warning("context_used emission failed", exc_info=False)
+    return canonical
 
 
 async def complete(
@@ -204,6 +244,11 @@ async def persist_terminal(
                 {"evidence_gate": canonical["evidence_gate"]}
                 if canonical.get("evidence_gate")
                 else {}
+            ),
+            # M1 PR G (§9.11 / GR-16): the bounded Context used record
+            # persists with the turn so /threads can project it on reload.
+            **(
+                {"context_used": canonical["context_used"]} if canonical.get("context_used") else {}
             ),
         }),
         workflow_id=(run.capture.workflow_id if run.capture else None) or "",

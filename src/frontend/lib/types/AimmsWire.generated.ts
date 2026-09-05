@@ -60,7 +60,8 @@ export type AimmsCustomChannel =
   | 'aimms.hitl'
   | 'aimms.custom'
   | 'aimms.evidenceAnalysis'
-  | 'aimms.analysisProgress';
+  | 'aimms.analysisProgress'
+  | 'aimms.contextUsed';
 
 // --- Proposal rail (aichat.models) ---
 

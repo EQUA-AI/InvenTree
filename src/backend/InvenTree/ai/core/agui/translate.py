@@ -37,6 +37,8 @@ CUSTOM_CHANNELS = (
     "aimms.custom",
     "aimms.evidenceAnalysis",
     "aimms.analysisProgress",
+    # M1 PR G (§9.11 / GR-16): the bounded, content-free Context used record.
+    "aimms.contextUsed",
 )
 
 #: Classic base-envelope keys that are NOT part of a record's payload.
@@ -319,6 +321,10 @@ class SpecTranslator:
                         record,
                     )
                 ]
+            if kind == "context_used":
+                # M1 PR G: ids and counts only, one object shape everywhere.
+                forwarded = {key: value for key, value in payload.items() if key != "kind"}
+                return [self._custom("aimms.contextUsed", forwarded, record)]
             return [self._custom("aimms.stateDelta", payload, record)]
         if event_type == EventType.MESSAGES_SNAPSHOT:
             messages = []

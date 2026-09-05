@@ -319,6 +319,8 @@ def test_custom_channels_are_frozen_and_generated() -> None:
         # progress stages ride dedicated channels on the AG-UI wire.
         "aimms.evidenceAnalysis",
         "aimms.analysisProgress",
+        # M1 PR G (§9.11): the Context used record.
+        "aimms.contextUsed",
     )
 
 
@@ -336,6 +338,23 @@ def test_state_delta_evidence_analysis_maps_to_its_channel() -> None:
     assert [event["type"] for event in events] == ["CUSTOM"]
     assert events[0]["name"] == "aimms.evidenceAnalysis"
     assert events[0]["value"]["response_version"] == 2
+    assert "kind" not in events[0]["value"]
+
+
+def test_state_delta_context_used_maps_to_its_channel() -> None:
+    """M1 PR G: the record forwards as ONE object, minus the kind tag."""
+    adapter = _t()
+    events = adapter.translate({
+        "type": "STATE_DELTA",
+        "timestamp": TS_MS,
+        "kind": "context_used",
+        "recent_turns": {"used": 4, "available": 12},
+        "summary": {"through_sequence": 16},
+        "corpora": {"controlled": {"state": "not_consulted", "n": 0}},
+    })
+    assert [event["type"] for event in events] == ["CUSTOM"]
+    assert events[0]["name"] == "aimms.contextUsed"
+    assert events[0]["value"]["recent_turns"] == {"used": 4, "available": 12}
     assert "kind" not in events[0]["value"]
 
 

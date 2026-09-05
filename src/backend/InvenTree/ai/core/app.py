@@ -954,6 +954,22 @@ def _route_facts(metadata: dict[str, Any], *, shared: bool) -> dict[str, Any]:
     }
 
 
+#: §9.11 rule (ii): memory rows are the thread owner's; a grantee sees the
+#: turn and corpus rows only.
+CONTEXT_USED_OWNER_ONLY_KEYS = ("summary", "preferences_used", "facts_used")
+
+
+def _context_used_projection(record: Any, *, shared: bool) -> dict[str, Any] | None:
+    """Project the persisted Context used record; memory rows owner-only."""
+    if not isinstance(record, dict):
+        return None
+    projected = dict(record)
+    if shared:
+        for key in CONTEXT_USED_OWNER_ONLY_KEYS:
+            projected.pop(key, None)
+    return projected
+
+
 def _persisted_provenance(metadata: dict[str, Any]) -> dict[str, Any] | None:
     """Extract the diagnosis provenance from the persisted event list.
 
@@ -1021,6 +1037,11 @@ async def get_thread(
                     "model_versions": message.metadata.get("model_versions"),
                     # D0 (M1): content-free route facts, owner-only.
                     **_route_facts(message.metadata, shared=shared),
+                    # M1 PR G (§9.11): the Context used record; memory rows
+                    # (summary/preferences/facts) are stripped for a grantee.
+                    "context_used": _context_used_projection(
+                        message.metadata.get("context_used"), shared=shared
+                    ),
                 }
                 for message in selected
             ],
