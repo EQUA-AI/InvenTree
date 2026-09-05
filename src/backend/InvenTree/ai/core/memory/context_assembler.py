@@ -220,12 +220,12 @@ class ContextBundle:
             body = item.text
             if body.startswith(SUMMARY_NOTE_LABEL):
                 body = body[len(SUMMARY_NOTE_LABEL) :].lstrip("\n")
-            return body
+            return body  # already fenced by the builder
         turns = self.recent_turns[-2:]
         if not turns:
             return ""
         digest = "\n".join(f"{item.role}: {item.text}" for item in turns)
-        return digest[:ROUTING_DIGEST_MAX_CHARS]
+        return _fence(digest[:ROUTING_DIGEST_MAX_CHARS])
 
     def render_reasoning_conversation(self) -> str:
         """Oldest-first transcript for the reasoning envelope, capped (PR E)."""
@@ -283,6 +283,18 @@ class ContextBundle:
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _fence(text: str) -> str:
+    """The marker fence with forged-marker escaping (GR-19).
+
+    Imported from ``ai.core.tools.diagnostics`` — the one definition the
+    ai package uses; the Django apps keep byte-identical copies that
+    ``test_fence_parity`` pins.
+    """
+    from ai.core.tools.diagnostics import fence_untrusted_content
+
+    return fence_untrusted_content(text)
 
 
 def _bundle_hash(items: list[ContextItem], watermark: int, plan: RetrievalPlan) -> str:
@@ -438,7 +450,9 @@ class ContextAssembler:
         watermark = window.watermark if compaction else 0
         if compaction and window.watermark and window.summary.strip():
             body = window.summary.strip()
-            text = SUMMARY_NOTE_LABEL + "\n" + body
+            # §9.9 (GR-19): label line outside the fence, body inside; a
+            # forged marker inside the summary is escaped, never honoured.
+            text = SUMMARY_NOTE_LABEL + "\n" + _fence(body)
             summary_item = ContextItem(
                 slot=str(Slot.THREAD_SUMMARY),
                 item_id=f"summary:{window.watermark}",
@@ -446,8 +460,7 @@ class ContextAssembler:
                 text=text,
                 source_pointer=f"thread:{thread_id}#summary@{window.watermark}",
                 content_hash=_sha(body),
-                # PR D wraps the body in the marker fence and flips this label.
-                content_trust=str(ContentTrust.UNTRUSTED_UNFENCED),
+                content_trust=str(ContentTrust.UNTRUSTED_FENCED),
                 verification_class=str(VerificationClass.COMPACTED_SUMMARY),
                 version=window.watermark,
                 chars=len(text),

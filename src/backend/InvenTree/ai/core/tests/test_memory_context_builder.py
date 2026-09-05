@@ -64,9 +64,12 @@ def _legacy_history(repository, thread_id, settings) -> list[dict[str, str]]:
         watermark = int(getattr(thread, "summary_through_sequence", 0) or 0)
         summary = str(getattr(thread, "summary", "") or "")
         if watermark and summary.strip():
+            from ai.core.tools.diagnostics import fence_untrusted_content
+
             summary_note = {
                 "role": "user",
-                "content": SUMMARY_NOTE_LABEL + "\n" + summary.strip(),
+                # PR D: the body rides inside the marker fence, label outside.
+                "content": SUMMARY_NOTE_LABEL + "\n" + fence_untrusted_content(summary.strip()),
             }
             recent = [m for m in recent if getattr(m, "sequence", 0) > watermark]
     history = [
@@ -227,7 +230,13 @@ def test_items_carry_provenance_and_trust_labels():
     summary = bundle.summary_item
     assert summary is not None
     assert summary.item_id == "summary:12"
-    assert summary.content_trust == "untrusted_unfenced"  # PR D flips this to untrusted_fenced
+    assert summary.content_trust == "untrusted_fenced"
+    assert summary.text.startswith(SUMMARY_NOTE_LABEL + "\n[UNTRUSTED-CONTENT-BEGIN]")
+    assert summary.text.count("[UNTRUSTED-CONTENT-BEGIN]") == 1
+    # No emitted item may carry the PR B interim label any more.
+    for section in bundle.sections.values():
+        for item in section.items:
+            assert item.content_trust != "untrusted_unfenced"
     assert summary.verification_class == "compacted_summary"
     assert summary.source_pointer == "thread:thread_c#summary@12"
     assert summary.role == "user"
@@ -255,6 +264,18 @@ def test_context_used_is_bounded_ids_and_counts():
     assert "seal worn" not in json.dumps(record)
 
 
+def test_thread_summary_text_is_fenced_in_both_shapes():
+    fenced = asyncio.run(_build(_Repository(watermark=12, summary=SUMMARY), _settings()))
+    text = fenced.thread_summary_text()
+    assert text.startswith("[UNTRUSTED-CONTENT-BEGIN]") and text.endswith("[UNTRUSTED-CONTENT-END]")
+    assert SUMMARY_NOTE_LABEL not in text
+    digest = asyncio.run(
+        _build(_Repository(watermark=0, summary=""), _settings())
+    ).thread_summary_text()
+    assert digest.startswith("[UNTRUSTED-CONTENT-BEGIN]")
+    assert len(digest) <= 600 + len("[UNTRUSTED-CONTENT-BEGIN]\n\n[UNTRUSTED-CONTENT-END]")
+
+
 def test_routing_fields_render_without_history_text():
     bundle = asyncio.run(
         _build(
@@ -271,10 +292,10 @@ def test_routing_fields_render_without_history_text():
     assert "task_intent=record_retrieval" in rendered
     assert "client_codes=internal" in rendered
     assert "message" not in rendered and "seal worn" not in rendered
-    assert bundle.thread_summary_text().startswith("Pump 3 diagnosis")
-    # Without a compacted summary the classifier gets a bounded digest.
+    assert "Pump 3 diagnosis" in bundle.thread_summary_text()
+    # Without a compacted summary the classifier gets a bounded, fenced digest.
     plain = asyncio.run(_build(_Repository(watermark=0, summary=""), _settings()))
-    assert 0 < len(plain.thread_summary_text()) <= 600
+    assert 0 < len(plain.thread_summary_text()) <= 600 + 60
 
 
 # --------------------------------------------------------------------------- #
