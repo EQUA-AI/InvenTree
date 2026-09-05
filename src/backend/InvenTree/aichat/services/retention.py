@@ -452,6 +452,12 @@ def purge_expired_voice(
 # ---------------------------------------------------------------------------
 
 
+def _months_before(day: date, months: int) -> date:
+    """First day of the month ``months`` calendar months before ``day``'s month."""
+    index = day.year * 12 + (day.month - 1) - months
+    return date(index // 12, index % 12 + 1, 1)
+
+
 def _month_bounds(day: date) -> tuple[date, date]:
     start = day.replace(day=1)
     next_start = (
@@ -717,10 +723,13 @@ def purge_usage_aggregates(
     batch_size: int = PURGE_BATCH_SIZE,
     dry_run: bool = False,
 ) -> dict:
-    """Purge the sanitized monthly aggregates past thirteen months."""
-    cutoff_month = _month_bounds((timezone.now() - timedelta(days=31 * months)).date())[
-        0
-    ]
+    """Purge the sanitized monthly aggregates past thirteen months.
+
+    The clock is calendar months, not ``31 * months`` days: a day-based
+    cutoff drifted into the same month as a fourteen-month-old row for part
+    of every month and left it standing (seen 2026-09-05).
+    """
+    cutoff_month = _months_before(timezone.now().date(), months)
     count = _batched_delete(
         AIUsageMonthlyAggregate.objects.filter(month__lt=cutoff_month),
         family='usage_aggregates',

@@ -631,6 +631,22 @@ class DetailFamilyTests(RetentionEnvMixin, TestCase):
         self.assertEqual(retention.purge_usage_aggregates(), {'usage_aggregates': 1})
         self.assertEqual(AIUsageMonthlyAggregate.objects.count(), 1)
 
+    def test_aggregate_clock_is_calendar_months(self):
+        """Exactly thirteen months old stays; one month older goes; no day drift."""
+        from datetime import date
+
+        self.assertEqual(retention._months_before(date(2026, 9, 5), 13), date(2025, 8, 1))
+        self.assertEqual(retention._months_before(date(2026, 1, 31), 13), date(2024, 12, 1))
+        today = timezone.now().date()
+        keep = retention._months_before(today, 13)
+        drop = retention._months_before(today, 14)
+        AIUsageMonthlyAggregate.objects.create(month=keep, source='turn_usage', user_id=1)
+        AIUsageMonthlyAggregate.objects.create(month=drop, source='turn_usage', user_id=1)
+        self.assertEqual(retention.purge_usage_aggregates(), {'usage_aggregates': 1})
+        self.assertEqual(
+            list(AIUsageMonthlyAggregate.objects.values_list('month', flat=True)), [keep]
+        )
+
 
 class UploadSweepTests(RetentionEnvMixin, TestCase):
     """The 24-hour ai_uploads TTL and the orphan/outbox reconciliation."""
