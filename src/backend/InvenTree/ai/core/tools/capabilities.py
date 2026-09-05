@@ -1323,6 +1323,14 @@ def _sticky_packs(
     return tuple(picked)
 
 
+def _catalog_pack_position(pack_id: str) -> int:
+    """Where a pack's first tool sits in the canonical catalog (unknown packs last)."""
+    for position, entry in enumerate(capability_catalog()):
+        if entry.pack_id == pack_id:
+            return position
+    return len(capability_catalog())
+
+
 def selection_v2_enabled() -> bool:
     """Whether shape-based selection and the always-on SQL pack are active."""
     return bool(_ai_setting("feature_capability_selection_v2", True))
@@ -2013,6 +2021,14 @@ def select_capabilities(
         if sticky:
             pack_ids = (*pack_ids, *sticky)
             signals.append("sticky_packs")
+            # Budget eviction order for sticky packs: latest in catalog order
+            # first. The provider caches the rendered prefix, so dropping the
+            # packs whose tools sit at the END of the canonical tool list
+            # keeps the head (system prompt + earlier tools) cacheable, while
+            # a score below zero still ranks every sticky pack behind anything
+            # the sentence itself named.
+            for pack_id in sticky:
+                scores[pack_id] = -1 - _catalog_pack_position(pack_id)
     if widened:
         with_hatch = _with_sql_escape_hatch(pack_ids)
         if with_hatch != pack_ids:

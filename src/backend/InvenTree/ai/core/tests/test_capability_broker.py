@@ -1687,3 +1687,28 @@ def test_sticky_packs_are_evicted_before_anything_the_sentence_named(monkeypatch
     # At most six ride along, and whatever fell to the budget was sticky only.
     assert len([p for p in selection.pack_ids if p not in baseline.pack_ids]) <= 6
     assert all(pack_id not in baseline.pack_ids for pack_id in dropped)
+
+
+def test_sticky_eviction_drops_the_packs_at_the_tail_of_the_catalog_first(monkeypatch):
+    """Keeping the head of the canonical tool list cached is the whole point."""
+    monkeypatch.setattr(capabilities, "stable_tool_prefix_enabled", lambda: True)
+    baseline = _select(_STICKY_QUERY)
+    # Six entries: exactly the sticky cap, so every one is admitted and any
+    # absence below is a budget eviction rather than the cap.
+    history = [
+        "maintenance.read",
+        "machines.read",
+        "documents.read",
+        "manuals.read",
+        "evidence.read",
+        "sources.read",
+    ]
+    selection = _select(_STICKY_QUERY, history=history)
+    assert len(selection.tool_ids) <= MAX_INITIAL_TOOLS
+    kept = [p for p in selection.pack_ids if p not in baseline.pack_ids]
+    dropped = [p for p in history if p not in selection.pack_ids and p not in baseline.pack_ids]
+    if dropped:
+        position = capabilities._catalog_pack_position
+        assert max(position(p) for p in kept) < min(position(p) for p in dropped)
+    # The sticky packs' own scores never outrank a named pack.
+    assert selection.pack_ids[0] == baseline.pack_ids[0]
