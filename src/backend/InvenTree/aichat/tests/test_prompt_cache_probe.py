@@ -168,3 +168,71 @@ class CacheCounterShapeTest(SimpleTestCase):
             probe.cache_counters(None),
             {'prompt': None, 'cached': None, 'cache_write': None},
         )
+
+
+class TurnRowsTest(SimpleTestCase):
+    """Mode (ii) drives the turn service and reads persisted usage OFF the loop."""
+
+    def test_orm_read_never_runs_on_the_event_loop(self):
+        """The persisted-usage read hops to a worker thread via sync_to_async."""
+        import asyncio
+
+        calls = []
+
+        class _Service:
+            async def process(self, **kwargs):
+                calls.append(kwargs)
+
+        def fake_metadata(thread_id):
+            # sync_to_async runs this in a worker thread: no running loop here.
+            with self.assertRaises(RuntimeError):
+                asyncio.get_running_loop()
+            return {
+                'workflow_id': 'wf8',
+                'usage': {'totals': {'input_tokens': 700, 'cached_input_tokens': 512}},
+            }
+
+        class _User:
+            pk = 7
+            is_staff = False
+            is_superuser = False
+
+            @staticmethod
+            def get_username():
+                return 'yesworkorders'
+
+        class _Manager:
+            def filter(self, **kwargs):
+                return self
+
+            def first(self):
+                return _User()
+
+        case = SimpleNamespace(
+            id='M-MEM-01',
+            turns=(SimpleNamespace(question='a'), SimpleNamespace(question='b')),
+        )
+        policy = SimpleNamespace(single_site_policy_key='site', policy_version='1')
+        with (
+            mock.patch.object(
+                probe, '_last_assistant_metadata', side_effect=fake_metadata
+            ),
+            mock.patch('ai.core.app.get_turn_service', return_value=_Service()),
+            mock.patch(
+                'ai.core.auth.AIBoundaryPolicy.from_settings', return_value=policy
+            ),
+            mock.patch(
+                'ai.core.trusted_context.build_trusted_turn_context',
+                return_value=object(),
+            ),
+            mock.patch(
+                'django.contrib.auth.get_user_model',
+                return_value=SimpleNamespace(objects=_Manager()),
+            ),
+        ):
+            rows = probe._turn_rows(case, 'yesworkorders')
+        self.assertEqual([r['turn'] for r in rows], [0, 1])
+        self.assertEqual(rows[0]['cached_input_tokens'], 512)
+        self.assertTrue(all(r['usage_present'] for r in rows))
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]['content'], 'b')

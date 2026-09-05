@@ -161,6 +161,19 @@ def _default_deployments(settings: Any) -> list[str]:
     return seen
 
 
+def _last_assistant_metadata(thread_id: str) -> dict[str, Any]:
+    """Persisted metadata of the newest assistant message on ``thread_id`` (sync)."""
+    from aichat.models import ChatMessage
+
+    message = (
+        ChatMessage.objects
+        .filter(thread_id=thread_id, role='assistant')
+        .order_by('-sequence')
+        .first()
+    )
+    return dict(getattr(message, 'metadata', None) or {})
+
+
 def _turn_rows(case: Any, username: str) -> list[dict[str, Any]]:
     """Mode (ii): the real turn service over one battery case, fresh thread."""
     from django.contrib.auth import get_user_model
@@ -168,7 +181,6 @@ def _turn_rows(case: Any, username: str) -> list[dict[str, Any]]:
     from ai.core.app import get_turn_service
     from ai.core.auth import AIBoundaryPolicy, AIPrincipal
     from ai.core.trusted_context import build_trusted_turn_context
-    from aichat.models import ChatMessage
 
     user = get_user_model().objects.filter(username=username).first()
     if user is None:
@@ -189,6 +201,8 @@ def _turn_rows(case: Any, username: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
 
     async def drive() -> None:
+        from asgiref.sync import sync_to_async
+
         service = get_turn_service()
         for index, turn in enumerate(case.turns):
             await service.process(
@@ -203,13 +217,11 @@ def _turn_rows(case: Any, username: str) -> list[dict[str, Any]]:
                 idempotency_key=f'probe:{case.id}:{index}:{thread_id}',
                 correlation_id=str(uuid.uuid4()),
             )
-            message = (
-                ChatMessage.objects
-                .filter(thread_id=thread_id, role='assistant')
-                .order_by('-sequence')
-                .first()
-            )
-            metadata = dict(getattr(message, 'metadata', None) or {})
+            # The ORM must never run on the event loop (SynchronousOnlyOperation,
+            # seen live 2026-09-05): hop to a worker thread for the read.
+            metadata = await sync_to_async(
+                _last_assistant_metadata, thread_sensitive=True
+            )(thread_id)
             totals = dict((metadata.get('usage') or {}).get('totals') or {})
             rows.append({
                 'turn': index,
