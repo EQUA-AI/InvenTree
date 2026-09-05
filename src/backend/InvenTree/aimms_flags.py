@@ -435,6 +435,13 @@ REGISTRY: tuple[FlagEntry, ...] = (
         ai_field='feature_memory_rail_replay',
     ),
     FlagEntry(
+        'FEATURE_PROMPT_CACHE_STABLE_TOOLS',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_prompt_cache_stable_tools',
+    ),
+    FlagEntry(
         'FEATURE_NLI_GROUNDEDNESS',
         'bool',
         False,

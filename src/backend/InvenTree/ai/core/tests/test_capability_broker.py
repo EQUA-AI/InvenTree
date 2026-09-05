@@ -1601,3 +1601,89 @@ def test_typed_evidence_rider_never_exposes_a_dark_media_tool(monkeypatch):
         assert "search_evidence_media" not in selection.tool_ids
     finally:
         capability_catalog.cache_clear()
+
+
+# --------------------------------------------------------------------------- #
+# M1 (GR-33): thread-stable tool prefix                                        #
+# --------------------------------------------------------------------------- #
+_STICKY_QUERY = "Which parts are running low on stock in the warehouse?"
+
+
+def _select(query, *, history=None):
+    context = {"tool_pack_history": history} if history is not None else None
+    return select_capabilities(query, context=context, profile=ALL_VIEW_PROFILE, authenticated=True)
+
+
+def test_sticky_packs_are_off_by_default(monkeypatch):
+    monkeypatch.setattr(capabilities, "stable_tool_prefix_enabled", lambda: False)
+    baseline = _select(_STICKY_QUERY)
+    with_history = _select(_STICKY_QUERY, history=["documents.read", "machines.read"])
+    assert with_history.pack_ids == baseline.pack_ids
+    assert with_history.tool_ids == baseline.tool_ids
+    assert "sticky_packs" not in with_history.signals
+
+
+def test_sticky_packs_ride_after_the_turns_own_picks(monkeypatch):
+    """Earlier packs are appended (never promoted) and re-authorized like any other."""
+    monkeypatch.setattr(capabilities, "stable_tool_prefix_enabled", lambda: True)
+    baseline = _select(_STICKY_QUERY)
+    assert baseline.pack_ids, "the query must select something on its own"
+    sticky = _select(_STICKY_QUERY, history=["documents.read", "machines.read"])
+    own = tuple(pack_id for pack_id in sticky.pack_ids if pack_id in baseline.pack_ids)
+    assert own == baseline.pack_ids  # the turn's own selection is untouched, order kept
+    added = tuple(pack_id for pack_id in sticky.pack_ids if pack_id not in baseline.pack_ids)
+    assert set(added) >= {"documents.read", "machines.read"} - set(baseline.pack_ids)
+    assert sticky.pack_ids[0] == baseline.pack_ids[0]  # primary stays at index 0
+    assert "sticky_packs" in sticky.signals
+    assert len(sticky.tool_ids) <= MAX_INITIAL_TOOLS
+    assert set(baseline.tool_ids) <= set(sticky.tool_ids)
+
+
+def test_sticky_packs_ignore_unknown_write_and_duplicate_ids(monkeypatch):
+    monkeypatch.setattr(capabilities, "stable_tool_prefix_enabled", lambda: True)
+    baseline = _select(_STICKY_QUERY)
+    garbage = [
+        "email.write",  # write pack: never sticky
+        "not.a.pack",
+        42,
+        None,
+        *baseline.pack_ids,  # already selected: not duplicated
+        "documents.read",
+        "documents.read",
+    ]
+    selection = _select(_STICKY_QUERY, history=garbage)
+    assert selection.pack_ids.count("documents.read") == 1
+    assert "email.write" not in selection.pack_ids and "not.a.pack" not in selection.pack_ids
+    assert len(selection.pack_ids) == len(set(selection.pack_ids))
+
+
+def test_same_pack_set_renders_the_same_tool_order_regardless_of_history_order(monkeypatch):
+    """Prompt caching needs identical tool definitions AND ordering (provider rule)."""
+    monkeypatch.setattr(capabilities, "stable_tool_prefix_enabled", lambda: True)
+    forward = _select(_STICKY_QUERY, history=["documents.read", "machines.read"])
+    backward = _select(_STICKY_QUERY, history=["machines.read", "documents.read"])
+    assert forward.tool_ids == backward.tool_ids
+    catalog_order = [tool_name(entry.tool) for entry in capability_catalog()]
+    positions = [catalog_order.index(tool_id) for tool_id in forward.tool_ids]
+    assert positions == sorted(positions)
+
+
+def test_sticky_packs_are_evicted_before_anything_the_sentence_named(monkeypatch):
+    monkeypatch.setattr(capabilities, "stable_tool_prefix_enabled", lambda: True)
+    baseline = _select(_STICKY_QUERY)
+    history = [
+        "maintenance.read",
+        "machines.read",
+        "documents.read",
+        "manuals.read",
+        "evidence.read",
+        "sources.read",
+        "kanban.read",
+    ]
+    selection = _select(_STICKY_QUERY, history=history)
+    assert len(selection.tool_ids) <= MAX_INITIAL_TOOLS
+    assert all(pack_id in selection.pack_ids for pack_id in baseline.pack_ids)
+    dropped = [pack_id for pack_id in history if pack_id not in selection.pack_ids]
+    # At most six ride along, and whatever fell to the budget was sticky only.
+    assert len([p for p in selection.pack_ids if p not in baseline.pack_ids]) <= 6
+    assert all(pack_id not in baseline.pack_ids for pack_id in dropped)

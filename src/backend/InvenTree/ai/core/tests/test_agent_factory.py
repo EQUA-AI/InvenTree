@@ -212,3 +212,46 @@ def test_prompt_cache_options_ride_only_listed_deployments(monkeypatch):
     )
     with pytest.raises(ValueError):
         factory.prompt_cache_options("gpt-5.1", client_code="acme", thread_id="t1", mode="bogus")
+
+
+def test_prompt_cache_retention_rides_only_with_the_key(monkeypatch):
+    """AIMMS_PROMPT_CACHE_RETENTION is sent beside the key on listed deployments only."""
+    monkeypatch.setattr(
+        factory,
+        "get_settings",
+        lambda: SimpleNamespace(
+            aimms_prompt_cache_key_deployments="gpt-5.1", aimms_prompt_cache_retention="24h"
+        ),
+    )
+    assert factory.prompt_cache_options(
+        "gpt-5.1", client_code="acme", thread_id="t1", mode="default"
+    ) == {"prompt_cache_key": "acme:t1:default", "prompt_cache_retention": "24h"}
+    assert (
+        factory.prompt_cache_options("gpt-4.1", client_code="acme", thread_id="t1", mode="default")
+        == {}
+    )
+    monkeypatch.setattr(
+        factory,
+        "get_settings",
+        lambda: SimpleNamespace(
+            aimms_prompt_cache_key_deployments="gpt-5.1", aimms_prompt_cache_retention=""
+        ),
+    )
+    assert factory.prompt_cache_options(
+        "gpt-5.1", client_code="acme", thread_id="t1", mode="default"
+    ) == {"prompt_cache_key": "acme:t1:default"}
+
+
+def test_prompt_cache_retention_setting_accepts_only_provider_policies():
+    from ai.core.config import Settings
+
+    assert (
+        Settings(_env_file=None, AIMMS_PROMPT_CACHE_RETENTION="24h").aimms_prompt_cache_retention
+        == "24h"
+    )
+    assert (
+        Settings(_env_file=None, AIMMS_PROMPT_CACHE_RETENTION=" ").aimms_prompt_cache_retention
+        == ""
+    )
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, AIMMS_PROMPT_CACHE_RETENTION="1h")

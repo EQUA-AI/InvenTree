@@ -235,6 +235,13 @@ async def persist_terminal(
             "conversation_summary_present": bool(
                 run.extras.get("conversation_summary_present", False)
             ),
+            # M1 (GR-33): content-free capability pack ids the turn ran with;
+            # the next turn's recall statement reads them back (sticky prefix).
+            "tool_packs": [
+                pack_id
+                for pack_id in (run.extras.get("tool_packs") or ())
+                if isinstance(pack_id, str)
+            ],
             # S22: the card and its resolution ride message metadata so
             # the /threads projection can reproduce them on reload.
             **({"question": canonical["question"]} if canonical.get("question") else {}),

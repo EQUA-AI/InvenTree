@@ -389,6 +389,9 @@ def _assemble_workflow_context(
         # str(context) and never the raw transcript.
         workflow_context["routing_context"] = bundle.render_routing_fields()
         workflow_context["thread_summary"] = bundle.thread_summary_text()
+        # M1 (GR-33): server-owned pack history so the broker can keep the
+        # tool prefix stable across the thread (see FEATURE_PROMPT_CACHE_STABLE_TOOLS).
+        workflow_context["tool_pack_history"] = tuple(bundle.prior_pack_ids)
     pinned_workflow = _effective_pinned_workflow(run)
     if pinned_workflow is not None:
         # A trusted in-process caller selected the workflow itself;
@@ -504,6 +507,12 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
         }
     except Exception:  # pragma: no cover - bookkeeping must fail soft
         logger.warning("retrieval snapshot assembly failed", exc_info=False)
+    try:
+        # M1 (GR-33): the packs wf8 ran with, persisted content-free on the
+        # assistant row by finalize so the next turn's builder can replay them.
+        run.extras["tool_packs"] = capture_ledger.selected_pack_ids()
+    except Exception:  # pragma: no cover - bookkeeping must fail soft
+        run.extras["tool_packs"] = ()
     # S45: the post-hoc question replacement and the snapshot
     # reconciliation run ONLY when the token-streaming rail could
     # have produced the text (flag on, non-voice). Flag off, wf8's

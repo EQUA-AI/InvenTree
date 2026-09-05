@@ -52,6 +52,8 @@ _MAX_HARVEST_DEPTH = 6
 #: S5: internal retrieval metadata entries are tiny dicts, but bound them
 #: anyway — the ledger's contract is that nothing in it can grow unbounded.
 _MAX_RETRIEVAL_METAS = 64
+#: M1 (GR-33): capability packs are a closed vocabulary; a turn never runs more.
+_MAX_SELECTED_PACKS = 12
 
 
 @dataclass
@@ -66,6 +68,7 @@ class ToolCaptureLedger:
     #: transit the model payload. Evidence records and telemetry read them
     #: from here (A15).
     retrieval_meta: list[dict[str, Any]] = field(default_factory=list)
+    selected_packs: tuple[str, ...] = ()
 
     def record(self, tool_id: str, result: Any) -> None:
         """Record one tool result; oversized or excess results are dropped."""
@@ -111,6 +114,23 @@ class ToolCaptureLedger:
             if isinstance(candidates, list) and len(candidates) >= 2:
                 return candidates
         return []
+
+    def record_selection(self, pack_ids: Any) -> None:
+        """Record the capability packs the turn actually ran with (M1, GR-33).
+
+        Content-free server vocabulary (pack ids), persisted on the assistant
+        row so the next turn's builder can keep the tool prefix stable.
+        Unknown shapes are ignored; the last recording wins (a reselect
+        replaces the first pick).
+        """
+        if not isinstance(pack_ids, (list, tuple)):
+            return
+        cleaned = tuple(str(pack_id) for pack_id in pack_ids if isinstance(pack_id, str))
+        self.selected_packs = cleaned[:_MAX_SELECTED_PACKS]
+
+    def selected_pack_ids(self) -> tuple[str, ...]:
+        """The packs recorded for this turn (empty when none ran)."""
+        return tuple(self.selected_packs)
 
     def record_retrieval(self, tool_id: str, meta: dict[str, Any]) -> None:
         """Record one internal retrieval-envelope meta; excess is dropped."""
@@ -226,6 +246,16 @@ def bind_tool_captures() -> ToolCaptureLedger:
     ledger = ToolCaptureLedger()
     tool_capture_ledger.set(ledger)
     return ledger
+
+
+def record_selected_packs(pack_ids: Any) -> None:
+    """Record the turn's capability packs into the bound ledger; no-op unbound."""
+    try:
+        ledger = tool_capture_ledger.get()
+        if ledger is not None:
+            ledger.record_selection(pack_ids)
+    except Exception:  # pragma: no cover - observation must never fail a turn
+        logger.debug("selected pack recording skipped", exc_info=False)
 
 
 def record_tool_result(tool_id: str, result: Any) -> None:

@@ -70,3 +70,21 @@ class RecallWindowTests(TestCase):
 
         with self.assertRaises(ScopedThreadRejected):
             self.repository.recall_window('scoped_abc', limit=5)
+
+    def test_tool_packs_ride_the_same_statement(self):
+        """M1 (GR-33): an assistant row's pack ids come back with the window, still one query."""
+        self.repository.append(
+            self.thread.pk,
+            role=MessageRole.ASSISTANT,
+            content='row 7',
+            metadata={'tool_packs': ['documents.read', 'parts.read'], 'usage': {'x': 1}},
+        )
+        self.repository.append(self.thread.pk, role=MessageRole.USER, content='row 8')
+        with self.assertNumQueries(1):
+            window = self.repository.recall_window(
+                self.thread.pk, limit=12, exclude_latest=1
+            )
+        by_sequence = {row.sequence: row for row in window.rows}
+        self.assertEqual(by_sequence[7].tool_packs, ('documents.read', 'parts.read'))
+        self.assertEqual(by_sequence[6].tool_packs, ())
+        self.assertEqual(by_sequence[7].content, 'row 7')

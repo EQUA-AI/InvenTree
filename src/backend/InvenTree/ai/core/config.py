@@ -378,6 +378,19 @@ class Settings(BaseSettings):
             "FEATURE_MEMORY_RAIL_REPLAY", "AIMMS_FEATURE_MEMORY_RAIL_REPLAY"
         ),
     )
+    # M1 (GR-33 follow-up, 2026-09-05): keep the wf8 tool prefix stable across
+    # the turns of one thread. The capability broker re-selects packs per
+    # message, and a changed tool list changes the provider's cached prefix
+    # (tool definitions are part of it), so consecutive turns never hit. With
+    # this on, packs the thread already used ride along (re-authorized every
+    # turn, evicted first under the tool budget). Dark by default; each flip
+    # cites its golden + cache-probe run ids.
+    feature_prompt_cache_stable_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_PROMPT_CACHE_STABLE_TOOLS", "AIMMS_FEATURE_PROMPT_CACHE_STABLE_TOOLS"
+        ),
+    )
     # S45: real token streaming on the wf8/general fast TEXT rail. Dark by
     # default; the reasoning rail, voice turns, and replay stay single-delta
     # structurally regardless of this flag.
@@ -897,6 +910,22 @@ class Settings(BaseSettings):
     aimms_prompt_cache_key_deployments: str = Field(
         default="", alias="AIMMS_PROMPT_CACHE_KEY_DEPLOYMENTS"
     )
+    # Provider prompt-cache retention sent beside the key on the listed
+    # deployments: "" (provider default, in-memory 5-10 min), "in_memory" or
+    # "24h" (extended retention; gpt-4.1 / gpt-5.x families). Technicians
+    # pause minutes between follow-ups, so the default lifetime loses most
+    # hits; verified accepted on api-version 2024-10-21 (dev, 2026-09-05).
+    aimms_prompt_cache_retention: str = Field(default="", alias="AIMMS_PROMPT_CACHE_RETENTION")
+
+    @field_validator("aimms_prompt_cache_retention", mode="after")
+    @classmethod
+    def validate_prompt_cache_retention(cls, value: str) -> str:
+        """Only the provider's documented retention policies are sendable."""
+        cleaned = (value or "").strip()
+        if cleaned not in ("", "in_memory", "24h"):
+            raise ValueError("AIMMS_PROMPT_CACHE_RETENTION must be empty, in_memory or 24h")
+        return cleaned
+
     azure_openai_embedding_deployment: str = Field(
         # Must agree with controlled_document_embedding_dimensions below: the
         # live index stores 3072-dimension text-embedding-3-large vectors. The

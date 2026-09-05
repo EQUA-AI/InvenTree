@@ -93,7 +93,18 @@ def prompt_cache_options(
         raise ValueError(f"unknown prompt cache mode {mode!r}")
     if not thread_id or not deployment or deployment not in prompt_cache_key_deployments():
         return {}
-    return {"prompt_cache_key": f"{client_code or 'site'}:{thread_id}:{mode}"}
+    options: dict[str, Any] = {"prompt_cache_key": f"{client_code or 'site'}:{thread_id}:{mode}"}
+    retention = prompt_cache_retention()
+    if retention:
+        # Extended retention rides only where the key rides: the same
+        # deployment list gates both (both verified live on 2024-10-21).
+        options["prompt_cache_retention"] = retention
+    return options
+
+
+def prompt_cache_retention() -> str:
+    """``AIMMS_PROMPT_CACHE_RETENTION`` ("" = provider default, else in_memory/24h)."""
+    return str(getattr(get_settings(), "aimms_prompt_cache_retention", "") or "").strip()
 
 
 __all__ = [
@@ -103,4 +114,5 @@ __all__ = [
     "build_agent",
     "prompt_cache_key_deployments",
     "prompt_cache_options",
+    "prompt_cache_retention",
 ]

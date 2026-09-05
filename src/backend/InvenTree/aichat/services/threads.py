@@ -33,6 +33,13 @@ from aichat.models import (
 logger = logging.getLogger(__name__)
 
 
+def _pack_ids(value: object) -> tuple[str, ...]:
+    """Content-free pack ids from a persisted ``metadata['tool_packs']`` value."""
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(item for item in value if isinstance(item, str))
+
+
 class ThreadRepositoryError(Exception):
     """Base class for safe repository errors."""
 
@@ -1057,6 +1064,9 @@ class ThreadRepository:
                 'thread_summary',
                 'thread_watermark',
                 'thread_next',
+                # M1 (GR-33): the packs each assistant turn ran with, one JSON
+                # key of the row's metadata — same statement, no extra trip.
+                'metadata__tool_packs',
             )[exclude_latest : exclude_latest + limit]
         )
         rows.reverse()
@@ -1066,7 +1076,12 @@ class ThreadRepository:
         return RecallWindow(
             thread_id=thread_id,
             rows=tuple(
-                RecallRow(int(r['sequence']), str(r['role']), str(r['content']))
+                RecallRow(
+                    int(r['sequence']),
+                    str(r['role']),
+                    str(r['content']),
+                    tool_packs=_pack_ids(r.get('metadata__tool_packs')),
+                )
                 for r in rows
             ),
             summary=str(first['thread_summary'] or ''),

@@ -980,6 +980,12 @@ figure from an earlier turn as if you had just verified it."""
             run_input = self._with_category_hint(run_input, query, context)
             run_input = self._with_question_resolution(run_input, context)
             run_input = self._with_locale_hint(run_input, context)
+        # M1 (GR-33): the packs this run exposes ride the assistant row so the
+        # next turn can keep the same tool prefix (content-free pack ids).
+        if enforce_selection and selection is not None:
+            from ai.core.tools.capture_ledger import record_selected_packs
+
+            record_selected_packs(selection.pack_ids)
         # M1 (GR-33): one cache lineage per thread and prompt variant; dark
         # unless the deployment is listed (see prompt_cache_options).
         from ai.core.agents.factory import prompt_cache_options

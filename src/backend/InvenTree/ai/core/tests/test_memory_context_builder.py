@@ -733,3 +733,76 @@ def test_routing_classifier_receives_thread_summary(monkeypatch):
     assert seen["user_context"] == fields
     assert "IGNORE ALL RULES" not in seen["user_context"]
     assert "surge arrester" not in seen["user_context"]
+
+
+# --------------------------------------------------------------------------- #
+# M1 (GR-33): pack history rides the recall window and the workflow context   #
+# --------------------------------------------------------------------------- #
+def test_prior_pack_ids_are_first_seen_oldest_first_from_assistant_rows():
+    from ai.core.memory.context_assembler import RecallRow, prior_pack_ids
+
+    rows = [
+        RecallRow(1, "user", "q1", tool_packs=("parts.read",)),  # user rows never count
+        RecallRow(2, "assistant", "a1", tool_packs=("documents.read", "parts.read")),
+        RecallRow(3, "user", "q2"),
+        RecallRow(4, "assistant", "a2", tool_packs=("machines.read", "documents.read")),
+    ]
+    assert prior_pack_ids(rows) == ("documents.read", "parts.read", "machines.read")
+    assert prior_pack_ids([]) == ()
+
+
+def test_legacy_repository_hop_reads_tool_packs_from_message_metadata():
+    class _MetaRepository(_Repository):
+        def recent_messages(self, thread_id, limit, exclude_latest=0):
+            rows = super().recent_messages(thread_id, limit, exclude_latest)
+            for row in rows:
+                row.metadata = (
+                    {"tool_packs": ["manuals.read", 7, "machines.read"]}
+                    if row.role == "assistant"
+                    else {}
+                )
+            return rows
+
+    bundle = asyncio.run(_build(_MetaRepository(watermark=0, summary=""), _settings()))
+    assert bundle.prior_pack_ids == ("manuals.read", "machines.read")
+    # The pack history is metadata, never content: the replay dict is untouched.
+    assert all("manuals.read" not in entry["content"] for entry in bundle.replay_dict())
+
+
+class _PackRecordingWorkflow(_CapturingWorkflow):
+    """wf8 double that records the packs it ran with, as the real rail does."""
+
+    def __init__(self, packs):
+        super().__init__()
+        self.packs = packs
+
+    async def run_stream(self, **kwargs):
+        from ai.core.tools.capture_ledger import record_selected_packs
+
+        record_selected_packs(self.packs)
+        async for chunk in super().run_stream(**kwargs):
+            yield chunk
+
+
+def test_tool_packs_persist_content_free_and_replay_to_the_next_turn():
+    """Turn 1's packs land on its assistant row; turn 2's context carries them."""
+    from aichat.models import ChatMessage
+    from django.contrib.auth import get_user_model
+
+    user = get_user_model().objects.create_user(username=f"packs-{uuid.uuid4().hex[:8]}")
+    thread_id = f"packs_{uuid.uuid4().hex[:12]}"
+    workflow = _PackRecordingWorkflow(("documents.read", "parts.read"))
+    service = _live_service(workflow)
+
+    async def run():
+        await _live_turn(service, user, thread_id, "What documents are on file for pump 3?", "p:1")
+        await _live_turn(service, user, thread_id, "And the superseded revision?", "p:2")
+
+    asyncio.run(run())
+    assistant = list(
+        ChatMessage.objects.filter(thread_id=thread_id, role="assistant").order_by("sequence")
+    )
+    assert assistant[0].metadata["tool_packs"] == ["documents.read", "parts.read"]
+    first, second = workflow.calls
+    assert first["context"]["tool_pack_history"] == ()
+    assert second["context"]["tool_pack_history"] == ("documents.read", "parts.read")

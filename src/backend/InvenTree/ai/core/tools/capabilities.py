@@ -1294,6 +1294,35 @@ def _ai_setting(name: str, default: Any) -> Any:
         return default
 
 
+def stable_tool_prefix_enabled() -> bool:
+    """Whether a thread's earlier packs ride along to keep the tool prefix stable."""
+    return bool(_ai_setting("feature_prompt_cache_stable_tools", False))
+
+
+#: How many earlier packs a turn may inherit (the budget trim still applies).
+_MAX_STICKY_PACKS = 6
+
+
+def _sticky_packs(
+    context: Mapping[str, Any] | None, *, exclude: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Known read packs from the server-owned ``tool_pack_history``, first-seen order."""
+    history = (context or {}).get("tool_pack_history")
+    if not isinstance(history, (list, tuple)):
+        return ()
+    picked: list[str] = []
+    for pack_id in history:
+        if not isinstance(pack_id, str) or pack_id in exclude or pack_id in picked:
+            continue
+        spec = _PACK_SPECS.get(pack_id)
+        if spec is None or spec[0] is not ToolEffect.READ:
+            continue
+        picked.append(pack_id)
+        if len(picked) >= _MAX_STICKY_PACKS:
+            break
+    return tuple(picked)
+
+
 def selection_v2_enabled() -> bool:
     """Whether shape-based selection and the always-on SQL pack are active."""
     return bool(_ai_setting("feature_capability_selection_v2", True))
@@ -1974,6 +2003,16 @@ def select_capabilities(
             )
 
         pack_ids = _ordered_pack_ids(primary, scores, max_adjacent=2 if widened else 1)
+    if stable_tool_prefix_enabled():
+        # M1 (GR-33): packs the thread already ran with ride along, after the
+        # turn's own picks, so consecutive turns present the same tool
+        # definitions and the provider's cached prefix survives. They score
+        # 0 here, so the budget trim below evicts them before anything the
+        # sentence named; authorization is re-derived per turn as usual.
+        sticky = _sticky_packs(context, exclude=pack_ids)
+        if sticky:
+            pack_ids = (*pack_ids, *sticky)
+            signals.append("sticky_packs")
     if widened:
         with_hatch = _with_sql_escape_hatch(pack_ids)
         if with_hatch != pack_ids:
@@ -2036,6 +2075,7 @@ __all__ = [
     "select_capabilities",
     "selection_v2_enabled",
     "serialized_contract_bytes",
+    "stable_tool_prefix_enabled",
     "tool_contract",
     "tool_name",
 ]

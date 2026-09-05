@@ -19,6 +19,7 @@ import hashlib
 import json
 import logging
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -38,7 +39,7 @@ from ai.core.memory.vocabulary import (
 from ai.core.turn.history import _budgeted_history
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,9 @@ class RecallRow:
     sequence: int
     role: str
     content: str
+    #: M1 (GR-33): the capability packs that assistant turn ran with
+    #: (content-free ids from ``metadata['tool_packs']``; empty on user rows).
+    tool_packs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,6 +194,9 @@ class ContextBundle:
     #: Budget knobs the renderers need (mirrors the settings at build time).
     max_message_chars: int = 4000
     max_total_chars: int = 24000
+    #: M1 (GR-33): packs earlier assistant turns ran with, first-seen order
+    #: oldest-first — the broker keeps them so the tool prefix stays stable.
+    prior_pack_ids: tuple[str, ...] = ()
 
     # ------------------------------------------------------------------ #
     # Accessors                                                            #
@@ -350,6 +357,32 @@ def _default_ledger() -> tuple[LedgerEntry, ...]:
     return tuple(LedgerEntry(corpus=str(corpus)) for corpus in Corpus)
 
 
+#: Bound on the pack history a bundle carries (packs are a closed vocabulary).
+MAX_PRIOR_PACKS = 12
+
+
+def _metadata_packs(metadata: Any) -> tuple[str, ...]:
+    """Content-free pack ids from a persisted ``metadata['tool_packs']``."""
+    value = metadata.get("tool_packs") if isinstance(metadata, dict) else None
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(item for item in value if isinstance(item, str))
+
+
+def prior_pack_ids(rows: Iterable[RecallRow]) -> tuple[str, ...]:
+    """First-seen order of the packs earlier assistant turns ran with (oldest first)."""
+    seen: list[str] = []
+    for row in rows:
+        if str(row.role) != "assistant":
+            continue
+        for pack_id in row.tool_packs:
+            if pack_id not in seen:
+                seen.append(pack_id)
+                if len(seen) >= MAX_PRIOR_PACKS:
+                    return tuple(seen)
+    return tuple(seen)
+
+
 class ContextAssembler:
     """Builds the bundle; pure Python apart from the injected recall hop."""
 
@@ -377,7 +410,13 @@ class ContextAssembler:
             return RecallWindow(
                 thread_id=thread_id,
                 rows=tuple(
-                    RecallRow(int(r.sequence), str(r.role), str(r.content)) for r in window.rows
+                    RecallRow(
+                        int(r.sequence),
+                        str(r.role),
+                        str(r.content),
+                        tool_packs=tuple(getattr(r, "tool_packs", ()) or ()),
+                    )
+                    for r in window.rows
                 ),
                 summary=str(window.summary or ""),
                 watermark=int(window.watermark or 0),
@@ -386,7 +425,12 @@ class ContextAssembler:
             )
         recent = repository.recent_messages(thread_id, limit, exclude_latest=1)
         rows = tuple(
-            RecallRow(int(getattr(m, "sequence", i + 1) or 0), str(m.role), str(m.content))
+            RecallRow(
+                int(getattr(m, "sequence", i + 1) or 0),
+                str(m.role),
+                str(m.content),
+                tool_packs=_metadata_packs(getattr(m, "metadata", None)),
+            )
             for i, m in enumerate(recent)
         )
         summary, watermark, trips = "", 0, 1
@@ -545,6 +589,7 @@ class ContextAssembler:
         items = ([summary_item] if summary_item else []) + list(turn_items)
         return ContextBundle(
             thread_id=thread_id,
+            prior_pack_ids=prior_pack_ids(window.rows),
             turn_id=turn_id,
             watermark=watermark,
             next_sequence=window.next_sequence,
