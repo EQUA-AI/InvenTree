@@ -26,6 +26,32 @@ if TYPE_CHECKING:
 AI_PREFIX = "/api/ai/"
 
 
+def _unshadow_django_apps(path: list[str] | None = None) -> list[str]:
+    """Move the ``ai/core`` directory behind the project root on ``sys.path``.
+
+    The runner is launched as ``python -m evals.run_campaign`` from ``ai/core``,
+    which puts that directory FIRST on ``sys.path``; ``ai/core/voice`` then
+    shadows the Django app ``voice`` and ``django.setup()`` dies with
+    ``No module named 'voice.apps'``. The ``evals`` package still resolves
+    from the demoted entry, so nothing else moves.
+    """
+    import sys
+    from pathlib import Path
+
+    entries = sys.path if path is None else path
+    core_dir = Path(__file__).resolve().parents[1]
+    kept: list[str] = []
+    demoted: list[str] = []
+    for entry in entries:
+        try:
+            same = Path(entry or ".").resolve() == core_dir
+        except OSError:  # pragma: no cover - unreadable entry
+            same = False
+        (demoted if same else kept).append(entry)
+    entries[:] = [*kept, *demoted]
+    return entries
+
+
 def _django_user(username: str) -> Any:
     """The Django user row for ``username`` (Django set up on first call)."""
     import django
@@ -33,6 +59,7 @@ def _django_user(username: str) -> Any:
 
     if not django_settings.configured:  # pragma: no cover - worker exec path
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "InvenTree.settings")
+        _unshadow_django_apps()
         django.setup()
     from django.contrib.auth import get_user_model
 

@@ -118,3 +118,20 @@ def test_auth_from_env_is_none_without_the_signed_subject_user(monkeypatch):
     assert isinstance(auth, live_auth.SignedSubjectAuth)
     assert auth.username == "yesworkorders"
     assert auth.django_token == "t"
+
+
+def test_runner_cwd_is_demoted_behind_the_project_root_before_django_setup():
+    """``python -m evals.run_campaign`` from ai/core must not shadow the voice app."""
+    from pathlib import Path
+
+    core_dir = str(Path(live_auth.__file__).resolve().parents[1])
+    project = str(Path(core_dir).parents[1])
+    path = [core_dir, project, "/usr/lib/python3/site-packages", ""]
+
+    ordered = live_auth._unshadow_django_apps(path)
+
+    assert ordered is path
+    assert ordered[0] == project
+    assert ordered[-1] == core_dir
+    assert ordered.count(core_dir) == 1
+    assert "" in ordered  # the cwd marker survives untouched
