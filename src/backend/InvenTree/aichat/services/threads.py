@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from django.db import IntegrityError, models, transaction
-from django.db.models import QuerySet
+from django.db.models import F, QuerySet
 from django.utils import timezone
 
 from aichat.models import (
@@ -1024,6 +1024,55 @@ class ThreadRepository:
             thread=thread, revoked_at__isnull=True
         ).filter(
             models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=timezone.now())
+        )
+
+    def recall_window(self, thread_id: str, *, limit: int, exclude_latest: int = 1):
+        """M1 (GR-31 seat 1): the replay window AND the summary in ONE statement.
+
+        The boundary is applied in SQL (a subquery over ``_threads()``), the
+        thread's summary/watermark/next_sequence ride as annotations on every
+        row, so the builder never pays a second round trip for the note.
+        Newest ``limit`` rows after skipping ``exclude_latest`` (the turn's
+        own user message), returned oldest-first. A thread outside the
+        boundary or with no earlier messages yields an empty window.
+        """
+        from ai.core.memory.context_assembler import RecallRow, RecallWindow
+
+        self._reject_wrong_namespace_id(thread_id)
+        if limit <= 0:
+            return RecallWindow(thread_id=thread_id)
+        rows = list(
+            ChatMessage.objects
+            .filter(thread__in=self._threads().filter(pk=thread_id))
+            .annotate(
+                thread_summary=F('thread__summary'),
+                thread_watermark=F('thread__summary_through_sequence'),
+                thread_next=F('thread__next_sequence'),
+            )
+            .order_by('-sequence')
+            .values(
+                'sequence',
+                'role',
+                'content',
+                'thread_summary',
+                'thread_watermark',
+                'thread_next',
+            )[exclude_latest : exclude_latest + limit]
+        )
+        rows.reverse()
+        if not rows:
+            return RecallWindow(thread_id=thread_id)
+        first = rows[0]
+        return RecallWindow(
+            thread_id=thread_id,
+            rows=tuple(
+                RecallRow(int(r['sequence']), str(r['role']), str(r['content']))
+                for r in rows
+            ),
+            summary=str(first['thread_summary'] or ''),
+            watermark=int(first['thread_watermark'] or 0),
+            next_sequence=int(first['thread_next'] or 0),
+            db_round_trips=1,
         )
 
     def recent_messages(

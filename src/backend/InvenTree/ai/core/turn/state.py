@@ -65,6 +65,9 @@ class TurnRun:
     task_intent: Any = None
     query_plan: Any = None
     retrieval_snapshot: Any = None
+    # M1: the ContextBundle the builder produced for this turn (memoized by
+    # ``NormalizedTurnService.build_context_bundle``; None until built).
+    context_bundle: Any = None
     validation_result: Any = None
     safety_response: Any = None
     # Non-init bookkeeping placeholder (kept for future stages).

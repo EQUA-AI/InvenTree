@@ -352,7 +352,11 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
     # Server-derived (owner-scoped rows from our own store), so it sits
     # alongside the other trusted fields. Its *content* is still
     # user-authored text and must be read as data, never instructions.
-    history = await service._conversation_history(run.repository, run.thread.pk)
+    # M1 (GR-34): the ContextBundle is the sole producer of the key; the
+    # dict is its derived view, byte-identical for wf8's replay and the
+    # lexical carryover readers (`_carried_scores`).
+    bundle = await service.build_context_bundle(run)
+    history = bundle.replay_dict()
     if history:
         workflow_context["conversation_history"] = history
     # S3: the typed task intent rides the trusted context so wf8's

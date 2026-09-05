@@ -306,76 +306,124 @@ class NormalizedTurnService:
         except Exception:
             return None
 
+    def _context_assembler(self):
+        """The process-wide ContextAssembler (M1; created lazily)."""
+        assembler = getattr(self, "_assembler", None)
+        if assembler is None:
+            from ai.core.memory.context_assembler import ContextAssembler
+
+            assembler = ContextAssembler()
+            self._assembler = assembler
+        return assembler
+
+    async def build_context_bundle(self, run: Any):
+        """The one ContextBundle for this turn (memoized on the run; GR-34).
+
+        Built through ``_call_sync`` under the GR-31 wall clock; every rail
+        renders from the same object, so the bundle hash is identical across
+        accessors within a turn.
+        """
+        if getattr(run, "context_bundle", None) is not None:
+            return run.context_bundle
+        from ai.core.config import get_settings
+        from ai.core.memory.context_assembler import RoutingFields
+
+        try:
+            settings = get_settings()
+        except Exception:
+            settings = None
+        intent = getattr(getattr(run, "task_intent", None), "intent", None)
+        actor = getattr(run, "actor", None)
+        actor_role = (
+            "administrator"
+            if getattr(actor, "is_superuser", False)
+            else "staff"
+            if getattr(actor, "is_staff", False)
+            else "technician"
+        )
+        resolution = getattr(run, "question_resolution", None)
+        routing_fields = RoutingFields(
+            modality=str(getattr(run, "modality", "text") or "text"),
+            task_intent=str(getattr(intent, "value", "") or ""),
+            client_codes=tuple(
+                code
+                for code in (str(getattr(settings, "single_site_client_code", "") or ""),)
+                if code
+            ),
+            locale=str(getattr(getattr(run, "trusted_context", None), "locale", "en") or "en"),
+            pinned_workflow_id=str(getattr(run, "server_pinned_workflow", "") or ""),
+            question_resolution_present=resolution is not None,
+            actor_role=actor_role,
+        )
+        bundle = await self._context_assembler().build(
+            repository=run.repository,
+            thread_id=run.thread.pk,
+            turn_id=str(getattr(run.turn, "pk", "") or ""),
+            settings=settings,
+            call_sync=self._call_sync,
+            task_intent=str(getattr(intent, "value", "") or "") or None,
+            routing_fields=routing_fields,
+        )
+        run.context_bundle = bundle
+        self._record_context_builder_usage(bundle)
+        return bundle
+
+    @staticmethod
+    def _record_context_builder_usage(bundle: Any) -> None:
+        """One content-free ``context_builder`` event per turn (GR-40, §9.8)."""
+        try:
+            replay = bundle.replay_dict()
+            metrics: dict[str, Any] = {
+                "history_messages": len(replay),
+                "history_chars": sum(len(entry["content"]) for entry in replay),
+                "recent_turns": len(bundle.recent_turns),
+                "summary_present": int(bundle.summary_item is not None),
+                "dropped_turns": int(bundle.section("recent_turns").dropped),
+                "db_round_trips": int(bundle.db_round_trips),
+                "wall_ms": int(bundle.wall_ms),
+                "degraded": int(bundle.degrade_reason != "none"),
+                "section_tokens": sum(item.tokens for item in bundle.recent_turns)
+                + (bundle.summary_item.tokens if bundle.summary_item else 0),
+            }
+            estimate = estimate_tokens("\n".join(entry["content"] for entry in replay))
+            if estimate is not None:
+                metrics["history_token_estimate"] = estimate
+            # The pre-builder event name stays for dashboard continuity.
+            record_usage(
+                "history_replay",
+                {
+                    key: metrics[key]
+                    for key in ("history_messages", "history_chars", "history_token_estimate")
+                    if key in metrics
+                },
+            )
+            record_usage("context_builder", metrics)
+        except Exception:  # pragma: no cover - telemetry must never fail a turn
+            pass
+
     async def _conversation_history(self, repository: Any, thread_id: str) -> list[dict[str, str]]:
-        """Return the recent transcript preceding this turn, oldest first.
+        """Compatibility wrapper: the builder's replay dict for ``thread_id``.
 
-        Read through the scoped repository, which is the only authorized chat
-        persistence API, so owner and namespace checks still apply. `begin_turn`
-        has already persisted this turn's user message, so the newest row is the
-        question the agent is about to answer and is excluded -- replaying it
-        would duplicate the query.
-
-        Failure degrades to no history: a lookup answered without context beats a
-        turn that fails outright. The S24 char budgets bound what a window of
-        messages can cost in prompt payload (`_budgeted_history`).
+        Kept for callers and tests that address the history by repository
+        and thread; the turn pipeline uses ``build_context_bundle`` so one
+        bundle serves every rail. Output is byte-identical to the pre-M1
+        rendering (compaction note first, then the budgeted transcript).
         """
         from ai.core.config import get_settings
 
         try:
             settings = get_settings()
-            limit = int(settings.chat_history_messages)
-            max_message_chars = int(settings.chat_history_max_message_chars)
-            max_total_chars = int(settings.chat_history_max_total_chars)
         except Exception:
             return []
-        if limit <= 0:
-            return []
-        try:
-            recent = await self._call_sync(
-                repository.recent_messages, thread_id, limit, exclude_latest=1
-            )
-        except Exception:
-            logger.warning("Conversation history unavailable for this turn")
-            return []
-        # S38: with compaction live, the summary note stands in for every
-        # message at or below the watermark; replaying those messages too
-        # would double-spend the budget on content the summary already
-        # carries. Fail-soft: any error here reverts to plain history.
-        summary_note: dict[str, str] | None = None
-        try:
-            if getattr(settings, "feature_thread_compaction", False):
-                summary_note, watermark = await self._compaction_note(repository, thread_id)
-                if summary_note is not None and watermark:
-                    recent = [
-                        message for message in recent if getattr(message, "sequence", 0) > watermark
-                    ]
-        except Exception:
-            summary_note = None
-        history = [
-            {"role": str(message.role), "content": str(message.content)}
-            for message in recent
-            if str(message.content).strip()
-        ]
-        budgeted = _budgeted_history(
-            history,
-            max_message_chars=max_message_chars,
-            max_total_chars=max_total_chars,
-            reserved_chars=len(summary_note["content"]) if summary_note else 0,
+        bundle = await self._context_assembler().build(
+            repository=repository,
+            thread_id=thread_id,
+            turn_id="",
+            settings=settings,
+            call_sync=self._call_sync,
         )
-        if summary_note is not None:
-            budgeted = [summary_note, *budgeted]
-        try:
-            metrics: dict[str, Any] = {
-                "history_messages": len(budgeted),
-                "history_chars": sum(len(entry["content"]) for entry in budgeted),
-            }
-            estimate = estimate_tokens("\n".join(entry["content"] for entry in budgeted))
-            if estimate is not None:
-                metrics["history_token_estimate"] = estimate
-            record_usage("history_replay", metrics)
-        except Exception:  # pragma: no cover - telemetry must never fail a turn
-            pass
-        return budgeted
+        self._record_context_builder_usage(bundle)
+        return bundle.replay_dict()
 
     async def _compaction_note(
         self, repository: Any, thread_id: str
