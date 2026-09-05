@@ -71,6 +71,12 @@ _CANONICAL_RENAMES = {
     "cached_input_token_count": "cached_input_tokens",
     "cache_read_input_token_count": "cached_input_tokens",
     "cached_tokens": "cached_input_tokens",
+    # The pinned framework (agent-framework-core 1.0.0b251120) files the
+    # OpenAI prompt_tokens_details.cached_tokens counter under
+    # UsageDetails.additional_counts as "prompt/cached_tokens"; to_dict()
+    # flattens it into the top level. Without this row every agent rail
+    # persisted input/output/total only and the cache ratio was blind.
+    "prompt/cached_tokens": "cached_input_tokens",
     "prompt_tokens": "input_tokens",
     "completion_tokens": "output_tokens",
     "cache_write_input_token_count": "cache_write_tokens",
@@ -183,6 +189,7 @@ def maf_response_usage_metrics(response: Any) -> dict[str, int]:
                 "cache_read_input_token_count",
                 "cached_input_token_count",
                 "cached_tokens",
+                "prompt/cached_tokens",  # pinned MAF additional_counts spelling
             )
             if key in metrics
         ),

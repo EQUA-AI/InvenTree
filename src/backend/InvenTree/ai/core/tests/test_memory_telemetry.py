@@ -61,6 +61,32 @@ def test_maf_usage_extractor_surfaces_the_nested_cache_write_counter():
     assert "cache_write_input_token_count" not in plain
 
 
+def test_maf_usage_extractor_reads_the_pinned_frameworks_cached_prompt_counter():
+    """The pin files cached prompt tokens as additional_counts["prompt/cached_tokens"].
+
+    Found on the first Part C dev image: every agent-rail turn persisted
+    input/output/total only, so prompt_cache_probe mode ii printed
+    ``cached=n/a`` and the cache ratio was blind (GR-33 evidence).
+    """
+    from agent_framework import UsageDetails
+
+    details = UsageDetails(input_token_count=1500, output_token_count=20, total_token_count=1520)
+    details["prompt/cached_tokens"] = 1024
+    assert details.additional_counts == {"prompt/cached_tokens": 1024}
+    metrics = usage.maf_response_usage_metrics(SimpleNamespace(usage_details=details))
+    assert metrics["cached_input_token_count"] == 1024
+    assert metrics["uncached_input_token_count"] == 476
+    ledger = usage.TurnUsageLedger()
+    ledger.record("wf8_lookup", metrics)
+    totals = ledger.totals()
+    assert totals["cached_input_tokens"] == 1024
+    assert totals["input_tokens"] == 1500
+    # The raw spelling normalizes on its own too (a direct record of to_dict()).
+    direct = usage.TurnUsageLedger()
+    direct.record("routing_classifier", details.to_dict())
+    assert direct.totals()["cached_input_tokens"] == 1024
+
+
 class _TestTurnService(NormalizedTurnService):
     @staticmethod
     async def _call_sync(function, *args, **kwargs):
