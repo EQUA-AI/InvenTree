@@ -263,12 +263,17 @@ class Command(BaseCommand):
         scope_hash = hashlib.sha256(scope_key.encode('utf-8')).hexdigest()
         # INDEXED rows must name their index (aichat_ctrl_doc_indexed_source);
         # the CONTENT lands there via the operator's real-ingestion step.
+        # An environment that indexes no governed corpus (aimms-dev) leaves
+        # the setting EMPTY, and an empty name violates the same constraint
+        # the comment above names — the seed aborted mid-transaction on dev
+        # (2026-09-05). Fall back on empty as well as on failure.
         try:
             from ai.core.config import get_settings
 
             index_name = get_settings().azure_search_controlled_documents_index
         except Exception:
-            index_name = 'aimms-controlled-documents'
+            index_name = ''
+        index_name = index_name or 'aimms-controlled-documents'
         for doc in corpus.get('documents') or []:
             content = (_fixtures_dir() / doc['file']).read_bytes()
             sha = hashlib.sha256(content).hexdigest()

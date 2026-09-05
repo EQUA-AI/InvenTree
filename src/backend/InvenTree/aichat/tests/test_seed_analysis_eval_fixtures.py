@@ -158,3 +158,22 @@ class SeedAnalysisFixturesTests(TestCase):
         out = _StringIO()
         call_command('audit_eval_fixture_index', stdout=out)
         self.assertIn('machines', out.getvalue())
+
+    @requires_postgres
+    def test_indexed_rows_name_the_fallback_index_when_the_setting_is_empty(self):
+        """aimms-dev indexes no governed corpus: the seed must not abort on the check constraint."""
+        from ai.core.config import get_settings
+
+        from aichat.models import ControlledDocument, ControlledDocumentState
+
+        without_index = get_settings().model_copy(
+            update={'azure_search_controlled_documents_index': ''}
+        )
+        with mock.patch('ai.core.config.get_settings', return_value=without_index):
+            _seed('--break-glass')
+        indexed = ControlledDocument.objects.filter(state=ControlledDocumentState.INDEXED)
+        self.assertGreater(indexed.count(), 0)
+        self.assertEqual(
+            set(indexed.values_list('search_index_name', flat=True)),
+            {'aimms-controlled-documents'},
+        )
