@@ -141,6 +141,14 @@ def _default_index_dimensions_reader(settings: Settings) -> int | None:
         return None
 
 
+#: Smallest completion cap every deployment in the estate accepts. Reasoning
+#: deployments (gpt-5.1, gpt-5.6-luna) answer a 1-token cap with HTTP 400,
+#: which the boot probe would report as an unreachable deployment and refuse
+#: to start (measured 2026-09-05 on both environments); 16 is accepted by the
+#: reasoning and the standard tiers alike and the reply is discarded anyway.
+CHAT_PROBE_MAX_COMPLETION_TOKENS = 16
+
+
 def _probe_chat_deployment(settings: Settings, deployment: str, expected: str) -> None:
     """Resolve one chat deployment with a minimal call and assert its pin."""
     from openai import AzureOpenAI
@@ -153,7 +161,7 @@ def _probe_chat_deployment(settings: Settings, deployment: str, expected: str) -
     response = client.chat.completions.create(
         model=deployment,
         messages=[{"role": "user", "content": "ping"}],
-        max_completion_tokens=1,
+        max_completion_tokens=CHAT_PROBE_MAX_COMPLETION_TOKENS,
     )
     resolved = str(getattr(response, "model", "") or "")
     record_resolved_model(deployment, resolved)

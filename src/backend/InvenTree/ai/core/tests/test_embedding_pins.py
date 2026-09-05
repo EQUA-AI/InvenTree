@@ -176,6 +176,47 @@ def test_chat_probe_asserts_pin_per_deployment():
     ]
 
 
+def test_chat_probe_call_shape_clears_the_reasoning_floor(monkeypatch):
+    """The live prober must not send a cap a reasoning deployment rejects.
+
+    gpt-5.1 and gpt-5.6-luna answer ``max_completion_tokens=1`` with HTTP 400,
+    which ``run_boot_probes`` reports as CHAT_PROBE_UNREACHABLE and refuses the
+    boot; the probe therefore sends at least 16 and pins on the response's
+    ``model`` identity.
+    """
+    from types import SimpleNamespace
+
+    import openai
+    from ai.core.integrations.model_pins import (
+        CHAT_PROBE_MAX_COMPLETION_TOKENS,
+        _probe_chat_deployment,
+    )
+
+    calls: list[dict] = []
+
+    class _Completions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(model="gpt-5.1-2025-11-13")
+
+    class _Client:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=_Completions())
+
+    monkeypatch.setattr(openai, "AzureOpenAI", _Client)
+    settings = _settings(AZURE_OPENAI_DEPLOYMENT="gpt-5.1")
+
+    _probe_chat_deployment(settings, "gpt-5.1", "gpt-5.1-2025-11-13")
+    assert CHAT_PROBE_MAX_COMPLETION_TOKENS >= 16
+    assert calls[0]["max_completion_tokens"] == CHAT_PROBE_MAX_COMPLETION_TOKENS
+    assert calls[0]["model"] == "gpt-5.1"
+    assert resolved_model_versions()["gpt-5.1"] == "gpt-5.1-2025-11-13"
+
+    with pytest.raises(ModelPinError) as excinfo:
+        _probe_chat_deployment(settings, "gpt-5.1", "gpt-5.1-2026-01-01")
+    assert excinfo.value.code == "CHAT_MODEL_PIN_MISMATCH"
+
+
 def test_resolved_model_registry_round_trips():
     record_resolved_model("dep-a", "model-1")
     record_resolved_model("dep-a", "model-1")
