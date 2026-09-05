@@ -865,6 +865,21 @@ class Settings(BaseSettings):
     azure_openai_fast_deployment: str = Field(
         default="gpt-4o-mini", alias="AZURE_OPENAI_FAST_DEPLOYMENT"
     )
+    # D-10 / CR-2: SUMMARIZATION and EXTRACTION never resolve to the fast
+    # tier. Empty -> azure_openai_deployment (standard). An env field rather
+    # than a Django setting because the workers that run ``_summarize`` are
+    # configured by container env; its VALUE is the DataZone deployment
+    # (gpt-5.6-luna-dz), folding the former DATAZONE key into one knob.
+    azure_openai_summarization_deployment: str = Field(
+        default="", alias="AZURE_OPENAI_SUMMARIZATION_DEPLOYMENT"
+    )
+    # Sent as ``reasoning_effort`` ONLY when the override above is set: the
+    # override is a reasoning deployment by decision, while the gpt-4.x
+    # standard tiers reject the parameter. Precedent:
+    # ``azure_luna_reasoning_effort``.
+    azure_summarization_reasoning_effort: Literal["low", "medium", "high"] = Field(
+        default="low", alias="AZURE_SUMMARIZATION_REASONING_EFFORT"
+    )
     azure_openai_embedding_deployment: str = Field(
         # Must agree with controlled_document_embedding_dimensions below: the
         # live index stores 3072-dimension text-embedding-3-large vectors. The

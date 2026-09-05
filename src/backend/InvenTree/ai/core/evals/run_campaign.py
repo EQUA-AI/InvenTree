@@ -52,6 +52,16 @@ CRITICAL_MARKERS = (
 )
 
 
+#: D3 follow-up parity defaults (plan of record GR-45); the committed
+#: campaign config may tighten them, never loosen below the plan floor.
+DEFAULT_FOLLOWUP_PARITY = {
+    "min_accuracy": 0.95,
+    "max_gap_to_wf8_points": 5,
+    "min_followup_turns": 25,
+    "reference_rail": "wf8",
+}
+
+
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -92,24 +102,39 @@ def load_config(path: Path) -> dict[str, Any]:
     config.setdefault("error_rate_max", 0.01)
     config.setdefault("latency_targets", DEFAULT_LATENCY_TARGETS)
     config.setdefault("runner_argv", [sys.executable, "-m", "evals.run_battery"])
+    parity = dict(DEFAULT_FOLLOWUP_PARITY)
+    parity.update(config.get("followup_parity") or {})
+    config["followup_parity"] = parity
     return config
+
+
+def resolve_battery_path(value: str) -> Path:
+    """A bare file name resolves under the committed battery directory."""
+    if not value:
+        return BATTERY_DIR / "solar_battery.yaml"
+    path = Path(value)
+    if path.parent == Path() and not path.exists():
+        return BATTERY_DIR / path.name
+    return path
 
 
 def campaign_preflight(base_url: str, config: dict[str, Any]) -> dict[str, Any]:
     """Q45/Q47: refuse before Q01 — quota, store, latch, dossier pins."""
-    import httpx
-
     problems: list[str] = []
     quota: dict[str, Any] = {}
     try:
-        with httpx.Client(base_url=base_url, timeout=30.0) as client:
+        # D1: the SAME client the battery passes use, so the non-staff
+        # signed-subject auth (or the legacy bearer) applies here too.
+        from .run_battery import PREFLIGHT_PATH, _client
+
+        with _client(base_url) as client:
             response = client.get(
-                "/api/ai/quota/preflight",
+                PREFLIGHT_PATH,
                 params={
                     "estimated_tokens": config["estimated_tokens"],
                     "estimated_requests": config["estimated_requests"],
                 },
-                headers={"Authorization": f"Bearer {os.environ.get('AIMMS_BATTERY_BEARER', '')}"},
+                timeout=30.0,
             )
             response.raise_for_status()
             quota = response.json()
@@ -211,6 +236,48 @@ def aggregate(reports: list[dict[str, Any]], tranche: dict[str, Any] | None) -> 
     consistent = sum(1 for outcomes in outcomes_by_case.values() if len(set(outcomes)) == 1)
     total_cases = len(outcomes_by_case)
 
+    # D3: follow-up turns (turn_index >= 1) folded per rail, and every turn
+    # slot folded across runs (the D4 content-free summary reads this).
+    rails: dict[str, dict[str, Any]] = {}
+    turns: dict[str, dict[str, Any]] = {}
+    skipped: list[dict[str, Any]] = []
+    for run_index, report in enumerate(reports, start=1):
+        for row in report.get("skipped_cases") or []:
+            skipped.append({**row, "run": run_index})
+            rail = str(row.get("rail") or "")
+            if rail:
+                rails.setdefault(rail, _empty_rail())["skipped_cases"] += 1
+        for row in report.get("per_turn") or []:
+            slot = f"{row.get('case_id')}:{row.get('turn_index')}"
+            fold = turns.setdefault(slot, _empty_turn())
+            fold["runs"] += 1
+            passed = _turn_passed(row)
+            fold["passes"] += int(passed)
+            fold["deterministic_pass"] += int(bool(row.get("deterministic_pass")))
+            for layer in row.get("layer_fails") or []:
+                key = str(layer)
+                if key in fold["layer_fail_counts"]:
+                    fold["layer_fail_counts"][key] += 1
+            fold["_workflows"].append(str(row.get("workflow_used") or ""))
+            if isinstance(row.get("summary_present"), bool):
+                fold["_summary"].append(row["summary_present"])
+            rail = str(row.get("rail") or "")
+            if rail and int(row.get("turn_index") or 0) >= 1:
+                bucket = rails.setdefault(rail, _empty_rail())
+                bucket["turns"] += 1
+                bucket["passed"] += int(passed)
+                bucket["forbidden_hits"] += len(row.get("forbidden_hits") or [])
+                if isinstance(row.get("summary_present"), bool):
+                    bucket["_summary"].append(row["summary_present"])
+    for fold in turns.values():
+        workflows = [w for w in fold.pop("_workflows") if w]
+        fold["workflow_used_modal"] = max(set(workflows), key=workflows.count) if workflows else ""
+        summary = fold.pop("_summary")
+        fold["summary_present_rate"] = round(sum(summary) / len(summary), 3) if summary else None
+    for bucket in rails.values():
+        summary = bucket.pop("_summary")
+        bucket["summary_present_rate"] = round(sum(summary) / len(summary), 3) if summary else None
+
     stability: dict[str, Any] = {}
     if tranche:
         for case_id, bucket in (tranche.get("per_case") or {}).items():
@@ -245,6 +312,134 @@ def aggregate(reports: list[dict[str, Any]], tranche: dict[str, Any] | None) -> 
         "failures": failures,
         "critical_failures": critical,
         "repeat_stability": stability,
+        "rails": rails,
+        "turns": turns,
+        "skipped_cases": skipped,
+    }
+
+
+def _empty_rail() -> dict[str, Any]:
+    return {"turns": 0, "passed": 0, "forbidden_hits": 0, "skipped_cases": 0, "_summary": []}
+
+
+def _empty_turn() -> dict[str, Any]:
+    return {
+        "runs": 0,
+        "passes": 0,
+        "deterministic_pass": 0,
+        "layer_fail_counts": {str(layer): 0 for layer in range(1, 7)},
+        "_workflows": [],
+        "_summary": [],
+    }
+
+
+def _turn_passed(row: dict[str, Any]) -> bool:
+    """Layers 1-6 without a fail (judge layers 7-8 never enter — GR-42)."""
+    fails = [int(layer) for layer in row.get("layer_fails") or [] if str(layer).isdigit()]
+    if any(layer <= 6 for layer in fails):
+        return False
+    return row.get("deterministic_pass") is not False
+
+
+def followup_parity(aggregated: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """D3 (GR-45): every rail's follow-up accuracy vs the wf8 reference.
+
+    Per rail: ``skip`` (no follow-up turns AND >= 1 skipped case — the
+    adapter/flag is absent), ``insufficient`` (fewer follow-ups than the
+    floor; NEVER a pass), else scored. A rail FAILS on any forbidden hit
+    (critical), accuracy below the floor, or a gap to wf8 above the cap.
+    The reference rail must itself be scored or the gate fails.
+    """
+    parity = config.get("followup_parity") or DEFAULT_FOLLOWUP_PARITY
+    reference = str(parity.get("reference_rail") or "wf8")
+    floor = float(parity.get("min_accuracy", 0.95))
+    max_gap = float(parity.get("max_gap_to_wf8_points", 5))
+    min_turns = int(parity.get("min_followup_turns", 25))
+    rails = aggregated.get("rails") or {}
+    verdicts: dict[str, dict[str, Any]] = {}
+
+    def _score(name: str, bucket: dict[str, Any]) -> dict[str, Any]:
+        turns = int(bucket.get("turns") or 0)
+        verdict: dict[str, Any] = {
+            "turns": turns,
+            "passed": int(bucket.get("passed") or 0),
+            "forbidden_hits": int(bucket.get("forbidden_hits") or 0),
+            "skipped_cases": int(bucket.get("skipped_cases") or 0),
+            "accuracy": None,
+            "status": "pass",
+            "reasons": [],
+        }
+        if turns == 0 and verdict["skipped_cases"] >= 1:
+            verdict["status"] = "skip"
+            verdict["reasons"].append("adapter absent: every case skipped by requires_flags")
+            return verdict
+        if turns < min_turns:
+            verdict["status"] = "insufficient"
+            verdict["reasons"].append(f"{turns} follow-up turns < floor {min_turns}")
+            return verdict
+        verdict["accuracy"] = round(verdict["passed"] / turns, 4)
+        if verdict["forbidden_hits"]:
+            verdict["status"] = "fail"
+            verdict["reasons"].append(
+                f"{verdict['forbidden_hits']} forbidden-entity hit(s) on follow-ups (critical)"
+            )
+        if verdict["accuracy"] < floor:
+            verdict["status"] = "fail"
+            verdict["reasons"].append(f"accuracy {verdict['accuracy']} < {floor}")
+        return verdict
+
+    for name, bucket in sorted(rails.items()):
+        verdicts[name] = _score(name, bucket)
+    reference_verdict = verdicts.get(reference)
+    reference_scored = reference_verdict is not None and reference_verdict["accuracy"] is not None
+    for name, verdict in verdicts.items():
+        if name == reference or verdict["accuracy"] is None:
+            continue
+        if not reference_scored:
+            verdict["status"] = "fail"
+            verdict["reasons"].append(f"reference rail {reference!r} not scored")
+            continue
+        # Rounded so an exact 5.0-point gap is not tipped over by float noise.
+        gap = round((reference_verdict["accuracy"] - verdict["accuracy"]) * 100.0, 4)
+        if gap > max_gap:
+            verdict["status"] = "fail"
+            verdict["reasons"].append(f"{gap:.1f} points below {reference} (> {max_gap:g})")
+
+    statuses = {verdict["status"] for verdict in verdicts.values()}
+    if not verdicts or not reference_scored:
+        status = "fail"
+        evidence = f"reference rail {reference!r} was not scored"
+    elif "fail" in statuses:
+        status = "fail"
+        evidence = "; ".join(
+            f"{name}: {', '.join(v['reasons'])}"
+            for name, v in verdicts.items()
+            if v["status"] == "fail"
+        )
+    elif "insufficient" in statuses:
+        status = "insufficient"
+        evidence = "; ".join(
+            f"{name}: {', '.join(v['reasons'])}"
+            for name, v in verdicts.items()
+            if v["status"] == "insufficient"
+        )
+    else:
+        status = "pass"
+        evidence = ", ".join(
+            f"{name}={v['accuracy']}" if v["accuracy"] is not None else f"{name}=skip"
+            for name, v in verdicts.items()
+        )
+    return {
+        "id": "followup_parity",
+        "status": status,
+        "evidence": evidence,
+        "rails": verdicts,
+        "reference_rail": reference,
+        "thresholds": {
+            "min_accuracy": floor,
+            "max_gap_to_wf8_points": max_gap,
+            "min_followup_turns": min_turns,
+        },
     }
 
 
@@ -364,6 +559,8 @@ def evaluate_gates(
                 f"never removed from the denominator"
             ),
         },
+        # D3 (M1 gate): follow-up parity across rails vs the wf8 reference.
+        followup_parity(aggregated, config),
     ]
     return gates
 
@@ -405,7 +602,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"CAMPAIGN PREFLIGHT REFUSED: {problem}", file=sys.stderr)
         return 2
 
-    battery_path = Path(config.get("battery_path") or BATTERY_DIR / "solar_battery.yaml")
+    battery_path = resolve_battery_path(str(config.get("battery_path") or ""))
     load_battery(battery_path)  # structural validation before spending anything
 
     base_seed = int(config.get("base_seed") or 1)
@@ -450,6 +647,12 @@ def main(argv: list[str] | None = None) -> int:
         "campaign_id": campaign_id,
         "preregistration_sha256": _sha(config_path),
         "evaluation_version": preflight.get("evaluation_version", ""),
+        # D1/D4: what ran where — taken from the run reports (content-free).
+        "battery_sha256": _sha(battery_path),
+        "env_label": next((r.get("env_label") for r in reports if r.get("env_label")), ""),
+        "code_revision": next(
+            (r.get("code_revision") for r in reports if r.get("code_revision")), ""
+        ),
         "runs": len(reports),
         "seeds": [base_seed + index for index in range(1, len(reports) + 1)],
         "latency_s": latency,

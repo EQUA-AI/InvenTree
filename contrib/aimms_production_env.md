@@ -9,6 +9,16 @@ deployment-specific; nothing here is a secret.
 
 Code defaults stay conservative — this manifest IS the posture.
 
+**Deploy path (CR-1, 2026-09):** `LocalDocs/scripts/aimms_deploy.sh` is the
+only sanctioned deploy path for the four apps. It takes the image digest
+from `az acr repository show --image`, updates web then worker, runs the
+previous revision's `manage.py check` smoke against the migrated database
+(CR-9), sets traffic to the new revision (the apps are explicit-traffic
+multi-revision: without `ingress traffic set` a new revision serves
+nothing), drains, and reclaims 0%-weight revisions so no app carries more
+than three active revisions. `LocalDocs/AZURE_ACR_CONTAINERAPP_COMMANDS.md`
+stays as the reference for the individual commands, never as a procedure.
+
 ## Phase A — product reads + quality enforcement
 
 ```
@@ -91,8 +101,21 @@ FEATURE_TOOL_EVENTS=1
 FEATURE_QUESTION_CARDS=1
 FEATURE_AGUI_ENDPOINT=1
 FEATURE_THREAD_COMPACTION_SHADOW=1
-# FEATURE_THREAD_COMPACTION=1        # after ~1 week of shadow review
+FEATURE_THREAD_COMPACTION=1   # live on aimms-experimental since 2026-08-13 (revision --0000040); accepted in writing 2026-09-02 (D-02) on gpt-4.1 pending the CR-2 routing override, due with the Pre-work core
 ```
+
+Per-app compaction posture (verified 2026-09-01; the earlier "shadow
+only" wording of this manifest was stale):
+
+| App | `FEATURE_THREAD_COMPACTION` | `..._SHADOW` | `FEATURE_MODEL_TIERING_ENFORCE` | Role |
+|---|---|---|---|---|
+| aimms-experimental (web + AI mount) | true | true | true (proven no-op under the identity table, `test_model_policy`) | enqueues at backlog >= 16 and consumes the summary note |
+| inventree-worker | unset | unset | unset | runs `compact_thread_summary` -> `_summarize`; the worker env decides the deployment |
+| aimms-dev / aimms-dev-worker | unset | unset | unset | parity catch-up in M2 |
+
+D-02 failure action (i): if the routing override below is not live on both
+workers by 2026-09-19, `FEATURE_THREAD_COMPACTION` is paused on
+aimms-experimental.
 
 Streaming applies to the legacy text rail only; validated evidence
 answers stay buffered structurally.
@@ -146,14 +169,57 @@ AI_RATE_USER_PER_HOUR=1200
 AI_RATE_GLOBAL_PER_MINUTE=300
 ```
 
+## Worker apps (compaction and memory extraction run here)
+
+`compact_thread_summary` (and, from M3a, memory extraction) execute on
+inventree-worker / aimms-dev-worker via `offload_task(force_async=True)`
+(`aichat/services/threads.py`), so the WORKER env — not the web app's —
+governs `select_deployment` for these calls. The tiering flags are
+irrelevant to this path: both policy branches resolve SUMMARIZATION and
+EXTRACTION to the override or the standard tier, never the fast tier
+(D-10; `ai/core/model_policy.py`).
+
+```
+AZURE_OPENAI_SUMMARIZATION_DEPLOYMENT=gpt-5.6-luna-dz   # interim gpt-5.6-luna until the DataZoneStandard deployment exists; empty = standard tier
+AZURE_SUMMARIZATION_REASONING_EFFORT=low                 # sent only when the override is set
+# Remainder window (CR-4/CR-6), not yet live:
+# Q_CLUSTER_NAME=ai-memory
+# MEM0_TELEMETRY=false
+# MEM0_DIR=/tmp/mem0
+# AIMMS_EGRESS_MODE=enforce
+```
+
+Pre-edit gate for the override: `manage.py compaction_model_probe
+--deployment <override>` on the worker prints `schema_ok=true` and
+`seed_leaked=false` (strict `json_schema` and `reasoning_effort` accepted
+on the reasoning deployment; the compaction payload passes
+`ai/core/redaction.py` before the call). Restart the managed-identity
+callers after the env edit.
+
+## Phase F — semantic memory (posture B, dark until M3a)
+
+Declared here so the flag names are fixed before the code exists; the
+Settings fields and their `aimms_flags.py` registry rows land with M3a
+(a registry row without its field fails `test_flag_registry`). Dev first,
+then experimental; every flip cites its gate-suite run id (GR-47).
+
+```
+# FEATURE_SEMANTIC_MEMORY_EXTRACT_SHADOW=0
+# FEATURE_SEMANTIC_MEMORY_RECALL=0
+# FEATURE_SEMANTIC_MEMORY_MEM0=0
+```
+
 ## Explicitly dark (owner decisions)
 
 - `FEATURE_AI_RETENTION_JOBS` — data is kept (2026-08-29); only the
   ungated 24h upload sweep + deletion outbox run regardless.
 - `FEATURE_AI_QUOTA_PROFILES` — skipped (the v1 budget + admission
   envelope suffices).
-- NLI groundedness, model-tiering enforce, wf8 fast tier, history
-  enrichment, guided procedures — out of scope, dark.
+- NLI groundedness, wf8 fast tier, history enrichment, guided
+  procedures — out of scope, dark.
+- `FEATURE_MODEL_TIERING_ENFORCE` is set on aimms-experimental (P5) and
+  is a proven no-op under the identity table; it does not govern the
+  worker path (see Worker apps).
 - Voice family — left exactly as currently deployed (owner to decide
   separately for the pilot customer).
 

@@ -12,6 +12,7 @@ from ai.core.evals.scenarios import (
     ScenarioTurn,
 )
 from ai.core.evals.scoring import (
+    RequiredKey,
     Resolution,
     TurnArtifacts,
     resolution_from_manifest,
@@ -396,3 +397,133 @@ def test_m1_allows_typed_429s_via_service_statuses():
     artifacts = TurnArtifacts(http_status=429, message_text="")
     score = _score(turn=turn, case=case, artifacts=artifacts)
     assert score.layer(1).status == "pass"
+
+
+# --------------------------------------------------------------------------- #
+# D1 (M1 gate): expected_workflow, required keys, reported summary presence    #
+# --------------------------------------------------------------------------- #
+def test_expected_workflow_mismatch_fails_layer_two_with_the_routed_to_marker():
+    turn = _turn(expected_intent="", expected_workflow="wf2")
+    artifacts = _good_artifacts(response_body={"workflow_used": "wf8"})
+    score = _score(turn=turn, case=_case(turn, required_assertions=()), artifacts=artifacts)
+    assert score.layer(2).status == "fail"
+    assert "routed to 'wf8'" in score.layer(2).detail
+    assert "expected 'wf2'" in score.layer(2).detail
+
+
+def test_expected_workflow_falls_back_to_the_persisted_workflow_id():
+    turn = _turn(expected_intent="", expected_workflow="wf2")
+    artifacts = _good_artifacts(
+        response_body={},
+        route={"task_intent": "", "conversation_summary_present": False, "workflow_id": "wf2"},
+    )
+    score = _score(turn=turn, case=_case(turn, required_assertions=()), artifacts=artifacts)
+    assert score.layer(2).status == "pass"
+
+
+def test_required_key_missing_fails_coverage():
+    turn = _turn(required_entity_fixture_keys=("solar_a",))
+    resolution = Resolution(
+        scope_ids=frozenset({"machine:11"}),
+        required={"solar_a": RequiredKey(ids=("machine:11",), markers=("EVAL-SI3000-A",))},
+    )
+    artifacts = _good_artifacts(
+        message_text="Nothing to report.", entities=None, evidence_analysis=None
+    )
+    score = _score(
+        turn=turn,
+        case=_case(turn, required_assertions=()),
+        artifacts=artifacts,
+        resolution=resolution,
+    )
+    assert score.layer(4).status == "fail"
+    assert "required entity missing: solar_a" in score.layer(4).detail
+
+
+def test_required_key_surfacing_as_a_chip_or_marker_passes():
+    turn = _turn(required_entity_fixture_keys=("solar_a",))
+    resolution = Resolution(
+        scope_ids=frozenset({"machine:11"}),
+        required={"solar_a": RequiredKey(ids=("machine:11",), markers=("EVAL-SI3000-A",))},
+    )
+    # Chip id hit (the default good artifacts carry machine:11).
+    assert _score(turn=turn, resolution=resolution).layer(4).status == "pass"
+    # Marker hit in prose, no chips.
+    artifacts = _good_artifacts(
+        message_text="Serial EVAL-SI3000-A is in scope.", entities=None, evidence_analysis=None
+    )
+    score = _score(
+        turn=turn,
+        case=_case(turn, required_assertions=()),
+        artifacts=artifacts,
+        resolution=resolution,
+    )
+    assert score.layer(4).status == "pass"
+
+
+def test_required_document_revision_must_be_cited_not_the_superseded_one():
+    turn = _turn(required_entity_fixture_keys=("manual_si3000_revB",))
+    resolution = Resolution(
+        scope_ids=frozenset({"machine:11"}),
+        required={"manual_si3000_revB": RequiredKey(ids=("SI3000-SM",), revision="B")},
+    )
+    evidence = dict(_good_artifacts().evidence_analysis)
+    evidence["citations"] = [
+        {"ordinal": 1, "source_id": "SI3000-SM", "source_revision": "A", "available": True}
+    ]
+    artifacts = _good_artifacts(evidence_analysis=evidence, message_text="Per the manual. [1]")
+    score = _score(turn=turn, artifacts=artifacts, resolution=resolution)
+    assert score.layer(4).status == "fail"
+    assert "revision B not cited" in score.layer(4).detail
+    evidence["citations"] = [
+        {"ordinal": 1, "source_id": "SI3000-SM", "source_revision": "B", "available": True}
+    ]
+    score = _score(
+        turn=turn, artifacts=_good_artifacts(evidence_analysis=evidence), resolution=resolution
+    )
+    assert score.layer(4).status == "pass"
+
+
+def test_summary_presence_is_reported_never_failing():
+    turn = _turn(expect_conversation_summary_present=True)
+    # Mismatch: observed False, expected True -> still a pass, reported.
+    artifacts = _good_artifacts(
+        route={"task_intent": "record_retrieval", "conversation_summary_present": False}
+    )
+    score = _score(turn=turn, artifacts=artifacts)
+    assert score.layer(2).status == "pass"
+    assert "summary_present=false expected=true (mismatch, reported)" in score.layer(2).detail
+    # Match.
+    artifacts = _good_artifacts(
+        route={"task_intent": "record_retrieval", "conversation_summary_present": True}
+    )
+    assert "(match, reported)" in _score(turn=turn, artifacts=artifacts).layer(2).detail
+    # Not exposed (old image): unknown, and the intent skip stays honest.
+    score = _score(turn=turn, artifacts=_good_artifacts(route=None))
+    assert score.layer(2).status == "skip"
+    assert "summary_present=unknown" in score.layer(2).detail
+
+
+def test_resolution_from_manifest_builds_required_keys():
+    manifest = {
+        "solar_a": {
+            "kind": "machine",
+            "name": "Analysis Eval SI-3000 Inverter A",
+            "serial": "EVAL-SI3000-A",
+        },
+        "manual_si3000_revB": {"kind": "document", "document_id": "SI3000-SM", "revision": "B"},
+        "mem_reading_corrected": {"kind": "marker", "markers": ["47.1"]},
+    }
+    turn = _turn(
+        required_entity_fixture_keys=("solar_a", "manual_si3000_revB", "mem_reading_corrected")
+    )
+    resolution = resolution_from_manifest(
+        manifest, _case(turn), turn, resolved_ids={"solar_a": ("machine:11", "11")}
+    )
+    solar = resolution.required["solar_a"]
+    assert solar.ids == ("machine:11",)  # the bare pk never counts
+    assert solar.markers == ("Analysis Eval SI-3000 Inverter A", "EVAL-SI3000-A")
+    assert resolution.required["manual_si3000_revB"] == RequiredKey(
+        ids=("SI3000-SM",), revision="B"
+    )
+    assert resolution.required["mem_reading_corrected"] == RequiredKey(markers=("47.1",))

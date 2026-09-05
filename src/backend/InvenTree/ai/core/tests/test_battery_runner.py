@@ -276,3 +276,210 @@ def test_journal_dir_inside_the_repo_is_refused(tmp_path, server, capsys):
 def test_missing_base_url_exits_2(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("AIMMS_BATTERY_BASE_URL", raising=False)
     assert run_battery.main(["--journal-dir", str(tmp_path)]) == 2
+
+
+# --------------------------------------------------------------------------- #
+# D1 (M1 gate): route facts, flag skips, report fields                        #
+# --------------------------------------------------------------------------- #
+MEMORY_BATTERY = """
+schema_version: 1
+dataset: fixture
+fixture_set_versions: [aimms-analysis-fixtures-v1]
+cases:
+  - id: M-MEM-01
+    rail: wf8
+    scope: {machine_fixture_keys: [solar_a]}
+    required_assertions: [scope_persisted]
+    turns:
+      - question: Which machine is in scope?
+        expected_workflow: analysis_executor
+        required_entity_fixture_keys: [solar_a]
+      - question: And its documents?
+        expected_workflow: analysis_executor
+        expect_conversation_summary_present: true
+        forbidden_entity_fixture_keys: [hx200]
+  - id: M-MEM-05
+    rail: reasoning
+    requires_flags: [FEATURE_VOICE_LIVE_DIAGNOSIS]
+    turns:
+      - question: Diagnose it.
+      - question: And then?
+"""
+
+
+def _run_memory(tmp_path: Path, server, *extra: str, dossier: dict | None = None):
+    battery_path = tmp_path / "memory_battery.yaml"
+    battery_path.write_text(MEMORY_BATTERY, encoding="utf-8")
+    journal_dir = tmp_path / "journals"
+    out = tmp_path / "report.json"
+    argv = [
+        "--cases",
+        str(battery_path),
+        "--journal-dir",
+        str(journal_dir),
+        "--json-out",
+        str(out),
+        "--tier",
+        "1",
+        "--seed",
+        "3",
+        *extra,
+    ]
+    if dossier is not None:
+        dossier_path = tmp_path / "dossier.json"
+        dossier_path.write_text(json.dumps(dossier), encoding="utf-8")
+        argv += ["--dossier", str(dossier_path)]
+    else:
+        argv.append("--allow-unverified-flags")
+    code = run_battery.main(argv)
+    report = json.loads(out.read_text()) if out.exists() else {}
+    records = []
+    for journal in sorted(journal_dir.glob("*.jsonl")):
+        records.extend(json.loads(line) for line in journal.read_text().splitlines())
+    return code, report, records, battery_path
+
+
+def test_route_facts_from_a_d0_image_reach_layer_two(tmp_path, server):
+    """A D0 image projects the facts; layer 2 asserts the intent and reports the slot."""
+    server.assistant_message = dict(
+        server.assistant_message,
+        task_intent="record_retrieval",
+        conversation_summary_present=False,
+        workflow_id="analysis_executor",
+    )
+    code, report, records, _ = _run_memory(tmp_path, server)
+    assert code == 0, report
+    scores = [r for r in records if r["kind"] == "turn_score" and r["case_id"] == "M-MEM-01"]
+    assert [r["summary_present"] for r in scores] == [False, False]
+    assert scores[1]["expected_summary_present"] is True
+    assert scores[1]["rail"] == "wf8"
+    assert scores[1]["workflow_used"] == "analysis_executor"
+    layer_two = next(layer for layer in scores[1]["layers"] if layer["layer"] == 2)
+    assert layer_two["status"] == "pass"
+    assert "mismatch, reported" in layer_two["detail"]
+    # The report carries the per-turn rows the campaign folds.
+    rows = [row for row in report["per_turn"] if row["case_id"] == "M-MEM-01"]
+    assert [row["turn_index"] for row in rows] == [0, 1]
+    assert rows[1]["deterministic_pass"] is True
+    assert rows[1]["forbidden_hits"] == []
+
+
+def test_old_images_without_route_facts_keep_layer_two_skipping(tmp_path, server):
+    code, _report, records, _ = _run_memory(tmp_path, server)
+    assert code == 0
+    scores = [r for r in records if r["kind"] == "turn_score" and r["case_id"] == "M-MEM-01"]
+    assert scores[0]["summary_present"] is None
+    layer_two = next(layer for layer in scores[0]["layers"] if layer["layer"] == 2)
+    # expected_workflow is asserted from workflow_used; the intent skip is honest.
+    assert layer_two["status"] == "pass"
+
+
+def test_required_key_miss_on_a_follow_up_fails_coverage(tmp_path, server):
+    server.assistant_message = dict(
+        server.assistant_message,
+        content="Nothing on file.",
+        entities=None,
+        evidence_analysis=None,
+    )
+    code, report, _records, _ = _run_memory(tmp_path, server)
+    assert code == 1
+    failing = [f for f in report["failures"] if f["case_id"] == "M-MEM-01"]
+    assert any(
+        "required entity missing: solar_a" in layer["detail"] for layer in failing[0]["layers"]
+    )
+
+
+def test_a_dark_required_flag_skips_the_case_with_a_journaled_reason(tmp_path, server):
+    dossier = {
+        "flags": [
+            {"env_name": "FEATURE_VOICE_LIVE_DIAGNOSIS", "default": False, "effective": False},
+        ]
+    }
+    code, report, records, _ = _run_memory(tmp_path, server, dossier=dossier)
+    assert code == 0, report
+    assert "M-MEM-05" not in report["per_case"]
+    assert report["skipped_cases"] == [
+        {
+            "case_id": "M-MEM-05",
+            "rail": "reasoning",
+            "pass": 1,
+            "reason": "requires FEATURE_VOICE_LIVE_DIAGNOSIS=on; captured False",
+        }
+    ]
+    skip = next(r for r in records if r["kind"] == "case_skip")
+    assert skip["case_id"] == "M-MEM-05" and skip["rail"] == "reasoning"
+    # No request was spent on the skipped case.
+    assert not [r for r in records if r["kind"] == "turn_attempt" and r["case_id"] == "M-MEM-05"]
+
+
+def test_an_uncaptured_flag_never_skips(tmp_path, server):
+    dossier = {"flags": [{"env_name": "FEATURE_OTHER", "default": True, "effective": True}]}
+    code, report, _records, _ = _run_memory(tmp_path, server, dossier=dossier)
+    assert code in (0, 1)
+    assert "M-MEM-05" in report["per_case"]
+    assert report["skipped_cases"] == []
+
+
+def test_config_effective_shape_is_read_too():
+    flags = {"settings": {"feature_voice_live_diagnosis": False}}
+    assert run_battery._flag_value(flags, "FEATURE_VOICE_LIVE_DIAGNOSIS") is False
+    assert run_battery._flag_value({}, "FEATURE_VOICE_LIVE_DIAGNOSIS") is None
+    rows = {"flags": [{"env_name": "FEATURE_X", "default": True, "effective": None}]}
+    assert run_battery._flag_value(rows, "FEATURE_X") is True
+
+
+def test_report_and_journal_header_carry_the_battery_identity(tmp_path, server, monkeypatch):
+    monkeypatch.setenv("AIMMS_BATTERY_ENV_LABEL", "dev")
+    monkeypatch.setenv("AIMMS_BATTERY_REVISION", "aimms-dev--abc123")
+    code, report, records, battery_path = _run_memory(tmp_path, server)
+    assert code in (0, 1)
+    import hashlib
+
+    expected = hashlib.sha256(battery_path.read_bytes()).hexdigest()
+    assert report["battery_sha256"] == expected
+    assert report["battery"] == "memory_battery.yaml"
+    assert report["env_label"] == "dev"
+    assert report["code_revision"] == "aimms-dev--abc123"
+    header = records[0]
+    assert header["kind"] == "preflight"
+    assert header["battery_sha256"] == expected
+    assert header["env_label"] == "dev"
+    assert header["revision"] == "aimms-dev--abc123"
+    assert "flags" not in header and "resolved" not in header
+
+
+def test_signed_subject_auth_rides_the_runner_client(monkeypatch):
+    """With the env set, every /api/ai/ request carries a freshly minted subject."""
+    from ai.core.evals import live_auth
+
+    monkeypatch.setenv("AIMMS_BATTERY_SIGNED_SUBJECT_USER", "yesworkorders")
+    monkeypatch.setenv("AIMMS_BATTERY_DJANGO_TOKEN", "drf")
+    minted = []
+
+    def fake_auth():
+        return live_auth.SignedSubjectAuth(
+            "yesworkorders",
+            django_token="drf",
+            signer=lambda user: (minted.append(user.pk), f"sub-{len(minted)}")[1],
+            user_loader=lambda _n: type(
+                "U", (), {"pk": 9, "is_staff": False, "is_superuser": False}
+            )(),
+        )
+
+    monkeypatch.setattr(run_battery, "auth_from_env", fake_auth)
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.path, request.headers.get("Authorization")))
+        return httpx.Response(200, json={})
+
+    client = run_battery._client("http://battery.test")
+    client._transport = httpx.MockTransport(handler)
+    client.get("/api/ai/quota/preflight")
+    client.get("/api/ai/threads/t1")
+    client.get("/api/assets/machine/")
+    assert seen == [
+        ("/api/ai/quota/preflight", "Bearer sub-1"),
+        ("/api/ai/threads/t1", "Bearer sub-2"),
+        ("/api/assets/machine/", "Token drf"),
+    ]

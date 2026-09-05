@@ -505,7 +505,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17
+        image: pgvector/pgvector:pg15
         env:
           POSTGRES_USER: inventree
           POSTGRES_PASSWORD: password
@@ -611,7 +611,7 @@ jobs:
         uses: ./.github/actions/setup
         with:
           apt-dependency: gettext poppler-utils
-          pip-dependency: pytest-asyncio
+          pip-dependency: pytest-asyncio psycopg
           dev-install: true
           update: true
           static: true
@@ -627,6 +627,126 @@ jobs:
         run: |
           cd src/backend/InvenTree
           DJANGO_SETTINGS_MODULE=ai.core.tests.settings python -m pytest -q ai/core/tests
+
+  fork-postgres:
+    # M1 prerequisite B2: the fork's Django-runner suites against the SAME
+    # PostgreSQL the estate runs (pgvector/pgvector:pg15 until the CR-3 cutover
+    # bumps it to pg17). Tests that SQLite cannot reproduce carry
+    # @requires_postgres (src/backend/InvenTree/aimms_testing.py) and skip on
+    # the SQLite lane; here they gate. BLOCKING for aichat; the remaining fork
+    # apps stay continue-on-error until their PostgreSQL baselines are clean.
+    name: Tests - Fork apps [PostgreSQL]
+    runs-on: ubuntu-24.04
+    needs: ["code-style", "paths-filter"]
+    if: needs.paths-filter.outputs.server == 'true' || needs.paths-filter.outputs.force == 'true'
+
+    env:
+      INVENTREE_DB_ENGINE: django.db.backends.postgresql
+      INVENTREE_DB_NAME: inventree
+      INVENTREE_DB_USER: inventree
+      INVENTREE_DB_PASSWORD: password
+      INVENTREE_DB_HOST: "127.0.0.1"
+      INVENTREE_DB_PORT: 5432
+      INVENTREE_DEBUG: true
+      INVENTREE_LOG_LEVEL: WARNING
+      INVENTREE_CONSOLE_LOG: false
+      INVENTREE_CACHE_HOST: localhost
+      INVENTREE_PLUGINS_ENABLED: false
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: inventree
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:8
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Environment Setup
+        uses: ./.github/actions/setup
+        with:
+          apt-dependency: gettext poppler-utils libpq-dev postgresql-client
+          pip-dependency: pytest-asyncio psycopg django-redis>=5.0.0
+          dev-install: true
+          update: true
+      - name: Fresh test database
+        # A kept test database decays (TransactionTestCase flushes wipe
+        # data-migration seeds); the runner is disposable, so start clean.
+        env:
+          PGPASSWORD: password
+        run: psql -h 127.0.0.1 -U inventree -d postgres -c 'DROP DATABASE IF EXISTS test_inventree WITH (FORCE)'
+      - name: aichat (blocking)
+        run: invoke dev.test --runtest='aichat' --keepdb --disable-pty
+      - name: Remaining fork apps (non-blocking until baselines are clean)
+        continue-on-error: true
+        run: invoke dev.test --runtest='repair tasks voice approvals assets machine_health' --keepdb --disable-pty
+
+  no-egress:
+    # M1 prerequisite B6 (GR-26): the AI surface must boot and test with every
+    # non-loopback socket denied. Proves the baked tokenizer cache (no runtime
+    # fetch), the no-mem0 posture of the image, and that nothing on the import
+    # path phones home. The optional mem0 candidate overlay installs here (and
+    # only here) when ai/requirements-mem0-candidate.txt exists, so the
+    # ``requires_mem0`` tests run against it under the same denial.
+    name: Tests - No egress [SQLite]
+    runs-on: ubuntu-24.04
+    needs: ["code-style", "paths-filter"]
+    if: needs.paths-filter.outputs.server == 'true' || needs.paths-filter.outputs.force == 'true'
+
+    env:
+      INVENTREE_DB_ENGINE: sqlite3
+      INVENTREE_DB_NAME: ./no_egress_test.sqlite
+      INVENTREE_DEBUG: true
+      INVENTREE_LOG_LEVEL: WARNING
+      INVENTREE_CONSOLE_LOG: false
+      INVENTREE_PLUGINS_ENABLED: false
+      TIKTOKEN_CACHE_DIR: ${{ github.workspace }}/.tiktoken-cache
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Environment Setup
+        uses: ./.github/actions/setup
+        with:
+          apt-dependency: gettext poppler-utils
+          pip-dependency: pytest-asyncio pytest-socket psycopg
+          dev-install: true
+          update: true
+      - name: Pre-warm the tokenizer cache (the only online step)
+        run: |
+          mkdir -p "$TIKTOKEN_CACHE_DIR"
+          python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
+          test -n "$(ls -A "$TIKTOKEN_CACHE_DIR")"
+      - name: The image never installs a mem0 candidate overlay (GR-26)
+        run: '! grep -q requirements-mem0-candidate contrib/container/Dockerfile'
+      - name: mem0 candidate pins (posture B, optional)
+        run: |
+          if [ -f src/backend/InvenTree/ai/requirements-mem0-candidate.txt ]; then
+            uv pip install -r src/backend/InvenTree/ai/requirements-mem0-candidate.txt
+            pip check
+          else
+            echo "::notice::no ai/requirements-mem0-candidate.txt; requires_mem0 tests skip"
+          fi
+      - name: ai/core pytest island with sockets disabled
+        working-directory: src/backend/InvenTree
+        # asyncio's self-pipe is a socketpair, hence the unix-socket allowance.
+        run: |
+          DJANGO_SETTINGS_MODULE=ai.core.tests.settings python -m pytest -q ai/core/tests \
+            -p pytest_socket --disable-socket --allow-hosts=127.0.0.1 --allow-unix-socket
+      - name: Offline boot under the Django runner
+        # The test disables sockets itself in setUpClass so the denial holds
+        # without the pytest plugin.
+        run: invoke dev.test --runtest=aichat.tests.test_offline_boot --keepdb --disable-pty
 
   migration-tests:
     name: Tests - Migrations [PostgreSQL]
@@ -647,7 +767,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17
+        image: pgvector/pgvector:pg15
         env:
           POSTGRES_USER: inventree
           POSTGRES_PASSWORD: password

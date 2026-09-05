@@ -1,5 +1,11 @@
 # AIMMS Backend - Python Dependencies
 # Install with: pip install -r requirements.txt
+#
+# NOT the image manifest. contrib/container/Dockerfile installs this file
+# unhashed AFTER the hashed src/backend/requirements.txt; anything the app
+# code imports (tiktoken, pydantic, agent-framework-core, ...) is admitted in
+# src/backend/requirements.in and compiled with hashes there (GR-26). Keep the
+# agent-framework pins below byte-identical to that file.
 
 # =============================================================================
 # Microsoft Agent Framework (MAF) - Beta versions

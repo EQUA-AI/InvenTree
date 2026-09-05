@@ -1,0 +1,110 @@
+# M1 (plan of record §9.6 / B7): prove the memory seam on BOTH Microsoft
+# Agent Framework shapes the estate can meet.
+#
+#   pin  — the hashed image manifest (src/backend/requirements.txt):
+#          agent-framework-core==1.0.0b251120, ChatAgent + ContextProvider,
+#          no HistoryProvider. This is what serves today.
+#   ga   — the same manifest with ai/requirements-maf-migration.txt layered on
+#          top (re-resolved 2026-09-05): HistoryProvider + ContextProvider,
+#          ChatAgent renamed Agent. Nothing serves on it yet; the lane exists
+#          so ai/core/memory/maf_adapter/_ga.py cannot rot unseen.
+#
+# Both entries assert the no-mem0 posture (GR-26) and `pip check`. The
+# adapter import + test step activates once Part C PR C lands the package;
+# until then it prints a notice instead of failing.
+
+name: AI MAF matrix
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'src/backend/requirements.txt'
+      - 'src/backend/requirements.in'
+      - 'src/backend/InvenTree/ai/requirements*.txt'
+      - 'src/backend/InvenTree/ai/core/memory/**'
+      - '.github/workflows/ai_maf_matrix.yaml'
+  pull_request:
+    paths:
+      - 'src/backend/requirements.txt'
+      - 'src/backend/requirements.in'
+      - 'src/backend/InvenTree/ai/requirements*.txt'
+      - 'src/backend/InvenTree/ai/core/memory/**'
+      - '.github/workflows/ai_maf_matrix.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  python_version: 3.12
+
+jobs:
+  matrix:
+    name: MAF ${{ matrix.shape }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shape: [pin, ga]
+    env:
+      INVENTREE_DB_ENGINE: sqlite3
+      INVENTREE_DB_NAME: ./maf_matrix.sqlite
+      INVENTREE_DEBUG: true
+      INVENTREE_LOG_LEVEL: WARNING
+      INVENTREE_CONSOLE_LOG: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Environment Setup
+        uses: ./.github/actions/setup
+        with:
+          apt-dependency: gettext poppler-utils
+          pip-dependency: pytest-asyncio psycopg
+          dev-install: true
+      - name: Layer the GA migration overlay
+        if: matrix.shape == 'ga'
+        run: |
+          uv pip install -r src/backend/InvenTree/ai/requirements-maf-migration.txt
+      - name: Resolved shape
+        run: |
+          pip check
+          pip freeze | grep -i '^agent-framework' || true
+          python - <<'PY'
+          import agent_framework as af
+          print("HistoryProvider:", hasattr(af, "HistoryProvider"))
+          print("ContextProvider:", hasattr(af, "ContextProvider"))
+          print("ChatAgent:", hasattr(af, "ChatAgent"))
+          PY
+      - name: No mem0 on either shape (GR-26)
+        run: |
+          if pip show mem0ai >/dev/null 2>&1; then echo "mem0ai is installed" >&2; exit 1; fi
+          if pip show agent-framework-mem0 >/dev/null 2>&1; then echo "agent-framework-mem0 is installed" >&2; exit 1; fi
+      - name: Shape-specific export assertion
+        run: |
+          python - <<'PY'
+          import os, sys
+          import agent_framework as af
+          shape = os.environ["SHAPE"]
+          has_history = hasattr(af, "HistoryProvider")
+          if shape == "pin" and has_history:
+              sys.exit("the pinned manifest now exports HistoryProvider: re-derive MAF_SHAPE")
+          if shape == "ga" and not has_history:
+              sys.exit("the GA overlay lost HistoryProvider: re-resolve the migration file")
+          PY
+        env:
+          SHAPE: ${{ matrix.shape }}
+      - name: Memory adapter import + tests
+        working-directory: src/backend/InvenTree
+        run: |
+          if [ -d ai/core/memory/maf_adapter ]; then
+            DJANGO_SETTINGS_MODULE=ai.core.tests.settings python -c "import ai.core.memory.maf_adapter as m; print('MAF_SHAPE =', getattr(m, 'MAF_SHAPE', '?'))"
+            if [ -f ai/core/tests/test_maf_adapter.py ]; then
+              DJANGO_SETTINGS_MODULE=ai.core.tests.settings python -m pytest -q ai/core/tests/test_maf_adapter.py
+            fi
+          else
+            echo "::notice::ai/core/memory/maf_adapter has not landed (Part C PR C); shape assertions only"
+          fi

@@ -57,6 +57,28 @@ ANSWERABILITY = ("answerable", "partially_answerable", "unanswerable")
 
 DATASETS = ("fixture", "solar")
 
+#: The rails a memory-battery case exercises (plan of record §9 / D2). Every
+#: M-case in a ``memory_*`` battery file names exactly one.
+RAILS = ("wf8", "rbac_run", "reasoning", "routing")
+
+#: Workflow ids ``workflow_used`` may legitimately carry (turn-0
+#: ``expected_workflow`` assertions are checked against this vocabulary).
+KNOWN_WORKFLOWS = (
+    "wf1",
+    "wf2",
+    "wf3",
+    "wf4",
+    "wf5",
+    "wf6",
+    "wf7",
+    "wf8",
+    "wf9",
+    "analysis_executor",
+    "safety_refusal",
+    "reasoning_refusal",
+    "question_declined",
+)
+
 
 @dataclass(frozen=True)
 class ScenarioTurn:
@@ -69,6 +91,13 @@ class ScenarioTurn:
     complete_population_required: bool = False
     forbidden_entity_fixture_keys: tuple[str, ...] = ()
     clarification_followup_ref: str = ""  # fixed scripted follow-up (gold atom)
+    # D1 (M1 gate): the workflow the turn must land on (empty = unasserted),
+    # fixture keys whose id/marker MUST surface (the follow-up recall proof),
+    # and whether the routing classifier should have seen a thread summary
+    # (REPORTED per turn, never failing — the M1 exit gate reads the rate).
+    expected_workflow: str = ""
+    required_entity_fixture_keys: tuple[str, ...] = ()
+    expect_conversation_summary_present: bool | None = None
 
     def behavior_for_tier(self, tier: int) -> str:
         """The expected behavior at ``tier`` (highest matching key wins)."""
@@ -98,6 +127,11 @@ class ScenarioCase:
     required_assertions: tuple[str, ...] = ()
     service: ScenarioService = field(default_factory=ScenarioService)
     dataset: str = "fixture"
+    # D1 (M1 gate): the rail this case exercises (required for memory
+    # M-cases) and the deployment flags it needs — a falsy flag in the
+    # captured posture SKIPS the case with a journaled reason (never fails).
+    rail: str = ""
+    requires_flags: tuple[str, ...] = ()
 
     @property
     def is_multi_turn(self) -> bool:
@@ -121,6 +155,13 @@ class BatteryFile:
     fixture_set_versions: tuple[str, ...]
     cases: tuple[ScenarioCase, ...]
     repeat_tranche: RepeatTranche | None = None
+    #: The file name this battery was loaded from ("" for in-memory files).
+    #: ``memory_*`` files carry the rail requirement (validate_battery).
+    source: str = ""
+
+    @property
+    def is_memory_battery(self) -> bool:
+        return self.source.startswith("memory_")
 
     def case(self, case_id: str) -> ScenarioCase | None:
         for entry in self.cases:
@@ -184,6 +225,13 @@ def _turn(raw: dict[str, Any]) -> ScenarioTurn:
         complete_population_required=bool(raw.get("complete_population_required")),
         forbidden_entity_fixture_keys=tuple(raw.get("forbidden_entity_fixture_keys") or ()),
         clarification_followup_ref=str(raw.get("clarification_followup_ref") or ""),
+        expected_workflow=str(raw.get("expected_workflow") or ""),
+        required_entity_fixture_keys=tuple(raw.get("required_entity_fixture_keys") or ()),
+        expect_conversation_summary_present=(
+            None
+            if raw.get("expect_conversation_summary_present") is None
+            else bool(raw.get("expect_conversation_summary_present"))
+        ),
     )
 
 
@@ -204,6 +252,8 @@ def _case(raw: dict[str, Any], dataset: str) -> ScenarioCase:
             allowed_statuses=tuple(int(s) for s in service.get("allowed_statuses") or (200,))
         ),
         dataset=str(raw.get("dataset") or dataset),
+        rail=str(raw.get("rail") or ""),
+        requires_flags=tuple(str(flag) for flag in raw.get("requires_flags") or ()),
     )
 
 
@@ -224,6 +274,7 @@ def load_battery(path: Path) -> BatteryFile:
         fixture_set_versions=tuple(raw.get("fixture_set_versions") or ()),
         cases=tuple(_case(dict(entry), dataset) for entry in raw.get("cases") or []),
         repeat_tranche=tranche,
+        source=path.name,
     )
 
 
@@ -266,6 +317,19 @@ def validate_battery(
         for key in case.scope_machine_fixture_keys:
             if key not in fixture_keys:
                 problems.append(ValidationError(case.id, f"unknown scope fixture key {key!r}"))
+        if case.rail and case.rail not in RAILS:
+            problems.append(
+                ValidationError(case.id, f"unknown rail {case.rail!r} (allowed: {RAILS})")
+            )
+        if battery.is_memory_battery and case.is_multi_turn and not case.rail:
+            problems.append(ValidationError(case.id, "memory M-cases must declare a rail"))
+        for flag in case.requires_flags:
+            if not (flag.startswith("FEATURE_") and flag == flag.upper()):
+                problems.append(
+                    ValidationError(
+                        case.id, f"requires_flags entry {flag!r} is not a FEATURE_* name"
+                    )
+                )
         for index, turn in enumerate(case.turns):
             where = f"turn {index}"
             has_inline = bool(turn.question.strip())
@@ -299,6 +363,21 @@ def validate_battery(
                     problems.append(
                         ValidationError(case.id, f"{where}: unknown forbidden fixture key {key!r}")
                     )
+            for key in turn.required_entity_fixture_keys:
+                if key not in fixture_keys:
+                    problems.append(
+                        ValidationError(case.id, f"{where}: unknown required fixture key {key!r}")
+                    )
+                elif key in turn.forbidden_entity_fixture_keys:
+                    problems.append(
+                        ValidationError(case.id, f"{where}: {key!r} is both required and forbidden")
+                    )
+            if turn.expected_workflow and turn.expected_workflow not in KNOWN_WORKFLOWS:
+                problems.append(
+                    ValidationError(
+                        case.id, f"{where}: unknown expected_workflow {turn.expected_workflow!r}"
+                    )
+                )
     if battery.repeat_tranche:
         for case_id in battery.repeat_tranche.case_ids:
             if case_id not in seen:
@@ -395,6 +474,8 @@ __all__ = [
     "ASSERTION_NAMES",
     "BATTERY_DIR",
     "DATASETS",
+    "KNOWN_WORKFLOWS",
+    "RAILS",
     "TASK_INTENTS",
     "TIER_BEHAVIORS",
     "BatteryFile",

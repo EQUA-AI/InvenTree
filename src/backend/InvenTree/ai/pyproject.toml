@@ -22,10 +22,11 @@ classifiers = [
 ]
 
 dependencies = [
-    # Microsoft Agent Framework
-    "agent-framework>=1.1.0",
-    "agent-framework-azure>=1.1.0",
-    "agent-framework-devui>=1.0.0",
+    # Microsoft Agent Framework — the SAME exact pin as src/backend/requirements.in
+    # and ai/requirements.txt (ai/core/tests/test_requirement_pins.py keeps the
+    # three in step). Later 1.x releases rename ChatAgent and break every rail.
+    "agent-framework-core==1.0.0b251120",
+    "agent-framework-devui==1.0.0b251120",
 
     # Web Framework
     "fastapi>=0.115.0",
@@ -165,6 +166,7 @@ markers = [
     "e2e: End-to-end tests (full system)",
     "slow: Slow tests",
     "golden: S39 golden-set gate (live deployment; AIMMS_GOLDEN_LIVE=1 + creds)",
+    "requires_mem0: needs the mem0 candidate pins (ai/requirements-mem0-candidate.txt); skipped on the pinned lanes",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

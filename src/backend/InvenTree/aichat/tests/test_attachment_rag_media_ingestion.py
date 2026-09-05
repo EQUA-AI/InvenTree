@@ -42,6 +42,7 @@ from aichat.services.attachment_ingestion import (
     route_attachment,
     run_ingest,
 )
+from aimms_testing import requires_postgres
 from common.models import Attachment
 from company.models import Company
 
@@ -414,6 +415,7 @@ class MediaRouterTests(MediaFixtureTestCase):
 class MediaImageIngestTests(MediaFixtureTestCase):
     """The image happy path, its failure legs, and photo-photo supersede."""
 
+    @requires_postgres
     def test_workorder_photo_end_to_end(self):
         """A WO photo lands indexed with the full §5.2 media document."""
         attachment = _make_attachment(
@@ -490,6 +492,7 @@ class MediaImageIngestTests(MediaFixtureTestCase):
         self.assertEqual(stamp['state'], 'indexed')
         self.assertEqual(stamp['sha'], row.source_sha256)
 
+    @requires_postgres
     def test_step_photo_carries_step_and_work_order_ids(self):
         """A step-execution photo stamps both coordinates and the WO scope."""
         attachment = _make_attachment(
@@ -597,6 +600,7 @@ class MediaImageIngestTests(MediaFixtureTestCase):
         self.assertEqual(row.state, AttachmentIngestState.FAILED)
         self.assertEqual(row.error_code, 'ATTACHMENT_CAPTION_FAILED')
 
+    @requires_postgres
     def test_empty_ocr_text_still_indexes(self):
         """A photo with no legible text is a legitimate indexed outcome."""
         attachment = _make_attachment(
@@ -611,6 +615,7 @@ class MediaImageIngestTests(MediaFixtureTestCase):
         segment = MediaSegment.objects.get(ingest=row)
         self.assertEqual(segment.ocr_text, '')
 
+    @requires_postgres
     def test_photo_reupload_supersedes_old_sha_in_media_projection(self):
         """A replaced photo purges the old sha from the MEDIA index, zero-gap."""
         attachment = _make_attachment(
@@ -671,6 +676,7 @@ class MediaWriteBackTests(MediaFixtureTestCase):
     citation regression rather than a missing extra.
     """
 
+    @requires_postgres
     def test_image_stores_indexed_at_and_recorded_at(self):
         """An image row carries the as_of and capture time its document shows."""
         attachment = _make_attachment(
@@ -685,6 +691,7 @@ class MediaWriteBackTests(MediaFixtureTestCase):
         # what matters is that the row and the document agree either way.
         _assert_same_instant(self, row.media_recorded_at, doc['recorded_at'])
 
+    @requires_postgres
     def test_video_stores_recorded_at_from_the_container_probe(self):
         """The ffprobe capture time reaches the row, not just the document."""
         attachment = _make_attachment(
@@ -700,6 +707,7 @@ class MediaWriteBackTests(MediaFixtureTestCase):
         self.assertIsNotNone(row.media_recorded_at)
         _assert_same_instant(self, row.media_recorded_at, doc['recorded_at'])
 
+    @requires_postgres
     def test_transcript_round_trips_through_the_segment_dataclass(self):
         """R5 ships no transcription, but the field must not be hardcoded.
 
@@ -742,6 +750,7 @@ class MediaVideoIngestTests(MediaFixtureTestCase):
             with _video_source(attachment):
                 raise NotImplementedError('body sentinel')
 
+    @requires_postgres
     def test_sniffed_brand_controls_clip_container_not_uploader_extension(self):
         """Renamed MP4/MOV files emit clips matching their verified MIME."""
         cases = (
@@ -766,6 +775,7 @@ class MediaVideoIngestTests(MediaFixtureTestCase):
                     embedder.video_calls, [(len(_CLIP_SENTINEL), expected_mime)] * 3
                 )
 
+    @requires_postgres
     def test_workorder_video_multi_segment_end_to_end(self):
         """A 130 s WO recording lands as three segments with full doc pins."""
         attachment = _make_attachment(
@@ -867,6 +877,7 @@ class MediaVideoIngestTests(MediaFixtureTestCase):
         self.assertEqual(stamp['state'], 'indexed')
         self.assertEqual(stamp['sha'], sha)
 
+    @requires_postgres
     def test_storage_returned_keyframe_name_is_projected(self):
         """A storage dedupe suffix cannot leave INDEXED thumbnails dangling."""
         attachment = _make_attachment(
@@ -958,6 +969,7 @@ class MediaVideoIngestTests(MediaFixtureTestCase):
             attachment.metadata['ai_ingest']['reason'], 'ATTACHMENT_SKIP_VIDEO_OVERSIZE'
         )
 
+    @requires_postgres
     def test_segment_failure_fails_run_then_retry_reindexes_same_ids(self):
         """A mid-loop embed failure upserts NOTHING; the retry is idempotent."""
         attachment = _make_attachment(
@@ -1008,6 +1020,7 @@ class MediaVideoIngestTests(MediaFixtureTestCase):
             [f'att-{attachment.pk}-{sha[:12]}-s{index}' for index in range(3)],
         )
 
+    @requires_postgres
     def test_failed_force_refresh_preserves_serving_keyframes(self):
         """An indexed revision keeps its thumbnails if a forced refresh fails."""
         attachment = _make_attachment(
@@ -1043,6 +1056,7 @@ class MediaVideoIngestTests(MediaFixtureTestCase):
         for rel in keyframes:
             self.assertTrue(default_storage.exists(rel))
 
+    @requires_postgres
     def test_purge_removes_keyframe_files_segments_and_media_docs(self):
         """Deleting the attachment removes the derived keyframe files too."""
         attachment = _make_attachment('workorder', self.work_order.pk, 'gone.mp4', _MP4)
@@ -1072,6 +1086,7 @@ class MediaVideoIngestTests(MediaFixtureTestCase):
         self.assertEqual(row.state, AttachmentIngestState.DELETED)
         self.assertEqual(MediaSegment.objects.filter(ingest=row).count(), 0)
 
+    @requires_postgres
     def test_new_sha_prunes_only_the_old_shas_keyframes(self):
         """The winner's peer purge is sha12-scoped: other prefixes survive."""
         attachment = _make_attachment(
@@ -1157,6 +1172,7 @@ class MediaVideoIngestTests(MediaFixtureTestCase):
 class CrossPipelineSupersedeTests(MediaFixtureTestCase):
     """Photo<->doc replacement: each peer purges from ITS pipeline's index."""
 
+    @requires_postgres
     def test_doc_winner_purges_image_peer_from_media_projection(self):
         """A photo replaced by a document purges the photo from the media index."""
         attachment = _make_attachment(
@@ -1188,6 +1204,7 @@ class CrossPipelineSupersedeTests(MediaFixtureTestCase):
             ],
         )
 
+    @requires_postgres
     def test_image_winner_purges_doc_peer_from_docs_projection(self):
         """A document replaced by a photo purges the doc from the docs index."""
         attachment = _make_attachment(
@@ -1221,6 +1238,7 @@ class CrossPipelineSupersedeTests(MediaFixtureTestCase):
 class MediaThumbnailTests(MediaFixtureTestCase):
     """The three-layer thumbnail race: empty-tolerant serve, then the heal."""
 
+    @requires_postgres
     def test_absent_thumbnail_serves_empty_then_heals(self):
         """A pre-thumbnail ingest serves '' and the sweep heals it later."""
         attachment = _make_attachment(
@@ -1252,6 +1270,7 @@ class MediaThumbnailTests(MediaFixtureTestCase):
         segment.refresh_from_db()
         self.assertEqual(segment.thumbnail_path, 'attachments/thumbs/early.thumb.png')
 
+    @requires_postgres
     def test_heal_without_thumbnail_builds_no_client(self):
         """While the thumbnail is still absent the heal constructs nothing."""
         attachment = _make_attachment(
@@ -1359,6 +1378,7 @@ class MediaOwnerDerivationTests(MediaFixtureTestCase):
 class MediaPurgeTests(MediaFixtureTestCase):
     """Deletion: segments removed, and each index purged only when populated."""
 
+    @requires_postgres
     def test_purge_deletes_segments_and_hits_media_index_only(self):
         """A media-only attachment purges the media index, never the docs one."""
         attachment = _make_attachment('workorder', self.work_order.pk, 'gone.png', _PNG)
@@ -1380,6 +1400,7 @@ class MediaPurgeTests(MediaFixtureTestCase):
         self.assertEqual(row.state, AttachmentIngestState.DELETED)
         self.assertEqual(MediaSegment.objects.filter(ingest=row).count(), 0)
 
+    @requires_postgres
     def test_doc_only_purge_never_builds_a_media_client(self):
         """A docs-only attachment purge must not construct a media projection."""
         attachment = _make_attachment(
@@ -1405,6 +1426,7 @@ class MediaPurgeTests(MediaFixtureTestCase):
 class WorkOrderRestampTests(MediaFixtureTestCase):
     """§6.5 for evidence media: WO restamp service and its receiver gating."""
 
+    @requires_postgres
     def test_restamp_updates_wo_and_step_rows_after_machine_change(self):
         """A machine change re-stamps WO-owned and step-owned media rows."""
         attachment = _make_attachment(
@@ -1450,6 +1472,7 @@ class WorkOrderRestampTests(MediaFixtureTestCase):
         self.assertEqual(row.client_codes, ['zeta'])
         self.assertEqual(step_row.client_codes, ['zeta'])
 
+    @requires_postgres
     def test_machine_restamp_routes_media_rows_to_the_media_index(self):
         """Machine-owned photos re-stamp via the MEDIA projection.
 
@@ -1492,6 +1515,7 @@ class WorkOrderRestampTests(MediaFixtureTestCase):
         row.refresh_from_db()
         self.assertEqual(row.client_codes, ['zeta'])
 
+    @requires_postgres
     def test_restamp_noop_is_index_diffed(self):
         """Unchanged rows cost one index read and zero writes.
 

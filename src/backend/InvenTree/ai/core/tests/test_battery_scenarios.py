@@ -277,3 +277,106 @@ def test_private_store_paths_inside_the_repo_are_refused(tmp_path: Path):
     with pytest.raises(ValueError, match="outside"):
         assert_outside_repo(Path(scenarios.__file__).parent)
     assert assert_outside_repo(tmp_path) == tmp_path.resolve()
+
+
+# --------------------------------------------------------------------------- #
+# D1/D2 (M1 gate): the memory battery and its schema additions                #
+# --------------------------------------------------------------------------- #
+def test_memory_battery_loads_validates_and_covers_every_rail():
+    battery = load_battery(BATTERY_DIR / "memory_battery.yaml")
+    assert battery.is_memory_battery
+    assert battery.dataset == "fixture"
+    assert len(battery.cases) == 12, "the preregistered case count must not drift silently"
+    assert validate_battery(battery, FIXTURE_KEYS) == []
+    # 57 turns per pass; every case is a fresh continuous thread naming a rail.
+    assert planned_request_count([battery]) == 57
+    assert all(case.fresh_thread and case.is_multi_turn for case in battery.cases)
+    assert {case.rail for case in battery.cases} == set(scenarios.RAILS)
+    # Over five passes every rail clears the 25-follow-up floor (GR-45).
+    followups = dict.fromkeys(scenarios.RAILS, 0)
+    for case in battery.cases:
+        followups[case.rail] += (len(case.turns) - 1) * 5
+    assert followups == {"wf8": 130, "rbac_run": 35, "reasoning": 35, "routing": 25}
+    # The reasoning rail is flag-gated (skips, never fails, when dark).
+    for case in battery.cases:
+        if case.rail == "reasoning":
+            assert case.requires_flags == ("FEATURE_VOICE_LIVE_DIAGNOSIS",)
+        else:
+            assert case.requires_flags == ()
+    # The compaction case crosses COMPACTION_MIN_BACKLOG=16 and asserts recall.
+    compaction = battery.case("M-MEM-10")
+    assert len(compaction.turns) == 20
+    last = compaction.turns[-1]
+    assert last.required_entity_fixture_keys == ("mem_reading_corrected",)
+    assert "mem_reading_superseded" in last.forbidden_entity_fixture_keys
+    assert last.expect_conversation_summary_present is True
+    # The routing cases REPORT summary presence on their fragments.
+    assert battery.case("M-MEM-07").turns[1].expect_conversation_summary_present is True
+    assert battery.case("M-MEM-08").turns[1].expected_workflow == "wf8"
+
+
+def test_memory_m_cases_must_declare_a_rail():
+    case = ScenarioCase(
+        id="M-MEM-99",
+        turns=(ScenarioTurn(question="a"), ScenarioTurn(question="b")),
+    )
+    battery = BatteryFile(
+        schema_version=1,
+        dataset="fixture",
+        fixture_set_versions=(),
+        cases=(case,),
+        source="memory_battery.yaml",
+    )
+    problems = {p.problem for p in validate_battery(battery, FIXTURE_KEYS)}
+    assert any("must declare a rail" in p for p in problems)
+    # The same case in a non-memory file needs no rail.
+    assert validate_battery(_battery([case]), FIXTURE_KEYS) == []
+
+
+def test_new_vocabulary_is_each_validated():
+    bad = _case(
+        id="M-MEM-98",
+        rail="wf42",
+        requires_flags=("voice_live",),
+        turns=(
+            ScenarioTurn(
+                question="a",
+                expected_workflow="wf99",
+                required_entity_fixture_keys=("no_such_key", "hx200"),
+                forbidden_entity_fixture_keys=("hx200",),
+            ),
+            ScenarioTurn(question="b"),
+        ),
+    )
+    problems = {p.problem for p in validate_battery(_battery([bad]), FIXTURE_KEYS)}
+    assert any("unknown rail" in p for p in problems)
+    assert any("not a FEATURE_* name" in p for p in problems)
+    assert any("unknown expected_workflow" in p for p in problems)
+    assert any("unknown required fixture key" in p for p in problems)
+    assert any("both required and forbidden" in p for p in problems)
+
+
+def test_summary_expectation_parses_as_tri_state(tmp_path: Path):
+    path = tmp_path / "memory_x.yaml"
+    path.write_text(
+        """
+schema_version: 1
+dataset: fixture
+cases:
+  - id: M-1
+    rail: routing
+    turns:
+      - question: a
+      - question: b
+        expect_conversation_summary_present: true
+      - question: c
+        expect_conversation_summary_present: false
+""",
+        encoding="utf-8",
+    )
+    battery = load_battery(path)
+    assert battery.is_memory_battery
+    turns = battery.case("M-1").turns
+    assert turns[0].expect_conversation_summary_present is None
+    assert turns[1].expect_conversation_summary_present is True
+    assert turns[2].expect_conversation_summary_present is False

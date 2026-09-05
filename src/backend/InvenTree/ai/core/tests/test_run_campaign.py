@@ -135,7 +135,7 @@ def test_campaign_runs_aggregates_and_evaluates_gates(campaign_env):
     assert report["judge_usage"] == {"calls": 6, "total_tokens": 1500}
 
     gates = {gate["id"]: gate for gate in report["gates"]}
-    assert len(gates) == 13
+    assert len(gates) == 14  # the twelve §15.1 gates + SLO + D3 followup_parity
     assert gates["domain_purity"]["status"] == "pass"
     assert gates["critical_events"]["status"] == "pass"
     assert gates["availability_consistency"]["status"] == "fail"  # Q02 flapped
@@ -246,3 +246,173 @@ def test_in_repo_journal_dir_is_refused(campaign_env, capsys):
     ])
     assert code == 2
     assert "outside" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# D3 (M1 gate): followup_parity                                                #
+# --------------------------------------------------------------------------- #
+def _rows(rail: str, case_id: str, turns: int, *, passes: int, hits: int = 0, runs: int = 1):
+    """Per-turn rows for one case: turn 0 plus ``turns - 1`` follow-ups."""
+    rows = []
+    for run in range(runs):
+        for index in range(turns):
+            failed = index >= 1 and (run * (turns - 1) + (index - 1)) >= passes
+            rows.append({
+                "case_id": case_id,
+                "turn_index": index,
+                "rail": rail,
+                "outcome": "fail" if failed else "pass",
+                "deterministic_pass": not failed,
+                "forbidden_hits": ["hx200:HX-200"]
+                if (index >= 1 and hits and run == 0 and index == 1)
+                else [],
+                "summary_present": False,
+                "expected_summary_present": None,
+                "workflow_used": "wf8",
+                "layer_fails": [4] if failed else [],
+            })
+    return rows
+
+
+def _report(*row_groups, skipped=()):
+    return {
+        "per_case": {},
+        "failures": [],
+        "per_turn": [row for group in row_groups for row in group],
+        "skipped_cases": list(skipped),
+    }
+
+
+def _config(**over):
+    base = {"followup_parity": dict(run_campaign.DEFAULT_FOLLOWUP_PARITY)}
+    base["followup_parity"].update(over)
+    return base
+
+
+def test_followup_parity_passes_at_floor():
+    # wf8: 30 follow-ups all pass; rbac_run: 30 follow-ups, 29 pass (0.9667 >= 0.95,
+    # gap 3.3 points <= 5).
+    report = _report(
+        _rows("wf8", "M-1", 31, passes=30),
+        _rows("rbac_run", "M-3", 31, passes=29),
+    )
+    aggregated = run_campaign.aggregate([report], None)
+    gate = run_campaign.followup_parity(aggregated, _config())
+    assert gate["status"] == "pass", gate
+    assert gate["rails"]["wf8"]["accuracy"] == pytest.approx(1.0)
+    assert gate["rails"]["rbac_run"]["accuracy"] == pytest.approx(0.9667, abs=1e-4)
+    assert gate["rails"]["rbac_run"]["status"] == "pass"
+
+
+def test_rail_five_points_below_wf8_fails():
+    # rbac_run 0.9667 vs wf8 1.0 is 3.3 points (ok); routing 27/30 = 0.9 fails
+    # the floor AND the gap.
+    report = _report(
+        _rows("wf8", "M-1", 31, passes=30),
+        _rows("routing", "M-7", 31, passes=27),
+    )
+    gate = run_campaign.followup_parity(run_campaign.aggregate([report], None), _config())
+    assert gate["status"] == "fail"
+    routing = gate["rails"]["routing"]
+    assert routing["status"] == "fail"
+    assert any("accuracy 0.9 < 0.95" in reason for reason in routing["reasons"])
+    assert any("points below wf8" in reason for reason in routing["reasons"])
+    # A rail exactly 5 points below is still within the cap when above the floor.
+    report = _report(
+        _rows("wf8", "M-1", 41, passes=40),
+        _rows("rbac_run", "M-3", 41, passes=38),  # 0.95, gap 5.0
+    )
+    gate = run_campaign.followup_parity(run_campaign.aggregate([report], None), _config())
+    assert gate["rails"]["rbac_run"]["status"] == "pass", gate["rails"]["rbac_run"]
+
+
+def test_forbidden_hit_on_followup_is_critical():
+    report = _report(
+        _rows("wf8", "M-1", 31, passes=30),
+        _rows("rbac_run", "M-3", 31, passes=30, hits=1),
+    )
+    gate = run_campaign.followup_parity(run_campaign.aggregate([report], None), _config())
+    assert gate["status"] == "fail"
+    assert gate["rails"]["rbac_run"]["forbidden_hits"] == 1
+    assert any("critical" in reason for reason in gate["rails"]["rbac_run"]["reasons"])
+
+
+def test_absent_adapter_rail_skips_with_reason():
+    report = _report(
+        _rows("wf8", "M-1", 31, passes=30),
+        skipped=[{"case_id": "M-5", "rail": "reasoning", "pass": 1, "reason": "requires X=on"}],
+    )
+    aggregated = run_campaign.aggregate([report], None)
+    assert aggregated["skipped_cases"][0]["rail"] == "reasoning"
+    gate = run_campaign.followup_parity(aggregated, _config())
+    assert gate["status"] == "pass"
+    assert gate["rails"]["reasoning"]["status"] == "skip"
+    assert "adapter absent" in gate["rails"]["reasoning"]["reasons"][0]
+
+
+def test_insufficient_followups_is_not_a_pass():
+    report = _report(
+        _rows("wf8", "M-1", 31, passes=30),
+        _rows("routing", "M-7", 11, passes=10),  # 10 follow-ups < 25
+    )
+    gate = run_campaign.followup_parity(run_campaign.aggregate([report], None), _config())
+    assert gate["status"] == "insufficient"
+    assert gate["rails"]["routing"]["status"] == "insufficient"
+    assert gate["rails"]["routing"]["accuracy"] is None
+
+
+def test_unscored_reference_rail_fails_the_gate():
+    report = _report(_rows("rbac_run", "M-3", 31, passes=30))
+    gate = run_campaign.followup_parity(run_campaign.aggregate([report], None), _config())
+    assert gate["status"] == "fail"
+    assert "wf8" in gate["evidence"]
+
+
+def test_aggregate_folds_turn_slots_content_free():
+    report = _report(_rows("wf8", "M-1", 3, passes=1, runs=2))
+    aggregated = run_campaign.aggregate([report], None)
+    slot = aggregated["turns"]["M-1:2"]
+    assert slot["runs"] == 2
+    assert slot["workflow_used_modal"] == "wf8"
+    assert slot["summary_present_rate"] == pytest.approx(0.0)
+    assert set(slot["layer_fail_counts"]) == {"1", "2", "3", "4", "5", "6"}
+    assert slot["layer_fail_counts"]["4"] >= 1
+    assert "_workflows" not in slot and "_summary" not in slot
+
+
+def test_bare_battery_names_resolve_under_the_committed_dir(tmp_path):
+    from ai.core.evals.scenarios import BATTERY_DIR
+
+    assert (
+        run_campaign.resolve_battery_path("memory_battery.yaml")
+        == BATTERY_DIR / "memory_battery.yaml"
+    )
+    assert run_campaign.resolve_battery_path("") == BATTERY_DIR / "solar_battery.yaml"
+    explicit = tmp_path / "b.yaml"
+    explicit.write_text("schema_version: 1\n", encoding="utf-8")
+    assert run_campaign.resolve_battery_path(str(explicit)) == explicit
+
+
+def test_load_config_applies_the_parity_floor_defaults(tmp_path):
+    config = tmp_path / "c.yaml"
+    config.write_text("campaign_id: x\nfollowup_parity: {min_accuracy: 0.97}\n", encoding="utf-8")
+    loaded = run_campaign.load_config(config)
+    assert loaded["followup_parity"]["min_accuracy"] == pytest.approx(0.97)
+    assert loaded["followup_parity"]["min_followup_turns"] == 25
+    assert loaded["followup_parity"]["reference_rail"] == "wf8"
+
+
+def test_committed_memory_campaign_configs_preregister_the_plan_floor():
+    from ai.core.evals.scenarios import BATTERY_DIR
+
+    campaigns = Path(run_campaign.__file__).parent / "campaigns"
+    for env in ("dev", "experimental"):
+        config = run_campaign.load_config(campaigns / f"memory_baseline.{env}.yaml")
+        assert config["campaign_id"] == f"memory-baseline-{env}"
+        assert config["runs"] == 5
+        assert config["run_tranche"] is False
+        assert run_campaign.resolve_battery_path(config["battery_path"]) == (
+            BATTERY_DIR / "memory_battery.yaml"
+        )
+        assert config["followup_parity"] == run_campaign.DEFAULT_FOLLOWUP_PARITY
+        assert config["estimated_requests"] >= 57

@@ -343,6 +343,12 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
     # branches cannot drift.
     capture_ledger, scope_context = await _bind_turn_capture_and_scope(service, run)
     workflow_context = _assemble_workflow_context(service, run)
+    # D0 (M1 entry baseline): record whether the routing classifier's
+    # ``conversation_summary`` slot is populated. ``summary`` is the exact
+    # key ``agents/routing.py`` reads; nothing writes it today, so the
+    # persisted fact is False on every turn — that IS the baseline the
+    # battery journals. M1 PR E renames the slot to ``thread_summary``.
+    run.extras["conversation_summary_present"] = bool(workflow_context.get("summary"))
     # Server-derived (owner-scoped rows from our own store), so it sits
     # alongside the other trusted fields. Its *content* is still
     # user-authored text and must be read as data, never instructions.

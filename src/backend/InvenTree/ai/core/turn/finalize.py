@@ -139,6 +139,13 @@ def failure_canonical(run: TurnRun, *, state: Any, message: str) -> CanonicalTur
     }
 
 
+def _task_intent_value(run: TurnRun) -> str | None:
+    """The typed task intent as its enum value, or None when unclassified."""
+    intent = getattr(run.task_intent, "intent", None)
+    value = getattr(intent, "value", None)
+    return str(value) if value else None
+
+
 async def persist_terminal(
     service: NormalizedTurnService,
     run: TurnRun,
@@ -159,6 +166,14 @@ async def persist_terminal(
             "response_state": state,
             "events": canonical["events"],
             "spoken_summary": str(canonical.get("spoken_summary") or ""),
+            # D0 (M1 entry baseline): content-free route facts for the battery
+            # runner's layer-2 assertion — the intent enum value and whether
+            # the classifier received a thread summary. Always written (null /
+            # False are facts too); owner-only on the /threads projection.
+            "task_intent": _task_intent_value(run),
+            "conversation_summary_present": bool(
+                run.extras.get("conversation_summary_present", False)
+            ),
             # S22: the card and its resolution ride message metadata so
             # the /threads projection can reproduce them on reload.
             **({"question": canonical["question"]} if canonical.get("question") else {}),

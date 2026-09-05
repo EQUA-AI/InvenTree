@@ -1,9 +1,22 @@
-# Isolated Microsoft Agent Framework migration target.
+# Isolated Microsoft Agent Framework migration target (the GA shape).
 #
-# Do not install this file into the current application environment until the
-# ChatAgent/AzureOpenAIChatClient API port is complete. These pins were resolved
-# together in a disposable Python 3.12 environment and passed `pip check` on
-# 2026-07-19.
-agent-framework-core==1.11.0
-agent-framework-openai==1.10.1
-agent-framework-orchestrations==1.0.0
+# Do not install this file into the application environment: every rail still
+# targets the b251120 ChatAgent API pinned in src/backend/requirements.in.
+# These pins were re-resolved TOGETHER in a disposable Python 3.12 environment
+# on 2026-09-05 (M1 prerequisite B7) and passed `pip check`; no mem0 package
+# rides along. On this shape `agent_framework` exports HistoryProvider and
+# ContextProvider (the ai/core/memory/maf_adapter/_ga.py surface) and
+# ChatAgent is renamed Agent — which is exactly why the app cannot take it yet.
+#
+# Re-resolve recipe (record the date above when you do):
+#   python3.12 -m venv /tmp/maf-ga && /tmp/maf-ga/bin/pip install \
+#     "agent-framework-core==<target>" agent-framework-openai \
+#     agent-framework-foundry agent-framework-orchestrations \
+#   && /tmp/maf-ga/bin/pip check && /tmp/maf-ga/bin/pip freeze | grep agent-framework
+#
+# .github/workflows/ai_maf_matrix.yaml installs this overlay on top of the
+# hashed manifest and proves the adapter imports on both shapes.
+agent-framework-core==1.17.0
+agent-framework-openai==1.14.2
+agent-framework-foundry==1.12.0
+agent-framework-orchestrations==1.1.1

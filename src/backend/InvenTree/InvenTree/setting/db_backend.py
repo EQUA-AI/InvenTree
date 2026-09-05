@@ -63,6 +63,14 @@ def get_db_backend():
         'CONN_HEALTH_CHECKS': get_boolean_setting(
             'INVENTREE_DB_CONN_HEALTH_CHECKS', 'database.conn_health_checks', False
         ),
+        # A top-level DATABASES key (not an OPTIONS entry): required behind a
+        # transaction-mode pooler such as PgBouncer, where server-side (named)
+        # cursors from ``.iterator()`` do not survive across pooled sessions.
+        'DISABLE_SERVER_SIDE_CURSORS': get_boolean_setting(
+            'INVENTREE_DB_DISABLE_SERVER_SIDE_CURSORS',
+            'database.disable_server_side_cursors',
+            False,
+        ),
     }
 
     # Check for required keys

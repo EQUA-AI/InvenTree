@@ -48,6 +48,7 @@ WORST_CASE_TOKENS: dict[str, int] = {
     "grounding_audit": 4_000,
     "closeout_binding": 8_000,
     "summarization": 8_000,
+    "extraction": 8_000,
     "media_caption": 4_000,
 }
 

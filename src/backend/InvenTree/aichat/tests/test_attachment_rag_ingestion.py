@@ -20,6 +20,7 @@ from aichat.services.attachment_ingestion import (
     route_attachment,
     run_ingest,
 )
+from aimms_testing import requires_postgres
 from assets.models import AssetMachine, Client, MachinePart
 from common.models import Attachment
 from part.models import Part
@@ -637,6 +638,7 @@ class RouterSkipTests(RagFixtureTestCase):
         self.assertEqual(row.state, AttachmentIngestState.SKIPPED)
         self.assertEqual(row.error_code, 'ATTACHMENT_SKIP_PIPELINE_DISABLED')
 
+    @requires_postgres
     def test_skip_never_demotes_an_indexed_row(self):
         """A later skip outcome cannot demote an indexed revision."""
         attachment = _make_attachment('part', self.part.pk, 'keep.md', _MD)
@@ -652,6 +654,7 @@ class RouterSkipTests(RagFixtureTestCase):
 class DocIngestTests(RagFixtureTestCase):
     """The doc path: extraction, chunking, projection, supersede, failure."""
 
+    @requires_postgres
     def test_markdown_end_to_end(self):
         """Markdown upload lands indexed with correct projection fields."""
         attachment = _make_attachment(
@@ -691,6 +694,7 @@ class DocIngestTests(RagFixtureTestCase):
         self.assertEqual(stamp['v'], 2)
         self.assertIn('mtime', stamp)
 
+    @requires_postgres
     def test_row_and_document_agree_on_headings_and_indexed_at(self):
         """R5 WP-B: migration 0031's columns are actually written.
 
@@ -735,6 +739,7 @@ class DocIngestTests(RagFixtureTestCase):
         )
         self.assertEqual(stored, projected)
 
+    @requires_postgres
     def test_headings_are_populated_not_blank(self):
         """A guard against the columns existing but staying empty."""
         attachment = _make_attachment(
@@ -750,6 +755,7 @@ class DocIngestTests(RagFixtureTestCase):
             'the markdown fixture has headings; none reached the rows',
         )
 
+    @requires_postgres
     def test_long_headings_truncate_identically_in_row_and_document(self):
         """Row and document must agree by construction, not by coincidence.
 
@@ -772,6 +778,7 @@ class DocIngestTests(RagFixtureTestCase):
         self.assertLessEqual(len(chunk.section_path), 512)
         self.assertEqual(chunk.section_path, doc['section_path'])
 
+    @requires_postgres
     def test_same_sha_short_circuits(self):
         """Identical content re-runs do not re-embed or re-project."""
         attachment = _make_attachment('part', self.part.pk, 'kit.md', _MD)
@@ -782,6 +789,7 @@ class DocIngestTests(RagFixtureTestCase):
         self.assertEqual(embedder2.calls, 0)
         self.assertEqual(projection2.operations, [])
 
+    @requires_postgres
     def test_new_sha_supersedes_with_zero_gap_ordering(self):
         """New revision upserts before the old one is pruned."""
         attachment = _make_attachment('part', self.part.pk, 'rev-a.md', _MD)
@@ -826,6 +834,7 @@ class DocIngestTests(RagFixtureTestCase):
         self.assertEqual(row.error_code, 'ATTACHMENT_EXTRACTION_UNAVAILABLE')
         self.assertEqual(row.attempts, 1)
 
+    @requires_postgres
     def test_pdf_with_explicit_pypdf_override(self):
         """The explicit override stamps extractor=pypdf_override."""
         attachment = _make_attachment('part', self.part.pk, 'legacy.pdf', _PDF_HEAD)
@@ -907,6 +916,7 @@ class ClientCodeTests(RagFixtureTestCase):
             derive_client_codes('part', self.part_unlinked.pk), ['internal']
         )
 
+    @requires_postgres
     def test_restamp_part_merges_new_codes(self):
         """Linkage change re-stamps codes via metadata-only merge."""
         attachment = _make_attachment('part', self.part_unlinked.pk, 'orphan.md', _MD)
@@ -922,6 +932,7 @@ class ClientCodeTests(RagFixtureTestCase):
         row.refresh_from_db()
         self.assertEqual(row.client_codes, ['acme'])
 
+    @requires_postgres
     def test_purge_deletes_chunks_and_tombstones_rows(self):
         """Purge removes chunks and tombstones registry rows."""
         attachment = _make_attachment('part', self.part.pk, 'purge-me.md', _MD)
@@ -970,6 +981,7 @@ class BackfillCommandTests(RagFixtureTestCase):
             call_command('ingest_existing_attachments')
 
     @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    @requires_postgres
     def test_live_run_shares_clients_and_honors_limit(self):
         """Live backfill builds one client pair and stops at --limit."""
         from io import StringIO
@@ -1133,6 +1145,7 @@ class ClaimProtocolTests(RagFixtureTestCase):
         self.assertEqual(row.state, AttachmentIngestState.EXTRACTING)
         self.assertEqual(row.attempts, 1)
 
+    @requires_postgres
     def test_stale_in_flight_row_is_taken_over(self):
         """Past the staleness horizon the claim succeeds (crash recovery)."""
         from datetime import timedelta
@@ -1168,6 +1181,7 @@ class ClaimProtocolTests(RagFixtureTestCase):
         self.assertEqual(embedder.calls, 0)
         self.assertEqual(row.attempts, 3)
 
+    @requires_postgres
     def test_force_reingests_an_indexed_row(self):
         """force=True (backfill-only) re-runs a completed revision."""
         attachment = _make_attachment('part', self.part.pk, 'force.md', _MD)
@@ -1179,6 +1193,7 @@ class ClaimProtocolTests(RagFixtureTestCase):
         self.assertEqual(again.state, AttachmentIngestState.INDEXED)
         self.assertEqual(again.attempts, first.attempts + 1)
 
+    @requires_postgres
     def test_skipped_row_is_claimable_for_revival(self):
         """A SKIPPED row must re-ingest once routing says ingest (critic #2)."""
         attachment = _make_attachment('part', self.part.pk, 'revive2.md', _MD)
@@ -1191,6 +1206,7 @@ class ClaimProtocolTests(RagFixtureTestCase):
         self.assertEqual(embedder.calls, 1)
         self.assertEqual(row.state, AttachmentIngestState.INDEXED)
 
+    @requires_postgres
     def test_fence_loss_walks_away_without_demoting(self):
         """Losing the fence mid-run writes nothing and deletes nothing."""
         attachment = _make_attachment('part', self.part.pk, 'fence.md', _MD)
@@ -1244,6 +1260,7 @@ class ClaimProtocolTests(RagFixtureTestCase):
         peer.refresh_from_db()
         self.assertEqual(peer.state, AttachmentIngestState.INDEXED)
 
+    @requires_postgres
     def test_indexed_short_circuit_renews_claim_clock(self):
         """A revert re-run renews claimed_at so the old revision outranks."""
         attachment = _make_attachment('part', self.part.pk, 'renew.md', _MD)
@@ -1313,6 +1330,7 @@ class SniffAndRouterTests(RagFixtureTestCase):
 
         self.assertEqual(_sniff_kind('café'.encode()[:-1]), 'binary')
 
+    @requires_postgres
     def test_nonascii_markdown_ingests_end_to_end(self):
         """The E1 fix in vivo: a long non-ASCII manual indexes cleanly."""
         content = ('# Wartungshandbuch µm °C é\n\n' + 'Prüfen. ' * 400).encode('utf-8')
@@ -1550,6 +1568,7 @@ class DocumentIntelligenceTests(RagFixtureTestCase):
             ],
         )
 
+    @requires_postgres
     def test_di_success_maps_page_numbers(self):
         """DI markdown lands with per-section page numbers on chunks + docs."""
         result = self._fake_di_result()
@@ -1790,6 +1809,7 @@ class RestampReceiverTests(RagFixtureTestCase):
         ]
         self.assertEqual(len(restamps), 1)
 
+    @requires_postgres
     def test_machine_restamp_shares_projection_and_skips_noops(self):
         """No-op restamps build zero SearchClients (F-19)."""
         from aichat.services.attachment_ingestion import restamp_machine_client_codes
@@ -2034,6 +2054,7 @@ class BackfillHardeningTests(RagFixtureTestCase):
         self.assertEqual(row.pipeline, 'image')
 
     @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    @requires_postgres
     def test_force_unstamped_selects_and_converges(self):
         """The 0031 repair selector: exact selection, then a zero-row rerun."""
         from io import StringIO
@@ -2079,6 +2100,7 @@ class BackfillHardeningTests(RagFixtureTestCase):
         self.assertEqual(_report(out.getvalue())['totals']['walked'], 0)
 
     @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    @requires_postgres
     def test_force_stale_profile_reports_no_drift(self):
         """No drift is a stated outcome, not an empty-looking run."""
         from io import StringIO
@@ -2103,6 +2125,7 @@ class BackfillHardeningTests(RagFixtureTestCase):
         self.assertEqual(_report(out.getvalue())['totals']['walked'], 0)
 
     @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    @requires_postgres
     def test_stamp_prefilter_skips_without_reading_and_force_bypasses(self):
         """A stamped row costs a stat, never a download; --force re-ingests."""
         from io import StringIO
@@ -2143,6 +2166,7 @@ class BackfillHardeningTests(RagFixtureTestCase):
         self.assertEqual(AttachmentIngest.objects.get().attempts, 2)
 
     @override_settings(AIMMS_ATTACHMENT_RAG_ENABLED=True)
+    @requires_postgres
     def test_force_stale_profile_selects_drifted_rows_and_converges(self):
         """The positive path: drift is selected, repaired, and converges."""
         from io import StringIO

@@ -15,12 +15,16 @@ from django.core.management.base import CommandError
 from django.db.models import F
 from django.test import TestCase
 
+from aimms_testing import requires_postgres
+
 SCOPE_KEY = 'eval-analysis-boundary'
 
 
 def _seed(*args, scope_key: str = SCOPE_KEY):
     out = StringIO()
-    with mock.patch('aichat.services.eval_fixtures.restamp_fixture_scope', return_value=[]):
+    with mock.patch(
+        'aichat.services.eval_fixtures.restamp_fixture_scope', return_value=[]
+    ):
         call_command(
             'seed_analysis_eval_fixtures', f'--scope-key={scope_key}', *args, stdout=out
         )
@@ -49,6 +53,7 @@ class SeedAnalysisFixturesTests(TestCase):
         self.assertEqual(WorkOrder.objects.count(), 0)
         self.assertEqual(ControlledDocument.objects.count(), 0)
 
+    @requires_postgres
     def test_full_seed_matches_the_declared_corpus(self):
         """Counts, defects, lifecycle states land exactly as declared."""
         from tasks.models import WorkOrder
@@ -76,11 +81,15 @@ class SeedAnalysisFixturesTests(TestCase):
 
         # Deliberate date defects, exactly as declared for solar_a:
         self.assertEqual(
-            a_wos.filter(actual_started_at__isnull=True, actual_completed_at__isnull=True).count(),
+            a_wos.filter(
+                actual_started_at__isnull=True, actual_completed_at__isnull=True
+            ).count(),
             4,  # created_only
         )
         self.assertEqual(
-            a_wos.filter(actual_started_at__isnull=False, actual_completed_at__isnull=True).count(),
+            a_wos.filter(
+                actual_started_at__isnull=False, actual_completed_at__isnull=True
+            ).count(),
             6,  # missing_completion
         )
         self.assertEqual(
@@ -100,7 +109,9 @@ class SeedAnalysisFixturesTests(TestCase):
         open_wo = WorkOrder.objects.get(reference='WO-EVAL-SI3000A-OPEN')
         done_wo = WorkOrder.objects.get(reference='WO-EVAL-SI3000A-DONE')
         self.assertIsNone(open_wo.actual_completed_at)
-        self.assertFalse(hasattr(open_wo, 'maintenance_record') and open_wo.maintenance_record)
+        self.assertFalse(
+            hasattr(open_wo, 'maintenance_record') and open_wo.maintenance_record
+        )
         self.assertIsNotNone(done_wo.actual_completed_at)
 
         # Controlled documents: superseded/current pair + supplement + bulletin.
@@ -124,6 +135,7 @@ class SeedAnalysisFixturesTests(TestCase):
         # RAG flag off (default): the uncontrolled note is skipped loudly.
         self.assertIn('attachment note SKIPPED', output)
 
+    @requires_postgres
     def test_seeding_is_idempotent(self):
         """A second run creates nothing new."""
         from tasks.models import WorkOrder
@@ -137,6 +149,7 @@ class SeedAnalysisFixturesTests(TestCase):
         self.assertEqual(WorkOrder.objects.count(), wo_count)
         self.assertEqual(ControlledDocument.objects.count(), doc_count)
 
+    @requires_postgres
     def test_audit_covers_the_new_machines_by_client(self):
         """The client-driven audit needs no per-set extension."""
         from io import StringIO as _StringIO

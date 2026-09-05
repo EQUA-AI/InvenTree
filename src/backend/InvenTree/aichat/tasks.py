@@ -168,11 +168,20 @@ def strip_tool_directives(body: dict) -> dict:
 
 
 def _summarize(transcript: list[dict], prior_body: dict) -> dict:
-    """One strict-schema summarization call on the S37 SUMMARIZATION tier."""
+    """One strict-schema summarization call on the SUMMARIZATION tier.
+
+    CR-2 (GR-06): the payload passes ``ai.core.redaction`` BEFORE the call.
+    Full-mode compaction has shipped raw transcripts of every role to a
+    GlobalStandard deployment since 2026-08-13, so this runs in the same
+    worker image as the D-10 routing override and logs counts only.
+    ``call_options`` adds ``reasoning_effort`` only when the override names
+    a reasoning deployment (the gpt-4.x tiers reject it).
+    """
     from openai import AzureOpenAI
 
     from ai.core.config import get_settings
-    from ai.core.model_policy import ModelPurpose, select_deployment
+    from ai.core.model_policy import ModelPurpose, call_options, select_deployment
+    from ai.core.redaction import format_counts, redact_payload
 
     settings = get_settings()
     client = AzureOpenAI(
@@ -180,11 +189,17 @@ def _summarize(transcript: list[dict], prior_body: dict) -> dict:
         api_key=settings.azure_openai_api_key,
         api_version=settings.azure_openai_api_version,
     )
-    payload = json.dumps(
-        {'prior_summary': prior_body, 'new_messages': transcript}, ensure_ascii=True
-    )
+    redacted = redact_payload({'prior_summary': prior_body, 'new_messages': transcript})
+    if redacted.redacted:
+        # Content-free by construction: category names and counts only. The
+        # per-category columns move into ChatCompactionEvent (CR-2 remainder).
+        logger.info(
+            'Thread compaction redaction counts=%s', format_counts(redacted.counts)
+        )
+    payload = json.dumps(redacted.value, ensure_ascii=True)
     response = client.chat.completions.create(
         model=select_deployment(ModelPurpose.SUMMARIZATION),
+        **call_options(ModelPurpose.SUMMARIZATION),
         messages=[
             {'role': 'system', 'content': _COMPACTION_SYSTEM_PROMPT},
             {'role': 'user', 'content': payload},
@@ -252,7 +267,14 @@ def _compact_locked(thread_id) -> None:
     if not transcript:
         return
 
-    prior_body = parse_summary_body(thread.summary)
+    # CR-2: redact the STORED prior body too, not only the in-flight payload.
+    # ``merge_protected_fields`` unions prior items into every later summary,
+    # so an unredacted item minted before 2026-09 would otherwise persist and
+    # replay into web-app prompts forever; this converges each thread to a
+    # clean summary within one compaction.
+    from ai.core.redaction import redact_payload
+
+    prior_body = redact_payload(parse_summary_body(thread.summary)).value
     try:
         fresh = _summarize(transcript, prior_body)
     except Exception:

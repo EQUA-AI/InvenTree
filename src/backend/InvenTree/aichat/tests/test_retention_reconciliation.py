@@ -90,14 +90,7 @@ class RetentionEnvMixin:
             'analysis_scope_hash': 'scopehash',
         }
 
-    def build_thread(
-        self,
-        username,
-        *,
-        grants=(),
-        voice=False,
-        proposals=False,
-    ):
+    def build_thread(self, username, *, grants=(), voice=False, proposals=False):
         """One complete thread: turn, messages, evidence set, feedback."""
         user = self.make_user(username)
         repository = ThreadRepository(user.pk, 'site:main')
@@ -133,9 +126,7 @@ class RetentionEnvMixin:
         )
         for grantee_name in grants:
             ChatThreadGrant.objects.create(
-                thread=thread,
-                grantee=self.make_user(grantee_name),
-                granted_by=user,
+                thread=thread, grantee=self.make_user(grantee_name), granted_by=user
             )
         if voice:
             self._add_voice(user, thread.pk)
@@ -224,9 +215,7 @@ class ThreadPurgeTests(RetentionEnvMixin, TestCase):
 
         real = retention.run_all()
         for family in ('threads', 'retrieval_misses', 'rejections'):
-            self.assertEqual(
-                dry['families'][family], real['families'][family], family
-            )
+            self.assertEqual(dry['families'][family], real['families'][family], family)
         self.assertEqual(real['errors'], {})
         self.assertIsNotNone(retention.last_run())
 
@@ -240,9 +229,7 @@ class ThreadPurgeTests(RetentionEnvMixin, TestCase):
 
         self.assertEqual(report, {'threads': 1})
         self.assertFalse(ChatThread.objects.filter(pk=old_thread.pk).exists())
-        self.assertEqual(
-            ChatMessage.objects.filter(thread_id=old_thread.pk).count(), 0
-        )
+        self.assertEqual(ChatMessage.objects.filter(thread_id=old_thread.pk).count(), 0)
         self.assertEqual(ChatTurn.objects.filter(thread_id=old_thread.pk).count(), 0)
         self.assertEqual(
             ChatEvidenceSet.objects.filter(turn__thread_id=old_thread.pk).count(), 0
@@ -546,7 +533,9 @@ class DetailFamilyTests(RetentionEnvMixin, TestCase):
 
         # No recomputation from partially-scrubbed data: the aggregate rows
         # are exactly the ones the first (pre-crash) pass wrote.
-        self.assertEqual(AIUsageMonthlyAggregate.objects.count(), aggregates_after_crash)
+        self.assertEqual(
+            AIUsageMonthlyAggregate.objects.count(), aggregates_after_crash
+        )
         totals = AIUsageMonthlyAggregate.objects.get(
             source='turn_usage', user_id=user.pk, dimension=''
         )
@@ -583,9 +572,9 @@ class DetailFamilyTests(RetentionEnvMixin, TestCase):
             state=AIQuotaReservationState.RESERVED,
             expires_at=expires,
         )
-        AIQuotaReservation.objects.filter(
-            pk__in=[settled.pk, reserved.pk]
-        ).update(created_at=_old(DETAIL_OLD_DAYS + 40))
+        AIQuotaReservation.objects.filter(pk__in=[settled.pk, reserved.pk]).update(
+            created_at=_old(DETAIL_OLD_DAYS + 40)
+        )
 
         audit_keep = AIQuotaAuditEvent.objects.create(
             action=AIQuotaAuditAction.ASSIGNED
@@ -598,9 +587,7 @@ class DetailFamilyTests(RetentionEnvMixin, TestCase):
         )
         AIQuotaAuditEvent.objects.filter(pk=audit_purge.pk).update(created_at=_old())
 
-        self.assertEqual(
-            retention.purge_retrieval_misses(), {'retrieval_misses': 1}
-        )
+        self.assertEqual(retention.purge_retrieval_misses(), {'retrieval_misses': 1})
         self.assertEqual(RetrievalMiss.objects.get().query, 'fresh')
         self.assertEqual(retention.purge_request_rejections(), {'rejections': 1})
         self.assertEqual(AIRequestRejection.objects.get().code, 'quota_exhausted')
@@ -639,9 +626,7 @@ class DetailFamilyTests(RetentionEnvMixin, TestCase):
             user_id=1,
         )
         AIUsageMonthlyAggregate.objects.create(
-            month=timezone.now().date().replace(day=1),
-            source='turn_usage',
-            user_id=1,
+            month=timezone.now().date().replace(day=1), source='turn_usage', user_id=1
         )
         self.assertEqual(retention.purge_usage_aggregates(), {'usage_aggregates': 1})
         self.assertEqual(AIUsageMonthlyAggregate.objects.count(), 1)

@@ -36,6 +36,12 @@ ENV INVENTREE_PLUGIN_DIR="${INVENTREE_DATA_DIR}/plugins"
 
 ENV INVENTREE_BACKEND_DIR="${INVENTREE_HOME}/src/backend"
 
+# M1 (GR-26 / plan §9.7): tiktoken fetches its o200k_base vocabulary from the
+# internet on first use. The builder stage warms this cache; the production
+# stage inherits it through /root/.local, so a no-egress deployment never
+# reaches out at runtime (asserted offline in .github/workflows/docker.yaml).
+ENV TIKTOKEN_CACHE_DIR="/root/.local/share/tiktoken"
+
 # InvenTree configuration files
 ENV INVENTREE_CONFIG_FILE="${INVENTREE_DATA_DIR}/config.yaml"
 ENV INVENTREE_SECRET_KEY_FILE="${INVENTREE_DATA_DIR}/secret_key.txt"
@@ -122,6 +128,11 @@ RUN pip install --user --require-hashes -r base_requirements.txt --no-cache-dir 
     pip install --user -r src/backend/InvenTree/ai/requirements.txt --no-cache-dir && \
     pip cache purge && \
     rm -rf /root/.cache/pip
+
+# Bake the tokenizer vocabulary into the image (no runtime egress).
+RUN mkdir -p "$TIKTOKEN_CACHE_DIR" \
+    && python -c "import tiktoken; tiktoken.get_encoding('o200k_base')" \
+    && test -n "$(ls -A "$TIKTOKEN_CACHE_DIR")"
 
 # Install frontend build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

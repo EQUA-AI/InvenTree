@@ -75,15 +75,32 @@ class TurnArtifacts:
 
 
 @dataclass(frozen=True)
+class RequiredKey:
+    """One fixture key that MUST surface on a turn (D1, the recall proof).
+
+    Satisfied when any id or marker appears on the scanned surfaces; a
+    document key carrying a ``revision`` additionally needs that revision —
+    cited (``source_revision``) or named in the text — so a superseded rev A
+    can never satisfy a required rev B.
+    """
+
+    ids: tuple[str, ...] = ()
+    markers: tuple[str, ...] = ()
+    revision: str = ""
+
+
+@dataclass(frozen=True)
 class Resolution:
     """Run-time resolution of the fixture-key manifest.
 
     ``scope_ids``: entity ids (as strings) the case's scope covers.
     ``forbidden``: fixture key -> (ids, markers) to scan for.
+    ``required``: fixture key -> :class:`RequiredKey` that must surface.
     """
 
     scope_ids: frozenset[str] = frozenset()
     forbidden: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = field(default_factory=dict)
+    required: dict[str, RequiredKey] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -151,9 +168,8 @@ def _is_boundary_shaped(artifacts: TurnArtifacts) -> tuple[bool, str]:
     return True, ""
 
 
-def _forbidden_hits(artifacts: TurnArtifacts, resolution: Resolution) -> list[str]:
-    """Id- and marker-level scan of everything the turn surfaced."""
-    hits: list[str] = []
+def _surfaces(artifacts: TurnArtifacts) -> str:
+    """Everything the turn surfaced: prose, citation ids/titles, entity chips."""
     surfaces: list[str] = [artifacts.message_text or ""]
     for citation in _citations(artifacts):
         surfaces.append(str(citation.get("source_id") or ""))
@@ -161,7 +177,13 @@ def _forbidden_hits(artifacts: TurnArtifacts, resolution: Resolution) -> list[st
     for entity in artifacts.entities or []:
         surfaces.append(str(entity.get("id") or ""))
         surfaces.append(str(entity.get("label") or entity.get("name") or ""))
-    haystack = "\n".join(surfaces)
+    return "\n".join(surfaces)
+
+
+def _forbidden_hits(artifacts: TurnArtifacts, resolution: Resolution) -> list[str]:
+    """Id- and marker-level scan of everything the turn surfaced."""
+    hits: list[str] = []
+    haystack = _surfaces(artifacts)
     haystack_lower = haystack.lower()
     for key, (ids, markers) in resolution.forbidden.items():
         for entity_id in ids:
@@ -171,6 +193,38 @@ def _forbidden_hits(artifacts: TurnArtifacts, resolution: Resolution) -> list[st
             if marker and marker.lower() in haystack_lower:
                 hits.append(f"{key}:{marker}")
     return hits
+
+
+def _revision_satisfied(
+    artifacts: TurnArtifacts, required: RequiredKey, haystack_lower: str
+) -> bool:
+    """A required document revision is cited or named — never inferred."""
+    wanted = required.revision.strip().lower()
+    for citation in _citations(artifacts):
+        source_id = str(citation.get("source_id") or "")
+        revision = str(citation.get("source_revision") or "").strip().lower()
+        if source_id and source_id in required.ids and revision == wanted:
+            return True
+    return any(
+        f"{prefix}{wanted}" in haystack_lower
+        for prefix in ("revision ", "rev ", "rev. ", "rev-", "rev")
+    )
+
+
+def _required_misses(artifacts: TurnArtifacts, resolution: Resolution) -> list[str]:
+    """Required fixture keys that did NOT surface (same surfaces as the forbidden scan)."""
+    misses: list[str] = []
+    haystack = _surfaces(artifacts)
+    haystack_lower = haystack.lower()
+    for key, required in resolution.required.items():
+        id_hit = any(entity_id and entity_id in haystack for entity_id in required.ids)
+        marker_hit = any(marker and marker.lower() in haystack_lower for marker in required.markers)
+        if not (id_hit or marker_hit):
+            misses.append(key)
+            continue
+        if required.revision and not _revision_satisfied(artifacts, required, haystack_lower):
+            misses.append(f"{key} (revision {required.revision} not cited)")
+    return misses
 
 
 # --------------------------------------------------------------------------- #
@@ -191,23 +245,32 @@ def _layer_service(case: ScenarioCase, artifacts: TurnArtifacts) -> LayerResult:
 def _layer_intent(
     turn: ScenarioTurn, artifacts: TurnArtifacts, expected_behavior: str
 ) -> LayerResult:
-    workflow = str(artifacts.response_body.get("workflow_used") or "")
+    route = artifacts.route or {}
+    workflow = str(artifacts.response_body.get("workflow_used") or route.get("workflow_id") or "")
     if turn.expected_intent in ANALYSIS_INTENTS and workflow in DIAGNOSTIC_WORKFLOWS:
         return LayerResult(2, "intent_and_rail", "fail", f"analysis intent routed to {workflow}")
+    if turn.expected_workflow and workflow != turn.expected_workflow:
+        # Keeps the "routed to" marker run_campaign counts as a rail failure.
+        return LayerResult(
+            2,
+            "intent_and_rail",
+            "fail",
+            f"routed to {workflow or 'unknown'!r} != expected {turn.expected_workflow!r}",
+        )
     if expected_behavior == "capability_boundary":
         boundary, why = _is_boundary_shaped(artifacts)
         if not boundary:
             return LayerResult(2, "intent_and_rail", "fail", f"expected boundary: {why}")
         return LayerResult(2, "intent_and_rail", "pass", "capability boundary")
+    reported = _summary_presence_report(turn, artifacts)
     if turn.expected_intent:
-        route = artifacts.route or {}
         routed_intent = str(route.get("task_intent") or "")
         if not routed_intent:
             return LayerResult(
                 2,
                 "intent_and_rail",
                 "skip",
-                "task_intent not exposed by this deployment; workflow gate only",
+                "task_intent not exposed by this deployment; workflow gate only" + reported,
             )
         if routed_intent != turn.expected_intent:
             return LayerResult(
@@ -216,7 +279,21 @@ def _layer_intent(
                 "fail",
                 f"intent {routed_intent!r} != expected {turn.expected_intent!r}",
             )
-    return LayerResult(2, "intent_and_rail", "pass")
+    return LayerResult(2, "intent_and_rail", "pass", reported.strip("; "))
+
+
+def _summary_presence_report(turn: ScenarioTurn, artifacts: TurnArtifacts) -> str:
+    """The REPORTED (never failing) summary-slot expectation, as detail text."""
+    if turn.expect_conversation_summary_present is None:
+        return ""
+    observed = (artifacts.route or {}).get("conversation_summary_present")
+    if not isinstance(observed, bool):
+        return "; summary_present=unknown (not exposed)"
+    verdict = "match" if observed == turn.expect_conversation_summary_present else "mismatch"
+    return (
+        f"; summary_present={str(observed).lower()} "
+        f"expected={str(turn.expect_conversation_summary_present).lower()} ({verdict}, reported)"
+    )
 
 
 def _layer_scope(artifacts: TurnArtifacts, resolution: Resolution) -> LayerResult:
@@ -242,7 +319,17 @@ def _layer_scope(artifacts: TurnArtifacts, resolution: Resolution) -> LayerResul
     return LayerResult(3, "scope_purity", "pass")
 
 
-def _layer_coverage(turn: ScenarioTurn, artifacts: TurnArtifacts) -> LayerResult:
+def _layer_coverage(
+    turn: ScenarioTurn, artifacts: TurnArtifacts, resolution: Resolution | None = None
+) -> LayerResult:
+    misses = _required_misses(artifacts, resolution) if resolution else []
+    if misses:
+        return LayerResult(
+            4,
+            "coverage_validity",
+            "fail",
+            "required entity missing: " + ", ".join(misses),
+        )
     coverage = _coverage(artifacts)
     if turn.complete_population_required:
         if coverage is None:
@@ -424,7 +511,7 @@ def score_turn(
         _layer_service(case, artifacts),
         _layer_intent(turn, artifacts, expected_behavior),
         _layer_scope(artifacts, resolution),
-        _layer_coverage(turn, artifacts),
+        _layer_coverage(turn, artifacts, resolution),
         _layer_sources(artifacts, gold),
         _layer_boundary_assertions(case, artifacts, expected_behavior),
     ]
@@ -501,7 +588,26 @@ def resolution_from_manifest(
         descriptor = manifest.get(key, {})
         markers = tuple(str(marker) for marker in descriptor.get("markers") or ())
         forbidden[key] = (tuple(resolved_ids.get(key, ())), markers)
-    return Resolution(scope_ids=frozenset(scope_ids), forbidden=forbidden)
+    required: dict[str, RequiredKey] = {}
+    for key in turn.required_entity_fixture_keys:
+        descriptor = manifest.get(key, {})
+        kind = str(descriptor.get("kind") or "")
+        markers = [str(marker) for marker in descriptor.get("markers") or ()]
+        # A machine surfaces by chip id, name or serial — never by the bare
+        # numeric pk (a substring hit on "11" proves nothing).
+        ids = tuple(i for i in resolved_ids.get(key, ()) if ":" in str(i))
+        if kind == "machine":
+            markers.extend(
+                str(descriptor[field]) for field in ("name", "serial") if descriptor.get(field)
+            )
+        if kind == "document" and not ids:
+            ids = (str(descriptor.get("document_id") or ""),)
+        required[key] = RequiredKey(
+            ids=tuple(i for i in ids if i),
+            markers=tuple(dict.fromkeys(markers)),
+            revision=str(descriptor.get("revision") or "") if kind == "document" else "",
+        )
+    return Resolution(scope_ids=frozenset(scope_ids), forbidden=forbidden, required=required)
 
 
 __all__ = [
@@ -511,6 +617,7 @@ __all__ = [
     "LAYERS",
     "JudgeCall",
     "LayerResult",
+    "RequiredKey",
     "Resolution",
     "TurnArtifacts",
     "TurnScore",

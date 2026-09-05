@@ -1,5 +1,7 @@
 -r requirements-maf-migration.txt
 
 # Optional development-only server and adapters. This prerelease was validated
-# against the migration core pins above and also passed `pip check`.
+# against the 2026-07-19 migration core pins and passed `pip check` then; it
+# was NOT re-resolved with the 2026-09-05 GA set above (devui is not part of
+# the ai_maf_matrix lane). Re-validate before relying on it.
 agent-framework-devui==1.0.0b260709

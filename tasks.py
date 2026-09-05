@@ -1820,7 +1820,9 @@ def test(
         cmd += ' --slowreport'
 
     if keepdb:
-        cmd += ' --keepdb'
+        # --noinput rides with --keepdb: a stale test database would otherwise
+        # block on the interactive 'destroy it?' prompt in a non-tty (CI) shell.
+        cmd += ' --keepdb --noinput'
 
     if migrations:
         cmd += ' --tag migration_test'

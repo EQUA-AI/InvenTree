@@ -15,6 +15,7 @@ import django
 django.setup()
 
 import contextlib  # noqa: E402
+from unittest import mock  # noqa: E402
 
 from ai.core.agents.voice_routing import VoiceComplexityRouter  # noqa: E402
 from ai.core.auth import AIPrincipal  # noqa: E402
@@ -1308,3 +1309,78 @@ class ServerPinnedWorkflowTests(SimpleTestCase):
                     server_pinned_workflow="   ",
                 )
             )
+
+
+class TurnBoundaryConnectionHygieneTests(SimpleTestCase):
+    """CR-3: ``close_old_connections`` runs on entry and on every exit path."""
+
+    def _service(self, repository):
+        return _TestTurnService(
+            workflow_factory=_Workflow,
+            repository_factory=lambda actor, context: repository,  # noqa: ARG005
+        )
+
+    def test_success_path_closes_old_connections_twice(self) -> None:
+        calls: list[str] = []
+        with mock.patch(
+            "ai.core.turn_service.close_old_connections", side_effect=lambda: calls.append("x")
+        ):
+            asyncio.run(
+                self._service(_Repository()).process(
+                    actor=_principal(),
+                    thread_id="thread_normalized",
+                    content="Inspect pump",
+                    modality="text",
+                    trusted_context=_context(),
+                    modality_metadata={"transport": "typed"},
+                    idempotency_key="hygiene:ok",
+                    correlation_id=_context().correlation_id,
+                )
+            )
+        self.assertEqual(len(calls), 2, "entry + exit")
+
+    def test_failure_path_still_closes_old_connections_on_exit(self) -> None:
+        calls: list[str] = []
+        repository = _Repository()
+        service = self._service(repository)
+        common = {
+            "actor": _principal(),
+            "thread_id": "thread_normalized",
+            "modality": "text",
+            "trusted_context": _context(),
+            "modality_metadata": {},
+            "idempotency_key": "hygiene:conflict",
+            "correlation_id": _context().correlation_id,
+        }
+
+        async def exercise():
+            await service.process(content="Original", **common)
+            calls.clear()
+            await service.process(content="Changed", **common)
+
+        with (
+            mock.patch(
+                "ai.core.turn_service.close_old_connections", side_effect=lambda: calls.append("x")
+            ),
+            self.assertRaises(IdempotencyConflict),
+        ):
+            asyncio.run(exercise())
+        self.assertEqual(len(calls), 2, "entry + finally on the rejected turn")
+
+    def test_hygiene_failure_never_fails_the_turn(self) -> None:
+        with mock.patch(
+            "ai.core.turn_service.close_old_connections", side_effect=RuntimeError("db gone")
+        ):
+            result = asyncio.run(
+                self._service(_Repository()).process(
+                    actor=_principal(),
+                    thread_id="thread_normalized",
+                    content="Inspect pump",
+                    modality="text",
+                    trusted_context=_context(),
+                    modality_metadata={"transport": "typed"},
+                    idempotency_key="hygiene:tolerant",
+                    correlation_id=_context().correlation_id,
+                )
+            )
+        self.assertEqual(result.message, "Normalized response")

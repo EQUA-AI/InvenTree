@@ -258,6 +258,7 @@ The following database options can be configured:
 {{ configsetting("INVENTREE_DB_PORT") }} Database host port (if required) |
 {{ configsetting("INVENTREE_DB_CONN_MAX_AGE") }} Database connection max age (s) |
 {{ configsetting("INVENTREE_DB_CONN_HEALTH_CHECKS") }} Enable database connection health checks |
+{{ configsetting("INVENTREE_DB_DISABLE_SERVER_SIDE_CURSORS") }} Disable server-side cursors (required behind a transaction-mode connection pooler such as PgBouncer) |
 
 {{ configsetting("INVENTREE_DB_OPTIONS") }} Additional database options (as a JSON object) |
 

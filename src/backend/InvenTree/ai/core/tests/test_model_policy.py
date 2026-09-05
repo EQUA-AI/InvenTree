@@ -16,16 +16,24 @@ django.setup()
 
 import pytest
 from ai.core.config import Settings
-from ai.core.model_policy import ModelPurpose, select_deployment
+from ai.core.model_policy import (
+    ModelPurpose,
+    _legacy_choice,
+    _policy_choice,
+    call_options,
+    select_deployment,
+)
 
 FAST = "fast-mini"
 STANDARD = "standard-4o"
+OVERRIDE = "luna-dz"
 
 
 def _settings(**overrides) -> Settings:
     base = {
         "AZURE_OPENAI_DEPLOYMENT": STANDARD,
         "AZURE_OPENAI_FAST_DEPLOYMENT": FAST,
+        "AZURE_OPENAI_SUMMARIZATION_DEPLOYMENT": "",
         "FEATURE_MODEL_TIERING_SHADOW": True,
         "FEATURE_MODEL_TIERING_ENFORCE": False,
         "FEATURE_WF8_TEXT_FAST_TIER": False,
@@ -42,7 +50,9 @@ def _settings(**overrides) -> Settings:
         (ModelPurpose.FALLBACK_CLASSIFIER, "text", FAST),
         (ModelPurpose.GROUNDING_AUDIT, "text", FAST),
         (ModelPurpose.CLOSEOUT_BINDING, "text", FAST),
-        (ModelPurpose.SUMMARIZATION, "text", FAST),
+        # D-10: summarization/extraction never take the fast tier.
+        (ModelPurpose.SUMMARIZATION, "text", STANDARD),
+        (ModelPurpose.EXTRACTION, "text", STANDARD),
         (ModelPurpose.MEDIA_CAPTION, "text", STANDARD),
     ],
 )
@@ -92,3 +102,80 @@ def test_ladder_off_returns_legacy_without_computing_policy(monkeypatch):
         lambda: _settings(FEATURE_MODEL_TIERING_SHADOW=False, FEATURE_WF8_TEXT_FAST_TIER=True),
     )
     assert select_deployment(ModelPurpose.WF8_PRIMARY, modality="text") == STANDARD
+
+
+# --------------------------------------------------------------------------- #
+# D-10 / CR-2: the SUMMARIZATION/EXTRACTION routing override
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("purpose", [ModelPurpose.SUMMARIZATION, ModelPurpose.EXTRACTION])
+@pytest.mark.parametrize("shadow", [False, True], ids=["shadow-off", "shadow-on"])
+@pytest.mark.parametrize("enforce", [False, True], ids=["enforce-off", "enforce-on"])
+@pytest.mark.parametrize("override", ["", OVERRIDE], ids=["no-override", "override"])
+def test_summarization_and_extraction_never_take_fast(
+    monkeypatch, caplog, purpose, shadow, enforce, override
+):
+    """Every ladder state resolves both purposes to override-or-standard.
+
+    The worker that runs ``_summarize`` sets no tiering flag, so the rule has
+    to hold on BOTH branches — and it must never log a divergence, because a
+    divergence would mean the branches disagree where nobody is watching.
+    """
+    settings = _settings(
+        FEATURE_MODEL_TIERING_SHADOW=shadow,
+        FEATURE_MODEL_TIERING_ENFORCE=enforce,
+        AZURE_OPENAI_SUMMARIZATION_DEPLOYMENT=override,
+    )
+    monkeypatch.setattr("ai.core.config.get_settings", lambda: settings)
+    with caplog.at_level(logging.WARNING, logger="ai.core.model_policy"):
+        chosen = select_deployment(purpose)
+    assert chosen == (override or STANDARD)
+    assert chosen != FAST
+    assert _legacy_choice(settings, purpose, "text") == _policy_choice(settings, purpose, "text")
+    assert not any("model_tiering.divergence" in r.getMessage() for r in caplog.records)
+
+
+def test_override_is_whitespace_trimmed(monkeypatch):
+    monkeypatch.setattr(
+        "ai.core.config.get_settings",
+        lambda: _settings(AZURE_OPENAI_SUMMARIZATION_DEPLOYMENT=f"  {OVERRIDE}  "),
+    )
+    assert select_deployment(ModelPurpose.SUMMARIZATION) == OVERRIDE
+
+
+@pytest.mark.parametrize("purpose", [ModelPurpose.SUMMARIZATION, ModelPurpose.EXTRACTION])
+def test_call_options_send_reasoning_effort_only_with_override(monkeypatch, purpose):
+    monkeypatch.setattr("ai.core.config.get_settings", _settings)
+    assert call_options(purpose) == {}
+
+    monkeypatch.setattr(
+        "ai.core.config.get_settings",
+        lambda: _settings(AZURE_OPENAI_SUMMARIZATION_DEPLOYMENT=OVERRIDE),
+    )
+    assert call_options(purpose) == {"reasoning_effort": "low"}
+
+    monkeypatch.setattr(
+        "ai.core.config.get_settings",
+        lambda: _settings(
+            AZURE_OPENAI_SUMMARIZATION_DEPLOYMENT=OVERRIDE,
+            AZURE_SUMMARIZATION_REASONING_EFFORT="high",
+        ),
+    )
+    assert call_options(purpose) == {"reasoning_effort": "high"}
+
+
+def test_call_options_never_apply_to_other_purposes(monkeypatch):
+    monkeypatch.setattr(
+        "ai.core.config.get_settings",
+        lambda: _settings(AZURE_OPENAI_SUMMARIZATION_DEPLOYMENT=OVERRIDE),
+    )
+    for purpose in ModelPurpose:
+        if purpose in (ModelPurpose.SUMMARIZATION, ModelPurpose.EXTRACTION):
+            continue
+        assert call_options(purpose) == {}
+
+
+def test_invalid_reasoning_effort_is_rejected():
+    with pytest.raises(ValueError):
+        _settings(AZURE_SUMMARIZATION_REASONING_EFFORT="max")

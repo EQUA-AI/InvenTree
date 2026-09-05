@@ -1,0 +1,287 @@
+# M1 gate memory battery (plan of record §9 / D2): does each rail carry the
+# conversation forward? Twelve continuous-thread cases, every one names the
+# RAIL it exercises, every follow-up is scored by ids/markers (never prose
+# semantics, §13.3). Inline questions are synthetic-corpus only (§13.4).
+#
+# Rails (RAILS in scenarios.py):
+#   wf8        the lookup assistant (the only rail that replays history today)
+#   rbac_run   wf2/wf3 through run_with_rbac (history dropped until M1 PR E)
+#   reasoning  wf1 under FEATURE_VOICE_LIVE_DIAGNOSIS (requires_flags -> skip)
+#   routing    the intent classifier's conversation_summary slot (REPORTED)
+#
+# wf9 has no case: it is an internal retrieval sub-rail, not routable. wf4 and
+# wf6 are covered by the rbac_run replay unit tests (an effect-shaped text
+# turn routes to advisory_intent; wf6 needs an upload).
+#
+# Turn-0 expected_workflow assertions hold on every image; follow-up recall
+# assertions (required_entity_fixture_keys) are the parity signal the entry
+# baseline journals and the M1 exit gate must move. Per pass: 57 turns, 47
+# follow-ups; over five passes each rail clears the 25-follow-up floor
+# (wf8 130, rbac_run 35, reasoning 35, routing 25).
+
+schema_version: 1
+dataset: fixture
+fixture_set_versions: [aimms-analysis-fixtures-v1]
+
+cases:
+  # --- wf8: anaphora over the scoped machine and its documents ------------
+  - id: M-MEM-01
+    rail: wf8
+    fresh_thread: true
+    scope: {machine_fixture_keys: [solar_a]}
+    required_assertions: [scope_persisted, no_governed_effect]
+    turns:
+      - question: Which machine is in my current scope, and what is its serial number?
+        expected_workflow: wf8
+        required_entity_fixture_keys: [solar_a]
+        forbidden_entity_fixture_keys: [distractor_marine, distractor_string]
+      - question: What documents are on file for it?
+        expected_workflow: wf8
+        forbidden_entity_fixture_keys: [distractor_marine, distractor_string]
+      - question: Which revision of its service manual is current?
+        expected_workflow: wf8
+        required_entity_fixture_keys: [manual_si3000_revB]
+        forbidden_entity_fixture_keys: [distractor_marine, distractor_string]
+      - question: And the superseded one?
+        expected_workflow: wf8
+        required_entity_fixture_keys: [manual_si3000_revA]
+        forbidden_entity_fixture_keys: [distractor_marine, distractor_string]
+
+  - id: M-MEM-02
+    rail: wf8
+    fresh_thread: true
+    scope: {machine_fixture_keys: [solar_a, solar_b]}
+    required_assertions: [scope_persisted, no_governed_effect]
+    turns:
+      - question: Tell me about Inverter B.
+        expected_workflow: wf8
+        required_entity_fixture_keys: [solar_b]
+        forbidden_entity_fixture_keys: [hx200, water_asset, test_bench]
+      - question: Now the same for the other one.
+        expected_workflow: wf8
+        required_entity_fixture_keys: [solar_a]
+        forbidden_entity_fixture_keys: [hx200, water_asset, test_bench]
+      - question: Is there a newer fleet bulletin that applies to both of them?
+        expected_workflow: wf8
+        required_entity_fixture_keys: [fleet_bulletin]
+        forbidden_entity_fixture_keys: [hx200, water_asset, test_bench]
+
+  # --- rbac_run: wf2 / wf3 follow-ups ------------------------------------
+  - id: M-MEM-03
+    rail: rbac_run
+    fresh_thread: true
+    required_assertions: [no_governed_effect]
+    turns:
+      - question: Find alternatives for the SI-3000 AC surge arrester part.
+        expected_workflow: wf2
+        forbidden_entity_fixture_keys: [supplier, price, email]
+      - question: Compare the first two you listed.
+        expected_workflow: wf2
+        forbidden_entity_fixture_keys: [supplier, price, email]
+      - question: Is either of them obsolete?
+        expected_workflow: wf2
+        forbidden_entity_fixture_keys: [supplier, price, email]
+
+  - id: M-MEM-04
+    rail: rbac_run
+    fresh_thread: true
+    required_assertions: [no_governed_effect]
+    turns:
+      - question: Research the specifications for the SI-3000 inverter coolant pump.
+        expected_workflow: wf3
+        forbidden_entity_fixture_keys: [hx200_repairs, water_assets]
+      - question: What is the lead time for that one?
+        expected_workflow: wf3
+        forbidden_entity_fixture_keys: [hx200_repairs, water_assets]
+      - question: Summarise what you found so far.
+        expected_workflow: wf3
+        forbidden_entity_fixture_keys: [hx200_repairs, water_assets]
+
+  # --- reasoning: wf1 under the live-diagnosis flag ----------------------
+  - id: M-MEM-05
+    rail: reasoning
+    fresh_thread: true
+    requires_flags: [FEATURE_VOICE_LIVE_DIAGNOSIS]
+    scope: {machine_fixture_keys: [solar_a]}
+    required_assertions: [scope_persisted, no_governed_effect]
+    turns:
+      - question: Diagnose a DC overvoltage alarm on string 3 of this inverter.
+        expected_workflow: wf1
+        required_entity_fixture_keys: [solar_a]
+        forbidden_entity_fixture_keys: [distractor_marine, test_bench]
+      - question: What was replaced on it the last time this happened?
+        expected_workflow: wf1
+        forbidden_entity_fixture_keys: [distractor_marine, test_bench]
+      - question: Did that fix it?
+        expected_workflow: wf1
+        forbidden_entity_fixture_keys: [distractor_marine, test_bench]
+
+  - id: M-MEM-06
+    rail: reasoning
+    fresh_thread: true
+    requires_flags: [FEATURE_VOICE_LIVE_DIAGNOSIS]
+    scope: {machine_fixture_keys: [solar_b]}
+    required_assertions: [scope_persisted, no_governed_effect]
+    turns:
+      - question: Ground fault on this inverter after rain. Where do I start?
+        expected_workflow: wf1
+        required_entity_fixture_keys: [solar_b]
+        forbidden_entity_fixture_keys: [solar_a, hx200]
+      - question: Which lugs should be re-torqued for that?
+        expected_workflow: wf1
+        forbidden_entity_fixture_keys: [solar_a, hx200]
+      - question: Is the fault still ongoing after that step?
+        expected_workflow: wf1
+        forbidden_entity_fixture_keys: [solar_a, hx200]
+
+  # --- routing: the classifier's conversation_summary slot ---------------
+  - id: M-MEM-07
+    rail: routing
+    fresh_thread: true
+    required_assertions: [no_governed_effect]
+    turns:
+      - question: Find suppliers for the SI-3000 cabinet air filter.
+        expected_workflow: wf3
+        forbidden_entity_fixture_keys: [hx200, water_asset]
+      # A bare fragment misroutes to GENERAL/wf8 without the summary slot.
+      - question: And for the surge arrester?
+        expected_workflow: wf3
+        expect_conversation_summary_present: true
+        forbidden_entity_fixture_keys: [hx200, water_asset]
+      - question: Which of those has the shorter lead time?
+        expected_workflow: wf3
+        expect_conversation_summary_present: true
+        forbidden_entity_fixture_keys: [hx200, water_asset]
+
+  - id: M-MEM-08
+    rail: routing
+    fresh_thread: true
+    required_assertions: [no_governed_effect]
+    turns:
+      - question: What parts are compatible with the SI-3000 DC isolator?
+        expected_workflow: wf2
+        forbidden_entity_fixture_keys: [supplier, sku]
+      # An acknowledgement must NOT inherit the previous turn's tools.
+      - question: Ok.
+        expected_workflow: wf8
+        expect_conversation_summary_present: true
+        forbidden_entity_fixture_keys: [supplier, sku]
+      - question: Back to the isolator - what else fits it?
+        expected_workflow: wf2
+        expect_conversation_summary_present: true
+        forbidden_entity_fixture_keys: [supplier, sku]
+      - question: Which was the first one you mentioned?
+        expected_workflow: wf2
+        expect_conversation_summary_present: true
+        forbidden_entity_fixture_keys: [supplier, sku]
+
+  # --- wf8 after an analysis intent: the fragment must keep the subject --
+  - id: M-MEM-09
+    rail: wf8
+    fresh_thread: true
+    scope: {machine_fixture_keys: [solar_a]}
+    required_assertions: [scope_persisted, no_governed_effect]
+    turns:
+      # Executor vs wf8 is environment-dependent (router enforce posture):
+      # no workflow assertion; the keys score the turns.
+      - question: How many work orders are recorded for Inverter A in total?
+        expected_intent: record_retrieval
+        complete_population_required: true
+        forbidden_entity_fixture_keys: [distractor_marine, test_bench]
+      - question: Just the open ones.
+        required_entity_fixture_keys: [wo_incomplete_a]
+        forbidden_entity_fixture_keys: [distractor_marine, test_bench]
+      - question: Which of those has the bolt-torque check on it?
+        forbidden_entity_fixture_keys: [distractor_marine, test_bench]
+
+  # --- wf8 across a compaction boundary (COMPACTION_MIN_BACKLOG=16) ------
+  - id: M-MEM-10
+    rail: wf8
+    fresh_thread: true
+    scope: {machine_fixture_keys: [solar_a, solar_b]}
+    required_assertions: [scope_persisted, no_governed_effect]
+    turns:
+      - question: For the record, note that the ambient reading at Inverter A was 41.7 degrees.
+        expected_workflow: wf8
+      - question: Correction - it was 47.1, not 41.7.
+        expected_workflow: wf8
+      - question: What is the serial number of Inverter A?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: What is the serial number of Inverter B?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: Which documents are on file for Inverter A?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: Which documents are on file for Inverter B?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: Is the Inverter A service manual current?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: Is the Inverter B service manual current?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: Does Inverter A have any open work orders?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: Does Inverter B have any open work orders?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: When was Inverter A last serviced?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: When was Inverter B last serviced?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: Which fleet bulletin applies to Inverter A?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: Which fleet bulletin applies to Inverter B?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: What client owns Inverter A?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: What client owns Inverter B?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: Is there an exact-asset supplement for Inverter A?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: Is there an exact-asset supplement for Inverter B?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: How many completed work orders does Inverter A have?
+        forbidden_entity_fixture_keys: [hx200]
+      - question: What ambient reading did I tell you for Inverter A?
+        expected_workflow: wf8
+        expect_conversation_summary_present: true
+        required_entity_fixture_keys: [mem_reading_corrected]
+        forbidden_entity_fixture_keys: [mem_reading_superseded, hx200]
+
+  # --- rbac_run: wf2, three anaphoric follow-ups --------------------------
+  - id: M-MEM-11
+    rail: rbac_run
+    fresh_thread: true
+    required_assertions: [no_governed_effect]
+    turns:
+      - question: Find alternatives for the SI-3000 string-inverter DC fuse part family.
+        expected_workflow: wf2
+        forbidden_entity_fixture_keys: [supplier, price, email]
+      - question: Which of those is rated the highest?
+        expected_workflow: wf2
+        forbidden_entity_fixture_keys: [supplier, price, email]
+      - question: Is the first one obsolete?
+        expected_workflow: wf2
+        forbidden_entity_fixture_keys: [supplier, price, email]
+      - question: Summarise the ones you mentioned.
+        expected_workflow: wf2
+        forbidden_entity_fixture_keys: [supplier, price, email]
+
+  # --- reasoning: wf1, a staged diagnosis --------------------------------
+  - id: M-MEM-12
+    rail: reasoning
+    fresh_thread: true
+    requires_flags: [FEATURE_VOICE_LIVE_DIAGNOSIS]
+    scope: {machine_fixture_keys: [solar_a]}
+    required_assertions: [scope_persisted, no_governed_effect]
+    turns:
+      - question: Coolant temperature high alarm on this inverter. What should I check first?
+        expected_workflow: wf1
+        required_entity_fixture_keys: [solar_a]
+        forbidden_entity_fixture_keys: [distractor_marine, test_bench]
+      - question: I checked that and it is fine. What next?
+        expected_workflow: wf1
+        forbidden_entity_fixture_keys: [distractor_marine, test_bench]
+      - question: What was replaced during its last repair?
+        expected_workflow: wf1
+        forbidden_entity_fixture_keys: [distractor_marine, test_bench]
+      - question: Does that explain the alarm?
+        expected_workflow: wf1
+        forbidden_entity_fixture_keys: [distractor_marine, test_bench]

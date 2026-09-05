@@ -29,6 +29,7 @@ from ai.core.usage import (
 from aichat.models import ThreadNamespace, TurnModality, TurnState
 from aichat.services import IdempotencyConflict, ThreadRepository
 from asgiref.sync import sync_to_async
+from django.db import close_old_connections
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -273,6 +274,23 @@ class NormalizedTurnService:
     @staticmethod
     async def _call_sync(function: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         return await sync_to_async(function, thread_sensitive=True)(*args, **kwargs)
+
+    @staticmethod
+    def _release_thread_connection() -> None:
+        """Django connection hygiene at the turn boundary (CR-3; Q22, Q24).
+
+        ``close_old_connections`` drops connections past ``CONN_MAX_AGE`` or
+        failing the health check. Called through ``_call_sync`` it lands on
+        the thread-sensitive executor thread that owns the AI plane's ORM
+        connection -- the one thread no request/response cycle ever cleans
+        up, which is why a stale pooled connection could surface as the
+        "connection is closed" 500 on the old pinned revision. Never fails
+        a turn.
+        """
+        try:
+            close_old_connections()
+        except Exception:  # pragma: no cover - hygiene must never fail a turn
+            logger.debug("close_old_connections failed at the turn boundary")
 
     @staticmethod
     def _rehydrate_user_for_grounding(actor: Any) -> Any | None:
@@ -1268,6 +1286,8 @@ class NormalizedTurnService:
         from ai.core.tracing import set_span_attrs, turn_span
 
         with turn_span("aimms.turn", correlation_id=correlation_id, modality=modality) as span:
+            # CR-3: connection hygiene on entry and (below) on exit.
+            await self._call_sync(self._release_thread_connection)
             # S13: the admission lease guards concurrency BEFORE any
             # reservation or provider work. A rejection raises the typed
             # saturation error with nothing held (acquire released its own
@@ -1331,6 +1351,7 @@ class NormalizedTurnService:
                 # settle runs FIRST (same thread hop) because
                 # record_turn_spend drains the ledger it also needs.
                 await asyncio.to_thread(_settle_turn_quota, actor, reservation, result, preempted)
+                await self._call_sync(self._release_thread_connection)
             from ai.core.quota.slo import slo_breach, slo_class_for
 
             slo_class = slo_class_for(getattr(result, "workflow_used", None), None)

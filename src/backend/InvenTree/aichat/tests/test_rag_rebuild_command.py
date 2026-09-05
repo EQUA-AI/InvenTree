@@ -17,6 +17,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from aichat.models import AttachmentChunk, AttachmentIngest, AttachmentIngestState
+from aimms_testing import requires_postgres
 
 from .test_attachment_rag_ingestion import (
     _MD,
@@ -91,6 +92,7 @@ class RebuildTextTests(MediaFixtureTestCase):
             call_command('rebuild_rag_index', '--space', 'text', *args, stdout=out)
         return out.getvalue()
 
+    @requires_postgres
     def test_text_round_trip_is_exact(self):
         """Rebuilt text documents equal the live ones, vectors included."""
         attachment = _make_attachment('part', self.part.pk, 'manual.md', _MD)
@@ -103,6 +105,7 @@ class RebuildTextTests(MediaFixtureTestCase):
             self.assertEqual(_normalized(built), _normalized(original))
         self.assertTrue(rebuilt.closed)
 
+    @requires_postgres
     def test_chunk_gap_refuses(self):
         """A missing chunk_index re-keys every later doc — hard refusal."""
         attachment = _make_attachment('part', self.part.pk, 'manual.md', _MD)
@@ -112,6 +115,7 @@ class RebuildTextTests(MediaFixtureTestCase):
         with self.assertRaises(CommandError):
             self._rebuild(FakeProjection())
 
+    @requires_postgres
     def test_unstamped_row_refuses(self):
         """indexed_at IS NULL means the 0031 repair has not run — refuse."""
         attachment = _make_attachment('part', self.part.pk, 'manual.md', _MD)
@@ -120,6 +124,7 @@ class RebuildTextTests(MediaFixtureTestCase):
         with self.assertRaises(CommandError):
             self._rebuild(FakeProjection())
 
+    @requires_postgres
     def test_non_winner_is_skipped_not_projected(self):
         """Only the _claim_order winner is projected; peers are counted."""
         attachment = _make_attachment('part', self.part.pk, 'manual.md', _MD)
@@ -142,6 +147,7 @@ class RebuildTextTests(MediaFixtureTestCase):
         self.assertEqual(len(rebuilt.documents), len(live.documents))
         self.assertNotIn(loser.source_sha256[:12], str(rebuilt.documents))
 
+    @requires_postgres
     def test_dimension_drift_is_a_hard_error(self):
         """A row stamped with foreign dimensions cannot be rebuilt."""
         attachment = _make_attachment('part', self.part.pk, 'manual.md', _MD)
@@ -150,6 +156,7 @@ class RebuildTextTests(MediaFixtureTestCase):
         with self.assertRaises(CommandError):
             self._rebuild(FakeProjection())
 
+    @requires_postgres
     def test_model_drift_requires_the_override(self):
         """Model drift refuses without --allow-model-drift, proceeds with."""
         attachment = _make_attachment('part', self.part.pk, 'manual.md', _MD)
@@ -163,6 +170,7 @@ class RebuildTextTests(MediaFixtureTestCase):
         # The ROW's model is what gets projected, never the configured one.
         self.assertEqual(rebuilt.documents[0]['embedding_model'], 'retired-model')
 
+    @requires_postgres
     def test_inflight_ingest_refuses_without_allow_live(self):
         """EXTRACTING/EMBEDDING rows mean the env is not quiesced."""
         attachment = _make_attachment('part', self.part.pk, 'manual.md', _MD)
@@ -181,6 +189,7 @@ class RebuildTextTests(MediaFixtureTestCase):
         self._rebuild(rebuilt, '--allow-live')
         self.assertTrue(rebuilt.documents)
 
+    @requires_postgres
     def test_verify_mode_reports_equal_against_live(self):
         """--verify diffs the rebuilt docs against the served live ones."""
         attachment = _make_attachment('part', self.part.pk, 'manual.md', _MD)
@@ -220,6 +229,7 @@ class RebuildSafetyTests(MediaFixtureTestCase):
             call_command('rebuild_rag_index', '--space', 'text', *args, stdout=out)
         return out.getvalue()
 
+    @requires_postgres
     def test_blank_scope_key_refuses_before_any_work(self):
         """A mis-sourced environment must never blank scope_key corpus-wide."""
         _make_attachment('part', self.part.pk, 'manual.md', _MD)
@@ -232,6 +242,7 @@ class RebuildSafetyTests(MediaFixtureTestCase):
                 ),
             )
 
+    @requires_postgres
     def test_deleted_attachment_mid_rebuild_is_purged_not_resurrected(self):
         """The deletion race belt: purge lands between build and upsert."""
         from common.models import Attachment
@@ -255,6 +266,7 @@ class RebuildSafetyTests(MediaFixtureTestCase):
         ops = [op[0] for op in projection.operations]
         self.assertEqual(ops, ['upsert', 'mark_stale', 'purge_sha'])
 
+    @requires_postgres
     def test_chunk_count_mismatch_refuses(self):
         """A lost TAIL chunk keeps indices contiguous; the count catches it."""
         attachment = _make_attachment('part', self.part.pk, 'manual.md', _MD)
@@ -265,6 +277,7 @@ class RebuildSafetyTests(MediaFixtureTestCase):
         with self.assertRaises(CommandError):
             self._rebuild(FakeProjection())
 
+    @requires_postgres
     def test_verify_accepts_azure_z_normalized_datetimes(self):
         """Azure returns Edm.DateTimeOffset with a Z suffix; instants match."""
         attachment = _make_attachment('part', self.part.pk, 'manual.md', _MD)
@@ -301,6 +314,7 @@ class RebuildMediaTests(MediaFixtureTestCase):
             call_command('rebuild_rag_index', '--space', 'media', *args, stdout=out)
         return out.getvalue()
 
+    @requires_postgres
     def test_image_round_trip_preserves_img_id(self):
         """PG stores segment_index=0; the rebuilt doc key must stay '-img'."""
         attachment = _make_attachment(
@@ -317,6 +331,7 @@ class RebuildMediaTests(MediaFixtureTestCase):
         )
         self.assertEqual(row.pipeline, 'image')
 
+    @requires_postgres
     def test_video_round_trip_is_exact(self):
         """All three video segments rebuild dict-for-dict identical."""
         attachment = _make_attachment(

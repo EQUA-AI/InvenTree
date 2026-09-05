@@ -66,11 +66,13 @@ keys:
     kind: work_order
     reference: WO-EVAL-SI3000A-OPEN
     machine_key: solar_a
+    markers: [WO-EVAL-SI3000A-OPEN]
     note: no completion date, no maintenance record; unsuitable for comparison
   wo_complete_a:
     kind: work_order
     reference: WO-EVAL-SI3000A-DONE
     machine_key: solar_a
+    markers: [WO-EVAL-SI3000A-DONE]
     note: full dates + linked maintenance record; suitable for comparison
 
   # --- Controlled documents ---
@@ -144,3 +146,13 @@ keys:
   packet_entities:
     kind: marker
     markers: [packet, shipment]
+
+  # --- Memory battery markers (M1 gate, memory_battery.yaml) ---
+  # A user-stated reading and its correction: the compaction case asserts the
+  # corrected value surfaces and the superseded one does not (id-level, §13.3).
+  mem_reading_corrected:
+    kind: marker
+    markers: ["47.1"]
+  mem_reading_superseded:
+    kind: marker
+    markers: ["41.7"]

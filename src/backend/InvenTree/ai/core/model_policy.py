@@ -35,7 +35,14 @@ class ModelPurpose(StrEnum):
     GROUNDING_AUDIT = "grounding_audit"
     CLOSEOUT_BINDING = "closeout_binding"
     SUMMARIZATION = "summarization"
+    EXTRACTION = "extraction"
     MEDIA_CAPTION = "media_caption"
+
+
+#: Purposes that never resolve to the fast tier (D-10 / CR-2). The workers
+#: that run ``_summarize`` carry no tiering flag, so the rule must hold on
+#: BOTH ladder branches or it would not bind where the call actually runs.
+_OVERRIDE_PURPOSES = frozenset({ModelPurpose.SUMMARIZATION, ModelPurpose.EXTRACTION})
 
 
 def _closeout_override() -> str:
@@ -46,6 +53,16 @@ def _closeout_override() -> str:
         return str(getattr(django_settings, "AIMMS_CLOSEOUT_EXTRACTION_MODEL", "") or "").strip()
     except Exception:
         return ""
+
+
+def _summarization_override(settings) -> str:
+    """The env-backed SUMMARIZATION/EXTRACTION deployment, when configured."""
+    return str(getattr(settings, "azure_openai_summarization_deployment", "") or "").strip()
+
+
+def _summarization_choice(settings) -> str:
+    """Override or the standard tier — never fast (D-10)."""
+    return _summarization_override(settings) or getattr(settings, "azure_openai_deployment", "")
 
 
 def _legacy_choice(settings, purpose: ModelPurpose, modality: str) -> str:
@@ -62,9 +79,11 @@ def _legacy_choice(settings, purpose: ModelPurpose, modality: str) -> str:
         return fast or standard
     if purpose is ModelPurpose.CLOSEOUT_BINDING:
         return _closeout_override() or fast
-    if purpose is ModelPurpose.SUMMARIZATION:
-        # New in S38; no legacy caller existed, so legacy == policy.
-        return fast or standard
+    if purpose in _OVERRIDE_PURPOSES:
+        # D-10: override or standard, never fast. Legacy == policy by
+        # construction; the S38 "fast or standard" line routed compaction to
+        # the 50K-TPM tier on the workers, where no tiering flag is set (CR-2).
+        return _summarization_choice(settings)
     if purpose is ModelPurpose.MEDIA_CAPTION:
         # New in R3; vision needs the full tier, so legacy == policy.
         return standard
@@ -90,8 +109,8 @@ def _policy_choice(settings, purpose: ModelPurpose, modality: str) -> str:
         return fast or standard
     if purpose is ModelPurpose.CLOSEOUT_BINDING:
         return _closeout_override() or fast
-    if purpose is ModelPurpose.SUMMARIZATION:
-        return fast or standard
+    if purpose in _OVERRIDE_PURPOSES:
+        return _summarization_choice(settings)
     if purpose is ModelPurpose.MEDIA_CAPTION:
         return standard
     raise ValueError(f"unknown model purpose: {purpose}")  # pragma: no cover
@@ -120,4 +139,20 @@ def select_deployment(purpose: ModelPurpose, *, modality: str = "text") -> str:
     return policy if enforce else legacy
 
 
-__all__ = ["ModelPurpose", "select_deployment"]
+def call_options(purpose: ModelPurpose) -> dict[str, str]:
+    """Extra provider kwargs for one purpose.
+
+    ``reasoning_effort`` is sent only when the SUMMARIZATION/EXTRACTION
+    override is configured: the override is a reasoning deployment by
+    decision (D-10), while the gpt-4.x standard tiers reject the parameter.
+    """
+    from ai.core.config import get_settings
+
+    settings = get_settings()
+    if purpose in _OVERRIDE_PURPOSES and _summarization_override(settings):
+        effort = str(getattr(settings, "azure_summarization_reasoning_effort", "low") or "low")
+        return {"reasoning_effort": effort}
+    return {}
+
+
+__all__ = ["ModelPurpose", "call_options", "select_deployment"]

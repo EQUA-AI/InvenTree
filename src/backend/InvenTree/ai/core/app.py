@@ -934,6 +934,26 @@ async def list_threads(
     )
 
 
+#: D0 (M1): the persisted, content-free route facts a thread read projects.
+ROUTE_FACT_KEYS = ("task_intent", "conversation_summary_present")
+
+
+def _route_facts(metadata: dict[str, Any], *, shared: bool) -> dict[str, Any]:
+    """Project the D0 route facts; a granted (shared) reader sees null.
+
+    Old images never wrote the keys — absent stays null so the battery's
+    layer 2 skips honestly instead of scoring a fabricated fact.
+    """
+    if shared:
+        return dict.fromkeys(ROUTE_FACT_KEYS)
+    intent = metadata.get("task_intent")
+    present = metadata.get("conversation_summary_present")
+    return {
+        "task_intent": intent if isinstance(intent, str) and intent else None,
+        "conversation_summary_present": present if isinstance(present, bool) else None,
+    }
+
+
 def _persisted_provenance(metadata: dict[str, Any]) -> dict[str, Any] | None:
     """Extract the diagnosis provenance from the persisted event list.
 
@@ -999,6 +1019,8 @@ async def get_thread(
                     # S14: the resolved model identities stamped on the
                     # turn — the battery runner verifies pins from the wire.
                     "model_versions": message.metadata.get("model_versions"),
+                    # D0 (M1): content-free route facts, owner-only.
+                    **_route_facts(message.metadata, shared=shared),
                 }
                 for message in selected
             ],

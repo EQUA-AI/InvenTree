@@ -31,13 +31,23 @@ Env contract (AIMMS_BATTERY_*):
     EXPECTED_MODELS  csv of pinned model identities (drift aborts)
     MACHINE_<KEY>    live machine name for env-resolved fixture keys
     ADMIN_BEARER     staff credential for /config/effective capture only
+    SIGNED_SUBJECT_USER  D1: non-staff Django username; the runner mints the
+                     boundary's signed subject PER REQUEST (live_auth)
+    DJANGO_TOKEN     DRF token for the non-/api/ai/ endpoints (with the above)
+    ENV_LABEL / REVISION  D1: journaled + reported (env, serving revision)
     AIMMS_GOLD_DIR   private store (question refs + gold atoms)
     AIMMS_JUDGE_CALIBRATION  calibration artifact path (else judge off)
+
+Baseline tooling (D4): ``--summarize`` freezes a content-free summary of one
+or more campaign reports; ``--baseline/--candidate`` compares two summaries
+and exits 0 only when ``followup_parity`` holds on every env AND nothing
+regressed — see ``baseline.py``.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import random
@@ -51,6 +61,7 @@ from typing import Any
 
 from . import scoring
 from .calibration import judge_layers_enabled, load_calibration
+from .live_auth import auth_from_env
 from .scenarios import (
     BATTERY_DIR,
     BatteryFile,
@@ -97,7 +108,10 @@ def _client(base_url: str):
         headers["Cookie"] = _env("COOKIE")
     if _env("CSRF"):
         headers["X-CSRFToken"] = _env("CSRF")
-    return httpx.Client(base_url=base_url, headers=headers, timeout=120.0)
+    # D1: a non-staff signed subject minted per request wins over the static
+    # bearer on /api/ai/ paths; other paths carry the DRF token.
+    auth = auth_from_env()
+    return httpx.Client(base_url=base_url, headers=headers, timeout=120.0, auth=auth)
 
 
 def _throttle() -> None:
@@ -183,14 +197,57 @@ def resolve_fixture_keys(
     return resolved
 
 
-def _needed_keys(battery: BatteryFile) -> tuple[set[str], set[str]]:
+def _needed_keys(battery: BatteryFile) -> tuple[set[str], set[str], set[str]]:
     scope_keys: set[str] = set()
     forbidden_keys: set[str] = set()
+    required_keys: set[str] = set()
     for case in battery.cases:
         scope_keys.update(case.scope_machine_fixture_keys)
         for turn in case.turns:
             forbidden_keys.update(turn.forbidden_entity_fixture_keys)
-    return scope_keys, forbidden_keys
+            required_keys.update(turn.required_entity_fixture_keys)
+    return scope_keys, forbidden_keys, required_keys
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _flag_value(flags: dict[str, Any] | None, name: str) -> Any:
+    """The captured posture of one FEATURE_* flag, or None when not captured.
+
+    Two capture shapes: the evaluation dossier (``flags`` rows with
+    ``env_name`` + ``effective``) and ``/api/ai/config/effective``
+    (``settings`` keyed by the lowercase field name).
+    """
+    if not flags:
+        return None
+    rows = flags.get("flags")
+    if isinstance(rows, list):
+        for row in rows:
+            if isinstance(row, dict) and row.get("env_name") == name:
+                return (
+                    row.get("effective") if row.get("effective") is not None else row.get("default")
+                )
+    settings = flags.get("settings")
+    if isinstance(settings, dict) and name.lower() in settings:
+        return settings.get(name.lower())
+    return None
+
+
+def _missing_flags(case: ScenarioCase, flags: dict[str, Any] | None) -> str:
+    """A skip reason when a required flag is captured as falsy; "" otherwise.
+
+    An UNCAPTURED flag never skips (the case runs and its outcome speaks);
+    only an explicit off posture does — journaled, never scored as a fail.
+    """
+    for name in case.requires_flags:
+        value = _flag_value(flags, name)
+        if value is None:
+            continue
+        if not value or str(value).strip().lower() in ("0", "false", "off", "no"):
+            return f"requires {name}=on; captured {value!r}"
+    return ""
 
 
 def preflight(
@@ -246,8 +303,8 @@ def preflight(
             "AIMMS_BATTERY_ADMIN_BEARER, or run with --allow-unverified-flags"
         )
 
-    scope_keys, forbidden_keys = _needed_keys(battery)
-    resolved = resolve_fixture_keys(client, manifest, scope_keys | forbidden_keys)
+    scope_keys, forbidden_keys, required_keys = _needed_keys(battery)
+    resolved = resolve_fixture_keys(client, manifest, scope_keys | forbidden_keys | required_keys)
 
     rpm = float(_env("RPM", "8") or 8)
     return {
@@ -260,7 +317,11 @@ def preflight(
         "fixture_resolution": {key: list(value) for key, value in resolved.items()},
         "expected_models": [m for m in _env("EXPECTED_MODELS").split(",") if m],
         "estimated_duration_s": planned * 60.0 / max(rpm, 0.1),
+        # D1: where and on what the run happened (content-free).
+        "env_label": _env("ENV_LABEL"),
+        "revision": _env("REVISION"),
         "resolved": resolved,  # stripped before journaling
+        "flags": flags,  # stripped before journaling (dossier may be large)
     }
 
 
@@ -357,6 +418,24 @@ def _submit_turn(
     return status, payload
 
 
+def _route_facts(last_assistant: dict[str, Any]) -> dict[str, Any] | None:
+    """D0 route facts from the persisted assistant message, when exposed.
+
+    Old images never wrote them: ``conversation_summary_present`` is null ->
+    None -> layer 2 keeps skipping honestly. A D0 image always writes the
+    boolean, so its presence is the exposure signal even when the intent is
+    null (router dark).
+    """
+    present = last_assistant.get("conversation_summary_present")
+    if not isinstance(present, bool):
+        return None
+    return {
+        "task_intent": last_assistant.get("task_intent") or "",
+        "conversation_summary_present": present,
+        "workflow_id": last_assistant.get("workflow_id") or "",
+    }
+
+
 def _artifacts_for_turn(
     client,
     *,
@@ -383,7 +462,7 @@ def _artifacts_for_turn(
         response_state=last_assistant.get("response_state"),
         expected_scope_version=scope_version,
         post_scope_version=_get_scope_version(client, thread_id),
-        route=None,  # not exposed to non-staff principals; layer 2 skips honestly
+        route=_route_facts(last_assistant),
         proposal_ids_delta=delta,
         turn_metadata={
             "model_versions": last_assistant.get("model_versions"),
@@ -417,7 +496,20 @@ def run_case(
     golds: dict[str, Any],
     judge,
     expected_models: list[str],
-) -> list[scoring.TurnScore]:
+    flags: dict[str, Any] | None = None,
+    per_turn: list[dict[str, Any]] | None = None,
+) -> tuple[list[scoring.TurnScore], str]:
+    """Run one case; returns (scores, skip_reason). A skipped case has no scores."""
+    skip_reason = _missing_flags(case, flags)
+    if skip_reason:
+        journal.write({
+            "kind": "case_skip",
+            "case_id": case.id,
+            "pass": pass_index,
+            "rail": case.rail,
+            "reason": skip_reason,
+        })
+        return [], skip_reason
     thread_id = f"battery_{uuid.uuid4().hex[:16]}"
     scope_version: int | None = None
     if case.scope_machine_fixture_keys:
@@ -462,17 +554,36 @@ def run_case(
             question_text=question,
         )
         scores.append(score)
-        journal.write({
+        route = artifacts.route or {}
+        row = {
             "kind": "turn_score",
             "case_id": case.id,
             "turn_index": index,
             "pass": pass_index,
+            "rail": case.rail,
             "outcome": score.outcome,
             "substantive": score.substantive,
+            "deterministic_pass": score.deterministic_pass,
+            "forbidden_hits": scoring._forbidden_hits(artifacts, resolution),
+            "summary_present": route.get("conversation_summary_present"),
+            "expected_summary_present": turn.expect_conversation_summary_present,
+            "workflow_used": str(
+                artifacts.response_body.get("workflow_used") or route.get("workflow_id") or ""
+            ),
             "layers": [asdict(layer) for layer in score.layers],
             "latency_s": None,
-        })
-    return scores
+        }
+        journal.write(row)
+        if per_turn is not None:
+            per_turn.append(
+                {key: value for key, value in row.items() if key not in ("kind", "layers")}
+                | {
+                    "layer_fails": [
+                        layer.layer for layer in score.layers if layer.status == "fail"
+                    ],
+                }
+            )
+    return scores, ""
 
 
 def _shuffled(cases: tuple[ScenarioCase, ...], seed: int) -> list[ScenarioCase]:
@@ -498,7 +609,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--allow-unverified-flags", action="store_true")
     parser.add_argument("--repeat-case", default="", help="repeat one case id N times")
     parser.add_argument("--times", type=int, default=1)
+    # D4: offline baseline tooling (no deployment involved).
+    parser.add_argument("--summarize", action="store_true", help="freeze --env reports")
+    parser.add_argument("--baseline", default="", help="baseline summary path or sha")
+    parser.add_argument("--candidate", default="", help="candidate summary path or sha")
+    parser.add_argument(
+        "--env",
+        action="append",
+        default=[],
+        metavar="LABEL=campaign_report.json",
+        help="one environment's campaign report (repeatable)",
+    )
+    parser.add_argument("--allow-battery-drift", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.summarize or args.baseline or args.candidate:
+        from .baseline import main as baseline_main
+
+        return baseline_main(args)
 
     base_url = _env("BASE_URL")
     if not base_url:
@@ -589,11 +717,18 @@ def main(argv: list[str] | None = None) -> int:
         planned = planned_request_count([battery]) * max(1, args.passes)
 
     client = _client(base_url)
+    battery_sha256 = _sha256(battery_path)
     report: dict[str, Any] = {
         "dataset": battery.dataset,
+        "battery": battery_path.name,
+        "battery_sha256": battery_sha256,
+        "env_label": _env("ENV_LABEL"),
+        "code_revision": _env("REVISION"),
         "passes": len(work),
         "planned_requests": planned,
         "per_case": {},
+        "per_turn": [],
+        "skipped_cases": [],
         "failures": [],
         "judge_enabled": judge is not None,
     }
@@ -611,6 +746,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"PREFLIGHT REFUSED: {exc}", file=sys.stderr)
         return 2
     resolved = header.pop("resolved")
+    flags = header.pop("flags")
+    header["battery_sha256"] = battery_sha256
     expected_models = list(header.get("expected_models") or [])
 
     exit_code = 0
@@ -626,7 +763,7 @@ def main(argv: list[str] | None = None) -> int:
         })
         try:
             for case in ordered:
-                scores = run_case(
+                scores, skip_reason = run_case(
                     client,
                     journal,
                     case,
@@ -638,7 +775,17 @@ def main(argv: list[str] | None = None) -> int:
                     golds=golds,
                     judge=judge,
                     expected_models=expected_models,
+                    flags=flags,
+                    per_turn=report["per_turn"],
                 )
+                if skip_reason:
+                    report["skipped_cases"].append({
+                        "case_id": case.id,
+                        "rail": case.rail,
+                        "pass": run_index,
+                        "reason": skip_reason,
+                    })
+                    continue
                 bucket = report["per_case"].setdefault(
                     case.id, {"outcomes": [], "first_attempt": None}
                 )

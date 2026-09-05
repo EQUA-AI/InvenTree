@@ -1,0 +1,38 @@
+# M1 entry-baseline campaign for aimms-dev (D2/D5). COMMITTED BEFORE execution:
+# its sha256 lands in the campaign report as preregistration_sha256, so the
+# seeds, run count and parity thresholds are fixed in advance (Q40).
+#
+# Runs on aimms-dev-worker via the wrapper in LocalDocs/scripts/memory-baseline.sh
+# (working directory src/backend/InvenTree/ai/core, PYTHONPATH pointing at
+# src/backend/InvenTree so live_auth can mint the signed subject).
+
+campaign_id: memory-baseline-dev
+runs: 5
+base_seed: 20260910
+run_tranche: false          # the memory battery preregisters no repeat tranche
+
+battery_path: memory_battery.yaml   # bare name -> the committed battery dir
+dossier_path: /home/inventree/data/media/ai/eval/dev/dossier.json
+
+estimated_requests: 60      # 57 turns per pass (planned_request_count)
+estimated_tokens: 800000    # ~6k tokens/turn x 57 x 2 margin (usage_report p95)
+error_rate_max: 0.01
+
+latency_targets:
+  lookup: [10, 30, 45]
+  aggregate: [15, 40, 55]
+  synthesis: [20, 45, 60]
+  deterministic: [1, 2, 5]
+
+# D3 (GR-45): the plan floor; may be tightened, never loosened.
+followup_parity:
+  min_accuracy: 0.95
+  max_gap_to_wf8_points: 5
+  min_followup_turns: 25
+  reference_rail: wf8
+
+runner_extra: ["--tier", "1"]
+
+# Private store on the worker's media share (outside the image's source tree;
+# harvested to the 12-month private store and deleted after the run, Q48).
+journal_dir: /home/inventree/data/media/ai/eval/dev/journals

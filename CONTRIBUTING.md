@@ -142,6 +142,27 @@ invoke dev.test --keepdb --coverage
 invoke dev.test --migrations
 ```
 
+### PostgreSQL-only tests and a fresh test database
+
+The fork's AI apps (`aichat`, `assets`, `repair`, ...) run on both SQLite and
+PostgreSQL in CI. A few tests exercise behaviour SQLite cannot reproduce
+(timezone-aware RAG rows, calendar-month retention arithmetic, vector
+columns); they carry the `@requires_postgres` decorator from
+`src/backend/InvenTree/aimms_testing.py` and show as **skipped** on SQLite. Do
+not use that decorator to hide a real failure — the `Tests - Fork apps
+[PostgreSQL]` lane must stay green for every marked test.
+
+`--keepdb` reuses `test_inventree`, and a kept database decays as
+`TransactionTestCase` flushes wipe data-migration seeds. When bulk seed tests
+start failing for no reason, drop it and let the next run rebuild:
+
+```bash
+# Dev container (PostgreSQL sidecar "db"):
+PGPASSWORD=$INVENTREE_DB_PASSWORD psql -h db -U $INVENTREE_DB_USER -d postgres \
+  -c 'DROP DATABASE IF EXISTS test_inventree WITH (FORCE)'
+invoke dev.test --keepdb --runtest=aichat
+```
+
 ## Running Frontend Tests
 
 Frontend tests use [Playwright](https://playwright.dev/) and target Chromium and Firefox. The test runner automatically starts the Vite dev server (port 5173), the Django backend (port 8000), and the background worker — no manual server startup is needed.

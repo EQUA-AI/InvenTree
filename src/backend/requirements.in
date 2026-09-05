@@ -90,3 +90,8 @@ httpx                                   # Cohere Embed v4 wire + retry middlewar
 google-genai                            # Gemini Embedding 2 via Vertex AI (media RAG, R0)
 pgvector                                # Postgres vector columns for the RAG system of record
 openai>=1.12.0                          # OpenAI SDK
+# M1 pin ledger (plan of record §9.7 / GR-26): app code imports these, so they are
+# admitted HERE (the hashed image manifest), never in the unhashed ai/requirements.txt.
+pydantic==2.13.4                        # governed by agent-framework-core==1.0.0b251120
+pydantic-settings==2.14.2               # governed by agent-framework-core==1.0.0b251120
+tiktoken==0.14.0                        # o200k_base estimator (ai/core/usage.py); cache baked offline in the image
