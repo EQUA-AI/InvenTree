@@ -160,6 +160,35 @@ def _canonical_analysis_unavailable(*, locale: str = "en") -> CanonicalTurnRespo
     )
 
 
+def _canonical_topology_unavailable(*, locale: str = "en") -> CanonicalTurnResponse:
+    """The interim topology sentence (M1 PR H; plan §9.4 Q73).
+
+    Until G4 publishes a client topology, a question about what supplies,
+    isolates or depends on authorized equipment gets this verbatim,
+    localized sentence — the model authors no topology prose in that
+    window. ``incomplete`` bars actions and speech structurally.
+    """
+    from ai.core.i18n_templates import TOPOLOGY_UNAVAILABLE, deterministic_template
+
+    return CanonicalTurnResponse(
+        kind="topology_unavailable",
+        response_version=1,
+        response_state="incomplete",
+        detailed_response=deterministic_template(TOPOLOGY_UNAVAILABLE, locale),
+        spoken_summary="",
+        reasoning_summary=(
+            "A topological question was recognised, but no published topology "
+            "exists for this client; nothing was inferred."
+        ),
+        confidence="low",
+        evidence=[],
+        next_questions=[],
+        recommended_actions=[],
+        safety_boundary=("No safety status was inferred; check the authoritative safety surface."),
+        speak=False,
+    )
+
+
 def _canonical_advisory_intent(
     *, voice: bool = False, action_available: bool = False, locale: str = "en"
 ) -> CanonicalTurnResponse:

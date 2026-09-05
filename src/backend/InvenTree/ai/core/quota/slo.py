@@ -27,6 +27,8 @@ _DETERMINISTIC_WORKFLOWS = frozenset({
     "injection_refusal",
     "advisory_intent",
     "analysis_unavailable",
+    # M1 PR H: the interim topology sentence (no model in the loop).
+    "topology_unavailable",
 })
 
 

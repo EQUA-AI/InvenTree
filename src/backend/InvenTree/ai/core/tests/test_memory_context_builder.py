@@ -72,9 +72,14 @@ def _legacy_history(repository, thread_id, settings) -> list[dict[str, str]]:
                 "content": SUMMARY_NOTE_LABEL + "\n" + fence_untrusted_content(summary.strip()),
             }
             recent = [m for m in recent if getattr(m, "sequence", 0) > watermark]
-    history = [
-        {"role": str(m.role), "content": str(m.content)} for m in recent if str(m.content).strip()
-    ]
+    recent = [m for m in recent if str(m.content).strip()]
+    if recent:
+        # PR H: block-aligned start (the builder's aligned_window_start).
+        from ai.core.memory.context_assembler import aligned_window_start
+
+        start = aligned_window_start(recent[-1].sequence, limit)
+        recent = [m for m in recent if getattr(m, "sequence", 0) >= start][-limit:]
+    history = [{"role": str(m.role), "content": str(m.content)} for m in recent]
     budgeted = _budgeted_history(
         history,
         max_message_chars=int(settings.chat_history_max_message_chars),
@@ -161,6 +166,20 @@ def test_replay_dict_matches_the_pre_builder_rendering(overrides):
         repository = _Repository(watermark=watermark, summary=summary)
         bundle = asyncio.run(_build(repository, settings))
         assert bundle.replay_dict() == _legacy_history(repository, "thread_c", settings)
+
+
+def test_recent_turns_window_is_block_aligned_and_prefix_stable():
+    """GR-33: the same start for four consecutive thread lengths, then a block drop."""
+    settings = _settings(CHAT_HISTORY_MAX_TOTAL_CHARS=100000, CHAT_HISTORY_MAX_MESSAGE_CHARS=4000)
+    starts = []
+    for count in (21, 22, 23, 24, 25):  # newest row is the current turn (excluded)
+        bundle = asyncio.run(_build(_Repository(watermark=0, summary="", count=count), settings))
+        starts.append(bundle.recent_turns[0].sequence)
+        assert len(bundle.recent_turns) <= 12
+    assert starts == [12, 12, 12, 12, 16]
+    # A compaction watermark re-cuts above the aligned start.
+    bundle = asyncio.run(_build(_Repository(watermark=14, summary=SUMMARY, count=24), settings))
+    assert bundle.recent_turns[0].sequence == 15
 
 
 def test_the_compat_wrapper_and_the_run_path_render_the_same_dict(monkeypatch):

@@ -286,3 +286,38 @@ class TestLunaUsageAndTruncation:
         adapter = _adapter(_Client([_partial(), _partial()]))
         outcome = asyncio.run(adapter.reason(envelope=_envelope()))
         assert outcome.provenance.outcome_code == "invalid_final_schema"
+
+
+class TestBlockAlignedCuts:
+    """M1 PR H (GR-33): budget drops happen in blocks of four."""
+
+    def test_prefix_is_stable_then_drops_four_at_once(self) -> None:
+        from ai.core.turn.history import _HISTORY_BLOCK
+
+        assert _HISTORY_BLOCK == 4
+        history = _messages(*[chr(65 + i) * 100 for i in range(8)])  # A..H, 100 chars each
+        # 550 chars allowed: a one-message slide would keep 5 (D..H); the
+        # block cut removes four at once and keeps E..H.
+        budgeted = _budgeted_history(history, max_message_chars=0, max_total_chars=550)
+        assert [entry["content"][0] for entry in budgeted] == ["E", "F", "G", "H"]
+
+    def test_block_never_eats_the_protected_newest_two(self) -> None:
+        history = _messages("A" * 100, "B" * 100, "C" * 100)
+        budgeted = _budgeted_history(history, max_message_chars=0, max_total_chars=50)
+        assert [entry["content"][0] for entry in budgeted] == ["B", "C"]
+
+    def test_aligned_window_start_arithmetic(self) -> None:
+        from ai.core.memory.context_assembler import aligned_window_start
+
+        # limit 12: stable for max_seq 20..23 (start 12), then 16 at 24.
+        assert [aligned_window_start(seq, 12) for seq in (20, 21, 22, 23, 24)] == [
+            12,
+            12,
+            12,
+            12,
+            16,
+        ]
+        # Short threads keep everything.
+        assert aligned_window_start(5, 12) == 1
+        assert aligned_window_start(12, 12) == 1
+        assert aligned_window_start(13, 12) == 4

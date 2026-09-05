@@ -91,6 +91,11 @@ async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[
             emitter=run.emitter,
             locale=getattr(run.trusted_context, "locale", "en"),
         )
+    topology = await _topology_gate(service, run)
+    if topology is not None:
+        # M1 PR H (plan §9.4 Q73): a topological question with no published
+        # graph gets the deterministic sentence, never model prose.
+        return topology
     if pinned_workflow is None and route_mode == "analysis":
         # S3/S10: the analysis rail. Reachable only under the routing enforce
         # flag. The evidence gate (AIMMS_EVIDENCE_GATE_MODE) decides what runs:
@@ -164,6 +169,66 @@ async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[
             }
         return canonical
     return await _run_legacy_workflow(service, run)
+
+
+def _equipment_names(run: TurnRun) -> list[str]:
+    """Authorized equipment display names for the topology predicate."""
+    names: list[str] = []
+    for root in getattr(run.diagnostic_context, "record_roots", None) or ():
+        name = str(getattr(root, "display_name", "") or "")
+        if name:
+            names.append(name)
+    return names
+
+
+async def _topology_gate(service: NormalizedTurnService, run: TurnRun) -> dict[str, Any] | None:
+    """The interim TOPOLOGY_UNAVAILABLE canonical, or None to route normally.
+
+    Fires only when the lexical two-signal predicate matches AND the
+    bundle's topology slot is empty for lack of a graph; any failure inside
+    the gate routes normally (fail-open to the ordinary rails, never a crash).
+    """
+    if run.server_pinned_workflow is not None or run.modality == TurnModality.VOICE:
+        return None
+    try:
+        from ai.core.memory.topology_gate import is_topology_question
+
+        names = _equipment_names(run)
+        if not names or not is_topology_question(run.routing_content, equipment_names=names):
+            return None
+        bundle = await service.build_context_bundle(run)
+        if bundle.section("topology_context").reason != "graph_not_yet_available":
+            return None
+    except Exception:  # pragma: no cover - the gate must never break a turn
+        logger.warning("topology gate evaluation failed", exc_info=False)
+        return None
+    from ai.core.turn.responses import _canonical_topology_unavailable
+
+    locale = getattr(run.trusted_context, "locale", "en")
+    response = _canonical_topology_unavailable(locale=locale)
+    workflow_used = "topology_unavailable"
+    await service._emit_canonical_events(
+        emitter=run.emitter,
+        thread_id=run.thread.pk,
+        run_id=f"topology:{run.turn.pk}",
+        workflow_id=workflow_used,
+        workflow_name="TOPOLOGY_GATE",
+        message=response.detailed_response,
+        response_state=response.response_state.value,
+    )
+    route = run.route.to_dict() if hasattr(run.route, "to_dict") else None
+    return {
+        "thread_id": run.thread.pk,
+        "turn_id": run.turn.pk,
+        "message": response.detailed_response,
+        "agent": "topology_gate",
+        "workflow_used": workflow_used,
+        "response_state": response.response_state.value,
+        "canonical_response": response.model_dump(mode="json"),
+        "spoken_summary": response.spoken_summary,
+        "reasoning_provenance": None,
+        "route": route,
+    }
 
 
 async def _run_analysis_branch(service: NormalizedTurnService, run: TurnRun) -> dict[str, Any]:

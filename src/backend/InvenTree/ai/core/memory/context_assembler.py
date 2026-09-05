@@ -63,6 +63,24 @@ REASONING_CONVERSATION_MAX_CHARS = 12_000
 #: The routing digest when no compacted summary exists (aimms-dev).
 ROUTING_DIGEST_MAX_CHARS = 600
 
+#: PR H (GR-33): recent_turns cuts are block-aligned — the window starts on a
+#: sequence multiple of this block, so the replayed prefix stays byte-stable
+#: for several turns and then drops a whole block at once (prompt-cache
+#: friendly). A compaction watermark re-cuts. Mirrors history._HISTORY_BLOCK.
+HISTORY_BLOCK = 4
+
+
+def aligned_window_start(max_sequence: int, limit: int, block: int = HISTORY_BLOCK) -> int:
+    """First sequence kept: ``block * ceil((max - limit + 1) / block)``, floored at 1.
+
+    With ``limit`` 12 the prefix is stable for turns 20-23 (start 12) and
+    drops four at turn 24 (start 16). Sequence gaps only shrink the window.
+    """
+    if limit <= 0 or max_sequence <= limit:
+        return 1
+    raw = max_sequence - limit + 1
+    return max(1, block * -(-raw // block))
+
 
 @dataclass(frozen=True, slots=True)
 class ScopeLabel:
@@ -351,7 +369,9 @@ class ContextAssembler:
         """
         window_fn = getattr(repository, "recall_window", None)
         if callable(window_fn):
-            window = window_fn(thread_id, limit=limit, exclude_latest=1)
+            # PR H (GR-33): three extra rows so the block-aligned start can
+            # land on a multiple of four without shrinking the window.
+            window = window_fn(thread_id, limit=limit + HISTORY_BLOCK - 1, exclude_latest=1)
             if isinstance(window, RecallWindow):
                 return window
             return RecallWindow(
@@ -404,6 +424,7 @@ class ContextAssembler:
         max_total_chars: int,
         task_intent: str | None,
         routing_fields: RoutingFields,
+        limit: int = 0,
         degrade_reason: str = DegradeReason.NONE,
         db_round_trips: int = 0,
         wall_ms: int = 0,
@@ -476,6 +497,11 @@ class ContextAssembler:
             if str(row.content).strip()
             and (summary_item is None or row.sequence > window.watermark)
         ]
+        if rows and limit > 0:
+            # PR H (GR-33): block-aligned start; a watermark re-cut wins.
+            start = aligned_window_start(rows[-1].sequence, limit)
+            floor = max(start, (window.watermark + 1) if summary_item is not None else 1)
+            rows = [row for row in rows if row.sequence >= floor][-limit:]
         history = [{"role": row.role, "content": row.content} for row in rows]
         budgeted = _budgeted_history(
             history,
@@ -567,6 +593,7 @@ class ContextAssembler:
             "thread_id": thread_id,
             "turn_id": turn_id,
             "compaction": compaction,
+            "limit": limit,
             "max_message_chars": max_message_chars,
             "max_total_chars": max_total_chars,
             "task_intent": task_intent,
@@ -594,6 +621,7 @@ class ContextAssembler:
 
 
 __all__ = [
+    "HISTORY_BLOCK",
     "REASONING_CONVERSATION_MAX_CHARS",
     "RECALL_TIMEOUT_S",
     "REPLAY_CARRIER",
@@ -609,4 +637,5 @@ __all__ = [
     "RoutingFields",
     "ScopeLabel",
     "SlotSection",
+    "aligned_window_start",
 ]

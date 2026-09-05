@@ -40,6 +40,8 @@ SAFETY_SHORTCUT_REFUSAL = "safety_shortcut_refusal"
 # rewritten as "the manual does not contain it").
 ANALYSIS_DOWNGRADE = "analysis_downgrade"
 ANALYSIS_ABSTAIN = "analysis_abstain"
+# M1 PR H (plan §9.4, Q73): the interim topology sentence until G4 ships the graph.
+TOPOLOGY_UNAVAILABLE = "topology_unavailable"
 ANALYSIS_PARTIAL_NOTICE = "analysis_partial_notice"
 ANALYSIS_FAIL_CLOSED = "analysis_fail_closed"
 # S7: typed honest unavailability for the analytics intents. Each names
@@ -239,6 +241,25 @@ _TEMPLATES: dict[str, dict[str, str]] = {
             "limitan a la evidencia verificada."
         ),
     },
+    TOPOLOGY_UNAVAILABLE: {
+        "en": (
+            "No published topology exists for this client yet, so I can't "
+            "answer what supplies, isolates or depends on this equipment."
+        ),
+        "es": (
+            "Todavía no existe una topología publicada para este cliente, así "  # codespell:ignore
+            "que no puedo responder qué alimenta, aísla o depende de este equipo."
+        ),
+        "de": (
+            "Für diesen Kunden ist noch keine Topologie veröffentlicht, daher "  # codespell:ignore
+            "kann ich nicht beantworten, was diese Anlage versorgt, trennt oder "  # codespell:ignore
+            "von ihr abhängt."
+        ),
+        "fr": (
+            "Aucune topologie n'est encore publiée pour ce client, je ne peux "  # codespell:ignore
+            "donc pas répondre à ce qui alimente, isole ou dépend de cet équipement."
+        ),
+    },
     ANALYSIS_ABSTAIN: {
         "en": (
             "The available evidence does not support a reliable answer to "
@@ -396,6 +417,7 @@ __all__ = [
     "RESPOND_IN_LOCALE",
     "SAFETY_BOUNDARY",
     "SAFETY_SHORTCUT_REFUSAL",
+    "TOPOLOGY_UNAVAILABLE",
     "TURN_FAILED_CONFIG_GATE",
     "TURN_FAILED_INTERNAL",
     "TURN_FAILED_PROVIDER_OUTAGE",
