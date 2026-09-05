@@ -3,6 +3,11 @@
 # (`manage.py retrieval_misses`). ~20 items; grow toward 50-200 as domain
 # time allows.
 #
+# Follow-up family (M1, plan §12.2): the text members are the M-MEM-* cases
+# in ai/core/evals/battery/memory_battery.yaml (scored by followup_parity);
+# the VOICE member is ai/core/tests/test_voice_followup_context.py — voice
+# needs a session and /chat is text-only, so it cannot live in a battery.
+#
 # Fields:
 #   id                stable slug (never reuse)
 #   question          the user turn, verbatim

@@ -209,6 +209,26 @@ then experimental; every flip cites its gate-suite run id (GR-47).
 # FEATURE_SEMANTIC_MEMORY_MEM0=0
 ```
 
+## Phase G — M1 context builder (dark until the D7 exit gate)
+
+Both knobs ship in the Part C image (commits `d1a7b4f30`..`823d61ac6`,
+2026-09-05) with defaults that change nothing. The builder itself is
+always on: every rail reads one typed `ContextBundle`, wf8 replays it
+exactly as the pre-builder dict did, and the fenced compaction note plus
+the routing classifier's typed inputs are live without a flag. Each flip
+below cites its `followup_parity` run id (GR-47) and gets its own
+revision so a rollback is one `ingress traffic set`.
+
+```
+# FEATURE_MEMORY_RAIL_REPLAY=0          # replay the bundle on wf2/wf3/wf4/wf6 and wf1 step 1; wf8 ungated, wf9 history-free by design
+# AIMMS_PROMPT_CACHE_KEY_DEPLOYMENTS=   # csv of deployments that receive prompt_cache_key=<client>:<thread>:<mode>; empty = no key sent
+```
+
+`AIMMS_PROMPT_CACHE_KEY_DEPLOYMENTS` stays empty until
+`manage.py prompt_cache_probe --mode i` has passed on that environment
+(dev gpt-5.1: cached 1024/1078 on 2026-09-05; experimental not yet run).
+Neither knob is read on the worker path.
+
 ## Explicitly dark (owner decisions)
 
 - `FEATURE_AI_RETENTION_JOBS` — data is kept (2026-08-29); only the
