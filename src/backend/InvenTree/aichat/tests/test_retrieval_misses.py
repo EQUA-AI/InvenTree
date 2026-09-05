@@ -12,6 +12,7 @@ from django.test import TestCase, TransactionTestCase, tag
 from ai.core.config import Settings
 from ai.core.integrations.controlled_document_corpus import search_corpus
 from aichat.models import RetrievalMiss
+from aimms_testing import MigrationRoundTripMixin
 
 
 class _Embedder:
@@ -223,26 +224,14 @@ class RetrievalMissLedgerTests(TestCase):
 
 
 @tag('migration_test')
-class RetrievalMissMigrationTests(TransactionTestCase):
-    """Forward and reverse paths for the additive S16/S17 migrations."""
+class RetrievalMissMigrationTests(MigrationRoundTripMixin, TransactionTestCase):
+    """Forward and reverse paths for the additive S16/S17 migrations.
 
-    def setUp(self) -> None:
-        super().setUp()
-        # The flush after a TransactionTestCase truncates only the tables the
-        # CURRENT models own. A schema left at 0013 still carries tables that
-        # later migrations removed (aichat_scopedconversation references
-        # auth_user), so on PostgreSQL the TRUNCATE failed with "cannot
-        # truncate a table referenced in a foreign key constraint" and the
-        # half-migrated schema cascaded into every later TransactionTestCase
-        # of the run. Always return to the leaf state — also when an
-        # assertion fails halfway through.
-        self.addCleanup(self._migrate_to_leaves)
-
-    @staticmethod
-    def _migrate_to_leaves() -> None:
-        executor = MigrationExecutor(connection)
-        executor.loader.build_graph()
-        executor.migrate(executor.loader.graph.leaf_nodes())
+    The mixin migrates back to the leaves before the flush: a schema left at
+    0013 still carries ``aichat_scopedconversation`` (dropped in 0014), and on
+    PostgreSQL the flush's ``TRUNCATE auth_user`` was refused because that
+    resurrected table references it.
+    """
 
     def test_embedding_stamp_and_ledger_round_trip(self) -> None:
         executor = MigrationExecutor(connection)

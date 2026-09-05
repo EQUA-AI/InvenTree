@@ -12,6 +12,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import NoReverseMatch, reverse
 
+from aimms_testing import MigrationRoundTripMixin
+
 
 class ScopedChatRemovalTests(TestCase):
     """Absence pins for the removed scoped-chat rail."""
@@ -67,7 +69,7 @@ from django.test import TransactionTestCase, tag  # noqa: E402
 
 
 @tag('migration_test')
-class DropScopedChatMigrationTests(TransactionTestCase):
+class DropScopedChatMigrationTests(MigrationRoundTripMixin, TransactionTestCase):
     """The destructive S14(c) drop is structurally zero-row-gated."""
 
     def _executor(self) -> MigrationExecutor:

@@ -29,4 +29,43 @@ requires_postgres = skipUnless(
     'vector columns); runs on the fork-postgres CI lane',
 )
 
-__all__ = ['POSTGRES', 'requires_postgres']
+
+def restore_leaf_schema() -> None:
+    """Migrate every app to its leaf nodes (undo a migration round-trip test).
+
+    Django orders ``TransactionTestCase`` classes after every ``TestCase``
+    and runs them in discovery order, so a migration test that ends at an old
+    migration hands the NEXT transaction test a rolled-back schema: its
+    ``setUp`` dies with ``column … does not exist``, and on PostgreSQL the
+    flush itself can fail when the old schema still holds a table the
+    current models no longer own (``TRUNCATE auth_user`` refused because
+    the resurrected ``aichat_scopedconversation`` references it).
+    """
+    from django.db.migrations.executor import MigrationExecutor
+
+    connection.close()
+    executor = MigrationExecutor(connection)
+    executor.loader.build_graph()
+    executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+class MigrationRoundTripMixin:
+    """Mix into every ``TransactionTestCase`` that calls ``executor.migrate``.
+
+    Registers :func:`restore_leaf_schema` as a cleanup, so the schema is back
+    at the leaves before Django's flush — also when an assertion fails halfway
+    through the round trip.
+    """
+
+    def setUp(self) -> None:
+        """Register the leaf-schema restore before the test's own setup runs."""
+        super().setUp()
+        self.addCleanup(restore_leaf_schema)
+
+
+__all__ = [
+    'POSTGRES',
+    'MigrationRoundTripMixin',
+    'requires_postgres',
+    'restore_leaf_schema',
+]

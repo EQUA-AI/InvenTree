@@ -4,9 +4,11 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase, tag
 
+from aimms_testing import MigrationRoundTripMixin
+
 
 @tag('migration_test')
-class AIChatMigrationTests(TransactionTestCase):
+class AIChatMigrationTests(MigrationRoundTripMixin, TransactionTestCase):
     """Prove the initial app migration can move forward and roll back."""
 
     migrate_from = [('aichat', None)]
@@ -37,7 +39,7 @@ class AIChatMigrationTests(TransactionTestCase):
 
 
 @tag('migration_test')
-class ThreadGrantMigrationTests(TransactionTestCase):
+class ThreadGrantMigrationTests(MigrationRoundTripMixin, TransactionTestCase):
     """Prove 0015 adds the grant table additively and reverses cleanly."""
 
     migrate_from = [('aichat', '0014_drop_scoped_chat')]
@@ -69,7 +71,7 @@ class ThreadGrantMigrationTests(TransactionTestCase):
 
 
 @tag('migration_test')
-class AttachmentRagMigrationTests(TransactionTestCase):
+class AttachmentRagMigrationTests(MigrationRoundTripMixin, TransactionTestCase):
     """Prove 0018-0020 create the RAG registry additively and reverse cleanly."""
 
     migrate_from = [('aichat', '0017_thread_summary_watermark')]
