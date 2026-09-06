@@ -769,6 +769,101 @@ def test_legacy_repository_hop_reads_tool_packs_from_message_metadata():
     assert all("manuals.read" not in entry["content"] for entry in bundle.replay_dict())
 
 
+def test_prior_rail_workflow_skips_default_turns_within_the_lookback():
+    """E35: the newest wf1/wf2/wf3 turn wins; wf8 answers in between do not hide it."""
+    from ai.core.memory.context_assembler import (
+        CONTINUITY_LOOKBACK_TURNS,
+        RecallRow,
+        prior_rail_workflow_id,
+    )
+
+    rows = (
+        RecallRow(1, "user", "parts?"),
+        RecallRow(2, "assistant", "list", workflow_id="wf2"),
+        RecallRow(3, "user", "Ok."),
+        RecallRow(4, "assistant", "sure", workflow_id="wf8"),
+    )
+    assert prior_rail_workflow_id(rows) == "wf2"
+    assert prior_rail_workflow_id(rows[:1]) == ""
+    # Beyond the look-back the old rail is forgotten.
+    filler = tuple(
+        RecallRow(10 + i, "assistant", "x", workflow_id="wf8")
+        for i in range(CONTINUITY_LOOKBACK_TURNS)
+    )
+    assert prior_rail_workflow_id((*rows, *filler)) == ""
+    # A newer rail replaces an older one.
+    assert (
+        prior_rail_workflow_id((*rows, RecallRow(20, "assistant", "y", workflow_id="wf3"))) == "wf3"
+    )
+
+
+class _RailWorkflow(_CapturingWorkflow):
+    """Capturing double that reports a scripted workflow id per call."""
+
+    def __init__(self, workflow_ids):
+        super().__init__()
+        self._workflow_ids = list(workflow_ids)
+
+    async def run_stream(self, **kwargs):
+        from ai.core.streaming import AGUIEvent, EventType
+
+        self.calls.append({key: value for key, value in kwargs.items() if key != "emitter"})
+        run_id = f"run-{uuid.uuid4().hex[:6]}"
+        thread_id = kwargs["thread_id"]
+        emitter = kwargs["emitter"]
+        workflow_id = self._workflow_ids[min(len(self.calls) - 1, len(self._workflow_ids) - 1)]
+        await emitter.emit(
+            AGUIEvent(event_type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id)
+        )
+        await emitter.emit(
+            AGUIEvent(
+                event_type=EventType.WORKFLOW_STARTED,
+                data={"workflow_id": workflow_id},
+                thread_id=thread_id,
+                run_id=run_id,
+            )
+        )
+        yield f"Scripted reply {len(self.calls)}."
+        await emitter.emit(
+            AGUIEvent(event_type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id)
+        )
+
+
+@pytest.mark.parametrize("flag_on", [True, False])
+def test_rail_continuity_pins_the_previous_rail_for_a_fragment(monkeypatch, flag_on):
+    """E35: with the replay flag on, a fragment after a wf2 turn stays on wf2."""
+    from ai.core.config import get_settings
+    from django.contrib.auth import get_user_model
+
+    monkeypatch.setattr(get_settings(), "feature_memory_rail_replay", flag_on, raising=False)
+    user = get_user_model().objects.create_user(username=f"cont-{uuid.uuid4().hex[:8]}")
+    thread_id = f"cont_{uuid.uuid4().hex[:12]}"
+    workflow = _RailWorkflow(["wf2", "wf8"])
+    service = _live_service(workflow)
+
+    async def run():
+        await _live_turn(
+            service, user, thread_id, "Find alternatives for the SI-3000 surge arrester.", "c:1"
+        )
+        await _live_turn(service, user, thread_id, "Compare the first two you listed.", "c:2")
+
+    asyncio.run(run())
+    from aichat.models import ChatMessage
+
+    assistant = list(
+        ChatMessage.objects.filter(thread_id=thread_id, role="assistant").order_by("sequence")
+    )
+    assert assistant[0].metadata["workflow_used"] == "wf2"
+    second_context = workflow.calls[1]["context"]
+    if flag_on:
+        assert second_context["pinned_workflow_id"] == "wf2"
+        assert assistant[1].metadata["routing_continuity"] == "wf2"
+        assert "prior_rail_workflow=wf2" in second_context["routing_context"]
+    else:
+        assert "pinned_workflow_id" not in second_context
+        assert assistant[1].metadata["routing_continuity"] is None
+
+
 class _PackRecordingWorkflow(_CapturingWorkflow):
     """wf8 double that records the packs it ran with, as the real rail does."""
 

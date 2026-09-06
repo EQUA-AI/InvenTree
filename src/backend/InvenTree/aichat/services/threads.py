@@ -1067,6 +1067,9 @@ class ThreadRepository:
                 # M1 (GR-33): the packs each assistant turn ran with, one JSON
                 # key of the row's metadata — same statement, no extra trip.
                 'metadata__tool_packs',
+                # M1 (E35): the workflow each assistant turn ran on, for routing
+                # continuity on the next fragment — same statement.
+                'metadata__workflow_used',
             )[exclude_latest : exclude_latest + limit]
         )
         rows.reverse()
@@ -1081,6 +1084,7 @@ class ThreadRepository:
                     str(r['role']),
                     str(r['content']),
                     tool_packs=_pack_ids(r.get('metadata__tool_packs')),
+                    workflow_id=str(r.get('metadata__workflow_used') or ''),
                 )
                 for r in rows
             ),

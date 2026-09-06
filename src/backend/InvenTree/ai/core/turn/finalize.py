@@ -242,6 +242,10 @@ async def persist_terminal(
                 for pack_id in (run.extras.get("tool_packs") or ())
                 if isinstance(pack_id, str)
             ],
+            # M1 (E35): which workflow answered, and whether routing continuity
+            # pinned it for a follow-up fragment (content-free enum values).
+            "workflow_used": (run.capture.workflow_id if run.capture else None) or None,
+            "routing_continuity": run.extras.get("routing_continuity") or None,
             # S22: the card and its resolution ride message metadata so
             # the /threads projection can reproduce them on reload.
             **({"question": canonical["question"]} if canonical.get("question") else {}),

@@ -52,6 +52,13 @@ def _effective_pinned_workflow(run: TurnRun) -> str | None:
     return None
 
 
+def _rail_replay_enabled() -> bool:
+    """FEATURE_MEMORY_RAIL_REPLAY: rail replay and routing continuity together."""
+    from ai.core.config import get_settings
+
+    return bool(getattr(get_settings(), "feature_memory_rail_replay", False))
+
+
 async def _reasoning_conversation(service: NormalizedTurnService, run: TurnRun) -> str:
     """The fenced transcript for the reasoning envelope (M1 PR E; flag-gated)."""
     from ai.core.config import get_settings
@@ -407,6 +414,18 @@ def _assemble_workflow_context(
         # procurement). Voice may only land on read workflows.
         pinned = getattr(run.route, "target_workflow_id", None) or "wf8"
         workflow_context["pinned_workflow_id"] = pinned
+    elif bundle is not None and _rail_replay_enabled():
+        # M1 (E35): routing continuity. A short anaphoric follow-up stays on
+        # the rail the thread was already on (wf1/wf2/wf3); acknowledgements
+        # and messages naming a new intent go back through the router. Rides
+        # the same flag as the replay — the replayed history is useless on a
+        # rail the fragment never reaches.
+        from ai.core.memory.routing_continuity import continuation_workflow
+
+        continued = continuation_workflow(run.content, bundle.prior_rail_workflow_id)
+        if continued:
+            workflow_context["pinned_workflow_id"] = continued
+            run.extras["routing_continuity"] = continued
     # Client hints remain visibly and semantically untrusted. They
     # are nested so no caller value can overwrite a server field.
     untrusted_context = run.metadata.get("untrusted_client_context")

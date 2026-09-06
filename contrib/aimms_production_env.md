@@ -220,7 +220,7 @@ below cites its `followup_parity` run id (GR-47) and gets its own
 revision so a rollback is one `ingress traffic set`.
 
 ```
-FEATURE_MEMORY_RAIL_REPLAY=1           # replay the bundle on wf2/wf3/wf4/wf6 and wf1 step 1; wf8 ungated, wf9 history-free by design
+FEATURE_MEMORY_RAIL_REPLAY=1           # replay the bundle on wf2/wf3/wf4/wf6 and wf1 step 1 AND keep a short anaphoric follow-up on the previous wf1/wf2/wf3 rail (routing continuity, plan E35); wf8 ungated, wf9 history-free by design
 AIMMS_PROMPT_CACHE_KEY_DEPLOYMENTS=<standard>,<fast>   # csv of deployments that receive prompt_cache_key=<client>:<thread>:<mode>; empty = no key sent
 AIMMS_PROMPT_CACHE_RETENTION=24h       # "" (provider default 5-10 min) | in_memory | 24h — rides only where the key rides
 FEATURE_PROMPT_CACHE_STABLE_TOOLS=1    # wf8 keeps the thread's earlier packs so consecutive turns share one tool prefix (GR-33)

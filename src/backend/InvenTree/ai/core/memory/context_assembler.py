@@ -161,6 +161,8 @@ class RecallRow:
     #: M1 (GR-33): the capability packs that assistant turn ran with
     #: (content-free ids from ``metadata['tool_packs']``; empty on user rows).
     tool_packs: tuple[str, ...] = ()
+    #: M1 (E35): the workflow that assistant turn ran on (``metadata['workflow_used']``).
+    workflow_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +199,9 @@ class ContextBundle:
     #: M1 (GR-33): packs earlier assistant turns ran with, first-seen order
     #: oldest-first — the broker keeps them so the tool prefix stays stable.
     prior_pack_ids: tuple[str, ...] = ()
+    #: M1 (E35): the most recent rail (wf1/wf2/wf3) an earlier assistant turn ran
+    #: on, within the continuity look-back; '' when the thread sat on wf8.
+    prior_rail_workflow_id: str = ""
 
     # ------------------------------------------------------------------ #
     # Accessors                                                            #
@@ -269,6 +274,7 @@ class ContextBundle:
             f"pinned_workflow={fields.pinned_workflow_id or 'none'}",
             f"question_resolution={'present' if fields.question_resolution_present else 'none'}",
             f"actor_role={fields.actor_role or 'none'}",
+            f"prior_rail_workflow={self.prior_rail_workflow_id or 'none'}",
         ])
 
     def context_used(self, retrieval_snapshot: Any = None) -> dict[str, Any]:
@@ -369,6 +375,36 @@ def _metadata_packs(metadata: Any) -> tuple[str, ...]:
     return tuple(item for item in value if isinstance(item, str))
 
 
+def _metadata_workflow(metadata: Any) -> str:
+    """Content-free workflow id from a persisted ``metadata['workflow_used']``."""
+    value = metadata.get("workflow_used") if isinstance(metadata, dict) else None
+    return value if isinstance(value, str) else ""
+
+
+#: Assistant turns the continuity rule looks back over for the previous rail.
+CONTINUITY_LOOKBACK_TURNS = 4
+
+
+def prior_rail_workflow_id(rows: Iterable[RecallRow]) -> str:
+    """The newest rail workflow among the last few assistant turns ('' if none).
+
+    Default turns (wf8/general) in between do not hide it: an acknowledgement
+    answered by the lookup assistant must not strand the parts conversation.
+    """
+    from ai.core.memory.routing_continuity import RAIL_WORKFLOWS
+
+    seen = 0
+    for row in reversed(tuple(rows)):
+        if str(row.role) != "assistant":
+            continue
+        if row.workflow_id in RAIL_WORKFLOWS:
+            return row.workflow_id
+        seen += 1
+        if seen >= CONTINUITY_LOOKBACK_TURNS:
+            break
+    return ""
+
+
 def prior_pack_ids(rows: Iterable[RecallRow]) -> tuple[str, ...]:
     """First-seen order of the packs earlier assistant turns ran with (oldest first)."""
     seen: list[str] = []
@@ -415,6 +451,7 @@ class ContextAssembler:
                         str(r.role),
                         str(r.content),
                         tool_packs=tuple(getattr(r, "tool_packs", ()) or ()),
+                        workflow_id=str(getattr(r, "workflow_id", "") or ""),
                     )
                     for r in window.rows
                 ),
@@ -430,6 +467,7 @@ class ContextAssembler:
                 str(m.role),
                 str(m.content),
                 tool_packs=_metadata_packs(getattr(m, "metadata", None)),
+                workflow_id=_metadata_workflow(getattr(m, "metadata", None)),
             )
             for i, m in enumerate(recent)
         )
@@ -590,6 +628,7 @@ class ContextAssembler:
         return ContextBundle(
             thread_id=thread_id,
             prior_pack_ids=prior_pack_ids(window.rows),
+            prior_rail_workflow_id=prior_rail_workflow_id(window.rows),
             turn_id=turn_id,
             watermark=watermark,
             next_sequence=window.next_sequence,
