@@ -312,7 +312,9 @@ def test_memory_battery_loads_validates_and_covers_every_rail():
     assert last.expect_conversation_summary_present is True
     # The routing cases REPORT summary presence on their fragments.
     assert battery.case("M-MEM-07").turns[1].expect_conversation_summary_present is True
-    assert battery.case("M-MEM-08").turns[1].expected_workflow == "wf8"
+    # An acknowledgement must not inherit the previous turn's tools: the router
+    # answers it with GENERAL (E36), never with the lookup assistant.
+    assert battery.case("M-MEM-08").turns[1].expected_workflow == "general"
 
 
 def test_memory_m_cases_must_declare_a_rail():

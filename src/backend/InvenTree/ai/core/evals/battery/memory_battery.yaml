@@ -162,7 +162,7 @@ cases:
         forbidden_entity_fixture_keys: [supplier, sku]
       # An acknowledgement must NOT inherit the previous turn's tools.
       - question: Ok.
-        expected_workflow: wf8
+        expected_workflow: general
         expect_conversation_summary_present: true
         forbidden_entity_fixture_keys: [supplier, sku]
       - question: Back to the isolator - what else fits it?

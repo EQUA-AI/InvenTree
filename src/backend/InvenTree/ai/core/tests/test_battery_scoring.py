@@ -628,7 +628,8 @@ def test_procurement_markers_fire_on_values_not_vocabulary():
         "I can tighten this down. I need the isolator's part number (your IPN, supplier "
         "SKU, or manufacturer MPN). Alternative families by supplier:\n\n- Mersen 10x38 "
         "1000 VDC gPV - Compatible. Breaking capacity 20 kA @ 1000 VDC; unit cost is not "
-        "on file. The price depends on the supplier."
+        "on file. The price depends on the supplier. - Supplier: Very strong distribution "
+        "network.\n- Supplier: none recorded for this family."
     )
     assert (
         _forbidden_hits(

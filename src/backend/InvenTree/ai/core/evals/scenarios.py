@@ -73,6 +73,9 @@ KNOWN_WORKFLOWS = (
     "wf7",
     "wf8",
     "wf9",
+    # The router's own answer for greetings and acknowledgements ("Ok.");
+    # the lookup assistant's tools are never attached to it.
+    "general",
     "analysis_executor",
     "safety_refusal",
     "reasoning_refusal",
