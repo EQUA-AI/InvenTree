@@ -579,3 +579,34 @@ def test_regex_markers_match_addresses_not_units():
         message_text="Contact sales@example.com for a quote.", entities=None, evidence_analysis=None
     )
     assert _forbidden_hits(address, resolution) == [f"email:{pattern}"]
+
+
+def test_literal_markers_match_whole_tokens_only():
+    """A distractor serial that prefixes the in-scope serial must not hit."""
+    from ai.core.evals.scoring import _forbidden_hits
+
+    manifest = {
+        "distractor_string": {
+            "kind": "machine",
+            "name": "Analysis Eval SI-300 String Inverter",
+            "serial": "EVAL-SI300",
+        },
+        "mem_reading_superseded": {"kind": "marker", "markers": ["41.7"]},
+    }
+    turn = _turn(forbidden_entity_fixture_keys=("distractor_string", "mem_reading_superseded"))
+    resolution = resolution_from_manifest(manifest, _case(turn), turn)
+    inside = _good_artifacts(
+        message_text="Machine in scope: Inverter A, serial EVAL-SI3000-A; reading 141.7 kW.",
+        entities=None,
+        evidence_analysis=None,
+    )
+    assert _forbidden_hits(inside, resolution) == []
+    exact = _good_artifacts(
+        message_text="Compare with EVAL-SI300 (the string inverter) at 41.7 degrees.",
+        entities=None,
+        evidence_analysis=None,
+    )
+    assert sorted(_forbidden_hits(exact, resolution)) == [
+        "distractor_string:EVAL-SI300",
+        "mem_reading_superseded:41.7",
+    ]

@@ -188,8 +188,14 @@ def _surfaces(artifacts: TurnArtifacts) -> str:
 REGEX_MARKER_PREFIX = "re:"
 
 
+#: Characters that may not touch a literal marker on either side: a marker is
+#: a whole token, so the distractor serial ``EVAL-SI300`` never matches inside
+#: the in-scope ``EVAL-SI3000-A`` and the reading ``47.1`` never inside ``147.1``.
+_TOKEN_CHARS = r"A-Za-z0-9"
+
+
 def _marker_hit(marker: str, haystack: str, haystack_lower: str) -> bool:
-    """One marker against the surfaces: regex when prefixed, substring otherwise."""
+    """One marker against the surfaces: regex when prefixed, whole token otherwise."""
     if not marker:
         return False
     if marker.startswith(REGEX_MARKER_PREFIX):
@@ -199,7 +205,10 @@ def _marker_hit(marker: str, haystack: str, haystack_lower: str) -> bool:
             )
         except re.error:
             return False
-    return marker.lower() in haystack_lower
+    if marker.lower() not in haystack_lower:
+        return False
+    pattern = rf"(?<![{_TOKEN_CHARS}]){re.escape(marker)}(?![{_TOKEN_CHARS}])"
+    return re.search(pattern, haystack, re.IGNORECASE) is not None
 
 
 def _forbidden_hits(artifacts: TurnArtifacts, resolution: Resolution) -> list[str]:
