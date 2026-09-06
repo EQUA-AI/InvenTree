@@ -134,7 +134,7 @@ def server(monkeypatch):
 SMALL_BATTERY = """
 schema_version: 1
 dataset: fixture
-fixture_set_versions: [aimms-analysis-fixtures-v1]
+fixture_set_versions: [aimms-analysis-fixtures-v2]
 cases:
   - id: FB01
     scope: {machine_fixture_keys: [solar_a]}
@@ -284,7 +284,7 @@ def test_missing_base_url_exits_2(tmp_path, monkeypatch, capsys):
 MEMORY_BATTERY = """
 schema_version: 1
 dataset: fixture
-fixture_set_versions: [aimms-analysis-fixtures-v1]
+fixture_set_versions: [aimms-analysis-fixtures-v2]
 cases:
   - id: M-MEM-01
     rail: wf8

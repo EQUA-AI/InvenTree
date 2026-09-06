@@ -15,6 +15,7 @@ side-effect-free and unit-testable without a network.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -180,17 +181,44 @@ def _surfaces(artifacts: TurnArtifacts) -> str:
     return "\n".join(surfaces)
 
 
+#: A marker spelled ``re:<pattern>`` is a case-insensitive regular expression
+#: over the scanned surfaces; plain markers stay literal substrings. Needed
+#: where a literal is hopeless — ``@`` matched "20 kA @ 1000 VDC" on a
+#: parts-analysis answer, so the ``email`` key carries an address pattern.
+REGEX_MARKER_PREFIX = "re:"
+
+
+def _marker_hit(marker: str, haystack: str, haystack_lower: str) -> bool:
+    """One marker against the surfaces: regex when prefixed, substring otherwise."""
+    if not marker:
+        return False
+    if marker.startswith(REGEX_MARKER_PREFIX):
+        try:
+            return (
+                re.search(marker[len(REGEX_MARKER_PREFIX) :], haystack, re.IGNORECASE) is not None
+            )
+        except re.error:
+            return False
+    return marker.lower() in haystack_lower
+
+
 def _forbidden_hits(artifacts: TurnArtifacts, resolution: Resolution) -> list[str]:
-    """Id- and marker-level scan of everything the turn surfaced."""
+    """Id- and marker-level scan of everything the turn surfaced.
+
+    Ids are the typed chip/citation ids only (``machine:40``); the bare
+    numeric pk never reaches here (see :func:`resolution_from_manifest`) —
+    "40" matched "40 kA" on a surge-arrester answer and flagged a water
+    asset that was never mentioned.
+    """
     hits: list[str] = []
     haystack = _surfaces(artifacts)
     haystack_lower = haystack.lower()
     for key, (ids, markers) in resolution.forbidden.items():
         for entity_id in ids:
-            if entity_id and entity_id in haystack:
+            if entity_id and ":" in entity_id and entity_id in haystack:
                 hits.append(f"{key}:{entity_id}")
         for marker in markers:
-            if marker and marker.lower() in haystack_lower:
+            if _marker_hit(marker, haystack, haystack_lower):
                 hits.append(f"{key}:{marker}")
     return hits
 
@@ -218,7 +246,9 @@ def _required_misses(artifacts: TurnArtifacts, resolution: Resolution) -> list[s
     haystack_lower = haystack.lower()
     for key, required in resolution.required.items():
         id_hit = any(entity_id and entity_id in haystack for entity_id in required.ids)
-        marker_hit = any(marker and marker.lower() in haystack_lower for marker in required.markers)
+        marker_hit = any(
+            _marker_hit(marker, haystack, haystack_lower) for marker in required.markers
+        )
         if not (id_hit or marker_hit):
             misses.append(key)
             continue
@@ -586,8 +616,15 @@ def resolution_from_manifest(
     forbidden: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
     for key in turn.forbidden_entity_fixture_keys:
         descriptor = manifest.get(key, {})
-        markers = tuple(str(marker) for marker in descriptor.get("markers") or ())
-        forbidden[key] = (tuple(resolved_ids.get(key, ())), markers)
+        markers = [str(marker) for marker in descriptor.get("markers") or ()]
+        # Same surfaces as the required scan: typed ids plus, for a machine,
+        # its name and serial — never the bare numeric pk.
+        ids = tuple(i for i in resolved_ids.get(key, ()) if ":" in str(i))
+        if str(descriptor.get("kind") or "") == "machine":
+            markers.extend(
+                str(descriptor[field]) for field in ("name", "serial") if descriptor.get(field)
+            )
+        forbidden[key] = (ids, tuple(dict.fromkeys(markers)))
     required: dict[str, RequiredKey] = {}
     for key in turn.required_entity_fixture_keys:
         descriptor = manifest.get(key, {})

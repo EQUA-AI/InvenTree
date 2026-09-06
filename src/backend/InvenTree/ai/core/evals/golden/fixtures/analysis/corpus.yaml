@@ -6,7 +6,7 @@
 # identities (names/serials/clients) live in battery/fixture_keys.yaml —
 # this file holds the DATA those entities carry.
 
-version: aimms-analysis-fixtures-v1
+version: aimms-analysis-fixtures-v2
 
 work_orders:
   # >25 per primary asset (§13.4); date defects are deliberate.
@@ -93,3 +93,22 @@ attachments:
     file: si3000-field-note.md
     title: SI-3000 field note (uncontrolled)
     machine_key: solar_a
+
+parts:
+  # v2 (2026-09-06): spare-part families the rbac_run / routing battery cases
+  # name. Names carry the SI-3000 family token so search_parts finds them; no
+  # supplier, price or contact data exists for them (those surfaces are the
+  # cases' forbidden keys). One member per family is inactive so "is it
+  # obsolete?" has a true answer.
+  - {ipn: EVAL-SI3000-SPD-T2, name: SI-3000 AC Surge Arrester Type 2 275V 40kA, description: Type 2 AC surge protective device for the SI-3000 AC output, DIN rail, active: true}
+  - {ipn: EVAL-SI3000-SPD-T12, name: SI-3000 AC Surge Arrester Type 1+2 275V 50kA, description: Combined Type 1+2 AC surge arrester for the SI-3000 AC output, active: true}
+  - {ipn: EVAL-SI3000-SPD-T2L, name: SI-3000 AC Surge Arrester Type 2 275V 20kA (legacy), description: Superseded Type 2 arrester, no longer stocked, active: false}
+  - {ipn: EVAL-SI3000-CP24, name: SI-3000 Inverter Coolant Pump 24V, description: Brushless coolant circulation pump, 24 VDC, 6 L/min, SI-3000 liquid-cooled variants, active: true}
+  - {ipn: EVAL-SI3000-CP48, name: SI-3000 Inverter Coolant Pump 48V, description: Brushless coolant circulation pump, 48 VDC, 8 L/min, SI-3000 liquid-cooled variants, active: true}
+  - {ipn: EVAL-SI3000-AF-G4, name: SI-3000 Cabinet Air Filter G4, description: G4 pleated intake filter mat for the SI-3000 cabinet, active: true}
+  - {ipn: EVAL-SI3000-AF-F7, name: SI-3000 Cabinet Air Filter F7, description: F7 fine intake filter for the SI-3000 cabinet on dusty sites, active: true}
+  - {ipn: EVAL-SI3000-DCI-32, name: SI-3000 DC Isolator 1000V 32A, description: 4-pole DC isolator switch, 1000 VDC 32 A, SI-3000 string inputs, active: true}
+  - {ipn: EVAL-SI3000-DCI-40, name: SI-3000 DC Isolator 1000V 40A, description: 4-pole DC isolator switch, 1000 VDC 40 A, SI-3000 string inputs, active: true}
+  - {ipn: EVAL-SI3000-DCF-15, name: SI-3000 String-Inverter DC Fuse 15A gPV, description: 10x38 gPV fuse-link 1000 VDC 15 A for SI-3000 string protection (discontinued), active: false}
+  - {ipn: EVAL-SI3000-DCF-20, name: SI-3000 String-Inverter DC Fuse 20A gPV, description: 10x38 gPV fuse-link 1000 VDC 20 A for SI-3000 string protection, active: true}
+  - {ipn: EVAL-SI3000-DCF-30, name: SI-3000 String-Inverter DC Fuse 30A gPV, description: 10x38 gPV fuse-link 1000 VDC 30 A for SI-3000 string protection, active: true}

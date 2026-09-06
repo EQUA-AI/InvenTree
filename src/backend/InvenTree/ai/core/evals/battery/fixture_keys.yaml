@@ -4,7 +4,7 @@
 # - entity keys (machine/document/work_order/attachment): resolved to live
 #   ids at run start by the battery runner (unresolved key = preflight
 #   abort). Entities are seeded by `manage.py seed_analysis_eval_fixtures`
-#   (fixture set aimms-analysis-fixtures-v1) or pre-exist from the earlier
+#   (fixture set aimms-analysis-fixtures-v2) or pre-exist from the earlier
 #   eval fixture sets; their DECLARED shape lives in
 #   golden/fixtures/analysis/corpus.yaml so the seeder and the scenario
 #   assertions derive from one source.
@@ -121,19 +121,22 @@ keys:
   # --- Stale-domain contamination markers (M6/M7, §13.3) ---
   supplier:
     kind: marker
-    markers: [supplier, vendor quote]
+    # Procurement surfaces only — the bare word "supplier" is ordinary parts prose.
+    markers: [supplier part number, vendor quote, supplier quote, supplier contact, "supplier:"]
   sku:
     kind: marker
     markers: [SKU]
   price:
     kind: marker
-    markers: [price, unit cost]
+    markers: [unit price, unit cost, quoted price, "price:"]
   lead_time:
     kind: marker
     markers: [lead time]
   email:
     kind: marker
-    markers: ["@", email]
+    # re: markers are regular expressions (scoring.REGEX_MARKER_PREFIX); a bare
+    # "@" matched "20 kA @ 1000 VDC".
+    markers: ["re:[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}", "e-mail address"]
   global_recent_records:
     kind: marker
     markers: [most recent records across]

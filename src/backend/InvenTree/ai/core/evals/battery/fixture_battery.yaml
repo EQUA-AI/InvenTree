@@ -7,7 +7,7 @@
 
 schema_version: 1
 dataset: fixture
-fixture_set_versions: [aimms-analysis-fixtures-v1]
+fixture_set_versions: [aimms-analysis-fixtures-v2]
 
 cases:
   # --- Distractor resistance: scope purity beats name similarity ---

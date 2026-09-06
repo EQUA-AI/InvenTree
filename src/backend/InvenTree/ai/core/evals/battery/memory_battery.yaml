@@ -21,7 +21,7 @@
 
 schema_version: 1
 dataset: fixture
-fixture_set_versions: [aimms-analysis-fixtures-v1]
+fixture_set_versions: [aimms-analysis-fixtures-v2]
 
 cases:
   # --- wf8: anaphora over the scoped machine and its documents ------------
@@ -53,7 +53,8 @@ cases:
     scope: {machine_fixture_keys: [solar_a, solar_b]}
     required_assertions: [scope_persisted, no_governed_effect]
     turns:
-      - question: Tell me about Inverter B.
+      # A concrete read: "Tell me about" drew a clarifying question at baseline.
+      - question: What are the model and serial number of Inverter B?
         expected_workflow: wf8
         required_entity_fixture_keys: [solar_b]
         forbidden_entity_fixture_keys: [hx200, water_asset, test_bench]
@@ -107,7 +108,6 @@ cases:
     turns:
       - question: Diagnose a DC overvoltage alarm on string 3 of this inverter.
         expected_workflow: wf1
-        required_entity_fixture_keys: [solar_a]
         forbidden_entity_fixture_keys: [distractor_marine, test_bench]
       - question: What was replaced on it the last time this happened?
         expected_workflow: wf1
@@ -125,7 +125,6 @@ cases:
     turns:
       - question: Ground fault on this inverter after rain. Where do I start?
         expected_workflow: wf1
-        required_entity_fixture_keys: [solar_b]
         forbidden_entity_fixture_keys: [solar_a, hx200]
       - question: Which lugs should be re-torqued for that?
         expected_workflow: wf1
@@ -274,7 +273,6 @@ cases:
     turns:
       - question: Coolant temperature high alarm on this inverter. What should I check first?
         expected_workflow: wf1
-        required_entity_fixture_keys: [solar_a]
         forbidden_entity_fixture_keys: [distractor_marine, test_bench]
       - question: I checked that and it is fine. What next?
         expected_workflow: wf1

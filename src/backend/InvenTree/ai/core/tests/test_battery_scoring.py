@@ -527,3 +527,55 @@ def test_resolution_from_manifest_builds_required_keys():
         ids=("SI3000-SM",), revision="B"
     )
     assert resolution.required["mem_reading_corrected"] == RequiredKey(markers=("47.1",))
+
+
+def test_forbidden_machine_key_never_matches_its_bare_numeric_pk():
+    """ "40 kA" on a surge-arrester answer is not the water asset with pk 40."""
+    from ai.core.evals.scoring import _forbidden_hits
+
+    manifest = {
+        "water_asset": {
+            "kind": "machine",
+            "name": "Analysis Eval WTP Influent Pump",
+            "serial": "EVAL-WTP-IP1",
+        }
+    }
+    turn = _turn(forbidden_entity_fixture_keys=("water_asset",))
+    resolution = resolution_from_manifest(
+        manifest, _case(turn), turn, resolved_ids={"water_asset": ("machine:40", "40")}
+    )
+    assert resolution.forbidden["water_asset"][0] == ("machine:40",)
+    prose = _good_artifacts(
+        message_text="Rated 275 VAC, 40 kA, DIN-rail mounting.",
+        entities=None,
+        evidence_analysis=None,
+    )
+    assert _forbidden_hits(prose, resolution) == []
+    named = _good_artifacts(
+        message_text="Also check serial EVAL-WTP-IP1.", entities=None, evidence_analysis=None
+    )
+    assert _forbidden_hits(named, resolution) == ["water_asset:EVAL-WTP-IP1"]
+    chip = _good_artifacts(
+        message_text="See the pump.",
+        entities=[{"id": "machine:40", "label": "pump"}],
+        evidence_analysis=None,
+    )
+    assert _forbidden_hits(chip, resolution) == ["water_asset:machine:40"]
+
+
+def test_regex_markers_match_addresses_not_units():
+    """The email key must catch an address and ignore "20 kA @ 1000 VDC"."""
+    from ai.core.evals.scoring import _forbidden_hits
+
+    pattern = "re:[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+    manifest = {"email": {"kind": "marker", "markers": [pattern]}}
+    turn = _turn(forbidden_entity_fixture_keys=("email",))
+    resolution = resolution_from_manifest(manifest, _case(turn), turn)
+    units = _good_artifacts(
+        message_text="Breaking capacity 20 kA @ 1000 VDC.", entities=None, evidence_analysis=None
+    )
+    assert _forbidden_hits(units, resolution) == []
+    address = _good_artifacts(
+        message_text="Contact sales@example.com for a quote.", entities=None, evidence_analysis=None
+    )
+    assert _forbidden_hits(address, resolution) == [f"email:{pattern}"]

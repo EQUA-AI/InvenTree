@@ -136,6 +136,25 @@ class SeedAnalysisFixturesTests(TestCase):
         self.assertIn('attachment note SKIPPED', output)
 
     @requires_postgres
+    def test_spare_part_families_land_with_one_inactive_member_each(self):
+        """v2: the wf2/wf3 cases' part families exist, one member obsolete."""
+        from part.models import Part, PartCategory
+
+        _seed('--break-glass')
+        category = PartCategory.objects.get(name='Analysis Eval SI-3000 Spares')
+        parts = Part.objects.filter(category=category)
+        self.assertEqual(parts.count(), 12)
+        self.assertEqual(parts.filter(IPN__startswith='EVAL-SI3000-').count(), 12)
+        self.assertEqual(
+            sorted(parts.filter(active=False).values_list('IPN', flat=True)),
+            ['EVAL-SI3000-DCF-15', 'EVAL-SI3000-SPD-T2L'],
+        )
+        # Every family the battery names is searchable by its SI-3000 token.
+        for needle in ('Surge Arrester', 'Coolant Pump', 'Cabinet Air Filter', 'DC Isolator', 'DC Fuse'):
+            self.assertGreaterEqual(parts.filter(name__icontains=needle).count(), 2, needle)
+        # No procurement surfaces: nothing purchasable is linked to a supplier.
+        self.assertEqual(sum(p.supplier_parts.count() for p in parts), 0)
+
     def test_seeding_is_idempotent(self):
         """A second run creates nothing new."""
         from tasks.models import WorkOrder

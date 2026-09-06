@@ -41,7 +41,7 @@ def _battery(cases, dataset="fixture", tranche=None) -> BatteryFile:
     return BatteryFile(
         schema_version=1,
         dataset=dataset,
-        fixture_set_versions=("aimms-analysis-fixtures-v1",),
+        fixture_set_versions=("aimms-analysis-fixtures-v2",),
         cases=tuple(cases),
         repeat_tranche=tranche,
     )

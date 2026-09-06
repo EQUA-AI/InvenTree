@@ -1,6 +1,6 @@
 """Seed the synthetic analysis-evaluation corpus (S14, §13.4).
 
-Fixture set ``aimms-analysis-fixtures-v1``: two in-scope SI-3000 inverters
+Fixture set ``aimms-analysis-fixtures-v2``: two in-scope SI-3000 inverters
 with >25 work orders each (deliberate date defects included), two
 high-similarity distractor inverters, a water-plant forbidden entity, an
 off-limits test bench, a superseded/current controlled-manual pair, an
@@ -26,7 +26,9 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
-_FIXTURE_SET_VERSION = 'aimms-analysis-fixtures-v1'
+_FIXTURE_SET_VERSION = 'aimms-analysis-fixtures-v2'
+#: Category that holds the v2 spare-part families (rbac_run / routing cases).
+_PARTS_CATEGORY = 'Analysis Eval SI-3000 Spares'
 
 #: Machines this seeder owns (fixture key -> identity). The HX-200 forbidden
 #: entity is seeded by seed_attachment_eval_fixtures and only referenced.
@@ -112,6 +114,7 @@ class Command(BaseCommand):
         self._seed_work_orders(corpus, machines, dry_run)
         self._seed_documents(corpus, machines, scope_key, dry_run)
         self._seed_attachment(corpus, machines, dry_run)
+        self._seed_parts(corpus, dry_run)
 
         if not dry_run:
             created_pks = tuple(m.pk for m in machines.values() if m is not None)
@@ -326,6 +329,46 @@ class Command(BaseCommand):
                 f'--access-class internal'
                 + (f' --asset-id {asset_serial}' if asset_serial else '')
             )
+
+    def _seed_parts(self, corpus, dry_run):
+        """v2: the spare-part families the wf2/wf3 battery cases name.
+
+        Idempotent by IPN; name/description/category/active converge on the
+        corpus so a re-seed repairs drift. No supplier parts, prices or
+        contacts are ever created — those are the cases' forbidden surfaces.
+        """
+        specs = corpus.get('parts') or []
+        if not specs:
+            return
+        if dry_run:
+            self.stdout.write(f'would ensure {len(specs)} spare parts')
+            return
+        from part.models import Part, PartCategory
+
+        category, _ = PartCategory.objects.get_or_create(
+            name=_PARTS_CATEGORY,
+            defaults={'description': f'Analysis eval fixture ({_FIXTURE_SET_VERSION})'},
+        )
+        ensured = 0
+        for spec in specs:
+            wanted = {
+                'name': spec['name'],
+                'description': spec.get('description', ''),
+                'category': category,
+                'active': bool(spec.get('active', True)),
+            }
+            part, created = Part.objects.get_or_create(
+                IPN=spec['ipn'],
+                defaults={**wanted, 'component': True, 'purchaseable': True},
+            )
+            if not created:
+                changed = [f for f, v in wanted.items() if getattr(part, f) != v]
+                if changed:
+                    for f in changed:
+                        setattr(part, f, wanted[f])
+                    part.save(update_fields=changed)
+            ensured += 1
+        self.stdout.write(f'spare parts ensured: {ensured} in {_PARTS_CATEGORY!r}')
 
     def _seed_attachment(self, corpus, machines, dry_run):
         from django.conf import settings as django_settings

@@ -95,5 +95,5 @@ class EvaluationDossierTests(TestCase):
     def test_fixture_sets_name_all_four_seeders(self):
         """The corpus pin lists every committed fixture-set version."""
         sets = _dossier()['pins']['corpus']['fixture_sets']
-        self.assertIn('aimms-analysis-fixtures-v1', sets)
+        self.assertIn('aimms-analysis-fixtures-v2', sets)
         self.assertIn('aimms-attachment-fixtures-v2', sets)
