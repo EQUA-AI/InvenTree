@@ -62,7 +62,7 @@ class FakeServer:
         path = request.url.path
         if path == run_battery.PREFLIGHT_PATH:
             return httpx.Response(200, json=self.preflight)
-        if path == "/api/assets/machine/":
+        if path == "/api/assets/machines/":
             return httpx.Response(
                 200,
                 json=[
@@ -477,9 +477,21 @@ def test_signed_subject_auth_rides_the_runner_client(monkeypatch):
     client._transport = httpx.MockTransport(handler)
     client.get("/api/ai/quota/preflight")
     client.get("/api/ai/threads/t1")
-    client.get("/api/assets/machine/")
+    client.get("/api/assets/machines/")
     assert seen == [
         ("/api/ai/quota/preflight", "Bearer sub-1"),
         ("/api/ai/threads/t1", "Bearer sub-2"),
-        ("/api/assets/machine/", "Token drf"),
+        ("/api/assets/machines/", "Token drf"),
     ]
+
+
+def test_machine_lookup_path_matches_the_assets_api():
+    """The default asset path must be the plural route the fork actually mounts.
+
+    ``assets.api.assets_api_urls`` registers the machine list under
+    ``machines/``; the singular default 404'd every fixture resolution and
+    the entry-baseline campaign exited before its first turn (2026-09-06).
+    """
+    from ai.core.evals import run_battery
+
+    assert run_battery.MACHINES_PATH == "/api/assets/machines/"

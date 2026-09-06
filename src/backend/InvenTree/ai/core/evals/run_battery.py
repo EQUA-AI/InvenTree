@@ -80,7 +80,9 @@ PROPOSALS_PATH = "/api/aichat/proposals/"
 PREFLIGHT_PATH = "/api/ai/quota/preflight"
 THREADS_PATH = "/api/ai/threads"
 CONFIG_PATH = "/api/ai/config/effective"
-MACHINES_PATH = os.environ.get("AIMMS_BATTERY_ASSETS_PATH", "/api/assets/machine/")
+# The fork's asset machine list (assets.api.assets_api_urls: "machines/"); the
+# singular spelling 404s and the entry-baseline campaign died in preflight on it.
+MACHINES_PATH = os.environ.get("AIMMS_BATTERY_ASSETS_PATH", "/api/assets/machines/")
 
 MAX_REQUESTS_PER_INVOCATION = 300
 
