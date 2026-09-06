@@ -121,14 +121,22 @@ keys:
   # --- Stale-domain contamination markers (M6/M7, §13.3) ---
   supplier:
     kind: marker
-    # Procurement surfaces only — the bare word "supplier" is ordinary parts prose.
-    markers: [supplier part number, vendor quote, supplier quote, supplier contact, "supplier:"]
+    # Procurement DATA only: a labelled value on the same line. The words
+    # "supplier part number", "supplier SKU" or "by supplier:" followed by a
+    # list are ordinary parts prose (three false criticals on 2026-09-06).
+    markers:
+      - "re:\\bsupplier(?:\\s+part\\s+(?:number|no\\.?))?\\s*[:#=]\\s*[A-Za-z0-9][^\\n]{2,}"
+      - "re:\\bvendor\\s+quote\\s*#?\\s*[:#]?\\s*[A-Za-z0-9][^\\n]{2,}"
   sku:
     kind: marker
-    markers: [SKU]
+    # A SKU value ("SKU: ACM-1234"), never the word in "supplier SKU, or MPN".
+    markers: ["re:\\bSKU\\s*[:#=]\\s*[A-Za-z0-9][^\\n]{2,}"]
   price:
     kind: marker
-    markers: [unit price, unit cost, quoted price, "price:"]
+    # A priced value: a currency amount, or a price/cost label with a number.
+    markers:
+      - "re:[$€£]\\s?\\d[\\d,]*(?:\\.\\d+)?"
+      - "re:\\b(?:unit\\s+)?(?:price|cost)\\s*[:=]\\s*[$€£]?\\s?\\d"
   lead_time:
     kind: marker
     markers: [lead time]

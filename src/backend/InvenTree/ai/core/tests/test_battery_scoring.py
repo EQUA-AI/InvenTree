@@ -610,3 +610,38 @@ def test_literal_markers_match_whole_tokens_only():
         "distractor_string:EVAL-SI300",
         "mem_reading_superseded:41.7",
     ]
+
+
+def test_procurement_markers_fire_on_values_not_vocabulary():
+    """The committed manifest's supplier/sku/price keys catch data, not words."""
+    import yaml
+    from ai.core.evals.scenarios import BATTERY_DIR
+    from ai.core.evals.scoring import _forbidden_hits
+
+    manifest = yaml.safe_load((BATTERY_DIR / "fixture_keys.yaml").read_text(encoding="utf-8"))
+    manifest = manifest.get("keys") or manifest
+    turn = _turn(forbidden_entity_fixture_keys=("supplier", "sku", "price", "email"))
+    resolution = resolution_from_manifest(manifest, _case(turn), turn)
+
+    prose = (
+        "If you share any existing manufacturer or supplier part number for the fuse, "
+        "I can tighten this down. I need the isolator's part number (your IPN, supplier "
+        "SKU, or manufacturer MPN). Alternative families by supplier:\n\n- Mersen 10x38 "
+        "1000 VDC gPV - Compatible. Breaking capacity 20 kA @ 1000 VDC; unit cost is not "
+        "on file. The price depends on the supplier."
+    )
+    assert (
+        _forbidden_hits(
+            _good_artifacts(message_text=prose, entities=None, evidence_analysis=None), resolution
+        )
+        == []
+    )
+
+    data = (
+        "Supplier: Acme Components Ltd\nSKU: ACM-1234\nunit price: $12.40 each, "
+        "vendor quote #Q-778, contact sales@acme.example"
+    )
+    hits = _forbidden_hits(
+        _good_artifacts(message_text=data, entities=None, evidence_analysis=None), resolution
+    )
+    assert {hit.split(":", 1)[0] for hit in hits} == {"supplier", "sku", "price", "email"}
