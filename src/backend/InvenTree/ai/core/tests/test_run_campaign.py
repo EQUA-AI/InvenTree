@@ -148,6 +148,32 @@ def test_campaign_runs_aggregates_and_evaluates_gates(campaign_env):
     assert (campaign_dir / "campaign_report.json").is_file()
 
 
+def test_each_pass_carries_the_campaign_per_run_token_estimate(campaign_env):
+    """Runs 2-5 of an entry baseline refused on the runner's 2M default (E33)."""
+    from unittest import mock
+
+    tmp_path, config = campaign_env
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + "estimated_tokens: 4000000\nrun_estimated_tokens: 800000\n",
+        encoding="utf-8",
+    )
+    seen: list[list[str]] = []
+
+    def capture(runner_argv, *, run_dir, seed, extra, env):
+        seen.append(list(extra))
+        return {"exit_code": 2, "per_case": {}, "failures": []}
+
+    with mock.patch.object(run_campaign, "run_battery_subprocess", capture):
+        run_campaign.main(["--config", str(config), "--json-out", str(tmp_path / "o.json")])
+
+    assert seen, "no battery pass was invoked"
+    for extra in seen:
+        index = extra.index("--estimated-tokens")
+        assert extra[index + 1] == "800000"
+        assert extra.count("--estimated-tokens") == 1
+
+
 def test_critical_failures_print_the_stop_invocation_and_never_latch(campaign_env, capsys):
     tmp_path, config = campaign_env
 

@@ -609,6 +609,13 @@ def main(argv: list[str] | None = None) -> int:
     runner_extra = ["--cases", str(battery_path), *list(config.get("runner_extra") or [])]
     if config.get("dossier_path"):
         runner_extra += ["--dossier", str(config["dossier_path"])]
+    # Each pass runs its own quota preflight; without a per-run estimate the
+    # runner assumes 2,000,000 tokens, which stops fitting the daily allowance
+    # after a few passes even though a pass costs a fraction of that
+    # (2026-09-06: runs 2-5 of an entry baseline refused on exactly this).
+    run_estimate = config.get("run_estimated_tokens")
+    if run_estimate and "--estimated-tokens" not in runner_extra:
+        runner_extra += ["--estimated-tokens", str(int(run_estimate))]
 
     reports: list[dict[str, Any]] = []
     latencies: list[float] = []

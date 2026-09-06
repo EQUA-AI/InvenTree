@@ -15,7 +15,8 @@ battery_path: memory_battery.yaml   # bare name -> the committed battery dir
 dossier_path: /home/inventree/data/media/ai/eval/experimental/dossier.json
 
 estimated_requests: 60      # 57 turns per pass (planned_request_count)
-estimated_tokens: 800000    # ~6k tokens/turn x 57 x 2 margin (usage_report p95)
+estimated_tokens: 4000000   # campaign: five passes x ~800k (the quota preflight before run 1)
+run_estimated_tokens: 800000 # per pass: ~6k tokens/turn x 57 x 2 margin (each run's own preflight)
 error_rate_max: 0.01
 
 latency_targets:
