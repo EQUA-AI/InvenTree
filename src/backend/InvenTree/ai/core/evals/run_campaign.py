@@ -202,7 +202,11 @@ def run_battery_subprocess(
     if report_path.is_file():
         report = json.loads(report_path.read_text(encoding="utf-8"))
     report["exit_code"] = completed.returncode
-    if completed.returncode == 2 and not report.get("per_case"):
+    if completed.returncode != 0 and not report.get("per_case"):
+        # The pass died before scoring anything: a refusal to start is exit 2,
+        # an exception before the first turn (a 500 on a fixture lookup, say)
+        # is exit 1. Either way the tail of its stderr is the only record of
+        # why, so it rides into the campaign report instead of vanishing.
         report["preflight_stderr"] = completed.stderr[-2000:]
     return report
 

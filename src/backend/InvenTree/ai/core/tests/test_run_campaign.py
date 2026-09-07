@@ -442,3 +442,30 @@ def test_committed_memory_campaign_configs_preregister_the_plan_floor():
         )
         assert config["followup_parity"] == run_campaign.DEFAULT_FOLLOWUP_PARITY
         assert config["estimated_requests"] >= 57
+
+
+def test_a_pass_that_dies_before_scoring_keeps_its_stderr(tmp_path):
+    """Exit 1 before the first turn (a 500 on a fixture lookup) used to vanish."""
+    argv = [
+        sys.executable,
+        "-c",
+        "import sys; sys.stderr.write('fixture lookup 500\\n'); sys.exit(1)",
+    ]
+    report = run_campaign.run_battery_subprocess(
+        argv, run_dir=tmp_path / "run-01", seed=1, extra=[], env={}
+    )
+    assert report["exit_code"] == 1
+    assert report["preflight_stderr"].strip().endswith("fixture lookup 500")
+
+
+def test_a_pass_that_scored_keeps_no_stderr(tmp_path):
+    script = (
+        "import json, sys; p = [a for a in sys.argv if a.endswith('report.json')][0]; "
+        "open(p, 'w').write(json.dumps({'per_case': {'M-1': {}}})); "
+        "sys.stderr.write('noise'); sys.exit(1)"
+    )
+    report = run_campaign.run_battery_subprocess(
+        [sys.executable, "-c", script], run_dir=tmp_path / "run-02", seed=1, extra=[], env={}
+    )
+    assert report["exit_code"] == 1
+    assert "preflight_stderr" not in report
