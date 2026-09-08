@@ -180,7 +180,7 @@ EXTRACTION to the override or the standard tier, never the fast tier
 (D-10; `ai/core/model_policy.py`).
 
 ```
-AZURE_OPENAI_SUMMARIZATION_DEPLOYMENT=gpt-5.6-luna-dz   # interim gpt-5.6-luna until the DataZoneStandard deployment exists; empty = standard tier
+AZURE_OPENAI_SUMMARIZATION_DEPLOYMENT=gpt-5.6-luna-dz   # the DataZoneStandard deployment (created 2026-09-06); empty = standard tier
 AZURE_SUMMARIZATION_REASONING_EFFORT=low                 # sent only when the override is set
 # Remainder window (CR-4/CR-6), not yet live:
 # Q_CLUSTER_NAME=ai-memory
@@ -188,6 +188,13 @@ AZURE_SUMMARIZATION_REASONING_EFFORT=low                 # sent only when the ov
 # MEM0_DIR=/tmp/mem0
 # AIMMS_EGRESS_MODE=enforce
 ```
+
+Status: the override is live on both workers — `aimms-dev-worker` since
+2026-09-06 and `inventree-worker` (revision 87) since 2026-09-08 01:03Z —
+each proven by `manage.py compaction_model_probe` on the worker printing
+`override_set = True`, `reasoning_effort_accepted = true`, `schema_ok = true`,
+`seed_leaked = false`, PASS. D-02's 2026-09-19 deadline is met; failure
+action (i) does not apply.
 
 Pre-edit gate for the override: `manage.py compaction_model_probe
 --deployment <override>` on the worker prints `schema_ok=true` and
