@@ -643,8 +643,15 @@ class ThreadRepository:
             from aichat import tasks as aichat_tasks
             from InvenTree.tasks import offload_task
 
+            # Plan of record 8.7 (worker placement): route by group with a
+            # per-task timeout now; the dedicated ai-memory cluster (CR-4)
+            # adds the ``cluster`` kwarg when it lands.
             offload_task(
-                aichat_tasks.compact_thread_summary, thread.pk, force_async=True
+                aichat_tasks.compact_thread_summary,
+                thread.pk,
+                force_async=True,
+                group='ai-memory',
+                timeout=300,
             )
         except Exception:
             logger.warning('Thread compaction scheduling failed (ignored)')

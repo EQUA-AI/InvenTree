@@ -204,6 +204,9 @@ class CompactionTriggerTest(TestCase):
             self.repo._maybe_schedule_compaction(self._thread())
         offload.assert_called_once()
         self.assertTrue(offload.call_args.kwargs.get('force_async'))
+        # Plan of record 8.7: routed by group with a per-task timeout.
+        self.assertEqual(offload.call_args.kwargs.get('group'), 'ai-memory')
+        self.assertEqual(offload.call_args.kwargs.get('timeout'), 300)
 
     def test_trigger_skips_small_backlog(self):
         with (
@@ -283,6 +286,58 @@ class SummarizeRedactionTest(TestCase):
         self.assertIn('password=1', joined)
         for leak in self.LEAKS:
             self.assertNotIn(leak, joined)
+
+    def test_summarize_builds_the_client_through_the_shared_factory(self):
+        """M2 PR 7 (GR-23): endpoint/version reach the SDK; keyless rides settings."""
+        constructed: list[dict] = []
+
+        class _Recording(_FakeAzureOpenAI):
+            def __init__(self, **kwargs):
+                constructed.append(kwargs)
+                super().__init__(**kwargs)
+
+        _Recording.completions = _FakeCompletions(_summary_payload())
+        with (
+            mock.patch('openai.AzureOpenAI', _Recording),
+            mock.patch('ai.core.config.get_settings', _ai_settings),
+        ):
+            body = tasks._summarize([{'role': 'user', 'content': 'hi'}], {})
+        self.assertEqual(body['label'], 'Pump 3 diagnosis')
+        self.assertEqual(len(_Recording.completions.calls), 1)
+        self.assertEqual(len(constructed), 1)
+        self.assertEqual(
+            constructed[0],
+            {
+                'azure_endpoint': 'https://example.openai.azure.com',
+                'api_version': '2024-10-21',
+                'api_key': 'test-key',
+            },
+        )
+
+        # Keyless settings are handed to the factory unchanged; the factory is
+        # replaced here so no credential is built inside the test database run.
+        seen: list = []
+        completions = _FakeCompletions(_summary_payload())
+        _FakeAzureOpenAI.completions = completions
+
+        def fake_factory(*, settings=None):
+            seen.append(settings)
+            return _FakeAzureOpenAI()
+
+        keyless = _ai_settings(AIMMS_OPENAI_KEYLESS=True)
+        with (
+            mock.patch(
+                'ai.core.integrations.azure_openai_client.build_openai_client',
+                fake_factory,
+            ),
+            mock.patch('ai.core.config.get_settings', lambda: keyless),
+        ):
+            body = tasks._summarize([{'role': 'user', 'content': 'hi'}], {})
+        self.assertEqual(body['label'], 'Pump 3 diagnosis')
+        self.assertEqual(len(seen), 1)
+        self.assertIs(seen[0], keyless)
+        self.assertTrue(seen[0].aimms_openai_keyless)
+        self.assertEqual(len(completions.calls), 1)
 
 
 class PriorSummaryRedactionTest(TestCase):

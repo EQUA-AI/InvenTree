@@ -211,7 +211,7 @@ _task_batch: contextvars.ContextVar = contextvars.ContextVar('task_batch', defau
 class TaskBatch:
     """Collects offload_task() calls made within a batch_offload_tasks() scope.
 
-    Entries are grouped by (taskname, group, force_async), so that each distinct
+    Entries are grouped by (taskname, group, force_async, timeout), so that each distinct
     combination triggered within the batch is flushed via its own bulk_offload_task() call.
     """
 
@@ -220,18 +220,28 @@ class TaskBatch:
         self.entries: dict[tuple, list] = defaultdict(list)
 
     def add(
-        self, taskname, group: str, force_async: bool, args: tuple, kwargs: dict
+        self,
+        taskname,
+        group: str,
+        force_async: bool,
+        args: tuple,
+        kwargs: dict,
+        timeout: int | None = None,
     ) -> None:
         """Record a single offload_task() call against this batch."""
-        self.entries[taskname, group, force_async].append((args, kwargs))
+        self.entries[taskname, group, force_async, timeout].append((args, kwargs))
 
     def flush(self) -> None:
-        """Fire a bulk_offload_task() call for each (taskname, group, force_async) group collected so far."""
+        """Fire a bulk_offload_task() call for each (taskname, group, force_async, timeout) group collected so far."""
         entries, self.entries = self.entries, defaultdict(list)
 
-        for (taskname, group, force_async), task_entries in entries.items():
+        for (taskname, group, force_async, timeout), task_entries in entries.items():
             bulk_offload_task(
-                taskname, task_entries, group=group, force_async=force_async
+                taskname,
+                task_entries,
+                group=group,
+                force_async=force_async,
+                timeout=timeout,
             )
 
 
@@ -246,7 +256,7 @@ def batch_offload_tasks():
     with its side effects visible, by the time offload_task() returns control to the caller -
     deferring it would silently break that contract.
 
-    The queued calls are flushed - grouped by (taskname, group, force_async), one
+    The queued calls are flushed - grouped by (taskname, group, force_async, timeout), one
     bulk_offload_task() call per group - when the current database transaction commits (or
     immediately, if no transaction is active). If the transaction is instead rolled back, the
     queued calls are discarded, rather than being fired for a write that never happened.
@@ -290,6 +300,7 @@ def offload_task(
     force_async: bool = False,
     force_sync: bool = False,
     check_duplicates: bool = True,
+    timeout: int | None = None,
     **kwargs,
 ) -> str | bool:
     """Create an AsyncTask if workers are running. This is different to a 'scheduled' task, in that it only runs once!
@@ -302,6 +313,10 @@ def offload_task(
         force_async: If True, force the task to be offloaded (even if workers are not running)
         force_sync: If True, force the task to be run synchronously (even if workers are running)
         check_duplicates: If True, check for existing identical tasks before offloading
+        timeout: Per-task worker timeout in seconds, forwarded to django-q2 when the task
+            is offloaded (None keeps the cluster default). Ignored when the task runs
+            synchronously. Inside a batch_offload_tasks() scope the timeout is carried
+            through the batch and written into the queued task's payload on flush.
         **kwargs: Keyword arguments to be passed to the task function
 
     Returns:
@@ -314,7 +329,7 @@ def offload_task(
         # A batch_offload_tasks() context is active - queue this task rather than
         # offloading it immediately (force_sync=True calls never reach this branch -
         # see batch_offload_tasks() for why they are excluded from batching)
-        batch.add(taskname, group, force_async, args, kwargs)
+        batch.add(taskname, group, force_async, args, kwargs, timeout=timeout)
         return True
 
     from InvenTree.exceptions import log_error
@@ -354,7 +369,10 @@ def offload_task(
 
         # Running as asynchronous task
         try:
-            task = AsyncTask(taskname, *args, group=group, **kwargs)
+            q_options = {'group': group}
+            if timeout is not None:
+                q_options['timeout'] = timeout
+            task = AsyncTask(taskname, *args, **q_options, **kwargs)
             with tracer.start_as_current_span(f'async worker: {taskname}'):
                 task.run()
 
@@ -419,6 +437,7 @@ def bulk_offload_task(
     group: str = 'inventree',
     force_sync: bool = False,
     force_async: bool = False,
+    timeout: int | None = None,
 ) -> bool:
     """Queue the same background task many times, in a single bulk database write.
 
@@ -436,6 +455,8 @@ def bulk_offload_task(
         group: The task group to assign to each queued task
         force_sync: If True, run all tasks synchronously (even if workers are running)
         force_async: If True, force all tasks to be queued (even if workers are not running)
+        timeout: Per-task worker timeout in seconds, written into each queued task's payload
+            (None keeps the cluster default). Ignored when the tasks run synchronously.
 
     Returns:
         bool: True if the tasks were queued (or run synchronously), False otherwise
@@ -468,6 +489,7 @@ def bulk_offload_task(
                 group=group,
                 force_sync=True,
                 check_duplicates=False,
+                timeout=timeout,
                 **kwargs,
             )
 
@@ -489,6 +511,11 @@ def bulk_offload_task(
             'group': group,
             'started': timezone.now(),
         }
+
+        if timeout is not None:
+            # django-q2's worker pops a per-task 'timeout' from the payload,
+            # falling back to the cluster default when the key is absent
+            task['timeout'] = timeout
 
         tasks.append(
             OrmQ(

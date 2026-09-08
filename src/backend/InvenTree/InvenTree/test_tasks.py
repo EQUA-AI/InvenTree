@@ -137,6 +137,47 @@ class InvenTreeTaskTests(PluginRegistryMixin, TestCase):
         ):
             InvenTree.tasks.offload_task('InvenTree.test_tasks.eval', force_sync=True)
 
+    def test_offloading_timeout_forwarding(self):
+        """The explicit timeout reaches django-q2 on the async path only.
+
+        A None timeout keeps django-q2's default (no 'timeout' key is sent),
+        and the value is never forwarded to the task function itself.
+        """
+        with patch('django_q.tasks.async_task', return_value='task-id') as async_task:
+            InvenTree.tasks.offload_task(
+                'InvenTree.test_tasks.get_result',
+                force_async=True,
+                check_duplicates=False,
+                group='ai-memory',
+                timeout=300,
+            )
+
+        async_task.assert_called_once()
+        self.assertEqual(
+            async_task.call_args.args[0], 'InvenTree.test_tasks.get_result'
+        )
+        self.assertEqual(async_task.call_args.kwargs['group'], 'ai-memory')
+        self.assertEqual(async_task.call_args.kwargs['timeout'], 300)
+
+        with patch('django_q.tasks.async_task', return_value='task-id') as async_task:
+            InvenTree.tasks.offload_task(
+                'InvenTree.test_tasks.get_result',
+                force_async=True,
+                check_duplicates=False,
+            )
+
+        async_task.assert_called_once()
+        self.assertNotIn('timeout', async_task.call_args.kwargs)
+
+        # The sync path ignores the timeout entirely (it never reaches django-q2)
+        with patch('django_q.tasks.async_task') as async_task:
+            result = InvenTree.tasks.offload_task(
+                get_result, force_sync=True, timeout=300
+            )
+
+        self.assertTrue(result)
+        async_task.assert_not_called()
+
     def test_task_heartbeat(self):
         """Test the task heartbeat."""
         InvenTree.tasks.offload_task(InvenTree.tasks.heartbeat)
@@ -518,6 +559,52 @@ class InvenTreeTaskTests(PluginRegistryMixin, TestCase):
             self.assertEqual(task.args(), args)
             self.assertEqual(task.kwargs(), kwargs)
 
+    def test_bulk_offload_timeout(self):
+        """A per-task timeout is written into each queued payload; None leaves the key absent."""
+        OrmQ.objects.all().delete()
+
+        entries = [((idx,), {}) for idx in range(3)]
+
+        with self.assertNumQueries(1):
+            result = InvenTree.tasks.bulk_offload_task(
+                'dummy_module.dummy_function',
+                entries,
+                group='ai-memory',
+                force_async=True,
+                timeout=300,
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(OrmQ.objects.count(), 3)
+
+        for task in OrmQ.objects.all():
+            self.assertEqual(task.group(), 'ai-memory')
+            self.assertEqual(task.task['timeout'], 300)
+
+        # No timeout: the payload carries no 'timeout' key, so the worker keeps
+        # the cluster default
+        OrmQ.objects.all().delete()
+        InvenTree.tasks.bulk_offload_task(
+            'dummy_module.dummy_function', entries, force_async=True
+        )
+
+        self.assertEqual(OrmQ.objects.count(), 3)
+        for task in OrmQ.objects.all():
+            self.assertNotIn('timeout', task.task)
+
+        # The synchronous fallback accepts the timeout and ignores it
+        calls = []
+
+        def sync_target(idx):
+            calls.append(idx)
+
+        result = InvenTree.tasks.bulk_offload_task(
+            sync_target, entries, force_sync=True, timeout=300
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(calls, [0, 1, 2])
+
 
 class TaskBatchTests(TestCase):
     """Unit tests for the batch_offload_tasks() context manager."""
@@ -644,6 +731,58 @@ class TaskBatchTests(TestCase):
         # After commit: only the batched async call produced an OrmQ entry
         self.assertEqual(OrmQ.objects.count(), 1)
         self.assertEqual(calls, ['ran'])
+
+    def test_timeout_carried_through_batch(self):
+        """A call carrying a timeout is batched like any other, and the timeout reaches the flushed payload."""
+        with self.captureOnCommitCallbacks(execute=True):
+            with transaction.atomic(), InvenTree.tasks.batch_offload_tasks():
+                result = InvenTree.tasks.offload_task(
+                    'dummy_module.dummy_function',
+                    1,
+                    force_async=True,
+                    group='ai-memory',
+                    timeout=300,
+                )
+                InvenTree.tasks.offload_task(
+                    'dummy_module.dummy_function',
+                    2,
+                    force_async=True,
+                    group='ai-memory',
+                )
+
+                # Still deferred to commit, and the batched contract (True, not
+                # a task ID) holds for the timed call too
+                self.assertTrue(result)
+                self.assertEqual(OrmQ.objects.count(), 0)
+
+        self.assertEqual(OrmQ.objects.count(), 2)
+
+        timed, untimed = OrmQ.objects.all().order_by('id')
+
+        self.assertEqual(timed.func(), 'dummy_module.dummy_function')
+        self.assertEqual(timed.group(), 'ai-memory')
+        self.assertEqual(timed.args(), (1,))
+        # The timeout rides the payload, never the task function's kwargs
+        self.assertEqual(timed.kwargs(), {})
+        self.assertEqual(timed.task['timeout'], 300)
+
+        self.assertEqual(untimed.args(), (2,))
+        self.assertNotIn('timeout', untimed.task)
+
+    def test_timeout_batch_discarded_on_rollback(self):
+        """A timed call queued in a batch is discarded on rollback, like any other batched call."""
+        with self.captureOnCommitCallbacks(execute=True):
+            try:
+                with transaction.atomic(), InvenTree.tasks.batch_offload_tasks():
+                    InvenTree.tasks.offload_task(
+                        'dummy_module.dummy_function', force_async=True, timeout=300
+                    )
+                    self.assertEqual(OrmQ.objects.count(), 0)
+                    raise ValueError('boom')
+            except ValueError:
+                pass
+
+        self.assertEqual(OrmQ.objects.count(), 0)
 
     def test_batched_calls_skip_duplicate_check(self):
         """Unlike individual offload_task() calls, batched calls are never deduplicated."""
