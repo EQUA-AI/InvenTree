@@ -174,10 +174,10 @@ async def _run(middleware, principal, path: str = "/chat") -> list[dict]:
         AI_PRINCIPAL_SCOPE_KEY: principal,
     }
 
-    async def receive():  # noqa: RUF029
+    async def receive():  # noqa: RUF029 - async by ASGI/test contract
         return {"type": "http.request", "body": b"", "more_body": False}
 
-    async def send(message):  # noqa: RUF029
+    async def send(message):  # noqa: RUF029 - async by ASGI/test contract
         messages.append(message)
 
     await middleware(scope, receive, send)
@@ -226,6 +226,60 @@ def test_middleware_returns_typed_429_when_enforced(monkeypatch):
     # their own threads and capability probes.
     reads = asyncio.run(_run(middleware, _principal(), path="/threads"))
     assert next(m["status"] for m in reads if m["type"] == "http.response.start") == 200
+
+
+def test_middleware_budget_hop_releases_its_pooled_thread_connection(monkeypatch):
+    """M2 PR 6: the budget check runs off-loop AND hands its connection back.
+
+    With quota profiles on, ``check_budget`` resolves the policy assignment
+    through the ORM on every cache miss, so the hop must release the pooled
+    thread's Django connection on that same thread before the middleware
+    continues. Read endpoints are not budgeted and must not release anything.
+    """
+    import threading
+
+    monkeypatch.setattr(
+        "ai.core.config.get_settings",
+        lambda: _settings(
+            FEATURE_DISTRIBUTED_RATE_LIMIT_SHADOW=False,
+            FEATURE_DISTRIBUTED_RATE_LIMIT_ENFORCE=False,
+        ),
+    )
+    main_thread = threading.get_ident()
+    check_threads: list[int] = []
+    release_threads: list[int] = []
+    real_check = budget.check_budget
+
+    def recording_check(*args, **kwargs):
+        check_threads.append(threading.get_ident())
+        return real_check(*args, **kwargs)
+
+    monkeypatch.setattr("ai.core.middleware.budget.check_budget", recording_check)
+    monkeypatch.setattr(
+        "ai.core.db_hygiene._close_all_django_connections",
+        lambda: release_threads.append(threading.get_ident()),
+    )
+
+    async def app(_scope, _receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    limiter = RateLimiter()
+    middleware = RateLimitMiddleware(
+        app,
+        limiter=limiter,
+        exempt_paths=set(),
+        windowed=WindowedRateLimiter(limiter.config, store=InMemoryRateLimitStore()),
+    )
+    messages = asyncio.run(_run(middleware, _principal()))
+    assert next(m["status"] for m in messages if m["type"] == "http.response.start") == 200
+    assert len(check_threads) == 1
+    assert check_threads[0] != main_thread
+    assert release_threads == check_threads, "released once, on the budget hop's thread"
+
+    reads = asyncio.run(_run(middleware, _principal(), path="/threads"))
+    assert next(m["status"] for m in reads if m["type"] == "http.response.start") == 200
+    assert len(release_threads) == 1, "an unbudgeted read endpoint takes no hop"
 
 
 # --------------------------------------------------------------------------- #

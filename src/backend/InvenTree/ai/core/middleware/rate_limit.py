@@ -37,6 +37,7 @@ from ai.core.auth import (
     AIPrincipal,
     record_identity_anomaly,
 )
+from ai.core.db_hygiene import run_in_thread_releasing
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -623,11 +624,13 @@ class RateLimitMiddleware:
         # S37: pre-turn daily token budget, one cache GET off-loop. Only
         # turn submissions spend tokens, so only they are gated — an
         # over-cap user must keep read access to their own threads, voice
-        # capability probes, and uploads.
+        # capability probes, and uploads. With quota profiles on, a policy
+        # cache miss resolves the assignment through the ORM, so the hop
+        # releases its pooled thread's connection on the way out (M2 PR 6).
         if _BUDGETED_ENDPOINTS.fullmatch(endpoint):
             from ai.core.middleware.budget import check_budget
 
-            budget = await asyncio.to_thread(
+            budget = await run_in_thread_releasing(
                 check_budget,
                 getattr(principal, "user_pk", None),
                 None,

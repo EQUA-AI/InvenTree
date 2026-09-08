@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from ai.core.db_hygiene import run_in_thread_releasing
 from ai.core.streaming import (
     AGUIEvent,
     EventEmitter,
@@ -1355,12 +1356,15 @@ class NormalizedTurnService:
             # S15 (§15.4): the pilot-stop latch refuses BEFORE any lease or
             # reservation is taken. Inert while the flag is dark; fail-CLOSED
             # when armed (the deliberate inverse of admission's fail-open
-            # ADR). One check here covers every rail.
+            # ADR). One check here covers every rail. Armed, every cache miss
+            # is an ORM read of the latch row, so the hop releases its pooled
+            # thread's connection like the quota bridges do (M2 PR 6); the
+            # helper re-raises after releasing, so fail-closed is unchanged.
             from ai.core.pilot_latch import PilotStopped, check_pilot_admission
             from ai.core.quota.admission import AdmissionSaturated, acquire_admission
 
             try:
-                await asyncio.to_thread(check_pilot_admission)
+                await run_in_thread_releasing(check_pilot_admission)
             except PilotStopped as stop:
                 set_span_attrs(span, pilot_stop_reason=stop.reason_code or "latched")
                 raise
@@ -1379,7 +1383,9 @@ class NormalizedTurnService:
 
             reservation = None
             if getattr(_settings_for_quota(), "feature_ai_quota_profiles", False):
-                reservation = await asyncio.to_thread(_reserve_turn_quota, actor, idempotency_key)
+                reservation = await run_in_thread_releasing(
+                    _reserve_turn_quota, actor, idempotency_key
+                )
             result = None
             preempted = False
             try:
@@ -1407,8 +1413,12 @@ class NormalizedTurnService:
                 # rejections have empty ledgers and write nothing. Off-loop:
                 # the cache write must never stall the event loop. The S12
                 # settle runs FIRST (same thread hop) because
-                # record_turn_spend drains the ledger it also needs.
-                await asyncio.to_thread(_settle_turn_quota, actor, reservation, result, preempted)
+                # record_turn_spend drains the ledger it also needs. Both
+                # quota bridges write ORM rows on a pooled thread, so they
+                # release that thread's connection on the way out (M2 PR 6).
+                await run_in_thread_releasing(
+                    _settle_turn_quota, actor, reservation, result, preempted
+                )
                 await self._call_sync(self._release_thread_connection)
             from ai.core.quota.slo import slo_breach, slo_class_for
 

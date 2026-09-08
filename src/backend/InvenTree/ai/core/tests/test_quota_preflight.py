@@ -75,6 +75,38 @@ def _call(**params):
         return asyncio.run(quota_preflight(**params))
 
 
+def test_preflight_read_releases_its_pooled_thread_connection() -> None:
+    """M2 PR 6: the preflight read is an ORM hop and hands its connection back.
+
+    ``_read`` queries the latch row unconditionally (and the policy assignment
+    on a cache miss) on an ``asyncio.to_thread`` pooled thread; the release
+    must run once, on that thread, before the payload reaches the loop.
+    """
+    import threading
+
+    main_thread = threading.get_ident()
+    read_threads: list[int] = []
+    release_threads: list[int] = []
+
+    def fake_latch_state():
+        read_threads.append(threading.get_ident())
+        return SimpleNamespace(latched=False)
+
+    with (
+        mock.patch("ai.core.pilot_latch.load_latch_state", side_effect=fake_latch_state),
+        mock.patch(
+            "ai.core.db_hygiene._close_all_django_connections",
+            side_effect=lambda: release_threads.append(threading.get_ident()),
+        ),
+    ):
+        payload = _call()
+
+    assert payload["pilot_stopped"] is False
+    assert len(read_threads) == 1
+    assert read_threads[0] != main_thread
+    assert release_threads == read_threads, "released once, on the read's thread"
+
+
 def test_preflight_arithmetic_used_reserved_remaining() -> None:
     reservation = resv.reserve_turn(
         user_pk="5", tenant_id="site-a", snapshot=_SNAPSHOT, idempotency_key="pf-1"

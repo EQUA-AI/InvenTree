@@ -18,13 +18,17 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'InvenTree.settings')
 
 django_app = get_asgi_application()
 
-# Import the AI application only after Django is configured. The wrapper is
+# Import the AI application only after Django is configured. The wrappers are
 # outside the FastAPI mount so every present and future AI route receives the
-# same immutable principal before route or rate-limit code runs.
+# same immutable principal before route or rate-limit code runs, and every
+# http request on the mount gets its own thread-sensitive executor whose
+# Django connection is released once the response has been sent (M2 PR 6;
+# the auth middleware sits inside so its ORM hop is covered too).
 from ai.core.app import app as ai_app
 from ai.core.auth import AIBoundaryAuthMiddleware
+from ai.core.db_hygiene import ConnectionReleaseMiddleware
 
-authenticated_ai_app = AIBoundaryAuthMiddleware(ai_app)
+authenticated_ai_app = ConnectionReleaseMiddleware(AIBoundaryAuthMiddleware(ai_app))
 
 
 @asynccontextmanager

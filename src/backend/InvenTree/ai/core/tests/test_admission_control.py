@@ -166,3 +166,52 @@ def test_process_acquires_before_reservation_and_releases_in_settle() -> None:
 
     settle_source = inspect.getsource(turn_service._settle_turn_quota)
     assert "release_admission" in settle_source
+
+
+def test_orm_bearing_quota_bridges_use_the_releasing_thread_helper() -> None:
+    """M2 PR 6: every ORM-bearing hop in ``process`` releases its pooled thread.
+
+    Three hops touch the ORM on ``asyncio.to_thread`` pooled threads: the
+    pilot-latch check (reads the latch row on every cache miss while the
+    flag is armed), and the reservation and settle bridges (durable rows).
+    All three must go through ``run_in_thread_releasing``. Only the admission
+    lease is genuinely cache-only (``quota/admission.py`` uses nothing but
+    ``django.core.cache``) and may stay on plain ``asyncio.to_thread``.
+    """
+    import inspect
+    import re
+
+    from ai.core import turn_service
+
+    source = inspect.getsource(turn_service.NormalizedTurnService.process)
+    for bridge in ("check_pilot_admission", "_reserve_turn_quota", "_settle_turn_quota"):
+        assert re.search(rf"run_in_thread_releasing\(\s*{bridge}\b", source), bridge
+        assert not re.search(rf"to_thread\(\s*{bridge}\b", source), bridge
+    assert re.search(r"to_thread\(\s*acquire_admission\b", source), "admission is cache-only"
+
+
+def test_request_path_orm_hops_use_the_releasing_thread_helper() -> None:
+    """M2 PR 6: the two other pooled-thread ORM hops on the /api/ai path release too.
+
+    ``RateLimitMiddleware`` bridges ``check_budget`` (an ORM assignment read on
+    every policy-cache miss) and ``quota_preflight`` bridges ``_read`` (an
+    unconditional latch-row read). Neither runs under the per-request
+    ``ThreadSensitiveContext``, so both must use ``run_in_thread_releasing``.
+    """
+    import importlib
+    import inspect
+    import re
+
+    from ai.core import app
+
+    # ``ai.core.middleware`` re-exports a ``rate_limit`` function that shadows
+    # the submodule attribute, so import the module by name.
+    rate_limit = importlib.import_module("ai.core.middleware.rate_limit")
+
+    middleware_source = inspect.getsource(rate_limit.RateLimitMiddleware.__call__)
+    assert re.search(r"run_in_thread_releasing\(\s*check_budget\b", middleware_source)
+    assert not re.search(r"to_thread\(\s*check_budget\b", middleware_source)
+
+    preflight_source = inspect.getsource(app.quota_preflight)
+    assert re.search(r"run_in_thread_releasing\(\s*_read\b", preflight_source)
+    assert not re.search(r"to_thread\(\s*_read\b", preflight_source)

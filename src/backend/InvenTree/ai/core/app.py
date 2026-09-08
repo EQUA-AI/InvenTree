@@ -33,6 +33,7 @@ from ai.core.auth import (
     require_ai_principal,
 )
 from ai.core.config import get_devui_settings, get_settings
+from ai.core.db_hygiene import run_in_thread_releasing
 from ai.core.middleware import (
     RateLimitConfig,
     RateLimitMiddleware,
@@ -1319,7 +1320,10 @@ async def quota_preflight(
             pilot_stopped=pilot_stopped,
         ).model_dump()
 
-    return await asyncio.to_thread(_read)
+    # The latch read above is an unconditional ORM query and the profile
+    # resolve is one on every policy-cache miss: release the pooled thread's
+    # connection on the way out (M2 PR 6).
+    return await run_in_thread_releasing(_read)
 
 
 @app.get("/threads/{thread_id}/scope")

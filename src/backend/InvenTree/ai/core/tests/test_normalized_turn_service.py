@@ -1384,3 +1384,104 @@ class TurnBoundaryConnectionHygieneTests(SimpleTestCase):
                 )
             )
         self.assertEqual(result.message, "Normalized response")
+
+    def test_quota_bridges_release_their_pooled_thread_connection(self) -> None:
+        """M2 PR 6: the three ORM-bearing hops in ``process`` release their thread.
+
+        The pilot-latch check reads the latch row on every cache miss while
+        the flag is armed, and the reserve and settle bridges write durable
+        rows; all three run on ``asyncio.to_thread`` pooled threads, so each
+        hop must hand its thread's Django connection back
+        (``_close_all_django_connections`` on THAT thread) before returning to
+        the loop, whichever thread the pool handed out.
+        """
+        import threading
+
+        main_thread = threading.get_ident()
+        bridge_threads: list[int] = []
+        release_threads: list[int] = []
+
+        def fake_latch_check():
+            bridge_threads.append(threading.get_ident())
+
+        def fake_reserve(_actor, _key):
+            bridge_threads.append(threading.get_ident())
+            return object()
+
+        def fake_settle(_actor, _reservation, _result, _preempted):
+            bridge_threads.append(threading.get_ident())
+
+        # Build the service outside the settings patch: __init__ reads the real
+        # settings; only the quota flag inside process() is under test.
+        service = self._service(_Repository())
+        settings = SimpleNamespace(feature_ai_quota_profiles=True)
+        with (
+            mock.patch("ai.core.config.get_settings", return_value=settings),
+            mock.patch("ai.core.pilot_latch.check_pilot_admission", side_effect=fake_latch_check),
+            mock.patch("ai.core.turn_service._reserve_turn_quota", side_effect=fake_reserve),
+            mock.patch("ai.core.turn_service._settle_turn_quota", side_effect=fake_settle),
+            mock.patch(
+                "ai.core.db_hygiene._close_all_django_connections",
+                side_effect=lambda: release_threads.append(threading.get_ident()),
+            ),
+        ):
+            result = asyncio.run(
+                service.process(
+                    actor=_principal(),
+                    thread_id="thread_normalized",
+                    content="Inspect pump",
+                    modality="text",
+                    trusted_context=_context(),
+                    modality_metadata={"transport": "typed"},
+                    idempotency_key="hygiene:quota",
+                    correlation_id=_context().correlation_id,
+                )
+            )
+
+        self.assertEqual(result.message, "Normalized response")
+        self.assertEqual(len(bridge_threads), 3, "latch + reserve + settle")
+        self.assertEqual(release_threads, bridge_threads, "one release per hop, on its thread")
+        self.assertNotIn(main_thread, release_threads)
+
+    def test_pilot_stop_still_refuses_after_releasing_the_latch_thread(self) -> None:
+        """M2 PR 6: fail-closed latch semantics survive the releasing helper.
+
+        ``PilotStopped`` must propagate out of ``process`` exactly as before,
+        and the pooled thread that raised it must still have released its
+        connection first.
+        """
+        import threading
+
+        from ai.core.pilot_latch import PilotStopped
+
+        release_threads: list[int] = []
+        latch_thread: list[int] = []
+
+        def fake_latch_check():
+            latch_thread.append(threading.get_ident())
+            raise PilotStopped("manual")
+
+        service = self._service(_Repository())
+        with (
+            mock.patch("ai.core.pilot_latch.check_pilot_admission", side_effect=fake_latch_check),
+            mock.patch(
+                "ai.core.db_hygiene._close_all_django_connections",
+                side_effect=lambda: release_threads.append(threading.get_ident()),
+            ),
+            self.assertRaises(PilotStopped),
+        ):
+            asyncio.run(
+                service.process(
+                    actor=_principal(),
+                    thread_id="thread_normalized",
+                    content="Inspect pump",
+                    modality="text",
+                    trusted_context=_context(),
+                    modality_metadata={"transport": "typed"},
+                    idempotency_key="hygiene:latch",
+                    correlation_id=_context().correlation_id,
+                )
+            )
+
+        self.assertEqual(release_threads, latch_thread, "released on the latch thread")
+        self.assertNotIn(threading.get_ident(), release_threads)
