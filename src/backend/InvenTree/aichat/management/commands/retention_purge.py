@@ -19,6 +19,7 @@ DAYS_OVERRIDABLE = (
     'usage_detail',
     'retrieval_misses',
     'rejections',
+    'compaction_events',
     'quota_reservations',
     'quota_audit',
     'tombstones',

@@ -26,6 +26,7 @@ from aichat.models import (
     AIRetentionOutbox,
     AIUsageMonthlyAggregate,
     ChatActionProposal,
+    ChatCompactionEvent,
     ChatEvidenceSet,
     ChatEvidenceSetMember,
     ChatMessage,
@@ -214,7 +215,12 @@ class ThreadPurgeTests(RetentionEnvMixin, TestCase):
         self.assertIsNone(retention.last_run())
 
         real = retention.run_all()
-        for family in ('threads', 'retrieval_misses', 'rejections'):
+        for family in (
+            'threads',
+            'retrieval_misses',
+            'rejections',
+            'compaction_events',
+        ):
             self.assertEqual(dry['families'][family], real['families'][family], family)
         self.assertEqual(real['errors'], {})
         self.assertIsNotNone(retention.last_run())
@@ -608,6 +614,44 @@ class DetailFamilyTests(RetentionEnvMixin, TestCase):
         # Quota management audit is a 400-day class, not 90.
         self.assertEqual(retention.purge_quota_audit_events(), {'quota_audit': 1})
         self.assertEqual(AIQuotaAuditEvent.objects.get().pk, audit_keep.pk)
+
+    def test_compaction_events_purge_at_90_days(self):
+        """M2 §8.3: the compaction ledger is run-table scope (90 days)."""
+        _, _, thread = self.build_thread('compaction-ledger')
+        old_event = ChatCompactionEvent.objects.create(
+            thread=thread, outcome='ok', latency_ms=10
+        )
+        old_skip = ChatCompactionEvent.objects.create(
+            thread=thread, outcome='skipped', error_code='flags_off'
+        )
+        fresh = ChatCompactionEvent.objects.create(thread=thread, outcome='ok')
+        ChatCompactionEvent.objects.filter(pk__in=[old_event.pk, old_skip.pk]).update(
+            started_at=_old(DETAIL_OLD_DAYS)
+        )
+        self.assertEqual(
+            retention.retention_status()['backlog']['compaction_events'], 2
+        )
+
+        # Dry run counts only; nothing moves.
+        self.assertEqual(
+            retention.purge_compaction_events(dry_run=True), {'compaction_events': 2}
+        )
+        self.assertEqual(ChatCompactionEvent.objects.count(), 3)
+
+        self.assertEqual(retention.purge_compaction_events(), {'compaction_events': 2})
+        self.assertEqual(
+            list(ChatCompactionEvent.objects.values_list('pk', flat=True)), [fresh.pk]
+        )
+        self.assertEqual(
+            retention.retention_status()['backlog']['compaction_events'], 0
+        )
+        # Registered in FAMILIES so run_all reaches it; idempotent rerun.
+        self.assertIn('compaction_events', retention.FAMILIES)
+        report = retention.run_all(families={'compaction_events'})
+        self.assertEqual(
+            report['families']['compaction_events'], {'compaction_events': 0}
+        )
+        self.assertEqual(ChatCompactionEvent.objects.count(), 1)
 
     def test_batching_boundary(self):
         """More rows than the batch size purge fully across batches."""

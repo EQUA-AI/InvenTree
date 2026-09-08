@@ -109,34 +109,69 @@ def parse_summary_body(summary: str) -> dict:
         return {}
 
 
+#: Substrings that read as tool/system directives when a summary is later
+#: replayed as context (§13.3 P6). The strict response schema bounds the
+#: SHAPE of summarizer output, not its strings — this scrub bounds those.
+_TOOL_DIRECTIVE_MARKERS = ('tool_call', 'function_call', 'system:', '<tool', 'invoke ')
+
+#: The stand-in for a withheld half of the batch on a content-filter retry
+#: (§8.5.3). Fixed text, never derived from the withheld messages.
+CONTENT_FILTER_PLACEHOLDER = '[message withheld: content filter]'
+
+#: Sentinel ``error_code`` values the event ledger uses beside exception
+#: class names and provider enum codes.
+ERROR_CODE_CONTENT_FILTER = 'content_filter'
+ERROR_CODE_FLAGS_OFF = 'flags_off'
+
+#: Minutes after which a row still ``started`` counts as orphaned (§8.3).
+COMPACTION_STARTED_STALE_MINUTES = 15
+
+
+class ContentFilterExhaustedError(Exception):
+    """The batch and both bisect halves were refused by the content filter."""
+
+
+def merge_protected_fields_counted(prior: dict, fresh: dict) -> tuple[dict, dict]:
+    """Union prior+fresh protected lists and report the merge counts.
+
+    Returns ``(merged, counts)`` where ``counts`` carries ``kept`` (items in
+    the protected lists after the merge), ``dropped`` (union items lost to
+    the cap) and ``cap_hit`` (some list reached ``COMPACTION_PROTECTED_CAP``)
+    — numbers only, for the compaction event row.
+    """
+    merged = dict(fresh)
+    kept = 0
+    dropped = 0
+    cap_hit = False
+    for field in _PROTECTED_FIELDS:
+        prior_items = [str(x) for x in (prior.get(field) or []) if str(x).strip()]
+        fresh_items = [str(x) for x in (fresh.get(field) or []) if str(x).strip()]
+        combined = list(dict.fromkeys(prior_items + fresh_items))
+        capped = combined[:COMPACTION_PROTECTED_CAP]
+        merged[field] = capped
+        kept += len(capped)
+        dropped += len(combined) - len(capped)
+        if len(capped) >= COMPACTION_PROTECTED_CAP:
+            cap_hit = True
+    return merged, {'kept': kept, 'dropped': dropped, 'cap_hit': cap_hit}
+
+
 def merge_protected_fields(prior: dict, fresh: dict) -> dict:
     """Union prior+fresh protected lists (order-preserving, capped).
 
     Prior items come first so long-standing facts survive; the cap bounds
     growth without ever silently dropping the prior side below the cap.
     """
-    merged = dict(fresh)
-    for field in _PROTECTED_FIELDS:
-        prior_items = [str(x) for x in (prior.get(field) or []) if str(x).strip()]
-        fresh_items = [str(x) for x in (fresh.get(field) or []) if str(x).strip()]
-        combined = list(dict.fromkeys(prior_items + fresh_items))
-        merged[field] = combined[:COMPACTION_PROTECTED_CAP]
+    merged, _ = merge_protected_fields_counted(prior, fresh)
     return merged
 
 
-#: Substrings that read as tool/system directives when a summary is later
-#: replayed as context (§13.3 P6). The strict response schema bounds the
-#: SHAPE of summarizer output, not its strings — this scrub bounds those.
-_TOOL_DIRECTIVE_MARKERS = ('tool_call', 'function_call', 'system:', '<tool', 'invoke ')
+def strip_tool_directives_counted(body: dict) -> tuple[dict, int]:
+    """Drop directive-marked summary strings and report how many went.
 
-
-def strip_tool_directives(body: dict) -> dict:
-    """Drop summary strings that carry tool/system directive markers.
-
-    List items containing a marker are removed; marker-bearing scalar
-    string fields are blanked. Deterministic and lossy on purpose — a
-    summary line that looks like an instruction is worth less than the
-    injection risk of replaying it.
+    Returns ``(cleaned, dropped)``; ``dropped`` is the count the compaction
+    event records as ``directives_stripped`` — the log line below stays for
+    operators reading the worker log.
     """
 
     def tainted(text: str) -> bool:
@@ -164,10 +199,32 @@ def strip_tool_directives(body: dict) -> dict:
         logger.warning(
             'Thread compaction stripped %d directive-marked summary item(s)', dropped
         )
+    return cleaned, dropped
+
+
+def strip_tool_directives(body: dict) -> dict:
+    """Drop summary strings that carry tool/system directive markers.
+
+    List items containing a marker are removed; marker-bearing scalar
+    string fields are blanked. Deterministic and lossy on purpose — a
+    summary line that looks like an instruction is worth less than the
+    injection risk of replaying it.
+    """
+    cleaned, _ = strip_tool_directives_counted(body)
     return cleaned
 
 
-def _summarize(transcript: list[dict], prior_body: dict) -> dict:
+def _int_or_zero(value) -> int:
+    """Coerce a usage counter to int; anything unusable counts as 0."""
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _summarize(
+    transcript: list[dict], prior_body: dict, *, stats: dict | None = None
+) -> dict:
     """One strict-schema summarization call on the SUMMARIZATION tier.
 
     CR-2 (GR-06): the payload passes ``ai.core.redaction`` BEFORE the call.
@@ -176,6 +233,12 @@ def _summarize(transcript: list[dict], prior_body: dict) -> dict:
     worker image as the D-10 routing override and logs counts only.
     ``call_options`` adds ``reasoning_effort`` only when the override names
     a reasoning deployment (the gpt-4.x tiers reject it).
+
+    When ``stats`` is given it is filled in place with the value-free call
+    facts the compaction event records: ``deployment``, ``reasoning_effort``
+    and ``redacted_counts`` before the call, ``input_tokens`` and
+    ``output_tokens`` from ``response.usage`` after it. The positional
+    signature is unchanged so callers and test doubles keep working.
     """
     from openai import AzureOpenAI
 
@@ -191,15 +254,23 @@ def _summarize(transcript: list[dict], prior_body: dict) -> dict:
     )
     redacted = redact_payload({'prior_summary': prior_body, 'new_messages': transcript})
     if redacted.redacted:
-        # Content-free by construction: category names and counts only. The
-        # per-category columns move into ChatCompactionEvent (CR-2 remainder).
+        # Content-free by construction: category names and counts only; the
+        # per-category counts also land on the ChatCompactionEvent row.
         logger.info(
             'Thread compaction redaction counts=%s', format_counts(redacted.counts)
         )
+    deployment = select_deployment(ModelPurpose.SUMMARIZATION)
+    options = call_options(ModelPurpose.SUMMARIZATION)
+    if stats is not None:
+        stats['deployment'] = str(deployment)[:128]
+        stats['reasoning_effort'] = str(options.get('reasoning_effort', ''))[:16]
+        stats['redacted_counts'] = {
+            str(key): int(count) for key, count in dict(redacted.counts).items()
+        }
     payload = json.dumps(redacted.value, ensure_ascii=True)
     response = client.chat.completions.create(
-        model=select_deployment(ModelPurpose.SUMMARIZATION),
-        **call_options(ModelPurpose.SUMMARIZATION),
+        model=deployment,
+        **options,
         messages=[
             {'role': 'system', 'content': _COMPACTION_SYSTEM_PROMPT},
             {'role': 'user', 'content': payload},
@@ -213,7 +284,158 @@ def _summarize(transcript: list[dict], prior_body: dict) -> dict:
             },
         },
     )
+    if stats is not None:
+        usage = getattr(response, 'usage', None)
+        stats['input_tokens'] = _int_or_zero(getattr(usage, 'prompt_tokens', 0))
+        stats['output_tokens'] = _int_or_zero(getattr(usage, 'completion_tokens', 0))
     return json.loads(response.choices[0].message.content)
+
+
+def _is_content_filter_error(exc: BaseException) -> bool:
+    """True for an ``openai.BadRequestError`` carrying the content_filter code.
+
+    The SDK unwraps the provider's ``{"error": {...}}`` envelope before it
+    builds the exception, so ``exc.code`` is the normal path; the nested
+    body shape is accepted too so a differently-wrapped client cannot
+    reopen the loop this fix closes. Never reads the error message.
+    """
+    try:
+        from openai import BadRequestError
+    except ImportError:  # pragma: no cover - the SDK is a hard dependency
+        return False
+    if not isinstance(exc, BadRequestError):
+        return False
+    code = getattr(exc, 'code', None)
+    if not code:
+        body = getattr(exc, 'body', None)
+        if isinstance(body, dict):
+            inner = body.get('error')
+            source = inner if isinstance(inner, dict) else body
+            code = source.get('code')
+    return 'content_filter' in str(code or '')
+
+
+def _error_code_for(exc: BaseException) -> str:
+    """The value-free ``error_code`` for an exception: provider enum or class."""
+    code = getattr(exc, 'code', None)
+    if isinstance(code, str) and code.strip():
+        return code.strip()[:64]
+    return type(exc).__name__[:64]
+
+
+def _accumulate_stats(totals: dict, stats: dict) -> None:
+    """Fold one ``_summarize`` call's stats into the run totals."""
+    for key in ('input_tokens', 'output_tokens'):
+        totals[key] = totals.get(key, 0) + _int_or_zero(stats.get(key, 0))
+    for key in ('deployment', 'reasoning_effort'):
+        if stats.get(key):
+            totals[key] = stats[key]
+    # The first call sees the whole batch; its counts describe the payload.
+    if 'redacted_counts' not in totals and 'redacted_counts' in stats:
+        totals['redacted_counts'] = stats['redacted_counts']
+
+
+def _summarize_with_bisect(
+    transcript: list[dict], prior_body: dict, totals: dict
+) -> tuple[dict, bool]:
+    """Summarize; on a content-filter 400 bisect the batch once (§8.5.3).
+
+    Attempt order: the full batch; then the first half replaced by a single
+    ``CONTENT_FILTER_PLACEHOLDER`` message (second half kept); then the
+    second half replaced instead. A non-filter exception propagates from
+    whichever attempt raised it. Returns ``(body, filtered)`` where
+    ``filtered`` is True when a retry produced the body; raises
+    :class:`ContentFilterExhaustedError` when all three attempts were refused.
+    The transcript is never logged.
+    """
+    placeholder = {'role': 'user', 'content': CONTENT_FILTER_PLACEHOLDER}
+    mid = max(1, len(transcript) // 2)
+    attempts = [
+        transcript,
+        [placeholder, *transcript[mid:]],
+        [*transcript[:mid], placeholder],
+    ]
+    filtered = False
+    for index, attempt in enumerate(attempts):
+        stats: dict = {}
+        try:
+            body = _summarize(attempt, prior_body, stats=stats)
+        except Exception as exc:
+            _accumulate_stats(totals, stats)
+            if not _is_content_filter_error(exc):
+                raise
+            filtered = True
+            logger.warning(
+                'Thread compaction content filter refused attempt=%d messages=%d',
+                index + 1,
+                len(attempt),
+            )
+            continue
+        _accumulate_stats(totals, stats)
+        return body, filtered
+    raise ContentFilterExhaustedError()
+
+
+def _read_flag_state() -> str:
+    """Re-read the compaction flags inside the task body (§8.7).
+
+    The enqueue-time check in ``ThreadRepository`` ran on the web revision;
+    the worker may be a different revision during a deploy, so the body
+    decides for itself and stamps the posture on the event.
+    """
+    from ai.core.config import get_settings
+
+    settings = get_settings()
+    if getattr(settings, 'feature_thread_compaction', False):
+        return 'full'
+    if getattr(settings, 'feature_thread_compaction_shadow', False):
+        return 'shadow'
+    return 'off'
+
+
+def _event_create(thread_id, **fields):
+    """Insert a ChatCompactionEvent row; a failure is logged, never raised."""
+    from aichat.models import ChatCompactionEvent
+
+    try:
+        return ChatCompactionEvent.objects.create(thread_id=thread_id, **fields)
+    except Exception as exc:
+        logger.warning(
+            'Thread compaction event create failed thread=%s error=%s',
+            thread_id,
+            type(exc).__name__,
+        )
+        return None
+
+
+def _event_finish(event, **fields) -> None:
+    """Stamp the terminal outcome on an event row; a failure is logged only."""
+    if event is None:
+        return
+    from django.utils import timezone
+
+    from aichat.models import ChatCompactionEvent
+
+    fields.setdefault('finished_at', timezone.now())
+    try:
+        ChatCompactionEvent.objects.filter(pk=event.pk).update(**fields)
+    except Exception as exc:
+        logger.warning(
+            'Thread compaction event update failed thread=%s error=%s',
+            event.thread_id,
+            type(exc).__name__,
+        )
+
+
+def _cost_fields(totals: dict) -> dict:
+    """The event's cost columns from the accumulated call stats."""
+    return {
+        'deployment': str(totals.get('deployment', ''))[:128],
+        'reasoning_effort': str(totals.get('reasoning_effort', ''))[:16],
+        'input_tokens': _int_or_zero(totals.get('input_tokens', 0)),
+        'output_tokens': _int_or_zero(totals.get('output_tokens', 0)),
+        'redacted_counts': dict(totals.get('redacted_counts') or {}),
+    }
 
 
 def compact_thread_summary(thread_id):
@@ -235,6 +457,26 @@ def compact_thread_summary(thread_id):
 
 
 def _compact_locked(thread_id) -> None:
+    """Run one compaction under the lock, ledgered on ChatCompactionEvent.
+
+    Two-phase write (§8.3): the row is created ``started`` with the batch
+    columns before the summarizer runs and finished with the terminal
+    outcome after the watermark CAS. Outcomes: ``ok``; ``race_lost`` when
+    the CAS updates no row; ``failed`` with the exception class or provider
+    code; ``content_filter`` when the batch needed the §8.5.3 bisect — a
+    successful retry still writes the summary and carries this outcome so
+    the soak report can count filtered batches (``error_code`` blank),
+    while three refusals leave the summary unchanged and advance the
+    watermark past the batch anyway (``error_code=content_filter``) so a
+    thread can never loop on the same batch; ``skipped`` with
+    ``error_code=flags_off`` when the §8.7 in-body re-read finds both flags
+    off on this worker (never a failure). Event writes never break the run.
+    """
+    from time import perf_counter
+
+    from django.utils import timezone
+
+    from aichat.models import ChatCompactionOutcome as Outcome
     from aichat.models import ChatMessage, ChatThread
     from aichat.services.threads import ThreadRepository
 
@@ -243,6 +485,24 @@ def _compact_locked(thread_id) -> None:
         return
     expected = thread.summary_through_sequence
     high = thread.next_sequence - 1
+
+    flag_state = _read_flag_state()
+    if flag_state == 'off':
+        # §8.7 posture row, not a failure: the web revision enqueued, this
+        # worker's flags are off (deploy drain window or env-parity gap).
+        # ``skipped`` keeps it out of the §8.3 failure rate.
+        _event_create(
+            thread_id,
+            outcome=Outcome.SKIPPED,
+            error_code=ERROR_CODE_FLAGS_OFF,
+            finished_at=timezone.now(),
+            from_sequence=expected + 1,
+            through_sequence=max(high, expected),
+            flag_state=flag_state,
+        )
+        logger.info('Thread compaction skipped: flags off thread=%s', thread_id)
+        return
+
     if high - expected < ThreadRepository.COMPACTION_MIN_BACKLOG:
         return
 
@@ -273,24 +533,111 @@ def _compact_locked(thread_id) -> None:
     # replay into web-app prompts forever; this converges each thread to a
     # clean summary within one compaction.
     from ai.core.redaction import redact_payload
+    from ai.core.tracing import set_span_attrs, turn_span
 
     prior_body = redact_payload(parse_summary_body(thread.summary)).value
-    try:
-        fresh = _summarize(transcript, prior_body)
-    except Exception:
-        logger.warning('Thread compaction summarize failed thread=%s', thread_id)
-        return
-    merged = strip_tool_directives(merge_protected_fields(prior_body, fresh))
-    label = str(merged.get('label') or '').strip()[:60]
-    summary_text = label + '\n' + json.dumps(merged, ensure_ascii=True)
 
-    # CAS: advance the watermark only to the end of the summarized batch;
-    # any remaining backlog is picked up by the next terminal trigger.
-    updated = ChatThread.objects.filter(
-        pk=thread_id, summary_through_sequence=expected
-    ).update(summary=summary_text, summary_through_sequence=batch_high)
-    if not updated:
-        logger.info('Thread compaction lost a watermark race thread=%s', thread_id)
+    event = _event_create(
+        thread_id,
+        outcome=Outcome.STARTED,
+        from_sequence=expected + 1,
+        through_sequence=batch_high,
+        message_count=len(transcript),
+        transcript_chars=total_chars,
+        truncated=batch_high < high,
+        flag_state=flag_state,
+    )
+    totals: dict = {}
+    started = perf_counter()
+    with turn_span(
+        'aimms.compaction',
+        thread_id=thread_id,
+        compaction_flag_state=flag_state,
+        compaction_batch_messages=len(transcript),
+    ) as span:
+        try:
+            fresh, filtered = _summarize_with_bisect(transcript, prior_body, totals)
+        except ContentFilterExhaustedError:
+            latency_ms = int((perf_counter() - started) * 1000)
+            # Advance past the batch without touching the summary: the next
+            # trigger continues from batch_high instead of rebuilding the
+            # refused batch forever (§8.5.3).
+            updated = ChatThread.objects.filter(
+                pk=thread_id, summary_through_sequence=expected
+            ).update(summary_through_sequence=batch_high)
+            outcome = Outcome.CONTENT_FILTER if updated else Outcome.RACE_LOST
+            _event_finish(
+                event,
+                outcome=outcome,
+                error_code=ERROR_CODE_CONTENT_FILTER,
+                latency_ms=latency_ms,
+                **_cost_fields(totals),
+            )
+            set_span_attrs(
+                span, compaction_outcome=outcome, compaction_latency_ms=latency_ms
+            )
+            logger.warning(
+                'Thread compaction batch withheld by content filter thread=%s '
+                'advanced=%d',
+                thread_id,
+                int(bool(updated)),
+            )
+            return
+        except Exception as exc:
+            latency_ms = int((perf_counter() - started) * 1000)
+            _event_finish(
+                event,
+                outcome=Outcome.FAILED,
+                error_code=_error_code_for(exc),
+                latency_ms=latency_ms,
+                **_cost_fields(totals),
+            )
+            set_span_attrs(
+                span,
+                compaction_outcome=Outcome.FAILED,
+                compaction_latency_ms=latency_ms,
+            )
+            logger.warning(
+                'Thread compaction summarize failed thread=%s error=%s',
+                thread_id,
+                type(exc).__name__,
+            )
+            return
+        latency_ms = int((perf_counter() - started) * 1000)
+
+        merged, merge_counts = merge_protected_fields_counted(prior_body, fresh)
+        merged, stripped = strip_tool_directives_counted(merged)
+        # ``kept`` describes the body that is actually stored: after the cap
+        # AND after the directive scrub.
+        kept = sum(len(merged.get(field) or []) for field in _PROTECTED_FIELDS)
+        label = str(merged.get('label') or '').strip()[:60]
+        summary_text = label + '\n' + json.dumps(merged, ensure_ascii=True)
+
+        # CAS: advance the watermark only to the end of the summarized batch;
+        # any remaining backlog is picked up by the next terminal trigger.
+        updated = ChatThread.objects.filter(
+            pk=thread_id, summary_through_sequence=expected
+        ).update(summary=summary_text, summary_through_sequence=batch_high)
+        if not updated:
+            outcome = Outcome.RACE_LOST
+            logger.info('Thread compaction lost a watermark race thread=%s', thread_id)
+        elif filtered:
+            outcome = Outcome.CONTENT_FILTER
+        else:
+            outcome = Outcome.OK
+        _event_finish(
+            event,
+            outcome=outcome,
+            latency_ms=latency_ms,
+            kept=kept,
+            dropped=merge_counts['dropped'],
+            cap_hit=merge_counts['cap_hit'],
+            directives_stripped=stripped,
+            **_cost_fields(totals),
+        )
+        set_span_attrs(
+            span, compaction_outcome=outcome, compaction_latency_ms=latency_ms
+        )
 
 
 # =========================================================================

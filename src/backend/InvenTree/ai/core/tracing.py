@@ -65,6 +65,12 @@ _ALLOWED_ATTRS = frozenset({
     "aimms.memory_degrade_reason",
     "aimms.topology_depth",
     "aimms.memory_stage_breach",
+    # M2 PR 1 (§8.3): compaction-run telemetry — an outcome enum, a
+    # duration, a batch size and the flag posture; never summary text.
+    "aimms.compaction_outcome",
+    "aimms.compaction_latency_ms",
+    "aimms.compaction_batch_messages",
+    "aimms.compaction_flag_state",
 })
 
 _MAX_ATTR_LEN = 128

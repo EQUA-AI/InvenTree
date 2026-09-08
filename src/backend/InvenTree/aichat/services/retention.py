@@ -51,6 +51,7 @@ from aichat.models import (
     AIRetentionOutbox,
     AIUsageMonthlyAggregate,
     ChatActionProposal,
+    ChatCompactionEvent,
     ChatEvidenceSet,
     ChatEvidenceSetMember,
     ChatMessage,
@@ -676,6 +677,29 @@ def purge_request_rejections(
     return {'rejections': count}
 
 
+def purge_compaction_events(
+    *,
+    days: int = RETENTION_DETAIL_DAYS,
+    batch_size: int = PURGE_BATCH_SIZE,
+    dry_run: bool = False,
+) -> dict:
+    """Purge the content-free compaction ledger past 90 days (M2 §8.3, §5.4).
+
+    Run-table scope: the ledger is diagnostic only (ids, enum codes, counts,
+    milliseconds), so it follows the AIRequestRejection detail policy rather
+    than outliving its thread. Without this family the only delete path is
+    the thread FK cascade at 400 days, and a web/worker flag-parity gap
+    writes one ``skipped`` row per enqueued trigger.
+    """
+    count = _batched_delete(
+        ChatCompactionEvent.objects.filter(started_at__lt=_cutoff(days)),
+        family='compaction_events',
+        batch_size=batch_size,
+        dry_run=dry_run,
+    )
+    return {'compaction_events': count}
+
+
 def purge_quota_reservations(
     *,
     days: int = RETENTION_DETAIL_DAYS,
@@ -968,6 +992,7 @@ FAMILIES = {
     'usage_detail': scrub_usage_detail,
     'retrieval_misses': purge_retrieval_misses,
     'rejections': purge_request_rejections,
+    'compaction_events': purge_compaction_events,
     'quota_reservations': purge_quota_reservations,
     'quota_audit': purge_quota_audit_events,
     'usage_aggregates': purge_usage_aggregates,
@@ -1067,6 +1092,9 @@ def retention_status() -> dict:
             ).count(),
             'rejections': AIRequestRejection.objects.filter(
                 created_at__lt=cutoff_detail
+            ).count(),
+            'compaction_events': ChatCompactionEvent.objects.filter(
+                started_at__lt=cutoff_detail
             ).count(),
         },
         'outbox': {

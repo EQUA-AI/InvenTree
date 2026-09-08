@@ -123,3 +123,57 @@ class AttachmentRagMigrationTests(MigrationRoundTripMixin, TransactionTestCase):
         )
 
         MigrationExecutor(connection).migrate(self.migrate_to)
+
+
+@tag('migration_test')
+class CompactionEventMigrationTests(MigrationRoundTripMixin, TransactionTestCase):
+    """Prove 0032 adds the compaction ledger additively and reverses cleanly."""
+
+    migrate_from = [('aichat', '0031_attachment_rag_rebuildable')]
+    migrate_to = [('aichat', '0032_chatcompactionevent')]
+
+    def test_compaction_event_table_round_trips(self) -> None:
+        """The ledger table appears with its indexes, reverses, re-applies."""
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        self.assertNotIn(
+            'aichat_chatcompactionevent', set(connection.introspection.table_names())
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        self.assertIn(
+            'aichat_chatcompactionevent', set(connection.introspection.table_names())
+        )
+        with connection.cursor() as cursor:
+            columns = {
+                col.name
+                for col in connection.introspection.get_table_description(
+                    cursor, 'aichat_chatcompactionevent'
+                )
+            }
+            constraints = connection.introspection.get_constraints(
+                cursor, 'aichat_chatcompactionevent'
+            )
+        for column in (
+            'outcome',
+            'error_code',
+            'latency_ms',
+            'from_sequence',
+            'through_sequence',
+            'redacted_counts',
+            'flag_state',
+        ):
+            self.assertIn(column, columns)
+        self.assertIn('aichat_compaction_thread_idx', constraints)
+        self.assertIn('aichat_compaction_outcome_idx', constraints)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_from)
+        self.assertNotIn(
+            'aichat_chatcompactionevent', set(connection.introspection.table_names())
+        )
+
+        MigrationExecutor(connection).migrate(self.migrate_to)

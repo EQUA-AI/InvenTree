@@ -1764,3 +1764,112 @@ class AIRetentionOutbox(models.Model):
     def __str__(self) -> str:
         """Return a safe diagnostic representation."""
         return f'retention outbox {self.kind}:{self.reference} ({self.state})'
+
+
+class ChatCompactionOutcome(models.TextChoices):
+    """Terminal (and the one initial) state of a compaction run (M2 §8.3).
+
+    ``started`` is written before the summarizer is called so a run killed
+    by the django-q timeout or a worker restart leaves a visible
+    started-without-terminal row; every other value is terminal.
+    ``skipped`` is the §8.7 posture row: the in-body flag re-read found
+    both compaction flags off on this worker (``error_code=flags_off``),
+    the summarizer never ran, and the soak report keeps the row out of the
+    §8.3 failure rate — a flag-parity gap is not a summarize failure.
+    """
+
+    STARTED = 'started', 'Started'
+    OK = 'ok', 'Summarized'
+    FAILED = 'failed', 'Failed'
+    SKIPPED = 'skipped', 'Skipped'
+    CONTENT_FILTER = 'content_filter', 'Content filter'
+    CAP_HIT = 'cap_hit', 'Protected cap hit'
+    RACE_LOST = 'race_lost', 'Watermark race lost'
+    BUDGET_DEFERRED = 'budget_deferred', 'Budget deferred'
+
+
+class ChatCompactionFlagState(models.TextChoices):
+    """The compaction flag posture re-read inside the task body (§8.7)."""
+
+    FULL = 'full', 'Full'
+    SHADOW = 'shadow', 'Shadow'
+    OFF = 'off', 'Off'
+
+
+class ChatCompactionEvent(models.Model):
+    """Content-free ledger of one S38 compaction run (M2 §8.3, GR-49).
+
+    Additive and dark-safe: a new table nothing else references. Every
+    column is an id, enum code, count, boolean or duration — never the
+    transcript, the summary, a prompt or a provider message. Written in
+    two phases by ``aichat.tasks._compact_locked`` (``started`` before the
+    model call, the terminal outcome after the watermark CAS); a write
+    failure is logged and never breaks compaction.
+    """
+
+    thread = models.ForeignKey(
+        ChatThread, on_delete=models.CASCADE, related_name='compaction_events'
+    )
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    #: The django-q task id when the body can learn it; blank otherwise.
+    task_id = models.CharField(max_length=64, blank=True, default='')
+
+    outcome = models.CharField(
+        max_length=24,
+        choices=ChatCompactionOutcome.choices,
+        default=ChatCompactionOutcome.STARTED,
+    )
+    #: Exception class name or a provider enum code (``content_filter``,
+    #: ``flags_off``) — never a message.
+    error_code = models.CharField(max_length=64, blank=True, default='')
+
+    deployment = models.CharField(max_length=128, blank=True, default='')
+    reasoning_effort = models.CharField(max_length=16, blank=True, default='')
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    latency_ms = models.PositiveIntegerField(default=0)
+
+    #: The batch: first and last message sequence the run covered.
+    from_sequence = models.PositiveBigIntegerField(default=0)
+    through_sequence = models.PositiveBigIntegerField(default=0)
+    message_count = models.PositiveIntegerField(default=0)
+    transcript_chars = models.PositiveIntegerField(default=0)
+    #: The batch stopped at COMPACTION_MAX_MESSAGES / COMPACTION_MAX_CHARS
+    #: with backlog left above it.
+    truncated = models.BooleanField(default=False)
+    #: Some protected list reached COMPACTION_PROTECTED_CAP after the merge.
+    cap_hit = models.BooleanField(default=False)
+
+    #: Merge counts: protected items kept after the merge, items lost to the
+    #: cap, and (from M2 PR 3) supersessions and tombstone rejections.
+    kept = models.PositiveIntegerField(default=0)
+    superseded = models.PositiveIntegerField(default=0)
+    dropped = models.PositiveIntegerField(default=0)
+    tombstone_hits = models.PositiveIntegerField(default=0)
+
+    #: Redaction category -> hit count for the request payload (§5.9).
+    redacted_counts = models.JSONField(default=dict, blank=True)
+    directives_stripped = models.PositiveIntegerField(default=0)
+    #: Count-only entropy flags (M2 PR 4); 0 until that PR lands.
+    entropy_flags = models.PositiveIntegerField(default=0)
+
+    flag_state = models.CharField(
+        max_length=16, choices=ChatCompactionFlagState.choices, blank=True, default=''
+    )
+
+    class Meta:
+        """Per-thread history and windowed outcome scans (the soak report)."""
+
+        indexes = [
+            models.Index(
+                fields=['thread', '-started_at'], name='aichat_compaction_thread_idx'
+            ),
+            models.Index(
+                fields=['outcome', 'started_at'], name='aichat_compaction_outcome_idx'
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'compaction event {self.outcome} through {self.through_sequence}'

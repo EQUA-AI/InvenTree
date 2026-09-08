@@ -30,6 +30,19 @@ def _user(name):
 class CompactionSurvivalTests(TestCase):
     """P6: typed scope survives compaction; summaries stay instruction-free."""
 
+    def setUp(self):
+        """Turn the shadow flag on: the job re-checks it in its body (M2 §8.7)."""
+        from ai.core.config import Settings
+
+        patcher = mock.patch(
+            'ai.core.config.get_settings',
+            return_value=Settings(
+                _env_file=None, FEATURE_THREAD_COMPACTION_SHADOW=True
+            ),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _thread_with_backlog(self, user, message_count=30):
         """Create a thread with enough backlog to trigger compaction."""
         from aichat.models import ChatMessage, ChatThread

@@ -43,6 +43,8 @@ def _ai_settings(**overrides) -> Settings:
         'AZURE_OPENAI_DEPLOYMENT': 'standard-4o',
         'AZURE_OPENAI_FAST_DEPLOYMENT': 'fast-mini',
         'AZURE_OPENAI_SUMMARIZATION_DEPLOYMENT': '',
+        # M2 PR 1 (§8.7): the job re-checks the flags in its body.
+        'FEATURE_THREAD_COMPACTION_SHADOW': True,
     }
     base.update(overrides)
     return Settings(_env_file=None, **base)
@@ -101,6 +103,9 @@ class CompactionJobTest(TestCase):
             )
         self.thread.next_sequence = 21
         self.thread.save(update_fields=['next_sequence'])
+        patcher = mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_job_writes_label_line_and_advances_watermark(self):
         with mock.patch.object(
@@ -304,6 +309,9 @@ class PriorSummaryRedactionTest(TestCase):
         self.thread.save(
             update_fields=['next_sequence', 'summary', 'summary_through_sequence']
         )
+        patcher = mock.patch('ai.core.config.get_settings', return_value=_ai_settings())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_prior_summary_secrets_do_not_survive_merge(self):
         """A secret stored before CR-2 is redacted on the next compaction."""
