@@ -177,3 +177,59 @@ class CompactionEventMigrationTests(MigrationRoundTripMixin, TransactionTestCase
         )
 
         MigrationExecutor(connection).migrate(self.migrate_to)
+
+
+@tag('migration_test')
+class WorkerUsageEventMigrationTests(MigrationRoundTripMixin, TransactionTestCase):
+    """Prove 0033 adds the worker spend ledger additively and reverses cleanly."""
+
+    migrate_from = [('aichat', '0032_chatcompactionevent')]
+    migrate_to = [('aichat', '0033_aiworkerusageevent')]
+
+    def test_worker_usage_table_round_trips(self) -> None:
+        """The ledger table appears with its indexes, reverses, re-applies."""
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        tables = set(connection.introspection.table_names())
+        self.assertNotIn('aichat_aiworkerusageevent', tables)
+        # 0032's table is untouched on either side of the step.
+        self.assertIn('aichat_chatcompactionevent', tables)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        self.assertIn(
+            'aichat_aiworkerusageevent', set(connection.introspection.table_names())
+        )
+        with connection.cursor() as cursor:
+            columns = {
+                col.name
+                for col in connection.introspection.get_table_description(
+                    cursor, 'aichat_aiworkerusageevent'
+                )
+            }
+            constraints = connection.introspection.get_constraints(
+                cursor, 'aichat_aiworkerusageevent'
+            )
+        for column in (
+            'purpose',
+            'task',
+            'thread_id',
+            'deployment',
+            'input_tokens',
+            'output_tokens',
+            'attempts',
+            'created_at',
+        ):
+            self.assertIn(column, columns)
+        self.assertIn('aichat_worker_usage_deploy_idx', constraints)
+        self.assertIn('aichat_worker_usage_purp_idx', constraints)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_from)
+        tables = set(connection.introspection.table_names())
+        self.assertNotIn('aichat_aiworkerusageevent', tables)
+        self.assertIn('aichat_chatcompactionevent', tables)
+
+        MigrationExecutor(connection).migrate(self.migrate_to)

@@ -5,6 +5,12 @@ Read-only ops command (the grounding_soak_report idiom). Aggregates
 FEATURE_TURN_USAGE_PERSISTENCE is on — into per-user/per-day canonical
 token totals and a cached-input hit rate by source. Python-side JSON
 extraction is acceptable here; this never runs on the request path.
+
+M2 §8.4 adds a ``worker`` section over the AIWorkerUsageEvent spend ledger
+(per-deployment and per-purpose token totals, row and attempt counts) —
+the D-10 proof that the worker's override resolved to the ``-dz``
+deployment. Deployment names, purpose codes and counts only; thread ids
+never appear.
 """
 
 import json
@@ -12,9 +18,10 @@ from collections import defaultdict
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
+from django.db.models import Count, Sum
 from django.utils import timezone
 
-from aichat.models import ChatMessage
+from aichat.models import AIWorkerUsageEvent, ChatMessage
 
 CANONICAL_KEYS = (
     'input_tokens',
@@ -24,6 +31,31 @@ CANONICAL_KEYS = (
     # M1 PR F: cache writes, when the provider reports them.
     'cache_write_tokens',
 )
+
+
+def worker_section(since) -> dict:
+    """The §8.4 worker-ledger block: totals by deployment and by purpose."""
+    base = AIWorkerUsageEvent.objects.filter(created_at__gte=since)
+    sums = {
+        'rows': Count('pk'),
+        'attempts': Sum('attempts'),
+        'input_tokens': Sum('input_tokens'),
+        'output_tokens': Sum('output_tokens'),
+    }
+
+    def clean(bucket: dict) -> dict:
+        return {key: int(bucket.get(key) or 0) for key in sums}
+
+    totals = clean(base.aggregate(**sums))
+    per_deployment = [
+        {'deployment': row['deployment'] or '-', **clean(row)}
+        for row in base.values('deployment').annotate(**sums).order_by('deployment')
+    ]
+    per_purpose = [
+        {'purpose': row['purpose'], **clean(row)}
+        for row in base.values('purpose').annotate(**sums).order_by('purpose')
+    ]
+    return {**totals, 'per_deployment': per_deployment, 'per_purpose': per_purpose}
 
 
 class Command(BaseCommand):
@@ -175,6 +207,7 @@ class Command(BaseCommand):
                     else None
                 ),
             },
+            'worker': worker_section(since),
         }
 
         if options['json']:
@@ -197,4 +230,24 @@ class Command(BaseCommand):
                 f'  {entry["source"]}: in={entry["input_tokens"]} '
                 f'out={entry["output_tokens"]} cached={entry["cached_input_tokens"]} '
                 f'total={entry["total_tokens"]} hit_rate={entry["cached_hit_rate"]}'
+            )
+        worker = report['worker']
+        self.stdout.write('')
+        self.stdout.write(
+            f'Worker ledger: {worker["rows"]} rows, {worker["attempts"]} calls, '
+            f'in={worker["input_tokens"]} out={worker["output_tokens"]}'
+        )
+        self.stdout.write('Worker per deployment:')
+        for entry in worker['per_deployment']:
+            self.stdout.write(
+                f'  {entry["deployment"]}: rows={entry["rows"]} '
+                f'calls={entry["attempts"]} in={entry["input_tokens"]} '
+                f'out={entry["output_tokens"]}'
+            )
+        self.stdout.write('Worker per purpose:')
+        for entry in worker['per_purpose']:
+            self.stdout.write(
+                f'  {entry["purpose"]}: rows={entry["rows"]} '
+                f'calls={entry["attempts"]} in={entry["input_tokens"]} '
+                f'out={entry["output_tokens"]}'
             )

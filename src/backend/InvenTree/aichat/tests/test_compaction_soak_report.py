@@ -186,6 +186,94 @@ class SoakReportMetricsTest(_ReportMixin, TestCase):
         self.assertIn('flags_off                = 1', text)
         self.assertIn('failure_rate             = 0.0', text)
 
+    def test_budget_deferred_is_a_posture_row_not_a_run(self):
+        """§8.4: a daily-cap deferral is counted but sits outside every rate."""
+        for i in range(10):
+            self._event(self.threads[i % 2], 'ok', latency_ms=100)
+        self._event(
+            self.threads[2],
+            'budget_deferred',
+            error_code='daily_cap',
+            input_tokens=7,
+            output_tokens=3,
+        )
+
+        code, output = self._run('--json')
+        self.assertEqual(code, 0)
+        report = json.loads(output)
+        self.assertEqual(report['verdict'], 'PASS')
+        self.assertEqual(report['events_total'], 11)
+        self.assertEqual(report['terminal_total'], 10)
+        self.assertEqual(report['budget_deferred'], 1)
+        self.assertEqual(report['outcomes']['budget_deferred'], 1)
+        self.assertEqual(report['outcomes']['failed'], 0)
+        self.assertEqual(report['failure_rate'], 0.0)
+        self.assertEqual(report['race_rate'], 0.0)
+        self.assertEqual(report['cap_hit_rate'], 0.0)
+        # Nothing from a run that never called the model reaches the totals.
+        self.assertEqual(report['latency_samples'], 10)
+        self.assertEqual(report['input_tokens_total'], 0)
+        self.assertEqual(report['output_tokens_total'], 0)
+
+        code, text = self._run()
+        self.assertEqual(code, 0)
+        self.assertIn('budget_deferred          = 1', text)
+        self.assertIn('terminal_total           = 10', text)
+        self.assertIn('failure_rate             = 0.0', text)
+
+    def test_budget_deferred_rows_do_not_dilute_the_rates(self):
+        """A capped day mints one deferral per turn; they must not mask failures."""
+        t0, t1, _ = self.threads
+        for _ in range(4):
+            self._event(t0, 'ok', latency_ms=100)
+        self._event(t0, 'failed', error_code='RuntimeError')
+        self._event(t1, 'race_lost')
+        self._event(t1, 'ok', cap_hit=True, latency_ms=100)
+        for _ in range(200):
+            self._event(t1, 'budget_deferred', error_code='daily_cap')
+
+        code, output = self._run('--json')
+        self.assertEqual(code, 1)
+        report = json.loads(output)
+        self.assertEqual(report['verdict'], 'FAIL')
+        self.assertEqual(report['events_total'], 207)
+        self.assertEqual(report['terminal_total'], 7)
+        self.assertEqual(report['budget_deferred'], 200)
+        # 1 / 7, not 1 / 207.
+        self.assertEqual(report['failure_rate'], round(1 / 7, 4))
+        self.assertEqual(report['race_rate'], round(1 / 7, 4))
+        self.assertEqual(report['cap_hit_rate'], round(1 / 7, 4))
+        self.assertFalse(report['thresholds']['failure_rate']['pass'])
+        self.assertFalse(report['thresholds']['race_rate']['pass'])
+        self.assertFalse(report['thresholds']['cap_hit_rate']['pass'])
+
+    def test_budget_deferred_does_not_reset_content_filter_streak(self):
+        """A deferral advances no watermark, so it is invisible to the stuck read."""
+        t0 = self.threads[0]
+        self._event(t0, 'ok', latency_ms=100)
+        self._event(t0, 'content_filter', error_code='content_filter')
+        self._event(t0, 'budget_deferred', error_code='daily_cap')
+        self._event(t0, 'content_filter', error_code='content_filter')
+
+        report = build_report(7)
+        self.assertEqual(report['content_filter_stuck'], 1)
+        self.assertEqual(report['verdict'], 'FAIL')
+
+    def test_budget_deferred_alone_is_no_data(self):
+        """A fully capped window never ran the summarizer: no soak read."""
+        self._event(self.threads[0], 'budget_deferred', error_code='daily_cap')
+        code, output = self._run()
+        self.assertEqual(code, 2)
+        self.assertIn('no_data', output)
+        self.assertIn('budget_deferred          = 1', output)
+        self.assertIn('terminal_total           = 0', output)
+
+        report = build_report(7)
+        self.assertEqual(report['verdict'], 'no_data')
+        self.assertEqual(report['events_total'], 1)
+        self.assertEqual(report['terminal_total'], 0)
+        self.assertIsNone(report['failure_rate'])
+
     def test_skips_alone_are_no_data(self):
         """Flags off on every worker is a posture problem, not a soak read."""
         self._event(self.threads[0], 'skipped', error_code='flags_off')
@@ -211,6 +299,7 @@ class SoakReportOutputShapeTest(_ReportMixin, TestCase):
             'terminal_total',
             'skipped_total',
             'flags_off',
+            'budget_deferred',
             'outcomes',
             'failure_rate',
             'content_filter_stuck',

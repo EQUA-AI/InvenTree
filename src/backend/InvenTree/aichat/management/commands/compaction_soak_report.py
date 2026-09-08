@@ -15,6 +15,15 @@ a terminal outcome older than 15 minutes = 0, p95 latency < 60 s.
 every rate's numerator AND denominator and are reported separately as
 ``skipped_total`` / ``flags_off``; a web/worker flag-parity gap must not
 read as summarizer breakage.
+
+``budget_deferred`` rows (§8.4: today's worker ledger reached the daily
+cap, ``error_code=daily_cap``) are posture rows too, not runs: the task
+returned before any model call, advanced no watermark and carries no
+latency or tokens. Once the cap trips, every later turn on a thread with
+backlog re-enqueues and lands another such row for the rest of the UTC
+day, so they are kept out of every rate's denominator and out of the
+content-filter stuck history, and are reported separately as
+``budget_deferred``. A window of nothing but deferrals is ``no_data``.
 """
 
 from __future__ import annotations
@@ -43,8 +52,12 @@ THRESHOLDS: tuple[tuple[str, float, str], ...] = (
 
 #: Outcomes that are neither ``started`` nor a summarizer run: excluded from
 #: the rate denominators (§8.3 reads ``outcome=failed`` / all terminal, and a
-#: posture skip is not a terminal summarize result).
-NON_RUN_OUTCOMES = (ChatCompactionOutcome.STARTED, ChatCompactionOutcome.SKIPPED)
+#: posture skip or a daily-cap deferral is not a terminal summarize result).
+NON_RUN_OUTCOMES = (
+    ChatCompactionOutcome.STARTED,
+    ChatCompactionOutcome.SKIPPED,
+    ChatCompactionOutcome.BUDGET_DEFERRED,
+)
 
 TERMINAL_OUTCOMES = tuple(
     value for value in ChatCompactionOutcome.values if value not in NON_RUN_OUTCOMES
@@ -99,6 +112,7 @@ def build_report(days: int, *, now=None) -> dict:
     stale_started = 0
     skipped = 0
     flags_off = 0
+    budget_deferred = 0
     stale_before = now - timedelta(minutes=COMPACTION_STARTED_STALE_MINUTES)
     per_thread: dict = defaultdict(list)
 
@@ -113,6 +127,9 @@ def build_report(days: int, *, now=None) -> dict:
             skipped += 1
             if str(row['error_code'] or '') == FLAGS_OFF_ERROR_CODE:
                 flags_off += 1
+            continue
+        if outcome == ChatCompactionOutcome.BUDGET_DEFERRED:
+            budget_deferred += 1
             continue
         terminal += 1
         input_tokens += int(row['input_tokens'] or 0)
@@ -165,6 +182,7 @@ def build_report(days: int, *, now=None) -> dict:
         'terminal_total': terminal,
         'skipped_total': skipped,
         'flags_off': flags_off,
+        'budget_deferred': budget_deferred,
         'outcomes': dict(outcomes),
         'cap_hits': cap_hits,
         'latency_p50_ms': percentile(latencies, 50),
@@ -217,6 +235,7 @@ class Command(BaseCommand):
         write(f'terminal_total           = {report["terminal_total"]}')
         write(f'skipped_total            = {report["skipped_total"]}')
         write(f'flags_off                = {report["flags_off"]}')
+        write(f'budget_deferred          = {report["budget_deferred"]}')
         for outcome, count in sorted(report['outcomes'].items()):
             write(f'outcome_{outcome:<17}= {count}')
         write(f'cap_hits                 = {report["cap_hits"]}')

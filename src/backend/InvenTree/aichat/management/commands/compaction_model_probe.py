@@ -48,9 +48,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         """Build the redacted payload, make one call, print the verdict lines."""
-        from openai import AzureOpenAI
-
         from ai.core.config import get_settings
+        from ai.core.integrations.azure_openai_client import (
+            build_openai_client,
+            client_auth_mode,
+        )
         from ai.core.model_policy import ModelPurpose, call_options, select_deployment
         from ai.core.redaction import format_counts, redact_payload
         from aichat.tasks import _COMPACTION_SYSTEM_PROMPT, COMPACTION_SCHEMA
@@ -71,6 +73,7 @@ class Command(BaseCommand):
         seed_leaked = any(fragment in payload for _, fragment in _SEEDS)
 
         self.stdout.write(f'deployment                = {deployment}')
+        self.stdout.write(f'client                    = {client_auth_mode(settings)}')
         self.stdout.write(f'override_set              = {bool(options_sent)}')
         self.stdout.write(
             f'reasoning_effort_sent     = {options_sent.get("reasoning_effort", "")}'
@@ -84,11 +87,9 @@ class Command(BaseCommand):
                 self.style.ERROR('redaction gap: a seed reached the payload')
             )
 
-        client = AzureOpenAI(
-            azure_endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-            api_version=settings.azure_openai_api_version,
-        )
+        # M2 PR 7 (GR-23): the shared factory picks key vs managed identity,
+        # so the probe proves the same credential path the worker job uses.
+        client = build_openai_client(settings=settings)
         try:
             response = client.chat.completions.create(
                 model=deployment,

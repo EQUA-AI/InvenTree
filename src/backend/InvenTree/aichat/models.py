@@ -1873,3 +1873,58 @@ class ChatCompactionEvent(models.Model):
     def __str__(self) -> str:
         """Return a safe diagnostic representation."""
         return f'compaction event {self.outcome} through {self.through_sequence}'
+
+
+class AIWorkerUsagePurpose(models.TextChoices):
+    """What a worker-side model call was spent on (M2 §8.4, GR-29)."""
+
+    SUMMARIZATION = 'summarization', 'Summarization'
+    EXTRACTION = 'extraction', 'Extraction'
+
+
+class AIWorkerUsageEvent(models.Model):
+    """The worker-side spend ledger: one row per compaction/extraction run.
+
+    Ledger = spend record; :class:`ChatCompactionEvent` = per-event
+    diagnostic (§8.4). Both read the same ``response.usage``; only this
+    table feeds the daily caps and the ``usage_report`` worker section.
+    Additive and dark-safe (a new table nothing else references); every
+    column is an id, enum code, count or timestamp. ``deployment`` is the
+    D-10 proof: it shows which deployment the worker's override resolved
+    to. ``attempts`` folds the calls of one run (a §8.5.3 bisect makes up
+    to three) into the row so a zero-token failed run is still visible.
+    The thread link is ``SET_NULL``: the spend survives the thread.
+    """
+
+    purpose = models.CharField(max_length=24, choices=AIWorkerUsagePurpose.choices)
+    #: The task function name (``compact_thread_summary``), never a task id.
+    task = models.CharField(max_length=64, blank=True, default='')
+    thread = models.ForeignKey(
+        ChatThread,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='worker_usage_events',
+    )
+    deployment = models.CharField(max_length=128, blank=True, default='')
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    attempts = models.PositiveSmallIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Per-deployment and per-purpose windowed sums (caps, usage_report)."""
+
+        indexes = [
+            models.Index(
+                fields=['deployment', 'created_at'],
+                name='aichat_worker_usage_deploy_idx',
+            ),
+            models.Index(
+                fields=['purpose', 'created_at'], name='aichat_worker_usage_purp_idx'
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return a safe diagnostic representation."""
+        return f'worker usage {self.purpose} {self.input_tokens}+{self.output_tokens}'

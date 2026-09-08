@@ -240,18 +240,15 @@ def _summarize(
     ``output_tokens`` from ``response.usage`` after it. The positional
     signature is unchanged so callers and test doubles keep working.
     """
-    from openai import AzureOpenAI
-
     from ai.core.config import get_settings
+    from ai.core.integrations.azure_openai_client import build_openai_client
     from ai.core.model_policy import ModelPurpose, call_options, select_deployment
     from ai.core.redaction import format_counts, redact_payload
 
     settings = get_settings()
-    client = AzureOpenAI(
-        azure_endpoint=settings.azure_openai_endpoint,
-        api_key=settings.azure_openai_api_key,
-        api_version=settings.azure_openai_api_version,
-    )
+    # M2 PR 7 (GR-23): the shared factory picks the credential — managed
+    # identity when AIMMS_OPENAI_KEYLESS is on, the API key otherwise.
+    client = build_openai_client(settings=settings)
     redacted = redact_payload({'prior_summary': prior_body, 'new_messages': transcript})
     if redacted.redacted:
         # Content-free by construction: category names and counts only; the
@@ -324,7 +321,13 @@ def _error_code_for(exc: BaseException) -> str:
 
 
 def _accumulate_stats(totals: dict, stats: dict) -> None:
-    """Fold one ``_summarize`` call's stats into the run totals."""
+    """Fold one ``_summarize`` call's stats into the run totals.
+
+    Called once per call whether it returned or raised, so ``attempts``
+    counts every model call the run made (the §8.4 ledger folds them into
+    one row) even when a failure left ``stats`` empty.
+    """
+    totals['attempts'] = totals.get('attempts', 0) + 1
     for key in ('input_tokens', 'output_tokens'):
         totals[key] = totals.get(key, 0) + _int_or_zero(stats.get(key, 0))
     for key in ('deployment', 'reasoning_effort'):
@@ -438,6 +441,31 @@ def _cost_fields(totals: dict) -> dict:
     }
 
 
+def _record_worker_usage(thread_id, totals: dict) -> None:
+    """Write the run's §8.4 spend row from the accumulated call stats.
+
+    One row per compaction run, whatever the outcome: the ledger is the
+    spend record (deployment stamp = the D-10 proof, tokens, attempts),
+    ChatCompactionEvent the diagnostic. A run that never called the model
+    writes nothing; the helper never raises.
+    """
+    from aichat.models import AIWorkerUsagePurpose
+    from aichat.services.worker_usage import (
+        TASK_COMPACT_THREAD_SUMMARY,
+        record_worker_usage,
+    )
+
+    record_worker_usage(
+        AIWorkerUsagePurpose.SUMMARIZATION,
+        str(totals.get('deployment', '')),
+        task=TASK_COMPACT_THREAD_SUMMARY,
+        thread_id=thread_id,
+        input_tokens=_int_or_zero(totals.get('input_tokens', 0)),
+        output_tokens=_int_or_zero(totals.get('output_tokens', 0)),
+        attempts=_int_or_zero(totals.get('attempts', 0)),
+    )
+
+
 def compact_thread_summary(thread_id):
     """Summarize a thread's un-summarized prefix and advance the watermark.
 
@@ -470,7 +498,13 @@ def _compact_locked(thread_id) -> None:
     watermark past the batch anyway (``error_code=content_filter``) so a
     thread can never loop on the same batch; ``skipped`` with
     ``error_code=flags_off`` when the §8.7 in-body re-read finds both flags
-    off on this worker (never a failure). Event writes never break the run.
+    off on this worker (never a failure); ``budget_deferred`` with
+    ``error_code=daily_cap`` when the §8.4 ledger shows today's
+    summarization tokens at or over the configured daily cap — the
+    summarizer never runs, summary and watermark stay untouched, and the
+    next trigger retries (fail-soft backpressure, never a failure). Every
+    run that called the model also lands one AIWorkerUsageEvent row.
+    Event and ledger writes never break the run.
     """
     from time import perf_counter
 
@@ -537,6 +571,34 @@ def _compact_locked(thread_id) -> None:
 
     prior_body = redact_payload(parse_summary_body(thread.summary)).value
 
+    from aichat.models import AIWorkerUsagePurpose
+    from aichat.services.worker_usage import ERROR_CODE_DAILY_CAP, daily_cap_status
+
+    budget = daily_cap_status(AIWorkerUsagePurpose.SUMMARIZATION)
+    if budget['reached']:
+        # §8.4 producer-side backpressure: today's ledger is at the cap, so
+        # defer without a model call. Terminal but not a failure; the
+        # backlog waits for the next trigger (or tomorrow's UTC day).
+        _event_create(
+            thread_id,
+            outcome=Outcome.BUDGET_DEFERRED,
+            error_code=ERROR_CODE_DAILY_CAP,
+            finished_at=timezone.now(),
+            from_sequence=expected + 1,
+            through_sequence=batch_high,
+            message_count=len(transcript),
+            transcript_chars=total_chars,
+            truncated=batch_high < high,
+            flag_state=flag_state,
+        )
+        logger.info(
+            'Thread compaction budget deferred thread=%s used=%d cap=%d',
+            thread_id,
+            budget['used'],
+            budget['cap'],
+        )
+        return
+
     event = _event_create(
         thread_id,
         outcome=Outcome.STARTED,
@@ -556,7 +618,11 @@ def _compact_locked(thread_id) -> None:
         compaction_batch_messages=len(transcript),
     ) as span:
         try:
-            fresh, filtered = _summarize_with_bisect(transcript, prior_body, totals)
+            try:
+                fresh, filtered = _summarize_with_bisect(transcript, prior_body, totals)
+            finally:
+                # §8.4: the spend row lands whatever the summarizer did.
+                _record_worker_usage(thread_id, totals)
         except ContentFilterExhaustedError:
             latency_ms = int((perf_counter() - started) * 1000)
             # Advance past the batch without touching the summary: the next

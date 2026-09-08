@@ -50,6 +50,7 @@ from aichat.models import (
     AIRequestRejection,
     AIRetentionOutbox,
     AIUsageMonthlyAggregate,
+    AIWorkerUsageEvent,
     ChatActionProposal,
     ChatCompactionEvent,
     ChatEvidenceSet,
@@ -700,6 +701,29 @@ def purge_compaction_events(
     return {'compaction_events': count}
 
 
+def purge_worker_usage_events(
+    *,
+    days: int = RETENTION_DETAIL_DAYS,
+    batch_size: int = PURGE_BATCH_SIZE,
+    dry_run: bool = False,
+) -> dict:
+    """Purge the content-free worker spend ledger past 90 days (M2 §8.4).
+
+    Detail scope like the compaction ledger: purpose code, deployment name,
+    counts and a nullable thread link only. The rows feed the daily caps
+    (a UTC-day window) and the ``usage_report`` worker section, so 90 days
+    is ample; without this family a ``SET_NULL`` thread link means no
+    cascade ever removes them.
+    """
+    count = _batched_delete(
+        AIWorkerUsageEvent.objects.filter(created_at__lt=_cutoff(days)),
+        family='worker_usage',
+        batch_size=batch_size,
+        dry_run=dry_run,
+    )
+    return {'worker_usage': count}
+
+
 def purge_quota_reservations(
     *,
     days: int = RETENTION_DETAIL_DAYS,
@@ -993,6 +1017,7 @@ FAMILIES = {
     'retrieval_misses': purge_retrieval_misses,
     'rejections': purge_request_rejections,
     'compaction_events': purge_compaction_events,
+    'worker_usage': purge_worker_usage_events,
     'quota_reservations': purge_quota_reservations,
     'quota_audit': purge_quota_audit_events,
     'usage_aggregates': purge_usage_aggregates,
@@ -1095,6 +1120,9 @@ def retention_status() -> dict:
             ).count(),
             'compaction_events': ChatCompactionEvent.objects.filter(
                 started_at__lt=cutoff_detail
+            ).count(),
+            'worker_usage': AIWorkerUsageEvent.objects.filter(
+                created_at__lt=cutoff_detail
             ).count(),
         },
         'outbox': {

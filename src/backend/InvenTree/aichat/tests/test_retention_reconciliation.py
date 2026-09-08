@@ -25,6 +25,7 @@ from aichat.models import (
     AIRequestRejection,
     AIRetentionOutbox,
     AIUsageMonthlyAggregate,
+    AIWorkerUsageEvent,
     ChatActionProposal,
     ChatCompactionEvent,
     ChatEvidenceSet,
@@ -220,6 +221,7 @@ class ThreadPurgeTests(RetentionEnvMixin, TestCase):
             'retrieval_misses',
             'rejections',
             'compaction_events',
+            'worker_usage',
         ):
             self.assertEqual(dry['families'][family], real['families'][family], family)
         self.assertEqual(real['errors'], {})
@@ -614,6 +616,48 @@ class DetailFamilyTests(RetentionEnvMixin, TestCase):
         # Quota management audit is a 400-day class, not 90.
         self.assertEqual(retention.purge_quota_audit_events(), {'quota_audit': 1})
         self.assertEqual(AIQuotaAuditEvent.objects.get().pk, audit_keep.pk)
+
+    def test_worker_usage_purge_at_90_days(self):
+        """M2 §8.4: the worker spend ledger is detail scope (90 days)."""
+        _, _, thread = self.build_thread('worker-ledger')
+        old_row = AIWorkerUsageEvent.objects.create(
+            purpose='summarization',
+            task='compact_thread_summary',
+            thread=thread,
+            deployment='standard-4o',
+            input_tokens=10,
+        )
+        old_orphan = AIWorkerUsageEvent.objects.create(
+            purpose='extraction', deployment='standard-4o'
+        )
+        fresh = AIWorkerUsageEvent.objects.create(
+            purpose='summarization', thread=thread, deployment='standard-4o'
+        )
+        AIWorkerUsageEvent.objects.filter(pk__in=[old_row.pk, old_orphan.pk]).update(
+            created_at=_old(DETAIL_OLD_DAYS)
+        )
+        self.assertEqual(retention.retention_status()['backlog']['worker_usage'], 2)
+
+        # Dry run counts only; nothing moves.
+        self.assertEqual(
+            retention.purge_worker_usage_events(dry_run=True), {'worker_usage': 2}
+        )
+        self.assertEqual(AIWorkerUsageEvent.objects.count(), 3)
+
+        self.assertEqual(retention.purge_worker_usage_events(), {'worker_usage': 2})
+        self.assertEqual(
+            list(AIWorkerUsageEvent.objects.values_list('pk', flat=True)), [fresh.pk]
+        )
+        self.assertEqual(retention.retention_status()['backlog']['worker_usage'], 0)
+        # Registered in FAMILIES so run_all reaches it; idempotent rerun.
+        self.assertIn('worker_usage', retention.FAMILIES)
+        report = retention.run_all(families={'worker_usage'})
+        self.assertEqual(report['families']['worker_usage'], {'worker_usage': 0})
+        self.assertEqual(report['errors'], {})
+        # The spend row outlives its thread (SET_NULL), so only the family
+        # purge ever removes it.
+        thread.delete()
+        self.assertIsNone(AIWorkerUsageEvent.objects.get(pk=fresh.pk).thread_id)
 
     def test_compaction_events_purge_at_90_days(self):
         """M2 §8.3: the compaction ledger is run-table scope (90 days)."""

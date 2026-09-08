@@ -939,6 +939,27 @@ class Settings(BaseSettings):
         ),
     )
     azure_openai_api_version: str = Field(default="2024-10-21", alias="AZURE_OPENAI_API_VERSION")
+    # M2 PR 7 (plan §8.7 managed-identity block; GR-23): when true the
+    # worker's raw OpenAI client (``build_openai_client`` — the compaction
+    # summarizer and its probe) authenticates with ``DefaultAzureCredential``
+    # (managed identity, scope https://cognitiveservices.azure.com/.default)
+    # instead of ``azure_openai_api_key``. Dark by default because the
+    # workers' identities need the Cognitive Services OpenAI User role on the
+    # Foundry resource first. Deliberately NOT a FEATURE_ registry flag: it
+    # selects a credential, it does not gate behaviour.
+    aimms_openai_keyless: bool = Field(default=False, alias="AIMMS_OPENAI_KEYLESS")
+    # M2 PR 2 (plan §8.4; GR-29): per-purpose daily token caps on the
+    # worker ledger (``aichat.services.worker_usage``). When today's UTC
+    # input+output tokens for a purpose reach the cap, the task records
+    # ``budget_deferred`` and returns without a model call; the backlog is
+    # retried at the next trigger. 0 = unlimited. Deliberately NOT FEATURE_
+    # flags: they bound spend, they do not gate behaviour.
+    aimms_worker_daily_token_cap_summarization: int = Field(
+        default=0, ge=0, alias="AIMMS_WORKER_DAILY_TOKEN_CAP_SUMMARIZATION"
+    )
+    aimms_worker_daily_token_cap_extraction: int = Field(
+        default=0, ge=0, alias="AIMMS_WORKER_DAILY_TOKEN_CAP_EXTRACTION"
+    )
 
     # -------------------------------------------------------------------------
     # S17 model pins and boot probes (fail closed; each has its own kill switch)
