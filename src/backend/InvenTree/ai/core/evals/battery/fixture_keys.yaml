@@ -81,11 +81,14 @@ keys:
     document_id: SI3000-SM
     revision: B
     current: true
+    # E40: the lookup names the manual by its seeded title, not its id.
+    markers: [SI-3000 Service Manual]
   manual_si3000_revA:
     kind: document
     document_id: SI3000-SM
     revision: A
     current: false
+    markers: [SI-3000 Service Manual]
     note: superseded; citing it as current is a layer-5 failure
   manual_exact_a:
     kind: document
@@ -98,6 +101,7 @@ keys:
     document_id: FLEET-BULLETIN-7
     revision: A
     current: true
+    markers: [Fleet Bulletin 7]
     note: verified fleet-wide document (blank asset binding)
 
   # --- Uncontrolled attachment (the tempting-detail source) ---

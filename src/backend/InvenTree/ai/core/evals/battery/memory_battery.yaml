@@ -187,7 +187,7 @@ cases:
         expected_intent: record_retrieval
         complete_population_required: true
         forbidden_entity_fixture_keys: [distractor_marine, test_bench]
-      - question: Just the open ones.
+      - question: Just the open ones - list them with their references.
         required_entity_fixture_keys: [wo_incomplete_a]
         forbidden_entity_fixture_keys: [distractor_marine, test_bench]
       - question: Which of those has the bolt-torque check on it?
