@@ -33,6 +33,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { api } from '../../App';
 import { InlineMarkdown } from '../aichat/MarkdownMessage';
+import { describeFailure, parseBusinessResult } from './businessResult';
 
 export interface ChatActionProposalPreview {
   action?: string;
@@ -164,9 +165,42 @@ export function ProposalCard({
           verb === 'confirm' && irreversible
             ? { confirm_phrase: phrase }
             : undefined;
-        await api.post(`/api/aichat/proposals/${proposal.id}/${verb}/`, body);
+        const response = await api.post(
+          `/api/aichat/proposals/${proposal.id}/${verb}/`,
+          body
+        );
+        // A8: a 2xx is not a result. The proposal's recorded state is.
+        const expected = verb === 'confirm' ? 'executed' : 'rejected';
+        const result = parseBusinessResult<Partial<ChatActionProposalPayload>>(
+          response.status,
+          response.data,
+          {
+            failureCodeOf: (payload) =>
+              typeof payload?.state === 'string' && payload.state !== expected
+                ? `STATE_${payload.state.toUpperCase()}`
+                : null
+          }
+        );
+        if (!result.ok) {
+          setError(describeFailure(result));
+        }
       } catch (err: any) {
-        setError(err?.response?.data?.error ?? 'PROPOSAL_REQUEST_FAILED');
+        const failure = parseBusinessResult(
+          err?.response?.status ?? 0,
+          err?.response?.data
+        );
+        setError(
+          failure.ok
+            ? 'PROPOSAL_REQUEST_FAILED'
+            : describeFailure({
+                ...failure,
+                code:
+                  err?.response?.data?.error ??
+                  (failure.code === 'HTTP_0'
+                    ? 'PROPOSAL_REQUEST_FAILED'
+                    : failure.code)
+              })
+        );
       } finally {
         setBusy(false);
         onChanged();
@@ -273,7 +307,7 @@ export function ProposalCard({
           </Text>
         )}
         {error && (
-          <Alert color='red' p={4}>
+          <Alert color='red' p={4} data-testid='proposal-error'>
             <Text size='xs'>{error}</Text>
           </Alert>
         )}

@@ -54,3 +54,80 @@ test('retired HITL event never renders an approvable card', async ({
   await expect(page.getByRole('button', { name: /^approve$/i })).toHaveCount(0);
   await expect(page.getByText('Permanently delete')).toHaveCount(0);
 });
+
+test('HTTP 200 with business failure shows no success', async ({ browser }) => {
+  const page = await doCachedLogin(browser, { url: 'home' });
+  await mockChatFoundation(page);
+  let confirmed = false;
+  let proposalReads = 0;
+  const proposal = {
+    id: 'a1b2c3d4-0000-4000-8000-000000000001',
+    action_type: 'work_order.hold',
+    state: 'proposed',
+    work_order_id: 140,
+    target_version: 3,
+    intent: { reason: 'pump inspection' },
+    preview: {
+      action: 'work_order.hold',
+      reference: 'WO-000140',
+      title: 'Pump inspection',
+      current_status: 'in_progress',
+      resulting_status: 'on_hold',
+      warning: 'This does not change any safety status.'
+    },
+    reason: 'pump inspection',
+    expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+    receipt: null,
+    failure_code: null
+  };
+  await page.route('**/api/aichat/proposals/**', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    proposalReads += 1;
+    await route.fulfill({
+      json: {
+        results: confirmed
+          ? [
+              {
+                ...proposal,
+                state: 'failed',
+                failure_code: 'PROPOSAL_REVALIDATION_FAILED'
+              }
+            ]
+          : [proposal]
+      }
+    });
+  });
+  await page.route('**/api/aichat/proposals/*/confirm/', async (route) => {
+    confirmed = true;
+    // Transport success, business failure: the record changed under the
+    // preview. The UI must not present this as done.
+    await route.fulfill({
+      status: 200,
+      json: {
+        ...proposal,
+        state: 'failed',
+        failure_code: 'PROPOSAL_REVALIDATION_FAILED'
+      }
+    });
+  });
+
+  await page.reload();
+  await openChat(page);
+  // The proposals list lives on the chat tab since A7 (and on the approvals
+  // tab); select the chat tab explicitly -- the cached login may restore
+  // another tab -- and wait for the list to have fetched.
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await expect.poll(() => proposalReads).toBeGreaterThanOrEqual(1);
+  const card = page.getByTestId('chat-action-proposal').first();
+  await expect(card).toBeVisible();
+  await card.getByTestId('proposal-confirm').click();
+
+  await expect(page.getByTestId('proposal-error').first()).toContainText(
+    'PROPOSAL_REVALIDATION_FAILED'
+  );
+  await expect(page.getByText(/^Executed:/)).toHaveCount(0);
+  await expect(page.getByText('Not applied: ')).toHaveCount(0);
+});

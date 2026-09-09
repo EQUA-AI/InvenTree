@@ -2096,6 +2096,7 @@ export function AIChatDrawer({
               partial={voice.partial}
               listening={voice.state === 'listening'}
               pendingConfirm={voice.pendingConfirm}
+              holdPrompt={voice.holdPrompt}
             />
             {routingHint && (
               <Group gap='xs' mb={4} data-testid='ai-chat-routing-hint'>

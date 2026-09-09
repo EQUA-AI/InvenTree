@@ -10,6 +10,11 @@
 
 import { useCallback, useState } from 'react';
 
+import {
+  describeFailure,
+  parseBusinessResult
+} from '../components/ai/businessResult';
+
 import { api } from '../App';
 
 export interface CaptureRevision {
@@ -57,14 +62,36 @@ export function useVoiceCapture(): UseVoiceCaptureResult {
   const [busy, setBusy] = useState(false);
 
   const call = useCallback(
-    async (invoke: () => Promise<{ data: CapturePayload }>) => {
+    async (
+      invoke: () => Promise<{ data: CapturePayload; status?: number }>
+    ) => {
       setBusy(true);
       setError(null);
       try {
         const response = await invoke();
+        // A8: a 2xx with a failure body is not a recorded capture step.
+        const result = parseBusinessResult(
+          response.status ?? 200,
+          response.data
+        );
+        if (!result.ok) {
+          setError(describeFailure(result));
+          return;
+        }
         setCapture(response.data);
       } catch (err: any) {
-        setError(err?.response?.data?.error ?? 'CAPTURE_REQUEST_FAILED');
+        const failure = parseBusinessResult(
+          err?.response?.status ?? 0,
+          err?.response?.data
+        );
+        setError(
+          failure.ok
+            ? 'CAPTURE_REQUEST_FAILED'
+            : describeFailure({
+                ...failure,
+                code: err?.response?.data?.error ?? failure.code
+              })
+        );
       } finally {
         setBusy(false);
       }

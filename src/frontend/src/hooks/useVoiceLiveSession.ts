@@ -16,13 +16,20 @@ import type {
   VoiceError,
   VoiceErrorCode,
   VoiceFinalTranscript,
+  VoiceHoldPrompt,
   VoicePartialTranscript,
   VoiceSessionPayload,
+  VoiceSpokenPayload,
   VoiceTurnResponse
 } from '../../lib/types/Voice';
+import { parseBusinessResult } from '../components/ai/businessResult';
 import {
   DEFAULT_CONFIDENCE_FLOOR,
-  detectCriticalSpans
+  VOICE_CONFIRM_RE,
+  VOICE_DISCARD_RE,
+  VOICE_STOP_RE,
+  normalizeDecisionUtterance,
+  shouldHoldTranscript
 } from '../components/ai/voiceCriticalTerms';
 
 const DATA_CHANNEL_LABEL = 'voice-live-events';
@@ -35,10 +42,6 @@ const FILLER_ONLY = /^(?:uh|um|hmm+|mm+|mhm|huh|erm|ah|oh)[.!?,\s]*$/i;
 // Hands-free review decisions: ONLY an utterance that is entirely one of
 // these phrases acts on a held transcript. Anything longer is ignored — a
 // sentence containing "yes" or "cancel" must not decide a safety review.
-const VOICE_CONFIRM_RE =
-  /^(?:confirm|yes|yes please|continue|send it|submit|go ahead|that's right|correct)$/;
-const VOICE_DISCARD_RE =
-  /^(?:discard|cancel|no|nope|scratch that|start over|delete|discard it|try again)$/;
 
 // A public STUN server lets the browser discover its server-reflexive
 // candidate so the peer can be reached across NAT. It carries no credentials,
@@ -152,6 +155,8 @@ export interface UseVoiceLiveSessionResult {
   submitTranscript: (transcript: VoiceFinalTranscript) => Promise<void>;
   /** Transcript held for confirmation (critical terms or low confidence). */
   pendingConfirm: VoiceFinalTranscript | null;
+  /** A9: the spoken review prompt for the held transcript (null when none). */
+  holdPrompt: VoiceHoldPrompt | null;
   /** Submit the held transcript exactly as heard. */
   confirmPending: () => Promise<void>;
   /** Discard the held transcript and resume listening. */
@@ -168,6 +173,7 @@ export function useVoiceLiveSession(
   // Ref mirror for event handlers; state alone is stale inside the data
   // channel callback. Set both through setHold only.
   const pendingConfirmRef = useRef<VoiceFinalTranscript | null>(null);
+  const [holdPrompt, setHoldPrompt] = useState<VoiceHoldPrompt | null>(null);
   const confidenceFloorRef = useRef<number>(DEFAULT_CONFIDENCE_FLOOR);
   const [state, setState] = useState<VoiceClientState>(
     enabled ? 'ready' : 'unavailable'
@@ -284,7 +290,77 @@ export function useVoiceLiveSession(
   const setHold = useCallback((held: VoiceFinalTranscript | null) => {
     pendingConfirmRef.current = held;
     setPendingConfirm(held);
+    if (held === null) {
+      setHoldPrompt(null);
+    }
   }, []);
+
+  /**
+   * A9: make a hold audible. The client never authors speech; it asks the
+   * server for the allow-listed transcript-review prompt, which is persisted
+   * before it is spoken. A failed request leaves the prompt honestly
+   * unspoken so the UI shows the text instead of pretending it played.
+   */
+  const requestHoldPrompt = useCallback(
+    async (held: VoiceFinalTranscript) => {
+      const active = sessionRef.current;
+      if (!active) {
+        return;
+      }
+      setHoldPrompt({
+        utteranceId: null,
+        spokenSummary: '',
+        playbackState: 'pending'
+      });
+      try {
+        const response = await fetch(
+          resolveUrl(`voice/sessions/${active.id}/prompts`, host),
+          {
+            method: 'POST',
+            headers: jsonHeaders(true),
+            credentials: 'include',
+            body: JSON.stringify({
+              kind: 'transcript_review',
+              transcript: held.text,
+              item_id: held.revision
+                ? `${held.itemId}#${held.revision}`
+                : held.itemId
+            })
+          }
+        );
+        const body = await response.json().catch(() => null);
+        const result = parseBusinessResult<VoiceSpokenPayload | null>(
+          response.status,
+          body
+        );
+        if (!result.ok || !result.data) {
+          setHoldPrompt({
+            utteranceId: null,
+            spokenSummary: '',
+            playbackState: 'failed'
+          });
+          return;
+        }
+        if (pendingConfirmRef.current?.itemId !== held.itemId) {
+          // The hold moved on (decided or revised) while we waited.
+          return;
+        }
+        setHoldPrompt({
+          utteranceId: result.data.utterance_id,
+          spokenSummary: result.data.spoken_summary,
+          playbackState:
+            result.data.playback_state === 'requested' ? 'requested' : 'pending'
+        });
+      } catch {
+        setHoldPrompt({
+          utteranceId: null,
+          spokenSummary: '',
+          playbackState: 'failed'
+        });
+      }
+    },
+    [host]
+  );
 
   const submitNow = useCallback(
     async (transcript: VoiceFinalTranscript) => {
@@ -345,6 +421,15 @@ export function useVoiceLiveSession(
           return;
         }
         const turn = (await response.json()) as VoiceTurnResponse;
+        // A8: a 200 whose recorded state is incomplete/failed is not an
+        // answer; keep the session but surface the stable code so the UI
+        // never shows a silent "success" for a turn the server gave up on.
+        if (
+          turn.response_state === 'failed' ||
+          turn.response_state === 'incomplete'
+        ) {
+          setError({ code: 'VOICE_RESPONSE_INCOMPLETE' });
+        }
         onTurnResult?.(turn);
         setPartial(null);
         // Only a dispatched TTS request ('requested') produces audio; a
@@ -437,6 +522,27 @@ export function useVoiceLiveSession(
     setState((current) => (current === 'confirming' ? 'listening' : current));
   }, [setHold]);
 
+  /** Stop playback now (local pause + server cancel); barge-in never waits. */
+  const cancel = useCallback(async () => {
+    const active = sessionRef.current;
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    if (!active) {
+      return;
+    }
+    try {
+      await fetch(resolveUrl(`voice/sessions/${active.id}/cancel`, host), {
+        method: 'POST',
+        headers: jsonHeaders(true),
+        credentials: 'include'
+      });
+    } catch {
+      // Cancellation is best-effort; ending the session always cleans up.
+    }
+    setState('listening');
+  }, [host]);
+
   const handleDataChannelMessage = useCallback(
     (raw: string) => {
       let event: Record<string, unknown>;
@@ -497,22 +603,31 @@ export function useVoiceLiveSession(
         if (!/[\p{L}\p{N}]/u.test(trimmed) || FILLER_ONLY.test(trimmed)) {
           return;
         }
-        // The hold stays exclusive: while a transcript awaits confirmation,
-        // speech never replaces it or submits around it. But a hands-free
-        // technician must be able to DECIDE by voice (battery feedback,
-        // 2026-08-08): an utterance that is exactly a confirm phrase submits
-        // the held transcript, exactly a discard phrase drops it, and
-        // anything else is still ignored so the safety utterance under
-        // review cannot be overwritten by more speech.
+        // The hold stays exclusive: while a transcript awaits review, speech
+        // never submits around it. A hands-free technician decides by voice:
+        // a bare confirm phrase submits the held transcript, a bare discard
+        // phrase drops it, a bare stop phrase stops playback -- and any
+        // OTHER speech is the correction ("fifteen, not fifty"): it becomes
+        // the next revision of the held transcript and is read back again
+        // (voice-UX A9). Nothing is silently dropped.
         if (pendingConfirmRef.current) {
-          const decision = trimmed
-            .toLowerCase()
-            .replace(/[.!?,]+$/g, '')
-            .trim();
+          const held = pendingConfirmRef.current;
+          const decision = normalizeDecisionUtterance(trimmed);
           if (VOICE_CONFIRM_RE.test(decision)) {
             void confirmPending();
           } else if (VOICE_DISCARD_RE.test(decision)) {
             discardPending();
+          } else if (VOICE_STOP_RE.test(decision)) {
+            void cancel();
+          } else {
+            const revision: VoiceFinalTranscript = {
+              ...finalTranscript,
+              revision: (held.revision ?? 1) + 1,
+              supersedes: held.itemId
+            };
+            onFinalTranscript?.(revision);
+            setHold(revision);
+            void requestHoldPrompt(revision);
           }
           return;
         }
@@ -525,13 +640,20 @@ export function useVoiceLiveSession(
         // a repair. A missing confidence field is NOT treated as low
         // confidence — providers may omit it, and holding every utterance
         // would kill the hands-free loop.
-        const critical = detectCriticalSpans(finalTranscript.text).length > 0;
-        const lowConfidence =
-          typeof finalTranscript.confidence === 'number' &&
-          finalTranscript.confidence < confidenceFloorRef.current;
-        if (critical || lowConfidence) {
-          setHold(finalTranscript);
+        if (
+          shouldHoldTranscript(
+            finalTranscript.text,
+            finalTranscript.confidence,
+            confidenceFloorRef.current
+          )
+        ) {
+          const held: VoiceFinalTranscript = {
+            ...finalTranscript,
+            revision: 1
+          };
+          setHold(held);
           setState('confirming');
+          void requestHoldPrompt(held);
           return;
         }
         void submitTranscript(finalTranscript);
@@ -543,7 +665,9 @@ export function useVoiceLiveSession(
       submitTranscript,
       setHold,
       confirmPending,
-      discardPending
+      discardPending,
+      cancel,
+      requestHoldPrompt
     ]
   );
 
@@ -726,26 +850,6 @@ export function useVoiceLiveSession(
     setState(effectiveEnabled ? 'ready' : 'unavailable');
   }, [effectiveEnabled, endInternal]);
 
-  const cancel = useCallback(async () => {
-    const active = sessionRef.current;
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-    if (!active) {
-      return;
-    }
-    try {
-      await fetch(resolveUrl(`voice/sessions/${active.id}/cancel`, host), {
-        method: 'POST',
-        headers: jsonHeaders(true),
-        credentials: 'include'
-      });
-    } catch {
-      // Cancellation is best-effort; ending the session always cleans up.
-    }
-    setState('listening');
-  }, [host]);
-
   const toggleMute = useCallback(() => {
     const stream = streamRef.current;
     if (!stream) {
@@ -778,6 +882,7 @@ export function useVoiceLiveSession(
     toggleMute,
     submitTranscript,
     pendingConfirm,
+    holdPrompt,
     confirmPending,
     discardPending
   };

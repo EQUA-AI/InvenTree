@@ -1,11 +1,15 @@
 /**
- * Critical-term detection for voice transcripts (WS5-T7).
+ * Critical-term detection and the client-side transcript-review hold policy.
  *
- * Adopted policy (2026-07-15): identifiers, fault codes, measurements with
- * units, quantities, negations, and safety terms always require visible
- * confirmation before structured use, and any transcript below the ASR
- * confidence floor (default 0.85, unknown counts as below) is confirmed
- * too. Confirmation produces text input only — never an effect.
+ * Policy (2026-07-15, amended by the voice-UX plan A9 on 2026-09-09):
+ * identifiers, fault codes, measurements with units, quantities, negations,
+ * and safety terms hold a transcript for review before structured use, and
+ * any transcript measurably below the ASR confidence floor (default 0.85) is
+ * held too. Unknown confidence does NOT hold: providers may omit it and
+ * holding every utterance would kill the hands-free loop. A bare decision
+ * utterance ("no", "cancel", "confirm", "stop speaking") is never held: it is
+ * an answer to something, and the server decides what. Review produces text
+ * input only, never an effect.
  */
 
 export const DEFAULT_CONFIDENCE_FLOOR = 0.85;
@@ -62,13 +66,52 @@ export function detectCriticalSpans(text: string): CriticalSpan[] {
   return spans.sort((a, b) => a.start - b.start);
 }
 
-/** Whether a completed transcript must be confirmed before submission. */
-export function needsConfirmation(
+/**
+ * Whole-utterance decision vocabulary for the transcript-review hold. These
+ * are the ONLY words the client interprets itself; everything else is
+ * forwarded to the server, which owns action decisions.
+ */
+export const VOICE_CONFIRM_RE =
+  /^(?:confirm|yes|yes please|continue|send it|submit|go ahead|that's right|correct)$/;
+export const VOICE_DISCARD_RE =
+  /^(?:discard|cancel|no|nope|scratch that|start over|delete|discard it|try again)$/;
+export const VOICE_STOP_RE =
+  /^(?:stop|stop speaking|stop talking|be quiet|quiet|stop listening|end voice)$/;
+
+/** Lower-case, trim, and drop trailing punctuation for decision matching. */
+export function normalizeDecisionUtterance(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?,]+$/g, '')
+    .trim();
+}
+
+/** True when the whole utterance is a decision word (never held for review). */
+export function isBareDecisionUtterance(text: string): boolean {
+  const decision = normalizeDecisionUtterance(text);
+  return (
+    VOICE_CONFIRM_RE.test(decision) ||
+    VOICE_DISCARD_RE.test(decision) ||
+    VOICE_STOP_RE.test(decision)
+  );
+}
+
+/**
+ * Whether a completed transcript must be held for review before submission.
+ * This is the live hook's policy: a bare decision word is forwarded, a
+ * measurably low confidence holds, unknown confidence does not, and critical
+ * spans hold.
+ */
+export function shouldHoldTranscript(
   text: string,
   confidence: number | null,
   confidenceFloor: number = DEFAULT_CONFIDENCE_FLOOR
 ): boolean {
-  if (confidence === null || confidence < confidenceFloor) {
+  if (isBareDecisionUtterance(text)) {
+    return false;
+  }
+  if (typeof confidence === 'number' && confidence < confidenceFloor) {
     return true;
   }
   return detectCriticalSpans(text).length > 0;

@@ -3,16 +3,16 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_CONFIDENCE_FLOOR,
   detectCriticalSpans,
-  needsConfirmation
+  isBareDecisionUtterance,
+  normalizeDecisionUtterance,
+  shouldHoldTranscript
 } from './voiceCriticalTerms';
 
 /**
- * Deterministic coverage for the client-side critical-term detector. These
- * pin the CURRENT behaviour (audit baseline 382d4c1e7) so that the Phase A
- * hold-routing change (task A9) is a visible, reviewed diff rather than an
- * accident: today a bare "no" is a critical span, and the exported
- * `needsConfirmation` treats unknown confidence as low (the live hook does
- * not).
+ * Deterministic coverage for the client-side critical-term detector and the
+ * transcript-review hold policy (voice-UX plan A9): a bare decision word is
+ * never held, unknown confidence never holds, critical spans and measurably
+ * low confidence do.
  */
 
 describe('detectCriticalSpans', () => {
@@ -38,7 +38,7 @@ describe('detectCriticalSpans', () => {
     expect(kinds).toEqual(expect.arrayContaining(['negation', 'safety']));
   });
 
-  it('treats a bare "no" as a negation span (baseline behaviour, changed in A9)', () => {
+  it('still detects a bare "no" as a negation span (the hold policy decides)', () => {
     const spans = detectCriticalSpans('no');
     expect(spans).toHaveLength(1);
     expect(spans[0].kind).toBe('negation');
@@ -58,22 +58,58 @@ describe('detectCriticalSpans', () => {
   });
 });
 
-describe('needsConfirmation (exported helper, unused by the live hook)', () => {
-  it('holds when confidence is below the floor', () => {
+describe('decision vocabulary', () => {
+  it('normalizes case and trailing punctuation', () => {
+    expect(normalizeDecisionUtterance('  Confirm. ')).toBe('confirm');
+    expect(normalizeDecisionUtterance('No!')).toBe('no');
+  });
+
+  it('recognises bare confirm, discard and stop utterances', () => {
+    for (const text of [
+      'yes',
+      'Confirm.',
+      'go ahead',
+      'no',
+      'cancel',
+      'scratch that',
+      'stop speaking',
+      'stop'
+    ]) {
+      expect(isBareDecisionUtterance(text)).toBe(true);
+    }
+  });
+
+  it('does not treat sentences containing decision words as decisions', () => {
+    for (const text of [
+      'no leak found',
+      'cancel the order for pump seals',
+      'stop the pump'
+    ]) {
+      expect(isBareDecisionUtterance(text)).toBe(false);
+    }
+  });
+});
+
+describe('shouldHoldTranscript', () => {
+  it('never holds a bare decision word', () => {
+    expect(shouldHoldTranscript('no', null)).toBe(false);
+    expect(shouldHoldTranscript('cancel', 0.2)).toBe(false);
+    expect(shouldHoldTranscript('confirm', null)).toBe(false);
+  });
+
+  it('holds critical content and measurably low confidence', () => {
+    expect(shouldHoldTranscript('the machine is not isolated', null)).toBe(
+      true
+    );
+    expect(shouldHoldTranscript('fifteen not fifty', null)).toBe(true);
+    expect(shouldHoldTranscript('set it to 50 psi', 0.99)).toBe(true);
     expect(
-      needsConfirmation('hello there', DEFAULT_CONFIDENCE_FLOOR - 0.1)
+      shouldHoldTranscript('hello there', DEFAULT_CONFIDENCE_FLOOR - 0.1)
     ).toBe(true);
   });
 
-  it('holds on unknown confidence (diverges from the hook; reconciled in A9)', () => {
-    expect(needsConfirmation('hello there', null)).toBe(true);
-  });
-
-  it('does not hold confident, non-critical speech', () => {
-    expect(needsConfirmation('hello there', 0.99)).toBe(false);
-  });
-
-  it('holds confident speech that contains a critical value', () => {
-    expect(needsConfirmation('set it to 50 psi', 0.99)).toBe(true);
+  it('does not hold ordinary confident speech or unknown confidence', () => {
+    expect(shouldHoldTranscript('hello there', 0.99)).toBe(false);
+    expect(shouldHoldTranscript('hello there', null)).toBe(false);
   });
 });

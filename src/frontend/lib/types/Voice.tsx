@@ -60,4 +60,15 @@ export interface VoiceFinalTranscript {
   itemId: string;
   confidence: number | null;
   language: string;
+  /** A9: revision number of a held transcript (1 = as first heard). */
+  revision?: number;
+  /** A9: item id of the held transcript this one replaced. */
+  supersedes?: string;
+}
+
+/** A9: the server-spoken review prompt for a held transcript. */
+export interface VoiceHoldPrompt {
+  utteranceId: string | null;
+  spokenSummary: string;
+  playbackState: 'requested' | 'pending' | 'failed';
 }

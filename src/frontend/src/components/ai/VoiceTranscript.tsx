@@ -15,6 +15,7 @@ import { Group, Paper, Text } from '@mantine/core';
 
 import type {
   VoiceFinalTranscript,
+  VoiceHoldPrompt,
   VoicePartialTranscript
 } from '../../../lib/types/Voice';
 import { detectCriticalSpans } from './voiceCriticalTerms';
@@ -24,6 +25,21 @@ export interface VoiceTranscriptProps {
   listening: boolean;
   /** Transcript held by the critical-terms policy, awaiting confirmation. */
   pendingConfirm?: VoiceFinalTranscript | null;
+  /** A9: the server-spoken review prompt for the held transcript. */
+  holdPrompt?: VoiceHoldPrompt | null;
+}
+
+function holdPromptLine(prompt: VoiceHoldPrompt | null | undefined): string {
+  if (!prompt) {
+    return 'Contains critical values — confirm it was heard correctly, or say the correction.';
+  }
+  if (prompt.playbackState === 'requested') {
+    return 'Read back aloud — say confirm, discard, or say the correction.';
+  }
+  if (prompt.playbackState === 'failed') {
+    return 'The spoken prompt could not be played — read it here, then say confirm, discard, or the correction.';
+  }
+  return 'Waiting for the spoken prompt…';
 }
 
 /** Render text with its critical spans emphasised. */
@@ -60,7 +76,8 @@ function HighlightedText({ text }: Readonly<{ text: string }>) {
 export function VoiceTranscript({
   partial,
   listening,
-  pendingConfirm = null
+  pendingConfirm = null,
+  holdPrompt = null
 }: Readonly<VoiceTranscriptProps>) {
   if (pendingConfirm?.text) {
     return (
@@ -73,15 +90,16 @@ export function VoiceTranscript({
       >
         <Group gap='xs' wrap='nowrap' align='flex-start'>
           <Text size='xs' c='orange' fs='italic' style={{ flexShrink: 0 }}>
-            confirm:
+            {pendingConfirm.revision && pendingConfirm.revision > 1
+              ? `confirm (revision ${pendingConfirm.revision}):`
+              : 'confirm:'}
           </Text>
           <Text size='sm'>
             <HighlightedText text={pendingConfirm.text} />
           </Text>
         </Group>
-        <Text size='xs' c='dimmed' mt={4}>
-          Contains critical values — confirm it was heard correctly, or discard
-          and say it again.
+        <Text size='xs' c='dimmed' mt={4} data-testid='voice-hold-prompt-state'>
+          {holdPromptLine(holdPrompt)}
         </Text>
       </Paper>
     );
