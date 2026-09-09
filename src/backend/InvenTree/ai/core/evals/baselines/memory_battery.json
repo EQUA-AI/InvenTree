@@ -5460,6 +5460,916 @@
             "workflow_used_modal": "wf1"
           }
         }
+      },
+      "aimms-dev--0000107": {
+        "battery_sha256": "4cce8840da84c3b9a3d12fbb6ceef2b5fabb3723880b9a35e771464cddd2a54d",
+        "campaign_id": "memory-baseline-dev",
+        "code_revision": "aimms-dev--0000107",
+        "critical_failures": 2,
+        "evaluation_version": "f355b0a06142cd81",
+        "generated_at": "2026-09-09T13:03:58+00:00",
+        "image_digest": "",
+        "parity_status": "fail",
+        "preregistration_sha256": "a8ba8fcb6cc235b24e5cb460cc30b82534d0e77c507c922a5617fe955111efb3",
+        "rails": {
+          "rbac_run": {
+            "accuracy": 1.0,
+            "forbidden_hits": 0,
+            "passed": 35,
+            "skipped_cases": 0,
+            "status": "pass",
+            "turns": 35
+          },
+          "reasoning": {
+            "accuracy": 1.0,
+            "forbidden_hits": 0,
+            "passed": 35,
+            "skipped_cases": 0,
+            "status": "pass",
+            "turns": 35
+          },
+          "routing": {
+            "accuracy": 1.0,
+            "forbidden_hits": 0,
+            "passed": 25,
+            "skipped_cases": 0,
+            "status": "pass",
+            "turns": 25
+          },
+          "wf8": {
+            "accuracy": 0.8692,
+            "forbidden_hits": 2,
+            "passed": 113,
+            "skipped_cases": 0,
+            "status": "fail",
+            "turns": 130
+          }
+        },
+        "runs": 5,
+        "seeds": [
+          20260911,
+          20260912,
+          20260913,
+          20260914,
+          20260915
+        ],
+        "turns": {
+          "M-MEM-01:0": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-01:1": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-01:2": {
+            "deterministic_pass": 0,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 5,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 0,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-01:3": {
+            "deterministic_pass": 1,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 4,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 1,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-02:0": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-02:1": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-02:2": {
+            "deterministic_pass": 0,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 5,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 0,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-03:0": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf2"
+          },
+          "M-MEM-03:1": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf2"
+          },
+          "M-MEM-03:2": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf2"
+          },
+          "M-MEM-04:0": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf3"
+          },
+          "M-MEM-04:1": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf3"
+          },
+          "M-MEM-04:2": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf3"
+          },
+          "M-MEM-05:0": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf1"
+          },
+          "M-MEM-05:1": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf1"
+          },
+          "M-MEM-05:2": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf1"
+          },
+          "M-MEM-06:0": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf1"
+          },
+          "M-MEM-06:1": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf1"
+          },
+          "M-MEM-06:2": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf1"
+          },
+          "M-MEM-07:0": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf3"
+          },
+          "M-MEM-07:1": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf3"
+          },
+          "M-MEM-07:2": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf3"
+          },
+          "M-MEM-08:0": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf2"
+          },
+          "M-MEM-08:1": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "general"
+          },
+          "M-MEM-08:2": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf2"
+          },
+          "M-MEM-08:3": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf2"
+          },
+          "M-MEM-09:0": {
+            "deterministic_pass": 0,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 5,
+              "3": 0,
+              "4": 5,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 0,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-09:1": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-09:2": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:0": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:1": {
+            "deterministic_pass": 4,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 1,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 4,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:10": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:11": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:12": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:13": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:14": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:15": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:16": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:17": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:18": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:19": {
+            "deterministic_pass": 3,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 2,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 3,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:2": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:3": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:4": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:5": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:6": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:7": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:8": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-10:9": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf8"
+          },
+          "M-MEM-11:0": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf2"
+          },
+          "M-MEM-11:1": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf2"
+          },
+          "M-MEM-11:2": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf2"
+          },
+          "M-MEM-11:3": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf2"
+          },
+          "M-MEM-12:0": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 0.0,
+            "workflow_used_modal": "wf1"
+          },
+          "M-MEM-12:1": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf1"
+          },
+          "M-MEM-12:2": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf1"
+          },
+          "M-MEM-12:3": {
+            "deterministic_pass": 5,
+            "layer_fail_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "5": 0,
+              "6": 0
+            },
+            "passes": 5,
+            "runs": 5,
+            "summary_present_rate": 1.0,
+            "workflow_used_modal": "wf1"
+          }
+        }
       }
     },
     "experimental": {
