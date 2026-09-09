@@ -690,6 +690,96 @@ jobs:
         continue-on-error: true
         run: invoke dev.test --runtest='repair tasks voice approvals assets machine_health' --keepdb --disable-pty
 
+  voice-decision-safety:
+    # Voice-UX plan A10 / V-2: the decision-safety regression suite. Grammar
+    # (mixed assent never executes), honest outcomes, the retired HITL rail,
+    # the eligibility table, the prompt endpoint, sandbox seams and the
+    # proposal bridge -- BLOCKING from Phase A onward. Deliberately a narrow
+    # module list so the documented pre-existing fork-suite failures cannot
+    # mask a regression here (LocalDocs/AiUpgrades/VoiceDecisionSafetySuite.md
+    # keeps the local command list in sync with this job).
+    name: Tests - Voice decision safety [blocking]
+    runs-on: ubuntu-24.04
+    needs: ["code-style", "paths-filter"]
+    if: needs.paths-filter.outputs.server == 'true' || needs.paths-filter.outputs.frontend == 'true' || needs.paths-filter.outputs.force == 'true'
+
+    env:
+      INVENTREE_DB_ENGINE: django.db.backends.postgresql
+      INVENTREE_DB_NAME: inventree
+      INVENTREE_DB_USER: inventree
+      INVENTREE_DB_PASSWORD: password
+      INVENTREE_DB_HOST: "127.0.0.1"
+      INVENTREE_DB_PORT: 5432
+      INVENTREE_DEBUG: true
+      INVENTREE_LOG_LEVEL: WARNING
+      INVENTREE_CONSOLE_LOG: false
+      INVENTREE_CACHE_HOST: localhost
+      INVENTREE_PLUGINS_ENABLED: false
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: inventree
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:8
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Environment Setup
+        uses: ./.github/actions/setup
+        with:
+          apt-dependency: gettext poppler-utils libpq-dev postgresql-client
+          pip-dependency: pytest-asyncio psycopg django-redis>=5.0.0
+          dev-install: true
+          update: true
+          npm: true
+      - name: Layer 1 - deterministic island suite
+        run: |
+          cd src/backend/InvenTree
+          DJANGO_SETTINGS_MODULE=ai.core.tests.settings python -m pytest -q -p no:cacheprovider \
+            ai/core/tests/test_voice_write_confirmation.py \
+            ai/core/tests/test_voice_write_gate.py \
+            ai/core/tests/test_voice_write_governance.py \
+            ai/core/tests/test_voice_action_severity.py \
+            ai/core/tests/test_voice_action_policy.py \
+            ai/core/tests/test_voice_tool_actions.py \
+            ai/core/tests/test_voice_wire.py \
+            ai/core/tests/test_voice_status_phrases.py \
+            ai/core/tests/test_voice_prompts.py \
+            ai/core/tests/test_question_answers.py \
+            ai/core/tests/test_voice_read_only_fence.py \
+            ai/core/tests/test_wf8_voice_readonly.py \
+            ai/core/tests/test_voice_injection_guard.py \
+            ai/core/tests/test_hitl_retired.py \
+            ai/core/tests/test_sandbox_seams.py \
+            ai/core/tests/test_email_recipient_policy.py \
+            ai/core/tests/test_approvals_sandbox_seams.py \
+            ai/core/tests/test_normalized_turn_service.py
+      - name: Fresh test database
+        env:
+          PGPASSWORD: password
+        run: psql -h 127.0.0.1 -U inventree -d postgres -c 'DROP DATABASE IF EXISTS test_inventree WITH (FORCE)'
+      - name: Layer 2 - backend integration on PostgreSQL
+        run: invoke dev.test --keepdb --disable-pty --runtest='aichat.tests.test_voice_bridge aichat.tests.test_action_proposal_api aichat.tests.test_seed_voice_action_fixtures voice.tests tasks.tests.test_workorder_services tasks.tests.test_procedure_walkthrough approvals.tests'
+      - name: Wire contract drift
+        run: |
+          cd src/backend/InvenTree
+          python3 manage.py generate_wire_contract --check
+      - name: Frontend unit tests (pure voice modules)
+        run: |
+          cd src/frontend
+          yarn install
+          yarn test:unit
+
   no-egress:
     # M1 prerequisite B6 (GR-26): the AI surface must boot and test with every
     # non-loopback socket denied. Proves the baked tokenizer cache (no runtime
