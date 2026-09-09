@@ -1722,75 +1722,50 @@ class HITLResponse(BaseModel):
 # only to answer legacy clients with the retirement notice.
 
 
-@app.post("/hitl/respond", response_model=HITLResponse)
-async def respond_to_hitl(request: HITLRespondRequest) -> HITLResponse:
+#: Voice-UX plan A4: the retired rail answers HTTP 410 Gone. A 200 with
+#: ``success=false`` let legacy callers that only test ``response.ok`` show an
+#: approval as recorded when nothing happened; a 410 cannot be misread.
+HITL_RETIRED_DETAIL: dict[str, str] = {
+    "code": "HITL_RETIRED",
+    "message": (
+        "The legacy approval rail is retired and performs no action. "
+        "Confirm or reject actions on the authenticated proposal "
+        "surface at /api/aichat/proposals/."
+    ),
+}
+
+
+@app.post("/hitl/respond")
+async def respond_to_hitl(request: HITLRespondRequest) -> None:
+    """Retired: always HTTP 410 Gone (voice-UX plan A4).
+
+    The in-memory HITL rail never dispatched a real domain command and
+    body-identity approval is unacceptable. Reviews and confirmations happen
+    only on the authenticated proposal surface (/api/aichat/proposals/).
+    Authentication is still required to receive the notice, and a legacy
+    body identity is still observed for telemetry.
     """
-    Respond to a Human-in-the-Loop approval request.
-
-    This endpoint is called when the user approves or rejects an action
-    that requires human verification (e.g., creating/deleting items,
-    large batch operations, etc.).
-
-    Request:
-        - request_id: Unique ID of the HITL request
-        - approved: True if approved, False if rejected
-        - reason: Optional reason (especially for rejections)
-        - user_id: User making the decision
-
-    Response:
-        - success: Whether the response was recorded
-        - request_id: The request ID
-        - status: New status (approved/rejected/expired/not_found)
-        - message: Human-readable message
-    """
-    _principal()  # authentication is still required to receive the notice
+    _principal()
     if "user_id" in request.model_fields_set:
         _observe_legacy_identity(request.user_id, source="body")
-
-    # WS7: the in-memory HITL rail is retired. It never dispatched a real
-    # domain command, and body-identity approval is unacceptable. Reviews
-    # and confirmations happen only on the authenticated proposal surface
-    # (/api/aichat/proposals/), which executes canonical work-order commands
-    # and stores real receipts. This endpoint resolves nothing.
-    logger.info("Legacy HITL respond called; rail is retired")
-    return HITLResponse(
-        success=False,
-        request_id=request.request_id,
-        status="retired",
-        message=(
-            "The legacy approval rail is retired and performs no action. "
-            "Confirm or reject actions on the authenticated proposal "
-            "surface at /api/aichat/proposals/."
-        ),
-    )
+    logger.info("Legacy HITL respond called; rail is retired (410)")
+    raise HTTPException(status_code=410, detail=HITL_RETIRED_DETAIL)
 
 
 @app.get("/hitl/pending")
 async def get_pending_hitl(
     thread_id: str | None = None,
     user_id: str | None = None,
-) -> list[dict[str, Any]]:
-    """
-    Get pending HITL requests.
+) -> None:
+    """Retired: always HTTP 410 Gone (voice-UX plan A4).
 
-    Args:
-        thread_id: Filter by thread ID
-        user_id: User ID for filtering
-
-    Returns:
-        List of pending HITL requests
+    The retired rail never surfaces approvable items; the authenticated
+    proposal surface owns pending approvals.
     """
     _observe_legacy_identity(user_id, source="query")
-    repository = _repository(_principal())
-    if thread_id:
-        try:
-            await sync_to_async(repository.get, thread_sensitive=True)(thread_id)
-        except (ThreadNotFound, ScopedThreadRejected):
-            raise HTTPException(status_code=404, detail="Thread not found") from None
-
-    # WS7: the in-memory rail is retired; never surface approvable items
-    # from it. The authenticated proposal surface owns pending approvals.
-    return []
+    _principal()
+    logger.info("Legacy HITL pending called; rail is retired (410)")
+    raise HTTPException(status_code=410, detail=HITL_RETIRED_DETAIL)
 
 
 @app.get("/rate-limit/stats")
