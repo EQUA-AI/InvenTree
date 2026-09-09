@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from ai.core.auth import AIPrincipal, get_current_principal
 from ai.core.config import get_settings
@@ -75,6 +75,19 @@ class VoiceTurnRequest(BaseModel):
     item_id: str
     confidence: float | None = None
     language: str = "en-US"
+
+
+class VoicePromptRequest(BaseModel):
+    """A client request for one allow-listed spoken prompt (voice-UX A6).
+
+    The client never supplies speech text: ``kind`` selects a server template
+    and ``transcript`` (transcript_review only) is the single sanitized slot.
+    """
+
+    kind: Literal["transcript_review", "status"]
+    transcript: str | None = Field(default=None, max_length=4000)
+    item_id: str | None = Field(default=None, max_length=128)
+    status: str | None = Field(default=None, max_length=64)
 
 
 class VoiceSdpRequest(BaseModel):
@@ -274,6 +287,80 @@ async def cancel_voice_playback(session_id: str) -> dict:
 
     canceled = await sync_to_async(_cancel, thread_sensitive=True)()
     return {"id": str(session.id), "canceled_utterances": canceled}
+
+
+@router.post("/sessions/{session_id}/prompts")
+async def request_voice_prompt(session_id: str, request: VoicePromptRequest) -> dict:
+    """Persist and speak one allow-listed prompt on the caller's own session (A6).
+
+    Makes the client-side transcript hold audible without violating
+    persist-before-speak: the text is composed server-side from a fixed
+    template, stored as a ``VoiceUtterance`` and spoken via exact TTS. With no
+    provider channel the prompt is honestly ``pending`` and the client shows
+    the text instead.
+    """
+    settings = _require_voice_enabled()
+    principal = _principal()
+    session = await _owned_session(principal, session_id, settings)
+
+    from ai.core.trusted_context import resolve_actor_locale
+    from ai.core.voice import prompts
+    from ai.core.voice.speech import build_exact_tts_payload
+    from ai.core.voice.wire import VoiceSpokenPayload
+    from voice.models import PlaybackState, VoiceUtteranceType
+    from voice.services import realtime
+
+    locale = await sync_to_async(resolve_actor_locale, thread_sensitive=True)(principal.user_pk)
+    if request.kind == "transcript_review":
+        try:
+            text = prompts.compose_transcript_review(request.transcript, locale)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="VOICE_TRANSCRIPT_INCOMPLETE") from None
+    else:
+        maybe = prompts.status_prompt(request.status, locale)
+        if maybe is None:
+            raise HTTPException(status_code=422, detail="VOICE_PROMPT_UNKNOWN")
+        text = maybe
+
+    # Only completed answers bind a response id (voice_utterance_answer_binds_
+    # response); a prompt is its own row, so re-prompting a revised transcript
+    # for the same item simply persists again.
+    def _persist():
+        return realtime.persist_utterance(
+            session=session,
+            utterance_type=VoiceUtteranceType.PROMPT,
+            spoken_summary=text,
+            policy_version=prompts.PROMPT_POLICY_VERSION,
+        )
+
+    try:
+        utterance = await sync_to_async(_persist, thread_sensitive=True)()
+    except realtime.VoiceSessionError as exc:
+        raise _session_error(exc) from None
+
+    channel = _provider_channel_factory(session) if _provider_channel_factory else None
+    send_control = getattr(channel, "send_control", None)
+    if send_control is not None:
+        try:
+            await send_control(
+                build_exact_tts_payload(
+                    persisted_text=utterance.spoken_summary,
+                    persisted_hash=utterance.spoken_summary_hash,
+                )
+            )
+        except Exception:
+            logger.warning("Prompt TTS dispatch failed", extra={"session": str(session.id)})
+        else:
+            utterance = await sync_to_async(
+                lambda: realtime.mark_playback(utterance=utterance, state=PlaybackState.REQUESTED),
+                thread_sensitive=True,
+            )()
+    return VoiceSpokenPayload(
+        utterance_id=str(utterance.id),
+        spoken_summary=utterance.spoken_summary,
+        spoken_summary_hash=utterance.spoken_summary_hash,
+        playback_state=utterance.playback_state,
+    ).model_dump(mode="json")
 
 
 @router.post("/sessions/{session_id}/sdp")

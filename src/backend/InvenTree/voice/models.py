@@ -57,6 +57,10 @@ class VoiceUtteranceType(models.TextChoices):
     INTERIM_STATUS = 'interim_status', 'Interim status'
     COMPLETED_ANSWER = 'completed_answer', 'Completed answer'
     FAILURE_STATUS = 'failure_status', 'Failure status'
+    #: Voice-UX plan A6: a server-composed, allow-listed prompt requested by
+    #: the client (transcript review, waiting-for-decision), persisted before
+    #: speech like every other utterance.
+    PROMPT = 'prompt', 'Prompt'
 
 
 class PlaybackState(models.TextChoices):

@@ -224,7 +224,8 @@ export type ServerVoiceErrorCode =
   | 'VOICE_TRANSPORT_UNAVAILABLE'
   | 'VOICE_TRANSCRIPT_INCOMPLETE'
   | 'VOICE_RESPONSE_INCOMPLETE'
-  | 'VOICE_SCOPE_CHANGED';
+  | 'VOICE_SCOPE_CHANGED'
+  | 'VOICE_PROMPT_UNKNOWN';
 
 // --- Analysis scope (ai.core.analysis.scope / .wire) ---
 
