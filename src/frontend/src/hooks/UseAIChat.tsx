@@ -302,29 +302,6 @@ export interface AGUIToolCallResultEvent extends AGUIBaseEvent {
   role?: string;
 }
 
-/**
- * HITL (Human-in-the-Loop) event interfaces
- */
-export interface AGUIHITLRequiredEvent extends AGUIBaseEvent {
-  type: AGUIEventType.HITL_REQUIRED;
-  action: string;
-  details: Record<string, unknown>;
-  timeout_seconds: number;
-}
-
-export interface AGUIHITLApprovedEvent extends AGUIBaseEvent {
-  type: AGUIEventType.HITL_APPROVED;
-  action: string;
-  approver: string;
-}
-
-export interface AGUIHITLRejectedEvent extends AGUIBaseEvent {
-  type: AGUIEventType.HITL_REJECTED;
-  action: string;
-  reason: string;
-  rejecter: string;
-}
-
 export type AGUIEvent =
   | AGUIRunStartedEvent
   | AGUIRunFinishedEvent
@@ -336,35 +313,7 @@ export type AGUIEvent =
   | AGUIToolCallArgsEvent
   | AGUIToolCallEndEvent
   | AGUIToolCallResultEvent
-  | AGUIHITLRequiredEvent
-  | AGUIHITLApprovedEvent
-  | AGUIHITLRejectedEvent
   | AGUIBaseEvent;
-
-/**
- * HITL Request structure for UI
- */
-export interface HITLRequest {
-  id: string;
-  action: string;
-  title: string;
-  description: string;
-  details: Record<string, unknown>;
-  items?: Array<{
-    id: string;
-    name: string;
-    quantity: number;
-    unitPrice?: number;
-    total?: number;
-    description?: string;
-  }>;
-  totalValue?: number;
-  currency?: string;
-  riskLevel: 'low' | 'medium' | 'high';
-  timeoutSeconds: number;
-  createdAt: Date;
-  threadId: string;
-}
 
 /**
  * Uploaded file info returned from the server
@@ -966,136 +915,6 @@ function generateThreadTitle(message: string): string {
 }
 
 /**
- * Format HITL action into user-friendly title
- */
-function formatHITLTitle(
-  action: string,
-  details: Record<string, unknown>
-): string {
-  switch (action) {
-    case 'create_purchase_order':
-      return `Create Purchase Order${details.supplier ? ` - ${details.supplier}` : ''}`;
-    case 'create_sales_order':
-      return `Create Sales Order${details.customer ? ` - ${details.customer}` : ''}`;
-    case 'create_build_order':
-      return `Create Build Order${details.part_name ? ` - ${details.part_name}` : ''}`;
-    case 'update_stock':
-      return `Update Stock${details.location ? ` at ${details.location}` : ''}`;
-    case 'delete_item':
-      return `Delete ${details.item_type || 'Item'}`;
-    case 'send_email':
-      return `Send Email${details.recipient ? ` to ${details.recipient}` : ''}`;
-    case 'bulk_operation':
-      return `Bulk ${details.operation || 'Operation'} (${details.count || '?'} items)`;
-    default:
-      return action.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-  }
-}
-
-/**
- * Format HITL action into user-friendly description
- */
-function formatHITLDescription(
-  action: string,
-  details: Record<string, unknown>
-): string {
-  const itemCount =
-    (details.items as unknown[])?.length || details.line_count || 0;
-  const totalValue = details.total_value as number;
-
-  switch (action) {
-    case 'create_purchase_order':
-      return `Create a purchase order with ${itemCount} line items${totalValue ? ` totaling ${totalValue}` : ''}`;
-    case 'create_sales_order':
-      return `Create a sales order with ${itemCount} line items${totalValue ? ` totaling ${totalValue}` : ''}`;
-    case 'create_build_order':
-      return `Start a build order for ${details.quantity || 1} unit(s) of ${details.part_name || 'the part'}`;
-    case 'update_stock':
-      return `Update stock levels for ${itemCount || 1} item(s)`;
-    case 'delete_item':
-      return `Permanently delete ${details.item_name || 'this item'}. This cannot be undone.`;
-    case 'send_email':
-      return `Send an email to ${details.recipient || 'recipient'}`;
-    case 'bulk_operation':
-      return `Perform ${details.operation || 'operation'} on ${details.count || 'multiple'} items`;
-    default:
-      return (
-        (details.description as string) || 'This action requires your approval'
-      );
-  }
-}
-
-/**
- * Determine risk level based on action type and details
- */
-function determineRiskLevel(
-  action: string,
-  details: Record<string, unknown>
-): 'low' | 'medium' | 'high' {
-  // High risk actions
-  if (action === 'delete_item' || action === 'bulk_operation') {
-    return 'high';
-  }
-
-  // Check value thresholds
-  const totalValue = details.total_value as number;
-  if (totalValue !== undefined) {
-    if (totalValue > 10000) return 'high';
-    if (totalValue > 1000) return 'medium';
-  }
-
-  // Check item count
-  const itemCount =
-    (details.items as unknown[])?.length || (details.count as number) || 0;
-  if (itemCount > 50) return 'high';
-  if (itemCount > 10) return 'medium';
-
-  // Default based on action type
-  switch (action) {
-    case 'create_purchase_order':
-    case 'create_sales_order':
-      return 'medium';
-    case 'send_email':
-    case 'external_api':
-      return 'medium';
-    default:
-      return 'low';
-  }
-}
-
-/**
- * Send HITL approval to server
- */
-async function sendHITLApproval(
-  threadId: string,
-  requestId: string,
-  approved: boolean,
-  reason: string,
-  host: string
-): Promise<boolean> {
-  try {
-    const response = await fetch(`${host}/hitl/respond`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...csrfHeaders()
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        thread_id: threadId,
-        request_id: requestId,
-        approved,
-        reason
-      })
-    });
-    return response.ok;
-  } catch (error) {
-    console.error('Error sending HITL response:', error);
-    return false;
-  }
-}
-
-/**
  * Custom hook for AI Chat functionality
  * Designed to integrate with Azure AI Foundry backend
  * Supports multiple conversation threads
@@ -1198,8 +1017,6 @@ export function useAIChat(config: AIChatConfig = {}) {
   const [isSyncing, setIsSyncing] = useState(isLoggedIn);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
-  // HITL (Human-in-the-Loop) state
-  const [pendingHITL, setPendingHITL] = useState<HITLRequest | null>(null);
   // S22/S23: at most one armed question per thread (server single-slot).
   const [pendingQuestion, setPendingQuestion] =
     useState<QuestionPayload | null>(null);
@@ -1209,10 +1026,6 @@ export function useAIChat(config: AIChatConfig = {}) {
   const [answeredQuestionIds, setAnsweredQuestionIds] = useState<Set<string>>(
     () => new Set()
   );
-  const [hitlResult, setHitlResult] = useState<{
-    approved: boolean;
-    action: string;
-  } | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const syncInProgressRef = useRef(false);
@@ -2673,79 +2486,17 @@ export function useAIChat(config: AIChatConfig = {}) {
                               'AbortError'
                             );
 
-                          case AGUIEventType.HITL_REQUIRED: {
-                            // Human-in-the-loop approval required
-                            const hitlEvent = event as AGUIHITLRequiredEvent;
-                            console.debug(
-                              '[AG-UI] HITL required:',
-                              hitlEvent.action
-                            );
-
-                            // Parse action details to create user-friendly request
-                            const details = hitlEvent.details || {};
-                            const hitlRequest: HITLRequest = {
-                              id: `hitl_${Date.now()}`,
-                              action: hitlEvent.action,
-                              title: formatHITLTitle(hitlEvent.action, details),
-                              description: formatHITLDescription(
-                                hitlEvent.action,
-                                details
-                              ),
-                              details,
-                              items: details.items as HITLRequest['items'],
-                              totalValue: details.total_value as number,
-                              currency: (details.currency as string) || 'USD',
-                              riskLevel: determineRiskLevel(
-                                hitlEvent.action,
-                                details
-                              ),
-                              timeoutSeconds: hitlEvent.timeout_seconds || 300,
-                              createdAt: new Date(),
-                              threadId: activeThreadId
-                            };
-
-                            setPendingHITL(hitlRequest);
-                            appendToMessage(
-                              assistantMessage.id,
-                              '\n⏳ Waiting for your approval...\n'
-                            );
-                            break;
-                          }
-
-                          case AGUIEventType.HITL_APPROVED: {
-                            const approvedEvent =
-                              event as AGUIHITLApprovedEvent;
-                            console.debug(
-                              '[AG-UI] HITL approved:',
-                              approvedEvent.action
-                            );
-                            setPendingHITL(null);
-                            setHitlResult({
-                              approved: true,
-                              action: approvedEvent.action
-                            });
-                            appendToMessage(
-                              assistantMessage.id,
-                              `\n✅ Approved: ${approvedEvent.action}\n`
-                            );
-                            break;
-                          }
-
+                          case AGUIEventType.HITL_REQUIRED:
+                          case AGUIEventType.HITL_APPROVED:
                           case AGUIEventType.HITL_REJECTED: {
-                            const rejectedEvent =
-                              event as AGUIHITLRejectedEvent;
+                            // Voice-UX plan A7: the legacy HITL rail is
+                            // retired (its endpoint answers 410). Nothing
+                            // emits these today; if one ever arrives it is
+                            // logged and NEVER rendered as approvable --
+                            // reviews live on the proposal surface.
                             console.debug(
-                              '[AG-UI] HITL rejected:',
-                              rejectedEvent.action
-                            );
-                            setPendingHITL(null);
-                            setHitlResult({
-                              approved: false,
-                              action: rejectedEvent.action
-                            });
-                            appendToMessage(
-                              assistantMessage.id,
-                              `\n❌ Rejected: ${rejectedEvent.action}\n`
+                              '[AG-UI] legacy HITL event ignored (rail retired):',
+                              event.type
                             );
                             break;
                           }
@@ -3048,66 +2799,6 @@ export function useAIChat(config: AIChatConfig = {}) {
   }, []);
 
   /**
-   * Handle HITL approval
-   */
-  const approveHITL = useCallback(
-    async (requestId: string, comment?: string) => {
-      if (!pendingHITL) return;
-
-      const success = await sendHITLApproval(
-        activeThreadId,
-        requestId,
-        true,
-        comment || '',
-        aiHost
-      );
-
-      if (success) {
-        setHitlResult({ approved: true, action: pendingHITL.action });
-        setPendingHITL(null);
-      }
-    },
-    [pendingHITL, activeThreadId, aiHost]
-  );
-
-  /**
-   * Handle HITL rejection
-   */
-  const rejectHITL = useCallback(
-    async (requestId: string, reason: string) => {
-      if (!pendingHITL) return;
-
-      const success = await sendHITLApproval(
-        activeThreadId,
-        requestId,
-        false,
-        reason,
-        aiHost
-      );
-
-      if (success) {
-        setHitlResult({ approved: false, action: pendingHITL.action });
-        setPendingHITL(null);
-      }
-    },
-    [pendingHITL, activeThreadId, aiHost]
-  );
-
-  /**
-   * Dismiss HITL request without action
-   */
-  const dismissHITL = useCallback(() => {
-    setPendingHITL(null);
-  }, []);
-
-  /**
-   * Clear HITL result banner
-   */
-  const clearHITLResult = useCallback(() => {
-    setHitlResult(null);
-  }, []);
-
-  /**
    * S1: replay the turn that bounced on a scope conflict. The replay is an
    * ordinary send (new idempotency key, fresh observed version); the
    * duplicate user bubble is an accepted v1 tradeoff.
@@ -3168,14 +2859,6 @@ export function useAIChat(config: AIChatConfig = {}) {
     pendingQuestion,
     clearPendingQuestion,
     armQuestion,
-    answeredQuestionIds,
-
-    // HITL (Human-in-the-Loop)
-    pendingHITL,
-    hitlResult,
-    approveHITL,
-    rejectHITL,
-    dismissHITL,
-    clearHITLResult
+    answeredQuestionIds
   };
 }

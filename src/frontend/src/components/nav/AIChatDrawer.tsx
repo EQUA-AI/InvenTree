@@ -66,7 +66,6 @@ import { useVoiceLiveSession } from '../../hooks/useVoiceLiveSession';
 import { useAIChatState } from '../../states/AIChatState';
 import { useLocalState } from '../../states/LocalState';
 import { ChatActionProposalList } from '../ai/ChatActionProposals';
-import { HITLApprovalCard, HITLResultBanner } from '../ai/HITLApprovalModal';
 import { QuestionCard } from '../ai/QuestionCard';
 import { VoiceContextBadge } from '../ai/VoiceContextBadge';
 import { VoiceSessionControl } from '../ai/VoiceSessionControl';
@@ -1311,13 +1310,6 @@ export function AIChatDrawer({
     pendingQuestion,
     armQuestion,
     answeredQuestionIds,
-    // HITL (Human-in-the-Loop) approval
-    pendingHITL,
-    hitlResult,
-    approveHITL,
-    rejectHITL,
-    dismissHITL,
-    clearHITLResult,
     uploadFile
   } = useAIChat();
 
@@ -1960,26 +1952,10 @@ export function AIChatDrawer({
                 />
               ))}
 
-              {/* HITL Result Banner - shows approval/rejection confirmation */}
-              {hitlResult && (
-                <HITLResultBanner
-                  approved={hitlResult.approved}
-                  action={hitlResult.action}
-                  onDismiss={clearHITLResult}
-                />
-              )}
-
-              {/* HITL Approval Card - shows when AI requests human approval */}
-              {pendingHITL && (
-                <HITLApprovalCard
-                  request={pendingHITL}
-                  onApprove={(requestId) => approveHITL(requestId)}
-                  onReject={(requestId, reason) =>
-                    rejectHITL(requestId, reason)
-                  }
-                  onDismiss={() => dismissHITL()}
-                />
-              )}
+              {/* Voice-UX plan A7: durable action proposals replace the
+                  retired approval card on the chat tab (renders nothing
+                  when there is nothing to decide). */}
+              <ChatActionProposalList />
 
               {/* Error message */}
               {error && (
