@@ -531,6 +531,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='B7 guided procedure walkthrough',
     ),
     FlagEntry(
+        'FEATURE_VOICE_ACTION_POLICY_ENFORCE',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_voice_action_policy_enforce',
+        description='Voice-UX A5: refuse voice execution of actions whose policy row disallows it',
+    ),
+    FlagEntry(
         'FEATURE_TOKEN_STREAMING',
         'bool',
         False,
