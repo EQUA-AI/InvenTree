@@ -38,7 +38,9 @@
         "lib": "tsc --p ./tsconfig.lib.json && vite --config vite.lib.config.ts build",
         "preview": "vite preview",
         "extract": "lingui extract",
-        "compile": "lingui compile --typescript"
+        "compile": "lingui compile --typescript",
+        "test:unit": "vitest run",
+        "test:unit:watch": "vitest"
     },
     "dependencies": {
         "@ag-ui/client": "0.0.57",
@@ -143,7 +145,8 @@
         "vite-plugin-babel-macros": "^1.0.6",
         "vite-plugin-dts": "^5.0.2",
         "vite-plugin-externals": "^0.6.2",
-        "vite-plugin-istanbul": "^9.0.1"
+        "vite-plugin-istanbul": "^9.0.1",
+        "vitest": "^3.2"
     },
     "resolutions": {
         "undici": "^6.24.0",

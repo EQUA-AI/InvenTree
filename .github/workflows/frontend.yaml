@@ -92,6 +92,28 @@ jobs:
           path: src/backend/InvenTree/web/static/web
           include-hidden-files: true
 
+  unit:
+    name: Unit (vitest + tsc)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: ["paths-filter"]
+    if: github.ref == 'refs/heads/master' || needs.paths-filter.outputs.frontend == 'true' || needs.paths-filter.outputs.force == 'true'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Environment Setup
+        uses: ./.github/actions/setup
+        with:
+          npm: true
+      - name: Install dependencies
+        run: cd src/frontend && yarn install
+      - name: Typecheck
+        run: cd src/frontend && yarn tsc --noEmit
+      - name: Unit tests (pure modules)
+        run: cd src/frontend && yarn test:unit
+
   firefox:
     name: Tests [Firefox ${{ matrix.shard }} / 2]
     runs-on: ubuntu-24.04
