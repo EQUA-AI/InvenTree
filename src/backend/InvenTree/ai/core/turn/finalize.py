@@ -81,6 +81,10 @@ async def enrich_canonical(
     )
     if run.question_resolution is not None:
         canonical["question_resolution"] = run.question_resolution.audit_payload()
+    if run.pre_speech_status:
+        # A3: an unrelated reply set a pending write aside; the voice route
+        # speaks this before the routed answer.
+        canonical["pre_speech_status"] = run.pre_speech_status
     # Live alias: the arming and manifest seams append to capture.events
     # and must land in the canonical; the coalesced freeze happens
     # immediately before the terminal write.

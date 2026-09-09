@@ -517,17 +517,28 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
         interim_spoken = await _finish_interim()
         spoken: dict[str, Any] | None = None
         speak_flag = bool((result.canonical_response or {}).get("speak", False))
+        # A3: a set-aside status is spoken BEFORE the answer. The provider plays
+        # one app response at a time, so it rides in the same utterance as a
+        # prefix (answers) or as one combined allow-listed phrase (statuses).
+        pre_speech = result.pre_speech_status or None
         if (
             result.response_state == TurnState.COMPLETE
             and result.spoken_summary.strip()
             and speak_flag
         ):
+            spoken_text = result.spoken_summary
+            if pre_speech:
+                prefix = status_phrases.localized_status_phrase(
+                    pre_speech, getattr(trusted_context, "locale", "en")
+                )
+                if prefix in status_phrases.ALLOWED_STATUS_PHRASES:
+                    spoken_text = f"{prefix} {result.spoken_summary}"
 
             def _persist():
                 return realtime.persist_utterance(
                     session=session,
                     utterance_type=VoiceUtteranceType.COMPLETED_ANSWER,
-                    spoken_summary=result.spoken_summary,
+                    spoken_summary=spoken_text,
                     response_id=result.turn_id,
                     turn_id=result.turn_id,
                 )
@@ -578,12 +589,22 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
             # The answer completed but has no schema-valid spoken form. Say so:
             # a silent turn forces the technician to look at the screen.
             await _clear_active_speech(interim_spoken)
-            await _speak_status(VoiceUtteranceType.INTERIM_STATUS, status_phrases.ANSWER_IN_CHAT)
+            await _speak_status(
+                VoiceUtteranceType.INTERIM_STATUS,
+                status_phrases.combine_status(pre_speech, status_phrases.ANSWER_IN_CHAT),
+            )
         elif result.response_state in (TurnState.INCOMPLETE, TurnState.FAILED):
             # Bounded-out or terminal-replayed turns return 200 without raising;
             # an eyes-free user still needs to hear that the turn ended.
             await _clear_active_speech(interim_spoken)
-            await _speak_status(VoiceUtteranceType.FAILURE_STATUS, status_phrases.ANSWER_INCOMPLETE)
+            await _speak_status(
+                VoiceUtteranceType.FAILURE_STATUS,
+                status_phrases.combine_status(pre_speech, status_phrases.ANSWER_INCOMPLETE),
+            )
+        elif pre_speech:
+            # Nothing else to say, but the set-aside must still be audible.
+            await _clear_active_speech(interim_spoken)
+            await _speak_status(VoiceUtteranceType.INTERIM_STATUS, pre_speech)
 
         # S43: built through the wire model (see wire.py) so the generated
         # TS contract and this payload can never drift. pending_question

@@ -97,8 +97,15 @@ def test_unrelated_turn_routes_normally_instead_of_being_cancelled():
         )
     )
 
-    # None => the caller proceeds with normal routing and the question is answered.
-    assert result is None
+    # A3: the caller proceeds with normal routing and the question is answered,
+    # but the set-aside is audible (a status phrase spoken first) and audited.
+    from ai.core.voice import status_phrases
+
+    assert result is not None
+    assert result.route_normally is True
+    assert result.executed is False
+    assert result.spoken == status_phrases.SET_ASIDE
+    assert result.audit_events[-1].reason == "abandoned_by_unrelated_turn"
     # ...and the proposal is gone, so a later bare "yes" cannot revive it.
     assert store.take(7) is None
     assert executor.calls == []

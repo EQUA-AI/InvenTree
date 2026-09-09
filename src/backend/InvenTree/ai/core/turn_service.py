@@ -101,6 +101,9 @@ class NormalizedTurnResult:
     #: S22: the QUESTION payload when this turn ended by asking one -- the
     #: voice route surfaces it per-turn so the client can render the card.
     pending_question: dict[str, Any] | None = None
+    #: A3: a status phrase to speak before the routed answer (a pending voice
+    #: write was set aside by this unrelated turn). None otherwise.
+    pre_speech_status: str | None = None
 
 
 def _log_voice_write_confirmation_shadow(content: str, thread_id: int) -> None:
@@ -782,6 +785,7 @@ class NormalizedTurnService:
         thread_id: Any,
         turn_id: Any,
         emitter: Any,
+        run: Any = None,
     ) -> dict[str, Any] | None:
         """Intercept a confirmation reply to a pending write, before routing.
 
@@ -802,6 +806,13 @@ class NormalizedTurnService:
             return None
         for event in resolution.audit_events:
             logger.info("voice.write_confirmation.audit %s", event.to_dict())
+        if resolution.route_normally:
+            # A3: the pending write was set aside by an unrelated reply. The
+            # turn routes normally; the voice route speaks the set-aside
+            # status first so the technician hears that nothing was applied.
+            if run is not None:
+                run.pre_speech_status = resolution.spoken
+            return None
         return await self._canonical_for_voice_write(
             thread_id=thread_id,
             turn_id=turn_id,
@@ -1703,6 +1714,9 @@ class NormalizedTurnService:
             route=dict(route) if isinstance(route, dict) else None,
             pending_question=(
                 dict(pending_question) if isinstance(pending_question, dict) else None
+            ),
+            pre_speech_status=(
+                str(canonical["pre_speech_status"]) if canonical.get("pre_speech_status") else None
             ),
         )
 

@@ -30,6 +30,18 @@ ANSWER_INCOMPLETE = "I could not finish that answer. Please try again."
 #: session was bound to it (§13.3 pattern 10); the session refuses further
 #: turns until the user acknowledges by restarting voice.
 SCOPE_CHANGED = "The machine selection changed. Please restart voice to continue."
+#: Voice-UX plan A3: spoken when an unrelated reply set a pending change aside.
+#: The change was NOT applied; the reply is then answered normally. Because
+#: the provider plays one app response at a time, the set-aside is spoken as
+#: a prefix of whatever follows (see ``combine_status``).
+SET_ASIDE = "I set the pending change aside; it was not applied."
+SET_ASIDE_ANSWER_IN_CHAT = (
+    "I set the pending change aside; it was not applied. The answer is ready in the chat."
+)
+SET_ASIDE_ANSWER_INCOMPLETE = (
+    "I set the pending change aside; it was not applied. "
+    "I could not finish that answer. Please try again."
+)
 
 #: Seconds of processing before the thinking phrase is spoken. Short turns
 #: finish first and are never preceded by filler.
@@ -51,8 +63,30 @@ LOCALIZED_STATUS_PHRASES: dict[str, dict[str, str]] = {
         TURN_FAILED: "Lo siento, no pude procesarlo. Inténtalo de nuevo.",
         ANSWER_INCOMPLETE: ("No pude terminar esa respuesta. Inténtalo de nuevo."),
         SCOPE_CHANGED: ("La selección de máquinas cambió. Reinicia la voz para continuar."),
+        SET_ASIDE: "Dejé el cambio pendiente a un lado; no se aplicó.",
+        SET_ASIDE_ANSWER_IN_CHAT: (
+            "Dejé el cambio pendiente a un lado; no se aplicó. La respuesta está lista en el chat."
+        ),
+        SET_ASIDE_ANSWER_INCOMPLETE: (
+            "Dejé el cambio pendiente a un lado; no se aplicó. "
+            "No pude terminar esa respuesta. Inténtalo de nuevo."
+        ),
     },
 }
+
+#: (pre-speech status, base status) -> the single allow-listed phrase that
+#: says both, so no second ``response.create`` cancels the first.
+_PRE_SPEECH_COMBINATIONS: dict[tuple[str, str], str] = {
+    (SET_ASIDE, ANSWER_IN_CHAT): SET_ASIDE_ANSWER_IN_CHAT,
+    (SET_ASIDE, ANSWER_INCOMPLETE): SET_ASIDE_ANSWER_INCOMPLETE,
+}
+
+
+def combine_status(pre_speech: str | None, base: str) -> str:
+    """The one phrase that speaks ``pre_speech`` then ``base`` (or ``base`` alone)."""
+    if not pre_speech:
+        return base
+    return _PRE_SPEECH_COMBINATIONS.get((pre_speech, base), base)
 
 
 def localized_status_phrase(phrase: str, locale: str | None) -> str:
@@ -72,6 +106,15 @@ def localized_status_phrase(phrase: str, locale: str | None) -> str:
 
 #: The complete allow-list; anything not present here is not a status phrase.
 ALLOWED_STATUS_PHRASES = frozenset(
-    {THINKING, ANSWER_IN_CHAT, TURN_FAILED, ANSWER_INCOMPLETE, SCOPE_CHANGED}
+    {
+        THINKING,
+        ANSWER_IN_CHAT,
+        TURN_FAILED,
+        ANSWER_INCOMPLETE,
+        SCOPE_CHANGED,
+        SET_ASIDE,
+        SET_ASIDE_ANSWER_IN_CHAT,
+        SET_ASIDE_ANSWER_INCOMPLETE,
+    }
     | {localized for table in LOCALIZED_STATUS_PHRASES.values() for localized in table.values()}
 )

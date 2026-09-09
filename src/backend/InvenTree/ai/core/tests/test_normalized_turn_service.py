@@ -1485,3 +1485,68 @@ class TurnBoundaryConnectionHygieneTests(SimpleTestCase):
 
         self.assertEqual(release_threads, latch_thread, "released on the latch thread")
         self.assertNotIn(threading.get_ident(), release_threads)
+
+
+class VoiceWriteSetAsideTests(SimpleTestCase):
+    """A3: an unrelated reply sets the pending write aside, audibly, and routes on."""
+
+    def test_route_normally_resolution_sets_pre_speech_status_and_returns_none(self) -> None:
+        from types import SimpleNamespace
+
+        from ai.core.voice import status_phrases
+        from ai.core.voice.write_gate import WriteResolutionResult
+
+        class _Gate:
+            async def resolve_pending(self, content, *, actor, trusted_context, thread_id):
+                return WriteResolutionResult(
+                    spoken=status_phrases.SET_ASIDE,
+                    executed=False,
+                    audit_events=(),
+                    route_normally=True,
+                )
+
+        service = _TestTurnService(
+            workflow_factory=lambda: None,
+            repository_factory=lambda actor, context: _Repository(),  # noqa: ARG005
+            voice_write_gate=_Gate(),
+        )
+        run = SimpleNamespace(pre_speech_status=None)
+        settings = SimpleNamespace(feature_voice_write_confirmation=True)
+        with mock.patch("ai.core.config.get_settings", return_value=settings):
+            canonical = asyncio.run(
+                service._resolve_pending_voice_write(
+                    actor=_principal(),
+                    trusted_context=_context(),
+                    content="how many fasteners are in stock?",
+                    modality="voice",
+                    thread_id=1,
+                    turn_id=1,
+                    emitter=None,
+                    run=run,
+                )
+            )
+
+        self.assertIsNone(canonical)
+        self.assertEqual(run.pre_speech_status, status_phrases.SET_ASIDE)
+
+    def test_result_carries_pre_speech_status_from_the_canonical(self) -> None:
+        service = _TestTurnService(
+            workflow_factory=lambda: None,
+            repository_factory=lambda actor, context: _Repository(),  # noqa: ARG005
+        )
+        result = service._result_from_canonical(
+            thread_id="t",
+            turn_id="u",
+            canonical={
+                "message": "hi",
+                "pre_speech_status": "I set the pending change aside; it was not applied.",
+            },
+            replayed=False,
+        )
+        self.assertEqual(
+            result.pre_speech_status, "I set the pending change aside; it was not applied."
+        )
+        plain = service._result_from_canonical(
+            thread_id="t", turn_id="u", canonical={"message": "hi"}, replayed=False
+        )
+        self.assertIsNone(plain.pre_speech_status)

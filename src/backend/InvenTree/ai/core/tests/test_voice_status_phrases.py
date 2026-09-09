@@ -253,3 +253,98 @@ def test_missing_channel_keeps_turns_working_without_status_speech():
     result = _submit(principal, settings, created["id"], _SilentTurnService())
     assert result["response_state"] == "complete"
     assert result["spoken"] is None
+
+
+# --------------------------------------------------------------------------- #
+# A3: an unrelated reply that set a pending write aside is audible             #
+# --------------------------------------------------------------------------- #
+class _SetAsideSilentTurnService:
+    async def process(self, **kwargs):
+        return NormalizedTurnResult(
+            thread_id=str(kwargs["thread_id"]),
+            turn_id="turn-aside-silent",
+            message="A long answer with no spoken form.",
+            workflow_used="wf1",
+            spoken_summary="",
+            canonical_response={"speak": False, "response_state": "complete"},
+            pre_speech_status=status_phrases.SET_ASIDE,
+        )
+
+
+class _SetAsideSpokenTurnService:
+    async def process(self, **kwargs):
+        return NormalizedTurnResult(
+            thread_id=str(kwargs["thread_id"]),
+            turn_id="turn-aside-spoken",
+            message="Twelve fasteners are in stock.",
+            workflow_used="wf1",
+            spoken_summary="Twelve fasteners are in stock.",
+            canonical_response={"speak": True, "response_state": "complete"},
+            pre_speech_status=status_phrases.SET_ASIDE,
+        )
+
+
+def test_set_aside_phrases_are_allow_listed_and_localized():
+    for phrase in (
+        status_phrases.SET_ASIDE,
+        status_phrases.SET_ASIDE_ANSWER_IN_CHAT,
+        status_phrases.SET_ASIDE_ANSWER_INCOMPLETE,
+    ):
+        assert phrase in status_phrases.ALLOWED_STATUS_PHRASES
+        localized = status_phrases.localized_status_phrase(phrase, "es")
+        assert localized != phrase
+        assert localized in status_phrases.ALLOWED_STATUS_PHRASES
+    assert "not applied" in status_phrases.SET_ASIDE
+
+
+def test_combine_status_yields_one_allow_listed_phrase():
+    assert status_phrases.combine_status(None, status_phrases.ANSWER_IN_CHAT) == (
+        status_phrases.ANSWER_IN_CHAT
+    )
+    assert (
+        status_phrases.combine_status(status_phrases.SET_ASIDE, status_phrases.ANSWER_IN_CHAT)
+        == status_phrases.SET_ASIDE_ANSWER_IN_CHAT
+    )
+    assert (
+        status_phrases.combine_status(status_phrases.SET_ASIDE, status_phrases.ANSWER_INCOMPLETE)
+        == status_phrases.SET_ASIDE_ANSWER_INCOMPLETE
+    )
+    # An unknown combination never invents an unlisted phrase.
+    assert status_phrases.combine_status("something else", status_phrases.ANSWER_IN_CHAT) == (
+        status_phrases.ANSWER_IN_CHAT
+    )
+
+
+def test_set_aside_is_spoken_before_a_silent_answer():
+    user = _user()
+    settings = _settings([user.pk])
+    principal = _principal(user)
+    created = _session_for(principal, settings)
+    channel = RecordingChannel()
+
+    routes.set_provider_channel_factory(lambda session: channel)  # noqa: ARG005
+    try:
+        result = _submit(principal, settings, created["id"], _SetAsideSilentTurnService())
+    finally:
+        routes.set_provider_channel_factory(None)
+
+    assert result["spoken"] is None
+    assert _spoken_texts(channel.sent) == [status_phrases.SET_ASIDE_ANSWER_IN_CHAT]
+
+
+def test_set_aside_prefixes_a_spoken_answer_in_one_utterance():
+    user = _user()
+    settings = _settings([user.pk])
+    principal = _principal(user)
+    created = _session_for(principal, settings)
+    channel = RecordingChannel()
+
+    routes.set_provider_channel_factory(lambda session: channel)  # noqa: ARG005
+    try:
+        result = _submit(principal, settings, created["id"], _SetAsideSpokenTurnService())
+    finally:
+        routes.set_provider_channel_factory(None)
+
+    expected = f"{status_phrases.SET_ASIDE} Twelve fasteners are in stock."
+    assert result["spoken"]["spoken_summary"] == expected
+    assert _spoken_texts(channel.sent) == [expected]

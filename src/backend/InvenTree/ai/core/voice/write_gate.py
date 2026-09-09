@@ -32,6 +32,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from ai.core.tools.read_only import confirmed_write_exception
+from ai.core.voice import status_phrases
 from ai.core.voice.confirmation import (
     ACCEPTED_PENDING_PHRASE,
     AWAITING_REVIEW_PHRASE,
@@ -170,6 +171,10 @@ class WriteResolutionResult:
     outcome: VoiceWriteOutcome | None = None
     effect_committed: bool | None = None
     receipt_ref: str = ""
+    #: A3: the reply was unrelated, so the pending write was set aside and the
+    #: turn must still be routed normally; ``spoken`` is then a status phrase
+    #: to say BEFORE the routed answer, not a captured-turn canonical.
+    route_normally: bool = False
 
 
 _OUTCOME_PHRASES: dict[VoiceWriteOutcome, str] = {
@@ -395,9 +400,24 @@ class VoiceWriteGate:
                     )
                 # Otherwise the speaker moved on. The proposal is abandoned
                 # (consumed above, so it can never be confirmed later), but the
-                # turn is theirs: returning "Cancelled." here would swallow a
-                # real question and leave it unanswered. Route it normally.
-                return None
+                # turn is theirs: a captured "Cancelled." would swallow a real
+                # question. Route it normally -- and say, audibly and in the
+                # audit trail, that the change was set aside (voice-UX A3).
+                events.append(
+                    _event(
+                        VoiceWriteAuditEventType.CANCELLED,
+                        stored.pending.action,
+                        thread_id=thread_id,
+                        nonce=stored.pending.nonce,
+                        reason="abandoned_by_unrelated_turn",
+                    )
+                )
+                return WriteResolutionResult(
+                    spoken=status_phrases.SET_ASIDE,
+                    executed=False,
+                    audit_events=tuple(events),
+                    route_normally=True,
+                )
             return WriteResolutionResult(
                 spoken=outcome.spoken, executed=False, audit_events=tuple(events)
             )

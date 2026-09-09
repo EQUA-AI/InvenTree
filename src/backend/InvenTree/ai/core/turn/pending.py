@@ -71,6 +71,7 @@ async def resolve_preconditions(service: NormalizedTurnService, run: TurnRun) ->
             thread_id=run.thread.pk,
             turn_id=run.turn.pk,
             emitter=run.emitter,
+            run=run,
         )
         if run.write_canonical is not None:
             # A write confirmation captured the turn; the question slot

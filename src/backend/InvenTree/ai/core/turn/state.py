@@ -51,6 +51,9 @@ class TurnRun:
     # Pending-resolution stage outputs.
     injection_canonical: dict[str, Any] | None = None
     write_canonical: dict[str, Any] | None = None
+    #: A3: a status phrase to speak BEFORE the routed answer (an unrelated
+    #: reply set a pending write aside). None when nothing was set aside.
+    pre_speech_status: str | None = None
     question_resolution: QuestionResolution | None = None
     # Routing stage outputs.
     routing_content: str = ""
