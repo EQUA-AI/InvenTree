@@ -1732,10 +1732,12 @@ class AIRetentionOutbox(models.Model):
     rows are the failure metric the operations report surfaces.
     """
 
-    #: ``upload_dir`` today; ``search_index`` reserved for thread-linked
+    #: Registered in ``aichat.services.retention.OUTBOX_KINDS``:
+    #: ``upload_dir`` and ``thread_summary`` (M2 PR 3: re-apply a thread's
+    #: summary exclusions); ``search_index`` reserved for thread-linked
     #: index artifacts added later.
     kind = models.CharField(max_length=32)
-    #: The deletion target: the thread id for ``upload_dir``.
+    #: The target: the thread id for ``upload_dir`` and ``thread_summary``.
     reference = models.CharField(max_length=255)
     state = models.CharField(max_length=16, default='pending')
     attempts = models.PositiveSmallIntegerField(default=0)

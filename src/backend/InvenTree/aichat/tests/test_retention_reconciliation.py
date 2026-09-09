@@ -830,6 +830,145 @@ class UploadSweepTests(RetentionEnvMixin, TestCase):
         self.assertEqual(AIRetentionOutbox.objects.get().state, 'done')
 
 
+class OutboxRegistryTests(RetentionEnvMixin, TestCase):
+    """M2 PR 3: the outbox kind registry (plan §5.4 layer 2)."""
+
+    def setUp(self):
+        """Point MEDIA_ROOT at a scratch directory."""
+        self.media_root = tempfile.mkdtemp(prefix='retention-media-')
+        self.override = override_settings(MEDIA_ROOT=self.media_root)
+        self.override.enable()
+        self.addCleanup(self.override.disable)
+
+    def _drain_to_cap(self):
+        """Drive the single pending row to the attempt cap."""
+        report = retention.process_retention_outbox()
+        row = AIRetentionOutbox.objects.get()
+        AIRetentionOutbox.objects.filter(pk=row.pk).update(
+            attempts=retention.OUTBOX_MAX_ATTEMPTS - 1,
+            next_attempt_at=timezone.now() - timedelta(minutes=1),
+        )
+        report = retention.process_retention_outbox()
+        row.refresh_from_db()
+        return report, row
+
+    def test_registry_lists_upload_dir_and_thread_summary(self):
+        """Both kinds are registered with a handler and a probe."""
+        self.assertEqual(set(retention.OUTBOX_KINDS), {'upload_dir', 'thread_summary'})
+        for name, kind in retention.OUTBOX_KINDS.items():
+            self.assertEqual(kind.name, name)
+            self.assertTrue(callable(kind.handler))
+            self.assertTrue(callable(kind.probe))
+        with self.assertRaises(ValueError):
+            retention.register_outbox_kind(retention.OUTBOX_KINDS['upload_dir'])
+
+    def test_unknown_kind_still_fails_permanently(self):
+        """An unregistered kind backs off and fails at the attempt cap."""
+        retention.enqueue_outbox('bogus', 'x')
+        report, row = self._drain_to_cap()
+        self.assertEqual(report['failed_permanent'], 1)
+        self.assertEqual(row.state, 'failed_permanent')
+        self.assertEqual(row.last_error_code, 'unknown_kind')
+
+    def test_invalid_reference_code_preserved(self):
+        """A reference failing containment is ``invalid_reference``, never rmtree."""
+        retention.enqueue_outbox('upload_dir', '../x')
+        with mock.patch.object(retention.shutil, 'rmtree') as rmtree:
+            report = retention.process_retention_outbox()
+        rmtree.assert_not_called()
+        self.assertEqual(report['retried'], 1)
+        self.assertEqual(
+            AIRetentionOutbox.objects.get().last_error_code, 'invalid_reference'
+        )
+
+    def test_upload_dir_probe(self):
+        """The residual probe counts a present dir and never an invalid reference."""
+        probe = retention.OUTBOX_KINDS['upload_dir'].probe
+        self.assertEqual(probe('thread_missing'), 0)
+        (retention._upload_root() / 'thread_present').mkdir(parents=True)
+        self.assertEqual(probe('thread_present'), 1)
+        self.assertEqual(probe('../x'), 0)
+
+    def _thread_with_exclusion(self):
+        import json
+
+        from ai.core.memory.summary_body import fingerprint, upgrade_body
+
+        _, _, thread = self.build_thread('summary-owner')
+        body = upgrade_body(
+            {
+                'label': 'Motor',
+                'machine_facts': ['the motor is 5.5 kW', 'belt ok'],
+                'exclusions': [
+                    {
+                        'fingerprint': fingerprint('the motor is 5.5 kW'),
+                        'item_id': 'mf1',
+                        'created_seq': 1,
+                        'reason': 'forget',
+                    }
+                ],
+            },
+            created_seq=1,
+        )
+        ChatThread.objects.filter(pk=thread.pk).update(
+            summary='Motor\n' + json.dumps(body), summary_through_sequence=1
+        )
+        return thread
+
+    def test_thread_summary_kind_reapplies_exclusions(self):
+        """A hand-edited body with an excluded item active again converges."""
+        from aichat.tasks import parse_summary_body
+
+        thread = self._thread_with_exclusion()
+        probe = retention.OUTBOX_KINDS['thread_summary'].probe
+        self.assertEqual(probe(thread.pk), 1)
+        retention.enqueue_outbox('thread_summary', thread.pk)
+        report = retention.process_retention_outbox()
+        self.assertEqual(report['done'], 1)
+        self.assertEqual(AIRetentionOutbox.objects.get().state, 'done')
+        thread.refresh_from_db()
+        body = parse_summary_body(thread.summary)
+        self.assertEqual(body['machine_facts'][0]['lifecycle'], 'forgotten')
+        self.assertEqual(body['machine_facts'][1]['lifecycle'], 'active')
+        self.assertEqual(body['narrative'], '')
+        self.assertEqual(probe(thread.pk), 0)
+
+    def test_thread_summary_missing_thread_is_success(self):
+        """A purged thread owes nothing: the row completes."""
+        retention.enqueue_outbox('thread_summary', 'thread_gone')
+        report = retention.process_retention_outbox()
+        self.assertEqual(report['done'], 1)
+        self.assertEqual(AIRetentionOutbox.objects.get().state, 'done')
+
+    def test_retention_status_reports_residual_by_kind(self):
+        """Residuals are summed over failed_permanent rows only."""
+        thread = self._thread_with_exclusion()
+        AIRetentionOutbox.objects.create(
+            kind='thread_summary',
+            reference=thread.pk,
+            state='failed_permanent',
+            attempts=retention.OUTBOX_MAX_ATTEMPTS,
+            next_attempt_at=timezone.now(),
+        )
+        (retention._upload_root() / 'thread_stuck').mkdir(parents=True)
+        AIRetentionOutbox.objects.create(
+            kind='upload_dir',
+            reference='thread_stuck',
+            state='failed_permanent',
+            attempts=retention.OUTBOX_MAX_ATTEMPTS,
+            next_attempt_at=timezone.now(),
+        )
+        # A pending row is not probed.
+        (retention._upload_root() / 'thread_pending').mkdir(parents=True)
+        retention.enqueue_outbox('upload_dir', 'thread_pending')
+        status = retention.retention_status()['outbox']
+        self.assertEqual(status['pending'], 1)
+        self.assertEqual(status['failed_permanent'], 2)
+        self.assertEqual(
+            status['residual_by_kind'], {'upload_dir': 1, 'thread_summary': 1}
+        )
+
+
 class GateAndExclusionTests(RetentionEnvMixin, TestCase):
     """Flag gating of the scheduled task and the excluded-classes pin."""
 

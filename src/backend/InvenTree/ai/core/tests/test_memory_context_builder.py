@@ -12,6 +12,7 @@ TaskIntent, the estimator fallback, and the degrade paths.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import pathlib
 import sys
@@ -35,6 +36,7 @@ from ai.core.memory.context_assembler import (
     RecallWindow,
     RoutingFields,
 )
+from ai.core.memory.summary_body import render_for_context
 from ai.core.turn.history import _budgeted_history
 from ai.core.turn_service import NormalizedTurnService
 from django.core.management import call_command
@@ -68,8 +70,11 @@ def _legacy_history(repository, thread_id, settings) -> list[dict[str, str]]:
 
             summary_note = {
                 "role": "user",
-                # PR D: the body rides inside the marker fence, label outside.
-                "content": SUMMARY_NOTE_LABEL + "\n" + fence_untrusted_content(summary.strip()),
+                # PR D: the body rides inside the marker fence, label outside;
+                # PR 3: the body is the plain-text rendering, never the JSON.
+                "content": SUMMARY_NOTE_LABEL
+                + "\n"
+                + fence_untrusted_content(render_for_context(summary)),
             }
             recent = [m for m in recent if getattr(m, "sequence", 0) > watermark]
     recent = [m for m in recent if str(m.content).strip()]
@@ -293,6 +298,50 @@ def test_thread_summary_text_is_fenced_in_both_shapes():
     ).thread_summary_text()
     assert digest.startswith("[UNTRUSTED-CONTENT-BEGIN]")
     assert len(digest) <= 600 + len("[UNTRUSTED-CONTENT-BEGIN]\n\n[UNTRUSTED-CONTENT-END]")
+
+
+def test_summary_item_renders_plain_text_never_json():
+    """PR 3: the fenced body is the rendering, hashed as rendered."""
+    import hashlib
+
+    bundle = asyncio.run(_build(_Repository(watermark=12, summary=SUMMARY), _settings()))
+    item = bundle.summary_item
+    assert item is not None
+    assert "- seal worn" in item.text
+    assert "Pump 3 diagnosis" in item.text
+    assert "{" not in item.text and "}" not in item.text
+    rendered = render_for_context(SUMMARY)
+    assert item.content_hash == hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+    assert item.chars == len(item.text)
+
+
+def test_object_items_render_only_active_texts():
+    body = {
+        "label": "Pump 3",
+        "machine_facts": [
+            {
+                "id": "mf1",
+                "text": "seal worn",
+                "lifecycle": "active",
+                "fingerprint": "0123456789abcdef",
+            },
+            {
+                "id": "mf2",
+                "text": "seal is OEM",
+                "lifecycle": "superseded",
+                "fingerprint": "fedcba9876543210",
+            },
+        ],
+        "body_version": 2,
+    }
+    summary = "Pump 3\n" + json.dumps(body)
+    bundle = asyncio.run(_build(_Repository(watermark=12, summary=summary), _settings()))
+    item = bundle.summary_item
+    assert item is not None
+    assert "- seal worn" in item.text
+    assert "seal is OEM" not in item.text
+    for needle in ("mf1", "mf2", "fingerprint", "superseded", "0123456789abcdef", "{"):
+        assert needle not in item.text, needle
 
 
 def test_routing_fields_render_without_history_text():

@@ -249,8 +249,14 @@ class PilotOpsReportTests(ReportFixtureMixin, TestCase):
         self.assertIsNone(retention['last_run_age_days'])
         for family in ('threads', 'usage_messages', 'retrieval_misses', 'rejections'):
             self.assertIn(family, retention['backlog'])
+        # M2 PR 3: the outbox kind registry adds a per-kind residual read.
         self.assertEqual(
-            retention['outbox'], {'pending': 0, 'failed_permanent': 0}
+            retention['outbox'],
+            {
+                'pending': 0,
+                'failed_permanent': 0,
+                'residual_by_kind': {'upload_dir': 0, 'thread_summary': 0},
+            },
         )
         self.assertEqual(retention['last_run_errors'], [])
 

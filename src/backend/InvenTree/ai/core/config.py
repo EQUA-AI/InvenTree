@@ -368,6 +368,15 @@ class Settings(BaseSettings):
             "FEATURE_THREAD_COMPACTION", "AIMMS_FEATURE_THREAD_COMPACTION"
         ),
     )
+    # M2 PR 3 (plan §8.7 delta ops): when true the compaction summarizer
+    # is asked for schema v2 (v1 + ``removals``/``expirations``/
+    # ``supersessions`` over the ids of prior protected items). Stored
+    # bodies carry per-fact objects either way; the flag only changes what
+    # the model is asked for. Deliberately NOT a FEATURE_ registry flag:
+    # it selects a response contract, it does not gate behaviour.
+    aimms_compaction_delta_ops: bool = Field(
+        default=False, validation_alias=AliasChoices("AIMMS_COMPACTION_DELTA_OPS")
+    )
     # M1 PR E (plan §9.3): replay the builder's transcript into the
     # enumerated rails beyond wf8 (rbac_run specialists, the reasoning
     # envelope's conversation section, wf1's first step). Dark until the D5

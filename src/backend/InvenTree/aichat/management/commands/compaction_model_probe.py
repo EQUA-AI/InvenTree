@@ -39,11 +39,21 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        """Register the optional deployment override."""
+        """Register the optional deployment override and the schema switch."""
         parser.add_argument(
             '--deployment',
             default='',
             help='Deployment to call; defaults to select_deployment(SUMMARIZATION)',
+        )
+        parser.add_argument(
+            '--delta-ops',
+            action='store_true',
+            dest='delta_ops',
+            help=(
+                'Send schema v2 (removals/expirations/supersessions) with an '
+                'id-prefixed prior item so the deployment can be proven before '
+                'AIMMS_COMPACTION_DELTA_OPS flips (M2 PR 3).'
+            ),
         )
 
     def handle(self, *args, **options):
@@ -53,11 +63,34 @@ class Command(BaseCommand):
             build_openai_client,
             client_auth_mode,
         )
+        from ai.core.memory.summary_body import upgrade_body
         from ai.core.model_policy import ModelPurpose, call_options, select_deployment
         from ai.core.redaction import format_counts, redact_payload
-        from aichat.tasks import _COMPACTION_SYSTEM_PROMPT, COMPACTION_SCHEMA
+        from aichat.tasks import (
+            _COMPACTION_SYSTEM_PROMPT,
+            _COMPACTION_SYSTEM_PROMPT_V2,
+            COMPACTION_SCHEMA,
+            COMPACTION_SCHEMA_V2,
+            project_prior_for_model,
+        )
 
         settings = get_settings()
+        delta_ops = bool(options.get('delta_ops'))
+        schema = COMPACTION_SCHEMA_V2 if delta_ops else COMPACTION_SCHEMA
+        system_prompt = (
+            _COMPACTION_SYSTEM_PROMPT_V2 if delta_ops else _COMPACTION_SYSTEM_PROMPT
+        )
+        # Under delta ops the prior carries one id-prefixed item so the model
+        # has an id it may legitimately reference in the ops lists.
+        prior_summary: dict = {}
+        if delta_ops:
+            prior_summary = project_prior_for_model(
+                upgrade_body(
+                    {'label': 'Probe', 'machine_facts': ['pump 3 seal is OEM']},
+                    created_seq=1,
+                ),
+                delta_ops=True,
+            )
         deployment = str(options.get('deployment') or '').strip() or select_deployment(
             ModelPurpose.SUMMARIZATION
         )
@@ -68,11 +101,15 @@ class Command(BaseCommand):
             'role': 'assistant',
             'content': 'Noted the pump 3 seal wear.',
         })
-        redacted = redact_payload({'prior_summary': {}, 'new_messages': transcript})
+        redacted = redact_payload({
+            'prior_summary': prior_summary,
+            'new_messages': transcript,
+        })
         payload = json.dumps(redacted.value, ensure_ascii=True)
         seed_leaked = any(fragment in payload for _, fragment in _SEEDS)
 
         self.stdout.write(f'deployment                = {deployment}')
+        self.stdout.write(f'schema                    = {"v2" if delta_ops else "v1"}')
         self.stdout.write(f'client                    = {client_auth_mode(settings)}')
         self.stdout.write(f'override_set              = {bool(options_sent)}')
         self.stdout.write(
@@ -95,7 +132,7 @@ class Command(BaseCommand):
                 model=deployment,
                 **options_sent,
                 messages=[
-                    {'role': 'system', 'content': _COMPACTION_SYSTEM_PROMPT},
+                    {'role': 'system', 'content': system_prompt},
                     {'role': 'user', 'content': payload},
                 ],
                 response_format={
@@ -103,7 +140,7 @@ class Command(BaseCommand):
                     'json_schema': {
                         'name': 'thread_summary',
                         'strict': True,
-                        'schema': COMPACTION_SCHEMA,
+                        'schema': schema,
                     },
                 },
             )
@@ -117,16 +154,21 @@ class Command(BaseCommand):
             )
             return
 
+        ops_keys_ok = False
         try:
             body = json.loads(response.choices[0].message.content)
-            schema_ok = isinstance(body, dict) and set(
-                COMPACTION_SCHEMA['required']
-            ) <= set(body)
+            schema_ok = isinstance(body, dict) and set(schema['required']) <= set(body)
+            ops_keys_ok = isinstance(body, dict) and all(
+                isinstance(body.get(key), list)
+                for key in ('removals', 'expirations', 'supersessions')
+            )
         except Exception as exc:
             self.stdout.write(f'parse                     = ERROR {type(exc).__name__}')
             schema_ok = False
         self.stdout.write('call                      = OK')
         self.stdout.write(f'schema_ok                 = {str(schema_ok).lower()}')
+        if delta_ops:
+            self.stdout.write(f'ops_keys_ok               = {str(ops_keys_ok).lower()}')
         self.stdout.write(
             f'reasoning_effort_accepted = {"true" if options_sent else "n/a"}'
         )

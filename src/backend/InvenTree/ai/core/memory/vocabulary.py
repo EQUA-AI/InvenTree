@@ -116,6 +116,59 @@ OPERATIONAL_MEMORY_TYPES: frozenset[str] = frozenset(
 )
 
 
+class FactVerification(StrEnum):
+    """§2.6 ``verification_class`` on a per-fact record (compaction, M3a).
+
+    Distinct from the item-level ``VerificationClass`` above, which labels a
+    whole context item; ``inferred`` is proposal-grade forever unless a
+    person or a tool record re-verifies it.
+    """
+
+    USER_CONFIRMED = "user_confirmed"
+    TOOL_VERIFIED = "tool_verified"
+    HUMAN_VERIFIED = "human_verified"
+    INFERRED = "inferred"
+
+
+class FactLifecycle(StrEnum):
+    """§2.6 ``lifecycle_state`` on a per-fact record.
+
+    ``resolved`` is reserved for a closed open question; ``forgotten`` is
+    the user's forget (GR-03 non-revival, backed by an exclusion);
+    ``withdrawn`` is a producer retraction of a proposal-grade record.
+    """
+
+    PROPOSED = "proposed"
+    ACTIVE = "active"
+    RESOLVED = "resolved"
+    SUPERSEDED = "superseded"
+    EXPIRED = "expired"
+    FORGOTTEN = "forgotten"
+    WITHDRAWN = "withdrawn"
+
+
+class FactOrigin(StrEnum):
+    """§2.6 ``origin``: who produced the text; distinct from authority."""
+
+    USER_EXPLICIT = "user_explicit"
+    COMPACTION = "compaction"
+    MEM0 = "mem0"
+    TOOL_READ = "tool_read"
+    CLOSEOUT = "closeout"
+    INCIDENT = "incident"
+
+
+#: Default ``memory_type`` per compaction protected list (§5.4). The
+#: ``corrections`` entry is the fallback only: a correction minted from a
+#: supersession inherits the original's type (§8.7).
+MEMORY_TYPE_BY_LIST: dict[str, MemoryType] = {
+    "machine_facts": MemoryType.EQUIPMENT_FACT,
+    "open_questions": MemoryType.OPEN_ISSUE,
+    "pending_proposals": MemoryType.SCHEDULE,
+    "corrections": MemoryType.EQUIPMENT_FACT,
+}
+
+
 class Topic(StrEnum):
     """§10.9 ``topics``: the seven energy disciplines plus five work topics."""
 
@@ -150,11 +203,15 @@ MAX_TOPICS = 3
 __all__ = [
     "ENERGY_TOPICS",
     "MAX_TOPICS",
+    "MEMORY_TYPE_BY_LIST",
     "OPERATIONAL_MEMORY_TYPES",
     "ContentTrust",
     "Corpus",
     "DegradeReason",
     "EmptyReason",
+    "FactLifecycle",
+    "FactOrigin",
+    "FactVerification",
     "LedgerState",
     "Lifecycle",
     "MemoryType",

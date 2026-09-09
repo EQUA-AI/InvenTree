@@ -36,6 +36,8 @@ queries — never an implicit purge failure.
 import json
 import logging
 import shutil
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -839,6 +841,83 @@ def _valid_thread_dirname(name: str) -> bool:
     return bool(name) and len(name) <= 80 and set(name) <= _THREAD_DIR_CHARSET
 
 
+# ---------------------------------------------------------------------------
+# Outbox kind registry (plan §5.4 layer 2; M2 PR 3)
+# ---------------------------------------------------------------------------
+
+
+class OutboxReferenceError(Exception):
+    """Reference fails containment; never retried blindly."""
+
+
+@dataclass(frozen=True)
+class OutboxKind:
+    """One owed-external-work kind: a handler and its residual probe.
+
+    ``handler`` raises on failure and treats a missing target as success;
+    ``probe`` returns the residual count for a reference (0 when clean) and
+    never mutates anything.
+    """
+
+    name: str
+    handler: Callable[[str], None]
+    probe: Callable[[str], int]
+
+
+OUTBOX_KINDS: dict[str, OutboxKind] = {}
+
+#: Bound on the ``failed_permanent`` rows probed per kind by
+#: ``retention_status`` (cheap and value-free; pending rows are not probed).
+OUTBOX_RESIDUAL_PROBE_ROWS = 20
+
+
+def register_outbox_kind(kind: OutboxKind) -> None:
+    """Register a kind; a duplicate name is a programming error."""
+    if kind.name in OUTBOX_KINDS:
+        raise ValueError(f'outbox kind already registered: {kind.name}')
+    OUTBOX_KINDS[kind.name] = kind
+
+
+def _contained_upload_dir(reference: str) -> Path:
+    """The upload dir for ``reference``; raises when containment fails.
+
+    The reference must resolve to a direct child of the upload root (the
+    ``resolve_upload_path`` discipline). Invalid references (also enqueued
+    by the sweep for malformed dirnames) get one careful manual look, not
+    an rmtree.
+    """
+    root = _upload_root()
+    target = root / reference
+    if not _valid_thread_dirname(reference) or target.parent != root:
+        raise OutboxReferenceError()
+    return target
+
+
+def _handle_upload_dir(reference: str) -> None:
+    target = _contained_upload_dir(reference)
+    if target.is_dir():
+        shutil.rmtree(target)
+
+
+def _probe_upload_dir(reference: str) -> int:
+    try:
+        return 1 if _contained_upload_dir(reference).is_dir() else 0
+    except OutboxReferenceError:
+        return 0
+
+
+def _handle_thread_summary(reference: str) -> None:
+    from aichat.services.summary_corrections import reapply_exclusions
+
+    reapply_exclusions(reference)
+
+
+def _probe_thread_summary(reference: str) -> int:
+    from aichat.services.summary_corrections import excluded_residual
+
+    return excluded_residual(reference)
+
+
 def enqueue_outbox(kind: str, reference: str) -> None:
     """Record one owed external deletion; duplicate pendings are one row."""
     from django.db import IntegrityError
@@ -947,27 +1026,20 @@ def process_retention_outbox(*, batch_size: int = 100) -> dict:
             state='pending', next_attempt_at__lte=now
         ).order_by('next_attempt_at')[:batch_size]
     )
-    root = _upload_root()
     for row in rows:
         succeeded = False
         error_code = ''
-        if row.kind == 'upload_dir':
-            target = root / row.reference
-            # Containment: the reference must resolve to a direct child of
-            # the upload root (the ``resolve_upload_path`` discipline).
-            if not _valid_thread_dirname(row.reference) or target.parent != root:
-                # Invalid references (also enqueued by the sweep for
-                # malformed dirnames) get one careful manual look, not rmtree.
-                error_code = 'invalid_reference'
-            else:
-                try:
-                    if target.is_dir():
-                        shutil.rmtree(target)
-                    succeeded = True
-                except OSError as exc:
-                    error_code = type(exc).__name__
-        else:
+        kind = OUTBOX_KINDS.get(row.kind)
+        if kind is None:
             error_code = 'unknown_kind'
+        else:
+            try:
+                kind.handler(row.reference)
+                succeeded = True
+            except OutboxReferenceError:
+                error_code = 'invalid_reference'
+            except Exception as exc:
+                error_code = type(exc).__name__
 
         if succeeded:
             row.state = 'done'
@@ -1130,6 +1202,34 @@ def retention_status() -> dict:
             'failed_permanent': AIRetentionOutbox.objects.filter(
                 state='failed_permanent'
             ).count(),
+            'residual_by_kind': _outbox_residual_by_kind(),
         },
         'oldest_upload_age_hours': oldest_upload_age_hours,
     }
+
+
+def _outbox_residual_by_kind() -> dict[str, int]:
+    """Residual counts over a bounded sample of ``failed_permanent`` rows."""
+    residual: dict[str, int] = {}
+    for name, kind in OUTBOX_KINDS.items():
+        references = AIRetentionOutbox.objects.filter(
+            kind=name, state='failed_permanent'
+        ).values_list('reference', flat=True)[:OUTBOX_RESIDUAL_PROBE_ROWS]
+        total = 0
+        for reference in references:
+            try:
+                total += int(kind.probe(reference))
+            except Exception:
+                logger.warning('retention_outbox_probe_failed kind=%s', name)
+        residual[name] = total
+    return residual
+
+
+register_outbox_kind(
+    OutboxKind('upload_dir', handler=_handle_upload_dir, probe=_probe_upload_dir)
+)
+register_outbox_kind(
+    OutboxKind(
+        'thread_summary', handler=_handle_thread_summary, probe=_probe_thread_summary
+    )
+)

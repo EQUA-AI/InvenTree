@@ -8,6 +8,7 @@ from django.core.cache import cache
 from django.test import TestCase
 
 from ai.core.config import Settings
+from ai.core.memory.summary_body import active_items, item_text
 from aichat import tasks
 from aichat.models import ChatMessage, ChatThread
 from aichat.services.threads import ThreadRepository
@@ -74,15 +75,55 @@ class MergeHelpersTest(TestCase):
         self.assertEqual(tasks.parse_summary_body(''), {})
 
     def test_protected_fields_union_prior_first_with_cap(self):
+        # M2 PR 3: items are per-fact objects; the contract is on their texts.
         prior = {'machine_facts': ['old fact', 'shared']}
         fresh = _summary_payload(machine_facts=['shared', 'new fact'])
         merged = tasks.merge_protected_fields(prior, fresh)
-        self.assertEqual(merged['machine_facts'], ['old fact', 'shared', 'new fact'])
+        self.assertEqual(
+            [item_text(i) for i in merged['machine_facts']],
+            ['old fact', 'shared', 'new fact'],
+        )
 
     def test_protected_fields_cap_bounds_growth(self):
         prior = {'machine_facts': [f'fact {i}' for i in range(30)]}
         merged = tasks.merge_protected_fields(prior, _summary_payload(machine_facts=[]))
-        self.assertEqual(len(merged['machine_facts']), tasks.COMPACTION_PROTECTED_CAP)
+        self.assertEqual(
+            len(active_items(merged, 'machine_facts')), tasks.COMPACTION_PROTECTED_CAP
+        )
+
+    def test_corrections_cap_never_drops_a_newer_correction(self):
+        # Plan §8.8 Q56: a supersession against a full corrections list lands
+        # its correction and the original's pointer resolves to a stored id.
+        prior = {
+            'machine_facts': ['pump 3 seal worn'],
+            'corrections': [f'correction {i}' for i in range(20)],
+        }
+        fresh = _summary_payload(
+            machine_facts=[],
+            supersessions=[{'original_id': 'mf1', 'correction': 'newest correction'}],
+        )
+        merged, counts = tasks.merge_protected_fields_counted(
+            prior, fresh, prior_seq=2, fresh_seq=20
+        )
+        active = active_items(merged, 'corrections')
+        self.assertEqual(len(active), tasks.COMPACTION_PROTECTED_CAP)
+        self.assertEqual(item_text(active[-1]), 'newest correction')
+        self.assertEqual(active[-1]['lifecycle'], 'active')
+        original = merged['machine_facts'][0]
+        self.assertEqual(original['lifecycle'], 'superseded')
+        self.assertIn(original['superseded_by'], {i['id'] for i in active})
+        self.assertNotIn('correction 0', [item_text(i) for i in merged['corrections']])
+        self.assertEqual((counts['dropped'], counts['superseded']), (1, 1))
+        self.assertTrue(counts['cap_hit'])
+
+    def test_a_run_mints_at_most_one_cap_of_corrections(self):
+        fresh = _summary_payload(corrections=[f'c{i}' for i in range(25)])
+        merged, counts = tasks.merge_protected_fields_counted({}, fresh)
+        self.assertEqual(
+            len(active_items(merged, 'corrections')), tasks.COMPACTION_PROTECTED_CAP
+        )
+        self.assertEqual(counts['dropped'], 5)
+        self.assertTrue(counts['cap_hit'])
 
 
 class CompactionJobTest(TestCase):

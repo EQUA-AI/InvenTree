@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from ai.core.memory.recall_filter import RecallFilter, recall_filter_for
+from ai.core.memory.summary_body import render_for_context
 from ai.core.memory.token_estimator import TokenEstimator, default_estimator
 from ai.core.memory.vocabulary import (
     ContentTrust,
@@ -546,23 +547,26 @@ class ContextAssembler:
             )
 
         # --- thread_summary (the S38 note; label outside, body beneath) ---
+        # The body is the plain-text rendering of the stored summary (PR 3):
+        # active protected items as headed lines, never the JSON object,
+        # its ids, lifecycle or fingerprints.
         summary_item: ContextItem | None = None
         summary_reason = (
             EmptyReason.COMPACTION_OFF if not compaction else EmptyReason.NO_WATERMARK_YET
         )
         watermark = window.watermark if compaction else 0
         if compaction and window.watermark and window.summary.strip():
-            body = window.summary.strip()
+            rendered = render_for_context(window.summary)
             # §9.9 (GR-19): label line outside the fence, body inside; a
             # forged marker inside the summary is escaped, never honoured.
-            text = SUMMARY_NOTE_LABEL + "\n" + _fence(body)
+            text = SUMMARY_NOTE_LABEL + "\n" + _fence(rendered)
             summary_item = ContextItem(
                 slot=str(Slot.THREAD_SUMMARY),
                 item_id=f"summary:{window.watermark}",
                 role="user",
                 text=text,
                 source_pointer=f"thread:{thread_id}#summary@{window.watermark}",
-                content_hash=_sha(body),
+                content_hash=_sha(rendered),
                 content_trust=str(ContentTrust.UNTRUSTED_FENCED),
                 verification_class=str(VerificationClass.COMPACTED_SUMMARY),
                 version=window.watermark,
