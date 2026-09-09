@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -117,7 +118,7 @@ def _retrieve_records(
 ) -> dict[str, Any]:
     """record_retrieval: the scope-driven work-order page → typed facts."""
     from django.utils import timezone
-    from tasks.ai_read import work_orders_page
+    from tasks.ai_read import work_order_row, work_orders_page
 
     as_of = timezone.now().isoformat()
     machine_ids = sorted(scope.machine_ids) if scope is not None and scope.explicit else None
@@ -132,7 +133,14 @@ def _retrieve_records(
     )
     retrieval_id = f"ret_records_{getattr(scope, 'snapshot_id', None) or 'unscoped'}"
     snapshot_label = getattr(scope, "snapshot_id", None)
-    for row in page.get("rows") or ():
+    # ``work_orders_page`` returns the bounded page as WorkOrder instances;
+    # the fact and member builders read the ``work_order_row`` projection
+    # (a mapping), so project here — a page that already carries mappings
+    # (tests, future callers) passes through unchanged.
+    rows = [
+        row if isinstance(row, Mapping) else work_order_row(row) for row in (page.get("rows") or ())
+    ]
+    for row in rows:
         facts_from_work_order_row(
             store,
             row,
@@ -154,7 +162,7 @@ def _retrieve_records(
             "result": str(int(page.get("population_count") or 0)),
         },
     )
-    for row in page.get("rows") or ():
+    for row in rows:
         pending.add_member(
             "work_order",
             str(row.get("work_order_id")),

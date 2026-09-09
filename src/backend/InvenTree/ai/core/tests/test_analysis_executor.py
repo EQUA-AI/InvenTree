@@ -19,6 +19,7 @@ django.setup()
 import pytest
 from ai.core.analysis import executor as executor_module
 from ai.core.analysis.evidence import FactValue, coverage_fact, facts_from_work_order_row
+from ai.core.analysis.executor import _retrieve_records as _real_retrieve_records
 from ai.core.analysis.executor import run_analysis
 
 
@@ -308,3 +309,60 @@ def test_model_synthesis_is_organization_only_and_still_validated(monkeypatch) -
     # The single answer claim is unresolvable -> dropped -> abstention.
     assert outcome.turn_state == "incomplete"
     assert outcome.gate["verdict"] in ("abstain", "downgrade")
+
+
+def test_retrieve_records_projects_model_rows_through_work_order_row(monkeypatch) -> None:
+    """The page carries WorkOrder instances; the builders read the row projection.
+
+    Live finding 2026-09-09 (dev, FEATURE_AI_ANALYSIS_ROUTER_ENFORCE=1): every
+    record_retrieval turn died with "'WorkOrder' object has no attribute 'get'"
+    because ``_retrieve_records`` handed model instances straight to
+    ``facts_from_work_order_row``. The page module is faked in ``sys.modules``
+    because the island does not install the ``tasks`` app.
+    """
+    import sys
+    import types
+
+    from ai.core.analysis.evidence import EvidenceStore
+
+    models = [SimpleNamespace(pk=41), SimpleNamespace(pk=42)]
+    projected: list[int] = []
+
+    def work_orders_page(user, **kwargs):
+        return {
+            "rows": list(models),
+            "population_count": 2,
+            "returned_count": 2,
+            "complete_population": True,
+            "applied_filters": {},
+            "high_watermark": None,
+        }
+
+    def work_order_row(work_order, *, identity=None):
+        projected.append(work_order.pk)
+        return _row(work_order_id=work_order.pk)
+
+    fake_tasks = types.ModuleType("tasks")
+    fake_ai_read = types.ModuleType("tasks.ai_read")
+    fake_ai_read.work_orders_page = work_orders_page
+    fake_ai_read.work_order_row = work_order_row
+    fake_tasks.ai_read = fake_ai_read
+    monkeypatch.setitem(sys.modules, "tasks", fake_tasks)
+    monkeypatch.setitem(sys.modules, "tasks.ai_read", fake_ai_read)
+
+    seen_rows: list[object] = []
+    real_builder = executor_module.facts_from_work_order_row
+
+    def recording_builder(store, row, **kwargs):
+        seen_rows.append(row)
+        return real_builder(store, row, **kwargs)
+
+    monkeypatch.setattr(executor_module, "facts_from_work_order_row", recording_builder)
+
+    store = EvidenceStore()
+    # The autouse seams fixture stubs the module attribute; call the real one.
+    _real_retrieve_records(SimpleNamespace(pk=5), store, scope=None)
+
+    assert projected == [41, 42]
+    assert all(isinstance(row, dict) for row in seen_rows)
+    assert [row["work_order_id"] for row in seen_rows] == [41, 42]
