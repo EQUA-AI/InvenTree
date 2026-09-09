@@ -283,3 +283,59 @@ def test_executor_failure_is_reported_and_not_claimed_as_done() -> None:
     assert resolution.executed is False
     assert resolution.spoken == EXECUTION_FAILED_PHRASE
     assert resolution.audit_events[-1].event is VoiceWriteAuditEventType.EXECUTION_FAILED
+
+
+# --------------------------------------------------------------------------- #
+# Grammar v3 (voice-UX plan A1): AMEND / DEFER replies never reach the executor #
+# --------------------------------------------------------------------------- #
+import pytest  # noqa: E402
+from ai.core.voice.confirmation import AMEND_PHRASE, DEFERRED_PHRASE  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("reply", "spoken"),
+    (
+        ("yes, but change it to twenty", AMEND_PHRASE),
+        ("no, I meant the other order", AMEND_PHRASE),
+        ("not yet", DEFERRED_PHRASE),
+        ("yes, hold on", DEFERRED_PHRASE),
+    ),
+)
+def test_amend_and_defer_replies_never_execute(reply, spoken) -> None:
+    executor = _Executor()
+    gate = _gate(resolved=_resolved_confirmable(), executor=executor)
+
+    async def run():
+        await gate.begin(
+            "place an order", actor=_ACTOR, trusted_context=_CTX, thread_id=1, nonce="n1"
+        )
+        return await gate.resolve_pending(reply, actor=_ACTOR, trusted_context=_CTX, thread_id=1)
+
+    resolution = asyncio.run(run())
+
+    assert resolution is not None
+    assert resolution.executed is False
+    assert resolution.spoken == spoken
+    assert executor.calls == []
+    assert resolution.audit_events[-1].event is VoiceWriteAuditEventType.CANCELLED
+    assert resolution.audit_events[-1].reason in {"amended", "deferred"}
+
+
+def test_mixed_assent_under_strict_phrase_never_executes() -> None:
+    executor = _Executor()
+    gate = _gate(resolved=_resolved_irreversible(), executor=executor)
+
+    async def run():
+        await gate.begin(
+            "delete work order 42", actor=_ACTOR, trusted_context=_CTX, thread_id=1, nonce="n1"
+        )
+        return await gate.resolve_pending(
+            "confirm delete the other one", actor=_ACTOR, trusted_context=_CTX, thread_id=1
+        )
+
+    resolution = asyncio.run(run())
+
+    assert resolution is not None
+    assert resolution.executed is False
+    assert resolution.spoken == AMEND_PHRASE
+    assert executor.calls == []

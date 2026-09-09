@@ -45,7 +45,7 @@ from enum import StrEnum
 #: Bumped whenever a spoken confirmation phrase, the confirmation grammar, or the
 #: irreversibility policy changes, so an audit record pins the policy it was
 #: decided under.
-CONFIRMATION_POLICY_VERSION = "voice-write-confirm-v2"
+CONFIRMATION_POLICY_VERSION = "voice-write-confirm-v3"
 
 
 class WriteActionClass(StrEnum):
@@ -61,6 +61,12 @@ class ConfirmationReply(StrEnum):
 
     AFFIRM = "affirm"
     DECLINE = "decline"
+    #: Assent or refusal carrying a correction or any other trailing clause
+    #: ("yes, but change the quantity to ten", "no, I meant 140"). Never
+    #: executes the read-back as proposed; the change must be re-presented.
+    AMEND = "amend"
+    #: An explicit "not yet" / "wait": neither consent nor refusal.
+    DEFER = "defer"
     UNRELATED = "unrelated"
 
 
@@ -76,6 +82,8 @@ class ConfirmationReason(StrEnum):
 
     AFFIRMED = "affirmed"
     DECLINED = "declined"
+    AMENDED = "amended"
+    DEFERRED = "deferred"
     NOT_CONFIRMED = "not_confirmed"
 
 
@@ -117,19 +125,63 @@ _IRREVERSIBLE_PATTERN = re.compile(
 
 
 # ---------------------------------------------------------------------------
-# Confirmation grammar
+# Confirmation grammar (v3: whole-utterance, fail-closed)
 #
-# Reversible (lenient): a bare "yes"/"yeah"/"okay" confirms, as do explicit
-# tokens. Irreversible (strict): the reply must repeat the exact server-authored
-# strict phrase (leading assent fillers like "yes," are tolerated, but the
-# strict phrase itself must be present); a bare "yes" or plain "confirm" does
-# NOT confirm a destructive action. DECLINE matches explicit cancellation for
-# both. Everything else is UNRELATED and, like a decline, abandons the pending
-# confirmation (fail-closed).
+# A reply confirms only when the WHOLE utterance is an affirmative (reversible)
+# or the exact server-authored strict phrase (irreversible), after a documented
+# normalization: case, whitespace, trailing punctuation, leading assent fillers
+# ("yes, ..."), a leading/trailing courtesy word ("please", "thanks") and one
+# tolerated trailing object word ("it", "that", "this", "now"). Anything else
+# riding on an assent is NOT consent:
+#   * a decline token after the assent ("confirm hold, no wait") -> DECLINE;
+#   * a correction/qualification ("yes, but change the quantity to ten",
+#     "no, I meant 140", "confirm delete the other one") -> AMEND;
+#   * a postponement ("not yet", "confirm delete not yet", "wait") -> DEFER;
+#   * any other trailing clause on an assent -> AMEND (mixed assent).
+# A decline at the start of the utterance declines unless it carries a
+# correction. Everything else is UNRELATED. AMEND/DEFER/UNRELATED never
+# authorize execution; the caller decides how to re-present.
 # ---------------------------------------------------------------------------
-_LENIENT_AFFIRM_PATTERN = re.compile(
-    r"^\s*(?:yes|yeah|yep|yup|sure|ok(?:ay)?|sounds good|affirmative|"
-    r"confirm(?:ed|s)?|proceed|go ahead|do it|execute(?: it)?|approve[d]?)\b",
+_AFFIRM_TOKENS = frozenset({
+    "yes",
+    "yeah",
+    "yep",
+    "yup",
+    "sure",
+    "sure thing",
+    "absolutely",
+    "ok",
+    "okay",
+    "sounds good",
+    "affirmative",
+    "confirm",
+    "confirmed",
+    "confirm it",
+    "confirm that",
+    "confirm this",
+    "proceed",
+    "go ahead",
+    "go for it",
+    "do it",
+    "execute",
+    "execute it",
+    "approve",
+    "approved",
+    "correct",
+    "that's right",
+    "that is right",
+    "that's correct",
+    "that is correct",
+    "yes please",
+    "yes do it",
+    "yes confirm",
+    "okay do it",
+    "ok do it",
+})
+_ASSENT_PREFIX = re.compile(
+    r"^(?:yes|yeah|yep|yup|sure|absolutely|ok(?:ay)?|sounds good|affirmative|"
+    r"confirm(?:ed|s)?|proceed|go ahead|go for it|do it|execute(?: it)?|"
+    r"approve[d]?|correct|that'?s (?:right|correct)|that is (?:right|correct))\b",
     re.IGNORECASE,
 )
 _DECLINE_PATTERN = re.compile(
@@ -137,10 +189,36 @@ _DECLINE_PATTERN = re.compile(
     r"never ?mind|scratch that|forget it)",
     re.IGNORECASE,
 )
+_DECLINE_TOKEN = re.compile(
+    r"\b(?:no|nope|nah|cancel|stop|abort|don'?t|do not|never ?mind|scratch that|"
+    r"forget it)\b",
+    re.IGNORECASE,
+)
+#: A refusal as the LAST word wins over an earlier correction word
+#: ("yes... actually no" declines; "no, actually make it twenty" amends).
+_TRAILING_DECLINE = re.compile(
+    r"\b(?:no|nope|nah|cancel|stop|abort|never ?mind|scratch that|forget it)$",
+    re.IGNORECASE,
+)
+_CORRECTION_PATTERN = re.compile(
+    r"\b(?:but|instead|actually|i meant|i mean|i said|change|make (?:it|that|them)|"
+    r"rather|except|unless|only if|the other|a different|different one|not \d+|"
+    r"not the|should be)\b",
+    re.IGNORECASE,
+)
+_DEFER_PATTERN = re.compile(
+    r"\b(?:not yet|wait|hold on|hang on|one (?:second|sec|moment|minute)|"
+    r"give me a (?:second|sec|moment|minute)|not now|later|stand ?by)\b",
+    re.IGNORECASE,
+)
 _LEADING_ASSENT_FILLER = re.compile(
     r"^(?:\s*(?:yes|yeah|yep|yup|sure|ok|okay)[,.\s]+)+",
     re.IGNORECASE,
 )
+_LEADING_COURTESY = re.compile(r"^(?:please|kindly)[,\s]+", re.IGNORECASE)
+_TRAILING_COURTESY = re.compile(r"[,\s]+(?:please|thanks|thank you)$", re.IGNORECASE)
+_TRAILING_OBJECT = re.compile(r"\s+(?:it|that|this|now)$", re.IGNORECASE)
+_TRAILING_PUNCT = re.compile(r"[\s.!?,;:]+$")
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +238,11 @@ STRICT_PHRASE_REQUIRED_PHRASE = (
     "Ask again if you still want it."
 )
 CONFIRMED_PHRASE = "Confirmed."
+#: Spoken when the reply carried a correction or a mixed clause: the read-back
+#: was NOT applied and the request must be re-presented with the change.
+AMEND_PHRASE = "Not applied. Say the full request again with the change, and I'll read it back."
+#: Spoken when the reply postponed the decision ("not yet", "wait").
+DEFERRED_PHRASE = "Not applied. Ask again when you're ready."
 DONE_PHRASE = "Done."
 EXECUTION_FAILED_PHRASE = "Sorry, that change did not go through. Nothing was changed."
 
@@ -170,6 +253,8 @@ ALLOWED_CONFIRMATION_PHRASES = frozenset({
     BLOCKED_UNKNOWN_PHRASE,
     CANCELLED_PHRASE,
     CONFIRMED_PHRASE,
+    AMEND_PHRASE,
+    DEFERRED_PHRASE,
     DONE_PHRASE,
     EXECUTION_FAILED_PHRASE,
     STRICT_PHRASE_REQUIRED_PHRASE,
@@ -275,11 +360,31 @@ def classify_write_intent(content: str, *, effect_intent: bool) -> WriteActionCl
     return WriteActionClass.BLOCKED_UNKNOWN
 
 
+def _normalize_utterance(text: str) -> str:
+    """Lower-case, collapse whitespace, drop trailing punctuation and courtesy words."""
+    lowered = re.sub(r"\s+", " ", (text or "").strip().lower())
+    lowered = _TRAILING_PUNCT.sub("", lowered)
+    lowered = _LEADING_COURTESY.sub("", lowered)
+    for _ in range(2):
+        lowered = _TRAILING_COURTESY.sub("", lowered)
+        lowered = _TRAILING_PUNCT.sub("", lowered)
+    return lowered.strip()
+
+
 def _normalize_strict(text: str) -> str:
-    """Lower-case, drop leading assent fillers, and collapse whitespace."""
-    lowered = text.strip().lower()
+    """Normalize and drop leading assent fillers ("yes, confirm delete" -> "confirm delete")."""
+    lowered = _normalize_utterance(text)
     lowered = _LEADING_ASSENT_FILLER.sub("", lowered)
     return re.sub(r"\s+", " ", lowered).strip()
+
+
+def _without_trailing_object(text: str) -> str:
+    """Drop one tolerated trailing object word ("confirm delete it" -> "confirm delete")."""
+    return _TRAILING_OBJECT.sub("", text)
+
+
+def _is_affirm_token(text: str) -> bool:
+    return text in _AFFIRM_TOKENS or _without_trailing_object(text) in _AFFIRM_TOKENS
 
 
 def interpret_confirmation_reply(
@@ -289,22 +394,58 @@ def interpret_confirmation_reply(
 ) -> ConfirmationReply:
     """Interpret a spoken reply to a read-back. Fail-closed toward not-confirmed.
 
-    When ``required_phrase`` is given (irreversible actions), only a reply that
-    repeats that exact strict phrase affirms; a bare assent does not. Otherwise
-    (reversible actions) a bare "yes" affirms, as do explicit confirm tokens.
+    Whole-utterance grammar (v3). With ``required_phrase`` (irreversible
+    actions) only a reply that IS that exact strict phrase affirms; otherwise a
+    bare affirmative affirms. A decline token after an assent declines; a
+    correction or any other trailing clause on an assent is ``AMEND``; a
+    postponement is ``DEFER``. None of those authorize execution.
     """
-    text = content or ""
-    if required_phrase:
-        target = _normalize_strict(required_phrase)
-        if target and _normalize_strict(text).startswith(target):
-            return ConfirmationReply.AFFIRM
-        if _DECLINE_PATTERN.match(text):
-            return ConfirmationReply.DECLINE
+    text = _normalize_utterance(content)
+    if not text:
         return ConfirmationReply.UNRELATED
-    if _LENIENT_AFFIRM_PATTERN.match(text):
-        return ConfirmationReply.AFFIRM
+
+    # 1. A reply that starts as a refusal declines -- unless it carries a
+    #    correction ("no, I meant 140"), which is an amendment to re-present.
     if _DECLINE_PATTERN.match(text):
+        if _CORRECTION_PATTERN.search(text):
+            return ConfirmationReply.AMEND
         return ConfirmationReply.DECLINE
+
+    target = _normalize_strict(required_phrase) if required_phrase else ""
+    stripped = _normalize_strict(text)
+    assent_led = bool(_ASSENT_PREFIX.match(text)) or (bool(target) and stripped.startswith(target))
+
+    if assent_led:
+        # 2. Assent followed by a refusal ("confirm hold, no wait",
+        #    "yes... actually no") -> DECLINE.
+        if _DECLINE_TOKEN.search(stripped) and (
+            not _CORRECTION_PATTERN.search(stripped) or _TRAILING_DECLINE.search(stripped)
+        ):
+            return ConfirmationReply.DECLINE
+        # 3. Assent carrying a correction or qualification -> AMEND.
+        if _CORRECTION_PATTERN.search(stripped):
+            return ConfirmationReply.AMEND
+        # 4. Assent carrying a postponement ("confirm delete not yet") -> DEFER.
+        if _DEFER_PATTERN.search(stripped):
+            return ConfirmationReply.DEFER
+        # 5. Exact whole-utterance match.
+        if target:
+            if stripped == target or _without_trailing_object(stripped) == target:
+                return ConfirmationReply.AFFIRM
+            if _is_affirm_token(stripped):
+                # A bare "yes" is not the strict phrase; the caller explains
+                # that the exact phrase is required.
+                return ConfirmationReply.UNRELATED
+        elif _is_affirm_token(stripped) or _is_affirm_token(text):
+            return ConfirmationReply.AFFIRM
+        # 6. Assent plus anything else is a mixed reply: never execute as read.
+        return ConfirmationReply.AMEND
+
+    # 7. No assent: a leading postponement defers, a leading correction amends.
+    if _DEFER_PATTERN.match(text):
+        return ConfirmationReply.DEFER
+    if _CORRECTION_PATTERN.match(text):
+        return ConfirmationReply.AMEND
     return ConfirmationReply.UNRELATED
 
 
@@ -443,15 +584,18 @@ def resolve(
         )
         return outcome, event
 
-    reason = (
-        ConfirmationReason.DECLINED
-        if reply is ConfirmationReply.DECLINE
-        else ConfirmationReason.NOT_CONFIRMED
-    )
+    if reply is ConfirmationReply.AMEND:
+        reason, spoken = ConfirmationReason.AMENDED, AMEND_PHRASE
+    elif reply is ConfirmationReply.DEFER:
+        reason, spoken = ConfirmationReason.DEFERRED, DEFERRED_PHRASE
+    elif reply is ConfirmationReply.DECLINE:
+        reason, spoken = ConfirmationReason.DECLINED, CANCELLED_PHRASE
+    else:
+        reason, spoken = ConfirmationReason.NOT_CONFIRMED, CANCELLED_PHRASE
     outcome = ConfirmationOutcome(
         state=ConfirmationState.CANCELLED,
         reason=reason,
-        spoken=CANCELLED_PHRASE,
+        spoken=spoken,
         capability=action.capability,
         summary=action.summary,
     )

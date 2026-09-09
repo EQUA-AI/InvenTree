@@ -328,3 +328,92 @@ def test_audit_record_is_bounded_and_json_safe() -> None:
     }
     assert data["policy_version"] == CONFIRMATION_POLICY_VERSION
     assert data["action_class"] == WriteActionClass.CONFIRMABLE.value
+
+
+# --------------------------------------------------------------------------- #
+# Grammar v3 (voice-UX plan A1): whole-utterance, mixed replies never execute  #
+# --------------------------------------------------------------------------- #
+from ai.core.voice.confirmation import AMEND_PHRASE, DEFERRED_PHRASE  # noqa: E402
+
+
+def test_policy_version_is_v3() -> None:
+    assert CONFIRMATION_POLICY_VERSION == "voice-write-confirm-v3"
+
+
+@pytest.mark.parametrize(
+    ("reply", "required", "expected"),
+    (
+        # qualified assent / corrections -> AMEND
+        ("yes, but change the quantity to ten", None, ConfirmationReply.AMEND),
+        ("no, I meant 140", None, ConfirmationReply.AMEND),
+        ("confirm delete the other one", "confirm delete", ConfirmationReply.AMEND),
+        ("yes and also order belts", None, ConfirmationReply.AMEND),
+        ("change it to ten", None, ConfirmationReply.AMEND),
+        ("actually make it twenty", None, ConfirmationReply.AMEND),
+        ("confirm delete everything", "confirm delete", ConfirmationReply.AMEND),
+        # a refusal after the assent -> DECLINE
+        ("confirm hold, no wait", None, ConfirmationReply.DECLINE),
+        ("yes... actually no", None, ConfirmationReply.DECLINE),
+        ("don't do it", None, ConfirmationReply.DECLINE),
+        ("cancel that", None, ConfirmationReply.DECLINE),
+        ("confirm delete, cancel", "confirm delete", ConfirmationReply.DECLINE),
+        # postponement -> DEFER
+        ("not yet", None, ConfirmationReply.DEFER),
+        ("wait", "confirm delete", ConfirmationReply.DEFER),
+        ("confirm delete not yet", "confirm delete", ConfirmationReply.DEFER),
+        ("yes, hold on", None, ConfirmationReply.DEFER),
+        # the assistant's own instruction echoed back is not consent
+        ("to confirm say confirm hold", None, ConfirmationReply.UNRELATED),
+        ("to confirm, say confirm delete", "confirm delete", ConfirmationReply.UNRELATED),
+        # documented tolerated tails still confirm
+        ("yes please.", None, ConfirmationReply.AFFIRM),
+        ("sure thing", None, ConfirmationReply.AFFIRM),
+        ("go ahead, thanks", None, ConfirmationReply.AFFIRM),
+        ("please confirm delete", "confirm delete", ConfirmationReply.AFFIRM),
+        ("confirm hold please", "confirm hold", ConfirmationReply.AFFIRM),
+        ("Confirm hold.", "confirm hold", ConfirmationReply.AFFIRM),
+        ("okay, confirm delete it", "confirm delete", ConfirmationReply.AFFIRM),
+    ),
+)
+def test_grammar_v3_classification(reply, required, expected) -> None:
+    assert interpret_confirmation_reply(reply, required_phrase=required) is expected
+
+
+def test_prefix_match_no_longer_confirms_a_strict_phrase() -> None:
+    """v2 accepted any utterance that STARTED with the phrase; v3 requires the whole utterance."""
+    assert (
+        interpret_confirmation_reply(
+            "confirm delete and then reorder", required_phrase="confirm delete"
+        )
+        is not ConfirmationReply.AFFIRM
+    )
+
+
+def test_leading_affirm_no_longer_confirms_a_reversible_write() -> None:
+    """v2 matched 'yes' at the start; v3 treats the trailing clause as an amendment."""
+    assert interpret_confirmation_reply("yes, but only five") is ConfirmationReply.AMEND
+
+
+def test_resolve_amend_cancels_with_amended_reason_and_phrase() -> None:
+    pending = _pending_confirmable()
+    outcome, event = resolve(pending, "yes, but change the quantity to ten")
+    assert outcome.state is ConfirmationState.CANCELLED
+    assert outcome.confirmed is False
+    assert outcome.reason is ConfirmationReason.AMENDED
+    assert outcome.spoken == AMEND_PHRASE
+    assert event.event is VoiceWriteAuditEventType.CANCELLED
+    assert event.reason == "amended"
+
+
+def test_resolve_defer_cancels_with_deferred_reason_and_phrase() -> None:
+    pending = _pending_confirmable()
+    outcome, event = resolve(pending, "not yet")
+    assert outcome.state is ConfirmationState.CANCELLED
+    assert outcome.reason is ConfirmationReason.DEFERRED
+    assert outcome.spoken == DEFERRED_PHRASE
+    assert event.reason == "deferred"
+
+
+def test_new_phrases_are_allow_listed() -> None:
+    assert AMEND_PHRASE in ALLOWED_CONFIRMATION_PHRASES
+    assert DEFERRED_PHRASE in ALLOWED_CONFIRMATION_PHRASES
