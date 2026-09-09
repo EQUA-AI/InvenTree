@@ -23,7 +23,7 @@ import uuid
 from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ai.core.api import get_devui
 from ai.core.auth import (
@@ -34,6 +34,7 @@ from ai.core.auth import (
 )
 from ai.core.config import get_devui_settings, get_settings
 from ai.core.db_hygiene import run_in_thread_releasing
+from ai.core.memory import summary_body
 from ai.core.middleware import (
     RateLimitConfig,
     RateLimitMiddleware,
@@ -70,7 +71,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Configure logging.
 #
@@ -140,6 +141,16 @@ class HealthResponse(BaseModel):
     environment: str
 
 
+def summary_label(summary: str | None) -> str:
+    """The first line of a stored thread summary; possibly empty.
+
+    M2 PR 5 (plan of record §8.6 item 1, GR-49): the list and get routes
+    ship this label only. The JSON body behind the newline stays on the
+    server and is read through the owner-only ``GET /threads/{id}/memory``.
+    """
+    return (summary or "").partition("\n")[0].strip()
+
+
 class ThreadInfo(BaseModel):
     """Information about a thread."""
 
@@ -147,6 +158,7 @@ class ThreadInfo(BaseModel):
     title: str = ""
     message_count: int
     turn_count: int = 0
+    # M2 PR 5: the summary LABEL (first line) only — never the JSON body.
     summary: str = ""
     created_at: str | None = None
     last_activity: str | None = None
@@ -171,6 +183,69 @@ class ThreadSyncResponse(BaseModel):
     # S49: server capability advertisement. The frontend's auto wire
     # selection keys off capabilities["agui"]; old clients ignore the key.
     capabilities: dict[str, bool] = {}
+
+
+class ThreadMemoryItem(BaseModel):
+    """One per-fact object of the compaction summary body (plan §8.7).
+
+    Every item is projected — active and superseded/expired/forgotten
+    alike — so the inspection modal can show history; the client decides
+    what to render. ``directive_flags`` carries the scrub's natural-language
+    marker codes (the text is shown only to the owner, never to a model
+    outside the fence).
+    """
+
+    id: str
+    text: str
+    lifecycle: str
+    memory_type: str
+    created_seq: int
+    superseded_by: str | None = None
+    directive_flags: list[str] = []
+
+
+class ThreadMemoryResponse(BaseModel):
+    """``GET /threads/{id}/memory`` (M2 PR 5, plan §8.6 item 2; owner only)."""
+
+    thread_id: str
+    label: str
+    #: The compaction watermark (``summary_through_sequence``).
+    through_sequence: int
+    #: The highest message sequence the thread holds (``next_sequence - 1``).
+    latest_sequence: int
+    #: 0 when the thread has no summary yet; otherwise the body shape read.
+    body_version: int
+    open_questions: list[ThreadMemoryItem]
+    pending_proposals: list[ThreadMemoryItem]
+    machine_facts: list[ThreadMemoryItem]
+    corrections: list[ThreadMemoryItem]
+    citation_keys: list[str]
+    narrative: str
+    exclusions_count: int
+
+
+class ThreadMemoryCorrectionRequest(BaseModel):
+    """``PUT /threads/{id}/memory/corrections`` body (plan §8.6 item 4).
+
+    Never a prose edit: the only write is a per-item supersession through
+    ``summary_corrections.forget_item``. There is deliberately no
+    ``idempotency_key``: the item id IS the idempotency key (a repeat of an
+    already-excluded item is ``applied`` with no write), so a client-minted
+    key would advertise ``/chat``-style dedup/conflict semantics the server
+    does not implement.
+    """
+
+    item_id: str = Field(min_length=1, max_length=32, pattern=r"^(mf|oq|pp|co)\d+$")
+    action: Literal["wrong", "forget"]
+
+
+class ThreadMemoryCorrectionResponse(BaseModel):
+    """Outcome of one correction; ``unknown_item`` is 200 (no disclosure)."""
+
+    thread_id: str
+    item_id: str
+    result: Literal["applied", "unknown_item"]
+    through_sequence: int
 
 
 class ThreadMessage(BaseModel):
@@ -898,7 +973,7 @@ async def list_threads(
             title=thread.title,
             message_count=thread.messages.count(),
             turn_count=thread.turns.count(),
-            summary=thread.summary,
+            summary=summary_label(thread.summary),
             created_at=thread.created_at.isoformat(),
             last_activity=thread.updated_at.isoformat(),
             is_persisted=True,
@@ -1013,7 +1088,8 @@ async def get_thread(
             "turn_count": thread.turns.count(),
             "last_workflow": thread.last_workflow,
             "pending_handoff": None,
-            "summary": thread.summary,
+            # M2 PR 5: the label only, for owner and grantee alike.
+            "summary": summary_label(thread.summary),
             "messages": [
                 {
                     "id": message.pk,
@@ -1193,6 +1269,134 @@ async def update_thread(
     except (ThreadNotFound, ScopedThreadRejected):
         raise HTTPException(status_code=404, detail="Thread not found") from None
     return {"thread_id": thread.pk, "title": thread.title, "updated": True}
+
+
+def _memory_items(body: dict[str, Any], field: str) -> list[ThreadMemoryItem]:
+    """Project one protected list of an upgraded (v2) body, history included."""
+    items: list[ThreadMemoryItem] = []
+    for item in body.get(field) or []:
+        if not isinstance(item, dict):
+            continue
+        items.append(
+            ThreadMemoryItem(
+                id=str(item.get("id") or ""),
+                text=str(item.get("text") or ""),
+                lifecycle=str(item.get("lifecycle") or ""),
+                memory_type=str(item.get("memory_type") or ""),
+                created_seq=int(item.get("created_seq") or 0),
+                superseded_by=(str(item["superseded_by"]) if item.get("superseded_by") else None),
+                directive_flags=[str(flag) for flag in (item.get("directive_flags") or [])],
+            )
+        )
+    return items
+
+
+def thread_memory_projection(thread: Any) -> ThreadMemoryResponse:
+    """Parse a thread's stored summary into the owner's inspection payload.
+
+    Legacy (string-item) bodies are upgraded in memory so every item reads
+    as an object; nothing is written. An empty summary projects empty lists,
+    an empty label and ``body_version`` 0.
+    """
+    label, raw_body = summary_body.parse_summary(thread.summary)
+    body = summary_body.upgrade_body(raw_body, created_seq=0) if raw_body else {}
+    return ThreadMemoryResponse(
+        thread_id=thread.pk,
+        label=label,
+        through_sequence=int(thread.summary_through_sequence),
+        latest_sequence=max(0, int(thread.next_sequence) - 1),
+        body_version=int(body.get("body_version") or 0),
+        open_questions=_memory_items(body, "open_questions"),
+        pending_proposals=_memory_items(body, "pending_proposals"),
+        machine_facts=_memory_items(body, "machine_facts"),
+        corrections=_memory_items(body, "corrections"),
+        citation_keys=[str(key) for key in body.get(summary_body.CITATION_LIST) or []],
+        narrative=str(body.get("narrative") or ""),
+        exclusions_count=len(body.get("exclusions") or []),
+    )
+
+
+@app.get("/threads/{thread_id}/memory", response_model=ThreadMemoryResponse)
+async def get_thread_memory(thread_id: str, response: Response) -> ThreadMemoryResponse:
+    """What this thread remembers — the parsed summary body, OWNER ONLY.
+
+    M2 PR 5 (plan §8.6 item 2, §9.11, GR-16): resolution goes through the
+    owner-only ``ThreadRepository.get``, so a grantee (and any other
+    principal) receives the same 404 as an unknown thread.
+    """
+    repository = _repository(_principal())
+
+    def materialize() -> ThreadMemoryResponse:
+        """Materialize."""
+        return thread_memory_projection(repository.get(thread_id))
+
+    try:
+        payload = await sync_to_async(materialize, thread_sensitive=True)()
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    response.headers["Cache-Control"] = "private, no-store"
+    return payload
+
+
+@app.put("/threads/{thread_id}/memory/corrections", response_model=ThreadMemoryCorrectionResponse)
+async def correct_thread_memory(
+    thread_id: str, request: ThreadMemoryCorrectionRequest, response: Response
+) -> ThreadMemoryCorrectionResponse:
+    """Flip one summary item ("This is wrong" / "forget"), OWNER ONLY.
+
+    M2 PR 5 (plan §8.6 item 4): a §5.4 supersession through
+    ``summary_corrections.forget_item`` — never a prose edit. An unknown item
+    is a 200 ``unknown_item`` (idempotent, nothing disclosed); a persistent
+    write race after the service's retries is a 409; any other failure is a
+    value-free 500.
+    """
+    from aichat.services.summary_corrections import (
+        ForgetReason,
+        ForgetResult,
+        SummaryWriteRaceError,
+        forget_item,
+    )
+
+    principal = _principal()
+    repository = _repository(principal)
+
+    def perform() -> ThreadMemoryCorrectionResponse:
+        """Perform."""
+        thread = repository.get(thread_id)  # owner-only resolution
+        result = forget_item(
+            thread.pk,
+            request.item_id,
+            actor_pk=int(principal.user_pk),
+            reason=str(ForgetReason(request.action)),
+        )
+        if result == ForgetResult.THREAD_NOT_FOUND:
+            raise ThreadNotFound("Thread not found")
+        thread.refresh_from_db(fields=["summary_through_sequence"])
+        return ThreadMemoryCorrectionResponse(
+            thread_id=thread.pk,
+            item_id=request.item_id,
+            result=str(result),
+            through_sequence=int(thread.summary_through_sequence),
+        )
+
+    try:
+        payload = await sync_to_async(perform, thread_sensitive=True)()
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    except SummaryWriteRaceError:
+        raise HTTPException(status_code=409, detail="Memory changed, retry") from None
+    except Exception as exc:
+        # Value-free: the exception class only, never the item or summary.
+        logger.warning(
+            "Memory correction failed thread=%s item=%s action=%s error=%s",
+            thread_id,
+            request.item_id,
+            request.action,
+            type(exc).__name__,
+        )
+        raise HTTPException(status_code=500, detail="Memory correction failed") from None
+    response.headers["Cache-Control"] = "private, no-store"
+    return payload
 
 
 class ThreadScopeUpdateRequest(BaseModel):

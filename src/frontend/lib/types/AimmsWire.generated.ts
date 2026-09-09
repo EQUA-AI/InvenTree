@@ -418,3 +418,55 @@ export interface EvidenceSetPage {
   complete: boolean;
   next_cursor: string | null;
 }
+
+// --- Thread listing and memory inspection (ai.core.app) ---
+
+export interface ThreadInfo {
+  thread_id: string;
+  title: string;
+  message_count: number;
+  turn_count: number;
+  summary: string;
+  created_at: string | null;
+  last_activity: string | null;
+  is_persisted: boolean;
+  shared: boolean;
+  active_scope: ActiveScopeSummary | null;
+}
+
+export interface ThreadMemoryItem {
+  id: string;
+  text: string;
+  lifecycle: string;
+  memory_type: string;
+  created_seq: number;
+  superseded_by: string | null;
+  directive_flags: string[];
+}
+
+export interface ThreadMemoryResponse {
+  thread_id: string;
+  label: string;
+  through_sequence: number;
+  latest_sequence: number;
+  body_version: number;
+  open_questions: ThreadMemoryItem[];
+  pending_proposals: ThreadMemoryItem[];
+  machine_facts: ThreadMemoryItem[];
+  corrections: ThreadMemoryItem[];
+  citation_keys: string[];
+  narrative: string;
+  exclusions_count: number;
+}
+
+export interface ThreadMemoryCorrectionRequest {
+  item_id: string;
+  action: 'wrong' | 'forget';
+}
+
+export interface ThreadMemoryCorrectionResponse {
+  thread_id: string;
+  item_id: string;
+  result: 'applied' | 'unknown_item';
+  through_sequence: number;
+}

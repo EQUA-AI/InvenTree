@@ -10,6 +10,7 @@ One committed artifact — ``src/frontend/lib/types/AimmsWire.generated.ts``
 - ``ai.core.voice.wire`` pydantic models     -> interfaces
 - ``SERVER_VOICE_ERROR_CODES``               -> ``ServerVoiceErrorCode``
 - ``ai.core.analysis.scope``/``.wire``       -> scope unions + interfaces
+- ``ai.core.app`` thread listing / memory     -> interfaces (M2 PR 5)
 
 The output is byte-deterministic (definition order, forced ``en`` labels),
 so ``--check`` can compare bytes: CI runs it and fails on drift, making the
@@ -319,6 +320,29 @@ class Command(BaseCommand):
         sections.append(_emit_model_interface(AnalysisIncompleteReasonPayload))
         sections.append(_emit_model_interface(EvidenceSetMember))
         sections.append(_emit_model_interface(EvidenceSetPage))
+
+        sections.append(
+            '// --- Thread listing and memory inspection (ai.core.app) ---\n'
+        )
+        from ai.core.app import (
+            ThreadInfo,
+            ThreadMemoryCorrectionRequest,
+            ThreadMemoryCorrectionResponse,
+            ThreadMemoryItem,
+            ThreadMemoryResponse,
+        )
+
+        # M2 PR 5: ``summary`` is the label only (plan §8.6 item 1); the
+        # body rides the owner-only memory endpoint below.
+        sections.append(
+            _emit_model_interface(
+                ThreadInfo, overrides={'active_scope': 'ActiveScopeSummary | null'}
+            )
+        )
+        sections.append(_emit_model_interface(ThreadMemoryItem))
+        sections.append(_emit_model_interface(ThreadMemoryResponse))
+        sections.append(_emit_model_interface(ThreadMemoryCorrectionRequest))
+        sections.append(_emit_model_interface(ThreadMemoryCorrectionResponse))
 
         return '\n'.join(sections)
 
