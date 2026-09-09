@@ -28,20 +28,27 @@ from __future__ import annotations
 import inspect
 import logging
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from ai.core.tools.read_only import confirmed_write_exception
 from ai.core.voice.confirmation import (
-    DONE_PHRASE,
-    EXECUTION_FAILED_PHRASE,
+    ACCEPTED_PENDING_PHRASE,
+    AWAITING_REVIEW_PHRASE,
+    DRAFT_PHRASE,
+    NOT_APPLIED_PHRASE,
     NOT_AUTHORIZED_PHRASE,
+    NOT_COMPLETED_PHRASE,
+    PARTIAL_RESULT_PHRASE,
     STRICT_PHRASE_REQUIRED_PHRASE,
+    UNKNOWN_RESULT_PHRASE,
     ConfirmationReason,
     ConfirmationReply,
     PendingVoiceConfirmation,
     ProposedWriteAction,
     VoiceWriteAuditEvent,
     VoiceWriteAuditEventType,
+    assemble_spoken,
     interpret_confirmation_reply,
     propose,
     resolve,
@@ -76,6 +83,9 @@ class ResolvedVoiceWrite:
 
     action: ProposedWriteAction
     executable: ExecutableWrite
+    #: Server-derived human label of the target record ("work order 140",
+    #: "Pump seal kit"), used in the spoken success sentence. Never transcript.
+    record_label: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,14 +94,61 @@ class StoredPendingWrite:
 
     pending: PendingVoiceConfirmation
     executable: ExecutableWrite
+    record_label: str = ""
+
+
+class VoiceWriteOutcome(StrEnum):
+    """Recorded outcome of one confirmed write (voice-UX plan §5.5).
+
+    Only ``SUCCEEDED`` may be spoken as done; ``FAILED_BEFORE_EFFECT`` may be
+    spoken as "not applied" only when the executor proves nothing ran;
+    ``NOT_COMPLETED``/``UNKNOWN``/``PARTIAL`` never claim "nothing changed".
+    """
+
+    DRAFT = "draft"
+    AWAITING_REVIEW = "awaiting_review"
+    ACCEPTED_PENDING = "accepted_pending"
+    SUCCEEDED = "succeeded"
+    FAILED_BEFORE_EFFECT = "failed_before_effect"
+    NOT_COMPLETED = "not_completed"
+    UNKNOWN = "unknown"
+    PARTIAL = "partial"
 
 
 @dataclass(frozen=True, slots=True)
 class VoiceWriteExecutionResult:
-    """The executor's report of running one resolved write."""
+    """The executor's report of running one resolved write.
+
+    ``ok`` is kept for executors that only know success/failure; such a
+    failure resolves to ``NOT_COMPLETED`` (never "nothing changed"). Executors
+    that can prove more set ``outcome`` and ``effect_committed`` explicitly.
+    """
 
     ok: bool
     detail: str = ""
+    outcome: VoiceWriteOutcome | None = None
+    record_label: str = ""
+    change_label: str = ""
+    receipt_ref: str = ""
+    effect_committed: bool | None = None
+
+    @property
+    def resolved_outcome(self) -> VoiceWriteOutcome:
+        if self.outcome is not None:
+            return self.outcome
+        return VoiceWriteOutcome.SUCCEEDED if self.ok else VoiceWriteOutcome.NOT_COMPLETED
+
+    @property
+    def committed(self) -> bool | None:
+        """Whether the effect is known to have committed (``None`` = unknown)."""
+        if self.effect_committed is not None:
+            return self.effect_committed
+        outcome = self.resolved_outcome
+        if outcome is VoiceWriteOutcome.SUCCEEDED:
+            return True
+        if outcome is VoiceWriteOutcome.FAILED_BEFORE_EFFECT:
+            return False
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +167,41 @@ class WriteResolutionResult:
     spoken: str
     executed: bool
     audit_events: tuple[VoiceWriteAuditEvent, ...]
+    outcome: VoiceWriteOutcome | None = None
+    effect_committed: bool | None = None
+    receipt_ref: str = ""
+
+
+_OUTCOME_PHRASES: dict[VoiceWriteOutcome, str] = {
+    VoiceWriteOutcome.DRAFT: DRAFT_PHRASE,
+    VoiceWriteOutcome.AWAITING_REVIEW: AWAITING_REVIEW_PHRASE,
+    VoiceWriteOutcome.ACCEPTED_PENDING: ACCEPTED_PENDING_PHRASE,
+    VoiceWriteOutcome.FAILED_BEFORE_EFFECT: NOT_APPLIED_PHRASE,
+    VoiceWriteOutcome.NOT_COMPLETED: NOT_COMPLETED_PHRASE,
+    VoiceWriteOutcome.UNKNOWN: UNKNOWN_RESULT_PHRASE,
+    VoiceWriteOutcome.PARTIAL: PARTIAL_RESULT_PHRASE,
+}
+
+
+def spoken_for_result(result: VoiceWriteExecutionResult, stored: StoredPendingWrite) -> str:
+    """The honest spoken outcome for one execution result.
+
+    Success names the record and the change from server-derived labels; when a
+    label is missing it falls back to the read-back summary, never to a bare
+    "Done". Every other outcome is a fixed, allow-listed phrase.
+    """
+    outcome = result.resolved_outcome
+    if outcome is not VoiceWriteOutcome.SUCCEEDED:
+        return _OUTCOME_PHRASES[outcome]
+    record_label = result.record_label or stored.record_label
+    if record_label and result.change_label:
+        try:
+            return assemble_spoken(
+                "succeeded", record_label=record_label, change_label=result.change_label
+            )
+        except ValueError:
+            pass
+    return assemble_spoken("completed_summary", summary=stored.pending.action.summary)
 
 
 @runtime_checkable
@@ -258,7 +350,11 @@ class VoiceWriteGate:
         if pending is not None:
             self.store.save(
                 thread_id,
-                StoredPendingWrite(pending=pending, executable=resolved.executable),
+                StoredPendingWrite(
+                    pending=pending,
+                    executable=resolved.executable,
+                    record_label=resolved.record_label,
+                ),
             )
         return WriteProposalResult(
             spoken=spoken,
@@ -325,19 +421,25 @@ class VoiceWriteGate:
             result = await self.executor.execute(
                 stored.executable, actor=actor, trusted_context=trusted_context
             )
+        outcome = result.resolved_outcome
+        succeeded = outcome is VoiceWriteOutcome.SUCCEEDED
+        reason = outcome.value if not result.detail else f"{outcome.value}:{result.detail}"
         events.append(
             _event(
                 VoiceWriteAuditEventType.EXECUTED
-                if result.ok
+                if succeeded
                 else VoiceWriteAuditEventType.EXECUTION_FAILED,
                 stored.pending.action,
                 thread_id=thread_id,
                 nonce=stored.pending.nonce,
-                reason=result.detail or ("executed" if result.ok else "failed"),
+                reason=reason[:120],
             )
         )
         return WriteResolutionResult(
-            spoken=DONE_PHRASE if result.ok else EXECUTION_FAILED_PHRASE,
-            executed=result.ok,
+            spoken=spoken_for_result(result, stored),
+            executed=succeeded,
             audit_events=tuple(events),
+            outcome=outcome,
+            effect_committed=result.committed,
+            receipt_ref=result.receipt_ref,
         )

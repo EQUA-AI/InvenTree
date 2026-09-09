@@ -1034,7 +1034,7 @@ class VoiceWriteConfirmationEnforceTests(SimpleTestCase):
         self.assertIn("Place a purchase order for 10 bearings", propose.message)
         # Turn 2: the confirmation executes exactly the resolved call, once.
         self.assertEqual(confirm.workflow_used, "voice_write_confirm")
-        self.assertEqual(confirm.message, "Done.")
+        self.assertTrue(confirm.message.startswith("Completed: "), confirm.message)
         self.assertEqual(len(executor.calls), 1)
         self.assertEqual(executor.calls[0].tool_name, "create_purchase_order")
 

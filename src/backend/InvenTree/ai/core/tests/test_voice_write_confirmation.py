@@ -357,6 +357,11 @@ def test_policy_version_is_v3() -> None:
         ("don't do it", None, ConfirmationReply.DECLINE),
         ("cancel that", None, ConfirmationReply.DECLINE),
         ("confirm delete, cancel", "confirm delete", ConfirmationReply.DECLINE),
+        # strict phrases that contain a refusal word still confirm themselves
+        ("confirm cancel order", "confirm cancel order", ConfirmationReply.AFFIRM),
+        ("yes, confirm cancel order please", "confirm cancel order", ConfirmationReply.AFFIRM),
+        ("confirm cancel order, no wait", "confirm cancel order", ConfirmationReply.DECLINE),
+        ("confirm cancel order and reorder", "confirm cancel order", ConfirmationReply.AMEND),
         # postponement -> DEFER
         ("not yet", None, ConfirmationReply.DEFER),
         ("wait", "confirm delete", ConfirmationReply.DEFER),
@@ -417,3 +422,52 @@ def test_resolve_defer_cancels_with_deferred_reason_and_phrase() -> None:
 def test_new_phrases_are_allow_listed() -> None:
     assert AMEND_PHRASE in ALLOWED_CONFIRMATION_PHRASES
     assert DEFERRED_PHRASE in ALLOWED_CONFIRMATION_PHRASES
+
+
+# --------------------------------------------------------------------------- #
+# Templated dynamic speech (voice-UX plan A2)                                  #
+# --------------------------------------------------------------------------- #
+from ai.core.voice.confirmation import (  # noqa: E402
+    NOT_APPLIED_PHRASE,
+    NOT_COMPLETED_PHRASE,
+    UNKNOWN_RESULT_PHRASE,
+    assemble_spoken,
+)
+
+
+def test_assemble_spoken_renders_fixed_templates_with_clean_slots() -> None:
+    assert (
+        assemble_spoken(
+            "succeeded", record_label="  Work order  140 ", change_label="is now on hold."
+        )
+        == "Work order 140 is now on hold."
+    )
+    assert assemble_spoken("completed_summary", summary="Add stock with quantity 10") == (
+        "Completed: Add stock with quantity 10."
+    )
+
+
+def test_assemble_spoken_bounds_slots_and_flattens_whitespace() -> None:
+    spoken = assemble_spoken("completed_summary", summary="x" * 500 + "\n\nsecond line")
+    assert len(spoken) <= len("Completed: .") + 120
+    assert "\n" not in spoken
+
+
+@pytest.mark.parametrize(
+    ("template", "slots"),
+    (
+        ("succeeded", {"record_label": "", "change_label": "is now on hold"}),
+        ("succeeded", {"record_label": "WO-1"}),
+        ("no_such_template", {"summary": "x"}),
+    ),
+)
+def test_assemble_spoken_refuses_holes_and_unknown_templates(template, slots) -> None:
+    with pytest.raises(ValueError):
+        assemble_spoken(template, **slots)
+
+
+def test_honest_result_phrases_are_allow_listed_and_never_claim_nothing_changed() -> None:
+    for phrase in (NOT_APPLIED_PHRASE, NOT_COMPLETED_PHRASE, UNKNOWN_RESULT_PHRASE):
+        assert phrase in ALLOWED_CONFIRMATION_PHRASES
+    assert "Nothing was changed" not in NOT_COMPLETED_PHRASE
+    assert "Nothing was changed" not in UNKNOWN_RESULT_PHRASE

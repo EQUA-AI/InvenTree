@@ -156,3 +156,29 @@ def test_utterance_can_raise_but_never_lower_the_bar():
         raised, _ = _classify(name, destructive)
         if lenient is WriteActionClass.IRREVERSIBLE:
             assert raised is WriteActionClass.IRREVERSIBLE, name
+
+
+# --------------------------------------------------------------------------- #
+# Change labels for the honest success sentence (voice-UX plan A2)            #
+# --------------------------------------------------------------------------- #
+from ai.core.voice.action_severity import (  # noqa: E402
+    DEFAULT_CHANGE_LABEL,
+    change_label_for_tool_name,
+    classified_change_label_names,
+)
+
+
+def test_change_label_map_covers_every_classified_tool() -> None:
+    assert classified_change_label_names() == classified_tool_names()
+
+
+def test_change_labels_are_short_server_authored_fragments() -> None:
+    for name in classified_change_label_names():
+        label = change_label_for_tool_name(name)
+        assert label and label == label.strip()
+        assert len(label) <= 60
+        assert not label.endswith(".")
+
+
+def test_unknown_tool_gets_the_default_change_label() -> None:
+    assert change_label_for_tool_name("no_such_tool") == DEFAULT_CHANGE_LABEL

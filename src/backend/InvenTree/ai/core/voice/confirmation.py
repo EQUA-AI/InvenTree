@@ -41,6 +41,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 #: Bumped whenever a spoken confirmation phrase, the confirmation grammar, or the
 #: irreversibility policy changes, so an audit record pins the policy it was
@@ -189,9 +190,11 @@ _DECLINE_PATTERN = re.compile(
     r"never ?mind|scratch that|forget it)",
     re.IGNORECASE,
 )
+#: A refusal token anywhere after an assent. "confirm cancel order" is an
+#: action phrase, not a refusal, so a token directly after "confirm" is exempt.
 _DECLINE_TOKEN = re.compile(
-    r"\b(?:no|nope|nah|cancel|stop|abort|don'?t|do not|never ?mind|scratch that|"
-    r"forget it)\b",
+    r"(?<!confirm )\b(?:no|nope|nah|cancel|stop|abort|don'?t|do not|never ?mind|"
+    r"scratch that|forget it)\b",
     re.IGNORECASE,
 )
 #: A refusal as the LAST word wins over an earlier correction word
@@ -243,8 +246,19 @@ CONFIRMED_PHRASE = "Confirmed."
 AMEND_PHRASE = "Not applied. Say the full request again with the change, and I'll read it back."
 #: Spoken when the reply postponed the decision ("not yet", "wait").
 DEFERRED_PHRASE = "Not applied. Ask again when you're ready."
-DONE_PHRASE = "Done."
-EXECUTION_FAILED_PHRASE = "Sorry, that change did not go through. Nothing was changed."
+#: Honest result language (voice-UX plan §5.5). Spoken ONLY from recorded
+#: outcome state; "nothing was changed" is never claimed without proof.
+NOT_APPLIED_PHRASE = "That change was not applied."
+NOT_COMPLETED_PHRASE = (
+    "That change did not complete. I could not confirm what, if anything, changed."
+)
+UNKNOWN_RESULT_PHRASE = (
+    "I could not verify whether that change completed. Do not repeat it until it has been checked."
+)
+ACCEPTED_PENDING_PHRASE = "Accepted. Execution is still pending."
+PARTIAL_RESULT_PHRASE = "Only part of that change completed. Check the record before repeating it."
+DRAFT_PHRASE = "I prepared the change. It has not been applied."
+AWAITING_REVIEW_PHRASE = "That request needs review before it runs."
 
 #: The complete allow-list of static confirmation phrases (read-backs excluded).
 ALLOWED_CONFIRMATION_PHRASES = frozenset({
@@ -255,10 +269,49 @@ ALLOWED_CONFIRMATION_PHRASES = frozenset({
     CONFIRMED_PHRASE,
     AMEND_PHRASE,
     DEFERRED_PHRASE,
-    DONE_PHRASE,
-    EXECUTION_FAILED_PHRASE,
+    NOT_APPLIED_PHRASE,
+    NOT_COMPLETED_PHRASE,
+    UNKNOWN_RESULT_PHRASE,
+    ACCEPTED_PENDING_PHRASE,
+    PARTIAL_RESULT_PHRASE,
+    DRAFT_PHRASE,
+    AWAITING_REVIEW_PHRASE,
     STRICT_PHRASE_REQUIRED_PHRASE,
 })
+
+# ---------------------------------------------------------------------------
+# Templated dynamic speech. The success sentence must name the record and the
+# change, which no static allow-list can do; instead the TEMPLATES are fixed
+# and every slot is server-derived (record labels, receipts), sanitized and
+# bounded. Transcript text never reaches a slot.
+# ---------------------------------------------------------------------------
+SPOKEN_TEMPLATE_VERSION = "spoken-templates-v1"
+SPOKEN_TEMPLATES: dict[str, str] = {
+    "succeeded": "{record_label} {change_label}.",
+    "completed_summary": "Completed: {summary}.",
+}
+_SLOT_MAX_CHARS = 120
+
+
+def _clean_slot(value: Any) -> str:
+    text = re.sub(r"\s+", " ", str(value)).strip().rstrip(".")
+    return text[:_SLOT_MAX_CHARS].rstrip()
+
+
+def assemble_spoken(template_id: str, **slots: Any) -> str:
+    """Render one fixed template with sanitized, server-derived slots.
+
+    Raises ``ValueError`` for an unknown template or an empty slot so callers
+    choose a fallback deliberately instead of speaking a hole.
+    """
+    template = SPOKEN_TEMPLATES.get(template_id)
+    if template is None:
+        raise ValueError(f"unknown spoken template: {template_id}")
+    cleaned = {key: _clean_slot(value) for key, value in slots.items()}
+    for key in re.findall(r"{(\w+)}", template):
+        if not cleaned.get(key):
+            raise ValueError(f"empty slot {key!r} for template {template_id!r}")
+    return template.format(**cleaned)
 
 
 @dataclass(frozen=True, slots=True)
@@ -416,32 +469,36 @@ def interpret_confirmation_reply(
     assent_led = bool(_ASSENT_PREFIX.match(text)) or (bool(target) and stripped.startswith(target))
 
     if assent_led:
-        # 2. Assent followed by a refusal ("confirm hold, no wait",
-        #    "yes... actually no") -> DECLINE.
-        if _DECLINE_TOKEN.search(stripped) and (
-            not _CORRECTION_PATTERN.search(stripped) or _TRAILING_DECLINE.search(stripped)
-        ):
-            return ConfirmationReply.DECLINE
-        # 3. Assent carrying a correction or qualification -> AMEND.
-        if _CORRECTION_PATTERN.search(stripped):
-            return ConfirmationReply.AMEND
-        # 4. Assent carrying a postponement ("confirm delete not yet") -> DEFER.
-        if _DEFER_PATTERN.search(stripped):
-            return ConfirmationReply.DEFER
-        # 5. Exact whole-utterance match.
+        # 2. Exact whole-utterance match first, so a strict phrase that itself
+        #    contains a refusal word ("confirm cancel order") confirms.
         if target:
             if stripped == target or _without_trailing_object(stripped) == target:
                 return ConfirmationReply.AFFIRM
-            if _is_affirm_token(stripped):
-                # A bare "yes" is not the strict phrase; the caller explains
-                # that the exact phrase is required.
-                return ConfirmationReply.UNRELATED
-        elif _is_affirm_token(stripped) or _is_affirm_token(text):
-            return ConfirmationReply.AFFIRM
-        # 6. Assent plus anything else is a mixed reply: never execute as read.
+            remainder = stripped[len(target) :].strip() if stripped.startswith(target) else stripped
+        else:
+            if _is_affirm_token(stripped) or _is_affirm_token(text):
+                return ConfirmationReply.AFFIRM
+            remainder = stripped
+        # 3. Assent followed by a refusal ("confirm hold, no wait",
+        #    "yes... actually no") -> DECLINE.
+        if _DECLINE_TOKEN.search(remainder) and (
+            not _CORRECTION_PATTERN.search(remainder) or _TRAILING_DECLINE.search(remainder)
+        ):
+            return ConfirmationReply.DECLINE
+        # 4. Assent carrying a correction or qualification -> AMEND.
+        if _CORRECTION_PATTERN.search(remainder):
+            return ConfirmationReply.AMEND
+        # 5. Assent carrying a postponement ("confirm delete not yet") -> DEFER.
+        if _DEFER_PATTERN.search(remainder):
+            return ConfirmationReply.DEFER
+        # 6. A bare affirmative is not the strict phrase; the caller explains
+        #    that the exact phrase is required.
+        if target and _is_affirm_token(stripped):
+            return ConfirmationReply.UNRELATED
+        # 7. Assent plus anything else is a mixed reply: never execute as read.
         return ConfirmationReply.AMEND
 
-    # 7. No assent: a leading postponement defers, a leading correction amends.
+    # 8. No assent: a leading postponement defers, a leading correction amends.
     if _DEFER_PATTERN.match(text):
         return ConfirmationReply.DEFER
     if _CORRECTION_PATTERN.match(text):

@@ -23,6 +23,7 @@ from ai.core.tools.rbac import (
 from ai.core.voice.action_severity import (
     WriteSeverity,
     action_class_for_severity,
+    change_label_for_tool_name,
     confirm_phrase_for_tool_name,
     severity_for_tool_name,
 )
@@ -38,6 +39,7 @@ from ai.core.voice.write_gate import (
     StoredPendingWrite,
     VoiceWriteExecutionResult,
     VoiceWriteGate,
+    VoiceWriteOutcome,
 )
 
 if TYPE_CHECKING:
@@ -269,6 +271,15 @@ async def _record_label(key: str, value: Any) -> str | None:
     return None
 
 
+async def _record_label_for_arguments(arguments: dict[str, Any]) -> str:
+    """The first resolvable human label among the arguments' record ids, or ""."""
+    for key, value in arguments.items():
+        label = await _record_label(str(key), value)
+        if label:
+            return label
+    return ""
+
+
 async def _action_summary_async(tool: Any, arguments: dict[str, Any]) -> str:
     """Read-back naming the record, falling back to the id-only form."""
     summary = _action_summary(tool, arguments)
@@ -457,6 +468,7 @@ class VoiceToolActionResolver:
         proposal = captured[0]
         capability = capability_for_tool(proposal.tool)
         action_class, confirm_phrase = _action_class(proposal.tool, content)
+        record_label = await _record_label_for_arguments(proposal.arguments)
         return ResolvedVoiceWrite(
             action=ProposedWriteAction(
                 capability=capability,
@@ -469,6 +481,7 @@ class VoiceToolActionResolver:
                 capability=capability,
                 arguments=proposal.arguments,
             ),
+            record_label=record_label,
         )
 
 
@@ -494,33 +507,83 @@ class TextToolVoiceExecutor:
     ) -> VoiceWriteExecutionResult:
         tool = self._tools.get(executable.tool_name)
         if tool is None:
-            return VoiceWriteExecutionResult(ok=False, detail="unknown_tool")
+            return _not_applied("unknown_tool")
         try:
             expected_capability = capability_for_tool(tool)
         except ValueError:
-            return VoiceWriteExecutionResult(ok=False, detail="unmapped_tool")
+            return _not_applied("unmapped_tool")
         if expected_capability != executable.capability:
-            return VoiceWriteExecutionResult(ok=False, detail="capability_mismatch")
+            return _not_applied("capability_mismatch")
         if not await self._permission.allows(actor, executable.capability):
-            return VoiceWriteExecutionResult(ok=False, detail="not_authorized")
-
+            return _not_applied("not_authorized")
         try:
             inspect.signature(tool).bind(**executable.arguments)
+        except TypeError:
+            # Proven before any call: the arguments cannot even be bound.
+            return _not_applied("bad_arguments")
+
+        try:
             result = tool(**executable.arguments)
             if inspect.isawaitable(result):
                 result = await result
         except Exception as exc:
+            # The tool was invoked; whether it committed anything is unknown.
             logger.error(
                 "Confirmed voice action failed (tool=%s, error_type=%s)",
                 executable.tool_name,
                 type(exc).__name__,
             )
-            return VoiceWriteExecutionResult(ok=False, detail="execution_failed")
+            return VoiceWriteExecutionResult(
+                ok=False,
+                detail="execution_failed",
+                outcome=VoiceWriteOutcome.UNKNOWN,
+                effect_committed=None,
+            )
         if isinstance(result, dict) and (
             result.get("success") is False or bool(result.get("error"))
         ):
-            return VoiceWriteExecutionResult(ok=False, detail="tool_reported_failure")
-        return VoiceWriteExecutionResult(ok=True, detail="executed")
+            # A tool that reports failure proves nothing about partial state.
+            return VoiceWriteExecutionResult(
+                ok=False,
+                detail="tool_reported_failure",
+                outcome=VoiceWriteOutcome.NOT_COMPLETED,
+                effect_committed=None,
+            )
+        return VoiceWriteExecutionResult(
+            ok=True,
+            detail="executed",
+            outcome=VoiceWriteOutcome.SUCCEEDED,
+            change_label=change_label_for_tool_name(executable.tool_name),
+            receipt_ref=_receipt_ref(result),
+            effect_committed=True,
+        )
+
+
+_RECEIPT_ID_KEYS = ("message_id", "order_id", "stock_item_id", "part_id", "pk", "id")
+
+
+def _not_applied(detail: str) -> VoiceWriteExecutionResult:
+    """A pre-flight refusal: proven to have run nothing."""
+    return VoiceWriteExecutionResult(
+        ok=False,
+        detail=detail,
+        outcome=VoiceWriteOutcome.FAILED_BEFORE_EFFECT,
+        effect_committed=False,
+    )
+
+
+def _receipt_ref(result: Any) -> str:
+    """A bounded, opaque reference to what the tool returned (never its content)."""
+    if not isinstance(result, dict):
+        return ""
+    for key in _RECEIPT_ID_KEYS:
+        value = result.get(key)
+        if isinstance(value, (int, str)) and not isinstance(value, bool) and str(value).strip():
+            return f"{key}:{str(value).strip()[:64]}"
+    nested = result.get("data") if isinstance(result.get("data"), dict) else None
+    if nested is not None:
+        return _receipt_ref(nested)
+    return ""
 
 
 _voice_write_gate: VoiceWriteGate | None = None

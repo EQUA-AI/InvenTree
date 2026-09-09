@@ -31,6 +31,7 @@ from ai.core.voice.write_gate import (
     ExecutableWrite,
     ResolvedVoiceWrite,
     VoiceWriteExecutionResult,
+    VoiceWriteOutcome,
 )
 from aichat.models import ProposalAction
 from aichat.services import proposals
@@ -180,7 +181,10 @@ class ProposalConfirmingVoiceExecutor:
         scope_hash = args.get('scope_hash')
         if not proposal_id or not scope_hash:
             return VoiceWriteExecutionResult(
-                ok=False, detail='PROPOSAL_BINDING_MISSING'
+                ok=False,
+                detail='PROPOSAL_BINDING_MISSING',
+                outcome=VoiceWriteOutcome.FAILED_BEFORE_EFFECT,
+                effect_committed=False,
             )
         try:
             owner = _owner(actor)
@@ -193,12 +197,63 @@ class ProposalConfirmingVoiceExecutor:
                 strict_phrase_satisfied=True,
             )
         except proposals.ProposalError as exc:
-            # Fail closed: expiry, staleness, terminal-state and cross-owner all
-            # surface as a spoken failure, never a silent or partial write.
-            return VoiceWriteExecutionResult(ok=False, detail=exc.code)
+            # Fail closed: expiry, staleness, terminal-state and cross-owner are
+            # refused BEFORE dispatch by the service, so nothing was applied.
+            return VoiceWriteExecutionResult(
+                ok=False,
+                detail=exc.code,
+                outcome=VoiceWriteOutcome.FAILED_BEFORE_EFFECT,
+                effect_committed=False,
+            )
         except Exception:
             # Defensive: a malformed id or missing user must not 500 the voice
-            # turn; it fails closed as an unspoken write, like any other refusal.
-            return VoiceWriteExecutionResult(ok=False, detail='PROPOSAL_NOT_FOUND')
-        command = (confirmed.receipt or {}).get('command', '')
-        return VoiceWriteExecutionResult(ok=True, detail=command)
+            # turn. The command may or may not have run: say so honestly.
+            return VoiceWriteExecutionResult(
+                ok=False,
+                detail='PROPOSAL_NOT_FOUND',
+                outcome=VoiceWriteOutcome.UNKNOWN,
+                effect_committed=None,
+            )
+        receipt = confirmed.receipt or {}
+        command = receipt.get('command', '')
+        return VoiceWriteExecutionResult(
+            ok=True,
+            detail=command,
+            outcome=VoiceWriteOutcome.SUCCEEDED,
+            record_label=_record_label(confirmed),
+            change_label=_change_label(command, receipt),
+            receipt_ref=f'proposal:{confirmed.id}',
+            effect_committed=True,
+        )
+
+
+#: Spoken change label per lifecycle status reached by a confirmed command.
+_LIFECYCLE_LABELS = {
+    'on_hold': 'is now on hold',
+    'in_progress': 'is now in progress',
+    'planned': 'is now planned',
+    'ready': 'is now ready',
+    'verifying': 'is now verifying',
+    'completed': 'is now completed',
+    'canceled': 'is now cancelled',
+    'draft': 'is now a draft',
+}
+
+
+def _record_label(proposal) -> str:
+    """Label "<reference> <title>" from the server-derived preview, never model text."""
+    preview = proposal.preview or {}
+    reference = str(preview.get('reference') or '').strip()
+    title = str(preview.get('title') or '').strip()
+    label = ' '.join(part for part in (reference, title) if part)
+    if not label and proposal.target_work_order_id:
+        label = f'work order {proposal.target_work_order_id}'
+    return label[:64]
+
+
+def _change_label(command: str, receipt: dict[str, Any]) -> str:
+    status = str(receipt.get('lifecycle_status') or '').strip().lower()
+    if status in _LIFECYCLE_LABELS:
+        return _LIFECYCLE_LABELS[status]
+    verb = str(command or '').replace('_', ' ').strip()
+    return f'{verb} completed' if verb else 'change has been applied'

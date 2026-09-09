@@ -12,9 +12,9 @@ import asyncio
 
 from ai.core.tools.read_only import read_only_tool_fence, read_only_tools_active
 from ai.core.voice.confirmation import (
-    DONE_PHRASE,
-    EXECUTION_FAILED_PHRASE,
     NOT_AUTHORIZED_PHRASE,
+    NOT_COMPLETED_PHRASE,
+    PendingVoiceConfirmation,
     ProposedWriteAction,
     VoiceWriteAuditEventType,
     WriteActionClass,
@@ -23,8 +23,10 @@ from ai.core.voice.write_gate import (
     ExecutableWrite,
     InMemoryPendingWriteStore,
     ResolvedVoiceWrite,
+    StoredPendingWrite,
     VoiceWriteExecutionResult,
     VoiceWriteGate,
+    WriteResolutionResult,
 )
 
 _ACTOR = object()
@@ -179,7 +181,7 @@ def test_confirmable_propose_then_bare_yes_executes_under_scoped_fence() -> None
 
     assert proposal.awaiting_confirmation is True
     assert resolution.executed is True
-    assert resolution.spoken == DONE_PHRASE
+    assert resolution.spoken.startswith("Completed: ")
     assert executor.calls[0].tool_name == "create_purchase_order"
     # The fence was relaxed only for the executor, then restored.
     assert executor.fence_during is False
@@ -281,7 +283,7 @@ def test_executor_failure_is_reported_and_not_claimed_as_done() -> None:
 
     resolution = asyncio.run(run())
     assert resolution.executed is False
-    assert resolution.spoken == EXECUTION_FAILED_PHRASE
+    assert resolution.spoken == NOT_COMPLETED_PHRASE
     assert resolution.audit_events[-1].event is VoiceWriteAuditEventType.EXECUTION_FAILED
 
 
@@ -339,3 +341,147 @@ def test_mixed_assent_under_strict_phrase_never_executes() -> None:
     assert resolution.executed is False
     assert resolution.spoken == AMEND_PHRASE
     assert executor.calls == []
+
+
+# --------------------------------------------------------------------------- #
+# Honest result model (voice-UX plan A2)                                       #
+# --------------------------------------------------------------------------- #
+from ai.core.voice.confirmation import (  # noqa: E402
+    ACCEPTED_PENDING_PHRASE,
+    NOT_APPLIED_PHRASE,
+    PARTIAL_RESULT_PHRASE,
+    UNKNOWN_RESULT_PHRASE,
+)
+from ai.core.voice.write_gate import (  # noqa: E402
+    VoiceWriteOutcome,
+    spoken_for_result,
+)
+
+
+class _OutcomeExecutor:
+    def __init__(self, result: VoiceWriteExecutionResult) -> None:
+        self.result = result
+        self.calls: list[ExecutableWrite] = []
+
+    async def execute(self, executable, *, actor, trusted_context):
+        self.calls.append(executable)
+        return self.result
+
+
+def _run_confirm(executor) -> WriteResolutionResult:
+    gate = _gate(resolved=_resolved_confirmable(), executor=executor)
+
+    async def run():
+        await gate.begin(
+            "place an order", actor=_ACTOR, trusted_context=_CTX, thread_id=1, nonce="n1"
+        )
+        return await gate.resolve_pending("yes", actor=_ACTOR, trusted_context=_CTX, thread_id=1)
+
+    return asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("result", "spoken", "executed", "committed"),
+    (
+        (
+            VoiceWriteExecutionResult(
+                ok=False,
+                detail="capability_mismatch",
+                outcome=VoiceWriteOutcome.FAILED_BEFORE_EFFECT,
+                effect_committed=False,
+            ),
+            NOT_APPLIED_PHRASE,
+            False,
+            False,
+        ),
+        (
+            VoiceWriteExecutionResult(
+                ok=False, detail="execution_failed", outcome=VoiceWriteOutcome.UNKNOWN
+            ),
+            UNKNOWN_RESULT_PHRASE,
+            False,
+            None,
+        ),
+        (
+            VoiceWriteExecutionResult(
+                ok=False, detail="tool_reported_failure", outcome=VoiceWriteOutcome.NOT_COMPLETED
+            ),
+            NOT_COMPLETED_PHRASE,
+            False,
+            None,
+        ),
+        (
+            VoiceWriteExecutionResult(ok=False, detail="legacy"),
+            NOT_COMPLETED_PHRASE,
+            False,
+            None,
+        ),
+        (
+            VoiceWriteExecutionResult(ok=True, outcome=VoiceWriteOutcome.ACCEPTED_PENDING),
+            ACCEPTED_PENDING_PHRASE,
+            False,
+            None,
+        ),
+        (
+            VoiceWriteExecutionResult(ok=False, outcome=VoiceWriteOutcome.PARTIAL),
+            PARTIAL_RESULT_PHRASE,
+            False,
+            None,
+        ),
+    ),
+)
+def test_outcomes_speak_honest_phrases(result, spoken, executed, committed) -> None:
+    resolution = _run_confirm(_OutcomeExecutor(result))
+    assert resolution.spoken == spoken
+    assert resolution.executed is executed
+    assert resolution.effect_committed is committed
+    assert resolution.outcome is result.resolved_outcome
+    assert resolution.audit_events[-1].event is VoiceWriteAuditEventType.EXECUTION_FAILED
+    assert resolution.audit_events[-1].reason.startswith(result.resolved_outcome.value)
+
+
+def test_success_names_the_record_and_the_change() -> None:
+    result = VoiceWriteExecutionResult(
+        ok=True,
+        outcome=VoiceWriteOutcome.SUCCEEDED,
+        record_label="Purchase order PO-0042",
+        change_label="has been created as a draft",
+        receipt_ref="order_id:42",
+        effect_committed=True,
+    )
+    resolution = _run_confirm(_OutcomeExecutor(result))
+    assert resolution.spoken == "Purchase order PO-0042 has been created as a draft."
+    assert resolution.executed is True
+    assert resolution.effect_committed is True
+    assert resolution.receipt_ref == "order_id:42"
+    assert resolution.audit_events[-1].event is VoiceWriteAuditEventType.EXECUTED
+
+
+def test_success_without_labels_falls_back_to_the_readback_summary() -> None:
+    resolution = _run_confirm(_OutcomeExecutor(VoiceWriteExecutionResult(ok=True)))
+    assert resolution.spoken == "Completed: Place a purchase order for 10 bearings."
+    assert resolution.executed is True
+    assert resolution.effect_committed is True
+
+
+def test_stored_record_label_is_used_when_the_executor_has_none() -> None:
+    stored = StoredPendingWrite(
+        pending=PendingVoiceConfirmation(
+            nonce="n", thread_id=1, action=_resolved_confirmable().action
+        ),
+        executable=_resolved_confirmable().executable,
+        record_label="Bearing 6205",
+    )
+    result = VoiceWriteExecutionResult(ok=True, change_label="now has the added stock")
+    assert spoken_for_result(result, stored) == "Bearing 6205 now has the added stock."
+
+
+def test_old_generic_phrases_are_gone() -> None:
+    import ai.core.voice.confirmation as confirmation
+
+    assert not hasattr(confirmation, "DONE_PHRASE")
+    assert not hasattr(confirmation, "EXECUTION_FAILED_PHRASE")
+    assert "Done." not in confirmation.ALLOWED_CONFIRMATION_PHRASES
+    assert not any(
+        "Nothing was changed" in phrase for phrase in confirmation.ALLOWED_CONFIRMATION_PHRASES
+    )

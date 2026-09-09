@@ -309,3 +309,82 @@ async def test_executor_rejects_capability_mismatch_without_calling_tool():
     assert result.ok is False
     assert result.detail == "capability_mismatch"
     assert calls == 0
+
+
+# --------------------------------------------------------------------------- #
+# Honest executor outcomes (voice-UX plan A2)                                  #
+# --------------------------------------------------------------------------- #
+from ai.core.voice.tool_actions import _receipt_ref  # noqa: E402
+from ai.core.voice.write_gate import VoiceWriteOutcome  # noqa: E402
+
+
+async def _execute_add_stock(impl, **arguments):
+    """Run TextToolVoiceExecutor over a fake ``add_stock`` with an explicit signature."""
+
+    async def add_stock(part_id: int, quantity: float, location_id: int) -> dict:
+        return await impl(part_id=part_id, quantity=quantity, location_id=location_id)
+
+    permission = AsyncMock()
+    permission.allows.return_value = True
+    executor = TextToolVoiceExecutor(tools=[add_stock], permission=permission)
+    executable = ExecutableWrite(tool_name="add_stock", capability="stock:add", arguments=arguments)
+    with patch("ai.core.voice.tool_actions.capability_for_tool", return_value="stock:add"):
+        return await executor.execute(executable, actor=_principal(), trusted_context=object())
+
+
+@pytest.mark.asyncio
+async def test_tool_exception_is_an_unknown_outcome_not_a_denial():
+    async def boom(**kwargs):  # noqa: RUF029
+        raise RuntimeError("provider timeout")
+
+    result = await _execute_add_stock(boom, part_id=1, quantity=2, location_id=3)
+    assert result.ok is False
+    assert result.resolved_outcome is VoiceWriteOutcome.UNKNOWN
+    assert result.committed is None
+    assert result.detail == "execution_failed"
+
+
+@pytest.mark.asyncio
+async def test_tool_reported_failure_is_not_completed_not_nothing_changed():
+    async def failing(**kwargs):  # noqa: RUF029
+        return {"success": False, "error": "insufficient stock"}
+
+    result = await _execute_add_stock(failing, part_id=1, quantity=2, location_id=3)
+    assert result.resolved_outcome is VoiceWriteOutcome.NOT_COMPLETED
+    assert result.committed is None
+
+
+@pytest.mark.asyncio
+async def test_bad_arguments_fail_before_any_effect():
+    called = []
+
+    async def impl(**kwargs):  # noqa: RUF029
+        called.append(kwargs)
+        return {"success": True}
+
+    result = await _execute_add_stock(impl, no_such_argument=1)
+    assert result.resolved_outcome is VoiceWriteOutcome.FAILED_BEFORE_EFFECT
+    assert result.committed is False
+    assert result.detail == "bad_arguments"
+    assert called == []
+
+
+@pytest.mark.asyncio
+async def test_success_carries_change_label_and_receipt_ref():
+    async def impl(**kwargs):  # noqa: RUF029
+        return {"success": True, "stock_item_id": 910, "quantity": 2}
+
+    result = await _execute_add_stock(impl, part_id=1, quantity=2, location_id=3)
+    assert result.resolved_outcome is VoiceWriteOutcome.SUCCEEDED
+    assert result.committed is True
+    assert result.change_label == "now has the added stock"
+    assert result.receipt_ref == "stock_item_id:910"
+
+
+def test_receipt_ref_is_bounded_and_opaque():
+    assert _receipt_ref({"id": 7}) == "id:7"
+    assert _receipt_ref({"message_id": "abc" * 40}).startswith("message_id:abc")
+    assert len(_receipt_ref({"message_id": "abc" * 40})) <= len("message_id:") + 64
+    assert _receipt_ref({"data": {"order_id": 5}}) == "order_id:5"
+    assert _receipt_ref({"body": "secret"}) == ""
+    assert _receipt_ref("not a dict") == ""

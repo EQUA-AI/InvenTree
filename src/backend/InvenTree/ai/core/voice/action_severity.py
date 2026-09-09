@@ -121,6 +121,52 @@ _CONFIRM_PHRASES: dict[str, str] = {
 #: Fallback when a tool is unmapped (and therefore strict by policy).
 DEFAULT_CONFIRM_PHRASE = "confirm action"
 
+#: Spoken change label per tool for the SUCCESS sentence ("<record> <label>."),
+#: server-authored like the confirm phrases. Exhaustiveness over every
+#: classified tool is asserted by test_voice_action_severity.
+_CHANGE_LABELS: dict[str, str] = {
+    "add_bom_item": "now has the new bill-of-materials line",
+    "add_po_line_item": "now has the new order line",
+    "add_so_line_item": "now has the new sales order line",
+    "add_stock": "now has the added stock",
+    "add_stock_test_result": "now has the recorded test result",
+    "assign_stock": "is now assigned",
+    "change_stock_status": "now has the new stock status",
+    "count_stock": "now has the counted quantity",
+    "create_company": "has been created",
+    "create_manufacturer_part": "has been created",
+    "create_part": "has been created",
+    "create_part_category": "has been created",
+    "create_purchase_order": "has been created as a draft",
+    "create_sales_order": "has been created as a draft",
+    "create_stock_location": "has been created",
+    "create_supplier_part": "has been created",
+    "install_stock": "is now installed",
+    "set_part_parameter": "now has the updated parameter",
+    "transfer_stock": "has been moved",
+    "uninstall_stock": "is now uninstalled",
+    "update_part": "has been updated",
+    "update_purchase_order": "has been updated",
+    "update_stock_location": "has been updated",
+    "cancel_purchase_order": "is now cancelled",
+    "complete_purchase_order": "is now complete",
+    "convert_stock": "has been converted",
+    "deactivate_part": "is now inactive",
+    "delete_po_line_item": "no longer has that order line",
+    "delete_purchase_order": "has been deleted",
+    "issue_purchase_order": "has been issued to the supplier",
+    "merge_stock": "has been merged",
+    "receive_po_items": "has been received",
+    "remove_stock": "has had the stock removed",
+    "return_stock": "has been returned",
+    "serialize_stock": "has been serialized",
+    "split_stock": "has been split",
+    "generate_and_send_document": "document has been sent",
+    "mark_email_processed": "email is now marked processed",
+    "send_email": "email has been sent",
+}
+DEFAULT_CHANGE_LABEL = "change has been applied"
+
 
 def severity_for_tool_name(name: str) -> WriteSeverity:
     """Severity of one action tool. Unknown tools fail closed to strict."""
@@ -137,6 +183,16 @@ def confirm_phrase_for_tool_name(name: str) -> str:
     return _CONFIRM_PHRASES.get((name or "").strip().lower(), DEFAULT_CONFIRM_PHRASE)
 
 
+def change_label_for_tool_name(name: str) -> str:
+    """The spoken change label for the success sentence of this tool."""
+    return _CHANGE_LABELS.get((name or "").strip().lower(), DEFAULT_CHANGE_LABEL)
+
+
+def classified_change_label_names() -> frozenset[str]:
+    """Every tool with a change label (for the exhaustiveness test)."""
+    return frozenset(_CHANGE_LABELS)
+
+
 def action_class_for_severity(severity: WriteSeverity) -> WriteActionClass:
     """Map severity onto the confirmation gate's action class."""
     if severity is WriteSeverity.REVERSIBLE:
@@ -150,9 +206,12 @@ def classified_tool_names() -> frozenset[str]:
 
 
 __all__ = [
+    "DEFAULT_CHANGE_LABEL",
     "DEFAULT_CONFIRM_PHRASE",
     "WriteSeverity",
     "action_class_for_severity",
+    "change_label_for_tool_name",
+    "classified_change_label_names",
     "classified_tool_names",
     "confirm_phrase_for_tool_name",
     "severity_for_tool_name",
