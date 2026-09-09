@@ -71,6 +71,11 @@ _ALLOWED_ATTRS = frozenset({
     "aimms.compaction_latency_ms",
     "aimms.compaction_batch_messages",
     "aimms.compaction_flag_state",
+    # M2 PR 4 (§8.5 / §5.9): content-control counts on the compaction span —
+    # directive items dropped and flagged, entropy-shadow hits; never text.
+    "aimms.compaction_directives_dropped",
+    "aimms.compaction_directives_flagged",
+    "aimms.compaction_entropy_flags",
 })
 
 _MAX_ATTR_LEN = 128

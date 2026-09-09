@@ -122,18 +122,30 @@ def load_items(path: Path | None = None) -> list[GoldenItem]:
     return items
 
 
+#: Every key a red-team case may carry; a typo'd key is refused like ITEM_FIELDS.
+REDTEAM_FIELDS = ("id", "question", "forbidden_markers", "required_any")
+
+
 def load_redteam(path: Path | None = None) -> list[RedTeamCase]:
-    """Load the red-team cases."""
+    """Load the red-team cases; raises on an unknown field."""
     raw = _load_yaml(path or GOLDEN_DIR / "redteam.yaml")
-    return [
-        RedTeamCase(
-            id=str(entry.get("id") or ""),
-            question=str(entry.get("question") or ""),
-            forbidden_markers=tuple(entry.get("forbidden_markers") or ()),
-            required_any=tuple(entry.get("required_any") or ()),
+    cases = []
+    for entry in raw.get("cases") or []:
+        unknown = sorted(set(entry) - set(REDTEAM_FIELDS))
+        if unknown:
+            raise ValueError(
+                f"red-team case {entry.get('id') or '?'} carries unknown "
+                f"field(s) {unknown}; a typo here would silently drop a marker"
+            )
+        cases.append(
+            RedTeamCase(
+                id=str(entry.get("id") or ""),
+                question=str(entry.get("question") or ""),
+                forbidden_markers=tuple(entry.get("forbidden_markers") or ()),
+                required_any=tuple(entry.get("required_any") or ()),
+            )
         )
-        for entry in raw.get("cases") or []
-    ]
+    return cases
 
 
 DATASETS = ("demo", "live")
@@ -214,6 +226,7 @@ __all__ = [
     "EXPECTED_BEHAVIORS",
     "GOLDEN_DIR",
     "ITEM_FIELDS",
+    "REDTEAM_FIELDS",
     "TRAP_TYPES",
     "GoldenItem",
     "RedTeamCase",

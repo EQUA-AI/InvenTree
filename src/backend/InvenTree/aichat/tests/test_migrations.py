@@ -233,3 +233,47 @@ class WorkerUsageEventMigrationTests(MigrationRoundTripMixin, TransactionTestCas
         self.assertIn('aichat_chatcompactionevent', tables)
 
         MigrationExecutor(connection).migrate(self.migrate_to)
+
+
+@tag('migration_test')
+class CompactionDirectivesFlaggedMigrationTests(
+    MigrationRoundTripMixin, TransactionTestCase
+):
+    """Prove 0034 adds ``directives_flagged`` additively and reverses cleanly."""
+
+    migrate_from = [('aichat', '0033_aiworkerusageevent')]
+    migrate_to = [('aichat', '0034_chatcompactionevent_directives_flagged')]
+
+    def _columns(self) -> set[str]:
+        with connection.cursor() as cursor:
+            return {
+                col.name
+                for col in connection.introspection.get_table_description(
+                    cursor, 'aichat_chatcompactionevent'
+                )
+            }
+
+    def test_directives_flagged_column_round_trips(self) -> None:
+        """The column appears beside the table's other counters, reverses, re-applies."""
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        columns = self._columns()
+        self.assertNotIn('directives_flagged', columns)
+        self.assertIn('directives_stripped', columns)
+        self.assertIn('entropy_flags', columns)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        columns = self._columns()
+        self.assertIn('directives_flagged', columns)
+        self.assertIn('directives_stripped', columns)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_from)
+        columns = self._columns()
+        self.assertNotIn('directives_flagged', columns)
+        self.assertIn('directives_stripped', columns)
+
+        MigrationExecutor(connection).migrate(self.migrate_to)

@@ -100,6 +100,9 @@ def build_report(days: int, *, now=None) -> dict:
             'latency_ms',
             'input_tokens',
             'output_tokens',
+            'directives_stripped',
+            'directives_flagged',
+            'entropy_flags',
         )
     )
 
@@ -109,6 +112,12 @@ def build_report(days: int, *, now=None) -> dict:
     latencies: list[int] = []
     input_tokens = 0
     output_tokens = 0
+    # M2 PR 4 content-control counts (§8.5.2 / §5.9): informational, no
+    # threshold — the scrub and the entropy shadow are measured, not gated.
+    # All three columns are per-run deltas, so the window totals are sums.
+    directives_stripped = 0
+    directives_flagged = 0
+    entropy_flags = 0
     stale_started = 0
     skipped = 0
     flags_off = 0
@@ -134,6 +143,9 @@ def build_report(days: int, *, now=None) -> dict:
         terminal += 1
         input_tokens += int(row['input_tokens'] or 0)
         output_tokens += int(row['output_tokens'] or 0)
+        directives_stripped += int(row['directives_stripped'] or 0)
+        directives_flagged += int(row['directives_flagged'] or 0)
+        entropy_flags += int(row['entropy_flags'] or 0)
         if row['cap_hit']:
             cap_hits += 1
         if outcome == ChatCompactionOutcome.OK:
@@ -190,6 +202,9 @@ def build_report(days: int, *, now=None) -> dict:
         'latency_samples': len(latencies),
         'input_tokens_total': input_tokens,
         'output_tokens_total': output_tokens,
+        'directives_stripped_total': directives_stripped,
+        'directives_flagged_total': directives_flagged,
+        'entropy_flags_total': entropy_flags,
         **{name: metrics[name] for name in metrics if name != 'latency_p95_ms'},
         'thresholds': thresholds,
         'verdict': verdict,
@@ -244,6 +259,9 @@ class Command(BaseCommand):
         write(f'latency_samples          = {report["latency_samples"]}')
         write(f'input_tokens_total       = {report["input_tokens_total"]}')
         write(f'output_tokens_total      = {report["output_tokens_total"]}')
+        write(f'directives_stripped_total= {report["directives_stripped_total"]}')
+        write(f'directives_flagged_total = {report["directives_flagged_total"]}')
+        write(f'entropy_flags_total      = {report["entropy_flags_total"]}')
         for name, item in report['thresholds'].items():
             symbol = '<' if item['comparator'] == 'lt' else '=='
             write(

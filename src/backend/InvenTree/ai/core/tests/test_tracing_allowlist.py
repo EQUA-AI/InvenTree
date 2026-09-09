@@ -85,6 +85,10 @@ def test_the_vocabulary_is_frozen():
             "aimms.compaction_latency_ms",
             "aimms.compaction_batch_messages",
             "aimms.compaction_flag_state",
+            # M2 PR 4 (§8.5 / §5.9): content-control counts.
+            "aimms.compaction_directives_dropped",
+            "aimms.compaction_directives_flagged",
+            "aimms.compaction_entropy_flags",
         })
         == _ALLOWED_ATTRS
     )

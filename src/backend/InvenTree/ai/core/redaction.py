@@ -16,6 +16,7 @@ so they survive the output scrub (pinned by a test).
 
 from __future__ import annotations
 
+import math
 import re
 from collections import Counter
 from collections.abc import Callable, Mapping
@@ -191,12 +192,118 @@ def format_counts(counts: Mapping[str, int]) -> str:
     )
 
 
+# --------------------------------------------------------------------------- #
+# Entropy shadow (M2 PR 4; plan of record §5.9 — count only, no config flag)  #
+# --------------------------------------------------------------------------- #
+
+#: Token shapes a compaction payload legitimately carries at high entropy.
+#: Matched with ``fullmatch`` against a whitespace-delimited token and against
+#: the same token with one leading ``key=``/``key:`` prefix and trailing
+#: punctuation stripped, so ``content_hash=<sha256>`` and ``(SN-1234567A),``
+#: are atoms too. ORDER IS NOT SIGNIFICANT: any match exempts the token.
+OPERATIONAL_ATOM_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    # sha256 / sha1 / md5 hex digests.
+    ("hex_digest", re.compile(r"(?i)[0-9a-f]{64}|[0-9a-f]{40}|[0-9a-f]{32}")),
+    # Container Apps revision ids: ``--0000065`` or ``aimms-dev--0000065``.
+    ("revision_id", re.compile(r"[a-z0-9-]*--\d{7}")),
+    # ISO-8601 dates and timestamps, optional fraction and offset.
+    (
+        "iso_timestamp",
+        re.compile(
+            r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
+        ),
+    ),
+    # Serials, part numbers, work-order refs: upper-case/digits/dashes with at
+    # least one digit and one letter.
+    ("serial_ref", re.compile(r"(?=[A-Z0-9-]*\d)(?=[A-Z0-9-]*[A-Z])[A-Z0-9-]{6,}")),
+    # Citation keys: ``manual:pump3:seals``-style colon-separated atoms of
+    # lower-case segments (a mixed-case segment is the blob shape, not a
+    # key). Judged on the prefix-stripped remainder only, see below.
+    ("citation_key", re.compile(r"[a-z0-9_.-]+(?::[a-z0-9_.-]+)+")),
+)
+
+#: Atom families judged only on the remainder after the ``key=``/``key:``
+#: prefix strip, never on the raw token. The citation shape itself contains
+#: the prefix delimiter, so a raw-token match would exempt every
+#: ``label:<blob>`` — precisely the class the families do not name and the
+#: shadow exists to count. ``manual:pump3:seals`` still matches on its
+#: remainder ``pump3:seals``.
+REMAINDER_ONLY_ATOMS: frozenset[str] = frozenset({"citation_key"})
+
+_TOKEN_PREFIX = re.compile(r"^[\w-]+[=:]")
+_TOKEN_TRIM = ".,;:!?)(\"'[]{}<>"
+
+
+def entropy_bits(token: str) -> float:
+    """Shannon entropy of ``token`` in bits per character (0.0 for empty)."""
+    if not token:
+        return 0.0
+    counts = Counter(token)
+    length = len(token)
+    return -sum((n / length) * math.log2(n / length) for n in counts.values())
+
+
+def is_operational_atom(token: str) -> bool:
+    """True when the token (raw, or key-prefix/punctuation stripped) is an atom.
+
+    Families in ``REMAINDER_ONLY_ATOMS`` see only the prefix-stripped
+    remainder; every other family sees the raw token, the punctuation-
+    stripped token and the remainder.
+    """
+    stripped = token.strip(_TOKEN_TRIM)
+    remainder = _TOKEN_PREFIX.sub("", stripped, count=1).strip(_TOKEN_TRIM)
+    for name, pattern in OPERATIONAL_ATOM_PATTERNS:
+        candidates = (remainder,) if name in REMAINDER_ONLY_ATOMS else (token, stripped, remainder)
+        if any(pattern.fullmatch(candidate) for candidate in candidates if candidate):
+            return True
+    return False
+
+
+def entropy_flags(obj: Any, *, min_len: int = 20, threshold_bits: float = 4.5) -> int:
+    """Count the high-entropy tokens a redacted payload still carries.
+
+    The object is redacted first (idempotent on an already-redacted value),
+    then every whitespace-delimited token of every string leaf is counted
+    when it is at least ``min_len`` characters, is not a ``[REDACTED:...]``
+    marker, is not an operational atom and has more than ``threshold_bits``
+    of Shannon entropy per character. A shadow measurement of what the
+    category families miss (plan §5.9): the count is the whole output, the
+    tokens are never returned or logged.
+    """
+    flags = 0
+
+    def _walk(value: Any) -> None:
+        nonlocal flags
+        if isinstance(value, str):
+            for token in value.split():
+                if len(token) < min_len or REDACTED[: REDACTED.index("{")] in token:
+                    continue
+                if is_operational_atom(token):
+                    continue
+                if entropy_bits(token) > threshold_bits:
+                    flags += 1
+        elif isinstance(value, dict):
+            for item in value.values():
+                _walk(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                _walk(item)
+
+    _walk(redact_payload(obj).value)
+    return flags
+
+
 __all__ = [
     "CATEGORIES",
     "CATEGORY_PATTERNS",
+    "OPERATIONAL_ATOM_PATTERNS",
     "REDACTED",
+    "REMAINDER_ONLY_ATOMS",
     "RedactionResult",
+    "entropy_bits",
+    "entropy_flags",
     "format_counts",
+    "is_operational_atom",
     "redact_payload",
     "redact_text",
 ]

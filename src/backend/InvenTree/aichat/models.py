@@ -1852,8 +1852,13 @@ class ChatCompactionEvent(models.Model):
 
     #: Redaction category -> hit count for the request payload (§5.9).
     redacted_counts = models.JSONField(default=dict, blank=True)
+    #: Directive scrub counts (M2 PR 4, §8.5.2): items dropped for a syntax
+    #: marker, and items newly kept-and-flagged for a natural-language
+    #: marker. Both are per-run deltas (a flag carried over from an earlier
+    #: compaction is not counted again), so they sum across a soak window.
     directives_stripped = models.PositiveIntegerField(default=0)
-    #: Count-only entropy flags (M2 PR 4); 0 until that PR lands.
+    directives_flagged = models.PositiveIntegerField(default=0, db_default=0)
+    #: Count-only entropy shadow over the redacted payload (M2 PR 4, §5.9).
     entropy_flags = models.PositiveIntegerField(default=0)
 
     flag_state = models.CharField(

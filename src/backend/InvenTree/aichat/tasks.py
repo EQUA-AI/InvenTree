@@ -191,9 +191,11 @@ def parse_summary_body(summary: str) -> dict:
         return {}
 
 
-#: Substrings that read as tool/system directives when a summary is later
-#: replayed as context (§13.3 P6). The strict response schema bounds the
-#: SHAPE of summarizer output, not its strings — this scrub bounds those.
+#: Compatibility export (M2 PR 4): the S38 substring vocabulary, kept so the
+#: redaction parity test can prove no ``[REDACTED:...]`` marker carries any
+#: of these. Classification itself lives in ``ai.core.memory.scrub`` — the
+#: three syntax markers drop, ``system:``/``invoke`` are natural-language
+#: shapes there (line-start / tool-naming regexes) that keep-and-flag.
 _TOOL_DIRECTIVE_MARKERS = ('tool_call', 'function_call', 'system:', '<tool', 'invoke ')
 
 #: The stand-in for a withheld half of the batch on a content-filter retry
@@ -550,54 +552,44 @@ def merge_protected_fields(prior: dict, fresh: dict) -> dict:
     return merged
 
 
-def strip_tool_directives_counted(body: dict) -> tuple[dict, int]:
-    """Drop directive-marked summary strings and report how many went.
+def scrub_summary_body(body: dict) -> tuple[dict, dict]:
+    """Run the shared directive scrub (§8.5.2) and report both counts.
 
-    Returns ``(cleaned, dropped)``; ``dropped`` is the count the compaction
-    event records as ``directives_stripped`` — the log line below stays for
-    operators reading the worker log.
+    Delegates to ``ai.core.memory.scrub.flag_items``: syntax markers drop
+    the item (``dropped`` -> the event's ``directives_stripped``),
+    natural-language markers keep it with ``directive_flags`` set
+    (``flagged`` -> ``directives_flagged``). Both are per-run deltas: the
+    scrub runs on the merged body, and a prior item already flagged by an
+    earlier compaction (or one no longer active) is not counted again. The
+    warning stays for operators reading the worker log; it carries the two
+    counts only.
     """
+    from ai.core.memory.scrub import flag_items
 
-    def tainted(text: str) -> bool:
-        lowered = text.lower()
-        return any(marker in lowered for marker in _TOOL_DIRECTIVE_MARKERS)
-
-    def tainted_item(item) -> bool:
-        # M2 PR 3: a per-fact object is judged on its text alone (ids,
-        # fingerprints and enum codes carry no directive surface).
-        return isinstance(item, (str, dict)) and tainted(item_text(item))
-
-    cleaned: dict = {}
-    dropped = 0
-    for key, value in body.items():
-        if key == 'exclusions':
-            cleaned[key] = value  # Content-free fingerprints; nothing to scrub.
-        elif isinstance(value, str):
-            if tainted(value):
-                cleaned[key] = ''
-                dropped += 1
-            else:
-                cleaned[key] = value
-        elif isinstance(value, list):
-            kept = [item for item in value if not tainted_item(item)]
-            dropped += len(value) - len(kept)
-            cleaned[key] = kept
-        else:
-            cleaned[key] = value
-    if dropped:
+    cleaned, counts = flag_items(body)
+    if counts['dropped'] or counts['flagged']:
         logger.warning(
-            'Thread compaction stripped %d directive-marked summary item(s)', dropped
+            'Thread compaction directive scrub dropped=%d flagged=%d',
+            counts['dropped'],
+            counts['flagged'],
         )
-    return cleaned, dropped
+    return cleaned, counts
+
+
+def strip_tool_directives_counted(body: dict) -> tuple[dict, int]:
+    """``(cleaned, dropped)`` — the pre-PR 4 signature over the shared scrub."""
+    cleaned, counts = scrub_summary_body(body)
+    return cleaned, counts['dropped']
 
 
 def strip_tool_directives(body: dict) -> dict:
-    """Drop summary strings that carry tool/system directive markers.
+    """Drop syntax-directive summary strings; flag natural-language ones.
 
-    List items containing a marker are removed; marker-bearing scalar
-    string fields are blanked. Deterministic and lossy on purpose — a
-    summary line that looks like an instruction is worth less than the
-    injection risk of replaying it.
+    A list item carrying a tool/function envelope marker is removed and a
+    marker-bearing ``label``/``narrative`` is blanked (deterministic and
+    lossy on purpose); a natural-language directive is kept with
+    ``directive_flags`` set and reaches a prompt only inside the context
+    assembler's fence.
     """
     cleaned, _ = strip_tool_directives_counted(body)
     return cleaned
@@ -634,15 +626,16 @@ def _summarize(
     a reasoning deployment (the gpt-4.x tiers reject it).
 
     When ``stats`` is given it is filled in place with the value-free call
-    facts the compaction event records: ``deployment``, ``reasoning_effort``
-    and ``redacted_counts`` before the call, ``input_tokens`` and
-    ``output_tokens`` from ``response.usage`` after it. The positional
-    signature is unchanged so callers and test doubles keep working.
+    facts the compaction event records: ``deployment``, ``reasoning_effort``,
+    ``redacted_counts`` and the §5.9 ``entropy_flags`` shadow count before
+    the call, ``input_tokens`` and ``output_tokens`` from ``response.usage``
+    after it. The positional signature is unchanged so callers and test
+    doubles keep working.
     """
     from ai.core.config import get_settings
     from ai.core.integrations.azure_openai_client import build_openai_client
     from ai.core.model_policy import ModelPurpose, call_options, select_deployment
-    from ai.core.redaction import format_counts, redact_payload
+    from ai.core.redaction import entropy_flags, format_counts, redact_payload
 
     settings = get_settings()
     schema = COMPACTION_SCHEMA if schema is None else schema
@@ -659,6 +652,11 @@ def _summarize(
         logger.info(
             'Thread compaction redaction counts=%s', format_counts(redacted.counts)
         )
+    # M2 PR 4 (§5.9): the count-only entropy shadow over the redacted
+    # payload — what the category families may have missed. Never the token.
+    high_entropy = entropy_flags(redacted.value)
+    if high_entropy:
+        logger.info('Thread compaction entropy flags=%d', high_entropy)
     deployment = select_deployment(ModelPurpose.SUMMARIZATION)
     options = call_options(ModelPurpose.SUMMARIZATION)
     if stats is not None:
@@ -667,6 +665,7 @@ def _summarize(
         stats['redacted_counts'] = {
             str(key): int(count) for key, count in dict(redacted.counts).items()
         }
+        stats['entropy_flags'] = int(high_entropy)
     payload = json.dumps(redacted.value, ensure_ascii=True)
     response = client.chat.completions.create(
         model=deployment,
@@ -727,7 +726,10 @@ def _accumulate_stats(totals: dict, stats: dict) -> None:
     one row) even when a failure left ``stats`` empty.
     """
     totals['attempts'] = totals.get('attempts', 0) + 1
-    for key in ('input_tokens', 'output_tokens'):
+    # ``entropy_flags`` is summed like the tokens: a bisect retry re-reads a
+    # half of the batch, and the shadow is a volume measure of what the
+    # families let through to the model, not a per-batch maximum.
+    for key in ('input_tokens', 'output_tokens', 'entropy_flags'):
         totals[key] = totals.get(key, 0) + _int_or_zero(stats.get(key, 0))
     for key in ('deployment', 'reasoning_effort'):
         if stats.get(key):
@@ -848,6 +850,7 @@ def _cost_fields(totals: dict) -> dict:
         'input_tokens': _int_or_zero(totals.get('input_tokens', 0)),
         'output_tokens': _int_or_zero(totals.get('output_tokens', 0)),
         'redacted_counts': dict(totals.get('redacted_counts') or {}),
+        'entropy_flags': _int_or_zero(totals.get('entropy_flags', 0)),
     }
 
 
@@ -1097,7 +1100,8 @@ def _compact_locked(thread_id) -> None:
         merged, merge_counts = merge_protected_fields_counted(
             prior_body, fresh, prior_seq=expected, fresh_seq=batch_high
         )
-        merged, stripped = strip_tool_directives_counted(merged)
+        merged, scrub_counts = scrub_summary_body(merged)
+        stripped = scrub_counts['dropped']
         # The scrub may have dropped a correction minted this run: its
         # original returns to active (never lose both, §8.7) and the lists
         # are re-capped so the revival cannot leave one over the cap.
@@ -1158,10 +1162,16 @@ def _compact_locked(thread_id) -> None:
             superseded=merge_counts['superseded'],
             tombstone_hits=merge_counts['tombstone_hits'],
             directives_stripped=stripped,
+            directives_flagged=scrub_counts['flagged'],
             **_cost_fields(totals),
         )
         set_span_attrs(
-            span, compaction_outcome=outcome, compaction_latency_ms=latency_ms
+            span,
+            compaction_outcome=outcome,
+            compaction_latency_ms=latency_ms,
+            compaction_directives_dropped=stripped,
+            compaction_directives_flagged=scrub_counts['flagged'],
+            compaction_entropy_flags=_int_or_zero(totals.get('entropy_flags', 0)),
         )
 
 
