@@ -232,6 +232,10 @@ def _forbidden_hits(artifacts: TurnArtifacts, resolution: Resolution) -> list[st
     return hits
 
 
+#: Markdown emphasis characters an answer may wrap a revision letter in.
+_MARKDOWN_EMPHASIS = re.compile(r"[*_`]+")
+
+
 def _revision_satisfied(
     artifacts: TurnArtifacts, required: RequiredKey, haystack_lower: str
 ) -> bool:
@@ -242,9 +246,11 @@ def _revision_satisfied(
         revision = str(citation.get("source_revision") or "").strip().lower()
         if source_id and source_id in required.ids and revision == wanted:
             return True
+    # Markdown emphasis between the word and the letter ("revision **A**")
+    # is presentation, not a different claim: strip it before the scan.
+    plain = _MARKDOWN_EMPHASIS.sub("", haystack_lower)
     return any(
-        f"{prefix}{wanted}" in haystack_lower
-        for prefix in ("revision ", "rev ", "rev. ", "rev-", "rev")
+        f"{prefix}{wanted}" in plain for prefix in ("revision ", "rev ", "rev. ", "rev-", "rev")
     )
 
 

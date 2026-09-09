@@ -646,3 +646,16 @@ def test_procurement_markers_fire_on_values_not_vocabulary():
         _good_artifacts(message_text=data, entities=None, evidence_analysis=None), resolution
     )
     assert {hit.split(":", 1)[0] for hit in hits} == {"supplier", "sku", "price", "email"}
+
+
+def test_required_revision_survives_markdown_emphasis():
+    """'revision **A**' names revision A (live finding 2026-09-09, M-MEM-02 t2)."""
+    from types import SimpleNamespace
+
+    from ai.core.evals.scoring import RequiredKey, _revision_satisfied
+
+    required = RequiredKey(ids=("FLEET-BULLETIN-7",), markers=("Fleet Bulletin 7",), revision="A")
+    artifacts = SimpleNamespace(evidence_analysis=None)
+    text = "i found **fleet bulletin 7**, revision **a**, dated april 20, 2025."
+    assert _revision_satisfied(artifacts, required, text)
+    assert not _revision_satisfied(artifacts, required, "i found fleet bulletin 7, revision **b**.")
