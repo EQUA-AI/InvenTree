@@ -495,3 +495,55 @@ def test_machine_lookup_path_matches_the_assets_api():
     from ai.core.evals import run_battery
 
     assert run_battery.MACHINES_PATH == "/api/assets/machines/"
+
+
+def test_fixture_lookup_retries_a_transient_503(monkeypatch):
+    """One maintenance-mode flap on the assets route must not void a pass."""
+    from ai.core.evals import run_battery
+
+    monkeypatch.setattr(run_battery, "_TRANSIENT_SLEEP_S", 0.0)
+    statuses = iter([503, 200])
+
+    class _Response:
+        def __init__(self, status):
+            self.status_code = status
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(f"status {self.status_code}")
+
+        def json(self):
+            return []
+
+    class _Client:
+        calls = 0
+
+        def get(self, path, params=None):
+            type(self).calls += 1
+            return _Response(next(statuses))
+
+    response = run_battery._get_retrying_transient(
+        _Client(), "/api/assets/machines/", params={"search": "x"}
+    )
+    assert response.status_code == 200
+    assert _Client.calls == 2
+
+
+def test_fixture_lookup_gives_up_after_the_retry_budget(monkeypatch):
+    from ai.core.evals import run_battery
+
+    monkeypatch.setattr(run_battery, "_TRANSIENT_SLEEP_S", 0.0)
+
+    class _Response:
+        status_code = 503
+
+    class _Client:
+        calls = 0
+
+        def get(self, path, params=None):
+            type(self).calls += 1
+            return _Response()
+
+    response = run_battery._get_retrying_transient(_Client(), "/api/assets/machines/", params={})
+    assert response.status_code == 503
+    assert _Client.calls == run_battery._TRANSIENT_ATTEMPTS

@@ -155,6 +155,30 @@ class Journal:
 # --------------------------------------------------------------------------- #
 # Preflight                                                                    #
 # --------------------------------------------------------------------------- #
+#: Gateway/maintenance statuses a fixture lookup retries before giving up
+#: (2026-09-09: one 503 "Service Unavailable" flap on the assets route voided
+#: a whole battery pass fifty seconds in).
+_TRANSIENT_STATUSES = frozenset({502, 503, 504})
+_TRANSIENT_ATTEMPTS = 3
+_TRANSIENT_SLEEP_S = 5.0
+
+
+def _get_retrying_transient(client, path: str, *, params: dict | None = None):
+    """GET ``path``; on a transient gateway status wait and retry a few times.
+
+    Every attempt is a real request (the limiter counts it), so the retry is
+    small and only for statuses that mean "not now", never for 4xx.
+    """
+    response = None
+    for attempt in range(_TRANSIENT_ATTEMPTS):
+        response = client.get(path, params=params)
+        if response.status_code not in _TRANSIENT_STATUSES:
+            return response
+        if attempt < _TRANSIENT_ATTEMPTS - 1:
+            time.sleep(_TRANSIENT_SLEEP_S)
+    return response
+
+
 def _resolve_machine_key(client, key: str, descriptor: dict[str, Any]) -> tuple[str, ...]:
     """Resolve one machine fixture key to live entity id strings."""
     name = str(descriptor.get("name") or "")
@@ -163,7 +187,7 @@ def _resolve_machine_key(client, key: str, descriptor: dict[str, Any]) -> tuple[
         if not name:
             raise PreflightError(f"fixture key {key!r}: {descriptor['env']} is not set")
     serial = str(descriptor.get("serial") or "")
-    response = client.get(MACHINES_PATH, params={"search": name or serial})
+    response = _get_retrying_transient(client, MACHINES_PATH, params={"search": name or serial})
     response.raise_for_status()
     rows = response.json()
     if isinstance(rows, dict):
