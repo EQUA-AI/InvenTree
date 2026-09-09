@@ -367,6 +367,24 @@ def _related_reads(actions: Sequence[Any], reads: Sequence[Any]) -> tuple[Any, .
     return selected or tuple(reads)
 
 
+def _policy_block(name: str) -> str | None:
+    """The spoken reason when the action policy refuses voice execution, else None.
+
+    Enforcement is behind ``feature_voice_action_policy_enforce``; an action
+    with no policy row is unavailable whenever enforcement is on.
+    """
+    if not get_settings().feature_voice_action_policy_enforce:
+        return None
+    from ai.core.voice.action_policy import REASON_NOT_COMMITTED, action_policy
+
+    policy = action_policy(name)
+    if policy is None:
+        return REASON_NOT_COMMITTED
+    if not policy.voice_execution_allowed:
+        return policy.ineligible_reason or REASON_NOT_COMMITTED
+    return None
+
+
 class VoiceToolActionResolver:
     """Plan one authorized text-tool action without executing it."""
 
@@ -467,6 +485,23 @@ class VoiceToolActionResolver:
 
         proposal = captured[0]
         capability = capability_for_tool(proposal.tool)
+        blocked = _policy_block(tool_name(proposal.tool))
+        if blocked is not None:
+            # A5: the action's policy row refuses voice execution today. The
+            # gate speaks the refusal with the row's reason and stores nothing.
+            return ResolvedVoiceWrite(
+                action=ProposedWriteAction(
+                    capability=capability,
+                    summary=await _action_summary_async(proposal.tool, proposal.arguments),
+                    action_class=WriteActionClass.BLOCKED_UNKNOWN,
+                    blocked_reason=blocked,
+                ),
+                executable=ExecutableWrite(
+                    tool_name=tool_name(proposal.tool),
+                    capability=capability,
+                    arguments=proposal.arguments,
+                ),
+            )
         action_class, confirm_phrase = _action_class(proposal.tool, content)
         record_label = await _record_label_for_arguments(proposal.arguments)
         return ResolvedVoiceWrite(

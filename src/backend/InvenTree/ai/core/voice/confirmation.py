@@ -289,6 +289,7 @@ SPOKEN_TEMPLATE_VERSION = "spoken-templates-v1"
 SPOKEN_TEMPLATES: dict[str, str] = {
     "succeeded": "{record_label} {change_label}.",
     "completed_summary": "Completed: {summary}.",
+    "blocked": BLOCKED_UNKNOWN_PHRASE + " {reason}.",
 }
 _SLOT_MAX_CHARS = 120
 
@@ -331,6 +332,9 @@ class ProposedWriteAction:
     summary: str
     action_class: WriteActionClass = WriteActionClass.CONFIRMABLE
     confirm_phrase: str = ""
+    #: A5: for ``BLOCKED_UNKNOWN`` actions refused by policy, the short
+    #: server-authored reason spoken after the refusal (never transcript text).
+    blocked_reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -543,9 +547,12 @@ def propose(
     the exact spoken text, and the audit event to record.
     """
     if action.action_class is WriteActionClass.BLOCKED_UNKNOWN:
+        spoken = BLOCKED_UNKNOWN_PHRASE
+        if action.blocked_reason.strip():
+            spoken = assemble_spoken("blocked", reason=action.blocked_reason)
         return (
             None,
-            BLOCKED_UNKNOWN_PHRASE,
+            spoken,
             _audit(
                 VoiceWriteAuditEventType.BLOCKED,
                 action,

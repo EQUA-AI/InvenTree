@@ -468,6 +468,18 @@ class Settings(BaseSettings):
     # boundary is back where it belongs: permission_profile() + a mandatory
     # confirmation turn. Set FEATURE_VOICE_WRITE_CONFIRMATION=false to re-arm the
     # kill switch for a deployment that wants voice to stay strictly read-only.
+    feature_voice_action_policy_enforce: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_VOICE_ACTION_POLICY_ENFORCE", "AIMMS_FEATURE_VOICE_ACTION_POLICY_ENFORCE"
+        ),
+        description=(
+            "Voice-UX plan A5: refuse voice execution of actions whose policy row "
+            "(ai/core/voice/action_policy.py) says voice execution is not allowed, "
+            "speaking the row's reason. Off by default while the governed "
+            "adapters (B4/B6/C7) land."
+        ),
+    )
     feature_voice_write_confirmation: bool = Field(
         default=True,
         validation_alias=AliasChoices(
