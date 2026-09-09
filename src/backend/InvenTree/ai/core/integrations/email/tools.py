@@ -19,6 +19,7 @@ from typing import Any
 
 import structlog
 from ai.core.integrations.email.gmail import GmailError, get_gmail_client
+from ai.core.integrations.email.policy import BLOCKED_ERROR, check_recipients
 from ai.core.integrations.email.provider import EmailQuery
 from ai.core.maf_compat import ai_function
 from ai.core.tools.read_only import guard_write_tool
@@ -445,6 +446,23 @@ async def send_email(  # noqa: RUF029 - ai_function contract is async
         - message_id: str (Gmail message id on success)
         - error: str (on failure)
     """
+    # Recipient allow-list (P0-11 / OD-5): refuse BEFORE any provider call so a
+    # dev or harness run can never reach a real mailbox. Inactive when the
+    # variable is unset; see ai.core.integrations.email.policy.
+    decision = check_recipients(to, cc, bcc)
+    if not decision.allowed:
+        logger.warning(
+            "Email blocked by recipient policy",
+            blocked_count=len(decision.blocked),
+            policy_active=decision.policy_active,
+        )
+        return {
+            "success": False,
+            "error": BLOCKED_ERROR,
+            "blocked_by_policy": True,
+            "blocked_recipients": list(decision.blocked),
+        }
+
     try:
         client = get_gmail_client()
         service = client._get_service()

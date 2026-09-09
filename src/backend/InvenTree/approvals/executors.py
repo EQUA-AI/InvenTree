@@ -8,6 +8,7 @@ the ApprovalExecutor interface.
 
 import hashlib
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -179,6 +180,29 @@ class ExecutorRegistry:
         """Return list of registered action_types."""
         return list(self._executors.keys())
 
+    @contextmanager
+    def replace_for_tests(self, executor: ApprovalExecutor):
+        """Temporarily replace (or add) the executor for one action type.
+
+        Test-only seam (voice-UX plan P0-11): decision and approval tests run
+        the canonical approve flow against a recording/fake executor so no
+        real effect (mail, order, stock) can happen from a test. The previous
+        executor is restored on exit, including when the body raises.
+
+        Yields:
+            The replacement executor, for convenience.
+        """
+        action_type = executor.action_type
+        previous = self._executors.get(action_type)
+        self._executors[action_type] = executor
+        try:
+            yield executor
+        finally:
+            if previous is None:
+                self._executors.pop(action_type, None)
+            else:
+                self._executors[action_type] = previous
+
 
 # Singleton registry instance
 registry = ExecutorRegistry()
@@ -214,6 +238,28 @@ class EmailExecutor(ApprovalExecutor):
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
         # Phase 1 stub — real implementation in Phase 4
         """Execute."""
+        # Recipient allow-list (voice-UX plan P0-11 / OD-5) is enforced here
+        # too, so the seam exists before a real executor lands. Lazy import:
+        # approvals must not depend on the AI app at import time.
+        from ai.core.integrations.email.policy import BLOCKED_ERROR, check_recipients
+
+        decision = check_recipients(
+            payload.get('to'), payload.get('cc'), payload.get('bcc')
+        )
+        if not decision.allowed:
+            logger.warning(
+                'email_executor_blocked_by_policy',
+                blocked_count=len(decision.blocked),
+                idempotency_key=idempotency_key,
+            )
+            return EffectResult(
+                success=False,
+                error_message=BLOCKED_ERROR,
+                result_payload={
+                    'blocked_by_policy': True,
+                    'blocked_recipients': list(decision.blocked),
+                },
+            )
         logger.info(
             'email_executor_stub',
             to=payload.get('to'),
