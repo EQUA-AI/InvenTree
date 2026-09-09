@@ -67,6 +67,12 @@ export interface AguiTurnCallbacks {
   onEvidenceAnalysis(value: unknown): void;
   /** S11: one content-free buffered-execution stage (closed enum). */
   onAnalysisProgress(stage: unknown): void;
+  /**
+   * M2 PR 9 (GR-16): the ids-and-counts Context used record. Raw
+   * pass-through like onEvidenceAnalysis — the hook-side allow-list
+   * normalizer is the one place the shape is decided.
+   */
+  onContextUsed?(value: unknown): void;
   onProposalsRefresh(): void;
 }
 
@@ -177,6 +183,10 @@ function dispatchCustom(
     }
     case 'aimms.proposalsRefresh':
       callbacks.onProposalsRefresh();
+      break;
+    case 'aimms.contextUsed':
+      // M2 PR 9: raw pass-through; normalized (allow-listed) hook-side.
+      callbacks.onContextUsed?.(value ?? {});
       break;
     case 'aimms.error': {
       // Stashed for the spec RUN_ERROR that follows (which terminates the

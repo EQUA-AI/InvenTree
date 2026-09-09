@@ -147,7 +147,7 @@ function resolveBackendUrl(path: string, backendHost: string): string {
  * fetch. Axios supplies this automatically, but the streaming and upload
  * transports use fetch directly.
  */
-function csrfHeaders(): Record<string, string> {
+export function csrfHeaders(): Record<string, string> {
   const token = getCsrfCookie();
   return token ? { 'X-CSRFToken': token } : {};
 }
@@ -178,8 +178,13 @@ import type {
   AnalysisProgressStage,
   AnalysisScopeMode,
   AnalysisScopeUpdate,
+  ThreadInfo,
   ThreadScopePayload
 } from '@lib/types/AimmsWire.generated';
+import {
+  type ContextUsedRecord,
+  normalizeContextUsed
+} from '../components/aichat/contextUsed';
 import {
   type EvidenceAnalysisAttachment,
   normalizeEvidenceAnalysis,
@@ -224,9 +229,10 @@ export interface AGUIRunErrorEvent extends AGUIBaseEvent {
 }
 
 /**
- * S38: compacted thread summaries are stored as `label\nJSON-body`. Only the
- * first line (the <=60-char label) is display-safe; the body is structured
- * data that must never render as a thread title.
+ * S38 / M2 PR 5: the server now projects `ThreadInfo.summary` as the
+ * <=60-char label only (may be ''). The first-line cut stays as belt and
+ * braces against an older backend that still ships `label\nJSON-body`; the
+ * body is structured data that must never render as a thread title.
  */
 export function threadSummaryLabel(summary?: string | null): string {
   return (summary || '').split('\n')[0].trim();
@@ -423,6 +429,12 @@ export interface ChatMessage {
   evidenceAnalysis?: EvidenceAnalysisAttachment;
   /** S11: live buffered-execution stage (closed enum; never persisted). */
   progressStage?: AnalysisProgressStage;
+  /**
+   * M2 PR 9 (GR-16): the content-free Context used record for this turn —
+   * ids and counts only, allow-listed by `normalizeContextUsed` on every
+   * envelope (legacy STATE_DELTA, AG-UI CUSTOM, reload projection).
+   */
+  contextUsed?: ContextUsedRecord;
 }
 
 /** S46: one tool call's lifecycle as shown in the activity strip. */
@@ -490,6 +502,8 @@ export interface ChatThread {
   updatedAt: Date;
   /** S32b: true for read-only threads granted by another user. */
   shared?: boolean;
+  /** True once the thread has a durable server row (owner-only actions). */
+  isPersisted?: boolean;
 }
 
 /**
@@ -502,23 +516,6 @@ interface StoredThread {
   createdAt: string;
   updatedAt: string;
   isPersisted?: boolean;
-}
-
-/**
- * Server thread info from /threads endpoint
- */
-interface ServerThreadInfo {
-  thread_id: string;
-  title: string;
-  message_count: number;
-  turn_count: number;
-  summary: string;
-  created_at: string | null;
-  last_activity: string | null;
-  is_persisted: boolean;
-  shared?: boolean;
-  /** S1: compact analysis-scope summary (absent on older backends). */
-  active_scope?: ActiveScopeSummary | null;
 }
 
 /**
@@ -539,11 +536,12 @@ export interface ActiveThreadScope {
  * Server thread sync response
  */
 interface ThreadSyncResponse {
-  threads: ServerThreadInfo[];
+  /** M2 PR 9: the generated wire row (label-only `summary`, may be ''). */
+  threads: ThreadInfo[];
   sync_token: string | null;
   has_more: boolean;
   /** S32b: read-only threads granted to the caller ([] when dark). */
-  shared_threads?: ServerThreadInfo[];
+  shared_threads?: ThreadInfo[];
   /** S49: server capability advertisement (absent on older backends). */
   capabilities?: Record<string, boolean>;
 }
@@ -572,6 +570,8 @@ interface ServerMessage {
   media_evidence?: MediaEvidenceItem[] | null;
   /** S11: the SAME object shape the live wires delivered (no re-nesting). */
   evidence_analysis?: unknown;
+  /** M2 PR 9: the persisted Context used record (owner-only keys stripped). */
+  context_used?: unknown;
   response_state?: string;
 }
 
@@ -741,7 +741,10 @@ async function fetchServerThread(
         // S11: the consolidated evidence attachment reloads byte-faithfully
         // through the SAME normalizer every live wire uses (Q83).
         evidenceAnalysis:
-          normalizeEvidenceAnalysis(m.evidence_analysis) ?? undefined
+          normalizeEvidenceAnalysis(m.evidence_analysis) ?? undefined,
+        // M2 PR 9: the Context used record reloads through the same
+        // allow-list normalizer every live wire uses.
+        contextUsed: normalizeContextUsed(m.context_used) ?? undefined
       })
     );
 
@@ -1828,6 +1831,18 @@ export function useAIChat(config: AIChatConfig = {}) {
     []
   );
 
+  /** M2 PR 9: attach the normalized Context used record to its message. */
+  const attachContextUsed = useCallback(
+    (messageId: string, record: ContextUsedRecord) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, contextUsed: record } : msg
+        )
+      );
+    },
+    []
+  );
+
   /** S46: upsert one tool call's lifecycle entry, keyed by toolCallId. */
   const upsertToolActivity = useCallback(
     (messageId: string, entry: ToolActivityEntry) => {
@@ -2149,6 +2164,13 @@ export function useAIChat(config: AIChatConfig = {}) {
                         const normalized = normalizeProgressStage(stage);
                         if (normalized) {
                           attachProgressStage(assistantMessage.id, normalized);
+                        }
+                      },
+                      // M2 PR 9: the content-free Context used record.
+                      onContextUsed: (value) => {
+                        const record = normalizeContextUsed(value);
+                        if (record) {
+                          attachContextUsed(assistantMessage.id, record);
                         }
                       },
                       onProposalsRefresh: () => {
@@ -2595,6 +2617,14 @@ export function useAIChat(config: AIChatConfig = {}) {
                               );
                               if (stage) {
                                 attachProgressStage(assistantMessage.id, stage);
+                              }
+                            }
+                            // M2 PR 9: the Context used record on the legacy
+                            // wire — the same allow-list as the AG-UI channel.
+                            if (gateEvent.kind === 'context_used') {
+                              const record = normalizeContextUsed(event);
+                              if (record) {
+                                attachContextUsed(assistantMessage.id, record);
                               }
                             }
                             break;

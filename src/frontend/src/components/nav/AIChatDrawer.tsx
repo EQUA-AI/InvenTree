@@ -26,6 +26,7 @@ import {
 import { useHotkeys, useLocalStorage } from '@mantine/hooks';
 import { showNotification } from '@mantine/notifications';
 import {
+  IconBrain,
   IconCheck,
   IconChevronDown,
   IconCopy,
@@ -73,10 +74,12 @@ import { VoiceTranscript } from '../ai/VoiceTranscript';
 import { ActiveScopeBanner } from '../aichat/ActiveScopeBanner';
 import { CitationList } from '../aichat/CitationList';
 import { ClaimEvidence } from '../aichat/ClaimEvidence';
+import { ContextUsedDisclosure } from '../aichat/ContextUsedDisclosure';
 import { EntityChips } from '../aichat/EntityChips';
 import { EvidenceChips } from '../aichat/EvidenceChips';
 import { InlineMarkdown, MarkdownMessage } from '../aichat/MarkdownMessage';
 import { RetrievalCoverage } from '../aichat/RetrievalCoverage';
+import { ThreadMemoryModal } from '../aichat/ThreadMemoryModal';
 import type { EvidenceAnalysisAttachment } from '../aichat/evidenceAnalysis';
 import { composeAnswerMarkdown } from '../aichat/evidenceFormat';
 import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
@@ -495,6 +498,7 @@ function ThreadSelector({
   onDeleteThread,
   onRenameThread,
   onShareThread,
+  onInspectMemory,
   disabled = false
 }: Readonly<{
   threads: ChatThread[];
@@ -505,6 +509,11 @@ function ThreadSelector({
   onDeleteThread: (threadId: string) => void;
   onRenameThread: (threadId: string, title: string) => void;
   onShareThread?: (threadId: string, entry: string) => void;
+  /**
+   * M2 PR 9 (GR-16): "What this chat remembers" — offered on owned,
+   * persisted rows only; shared rows never get the affordance.
+   */
+  onInspectMemory?: (threadId: string) => void;
   disabled?: boolean;
 }>) {
   const theme = useMantineTheme();
@@ -595,6 +604,22 @@ function ThreadSelector({
                   >
                     <IconPencil size={12} />
                   </ActionIcon>
+                  {onInspectMemory && thread.isPersisted && !thread.shared && (
+                    <ActionIcon
+                      aria-label={`memory-ai-chat-thread-${thread.id}`}
+                      title={t`What this chat remembers`}
+                      size='xs'
+                      variant='subtle'
+                      color='gray'
+                      disabled={disabled}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onInspectMemory(thread.id);
+                      }}
+                    >
+                      <IconBrain size={12} />
+                    </ActionIcon>
+                  )}
                   {onShareThread && (
                     <ActionIcon
                       aria-label={`share-ai-chat-thread-${thread.id}`}
@@ -1107,6 +1132,11 @@ function ChatMessageItem({
             {!isUser && !message.isStreaming && message.mediaEvidence && (
               <EvidenceChips items={message.mediaEvidence} />
             )}
+            {/* M2 PR 9 (GR-16): the content-free Context used record —
+                ids and counts only, collapsed by default. */}
+            {!isUser && !message.isStreaming && message.contextUsed && (
+              <ContextUsedDisclosure record={message.contextUsed} />
+            )}
             {/* S11: the v2 evidence-analysis block — partial banner,
                 distinct no-data state, coverage, and claim-level evidence.
                 Confidence is NEVER rendered here, even if redundantly sent. */}
@@ -1356,6 +1386,8 @@ export function AIChatDrawer({
 
   const [inputValue, setInputValue] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([]);
+  // M2 PR 9: the thread whose memory modal is open (owner-only surface).
+  const [memoryThreadId, setMemoryThreadId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -1808,11 +1840,21 @@ export function AIChatDrawer({
                     }
                   });
                 }}
+                onInspectMemory={setMemoryThreadId}
                 disabled={isLoading}
               />
             </Box>
           )}
         </Box>
+
+        {/* M2 PR 9: "What this chat remembers" — the only place the
+            summary body renders (GR-16). */}
+        <ThreadMemoryModal
+          threadId={memoryThreadId}
+          host={aiHost}
+          opened={memoryThreadId !== null}
+          onClose={() => setMemoryThreadId(null)}
+        />
 
         {/* Main content area */}
         <ScrollArea
