@@ -939,6 +939,10 @@ class PartFilter(FilterSet):
 
     tags = common.filters.TagsFilter()
 
+    group = rest_filters.CharFilter(
+        label='Group', field_name='category__name', lookup_expr='icontains'
+    )
+
     # Created date filters
     created_before = InvenTreeDateFilter(
         label='Updated before', field_name='creation_date', lookup_expr='lt'

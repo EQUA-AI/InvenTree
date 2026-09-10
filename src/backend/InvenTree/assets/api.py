@@ -9,7 +9,7 @@ from django_filters.rest_framework import FilterSet, filters
 from tasks.scope import ScopeError
 
 import InvenTree.permissions
-from InvenTree.filters import SEARCH_ORDER_FILTER
+from InvenTree.filters import InvenTreeDateFilter, SEARCH_ORDER_FILTER
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
 from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
@@ -39,11 +39,20 @@ class AssetMachineFilter(FilterSet):
 class MachinePartFilter(FilterSet):
     """Filter set for MachinePart."""
 
+    category = filters.NumberFilter(field_name='part__category')
+    group = filters.CharFilter(field_name='part__category__name', lookup_expr='icontains')
+    created_before = InvenTreeDateFilter(
+        field_name='part__creation_date', lookup_expr='lt'
+    )
+    created_after = InvenTreeDateFilter(
+        field_name='part__creation_date', lookup_expr='gt'
+    )
+
     class Meta:
         """Filter configuration for MachinePart."""
 
         model = MachinePart
-        fields = ('machine', 'part')
+        fields = ('machine', 'part', 'category', 'group', 'created_before', 'created_after')
 
 
 class AssetMaintenanceRecordFilter(FilterSet):
@@ -150,7 +159,7 @@ class AssetMachineDetail(RetrieveUpdateDestroyAPI):
 class MachinePartList(ListCreateAPI):
     """List and create machine-part relationships."""
 
-    queryset = MachinePart.objects.select_related('part').all()
+    queryset = MachinePart.objects.select_related('part', 'part__category').all()
     serializer_class = MachinePartSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,

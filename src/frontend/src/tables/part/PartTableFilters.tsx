@@ -4,6 +4,7 @@ import { t } from '@lingui/core/macro';
 import {
   CreatedAfterFilter,
   CreatedBeforeFilter,
+  PartCategoryFilter,
   TagsFilter
 } from '../../components/tables/Filter';
 
@@ -159,6 +160,13 @@ export function PartTableFilters(): TableFilter[] {
       label: t`Subscribed`,
       description: t`Filter by parts to which the user is subscribed`,
       type: 'boolean'
+    },
+    PartCategoryFilter(),
+    {
+      name: 'group',
+      label: t`Group`,
+      description: t`Filter by part group`,
+      type: 'text'
     },
     CreatedAfterFilter(),
     CreatedBeforeFilter(),

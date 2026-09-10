@@ -36,6 +36,8 @@ export default function EquipmentRegistry() {
   const [tab, setTab] = useState<string | null>('dictionary');
   const [status, setStatus] = useState<string | null>(null);
   const [componentFilter, setComponentFilter] = useState<string | null>(null);
+  const [machineFilter, setMachineFilter] = useState<string | null>(null);
+  const [matchMethod, setMatchMethod] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [file, setFile] = useState<File | null>(null);
@@ -53,7 +55,7 @@ export default function EquipmentRegistry() {
   const options = useQuery({ queryKey: ['registry', 'options'], queryFn: async () => (await api.get<Options>(`${root}options/`)).data });
   const hierarchy = useQuery({ queryKey: ['registry', 'hierarchy', stationId], enabled: !!stationId, queryFn: async () => (await api.get<{ equipment: Equipment; children: Equipment[] }>(`${root}${stationId}/`)).data });
   const components = useQuery({ queryKey: ['registry', 'components', selectedId], enabled: !!selectedId, queryFn: async () => (await api.get<Page<Component>>(`${root}${selectedId}/components/`, { params: { limit: 500 } })).data });
-  const points = useQuery({ queryKey: ['registry', 'points', selectedId, page, status, componentFilter, search], enabled: !!selectedId, queryFn: async () => (await api.get<Page<Point>>(`${root}${selectedId}/dictionary/`, { params: { limit: 50, offset: (page - 1) * 50, status: status || undefined, component_id: componentFilter || undefined, search } })).data });
+  const points = useQuery({ queryKey: ['registry', 'points', selectedId, page, status, componentFilter, machineFilter, matchMethod, search], enabled: !!selectedId, queryFn: async () => (await api.get<Page<Point>>(`${root}${selectedId}/dictionary/`, { params: { limit: 50, offset: (page - 1) * 50, status: status || undefined, component_id: componentFilter || undefined, machine_id: machineFilter || undefined, match_method: matchMethod || undefined, search } })).data });
   const stationForm = useForm({ initialValues: { name: '', client: '', source_namespace: '', source_entity_uuid: '', source_key: '' }, validate: { name: (v) => !v.trim() ? t`Required` : null, client: (v) => !v ? t`Required` : null, source_namespace: (v) => !v ? t`Required` : null, source_entity_uuid: (v) => !v ? t`Required` : null, source_key: (v) => !v ? t`Required` : null } });
   const componentForm = useForm({ initialValues: { part: '', code: '', name: '' }, validate: { part: (v) => !v ? t`Required` : null, code: (v) => !v ? t`Required` : null, name: (v) => !v ? t`Required` : null } });
   const review = useForm({ initialValues: { machine: '', component: '', template: '', display_name: '', data_type: 'unknown', unit: '', unit_status: 'unresolved', status: 'draft', review_note: '' } });
@@ -79,12 +81,12 @@ export default function EquipmentRegistry() {
 
   function selectStation(value: string | null) {
     setParams(value ? { station: value } : {});
-    setPreview(null); setFile(null); setPage(1); setComponentFilter(null);
+    setPreview(null); setFile(null); setPage(1); setComponentFilter(null); setMachineFilter(null); setMatchMethod(null);
   }
 
   function selectOwner(value: string | null) {
     setParams({ station: stationId, ...(value ? { owner: value } : {}) });
-    setPage(1); setComponentFilter(null);
+    setPage(1); setComponentFilter(null); setMachineFilter(null);
   }
 
   async function previewFile() {
@@ -142,10 +144,10 @@ export default function EquipmentRegistry() {
           {!!components.data && components.data.count > 500 && <Alert>{t`Select a pump to narrow the component list. Showing the first 500 occurrences.`}</Alert>}
         </Stack></Tabs.Panel>
         <Tabs.Panel value='dictionary' pt='md'><Stack>
-          <Group grow><TextInput label={t`Search tags`} value={search} onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }} /><Select label={t`Mapping status`} clearable data={['draft', 'approved', 'unresolved', 'rejected']} value={status} onChange={(v) => { setStatus(v); setPage(1); }} /><Select label={t`Component`} clearable searchable data={(components.data?.results ?? []).map((c) => ({ value: String(c.pk), label: `${c.machine_name}: ${c.code}` }))} value={componentFilter} onChange={(v) => { setComponentFilter(v); setPage(1); }} /></Group>
+          <Group grow><TextInput label={t`Search tags`} value={search} onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }} /><Select label={t`Mapping status`} clearable data={['draft', 'approved', 'unresolved', 'rejected']} value={status} onChange={(v) => { setStatus(v); setPage(1); }} /><Select label={t`Match method`} clearable searchable data={['exact', 'alias', 'conflict', 'unresolved']} value={matchMethod} onChange={(v) => { setMatchMethod(v); setPage(1); }} /><Select label={t`Owner`} clearable searchable data={(equipment ?? []).map((item) => ({ value: String(item.pk), label: item.name }))} value={machineFilter} onChange={(v) => { setMachineFilter(v); setPage(1); }} /><Select label={t`Component`} clearable searchable data={(components.data?.results ?? []).map((c) => ({ value: String(c.pk), label: `${c.machine_name}: ${c.code}` }))} value={componentFilter} onChange={(v) => { setComponentFilter(v); setPage(1); }} /></Group>
           {points.isFetching && <Loader size='sm' />}
           <Text size='sm'>{t`Dictionary points`}: {points.data?.count ?? 0}</Text>
-          <Table.ScrollContainer minWidth={950}><Table striped><Table.Thead><Table.Tr>{[t`Source tag / path`, t`Owner / component`, t`Parameter`, t`Units`, t`Status`, t`Actions`].map((label) => <Table.Th key={label}>{label}</Table.Th>)}</Table.Tr></Table.Thead><Table.Tbody>{points.data?.results.map((point) => <Table.Tr key={point.pk}><Table.Td>{point.raw_tag}<Text size='xs'>{point.path}</Text>{point.issue && <Text size='xs' c='orange'>{point.issue}</Text>}</Table.Td><Table.Td>{point.machine_name}<Text size='xs'>{point.component_name ?? '—'}</Text></Table.Td><Table.Td>{point.template_name ?? t`Unresolved`}<Text size='xs'>{point.match_method}</Text></Table.Td><Table.Td>{point.unit || '—'}<Text size='xs'>{point.unit_status}</Text></Table.Td><Table.Td><Badge color={point.status === 'approved' ? 'green' : 'yellow'}>{point.status}</Badge></Table.Td><Table.Td><Button size='xs' disabled={!canChange || busy} onClick={() => openReview(point)}>{t`Review mapping`}</Button></Table.Td></Table.Tr>)}</Table.Tbody></Table></Table.ScrollContainer>
+          <Table.ScrollContainer minWidth={950}><Table striped><Table.Thead><Table.Tr>{[t`Source tag / path`, t`Owner / component`, t`Parameter`, t`Units`, t`Status`, t`Actions`].map((label) => <Table.Th key={label}>{label}</Table.Th>)}</Table.Tr></Table.Thead><Table.Tbody>{points.data?.results.map((point) => <Table.Tr key={point.pk}><Table.Td>{point.raw_tag}<Text size='xs'>{point.path}</Text>{point.issue && <Text size='xs' c='orange'>{point.issue}</Text>}</Table.Td><Table.Td><Group gap='xs'><Text>{point.machine_name}</Text><Badge variant='light'>{point.machine === hierarchy.data?.equipment.pk ? t`Station` : t`Pump`}</Badge></Group><Text size='xs'>{point.component_name ?? '—'}</Text></Table.Td><Table.Td>{point.template_name ?? t`Unresolved`}<Text size='xs'>{point.match_method}</Text></Table.Td><Table.Td>{point.unit || '—'}<Text size='xs'>{point.unit_status}</Text></Table.Td><Table.Td><Badge color={point.status === 'approved' ? 'green' : 'yellow'}>{point.status}</Badge></Table.Td><Table.Td><Button size='xs' disabled={!canChange || busy} onClick={() => openReview(point)}>{t`Review mapping`}</Button></Table.Td></Table.Tr>)}</Table.Tbody></Table></Table.ScrollContainer>
           <Pagination total={Math.max(1, Math.ceil((points.data?.count ?? 0) / 50))} value={page} onChange={setPage} />
         </Stack></Tabs.Panel>
         <Tabs.Panel value='import' pt='md'><Stack>
