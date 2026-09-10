@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "status": "draft",
+  "latest_state_ingestion_enabled": false,
+  "provenance": "User-provided Cassandra row and pumphouse JSON; this file is a mapping proposal, not the complete raw snapshot or full plant dictionary.",
+  "station": {
+    "uuid": "402840f4-90fc-43bc-b15f-30f3ac51e1d3",
+    "display_name": "Effluent Pump Station 03",
+    "name_status": "Provisional US-style label for the requested treated-wastewater context, not a verified facility name or duty.",
+    "external_code": "PH_3",
+    "external_code_path": "/dex/ID",
+    "source_uuid": "bafc976f-1ccc-4a91-aaa6-c3eac2470d36",
+    "client_uuid": null,
+    "source_identity_status": "User confirmed entity_uuid identifies the pumphouse; parent_entity_uuid is shared across all pumphouses in this feed. This does not establish a physical parent asset or Client assignment."
+  },
+  "pump_identity": {
+    "namespace": "station.uuid",
+    "algorithm": "UUIDv5(station.uuid, 'pump:' + exact registered source_key)",
+    "scope": "Proposed stable pump slots within this station; display-name changes do not regenerate UUIDs. Source-key aliases must be registered explicitly."
+  },
+  "pumps": [
+    {"source_key": "P1", "display_name": "Pump 01", "uuid": "3f3fd2f6-766f-57f2-bb9e-8c63dbd7a4d7"},
+    {"source_key": "P2", "display_name": "Pump 02", "uuid": "aff3b15a-d946-5543-a0aa-93dc8130c6c3"},
+    {"source_key": "P3", "display_name": "Pump 03", "uuid": "b8ba24a1-384c-5464-b21c-527be0346daf"},
+    {"source_key": "P4", "display_name": "Pump 04", "uuid": "6f64ee75-e336-52be-a3a9-3f9dee6dbe12"},
+    {"source_key": "P5", "display_name": "Pump 05", "uuid": "75badfc3-c835-5842-8e9d-de3f1113922a"},
+    {"source_key": "P6", "display_name": "Pump 06", "uuid": "a5a99b69-0122-5049-b1e0-a252d5ac6f96"},
+    {"source_key": "P7", "display_name": "Pump 07", "uuid": "e71d1967-6884-559b-9114-5c12bddc29c0"},
+    {"source_key": "P8", "display_name": "Pump 08", "uuid": "38e12148-ba7d-50d2-9f39-1d7688ae5628"},
+    {"source_key": "P9", "display_name": "Pump 09", "uuid": "5d62a4b9-8cb0-5046-8a3c-c01025bdc1b3"},
+    {"source_key": "P10", "display_name": "Pump 10", "uuid": "44d03e7e-c45e-5ea1-8894-80fa0142d6e1"},
+    {"source_key": "P11", "display_name": "Pump 11", "uuid": "93fe8a17-de9c-5df9-8d8f-fa615a4f80bb"},
+    {"source_key": "P12", "display_name": "Pump 12", "uuid": "6c327695-f3f3-5ae9-81ab-3cfe0759e079"},
+    {"source_key": "P13", "display_name": "Pump 13", "uuid": "8f046bc4-da1a-515f-bf94-192eeeb90b06"},
+    {"source_key": "P14", "display_name": "Pump 14", "uuid": "75d589cc-bf2b-5a5a-9975-60c2acd45a6b"}
+  ],
+  "source_row": {
+    "parent_entity_uuid": "dd4b923d-945d-47b3-aff3-de032d15f864",
+    "location_type": "PUMP_HOUSE",
+    "component_type": 65,
+    "time_period": 1752850800000,
+    "event_value_type": 41,
+    "sub_time_period": 1752854398616,
+    "entity_uuid": "bafc976f-1ccc-4a91-aaa6-c3eac2470d36",
+    "payload_column": "data1",
+    "data2_status": "Shown as null in the supplied export; column type and semantics unconfirmed.",
+    "primary_key_definition": null
+  },
+  "source_layout": {
+    "confirmation": "User explanation of the supplied feed; logical meanings confirmed, Cassandra partition/clustering declaration still pending.",
+    "constant_fields": {
+      "parent_entity_uuid": "dd4b923d-945d-47b3-aff3-de032d15f864",
+      "location_type": "PUMP_HOUSE",
+      "component_type": 65,
+      "event_value_type": 41
+    },
+    "station_uuid_field": "entity_uuid",
+    "hour_bucket_field": "time_period",
+    "sample_timestamp_field": "sub_time_period",
+    "timestamp_units": "Unix epoch milliseconds",
+    "hour_bucket_duration_ms": 3600000,
+    "nominal_sample_interval_ms": 5000,
+    "bucket_membership": "time_period <= sub_time_period < time_period + 3600000",
+    "require_five_second_grid_alignment": false,
+    "timestamp_policy": "Preserve exact sample milliseconds; do not round, synthesize missing samples, or assume all five-second samples are present.",
+    "logical_sample_identity_fields": ["parent_entity_uuid", "location_type", "component_type", "event_value_type", "entity_uuid", "time_period", "sub_time_period"]
+  },
+  "sample_time": {
+    "egt": 1752854398616,
+    "ext": 1752854698616,
+    "dex_TIMESTAMP": "1.752854398616E9",
+    "epoch_millisecond_interpretation_utc": "2025-07-18T15:59:58.616+00:00",
+    "ext_minus_egt_seconds": 300,
+    "interpretation_status": "User confirmed sub_time_period is the sample timestamp in epoch milliseconds and time_period its hour bucket. egt and dex.TIMESTAMP match this sample arithmetically; their independent semantics and ext meaning remain unconfirmed."
+  },
+  "payload_paths": {
+    "pump_summaries": "/pd",
+    "detailed_readings": "/dex",
+    "station_level_candidate": "/dex/COMMAN_FORBAY_LEVEL",
+    "station_summary_fields_unconfirmed": ["st", "pc", "sl", "dv", "pmw", "pmvar"],
+    "pump_summary_fields_unconfirmed": ["st", "dv", "pmw", "pmvar"],
+    "source_metadata_fields_unconfirmed": ["sr", "dsc"],
+    "dex_metadata_keys": ["ID", "TIMESTAMP"]
+  },
+  "mapping_policy": {
+    "status": "candidate_requires_review",
+    "pump_prefix_pattern": "^PUMP(?P<number>[1-9][0-9]*)_",
+    "prefix_removal_count": 1,
+    "lookup_order": ["exact_catalogue_tag", "explicit_alias", "unresolved"],
+    "raw_tag_preservation": "Exact case, whitespace, spelling, repeated prefixes and JSON path are retained separately from catalogue matching.",
+    "binding_identity": "Registered source namespace plus station UUID plus exact payload path; never the friendly label or a tag shared by multiple houses.",
+    "shared_value_policy": "Keep top-level and pd values distinct from dex readings. Matching sample values do not prove aliases.",
+    "value_policy": "Preserve raw strings and signed values; parse numbers without discarding originals. Do not infer GOOD quality, clamp values, or derive alarm thresholds from this snapshot."
+  },
+  "aliases": [
+    {"local_pattern": "^MOTOR_CORE_RTD(?P<channel>[1-6])_PROCESS_VALUE$", "catalogue_tag": "MOTOR_CORE_RTD{channel}", "family_code": "MOTOR", "example_source_tag": "PUMP2_MOTOR_CORE_RTD1_PROCESS_VALUE"},
+    {"local_pattern": "^THRST_BRG_THRST_PD_RTD(?P<channel>[1-3])_PROCESS_VALUE$", "catalogue_tag": "THRST_BRG_THRST_PD_RTD{channel}", "family_code": "THRUST-BRG", "example_source_tag": "PUMP3_THRST_BRG_THRST_PD_RTD3_PROCESS_VALUE"},
+    {"local_pattern": "^MTR_NDE_BRG_VBRTN(?P<channel>[1-2])_PROCESS_VALUE$", "catalogue_tag": "MTR_NDE_BRG_VBRTN{channel}", "family_code": "MOTOR-NDE-BRG", "example_source_tag": "PUMP12_MTR_NDE_BRG_VBRTN2_PROCESS_VALUE"},
+    {"local_pattern": "^PMP_THRST_BRG_VBRTN(?P<channel>[1-3])_PROCESS_VALUE$", "catalogue_tag": "PMP_THRST_BRG_VBRTN{channel}", "family_code": "THRUST-BRG", "example_source_tag": "PUMP4_PMP_THRST_BRG_VBRTN2_PROCESS_VALUE"},
+    {"local_pattern": "^EXCITATION_FLD_CURR_PROCESS_VALUE$", "catalogue_tag": "EXCITATION_FLD_CURR", "family_code": "EXCITATION", "example_source_tag": "PUMP9_EXCITATION_FLD_CURR_PROCESS_VALUE"},
+    {"local_pattern": "^EXCITATION_FLD_VLTG_PROCESS_VALUE$", "catalogue_tag": "EXCITATION_FLD_VLTG", "family_code": "EXCITATION", "example_source_tag": "PUMP3_EXCITATION_FLD_VLTG_PROCESS_VALUE"},
+    {"local_pattern": "^PUMP_MOTOR_DE_VIBRATION2$", "catalogue_tag": "MOTOR_DE_VIBRATION2", "family_code": "MOTOR-DE-BRG", "example_source_tag": "PUMP3_PUMP_MOTOR_DE_VIBRATION2"},
+    {"local_pattern": "^PUMP_REACTIVE_POWER$", "catalogue_tag": "REACTIVE_POWER", "family_code": "ELECTRICAL", "example_source_tag": "PUMP5_PUMP_REACTIVE_POWER"}
+  ]
+}
+

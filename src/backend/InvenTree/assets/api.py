@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from django.db.models import Q
 from django.urls import include, path
 
 from django_filters.rest_framework import FilterSet, filters
+from tasks.scope import ScopeError
 
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
 from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
+from .registry_api import authorized_client_ids, registry_urls
 from .serializers import (
     AssetMachineSerializer,
     AssetMaintenanceRecordSerializer,
@@ -54,6 +57,18 @@ class AssetMaintenanceRecordFilter(FilterSet):
 
 
 # ---- Views -------------------------------------------------------------------
+
+
+def registry_visibility(queryset, actor, prefix=''):
+    """Retain legacy generic equipment behavior but scope registered equipment."""
+    try:
+        clients = authorized_client_ids(actor)
+    except ScopeError:
+        clients = set()
+    return queryset.filter(
+        Q(**{prefix + 'asset_type': 'equipment'})
+        | Q(**{prefix + 'client_id__in': clients, prefix + 'client__active': True})
+    )
 
 
 class ClientList(ListCreateAPI):
@@ -111,6 +126,10 @@ class AssetMachineList(ListCreateAPI):
     ordering_fields = ['name', 'location', 'manufacturer', 'created_at', 'updated_at']
     ordering = 'name'
 
+    def get_queryset(self):
+        """Apply registry scope to station/pump records."""
+        return registry_visibility(super().get_queryset(), self.request.user)
+
 
 class AssetMachineDetail(RetrieveUpdateDestroyAPI):
     """Retrieve, update, or delete an asset machine."""
@@ -122,6 +141,10 @@ class AssetMachineDetail(RetrieveUpdateDestroyAPI):
         InvenTree.permissions.RolePermission,
     ]
     role_required = 'work_order'
+
+    def get_queryset(self):
+        """Apply registry scope to station/pump records."""
+        return registry_visibility(super().get_queryset(), self.request.user)
 
 
 class MachinePartList(ListCreateAPI):
@@ -193,40 +216,55 @@ class AssetMaintenanceRecordDetail(RetrieveUpdateDestroyAPI):
 
 
 assets_api_urls = [
+    path('registry/', include(registry_urls)),
     path(
         'clients/',
-        include([
-            path('', ClientList.as_view(), name='asset-client-list'),
-            path('<int:pk>/', ClientDetail.as_view(), name='asset-client-detail'),
-        ]),
+        include(
+            [
+                path('', ClientList.as_view(), name='asset-client-list'),
+                path('<int:pk>/', ClientDetail.as_view(), name='asset-client-detail'),
+            ]
+        ),
     ),
     path(
         'machines/',
-        include([
-            path('', AssetMachineList.as_view(), name='asset-machine-list'),
-            path(
-                '<int:pk>/', AssetMachineDetail.as_view(), name='asset-machine-detail'
-            ),
-        ]),
+        include(
+            [
+                path('', AssetMachineList.as_view(), name='asset-machine-list'),
+                path(
+                    '<int:pk>/',
+                    AssetMachineDetail.as_view(),
+                    name='asset-machine-detail',
+                ),
+            ]
+        ),
     ),
     path(
         'parts/',
-        include([
-            path('', MachinePartList.as_view(), name='machine-part-list'),
-            path('<int:pk>/', MachinePartDetail.as_view(), name='machine-part-detail'),
-        ]),
+        include(
+            [
+                path('', MachinePartList.as_view(), name='machine-part-list'),
+                path(
+                    '<int:pk>/', MachinePartDetail.as_view(), name='machine-part-detail'
+                ),
+            ]
+        ),
     ),
     path(
         'maintenance/',
-        include([
-            path(
-                '', AssetMaintenanceRecordList.as_view(), name='maintenance-record-list'
-            ),
-            path(
-                '<int:pk>/',
-                AssetMaintenanceRecordDetail.as_view(),
-                name='maintenance-record-detail',
-            ),
-        ]),
+        include(
+            [
+                path(
+                    '',
+                    AssetMaintenanceRecordList.as_view(),
+                    name='maintenance-record-list',
+                ),
+                path(
+                    '<int:pk>/',
+                    AssetMaintenanceRecordDetail.as_view(),
+                    name='maintenance-record-detail',
+                ),
+            ]
+        ),
     ),
 ]

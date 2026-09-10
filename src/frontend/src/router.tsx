@@ -89,6 +89,10 @@ export const MachineIndex = Loadable(
   lazy(() => import('./pages/assets/MachineIndex'))
 );
 
+export const EquipmentRegistry = Loadable(
+  lazy(() => import('./pages/assets/EquipmentRegistry'))
+);
+
 export const MachineDetail = Loadable(
   lazy(() => import('./pages/assets/MachineDetail'))
 );
@@ -246,6 +250,7 @@ export const routes = (
       <Route path='tasks/*' element={<TasksRedirect />} />
       <Route path='machines/'>
         <Route index element={<Navigate to='index/' />} />
+        <Route path='registry/*' element={<EquipmentRegistry />} />
         <Route path='index/*' element={<MachineIndex />} />
         <Route path='machine/:id/*' element={<MachineDetail />} />
       </Route>
