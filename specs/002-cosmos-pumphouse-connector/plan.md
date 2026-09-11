@@ -94,6 +94,23 @@ gives RBAC plus cheap point reads. Revisit only if the future migration job must
 
 ### 3.1 Database `iwm`, container `pumphouse_readings`
 
+> **Existing container (checked 2026-09-12).** The account already has a container whose partition key is
+> **`/maintenance_pk`, non-hierarchical, and it holds no data.** That key was created for a different
+> purpose and cannot carry a station-hour partition as-is. A container's partition key is immutable, so
+> the options are:
+>
+> | Option | What it means | Verdict |
+> |---|---|---|
+> | **A — dedicated container** (recommended) | Create `pumphouse_readings` with hierarchical PK `/station_uuid` + `/hour_bucket`. The existing empty container stays free for its intended maintenance use. | Cleanest; costs one container, loses nothing because the existing one is empty |
+> | **B — reuse the existing container** | Write a synthetic `maintenance_pk = "<station_uuid>|<hour_bucket>"`. Every query we issue is already station+hour, so each one stays single-partition. | Works, but a field named `maintenance_pk` holding telemetry identity misleads the next reader, and telemetry then shares a container with unrelated documents |
+> | C — change the key in place | The portal's "Change partition key" copies into a new container anyway | Pointless here: no data to preserve |
+>
+> **The connector does not hard-code either choice.** `HealthSource.config` carries
+> `partition_key_paths` (e.g. `["/station_uuid", "/hour_bucket"]` or `["/maintenance_pk"]`) and
+> `partition_key_mode` (`hierarchical` | `composite`), and the document builder and every query derive the
+> key from that. Option B therefore remains available without a code change if creating a container turns
+> out to be restricted.
+
 - **Partition key (hierarchical, 2 levels)**: `/station_uuid`, `/hour_bucket`
   - mirrors Cassandra `(entity_uuid, time_period)`; one station-hour ≈ 720 docs × ~5 KB ≈ 3.6 MB
     (limit 20 GB per logical partition, so headroom is > 5 000×).
@@ -353,6 +370,7 @@ maintenance, change-feed polling, retention/TTL policy values.
 | D8 | **`dex` extension tags ingested from day one**, alongside the basic params. Only *approved* dictionary points become bindings, so review still gates what is stored. |
 | D10 | **Status vocabulary**: `st` ∈ {`I` = Idle, `R` = Running}, applies at both station and pump level. Unknown codes pass through raw with `quality='uncertain'` rather than being mapped to a guess. |
 | D12 | **Azure Cosmos account and container already exist.** `provision.py` therefore runs in **verify/diff mode by default** (`--create` is opt-in): it asserts the partition-key paths, `defaultTtl` and indexing policy match `contrib/cosmos/schema/` and reports drift instead of mutating a live account. |
+| D14a | **The existing container is unusable as-is**: partition key `/maintenance_pk`, non-hierarchical, **empty**. Since it holds no data, nothing is lost by leaving it alone. Plan of record is **option A** — a dedicated `pumphouse_readings` container with hierarchical PK `/station_uuid` + `/hour_bucket` — with option B (synthetic composite key in the existing container) kept available through config, not code changes. See §3.1. |
 | D13 | **PH_3 only** for the pilot, with `parent_entity_uuid == entity_uuid == station_uuid == the pumphouse UUID`. The seeder writes all three from one `--station-uuid` argument. |
 
 ### Still open
@@ -363,7 +381,7 @@ maintenance, change-feed polling, retention/TTL policy values.
 | D7b | **`dsc` code set** — is `24` "SCADA device", and what are the other values? | T6 display | Pass the integer through unmapped |
 | D9 | **Units and alarm bounds** — Annex A proposes a set from standard practice; the plant's own trip/alarm settings must confirm them. | T11 thresholds | Apply Annex A units, leave warn/critical unset (health shows `unknown`, never a fabricated "normal") |
 | D11 | **Freshness threshold** (see explanation below) | T9 | 300 s, matching `ext − egt` |
-| D14 | **Account coordinates** — endpoint URI, database id and container id of the existing account (D12), **and the partition key it was created with**. A container's partition key cannot be changed after creation, so if it is not `/station_uuid` + `/hour_bucket` we either recreate the container or adapt §3.1 to what exists. | T3, T8 | Read from `INVENTREE_COSMOS_*` env vars; `provision.py` reports the drift instead of assuming |
+| D14 | **Remaining account coordinates** — endpoint URI, database id, container id, and whether I may create a container (option A) or must reuse the existing one (option B). The partition key itself is now known: `/maintenance_pk`, non-hierarchical, empty (D14a). | T3, T8 | Option A; read coordinates from `INVENTREE_COSMOS_*` env vars; `provision.py` reports drift instead of assuming |
 
 #### D11 explained
 

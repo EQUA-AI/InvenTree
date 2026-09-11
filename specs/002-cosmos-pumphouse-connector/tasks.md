@@ -47,25 +47,30 @@ Fix the bug the confirmed DDL exposed, and record the schema.
       closed, gate 5 redirected to this spec
 - [x] `PH_3.mapping.draft.json` basic-params block + offline tests
 
-### 🔵 T2 — Add the `azure-cosmos` dependency · 2 h
-- [ ] `azure-cosmos` in `src/backend/requirements.in` (`azure-identity` is already present)
-- [ ] pip-compile `requirements.txt` and `contrib/container/requirements.txt`
-- [ ] CVE check on the new transitive tree
-- [ ] Rebuild the dev image; `manage.py check` still clean
-**Acceptance**: `python -c "import azure.cosmos"` works inside `inventree-dev-server`.
+### ✅ T2 — Add the `azure-cosmos` dependency · 2 h · commit `0ad1308df`
+- [x] `azure-cosmos>=4.9.0` in `src/backend/requirements.in`
+- [x] Raised `azure-identity` floor `>=1.15.0` → `>=1.16.1`: the old floor permitted
+      **CVE-2024-35255** (elevation of privilege) and the connector puts `DefaultAzureCredential`
+      on a data path. The lock already resolved to 1.25.3, but a floor should not allow a
+      vulnerable resolution.
+- [x] pip-compile: adds `azure-cosmos==4.17.0` and nothing else — no version churn
+- [x] CVE check on 4.17.0: clean
+- [x] Verified in `inventree-dev-server`: imports fine, `manage.py check` clean
 
-### ⏸ T3 — Cosmos schema artefacts and verifier · 6 h · *blocked: D14*
+### ⏸ T3 — Cosmos schema artefacts and verifier · 6 h · *blocked: D14 (option A or B)*
 - [ ] `contrib/cosmos/schema/iwm.pumphouse_readings.json` — hierarchical PK `/station_uuid` +
       `/hour_bucket`, `defaultTtl: -1`, indexing policy excluding `/pd/*`, `/dex/*`, `/data1_raw`
 - [ ] `contrib/cosmos/schema/iwm.pumphouse_latest.json` — written now, created later
-- [ ] `contrib/cosmos/provision.py` — **verify/diff by default** against the existing account;
-      `--create` for the emulator, `--emulator` for the local endpoint; never grants roles, never
-      writes data
+- [ ] `provision.py` — **verify/diff by default**; `--create` for the emulator, `--emulator` for the
+      local endpoint; never grants roles, never writes data
+- [ ] Partition key read from config (`partition_key_paths`, `partition_key_mode`) so option B —
+      reusing the existing `/maintenance_pk` container with a synthetic composite key — needs no
+      code change
 - [ ] `contrib/cosmos/README.md` — schema rationale, §1.1 mapping table, Annex A units, the Entra ID
       role assignment, verify/seed commands
-**Blocker (D14)**: endpoint URI, database id, container id **and the partition key the existing
-container was created with** — a container's PK is immutable, so if it is not `/station_uuid` +
-`/hour_bucket` we recreate it or adapt the schema.
+**Blocker (D14)**: endpoint URI, database id, container id, and whether I may create a container.
+The existing container's key is now known — `/maintenance_pk`, non-hierarchical, **empty** — so it
+cannot carry a station-hour partition as-is (§3.1 of the plan).
 **Acceptance**: `provision.py --verify` prints "matches schema" or an explicit drift list.
 
 ### ⏸ T4 — Cosmos emulator in the dev stack · 3 h · *blocked: T3*
@@ -172,9 +177,9 @@ Closes the "mapping approval does not enable live ingestion" gap.
 
 | Bucket | Tickets | Hours |
 |---|---|---|
-| Done | T1 | 4 |
-| Ready now | T0, T2, T7 | 7 |
-| Blocked on D14 (account details) | T3, T4, T5 | 15 |
+| Done | T1, T2 | 6 |
+| Ready now | T0, T7 | 5 |
+| Blocked on D14 (create a container, or reuse with a composite key) | T3, T4, T5 | 15 |
 | Blocked on earlier tickets | T6, T8–T14 | 41 |
 | **Total** | **15** | **67** |
 
