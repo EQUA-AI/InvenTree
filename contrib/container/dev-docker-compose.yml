@@ -42,6 +42,11 @@ services:
             target: dev
         # Cache the built image to be used by the inventree-dev-worker process
         image: inventree-dev-image
+        # The source bind-mount below shadows the init.sh / gunicorn.conf.py files
+        # copied into the image, so run the entrypoint from the mounted source tree
+        # and use the django development server (with auto-reload)
+        entrypoint: ["/bin/bash", "./contrib/container/init.sh"]
+        command: ["invoke", "dev.server", "--address", "0.0.0.0:8000"]
         ports:
             # Expose web server on port 8000
             - 8000:8000
@@ -50,12 +55,17 @@ services:
             - ./:/home/inventree:z
         env_file:
             - contrib/container/docker.dev.env
+        # Local single-tenant registry: only work-order viewers receive this scope.
+        environment: &maintenance_scope
+            AIMMS_MAINTENANCE_SCOPE_RESOLVER: ${AIMMS_MAINTENANCE_SCOPE_RESOLVER:-tasks.scope.single_site_scope_resolver}
+            AIMMS_SINGLE_SITE_CLIENT_CODE: ${AIMMS_SINGLE_SITE_CLIENT_CODE:-internal}
         restart: unless-stopped
 
     # Background worker process handles long-running or periodic tasks
     inventree-dev-worker:
         image: inventree-dev-image
         build: *build_config
+        entrypoint: ["/bin/bash", "./contrib/container/init.sh"]
         command: invoke worker
         depends_on:
             - inventree-dev-server
@@ -64,4 +74,5 @@ services:
             - ./:/home/inventree:z
         env_file:
             - contrib/container/docker.dev.env
+        environment: *maintenance_scope
         restart: unless-stopped

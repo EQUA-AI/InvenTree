@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "components": [
+    {
+      "code": "PUMP",
+      "name": "Pump Unit",
+      "group": "Hydraulic Components",
+      "description": "Generic hydraulic pump family. Pump type, duty, materials, manufacturer and model require an equipment datasheet.",
+      "virtual": false,
+      "parameters": []
+    },
+    {
+      "code": "CASING",
+      "name": "Pump Casing and Spiral Case",
+      "group": "Hydraulic Components",
+      "description": "Pump casing or spiral-case component family. The source tag alone does not identify the measured quantity.",
+      "virtual": false,
+      "parameters": [
+        {"name": "Spiral Case 1", "tag": "SPIRAL_CASE1", "kind": "unresolved", "data_type": "unknown", "units": "", "unit_status": "unresolved", "note": "Confirm whether this is pressure, temperature, drain status or another quantity."}
+      ]
+    },
+    {
+      "code": "DISCHARGE",
+      "name": "Pump Discharge Line",
+      "group": "Hydraulic Components",
+      "description": "Discharge-line component family with a pressure measurement point. Pressure reference and transmitter range remain unverified.",
+      "virtual": false,
+      "parameters": [
+        {"name": "Discharge Pressure", "tag": "DISCHARGE_PRESSURE", "kind": "pressure", "data_type": "number", "units": "bar", "unit_status": "proposed", "note": "Confirm source units and gauge versus absolute pressure; no operating limits are assumed."}
+      ]
+    },
+    {
+      "code": "AXIAL-PAD",
+      "name": "Thrust Axial Pad",
+      "group": "Hydraulic Components",
+      "description": "Axial thrust-pad component family. Pad identifiers are preserved without inferring sensor type from the suffix.",
+      "virtual": false,
+      "parameters": [
+        {"name": "Thrust Axial Pad {channel}", "tag": "PUMP_THRUST_AXIAL_PAD_{channel}D5", "channels": [1, 2], "kind": "unresolved", "data_type": "unknown", "units": "", "unit_status": "unresolved", "note": "D5 is preserved as supplied; confirm whether the measurement is temperature, displacement or another quantity."}
+      ]
+    },
+    {
+      "code": "RADIAL-PAD",
+      "name": "Guide Radial Pad",
+      "group": "Hydraulic Components",
+      "description": "Guide or radial-pad component family. Measurement semantics require the source tag dictionary.",
+      "virtual": false,
+      "parameters": [
+        {"name": "Guide Radial Pad {channel}", "tag": "PUMP_GUIDED_RADIAL_PAD_{channel}D6", "channels": [1, 2], "kind": "unresolved", "data_type": "unknown", "units": "", "unit_status": "unresolved", "note": "D6 is preserved as supplied; do not assume temperature or displacement units."}
+      ]
+    },
+    {
+      "code": "MOTOR",
+      "name": "Electric Motor",
+      "group": "Motor Components",
+      "description": "Electric motor family with core and winding temperature channels and speed. Rated power, voltage and insulation class are not specified.",
+      "virtual": false,
+      "parameters": [
+        {"name": "Motor Core RTD {channel}", "tag": "MOTOR_CORE_RTD{channel}", "channels": [1, 6], "kind": "temperature", "data_type": "number", "units": "degC", "unit_status": "proposed", "note": "Temperature is inferred from the supplied description; verify Celsius versus raw RTD resistance and source scaling."},
+        {"name": "Motor Winding Temperature {channel}", "tag": "PUMP_MOTOR_WINDING_TEMPERATURED{channel}", "channels": [1, 11], "kind": "temperature", "data_type": "number", "units": "degC", "unit_status": "proposed", "note": "Confirm Celsius and channel numbering against the source dictionary; no thermal limits are assumed."},
+        {"name": "Motor Shaft Speed", "tag": "SPEED", "kind": "speed", "data_type": "number", "units": "rpm", "unit_status": "proposed", "note": "Confirm revolutions per minute versus another source scaling."}
+      ]
+    },
+    {
+      "code": "MOTOR-CONTROL",
+      "name": "Motor Control System",
+      "group": "Motor Components",
+      "description": "Logical grouping for motor state indications, not a physical spare part or a control-system write interface.",
+      "virtual": true,
+      "parameters": [
+        {"name": "Motor ON Status", "tag": "MOTOR_ON_STATUS", "kind": "status", "data_type": "status", "units": "", "unit_status": "unitless", "note": "Verify status encoding and polarity. Blank means unknown, not OFF; this is not a checkbox."},
+        {"name": "Motor OFF Status", "tag": "MOTOR_OFF_STATUS", "kind": "status", "data_type": "status", "units": "", "unit_status": "unitless", "note": "Verify status encoding and polarity independently from the ON indication."}
+      ]
+    },
+    {
+      "code": "MOTOR-NDE-BRG",
+      "name": "Motor Non-Drive-End Bearing",
+      "group": "Bearings",
+      "description": "Non-drive-end motor bearing family. Vibration quantity, axis and RMS or peak convention require instrumentation details.",
+      "virtual": false,
+      "parameters": [
+        {"name": "Motor NDE Bearing Vibration {channel}", "tag": "MTR_NDE_BRG_VBRTN{channel}", "channels": [1, 2], "kind": "vibration", "data_type": "number", "units": "", "unit_status": "unresolved", "note": "May be displacement, velocity or acceleration; do not assume mm/s or an alarm threshold."}
+      ]
+    },
+    {
+      "code": "MOTOR-DE-BRG",
+      "name": "Motor Drive-End Bearing",
+      "group": "Bearings",
+      "description": "Drive-end motor bearing family. Confirm the actual vibration sensor mounting point before assigning installed equipment.",
+      "virtual": false,
+      "parameters": [
+        {"name": "Motor DE Vibration {channel}", "tag": "MOTOR_DE_VIBRATION{channel}", "channels": [1, 2], "kind": "vibration", "data_type": "number", "units": "", "unit_status": "unresolved", "note": "Confirm displacement, velocity or acceleration, sensor axis and RMS or peak convention."}
+      ]
+    },
+    {
+      "code": "THRUST-BRG",
+      "name": "Thrust Bearing",
+      "group": "Bearings",
+      "description": "Thrust-bearing component family with supplied temperature and vibration channels. Not an installed bearing or a stocked quantity.",
+      "virtual": false,
+      "parameters": [
+        {"name": "Thrust Bearing Pad RTD {channel}", "tag": "THRST_BRG_THRST_PD_RTD{channel}", "channels": [1, 3], "kind": "temperature", "data_type": "number", "units": "degC", "unit_status": "proposed", "note": "Verify that the source reports temperature rather than RTD resistance, and confirm its scale."},
+        {"name": "Pump Thrust Bearing Vibration {channel}", "tag": "PMP_THRST_BRG_VBRTN{channel}", "channels": [1, 3], "kind": "vibration", "data_type": "number", "units": "", "unit_status": "unresolved", "note": "Confirm displacement, velocity or acceleration and RMS or peak convention."}
+      ]
+    },
+    {
+      "code": "GUIDE-BRG",
+      "name": "Guide Radial Bearing",
+      "group": "Bearings",
+      "description": "Guide or radial-bearing family. Supplied radial-pad tags are defined separately under Guide Radial Pad to avoid duplicate signal ownership.",
+      "virtual": false,
+      "parameters": []
+    },
+    {
+      "code": "WATER-COOLING",
+      "name": "Pump Cooling Water System",
+      "group": "Cooling Systems",
+      "description": "Cooling-water system family. Shared versus dedicated installation and hydraulic connections will be assigned later.",
+      "virtual": false,
+      "parameters": [
+        {"name": "Cooling Water Inlet Temperature {channel}", "tag": "PUMP_COOLING_WATER_INLET_TEMP{channel}", "channels": [1, 5], "kind": "temperature", "data_type": "number", "units": "degC", "unit_status": "proposed", "note": "Confirm source temperature scale and measurement locations."},
+        {"name": "Cooling Water Outlet Temperature {channel}", "tag": "PUMP_COOLING_WATER_OUTLET_TEMP{channel}", "channels": [1, 4], "kind": "temperature", "data_type": "number", "units": "degC", "unit_status": "proposed", "note": "Confirm source temperature scale and measurement locations."},
+        {"name": "Inlet Cooling Water Temperature D3", "tag": "PUMP_PUMP_INLET_COOLING_WATER_TEMPERATURED3", "kind": "temperature", "data_type": "number", "units": "degC", "unit_status": "proposed", "note": "Preserve the repeated PUMP and D3 spelling; check for an alias of another inlet channel before binding."}
+      ]
+    },
+    {
+      "code": "AIR-COOLING",
+      "name": "Motor Ventilation and Cooling System",
+      "group": "Cooling Systems",
+      "description": "Motor air-cooling system family with supplied cold-air and hot-air temperature channels.",
+      "virtual": false,
+      "parameters": [
+        {"name": "Motor Cold Air Temperature {channel}", "tag": "PUMP_MOTOR_COLD_AIR TEMP{channel}", "channels": [1, 4], "kind": "temperature", "data_type": "number", "units": "degC", "unit_status": "proposed", "note": "Space in the source tag is preserved; confirm whether the actual dictionary uses a space or underscore."},
+        {"name": "Motor Hot Air Temperature 2", "tag": "PUMP_MOTOR_HOT_AIR TEMP2", "kind": "temperature", "data_type": "number", "units": "degC", "unit_status": "proposed", "note": "Only channel 2 was supplied; preserve the space and confirm the real tag spelling."}
+      ]
+    },
+    {
+      "code": "HOPD-VALVE",
+      "name": "HOPD Valve",
+      "group": "Valves",
+      "description": "Valve family identified by the supplied HOPD label. Acronym expansion, valve type, size and actuator details remain unverified.",
+      "virtual": false,
+      "parameters": [
+        {"name": "HOPD Valve Position", "tag": "HOPD_VALVE_POS_PROCESS_VALUE", "kind": "position", "data_type": "number", "units": "percent", "unit_status": "proposed", "note": "Confirm 0-100 percent versus fraction, angle or travel and the open/closed polarity."}
+      ]
+    },
+    {
+      "code": "EOPD-VALVE",
+      "name": "EOPD Valve",
+      "group": "Valves",
+      "description": "Valve family identified by the supplied EOPD label. Acronym expansion, valve type, size and actuator details remain unverified.",
+      "virtual": false,
+      "parameters": [
+        {"name": "EOPD Valve Position", "tag": "EOPD_VALVE_POS_PROCESS_VALUE", "kind": "position", "data_type": "number", "units": "percent", "unit_status": "proposed", "note": "Confirm 0-100 percent versus fraction, angle or travel and the open/closed polarity."}
+      ]
+    },
+    {
+      "code": "ELECTRICAL",
+      "name": "Motor Electrical System",
+      "group": "Electrical Systems",
+      "description": "Logical grouping for motor electrical measurements, not a physical replacement part. Instrument scales and ratings are unverified.",
+      "virtual": true,
+      "parameters": [
+        {"name": "Active Power", "tag": "ACTIVE_POWER", "kind": "active_power", "data_type": "number", "units": "kW", "unit_status": "proposed", "note": "Confirm W, kW or MW and import/export sign convention."},
+        {"name": "Reactive Power", "tag": "REACTIVE_POWER", "kind": "reactive_power", "data_type": "number", "units": "", "unit_status": "unresolved", "note": "Confirm var, kvar or Mvar and sign convention. A validated reactive-power unit definition is required; do not label it kW."},
+        {"name": "Power Factor", "tag": "PUMP_POWERFATCOR", "kind": "power_factor", "data_type": "number", "units": "", "unit_status": "unitless", "note": "Typo preserved. Confirm ratio versus percentage, sign and leading/lagging encoding before use."},
+        {"name": "Average Motor Current", "tag": "PUMP_CURRENT_AVG", "kind": "current", "data_type": "number", "units": "A", "unit_status": "proposed", "note": "Confirm amperes and CT scaling; this is an average as named, not an inferred phase current."},
+        {"name": "Line-to-Line Voltage", "tag": "PUMP_LINE_TO_LINE_VOLTAGE", "kind": "voltage", "data_type": "number", "units": "V", "unit_status": "proposed", "note": "Confirm V versus kV and VT scaling; no rated voltage is supplied."},
+        {"name": "Operating Frequency", "tag": "PUMP_FREQUENCY", "kind": "frequency", "data_type": "number", "units": "Hz", "unit_status": "proposed", "note": "Confirm line versus drive-output frequency. This tag does not prove a VFD is installed."}
+      ]
+    },
+    {
+      "code": "EXCITATION",
+      "name": "Motor Excitation System",
+      "group": "Electrical Systems",
+      "description": "Logical grouping for motor excitation field measurements. Excitation equipment presence and construction require confirmation.",
+      "virtual": true,
+      "parameters": [
+        {"name": "Excitation Field Current", "tag": "EXCITATION_FLD_CURR", "kind": "current", "data_type": "number", "units": "A", "unit_status": "proposed", "note": "Confirm field-current unit, scaling and DC measurement convention."},
+        {"name": "Excitation Field Voltage", "tag": "EXCITATION_FLD_VLTG", "kind": "voltage", "data_type": "number", "units": "V", "unit_status": "proposed", "note": "Confirm field-voltage unit, scaling and DC measurement convention."}
+      ]
+    },
+    {
+      "code": "VFD",
+      "name": "Variable Frequency Drive",
+      "group": "Electrical Systems",
+      "description": "Optional VFD component family. Inclusion in this catalogue does not assert a drive exists on any pump; frequency is defined under Motor Electrical System.",
+      "virtual": false,
+      "parameters": []
+    },
+    {
+      "code": "FOREBAY",
+      "name": "Forebay and Intake Structure",
+      "group": "Shared Infrastructure",
+      "description": "Forebay or intake structure family. No station identity, physical dimensions or ownership is assigned.",
+      "virtual": false,
+      "parameters": [
+        {"name": "Forebay Water Level", "tag": "COMMAN_FORBAY_LEVEL", "kind": "level", "data_type": "number", "units": "m", "unit_status": "proposed", "note": "Typo preserved. Confirm unit, datum and whether the value is elevation or depth."}
+      ]
+    },
+    {
+      "code": "STATUS",
+      "name": "Equipment Status Group",
+      "group": "Status and Monitoring",
+      "description": "Logical group for the ambiguous st source field. Pump versus station ownership and state encoding will be resolved during site mapping.",
+      "virtual": true,
+      "parameters": [
+        {"name": "Equipment Status", "tag": "st", "kind": "status", "data_type": "status", "units": "", "unit_status": "unitless", "note": "Preserve case; do not assign this to a pump or pumphouse until the JSON context and state encoding are known."}
+      ]
+    }
+  ]
+}

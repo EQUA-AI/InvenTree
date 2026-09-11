@@ -220,6 +220,8 @@ def get_ruleset_models() -> dict:
             'assets_assetmachine',
             'assets_assetmaintenancerecord',
             'assets_machinepart',
+            'assets_assetcomponent',
+            'assets_dictionarypoint',
         ],
     }
 
