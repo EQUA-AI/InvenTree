@@ -106,12 +106,17 @@ the dump importer.
 **Acceptance**: every point in the PH_3 sample produces exactly one `Reading` with the expected key,
 type and quality; no reading invents a value.
 
-### 🔵 T7 — `IngestionCheckpoint` model · 3 h
-- [ ] `assets.IngestionCheckpoint(source FK, station_uuid, hour_bucket str, sub_time_period bigint,
-      continuation_token text, updated_at)`, unique `(source, station_uuid)`
-- [ ] Rejects backwards movement (replay protection at the source boundary)
-- [ ] Migration + admin registration
-**Acceptance**: a restarted worker resumes from the stored position, never re-reads the whole hour.
+### ✅ T7 — `IngestionCheckpoint` model · 3 h · commit pending
+- [x] `assets/ingestion_models.py`: `IngestionCheckpoint(source FK, station_uuid, hour_bucket str,
+      sub_time_period bigint, continuation_token, updated_at)`, unique `(source, station_uuid)`
+- [x] Forward-only `advance_to()`: an equal or earlier position is refused and reported, and the
+      candidate is validated *before* assignment so a refused advance leaves the instance untouched
+      in memory as well as in the database
+- [x] Half-open bucket validation (`hour_bucket <= sample < hour_bucket + 3_600_000`), text bucket
+      parsed like the source stores it
+- [x] Migration `0012_ingestioncheckpoint`, applied
+- [x] Admin: read-only, no add permission — a hand-edited position would skip or replay samples
+- [x] 7 tests incl. bucket edges, cross-bucket advance, uniqueness, and "stores no measurement"
 
 ---
 
@@ -177,8 +182,8 @@ Closes the "mapping approval does not enable live ingestion" gap.
 
 | Bucket | Tickets | Hours |
 |---|---|---|
-| Done | T1, T2 | 6 |
-| Ready now | T0, T7 | 5 |
+| Done | T1, T2, T7 | 9 |
+| Ready now | T0 | 2 |
 | Blocked on D14 (create a container, or reuse with a composite key) | T3, T4, T5 | 15 |
 | Blocked on earlier tickets | T6, T8–T14 | 41 |
 | **Total** | **15** | **67** |
