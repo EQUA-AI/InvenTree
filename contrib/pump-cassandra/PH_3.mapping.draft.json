@@ -71,15 +71,37 @@
     "dex_TIMESTAMP": "1.752854398616E9",
     "epoch_millisecond_interpretation_utc": "2025-07-18T15:59:58.616+00:00",
     "ext_minus_egt_seconds": 300,
-    "interpretation_status": "User confirmed sub_time_period is the sample timestamp in epoch milliseconds and time_period its hour bucket. egt and dex.TIMESTAMP match this sample arithmetically; their independent semantics and ext meaning remain unconfirmed."
+    "interpretation_status": "User confirmed sub_time_period is the sample timestamp in epoch milliseconds and time_period its hour bucket. User later confirmed egt is the Event Generation Timestamp and ext the Expiration Timestamp (egt + default real-time expiry period; 300 s in this sample). dex.TIMESTAMP matches egt arithmetically. The expiry period value is a source default, not an application TTL or freshness policy."
+  },
+  "basic_params": {
+    "scope": "Station-level 'basic params' of the pumphouse envelope in data1, as listed by the user. Field abbreviations are matched to the listed names by order and sample content; confirm each abbreviation against source documentation before binding.",
+    "container_path": "/data1",
+    "status": "user_listed_abbreviation_match_pending",
+    "fields": [
+      {"key": "egt", "name": "Event Generation Timestamp", "source_name": "eventGenTs", "type": "epoch_ms", "unit": null, "notes": "Equals sub_time_period in the sample."},
+      {"key": "sl", "name": "Surge Pool Level", "type": "number", "unit": null, "notes": "Sample value equals /dex/COMMAN_FORBAY_LEVEL; equivalence not yet an approved alias."},
+      {"key": "dv", "name": "Total Discharge Value", "type": "number", "unit": null, "notes": "Not present in the pilot excerpt; unit and aggregation window unconfirmed."},
+      {"key": "pmw", "name": "Input Power (MW)", "type": "number", "unit": "MW", "notes": null},
+      {"key": "pmvar", "name": "Input Power (MVar)", "type": "number", "unit": "MVar", "notes": null},
+      {"key": "pc", "name": "Number of Pumps Running", "type": "integer", "unit": "count", "notes": "Not present in the pilot excerpt."},
+      {"key": "st", "name": "Pumphouse Running Status", "type": "code", "unit": null, "notes": "Sample value 'I'; code set and polarity unconfirmed."},
+      {"key": "pd", "name": "Pump Operation Details", "type": "map", "unit": null, "notes": "Pump-level map keyed by registered source_key (P1..P14); see pump_summary_fields."},
+      {"key": "dsc", "name": "Data Source", "type": "code", "unit": null, "notes": "Sample value 24, stated as 'SCADA Device'; enum table unconfirmed."},
+      {"key": "sr", "name": "Source Text", "type": "string", "unit": null, "notes": "Sample value 'SCADA', stated as 'SCADA Device'."},
+      {"key": "ext", "name": "Expiration Timestamp", "type": "epoch_ms", "unit": null, "notes": "egt + default real-time expiry period. Sample period is 300000 ms."}
+    ],
+    "expiry": {
+      "rule": "ext = egt + default_realtime_expiry_ms",
+      "default_realtime_expiry_ms_observed": 300000,
+      "policy": "Source expiry; do not use as an application retention TTL or to discard historical rows."
+    }
   },
   "payload_paths": {
     "pump_summaries": "/pd",
     "detailed_readings": "/dex",
     "station_level_candidate": "/dex/COMMAN_FORBAY_LEVEL",
-    "station_summary_fields_unconfirmed": ["st", "pc", "sl", "dv", "pmw", "pmvar"],
+    "station_summary_fields": ["egt", "sl", "dv", "pmw", "pmvar", "pc", "st", "pd", "dsc", "sr", "ext"],
     "pump_summary_fields_unconfirmed": ["st", "dv", "pmw", "pmvar"],
-    "source_metadata_fields_unconfirmed": ["sr", "dsc"],
     "dex_metadata_keys": ["ID", "TIMESTAMP"]
   },
   "mapping_policy": {

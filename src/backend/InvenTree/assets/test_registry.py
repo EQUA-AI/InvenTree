@@ -234,6 +234,41 @@ class RegistryTests(InvenTreeAPITestCase):
             5,
         )
 
+    def test_text_hour_bucket(self):
+        """Accept the text time_period Cassandra actually stores, not only bigint."""
+        row: dict[str, Any] = {
+            'entity_uuid': str(self.station.source_entity_uuid),
+            # time_period is a `text` column; an export carries it as a string
+            # while sub_time_period stays a bigint.
+            'time_period': '1752850800000',
+            'sub_time_period': 1752854398616,
+            'data1': json.loads(self.raw()),
+        }
+        self.assertEqual(
+            plan_dictionary(self.station, json.dumps(row).encode())['counts']['total'],
+            5,
+        )
+        for bad in ['', 'not a timestamp', '17528508000000000000000', True]:
+            row['time_period'] = bad
+            with self.subTest(time_period=bad), self.assertRaises(ValidationError):
+                plan_dictionary(self.station, json.dumps(row).encode())
+
+    def test_multi_station_hour_slice(self):
+        """Keep this station's rows from an hour slice that holds several stations."""
+        # entity_uuid clusters after sub_time_period, so a bounded read of one
+        # hour bucket returns every station in it. The other stations' rows are
+        # skipped; only their absence entirely is an error.
+        payload = json.loads(self.raw())
+        rows = [
+            {'entity_uuid': str(uuid4()), 'data1': payload},
+            {'entity_uuid': str(self.station.source_entity_uuid), 'data1': payload},
+            {'entity_uuid': str(uuid4()), 'data1': payload},
+        ]
+        plan = plan_dictionary(self.station, json.dumps(rows).encode())
+        self.assertEqual(plan['rows'], 3)
+        self.assertEqual(plan['rows_matched'], 1)
+        self.assertEqual(plan['counts']['total'], 5)
+
     def test_foreign_client_and_unresolved_scope(self):
         """Reject cross-Client, unresolved and mixed-identity grants."""
         other = Client.objects.create(code='registry-other', name='Other Client')

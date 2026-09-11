@@ -145,6 +145,50 @@ class MappingDraftTests(unittest.TestCase):
         self.assertLessEqual(row['time_period'], sample['egt'])
         self.assertLess(sample['egt'] - row['time_period'], 3600 * 1000)
 
+    def test_basic_params_match_user_list_and_pilot_excerpt(self):
+        """Eleven listed basic params map to distinct data1 keys and the expiry rule holds."""
+        basic = self.draft['basic_params']
+        fields = basic['fields']
+        expected_names = [
+            'Event Generation Timestamp',
+            'Surge Pool Level',
+            'Total Discharge Value',
+            'Input Power (MW)',
+            'Input Power (MVar)',
+            'Number of Pumps Running',
+            'Pumphouse Running Status',
+            'Pump Operation Details',
+            'Data Source',
+            'Source Text',
+            'Expiration Timestamp',
+        ]
+        self.assertEqual([f['name'] for f in fields], expected_names)
+        keys = [f['key'] for f in fields]
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertEqual(
+            set(keys), set(self.draft['payload_paths']['station_summary_fields'])
+        )
+        self.assertEqual(
+            basic['expiry']['default_realtime_expiry_ms_observed'], 300_000
+        )
+
+        excerpt = json.loads(
+            (DIRECTORY / 'PH_3.pilot-excerpt.json').read_text(encoding='utf-8')
+        )
+        data1 = excerpt['data1']
+        # Every data1 key other than the detailed readings must be a listed basic param.
+        self.assertLessEqual(set(data1) - {'dex'}, set(keys))
+        self.assertEqual(data1['egt'], excerpt['sub_time_period'])
+        self.assertEqual(
+            data1['ext'],
+            data1['egt'] + basic['expiry']['default_realtime_expiry_ms_observed'],
+        )
+        self.assertEqual(data1['sr'], 'SCADA')
+        self.assertEqual(data1['dsc'], 24)
+        self.assertEqual(
+            set(data1['pd']), {p['source_key'] for p in self.draft['pumps']}
+        )
+
     def test_explicit_alias_examples(self):
         """Each documented spelling variation points to a real catalogue family."""
         for alias in self.draft['aliases']:

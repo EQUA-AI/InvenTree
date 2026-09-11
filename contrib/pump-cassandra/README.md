@@ -56,10 +56,34 @@ installation assignment.
 - Top-level `st` and each `/pd/Pn/st` are distinct points; the meaning of `I`
   and status polarity are not confirmed. Keep summary `pmw`, `pmvar`, `sl`, etc.
   separate from similarly named detailed readings until equivalence is verified.
-- `component_type=65`, `event_value_type=41`, `dsc=24` and other abbreviated
+- `component_type=65`, `event_value_type=41` and other abbreviated
   fields still need source documentation for their enum meanings. The user
   confirmed that component/event types are constant selectors in this feed;
   that does not explain the business meaning of their numeric codes.
+
+### Basic params (station envelope in `data1`)
+
+The user listed the pumphouse "basic params". The draft's `basic_params` block
+matches them to the abbreviated `data1` keys:
+
+| Key | Basic param | Note |
+|---|---|---|
+| `egt` | Event Generation Timestamp (`eventGenTs`) | Epoch ms; equals `sub_time_period` in the sample |
+| `sl` | Surge Pool Level | Sample equals `/dex/COMMAN_FORBAY_LEVEL`; not yet an approved alias |
+| `dv` | Total Discharge Value | Absent from pilot excerpt; unit unconfirmed |
+| `pmw` | Input Power (MW) | |
+| `pmvar` | Input Power (MVar) | |
+| `pc` | Number of Pumps Running | Absent from pilot excerpt |
+| `st` | Pumphouse Running Status | Code `I`; code set unconfirmed |
+| `pd` | Pump Operation Details | Pump-level map keyed `P1`–`P14` |
+| `dsc` | Data Source: SCADA Device | Numeric code `24`; enum table unconfirmed |
+| `sr` | Source Text: SCADA Device | String `SCADA` |
+| `ext` | Expiration Timestamp | `egt` + default real-time expiry period (300 s observed) |
+
+The key-to-name matches follow the user's list order and the sample content;
+confirm each abbreviation against source documentation before binding. The
+expiry period is a **source** default and must not be reused as an application
+retention TTL or as a reason to drop historical rows.
 
 ### Confirmed logical row layout
 
@@ -91,10 +115,52 @@ sample has a nonzero remainder modulo 5,000. Preserve it exactly instead of roun
 or assigning a synthetic timestamp. Row `sub_time_period` supplies observation time;
 track application receipt time separately.
 
-These roles describe the **logical** layout, not the Cassandra physical primary
-key. We still need the `PRIMARY KEY` declaration to decide whether station filtering
-and a sample-time range can be applied together efficiently on the server. Queries
-must not assume a clustering-column order or fall back to unbounded scans.
+These roles describe the logical layout. The physical schema has since been
+confirmed (below) and agrees with them.
+
+### Confirmed physical schema
+
+The source keyspace uses one table per calendar month, suffixed `YYYYMM` in **UTC**:
+
+```sql
+CREATE TABLE cass_business_data_klsw.iwm_data_202507 (
+    parent_entity_uuid uuid,
+    location_type text,
+    component_type int,
+    time_period text,
+    event_value_type int,
+    sub_time_period bigint,
+    entity_uuid uuid,
+    data1 text,
+    data2 text,
+    PRIMARY KEY (
+        (parent_entity_uuid, location_type, component_type, time_period,
+         event_value_type),
+        sub_time_period, entity_uuid
+    )
+)
+```
+
+Consequences that any reader must respect:
+
+- **`time_period` is `text`, not a number.** It carries epoch milliseconds as a
+  string. An export may present it either way, so parse both and never compare a
+  string bucket against an integer sample. `assets.registry.plan_dictionary`
+  accepts both forms.
+- **One hour bucket is one partition**, shared by every pumphouse under the same
+  parent. A slice on `sub_time_period` is a single-partition read that needs no
+  `ALLOW FILTERING`, which is the efficient access pattern the gate asked for.
+- **`entity_uuid` is the *second* clustering column**, after `sub_time_period`.
+  Cassandra cannot restrict it server-side without also fixing `sub_time_period`,
+  so a per-station read is a per-row filter applied by the client. An hour slice
+  is therefore multi-station by nature; the planner keeps the selected station's
+  rows and skips the others rather than rejecting the export.
+- **Monthly tables require fan-out.** A window crossing a month boundary must
+  enumerate `iwm_data_YYYYMM` for each month it touches, deriving the suffix in
+  UTC from the bucket start.
+- `data2` is null in every observed row; its purpose is still undocumented.
+- The partition carries **both** the basic station parameters (`pd`) and the
+  extension payload (`dex`); there is no separate extension partition.
 
 ### Time interpretation
 
@@ -107,11 +173,13 @@ Interpreting the large numbers as Unix epoch milliseconds yields:
 | `ext` | 2025-07-18 16:04:58.616 |
 
 `dex.TIMESTAMP = "1.752854398616E9"` interpreted as epoch seconds exactly matches
-`egt` after multiplication by 1000. `ext - egt` is 300 seconds. That arithmetic
-does **not** establish expiry semantics, a TTL policy or ingestion lag. The user
-has separately confirmed hourly buckets and nominal five-second sampling; the
-schema must still establish the partition/clustering rules. `egt` and `ext`
-should not override row observation time without documented semantics.
+`egt` after multiplication by 1000. The user confirmed `egt` is the Event
+Generation Timestamp and `ext` the Expiration Timestamp (`egt` + default
+real-time expiry period, 300 seconds here). That expiry is a source-side
+real-time validity window, **not** an application TTL policy or ingestion lag.
+The user has separately confirmed hourly buckets and nominal five-second sampling;
+the schema must still establish the partition/clustering rules. `egt` and `ext`
+should not override row observation time.
 This July 2025 sample is historical and must not
 be shown as a fresh September 2026 reading. Preserve observed/received timestamps
 separately; do not substitute import time for observation time.
@@ -149,31 +217,33 @@ any future source quality codes; engineering limits must come from approved data
 
 ## Implementation gates
 
-1. **Confirm physical schema and remaining payload meanings.** Source station
-   identity, constant selectors, hourly buckets and sample timestamps are now
-   confirmed. Obtain the redacted `CREATE TABLE` statement
-   with the exact composite `PRIMARY KEY`, clustering order and column types;
-   identify the keyspace/table. A printed
-   column list cannot establish which fields are partition versus clustering keys.
-   Confirm payload storage type, `data2` purpose, summary/status codes, quality
-   conventions and remaining `egt`/`ext` semantics.
-2. **Add asset identity and hierarchy.** Preserve integer primary keys, add UUIDs
-   and station/pump type/parent relations, validate cycles and Client consistency,
-   then register this draft crosswalk. Backfill existing asset UUIDs safely.
-3. **Add component occurrences and reviewed dictionary points.** Link each
-   occurrence to an existing catalogue Part. A real motor/bearing occurrence owns
-   its points; shared infrastructure owns station-level points once. Do not infer
-   a complete physical BOM or replicate all catalogue families onto every pump.
-4. **Add preview/import tooling.** Preserve original keys, exact paths, type/unit
-   review state and provenance. Require unambiguous source-scoped point identities
-   and explicit alias approval. Existing machine-health lookup resolves source +
-   external key, so enforce collision-free keys consistently for readings, alarms
-   and history before enabling a shared multi-house source.
-5. **Build the read-only Cassandra adapter or dump importer.** Use the confirmed
-   partition/clustering schema with bounded queries, paging and checkpoints; do
-   not default to table scans or `ALLOW FILTERING`. Reuse one normalization path
-   for both modes. Keep raw history external and historical imports out of latest
-   state unless an explicitly reviewed freshness/ordering policy permits it.
+1. **Confirm physical schema and remaining payload meanings.** *Done for the
+   schema:* source station identity, constant selectors, hourly buckets, sample
+   timestamps and the composite `PRIMARY KEY` are confirmed and recorded under
+   "Confirmed physical schema". Still open: `data2` purpose, the `dsc` code set,
+   quality conventions, and the keys carrying total discharge, input power
+   (MW/MVar) and the running-pump count. Status codes are confirmed as `I` idle
+   and `R` running.
+2. **Add asset identity and hierarchy.** *Done.* Integer primary keys preserved;
+   UUIDs, station/pump type and parent relations, cycle and Client validation live
+   in `assets.models.AssetMachine`; this draft crosswalk is registered through
+   `assets.registry.register_station`.
+3. **Add component occurrences and reviewed dictionary points.** *Done.*
+   `assets.registry_models.AssetComponent` and `DictionaryPoint` link occurrences
+   to catalogue Parts, with station-level points owned once by the station.
+4. **Add preview/import tooling.** *Done.* `assets.registry.plan_dictionary` /
+   `import_dictionary` behind the hash-locked preview → import endpoints in
+   `assets.registry_api`, preserving original keys, exact paths, type/unit review
+   state and provenance.
+5. **Build the read-only adapter or dump importer.** *Superseded in scope:* the
+   live read is being built against **Azure Cosmos DB for NoSQL**, not Cassandra —
+   see `specs/002-cosmos-pumphouse-connector/plan.md`. The rules stand unchanged:
+   bounded single-partition queries with paging and checkpoints, never a table
+   scan or `ALLOW FILTERING`, one normalization path shared by the live adapter
+   and the dump importer, raw history kept external, and historical imports out of
+   latest state unless a reviewed freshness/ordering policy permits it. A
+   Cassandra reader is only needed if the deferred Cassandra → Cosmos migration
+   job is built in this repository.
 
 No database credentials are needed for these offline checks. For a future live
 connection, use a read-only account and deployment-managed secrets, with TLS/network
@@ -189,7 +259,8 @@ python3 -m unittest discover -s contrib/pump-cassandra -p 'test_*.py' -v
 ```
 
 Checks cover UUID determinism and uniqueness, confirmed source identity/selectors,
-hour boundaries and cadence, timestamp consistency, eight alias examples,
+hour boundaries and cadence, timestamp consistency, the eleven basic params and
+expiry rule, eight alias examples,
 exact-spelling exceptions, and unresolved keys. This validates the
 **draft configuration and representative matching logic**, not a production
 connector, the full supplied JSON or the full 1,000–1,200-tag dictionary.

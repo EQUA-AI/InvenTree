@@ -270,23 +270,41 @@ def plan_dictionary(station, raw):
     def pointer(value):
         return value.replace('~', '~0').replace('/', '~1')
 
+    def epoch_ms(value):
+        """Read an epoch-ms timestamp that Cassandra may carry as text or bigint.
+
+        ``time_period`` is a ``text`` column and ``sub_time_period`` a ``bigint``,
+        so an export of the same row yields a string for one and a number for the
+        other. Both are epoch milliseconds; a booleans-are-ints accident and a
+        float that cannot be a millisecond count are rejected rather than coerced.
+        """
+        if type(value) is int:
+            return value
+        if isinstance(value, str) and re.fullmatch(r'-?[0-9]{1,19}', value):
+            return int(value)
+        return None
+
+    matched = 0
+
     for row in rows:
         if not isinstance(row, dict):
             raise ValidationError('Each row/payload must be an object.')
         payload = row
         if 'data1' in row:
+            # An hour slice is naturally multi-station: entity_uuid clusters after
+            # sub_time_period, so a bounded read returns every station in the
+            # bucket. Skip the other stations instead of rejecting the export.
             if str(row.get('entity_uuid')) != str(station.source_entity_uuid):
-                raise ValidationError(
-                    'Row entity_uuid does not match the selected station.'
-                )
+                continue
             for key, expected in station.source_context.items():
                 if key in row and row[key] != expected:
                     raise ValidationError(f'Row selector mismatch: {key}')
             if 'time_period' in row or 'sub_time_period' in row:
-                hour, sample = row.get('time_period'), row.get('sub_time_period')
+                hour = epoch_ms(row.get('time_period'))
+                sample = epoch_ms(row.get('sub_time_period'))
                 if (
-                    type(hour) is not int
-                    or type(sample) is not int
+                    hour is None
+                    or sample is None
                     or not hour <= sample < hour + 3600000
                 ):
                     raise ValidationError(
@@ -295,6 +313,7 @@ def plan_dictionary(station, raw):
             payload = row['data1']
             if isinstance(payload, str):
                 payload = decode_upload(payload.encode('utf-8'))
+        matched += 1
         if (
             not isinstance(payload, dict)
             or not isinstance(payload.get('dex'), dict)
@@ -341,6 +360,8 @@ def plan_dictionary(station, raw):
                 local,
                 allow_match=bool(match) or tag == 'COMMAN_FORBAY_LEVEL',
             )
+    if not matched:
+        raise ValidationError('No row in this export belongs to the selected station.')
     if len(pumps) > 100:
         raise ValidationError(
             'At most 100 pump slots are supported per station import.'
@@ -385,6 +406,7 @@ def plan_dictionary(station, raw):
         'station': station.pk,
         'source_hash': digest,
         'rows': len(rows),
+        'rows_matched': matched,
         'pumps': sorted(pumps, key=lambda k: int(k[1:])),
         'counts': dict(counts),
         'points': list(points.values()),
