@@ -2,6 +2,7 @@
 
 import json
 from io import StringIO
+from typing import Any
 from uuid import uuid4
 
 from django.contrib.contenttypes.models import ContentType
@@ -214,7 +215,10 @@ class RegistryTests(InvenTreeAPITestCase):
 
     def test_source_identity_and_timestamp(self):
         """Reject another station's row and timestamps outside their hour."""
-        row = {'entity_uuid': str(uuid4()), 'data1': json.loads(self.raw())}
+        row: dict[str, Any] = {
+            'entity_uuid': str(uuid4()),
+            'data1': json.loads(self.raw()),
+        }
         with self.assertRaises(ValidationError):
             plan_dictionary(self.station, json.dumps(row).encode())
         row.update(

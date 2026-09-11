@@ -222,7 +222,9 @@ class RegistryAPI(APIView):
     def upload(self):
         """Bound uploaded bytes before decoding JSON."""
         file = self.request.FILES.get('data_file')
-        if file is None or file.size > MAX_BYTES:
+        # size is Optional: a handler that cannot determine it reports None,
+        # which must be rejected rather than compared against the bound.
+        if file is None or file.size is None or file.size > MAX_BYTES:
             raise ValidationError('Attach data_file (JSON, at most 8 MiB).')
         return file.read(MAX_BYTES + 1)
 
