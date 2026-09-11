@@ -15,6 +15,25 @@ clean; `ty` clean on touched files; no credential in code, config, fixture or lo
 
 ---
 
+## Week 0 — carried over from the registry sprint
+
+### 🔵 T0 — Register PH_3 and import the pilot dictionary · 2 h
+The registry shipped and merged, but nothing has ever been put through it: the live database holds
+0 stations, 0 pump slots, 0 components and 0 dictionary points. Until the pilot payload has been
+through preview → import → review, the workflow is tested but unproven, and T11 has nothing to
+activate.
+- [ ] Register PH_3 via `POST /api/assets/registry/` with the pilot `entity_uuid`, namespace and
+      `source_context` selectors (`location_type`, `component_type`, `event_value_type`)
+- [ ] Preview `PH_3.pilot-excerpt.json`, confirm `rows_matched` and the counts by match method
+- [ ] Import at the returned hash; expect 14 pump slots and the station's dictionary points
+- [ ] Review a sample of points (approve/reject) so T11 has approved points to bind
+- [ ] Record the resulting counts in this file
+**Acceptance**: the Equipment Registry page shows PH_3 with its pumps, components and dictionary,
+and re-importing the same file adds nothing.
+**Note**: writes domain rows into the dev database — clear with the user first.
+
+---
+
 ## Week 1 — schema, dependency, seed, normalisation
 
 ### ✅ T1 — Accept the real Cassandra hour-bucket types · 4 h · commit `e60b696ba`
@@ -118,7 +137,7 @@ type and quality; no reading invents a value.
 - [ ] Shares the T6 path exactly — no second normaliser
 **Acceptance**: the same file imported twice changes nothing the second time.
 
-### ⏸ T11 — Registry → live bridge · 5 h · *blocked: T7*
+### ⏸ T11 — Registry → live bridge · 5 h · *blocked: T7, T0 (needs approved points)*
 Closes the "mapping approval does not enable live ingestion" gap.
 - [ ] `POST /api/assets/registry/<pk>/activate/` with `{"source": <HealthSource id>}`
 - [ ] Creates/refreshes `MachineSignalBinding` for every `DictionaryPoint(status='approved')`;
@@ -154,10 +173,14 @@ Closes the "mapping approval does not enable live ingestion" gap.
 | Bucket | Tickets | Hours |
 |---|---|---|
 | Done | T1 | 4 |
-| Ready now | T2, T7 | 5 |
+| Ready now | T0, T2, T7 | 7 |
 | Blocked on D14 (account details) | T3, T4, T5 | 15 |
 | Blocked on earlier tickets | T6, T8–T14 | 41 |
-| **Total** | **14** | **65** |
+| **Total** | **15** | **67** |
+
+### Critical path
+`T2 → T8 → T9 → T13 → T14` for the live read, with `T3 → T5 → T6` feeding T8 and
+`T0 → T11 → T12` feeding the UI. T3/T4/T5 (15 h) are unblocked by a single answer: D14.
 
 ## Out of scope this sprint
 Cassandra → Cosmos migration/CDC job · `pumphouse_latest` maintenance · change-feed polling ·
