@@ -103,4 +103,3 @@
     {"local_pattern": "^PUMP_REACTIVE_POWER$", "catalogue_tag": "REACTIVE_POWER", "family_code": "ELECTRICAL", "example_source_tag": "PUMP5_PUMP_REACTIVE_POWER"}
   ]
 }
-

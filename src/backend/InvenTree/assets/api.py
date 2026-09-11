@@ -9,7 +9,7 @@ from django_filters.rest_framework import FilterSet, filters
 from tasks.scope import ScopeError
 
 import InvenTree.permissions
-from InvenTree.filters import InvenTreeDateFilter, SEARCH_ORDER_FILTER
+from InvenTree.filters import SEARCH_ORDER_FILTER, InvenTreeDateFilter
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
 from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
@@ -40,7 +40,9 @@ class MachinePartFilter(FilterSet):
     """Filter set for MachinePart."""
 
     category = filters.NumberFilter(field_name='part__category')
-    group = filters.CharFilter(field_name='part__category__name', lookup_expr='icontains')
+    group = filters.CharFilter(
+        field_name='part__category__name', lookup_expr='icontains'
+    )
     created_before = InvenTreeDateFilter(
         field_name='part__creation_date', lookup_expr='lt'
     )
@@ -52,7 +54,14 @@ class MachinePartFilter(FilterSet):
         """Filter configuration for MachinePart."""
 
         model = MachinePart
-        fields = ('machine', 'part', 'category', 'group', 'created_before', 'created_after')
+        fields = (
+            'machine',
+            'part',
+            'category',
+            'group',
+            'created_before',
+            'created_after',
+        )
 
 
 class AssetMaintenanceRecordFilter(FilterSet):
@@ -228,52 +237,38 @@ assets_api_urls = [
     path('registry/', include(registry_urls)),
     path(
         'clients/',
-        include(
-            [
-                path('', ClientList.as_view(), name='asset-client-list'),
-                path('<int:pk>/', ClientDetail.as_view(), name='asset-client-detail'),
-            ]
-        ),
+        include([
+            path('', ClientList.as_view(), name='asset-client-list'),
+            path('<int:pk>/', ClientDetail.as_view(), name='asset-client-detail'),
+        ]),
     ),
     path(
         'machines/',
-        include(
-            [
-                path('', AssetMachineList.as_view(), name='asset-machine-list'),
-                path(
-                    '<int:pk>/',
-                    AssetMachineDetail.as_view(),
-                    name='asset-machine-detail',
-                ),
-            ]
-        ),
+        include([
+            path('', AssetMachineList.as_view(), name='asset-machine-list'),
+            path(
+                '<int:pk>/', AssetMachineDetail.as_view(), name='asset-machine-detail'
+            ),
+        ]),
     ),
     path(
         'parts/',
-        include(
-            [
-                path('', MachinePartList.as_view(), name='machine-part-list'),
-                path(
-                    '<int:pk>/', MachinePartDetail.as_view(), name='machine-part-detail'
-                ),
-            ]
-        ),
+        include([
+            path('', MachinePartList.as_view(), name='machine-part-list'),
+            path('<int:pk>/', MachinePartDetail.as_view(), name='machine-part-detail'),
+        ]),
     ),
     path(
         'maintenance/',
-        include(
-            [
-                path(
-                    '',
-                    AssetMaintenanceRecordList.as_view(),
-                    name='maintenance-record-list',
-                ),
-                path(
-                    '<int:pk>/',
-                    AssetMaintenanceRecordDetail.as_view(),
-                    name='maintenance-record-detail',
-                ),
-            ]
-        ),
+        include([
+            path(
+                '', AssetMaintenanceRecordList.as_view(), name='maintenance-record-list'
+            ),
+            path(
+                '<int:pk>/',
+                AssetMaintenanceRecordDetail.as_view(),
+                name='maintenance-record-detail',
+            ),
+        ]),
     ),
 ]

@@ -72,19 +72,17 @@ class RegistryTests(InvenTreeAPITestCase):
 
     def raw(self, **extra):
         """Small representative payload, not a fabricated full dictionary."""
-        return json.dumps(
-            {
-                'st': 'I',
-                'pd': {'P1': {'st': 'I'}, 'P2': {'st': 'I'}},
-                'dex': {
-                    'ID': 'PH_3',
-                    'TIMESTAMP': '1.752854398616E9',
-                    'PUMP1_MOTOR_CORE_RTD1_PROCESS_VALUE': '39.2',
-                    'COMMAN_FORBAY_LEVEL': '132.45',
-                    **extra,
-                },
-            }
-        ).encode()
+        return json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I'}, 'P2': {'st': 'I'}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'PUMP1_MOTOR_CORE_RTD1_PROCESS_VALUE': '39.2',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+                **extra,
+            },
+        }).encode()
 
     def upload(self, action, raw=None, **fields):
         """Post a multipart file through the actual registry routes."""

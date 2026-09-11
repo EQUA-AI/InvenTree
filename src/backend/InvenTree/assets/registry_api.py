@@ -214,14 +214,10 @@ class RegistryAPI(APIView):
             limit = min(500, max(1, int(self.request.query_params.get('limit', 100))))
         except ValueError as exc:
             raise ValidationError('Invalid pagination.') from exc
-        return Response(
-            {
-                'count': queryset.count(),
-                'results': serializer(
-                    queryset[offset : offset + limit], many=True
-                ).data,
-            }
-        )
+        return Response({
+            'count': queryset.count(),
+            'results': serializer(queryset[offset : offset + limit], many=True).data,
+        })
 
     def upload(self):
         """Bound uploaded bytes before decoding JSON."""
@@ -244,18 +240,16 @@ class RegistryOptions(RegistryAPI):
             template__in=templates
         )
         parts = Part.objects.filter(IPN__startswith='PS-', active=True)
-        return Response(
-            {
-                'clients': list(
-                    Client.objects.filter(pk__in=client_ids, active=True).values(
-                        'pk', 'name', 'code'
-                    )
-                ),
-                'parts': list(parts.values('pk', 'name', 'IPN', 'category', 'virtual')),
-                'templates': list(templates.values('pk', 'name', 'units')),
-                'assignments': list(assignments.values('category_id', 'template_id')),
-            }
-        )
+        return Response({
+            'clients': list(
+                Client.objects.filter(pk__in=client_ids, active=True).values(
+                    'pk', 'name', 'code'
+                )
+            ),
+            'parts': list(parts.values('pk', 'name', 'IPN', 'category', 'virtual')),
+            'templates': list(templates.values('pk', 'name', 'units')),
+            'assignments': list(assignments.values('category_id', 'template_id')),
+        })
 
 
 class RegistryList(RegistryAPI):
@@ -286,15 +280,12 @@ class RegistryDetail(RegistryAPI):
     def get(self, request, pk):
         """Return one equipment identity and its scoped children."""
         machine = self.machine()
-        return Response(
-            {
-                'equipment': EquipmentSerializer(machine).data,
-                'children': EquipmentSerializer(
-                    self.machines().filter(parent=machine).order_by('source_key'),
-                    many=True,
-                ).data,
-            }
-        )
+        return Response({
+            'equipment': EquipmentSerializer(machine).data,
+            'children': EquipmentSerializer(
+                self.machines().filter(parent=machine).order_by('source_key'), many=True
+            ).data,
+        })
 
     def post(self, request, pk):
         """Register a stable child pump slot."""
@@ -489,7 +480,8 @@ class PointReview(RegistryAPI):
                     'Approval requires an owner component, parameter, reviewed unit/type and a review note.'
                 )
             if (
-                DictionaryPoint.objects.filter(
+                DictionaryPoint.objects
+                .filter(
                     station=point.station,
                     component=component,
                     template=template,

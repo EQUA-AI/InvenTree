@@ -4,8 +4,8 @@ import { useMemo } from 'react';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import useTable from '@lib/hooks/UseTable';
-import type { TableFilter } from '@lib/types/Filters';
 import type { MachinePart } from '@lib/types/Assets';
+import type { TableFilter } from '@lib/types/Filters';
 import type { TableColumn } from '@lib/types/Tables';
 import {
   CreatedAfterFilter,

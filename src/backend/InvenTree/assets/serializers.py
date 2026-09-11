@@ -62,7 +62,15 @@ class MachinePartSerializer(serializers.ModelSerializer):
         """Metaclass defining serializer fields."""
 
         model = MachinePart
-        fields = ('pk', 'machine', 'part', 'part_name', 'part_group', 'quantity', 'notes')
+        fields = (
+            'pk',
+            'machine',
+            'part',
+            'part_name',
+            'part_group',
+            'quantity',
+            'notes',
+        )
         read_only_fields = ('pk',)
 
 

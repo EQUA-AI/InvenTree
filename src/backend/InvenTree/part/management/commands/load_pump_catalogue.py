@@ -116,32 +116,25 @@ def validate_catalogue(data):
             for channel in channels:
                 display, tag = parameter['name'], parameter['tag']
                 if channel is not None:
-                    display = display.replace('{channel}', str(channel))
-                    tag = tag.replace('{channel}', str(channel))
+                    # '{channel}' is a literal placeholder token, not an f-string.
+                    display = display.replace('{channel}', str(channel))  # noqa: RUF027
+                    tag = tag.replace('{channel}', str(channel))  # noqa: RUF027
                 if any(c in display + tag for c in '{}'):
                     raise CommandError('Unknown or unexpanded parameter placeholder')
                 name = f'PUMP | {component["code"]} | {display}'
                 unique(name, names, 'parameter name')
                 unique(tag, tags, 'source tag (ambiguous component ownership)')
-                expanded.append(
-                    {
-                        'name': name,
-                        'display_name': display,
-                        'source_tag': tag,
-                        'source_pattern': parameter['tag'],
-                        'channel': channel,
-                        **{
-                            k: parameter[k]
-                            for k in [
-                                'kind',
-                                'data_type',
-                                'units',
-                                'unit_status',
-                                'note',
-                            ]
-                        },
-                    }
-                )
+                expanded.append({
+                    'name': name,
+                    'display_name': display,
+                    'source_tag': tag,
+                    'source_pattern': parameter['tag'],
+                    'channel': channel,
+                    **{
+                        k: parameter[k]
+                        for k in ['kind', 'data_type', 'units', 'unit_status', 'note']
+                    },
+                })
         records.append({**component, 'expanded_parameters': expanded})
     return records
 
