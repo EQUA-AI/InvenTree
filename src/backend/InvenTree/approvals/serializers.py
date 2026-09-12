@@ -363,6 +363,39 @@ class CardPackageSerializer(serializers.Serializer):
     preconditions = serializers.JSONField()
     latest_diff_summary = serializers.SerializerMethodField()
     validation_warnings = serializers.SerializerMethodField()
+    review_sections = serializers.SerializerMethodField()
+    review_hash = serializers.SerializerMethodField()
+    voice_eligible = serializers.SerializerMethodField()
+    voice_ineligible_reason = serializers.SerializerMethodField()
+    current_revision_number = serializers.IntegerField()
+
+    @extend_schema_field(serializers.ListField(child=serializers.JSONField()))
+    def get_review_sections(self, obj):
+        """Return the shared authoritative auditory/screen review contract."""
+        from .review_sections import build_review_sections
+
+        return build_review_sections(obj)
+
+    @extend_schema_field(serializers.CharField())
+    def get_review_hash(self, obj):
+        """Return the revision/content binding used by review acknowledgment."""
+        from .review_sections import compute_review_hash
+
+        return compute_review_hash(obj)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_voice_eligible(self, obj):
+        """Return whether a complete, executable auditory contract exists."""
+        from .review_sections import voice_eligibility
+
+        return voice_eligibility(obj)[0]
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_voice_ineligible_reason(self, obj):
+        """Return the specific screen-handoff or missing-executor reason."""
+        from .review_sections import voice_eligibility
+
+        return voice_eligibility(obj)[1]
 
     @extend_schema_field(serializers.JSONField(allow_null=True))
     def get_latest_diff_summary(self, obj):
