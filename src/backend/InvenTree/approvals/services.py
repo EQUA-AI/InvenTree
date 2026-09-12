@@ -6,6 +6,7 @@ HTTP requests; typed service errors preserve the existing REST error contract.
 
 from dataclasses import dataclass
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
@@ -21,7 +22,16 @@ from .models import (
     EventType,
     ExecutedEffect,
 )
+from .policy import ApprovalPolicyError, require_policy
 from .resume import attempt_agent_resume
+from .review_evidence import (
+    ReviewEvidenceError,
+    acknowledge,
+    invalidate,
+    require_acknowledgment,
+    revision_binding_enabled,
+)
+from .review_sections import compute_review_hash
 from .sanitizers import redact_error
 
 logger = structlog.get_logger('approvals.services')
@@ -70,12 +80,22 @@ def _reject(error_code, detail, http_status, **extra):
 
 
 def _require_reviewer(actor):
+    actor = get_user_model().objects.filter(pk=getattr(actor, 'pk', None)).first()
     if (
         not actor
         or not actor.is_active
         or not (actor.is_superuser or actor.has_perm('approvals.review'))
     ):
         _reject('forbidden', 'Approval review permission required', 403)
+    return actor
+
+
+def _approve_gates(approval, actor, channel):
+    try:
+        require_policy(approval, actor=actor, channel=channel)
+        require_acknowledgment(approval, actor=actor, channel=channel)
+    except (ApprovalPolicyError, ReviewEvidenceError) as exc:
+        _reject('forbidden', str(exc), 403)
 
 
 def _get_approval_or_404(pk):
@@ -89,7 +109,7 @@ def _get_approval_for_update(pk):
 @transaction.atomic
 def open_approval(approval_id, *, actor, data=None, channel='screen', evidence=None):
     """Run open approval against the authoritative approval state."""
-    _require_reviewer(actor)
+    actor = _require_reviewer(actor)
     approval = _get_approval_for_update(approval_id)
     if not approval:
         return _reject(
@@ -115,7 +135,7 @@ def open_approval(approval_id, *, actor, data=None, channel='screen', evidence=N
 @transaction.atomic
 def confirm_viewed(approval_id, *, actor, data=None, channel='screen', evidence=None):
     """Run confirm viewed against the authoritative approval state."""
-    _require_reviewer(actor)
+    actor = _require_reviewer(actor)
     approval = _get_approval_for_update(approval_id)
     if not approval:
         return _reject(
@@ -141,6 +161,16 @@ def confirm_viewed(approval_id, *, actor, data=None, channel='screen', evidence=
             current_status=approval.status,
         )
 
+    if channel == 'voice' or revision_binding_enabled():
+        try:
+            acknowledge(
+                approval,
+                actor=actor,
+                channel=channel,
+                evidence=evidence if evidence is not None else (data or {}),
+            )
+        except ReviewEvidenceError as exc:
+            _reject('review_evidence_invalid', str(exc), 409)
     now = timezone.now()
     approval.viewed_confirmed_at = now
     approval.viewed_confirmed_by_user = actor
@@ -164,7 +194,7 @@ def confirm_viewed(approval_id, *, actor, data=None, channel='screen', evidence=
 @transaction.atomic
 def request_changes(approval_id, *, actor, data=None, channel='screen', evidence=None):
     """Run request changes against the authoritative approval state."""
-    _require_reviewer(actor)
+    actor = _require_reviewer(actor)
     serializer = approval_serializers.RequestChangesSerializer(data=(data or {}))
     serializer.is_valid(raise_exception=True)
 
@@ -196,7 +226,7 @@ def request_changes(approval_id, *, actor, data=None, channel='screen', evidence
 
 def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
     """Run approve against the authoritative approval state."""
-    _require_reviewer(actor)
+    actor = _require_reviewer(actor)
     pk = approval_id
 
     # ── Phase 1: Read-only checks (no lock, no transaction) ──
@@ -236,12 +266,8 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
             ),
         )
 
-    if approval.risk_tier >= 2 and not approval.viewed_confirmed_at:
-        return _reject(
-            'forbidden',
-            'Tier 2-3 approvals require confirm-viewed before approve',
-            status.HTTP_403_FORBIDDEN,
-        )
+    _approve_gates(approval, actor, channel)
+    expected_hash = compute_review_hash(approval)
 
     if not approval.can_transition_to(ApprovalStatus.APPROVED):
         return _reject(
@@ -262,29 +288,33 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
             drift_report = executor.check_preconditions(
                 approval.payload, approval.baseline_context
             )
-            if drift_report and getattr(drift_report, 'has_drift', False):
-                with transaction.atomic():
-                    locked = _get_approval_for_update(pk)
-                    if locked and not locked.is_terminal:
-                        ApprovalEvent.objects.create(
-                            approval=locked,
-                            event_type=EventType.REVALIDATION_FAILED,
-                            actor_user=actor,
-                            event_payload={'drift_report': str(drift_report)},
-                        )
-                        if locked.can_transition_to(ApprovalStatus.CHANGES_REQUESTED):
-                            locked.transition_to(
-                                ApprovalStatus.CHANGES_REQUESTED,
-                                actor_user=actor,
-                                event_payload={'reason': 'revalidation_failed'},
-                            )
-                return _reject(
-                    'conflict',
-                    'Approve-time revalidation detected drift',
-                    status.HTTP_409_CONFLICT,
-                )
+            revalidation_failed = bool(drift_report and drift_report.has_drift)
         except Exception:
             logger.warning('revalidation_error', approval_id=str(pk), exc_info=True)
+            revalidation_failed = True
+            drift_report = 'Preconditions could not be verified; no effect dispatched.'
+        if revalidation_failed:
+            with transaction.atomic():
+                locked = _get_approval_for_update(pk)
+                if locked and not locked.is_terminal:
+                    invalidate(locked)
+                    ApprovalEvent.objects.create(
+                        approval=locked,
+                        event_type=EventType.REVALIDATION_FAILED,
+                        actor_user=actor,
+                        event_payload={'drift_report': str(drift_report)},
+                    )
+                    if locked.can_transition_to(ApprovalStatus.CHANGES_REQUESTED):
+                        locked.transition_to(
+                            ApprovalStatus.CHANGES_REQUESTED,
+                            actor_user=actor,
+                            event_payload={'reason': 'revalidation_failed'},
+                        )
+            _reject(
+                'conflict',
+                'Approve-time revalidation failed; review is required again.',
+                409,
+            )
 
     # ── Phase 3: Lock + transition to approved → executing ──
     with transaction.atomic():
@@ -316,6 +346,19 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
                 status.HTTP_409_CONFLICT,
                 current_status=locked.status,
             )
+
+        actor = _require_reviewer(actor)
+        if compute_review_hash(locked) != expected_hash:
+            _reject(
+                'conflict',
+                'The approval changed during revalidation; review it again.',
+                409,
+            )
+        try:
+            locked.check_lock_allows_action(actor, 'approve')
+        except ValueError as exc:
+            _reject('locked', str(exc), 423)
+        _approve_gates(locked, actor, channel)
 
         missing_required_executor = is_executor_required(
             locked.action_type
@@ -409,7 +452,7 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
 @transaction.atomic
 def deny(approval_id, *, actor, data=None, channel='screen', evidence=None):
     """Run deny against the authoritative approval state."""
-    _require_reviewer(actor)
+    actor = _require_reviewer(actor)
     serializer = approval_serializers.DenySerializer(data=(data or {}))
     serializer.is_valid(raise_exception=True)
 
@@ -472,7 +515,7 @@ def deny(approval_id, *, actor, data=None, channel='screen', evidence=None):
 @transaction.atomic
 def cancel(approval_id, *, actor, data=None, channel='screen', evidence=None):
     """Run cancel against the authoritative approval state."""
-    _require_reviewer(actor)
+    actor = _require_reviewer(actor)
     serializer = approval_serializers.CancelSerializer(data=(data or {}))
     serializer.is_valid(raise_exception=True)
 
@@ -546,7 +589,7 @@ def acquire_modify_lock(
     approval_id, *, actor, data=None, channel='screen', evidence=None
 ):
     """Run acquire modify lock against the authoritative approval state."""
-    _require_reviewer(actor)
+    actor = _require_reviewer(actor)
     approval = _get_approval_for_update(approval_id)
     if not approval:
         return _reject(
@@ -585,7 +628,7 @@ def release_modify_lock(
     approval_id, *, actor, data=None, channel='screen', evidence=None
 ):
     """Run release modify lock against the authoritative approval state."""
-    _require_reviewer(actor)
+    actor = _require_reviewer(actor)
     approval = _get_approval_for_update(approval_id)
     if not approval:
         return _reject(
@@ -603,7 +646,7 @@ def release_modify_lock(
 @transaction.atomic
 def revise(approval_id, *, actor, data=None, channel='screen', evidence=None):
     """Run revise against the authoritative approval state."""
-    _require_reviewer(actor)
+    actor = _require_reviewer(actor)
     serializer = approval_serializers.ReviseSerializer(data=(data or {}))
     serializer.is_valid(raise_exception=True)
 
@@ -665,6 +708,8 @@ def revise(approval_id, *, actor, data=None, channel='screen', evidence=None):
     approval.payload = data['payload']
     approval.current_revision_number = new_revision_number
     approval.save(update_fields=['payload', 'current_revision_number', 'updated_at'])
+
+    invalidate(approval)
 
     # Emit revised event
     ApprovalEvent.objects.create(
