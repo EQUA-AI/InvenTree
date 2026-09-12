@@ -96,7 +96,7 @@ implementation rather than the mock.
 - `provision.py` and `seed.py` defaulted to `https://localhost:8081`, which this image does not
   serve. Both now default to `http://`, with a comment saying why so it does not get "fixed" back.
 
-### ✅ T5 — Manual seeder + pilot documents · 6 h · commit `4520ea38c` · *runnable once D16 is granted*
+### ✅ T5 — Manual seeder + pilot documents · 6 h · commit `4520ea38c` · *seeded to the real account 2026-09-12*
 This is the sprint's data source (migration is deferred, D2).
 - [x] `contrib/cosmos/seed.py`: validates the §3.1 invariants (half-open bucket, UTC `month`,
       `data1_raw` round-trip), computes `month`/`payload_hash`/`data1_raw`, upserts
@@ -108,7 +108,9 @@ This is the sprint's data source (migration is deferred, D2).
 - [x] **D7 closed by a real snapshot**: `dv`/`pmw`/`pmvar` exist at *both* levels; `pc` is a float
 - [x] **D13 corrected**: `parent_entity_uuid` is a shared parent, *not* the station uuid; a supplied
       parent is preserved
-**Acceptance**: met. Writing to Azure still needs D16.
+- [x] **Seeded into the real account** once D16 was granted: 3 documents across buckets
+      `1752850800000` (2) and `1752854400000` (1), read back with the connector's query shape
+**Acceptance**: met, on the emulator *and* on `epconchatcosmos9d6b/aimms/pumphouse_readings`.
 
 
 ### ✅ T6 — `flatten_snapshot()` normalisation · 7 h · commit `e0321ce3b`
@@ -231,12 +233,21 @@ Closes the "mapping approval does not enable live ingestion" gap.
 | **Total** | **15** | **67** |
 
 ### What is actually blocking
-- **D16 — no Cosmos data-plane role exists on the account.** Nobody can read or write a document in
-  *any* container, including `telemetry` and `conversations`; those applications must be using account
-  keys, since `localAuthDisabled` is `false`. The developer's `Cosmos DB Operator` role has
-  `sqlRoleAssignments/write` and `listKeys` in its notActions, so it cannot grant this to itself. An
-  Owner or User Access Administrator must. **Since T4, this no longer blocks development at all** —
-  the emulator runs the whole path offline. It blocks only the *production* read.
+- **D16 — RESOLVED 2026-09-12.** A data-plane role assignment now exists on the account. Verified by
+  reading container properties over the data plane (`provision.py --live` →
+  *matches the expected definition*) and by seeding the three pilot documents into
+  `aimms/pumphouse_readings` and querying them back with the connector's own query shape
+  (hierarchical partition key, parameterised, cross-partition disabled). **T5's acceptance is now
+  fully met against the real account.**
+- **D17 is now the live question, and it is not the same ask.** What was granted is
+  `00000000-...-000000000002` = **Data Contributor** (read *and* write), scoped to the **whole
+  account**, on the developer's own principal `f024cd79-…`. That is correct for a human who has to
+  seed documents — seeding writes, so Data Reader could not have done it. It is *not* what the
+  application should run as. If AIMMS authenticates as an identity holding Data Contributor, the
+  property the design relies on — that read-only is enforced by Azure rather than by our own code —
+  is lost, and a bug in the connector could delete plant history. Before go-live the app's managed
+  identity needs its own assignment: role `…000000000001` (**Data Reader**), scoped to
+  `/dbs/aimms/colls/pumphouse_readings` rather than the account.
 - **Review of the 31 imported dictionary points** before T11 can bind anything end to end.
 
 Resolved since the last revision: **D14** (account `epconchatcosmos9d6b`, RG `EpconChat`, database
