@@ -121,7 +121,7 @@ test('turns carry decision_context and correction re-presents a fresh target', a
   await page.getByTestId('voice-start').click();
   await expect(page.getByTestId('voice-decision-card')).toBeVisible();
   await emitTranscript(page, {
-    text: 'no, I meant 140',
+    text: 'no, I meant one hundred forty',
     itemId: 'correct-140'
   });
   await expect.poll(() => voice.turns.length).toBe(1);

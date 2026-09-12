@@ -34,6 +34,7 @@ import {
   VOICE_CONFIRM_RE,
   VOICE_DISCARD_RE,
   VOICE_STOP_RE,
+  isVoiceTargetCorrection,
   normalizeDecisionUtterance,
   shouldHoldTranscript
 } from '../components/ai/voiceCriticalTerms';
@@ -703,9 +704,9 @@ export function useVoiceLiveSession(
         if (
           !(
             useVoiceDecisionState.getState().decision?.state === 'presented' &&
-            /^(?:no[, ]+)?(?:i meant|make that)\s+(?:(?:work\s*order|wo)\s+)?[a-z]*[- ]?\d+[.!?]*$/i.test(
-              trimmed
-            )
+            (finalTranscript.confidence === null ||
+              finalTranscript.confidence >= confidenceFloorRef.current) &&
+            isVoiceTargetCorrection(trimmed)
           ) &&
           shouldHoldTranscript(
             finalTranscript.text,

@@ -97,6 +97,34 @@ export function isBareDecisionUtterance(text: string): boolean {
   );
 }
 
+const IDENTIFIER_NUMBER_WORDS = new Set(
+  'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand and'.split(
+    ' '
+  )
+);
+
+/** Route an explicit target correction to the active server decision first. */
+export function isVoiceTargetCorrection(text: string): boolean {
+  const match =
+    /^(?:no[, ]+)?(?:i meant|make that)\s+(?:(?:work\s*order|wo)\s+)?([a-z0-9, -]{1,121})$/i.exec(
+      normalizeDecisionUtterance(text)
+    );
+  if (!match) return false;
+  const reference = match[1].trim();
+  if (
+    /^[a-z]*[- ]?\d+$/i.test(reference) ||
+    /^[1-9]\d{0,2}(?:,\d{3}){1,2}$/.test(reference)
+  )
+    return true;
+  const words = reference.toLowerCase().split(/[ -]+/);
+  // This routes, not interprets: only the backend validates number grammar,
+  // resolves actor scope and creates a fresh labelled preview.
+  return (
+    words.length <= 16 &&
+    words.every((word) => IDENTIFIER_NUMBER_WORDS.has(word))
+  );
+}
+
 /**
  * Whether a completed transcript must be held for review before submission.
  * This is the live hook's policy: a bare decision word is forwarded, a

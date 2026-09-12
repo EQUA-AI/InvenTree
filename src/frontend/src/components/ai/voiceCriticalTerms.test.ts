@@ -4,6 +4,7 @@ import {
   DEFAULT_CONFIDENCE_FLOOR,
   detectCriticalSpans,
   isBareDecisionUtterance,
+  isVoiceTargetCorrection,
   normalizeDecisionUtterance,
   shouldHoldTranscript
 } from './voiceCriticalTerms';
@@ -16,6 +17,24 @@ import {
  */
 
 describe('detectCriticalSpans', () => {
+  it('routes numeric and number-word target corrections without interpreting them', () => {
+    for (const text of [
+      'No, I meant 3812.',
+      'No, I meant three thousand eight hundred twelve.',
+      'Make that three eight one two.',
+      'No, I meant work order 3,812.'
+    ]) {
+      expect(isVoiceTargetCorrection(text)).toBe(true);
+    }
+    for (const text of [
+      'No, I meant three or four.',
+      'No, I meant fifty psi.',
+      'No, I meant bypass the interlock.',
+      'Put work order three on hold.'
+    ]) {
+      expect(isVoiceTargetCorrection(text)).toBe(false);
+    }
+  });
   it('flags measurements with units', () => {
     const spans = detectCriticalSpans('reading is 50 psi on the gauge');
     expect(spans.map((s) => s.kind)).toEqual(['measurement']);
