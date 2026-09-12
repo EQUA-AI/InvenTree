@@ -755,6 +755,74 @@ class ApprovalRevision(models.Model):
         return f'Rev {self.revision_number} of {self.approval_id}'
 
 
+class ApprovalReviewAcknowledgment(models.Model):
+    """Explicit review evidence bound to one actor, revision, scope and content."""
+
+    approval = models.ForeignKey(
+        Approval, on_delete=models.PROTECT, related_name='review_acknowledgments'
+    )
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    revision = models.PositiveIntegerField()
+    review_hash = models.CharField(max_length=64)
+    scope_hash = models.CharField(max_length=64)
+    sections = models.JSONField(default=list)
+    channel = models.CharField(max_length=16)
+    invalidated_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """One reusable acknowledgment for exactly matching review context."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['approval', 'actor', 'revision', 'review_hash', 'scope_hash'],
+                name='unique_approval_review_binding',
+            )
+        ]
+
+
+class ApprovalReviewDelivery(models.Model):
+    """Server-created mapping of required sections to persisted voice delivery."""
+
+    approval = models.ForeignKey(
+        Approval, on_delete=models.PROTECT, related_name='review_deliveries'
+    )
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    revision = models.PositiveIntegerField()
+    review_hash = models.CharField(max_length=64)
+    scope_hash = models.CharField(max_length=64)
+    section_id = models.CharField(max_length=100)
+    utterance = models.ForeignKey('voice.VoiceUtterance', on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """An utterance can count once for each bound section only."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['utterance', 'section_id'],
+                name='unique_approval_delivery_section',
+            )
+        ]
+
+
+class ApprovalExecution(models.Model):
+    """Persist-before-dispatch ledger; unknown results are never retried blindly."""
+
+    idempotency_key = models.CharField(max_length=64, primary_key=True)
+    approval = models.ForeignKey(
+        Approval, on_delete=models.PROTECT, related_name='executions'
+    )
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    revision = models.PositiveIntegerField()
+    review_hash = models.CharField(max_length=64)
+    state = models.CharField(max_length=32, default='submitting')
+    result = models.JSONField(default=dict)
+    detail = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class ExecutedEffect(models.Model):
     """Idempotency ledger for executed side effects.
 

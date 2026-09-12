@@ -198,10 +198,13 @@ class RuleSetModelTest(TestCase):
         group = Group.objects.create(name='Closeout technicians')
         ruleset = group.rule_sets.get(name='work_order')
 
-        for field, (_model, codename) in RULESET_CUSTOM_PERMISSIONS[
+        for field, (model, codename) in RULESET_CUSTOM_PERMISSIONS[
             'work_order'
         ].items():
-            permission = {'content_type__app_label': 'tasks', 'codename': codename}
+            permission = {
+                'content_type__app_label': model.split('_', 1)[0],
+                'codename': codename,
+            }
 
             self.assertFalse(group.permissions.filter(**permission).exists())
 

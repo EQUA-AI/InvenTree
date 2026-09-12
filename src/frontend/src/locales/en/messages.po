@@ -59,7 +59,7 @@ msgstr "Edit"
 #: lib/components/RowActions.tsx:66
 #: src/components/forms/ApiForm.tsx:842
 #: src/components/items/ActionDropdown.tsx:260
-#: src/components/items/RoleTable.tsx:348
+#: src/components/items/RoleTable.tsx:362
 #: src/hooks/UseForm.tsx:174
 #: src/pages/Notifications.tsx:109
 #: src/tables/plugin/PluginListTable.tsx:254
@@ -2458,7 +2458,7 @@ msgstr "Save the current template and reload the preview"
 
 #: src/components/editors/TemplateEditor/TemplateEditor.tsx:387
 #: src/components/forms/HostOptionsForm.tsx:90
-#: src/components/items/RoleTable.tsx:440
+#: src/components/items/RoleTable.tsx:454
 #: src/components/items/TransferList.tsx:215
 #: src/components/items/TransferList.tsx:223
 #: src/components/tables/FilterSelectDrawer.tsx:719
@@ -3294,115 +3294,123 @@ msgstr "Import parts from a supplier plugin"
 #~ msgid "PLH"
 #~ msgstr "PLH"
 
-#: src/components/items/RoleTable.tsx:130
+#: src/components/items/RoleTable.tsx:133
+msgid "Approval Permissions"
+msgstr "Approval Permissions"
+
+#: src/components/items/RoleTable.tsx:137
+msgid "Can review approval requests"
+msgstr "Can review approval requests"
+
+#: src/components/items/RoleTable.tsx:144
 msgid "Closeout Permissions"
 msgstr "Closeout Permissions"
 
-#: src/components/items/RoleTable.tsx:134
+#: src/components/items/RoleTable.tsx:148
 msgid "Can capture closeout narratives"
 msgstr "Can capture closeout narratives"
 
-#: src/components/items/RoleTable.tsx:138
+#: src/components/items/RoleTable.tsx:152
 msgid "Can review closeout proposals"
 msgstr "Can review closeout proposals"
 
-#: src/components/items/RoleTable.tsx:142
+#: src/components/items/RoleTable.tsx:156
 msgid "Can reconcile closeout part usage"
 msgstr "Can reconcile closeout part usage"
 
-#: src/components/items/RoleTable.tsx:146
+#: src/components/items/RoleTable.tsx:160
 msgid "Can verify completed closeouts"
 msgstr "Can verify completed closeouts"
 
-#: src/components/items/RoleTable.tsx:150
+#: src/components/items/RoleTable.tsx:164
 msgid "Can amend completed closeouts"
 msgstr "Can amend completed closeouts"
 
-#: src/components/items/RoleTable.tsx:154
+#: src/components/items/RoleTable.tsx:168
 msgid "Can view closeout audit surfaces"
 msgstr "Can view closeout audit surfaces"
 
-#: src/components/items/RoleTable.tsx:161
+#: src/components/items/RoleTable.tsx:175
 msgid "Work Order Lifecycle"
 msgstr "Work Order Lifecycle"
 
-#: src/components/items/RoleTable.tsx:165
+#: src/components/items/RoleTable.tsx:179
 msgid "Can plan work orders"
 msgstr "Can plan work orders"
 
-#: src/components/items/RoleTable.tsx:169
+#: src/components/items/RoleTable.tsx:183
 msgid "Can assign work orders"
 msgstr "Can assign work orders"
 
-#: src/components/items/RoleTable.tsx:173
+#: src/components/items/RoleTable.tsx:187
 msgid "Can transition work orders"
 msgstr "Can transition work orders"
 
-#: src/components/items/RoleTable.tsx:177
+#: src/components/items/RoleTable.tsx:191
 msgid "Can execute work orders"
 msgstr "Can execute work orders"
 
-#: src/components/items/RoleTable.tsx:181
+#: src/components/items/RoleTable.tsx:195
 msgid "Can complete work orders"
 msgstr "Can complete work orders"
 
-#: src/components/items/RoleTable.tsx:185
+#: src/components/items/RoleTable.tsx:199
 msgid "Can view work order audit surfaces"
 msgstr "Can view work order audit surfaces"
 
-#: src/components/items/RoleTable.tsx:192
+#: src/components/items/RoleTable.tsx:206
 msgid "Procedure Permissions"
 msgstr "Procedure Permissions"
 
-#: src/components/items/RoleTable.tsx:196
+#: src/components/items/RoleTable.tsx:210
 msgid "Can author procedures"
 msgstr "Can author procedures"
 
-#: src/components/items/RoleTable.tsx:200
+#: src/components/items/RoleTable.tsx:214
 msgid "Can review procedures"
 msgstr "Can review procedures"
 
-#: src/components/items/RoleTable.tsx:204
+#: src/components/items/RoleTable.tsx:218
 msgid "Can publish procedures"
 msgstr "Can publish procedures"
 
-#: src/components/items/RoleTable.tsx:208
+#: src/components/items/RoleTable.tsx:222
 msgid "Can apply procedures to work orders"
 msgstr "Can apply procedures to work orders"
 
-#: src/components/items/RoleTable.tsx:215
+#: src/components/items/RoleTable.tsx:229
 msgid "Job Kit Permissions"
 msgstr "Job Kit Permissions"
 
-#: src/components/items/RoleTable.tsx:219
+#: src/components/items/RoleTable.tsx:233
 msgid "Can manage job kits"
 msgstr "Can manage job kits"
 
-#: src/components/items/RoleTable.tsx:223
+#: src/components/items/RoleTable.tsx:237
 msgid "Can reserve job kit stock"
 msgstr "Can reserve job kit stock"
 
-#: src/components/items/RoleTable.tsx:227
+#: src/components/items/RoleTable.tsx:241
 msgid "Can stage job kits"
 msgstr "Can stage job kits"
 
-#: src/components/items/RoleTable.tsx:231
+#: src/components/items/RoleTable.tsx:245
 msgid "Can issue job kits"
 msgstr "Can issue job kits"
 
-#: src/components/items/RoleTable.tsx:235
+#: src/components/items/RoleTable.tsx:249
 msgid "Can approve job kit substitutions"
 msgstr "Can approve job kit substitutions"
 
-#: src/components/items/RoleTable.tsx:271
+#: src/components/items/RoleTable.tsx:285
 msgid "Updating"
 msgstr "Updating"
 
-#: src/components/items/RoleTable.tsx:272
+#: src/components/items/RoleTable.tsx:286
 msgid "Updating group roles"
 msgstr "Updating group roles"
 
-#: src/components/items/RoleTable.tsx:311
+#: src/components/items/RoleTable.tsx:325
 #: src/components/settings/ConfigValueList.tsx:42
 #: src/components/tables/ColumnRenderers.tsx:776
 #: src/pages/part/pricing/BomPricingPanel.tsx:158
@@ -3411,38 +3419,38 @@ msgstr "Updating group roles"
 msgid "Updated"
 msgstr "Updated"
 
-#: src/components/items/RoleTable.tsx:312
+#: src/components/items/RoleTable.tsx:326
 msgid "Group roles updated"
 msgstr "Group roles updated"
 
-#: src/components/items/RoleTable.tsx:328
+#: src/components/items/RoleTable.tsx:342
 msgid "Role"
 msgstr "Role"
 
-#: src/components/items/RoleTable.tsx:333
+#: src/components/items/RoleTable.tsx:347
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:906
 msgid "View"
 msgstr "View"
 
-#: src/components/items/RoleTable.tsx:338
+#: src/components/items/RoleTable.tsx:352
 msgid "Change"
 msgstr "Change"
 
-#: src/components/items/RoleTable.tsx:343
+#: src/components/items/RoleTable.tsx:357
 #: src/forms/StockForms.tsx:1642
 #: src/tables/stock/StockItemTestResultTable.tsx:369
 msgid "Add"
 msgstr "Add"
 
-#: src/components/items/RoleTable.tsx:419
+#: src/components/items/RoleTable.tsx:433
 msgid "Reset group roles"
 msgstr "Reset group roles"
 
-#: src/components/items/RoleTable.tsx:428
+#: src/components/items/RoleTable.tsx:442
 msgid "Reset"
 msgstr "Reset"
 
-#: src/components/items/RoleTable.tsx:431
+#: src/components/items/RoleTable.tsx:445
 msgid "Save group roles"
 msgstr "Save group roles"
 
@@ -12643,14 +12651,14 @@ msgid "Failed to save lockout point"
 msgstr "Failed to save lockout point"
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:100
-#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
-msgid "Edit lockout point"
-msgstr "Edit lockout point"
-
-#: src/pages/repair/components/safety/LockoutPointModal.tsx:100
 #: src/pages/repair/components/safety/LockoutPointTable.tsx:61
 msgid "Add lockout point"
 msgstr "Add lockout point"
+
+#: src/pages/repair/components/safety/LockoutPointModal.tsx:100
+#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
+msgid "Edit lockout point"
+msgstr "Edit lockout point"
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:104
 msgid "Energy source"

@@ -89,6 +89,37 @@ test('Permissions - Closeout group role', async ({ browser }) => {
   await expect(closeoutPermission).toBeChecked({ checked: wasGranted });
 });
 
+test('Permissions - Approval review group role', async ({ browser }) => {
+  const page = await doCachedLogin(browser, {
+    user: adminuser,
+    url: '/settings/admin/'
+  });
+  await loadTab(page, 'Users / Access');
+  await page.getByRole('button', { name: 'Groups', exact: true }).click();
+  await page.getByRole('cell', { name: 'engineering', exact: true }).click();
+  await page.getByRole('button', { name: 'Group Roles', exact: true }).click();
+  const row = page.getByTestId('approval-permissions-row');
+  await expect(row).toBeVisible();
+  const permission = row.getByRole('checkbox', {
+    name: 'Can review approval requests',
+    exact: true
+  });
+  const original = await permission.isChecked();
+  await permission.click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByText('Group roles updated', { exact: true }).waitFor();
+  await page.reload();
+  await loadTab(page, 'Users / Access');
+  await page.getByRole('button', { name: 'Groups', exact: true }).click();
+  await page.getByRole('cell', { name: 'engineering', exact: true }).click();
+  await page.getByRole('button', { name: 'Group Roles', exact: true }).click();
+  await expect(permission).toBeChecked({ checked: !original });
+  await permission.click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByText('Group roles updated', { exact: true }).waitFor();
+  await expect(permission).toBeChecked({ checked: original });
+});
+
 /**
  * Test the "reader" account
  * - This account is read-only, but should be able to access *most* pages

@@ -47,6 +47,7 @@ export interface RuleSet {
   can_stage_jobkit: boolean;
   can_issue_jobkit: boolean;
   can_approve_jobkit_substitution: boolean;
+  can_review_approvals: boolean;
   edited?: boolean;
 }
 
@@ -71,7 +72,8 @@ type NamedPermissionField =
   | 'can_reserve_jobkit'
   | 'can_stage_jobkit'
   | 'can_issue_jobkit'
-  | 'can_approve_jobkit_substitution';
+  | 'can_approve_jobkit_substitution'
+  | 'can_review_approvals';
 
 const NAMED_PERMISSION_FIELDS: NamedPermissionField[] = [
   'can_capture_closeout',
@@ -94,7 +96,8 @@ const NAMED_PERMISSION_FIELDS: NamedPermissionField[] = [
   'can_reserve_jobkit',
   'can_stage_jobkit',
   'can_issue_jobkit',
-  'can_approve_jobkit_substitution'
+  'can_approve_jobkit_substitution',
+  'can_review_approvals'
 ];
 
 export function RoleTable({
@@ -124,6 +127,17 @@ export function RoleTable({
     title: string;
     permissions: { field: NamedPermissionField; label: string }[];
   }[] = [
+    {
+      key: 'approvals',
+      testId: 'approval-permissions-row',
+      title: t`Approval Permissions`,
+      permissions: [
+        {
+          field: 'can_review_approvals',
+          label: t`Can review approval requests`
+        }
+      ]
+    },
     {
       key: 'closeout',
       testId: 'closeout-permissions-row',

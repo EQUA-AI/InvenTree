@@ -73,6 +73,7 @@ class RuleSetSerializer(InvenTreeModelSerializer):
             'can_stage_jobkit',
             'can_issue_jobkit',
             'can_approve_jobkit_substitution',
+            'can_review_approvals',
         ]
         read_only_fields = ['pk', 'name', 'label', 'group']
 

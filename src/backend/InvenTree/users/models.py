@@ -338,6 +338,10 @@ class RuleSet(models.Model):
         verbose_name=_('Can approve job kit substitutions'), default=False
     )
 
+    can_review_approvals = models.BooleanField(
+        verbose_name=_('Can review approval requests'), default=False, db_default=False
+    )
+
     def __str__(self, debug=False):  # pragma: no cover
         """Ruleset string representation."""
         if debug:

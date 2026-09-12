@@ -52,6 +52,7 @@ RULESET_CHANGE_INHERIT = [('part', 'bomitem')]
 # Named action permissions which do not fit the standard model CRUD columns.
 RULESET_CUSTOM_PERMISSIONS = {
     RuleSetEnum.WORK_ORDER: {
+        'can_review_approvals': ('approvals_approval', 'review'),
         'can_capture_closeout': ('tasks_closeoutcapture', 'capture_closeout'),
         'can_review_closeout': ('tasks_closeoutcapture', 'review_closeout'),
         'can_reconcile_closeout_parts': (
@@ -284,6 +285,9 @@ def get_ruleset_ignore() -> list[str]:
         'approvals_approvalevent',
         'approvals_approvalrevision',
         'approvals_executedeffect',
+        'approvals_approvalreviewacknowledgment',
+        'approvals_approvalreviewdelivery',
+        'approvals_approvalexecution',
         'assets_client',
         'assets_healthevidencesnapshot',
         'assets_healthsource',
