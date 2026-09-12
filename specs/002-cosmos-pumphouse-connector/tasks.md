@@ -57,22 +57,19 @@ Fix the bug the confirmed DDL exposed, and record the schema.
 - [x] CVE check on 4.17.0: clean
 - [x] Verified in `inventree-dev-server`: imports fine, `manage.py check` clean
 
-### ⏸ T3 — Cosmos schema artefacts and verifier · 6 h · *blocked: D14 (option A or B)*
-- [ ] `contrib/cosmos/schema/pumphouse_readings.container.json` — hierarchical PK `/station_uuid` +
-      `/hour_bucket`, `defaultTtl: -1`, indexing policy excluding `/pd/*`, `/dex/*`, `/data1_raw`.
-      No database id in the file: that is deployment configuration
-- [ ] `contrib/cosmos/schema/pumphouse_latest.container.json` — written now, created later
-- [ ] `provision.py` — **verify/diff by default**; `--create` for the emulator, `--emulator` for the
-      local endpoint; never grants roles, never writes data
-- [ ] Partition key read from config (`partition_key_paths`, `partition_key_mode`) so option B —
-      reusing the existing `/maintenance_pk` container with a synthetic composite key — needs no
-      code change
-- [ ] `contrib/cosmos/README.md` — schema rationale, §1.1 mapping table, Annex A units, the Entra ID
-      role assignment, verify/seed commands
-**Blocker (D14)**: endpoint URI, database id, container id, and whether I may create a container.
-The existing container's key is now known — `/maintenance_pk`, non-hierarchical, **empty** — so it
-cannot carry a station-hour partition as-is (§3.1 of the plan).
-**Acceptance**: `provision.py --verify` prints "matches schema" or an explicit drift list.
+### ✅ T3 — Cosmos schema artefacts and verifier · 6 h · commits `744250a4b`, `2b089fff3`
+- [x] `contrib/cosmos/schema/pumphouse_readings.container.json` — hierarchical PK `/station_uuid` +
+      `/hour_bucket`, `defaultTtl: -1`, indexing excluding the payload. No database id in the file
+- [x] `schema/pumphouse_readings.indexing.json` — the policy alone for `az ... --idx @file`, kept
+      identical to the definition by a test
+- [x] `provision.py` — verifies offline from `az` output (no credentials, runs in CI), live, or against
+      the emulator; `--create` refuses anything but the emulator; never grants a role or writes a document
+- [x] `contrib/cosmos/README.md` — runbook, throughput/cost decision, troubleshooting
+- [x] 11 offline tests
+- [x] **Container created and verified live**: `aimms/pumphouse_readings` matches the definition
+- [x] Indexing policy applied through the control plane after Data Explorer refused it (the
+      `Cosmos DB Operator` role cannot read account keys, so its data-plane save had no credential)
+- [ ] `schema/pumphouse_latest.container.json` — deferred with §3.2, nothing would maintain it yet
 
 ### ⏸ T4 — Cosmos emulator in the dev stack · 3 h · *blocked: T3*
 - [ ] `cosmos` profile in `contrib/container/dev-docker-compose.yml` (linux emulator image)
@@ -80,7 +77,7 @@ cannot carry a station-hour partition as-is (§3.1 of the plan).
 - [ ] `provision.py --emulator --create` brings up an empty, correctly-shaped container
 **Acceptance**: CI and offline work never need the real Azure account.
 
-### ⏸ T5 — Manual seeder + pilot documents · 6 h · *blocked: T3; D7 affects fidelity*
+### ⏸ T5 — Manual seeder + pilot documents · 6 h · *writable now, runnable once D16 is granted*
 This is the sprint's data source (migration is deferred, D2).
 - [ ] `contrib/cosmos/seed.py`: validates the §3.1 invariants (half-open bucket, UTC `month`,
       `data1_raw` round-trip), computes `month`/`payload_hash`/`data1_raw`, upserts
@@ -183,11 +180,18 @@ Closes the "mapping approval does not enable live ingestion" gap.
 
 | Bucket | Tickets | Hours |
 |---|---|---|
-| Done | T1, T2, T7 | 9 |
-| Ready now | T0 | 2 |
-| Blocked on D14 (create a container, or reuse with a composite key) | T3, T4, T5 | 15 |
-| Blocked on earlier tickets | T6, T8–T14 | 41 |
+| Done | T1, T2, T3, T7 | 15 |
+| Ready now | T0, T5 (writable; running it needs D16) | 8 |
+| Blocked on earlier tickets | T4, T6, T8–T14 | 44 |
 | **Total** | **15** | **67** |
+
+### What is actually blocking
+- **D16 — no Cosmos data-plane role exists on the account.** Nobody can read or write a document. The
+  developer's `Cosmos DB Operator` role has `sqlRoleAssignments/write` and `listKeys` in its notActions,
+  so it cannot grant this to itself. An Owner or User Access Administrator must.
+- **D7 — the four unconfirmed payload keys.** Affects sample fidelity, not progress; guessed names are
+  flagged in the sample file.
+- **T0 — a yes/no** on writing PH_3 into the dev database.
 
 ### Critical path
 `T2 → T8 → T9 → T13 → T14` for the live read, with `T3 → T5 → T6` feeding T8 and
