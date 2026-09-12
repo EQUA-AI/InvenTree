@@ -11,6 +11,7 @@ import logging
 from typing import Any
 
 from ai.core.integrations.data_provider import get_data_provider
+from ai.core.integrations.inventree.notes import request_with_notes
 from ai.core.maf_compat import ai_function
 from ai.core.tools.inventree.base import require_hitl
 
@@ -131,7 +132,9 @@ async def create_part(
 
         client = get_inventree_client()
 
-        result = await client._request("POST", "/part/", json_data=data)
+        result = await request_with_notes(
+            client, "POST", "/part/", model_type="part", json_data=data
+        )
 
         if isinstance(result, dict):
             logger.info(f"Created part: pk={result.get('pk')}, name={result.get('name')}")
@@ -249,7 +252,9 @@ async def update_part(
 
         client = get_inventree_client()
 
-        result = await client._request("PATCH", f"/part/{part_id}/", json_data=data)
+        result = await request_with_notes(
+            client, "PATCH", f"/part/{part_id}/", model_type="part", json_data=data
+        )
 
         if isinstance(result, dict):
             logger.info(f"Updated part {part_id}")
@@ -301,17 +306,24 @@ async def deactivate_part(
 
     # Append reason to notes if provided
     if reason:
-        existing_notes = existing.get("notes") or ""
         timestamp = __import__("datetime").datetime.now().isoformat()
         new_note = f"\n\n---\n**Deactivated** ({timestamp}): {reason}"
-        data["notes"] = existing_notes + new_note
+        data["notes"] = new_note
 
     try:
         from ai.core.integrations.inventree.client import get_inventree_client
 
         client = get_inventree_client()
 
-        result = await client._request("PATCH", f"/part/{part_id}/", json_data=data)
+        result = await request_with_notes(
+            client,
+            "PATCH",
+            f"/part/{part_id}/",
+            model_type="part",
+            json_data=data,
+            append_notes=True,
+            note_title="Deactivation reason",
+        )
 
         if isinstance(result, dict):
             logger.info(f"Deactivated part {part_id}")

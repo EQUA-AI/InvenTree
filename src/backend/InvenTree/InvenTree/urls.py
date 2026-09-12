@@ -31,9 +31,10 @@ import part.api
 import plugin.api
 import repair.api
 import report.api
+import scim.api
 import stock.api
 import users.api
-from plugin.urls import get_plugin_urls
+from plugin.urls import get_plugin_urls, get_wellknown_urls
 from web.urls import cui_compatibility_urls
 from web.urls import urlpatterns as platform_urls
 
@@ -151,6 +152,8 @@ backendpatterns = [
     path('accounts/', include('allauth.urls')),
     # OAuth2
     flagged_path('OIDC', 'o/', include(oauth2_urls)),
+    # SCIM 2 provisioning endpoint
+    path('scim/v2/', include(scim.api)),
     path(
         'accounts/login/',
         RedirectView.as_view(url=f'/{settings.FRONTEND_URL_BASE}', permanent=False),
@@ -180,6 +183,9 @@ urlpatterns += platform_urls
 # Append custom plugin URLs (if custom plugin support is enabled)
 if settings.PLUGINS_ENABLED:
     urlpatterns.append(get_plugin_urls())
+
+# Append well-known URLs
+urlpatterns.append(get_wellknown_urls())
 
 # Server running in "DEBUG" mode?
 if settings.DEBUG:

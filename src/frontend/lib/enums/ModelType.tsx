@@ -43,7 +43,8 @@ export enum ModelType {
   assetmachine = 'assetmachine',
   repairpacket = 'repairpacket',
   error = 'error',
-  tag = 'tag'
+  tag = 'tag',
+  notetemplate = 'notetemplate'
 }
 
 export enum PluginPanelKey {

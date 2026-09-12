@@ -46,6 +46,9 @@ import { constructField, extractAvailableFields } from '../../functions/forms';
 import { KeepFormOpenSwitch } from './KeepFormOpenSwitch';
 import { ApiFormField } from './fields/ApiFormField';
 
+// Additional per-item allowance for bulk operations (create / update / delete multiple records)
+const BULK_OPERATION_TIMEOUT_PER_ITEM = 100;
+
 export function OptionsApiForm({
   props: _props,
   opened,
@@ -470,17 +473,26 @@ export function ApiForm({
       jsonData = props.processFormData(jsonData, form);
     }
 
+    // Bulk operations (bulk create / update / delete) submit their target
+    // records as an array under the 'items' field - scale the timeout with
+    // the number of items being processed, since larger requests take the
+    // backend longer to handle.
+    const itemCount = Array.isArray(jsonData.items) ? jsonData.items.length : 0;
+
     /* Set the timeout for the request:
      * - If a timeout is provided in the props, use that
      * - If the form contains files, use a longer timeout
+     * - If this is a bulk operation, extend the default timeout based on the number of items
      * - Otherwise, use the default timeout
      */
-    // R4: size-derived ceiling for file uploads (30 s base + 1 s/MiB).
     const timeout =
       props.timeout ??
       (hasFiles
         ? 30_000 + Math.ceil(totalFileBytes / (1024 * 1024)) * 1000
-        : undefined);
+        : itemCount > 1
+          ? (api.defaults.timeout ?? 5000) +
+            itemCount * BULK_OPERATION_TIMEOUT_PER_ITEM
+          : undefined);
 
     return api({
       method: method,

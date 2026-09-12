@@ -11,6 +11,7 @@ import logging
 from typing import Any
 
 from ai.core.integrations.data_provider import get_data_provider
+from ai.core.integrations.inventree.notes import request_with_notes
 from ai.core.maf_compat import ai_function
 from ai.core.tools.inventree.base import require_hitl
 
@@ -103,7 +104,9 @@ async def add_stock(
 
         client = get_inventree_client()
 
-        result = await client._request("POST", "/stock/", json_data=data)
+        result = await request_with_notes(
+            client, "POST", "/stock/", model_type="stockitem", json_data=data
+        )
 
         # StockItemCreate returns a LIST of created items (upstream v383) -
         # serialized creation can yield several rows from one request

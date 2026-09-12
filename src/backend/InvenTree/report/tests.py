@@ -1,6 +1,7 @@
 """Unit testing for the various report models."""
 
 import os
+import socket
 import tempfile
 from io import StringIO
 from pathlib import Path
@@ -8,17 +9,20 @@ from unittest.mock import patch
 
 from django.apps import apps
 from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.template.loader import render_to_string
 from django.test import TestCase
 from django.urls import reverse
+from django.utils.timezone import now
 
 from pypdf import PdfReader
 
 import report.models as report_models
 from build.models import Build
-from common.models import Attachment
+from common.models import Attachment, Note
 from common.settings import set_global_setting
 from InvenTree.config import get_base_dir
 from InvenTree.unit_test import AdminTestCase, InvenTreeAPITestCase
@@ -26,7 +30,7 @@ from order.models import PurchaseOrder, ReturnOrder, SalesOrder
 from part.models import Part
 from plugin.registry import registry
 from report.models import LabelTemplate, ReportTemplate
-from stock.models import StockItem
+from stock.models import StockItem, StockLocation
 
 
 class ReportTest(InvenTreeAPITestCase):
@@ -307,6 +311,74 @@ class ReportTest(InvenTreeAPITestCase):
         self.assertEqual(output.total, 5)
         self.assertIsNotNone(output.output)
         self.assertTrue(output.output.name.endswith('.pdf'))
+
+    def test_print_build_order(self):
+        """Test that the built-in Build Order report renders correctly.
+
+        Regression test: this report renders a build's notes via the '{% note %}'
+        tag - Build.notes is now a QuerySet (via InvenTreeNoteMixin), not text, so
+        the old '{{ build.notes|markdownify }}' would error out during rendering.
+        """
+        template = ReportTemplate.objects.filter(
+            enabled=True, model_type='build'
+        ).first()
+        assert template
+
+        build = Build.objects.first()
+        assert build
+
+        Note.objects.create(
+            model_type=ContentType.objects.get_for_model(Build),
+            model_id=build.pk,
+            title='Build Note',
+            content='<p>Handle with <strong>care</strong></p>',
+        )
+
+        output = template.print([build])
+
+        self.assertTrue(output.complete)
+        self.assertIsNotNone(output.output)
+        self.assertTrue(output.output.name.endswith('.pdf'))
+
+    def test_print_stock_location(self):
+        """Test that the built-in Stock Location report renders each item's note.
+
+        Regression test: this report renders each contained StockItem's note
+        inline via the '{% note %}' tag - StockItem.notes is now a QuerySet
+        (via InvenTreeNoteMixin), not text, so the old '{{ line.notes }}' would
+        render a broken QuerySet repr instead of note content.
+
+        Renders the template directly (rather than going through
+        ReportTemplate.print(), as test_print_build_order does) because
+        StockLocation.report_context() unconditionally generates a barcode,
+        which depends on a barcode plugin being registered - unrelated to what
+        this test is actually checking, and not reliably available in every
+        test environment.
+        """
+        location = StockLocation.objects.create(name='Note Report Test Location')
+        item = StockItem.objects.create(
+            part=Part.objects.first(), quantity=5, location=location
+        )
+
+        Note.objects.create(
+            model_type=ContentType.objects.get_for_model(StockItem),
+            model_id=item.pk,
+            title='Item Note',
+            content='<p>Fragile <strong>handle with care</strong></p>',
+        )
+
+        html = render_to_string(
+            'report/inventree_stock_location_report.html',
+            {
+                'stock_location': location,
+                'stock_items': StockItem.objects.filter(location=location),
+                'report_revision': 1,
+                'date': now(),
+            },
+        )
+
+        self.assertIn('Fragile', html)
+        self.assertIn('<strong>handle with care</strong>', html)
 
     def test_print_custom_template(self):
         """Create a new template, print it, and check the output."""
@@ -1076,6 +1148,49 @@ class URLFetcherTest(TestCase):
         with patch('weasyprint.urls.URLFetcher.fetch', return_value={}):
             self.fetcher.fetch('data:image/png;base64,abc123')
             self.fetcher.fetch('data:text/css;base64,abc123')
+
+    def test_dns_rebind_is_blocked_at_fetch_time(self):
+        """A hostname that resolves safely for validation but privately for the real fetch must be blocked.
+
+        Regression test: `validate_url_no_ssrf()` used to resolve the hostname once,
+        validate that result, and then discard it, so `InvenTreeURLFetcher.fetch()`
+        would delegate straight to WeasyPrint's own fetcher, which resolves the
+        hostname *again* independently. An attacker controlling DNS for their own
+        domain could answer the first ("check") lookup with a public IP and every
+        subsequent ("use") lookup with a private/internal one (DNS rebinding), so the
+        real request WeasyPrint made went somewhere the validator never saw.
+        """
+        set_global_setting('REPORT_FETCH_URLS', True, change_user=None)
+
+        public_addrinfo = [(2, 1, 6, '', ('93.184.216.34', 0))]
+        private_addrinfo = [(2, 1, 6, '', ('127.0.0.1', 0))]
+
+        calls = {'n': 0}
+
+        def rebinding_getaddrinfo(host, *args, **kwargs):
+            calls['n'] += 1
+            return public_addrinfo if calls['n'] == 1 else private_addrinfo
+
+        def fake_weasyprint_fetch(_self, url, headers=None):
+            # Simulate WeasyPrint's own fetch-time DNS resolution, performed
+            # independently of the validation InvenTreeURLFetcher already did.
+            socket.getaddrinfo('rebind.example.com', None)
+            return {'string': b'should never be reached'}
+
+        import InvenTree.helpers_model as helpers_model
+
+        with patch.object(
+            helpers_model, '_real_getaddrinfo', side_effect=rebinding_getaddrinfo
+        ):
+            with patch(
+                'weasyprint.urls.URLFetcher.fetch', side_effect=fake_weasyprint_fetch
+            ):
+                with self.assertRaises(socket.gaierror):
+                    self.fetcher.fetch('http://rebind.example.com/image.png')
+
+        # The validation-time lookup (safe) and the fetch-time lookup (private)
+        # must both have happened for this to be a meaningful regression test.
+        self.assertEqual(calls['n'], 2)
 
 
 class DefaultTemplateFileTest(TestCase):

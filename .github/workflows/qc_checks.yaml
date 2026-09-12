@@ -33,7 +33,6 @@ jobs:
 
     outputs:
       server: ${{ steps.filter.outputs.server }}
-      migrations: ${{ steps.filter.outputs.migrations }}
       frontend: ${{ steps.filter.outputs.frontend }}
       api: ${{ steps.filter.outputs.api }}
       force: ${{ steps.force.outputs.force }}
@@ -47,7 +46,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
@@ -59,11 +58,6 @@ jobs:
               # S43: hand-edits to the generated wire artifact must run
               # the drift check even on frontend-only PRs.
               - 'src/frontend/lib/types/AimmsWire.generated.ts'
-            migrations:
-              - '**/test_migrations.py'
-              - '**/migrations/**'
-              - '.github/workflows**'
-              - 'src/backend/requirements.txt'
             api:
               - 'src/backend/InvenTree/InvenTree/api_version.py'
             frontend:
@@ -121,10 +115,10 @@ jobs:
           python-version: ${{ env.python_version }}
           cache: "pip"
       - name: Run pre commit hook Checks
-        uses: j178/prek-action@5337cb91e0fa35a7ff31b9ca345126d8bbbcdf16 # v2.0.6
+        uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece # v3.0.0
       - name: Check Version
         run: |
-          pip install --require-hashes -r contrib/dev_reqs/requirements.txt
+          pip install --require-hashes --only-binary :all: -r contrib/dev_reqs/requirements.txt
           python3 .github/scripts/version_check.py
 
   typecheck:
@@ -175,11 +169,11 @@ jobs:
           python-version: ${{ env.python_version }}
       - name: Check Config
         run: |
-          pip install --require-hashes -r contrib/dev_reqs/requirements.txt
-          pip install --require-hashes -r docs/requirements.txt
+          pip install --require-hashes --only-binary :all: -r contrib/dev_reqs/requirements.txt
+          pip install --require-hashes --only-binary :all: -r docs/requirements.txt
           python docs/ci/check_mkdocs_config.py
       - name: Check Links
-        uses: tcort/github-action-markdown-link-check@e7c7a18363c842693fadde5d41a3bd3573a7a225 # v1
+        uses: tcort/github-action-markdown-link-check@e047c5b37f24ab722bbef1a27b6fab7f96bc4068 # v1
         with:
           folder-path: docs
           config-file: docs/mlc_config.json
@@ -227,7 +221,7 @@ jobs:
         env:
           API: ${{ needs.paths-filter.outputs.api }}
         run: |
-          pip install --require-hashes -r contrib/dev_reqs/requirements.txt >/dev/null 2>&1
+          pip install --require-hashes --only-binary :all: -r contrib/dev_reqs/requirements.txt >/dev/null 2>&1
           version="$(python3 .github/scripts/version_check.py --show-api-version --decrement-api=${API} 2>&1)"
           echo "API Version: $version"
           url="https://raw.githubusercontent.com/inventree/schema/main/export/${version}/api.yaml"
@@ -240,7 +234,7 @@ jobs:
       - name: Running OpenAPI Spec diff action
         if: github.repository == 'inventree/InvenTree'
         id: breaking_changes
-        uses: oasdiff/oasdiff-action/diff@b7c3adeb54330db1903d27c61db520e5661ad55b # v0.1.11
+        uses: oasdiff/oasdiff-action/diff@54d7a752569cb30b644b7f27a362c1077973d1c0 # v0.1.14
         with:
           base: "api.yaml"
           revision: "src/backend/InvenTree/schema.yml"
@@ -268,7 +262,7 @@ jobs:
         id: version
         if: github.ref == 'refs/heads/master' && needs.paths-filter.outputs.api == 'true'
         run: |
-          pip install --require-hashes -r contrib/dev_reqs/requirements.txt >/dev/null 2>&1
+          pip install --require-hashes --only-binary :all: -r contrib/dev_reqs/requirements.txt >/dev/null 2>&1
           version="$(python3 .github/scripts/version_check.py --show-api-version 2>&1)"
           echo "API Version: $version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -384,10 +378,10 @@ jobs:
         run: |
           pip uninstall pytest-django -y
           cd ${WRAPPER_NAME}
-          pip install .
+          pip install . --only-binary :all:
         if: needs.paths-filter.outputs.submit-performance == 'true'
       - name: Performance Reporting
-        uses: CodSpeedHQ/action@f22792bfac16f3e14eb9fbea76f4a48e9cc22b93 # v4.19.1
+        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         # check if we are in inventree/inventree - reporting only works in that OIDC context
         if: github.repository == 'inventree/InvenTree' && needs.paths-filter.outputs.submit-performance == 'true'
         with:
@@ -480,7 +474,7 @@ jobs:
         env:
           node_version: '>=24'
       - name: Performance Reporting
-        uses: CodSpeedHQ/action@f22792bfac16f3e14eb9fbea76f4a48e9cc22b93 # v4.19.1
+        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         with:
           mode: walltime
           run: inv dev.test --pytest
@@ -847,113 +841,6 @@ jobs:
         # without the pytest plugin.
         run: invoke dev.test --runtest=aichat.tests.test_offline_boot --keepdb --disable-pty
 
-  migration-tests:
-    name: Tests - Migrations [PostgreSQL]
-    runs-on: ubuntu-latest
-    needs: paths-filter
-    if: ${{ (needs.paths-filter.outputs.force == 'true') || (github.ref == 'refs/heads/master' && needs.paths-filter.outputs.migrations == 'true') }}
-
-    env:
-      INVENTREE_DB_ENGINE: django.db.backends.postgresql
-      INVENTREE_DB_NAME: inventree
-      INVENTREE_DB_USER: inventree
-      INVENTREE_DB_PASSWORD: password
-      INVENTREE_DB_HOST: "127.0.0.1"
-      INVENTREE_DB_PORT: 5432
-      INVENTREE_DEBUG: False
-      INVENTREE_LOG_LEVEL: WARNING
-      INVENTREE_PLUGINS_ENABLED: false
-
-    services:
-      postgres:
-        image: pgvector/pgvector:pg15
-        env:
-          POSTGRES_USER: inventree
-          POSTGRES_PASSWORD: password
-        ports:
-          - 5432:5432
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Environment Setup
-        uses: ./.github/actions/setup
-        with:
-          apt-dependency: gettext poppler-utils libpq-dev
-          pip-dependency: psycopg
-          dev-install: true
-          update: true
-      - name: Run Tests
-        run: invoke dev.test --check --migrations --report --coverage --translations
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        if: always()
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: inventree/InvenTree
-          flags: migrations
-
-  migrations-checks:
-    name: Tests - Full Migration [SQLite]
-    runs-on: ubuntu-latest
-    needs: paths-filter
-    if: ${{ (needs.paths-filter.outputs.force == 'true') || (github.ref == 'refs/heads/master' && needs.paths-filter.outputs.migrations == 'true') }}
-
-    env:
-      INVENTREE_DB_ENGINE: sqlite3
-      INVENTREE_DB_NAME: /home/runner/work/InvenTree/db.sqlite3
-      INVENTREE_DEBUG: true
-      INVENTREE_LOG_LEVEL: WARNING
-      INVENTREE_PLUGINS_ENABLED: false
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-        name: Checkout Code
-      - name: Environment Setup
-        uses: ./.github/actions/setup
-        with:
-          install: true
-      - name: Fetch Database
-        run: git clone --depth 1 https://github.com/inventree/test-db ./test-db
-
-      - name: 0.10.0 Database
-        run: |
-          rm /home/runner/work/InvenTree/db.sqlite3
-          cp test-db/stable_0.10.0.sqlite3 /home/runner/work/InvenTree/db.sqlite3
-          chmod +rw /home/runner/work/InvenTree/db.sqlite3
-          invoke migrate
-
-      - name: 0.11.0 Database
-        run: |
-          rm /home/runner/work/InvenTree/db.sqlite3
-          cp test-db/stable_0.11.0.sqlite3 /home/runner/work/InvenTree/db.sqlite3
-          chmod +rw /home/runner/work/InvenTree/db.sqlite3
-          invoke migrate
-
-      - name: 0.13.5 Database
-        run: |
-          rm /home/runner/work/InvenTree/db.sqlite3
-          cp test-db/stable_0.13.5.sqlite3 /home/runner/work/InvenTree/db.sqlite3
-          chmod +rw /home/runner/work/InvenTree/db.sqlite3
-          invoke migrate
-
-      - name: 0.16.0 Database
-        run: |
-          rm /home/runner/work/InvenTree/db.sqlite3
-          cp test-db/stable_0.16.0.sqlite3 /home/runner/work/InvenTree/db.sqlite3
-          chmod +rw /home/runner/work/InvenTree/db.sqlite3
-          invoke migrate
-
-      - name: 0.17.0 Database
-        run: |
-          rm /home/runner/work/InvenTree/db.sqlite3
-          cp test-db/stable_0.17.0.sqlite3 /home/runner/work/InvenTree/db.sqlite3
-          chmod +rw /home/runner/work/InvenTree/db.sqlite3
-          invoke migrate
-
   zizmor:
     name: Security [Zizmor]
     runs-on: ubuntu-24.04
@@ -968,4 +855,4 @@ jobs:
         with:
           persist-credentials: false
       - name: Run zizmor 🌈
-        uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
+        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3

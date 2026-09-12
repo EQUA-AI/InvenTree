@@ -335,6 +335,15 @@ class UserAPITests(InvenTreeAPITestCase):
         # User cannot fetch their own details if they are not active
         response = self.get(url, expected_code=401)
 
+    def test_me_endpoint_delete_is_blocked(self):
+        """A user must not be able to delete their own account via '/api/user/me/'."""
+        url = reverse('api-user-me')
+        pk = self.user.pk
+
+        self.delete(url, expected_code=405)
+
+        self.assertTrue(User.objects.filter(pk=pk).exists())
+
 
 class SuperuserAPITests(InvenTreeAPITestCase):
     """Tests for user API endpoints that require superuser rights."""
@@ -612,3 +621,82 @@ class GroupDetailTests(InvenTreeAPITestCase):
         )
         self.assertFalse(response.data['can_capture_closeout'])
         self.assertFalse(group.permissions.filter(**permission).exists())
+
+
+class RuleSetPermissionTests(InvenTreeAPITestCase):
+    """Tests for permission enforcement on the Group / RuleSet API endpoints.
+
+    Regression tests for a privilege-escalation bug where a *staff* user
+    (without the 'admin' role) was able to write to these endpoints - in
+    particular, granting themselves 'admin' RuleSet permissions via the
+    RuleSet API, despite not holding the 'admin' role themselves.
+    """
+
+    def test_group_write_requires_admin_role(self):
+        """A staff-only user (without the 'admin' role) cannot write to the Group API."""
+        url = reverse('api-group-detail', kwargs={'pk': self.group.pk})
+
+        # Sanity check - the default test user is staff, but has no assigned roles
+        self.assertTrue(self.user.is_staff)
+
+        # Read access is still permitted
+        self.get(url, expected_code=200)
+
+        # Write access is rejected, as the user does not have the 'admin' role
+        self.patch(url, {'name': 'renamed-group'}, expected_code=403)
+
+        self.group.refresh_from_db()
+        self.assertNotEqual(self.group.name, 'renamed-group')
+
+        # Once the 'admin' role is granted, the write succeeds
+        self.assignRole('admin.change')
+        self.patch(url, {'name': 'renamed-group'}, expected_code=200)
+
+        self.group.refresh_from_db()
+        self.assertEqual(self.group.name, 'renamed-group')
+
+    def test_ruleset_write_requires_admin_role(self):
+        """A staff-only user cannot self-escalate permissions via the RuleSet API."""
+        admin_ruleset = self.group.rule_sets.get(name='admin')
+        url = reverse('api-ruleset-detail', kwargs={'pk': admin_ruleset.pk})
+
+        # Sanity check - the default test user is staff, but has no assigned roles
+        self.assertTrue(self.user.is_staff)
+        self.assertFalse(admin_ruleset.can_change)
+
+        # Read access is still permitted
+        self.get(url, expected_code=200)
+
+        # Attempt to self-escalate to full 'admin' ruleset permissions
+        self.patch(
+            url,
+            {'can_view': True, 'can_add': True, 'can_change': True, 'can_delete': True},
+            expected_code=403,
+        )
+
+        admin_ruleset.refresh_from_db()
+        self.assertFalse(admin_ruleset.can_change)
+
+        # Granting the 'admin' role directly (not via the API) allows the write
+        self.assignRole('admin.change')
+        self.patch(url, {'can_delete': True}, expected_code=200)
+
+        admin_ruleset.refresh_from_db()
+        self.assertTrue(admin_ruleset.can_delete)
+
+    def test_non_staff_user_read_only(self):
+        """A non-staff, non-admin authenticated user retains read-only access."""
+        self.user.is_staff = False
+        self.user.save()
+
+        group_url = reverse('api-group-detail', kwargs={'pk': self.group.pk})
+        ruleset_url = reverse(
+            'api-ruleset-detail',
+            kwargs={'pk': self.group.rule_sets.get(name='admin').pk},
+        )
+
+        self.get(group_url, expected_code=200)
+        self.get(ruleset_url, expected_code=200)
+
+        self.patch(group_url, {'name': 'renamed-group'}, expected_code=403)
+        self.patch(ruleset_url, {'can_change': True}, expected_code=403)

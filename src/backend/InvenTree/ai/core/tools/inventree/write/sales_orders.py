@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ai.core.integrations.inventree.notes import request_with_notes
 from ai.core.maf_compat import ai_function
 from ai.core.tools.inventree.base import require_hitl
 
@@ -259,7 +260,9 @@ async def create_so_shipment(
 
         client = get_inventree_client()
 
-        result = await client._request("POST", "/order/so/shipment/", json_data=data)
+        result = await request_with_notes(
+            client, "POST", "/order/so/shipment/", model_type="salesordershipment", json_data=data
+        )
 
         if isinstance(result, dict):
             logger.info(f"Created shipment pk={result.get('pk')}")

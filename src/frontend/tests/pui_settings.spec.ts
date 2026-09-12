@@ -368,15 +368,15 @@ test('Settings - Admin - Background Tasks', async ({ browser }) => {
 });
 
 test('Settings - Admin - Barcode History', async ({ browser }) => {
-  // Login with admin credentials
-  const page = await doCachedLogin(browser, {
-    user: adminuser
-  });
-
-  // Ensure that the "save scans" setting is enabled
+  // Ensure that the "save scans" setting is enabled; done before first load of test to reduce flakiness
   await setSettingState({
     setting: 'BARCODE_STORE_RESULTS',
     value: true
+  });
+
+  // Login with admin credentials
+  const page = await doCachedLogin(browser, {
+    user: adminuser
   });
 
   // Scan some barcodes (via API calls)
@@ -428,8 +428,6 @@ test('Settings - Admin - Barcode History', async ({ browser }) => {
   for (const barcode of barcodes) {
     await checkBarcode(barcode);
   }
-
-  await page.waitForTimeout(2500);
 });
 
 test('Settings - Admin - Parameter', async ({ browser }) => {

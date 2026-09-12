@@ -90,6 +90,17 @@ class DataImportSessionSerializer(InvenTreeModelSerializer):
 
     user_detail = UserSerializer(source='user', read_only=True, many=False)
 
+    def validate_model_type(self, value):
+        """Prevent the target model type from being changed after creation."""
+        if self.instance is not None and self.instance.model_type != value:
+            raise ValidationError(
+                _(
+                    'Model type cannot be changed after the import session has been created'
+                )
+            )
+
+        return value
+
     def validate_field_defaults(self, defaults):
         """De-stringify the field defaults."""
         if defaults is None:
@@ -179,6 +190,28 @@ class DataImportRowSerializer(InvenTreeModelSerializer):
             'valid',
             'complete',
         ]
+
+    def update(self, instance, validated_data):
+        """Allow manual editing of extracted row data.
+
+        This is used by the importer UI when a user manually corrects a row,
+        for example by selecting a missing foreign-key target. In that case,
+        the edited ``data`` payload must become the source of truth for
+        subsequent validation, rather than being silently ignored in favor of
+        the original ``row_data`` extracted from the import file.
+        """
+        if 'data' in validated_data:
+            instance.data = validated_data['data']
+
+            # Clear stale validation state so the row is re-evaluated against
+            # the manually edited data on save()
+            instance.errors = None
+
+            # A manually edited row is not yet committed, even if it had
+            # previously reached a completed state
+            instance.complete = False
+
+        return super().update(instance, validated_data)
 
 
 class DataImportAcceptRowSerializer(serializers.Serializer):

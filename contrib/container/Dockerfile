@@ -10,7 +10,7 @@
 # - Monitors source files for any changes, and live-reloads server
 
 # Base image last bumped 2026-06-16
-FROM python:3.14.6-slim-trixie@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS inventree_base
+FROM python:3.14.7-slim-trixie@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6 AS inventree_base
 
 # Build arguments for this image
 ARG commit_tag=""
@@ -175,6 +175,10 @@ COPY --from=builder_stage /root/.local /root/.local
 
 # Compile Django backend translations during image build
 RUN bash -c "cd '${INVENTREE_HOME}' && invoke int.backend-compilemessages"
+
+# Generate license information for installed python packages
+RUN pip-licenses --format=json --with-license-file --no-license-path > "${INVENTREE_BACKEND_DIR}/InvenTree/InvenTree/licenses.txt" \
+    && test -s "${INVENTREE_BACKEND_DIR}/InvenTree/InvenTree/licenses.txt"
 
 # Launch the production server
 CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker -c ./gunicorn.conf.py InvenTree.asgi:application -b 0.0.0.0:8000 --chdir ${INVENTREE_BACKEND_DIR}/InvenTree"]

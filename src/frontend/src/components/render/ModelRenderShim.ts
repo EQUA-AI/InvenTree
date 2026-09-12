@@ -22,6 +22,7 @@ import {
   RenderTag,
   RenderWorkOrder
 } from './Generic';
+import { RenderNoteTemplate } from './Note';
 import {
   RenderPurchaseOrder,
   RenderReturnOrder,
@@ -51,6 +52,7 @@ registerModelRenderers({
   [ModelType.parameter]: RenderParameter,
   [ModelType.parametertemplate]: RenderParameterTemplate,
   [ModelType.manufacturerpart]: RenderManufacturerPart,
+  [ModelType.notetemplate]: RenderNoteTemplate,
   [ModelType.owner]: RenderOwner,
   [ModelType.part]: RenderPart,
   [ModelType.partcategory]: RenderPartCategory,

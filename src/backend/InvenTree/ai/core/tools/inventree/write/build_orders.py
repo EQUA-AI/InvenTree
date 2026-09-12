@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from ai.core.integrations.data_provider import get_data_provider
+from ai.core.integrations.inventree.notes import request_with_notes
 from ai.core.maf_compat import ai_function
 from ai.core.tools.inventree.base import require_hitl
 
@@ -405,7 +406,9 @@ async def update_build_order(
 
         client = get_inventree_client()
 
-        result = await client._request("PATCH", f"/build/{build_id}/", json_data=data)
+        result = await request_with_notes(
+            client, "PATCH", f"/build/{build_id}/", model_type="build", json_data=data
+        )
         logger.info(f"Updated build order {build_id}")
         return result
 

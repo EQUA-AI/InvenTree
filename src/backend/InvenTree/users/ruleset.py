@@ -7,7 +7,21 @@ from generic.enums import StringEnum
 
 
 class RuleSetEnum(StringEnum):
-    """Enumeration of ruleset names."""
+    """Enumeration of ruleset names.
+
+    Attributes:
+        ADMIN: Assigning user permissions, and other administrative tasks
+        PART_CATEGORY: Accessing Part Category data
+        PART: Accessing Part data
+        BOM: Accessing Bill of Materials data
+        STOCK_LOCATION: Accessing Stock Location data
+        STOCK: Accessing Stock Item data
+        BUILD: Accessing manufacturing / Build Order data
+        PURCHASE_ORDER: Accessing Purchase Order data
+        SALES_ORDER: Accessing Sales Order data
+        RETURN_ORDER: Accessing Return Order data
+        TRANSFER_ORDER: Accessing Transfer Order data
+    """
 
     ADMIN = 'admin'
     PART_CATEGORY = 'part_category'
@@ -255,6 +269,7 @@ def get_ruleset_ignore() -> list[str]:
         'common_inventreeusersetting',
         'common_notificationentry',
         'common_notificationmessage',
+        'common_note',
         'common_notesimage',
         'common_projectcode',
         'common_webhookendpoint',
@@ -371,4 +386,6 @@ def get_ruleset_ignore() -> list[str]:
         'voice_voicetranscriptrevision',
         'voice_voicetransportattempt',
         'voice_voiceutterance',
+        # SCIM - superuser-only singleton configuration, managed via the Admin Center
+        'scim_scimconfiguration',
     ]
