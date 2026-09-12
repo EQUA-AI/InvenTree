@@ -133,25 +133,35 @@ real constraint and proves `in_batches` satisfies it.
 
 ## Week 2 — connector, poller, bridge, UI
 
-### 🔵 T8 — `CosmosPumphouseConnector` · 10 h · *ready — T2, T6, T7 all done; buildable and testable against a mocked SDK, runnable once D16 is granted*
+### ✅ T8 — `CosmosPumphouseConnector` · 10 h · *done — 53 tests, SDK mocked; runnable against Azure once D16 is granted*
 `machine_health/connectors/cosmos_pumphouse.py`, registered as `cosmos_pumphouse`.
-- [ ] `check()` → `(ok, code)` from a **fixed vocabulary** `AUTH|NOT_FOUND|THROTTLED|NETWORK|OK`;
-      no endpoint, tag or provider message ever persisted or logged
-- [ ] `read_latest()` — query A on the current hour bucket, falling back to the previous one
-- [ ] `read_window()` — `bounded_window()`, enumerate buckets, `max_item_count=100`, stop at
+- [x] `check()` → `(ok, code)` from a **fixed vocabulary** `AUTH|NOT_FOUND|THROTTLED|NETWORK|OK`, plus
+      `CONFIG` for a source that cannot be used as configured; no endpoint, tag or provider message
+      ever persisted or logged
+- [x] `read_latest()` — query A on the current hour bucket, falling back to the previous one
+- [x] `read_window()` — `bounded_window()`, enumerate buckets, `max_item_count=100`, stop at
       `max_samples`, never round a timestamp
-- [ ] `poll(checkpoint)` — query B forward from the checkpoint; change feed deferred
-- [ ] Entra ID via `DefaultAzureCredential` + **Cosmos DB Data Reader** (D6); emulator key from an
-      env var only
-- [ ] All queries parameterised and single-partition; cross-partition explicitly disabled
-- [ ] **Ingests through `in_batches()`** (T6) — one snapshot is ~762 readings against a 500 limit, so
-      a single `ingest_readings` call would raise. The checkpoint advances only after *every* batch
-      of a snapshot succeeds, or a partial failure records a sample as fully read.
-**Acceptance**: SDK mocked in tests; a test asserts no query is issued without both PK components,
-and a test covers a snapshot whose batches partly fail.
+- [x] `poll(checkpoint)` — query B **strictly after** the checkpoint; change feed deferred
+- [x] Entra ID via `DefaultAzureCredential` + **Cosmos DB Data Reader** (D6); an account key is
+      refused outright against a real endpoint and read from an env var for the emulator only
+- [x] All queries parameterised and single-partition; cross-partition explicitly disabled; a partial
+      partition key raises before any request is built
+- [x] **Ingests through `in_batches()`** (T6); the checkpoint advances per *snapshot*, only after
+      every batch of it is accepted
+**Acceptance**: met — tests assert no query is issued without both PK components, and that a
+snapshot whose second batch fails leaves the checkpoint untouched.
+
+**Two things found while building it**
+- `CONFIG` was added to the error vocabulary. A missing endpoint is not a `NETWORK` fault, and
+  reporting it as one sends an operator to look at a firewall for a blank config field.
+- **Bug fixed in the ingest path**: the connector was forwarding its `now` (the *source-clock*
+  horizon for how far forward to read) into `ingest_readings(now=...)` (the *server clock* that skew
+  is measured against). The project runs with `USE_TZ` off, so this raised
+  `can't subtract offset-naive and offset-aware datetimes` on every batch — and `_classify` would
+  have reported it in production as `NETWORK`. Two tests now pin the behaviour.
 
 
-### 🔵 T9 — Scheduled poller · 4 h · *blocked: T8*
+### 🔵 T9 — Scheduled poller · 4 h · *ready — T8 done*
 - [ ] `assets/tasks.py: poll_cosmos_pumphouse_sources()` at `ScheduledTask.MINUTES, 1`
 - [ ] `AIMMS_COSMOS_PUMPHOUSE_ENABLED` kill-switch, default **off** (`get_boolean_setting`)
 - [ ] Per-source time budget (≤ 20 s) and document cap so one slow account cannot starve the worker
@@ -198,9 +208,9 @@ Closes the "mapping approval does not enable live ingestion" gap.
 
 | Bucket | Tickets | Hours |
 |---|---|---|
-| Done | T0, T1, T2, T3, T5, T6, T7 | 30 |
-| Ready now | T4, T8, T10, T11 | 21 |
-| Blocked on earlier tickets | T9, T12, T13, T14 | 16 |
+| Done | T0, T1, T2, T3, T5, T6, T7, T8 | 40 |
+| Ready now | T4, T9, T10, T11 | 15 |
+| Blocked on earlier tickets | T12, T13, T14 | 12 |
 | **Total** | **15** | **67** |
 
 ### What is actually blocking
