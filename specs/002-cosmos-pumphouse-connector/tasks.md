@@ -92,19 +92,28 @@ This is the sprint's data source (migration is deferred, D2).
       `data1_raw`)
 **Acceptance**: `seed.py --dry-run` output is byte-identical to what is upserted.
 
-### ⏸ T6 — `flatten_snapshot()` normalisation · 7 h · *blocked: T5*
+### ✅ T6 — `flatten_snapshot()` normalisation · 7 h · commit pending
 `machine_health/connectors/pumphouse_payload.py`, pure function, no I/O, shared by the connector and
 the dump importer.
-- [ ] JSON-pointer `external_key` derived from position, so station and pump levels fall out of one
+- [x] JSON-pointer `external_key` derived from position, so station and pump levels fall out of one
       walk (`/sl`, `/pd/P3/st`, `/dex/PUMP3_…`) — matches `DictionaryPoint.path`
-- [ ] Re-parses `data1_raw` and **fails the snapshot** when parsed fields disagree (D5)
-- [ ] `observed_at` from `sub_time_period` (fallback `egt`), UTC; `sequence = sub_time_period`
-- [ ] Quality rules: unparsable `dex` string → `uncertain`; empty/non-finite → `bad` with value
+- [x] Re-parses `data1_raw` and **fails the snapshot** when parsed fields disagree (D5)
+- [x] `observed_at` from `sub_time_period` (fallback `egt`), UTC; `sequence = sub_time_period`
+- [x] Quality rules: unparsable `dex` string → `uncertain`; empty/non-finite → `bad` with value
       `None`; unknown `st` code → `uncertain`, never mapped to a guess (D10: `I` idle, `R` running)
-- [ ] Skips `dex.ID`, `dex.TIMESTAMP` and envelope keys unless explicitly bound
-- [ ] Respects `MAX_VALUE_BYTES` (2048)
-**Acceptance**: every point in the PH_3 sample produces exactly one `Reading` with the expected key,
-type and quality; no reading invents a value.
+- [x] Skips `dex.ID`, `dex.TIMESTAMP` and envelope keys unless explicitly bound
+- [x] Respects `MAX_VALUE_BYTES` (2048)
+- [x] **`in_batches()`** — a real snapshot flattens to ~762 readings against a 500-reading batch
+      limit, so `ingest_readings` would *raise* on a whole snapshot. Paging lives beside the
+      function that creates the oversized list rather than being rediscovered in T8.
+- [x] RFC 6901 escaping, so a tag containing `/` or `~` stays unambiguous
+**Acceptance**: met — 30 tests, no Azure and no database.
+
+**Found while building it**: the batch limit. The first version of the sample-file test asserted a
+snapshot fits one batch; it passed only because the checked-in samples are abridged. Against a
+realistic 700-tag payload the assertion is false, so the test was replaced with one that states the
+real constraint and proves `in_batches` satisfies it.
+
 
 ### ✅ T7 — `IngestionCheckpoint` model · 3 h · commit pending
 - [x] `assets/ingestion_models.py`: `IngestionCheckpoint(source FK, station_uuid, hour_bucket str,
@@ -133,7 +142,12 @@ type and quality; no reading invents a value.
 - [ ] Entra ID via `DefaultAzureCredential` + **Cosmos DB Data Reader** (D6); emulator key from an
       env var only
 - [ ] All queries parameterised and single-partition; cross-partition explicitly disabled
-**Acceptance**: SDK mocked in tests; a test asserts no query is issued without both PK components.
+- [ ] **Ingests through `in_batches()`** (T6) — one snapshot is ~762 readings against a 500 limit, so
+      a single `ingest_readings` call would raise. The checkpoint advances only after *every* batch
+      of a snapshot succeeds, or a partial failure records a sample as fully read.
+**Acceptance**: SDK mocked in tests; a test asserts no query is issued without both PK components,
+and a test covers a snapshot whose batches partly fail.
+
 
 ### ⏸ T9 — Scheduled poller · 4 h · *blocked: T8*
 - [ ] `assets/tasks.py: poll_cosmos_pumphouse_sources()` at `ScheduledTask.MINUTES, 1`
@@ -182,9 +196,9 @@ Closes the "mapping approval does not enable live ingestion" gap.
 
 | Bucket | Tickets | Hours |
 |---|---|---|
-| Done | T0, T1, T2, T3, T7 | 17 |
-| Ready now | T5 (writable; running it needs D16) | 6 |
-| Blocked on earlier tickets | T4, T6, T8–T14 | 44 |
+| Done | T0, T1, T2, T3, T5, T6, T7 | 30 |
+| Ready now | T10 (dump importer — needs no Azure access) | 3 |
+| Blocked on earlier tickets | T4, T8, T9, T11–T14 | 34 |
 | **Total** | **15** | **67** |
 
 ### What is actually blocking
