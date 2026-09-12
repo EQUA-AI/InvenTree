@@ -24,7 +24,9 @@ from ai.core.tools.capabilities import tool_name  # noqa: E402
 from ai.core.tools.inventree.write.purchase_orders import (  # noqa: E402
     issue_purchase_order,
 )
+from ai.core.voice.confirmation import PendingVoiceConfirmation, ProposedWriteAction  # noqa: E402
 from ai.core.voice.tool_actions import (  # noqa: E402
+    CachedPendingVoiceWriteStore,
     TextToolRBACVoicePermission,
     TextToolVoiceExecutor,
     VoiceToolActionResolver,
@@ -32,7 +34,7 @@ from ai.core.voice.tool_actions import (  # noqa: E402
     capability_for_tool,
     text_chat_action_tools,
 )
-from ai.core.voice.write_gate import ExecutableWrite  # noqa: E402
+from ai.core.voice.write_gate import ExecutableWrite, StoredPendingWrite  # noqa: E402
 
 
 def _principal() -> AIPrincipal:
@@ -47,6 +49,37 @@ def _principal() -> AIPrincipal:
         is_staff=False,
         is_superuser=False,
     )
+
+
+def test_cached_pending_write_peek_does_not_consume() -> None:
+    from django.core.cache import cache
+
+    cache.clear()
+    store = CachedPendingVoiceWriteStore()
+    stored = StoredPendingWrite(
+        pending=PendingVoiceConfirmation(
+            nonce="n1",
+            thread_id=7,
+            action=ProposedWriteAction(
+                capability="purchase_order:add",
+                summary="Create purchase order PO-1",
+            ),
+        ),
+        executable=ExecutableWrite(
+            tool_name="create_purchase_order",
+            capability="purchase_order:add",
+        ),
+        record_label="purchase order PO-1",
+    )
+    store.save(7, stored)
+
+    assert store.peek(7) == stored
+    peeked = store.peek(7)
+    assert peeked == stored
+    assert peeked is not None
+    peeked.executable.arguments["quantity"] = 99
+    assert store.take(7) == stored
+    assert store.peek(7) is None
 
 
 def test_action_catalog_covers_inventory_procurement_email_and_kanban():

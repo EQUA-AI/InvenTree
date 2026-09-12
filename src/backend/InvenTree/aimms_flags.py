@@ -477,6 +477,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         ai_field='feature_voice_write_confirmation',
     ),
     FlagEntry(
+        'FEATURE_VOICE_DECISIONS',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_voice_decision_coordinator',
+        description='Voice-UX Phase B server-owned pending-decision coordinator',
+    ),
+    FlagEntry(
         'FEATURE_TURN_USAGE_PERSISTENCE',
         'bool',
         True,

@@ -7,6 +7,7 @@ import inspect
 import json
 import logging
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -171,7 +172,14 @@ class CachedPendingVoiceWriteStore(PendingVoiceWriteStore):
     def save(self, thread_id: Any, stored: StoredPendingWrite) -> None:
         from django.core.cache import cache
 
-        cache.set(self._key(thread_id), stored, timeout=self.timeout_seconds)
+        cache.set(self._key(thread_id), deepcopy(stored), timeout=self.timeout_seconds)
+
+    def peek(self, thread_id: Any) -> StoredPendingWrite | None:
+        """Return the thread's pending write without consuming it."""
+        from django.core.cache import cache
+
+        stored = cache.get(self._key(thread_id))
+        return deepcopy(stored) if isinstance(stored, StoredPendingWrite) else None
 
     def take(self, thread_id: Any) -> StoredPendingWrite | None:
         from django.core.cache import cache
@@ -183,7 +191,7 @@ class CachedPendingVoiceWriteStore(PendingVoiceWriteStore):
         try:
             stored = cache.get(key)
             cache.delete(key)
-            return stored if isinstance(stored, StoredPendingWrite) else None
+            return deepcopy(stored) if isinstance(stored, StoredPendingWrite) else None
         finally:
             cache.delete(lock_key)
 

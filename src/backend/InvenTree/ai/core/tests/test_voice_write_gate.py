@@ -135,6 +135,53 @@ def test_resolve_pending_with_no_pending_returns_none() -> None:
     assert result is None
 
 
+def test_in_memory_store_peek_does_not_consume_pending_write() -> None:
+    store = InMemoryPendingWriteStore()
+    gate = _gate(resolved=_resolved_confirmable(), store=store)
+    asyncio.run(
+        gate.begin(
+            "place an order",
+            actor=_ACTOR,
+            trusted_context=_CTX,
+            thread_id=1,
+            nonce="n1",
+        )
+    )
+
+    assert store.peek(1).pending.nonce == "n1"
+    assert store.peek(1).pending.nonce == "n1"
+    assert store.take(1).pending.nonce == "n1"
+    assert store.peek(1) is None
+
+
+def test_in_memory_store_peek_returns_a_detached_authority_snapshot() -> None:
+    store = InMemoryPendingWriteStore()
+    stored = StoredPendingWrite(
+        pending=PendingVoiceConfirmation(
+            nonce="n1",
+            thread_id=7,
+            action=ProposedWriteAction(
+                capability="tasks:change_workorder",
+                summary="Hold work order 104",
+            ),
+        ),
+        executable=ExecutableWrite(
+            tool_name="hold_work_order",
+            capability="tasks:change_workorder",
+            arguments={"work_order_id": 104},
+        ),
+    )
+    store.save(7, stored)
+
+    peeked = store.peek("7")
+    assert peeked is not None
+    peeked.executable.arguments["work_order_id"] = 999
+
+    taken = store.take(7)
+    assert taken is not None
+    assert taken.executable.arguments == {"work_order_id": 104}
+
+
 # --------------------------------------------------------------------------- #
 # RBAC precedes confirmation                                                   #
 # --------------------------------------------------------------------------- #

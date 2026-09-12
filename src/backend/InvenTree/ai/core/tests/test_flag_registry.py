@@ -127,6 +127,11 @@ _COMPANION_ENV: dict[str, dict[str, object]] = {
         "AZURE_VOICELIVE_MODEL": "gpt-realtime",
         "AZURE_VOICELIVE_TRANSCRIPTION_MODEL": "whisper-1",
     },
+    "FEATURE_VOICE_DECISIONS": {
+        **_VOICE_COMPANIONS,
+        "FEATURE_VOICE_LIVE": True,
+        "FEATURE_VOICE_WRITE_CONFIRMATION": True,
+    },
     "FEATURE_VOICE_LIVE_DIAGNOSIS": {
         "AZURE_OPENAI_ENDPOINT": "https://example.openai.azure.com",
     },

@@ -763,6 +763,15 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("FEATURE_VOICE_LIVE", "AIMMS_FEATURE_VOICE_LIVE"),
     )
+    feature_voice_decision_coordinator: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_VOICE_DECISIONS", "AIMMS_FEATURE_VOICE_DECISIONS"),
+        description=(
+            "Voice-UX Phase B: expose the server-owned pending-decision "
+            "coordinator. Requires Voice Live and its governed-write kill "
+            "switch to remain enabled."
+        ),
+    )
     feature_voice_live_webrtc: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -810,6 +819,17 @@ class Settings(BaseSettings):
     voice_live_max_turns_per_session: int = Field(
         default=100, ge=1, le=1000, alias="VOICE_LIVE_MAX_TURNS_PER_SESSION"
     )
+    # OD-12: the executable decision window begins after its read-back finishes,
+    # may be refreshed by a bounded number of review commands, and can never
+    # outlive the hard armed ceiling. The 300-second upper bound matches the
+    # current Voice Live idle ceiling.
+    voice_decision_ttl_s: int = Field(default=120, ge=1, le=300, alias="VOICE_DECISION_TTL_S")
+    voice_decision_max_review_turns: int = Field(
+        default=3, ge=0, le=3, alias="VOICE_DECISION_MAX_REVIEW_TURNS"
+    )
+    voice_decision_max_armed_s: int = Field(
+        default=300, ge=1, le=300, alias="VOICE_DECISION_MAX_ARMED_S"
+    )
     # Privacy invariant, not a rollout option: typed Literal[False] makes any
     # attempt to enable raw realtime audio retention a startup failure.
     voice_live_store_raw_audio: Literal[False] = Field(
@@ -826,7 +846,21 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_voice_live_transport(self) -> "Settings":
-        """Fail closed when realtime voice is enabled with an unusable transport."""
+        """Fail closed for inconsistent Voice Live feature dependencies."""
+        if self.feature_voice_decision_coordinator and not self.feature_voice_live:
+            raise ValueError("FEATURE_VOICE_DECISIONS requires FEATURE_VOICE_LIVE")
+        if self.feature_voice_decision_coordinator and not self.feature_voice_write_confirmation:
+            raise ValueError("FEATURE_VOICE_DECISIONS requires FEATURE_VOICE_WRITE_CONFIRMATION")
+        if (
+            self.feature_voice_decision_coordinator
+            and self.voice_decision_ttl_s > self.voice_decision_max_armed_s
+        ):
+            raise ValueError("VOICE_DECISION_TTL_S must not exceed VOICE_DECISION_MAX_ARMED_S")
+        if (
+            self.feature_voice_decision_coordinator
+            and self.voice_decision_max_armed_s > self.voice_live_idle_timeout_s
+        ):
+            raise ValueError("VOICE_DECISION_MAX_ARMED_S must not exceed VOICE_LIVE_IDLE_TIMEOUT_S")
         if self.feature_voice_live_webrtc and not self.feature_voice_live:
             raise ValueError("FEATURE_VOICE_LIVE_WEBRTC requires FEATURE_VOICE_LIVE")
         if self.feature_voice_live_relay and not self.feature_voice_live:

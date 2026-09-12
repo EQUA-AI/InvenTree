@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -231,6 +232,10 @@ class PendingVoiceWriteStore(Protocol):
 
     def save(self, thread_id: Any, stored: StoredPendingWrite) -> None: ...
 
+    def peek(self, thread_id: Any) -> StoredPendingWrite | None:
+        """Return the pending write without consuming it."""
+        ...
+
     def take(self, thread_id: Any) -> StoredPendingWrite | None: ...
 
 
@@ -251,13 +256,19 @@ class InMemoryPendingWriteStore:
     """
 
     def __init__(self) -> None:
-        self._slots: dict[Any, StoredPendingWrite] = {}
+        self._slots: dict[str, StoredPendingWrite] = {}
 
     def save(self, thread_id: Any, stored: StoredPendingWrite) -> None:
-        self._slots[thread_id] = stored
+        self._slots[str(thread_id)] = deepcopy(stored)
+
+    def peek(self, thread_id: Any) -> StoredPendingWrite | None:
+        """Return the thread's pending write without consuming it."""
+        stored = self._slots.get(str(thread_id))
+        return deepcopy(stored) if stored is not None else None
 
     def take(self, thread_id: Any) -> StoredPendingWrite | None:
-        return self._slots.pop(thread_id, None)
+        stored = self._slots.pop(str(thread_id), None)
+        return deepcopy(stored) if stored is not None else None
 
 
 class _DenyPermission:

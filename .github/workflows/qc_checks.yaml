@@ -696,7 +696,7 @@ jobs:
     # the eligibility table, the prompt endpoint, sandbox seams and the
     # proposal bridge -- BLOCKING from Phase A onward. Deliberately a narrow
     # module list so the documented pre-existing fork-suite failures cannot
-    # mask a regression here (LocalDocs/AiUpgrades/VoiceDecisionSafetySuite.md
+    # mask a regression here (LocalDocs/AiUpgrades/voice/VoiceDecisionSafetySuite.md
     # keeps the local command list in sync with this job).
     name: Tests - Voice decision safety [blocking]
     runs-on: ubuntu-24.04
@@ -746,6 +746,8 @@ jobs:
         run: |
           cd src/backend/InvenTree
           DJANGO_SETTINGS_MODULE=ai.core.tests.settings python -m pytest -q -p no:cacheprovider \
+            ai/core/tests/test_decision_store.py \
+            ai/core/tests/test_decision_grammar.py \
             ai/core/tests/test_voice_write_confirmation.py \
             ai/core/tests/test_voice_write_gate.py \
             ai/core/tests/test_voice_write_governance.py \

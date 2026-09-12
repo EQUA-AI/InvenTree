@@ -29,9 +29,13 @@ def test_local_env_file_is_anchored_to_ai_package():
 def test_voice_live_is_off_by_default():
     settings = _settings()
     assert settings.feature_voice_live is False
+    assert settings.feature_voice_decision_coordinator is False
     assert settings.feature_voice_live_webrtc is False
     assert settings.feature_voice_live_relay is False
     assert settings.voice_live_store_raw_audio is False
+    assert settings.voice_decision_ttl_s == 120
+    assert settings.voice_decision_max_review_turns == 3
+    assert settings.voice_decision_max_armed_s == 300
     assert settings.feature_capability_broker_enforce is True
     assert settings.feature_voice_fast_path is False
 
@@ -61,6 +65,36 @@ def test_enabled_voice_live_with_valid_transport():
     assert settings.azure_voicelive_transcription_model == "azure-speech"
     assert settings.azure_voicelive_api_version == "2026-04-10"
     assert settings.azure_voicelive_webrtc_api_version == "2026-01-01-preview"
+
+
+def test_voice_decisions_accept_canonical_and_prefixed_aliases():
+    common = {
+        "FEATURE_VOICE_LIVE": True,
+        "AZURE_VOICELIVE_ENDPOINT": VALID_HOST,
+    }
+    canonical = _settings(**common, FEATURE_VOICE_DECISIONS=True)
+    prefixed = _settings(**common, AIMMS_FEATURE_VOICE_DECISIONS=True)
+
+    assert canonical.feature_voice_decision_coordinator is True
+    assert prefixed.feature_voice_decision_coordinator is True
+
+
+def test_voice_decisions_require_voice_live_and_write_confirmation():
+    with pytest.raises(
+        ValidationError, match="FEATURE_VOICE_DECISIONS requires FEATURE_VOICE_LIVE"
+    ):
+        _settings(FEATURE_VOICE_DECISIONS=True)
+
+    with pytest.raises(
+        ValidationError,
+        match="FEATURE_VOICE_DECISIONS requires FEATURE_VOICE_WRITE_CONFIRMATION",
+    ):
+        _settings(
+            FEATURE_VOICE_DECISIONS=True,
+            FEATURE_VOICE_LIVE=True,
+            FEATURE_VOICE_WRITE_CONFIRMATION=False,
+            AZURE_VOICELIVE_ENDPOINT=VALID_HOST,
+        )
 
 
 def test_enabled_voice_live_requires_endpoint():
@@ -106,6 +140,49 @@ def test_session_limits_are_bounded():
         _settings(VOICE_LIVE_MAX_ACTIVE_SESSIONS_PER_USER=0)
     with pytest.raises(ValidationError):
         _settings(VOICE_LIVE_IDLE_TIMEOUT_S=5)
+
+
+@pytest.mark.parametrize(
+    ("setting", "value"),
+    [
+        ("VOICE_DECISION_TTL_S", 0),
+        ("VOICE_DECISION_TTL_S", 301),
+        ("VOICE_DECISION_MAX_REVIEW_TURNS", -1),
+        ("VOICE_DECISION_MAX_REVIEW_TURNS", 4),
+        ("VOICE_DECISION_MAX_ARMED_S", 0),
+        ("VOICE_DECISION_MAX_ARMED_S", 301),
+    ],
+)
+def test_voice_decision_limits_are_bounded(setting: str, value: int):
+    with pytest.raises(ValidationError):
+        _settings(**{setting: value})
+
+
+def test_enabled_voice_decision_lifetime_stays_within_hard_ceiling():
+    with pytest.raises(
+        ValidationError,
+        match="VOICE_DECISION_TTL_S must not exceed VOICE_DECISION_MAX_ARMED_S",
+    ):
+        _settings(
+            FEATURE_VOICE_DECISIONS=True,
+            FEATURE_VOICE_LIVE=True,
+            AZURE_VOICELIVE_ENDPOINT=VALID_HOST,
+            VOICE_DECISION_TTL_S=121,
+            VOICE_DECISION_MAX_ARMED_S=120,
+        )
+
+
+def test_enabled_voice_decision_ceiling_stays_within_session_idle_timeout():
+    with pytest.raises(
+        ValidationError,
+        match=("VOICE_DECISION_MAX_ARMED_S must not exceed VOICE_LIVE_IDLE_TIMEOUT_S"),
+    ):
+        _settings(
+            FEATURE_VOICE_DECISIONS=True,
+            FEATURE_VOICE_LIVE=True,
+            AZURE_VOICELIVE_ENDPOINT=VALID_HOST,
+            VOICE_LIVE_IDLE_TIMEOUT_S=299,
+        )
 
 
 def test_disabled_voice_live_skips_transport_validation():
