@@ -164,11 +164,25 @@ def pump_display_name(station, key):
 
     The trailing UUID fragment is not decoration: ``AssetMachine.name`` is
     globally unique, so two stations that a utility genuinely calls the same
-    thing would otherwise collide on their first pump. Nothing reads the
-    fragment back - identity lives in ``uuid`` and the ``source_*`` fields - so
-    it is safe for a human to ignore.
+    thing would otherwise collide on their first pump. It is therefore added
+    only when the plain name is actually taken - carrying it on every pump in
+    the plant to pay for a collision that usually never happens makes the whole
+    equipment list harder to read.
+
+    Nothing reads the fragment back; identity lives in ``uuid`` and the
+    ``source_*`` fields.
     """
-    return f'{station.name[:170]} / Pump {int(key[1:]):02d} [{str(station.uuid)[:8]}]'
+    base = f'{station.name[:170]} / Pump {int(key[1:]):02d}'
+
+    # A slot keeps its own name. Excluding itself is what makes relabelling
+    # idempotent instead of appending a suffix on every pass.
+    taken = (
+        AssetMachine.objects
+        .filter(name=base)
+        .exclude(parent=station, source_key=key)
+        .exists()
+    )
+    return base if not taken else f'{base} [{str(station.uuid)[:8]}]'
 
 
 def ensure_pump(station, key):

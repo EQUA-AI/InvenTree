@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "station_source_uuid": "bafc976f-1ccc-4a91-aaa6-c3eac2470d36",
+  "reviewer": "aimms-engineering",
+  "provenance": "Desk review of the PH_3 pilot dictionary. Units are taken from the catalogue parameter template where the template defines one; no unit is inferred from sample values, which is what the review UI asks for and what stops a scaling error being laundered into an approval.",
+  "policy": {
+    "confirmed": "The catalogue template already states the unit and the imported point agrees with it. Approving records that the agreement was checked, not that a new claim was invented.",
+    "unitless": "Status codes carry no physical unit. 'unitless' is a decision, distinct from 'unresolved' which means nobody has looked.",
+    "withheld": "Left unapproved on purpose. Each entry says what specifically is missing; none of them can be settled from a tag name."
+  },
+  "approve": [
+    {
+      "paths": [
+        "/st",
+        "/pd/P1/st",
+        "/pd/P2/st",
+        "/pd/P3/st",
+        "/pd/P4/st",
+        "/pd/P5/st",
+        "/pd/P6/st",
+        "/pd/P7/st",
+        "/pd/P8/st",
+        "/pd/P9/st",
+        "/pd/P10/st",
+        "/pd/P11/st",
+        "/pd/P12/st",
+        "/pd/P13/st",
+        "/pd/P14/st"
+      ],
+      "data_type": "status",
+      "unit": "",
+      "unit_status": "unitless",
+      "note": "Confirmed run state from SCADA. Vocabulary is I=Idle, R=Running, supplied by the source owner. Stored as the source's own code and never translated on the way in, so a vocabulary learned later cannot retroactively change what was recorded. Carries no physical unit."
+    },
+    {
+      "paths": ["/dex/COMMAN_FORBAY_LEVEL"],
+      "data_type": "number",
+      "unit": "m",
+      "unit_status": "verified",
+      "note": "Forebay water level. Unit confirmed against the catalogue parameter 'PUMP | FOREBAY | Forebay Water Level', which defines metres; the imported point already agreed."
+    },
+    {
+      "paths": [
+        "/dex/PUMP2_MOTOR_CORE_RTD1_PROCESS_VALUE",
+        "/dex/PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE"
+      ],
+      "data_type": "number",
+      "unit": "degC",
+      "unit_status": "verified",
+      "note": "Motor core RTD temperature. RTDs are temperature sensors and the catalogue parameter defines degC; the imported point agreed."
+    },
+    {
+      "paths": ["/dex/PUMP3_THRST_BRG_THRST_PD_RTD3_PROCESS_VALUE"],
+      "data_type": "number",
+      "unit": "degC",
+      "unit_status": "verified",
+      "note": "Thrust bearing pad RTD temperature. Catalogue parameter defines degC; the imported point agreed."
+    },
+    {
+      "paths": ["/dex/PUMP9_EXCITATION_FLD_CURR_PROCESS_VALUE"],
+      "data_type": "number",
+      "unit": "A",
+      "unit_status": "verified",
+      "note": "Synchronous motor excitation field current. Catalogue parameter defines amperes; the imported point agreed."
+    },
+    {
+      "paths": ["/dex/PUMP3_EXCITATION_FLD_VLTG_PROCESS_VALUE"],
+      "data_type": "number",
+      "unit": "V",
+      "unit_status": "verified",
+      "note": "Synchronous motor excitation field voltage. Catalogue parameter defines volts; the imported point agreed."
+    },
+    {
+      "paths": [
+        "/dex/PUMP4_HOPD_VALVE_POS_PROCESS_VALUE",
+        "/dex/PUMP12_EOPD_VALVE_POS_PROCESS_VALUE"
+      ],
+      "data_type": "number",
+      "unit": "percent",
+      "unit_status": "verified",
+      "note": "Discharge valve position, 0 closed to 100 open. Catalogue parameter defines percent; the imported point agreed."
+    },
+    {
+      "paths": ["/dex/PUMP12_PUMP_PUMP_INLET_COOLING_WATER_TEMPERATURED3"],
+      "data_type": "number",
+      "unit": "degC",
+      "unit_status": "verified",
+      "note": "Pump inlet cooling water temperature. Catalogue parameter defines degC; the imported point agreed. The doubled PUMP_PUMP_ prefix is reproduced verbatim from the source tag and is not a transcription error on our side."
+    },
+    {
+      "paths": ["/dex/PUMP6_PUMP_MOTOR_HOT_AIR TEMP2"],
+      "data_type": "number",
+      "unit": "degC",
+      "unit_status": "verified",
+      "note": "Motor hot-air (cooling circuit outlet) temperature. Catalogue parameter defines degC; the imported point agreed. The literal space in the source tag is reproduced verbatim and is not a transcription error on our side."
+    }
+  ],
+  "withhold": [
+    {
+      "paths": ["/sl"],
+      "reason": "Surge pool level. No component or parameter is assigned, and the catalogue has no surge pool level parameter. It must not simply be pointed at 'Forebay Water Level': whether the surge pool and the forebay are the same body of water at this station is unconfirmed, and merging two distinct levels into one signal would be silently wrong on an important measurement. Needs either confirmation that they are the same, or a new catalogue parameter."
+    },
+    {
+      "paths": [
+        "/dex/PUMP12_MTR_NDE_BRG_VBRTN2_PROCESS_VALUE",
+        "/dex/PUMP4_PMP_THRST_BRG_VBRTN2_PROCESS_VALUE",
+        "/dex/PUMP3_PUMP_MOTOR_DE_VIBRATION2"
+      ],
+      "reason": "Bearing vibration. The catalogue defines no unit and the tag name cannot settle it: ISO 20816 covers both casing velocity in mm/s RMS, measured by an accelerometer, and relative shaft displacement in micrometres peak-to-peak, measured by a proximity probe. The trailing '2' hints at a second channel per bearing, which is the usual X/Y proximity-probe arrangement and would favour micrometres, but that is an inference about which instrument is fitted, not a fact about the tag. Picking the wrong one puts the reading out by orders of magnitude and would make every alarm threshold meaningless. Needs the instrument type per bearing.",
+      "recommendation": "Ask the site which is installed. If proximity probes, use 'um'; if accelerometers on the bearing housing, use 'mm/s'. Both validate in this system."
+    },
+    {
+      "paths": ["/dex/PUMP5_PUMP_REACTIVE_POWER"],
+      "reason": "Reactive power, which belongs in MVar to match the station-level 'pmvar'. The unit registry rejects 'MVar', 'Mvar' and 'var' outright, so the correct unit currently cannot be expressed. 'MVA' validates but means apparent power, and recording reactive power under an apparent-power unit would be a false statement about the measurement.",
+      "recommendation": "Add volt-amperes-reactive to the custom unit registry, then approve as MVar. The station-level pmvar point will hit exactly the same wall when it is mapped."
+    },
+    {
+      "paths": ["/dex/PUMP14_PUMP_THRUST_AXIAL_PAD_1D5"],
+      "reason": "Data type is 'unknown' and the tag is ambiguous. 'Thrust axial pad' is monitored for pad temperature on most machines, which would make it degC, but an axial pad channel can equally carry displacement or wear. The '1D5' suffix is unexplained. Approving on the more likely of two readings is how a displacement ends up plotted as a temperature.",
+      "recommendation": "Confirm with the site what this channel measures, then set both the data type and the unit."
+    }
+  ]
+}
