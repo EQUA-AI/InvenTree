@@ -3,6 +3,9 @@ import type { VoicePendingDecision } from '../../../lib/types/Voice';
 interface PlaybackItem {
   utterance: string;
   hash: string;
+  epoch: number;
+  transcript: string | null;
+  hasBindingMetadata: boolean;
   started: boolean;
   done: boolean;
   canceled: boolean;
@@ -14,14 +17,38 @@ interface PlaybackItem {
   reportFailures: number;
 }
 
-/** Provider metadata binds delivery to the exact persisted utterance, never assent. */
+export function estimatedDecisionPlaybackMs(text: string): number {
+  return (
+    Math.max(
+      2,
+      text.split(/\s+/).length * 0.6 +
+        (text.match(/\d/g)?.length ?? 0) * 0.3 +
+        1
+    ) * 1000
+  );
+}
+
+/** Exact persisted speech correlation is delivery evidence, never assent. */
 export class DecisionPlayback {
   private items = new Map<string, PlaybackItem>();
+  private epoch = 0;
+  private binding: VoicePendingDecision | null = null;
 
   constructor(private now: () => number = () => performance.now()) {}
 
   stop() {
     for (const item of this.items.values()) item.canceled = true;
+    this.epoch += 1;
+    this.binding = null;
+  }
+
+  beginTurn(): number {
+    this.stop();
+    return this.epoch;
+  }
+
+  bindTurn(epoch: number, decision: VoicePendingDecision | null) {
+    if (epoch === this.epoch) this.binding = decision;
   }
 
   event(event: Record<string, unknown>) {
@@ -32,10 +59,15 @@ export class DecisionPlayback {
     if (!id) return;
     if (event.type === 'response.created') {
       const meta = response?.metadata;
-      if (meta?.aimms_utterance_id && meta.aimms_spoken_hash) {
+      if (!this.items.has(id)) {
         this.items.set(id, {
-          utterance: meta.aimms_utterance_id,
-          hash: meta.aimms_spoken_hash,
+          utterance: meta?.aimms_utterance_id ?? '',
+          hash: meta?.aimms_spoken_hash ?? '',
+          hasBindingMetadata: !!(
+            meta?.aimms_utterance_id || meta?.aimms_spoken_hash
+          ),
+          epoch: this.epoch,
+          transcript: null,
           started: false,
           done: false,
           canceled: false,
@@ -52,6 +84,13 @@ export class DecisionPlayback {
     }
     const item = this.items.get(id);
     if (!item || item.canceled) return;
+    if (
+      event.type === 'response.audio_transcript.done' &&
+      typeof event.transcript === 'string'
+    ) {
+      item.transcript =
+        event.transcript.length <= 16000 ? event.transcript : null;
+    }
     if (
       event.type === 'response.audio.delta' ||
       event.type === 'response.audio_transcript.delta' ||
@@ -94,6 +133,33 @@ export class DecisionPlayback {
     decision: VoicePendingDecision | null
   ): 'playback-started' | 'playback-completed' | null {
     if (!decision || decision.state !== 'presented') return null;
+    // Azure WebRTC pre-generated speech currently omits response metadata.
+    // Bind only an exact FINAL speech transcript created within this HTTP
+    // turn's epoch to the persisted utterance returned by that SAME turn.
+    // A previous response, repeated text on another turn, mismatched metadata,
+    // partial transcript or interrupted request can never supply this binding.
+    const binding = this.binding;
+    if (
+      binding?.utterance_id === decision.utterance_id &&
+      binding?.spoken_summary_hash === decision.spoken_summary_hash
+    ) {
+      const candidates = [...this.items.values()].filter(
+        (entry) =>
+          !entry.canceled &&
+          !entry.hasBindingMetadata &&
+          entry.epoch === this.epoch &&
+          entry.transcript === binding.spoken_summary &&
+          entry.started
+      );
+      for (const candidate of candidates) {
+        candidate.utterance = '';
+        candidate.hash = '';
+      }
+      if (candidates.length === 1) {
+        candidates[0].utterance = binding.utterance_id ?? '';
+        candidates[0].hash = binding.spoken_summary_hash;
+      }
+    }
     const item = [...this.items.values()].find(
       (entry) =>
         entry.utterance === decision.utterance_id &&
@@ -120,13 +186,7 @@ export class DecisionPlayback {
       (item.playbackStopped ||
         (item.startedAt !== null &&
           this.now() - item.startedAt >=
-            Math.max(
-              2,
-              decision.spoken_summary.split(/\s+/).length * 0.6 +
-                (decision.spoken_summary.match(/\d/g)?.length ?? 0) * 0.3 +
-                1
-            ) *
-              1000))
+            estimatedDecisionPlaybackMs(decision.spoken_summary)))
     ) {
       item.reportedDone = true;
       return 'playback-completed';

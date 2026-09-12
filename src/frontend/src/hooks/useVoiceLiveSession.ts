@@ -10,7 +10,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DecisionPlayback } from '../components/ai/decisionPlayback';
+import {
+  DecisionPlayback,
+  estimatedDecisionPlaybackMs
+} from '../components/ai/decisionPlayback';
 import { useVoiceDecisionState } from '../states/VoiceDecisionState';
 import { decisionContext } from '../states/decisionReducer';
 
@@ -416,6 +419,7 @@ export function useVoiceLiveSession(
           window.addEventListener('pointerdown', resume, { once: true });
         });
       }
+      const playbackEpoch = decisionPlaybackRef.current.beginTurn();
       try {
         const response = await fetch(
           resolveUrl(`voice/sessions/${active.id}/turns`, host),
@@ -453,6 +457,13 @@ export function useVoiceLiveSession(
           return;
         }
         const turn = (await response.json()) as VoiceTurnResponse;
+        decisionPlaybackRef.current.bindTurn(
+          playbackEpoch,
+          turn.spoken?.playback_state === 'requested' &&
+            turn.spoken.utterance_id === turn.pending_decision?.utterance_id
+            ? turn.pending_decision
+            : null
+        );
         useVoiceDecisionState.getState().applyTurn(active.id, turn);
         // A8: a 200 whose recorded state is incomplete/failed is not an
         // answer; keep the session but surface the stable code so the UI
@@ -485,12 +496,18 @@ export function useVoiceLiveSession(
         // return to listening; this timer is only a fallback for a lost
         // event so the loop can never wedge in 'speaking'.
         clearSpeakingTimer();
-        speakingTimerRef.current = window.setTimeout(() => {
-          speakingTimerRef.current = null;
-          setState((current) =>
-            current === 'speaking' ? 'listening' : current
-          );
-        }, 15_000);
+        speakingTimerRef.current = window.setTimeout(
+          () => {
+            speakingTimerRef.current = null;
+            setState((current) =>
+              current === 'speaking' ? 'listening' : current
+            );
+          },
+          turn.pending_decision?.state === 'presented'
+            ? estimatedDecisionPlaybackMs(turn.spoken?.spoken_summary ?? '') +
+                1500
+            : 15_000
+        );
       } catch {
         fail('VOICE_RESPONSE_INCOMPLETE');
       }
@@ -604,7 +621,11 @@ export function useVoiceLiveSession(
         return;
       }
       if (type === 'response.audio.done' || type === 'response.done') {
-        // Playback for this response has drained; resume the loop precisely
+        // These signal generation, not physical playback. A decision keeps
+        // its conservative read-back timer; barge-in still stops it immediately.
+        if (useVoiceDecisionState.getState().decision?.state === 'presented')
+          return;
+        // Resume the ordinary advisory loop precisely
         // instead of waiting out the fallback timer. Ignore terminal events
         // that raced ahead of a just-started answer (the cancelled thinking
         // phrase drains milliseconds before the answer begins).

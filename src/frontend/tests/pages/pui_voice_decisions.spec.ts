@@ -176,6 +176,93 @@ test('touch confirmation sends hash and revision and unknown result stays unveri
   ).toHaveCount(0);
 });
 
+test('metadata-free Azure read-back reports bound delivery without confirming an action', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser, { url: 'home' });
+  await mockChatFoundation(page);
+  let decision: VoicePendingDecision | null = null;
+  const voice = await installVoiceMocks(page, {
+    onDecisionRead: () => ({ pending_decision: decision }),
+    onTurn: () => {
+      decision = {
+        ...holdDecision(),
+        spoken_summary: 'Confirm hold.',
+        utterance_id: 'exact-utterance',
+        spoken_summary_hash: 's'.repeat(64),
+        delivery_state: 'requested'
+      };
+      return {
+        session_id: mockSessionId,
+        thread_id: mockThreadId,
+        turn_id: 'turn-exact',
+        message: decision.spoken_summary,
+        response_state: 'complete',
+        workflow_used: 'voice_decision',
+        replayed: false,
+        pending_question: null,
+        pending_decision: decision,
+        decision_event: null,
+        spoken: {
+          utterance_id: decision.utterance_id,
+          spoken_summary: decision.spoken_summary,
+          spoken_summary_hash: decision.spoken_summary_hash,
+          playback_state: 'requested'
+        }
+      };
+    },
+    onDecisionAction: (action) => {
+      decision = {
+        ...decision!,
+        sequence: decision!.sequence + 1,
+        delivery_state: action === 'playback-started' ? 'playing' : 'done'
+      };
+      return { pending_decision: decision };
+    }
+  });
+  await page.reload();
+  await openChat(page);
+  await page.getByTestId('voice-start').click();
+  await emitTranscript(page, {
+    text: 'Put the work order on hold',
+    itemId: 'proposal'
+  });
+  await expect(page.getByTestId('voice-decision-card')).toBeVisible();
+  await page.evaluate(() => {
+    const emit = (window as any).__voiceMock.emit;
+    emit('response.created', {
+      response: { id: 'azure-response', status: 'in_progress' }
+    });
+    emit('response.audio_transcript.delta', {
+      response_id: 'azure-response',
+      delta: 'Confirm hold.'
+    });
+    emit('response.audio_transcript.done', {
+      response_id: 'azure-response',
+      transcript: 'Confirm hold.'
+    });
+    emit('response.audio.done', { response_id: 'azure-response' });
+    emit('output_audio_buffer.stopped', {});
+    emit('response.done', {
+      response: { id: 'azure-response', status: 'completed' }
+    });
+  });
+  await expect
+    .poll(() => voice.decisionActions.length, { timeout: 8000 })
+    .toBe(2);
+  expect(
+    voice.decisionActions.map((entry) => entry.url.split('/').pop())
+  ).toEqual(['playback-started', 'playback-completed']);
+  for (const entry of voice.decisionActions) {
+    expect(entry.body).toMatchObject({
+      utterance_id: 'exact-utterance',
+      spoken_summary_hash: 's'.repeat(64),
+      confirm_phrase: ''
+    });
+  }
+  expect(voice.turns).toHaveLength(1);
+});
+
 test('retired HITL event never renders an approvable card', async ({
   browser
 }) => {

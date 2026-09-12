@@ -69,6 +69,82 @@ describe('decision focus', () => {
 });
 
 describe('bound playback', () => {
+  const metadataFreeResponse = (
+    tracker: DecisionPlayback,
+    id = 'r',
+    text = decision().spoken_summary
+  ) => {
+    tracker.event({ type: 'response.created', response: { id } });
+    tracker.event({ type: 'response.audio_transcript.delta', response_id: id });
+    tracker.event({
+      type: 'response.audio_transcript.done',
+      response_id: id,
+      transcript: text
+    });
+    tracker.event({ type: 'response.audio.done', response_id: id });
+    tracker.event({
+      type: 'response.done',
+      response: { id, status: 'completed' }
+    });
+  };
+  it('correlates metadata-free Azure speech only to the exact originating turn', () => {
+    let now = 0;
+    const tracker = new DecisionPlayback(() => now);
+    const epoch = tracker.beginTurn();
+    metadataFreeResponse(tracker);
+    expect(tracker.next(decision())).toBeNull();
+    tracker.bindTurn(epoch, decision());
+    expect(tracker.next(decision())).toBe('playback-started');
+    // Real WebRTC buffer events have no response id: not drain proof.
+    tracker.event({ type: 'output_audio_buffer.stopped' });
+    expect(
+      tracker.next({ ...decision(), delivery_state: 'playing' })
+    ).toBeNull();
+    now = 4000;
+    expect(tracker.next({ ...decision(), delivery_state: 'playing' })).toBe(
+      'playback-completed'
+    );
+  });
+  it('rejects old identical speech and a response to an interrupted HTTP turn', () => {
+    const tracker = new DecisionPlayback();
+    const oldEpoch = tracker.beginTurn();
+    metadataFreeResponse(tracker);
+    const newEpoch = tracker.beginTurn();
+    tracker.bindTurn(oldEpoch, decision());
+    expect(tracker.next(decision())).toBeNull();
+    tracker.bindTurn(newEpoch, decision());
+    expect(tracker.next(decision())).toBeNull();
+    tracker.stop();
+    metadataFreeResponse(tracker, 'late');
+    tracker.bindTurn(newEpoch, decision());
+    expect(tracker.next(decision())).toBeNull();
+  });
+  it('rejects partial, changed, ambiguous and mismatched-metadata speech', () => {
+    const tracker = new DecisionPlayback();
+    tracker.bindTurn(tracker.beginTurn(), decision());
+    metadataFreeResponse(tracker, 'different', 'Different text');
+    tracker.event({ type: 'response.created', response: { id: 'partial' } });
+    tracker.event({
+      type: 'response.audio_transcript.delta',
+      response_id: 'partial',
+      delta: decision().spoken_summary
+    });
+    expect(tracker.next(decision())).toBeNull();
+    metadataFreeResponse(tracker, 'a');
+    metadataFreeResponse(tracker, 'b');
+    expect(tracker.next(decision())).toBeNull();
+    const another = new DecisionPlayback();
+    another.bindTurn(another.beginTurn(), decision());
+    another.event({
+      type: 'response.created',
+      response: {
+        id: 'bad',
+        metadata: { aimms_utterance_id: 'wrong', aimms_spoken_hash: 's' }
+      }
+    });
+    metadataFreeResponse(another, 'bad');
+    expect(another.next(decision())).toBeNull();
+  });
   const started = () => {
     const tracker = new DecisionPlayback();
     tracker.event({
