@@ -18,6 +18,8 @@ class ProcedurePublishExecutor(ApprovalExecutor):
     """Revalidate and publish the exact procedure revision humans reviewed."""
 
     action_type = ActionType.PROCEDURE_PUBLISH
+    implemented = True
+    atomic_execution = True
     required_fields = (
         'procedure_id',
         'revision_id',

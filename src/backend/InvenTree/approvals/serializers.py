@@ -436,7 +436,11 @@ class OpenApprovalSerializer(serializers.Serializer):
 
 
 class ConfirmViewedSerializer(serializers.Serializer):
-    """Serializer for POST /confirm-viewed (no body required)."""
+    """Review focus; required by the revision-bound rollout, optional in legacy mode."""
+
+    revision = serializers.IntegerField(required=False, min_value=0)
+    review_hash = serializers.CharField(required=False, min_length=64, max_length=64)
+    sections = serializers.ListField(child=serializers.CharField(), required=False)
 
 
 class RequestChangesSerializer(serializers.Serializer):

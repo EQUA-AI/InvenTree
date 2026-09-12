@@ -17,10 +17,10 @@ from . import serializers as approval_serializers
 from .models import (
     Approval,
     ApprovalEvent,
+    ApprovalExecution,
     ApprovalRevision,
     ApprovalStatus,
     EventType,
-    ExecutedEffect,
 )
 from .policy import ApprovalPolicyError, require_policy
 from .resume import attempt_agent_resume
@@ -32,7 +32,6 @@ from .review_evidence import (
     revision_binding_enabled,
 )
 from .review_sections import compute_review_hash
-from .sanitizers import redact_error
 
 logger = structlog.get_logger('approvals.services')
 
@@ -278,12 +277,16 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
         )
 
     # ── Phase 2: Revalidation (no lock, may do network I/O) ──
-    from .executors import is_executor_required
+    from .execution import dispatch, preflight, record_result
     from .executors import registry as executor_registry
 
-    executor = None
-    if executor_registry.has(approval.action_type):
-        executor = executor_registry.get(approval.action_type)
+    executor = (
+        executor_registry.get(approval.action_type)
+        if executor_registry.has(approval.action_type)
+        else None
+    )
+    preflight_failure = preflight(executor, approval)
+    if executor is not None and preflight_failure is None:
         try:
             drift_report = executor.check_preconditions(
                 approval.payload, approval.baseline_context
@@ -360,92 +363,34 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
             _reject('locked', str(exc), 423)
         _approve_gates(locked, actor, channel)
 
-        missing_required_executor = is_executor_required(
-            locked.action_type
-        ) and not executor_registry.has(locked.action_type)
+        # The operation key exists durably before any possible external dispatch.
+        execution, created = ApprovalExecution.objects.get_or_create(
+            idempotency_key=locked.idempotency_key,
+            defaults={
+                'approval': locked,
+                'actor': actor,
+                'revision': locked.current_revision_number,
+                'review_hash': expected_hash,
+            },
+        )
+        if not created:
+            _reject(
+                'execution_exists',
+                'This operation already has an execution record; check its status instead of retrying.',
+                409,
+            )
         locked.transition_to(ApprovalStatus.APPROVED, actor_user=actor)
-        if missing_required_executor:
-            locked.execution_error = redact_error(
-                'No executor registered for required action'
-            )
-            locked.transition_to(
-                ApprovalStatus.FAILED,
-                actor_user=actor,
-                extra_update_fields=['execution_error'],
-            )
-        elif locked.can_transition_to(ApprovalStatus.EXECUTING):
+        if preflight_failure is None:
             locked.transition_to(ApprovalStatus.EXECUTING, actor_user=actor)
 
-    # ── Phase 4: Execute via executor (outside transaction) ──
-    effect_result = None
-    if executor:
-        try:
-            effect_result = executor.execute(locked.payload, locked.idempotency_key)
-        except Exception as exc:
-            logger.error('executor_failed', approval_id=str(pk), exc_info=True)
-            effect_result = type(
-                'EffectResult',
-                (),
-                {
-                    'success': False,
-                    'error_message': str(exc),
-                    'result_payload': None,
-                    'effect_ref': None,
-                },
-            )()
-
-    # ── Phase 5: Record result (new transaction) ──
-    with transaction.atomic():
-        locked = _get_approval_for_update(pk)
-        if locked and locked.status == ApprovalStatus.EXECUTING:
-            if effect_result and effect_result.success:
-                from .executors import compute_effect_idempotency_key
-
-                effect_key = compute_effect_idempotency_key(
-                    locked.idempotency_key, locked.action_type
-                )
-                ExecutedEffect.objects.get_or_create(
-                    idempotency_key=effect_key,
-                    defaults={
-                        'approval': locked,
-                        'effect_type': locked.action_type,
-                        'effect_ref': getattr(effect_result, 'effect_ref', '') or '',
-                    },
-                )
-                locked.execution_result = (
-                    getattr(effect_result, 'result_payload', None) or {}
-                )
-                locked.transition_to(
-                    ApprovalStatus.SUCCEEDED,
-                    actor_user=actor,
-                    extra_update_fields=['execution_result'],
-                )
-            elif effect_result and not effect_result.success:
-                locked.execution_error = redact_error(effect_result.error_message)
-                locked.transition_to(
-                    ApprovalStatus.FAILED,
-                    actor_user=actor,
-                    extra_update_fields=['execution_error'],
-                )
-            else:
-                if is_executor_required(locked.action_type):
-                    locked.execution_error = redact_error(
-                        'No executor registered for required action'
-                    )
-                    locked.transition_to(
-                        ApprovalStatus.FAILED,
-                        actor_user=actor,
-                        extra_update_fields=['execution_error'],
-                    )
-                else:
-                    locked.transition_to(ApprovalStatus.SUCCEEDED, actor_user=actor)
-
-    # ── Phase 6: Agent resume (outside transaction) ──
-    attempt_agent_resume(locked, 'approved', actor)
-
+    if preflight_failure is not None:
+        locked = record_result(locked.pk, execution.pk, preflight_failure)
+    else:
+        locked = dispatch(executor, locked, actor=actor, execution=execution)
+    if locked.status == ApprovalStatus.SUCCEEDED:
+        attempt_agent_resume(locked, 'approved', actor)
     return ApprovalServiceResult(
-        approval_serializers.ApprovalDetailSerializer(locked).data,
-        status=status.HTTP_200_OK,
+        approval_serializers.ApprovalDetailSerializer(locked).data
     )
 
 

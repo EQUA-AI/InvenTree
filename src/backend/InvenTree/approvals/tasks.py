@@ -174,6 +174,11 @@ def reconcile_approvals():
 
     for approval in stuck_executing:
         try:
+            if approval.executions.exists():
+                from .execution import reconcile_execution
+
+                reconcile_execution(approval.pk)
+                continue
             with transaction.atomic():
                 locked = Approval.objects.select_for_update().get(pk=approval.pk)
                 if locked.status != ApprovalStatus.EXECUTING:
@@ -339,6 +344,10 @@ def purge_expired_approvals():
 
     Deletes associated events, revisions, and executed_effects.
     Gated behind APPROVAL_RETENTION_PURGE_ENABLED.
+
+    Content-bound review / dispatch evidence is protected audit data. Keep its
+    approvals until an explicit retention policy exists for the new ledger;
+    do not let PROTECT abort purging unrelated eligible legacy records.
     """
     from .models import (
         TERMINAL_STATUSES,
@@ -363,6 +372,9 @@ def purge_expired_approvals():
                 status__in=list(TERMINAL_STATUSES),
                 resolved_at__isnull=False,
                 resolved_at__lt=cutoff,
+                executions__isnull=True,
+                review_acknowledgments__isnull=True,
+                review_deliveries__isnull=True,
             ).values_list('pk', flat=True)[:batch_size]
         )
 

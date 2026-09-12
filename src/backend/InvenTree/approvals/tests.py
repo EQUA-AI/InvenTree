@@ -70,6 +70,9 @@ class ApprovalTestBase(TestCase):
 
     def setUp(self):
         """Create shared test fixtures."""
+        from .testing import RecordingPurchaseExecutor
+
+        self.enterContext(registry.replace_for_tests(RecordingPurchaseExecutor()))
         self.user = User.objects.create_user(
             username='reviewer', password='testpass123', email='reviewer@test.com'
         )
@@ -1061,24 +1064,17 @@ class RetentionPurgeTests(ApprovalTestBase):
 class ExecutorRegistryTests(TestCase):
     """Test executor registry (Section 17)."""
 
-    def test_all_non_required_action_types_registered(self):
-        """All non-required ActionType values have registered executors."""
-        for action_type in ActionType.values:
-            if not is_executor_required(action_type):
-                self.assertTrue(
-                    registry.has(action_type),
-                    f'No executor registered for {action_type}',
-                )
+    def test_registered_executors_declare_implementation_status(self):
+        """Registration alone cannot turn a placeholder into a real executor."""
+        for action_type in registry.list_registered():
+            self.assertIsInstance(registry.get(action_type).implemented, bool)
+        self.assertFalse(registry.get(ActionType.STOCK_UPDATE).implemented)
 
     def test_executor_required_actions(self):
-        """Only maintenance effect actions require executors."""
-        required = {
-            ActionType.PROCEDURE_PUBLISH,
-            ActionType.JOB_KIT_SUBSTITUTION,
-            ActionType.REPAIR_WORK_PACKAGE,
-        }
+        """Every current and future effect requires a real executor."""
         for action_type in ActionType.values:
-            self.assertEqual(is_executor_required(action_type), action_type in required)
+            self.assertTrue(is_executor_required(action_type))
+        self.assertTrue(is_executor_required('future_action'))
 
     def test_get_executor(self):
         """Registry returns correct executor for action type."""
@@ -1109,14 +1105,15 @@ class ExecutorRegistryTests(TestCase):
         self.assertFalse(report.has_drift)
 
     def test_executor_execute_returns_result(self):
-        """Executors return EffectResult."""
+        """An unavailable executor must not manufacture a success receipt."""
         executor = registry.get('email')
         result = executor.execute(
             {'to': ['a@b.com'], 'subject': 'Test'}, 'test-key-123'
         )
         self.assertIsInstance(result, EffectResult)
-        self.assertTrue(result.success)
-        self.assertIsNotNone(result.effect_ref)
+        self.assertFalse(result.success)
+        self.assertIsNone(result.effect_ref)
+        self.assertEqual(result.outcome, 'failed_before_effect')
 
 
 # ===========================================================================

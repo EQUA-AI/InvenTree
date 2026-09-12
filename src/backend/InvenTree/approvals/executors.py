@@ -19,19 +19,12 @@ from .models import ActionType
 logger = structlog.get_logger('approvals.executors')
 
 
-EXECUTOR_REQUIRED_ACTIONS = frozenset({
-    ActionType.PROCEDURE_PUBLISH,
-    ActionType.JOB_KIT_SUBSTITUTION,
-    # Creating a repair commits parts, a machine and a safety aggregate. If its
-    # executor were ever unregistered, approving must fail loudly rather than
-    # silently succeeding with no effect.
-    ActionType.REPAIR_WORK_PACKAGE,
-})
+EXECUTOR_REQUIRED_ACTIONS = frozenset(ActionType.values)
 
 
 def is_executor_required(action_type) -> bool:
-    """Return whether an action must have a registered executor."""
-    return action_type in EXECUTOR_REQUIRED_ACTIONS
+    """Every current or future action requires a real registered executor."""
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +50,7 @@ class EffectResult:
     effect_ref: Optional[str] = None
     result_payload: Optional[dict] = None
     error_message: Optional[str] = None
+    outcome: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +69,25 @@ class ApprovalExecutor(ABC):
     """
 
     action_type: str  # Must match ActionType enum value
+    implemented = False
+    atomic_execution = False
+
+    def execute_for_approval(self, approval, *, actor, execution):
+        """Run as the authenticated reviewer, never as a payload-named user."""
+        payload = {
+            **approval.payload,
+            'actor_id': actor.pk,
+            'requested_by_id': actor.pk,
+        }
+        return self.execute(payload, execution.idempotency_key)
+
+    def reconcile(self, approval, execution):
+        """Unknown means unknown unless an executor proves authoritative status."""
+        return EffectResult(
+            False,
+            error_message='Outcome remains unverified; do not retry.',
+            outcome='unknown',
+        )
 
     @abstractmethod
     def validate(self, payload: dict) -> list[str]:
@@ -255,6 +268,7 @@ class EmailExecutor(ApprovalExecutor):
             return EffectResult(
                 success=False,
                 error_message=BLOCKED_ERROR,
+                outcome='failed_before_effect',
                 result_payload={
                     'blocked_by_policy': True,
                     'blocked_recipients': list(decision.blocked),
@@ -267,9 +281,10 @@ class EmailExecutor(ApprovalExecutor):
             idempotency_key=idempotency_key,
         )
         return EffectResult(
-            success=True,
-            effect_ref=f'stub-email-{idempotency_key[:12]}',
-            result_payload={'stub': True},
+            success=False,
+            error_message='Canonical business executor is unavailable; no effect dispatched.',
+            outcome='failed_before_effect',
+            result_payload={'unavailable': True},
         )
 
 
@@ -300,9 +315,10 @@ class PurchaseOrderExecutor(ApprovalExecutor):
             idempotency_key=idempotency_key,
         )
         return EffectResult(
-            success=True,
-            effect_ref=f'stub-po-{idempotency_key[:12]}',
-            result_payload={'stub': True},
+            success=False,
+            error_message='Canonical business executor is unavailable; no effect dispatched.',
+            outcome='failed_before_effect',
+            result_payload={'unavailable': True},
         )
 
 
@@ -332,9 +348,10 @@ class SalesOrderExecutor(ApprovalExecutor):
             idempotency_key=idempotency_key,
         )
         return EffectResult(
-            success=True,
-            effect_ref=f'stub-so-{idempotency_key[:12]}',
-            result_payload={'stub': True},
+            success=False,
+            error_message='Canonical business executor is unavailable; no effect dispatched.',
+            outcome='failed_before_effect',
+            result_payload={'unavailable': True},
         )
 
 
@@ -367,9 +384,10 @@ class StockUpdateExecutor(ApprovalExecutor):
             idempotency_key=idempotency_key,
         )
         return EffectResult(
-            success=True,
-            effect_ref=f'stub-stock-{idempotency_key[:12]}',
-            result_payload={'stub': True},
+            success=False,
+            error_message='Canonical business executor is unavailable; no effect dispatched.',
+            outcome='failed_before_effect',
+            result_payload={'unavailable': True},
         )
 
 
@@ -397,9 +415,10 @@ class WorkflowExecutor(ApprovalExecutor):
             idempotency_key=idempotency_key,
         )
         return EffectResult(
-            success=True,
-            effect_ref=f'stub-workflow-{idempotency_key[:12]}',
-            result_payload={'stub': True},
+            success=False,
+            error_message='Canonical business executor is unavailable; no effect dispatched.',
+            outcome='failed_before_effect',
+            result_payload={'unavailable': True},
         )
 
 
@@ -429,9 +448,10 @@ class NotificationExecutor(ApprovalExecutor):
             idempotency_key=idempotency_key,
         )
         return EffectResult(
-            success=True,
-            effect_ref=f'stub-notification-{idempotency_key[:12]}',
-            result_payload={'stub': True},
+            success=False,
+            error_message='Canonical business executor is unavailable; no effect dispatched.',
+            outcome='failed_before_effect',
+            result_payload={'unavailable': True},
         )
 
 
@@ -439,6 +459,23 @@ class SafetyGateExecutor(ApprovalExecutor):
     """Executor for approved high-risk safety-gate actions."""
 
     action_type = 'safety_gate'
+    implemented = True
+    atomic_execution = True
+
+    def execute_for_approval(self, approval, *, actor, execution):
+        """The reviewer must have the packet's current maintenance scope."""
+        from tasks.scope import require_machine_scope, require_work_order_scope
+
+        from repair.models import RepairPacketGate
+
+        gate = RepairPacketGate.objects.select_related(
+            'packet__work_order__machine', 'packet__machine'
+        ).get(pk=approval.payload['gate_id'])
+        if gate.packet.work_order_id:
+            require_work_order_scope(actor, gate.packet.work_order)
+        else:
+            require_machine_scope(actor, gate.packet.machine)
+        return super().execute_for_approval(approval, actor=actor, execution=execution)
 
     def validate(self, payload: dict) -> list[str]:
         """Validate."""
@@ -481,12 +518,14 @@ class SafetyGateExecutor(ApprovalExecutor):
             action = payload.get('action')
             if action == 'waive':
                 gate.waive(
+                    user=RepairWorkPackageExecutor._actor_for(payload),
                     reason=payload.get('reason', ''),
                     authority=payload.get('authority', 'approval'),
                 )
                 RepairPacketEvent.objects.create(
                     packet=gate.packet,
                     event_type=RepairPacketEvent.EventType.GATE_WAIVED,
+                    actor=RepairWorkPackageExecutor._actor_for(payload),
                     reason=payload.get('reason', ''),
                     metadata={
                         'gate_id': gate.pk,
@@ -495,17 +534,17 @@ class SafetyGateExecutor(ApprovalExecutor):
                     },
                 )
             elif action == 'confirm':
-                gate.confirm(note=payload.get('note', 'approved confirmation'))
-                RepairPacketEvent.objects.create(
-                    packet=gate.packet,
-                    event_type=RepairPacketEvent.EventType.GATE_CONFIRMED,
-                    reason=payload.get('note', ''),
-                    metadata={
-                        'gate_id': gate.pk,
-                        'approval_execution': True,
-                        'idempotency_key': idempotency_key,
-                    },
+                from repair.services import confirm_gate
+
+                ok, detail = confirm_gate(
+                    gate,
+                    user=RepairWorkPackageExecutor._actor_for(payload),
+                    note=payload.get('note', 'approved confirmation'),
                 )
+                if not ok:
+                    return EffectResult(
+                        False, error_message=detail, outcome='failed_before_effect'
+                    )
             else:
                 return EffectResult(
                     success=False, error_message='Unsupported safety action'
@@ -534,6 +573,8 @@ class RepairWorkPackageExecutor(ApprovalExecutor):
     """
 
     action_type = ActionType.REPAIR_WORK_PACKAGE
+    implemented = True
+    atomic_execution = True
 
     def validate(self, payload: dict) -> list[str]:
         """Validate the draft against the canonical work-package schema."""
