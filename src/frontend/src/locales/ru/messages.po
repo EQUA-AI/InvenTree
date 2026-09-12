@@ -41,7 +41,7 @@ msgid "Error Details"
 msgstr "Подробнее об ошибке"
 
 #: lib/components/CopyButton.tsx:49
-#: src/components/nav/AIChatDrawer.tsx:835
+#: src/components/nav/AIChatDrawer.tsx:862
 msgid "Copy"
 msgstr "Копировать"
 
@@ -839,112 +839,179 @@ msgstr "Не удалось выполнить процесс"
 msgid "Process completed successfully"
 msgstr "Процесс успешно завершён"
 
-#: src/components/ai/HITLApprovalModal.tsx:122
-msgid "Low Risk"
+#: src/components/ai/ChatActionProposals.tsx:231
+msgid "Review this action in the shared voice decision card above."
 msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:122
+#~ msgid "Low Risk"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:124
-msgid "Medium Risk"
-msgstr ""
+#~ msgid "Medium Risk"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:126
-msgid "High Risk"
-msgstr ""
-
-#: src/components/ai/HITLApprovalModal.tsx:158
-#: src/tables/sales/SalesOrderShipmentTable.tsx:158
-msgid "Items"
-msgstr "Элементы"
-
-#: src/components/ai/HITLApprovalModal.tsx:203
-#: src/components/render/Part.tsx:78
-#: src/components/riskradar/RiskRadarPanel.tsx:446
-#: src/pages/assets/MachineDetail.tsx:126
-#: src/tables/assets/MaintenanceRecordTable.tsx:174
-#: src/tables/stock/StockTrackingTable.tsx:273
-msgid "Details"
-msgstr "Сведения"
+#~ msgid "High Risk"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:348
-msgid "Approval request timed out"
-msgstr ""
-
-#: src/components/ai/HITLApprovalModal.tsx:355
-#: src/components/ai/HITLApprovalModal.tsx:410
-#: src/components/riskradar/RiskRadarPanel.tsx:482
-#: src/components/riskradar/RiskRadarPanel.tsx:557
-msgid "Dismiss"
-msgstr "Dismiss"
+#~ msgid "Approval request timed out"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:397
-msgid "Approval Required"
-msgstr ""
+#~ msgid "Approval Required"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:462
-msgid "Hide details"
-msgstr ""
+#~ msgid "Hide details"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:462
-msgid "Show details"
-msgstr ""
+#~ msgid "Show details"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:485
-msgid "Why are you rejecting this? (optional)"
-msgstr ""
+#~ msgid "Why are you rejecting this? (optional)"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:512
 #: src/components/ai/HITLApprovalModal.tsx:610
-msgid "Approve"
-msgstr ""
+#~ msgid "Approve"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:525
-msgid "Confirm Reject"
-msgstr ""
+#~ msgid "Confirm Reject"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:525
 #: src/components/ai/HITLApprovalModal.tsx:619
-msgid "Reject"
-msgstr ""
+#~ msgid "Reject"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:533
-msgid "This action requires your approval before proceeding"
-msgstr ""
+#~ msgid "This action requires your approval before proceeding"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:664
-msgid "Approved: {action}"
-msgstr ""
+#~ msgid "Approved: {action}"
+#~ msgstr ""
 
 #: src/components/ai/HITLApprovalModal.tsx:664
-msgid "Rejected: {action}"
-msgstr ""
+#~ msgid "Rejected: {action}"
+#~ msgstr ""
 
-#: src/components/ai/QuestionCard.tsx:107
+#: src/components/ai/QuestionCard.tsx:111
 msgid "Recommended"
 msgstr ""
 
-#: src/components/ai/QuestionCard.tsx:112
+#: src/components/ai/QuestionCard.tsx:116
 #: src/components/items/TransferList.tsx:162
 msgid "Selected"
 msgstr "Выбрано"
 
-#: src/components/ai/QuestionCard.tsx:126
+#: src/components/ai/QuestionCard.tsx:130
 msgid "Other..."
 msgstr ""
 
-#: src/components/ai/QuestionCard.tsx:147
+#: src/components/ai/QuestionCard.tsx:151
 msgid "Answered"
 msgstr ""
 
-#: src/components/ai/QuestionCard.tsx:149
+#: src/components/ai/QuestionCard.tsx:153
 msgid "Declined"
 msgstr ""
 
-#: src/components/ai/QuestionCard.tsx:151
+#: src/components/ai/QuestionCard.tsx:155
 msgid "Answered in chat"
 msgstr ""
 
-#: src/components/ai/QuestionCard.tsx:152
+#: src/components/ai/QuestionCard.tsx:156
 msgid "No longer active — just type your answer"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:67
+msgid "The response is not verified. Refresh the decision before trying again."
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:84
+#: src/pages/stock/StockDetail.tsx:700
+#: src/tables/stock/StockItemTable.tsx:273
+msgid "Expired"
+msgstr "Просрочен"
+
+#: src/components/ai/VoiceDecisionCard.tsx:97
+msgid "Playback"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:97
+msgid "Expires"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:110
+msgid "Change recorded"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:112
+msgid "Not applied"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:113
+msgid "Result not verified — reconciling, do not retry"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:116
+msgid "Receipt"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:128
+#: src/pages/build/BuildOrderDetailsPanel.tsx:220
+#: src/tables/assets/MaintenanceRecordTable.tsx:121
+#: src/tables/build/BuildOrderTable.tsx:76
+#: src/tables/part/PartSalesOrdersTable.tsx:98
+#: src/tables/sales/SalesOrderLineItemTable.tsx:403
+#: src/tables/stock/TransferOrderLineItemTable.tsx:498
+msgid "Completed"
+msgstr "Завершено"
+
+#: src/components/ai/VoiceDecisionCard.tsx:133
+#: src/tables/settings/EmailTable.tsx:29
+msgid "Failed"
+msgstr "Ошибка"
+
+#: src/components/ai/VoiceDecisionCard.tsx:138
+#: src/pages/Index/Settings/AccountSettings/SecurityContent.tsx:242
+#: src/pages/maintenance/workorders/components/InvestigationSection.tsx:37
+#: src/pages/repair/components/InvestigationPanel.tsx:53
+msgid "Unverified"
+msgstr "Непроверенный"
+
+#: src/components/ai/VoiceDecisionCard.tsx:143
+msgid "Type the required confirmation phrase"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:167
+#: src/components/riskradar/RiskFindingDetailModal.tsx:299
+#: src/pages/Auth/ChangePassword.tsx:80
+#: src/pages/repair/components/safety/SafetyGateCard.tsx:157
+#: src/pages/repair/components/safety/SafetyGateConfirmModal.tsx:89
+msgid "Confirm"
+msgstr "Подтвердить"
+
+#: src/components/ai/VoiceDecisionCard.tsx:175
+msgid "Change that"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:183
+msgid "Set aside"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:191
+msgid "Cancel the action"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:198
+msgid "Read back"
 msgstr ""
 
 #: src/components/aichat/ActiveScopeBanner.tsx:21
@@ -1060,6 +1127,81 @@ msgstr ""
 msgid "Calculation"
 msgstr ""
 
+#: src/components/aichat/ContextUsedDisclosure.tsx:33
+msgid "not consulted"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:35
+msgid "consulted - nothing usable"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:37
+msgid "used"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:57
+msgid "Recent turns"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:64
+#: src/tables/assets/MaintenanceRecordTable.tsx:55
+msgid "Summary"
+msgstr ""
+
+#. placeholder {0}: record.summary.throughSequence
+#: src/components/aichat/ContextUsedDisclosure.tsx:66
+msgid "through message {0}"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:67
+msgid "no summary"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:73
+msgid "Preferences"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:80
+msgid "Facts"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:96
+msgid "Retrieval envelopes"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:101
+msgid "Topology"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:106
+msgid "Truncated"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:113
+msgid "Task intent"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:120
+msgid "Memory types"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:127
+#: src/components/dashboard/widgets/RiskRadarWidget.tsx:142
+msgid "Degraded"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:137
+msgid "Toggle context used"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:146
+msgid "Context used"
+msgstr ""
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:154
+msgid "Nothing was used"
+msgstr ""
+
 #: src/components/aichat/MediaEvidenceModal.tsx:80
 msgid "Evidence file is unavailable"
 msgstr ""
@@ -1077,6 +1219,101 @@ msgstr ""
 
 #: src/components/aichat/RetrievalCoverage.tsx:30
 msgid "as of {asOf}"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:45
+msgid "Open questions"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:47
+msgid "Pending proposals"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:49
+msgid "Machine facts"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:51
+msgid "Corrections"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:58
+msgid "superseded"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:60
+msgid "expired"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:62
+msgid "forgotten"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:64
+msgid "removed"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:109
+msgid "flagged"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:124
+msgid "This is wrong"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:134
+msgid "Forget"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:160
+#: src/components/items/InfoItem.tsx:27
+msgid "None"
+msgstr "None"
+
+#: src/components/aichat/ThreadMemoryModal.tsx:204
+msgid "Through message {through} of {latest}"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:221
+msgid "Citations"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:234
+#: src/pages/tasks/workorders/CloseoutPanel.tsx:396
+msgid "Narrative"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:243
+msgid "{forgotten} forgotten"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:270
+#: src/components/nav/AIChatDrawer.tsx:612
+msgid "What this chat remembers"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:281
+msgid "Summary, not verified data"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:285
+msgid "These items were written by the assistant from this conversation. Nothing here has been checked against records. Mark an item wrong or forget it to correct what is carried forward."
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:291
+msgid "Memory changed, try again"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:296
+msgid "Could not update memory"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:307
+msgid "Memory is not available for this conversation"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:312
+msgid "Could not load memory"
 msgstr ""
 
 #: src/components/aichat/ToolTraceDisclosure.tsx:42
@@ -1888,10 +2125,6 @@ msgstr ""
 #: src/components/dashboard/widgets/RiskRadarWidget.tsx:105
 #: src/components/riskradar/RiskRadarPanel.tsx:376
 msgid "There are no risk findings for this scope"
-msgstr ""
-
-#: src/components/dashboard/widgets/RiskRadarWidget.tsx:142
-msgid "Degraded"
 msgstr ""
 
 #: src/components/dashboard/widgets/StocktakeDashboardWidget.tsx:15
@@ -2886,7 +3119,7 @@ msgstr "Данные успешно импортированы"
 #: src/components/importer/ImporterDrawer.tsx:119
 #: src/components/modals/AboutInvenTreeModal.tsx:206
 #: src/components/modals/ServerInfoModal.tsx:134
-#: src/components/nav/AIChatDrawer.tsx:1736
+#: src/components/nav/AIChatDrawer.tsx:1792
 #: src/components/wizards/ImportPartWizard.tsx:773
 #: src/forms/BomForms.tsx:146
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:687
@@ -2990,10 +3223,6 @@ msgstr "Неизвестная ошибка"
 #: src/components/items/GettingStartedCarousel.tsx:27
 #~ msgid "Read more"
 #~ msgstr "Read more"
-
-#: src/components/items/InfoItem.tsx:27
-msgid "None"
-msgstr "None"
 
 #: src/components/items/InvenTreeLogo.tsx:23
 msgid "Equa AIMMS Logo"
@@ -3440,64 +3669,64 @@ msgstr "Настройки Email"
 msgid "Email settings not configured."
 msgstr "Электронная почта не настроена."
 
-#: src/components/nav/AIChatDrawer.tsx:137
+#: src/components/nav/AIChatDrawer.tsx:142
 #: src/pages/assets/health/AnomalyList.tsx:165
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
 msgid "Unknown"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:146
-#: src/components/nav/AIChatDrawer.tsx:523
+#: src/components/nav/AIChatDrawer.tsx:151
+#: src/components/nav/AIChatDrawer.tsx:534
 msgid "Just now"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:147
-#: src/components/nav/AIChatDrawer.tsx:524
+#: src/components/nav/AIChatDrawer.tsx:152
+#: src/components/nav/AIChatDrawer.tsx:535
 msgid "{minutes}m ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:148
-#: src/components/nav/AIChatDrawer.tsx:525
+#: src/components/nav/AIChatDrawer.tsx:153
+#: src/components/nav/AIChatDrawer.tsx:536
 msgid "{hours}h ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:149
-#: src/components/nav/AIChatDrawer.tsx:526
+#: src/components/nav/AIChatDrawer.tsx:154
+#: src/components/nav/AIChatDrawer.tsx:537
 msgid "{days}d ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:200
+#: src/components/nav/AIChatDrawer.tsx:205
 msgid "Search conversations..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:210
+#: src/components/nav/AIChatDrawer.tsx:215
 msgid "No conversations match"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:211
+#: src/components/nav/AIChatDrawer.tsx:216
 msgid "No conversations yet"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:233
-#: src/components/nav/AIChatDrawer.tsx:1766
+#: src/components/nav/AIChatDrawer.tsx:238
+#: src/components/nav/AIChatDrawer.tsx:1824
 msgid "Chat"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:274
+#: src/components/nav/AIChatDrawer.tsx:279
 msgid "Failed to load approvals"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:288
+#: src/components/nav/AIChatDrawer.tsx:293
 msgid "Failed to load approval detail"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:312
+#: src/components/nav/AIChatDrawer.tsx:317
 msgid "Back"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:315
-#: src/components/nav/AIChatDrawer.tsx:418
+#: src/components/nav/AIChatDrawer.tsx:320
+#: src/components/nav/AIChatDrawer.tsx:423
 #: src/components/riskradar/RiskRadarPanel.tsx:356
 #: src/pages/assets/health/MachineHealthPanel.tsx:190
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
@@ -3505,248 +3734,256 @@ msgstr ""
 msgid "Refresh"
 msgstr "Обновить"
 
-#: src/components/nav/AIChatDrawer.tsx:343
-#: src/components/nav/AIChatDrawer.tsx:471
+#: src/components/nav/AIChatDrawer.tsx:348
+#: src/components/nav/AIChatDrawer.tsx:476
 msgid "Tier"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:356
+#: src/components/nav/AIChatDrawer.tsx:361
 msgid "No details available"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:370
+#: src/components/nav/AIChatDrawer.tsx:375
 msgid "(complex value)"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:403
+#: src/components/nav/AIChatDrawer.tsx:408
 msgid "Developer details"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:416
-#: src/components/nav/AIChatDrawer.tsx:1769
+#: src/components/nav/AIChatDrawer.tsx:421
+#: src/components/nav/AIChatDrawer.tsx:1827
 #: src/pages/repair/RepairPacketDetail.tsx:256
 msgid "Approvals"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:550
+#: src/components/nav/AIChatDrawer.tsx:561
 msgid "New Chat"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:557
+#: src/components/nav/AIChatDrawer.tsx:568
 msgid "Conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:566
-#: src/components/nav/AIChatDrawer.tsx:1723
+#: src/components/nav/AIChatDrawer.tsx:577
+#: src/components/nav/AIChatDrawer.tsx:1779
 msgid "New conversation"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:588
+#: src/components/nav/AIChatDrawer.tsx:599
 msgid "Rename conversation"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:608
+#: src/components/nav/AIChatDrawer.tsx:635
 msgid "Share read-only with username (prefix with - to revoke)"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:659
+#: src/components/nav/AIChatDrawer.tsx:686
 msgid "Shared with me"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:683
+#: src/components/nav/AIChatDrawer.tsx:710
 msgid "Read-only"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:694
+#: src/components/nav/AIChatDrawer.tsx:721
 msgid "No previous conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:712
-#: src/components/nav/AIChatDrawer.tsx:996
-#: src/components/nav/AIChatDrawer.tsx:1692
+#: src/components/nav/AIChatDrawer.tsx:739
+#: src/components/nav/AIChatDrawer.tsx:1023
+#: src/components/nav/AIChatDrawer.tsx:1746
 msgid "AI Assistant"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:835
+#: src/components/nav/AIChatDrawer.tsx:862
 msgid "Copied!"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:848
+#: src/components/nav/AIChatDrawer.tsx:875
 msgid "Good response"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:859
+#: src/components/nav/AIChatDrawer.tsx:886
 msgid "Bad response"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:871
+#: src/components/nav/AIChatDrawer.tsx:898
 msgid "Export as Markdown"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:884
+#: src/components/nav/AIChatDrawer.tsx:911
 msgid "Regenerate"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:915
+#: src/components/nav/AIChatDrawer.tsx:942
 msgid "No matching records among the {populationCount} evaluated."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:916
+#: src/components/nav/AIChatDrawer.tsx:943
 msgid "No matching records in the fully evaluated population."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:918
+#: src/components/nav/AIChatDrawer.tsx:945
 msgid "This falls outside the active scope selection."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:920
+#: src/components/nav/AIChatDrawer.tsx:947
 msgid "Source not available."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:922
+#: src/components/nav/AIChatDrawer.tsx:949
 msgid "The search could not be completed."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:924
+#: src/components/nav/AIChatDrawer.tsx:951
 msgid "Could not determine which documents apply."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:926
+#: src/components/nav/AIChatDrawer.tsx:953
 msgid "Coverage was incomplete; no conclusion was drawn."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:935
+#: src/components/nav/AIChatDrawer.tsx:962
 msgid "Confirming scope"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:937
+#: src/components/nav/AIChatDrawer.tsx:964
 msgid "Reviewing records"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:939
+#: src/components/nav/AIChatDrawer.tsx:966
 msgid "Validating evidence"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:941
+#: src/components/nav/AIChatDrawer.tsx:968
 msgid "Working"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1123
+#: src/components/nav/AIChatDrawer.tsx:1155
 msgid "Partial answer — some checks did not finish."
 msgstr ""
 
 #. placeholder {0}: message.confidence
-#: src/components/nav/AIChatDrawer.tsx:1175
+#: src/components/nav/AIChatDrawer.tsx:1207
 msgid "Declared confidence: {0}"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1194
+#: src/components/nav/AIChatDrawer.tsx:1226
 msgid "No cited sources — not grounded in machine data."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1218
+#: src/components/nav/AIChatDrawer.tsx:1250
 msgid "You"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1430
+#: src/components/nav/AIChatDrawer.tsx:1462
 msgid "Search parts"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1431
+#: src/components/nav/AIChatDrawer.tsx:1463
 msgid "Create order"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1432
+#: src/components/nav/AIChatDrawer.tsx:1464
 msgid "Low stock"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1491
+#: src/components/nav/AIChatDrawer.tsx:1523
 msgid "Could not set the machine scope — sending without it."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1695
+#: src/components/nav/AIChatDrawer.tsx:1650
+msgid "Voice session"
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:1656
+msgid "End voice"
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:1749
 msgid "Powered by AIMMS AI"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1702
+#: src/components/nav/AIChatDrawer.tsx:1756
 msgid "Syncing..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1702
+#: src/components/nav/AIChatDrawer.tsx:1756
 msgid "Sync conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1753
+#: src/components/nav/AIChatDrawer.tsx:1809
 msgid "Syncing conversations with server..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1777
+#: src/components/nav/AIChatDrawer.tsx:1835
 #: src/pages/Notifications.tsx:83
 #: src/pages/repair/RepairPacketDetail.tsx:285
 msgid "History"
 msgstr "История"
 
-#: src/components/nav/AIChatDrawer.tsx:1806
+#: src/components/nav/AIChatDrawer.tsx:1864
 msgid "Sharing failed"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1845
+#: src/components/nav/AIChatDrawer.tsx:1940
 msgid "Hi! 👋 How can I help?"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1848
+#: src/components/nav/AIChatDrawer.tsx:1943
 msgid "I can help you search for parts, create orders, and automate tasks in AIMMS."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1959
+#: src/components/nav/AIChatDrawer.tsx:2038
 msgid "Send again"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1978
+#: src/components/nav/AIChatDrawer.tsx:2057
 msgid "No actions waiting for review"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1995
+#: src/components/nav/AIChatDrawer.tsx:2074
 msgid "Resolved actions"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2005
+#: src/components/nav/AIChatDrawer.tsx:2084
 msgid "No resolved actions yet"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2099
+#: src/components/nav/AIChatDrawer.tsx:2155
 msgid "Asking about"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2138
+#: src/components/nav/AIChatDrawer.tsx:2196
 msgid "Attach file"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2156
+#: src/components/nav/AIChatDrawer.tsx:2214
 msgid "Shared conversation — read-only"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2158
+#: src/components/nav/AIChatDrawer.tsx:2216
 msgid "Answer the question above, or ask something else..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2160
+#: src/components/nav/AIChatDrawer.tsx:2218
 msgid "Add a message about attached files..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2161
+#: src/components/nav/AIChatDrawer.tsx:2219
 msgid "Type a message..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2188
+#: src/components/nav/AIChatDrawer.tsx:2246
 msgid "Stop generating"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2201
+#: src/components/nav/AIChatDrawer.tsx:2259
 msgid "Send message"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2232
+#: src/components/nav/AIChatDrawer.tsx:2290
 msgid "AI may make mistakes. Verify important information."
 msgstr ""
 
@@ -4394,6 +4631,14 @@ msgstr "В заказе"
 msgid "In Production"
 msgstr "В производстве"
 
+#: src/components/render/Part.tsx:78
+#: src/components/riskradar/RiskRadarPanel.tsx:446
+#: src/pages/assets/MachineDetail.tsx:126
+#: src/tables/assets/MaintenanceRecordTable.tsx:174
+#: src/tables/stock/StockTrackingTable.tsx:273
+msgid "Details"
+msgstr "Сведения"
+
 #: src/components/render/Part.tsx:116
 #: src/components/tables/ColumnRenderers.tsx:433
 #: src/components/tables/ColumnRenderers.tsx:442
@@ -4569,13 +4814,6 @@ msgstr "Title"
 msgid "Open repair work already exists for this machine — confirm only if this is genuinely new work."
 msgstr ""
 
-#: src/components/riskradar/RiskFindingDetailModal.tsx:299
-#: src/pages/Auth/ChangePassword.tsx:80
-#: src/pages/repair/components/safety/SafetyGateCard.tsx:157
-#: src/pages/repair/components/safety/SafetyGateConfirmModal.tsx:89
-msgid "Confirm"
-msgstr "Подтвердить"
-
 #: src/components/riskradar/RiskFindingDetailModal.tsx:307
 msgid "Discard draft"
 msgstr ""
@@ -4706,6 +4944,11 @@ msgstr ""
 #: src/components/riskradar/RiskRadarPanel.tsx:475
 msgid "Recheck"
 msgstr ""
+
+#: src/components/riskradar/RiskRadarPanel.tsx:482
+#: src/components/riskradar/RiskRadarPanel.tsx:557
+msgid "Dismiss"
+msgstr "Dismiss"
 
 #: src/components/riskradar/RiskRadarPanel.tsx:504
 msgid "findings"
@@ -8847,12 +9090,6 @@ msgstr "Основной"
 msgid "Verified"
 msgstr "Проверено"
 
-#: src/pages/Index/Settings/AccountSettings/SecurityContent.tsx:242
-#: src/pages/maintenance/workorders/components/InvestigationSection.tsx:37
-#: src/pages/repair/components/InvestigationPanel.tsx:53
-msgid "Unverified"
-msgstr "Непроверенный"
-
 #: src/pages/Index/Settings/AccountSettings/SecurityContent.tsx:260
 msgid "Make Primary"
 msgstr "Сделать основным"
@@ -10416,15 +10653,6 @@ msgstr "Любое расположение"
 #: src/tables/stock/TransferOrderTable.tsx:52
 msgid "Destination Location"
 msgstr "Место назначения"
-
-#: src/pages/build/BuildOrderDetailsPanel.tsx:220
-#: src/tables/assets/MaintenanceRecordTable.tsx:121
-#: src/tables/build/BuildOrderTable.tsx:76
-#: src/tables/part/PartSalesOrdersTable.tsx:98
-#: src/tables/sales/SalesOrderLineItemTable.tsx:403
-#: src/tables/stock/TransferOrderLineItemTable.tsx:498
-msgid "Completed"
-msgstr "Завершено"
 
 #: src/pages/company/CompanyDetail.tsx:97
 msgid "Company Details"
@@ -12420,13 +12648,13 @@ msgid "Failed to save lockout point"
 msgstr ""
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:100
-#: src/pages/repair/components/safety/LockoutPointTable.tsx:61
-msgid "Add lockout point"
+#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
+msgid "Edit lockout point"
 msgstr ""
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:100
-#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
-msgid "Edit lockout point"
+#: src/pages/repair/components/safety/LockoutPointTable.tsx:61
+msgid "Add lockout point"
 msgstr ""
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:104
@@ -13186,11 +13414,6 @@ msgstr "Преобразовать эту складскую позицию в �
 #~ msgid "Transfer stock"
 #~ msgstr "Transfer stock"
 
-#: src/pages/stock/StockDetail.tsx:700
-#: src/tables/stock/StockItemTable.tsx:273
-msgid "Expired"
-msgstr "Просрочен"
-
 #: src/pages/stock/StockDetail.tsx:706
 msgid "Unavailable"
 msgstr "Недоступно"
@@ -13324,10 +13547,6 @@ msgstr ""
 
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:373
 msgid "Work order completed"
-msgstr ""
-
-#: src/pages/tasks/workorders/CloseoutPanel.tsx:396
-msgid "Narrative"
 msgstr ""
 
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:408
@@ -13781,10 +14000,6 @@ msgstr ""
 
 #: src/tables/assets/MaintenanceRecordTable.tsx:31
 msgid "{hours} h {remainder} min"
-msgstr ""
-
-#: src/tables/assets/MaintenanceRecordTable.tsx:55
-msgid "Summary"
 msgstr ""
 
 #: src/tables/assets/MaintenanceRecordTable.tsx:66
@@ -15995,6 +16210,10 @@ msgstr "Создать отправку"
 msgid "Shipment created"
 msgstr "Отгрузка создана"
 
+#: src/tables/sales/SalesOrderShipmentTable.tsx:158
+msgid "Items"
+msgstr "Элементы"
+
 #: src/tables/sales/SalesOrderShipmentTable.tsx:245
 msgid "Edit shipment"
 msgstr "Редактировать отправку"
@@ -16177,10 +16396,6 @@ msgstr "Анонсировано"
 #: src/tables/settings/EmailTable.tsx:27
 msgid "Sent"
 msgstr "Отправлено"
-
-#: src/tables/settings/EmailTable.tsx:29
-msgid "Failed"
-msgstr "Ошибка"
 
 #: src/tables/settings/EmailTable.tsx:33
 msgid "Read"
