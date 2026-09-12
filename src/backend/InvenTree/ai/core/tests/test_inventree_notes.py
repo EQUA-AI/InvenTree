@@ -22,7 +22,7 @@ async def test_create_part_saves_markdown_as_a_linked_note():
     assert payload["notes"] == "**Assembly instructions**"
     calls = client._request.call_args_list
     assert calls[0].kwargs["json_data"] == {"name": "Bracket"}
-    assert calls[1].args == ("POST", "/notes/")
+    assert calls[1].args == ("POST", "/note/")
     assert calls[1].kwargs["json_data"] == {
         "model_type": "part",
         "model_id": 42,
@@ -49,7 +49,7 @@ async def test_update_replaces_or_clears_existing_primary_content(notes):
     assert lookup.kwargs["params"]["model_id"] == 42
     assert lookup.kwargs["params"]["ordering"] == "-primary"
     client._request.assert_awaited_with(
-        "PATCH", "/notes/7/", json_data={"content": "<p>Replacement</p>" if notes else ""}
+        "PATCH", "/note/7/", json_data={"content": "<p>Replacement</p>" if notes else ""}
     )
 
 
@@ -70,7 +70,7 @@ async def test_deactivation_reason_preserves_existing_notes():
 
     calls = client._request.call_args_list
     assert calls[0].kwargs["json_data"] == {"active": False}
-    assert calls[1].args == ("POST", "/notes/")
+    assert calls[1].args == ("POST", "/note/")
     assert calls[1].kwargs["json_data"]["primary"] is False
     assert calls[1].kwargs["json_data"]["title"] == "Deactivation reason"
     assert len(calls) == 2

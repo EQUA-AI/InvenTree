@@ -50,7 +50,7 @@ async def request_with_notes(
             if method.upper() != "POST" and not append_notes:
                 response = await client._request(
                     "GET",
-                    "/notes/",
+                    "/note/",
                     params={
                         "model_type": model_type,
                         "model_id": model_id,
@@ -66,13 +66,13 @@ async def request_with_notes(
             if existing:
                 await client._request(
                     "PATCH",
-                    f"/notes/{existing['pk']}/",
+                    f"/note/{existing['pk']}/",
                     json_data={"content": content},
                 )
             elif content:
                 await client._request(
                     "POST",
-                    "/notes/",
+                    "/note/",
                     json_data={
                         "model_type": model_type,
                         "model_id": model_id,

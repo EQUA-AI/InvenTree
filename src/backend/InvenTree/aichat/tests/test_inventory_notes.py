@@ -20,8 +20,8 @@ class InventoryNoteAPITests(InvenTreeAPITestCase):
             data=params if method == 'GET' else json_data,
             format='json',
         )
-        self.assertLess(response.status_code, 400, response.data)
-        return response.data
+        self.assertLess(response.status_code, 400, response.content)
+        return response.json()
 
     def _save(self, method, endpoint, data, **kwargs):
         client = SimpleNamespace(_request=sync_to_async(self._request))
