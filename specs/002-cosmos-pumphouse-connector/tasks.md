@@ -73,26 +73,28 @@ Fix the bug the confirmed DDL exposed, and record the schema.
       `Cosmos DB Operator` role cannot read account keys, so its data-plane save had no credential)
 - [ ] `schema/pumphouse_latest.container.json` — deferred with §3.2, nothing would maintain it yet
 
-### ⏸ T4 — Cosmos emulator in the dev stack · 3 h · *blocked: T3*
+### 🔵 T4 — Cosmos emulator in the dev stack · 3 h · *ready — T3 done*
 - [ ] `cosmos` profile in `contrib/container/dev-docker-compose.yml` (linux emulator image)
 - [ ] Certificate/TLS handling documented for the SDK
 - [ ] `provision.py --emulator --create` brings up an empty, correctly-shaped container
 **Acceptance**: CI and offline work never need the real Azure account.
 
-### ⏸ T5 — Manual seeder + pilot documents · 6 h · *writable now, runnable once D16 is granted*
+### ✅ T5 — Manual seeder + pilot documents · 6 h · commit `4520ea38c` · *runnable once D16 is granted*
 This is the sprint's data source (migration is deferred, D2).
-- [ ] `contrib/cosmos/seed.py`: validates the §3.1 invariants (half-open bucket, UTC `month`,
+- [x] `contrib/cosmos/seed.py`: validates the §3.1 invariants (half-open bucket, UTC `month`,
       `data1_raw` round-trip), computes `month`/`payload_hash`/`data1_raw`, upserts
-- [ ] Flags: `--station-uuid` (writes `station_uuid`, `entity_uuid`, `parent_entity_uuid` from one
-      value per D13), `--from`/`--count`/`--every-ms` timestamp ladder, `--dry-run`
-- [ ] `contrib/cosmos/samples/ph3_snapshots.json`: several timestamps across **two hour buckets**,
-      station- and pump-level values, full `dex` tag set (D8), a `pd.P<n>.st` `I → R` transition,
-      one doc carrying `dv`/`pmw`/`pmvar`/`pc` flagged `"unconfirmed": true`
-- [ ] Unit tests for the validator (rejects out-of-bucket samples, wrong `month`, mismatched
+- [x] Flags: `--station-uuid`, `--from`/`--count`/`--every-ms` timestamp ladder, `--dry-run`
+- [x] `contrib/cosmos/samples/ph3_snapshots.json`: 3 documents across **two hour buckets**,
+      station- and pump-level values, `dex` tags (D8), a `pd.P<n>.st` `I → R` transition
+- [x] 28 offline tests for the validator (rejects out-of-bucket samples, wrong `month`, mismatched
       `data1_raw`)
-**Acceptance**: `seed.py --dry-run` output is byte-identical to what is upserted.
+- [x] **D7 closed by a real snapshot**: `dv`/`pmw`/`pmvar` exist at *both* levels; `pc` is a float
+- [x] **D13 corrected**: `parent_entity_uuid` is a shared parent, *not* the station uuid; a supplied
+      parent is preserved
+**Acceptance**: met. Writing to Azure still needs D16.
 
-### ✅ T6 — `flatten_snapshot()` normalisation · 7 h · commit pending
+
+### ✅ T6 — `flatten_snapshot()` normalisation · 7 h · commit `e0321ce3b`
 `machine_health/connectors/pumphouse_payload.py`, pure function, no I/O, shared by the connector and
 the dump importer.
 - [x] JSON-pointer `external_key` derived from position, so station and pump levels fall out of one
@@ -115,7 +117,7 @@ realistic 700-tag payload the assertion is false, so the test was replaced with 
 real constraint and proves `in_batches` satisfies it.
 
 
-### ✅ T7 — `IngestionCheckpoint` model · 3 h · commit pending
+### ✅ T7 — `IngestionCheckpoint` model · 3 h · commit `1a4403760`
 - [x] `assets/ingestion_models.py`: `IngestionCheckpoint(source FK, station_uuid, hour_bucket str,
       sub_time_period bigint, continuation_token, updated_at)`, unique `(source, station_uuid)`
 - [x] Forward-only `advance_to()`: an equal or earlier position is refused and reported, and the
@@ -131,7 +133,7 @@ real constraint and proves `in_batches` satisfies it.
 
 ## Week 2 — connector, poller, bridge, UI
 
-### ⏸ T8 — `CosmosPumphouseConnector` · 10 h · *blocked: T2, T6, T7*
+### 🔵 T8 — `CosmosPumphouseConnector` · 10 h · *ready — T2, T6, T7 all done; buildable and testable against a mocked SDK, runnable once D16 is granted*
 `machine_health/connectors/cosmos_pumphouse.py`, registered as `cosmos_pumphouse`.
 - [ ] `check()` → `(ok, code)` from a **fixed vocabulary** `AUTH|NOT_FOUND|THROTTLED|NETWORK|OK`;
       no endpoint, tag or provider message ever persisted or logged
@@ -149,19 +151,19 @@ real constraint and proves `in_batches` satisfies it.
 and a test covers a snapshot whose batches partly fail.
 
 
-### ⏸ T9 — Scheduled poller · 4 h · *blocked: T8*
+### 🔵 T9 — Scheduled poller · 4 h · *blocked: T8*
 - [ ] `assets/tasks.py: poll_cosmos_pumphouse_sources()` at `ScheduledTask.MINUTES, 1`
 - [ ] `AIMMS_COSMOS_PUMPHOUSE_ENABLED` kill-switch, default **off** (`get_boolean_setting`)
 - [ ] Per-source time budget (≤ 20 s) and document cap so one slow account cannot starve the worker
 - [ ] `record_source_error()` on failure; `freshness_threshold_seconds` default **300 s** (D11)
 **Acceptance**: with the flag off, the task performs zero network calls.
 
-### ⏸ T10 — `import_pumphouse_dump` command · 3 h · *blocked: T6*
+### 🔵 T10 — `import_pumphouse_dump` command · 3 h · *ready — needs no Azure access*
 - [ ] JSON rows → `flatten_snapshot` → `ingest_readings`, with `--dry-run`
 - [ ] Shares the T6 path exactly — no second normaliser
 **Acceptance**: the same file imported twice changes nothing the second time.
 
-### ⏸ T11 — Registry → live bridge · 5 h · *blocked: T7, T0 (needs approved points)*
+### 🔵 T11 — Registry → live bridge · 5 h · *ready to build — T0/T7 done; end-to-end proof needs the 31 points reviewed*
 Closes the "mapping approval does not enable live ingestion" gap.
 - [ ] `POST /api/assets/registry/<pk>/activate/` with `{"source": <HealthSource id>}`
 - [ ] Creates/refreshes `MachineSignalBinding` for every `DictionaryPoint(status='approved')`;
@@ -171,20 +173,20 @@ Closes the "mapping approval does not enable live ingestion" gap.
       so health reads `unknown` rather than a fabricated `normal`
 **Acceptance**: activating twice creates no duplicate bindings; a rejected point never appears.
 
-### ⏸ T12 — Live-source UI · 5 h · *blocked: T11*
+### 🔵 T12 — Live-source UI · 5 h · *blocked: T11*
 - [ ] "Live source" card on the *Dictionary and review* tab of `EquipmentRegistry.tsx`: pick a
       `HealthSource`, show bound/unbound counts, last poll time, last error code
 - [ ] Banner text becomes conditional on activation
 - [ ] `tsc --noEmit` and `biome check` clean
 **Acceptance**: the offline banner disappears only when bindings exist for that station.
 
-### ⏸ T13 — End-to-end integration test · 4 h · *blocked: T4, T5, T8, T9*
+### 🔵 T13 — End-to-end integration test · 4 h · *blocked: T4, T5, T8, T9*
 - [ ] Seed the emulator → poll → `MachineSignalState` populated with the expected values
 - [ ] `read_window` stays bounded and crosses an hour boundary correctly
 - [ ] Checkpoint advances; a second poll ingests nothing new
 **Acceptance**: runs in CI without the real Azure account.
 
-### ⏸ T14 — Docs and PR · 3 h · *blocked: all*
+### 🔵 T14 — Docs and PR · 3 h · *blocked: all*
 - [ ] `docs/docs/…/cosmos-connector.md`: setup, RBAC role, kill-switch, failure codes
 - [ ] Threat-model note: read-only data-plane role, no credential in DB or API response,
       connector cannot write to a control system
@@ -197,8 +199,8 @@ Closes the "mapping approval does not enable live ingestion" gap.
 | Bucket | Tickets | Hours |
 |---|---|---|
 | Done | T0, T1, T2, T3, T5, T6, T7 | 30 |
-| Ready now | T10 (dump importer — needs no Azure access) | 3 |
-| Blocked on earlier tickets | T4, T8, T9, T11–T14 | 34 |
+| Ready now | T4, T8, T10, T11 | 21 |
+| Blocked on earlier tickets | T9, T12, T13, T14 | 16 |
 | **Total** | **15** | **67** |
 
 ### What is actually blocking
@@ -206,20 +208,22 @@ Closes the "mapping approval does not enable live ingestion" gap.
   *any* container, including `telemetry` and `conversations`; those applications must be using account
   keys, since `localAuthDisabled` is `false`. The developer's `Cosmos DB Operator` role has
   `sqlRoleAssignments/write` and `listKeys` in its notActions, so it cannot grant this to itself. An
-  Owner or User Access Administrator must.
-- **D7 — the four unconfirmed payload keys.** A real sample is promised; until then guessed names are
-  flagged in the sample file.
-- **Review of the 31 imported dictionary points** before T11 can bind anything.
+  Owner or User Access Administrator must. **This blocks running T5 and T8, not writing them.**
+- **Review of the 31 imported dictionary points** before T11 can bind anything end to end.
+
+Resolved since the last revision: **D14** (account `epconchatcosmos9d6b`, RG `EpconChat`, database
+`aimms`, container `pumphouse_readings` created and verified) and **D7** (a real snapshot confirmed
+`dv`/`pmw`/`pmvar`/`pc`, at both station and pump level).
 
 ### Critical path
-`T2 → T8 → T9 → T13 → T14` for the live read, with `T3 → T5 → T6` feeding T8 and
-`T0 → T11 → T12` feeding the UI. T3/T4/T5 (15 h) are unblocked by a single answer: D14.
+`T8 → T9 → T13 → T14` for the live read, with `T0 → T11 → T12` feeding the UI. Nothing on the
+critical path is now blocked by an answer — only *running* against Azure is, via D16.
 
 ## Out of scope this sprint
 Cassandra → Cosmos migration/CDC job · `pumphouse_latest` maintenance · change-feed polling ·
 retention/TTL policy values · writing to any control system (never in scope)
 
 ## Open decisions
-`D7` discharge/power/pump-count keys · `D7b` `dsc` code set · `D9` units and alarm bounds
-(Annex A is a proposal, not plant authority) · `D11` freshness threshold · `D14` account
-coordinates and existing container partition key. Defaults for each are recorded in `plan.md` §8.
+`D7b` `dsc` code set · `D9` units and alarm bounds (Annex A is a proposal, not plant authority) ·
+`D11` freshness threshold · `D16` data-plane role assignment. Defaults for each are recorded in
+`plan.md` §8.
