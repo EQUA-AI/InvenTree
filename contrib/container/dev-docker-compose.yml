@@ -94,8 +94,12 @@ services:
     # dev stack is not made heavier for everyone working on the rest of the
     # application:
     #
-    #     docker compose -f contrib/container/dev-docker-compose.yml \
-    #         --profile cosmos up -d
+    #     docker compose --project-directory . \
+    #         -f contrib/container/dev-docker-compose.yml --profile cosmos up -d
+    #
+    # `--project-directory .` is required, not optional: every path in this file
+    # is relative to the repository root, so without it compose looks for
+    # contrib/container/contrib/container/docker.dev.env and fails.
     #
     # This is what lets the pumphouse connector be developed and tested with no
     # Azure account at all. The alternative - pointing tests at the real account

@@ -176,7 +176,7 @@ needs a role to be granted — which matters, because the data-plane role on the
 outstanding and a test suite that can reach production data is one that can damage it.
 
 ```bash
-docker compose -f contrib/container/dev-docker-compose.yml --profile cosmos up -d
+docker compose --project-directory . -f contrib/container/dev-docker-compose.yml --profile cosmos up -d
 ```
 
 The emulator is behind the `cosmos` profile, so a plain `docker compose up` does not start it and the
@@ -184,7 +184,7 @@ ordinary dev stack stays as light as it was. Wait for it to report healthy — i
 seconds, and the image runs its own readiness probe that compose is wired to:
 
 ```bash
-docker compose -f contrib/container/dev-docker-compose.yml --profile cosmos ps
+docker compose --project-directory . -f contrib/container/dev-docker-compose.yml --profile cosmos ps
 # ... Up 2 minutes (healthy)
 ```
 
@@ -192,9 +192,9 @@ Then create the container and fill it. Both scripts pick up their coordinates fr
 already set on the dev containers, so there are no flags to remember beyond `--emulator`:
 
 ```bash
-docker compose -f contrib/container/dev-docker-compose.yml exec inventree-dev-server \
+docker compose --project-directory . -f contrib/container/dev-docker-compose.yml exec inventree-dev-server \
     python contrib/cosmos/provision.py --create --emulator
-docker compose -f contrib/container/dev-docker-compose.yml exec inventree-dev-server \
+docker compose --project-directory . -f contrib/container/dev-docker-compose.yml exec inventree-dev-server \
     python contrib/cosmos/seed.py --emulator
 ```
 
@@ -228,7 +228,7 @@ Storage is deliberately ephemeral, so every `up` starts empty. That is what make
 reproducible, and re-seeding takes about a second:
 
 ```bash
-docker compose -f contrib/container/dev-docker-compose.yml --profile cosmos down
+docker compose --project-directory . -f contrib/container/dev-docker-compose.yml --profile cosmos down
 ```
 
 ---
