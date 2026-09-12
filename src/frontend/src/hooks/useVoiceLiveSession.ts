@@ -194,17 +194,21 @@ export function useVoiceLiveSession(
   const reportDecisionPlayback = useCallback(async () => {
     if (reportingPlaybackRef.current) return;
     reportingPlaybackRef.current = true;
+    const decision = useVoiceDecisionState.getState().decision;
+    let event: 'playback-started' | 'playback-completed' | null = null;
     try {
       const store = useVoiceDecisionState.getState();
-      const decision = store.decision;
-      const event = decisionPlaybackRef.current.next(decision);
+      event = decisionPlaybackRef.current.next(decision);
       if (!event || !decision?.utterance_id) return;
       await store.decide(event, '', {
         utterance_id: decision.utterance_id,
         spoken_summary_hash: decision.spoken_summary_hash
       });
     } catch {
-      /* Stale or early callbacks are not retried as authorization. */
+      // Retry only delivery reporting, bounded and still bound to this item.
+      // Current server focus is re-read on the next attempt; no assent is sent.
+      if (decision && event)
+        decisionPlaybackRef.current.failed(decision, event);
     } finally {
       reportingPlaybackRef.current = false;
     }

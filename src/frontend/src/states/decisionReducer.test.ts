@@ -17,6 +17,7 @@ const decision = (id = 'd', sequence = 1) =>
     state: 'presented',
     utterance_id: 'u',
     spoken_summary_hash: 's',
+    spoken_summary: 'Confirm hold or cancel.',
     delivery_state: 'requested'
   }) as VoicePendingDecision;
 
@@ -95,11 +96,62 @@ describe('bound playback', () => {
     expect(tracker.next({ ...decision(), utterance_id: 'other' })).toBeNull();
     expect(tracker.next(decision())).toBe('playback-started');
     expect(tracker.next(decision())).toBeNull();
+    // Generation completion alone is not completed playback.
+    expect(
+      tracker.next({ ...decision(), delivery_state: 'playing' })
+    ).toBeNull();
+    tracker.event({
+      type: 'response.done',
+      response: { id: 'r', status: 'completed' }
+    });
+    tracker.event({ type: 'output_audio_buffer.stopped', response_id: 'r' });
     expect(tracker.next({ ...decision(), delivery_state: 'playing' })).toBe(
       'playback-completed'
     );
     expect(
       tracker.next({ ...decision(), delivery_state: 'playing' })
     ).toBeNull();
+  });
+
+  it('does not complete an interrupted generation, even after audio.done', () => {
+    const tracker = started();
+    tracker.event({ type: 'response.audio.delta', response_id: 'r' });
+    tracker.event({ type: 'response.audio.done', response_id: 'r' });
+    expect(tracker.next(decision())).toBe('playback-started');
+    tracker.event({
+      type: 'response.done',
+      response: { id: 'r', status: 'cancelled' }
+    });
+    tracker.event({ type: 'output_audio_buffer.stopped', response_id: 'r' });
+    expect(
+      tracker.next({ ...decision(), delivery_state: 'playing' })
+    ).toBeNull();
+  });
+
+  it('waits a conservative delivery duration when buffer events are absent', () => {
+    let now = 0;
+    const tracker = new DecisionPlayback(() => now);
+    tracker.event({
+      type: 'response.created',
+      response: {
+        id: 'r',
+        metadata: { aimms_utterance_id: 'u', aimms_spoken_hash: 's' }
+      }
+    });
+    tracker.event({ type: 'response.audio.delta', response_id: 'r' });
+    expect(tracker.next(decision())).toBe('playback-started');
+    tracker.event({ type: 'response.audio.done', response_id: 'r' });
+    tracker.event({
+      type: 'response.done',
+      response: { id: 'r', status: 'completed' }
+    });
+    now = 1000;
+    expect(
+      tracker.next({ ...decision(), delivery_state: 'playing' })
+    ).toBeNull();
+    now = 4000;
+    expect(tracker.next({ ...decision(), delivery_state: 'playing' })).toBe(
+      'playback-completed'
+    );
   });
 });
