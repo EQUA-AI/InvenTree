@@ -74,21 +74,21 @@
     "interpretation_status": "User confirmed sub_time_period is the sample timestamp in epoch milliseconds and time_period its hour bucket. User later confirmed egt is the Event Generation Timestamp and ext the Expiration Timestamp (egt + default real-time expiry period; 300 s in this sample). dex.TIMESTAMP matches egt arithmetically. The expiry period value is a source default, not an application TTL or freshness policy."
   },
   "basic_params": {
-    "scope": "Station-level 'basic params' of the pumphouse envelope in data1, as listed by the user. Field abbreviations are matched to the listed names by order and sample content; confirm each abbreviation against source documentation before binding.",
+    "scope": "Station-level 'basic params' of the pumphouse envelope in data1. Presence and level are now confirmed against a second real snapshot (sub_time_period 1752853013703) in which every listed key appears. Meanings of the code sets (st, dsc) and the engineering units are still unconfirmed.",
     "container_path": "/data1",
-    "status": "user_listed_abbreviation_match_pending",
+    "status": "keys_confirmed_units_and_codes_pending",
     "fields": [
-      {"key": "egt", "name": "Event Generation Timestamp", "source_name": "eventGenTs", "type": "epoch_ms", "unit": null, "notes": "Equals sub_time_period in the sample."},
-      {"key": "sl", "name": "Surge Pool Level", "type": "number", "unit": null, "notes": "Sample value equals /dex/COMMAN_FORBAY_LEVEL; equivalence not yet an approved alias."},
-      {"key": "dv", "name": "Total Discharge Value", "type": "number", "unit": null, "notes": "Not present in the pilot excerpt; unit and aggregation window unconfirmed."},
-      {"key": "pmw", "name": "Input Power (MW)", "type": "number", "unit": "MW", "notes": null},
-      {"key": "pmvar", "name": "Input Power (MVar)", "type": "number", "unit": "MVar", "notes": null},
-      {"key": "pc", "name": "Number of Pumps Running", "type": "integer", "unit": "count", "notes": "Not present in the pilot excerpt."},
-      {"key": "st", "name": "Pumphouse Running Status", "type": "code", "unit": null, "notes": "Sample value 'I'; code set and polarity unconfirmed."},
-      {"key": "pd", "name": "Pump Operation Details", "type": "map", "unit": null, "notes": "Pump-level map keyed by registered source_key (P1..P14); see pump_summary_fields."},
-      {"key": "dsc", "name": "Data Source", "type": "code", "unit": null, "notes": "Sample value 24, stated as 'SCADA Device'; enum table unconfirmed."},
-      {"key": "sr", "name": "Source Text", "type": "string", "unit": null, "notes": "Sample value 'SCADA', stated as 'SCADA Device'."},
-      {"key": "ext", "name": "Expiration Timestamp", "type": "epoch_ms", "unit": null, "notes": "egt + default real-time expiry period. Sample period is 300000 ms."}
+      {"key": "egt", "name": "Event Generation Timestamp", "source_name": "eventGenTs", "type": "epoch_ms", "unit": null, "notes": "Equals sub_time_period in both observed snapshots."},
+      {"key": "sl", "name": "Surge Pool Level", "type": "number", "unit": null, "notes": "Observed 132.0436248779297, equal to /dex/COMMAN_FORBAY_LEVEL in the same snapshot; equivalence is still not an approved alias."},
+      {"key": "dv", "name": "Total Discharge Value", "type": "number", "unit": null, "levels": ["station", "pump"], "notes": "Confirmed present at /dv and at /pd/P{n}/dv. Observed 0.0 everywhere while all pumps are idle, so the value tells us nothing about units or aggregation window yet."},
+      {"key": "pmw", "name": "Input Power (MW)", "type": "number", "unit": "MW", "levels": ["station", "pump"], "notes": "Confirmed at /pmw and /pd/P{n}/pmw. Observed 0.0 with all pumps idle."},
+      {"key": "pmvar", "name": "Input Power (MVar)", "type": "number", "unit": "MVar", "levels": ["station", "pump"], "notes": "Confirmed at /pmvar and /pd/P{n}/pmvar. Observed 0.0 with all pumps idle."},
+      {"key": "pc", "name": "Number of Pumps Running", "type": "number", "unit": "count", "levels": ["station"], "notes": "Station level only; absent from /pd/P{n}. Transported as a float (observed 0.0), not an integer, so a reader must not assume int. Should agree with the count of /pd/P{n}/st == 'R'."},
+      {"key": "st", "name": "Pumphouse Running Status", "type": "code", "unit": null, "levels": ["station", "pump"], "notes": "Observed 'I' at station level and at every /pd/P{n}/st. Confirmed vocabulary: I = Idle, R = Running. The same key carries pump running status, so the listed station name understates where it appears."},
+      {"key": "pd", "name": "Pump Operation Details", "type": "map", "unit": null, "notes": "Pump-level map keyed by registered source_key (P1..P14); each entry carries st, dv, pmw, pmvar."},
+      {"key": "dsc", "name": "Data Source", "type": "code", "unit": null, "notes": "Observed 24, stated as 'SCADA Device'; enum table unconfirmed."},
+      {"key": "sr", "name": "Source Text", "type": "string", "unit": null, "notes": "Observed 'SCADA'."},
+      {"key": "ext", "name": "Expiration Timestamp", "type": "epoch_ms", "unit": null, "notes": "egt + default real-time expiry period. 300000 ms in both observed snapshots."}
     ],
     "expiry": {
       "rule": "ext = egt + default_realtime_expiry_ms",
@@ -101,8 +101,9 @@
     "detailed_readings": "/dex",
     "station_level_candidate": "/dex/COMMAN_FORBAY_LEVEL",
     "station_summary_fields": ["egt", "sl", "dv", "pmw", "pmvar", "pc", "st", "pd", "dsc", "sr", "ext"],
-    "pump_summary_fields_unconfirmed": ["st", "dv", "pmw", "pmvar"],
-    "dex_metadata_keys": ["ID", "TIMESTAMP"]
+    "pump_summary_fields": ["st", "dv", "pmw", "pmvar"],
+    "dex_metadata_keys": ["ID", "TIMESTAMP"],
+    "dex_observed_tag_count": "~700 in a full snapshot; the 17-tag pilot excerpt is a small subset"
   },
   "mapping_policy": {
     "status": "candidate_requires_review",
