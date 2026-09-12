@@ -92,7 +92,21 @@ gives RBAC plus cheap point reads. Revisit only if the future migration job must
 
 ## 3. Cosmos DB schema (NoSQL API)
 
-### 3.1 Database `iwm`, container `pumphouse_readings`
+> **Database: reuse the existing one.** A Cosmos database is only a namespace — it carries no partition
+> key and no schema. The *container* is what fixes the partition key, the indexing policy and TTL, so the
+> container is the thing we need to get right; the database id is just configuration. Names below
+> (`iwm`, `pumphouse_readings`) are **placeholders**; the real ids come from `INVENTREE_COSMOS_*` env
+> vars and `HealthSource.config`, and nothing in the code hard-codes them.
+>
+> A separate database is only worth it in two cases: (a) the existing database uses **database-level
+> shared throughput** and you do not want a 720-samples-per-station-per-hour telemetry container
+> competing for the same RU/s pool as everything else in it, or (b) you want the blast radius of a role
+> assignment to stop at the database. Neither applies yet — a data-plane role can be scoped to a single
+> container, which is the tighter control anyway.
+>
+> One limit to know: a shared-throughput database supports at most 25 containers. Well clear for now.
+
+### 3.1 Container `pumphouse_readings` (in the existing database)
 
 > **Existing container (checked 2026-09-12).** The account already has a container whose partition key is
 > **`/maintenance_pk`, non-hierarchical, and it holds no data.** That key was created for a different
@@ -190,9 +204,10 @@ read 1 RU. Serverless or 400 RU/s autoscale floor is sufficient for tens of stat
 
 ### 3.5 Provisioning and manual seeding artefacts
 
-- `contrib/cosmos/schema/iwm.pumphouse_readings.json` — container definition (PK paths, indexing,
-  `defaultTtl: -1`).
-- `contrib/cosmos/schema/iwm.pumphouse_latest.json` — written now, **created later** (§3.2).
+- `contrib/cosmos/schema/pumphouse_readings.container.json` — container definition (PK paths, indexing,
+  `defaultTtl: -1`). The database id is **not** in the file: it is deployment configuration, and baking it
+  in would make the artefact wrong for every environment but one.
+- `contrib/cosmos/schema/pumphouse_latest.container.json` — written now, **created later** (§3.2).
 - `contrib/cosmos/provision.py` — **verify/diff by default** against the existing account (D12): asserts
   partition-key paths, `defaultTtl` and indexing policy match the schema files and reports drift. `--create`
   creates a missing database/container (used for the emulator); `--emulator` targets the local endpoint.

@@ -58,9 +58,10 @@ Fix the bug the confirmed DDL exposed, and record the schema.
 - [x] Verified in `inventree-dev-server`: imports fine, `manage.py check` clean
 
 ### ⏸ T3 — Cosmos schema artefacts and verifier · 6 h · *blocked: D14 (option A or B)*
-- [ ] `contrib/cosmos/schema/iwm.pumphouse_readings.json` — hierarchical PK `/station_uuid` +
-      `/hour_bucket`, `defaultTtl: -1`, indexing policy excluding `/pd/*`, `/dex/*`, `/data1_raw`
-- [ ] `contrib/cosmos/schema/iwm.pumphouse_latest.json` — written now, created later
+- [ ] `contrib/cosmos/schema/pumphouse_readings.container.json` — hierarchical PK `/station_uuid` +
+      `/hour_bucket`, `defaultTtl: -1`, indexing policy excluding `/pd/*`, `/dex/*`, `/data1_raw`.
+      No database id in the file: that is deployment configuration
+- [ ] `contrib/cosmos/schema/pumphouse_latest.container.json` — written now, created later
 - [ ] `provision.py` — **verify/diff by default**; `--create` for the emulator, `--emulator` for the
       local endpoint; never grants roles, never writes data
 - [ ] Partition key read from config (`partition_key_paths`, `partition_key_mode`) so option B —
