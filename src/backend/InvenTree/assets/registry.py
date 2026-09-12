@@ -155,6 +155,22 @@ def register_station(
         return station
 
 
+def pump_display_name(station, key):
+    """Build the label for a pump slot under a station.
+
+    One definition, used both when a slot is first registered and when a station
+    is renamed. Keeping the format in two places is how a rename ends up
+    producing children that look subtly unlike the ones created by an import.
+
+    The trailing UUID fragment is not decoration: ``AssetMachine.name`` is
+    globally unique, so two stations that a utility genuinely calls the same
+    thing would otherwise collide on their first pump. Nothing reads the
+    fragment back - identity lives in ``uuid`` and the ``source_*`` fields - so
+    it is safe for a human to ignore.
+    """
+    return f'{station.name[:170]} / Pump {int(key[1:]):02d} [{str(station.uuid)[:8]}]'
+
+
 def ensure_pump(station, key):
     """Register a pump slot, not a verified physical installation or stock item."""
     if not re.fullmatch(r'P[1-9][0-9]{0,3}', key):
@@ -166,11 +182,52 @@ def ensure_pump(station, key):
             'uuid': uuid5(station.uuid, f'pump:{key}'),
             'asset_type': 'pump',
             'client': station.client,
-            'name': f'{station.name[:170]} / Pump {int(key[1:]):02d} [{str(station.uuid)[:8]}]',
+            'name': pump_display_name(station, key),
             'description': 'Registered source pump slot; installed equipment details require review.',
         },
     )
     return pump
+
+
+def rename_station(station, name):
+    """Rename a station and re-label its pump slots to match.
+
+    Only the human label changes. ``uuid``, ``source_namespace``,
+    ``source_entity_uuid`` and ``source_key`` are the station's identity, they
+    are immutable, and every lookup - re-import, dictionary points, bindings -
+    goes through them. A station may therefore be renamed freely without
+    orphaning anything.
+
+    The children matter here. ``ensure_pump`` writes a pump's name only in
+    ``defaults``, so it is set once at creation and never revisited; renaming
+    just the station would leave fourteen pumps advertising the old one
+    indefinitely. Returns the number of rows changed.
+    """
+    name = (name or '').strip()
+    if not name:
+        raise ValidationError('A station name cannot be blank.')
+
+    clash = AssetMachine.objects.filter(name=name).exclude(pk=station.pk).first()
+    if clash is not None:
+        raise ValidationError(
+            f'Machine {clash.pk} already uses that name; machine names are unique.'
+        )
+
+    station.name = name
+    station.full_clean()
+    station.save(update_fields=['name'])
+
+    changed = 1
+    for pump in station.children.filter(asset_type='pump'):
+        relabelled = pump_display_name(station, pump.source_key)
+        if pump.name == relabelled:
+            continue
+        pump.name = relabelled
+        pump.full_clean()
+        pump.save(update_fields=['name'])
+        changed += 1
+
+    return changed
 
 
 def observed_type(value):
