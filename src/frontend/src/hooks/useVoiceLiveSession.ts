@@ -10,6 +10,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { DecisionPlayback } from '../components/ai/decisionPlayback';
+import { useVoiceDecisionState } from '../states/VoiceDecisionState';
+import { decisionContext } from '../states/decisionReducer';
 
 import type {
   VoiceClientState,
@@ -186,6 +189,30 @@ export function useVoiceLiveSession(
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const decisionPlaybackRef = useRef(new DecisionPlayback());
+  const reportingPlaybackRef = useRef(false);
+  const reportDecisionPlayback = useCallback(async () => {
+    if (reportingPlaybackRef.current) return;
+    reportingPlaybackRef.current = true;
+    try {
+      const store = useVoiceDecisionState.getState();
+      const decision = store.decision;
+      const event = decisionPlaybackRef.current.next(decision);
+      if (!event || !decision?.utterance_id) return;
+      await store.decide(event, '', {
+        utterance_id: decision.utterance_id,
+        spoken_summary_hash: decision.spoken_summary_hash
+      });
+    } catch {
+      /* Stale or early callbacks are not retried as authorization. */
+    } finally {
+      reportingPlaybackRef.current = false;
+    }
+  }, []);
+  useEffect(() => {
+    const timer = window.setInterval(() => void reportDecisionPlayback(), 350);
+    return () => window.clearInterval(timer);
+  }, [reportDecisionPlayback]);
   const sessionRef = useRef<VoiceSessionPayload | null>(null);
   const submittedItemsRef = useRef<Set<string>>(new Set());
   const connectTimerRef = useRef<number | null>(null);
@@ -396,7 +423,8 @@ export function useVoiceLiveSession(
               transcript: transcript.text,
               item_id: transcript.itemId,
               confidence: transcript.confidence,
-              language: transcript.language
+              language: transcript.language,
+              decision_context: transcript.decisionContext ?? null
             })
           }
         );
@@ -421,6 +449,7 @@ export function useVoiceLiveSession(
           return;
         }
         const turn = (await response.json()) as VoiceTurnResponse;
+        useVoiceDecisionState.getState().applyTurn(active.id, turn);
         // A8: a 200 whose recorded state is incomplete/failed is not an
         // answer; keep the session but surface the stable code so the UI
         // never shows a silent "success" for a turn the server gave up on.
@@ -524,6 +553,7 @@ export function useVoiceLiveSession(
 
   /** Stop playback now (local pause + server cancel); barge-in never waits. */
   const cancel = useCallback(async () => {
+    decisionPlaybackRef.current.stop();
     const active = sessionRef.current;
     if (audioRef.current) {
       audioRef.current.pause();
@@ -552,6 +582,7 @@ export function useVoiceLiveSession(
         return;
       }
       const type = String(event.type ?? '');
+      decisionPlaybackRef.current.event(event);
       if (type === 'error') {
         // Provider-side failure (for example a rejected speech request).
         // Transcripts and typed chat keep working; keep it diagnosable.
@@ -559,6 +590,7 @@ export function useVoiceLiveSession(
         return;
       }
       if (type === 'input_audio_buffer.speech_started') {
+        decisionPlaybackRef.current.stop();
         // Barge-in: the technician talking always wins over playback. The
         // provider stops synthesis server-side (interrupt_response) and the
         // live track simply goes quiet — never pause the local element here,
@@ -588,6 +620,9 @@ export function useVoiceLiveSession(
       }
       if (type === FINAL_EVENT) {
         const finalTranscript: VoiceFinalTranscript = {
+          decisionContext: decisionContext(
+            useVoiceDecisionState.getState().decision
+          ),
           text: String(event.transcript ?? ''),
           itemId: String(event.item_id ?? ''),
           confidence:
@@ -641,6 +676,12 @@ export function useVoiceLiveSession(
         // confidence — providers may omit it, and holding every utterance
         // would kill the hands-free loop.
         if (
+          !(
+            useVoiceDecisionState.getState().decision?.state === 'presented' &&
+            /^(?:no[, ]+)?(?:i meant|make that)\s+(?:(?:work\s*order|wo)\s+)?[a-z]*[- ]?\d+[.!?]*$/i.test(
+              trimmed
+            )
+          ) &&
           shouldHoldTranscript(
             finalTranscript.text,
             finalTranscript.confidence,
@@ -706,6 +747,8 @@ export function useVoiceLiveSession(
       return;
     }
     sessionRef.current = created;
+    useVoiceDecisionState.getState().setSession(created.id);
+    decisionPlaybackRef.current = new DecisionPlayback();
     setSession(created);
 
     if (!created.transports_allowed.webrtc) {
@@ -742,6 +785,7 @@ export function useVoiceLiveSession(
 
       // Speech recognition flows over this channel, so the session is only
       // truthfully 'listening' once it opens (or the peer is connected).
+      let reconciled = false;
       const markListening = () => {
         if (connectTimerRef.current !== null) {
           window.clearTimeout(connectTimerRef.current);
@@ -750,6 +794,18 @@ export function useVoiceLiveSession(
         setState((current) =>
           current === 'connecting' ? 'listening' : current
         );
+        if (!reconciled) {
+          reconciled = true;
+          const store = useVoiceDecisionState.getState();
+          void store
+            .refresh()
+            .then(async () => {
+              const current = useVoiceDecisionState.getState();
+              if (current.decision?.operation_id)
+                await current.decide('repeat');
+            })
+            .catch(() => {});
+        }
       };
 
       const channel = peer.createDataChannel(DATA_CHANNEL_LABEL);
@@ -820,6 +876,8 @@ export function useVoiceLiveSession(
 
   const endInternal = useCallback(
     async (_reason: string) => {
+      decisionPlaybackRef.current.stop();
+      useVoiceDecisionState.getState().setSession(null);
       const active = sessionRef.current;
       sessionRef.current = null;
       submittedItemsRef.current.clear();

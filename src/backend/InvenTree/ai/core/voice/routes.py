@@ -75,6 +75,7 @@ class VoiceTurnRequest(BaseModel):
     item_id: str
     confidence: float | None = None
     language: str = "en-US"
+    decision_context: dict[str, Any] | None = None
 
 
 class VoicePromptRequest(BaseModel):
@@ -262,6 +263,12 @@ async def end_voice_session(session_id: str) -> dict:
     session = await sync_to_async(
         lambda: realtime.end_session(session=session), thread_sensitive=True
     )()
+    if settings.feature_voice_decision_coordinator:
+        from ai.core.decisions.coordinator import get_coordinator
+
+        await sync_to_async(get_coordinator().disarm)(
+            session.thread_id, "session_ended", set_aside=True
+        )
     _turn_locks.pop(str(session.id), None)
     if _provider_channel_closer is not None:
         try:
@@ -312,6 +319,10 @@ async def request_voice_prompt(session_id: str, request: VoicePromptRequest) -> 
 
     locale = await sync_to_async(resolve_actor_locale, thread_sensitive=True)(principal.user_pk)
     if request.kind == "transcript_review":
+        if settings.feature_voice_decision_coordinator:
+            from ai.core.decisions.coordinator import get_coordinator
+
+            await sync_to_async(get_coordinator().disarm)(session.thread_id, "transcript_review")
         try:
             text = prompts.compose_transcript_review(request.transcript, locale)
         except ValueError:
@@ -413,6 +424,14 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
     settings = _require_voice_enabled()
     principal = _principal()
     session = await _owned_session(principal, session_id, settings)
+    if getattr(settings, "feature_voice_decision_coordinator", False):
+        from ai.core.decisions.coordinator import get_coordinator
+        from ai.core.decisions.store import DecisionStoreUnavailable
+
+        try:
+            await sync_to_async(get_coordinator().store.read)(session.thread_id)
+        except DecisionStoreUnavailable as exc:
+            raise HTTPException(status_code=409, detail="VOICE_DECISION_UNAVAILABLE") from exc
 
     try:
         final = normalize_final_transcript({
@@ -554,13 +573,21 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
                 session_correlation_id=str(session.correlation_id),
                 turn_sequence=getattr(session, "turn_count", None),
             ):
-                result = await get_turn_service().process(
+                from ai.core.decisions.pipeline import process_with_playback_probe
+
+                result = await process_with_playback_probe(
+                    get_turn_service(),
+                    channel,
                     actor=principal,
                     thread_id=session.thread_id,
                     content=final.text,
                     modality=TurnModality.VOICE,
                     trusted_context=trusted_context,
-                    modality_metadata=final.modality_metadata(),
+                    modality_metadata={
+                        **final.modality_metadata(),
+                        "voice_session_id": str(session.pk),
+                        "decision_context": request.decision_context,
+                    },
                     idempotency_key=idempotency_key,
                     correlation_id=correlation_id,
                 )
@@ -655,6 +682,31 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
                         persisted_text=utterance.spoken_summary,
                         persisted_hash=utterance.spoken_summary_hash,
                     )
+                    if getattr(result, "decision_event", None) and result.decision_event.get(
+                        "kind"
+                    ) in ("presented", "review"):
+                        from ai.core.decisions.coordinator import get_coordinator
+
+                        coordinator = get_coordinator()
+                        current = await sync_to_async(coordinator.store.read)(session.thread_id)
+                        expected = result.pending_decision or {}
+                        if (
+                            current
+                            and current.decision_id == expected.get("decision_id")
+                            and current.sequence == expected.get("sequence")
+                        ):
+                            bound = await sync_to_async(coordinator.bind_playback)(
+                                current,
+                                utterance_id=str(utterance.pk),
+                                spoken_text=utterance.spoken_summary,
+                                spoken_hash=utterance.spoken_summary_hash,
+                            )
+                            tts_payload["response"]["metadata"] = {
+                                "aimms_utterance_id": bound.utterance_id,
+                                "aimms_spoken_hash": bound.spoken_summary_hash,
+                            }
+                        else:
+                            raise ValueError("The decision changed before speech dispatch.")
                     await send_control(tts_payload)
                 except ExactSpeechViolation as exc:
                     raise HTTPException(status_code=409, detail="IDEMPOTENCY_CONFLICT") from exc
@@ -709,12 +761,22 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
             replayed=result.replayed,
             spoken=spoken,
             pending_question=None,
+            pending_decision=getattr(result, "pending_decision", None),
+            decision_event=getattr(result, "decision_event", None),
         ).model_dump(mode="json")
         # The S22 question payload passes through VERBATIM — the question
         # schema owns its shape (the generated VoicePendingQuestion models
         # it with optional fields); round-tripping it through the model
         # would add None-valued keys the historic wire never carried.
         payload["pending_question"] = result.pending_question
+        if settings.feature_voice_decision_coordinator:
+            from ai.core.decisions.coordinator import get_coordinator
+
+            try:
+                current = await sync_to_async(get_coordinator().store.read)(session.thread_id)
+                payload["pending_decision"] = current.to_public_dict() if current else None
+            except DecisionStoreUnavailable as exc:
+                raise HTTPException(status_code=409, detail="VOICE_DECISION_UNAVAILABLE") from exc
         return payload
 
 
@@ -767,3 +829,8 @@ async def procedure_walkthrough(request: WalkthroughRequest) -> dict[str, Any]:
         "completed": reply.completed,
         "error": reply.error,
     }
+
+
+from ai.core.decisions.routes import install_routes as _install_decision_routes  # noqa: E402
+
+_install_decision_routes(router)

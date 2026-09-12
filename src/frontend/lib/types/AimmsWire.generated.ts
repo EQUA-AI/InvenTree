@@ -202,6 +202,53 @@ export interface VoicePendingQuestion {
   source: string | null;
 }
 
+export interface VoiceDecisionContext {
+  decision_id: string;
+  sequence: number;
+  revision: number | string;
+  preview_hash: string | null;
+}
+
+export interface VoiceDecisionSection {
+  id: string;
+  label: string;
+  text: string;
+}
+
+export interface VoicePendingDecision {
+  decision_id: string;
+  sequence: number;
+  revision: number | string;
+  preview_hash: string | null;
+  kind: string;
+  source_id: string;
+  state: string;
+  target_label: string;
+  sections: VoiceDecisionSection[];
+  required_review_sections: string[];
+  allowed_responses: string[];
+  required_phrase: string | null;
+  locale: string;
+  voice_eligible: boolean;
+  voice_ineligible_reason: string | null;
+  expires_at: string;
+  utterance_id: string | null;
+  delivery_state: string;
+  review_acknowledged: boolean;
+  operation_id: string | null;
+  execution_state: string | null;
+  receipt_ref: string | null;
+  spoken_summary: string;
+  spoken_summary_hash: string;
+}
+
+export interface VoiceDecisionEvent {
+  kind: string;
+  decision_id: string | null;
+  sequence: number | null;
+  message: string;
+}
+
 export interface VoiceTurnResponse {
   session_id: string;
   thread_id: string;
@@ -212,6 +259,8 @@ export interface VoiceTurnResponse {
   replayed: boolean;
   spoken: VoiceSpokenPayload | null;
   pending_question: VoicePendingQuestion | null;
+  pending_decision: VoicePendingDecision | null;
+  decision_event: VoiceDecisionEvent | null;
 }
 
 export type ServerVoiceErrorCode =
@@ -225,7 +274,10 @@ export type ServerVoiceErrorCode =
   | 'VOICE_TRANSCRIPT_INCOMPLETE'
   | 'VOICE_RESPONSE_INCOMPLETE'
   | 'VOICE_SCOPE_CHANGED'
-  | 'VOICE_PROMPT_UNKNOWN';
+  | 'VOICE_PROMPT_UNKNOWN'
+  | 'VOICE_DECISION_UNAVAILABLE'
+  | 'VOICE_DECISION_CONFLICT'
+  | 'VOICE_OPERATION_NOT_FOUND';
 
 // --- Analysis scope (ai.core.analysis.scope / .wire) ---
 

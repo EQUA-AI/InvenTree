@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
 #: Voice exchanges are short; a spoken proposal should not linger as long as a
 #: visual one (§5.3 point 4). Confirmation is expected on the next turn.
-VOICE_PROPOSAL_EXPIRY_SECONDS = 3 * 60
+VOICE_PROPOSAL_EXPIRY_SECONDS = 300 + 60
 
 #: Irreversible actions and their strict phrase — shared with the text rail so
 #: both demand the same control (§5.3 point 3).
@@ -69,7 +69,7 @@ _ACTION_VERB = {
 def _owner(actor: AIPrincipal):
     from django.contrib.auth import get_user_model
 
-    return get_user_model().objects.get(pk=actor.user_pk)
+    return get_user_model().objects.get(pk=actor.user_pk, is_active=True)
 
 
 def _voice_summary(action_type: str, preview: dict[str, Any]) -> str:
@@ -147,10 +147,16 @@ def build_voice_proposal(
     executable = ExecutableWrite(
         tool_name=action_type,
         capability=capability,
-        arguments={'proposal_id': str(proposal.id), 'scope_hash': scope_hash},
+        arguments={
+            'proposal_id': str(proposal.id),
+            'scope_hash': scope_hash,
+            'preview_hash': proposal.preview_hash,
+        },
     )
     return ResolvedVoiceWrite(
-        action=_proposed_action(proposal, capability), executable=executable
+        action=_proposed_action(proposal, capability),
+        executable=executable,
+        record_label=_record_label(proposal),
     )
 
 
@@ -188,13 +194,19 @@ class ProposalConfirmingVoiceExecutor:
             )
         try:
             owner = _owner(actor)
+            from aichat.services.scope_strings import scope_strings
+
+            current_scope_hash = scope_strings(owner)[1]
+            if current_scope_hash != scope_hash:
+                raise proposals.ProposalError('scope changed before confirmation')
             confirmed = proposals.confirm_proposal(
                 owner=owner,
                 scope_hash=scope_hash,
                 proposal_id=proposal_id,
-                # The voice gate already enforced the strict phrase verbally for
-                # an irreversible action before reaching this executor.
-                strict_phrase_satisfied=True,
+                # Carry the actual grammar-validated reply, never assert that a
+                # strict phrase was satisfied simply because this is voice.
+                confirm_phrase=executable.confirmation_phrase,
+                expected_preview_hash=args.get('preview_hash'),
             )
         except proposals.ProposalError as exc:
             # Fail closed: expiry, staleness, terminal-state and cross-owner are

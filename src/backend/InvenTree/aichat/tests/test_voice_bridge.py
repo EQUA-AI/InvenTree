@@ -9,6 +9,7 @@ cross-owner or unbound proposal could do fails closed instead of writing.
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 from datetime import timedelta
 
 from django.apps import apps
@@ -28,11 +29,10 @@ from ai.core.auth import AIPrincipal
 from ai.core.voice.write_gate import ExecutableWrite
 from aichat.models import ChatActionProposal, ProposalState
 from aichat.services import proposals
+from aichat.services.scope_strings import scope_strings
 from aichat.services.voice_bridge import ProposalConfirmingVoiceExecutor
 from assets.models import AssetMachine
 from company.models import Company
-
-SCOPE_HASH = 'v' * 64
 
 
 def _voice_scope_resolver(actor):
@@ -61,9 +61,7 @@ def _principal(user) -> AIPrincipal:
     )
 
 
-@override_settings(
-    AIMMS_MAINTENANCE_SCOPE_RESOLVER=f'{__name__}._voice_scope_resolver'
-)
+@override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=f'{__name__}._voice_scope_resolver')
 class VoiceBridgeTests(TestCase):
     """The confirm-side unification bridge."""
 
@@ -99,7 +97,7 @@ class VoiceBridgeTests(TestCase):
         return proposals.create_proposal(
             owner=self.actor,
             scope_key=f'customer:{self.customer.pk}',
-            scope_hash=SCOPE_HASH,
+            scope_hash=scope_strings(self.actor)[1],
             action_type=action,
             work_order_id=self.work_order.pk,
             reason='Spoken: hold this.',
@@ -112,13 +110,18 @@ class VoiceBridgeTests(TestCase):
         return ExecutableWrite(
             tool_name=proposal.action_type,
             capability='work_order.change',
-            arguments={'proposal_id': str(proposal.id), 'scope_hash': SCOPE_HASH},
+            arguments={
+                'proposal_id': str(proposal.id),
+                'scope_hash': proposal.scope_hash,
+            },
         )
 
     def test_confirmed_voice_write_dispatches_the_canonical_command(self):
         """A bound proposal is confirmed through the shared command service."""
         proposal = self._proposal()
-        result = self.executor._confirm(self._executable(proposal), _principal(self.actor))
+        result = self.executor._confirm(
+            self._executable(proposal), _principal(self.actor)
+        )
         self.assertTrue(result.ok)
         self.assertEqual(result.detail, 'hold')
         self.work_order.refresh_from_db()
@@ -137,8 +140,13 @@ class VoiceBridgeTests(TestCase):
         self.assertEqual(
             set(voice_proposal.receipt),
             {
-                'work_order_id', 'event_id', 'command', 'lifecycle_status',
-                'lifecycle_version', 'correlation_id', 'idempotency_key',
+                'work_order_id',
+                'event_id',
+                'command',
+                'lifecycle_status',
+                'lifecycle_version',
+                'correlation_id',
+                'idempotency_key',
             },
         )
         self.assertEqual(voice_proposal.receipt['command'], 'hold')
@@ -161,11 +169,15 @@ class VoiceBridgeTests(TestCase):
         ChatActionProposal.objects.filter(id=proposal.id).update(
             expires_at=timezone.now() - timedelta(seconds=1)
         )
-        result = self.executor._confirm(self._executable(proposal), _principal(self.actor))
+        result = self.executor._confirm(
+            self._executable(proposal), _principal(self.actor)
+        )
         self.assertFalse(result.ok)
         self.assertEqual(result.detail, 'PROPOSAL_EXPIRED')
         self.work_order.refresh_from_db()
-        self.assertEqual(self.work_order.lifecycle_status, WorkOrderLifecycle.IN_PROGRESS)
+        self.assertEqual(
+            self.work_order.lifecycle_status, WorkOrderLifecycle.IN_PROGRESS
+        )
 
     def test_missing_binding_fails_closed(self):
         """An executable without a proposal binding cannot write."""
@@ -179,16 +191,20 @@ class VoiceBridgeTests(TestCase):
     def test_cross_owner_proposal_is_not_confirmable_by_voice(self):
         """A voice actor cannot confirm another owner's proposal."""
         proposal = self._proposal(key='voice-cross')
-        stranger = get_user_model().objects.create_user(username='v-stranger', password='pw')
-        result = self.executor._confirm(self._executable(proposal), _principal(stranger))
+        stranger = get_user_model().objects.create_user(
+            username='v-stranger', password='pw'
+        )
+        result = self.executor._confirm(
+            self._executable(proposal), _principal(stranger)
+        )
         self.assertFalse(result.ok)
         self.work_order.refresh_from_db()
-        self.assertEqual(self.work_order.lifecycle_status, WorkOrderLifecycle.IN_PROGRESS)
+        self.assertEqual(
+            self.work_order.lifecycle_status, WorkOrderLifecycle.IN_PROGRESS
+        )
 
 
-@override_settings(
-    AIMMS_MAINTENANCE_SCOPE_RESOLVER=f'{__name__}._voice_scope_resolver'
-)
+@override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=f'{__name__}._voice_scope_resolver')
 class VoiceProposeSideTests(TestCase):
     """Propose-side wiring: build_voice_proposal creates the durable proposal."""
 
@@ -225,7 +241,7 @@ class VoiceProposeSideTests(TestCase):
         return build_voice_proposal(
             owner=self.actor,
             scope_key=f'customer:{self.customer.pk}',
-            scope_hash=SCOPE_HASH,
+            scope_hash=scope_strings(self.actor)[1],
             action_type=action,
             work_order_id=self.work_order.pk,
             reason='Spoken request.',
@@ -241,7 +257,9 @@ class VoiceProposeSideTests(TestCase):
         proposal_id = resolved.executable.arguments['proposal_id']
         proposal = ChatActionProposal.objects.get(id=proposal_id)
         self.assertEqual(proposal.state, ProposalState.PROPOSED)
-        self.assertEqual(resolved.executable.arguments['scope_hash'], SCOPE_HASH)
+        self.assertEqual(
+            resolved.executable.arguments['scope_hash'], scope_strings(self.actor)[1]
+        )
         self.assertEqual(resolved.executable.tool_name, 'work_order.hold')
         # Shorter voice expiry, not the 15-minute visual default.
         lifetime = (proposal.expires_at - proposal.created_at).total_seconds()
@@ -274,13 +292,14 @@ class VoiceProposeSideTests(TestCase):
     def test_voice_delete_confirms_without_re_demanding_the_phrase(self):
         """Voice enforces the strict phrase at the gate, so the executor may confirm.
 
-        The executor asserts ``strict_phrase_satisfied``; the durable proposal is
-        still irreversible-classified (the gate spoke and validated the phrase).
+        The executor forwards the actual validated phrase; voice alone is not
+        evidence that a strict phrase was satisfied.
         """
         resolved = self._build(action='work_order.delete', key='vp-del-confirm')
         self.assertEqual(resolved.action.action_class.value, 'irreversible')
         result = ProposalConfirmingVoiceExecutor()._confirm(
-            resolved.executable, _principal(self.actor)
+            replace(resolved.executable, confirmation_phrase='confirm delete'),
+            _principal(self.actor),
         )
         self.assertTrue(result.ok)
         self.assertEqual(result.detail, 'delete')

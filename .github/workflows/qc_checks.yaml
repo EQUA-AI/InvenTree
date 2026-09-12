@@ -748,6 +748,9 @@ jobs:
           DJANGO_SETTINGS_MODULE=ai.core.tests.settings python -m pytest -q -p no:cacheprovider \
             ai/core/tests/test_decision_store.py \
             ai/core/tests/test_decision_grammar.py \
+            ai/core/tests/test_decision_coordinator.py \
+            ai/core/tests/test_decision_routes.py \
+            ai/core/tests/test_decision_pipeline.py \
             ai/core/tests/test_voice_write_confirmation.py \
             ai/core/tests/test_voice_write_gate.py \
             ai/core/tests/test_voice_write_governance.py \
@@ -771,7 +774,11 @@ jobs:
           PGPASSWORD: password
         run: psql -h 127.0.0.1 -U inventree -d postgres -c 'DROP DATABASE IF EXISTS test_inventree WITH (FORCE)'
       - name: Layer 2 - backend integration on PostgreSQL
-        run: invoke dev.test --keepdb --disable-pty --runtest='aichat.tests.test_voice_bridge aichat.tests.test_action_proposal_api aichat.tests.test_seed_voice_action_fixtures voice.tests tasks.tests.test_workorder_services tasks.tests.test_procedure_walkthrough approvals.tests'
+        run: invoke dev.test --keepdb --disable-pty --runtest='aichat.tests.test_voice_bridge aichat.tests.test_voice_hold_journey aichat.tests.test_action_proposal_api aichat.tests.test_seed_voice_action_fixtures voice.tests tasks.tests.test_workorder_services tasks.tests.test_procedure_walkthrough approvals.tests'
+      - name: Decision CAS on real Redis
+        run: |
+          cd src/backend/InvenTree
+          VOICE_DECISION_TEST_REDIS_URL=redis://127.0.0.1:6379/15 DJANGO_SETTINGS_MODULE=ai.core.tests.settings python -m pytest -q -p no:cacheprovider ai/core/tests/test_decision_redis.py
       - name: Wire contract drift
         run: |
           cd src/backend/InvenTree

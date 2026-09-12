@@ -8,8 +8,28 @@ from uuid import uuid4
 
 from ai.core.decisions.models import PendingDecision
 
-DEFAULT_PENDING_DECISION_CACHE_TIMEOUT_SECONDS = 15 * 60
+DEFAULT_PENDING_DECISION_CACHE_TIMEOUT_SECONDS = 300 + 60
 _MUTATION_LOCK_SECONDS = 5
+
+
+class DecisionStoreUnavailable(RuntimeError):
+    """Contention or malformed state must never fall through to a legacy write."""
+
+
+def _read(record: Any) -> PendingDecision | None:
+    if record is None:
+        return None
+    decision = _decode(record)
+    if decision is None:
+        raise DecisionStoreUnavailable("Decision state is unavailable; nothing was confirmed.")
+    return decision
+
+
+def _matches(current, expected) -> bool:
+    if current is None or expected is None:
+        return current is expected
+    return (current.decision_id, current.sequence) == (expected.decision_id, expected.sequence)
+
 
 _CAS_IMMUTABLE_FIELDS = (
     "decision_id",
@@ -77,6 +97,10 @@ class PendingDecisionStore(Protocol):
 
     def save(self, thread_id: Any, decision: PendingDecision) -> bool: ...
 
+    def read(self, thread_id: Any) -> PendingDecision | None: ...
+
+    def install(self, decision: PendingDecision, expected: PendingDecision | None) -> bool: ...
+
     def peek(self, thread_id: Any) -> PendingDecision | None: ...
 
     def take(self, thread_id: Any) -> PendingDecision | None: ...
@@ -106,6 +130,27 @@ class InMemoryPendingDecisionStore:
     def peek(self, thread_id: Any) -> PendingDecision | None:
         with self._mutation_lock:
             return _decode(self._records.get(str(thread_id)))
+
+    def read(self, thread_id: Any) -> PendingDecision | None:
+        """Read without confusing corruption or contention with an empty slot."""
+        if not self._mutation_lock.acquire(blocking=False):
+            raise DecisionStoreUnavailable("Decision state is busy.")
+        try:
+            return _read(self._records.get(str(thread_id)))
+        finally:
+            self._mutation_lock.release()
+
+    def install(self, decision: PendingDecision, expected: PendingDecision | None) -> bool:
+        """Install only if the pre-resolution slot is still unchanged."""
+        if not self._mutation_lock.acquire(blocking=False):
+            return False
+        try:
+            if not _matches(_read(self._records.get(decision.thread_id)), expected):
+                return False
+            self._records[decision.thread_id] = decision.to_record()
+            return True
+        finally:
+            self._mutation_lock.release()
 
     def take(self, thread_id: Any) -> PendingDecision | None:
         if not self._mutation_lock.acquire(blocking=False):
@@ -168,6 +213,42 @@ class CachedPendingDecisionStore:
         if cache.get(self._lock_key(thread_id)) == token:
             cache.delete(self._lock_key(thread_id))
 
+    def _redis_mutate(self, decision, expected, *, installing):
+        """WATCH/MULTI makes production CAS atomic without relying on a lock lease."""
+        from django.core.cache import cache
+        from redis.exceptions import WatchError
+
+        client = getattr(cache, "client", None)
+        if client is None:
+            return None  # LocMem test backend uses the matching locked fallback.
+        connection = client.get_client(write=True)
+        key = cache.make_key(self._key(decision.thread_id))
+        try:
+            with connection.pipeline() as pipe:
+                pipe.watch(key)
+                raw = pipe.get(key)
+                current = _read(client.decode(raw) if raw is not None else None)
+                if installing:
+                    valid = _matches(current, expected)
+                else:
+                    valid = (
+                        current is not None
+                        and current.sequence == expected
+                        and decision.sequence == expected + 1
+                        and _same_cas_identity(current, decision)
+                        and _timing_advances(current, decision)
+                    )
+                if not valid:
+                    return False
+                pipe.multi()
+                pipe.set(key, client.encode(decision.to_record()), ex=self.timeout_seconds)
+                pipe.execute()
+                return True
+        except WatchError:
+            return False
+        except Exception as exc:
+            raise DecisionStoreUnavailable("Decision storage is unavailable.") from exc
+
     def save(self, thread_id: Any, decision: PendingDecision) -> bool:
         _check_binding(thread_id, decision)
         token = self._acquire(thread_id)
@@ -185,6 +266,36 @@ class CachedPendingDecisionStore:
         from django.core.cache import cache
 
         return _decode(cache.get(self._key(thread_id)))
+
+    def read(self, thread_id: Any) -> PendingDecision | None:
+        """Read the authoritative slot, failing closed on cache errors."""
+        from django.core.cache import cache
+
+        try:
+            if cache.get(self._lock_key(thread_id)) is not None:
+                raise DecisionStoreUnavailable("Decision state is busy.")
+            return _read(cache.get(self._key(thread_id)))
+        except Exception as exc:
+            raise DecisionStoreUnavailable("Decision state is unavailable.") from exc
+
+    def install(self, decision: PendingDecision, expected: PendingDecision | None) -> bool:
+        """A late resolver cannot replace a newer interaction."""
+        from django.core.cache import cache
+
+        if (result := self._redis_mutate(decision, expected, installing=True)) is not None:
+            return result
+
+        token = self._acquire(decision.thread_id)
+        if token is None:
+            return False
+        try:
+            key = self._key(decision.thread_id)
+            if not _matches(_read(cache.get(key)), expected):
+                return False
+            cache.set(key, decision.to_record(), timeout=self.timeout_seconds)
+            return True
+        finally:
+            self._release(decision.thread_id, token)
 
     def take(self, thread_id: Any) -> PendingDecision | None:
         token = self._acquire(thread_id)
@@ -206,6 +317,10 @@ class CachedPendingDecisionStore:
         _check_binding(thread_id, replacement)
         if replacement.sequence != expected_sequence + 1:
             return False
+        if (
+            result := self._redis_mutate(replacement, expected_sequence, installing=False)
+        ) is not None:
+            return result
         token = self._acquire(thread_id)
         if token is None:
             return False

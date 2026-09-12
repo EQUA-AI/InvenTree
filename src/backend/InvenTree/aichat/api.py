@@ -11,7 +11,6 @@ the acting user server-side.
 
 from __future__ import annotations
 
-import hashlib
 import uuid
 
 from drf_spectacular.utils import extend_schema
@@ -23,20 +22,7 @@ from rest_framework.views import APIView
 
 from aichat.models import ChatActionProposal, ProposalAction
 from aichat.services import proposals as proposal_service
-
-
-def _scope_strings(user) -> tuple[str, str]:
-    """Resolve the actor's maintenance scope fail-closed."""
-    from tasks.scope import ScopeError, scope_for_actor
-
-    try:
-        scopes = scope_for_actor(user)
-    except ScopeError as exc:
-        raise proposal_service.ProposalError('scope unresolved') from exc
-    if not scopes:
-        raise proposal_service.ProposalError('scope unresolved')
-    key = '|'.join(sorted(repr(scope) for scope in scopes))
-    return key, hashlib.sha256(key.encode('utf-8')).hexdigest()
+from aichat.services.scope_strings import scope_strings as _scope_strings
 
 
 def _payload(proposal: ChatActionProposal) -> dict:
@@ -49,6 +35,7 @@ def _payload(proposal: ChatActionProposal) -> dict:
         'target_version': proposal.target_version,
         'intent': proposal.intent,
         'preview': proposal.preview,
+        'preview_hash': proposal.preview_hash,
         'reason': proposal.reason,
         'expires_at': proposal.expires_at.isoformat(),
         'confirmed_at': (
@@ -66,6 +53,7 @@ _ERROR_STATUS = {
     'PROPOSAL_EXPIRED': status.HTTP_409_CONFLICT,
     'PROPOSAL_STATE_CONFLICT': status.HTTP_409_CONFLICT,
     'PROPOSAL_REVALIDATION_FAILED': status.HTTP_409_CONFLICT,
+    'PROPOSAL_PREVIEW_CHANGED': status.HTTP_409_CONFLICT,
     'PROPOSAL_INVALID': status.HTTP_403_FORBIDDEN,
     'STRICT_CONFIRMATION_REQUIRED': status.HTTP_400_BAD_REQUEST,
     'DUPLICATE_OPEN_REPAIR': status.HTTP_409_CONFLICT,
@@ -215,9 +203,13 @@ class ProposalConfirmView(APIView):
                 scope_hash=scope_hash,
                 proposal_id=proposal_id,
                 confirm_phrase=confirm_phrase,
+                expected_preview_hash=(request.data or {}).get('expected_preview_hash'),
             )
         except proposal_service.ProposalError as exc:
             return _error(exc)
+        from ai.core.decisions import invalidate_for_source
+
+        invalidate_for_source(proposal.id, proposal.thread_id)
         return Response(_payload(proposal))
 
 
@@ -236,6 +228,9 @@ class ProposalRejectView(APIView):
             )
         except proposal_service.ProposalError as exc:
             return _error(exc)
+        from ai.core.decisions import invalidate_for_source
+
+        invalidate_for_source(proposal.id, proposal.thread_id)
         return Response(_payload(proposal))
 
 

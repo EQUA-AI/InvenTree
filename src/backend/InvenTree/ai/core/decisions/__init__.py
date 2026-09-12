@@ -41,3 +41,6 @@ __all__ = [
     "PendingDecisionStore",
     "classify_decision_utterance",
 ]
+
+
+from ai.core.decisions.invalidation import invalidate_for_source as invalidate_for_source

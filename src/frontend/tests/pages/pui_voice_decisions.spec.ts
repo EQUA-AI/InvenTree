@@ -1,3 +1,4 @@
+import type { VoicePendingDecision } from '../../lib/types/Voice';
 import { expect, test } from '../baseFixtures.js';
 import { doCachedLogin } from '../login.js';
 import {
@@ -7,11 +8,173 @@ import {
   sseBody,
   threadId
 } from './aichat_harness.js';
+import {
+  emitTranscript,
+  installVoiceMocks,
+  mockSessionId,
+  mockThreadId
+} from './voice_harness.js';
 
 /**
  * Decision-safety browser coverage (voice-UX plan Phase A/B). Grows per phase;
  * every scenario here must stay green (task A10 suite).
  */
+
+function holdDecision(
+  id = 'decision-one',
+  target = 'WO-000104 Pump service'
+): VoicePendingDecision {
+  return {
+    decision_id: id,
+    source_id: `proposal-${id}`,
+    revision: 3,
+    sequence: 1,
+    kind: 'action',
+    state: 'presented',
+    target_label: target,
+    sections: [
+      { id: 'reason', label: 'Reason', text: 'replacement seal is missing' }
+    ],
+    required_review_sections: [],
+    allowed_responses: ['confirm hold', 'yes', 'change that', 'cancel'],
+    required_phrase: null,
+    locale: 'en-US',
+    voice_eligible: true,
+    voice_ineligible_reason: null,
+    preview_hash: 'a'.repeat(64),
+    expires_at: new Date(Date.now() + 120000).toISOString(),
+    utterance_id: null,
+    delivery_state: 'pending',
+    review_acknowledged: false,
+    operation_id: null,
+    execution_state: null,
+    receipt_ref: null,
+    spoken_summary:
+      'Put the work order on hold because the replacement seal is missing. Say confirm hold or yes.',
+    spoken_summary_hash: ''
+  };
+}
+
+test('one decision card and voice controls remain available across all tabs and minimized state', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser, { url: 'home' });
+  await mockChatFoundation(page);
+  const decision = holdDecision();
+  const voice = await installVoiceMocks(page, {
+    onDecisionRead: () => ({ pending_decision: decision })
+  });
+  await page.reload();
+  await openChat(page);
+  await page.getByTestId('voice-start').click();
+  for (const tab of ['Chat', 'Approvals', 'History']) {
+    await page.getByRole('tab', { name: tab, exact: true }).click();
+    await expect(page.getByTestId('voice-decision-card')).toHaveCount(1);
+    await expect(page.getByTestId('voice-decision-card')).toContainText(
+      decision.target_label
+    );
+    await expect(page.getByTestId('voice-end')).toBeVisible();
+  }
+  await expect(page.getByTestId('voice-decision-spoken-summary')).toHaveText(
+    decision.spoken_summary
+  );
+  await page.getByLabel('close-ai-chat').click();
+  await expect(page.getByTestId('voice-minimized-indicator')).toContainText(
+    decision.target_label
+  );
+  expect(voice.sessionEnded).toBe(false);
+  await page
+    .getByTestId('voice-minimized-indicator')
+    .getByRole('button', { name: 'End voice' })
+    .click();
+  await expect.poll(() => voice.sessionEnded).toBe(true);
+});
+
+test('turns carry decision_context and correction re-presents a fresh target', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser, { url: 'home' });
+  await mockChatFoundation(page);
+  let decision = holdDecision();
+  const first = { ...decision };
+  const voice = await installVoiceMocks(page, {
+    onDecisionRead: () => ({ pending_decision: decision }),
+    onTurn: () => {
+      decision = holdDecision('decision-two', 'WO-000140 Pump service');
+      return {
+        session_id: mockSessionId,
+        thread_id: mockThreadId,
+        turn_id: 'turn-correction',
+        message: decision.spoken_summary,
+        response_state: 'complete',
+        workflow_used: 'voice_decision',
+        replayed: false,
+        spoken: null,
+        pending_question: null,
+        pending_decision: decision,
+        decision_event: null
+      };
+    }
+  });
+  await page.reload();
+  await openChat(page);
+  await page.getByTestId('voice-start').click();
+  await expect(page.getByTestId('voice-decision-card')).toBeVisible();
+  await emitTranscript(page, {
+    text: 'no, I meant 140',
+    itemId: 'correct-140'
+  });
+  await expect.poll(() => voice.turns.length).toBe(1);
+  expect(voice.turns[0].body?.decision_context).toEqual({
+    decision_id: first.decision_id,
+    sequence: first.sequence,
+    revision: first.revision,
+    preview_hash: first.preview_hash
+  });
+  await expect(page.getByTestId('voice-decision-card')).toContainText(
+    'WO-000140'
+  );
+  await expect(page.getByTestId('voice-pending-transcript')).toHaveCount(0);
+});
+
+test('touch confirmation sends hash and revision and unknown result stays unverified', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser, { url: 'home' });
+  await mockChatFoundation(page);
+  let decision = holdDecision();
+  const voice = await installVoiceMocks(page, {
+    onDecisionRead: () => ({ pending_decision: decision }),
+    onDecisionAction: () => {
+      decision = {
+        ...decision,
+        sequence: 2,
+        state: 'resolved',
+        execution_state: 'unknown'
+      };
+      return { pending_decision: decision };
+    }
+  });
+  await page.reload();
+  await openChat(page);
+  await page.getByTestId('voice-start').click();
+  await page.getByTestId('voice-decision-confirm').click();
+  await expect.poll(() => voice.decisionActions.length).toBe(1);
+  expect(voice.decisionActions[0].body).toMatchObject({
+    decision_id: 'decision-one',
+    revision: 3,
+    preview_hash: 'a'.repeat(64),
+    confirm_phrase: 'confirm hold'
+  });
+  await expect(page.getByTestId('voice-decision-outcome')).toContainText(
+    'Result not verified'
+  );
+  await expect(
+    page
+      .getByTestId('voice-decision-card')
+      .getByText('Change recorded', { exact: true })
+  ).toHaveCount(0);
+});
 
 test('retired HITL event never renders an approvable card', async ({
   browser

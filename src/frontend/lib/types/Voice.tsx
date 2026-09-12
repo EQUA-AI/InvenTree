@@ -30,6 +30,10 @@ export type VoiceClientState =
 // pydantic wire models (ai/core/voice/wire.py) — re-exported here so every
 // existing import keeps working while drift is structurally impossible.
 export type {
+  VoiceDecisionContext,
+  VoiceDecisionEvent,
+  VoiceDecisionSection,
+  VoicePendingDecision,
   VoicePendingQuestion,
   VoicePendingQuestionOption,
   VoiceSessionPayload,
@@ -38,6 +42,7 @@ export type {
   VoiceTurnResponse
 } from './AimmsWire.generated';
 import type { ServerVoiceErrorCode } from './AimmsWire.generated';
+import type { VoiceDecisionContext } from './AimmsWire.generated';
 
 /** Codes only the CLIENT mints (never sent by the server). */
 export type ClientVoiceErrorCode = 'MICROPHONE_DENIED' | 'BROWSER_UNSUPPORTED';
@@ -56,6 +61,7 @@ export interface VoicePartialTranscript {
 }
 
 export interface VoiceFinalTranscript {
+  decisionContext?: VoiceDecisionContext | null;
   text: string;
   itemId: string;
   confidence: number | null;

@@ -28,7 +28,7 @@ from __future__ import annotations
 import inspect
 import logging
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -77,6 +77,7 @@ class ExecutableWrite:
     tool_name: str
     capability: str
     arguments: dict[str, Any] = field(default_factory=dict)
+    confirmation_phrase: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -450,7 +451,9 @@ class VoiceWriteGate:
         # confirmed, resolved, re-authorized tool call.
         with confirmed_write_exception():
             result = await self.executor.execute(
-                stored.executable, actor=actor, trusted_context=trusted_context
+                replace(stored.executable, confirmation_phrase=content),
+                actor=actor,
+                trusted_context=trusted_context,
             )
         outcome = result.resolved_outcome
         succeeded = outcome is VoiceWriteOutcome.SUCCEEDED

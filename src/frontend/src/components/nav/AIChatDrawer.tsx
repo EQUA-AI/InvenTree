@@ -62,12 +62,15 @@ import {
   type UploadedFile,
   useAIChat
 } from '../../hooks/UseAIChat';
+import { useChatProposals } from '../../hooks/useChatProposals';
 import { useVoiceLiveSession } from '../../hooks/useVoiceLiveSession';
 import { useAIChatState } from '../../states/AIChatState';
 import { useLocalState } from '../../states/LocalState';
+import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
 import { ChatActionProposalList } from '../ai/ChatActionProposals';
 import { QuestionCard } from '../ai/QuestionCard';
 import { VoiceContextBadge } from '../ai/VoiceContextBadge';
+import { VoiceDecisionCard } from '../ai/VoiceDecisionCard';
 import { VoiceSessionControl } from '../ai/VoiceSessionControl';
 import { VoiceTranscript } from '../ai/VoiceTranscript';
 import { ActiveScopeBanner } from '../aichat/ActiveScopeBanner';
@@ -1338,6 +1341,7 @@ export function AIChatDrawer({
     enabled: true,
     threadId: activeThreadId ?? undefined,
     onTurnResult: (turn) => {
+      useVoiceDecisionState.getState().applyTurn(turn.session_id, turn);
       // Typed and voice turns share one server history; resync so the
       // drawer renders the converged conversation.
       void syncThreads();
@@ -1352,9 +1356,13 @@ export function AIChatDrawer({
     }
   });
   const handleClose = useCallback(() => {
-    void voice.end();
+    // Preserve the Phase A close behavior when no decision surface is active.
+    // An announced decision instead remains accessible from the header control.
+    if (!useVoiceDecisionState.getState().decision) void voice.end();
     onClose();
   }, [onClose, voice.end]);
+  const proposals = useChatProposals();
+  const voiceDecision = useVoiceDecisionState((state) => state.decision);
 
   const [activeTab, setActiveTab] = useLocalStorage<AIChatDrawerTab>({
     key: 'ai-chat-drawer-active-tab',
@@ -1626,454 +1634,255 @@ export function AIChatDrawer({
   const hasMessages = messages.length > 0;
 
   return (
-    <Drawer
-      opened={opened}
-      size={drawerWidth}
-      position='right'
-      onClose={handleClose}
-      // The live suites' resilient fallbacks read the transcript through
-      // this id; it was referenced by tests but never existed, so the
-      // fallback branch hung to the whole-test timeout (found 2026-08-28).
-      data-testid='ai-chat-drawer'
-      withCloseButton={false}
-      closeOnClickOutside={false}
-      trapFocus={false}
-      lockScroll={false}
-      withOverlay={false}
-      transitionProps={{ transition: 'slide-left', duration: 250 }}
-      styles={{
-        content: {
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--mantine-color-body)',
-          position: 'relative'
-        },
-        body: {
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          padding: 0,
-          overflow: 'hidden'
-        }
-      }}
-    >
-      {/* Resize handle on the left edge */}
-      <Box
-        onMouseDown={handleResizeMouseDown}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: 6,
-          height: '100%',
-          cursor: 'col-resize',
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          transition: 'background 0.15s ease'
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'var(--mantine-color-blue-1)';
-        }}
-        onMouseLeave={(e) => {
-          if (!isResizing.current) {
-            e.currentTarget.style.background = '';
+    <>
+      {!opened && voice.session && (
+        <Group
+          pos='fixed'
+          top={8}
+          right={80}
+          style={{ zIndex: 501 }}
+          data-testid='voice-minimized-indicator'
+        >
+          <Button
+            size='compact-xs'
+            onClick={() => useAIChatState.getState().open()}
+          >
+            {voiceDecision?.target_label ?? t`Voice session`} · {voice.state}
+          </Button>
+          <Button
+            size='compact-xs'
+            color='red'
+            onClick={() => void voice.end()}
+          >{t`End voice`}</Button>
+        </Group>
+      )}
+      <Drawer
+        opened={opened}
+        size={drawerWidth}
+        position='right'
+        onClose={handleClose}
+        // The live suites' resilient fallbacks read the transcript through
+        // this id; it was referenced by tests but never existed, so the
+        // fallback branch hung to the whole-test timeout (found 2026-08-28).
+        data-testid='ai-chat-drawer'
+        withCloseButton={false}
+        closeOnClickOutside={false}
+        trapFocus={false}
+        lockScroll={false}
+        withOverlay={false}
+        transitionProps={{ transition: 'slide-left', duration: 250 }}
+        styles={{
+          content: {
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--mantine-color-body)',
+            position: 'relative'
+          },
+          body: {
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            padding: 0,
+            overflow: 'hidden'
           }
         }}
       >
-        <IconGripVertical
-          size={12}
-          style={{ opacity: 0.4, pointerEvents: 'none' }}
-        />
-      </Box>
-      <Boundary label='AIChatDrawer'>
-        {/* Header */}
+        {/* Resize handle on the left edge */}
         <Box
-          p='md'
+          onMouseDown={handleResizeMouseDown}
           style={{
-            borderBottom: '1px solid var(--mantine-color-gray-2)',
-            background: 'var(--mantine-color-body)'
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: 6,
+            height: '100%',
+            cursor: 'col-resize',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'background 0.15s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--mantine-color-blue-1)';
+          }}
+          onMouseLeave={(e) => {
+            if (!isResizing.current) {
+              e.currentTarget.style.background = '';
+            }
           }}
         >
-          <Group justify='space-between' wrap='nowrap'>
-            <Group gap='sm'>
-              <Box
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: '50%',
-                  background: `linear-gradient(135deg, ${theme.colors.blue[5]}, ${theme.colors.violet[5]})`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <IconSparkles size={20} color='white' />
-              </Box>
-              <Box>
-                <Text fw={600} size='md'>
-                  {t`AI Assistant`}
-                </Text>
-                <Text size='xs' c='dimmed'>
-                  {t`Powered by AIMMS AI`}
-                </Text>
-              </Box>
-            </Group>
-            <Group gap='xs'>
-              {/* Sync button */}
-              <Tooltip
-                label={isSyncing ? t`Syncing...` : t`Sync conversations`}
-                withArrow
-              >
-                <ActionIcon
-                  aria-label='sync-ai-chat-threads'
-                  variant='subtle'
-                  color='gray'
-                  radius='xl'
-                  onClick={() => syncThreads()}
-                  loading={isSyncing}
-                  disabled={isSyncing}
-                >
-                  <IconRefresh
-                    size={18}
-                    style={{
-                      animation: isSyncing ? 'spin 1s linear infinite' : 'none'
-                    }}
-                  />
-                </ActionIcon>
-              </Tooltip>
-              {hasMessages && (
-                <Tooltip label={t`New conversation`} withArrow>
-                  <ActionIcon
-                    variant='subtle'
-                    color='gray'
-                    radius='xl'
-                    onClick={handleClearChat}
-                    aria-label='new-ai-chat-thread'
-                    disabled={isLoading}
-                  >
-                    <IconMessagePlus size={18} />
-                  </ActionIcon>
-                </Tooltip>
-              )}
-              <Tooltip label={t`Close`} withArrow>
-                <ActionIcon
-                  aria-label='close-ai-chat'
-                  variant='subtle'
-                  color='gray'
-                  radius='xl'
-                  onClick={handleClose}
-                >
-                  <IconX size={18} />
-                </ActionIcon>
-              </Tooltip>
-            </Group>
-          </Group>
-
-          {/* Sync indicator */}
-          {isSyncing && (
-            <Text size='xs' c='dimmed' ta='center' mt='xs'>
-              {t`Syncing conversations with server...`}
-            </Text>
-          )}
-
-          {/* Drawer tab strip (Chat / Approvals / History) */}
-          <Box mt='sm'>
-            <Group justify='space-between' wrap='nowrap'>
-              <Tabs
-                value={activeTab}
-                onChange={(v) => setActiveTab((v as AIChatDrawerTab) || 'chat')}
-                variant='pills'
-              >
-                <Tabs.List>
-                  <Tabs.Tab value='chat'>{t`Chat`}</Tabs.Tab>
-                  <Tabs.Tab value='approvals'>
-                    <Group gap={6} wrap='nowrap'>
-                      <Text size='sm'>{t`Approvals`}</Text>
-                      {pendingApprovalCount > 0 && (
-                        <Badge size='xs' variant='filled' color='red'>
-                          {pendingApprovalCount}
-                        </Badge>
-                      )}
-                    </Group>
-                  </Tabs.Tab>
-                  <Tabs.Tab value='history'>{t`History`}</Tabs.Tab>
-                </Tabs.List>
-              </Tabs>
-              <RiskRadarDrawerBadge />
-            </Group>
-          </Box>
-
-          {/* Thread selector */}
-          {activeTab === 'chat' && (
-            <Box mt='sm'>
-              <ThreadSelector
-                threads={threads}
-                sharedThreads={sharedThreads}
-                activeThreadId={activeThreadId}
-                onSelectThread={handleSwitchThread}
-                onNewThread={handleNewThread}
-                onDeleteThread={handleDeleteThread}
-                onRenameThread={renameThread}
-                onShareThread={(threadId, entry) => {
-                  const revoke = entry.startsWith('-');
-                  const username = revoke ? entry.slice(1).trim() : entry;
-                  if (!username) return;
-                  void (
-                    revoke
-                      ? revokeThreadShare(threadId, username)
-                      : shareThread(threadId, username)
-                  ).then((result) => {
-                    if (!result.ok) {
-                      window.alert(
-                        `${t`Sharing failed`}: ${result.detail ?? ''}`
-                      );
-                    }
-                  });
-                }}
-                onInspectMemory={setMemoryThreadId}
-                disabled={isLoading}
-              />
-            </Box>
-          )}
+          <IconGripVertical
+            size={12}
+            style={{ opacity: 0.4, pointerEvents: 'none' }}
+          />
         </Box>
-
-        {/* M2 PR 9: "What this chat remembers" — the only place the
-            summary body renders (GR-16). */}
-        <ThreadMemoryModal
-          threadId={memoryThreadId}
-          host={aiHost}
-          opened={memoryThreadId !== null}
-          onClose={() => setMemoryThreadId(null)}
-        />
-
-        {/* Main content area */}
-        <ScrollArea
-          style={{ flex: 1 }}
-          offsetScrollbars
-          scrollbarSize={6}
-          ref={scrollAreaRef}
-        >
-          {activeTab === 'chat' && (
-            <Box p='md'>
-              {/* Welcome message when no messages */}
-              {!hasMessages && (
-                <Box ta='center' py='xl'>
-                  <Box
-                    mx='auto'
-                    mb='md'
-                    style={{
-                      width: 64,
-                      height: 64,
-                      borderRadius: '50%',
-                      background: `linear-gradient(135deg, ${theme.colors.blue[1]}, ${theme.colors.violet[1]})`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <IconSparkles size={32} color={theme.colors.blue[5]} />
-                  </Box>
-                  <Text size='lg' fw={600} mb='xs'>
-                    {t`Hi! 👋 How can I help?`}
-                  </Text>
-                  <Text size='sm' c='dimmed' maw={280} mx='auto' mb='lg'>
-                    {t`I can help you search for parts, create orders, and automate tasks in AIMMS.`}
-                  </Text>
-
-                  {/* Suggestion chips */}
-                  <Group gap='xs' justify='center'>
-                    {suggestions.map((suggestion, index) => (
-                      <Paper
-                        key={index}
-                        px='sm'
-                        py='xs'
-                        radius='xl'
-                        withBorder
-                        style={{
-                          cursor: isSyncing ? 'not-allowed' : 'pointer',
-                          pointerEvents: isSyncing ? 'none' : undefined,
-                          opacity: isSyncing ? 0.6 : 1,
-                          transition: 'all 0.2s ease',
-                          borderColor: 'var(--mantine-color-gray-3)'
-                        }}
-                        aria-disabled={isSyncing}
-                        onClick={() => handleSendMessage(suggestion.message)}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor =
-                            theme.colors.blue[4];
-                          e.currentTarget.style.backgroundColor =
-                            theme.colors.blue[0];
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor =
-                            'var(--mantine-color-gray-3)';
-                          e.currentTarget.style.backgroundColor = '';
-                        }}
-                      >
-                        <Text size='xs' fw={500}>
-                          {suggestion.label}
-                        </Text>
-                      </Paper>
-                    ))}
-                  </Group>
-                </Box>
-              )}
-
-              {/* Message list */}
-              {messages.map((message, index) => (
-                <ChatMessageItem
-                  key={message.id}
-                  message={message}
-                  threadId={activeThreadId}
-                  aiHost={aiHost}
-                  onRegenerate={
-                    // A regenerate is a NEW audited turn (fresh idempotency
-                    // key) appended to the thread — never an overwrite.
-                    message.role === 'assistant' &&
-                    index === messages.length - 1
-                      ? resendLastTurn
-                      : undefined
-                  }
-                  questionArmed={
-                    !!message.question &&
-                    pendingQuestion?.interrupt_id ===
-                      message.question.interrupt_id
-                  }
-                  questionAnsweredLocally={
-                    !!message.question &&
-                    answeredQuestionIds.has(message.question.interrupt_id)
-                  }
-                  questionResolution={questionResolutions.get(
-                    message.question?.interrupt_id ?? ''
-                  )}
-                  onQuestionAnswer={(text) => handleSendMessage(text)}
-                />
-              ))}
-
-              {/* Voice-UX plan A7: durable action proposals replace the
-                  retired approval card on the chat tab (renders nothing
-                  when there is nothing to decide). */}
-              <ChatActionProposalList />
-
-              {/* Error message */}
-              {error && (
-                <Paper p='sm' radius='md' bg='red.0' mb='md'>
-                  <Text size='xs' c='red.7'>
-                    {error}
-                  </Text>
-                  {/* S1: a scope-version conflict keeps the bounced turn
-                      for one-click resend after the refreshed scope. */}
-                  {scopeConflict && (
-                    <Button
-                      size='compact-xs'
-                      variant='light'
-                      color='red'
-                      mt={6}
-                      onClick={resendLastTurn}
-                      data-testid='ai-chat-scope-resend'
-                    >
-                      {t`Send again`}
-                    </Button>
-                  )}
-                </Paper>
-              )}
-            </Box>
-          )}
-
-          {activeTab === 'approvals' && (
-            <>
-              <ChatActionProposalList />
-              <ApprovalInboxPanel
-                statuses={[
-                  'pending',
-                  'in_review',
-                  'changes_requested',
-                  'approved',
-                  'executing'
-                ]}
-                emptyText={t`No actions waiting for review`}
-              />
-            </>
-          )}
-
-          {activeTab === 'history' && (
-            <>
-              <ThreadHistoryPanel
-                threads={threads}
-                activeThreadId={activeThreadId}
-                searchThreads={searchThreads}
-                onResume={(threadId) => {
-                  switchThread(threadId);
-                  setActiveTab('chat');
-                }}
-              />
-              <Text size='xs' fw={600} c='dimmed' mt='md'>
-                {t`Resolved actions`}
-              </Text>
-              <ApprovalInboxPanel
-                statuses={[
-                  'succeeded',
-                  'denied',
-                  'failed',
-                  'expired',
-                  'canceled'
-                ]}
-                emptyText={t`No resolved actions yet`}
-              />
-            </>
-          )}
-        </ScrollArea>
-
-        {/* Input area - CopilotKit style (Chat tab only) */}
-        {activeTab === 'chat' && (
+        <Boundary label='AIChatDrawer'>
+          {/* Header */}
           <Box
             p='md'
             style={{
-              borderTop: '1px solid var(--mantine-color-gray-2)',
+              borderBottom: '1px solid var(--mantine-color-gray-2)',
               background: 'var(--mantine-color-body)'
             }}
           >
-            {/* Attached file chips */}
-            {attachedFiles.length > 0 && (
-              <Group gap='xs' mb='xs' wrap='wrap'>
-                {attachedFiles.map((f) => (
-                  <Badge
-                    key={f.file_id}
-                    variant='light'
-                    color='blue'
-                    size='sm'
-                    rightSection={
-                      <ActionIcon
-                        aria-label={`remove-ai-chat-attachment-${f.file_id}`}
-                        size='xs'
-                        variant='transparent'
-                        color='blue'
-                        onClick={() => removeAttachedFile(f.file_id)}
-                      >
-                        <IconX size={12} />
-                      </ActionIcon>
-                    }
-                  >
-                    {f.filename.length > 20
-                      ? `${f.filename.slice(0, 17)}...`
-                      : f.filename}
-                  </Badge>
-                ))}
+            <Group justify='space-between' wrap='nowrap'>
+              <Group gap='sm'>
+                <Box
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '50%',
+                    background: `linear-gradient(135deg, ${theme.colors.blue[5]}, ${theme.colors.violet[5]})`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <IconSparkles size={20} color='white' />
+                </Box>
+                <Box>
+                  <Text fw={600} size='md'>
+                    {t`AI Assistant`}
+                  </Text>
+                  <Text size='xs' c='dimmed'>
+                    {t`Powered by AIMMS AI`}
+                  </Text>
+                </Box>
               </Group>
+              <Group gap='xs'>
+                {/* Sync button */}
+                <Tooltip
+                  label={isSyncing ? t`Syncing...` : t`Sync conversations`}
+                  withArrow
+                >
+                  <ActionIcon
+                    aria-label='sync-ai-chat-threads'
+                    variant='subtle'
+                    color='gray'
+                    radius='xl'
+                    onClick={() => syncThreads()}
+                    loading={isSyncing}
+                    disabled={isSyncing}
+                  >
+                    <IconRefresh
+                      size={18}
+                      style={{
+                        animation: isSyncing
+                          ? 'spin 1s linear infinite'
+                          : 'none'
+                      }}
+                    />
+                  </ActionIcon>
+                </Tooltip>
+                {hasMessages && (
+                  <Tooltip label={t`New conversation`} withArrow>
+                    <ActionIcon
+                      variant='subtle'
+                      color='gray'
+                      radius='xl'
+                      onClick={handleClearChat}
+                      aria-label='new-ai-chat-thread'
+                      disabled={isLoading}
+                    >
+                      <IconMessagePlus size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+                <Tooltip label={t`Close`} withArrow>
+                  <ActionIcon
+                    aria-label='close-ai-chat'
+                    variant='subtle'
+                    color='gray'
+                    radius='xl'
+                    onClick={handleClose}
+                  >
+                    <IconX size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+            </Group>
+
+            {/* Sync indicator */}
+            {isSyncing && (
+              <Text size='xs' c='dimmed' ta='center' mt='xs'>
+                {t`Syncing conversations with server...`}
+              </Text>
             )}
 
-            {/* Hidden file input */}
-            <input
-              ref={fileInputRef}
-              type='file'
-              multiple
-              accept='.pdf,.png,.jpg,.jpeg,.xlsx,.csv,.docx'
-              style={{ display: 'none' }}
-              onChange={handleFileSelect}
-            />
+            {/* Drawer tab strip (Chat / Approvals / History) */}
+            <Box mt='sm'>
+              <Group justify='space-between' wrap='nowrap'>
+                <Tabs
+                  value={activeTab}
+                  onChange={(v) =>
+                    setActiveTab((v as AIChatDrawerTab) || 'chat')
+                  }
+                  variant='pills'
+                >
+                  <Tabs.List>
+                    <Tabs.Tab value='chat'>{t`Chat`}</Tabs.Tab>
+                    <Tabs.Tab value='approvals'>
+                      <Group gap={6} wrap='nowrap'>
+                        <Text size='sm'>{t`Approvals`}</Text>
+                        {pendingApprovalCount > 0 && (
+                          <Badge size='xs' variant='filled' color='red'>
+                            {pendingApprovalCount}
+                          </Badge>
+                        )}
+                      </Group>
+                    </Tabs.Tab>
+                    <Tabs.Tab value='history'>{t`History`}</Tabs.Tab>
+                  </Tabs.List>
+                </Tabs>
+                <RiskRadarDrawerBadge />
+              </Group>
+            </Box>
 
+            {/* Thread selector */}
+            {activeTab === 'chat' && (
+              <Box mt='sm'>
+                <ThreadSelector
+                  threads={threads}
+                  sharedThreads={sharedThreads}
+                  activeThreadId={activeThreadId}
+                  onSelectThread={handleSwitchThread}
+                  onNewThread={handleNewThread}
+                  onDeleteThread={handleDeleteThread}
+                  onRenameThread={renameThread}
+                  onShareThread={(threadId, entry) => {
+                    const revoke = entry.startsWith('-');
+                    const username = revoke ? entry.slice(1).trim() : entry;
+                    if (!username) return;
+                    void (
+                      revoke
+                        ? revokeThreadShare(threadId, username)
+                        : shareThread(threadId, username)
+                    ).then((result) => {
+                      if (!result.ok) {
+                        window.alert(
+                          `${t`Sharing failed`}: ${result.detail ?? ''}`
+                        );
+                      }
+                    });
+                  }}
+                  onInspectMemory={setMemoryThreadId}
+                  disabled={isLoading}
+                />
+              </Box>
+            )}
+          </Box>
+
+          {/* M2 PR 9: "What this chat remembers" — the only place the
+            summary body renders (GR-16). */}
+          <ThreadMemoryModal
+            threadId={memoryThreadId}
+            host={aiHost}
+            opened={memoryThreadId !== null}
+            onClose={() => setMemoryThreadId(null)}
+          />
+
+          <Box px='md' py='xs'>
             <Group gap='xs' mb={6} wrap='nowrap'>
               <VoiceSessionControl
                 state={voice.state}
@@ -2098,161 +1907,392 @@ export function AIChatDrawer({
               pendingConfirm={voice.pendingConfirm}
               holdPrompt={voice.holdPrompt}
             />
-            {routingHint && (
-              <Group gap='xs' mb={4} data-testid='ai-chat-routing-hint'>
-                <Badge
-                  variant='light'
-                  color='blue'
-                  rightSection={
-                    <ActionIcon
-                      size='xs'
-                      variant='transparent'
-                      color='blue'
-                      aria-label='dismiss-routing-hint'
-                      onClick={clearRoutingHint}
+            <VoiceDecisionCard key={voiceDecision?.decision_id ?? 'none'} />
+          </Box>
+          {/* Main content area */}
+          <ScrollArea
+            style={{ flex: 1 }}
+            offsetScrollbars
+            scrollbarSize={6}
+            ref={scrollAreaRef}
+          >
+            {activeTab === 'chat' && (
+              <Box p='md'>
+                {/* Welcome message when no messages */}
+                {!hasMessages && (
+                  <Box ta='center' py='xl'>
+                    <Box
+                      mx='auto'
+                      mb='md'
+                      style={{
+                        width: 64,
+                        height: 64,
+                        borderRadius: '50%',
+                        background: `linear-gradient(135deg, ${theme.colors.blue[1]}, ${theme.colors.violet[1]})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
                     >
-                      <IconX size={10} />
-                    </ActionIcon>
-                  }
-                >
-                  {t`Asking about`}: {routingHint.machineName}
-                </Badge>
-              </Group>
+                      <IconSparkles size={32} color={theme.colors.blue[5]} />
+                    </Box>
+                    <Text size='lg' fw={600} mb='xs'>
+                      {t`Hi! 👋 How can I help?`}
+                    </Text>
+                    <Text size='sm' c='dimmed' maw={280} mx='auto' mb='lg'>
+                      {t`I can help you search for parts, create orders, and automate tasks in AIMMS.`}
+                    </Text>
+
+                    {/* Suggestion chips */}
+                    <Group gap='xs' justify='center'>
+                      {suggestions.map((suggestion, index) => (
+                        <Paper
+                          key={index}
+                          px='sm'
+                          py='xs'
+                          radius='xl'
+                          withBorder
+                          style={{
+                            cursor: isSyncing ? 'not-allowed' : 'pointer',
+                            pointerEvents: isSyncing ? 'none' : undefined,
+                            opacity: isSyncing ? 0.6 : 1,
+                            transition: 'all 0.2s ease',
+                            borderColor: 'var(--mantine-color-gray-3)'
+                          }}
+                          aria-disabled={isSyncing}
+                          onClick={() => handleSendMessage(suggestion.message)}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor =
+                              theme.colors.blue[4];
+                            e.currentTarget.style.backgroundColor =
+                              theme.colors.blue[0];
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor =
+                              'var(--mantine-color-gray-3)';
+                            e.currentTarget.style.backgroundColor = '';
+                          }}
+                        >
+                          <Text size='xs' fw={500}>
+                            {suggestion.label}
+                          </Text>
+                        </Paper>
+                      ))}
+                    </Group>
+                  </Box>
+                )}
+
+                {/* Message list */}
+                {messages.map((message, index) => (
+                  <ChatMessageItem
+                    key={message.id}
+                    message={message}
+                    threadId={activeThreadId}
+                    aiHost={aiHost}
+                    onRegenerate={
+                      // A regenerate is a NEW audited turn (fresh idempotency
+                      // key) appended to the thread — never an overwrite.
+                      message.role === 'assistant' &&
+                      index === messages.length - 1
+                        ? resendLastTurn
+                        : undefined
+                    }
+                    questionArmed={
+                      !!message.question &&
+                      pendingQuestion?.interrupt_id ===
+                        message.question.interrupt_id
+                    }
+                    questionAnsweredLocally={
+                      !!message.question &&
+                      answeredQuestionIds.has(message.question.interrupt_id)
+                    }
+                    questionResolution={questionResolutions.get(
+                      message.question?.interrupt_id ?? ''
+                    )}
+                    onQuestionAnswer={(text) => handleSendMessage(text)}
+                  />
+                ))}
+
+                {/* Voice-UX plan A7: durable action proposals replace the
+                  retired approval card on the chat tab (renders nothing
+                  when there is nothing to decide). */}
+                <ChatActionProposalList {...proposals} />
+
+                {/* Error message */}
+                {error && (
+                  <Paper p='sm' radius='md' bg='red.0' mb='md'>
+                    <Text size='xs' c='red.7'>
+                      {error}
+                    </Text>
+                    {/* S1: a scope-version conflict keeps the bounced turn
+                      for one-click resend after the refreshed scope. */}
+                    {scopeConflict && (
+                      <Button
+                        size='compact-xs'
+                        variant='light'
+                        color='red'
+                        mt={6}
+                        onClick={resendLastTurn}
+                        data-testid='ai-chat-scope-resend'
+                      >
+                        {t`Send again`}
+                      </Button>
+                    )}
+                  </Paper>
+                )}
+              </Box>
             )}
-            {/* S2: the server-confirmed analysis scope, always visible
-                above the composer when the backend advertises the
-                capability. */}
-            {scopeCapable && (
-              <ActiveScopeBanner
-                scope={activeScope}
-                readOnly={activeThreadShared || activeScope?.editable === false}
-                busy={isApplyingScope}
-                hint={routingHint ?? undefined}
-                onSelectFleet={() => {
-                  void setThreadScope({ mode: 'all_authorized_assets' });
-                }}
-                onSelectHintMachine={
-                  routingHint
-                    ? () => {
-                        void setThreadScope({
-                          mode: 'explicit_assets',
-                          machine_ids: [routingHint.machineId],
-                          display_label: routingHint.machineName.slice(0, 120)
-                        });
-                      }
-                    : undefined
-                }
-              />
+
+            {activeTab === 'approvals' && (
+              <>
+                <ChatActionProposalList {...proposals} />
+                <ApprovalInboxPanel
+                  statuses={[
+                    'pending',
+                    'in_review',
+                    'changes_requested',
+                    'approved',
+                    'executing'
+                  ]}
+                  emptyText={t`No actions waiting for review`}
+                />
+              </>
             )}
-            <Paper
-              radius='xl'
-              p='xs'
-              withBorder
+
+            {activeTab === 'history' && (
+              <>
+                <ThreadHistoryPanel
+                  threads={threads}
+                  activeThreadId={activeThreadId}
+                  searchThreads={searchThreads}
+                  onResume={(threadId) => {
+                    switchThread(threadId);
+                    setActiveTab('chat');
+                  }}
+                />
+                <Text size='xs' fw={600} c='dimmed' mt='md'>
+                  {t`Resolved actions`}
+                </Text>
+                <ApprovalInboxPanel
+                  statuses={[
+                    'succeeded',
+                    'denied',
+                    'failed',
+                    'expired',
+                    'canceled'
+                  ]}
+                  emptyText={t`No resolved actions yet`}
+                />
+              </>
+            )}
+          </ScrollArea>
+
+          {/* Input area - CopilotKit style (Chat tab only) */}
+          {activeTab === 'chat' && (
+            <Box
+              p='md'
               style={{
-                borderColor: 'var(--mantine-color-gray-3)',
-                transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+                borderTop: '1px solid var(--mantine-color-gray-2)',
+                background: 'var(--mantine-color-body)'
               }}
             >
-              <Group gap='xs' align='flex-end' wrap='nowrap'>
-                <Tooltip label={t`Attach file`} withArrow>
-                  <ActionIcon
-                    aria-label='attach-ai-chat-file'
-                    size='lg'
-                    radius='xl'
-                    variant='subtle'
-                    color='gray'
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isLoading || isUploading || isSyncing}
-                    loading={isUploading}
-                  >
-                    <IconPaperclip size={18} />
-                  </ActionIcon>
-                </Tooltip>
-                <Textarea
-                  ref={inputRef}
-                  placeholder={
-                    activeThreadShared
-                      ? t`Shared conversation — read-only`
-                      : pendingQuestion
-                        ? t`Answer the question above, or ask something else...`
-                        : attachedFiles.length > 0
-                          ? t`Add a message about attached files...`
-                          : t`Type a message...`
-                  }
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.currentTarget.value)}
-                  onKeyDown={handleKeyDown}
-                  autosize
-                  minRows={1}
-                  maxRows={4}
-                  disabled={isLoading || isSyncing || activeThreadShared}
-                  styles={{
-                    input: {
-                      border: 'none',
-                      background: 'transparent',
-                      padding: '8px 12px',
-                      fontSize: '14px',
-                      '&:focus': {
-                        outline: 'none'
+              {/* Attached file chips */}
+              {attachedFiles.length > 0 && (
+                <Group gap='xs' mb='xs' wrap='wrap'>
+                  {attachedFiles.map((f) => (
+                    <Badge
+                      key={f.file_id}
+                      variant='light'
+                      color='blue'
+                      size='sm'
+                      rightSection={
+                        <ActionIcon
+                          aria-label={`remove-ai-chat-attachment-${f.file_id}`}
+                          size='xs'
+                          variant='transparent'
+                          color='blue'
+                          onClick={() => removeAttachedFile(f.file_id)}
+                        >
+                          <IconX size={12} />
+                        </ActionIcon>
                       }
-                    },
-                    wrapper: {
-                      flex: 1
-                    }
-                  }}
-                  style={{ flex: 1 }}
-                />
-                <Group gap={4}>
-                  {isLoading ? (
-                    <Tooltip label={t`Stop generating`} withArrow>
-                      <ActionIcon
-                        aria-label='cancel-ai-chat-turn'
-                        size='lg'
-                        radius='xl'
-                        variant='filled'
-                        color='red'
-                        onClick={cancelRequest}
-                      >
-                        <IconPlayerStop size={18} />
-                      </ActionIcon>
-                    </Tooltip>
-                  ) : (
-                    <Tooltip label={t`Send message`} withArrow>
-                      <ActionIcon
-                        aria-label='send-ai-chat-message'
-                        size='lg'
-                        radius='xl'
-                        variant='filled'
-                        color='blue'
-                        onClick={() => handleSendMessage()}
-                        disabled={
-                          !inputValue.trim() ||
-                          isSyncing ||
-                          activeThreadShared ||
-                          isApplyingScope
-                        }
-                        style={{
-                          transition: 'transform 0.2s ease',
-                          transform: inputValue.trim()
-                            ? 'scale(1)'
-                            : 'scale(0.95)'
-                        }}
-                      >
-                        <IconSend size={18} />
-                      </ActionIcon>
-                    </Tooltip>
-                  )}
+                    >
+                      {f.filename.length > 20
+                        ? `${f.filename.slice(0, 17)}...`
+                        : f.filename}
+                    </Badge>
+                  ))}
                 </Group>
-              </Group>
-            </Paper>
+              )}
 
-            {/* Footer text */}
-            <Text size='xs' c='dimmed' ta='center' mt='xs'>
-              {t`AI may make mistakes. Verify important information.`}
-            </Text>
-          </Box>
-        )}
-      </Boundary>
-    </Drawer>
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type='file'
+                multiple
+                accept='.pdf,.png,.jpg,.jpeg,.xlsx,.csv,.docx'
+                style={{ display: 'none' }}
+                onChange={handleFileSelect}
+              />
+
+              {routingHint && (
+                <Group gap='xs' mb={4} data-testid='ai-chat-routing-hint'>
+                  <Badge
+                    variant='light'
+                    color='blue'
+                    rightSection={
+                      <ActionIcon
+                        size='xs'
+                        variant='transparent'
+                        color='blue'
+                        aria-label='dismiss-routing-hint'
+                        onClick={clearRoutingHint}
+                      >
+                        <IconX size={10} />
+                      </ActionIcon>
+                    }
+                  >
+                    {t`Asking about`}: {routingHint.machineName}
+                  </Badge>
+                </Group>
+              )}
+              {/* S2: the server-confirmed analysis scope, always visible
+                above the composer when the backend advertises the
+                capability. */}
+              {scopeCapable && (
+                <ActiveScopeBanner
+                  scope={activeScope}
+                  readOnly={
+                    activeThreadShared || activeScope?.editable === false
+                  }
+                  busy={isApplyingScope}
+                  hint={routingHint ?? undefined}
+                  onSelectFleet={() => {
+                    void setThreadScope({ mode: 'all_authorized_assets' });
+                  }}
+                  onSelectHintMachine={
+                    routingHint
+                      ? () => {
+                          void setThreadScope({
+                            mode: 'explicit_assets',
+                            machine_ids: [routingHint.machineId],
+                            display_label: routingHint.machineName.slice(0, 120)
+                          });
+                        }
+                      : undefined
+                  }
+                />
+              )}
+              <Paper
+                radius='xl'
+                p='xs'
+                withBorder
+                style={{
+                  borderColor: 'var(--mantine-color-gray-3)',
+                  transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+                }}
+              >
+                <Group gap='xs' align='flex-end' wrap='nowrap'>
+                  <Tooltip label={t`Attach file`} withArrow>
+                    <ActionIcon
+                      aria-label='attach-ai-chat-file'
+                      size='lg'
+                      radius='xl'
+                      variant='subtle'
+                      color='gray'
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isLoading || isUploading || isSyncing}
+                      loading={isUploading}
+                    >
+                      <IconPaperclip size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Textarea
+                    ref={inputRef}
+                    placeholder={
+                      activeThreadShared
+                        ? t`Shared conversation — read-only`
+                        : pendingQuestion
+                          ? t`Answer the question above, or ask something else...`
+                          : attachedFiles.length > 0
+                            ? t`Add a message about attached files...`
+                            : t`Type a message...`
+                    }
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.currentTarget.value)}
+                    onKeyDown={handleKeyDown}
+                    autosize
+                    minRows={1}
+                    maxRows={4}
+                    disabled={isLoading || isSyncing || activeThreadShared}
+                    styles={{
+                      input: {
+                        border: 'none',
+                        background: 'transparent',
+                        padding: '8px 12px',
+                        fontSize: '14px',
+                        '&:focus': {
+                          outline: 'none'
+                        }
+                      },
+                      wrapper: {
+                        flex: 1
+                      }
+                    }}
+                    style={{ flex: 1 }}
+                  />
+                  <Group gap={4}>
+                    {isLoading ? (
+                      <Tooltip label={t`Stop generating`} withArrow>
+                        <ActionIcon
+                          aria-label='cancel-ai-chat-turn'
+                          size='lg'
+                          radius='xl'
+                          variant='filled'
+                          color='red'
+                          onClick={cancelRequest}
+                        >
+                          <IconPlayerStop size={18} />
+                        </ActionIcon>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip label={t`Send message`} withArrow>
+                        <ActionIcon
+                          aria-label='send-ai-chat-message'
+                          size='lg'
+                          radius='xl'
+                          variant='filled'
+                          color='blue'
+                          onClick={() => handleSendMessage()}
+                          disabled={
+                            !inputValue.trim() ||
+                            isSyncing ||
+                            activeThreadShared ||
+                            isApplyingScope
+                          }
+                          style={{
+                            transition: 'transform 0.2s ease',
+                            transform: inputValue.trim()
+                              ? 'scale(1)'
+                              : 'scale(0.95)'
+                          }}
+                        >
+                          <IconSend size={18} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                  </Group>
+                </Group>
+              </Paper>
+
+              {/* Footer text */}
+              <Text size='xs' c='dimmed' ta='center' mt='xs'>
+                {t`AI may make mistakes. Verify important information.`}
+              </Text>
+            </Box>
+          )}
+        </Boundary>
+      </Drawer>
+    </>
   );
 }

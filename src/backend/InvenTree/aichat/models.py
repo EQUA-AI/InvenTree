@@ -971,6 +971,9 @@ class ChatActionProposal(models.Model):
     # Never trusted from the model: re-derived/re-checked at confirmation.
     intent = models.JSONField(default=dict, blank=True)
     preview = models.JSONField(default=dict, blank=True)
+    preview_hash = models.CharField(
+        max_length=64, blank=True, default='', db_default=''
+    )
     reason = models.TextField(blank=True)
     state = models.CharField(
         max_length=16, choices=ProposalState.choices, default=ProposalState.PROPOSED

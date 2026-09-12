@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 import { IconArrowUp, IconHelpCircle } from '@tabler/icons-react';
 import { useState } from 'react';
+import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
 
 import type {
   QuestionPayload,
@@ -45,7 +46,10 @@ export function QuestionCard({
   const [answered, setAnswered] = useState(false);
   const [otherText, setOtherText] = useState('');
 
-  const active = armed && !answered;
+  const decisionArmed = useVoiceDecisionState(
+    (state) => state.decision?.state === 'presented'
+  );
+  const active = armed && !answered && !decisionArmed;
 
   const submit = (text: string) => {
     if (!active || !text.trim()) return;

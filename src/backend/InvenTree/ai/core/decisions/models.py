@@ -95,6 +95,8 @@ PUBLIC_DECISION_FIELDS = (
     "operation_id",
     "execution_state",
     "receipt_ref",
+    "spoken_summary",
+    "spoken_summary_hash",
 )
 
 SERVER_DECISION_FIELDS = (
@@ -108,6 +110,8 @@ SERVER_DECISION_FIELDS = (
     "armed_at",
     "playback_completed_at",
     "review_turns",
+    "playback_requested_at",
+    "playback_started_at",
 )
 
 
@@ -210,6 +214,10 @@ class PendingDecision:
     executable: Mapping[str, Any] | None = None
     playback_completed_at: datetime | None = None
     review_turns: int = 0
+    spoken_summary: str = ""
+    spoken_summary_hash: str = ""
+    playback_requested_at: datetime | None = None
+    playback_started_at: datetime | None = None
 
     schema_version: ClassVar[str] = PENDING_DECISION_SCHEMA_VERSION
 
@@ -334,6 +342,13 @@ class PendingDecision:
         object.__setattr__(self, "state", state)
         object.__setattr__(self, "delivery_state", delivery_state)
         object.__setattr__(self, "executable", executable)
+        for name in ("playback_requested_at", "playback_started_at"):
+            value = getattr(self, name)
+            if value is not None:
+                value = _aware_utc(value, name)
+                if value < armed_at:
+                    raise ValueError(f"{name} cannot precede armed_at")
+                object.__setattr__(self, name, value)
 
     def to_public_dict(self) -> dict[str, Any]:
         """Return only fields safe for the pending-decision wire contract."""
@@ -361,6 +376,8 @@ class PendingDecision:
             "operation_id": self.operation_id,
             "execution_state": self.execution_state,
             "receipt_ref": self.receipt_ref,
+            "spoken_summary": self.spoken_summary,
+            "spoken_summary_hash": self.spoken_summary_hash,
         }
 
     def to_record(self) -> dict[str, Any]:
@@ -379,6 +396,8 @@ class PendingDecision:
             "armed_at": _iso(self.armed_at),
             "playback_completed_at": _iso(self.playback_completed_at),
             "review_turns": self.review_turns,
+            "playback_requested_at": _iso(self.playback_requested_at),
+            "playback_started_at": _iso(self.playback_started_at),
         })
         return _json_copy(record)
 
@@ -438,6 +457,14 @@ class PendingDecision:
                     optional=True,
                 ),
                 review_turns=record["review_turns"],
+                spoken_summary=record["spoken_summary"],
+                spoken_summary_hash=record["spoken_summary_hash"],
+                playback_requested_at=_parse_datetime(
+                    record["playback_requested_at"], "playback_requested_at", optional=True
+                ),
+                playback_started_at=_parse_datetime(
+                    record["playback_started_at"], "playback_started_at", optional=True
+                ),
             )
         except KeyError as exc:
             raise ValueError(f"pending decision record is missing {exc.args[0]}") from exc

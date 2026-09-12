@@ -84,6 +84,58 @@ class VoicePendingQuestion(BaseModel):
     source: str | None = None
 
 
+class VoiceDecisionSection(BaseModel):
+    """One authoritative preview section, rendered by touch and voice alike."""
+
+    id: str
+    label: str = ""
+    text: str
+
+
+class VoiceDecisionContext(BaseModel):
+    """Client focus reference, never authority or a replacement server preview."""
+
+    model_config = ConfigDict(extra="forbid")
+    decision_id: str
+    sequence: int
+    revision: int | str
+    preview_hash: str | None
+
+
+class VoicePendingDecision(VoiceDecisionContext):
+    """Public projection of a single actor/session-bound interaction."""
+
+    kind: str
+    source_id: str
+    state: str
+    target_label: str
+    sections: list[VoiceDecisionSection]
+    required_review_sections: list[str]
+    allowed_responses: list[str]
+    required_phrase: str | None
+    locale: str
+    voice_eligible: bool
+    voice_ineligible_reason: str | None
+    expires_at: str
+    utterance_id: str | None
+    delivery_state: str
+    review_acknowledged: bool
+    operation_id: str | None
+    execution_state: str | None
+    receipt_ref: str | None
+    spoken_summary: str
+    spoken_summary_hash: str
+
+
+class VoiceDecisionEvent(BaseModel):
+    """Monotonic decision transition emitted with a turn or button response."""
+
+    kind: str
+    decision_id: str | None = None
+    sequence: int | None = None
+    message: str
+
+
 class VoiceTurnResponse(BaseModel):
     """One completed (or replayed) voice turn."""
 
@@ -98,6 +150,8 @@ class VoiceTurnResponse(BaseModel):
     replayed: bool
     spoken: VoiceSpokenPayload | None
     pending_question: VoicePendingQuestion | None = None
+    pending_decision: VoicePendingDecision | None = None
+    decision_event: VoiceDecisionEvent | None = None
 
 
 #: Every error code the SERVER can send a voice client (exception ``code``
@@ -118,6 +172,9 @@ SERVER_VOICE_ERROR_CODES: tuple[str, ...] = (
     "VOICE_RESPONSE_INCOMPLETE",
     "VOICE_SCOPE_CHANGED",
     "VOICE_PROMPT_UNKNOWN",
+    "VOICE_DECISION_UNAVAILABLE",
+    "VOICE_DECISION_CONFLICT",
+    "VOICE_OPERATION_NOT_FOUND",
 )
 
 

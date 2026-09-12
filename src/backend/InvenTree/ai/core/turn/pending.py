@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 async def resolve_preconditions(service: NormalizedTurnService, run: TurnRun) -> None:
     """Resolve injection refusal and pending write/question, in that order."""
 
+    from ai.core.decisions import pipeline as decisions
+
     # First of all: an attempt to rewrite the assistant's instructions is
     # refused outright. This must precede BOTH the pending-write
     # resolution and routing -- an injected turn may neither confirm a
@@ -32,6 +34,7 @@ async def resolve_preconditions(service: NormalizedTurnService, run: TurnRun) ->
     # ("yes"/"confirm delete") would otherwise route like any request,
     # so the pending confirmation must capture this turn first.
     if run.injection_canonical is not None:
+        await decisions.abandon(service, run, "injection_refused")
         # A refused turn must still CLOSE the confirmation window. Merely
         # skipping resolution left the proposal armed, so a bare "yes"
         # one turn later executed it -- the injection would have been a
@@ -58,10 +61,13 @@ async def resolve_preconditions(service: NormalizedTurnService, run: TurnRun) ->
             locale=getattr(run.trusted_context, "locale", "en"),
         )
         if run.safety_response is not None:
+            await decisions.abandon(service, run, "safety_refused")
             service._abandon_pending_voice_write(modality=run.modality, thread_id=run.thread.pk)
             service._abandon_pending_question(thread_id=run.thread.pk)
             run.write_canonical = None
             run.question_resolution = None
+            return
+        if await decisions.resolve(service, run):
             return
         run.write_canonical = await service._resolve_pending_voice_write(
             actor=run.actor,

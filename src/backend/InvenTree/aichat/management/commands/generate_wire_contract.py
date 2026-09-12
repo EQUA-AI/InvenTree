@@ -119,6 +119,10 @@ class Command(BaseCommand):
     def _render(self) -> str:
         from ai.core.voice.wire import (
             SERVER_VOICE_ERROR_CODES,
+            VoiceDecisionContext,
+            VoiceDecisionEvent,
+            VoiceDecisionSection,
+            VoicePendingDecision,
             VoicePendingQuestion,
             VoicePendingQuestionOption,
             VoiceSessionPayload,
@@ -186,6 +190,14 @@ class Command(BaseCommand):
             VoicePendingQuestion,
             VoiceTurnResponse,
         ):
+            if model is VoiceTurnResponse:
+                for decision_model in (
+                    VoiceDecisionContext,
+                    VoiceDecisionSection,
+                    VoicePendingDecision,
+                    VoiceDecisionEvent,
+                ):
+                    sections.append(_emit_model_interface(decision_model))
             sections.append(_emit_model_interface(model))
         sections.append(
             'export type ServerVoiceErrorCode =\n'

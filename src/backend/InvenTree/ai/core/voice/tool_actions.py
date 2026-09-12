@@ -206,7 +206,7 @@ def _capture_proxy(tool: Any, captured: list[_CapturedAction]) -> Callable[..., 
     signature = inspect.signature(tool)
 
     @functools.wraps(tool)
-    async def capture(*args: Any, **kwargs: Any) -> dict[str, bool]:  # noqa: RUF029 - wrapped tool contract is async
+    async def capture(*args: Any, **kwargs: Any) -> dict[str, bool]:  # noqa: RUF029 - async tool protocol
         bound = signature.bind(*args, **kwargs)
         arguments = dict(bound.arguments)
         json.dumps(arguments)
@@ -635,6 +635,12 @@ _voice_write_gate: VoiceWriteGate | None = None
 def get_voice_write_gate() -> VoiceWriteGate:
     """Return the process-wide confirmed-action gate used by voice turns."""
     global _voice_write_gate
+    from ai.core.config import get_settings
+
+    if get_settings().feature_voice_decision_coordinator:
+        from ai.core.decisions.gate import DecisionVoiceWriteGate
+
+        return DecisionVoiceWriteGate(CachedPendingVoiceWriteStore())
     if _voice_write_gate is None:
         permission = TextToolRBACVoicePermission()
         _voice_write_gate = VoiceWriteGate(

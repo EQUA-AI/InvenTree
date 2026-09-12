@@ -101,6 +101,8 @@ class NormalizedTurnResult:
     #: S22: the QUESTION payload when this turn ended by asking one -- the
     #: voice route surfaces it per-turn so the client can render the card.
     pending_question: dict[str, Any] | None = None
+    pending_decision: dict[str, Any] | None = None
+    decision_event: dict[str, Any] | None = None
     #: A3: a status phrase to speak before the routed answer (a pending voice
     #: write was set aside by this unrelated turn). None otherwise.
     pre_speech_status: str | None = None
@@ -795,6 +797,11 @@ class NormalizedTurnService:
         cancelled, or refused), else ``None`` so normal routing proceeds.
         """
         if modality != TurnModality.VOICE or not self._voice_write_enabled():
+            return None
+        from ai.core.decisions.pipeline import enabled as decisions_enabled
+
+        if decisions_enabled():
+            # The coordinator exclusively owns confirmation while enabled.
             return None
         resolution = await self.voice_write_gate.resolve_pending(
             content,
@@ -1712,6 +1719,8 @@ class NormalizedTurnService:
                 dict(reasoning_provenance) if isinstance(reasoning_provenance, dict) else None
             ),
             route=dict(route) if isinstance(route, dict) else None,
+            pending_decision=canonical.get("pending_decision"),
+            decision_event=canonical.get("decision_event"),
             pending_question=(
                 dict(pending_question) if isinstance(pending_question, dict) else None
             ),

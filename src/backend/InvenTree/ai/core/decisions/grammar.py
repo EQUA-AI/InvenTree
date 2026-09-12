@@ -132,6 +132,10 @@ def classify_decision_utterance(
         return DecisionUtteranceKind.REVIEW
     if command in _HISTORY_COMMANDS:
         return DecisionUtteranceKind.HISTORY
+    # A reversible action may offer a labelled assent AND ordinary yes.
+    # The labelled phrase is exact; mixed assent still goes through grammar v3.
+    if required_phrase is None and command in allowed and command.startswith("confirm "):
+        return DecisionUtteranceKind.AFFIRM
     result = _CONFIRMATION_MAP[
         interpret_confirmation_reply(content, required_phrase=required_phrase)
     ]

@@ -13,6 +13,7 @@
  */
 
 import { PROPOSAL_ACTION_LABELS } from '@lib/types/AimmsWire.generated';
+import { t } from '@lingui/core/macro';
 import {
   Alert,
   Badge,
@@ -29,7 +30,8 @@ import {
   IconPlayerPlay,
   IconTrash
 } from '@tabler/icons-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
 
 import { api } from '../../App';
 import { InlineMarkdown } from '../aichat/MarkdownMessage';
@@ -62,6 +64,7 @@ export interface ChatActionProposalPayload {
   target_version: number | null;
   intent?: Record<string, unknown>;
   preview: ChatActionProposalPreview;
+  preview_hash?: string;
   reason: string;
   expires_at: string;
   receipt: Record<string, unknown> | null;
@@ -148,6 +151,7 @@ export function ProposalCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [phrase, setPhrase] = useState('');
+  const decision = useVoiceDecisionState((state) => state.decision);
 
   const requiredPhrase = proposal.preview.confirm_phrase ?? '';
   const irreversible =
@@ -162,8 +166,11 @@ export function ProposalCard({
       setError(null);
       try {
         const body =
-          verb === 'confirm' && irreversible
-            ? { confirm_phrase: phrase }
+          verb === 'confirm'
+            ? {
+                confirm_phrase: irreversible ? phrase : '',
+                expected_preview_hash: proposal.preview_hash || undefined
+              }
             : undefined;
         const response = await api.post(
           `/api/aichat/proposals/${proposal.id}/${verb}/`,
@@ -217,6 +224,15 @@ export function ProposalCard({
       ? `WO-${proposal.work_order_id}`
       : 'new work order');
   const summary = previewSummary(proposal);
+
+  if (decision?.source_id === proposal.id && decision.state === 'presented') {
+    return (
+      <Alert color='blue' data-testid='proposal-delegated-to-decision'>
+        {t`Review this action in the shared voice decision card above.`}{' '}
+        {decision.target_label}
+      </Alert>
+    );
+  }
 
   return (
     <Card withBorder radius='md' p='sm' data-testid='chat-action-proposal'>
@@ -316,34 +332,10 @@ export function ProposalCard({
   );
 }
 
-export function ChatActionProposalList() {
-  const [proposals, setProposals] = useState<ChatActionProposalPayload[]>([]);
-
-  const refresh = useCallback(async () => {
-    try {
-      const response = await api.get('/api/aichat/proposals/');
-      setProposals(response.data?.results ?? []);
-    } catch {
-      setProposals([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 30_000);
-    // S46: a finished chat turn nudges an immediate refresh so a proposal
-    // minted by the turn you just watched appears now; on the S49/S50 agui
-    // wire the same event is dispatched from the aimms.proposalsRefresh
-    // CUSTOM channel. The 30s poll stays as the backstop; a full proposal
-    // state push (proposal_transformer seam) is a named follow-up.
-    const onTurnFinished = () => void refresh();
-    window.addEventListener('aimms:proposals-refresh', onTurnFinished);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('aimms:proposals-refresh', onTurnFinished);
-    };
-  }, [refresh]);
-
+export function ChatActionProposalList({
+  proposals,
+  refresh
+}: Readonly<{ proposals: ChatActionProposalPayload[]; refresh: () => void }>) {
   if (proposals.length === 0) {
     return null;
   }

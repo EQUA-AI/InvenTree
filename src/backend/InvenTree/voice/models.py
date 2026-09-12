@@ -17,6 +17,25 @@ from django.db import models
 from django.db.models import Q
 
 
+class VoiceOperation(models.Model):
+    """Durable effect ledger; transport timeouts leave an unverified operation."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        'voice.VoiceSession', on_delete=models.PROTECT, related_name='operations'
+    )
+    decision_id = models.CharField(max_length=64, unique=True)
+    source_id = models.CharField(max_length=255)
+    action = models.CharField(max_length=100)
+    state = models.CharField(max_length=32, default='executing')
+    target_label = models.CharField(max_length=255)
+    receipt_ref = models.CharField(max_length=255, blank=True)
+    receipt = models.JSONField(default=dict, blank=True)
+    detail = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class VoiceSessionState(models.TextChoices):
     """Lifecycle of one user-visible realtime session."""
 

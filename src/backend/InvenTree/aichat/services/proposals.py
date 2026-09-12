@@ -10,6 +10,8 @@ display data throughout.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -35,6 +37,26 @@ class ProposalError(Exception):
     """Base class carrying a stable error code."""
 
     code = 'PROPOSAL_INVALID'
+
+
+class ProposalPreviewChanged(ProposalError):  # noqa: N818
+    """The reviewed preview is no longer the authoritative preview."""
+
+    code = 'PROPOSAL_PREVIEW_CHANGED'
+
+
+def compute_preview_hash(preview: dict[str, Any]) -> str:
+    """Hash canonical preview content, excluding the volatile read timestamp."""
+    content = {key: value for key, value in preview.items() if key != 'as_of'}
+    return hashlib.sha256(
+        json.dumps(
+            content,
+            sort_keys=True,
+            separators=(',', ':'),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode()
+    ).hexdigest()
 
 
 class CapabilityDenied(ProposalError):  # noqa: N818
@@ -288,7 +310,10 @@ def _dt(value: Any) -> datetime | None:
 def _preview_hold(work_order, intent: dict[str, Any]) -> dict[str, Any]:
     from tasks.models import WorkOrderLifecycle
 
-    return {'resulting_status': str(WorkOrderLifecycle.ON_HOLD)}
+    return {
+        'resulting_status': str(WorkOrderLifecycle.ON_HOLD),
+        'reason': str(intent.get('reason') or '').strip(),
+    }
 
 
 def _preview_resume(work_order, intent: dict[str, Any]) -> dict[str, Any]:
@@ -615,6 +640,7 @@ def create_proposal(
                 target_version=target_version,
                 intent=intent,
                 preview=preview,
+                preview_hash=compute_preview_hash(preview),
                 reason=normalized_reason,
                 policy_version=policy_version,
                 idempotency_key=idempotency_key,
@@ -1141,6 +1167,7 @@ def confirm_proposal(
     proposal_id,
     confirm_phrase: str = '',
     strict_phrase_satisfied: bool = False,
+    expected_preview_hash: str | None = None,
 ) -> ChatActionProposal:
     """Execute one confirmed proposal through the canonical command service.
 
@@ -1169,6 +1196,13 @@ def confirm_proposal(
             )
             if proposal is None:
                 raise ProposalNotFound('no such proposal')
+            stored_hash = compute_preview_hash(proposal.preview or {})
+            if expected_preview_hash is not None and (
+                not expected_preview_hash
+                or expected_preview_hash != proposal.preview_hash
+                or expected_preview_hash != stored_hash
+            ):
+                raise ProposalPreviewChanged('The preview changed; review it again.')
             if proposal.state == ProposalState.EXECUTED:
                 return proposal  # exact replay of the recorded outcome
             if proposal.is_terminal:
@@ -1183,6 +1217,23 @@ def confirm_proposal(
             # Re-check the RBAC role at execution time: a grant may have been
             # revoked between propose and confirm (§5.3 defense in depth).
             _require_role(owner, proposal.action_type)
+            if expected_preview_hash is not None:
+                _, version, target = _authorize_and_bind(
+                    owner,
+                    proposal.action_type,
+                    proposal.target_work_order_id,
+                    proposal.intent,
+                )
+                current_hash = compute_preview_hash(
+                    _preview(target, proposal.action_type, proposal.intent)
+                )
+                if (
+                    version != proposal.target_version
+                    or current_hash != expected_preview_hash
+                ):
+                    raise ProposalPreviewChanged(
+                        'The record changed; request a fresh preview.'
+                    )
 
             # Exactly one execution authority. When this proposal was bridged to
             # the global approval queue, that queue is the executor and this rail
@@ -1416,6 +1467,7 @@ def sweep_proposal_notifications(
             expires_at__lte=now + timedelta(minutes=warning_window_minutes),
         )
         .exclude(thread_id='')
+        .exclude(policy_version__startswith='voice-decision-')
         .select_related('owner')
     )
     for proposal in expiring:
