@@ -234,6 +234,12 @@ class EmailExecutor(ApprovalExecutor):
 
     def validate(self, payload: dict) -> list[str]:
         """Use the same envelope validation as the email tool."""
+        from django.conf import settings
+
+        if isinstance(payload, dict) and '_mailbox' in payload:
+            return []  # The mailbox service validates and freezes the complete MIME.
+        if getattr(settings, 'AGENT_EMAIL_ENABLED', False):
+            return ['A connected mailbox draft is required.']
         from ai.core.integrations.email.commands import validate_message
 
         return validate_message(payload)
@@ -258,6 +264,12 @@ class EmailExecutor(ApprovalExecutor):
 
     def execute_for_approval(self, approval, *, actor, execution):
         """A persisted operation is mandatory; never trust a payload actor ID."""
+        if hasattr(approval, 'email_draft'):
+            return EffectResult(
+                False,
+                error_message='Mailbox dispatch requires a worker claim.',
+                outcome='unknown',
+            )
         from ai.core.integrations.email.commands import send_message
 
         from .models import ApprovalExecution

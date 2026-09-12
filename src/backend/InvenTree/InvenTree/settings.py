@@ -1236,6 +1236,24 @@ OAUTH2_PROVIDER = {
     'PKCE_REQUIRED': True,
 }
 OAUTH2_CHECK_EXCLUDED = [  # This setting mutes schema checks for these rule/method combinations
+    # Agent mailbox endpoints accept CSRF-protected sessions only. AI tools use
+    # the authenticated application service; OAuth API-token access is not enabled.
+    '/api/aichat/email/accounts/:get',
+    '/api/aichat/email/accounts/:post',
+    '/api/aichat/email/accounts/{account_id}/:get',
+    '/api/aichat/email/accounts/{account_id}/:patch',
+    '/api/aichat/email/accounts/{account_id}/:delete',
+    '/api/aichat/email/accounts/{account_id}/attachments/:post',
+    '/api/aichat/email/accounts/{account_id}/attachments/{attachment_id}/:get',
+    '/api/aichat/email/accounts/{account_id}/drafts/:post',
+    '/api/aichat/email/accounts/{account_id}/grants/:get',
+    '/api/aichat/email/accounts/{account_id}/grants/:put',
+    '/api/aichat/email/accounts/{account_id}/messages/:get',
+    '/api/aichat/email/accounts/{account_id}/messages/{message_id}/:get',
+    '/api/aichat/email/accounts/{account_id}/messages/{message_id}/:patch',
+    '/api/aichat/email/accounts/{account_id}/oauth/:post',
+    '/api/aichat/email/accounts/{account_id}/sync/:post',
+    '/api/aichat/email/oauth/callback/:post',
     '/api/email/generate/:post',
     '/api/webhook/{endpoint}/:post',
     # Fork-added endpoints (EQUA customizations) - session/token auth only, no oauth2 scopes yet
@@ -1463,4 +1481,33 @@ logger.info(
         f'{entry.env_name}={globals()[entry.env_name]}'
         for entry in _aimms_django_flags()
     ),
+)
+
+# Independent, explicitly enabled agent correspondence (never notification credentials).
+AGENT_EMAIL_ENABLED = get_boolean_setting(
+    'INVENTREE_AGENT_EMAIL_ENABLED', 'agent_email.enabled', False
+)
+AGENT_EMAIL_SEND_PAUSED = get_boolean_setting(
+    'INVENTREE_AGENT_EMAIL_SEND_PAUSED', 'agent_email.send_paused', False
+)
+AGENT_EMAIL_CREDENTIAL_KEYS = [
+    key.strip()
+    for key in os.environ.get('INVENTREE_AGENT_EMAIL_CREDENTIAL_KEYS', '').split(',')
+    if key.strip()
+]
+AGENT_EMAIL_MESSAGE_ID_DOMAIN = get_setting(
+    'INVENTREE_AGENT_EMAIL_MESSAGE_ID_DOMAIN', 'agent_email.message_id_domain', ''
+)
+AGENT_EMAIL_PRIVATE_NETWORKS = [
+    value.strip()
+    for value in os.environ.get('INVENTREE_AGENT_EMAIL_PRIVATE_NETWORKS', '').split(',')
+    if value.strip()
+]
+AGENT_EMAIL_CLAMAV_SOCKET = get_setting(
+    'INVENTREE_AGENT_EMAIL_CLAMAV_SOCKET',
+    'agent_email.clamav_socket',
+    '/var/run/clamav/clamd.ctl',
+)
+AGENT_EMAIL_OAUTH_REDIRECT_URI = get_setting(
+    'INVENTREE_AGENT_EMAIL_OAUTH_REDIRECT_URI', 'agent_email.oauth_redirect_uri', ''
 )

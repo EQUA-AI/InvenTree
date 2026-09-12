@@ -191,6 +191,7 @@ def test_every_exposed_kanban_and_email_write_is_guarded():
     from ai.core.tools.capabilities import tool_name
 
     read_names = {tool_name(tool) for tool in KANBAN_READ_TOOLS} | {
+        "list_mailboxes",
         "list_emails",
         "get_email_details",
         "download_attachment",

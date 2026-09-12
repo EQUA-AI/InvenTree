@@ -31,6 +31,16 @@ def build_review_sections(approval):
     sections = [_section('summary', 'Request', approval.summary)]
     if action == ActionType.EMAIL:
         body = str(payload.get('body', payload.get('body_text', '')))
+        if '_mailbox' in payload:
+            sections += [
+                _section('mailbox', 'Mailbox', payload['_mailbox'].get('name')),
+                _section('sender', 'From', payload.get('sender')),
+                _section(
+                    'reply_context',
+                    'Reply to message',
+                    payload.get('reply_message_id') or 'New conversation',
+                ),
+            ]
         sections += [
             _section('recipients', 'To', _addresses(payload.get('to'))),
             _section('cc', 'CC', _addresses(payload.get('cc'))),

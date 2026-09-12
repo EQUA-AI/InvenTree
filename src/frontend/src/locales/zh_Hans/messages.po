@@ -38,7 +38,7 @@ msgid "Error Details"
 msgstr "错误详情"
 
 #: lib/components/CopyButton.tsx:49
-#: src/components/nav/AIChatDrawer.tsx:862
+#: src/components/nav/AIChatDrawer.tsx:880
 msgid "Copy"
 msgstr "复制"
 
@@ -837,6 +837,406 @@ msgstr "处理成功"
 msgid "Review this action in the shared voice decision card above."
 msgstr ""
 
+#: src/components/ai/MailboxApprovalReview.tsx:90
+msgid "Canceled by reviewer"
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:101
+msgid "Accepted by the mail provider. Recipient delivery is not confirmed."
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:103
+msgid "Some recipients were accepted. Do not resend this operation."
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:105
+msgid "Submission is unverified. Do not resend this operation."
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:107
+msgid "No recipients were accepted."
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:108
+msgid "Waiting for dispatch."
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:111
+msgid "This approval is no longer accessible."
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:113
+msgid "Loading review…"
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:137
+msgid "Download attachment"
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:141
+msgid "Attachment is unavailable. Refresh this review and check mailbox access."
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:150
+#: src/components/ai/VoiceDecisionCard.tsx:116
+msgid "Receipt"
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:154
+msgid "The approval could not proceed. Refresh and review the current revision and your mailbox permissions."
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:165
+msgid "I have reviewed the sender, every recipient, full message and attachments."
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:172
+msgid "Approve email submission"
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:179
+msgid "Revise draft"
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:184
+msgid "Cancel draft"
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:230
+#: src/components/ai/MailboxPanel.tsx:105
+#: src/pages/repair/RepairPacketDetail.tsx:294
+#: src/tables/settings/EmailTable.tsx:85
+msgid "To"
+msgstr "到"
+
+#: src/components/ai/MailboxApprovalReview.tsx:231
+#: src/components/ai/MailboxPanel.tsx:107
+msgid "CC"
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:232
+#: src/components/ai/MailboxPanel.tsx:108
+msgid "BCC"
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:233
+#: src/components/ai/MailboxPanel.tsx:110
+#: src/tables/settings/EmailTable.tsx:80
+msgid "Subject"
+msgstr "主题"
+
+#: src/components/ai/MailboxApprovalReview.tsx:235
+msgid "Full message"
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:243
+msgid "Save revision for new review"
+msgstr ""
+
+#: src/components/ai/MailboxApprovalReview.tsx:245
+msgid "Revision could not be saved. Refresh the current draft."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:68
+msgid "Enter a recipient"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:69
+msgid "Enter a subject"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:103
+#: src/pages/repair/RepairPacketDetail.tsx:293
+msgid "From"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:112
+#: src/tables/notifications/NotificationTable.tsx:41
+#: src/tables/plugin/PluginErrorTable.tsx:39
+#: src/tables/settings/ErrorTable.tsx:50
+msgid "Message"
+msgstr "信息"
+
+#: src/components/ai/MailboxPanel.tsx:118
+msgid "Attach a document"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:123
+msgid "Attachments ready"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:126
+msgid "This attachment is quarantined or could not be scanned. It cannot be sent."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:130
+msgid "Administrator verification message"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:135
+msgid "Draft could not be created. Check mailbox access, recipient restrictions and connection status."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:138
+msgid "Draft created. Review it in Approvals before sending."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:144
+msgid "Create draft for review"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:191
+msgid "Agent mail is unavailable or disabled."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:195
+msgid "Mailbox"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:196
+msgid "Choose a mailbox"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:212
+msgid "Sending enabled"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:212
+msgid "Sending paused"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:219
+msgid "History coverage has gaps"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:229
+msgid "Pause account"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:229
+msgid "Enable account"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:240
+msgid "Pause receive"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:241
+msgid "Enable receive"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:249
+msgid "Pause send"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:249
+msgid "Enable send"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:254
+msgid "Test receive / sync"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:259
+msgid "Disconnect"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:262
+msgid "Mailbox control failed. Check account permissions and verification."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:275
+msgid "Compose email"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:287
+msgid "Messages are no longer accessible."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:306
+msgid "No plain text body available."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:335
+msgid "Draft reply"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:367
+msgid "Connect with OAuth"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:374
+msgid "Open provider consent"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:377
+msgid "Paste the callback URL after consent"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:383
+msgid "Complete connection"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:385
+msgid "OAuth connection failed. Start a new consent attempt."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:388
+msgid "Connected. Verify sending and receiving before enabling sends."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:415
+msgid "User ID for mailbox access"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:421
+#: src/tables/settings/EmailTable.tsx:33
+msgid "Read"
+msgstr "读取"
+
+#: src/components/ai/MailboxPanel.tsx:425
+msgid "Draft"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:429
+msgid "Send"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:433
+msgid "Administer"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:440
+msgid "Save mailbox access"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:442
+msgid "Could not save mailbox access."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:444
+msgid "Mailbox access saved."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:471
+#: src/components/ai/MailboxPanel.tsx:472
+#: src/pages/part/PartDetail.tsx:605
+#: src/pages/repair/RepairPacketDetail.tsx:236
+#: src/pages/tasks/workorders/CloseoutPanel.tsx:833
+#: src/pages/tasks/workorders/WorkOrderDetail.tsx:375
+#: src/tables/part/PartTestTemplateTable.tsx:116
+#: src/tables/stock/StockItemTestResultTable.tsx:403
+msgid "Required"
+msgstr "必填"
+
+#: src/components/ai/MailboxPanel.tsx:521
+msgid "Add agent mailbox"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:522
+#: src/components/forms/HostOptionsForm.tsx:42
+#: src/components/forms/HostOptionsForm.tsx:70
+#: src/components/forms/InstanceOptions.tsx:125
+#: src/components/plugins/PluginDrawer.tsx:85
+#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:295
+#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:421
+#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:670
+#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:741
+#: src/pages/Index/Settings/AdminCenter/UnitManagementPanel.tsx:19
+#: src/pages/assets/MachineDetail.tsx:59
+#: src/pages/maintenance/MaintenanceBoard.tsx:2097
+#: src/pages/part/PartCategoryDetailsPanel.tsx:22
+#: src/pages/part/PartDetailsPanel.tsx:79
+#: src/pages/stock/StockLocationDetailsPanel.tsx:20
+#: src/tables/assets/AssetMachineTable.tsx:22
+#: src/tables/machine/MachineTypeTable.tsx:70
+#: src/tables/machine/MachineTypeTable.tsx:152
+#: src/tables/machine/MachineTypeTable.tsx:255
+#: src/tables/machine/MachineTypeTable.tsx:358
+#: src/tables/plugin/PluginErrorTable.tsx:35
+#: src/tables/settings/ApiTokenTable.tsx:61
+#: src/tables/settings/GroupTable.tsx:96
+#: src/tables/settings/GroupTable.tsx:149
+#: src/tables/settings/GroupTable.tsx:257
+#: src/tables/settings/PendingTasksTable.tsx:37
+#: src/tables/stock/LocationTypesTable.tsx:74
+msgid "Name"
+msgstr "名称"
+
+#: src/components/ai/MailboxPanel.tsx:524
+msgid "Email address"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:528
+#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:427
+msgid "Provider"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:539
+msgid "SMTP host"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:543
+msgid "SMTP port"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:547
+msgid "SMTP encryption"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:555
+msgid "IMAP host"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:559
+msgid "IMAP TLS port"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:563
+msgid "Mailbox username"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:568
+msgid "Mailbox password"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:577
+msgid "Tenant ID"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:582
+msgid "OAuth client ID"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:586
+msgid "OAuth client secret"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:593
+msgid "Allowed recipients or @domains, separated by commas"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:594
+msgid "An empty list blocks all sends."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:597
+#: src/pages/repair/components/safety/safetyApi.ts:181
+msgid "Signature"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:601
+msgid "Save disabled mailbox"
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:603
+msgid "Mailbox could not be saved. Check configuration and administrative access."
+msgstr ""
+
+#: src/components/ai/MailboxPanel.tsx:606
+msgid "Mailbox saved. Select it to connect and verify."
+msgstr ""
+
 #: src/components/ai/QuestionCard.tsx:111
 msgid "Recommended"
 msgstr ""
@@ -894,10 +1294,6 @@ msgstr ""
 
 #: src/components/ai/VoiceDecisionCard.tsx:113
 msgid "Result not verified — reconciling, do not retry"
-msgstr ""
-
-#: src/components/ai/VoiceDecisionCard.tsx:116
-msgid "Receipt"
 msgstr ""
 
 #: src/components/ai/VoiceDecisionCard.tsx:128
@@ -1224,7 +1620,7 @@ msgid "{forgotten} forgotten"
 msgstr ""
 
 #: src/components/aichat/ThreadMemoryModal.tsx:270
-#: src/components/nav/AIChatDrawer.tsx:612
+#: src/components/nav/AIChatDrawer.tsx:630
 msgid "What this chat remembers"
 msgstr ""
 
@@ -2593,35 +2989,6 @@ msgstr "选择日期和时间"
 msgid "Host"
 msgstr "主机"
 
-#: src/components/forms/HostOptionsForm.tsx:42
-#: src/components/forms/HostOptionsForm.tsx:70
-#: src/components/forms/InstanceOptions.tsx:125
-#: src/components/plugins/PluginDrawer.tsx:85
-#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:295
-#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:421
-#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:670
-#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:741
-#: src/pages/Index/Settings/AdminCenter/UnitManagementPanel.tsx:19
-#: src/pages/assets/MachineDetail.tsx:59
-#: src/pages/maintenance/MaintenanceBoard.tsx:2097
-#: src/pages/part/PartCategoryDetailsPanel.tsx:22
-#: src/pages/part/PartDetailsPanel.tsx:79
-#: src/pages/stock/StockLocationDetailsPanel.tsx:20
-#: src/tables/assets/AssetMachineTable.tsx:22
-#: src/tables/machine/MachineTypeTable.tsx:70
-#: src/tables/machine/MachineTypeTable.tsx:152
-#: src/tables/machine/MachineTypeTable.tsx:255
-#: src/tables/machine/MachineTypeTable.tsx:358
-#: src/tables/plugin/PluginErrorTable.tsx:35
-#: src/tables/settings/ApiTokenTable.tsx:61
-#: src/tables/settings/GroupTable.tsx:96
-#: src/tables/settings/GroupTable.tsx:149
-#: src/tables/settings/GroupTable.tsx:257
-#: src/tables/settings/PendingTasksTable.tsx:37
-#: src/tables/stock/LocationTypesTable.tsx:74
-msgid "Name"
-msgstr "名称"
-
 #: src/components/forms/HostOptionsForm.tsx:75
 msgid "No one here..."
 msgstr "这里没有人..."
@@ -2949,7 +3316,7 @@ msgstr "数据已成功导入"
 #: src/components/importer/ImporterDrawer.tsx:119
 #: src/components/modals/AboutInvenTreeModal.tsx:206
 #: src/components/modals/ServerInfoModal.tsx:134
-#: src/components/nav/AIChatDrawer.tsx:1792
+#: src/components/nav/AIChatDrawer.tsx:1810
 #: src/components/wizards/ImportPartWizard.tsx:773
 #: src/forms/BomForms.tsx:150
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:687
@@ -3428,64 +3795,64 @@ msgstr "电子邮件设置"
 msgid "Email settings not configured."
 msgstr "电子邮件设置未配置。"
 
-#: src/components/nav/AIChatDrawer.tsx:142
+#: src/components/nav/AIChatDrawer.tsx:144
 #: src/pages/assets/health/AnomalyList.tsx:165
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
 msgid "Unknown"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:151
-#: src/components/nav/AIChatDrawer.tsx:534
+#: src/components/nav/AIChatDrawer.tsx:153
+#: src/components/nav/AIChatDrawer.tsx:552
 msgid "Just now"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:152
-#: src/components/nav/AIChatDrawer.tsx:535
+#: src/components/nav/AIChatDrawer.tsx:154
+#: src/components/nav/AIChatDrawer.tsx:553
 msgid "{minutes}m ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:153
-#: src/components/nav/AIChatDrawer.tsx:536
+#: src/components/nav/AIChatDrawer.tsx:155
+#: src/components/nav/AIChatDrawer.tsx:554
 msgid "{hours}h ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:154
-#: src/components/nav/AIChatDrawer.tsx:537
+#: src/components/nav/AIChatDrawer.tsx:156
+#: src/components/nav/AIChatDrawer.tsx:555
 msgid "{days}d ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:205
+#: src/components/nav/AIChatDrawer.tsx:207
 msgid "Search conversations..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:215
+#: src/components/nav/AIChatDrawer.tsx:217
 msgid "No conversations match"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:216
+#: src/components/nav/AIChatDrawer.tsx:218
 msgid "No conversations yet"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:238
-#: src/components/nav/AIChatDrawer.tsx:1824
+#: src/components/nav/AIChatDrawer.tsx:240
+#: src/components/nav/AIChatDrawer.tsx:1842
 msgid "Chat"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:279
+#: src/components/nav/AIChatDrawer.tsx:281
 msgid "Failed to load approvals"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:293
+#: src/components/nav/AIChatDrawer.tsx:295
 msgid "Failed to load approval detail"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:317
+#: src/components/nav/AIChatDrawer.tsx:319
 msgid "Back"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:320
-#: src/components/nav/AIChatDrawer.tsx:423
+#: src/components/nav/AIChatDrawer.tsx:322
+#: src/components/nav/AIChatDrawer.tsx:441
 #: src/components/riskradar/RiskRadarPanel.tsx:356
 #: src/pages/assets/health/MachineHealthPanel.tsx:190
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
@@ -3493,256 +3860,260 @@ msgstr ""
 msgid "Refresh"
 msgstr "刷新"
 
-#: src/components/nav/AIChatDrawer.tsx:348
-#: src/components/nav/AIChatDrawer.tsx:476
+#: src/components/nav/AIChatDrawer.tsx:350
+#: src/components/nav/AIChatDrawer.tsx:494
 msgid "Tier"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:361
+#: src/components/nav/AIChatDrawer.tsx:367
 msgid "No details available"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:375
+#: src/components/nav/AIChatDrawer.tsx:382
 msgid "(complex value)"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:408
+#: src/components/nav/AIChatDrawer.tsx:424
 msgid "Developer details"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:421
-#: src/components/nav/AIChatDrawer.tsx:1827
+#: src/components/nav/AIChatDrawer.tsx:439
+#: src/components/nav/AIChatDrawer.tsx:1845
 #: src/pages/repair/RepairPacketDetail.tsx:256
 msgid "Approvals"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:561
+#: src/components/nav/AIChatDrawer.tsx:579
 msgid "New Chat"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:568
+#: src/components/nav/AIChatDrawer.tsx:586
 msgid "Conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:577
-#: src/components/nav/AIChatDrawer.tsx:1779
+#: src/components/nav/AIChatDrawer.tsx:595
+#: src/components/nav/AIChatDrawer.tsx:1797
 msgid "New conversation"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:599
+#: src/components/nav/AIChatDrawer.tsx:617
 msgid "Rename conversation"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:635
+#: src/components/nav/AIChatDrawer.tsx:653
 msgid "Share read-only with username (prefix with - to revoke)"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:686
+#: src/components/nav/AIChatDrawer.tsx:704
 msgid "Shared with me"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:710
+#: src/components/nav/AIChatDrawer.tsx:728
 msgid "Read-only"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:721
+#: src/components/nav/AIChatDrawer.tsx:739
 msgid "No previous conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:739
-#: src/components/nav/AIChatDrawer.tsx:1023
-#: src/components/nav/AIChatDrawer.tsx:1746
+#: src/components/nav/AIChatDrawer.tsx:757
+#: src/components/nav/AIChatDrawer.tsx:1041
+#: src/components/nav/AIChatDrawer.tsx:1764
 msgid "AI Assistant"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:862
+#: src/components/nav/AIChatDrawer.tsx:880
 msgid "Copied!"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:875
+#: src/components/nav/AIChatDrawer.tsx:893
 msgid "Good response"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:886
+#: src/components/nav/AIChatDrawer.tsx:904
 msgid "Bad response"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:898
+#: src/components/nav/AIChatDrawer.tsx:916
 msgid "Export as Markdown"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:911
+#: src/components/nav/AIChatDrawer.tsx:929
 msgid "Regenerate"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:942
+#: src/components/nav/AIChatDrawer.tsx:960
 msgid "No matching records among the {populationCount} evaluated."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:943
+#: src/components/nav/AIChatDrawer.tsx:961
 msgid "No matching records in the fully evaluated population."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:945
+#: src/components/nav/AIChatDrawer.tsx:963
 msgid "This falls outside the active scope selection."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:947
+#: src/components/nav/AIChatDrawer.tsx:965
 msgid "Source not available."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:949
+#: src/components/nav/AIChatDrawer.tsx:967
 msgid "The search could not be completed."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:951
+#: src/components/nav/AIChatDrawer.tsx:969
 msgid "Could not determine which documents apply."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:953
+#: src/components/nav/AIChatDrawer.tsx:971
 msgid "Coverage was incomplete; no conclusion was drawn."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:962
+#: src/components/nav/AIChatDrawer.tsx:980
 msgid "Confirming scope"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:964
+#: src/components/nav/AIChatDrawer.tsx:982
 msgid "Reviewing records"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:966
+#: src/components/nav/AIChatDrawer.tsx:984
 msgid "Validating evidence"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:968
+#: src/components/nav/AIChatDrawer.tsx:986
 msgid "Working"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1155
+#: src/components/nav/AIChatDrawer.tsx:1173
 msgid "Partial answer — some checks did not finish."
 msgstr ""
 
 #. placeholder {0}: message.confidence
-#: src/components/nav/AIChatDrawer.tsx:1207
+#: src/components/nav/AIChatDrawer.tsx:1225
 msgid "Declared confidence: {0}"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1226
+#: src/components/nav/AIChatDrawer.tsx:1244
 msgid "No cited sources — not grounded in machine data."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1250
+#: src/components/nav/AIChatDrawer.tsx:1268
 msgid "You"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1462
+#: src/components/nav/AIChatDrawer.tsx:1480
 msgid "Search parts"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1463
+#: src/components/nav/AIChatDrawer.tsx:1481
 msgid "Create order"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1464
+#: src/components/nav/AIChatDrawer.tsx:1482
 msgid "Low stock"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1523
+#: src/components/nav/AIChatDrawer.tsx:1541
 msgid "Could not set the machine scope — sending without it."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1650
+#: src/components/nav/AIChatDrawer.tsx:1668
 msgid "Voice session"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1656
+#: src/components/nav/AIChatDrawer.tsx:1674
 msgid "End voice"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1749
+#: src/components/nav/AIChatDrawer.tsx:1767
 msgid "Powered by AIMMS AI"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1756
+#: src/components/nav/AIChatDrawer.tsx:1774
 msgid "Syncing..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1756
+#: src/components/nav/AIChatDrawer.tsx:1774
 msgid "Sync conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1809
+#: src/components/nav/AIChatDrawer.tsx:1827
 msgid "Syncing conversations with server..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1835
+#: src/components/nav/AIChatDrawer.tsx:1853
 #: src/pages/Notifications.tsx:83
 #: src/pages/repair/RepairPacketDetail.tsx:285
 msgid "History"
 msgstr "历史记录"
 
-#: src/components/nav/AIChatDrawer.tsx:1864
+#: src/components/nav/AIChatDrawer.tsx:1854
+msgid "Mail"
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:1883
 msgid "Sharing failed"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1940
+#: src/components/nav/AIChatDrawer.tsx:1959
 msgid "Hi! 👋 How can I help?"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1943
+#: src/components/nav/AIChatDrawer.tsx:1962
 msgid "I can help you search for parts, create orders, and automate tasks in AIMMS."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2038
+#: src/components/nav/AIChatDrawer.tsx:2057
 msgid "Send again"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2057
+#: src/components/nav/AIChatDrawer.tsx:2079
 msgid "No actions waiting for review"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2074
+#: src/components/nav/AIChatDrawer.tsx:2096
 msgid "Resolved actions"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2084
+#: src/components/nav/AIChatDrawer.tsx:2106
 msgid "No resolved actions yet"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2155
+#: src/components/nav/AIChatDrawer.tsx:2177
 msgid "Asking about"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2196
+#: src/components/nav/AIChatDrawer.tsx:2218
 msgid "Attach file"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2214
+#: src/components/nav/AIChatDrawer.tsx:2236
 msgid "Shared conversation — read-only"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2216
+#: src/components/nav/AIChatDrawer.tsx:2238
 msgid "Answer the question above, or ask something else..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2218
+#: src/components/nav/AIChatDrawer.tsx:2240
 msgid "Add a message about attached files..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2219
+#: src/components/nav/AIChatDrawer.tsx:2241
 msgid "Type a message..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2246
+#: src/components/nav/AIChatDrawer.tsx:2268
 msgid "Stop generating"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2259
+#: src/components/nav/AIChatDrawer.tsx:2281
 msgid "Send message"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2290
+#: src/components/nav/AIChatDrawer.tsx:2312
 msgid "AI may make mistakes. Verify important information."
 msgstr ""
 
@@ -3845,7 +4216,7 @@ msgstr "无结果..."
 
 #: src/components/nav/MainMenu.tsx:53
 #: src/components/nav/NavigationDrawer.tsx:195
-#: src/pages/Index/Settings/AdminCenter/EmailManagementPanel.tsx:21
+#: src/pages/Index/Settings/AdminCenter/EmailManagementPanel.tsx:28
 #: src/pages/Index/Settings/AdminCenter/UserManagementPanel.tsx:39
 msgid "Settings"
 msgstr "设置"
@@ -7721,6 +8092,10 @@ msgid "Base currency"
 msgstr "基准货币"
 
 #: src/pages/Index/Settings/AdminCenter/EmailManagementPanel.tsx:13
+msgid "Agent mailboxes"
+msgstr ""
+
+#: src/pages/Index/Settings/AdminCenter/EmailManagementPanel.tsx:20
 msgid "Email Messages"
 msgstr "电子邮件消息"
 
@@ -7941,10 +8316,6 @@ msgstr ""
 msgid "Delete SSO Application"
 msgstr ""
 
-#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:427
-msgid "Provider"
-msgstr ""
-
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:439
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:628
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:747
@@ -7984,13 +8355,13 @@ msgid "Register these URLs with your SAML identity provider."
 msgstr ""
 
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:533
-msgid "URL"
-msgstr ""
-
-#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:533
 #: src/tables/settings/BarcodeScanHistoryTable.tsx:85
 msgid "Endpoint"
 msgstr "端点"
+
+#: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:533
+msgid "URL"
+msgstr ""
 
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:535
 msgid "ACS"
@@ -10258,15 +10629,6 @@ msgstr "关联零件"
 msgid "Part parameters cannot be edited, as the part is locked"
 msgstr "零件参数无法编辑，因为零件已锁定"
 
-#: src/pages/part/PartDetail.tsx:605
-#: src/pages/repair/RepairPacketDetail.tsx:236
-#: src/pages/tasks/workorders/CloseoutPanel.tsx:833
-#: src/pages/tasks/workorders/WorkOrderDetail.tsx:375
-#: src/tables/part/PartTestTemplateTable.tsx:116
-#: src/tables/stock/StockItemTestResultTable.tsx:403
-msgid "Required"
-msgstr "必填"
-
 #: src/pages/part/PartDetail.tsx:623
 msgid "Deficit"
 msgstr "不足"
@@ -10962,15 +11324,6 @@ msgstr "当"
 msgid "Event"
 msgstr ""
 
-#: src/pages/repair/RepairPacketDetail.tsx:293
-msgid "From"
-msgstr ""
-
-#: src/pages/repair/RepairPacketDetail.tsx:294
-#: src/tables/settings/EmailTable.tsx:85
-msgid "To"
-msgstr "到"
-
 #: src/pages/repair/components/DiagnosisPanel.tsx:117
 msgid "Verification failed"
 msgstr ""
@@ -11123,13 +11476,13 @@ msgid "Failed to save lockout point"
 msgstr ""
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:100
-#: src/pages/repair/components/safety/LockoutPointTable.tsx:61
-msgid "Add lockout point"
+#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
+msgid "Edit lockout point"
 msgstr ""
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:100
-#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
-msgid "Edit lockout point"
+#: src/pages/repair/components/safety/LockoutPointTable.tsx:61
+msgid "Add lockout point"
 msgstr ""
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:104
@@ -11455,10 +11808,6 @@ msgstr ""
 
 #: src/pages/repair/components/safety/safetyApi.ts:180
 msgid "Geofence"
-msgstr ""
-
-#: src/pages/repair/components/safety/safetyApi.ts:181
-msgid "Signature"
 msgstr ""
 
 #: src/pages/sales/ReturnOrderDetail.tsx:196
@@ -13365,12 +13714,6 @@ msgstr "设备驱动详情"
 msgid "Notification"
 msgstr "通知"
 
-#: src/tables/notifications/NotificationTable.tsx:41
-#: src/tables/plugin/PluginErrorTable.tsx:39
-#: src/tables/settings/ErrorTable.tsx:50
-msgid "Message"
-msgstr "信息"
-
 #: src/tables/part/PartBuildAllocationsTable.tsx:65
 msgid "Assembly IPN"
 msgstr "装配内部零件号"
@@ -14322,10 +14665,6 @@ msgstr "已发布"
 msgid "Sent"
 msgstr "已发送"
 
-#: src/tables/settings/EmailTable.tsx:33
-msgid "Read"
-msgstr "读取"
-
 #: src/tables/settings/EmailTable.tsx:43
 #: src/tables/settings/EmailTable.tsx:58
 msgid "Send Test Email"
@@ -14342,10 +14681,6 @@ msgstr "删除电子邮件"
 #: src/tables/settings/EmailTable.tsx:72
 msgid "Email deleted successfully"
 msgstr "邮件删除成功"
-
-#: src/tables/settings/EmailTable.tsx:80
-msgid "Subject"
-msgstr "主题"
 
 #: src/tables/settings/EmailTable.tsx:90
 msgid "Sender"

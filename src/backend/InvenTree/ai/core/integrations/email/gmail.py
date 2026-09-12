@@ -13,11 +13,11 @@ from typing import Any
 
 import structlog
 from ai.core.config import get_gmail_settings
+from ai.core.integrations.email.gmail_query import build_gmail_query
 from ai.core.integrations.email.provider import (
     EmailAttachment,
     EmailMessage,
     EmailQuery,
-    build_gmail_query,
 )
 from google.oauth2 import service_account
 from googleapiclient.discovery import build

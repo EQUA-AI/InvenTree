@@ -210,6 +210,15 @@ class ApprovalCreateSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         """Compute derived fields, validate payload, and check size."""
+        from django.conf import settings
+
+        if attrs['action_type'] == 'email' and not self.context.get('mailbox_service'):
+            if getattr(settings, 'AGENT_EMAIL_ENABLED', False) or (
+                isinstance(attrs['payload'], dict) and '_mailbox' in attrs['payload']
+            ):
+                raise serializers.ValidationError({
+                    'payload': 'Create email drafts through the connected mailbox service.'
+                })
         # Compute idempotency_key
         attrs['idempotency_key'] = compute_idempotency_key(
             attrs['agent_run_id'], attrs['tool_call_id']
@@ -227,7 +236,8 @@ class ApprovalCreateSerializer(serializers.Serializer):
         attrs['expires_at'] = timezone.now() + datetime.timedelta(days=expiry_days)
 
         # Sanitize payload (D-5)
-        attrs['payload'] = sanitize_payload(attrs['payload'], attrs['action_type'])
+        if not self.context.get('mailbox_service'):
+            attrs['payload'] = sanitize_payload(attrs['payload'], attrs['action_type'])
 
         # Executor validation (E-3): surface warnings from executor.validate()
         from .executors import registry

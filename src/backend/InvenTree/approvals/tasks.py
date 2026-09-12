@@ -373,6 +373,7 @@ def purge_expired_approvals():
                 resolved_at__isnull=False,
                 resolved_at__lt=cutoff,
                 executions__isnull=True,
+                email_draft__isnull=True,
                 review_acknowledgments__isnull=True,
                 review_deliveries__isnull=True,
             ).values_list('pk', flat=True)[:batch_size]

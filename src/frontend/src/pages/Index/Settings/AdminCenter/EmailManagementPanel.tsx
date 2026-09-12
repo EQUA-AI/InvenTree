@@ -2,12 +2,19 @@ import { t } from '@lingui/core/macro';
 import { Accordion } from '@mantine/core';
 
 import { StylishText } from '@lib/components/StylishText';
+import { MailboxPanel } from '../../../../components/ai/MailboxPanel';
 import { ConfigValueList } from '../../../../components/settings/ConfigValueList';
 import { EmailTable } from '../../../../tables/settings/EmailTable';
 
 export default function UserManagementPanel() {
   return (
     <Accordion multiple defaultValue={['emails']}>
+      <Accordion.Item value='agent-mailboxes'>
+        <Accordion.Control>{t`Agent mailboxes`}</Accordion.Control>
+        <Accordion.Panel>
+          <MailboxPanel admin />
+        </Accordion.Panel>
+      </Accordion.Item>
       <Accordion.Item value='emails' key='emails'>
         <Accordion.Control>
           <StylishText size='lg'>{t`Email Messages`}</StylishText>

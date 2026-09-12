@@ -14,6 +14,7 @@ from django_filters.rest_framework.filterset import FilterSet
 from rest_framework import status
 from rest_framework.response import Response
 
+from aichat.services.email.access import visible_approvals
 from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import CreateAPI, ListAPI, ListCreateAPI, RetrieveAPI
 
@@ -88,7 +89,7 @@ class ApprovalList(ListCreateAPI):
 
     def get_queryset(self):
         """Return the queryset for this endpoint."""
-        return Approval.objects.all()
+        return visible_approvals(Approval.objects.all(), self.request.user)
 
     def get_serializer_class(self):
         """Return appropriate serializer based on request method."""
@@ -106,6 +107,12 @@ class ApprovalList(ListCreateAPI):
         serializer.is_valid(raise_exception=True)
 
         approval = serializer.save()
+        if not visible_approvals(
+            Approval.objects.filter(pk=approval.pk), request.user
+        ).exists():
+            from rest_framework.exceptions import NotFound
+
+            raise NotFound()
 
         # Check if this was an idempotent return (existing record)
         was_existing = getattr(approval, '_was_existing', False)
@@ -150,7 +157,7 @@ class ApprovalList(ListCreateAPI):
             refs_query &= Q(**{f'payload__entity_refs__{key}': ref_value})
 
         return (
-            Approval.objects
+            visible_approvals(Approval.objects.all(), self.request.user)
             .filter(refs_query, status__in=active_statuses)
             .exclude(pk=exclude_pk)
             .first()
@@ -170,7 +177,7 @@ class ApprovalDetail(RetrieveAPI):
 
     def get_queryset(self):
         """Return the scoped queryset."""
-        return Approval.objects.all()
+        return visible_approvals(Approval.objects.all(), self.request.user)
 
 
 class ApprovalCardPackage(RetrieveAPI):
@@ -186,7 +193,7 @@ class ApprovalCardPackage(RetrieveAPI):
 
     def get_queryset(self):
         """Return the scoped queryset."""
-        return Approval.objects.all()
+        return visible_approvals(Approval.objects.all(), self.request.user)
 
 
 class ApprovalCount(ListAPI):
@@ -203,7 +210,7 @@ class ApprovalCount(ListAPI):
 
     def get_queryset(self):
         """Return the scoped queryset."""
-        return Approval.objects.all()
+        return visible_approvals(Approval.objects.all(), self.request.user)
 
     def list(self, request, *args, **kwargs):
         """Return just the count."""
@@ -223,9 +230,10 @@ class ApprovalRevisionList(ListAPI):
 
     def get_queryset(self):
         """Return the scoped queryset."""
-        return ApprovalRevision.objects.filter(approval_id=self.kwargs['pk']).order_by(
-            'revision_number'
-        )
+        return ApprovalRevision.objects.filter(
+            approval_id=self.kwargs['pk'],
+            approval__in=visible_approvals(Approval.objects.all(), self.request.user),
+        ).order_by('revision_number')
 
 
 class ApprovalEventList(ListAPI):
@@ -240,9 +248,10 @@ class ApprovalEventList(ListAPI):
 
     def get_queryset(self):
         """Return the scoped queryset."""
-        return ApprovalEvent.objects.filter(approval_id=self.kwargs['pk']).order_by(
-            'timestamp'
-        )
+        return ApprovalEvent.objects.filter(
+            approval_id=self.kwargs['pk'],
+            approval__in=visible_approvals(Approval.objects.all(), self.request.user),
+        ).order_by('timestamp')
 
 
 # ---------------------------------------------------------------------------

@@ -196,6 +196,7 @@ def _native_tool_map() -> dict[Any, tuple[str, str]]:
 
     return {
         et.list_emails: ("email", "view"),
+        et.list_mailboxes: ("email", "view"),
         et.get_email_details: ("email", "view"),
         et.download_attachment: ("email", "view"),
         et.mark_email_processed: ("email", "send"),

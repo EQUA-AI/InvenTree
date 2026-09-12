@@ -93,7 +93,7 @@ def record_result(approval_id, execution_id, result):
     if execution.state == 'succeeded':
         result = _result_from_record(execution)
     state = classify(result)
-    if execution.state == 'partial' and state == 'unknown':
+    if execution.state == 'partial' and state in ('unknown', 'failed_before_effect'):
         state = 'partial'
     payload = (
         result.result_payload
@@ -224,6 +224,10 @@ def reconcile_execution(approval_id):
     execution = approval.executions.order_by('-created_at').first()
     if not execution:
         return approval  # Historical stub ledgers are not rewritten.
+    if hasattr(approval, 'email_draft'):
+        from aichat.services.email.dispatch import reconcile
+
+        return reconcile(approval, execution)
     if execution.state in ('succeeded', 'failed_before_effect'):
         return record_result(approval.pk, execution.pk, _result_from_record(execution))
     try:

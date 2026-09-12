@@ -1,3 +1,5 @@
+# ruff: noqa: RUF029
+# Fast coroutine test doubles deliberately return without scheduling I/O.
 """Voice parity for text-chat tools with proposal-time and execution-time RBAC."""
 
 from __future__ import annotations
@@ -140,7 +142,7 @@ class _CaptureAgent:
 async def test_resolver_captures_authorized_action_without_executing_it():
     agent = _CaptureAgent()
 
-    async def authorized_tools():  # noqa: RUF029
+    async def authorized_tools():
         return [list_emails, send_email]
 
     resolver = VoiceToolActionResolver(
@@ -189,7 +191,7 @@ class _ReadThenCaptureAgent:
 async def test_resolver_retries_with_authorized_reads_for_record_resolution():
     agent = _ReadThenCaptureAgent()
 
-    async def authorized_tools():  # noqa: RUF029
+    async def authorized_tools():
         return [list_emails, send_email]
 
     resolver = VoiceToolActionResolver(
@@ -229,7 +231,7 @@ class _DomainFallbackAgent:
 async def test_domain_shortlist_falls_back_to_all_authorized_actions():
     agent = _DomainFallbackAgent()
 
-    async def authorized_tools():  # noqa: RUF029
+    async def authorized_tools():
         return [send_email, create_part]
 
     resolver = VoiceToolActionResolver(
@@ -286,7 +288,7 @@ async def test_permission_uses_fresh_text_chat_profile():
 async def test_executor_rechecks_capability_and_runs_exact_arguments():
     calls: list[dict] = []
 
-    async def fake_action(quantity: int) -> dict:  # noqa: RUF029
+    async def fake_action(quantity: int) -> dict:
         calls.append({"quantity": quantity})
         return {"success": True}
 
@@ -318,7 +320,7 @@ async def test_executor_rechecks_capability_and_runs_exact_arguments():
 async def test_executor_rejects_capability_mismatch_without_calling_tool():
     calls = 0
 
-    async def fake_action() -> dict:  # noqa: RUF029
+    async def fake_action() -> dict:
         nonlocal calls
         calls += 1
         return {"success": True}
@@ -367,7 +369,7 @@ async def _execute_add_stock(impl, **arguments):
 
 @pytest.mark.asyncio
 async def test_tool_exception_is_an_unknown_outcome_not_a_denial():
-    async def boom(**kwargs):  # noqa: RUF029
+    async def boom(**kwargs):
         raise RuntimeError("provider timeout")
 
     result = await _execute_add_stock(boom, part_id=1, quantity=2, location_id=3)
@@ -379,7 +381,7 @@ async def test_tool_exception_is_an_unknown_outcome_not_a_denial():
 
 @pytest.mark.asyncio
 async def test_tool_reported_failure_is_not_completed_not_nothing_changed():
-    async def failing(**kwargs):  # noqa: RUF029
+    async def failing(**kwargs):
         return {"success": False, "error": "insufficient stock"}
 
     result = await _execute_add_stock(failing, part_id=1, quantity=2, location_id=3)
@@ -388,10 +390,35 @@ async def test_tool_reported_failure_is_not_completed_not_nothing_changed():
 
 
 @pytest.mark.asyncio
+async def test_mailbox_draft_is_never_spoken_as_sent():
+    async def send_email():
+        return {
+            "success": True,
+            "sent": False,
+            "status": "awaiting_review",
+            "approval_id": "recording-approval",
+        }
+
+    permission = AsyncMock()
+    permission.allows.return_value = True
+    executor = TextToolVoiceExecutor(tools=[send_email], permission=permission)
+    with patch("ai.core.voice.tool_actions.capability_for_tool", return_value="email:send"):
+        result = await executor.execute(
+            ExecutableWrite(tool_name="send_email", capability="email:send"),
+            actor=_principal(),
+            trusted_context=object(),
+        )
+    assert result.ok is True
+    assert result.committed is False
+    assert result.receipt_ref == "approval:recording-approval"
+    assert result.change_label == "saved for approval; no email has been sent"
+
+
+@pytest.mark.asyncio
 async def test_bad_arguments_fail_before_any_effect():
     called = []
 
-    async def impl(**kwargs):  # noqa: RUF029
+    async def impl(**kwargs):
         called.append(kwargs)
         return {"success": True}
 
@@ -404,7 +431,7 @@ async def test_bad_arguments_fail_before_any_effect():
 
 @pytest.mark.asyncio
 async def test_success_carries_change_label_and_receipt_ref():
-    async def impl(**kwargs):  # noqa: RUF029
+    async def impl(**kwargs):
         return {"success": True, "stock_item_id": 910, "quantity": 2}
 
     result = await _execute_add_stock(impl, part_id=1, quantity=2, location_id=3)

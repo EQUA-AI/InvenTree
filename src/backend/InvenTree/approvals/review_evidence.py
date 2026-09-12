@@ -24,7 +24,21 @@ def revision_binding_enabled():
     return value is True or str(value).lower() in ('1', 'true', 'yes')
 
 
-def _scope_hash(actor):
+def _scope_hash(actor, approval=None):
+    if approval is not None and hasattr(approval, 'email_draft'):
+        from ai.core.integrations.email.contracts import MailboxError
+        from aichat.services.email.access import require_account
+        from aichat.services.email.drafts import digest
+
+        try:
+            account = require_account(actor, approval.email_draft.account_id)
+        except MailboxError as exc:
+            raise ReviewEvidenceError('Mailbox review access is unavailable.') from exc
+        return digest({
+            'mailbox': str(account.pk),
+            'binding_version': account.binding_version,
+            'actor': actor.pk,
+        })
     from aichat.services.proposals import ProposalError
     from aichat.services.scope_strings import scope_strings
 
@@ -141,7 +155,7 @@ def acknowledge(approval, *, actor, channel, evidence):
         'actor': actor,
         'revision': approval.current_revision_number,
         'review_hash': current_hash,
-        'scope_hash': _scope_hash(actor),
+        'scope_hash': _scope_hash(actor, approval if channel == 'screen' else None),
     }
     if channel == 'voice':
         if evidence.get('acknowledgment') != 'I have reviewed this request':
@@ -194,7 +208,11 @@ def acknowledge(approval, *, actor, channel, evidence):
 
 def require_acknowledgment(approval, *, actor, channel):
     """Never allow a timestamp, another actor or an obsolete revision to approve."""
-    if channel == 'screen' and not revision_binding_enabled():
+    if (
+        channel == 'screen'
+        and not revision_binding_enabled()
+        and not hasattr(approval, 'email_draft')
+    ):
         if approval.risk_tier < 2 or approval.viewed_confirmed_at:
             return
         raise ReviewEvidenceError(
@@ -207,7 +225,7 @@ def require_acknowledgment(approval, *, actor, channel):
         actor=actor,
         revision=approval.current_revision_number,
         review_hash=compute_review_hash(approval),
-        scope_hash=_scope_hash(actor),
+        scope_hash=_scope_hash(actor, approval if channel == 'screen' else None),
         sections=required_sections(approval),
         invalidated_at__isnull=True,
     ).exists():
@@ -221,7 +239,7 @@ def invalidate(approval):
     approval.review_acknowledgments.filter(invalidated_at__isnull=True).update(
         invalidated_at=timezone.now()
     )
-    if revision_binding_enabled():
+    if revision_binding_enabled() or hasattr(approval, 'email_draft'):
         approval.viewed_confirmed_at = None
         approval.viewed_confirmed_by_user = None
         approval.save(

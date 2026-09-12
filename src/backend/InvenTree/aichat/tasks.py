@@ -1362,3 +1362,63 @@ def process_retention_outbox():
             counts['retried'],
             counts['failed_permanent'],
         )
+
+
+@scheduled_task(ScheduledTask.MINUTES, 1)
+def publish_pending_email():
+    """Recover committed mailbox intents independently of broker publication."""
+    from django.conf import settings
+
+    from aichat.services.email.dispatch import publish
+    from approvals.models import ApprovalExecution
+
+    if not getattr(settings, 'AGENT_EMAIL_ENABLED', False):
+        return
+    for operation in (
+        ApprovalExecution.objects
+        .filter(state='pending_dispatch', approval__email_draft__isnull=False)
+        .order_by('created_at')
+        .values_list('pk', flat=True)[:100]
+    ):
+        publish(operation)
+
+
+@scheduled_task(ScheduledTask.MINUTES, 2)
+def synchronize_mailboxes():
+    """Poll configured mailboxes using bounded pages and per-collection leases."""
+    from django.conf import settings
+
+    from django_q.tasks import async_task
+
+    from aichat.models import ConnectedMailbox
+
+    if not getattr(settings, 'AGENT_EMAIL_ENABLED', False):
+        return
+    for account in ConnectedMailbox.objects.filter(
+        enabled=True, receive_enabled=True
+    ).iterator():
+        for collection in {
+            account.options.get('inbox', 'Inbox'),
+            account.options.get('sent', 'Sent'),
+        }:
+            async_task(
+                'aichat.services.email.receive.sync_account',
+                str(account.pk),
+                collection,
+            )
+
+
+@scheduled_task(ScheduledTask.DAILY)
+def expire_mailbox_content():
+    """Retention remains effective when sending and syncing are paused."""
+    from aichat.services.email.receive import expire_content
+
+    expire_content()
+
+
+@scheduled_task(ScheduledTask.MINUTES, 5)
+def rescan_mailbox_attachments():
+    """Release private artifacts only after the configured scanner accepts them."""
+    from aichat.services.email.receive import rescan_quarantine
+
+    rescan_quarantine()

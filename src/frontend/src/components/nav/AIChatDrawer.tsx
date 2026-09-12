@@ -68,6 +68,8 @@ import { useAIChatState } from '../../states/AIChatState';
 import { useLocalState } from '../../states/LocalState';
 import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
 import { ChatActionProposalList } from '../ai/ChatActionProposals';
+import { MailboxApprovalReview } from '../ai/MailboxApprovalReview';
+import { MailboxPanel } from '../ai/MailboxPanel';
 import { QuestionCard } from '../ai/QuestionCard';
 import { VoiceContextBadge } from '../ai/VoiceContextBadge';
 import { VoiceDecisionCard } from '../ai/VoiceDecisionCard';
@@ -86,7 +88,7 @@ import type { EvidenceAnalysisAttachment } from '../aichat/evidenceAnalysis';
 import { composeAnswerMarkdown } from '../aichat/evidenceFormat';
 import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
-type AIChatDrawerTab = 'chat' | 'approvals' | 'history';
+type AIChatDrawerTab = 'chat' | 'approvals' | 'history' | 'mail';
 
 type ApprovalStatus =
   | 'pending'
@@ -354,61 +356,77 @@ function ApprovalInboxPanel({
               </Badge>
             </Group>
 
-            {/* Fallback renderer: show top-level payload fields in a field/value grid */}
-            <Box mt='sm'>
-              {Object.entries(detail.payload || {}).length === 0 ? (
-                <Text size='sm' c='dimmed'>
-                  {t`No details available`}
-                </Text>
-              ) : (
-                <Box>
-                  {Object.entries(detail.payload || {}).map(([key, value]) => {
-                    const isPrimitive =
-                      value === null ||
-                      value === undefined ||
-                      typeof value === 'string' ||
-                      typeof value === 'number' ||
-                      typeof value === 'boolean';
+            {detail.action_type === 'email' && detail.payload._mailbox ? (
+              <MailboxApprovalReview approvalId={detail.id} />
+            ) : (
+              <>
+                {/* Fallback renderer: show top-level payload fields in a field/value grid */}
+                <Box mt='sm'>
+                  {Object.entries(detail.payload || {}).length === 0 ? (
+                    <Text size='sm' c='dimmed'>
+                      {t`No details available`}
+                    </Text>
+                  ) : (
+                    <Box>
+                      {Object.entries(detail.payload || {}).map(
+                        ([key, value]) => {
+                          const isPrimitive =
+                            value === null ||
+                            value === undefined ||
+                            typeof value === 'string' ||
+                            typeof value === 'number' ||
+                            typeof value === 'boolean';
 
-                    const renderedValue = isPrimitive
-                      ? String(value)
-                      : t`(complex value)`;
+                          const renderedValue = isPrimitive
+                            ? String(value)
+                            : t`(complex value)`;
 
-                    return (
-                      <Group
-                        key={key}
-                        justify='space-between'
-                        align='flex-start'
-                        gap='md'
-                        py={6}
-                        style={{
-                          borderBottom: '1px solid var(--mantine-color-gray-2)'
-                        }}
-                      >
-                        <Text size='sm' fw={500} style={{ flex: '0 0 40%' }}>
-                          {key}
-                        </Text>
-                        <Text size='sm' style={{ flex: 1, textAlign: 'right' }}>
-                          {renderedValue}
-                        </Text>
-                      </Group>
-                    );
-                  })}
+                          return (
+                            <Group
+                              key={key}
+                              justify='space-between'
+                              align='flex-start'
+                              gap='md'
+                              py={6}
+                              style={{
+                                borderBottom:
+                                  '1px solid var(--mantine-color-gray-2)'
+                              }}
+                            >
+                              <Text
+                                size='sm'
+                                fw={500}
+                                style={{ flex: '0 0 40%' }}
+                              >
+                                {key}
+                              </Text>
+                              <Text
+                                size='sm'
+                                style={{ flex: 1, textAlign: 'right' }}
+                              >
+                                {renderedValue}
+                              </Text>
+                            </Group>
+                          );
+                        }
+                      )}
+                    </Box>
+                  )}
+
+                  {/* Optional developer detail (collapsed by default): raw JSON */}
+                  <Box mt='sm'>
+                    <Textarea
+                      readOnly
+                      autosize
+                      minRows={4}
+                      maxRows={10}
+                      value={JSON.stringify(detail.payload ?? {}, null, 2)}
+                      label={t`Developer details`}
+                    />
+                  </Box>
                 </Box>
-              )}
-
-              {/* Optional developer detail (collapsed by default): raw JSON */}
-              <Box mt='sm'>
-                <Textarea
-                  readOnly
-                  autosize
-                  minRows={4}
-                  maxRows={10}
-                  value={JSON.stringify(detail.payload ?? {}, null, 2)}
-                  label={t`Developer details`}
-                />
-              </Box>
-            </Box>
+              </>
+            )}
           </Paper>
         )}
       </Box>
@@ -1833,6 +1851,7 @@ export function AIChatDrawer({
                       </Group>
                     </Tabs.Tab>
                     <Tabs.Tab value='history'>{t`History`}</Tabs.Tab>
+                    <Tabs.Tab value='mail'>{t`Mail`}</Tabs.Tab>
                   </Tabs.List>
                 </Tabs>
                 <RiskRadarDrawerBadge />
@@ -2043,6 +2062,9 @@ export function AIChatDrawer({
               </Box>
             )}
 
+            {activeTab === 'mail' && (
+              <MailboxPanel onDraft={() => setActiveTab('approvals')} />
+            )}
             {activeTab === 'approvals' && (
               <>
                 <ChatActionProposalList {...proposals} />

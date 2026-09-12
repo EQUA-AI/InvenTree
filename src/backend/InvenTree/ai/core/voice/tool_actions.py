@@ -206,7 +206,7 @@ def _capture_proxy(tool: Any, captured: list[_CapturedAction]) -> Callable[..., 
     signature = inspect.signature(tool)
 
     @functools.wraps(tool)
-    async def capture(*args: Any, **kwargs: Any) -> dict[str, bool]:  # noqa: RUF029 - async tool protocol
+    async def capture(*args: Any, **kwargs: Any) -> dict[str, bool]:  # noqa: RUF029 - Must retain the async tool protocol.
         bound = signature.bind(*args, **kwargs)
         arguments = dict(bound.arguments)
         json.dumps(arguments)
@@ -591,6 +591,22 @@ class TextToolVoiceExecutor:
                 detail="tool_reported_failure",
                 outcome=VoiceWriteOutcome.NOT_COMPLETED,
                 effect_committed=None,
+            )
+        if (
+            executable.tool_name in ("send_email", "generate_and_send_document")
+            and isinstance(result, dict)
+            and result.get("status") == "awaiting_review"
+            and result.get("sent") is False
+            and result.get("approval_id")
+        ):
+            return VoiceWriteExecutionResult(
+                ok=True,
+                detail="draft_created_for_review",
+                outcome=VoiceWriteOutcome.SUCCEEDED,
+                record_label="Email draft",
+                change_label="saved for approval; no email has been sent",
+                receipt_ref=f"approval:{result['approval_id']}",
+                effect_committed=False,
             )
         return VoiceWriteExecutionResult(
             ok=True,

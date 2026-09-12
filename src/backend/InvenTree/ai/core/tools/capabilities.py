@@ -192,7 +192,7 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
     ),
     "email.read": (
         ToolEffect.READ,
-        ("list_emails", "get_email_details", "download_attachment"),
+        ("list_mailboxes", "list_emails", "get_email_details", "download_attachment"),
         ("email", "emails", "inbox", "message", "mail attachment"),
     ),
     "email.write": (

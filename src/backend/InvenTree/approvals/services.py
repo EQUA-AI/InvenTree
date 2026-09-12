@@ -97,19 +97,24 @@ def _approve_gates(approval, actor, channel):
         _reject('forbidden', str(exc), 403)
 
 
-def _get_approval_or_404(pk):
-    return Approval.objects.filter(pk=pk).first()
+def _get_approval_or_404(pk, *, actor):
+    from aichat.services.email.access import visible_approvals
+
+    return visible_approvals(Approval.objects.filter(pk=pk), actor).first()
 
 
-def _get_approval_for_update(pk):
-    return Approval.objects.select_for_update().filter(pk=pk).first()
+def _get_approval_for_update(pk, *, actor):
+    from aichat.services.email.access import visible_approvals
+
+    allowed = visible_approvals(Approval.objects.filter(pk=pk), actor).values('pk')
+    return Approval.objects.select_for_update().filter(pk__in=allowed).first()
 
 
 @transaction.atomic
 def open_approval(approval_id, *, actor, data=None, channel='screen', evidence=None):
     """Run open approval against the authoritative approval state."""
     actor = _require_reviewer(actor)
-    approval = _get_approval_for_update(approval_id)
+    approval = _get_approval_for_update(approval_id, actor=actor)
     if not approval:
         return _reject(
             'not_found', f'Approval {approval_id} not found', status.HTTP_404_NOT_FOUND
@@ -135,7 +140,7 @@ def open_approval(approval_id, *, actor, data=None, channel='screen', evidence=N
 def confirm_viewed(approval_id, *, actor, data=None, channel='screen', evidence=None):
     """Run confirm viewed against the authoritative approval state."""
     actor = _require_reviewer(actor)
-    approval = _get_approval_for_update(approval_id)
+    approval = _get_approval_for_update(approval_id, actor=actor)
     if not approval:
         return _reject(
             'not_found', f'Approval {approval_id} not found', status.HTTP_404_NOT_FOUND
@@ -160,7 +165,11 @@ def confirm_viewed(approval_id, *, actor, data=None, channel='screen', evidence=
             current_status=approval.status,
         )
 
-    if channel == 'voice' or revision_binding_enabled():
+    if (
+        channel == 'voice'
+        or revision_binding_enabled()
+        or hasattr(approval, 'email_draft')
+    ):
         try:
             acknowledge(
                 approval,
@@ -197,7 +206,7 @@ def request_changes(approval_id, *, actor, data=None, channel='screen', evidence
     serializer = approval_serializers.RequestChangesSerializer(data=(data or {}))
     serializer.is_valid(raise_exception=True)
 
-    approval = _get_approval_for_update(approval_id)
+    approval = _get_approval_for_update(approval_id, actor=actor)
     if not approval:
         return _reject(
             'not_found', f'Approval {approval_id} not found', status.HTTP_404_NOT_FOUND
@@ -229,7 +238,7 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
     pk = approval_id
 
     # ── Phase 1: Read-only checks (no lock, no transaction) ──
-    approval = _get_approval_or_404(pk)
+    approval = _get_approval_or_404(pk, actor=actor)
     if not approval:
         return _reject(
             'not_found', f'Approval {pk} not found', status.HTTP_404_NOT_FOUND
@@ -298,7 +307,7 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
             drift_report = 'Preconditions could not be verified; no effect dispatched.'
         if revalidation_failed:
             with transaction.atomic():
-                locked = _get_approval_for_update(pk)
+                locked = _get_approval_for_update(pk, actor=actor)
                 if locked and not locked.is_terminal:
                     invalidate(locked)
                     ApprovalEvent.objects.create(
@@ -321,7 +330,7 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
 
     # ── Phase 3: Lock + transition to approved → executing ──
     with transaction.atomic():
-        locked = _get_approval_for_update(pk)
+        locked = _get_approval_for_update(pk, actor=actor)
         if not locked:
             return _reject(
                 'not_found', f'Approval {pk} not found', status.HTTP_404_NOT_FOUND
@@ -363,6 +372,16 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
             _reject('locked', str(exc), 423)
         _approve_gates(locked, actor, channel)
 
+        mailbox_bound = hasattr(locked, 'email_draft')
+        if mailbox_bound:
+            from ai.core.integrations.email.contracts import MailboxError
+            from aichat.services.email.access import require_account
+
+            try:
+                require_account(actor, locked.email_draft.account_id, 'send')
+            except MailboxError:
+                _reject('forbidden', 'Mailbox send permission required.', 403)
+
         # The operation key exists durably before any possible external dispatch.
         execution, created = ApprovalExecution.objects.get_or_create(
             idempotency_key=locked.idempotency_key,
@@ -371,6 +390,7 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
                 'actor': actor,
                 'revision': locked.current_revision_number,
                 'review_hash': expected_hash,
+                'state': 'pending_dispatch' if mailbox_bound else 'submitting',
             },
         )
         if not created:
@@ -381,11 +401,21 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
             )
         locked.transition_to(ApprovalStatus.APPROVED, actor_user=actor)
         if preflight_failure is None:
+            if mailbox_bound:
+                locked.execution_result = {
+                    'execution_state': 'pending_dispatch',
+                    'operation_id': execution.pk,
+                }
+                locked.save(update_fields=['execution_result'])
             locked.transition_to(ApprovalStatus.EXECUTING, actor_user=actor)
+            if mailbox_bound:
+                from aichat.services.email.dispatch import publish
+
+                transaction.on_commit(lambda: publish(execution.pk))
 
     if preflight_failure is not None:
         locked = record_result(locked.pk, execution.pk, preflight_failure)
-    else:
+    elif not mailbox_bound:
         locked = dispatch(executor, locked, actor=actor, execution=execution)
     if locked.status == ApprovalStatus.SUCCEEDED:
         attempt_agent_resume(locked, 'approved', actor)
@@ -401,7 +431,7 @@ def deny(approval_id, *, actor, data=None, channel='screen', evidence=None):
     serializer = approval_serializers.DenySerializer(data=(data or {}))
     serializer.is_valid(raise_exception=True)
 
-    approval = _get_approval_for_update(approval_id)
+    approval = _get_approval_for_update(approval_id, actor=actor)
     if not approval:
         return _reject(
             'not_found', f'Approval {approval_id} not found', status.HTTP_404_NOT_FOUND
@@ -464,7 +494,7 @@ def cancel(approval_id, *, actor, data=None, channel='screen', evidence=None):
     serializer = approval_serializers.CancelSerializer(data=(data or {}))
     serializer.is_valid(raise_exception=True)
 
-    approval = _get_approval_for_update(approval_id)
+    approval = _get_approval_for_update(approval_id, actor=actor)
     if not approval:
         return _reject(
             'not_found', f'Approval {approval_id} not found', status.HTTP_404_NOT_FOUND
@@ -535,7 +565,7 @@ def acquire_modify_lock(
 ):
     """Run acquire modify lock against the authoritative approval state."""
     actor = _require_reviewer(actor)
-    approval = _get_approval_for_update(approval_id)
+    approval = _get_approval_for_update(approval_id, actor=actor)
     if not approval:
         return _reject(
             'not_found', f'Approval {approval_id} not found', status.HTTP_404_NOT_FOUND
@@ -574,7 +604,7 @@ def release_modify_lock(
 ):
     """Run release modify lock against the authoritative approval state."""
     actor = _require_reviewer(actor)
-    approval = _get_approval_for_update(approval_id)
+    approval = _get_approval_for_update(approval_id, actor=actor)
     if not approval:
         return _reject(
             'not_found', f'Approval {approval_id} not found', status.HTTP_404_NOT_FOUND
@@ -595,7 +625,7 @@ def revise(approval_id, *, actor, data=None, channel='screen', evidence=None):
     serializer = approval_serializers.ReviseSerializer(data=(data or {}))
     serializer.is_valid(raise_exception=True)
 
-    approval = _get_approval_for_update(approval_id)
+    approval = _get_approval_for_update(approval_id, actor=actor)
     if not approval:
         return _reject(
             'not_found', f'Approval {approval_id} not found', status.HTTP_404_NOT_FOUND
@@ -637,6 +667,15 @@ def revise(approval_id, *, actor, data=None, channel='screen', evidence=None):
 
     data = serializer.validated_data
     new_revision_number = approval.current_revision_number + 1
+
+    if hasattr(approval, 'email_draft'):
+        from ai.core.integrations.email.contracts import MailboxError
+        from aichat.services.email.drafts import revise_draft
+
+        try:
+            data['payload'] = revise_draft(approval, actor, data['payload'])
+        except MailboxError as exc:
+            _reject('invalid_payload', exc.code, 400)
 
     from .executors import registry
 

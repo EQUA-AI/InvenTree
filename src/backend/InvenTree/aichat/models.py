@@ -8,6 +8,17 @@ from django.db.models import F, Q
 
 from pgvector.django import VectorField
 
+from .email_models import ConnectedMailbox as ConnectedMailbox
+from .email_models import MailAttachment as MailAttachment
+from .email_models import MailboxGrant as MailboxGrant
+from .email_models import MailboxOAuthAttempt as MailboxOAuthAttempt
+from .email_models import MailConversation as MailConversation
+from .email_models import MailDraft as MailDraft
+from .email_models import MailLocation as MailLocation
+from .email_models import MailMessage as MailMessage
+from .email_models import MailReceipt as MailReceipt
+from .email_models import MailSyncState as MailSyncState
+
 
 def _stable_id(prefix: str) -> str:
     """Return a non-sequential public identifier."""

@@ -91,6 +91,16 @@ def _mime(payload, *, sender, operation_id):
 
 def send_message(payload, *, actor, operation_id):
     """Dispatch exactly once; failures after execute begins are uncertain."""
+    from django.conf import settings
+
+    if getattr(settings, "AGENT_EMAIL_ENABLED", False) or getattr(
+        settings, "AGENT_EMAIL_SEND_PAUSED", False
+    ):
+        return {
+            "success": False,
+            "outcome": "failed_before_effect",
+            "error": "Connected mailbox approval required.",
+        }
     reference = message_reference(operation_id)
     if not isinstance(payload, dict):
         return {
