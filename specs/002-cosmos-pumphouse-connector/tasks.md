@@ -17,20 +17,22 @@ clean; `ty` clean on touched files; no credential in code, config, fixture or lo
 
 ## Week 0 — carried over from the registry sprint
 
-### 🔵 T0 — Register PH_3 and import the pilot dictionary · 2 h
-The registry shipped and merged, but nothing has ever been put through it: the live database holds
-0 stations, 0 pump slots, 0 components and 0 dictionary points. Until the pilot payload has been
-through preview → import → review, the workflow is tested but unproven, and T11 has nothing to
-activate.
-- [ ] Register PH_3 via `POST /api/assets/registry/` with the pilot `entity_uuid`, namespace and
-      `source_context` selectors (`location_type`, `component_type`, `event_value_type`)
-- [ ] Preview `PH_3.pilot-excerpt.json`, confirm `rows_matched` and the counts by match method
-- [ ] Import at the returned hash; expect 14 pump slots and the station's dictionary points
-- [ ] Review a sample of points (approve/reject) so T11 has approved points to bind
-- [ ] Record the resulting counts in this file
-**Acceptance**: the Equipment Registry page shows PH_3 with its pumps, components and dictionary,
-and re-importing the same file adds nothing.
-**Note**: writes domain rows into the dev database — clear with the user first.
+### ✅ T0 — Register PH_3 and import the pilot dictionary · 2 h · done 2026-09-12
+The registry shipped and merged, but nothing had ever been put through it. Now it has.
+- [x] Registered PH_3 (`pk 17`, uuid `ce0a411f-…`, namespace `klsw`, entity
+      `bafc976f-1ccc-4a91-aaa6-c3eac2470d36`, selectors `PUMP_HOUSE` / `65` / `41`) against the
+      `Internal` client
+- [x] Previewed `PH_3.pilot-excerpt.json`: 1 row, 1 matched, 14 pump slots, 31 points
+- [x] Imported at the previewed hash
+- [x] **Idempotency confirmed**: re-import reports `new: 0, preserved: 31` and creates nothing
+
+Resulting state: **14 pump slots, 30 components, 31 dictionary points** — 21 `exact`, 9 `alias`,
+1 `unresolved`, 0 `conflict`.
+
+Review is deliberately **not** done here: approving a mapping is a human judgement about which tag
+means which measurement, and mass-approving 30 points to unblock a later ticket would put unreviewed
+mappings behind an "approved" label. T11 binds only approved points, so someone reviews them in the
+Dictionary tab first.
 
 ---
 
@@ -180,18 +182,20 @@ Closes the "mapping approval does not enable live ingestion" gap.
 
 | Bucket | Tickets | Hours |
 |---|---|---|
-| Done | T1, T2, T3, T7 | 15 |
-| Ready now | T0, T5 (writable; running it needs D16) | 8 |
+| Done | T0, T1, T2, T3, T7 | 17 |
+| Ready now | T5 (writable; running it needs D16) | 6 |
 | Blocked on earlier tickets | T4, T6, T8–T14 | 44 |
 | **Total** | **15** | **67** |
 
 ### What is actually blocking
-- **D16 — no Cosmos data-plane role exists on the account.** Nobody can read or write a document. The
-  developer's `Cosmos DB Operator` role has `sqlRoleAssignments/write` and `listKeys` in its notActions,
-  so it cannot grant this to itself. An Owner or User Access Administrator must.
-- **D7 — the four unconfirmed payload keys.** Affects sample fidelity, not progress; guessed names are
+- **D16 — no Cosmos data-plane role exists on the account.** Nobody can read or write a document in
+  *any* container, including `telemetry` and `conversations`; those applications must be using account
+  keys, since `localAuthDisabled` is `false`. The developer's `Cosmos DB Operator` role has
+  `sqlRoleAssignments/write` and `listKeys` in its notActions, so it cannot grant this to itself. An
+  Owner or User Access Administrator must.
+- **D7 — the four unconfirmed payload keys.** A real sample is promised; until then guessed names are
   flagged in the sample file.
-- **T0 — a yes/no** on writing PH_3 into the dev database.
+- **Review of the 31 imported dictionary points** before T11 can bind anything.
 
 ### Critical path
 `T2 → T8 → T9 → T13 → T14` for the live read, with `T3 → T5 → T6` feeding T8 and
