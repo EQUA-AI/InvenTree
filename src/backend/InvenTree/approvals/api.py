@@ -5,10 +5,8 @@ Implements all endpoints from spec Sections 7.0 - 7.4.
 
 import uuid as _uuid
 
-from django.db import transaction
 from django.db.models import Q
 from django.urls import include, path
-from django.utils import timezone
 
 import django_filters.rest_framework.filters as rest_filters
 import structlog
@@ -20,14 +18,13 @@ from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import CreateAPI, ListAPI, ListCreateAPI, RetrieveAPI
 
 from . import serializers as approval_serializers
+from . import services as approval_services
 from .models import (
     TERMINAL_STATUSES,
     Approval,
     ApprovalEvent,
     ApprovalRevision,
     ApprovalStatus,
-    EventType,
-    ExecutedEffect,
 )
 from .permissions import (
     ApprovalDecisionThrottle,
@@ -35,8 +32,6 @@ from .permissions import (
     ApprovalReviseThrottle,
     HasApprovalReviewPermission,
 )
-from .resume import attempt_agent_resume
-from .sanitizers import redact_error
 
 logger = structlog.get_logger('approvals.api')
 
@@ -289,31 +284,15 @@ class ApprovalOpenView(CreateAPI):
     throttle_classes = [ApprovalDecisionThrottle]
     serializer_class = approval_serializers.OpenApprovalSerializer
 
-    @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create."""
-        approval = _get_approval_for_update(self.kwargs['pk'])
-        if not approval:
-            return _error_response(
-                'not_found',
-                f'Approval {self.kwargs["pk"]} not found',
-                status.HTTP_404_NOT_FOUND,
+        """Delegate the action to the shared approval service."""
+        try:
+            result = approval_services.open_approval(
+                self.kwargs['pk'], actor=request.user, data=request.data
             )
-
-        if not approval.can_transition_to(ApprovalStatus.IN_REVIEW):
-            return _error_response(
-                'conflict',
-                f'Cannot transition from {approval.status} to in_review',
-                status.HTTP_409_CONFLICT,
-                current_status=approval.status,
-            )
-
-        approval.transition_to(ApprovalStatus.IN_REVIEW, actor_user=request.user)
-
-        return Response(
-            approval_serializers.ApprovalDetailSerializer(approval).data,
-            status=status.HTTP_200_OK,
-        )
+        except approval_services.ApprovalServiceError as exc:
+            return _error_response(exc.code, exc.detail, exc.http_status, **exc.extra)
+        return Response(result.data, status=result.status)
 
 
 class ApprovalConfirmViewedView(CreateAPI):
@@ -326,58 +305,15 @@ class ApprovalConfirmViewedView(CreateAPI):
     throttle_classes = [ApprovalDecisionThrottle]
     serializer_class = approval_serializers.ConfirmViewedSerializer
 
-    @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create."""
-        approval = _get_approval_for_update(self.kwargs['pk'])
-        if not approval:
-            return _error_response(
-                'not_found',
-                f'Approval {self.kwargs["pk"]} not found',
-                status.HTTP_404_NOT_FOUND,
+        """Delegate the action to the shared approval service."""
+        try:
+            result = approval_services.confirm_viewed(
+                self.kwargs['pk'], actor=request.user, data=request.data
             )
-
-        if approval.is_terminal:
-            return _error_response(
-                'conflict',
-                'Approval is in a terminal state',
-                status.HTTP_409_CONFLICT,
-                current_status=approval.status,
-            )
-
-        # Must be in_review or changes_requested to confirm viewed
-        allowed_statuses = {ApprovalStatus.IN_REVIEW, ApprovalStatus.CHANGES_REQUESTED}
-        if approval.status not in allowed_statuses:
-            return _error_response(
-                'conflict',
-                f'Cannot confirm-viewed when status is {approval.status}. '
-                'Must be in_review or changes_requested.',
-                status.HTTP_409_CONFLICT,
-                current_status=approval.status,
-            )
-
-        now = timezone.now()
-        approval.viewed_confirmed_at = now
-        approval.viewed_confirmed_by_user = request.user
-        approval.save(
-            update_fields=[
-                'viewed_confirmed_at',
-                'viewed_confirmed_by_user',
-                'updated_at',
-            ]
-        )
-
-        ApprovalEvent.objects.create(
-            approval=approval,
-            event_type=EventType.VIEWED_CONFIRMED,
-            actor_user=request.user,
-            event_payload={'confirmed_at': now.isoformat()},
-        )
-
-        return Response(
-            approval_serializers.ApprovalDetailSerializer(approval).data,
-            status=status.HTTP_200_OK,
-        )
+        except approval_services.ApprovalServiceError as exc:
+            return _error_response(exc.code, exc.detail, exc.http_status, **exc.extra)
+        return Response(result.data, status=result.status)
 
 
 class ApprovalRequestChangesView(CreateAPI):
@@ -390,38 +326,15 @@ class ApprovalRequestChangesView(CreateAPI):
     throttle_classes = [ApprovalDecisionThrottle]
     serializer_class = approval_serializers.RequestChangesSerializer
 
-    @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create."""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        approval = _get_approval_for_update(self.kwargs['pk'])
-        if not approval:
-            return _error_response(
-                'not_found',
-                f'Approval {self.kwargs["pk"]} not found',
-                status.HTTP_404_NOT_FOUND,
+        """Delegate the action to the shared approval service."""
+        try:
+            result = approval_services.request_changes(
+                self.kwargs['pk'], actor=request.user, data=request.data
             )
-
-        if not approval.can_transition_to(ApprovalStatus.CHANGES_REQUESTED):
-            return _error_response(
-                'conflict',
-                f'Cannot transition from {approval.status} to changes_requested',
-                status.HTTP_409_CONFLICT,
-                current_status=approval.status,
-            )
-
-        approval.transition_to(
-            ApprovalStatus.CHANGES_REQUESTED,
-            actor_user=request.user,
-            event_payload={'instructions': serializer.validated_data['instructions']},
-        )
-
-        return Response(
-            approval_serializers.ApprovalDetailSerializer(approval).data,
-            status=status.HTTP_200_OK,
-        )
+        except approval_services.ApprovalServiceError as exc:
+            return _error_response(exc.code, exc.detail, exc.http_status, **exc.extra)
+        return Response(result.data, status=result.status)
 
 
 class ApprovalApproveView(CreateAPI):
@@ -442,219 +355,14 @@ class ApprovalApproveView(CreateAPI):
     serializer_class = approval_serializers.ApproveSerializer
 
     def create(self, request, *args, **kwargs):
-        """Create."""
-        pk = self.kwargs['pk']
-
-        # ── Phase 1: Read-only checks (no lock, no transaction) ──
-        approval = _get_approval_or_404(pk)
-        if not approval:
-            return _error_response(
-                'not_found', f'Approval {pk} not found', status.HTTP_404_NOT_FOUND
-            )
-
-        # Idempotent: if already approved/executing/succeeded, return current
-        if approval.status in (
-            ApprovalStatus.APPROVED,
-            ApprovalStatus.EXECUTING,
-            ApprovalStatus.SUCCEEDED,
-        ):
-            data = approval_serializers.ApprovalDetailSerializer(approval).data
-            data['was_already_terminal'] = True  # A-6
-            return Response(data, status=status.HTTP_200_OK)
-
-        if approval.is_terminal:
-            data = approval_serializers.ApprovalDetailSerializer(approval).data
-            data['was_already_terminal'] = True  # A-6
-            return Response(data, status=status.HTTP_200_OK)
-
+        """Delegate the action to the shared approval service."""
         try:
-            approval.check_lock_allows_action(request.user, 'approve')
-        except ValueError as e:
-            return _error_response(
-                'locked',
-                str(e),
-                status.HTTP_423_LOCKED,
-                holder_user_id=approval.lock_holder_id,
-                expires_at=(
-                    approval.modification_lock_expires_at.isoformat()
-                    if approval.modification_lock_expires_at
-                    else None
-                ),
+            result = approval_services.approve(
+                self.kwargs['pk'], actor=request.user, data=request.data
             )
-
-        if approval.risk_tier >= 2 and not approval.viewed_confirmed_at:
-            return _error_response(
-                'forbidden',
-                'Tier 2-3 approvals require confirm-viewed before approve',
-                status.HTTP_403_FORBIDDEN,
-            )
-
-        if not approval.can_transition_to(ApprovalStatus.APPROVED):
-            return _error_response(
-                'conflict',
-                f'Cannot transition from {approval.status} to approved',
-                status.HTTP_409_CONFLICT,
-                current_status=approval.status,
-            )
-
-        # ── Phase 2: Revalidation (no lock, may do network I/O) ──
-        from .executors import is_executor_required
-        from .executors import registry as executor_registry
-
-        executor = None
-        if executor_registry.has(approval.action_type):
-            executor = executor_registry.get(approval.action_type)
-            try:
-                drift_report = executor.check_preconditions(
-                    approval.payload, approval.baseline_context
-                )
-                if drift_report and getattr(drift_report, 'has_drift', False):
-                    with transaction.atomic():
-                        locked = _get_approval_for_update(pk)
-                        if locked and not locked.is_terminal:
-                            ApprovalEvent.objects.create(
-                                approval=locked,
-                                event_type=EventType.REVALIDATION_FAILED,
-                                actor_user=request.user,
-                                event_payload={'drift_report': str(drift_report)},
-                            )
-                            if locked.can_transition_to(
-                                ApprovalStatus.CHANGES_REQUESTED
-                            ):
-                                locked.transition_to(
-                                    ApprovalStatus.CHANGES_REQUESTED,
-                                    actor_user=request.user,
-                                    event_payload={'reason': 'revalidation_failed'},
-                                )
-                    return _error_response(
-                        'conflict',
-                        'Approve-time revalidation detected drift',
-                        status.HTTP_409_CONFLICT,
-                    )
-            except Exception:
-                logger.warning('revalidation_error', approval_id=str(pk), exc_info=True)
-
-        # ── Phase 3: Lock + transition to approved → executing ──
-        with transaction.atomic():
-            locked = _get_approval_for_update(pk)
-            if not locked:
-                return _error_response(
-                    'not_found', f'Approval {pk} not found', status.HTTP_404_NOT_FOUND
-                )
-
-            # Re-verify state after acquiring lock
-            if locked.status in (
-                ApprovalStatus.APPROVED,
-                ApprovalStatus.EXECUTING,
-                ApprovalStatus.SUCCEEDED,
-            ):
-                data = approval_serializers.ApprovalDetailSerializer(locked).data
-                data['was_already_terminal'] = True
-                return Response(data, status=status.HTTP_200_OK)
-
-            if locked.is_terminal:
-                data = approval_serializers.ApprovalDetailSerializer(locked).data
-                data['was_already_terminal'] = True
-                return Response(data, status=status.HTTP_200_OK)
-
-            if not locked.can_transition_to(ApprovalStatus.APPROVED):
-                return _error_response(
-                    'conflict',
-                    f'Cannot transition from {locked.status} to approved',
-                    status.HTTP_409_CONFLICT,
-                    current_status=locked.status,
-                )
-
-            missing_required_executor = is_executor_required(
-                locked.action_type
-            ) and not executor_registry.has(locked.action_type)
-            locked.transition_to(ApprovalStatus.APPROVED, actor_user=request.user)
-            if missing_required_executor:
-                locked.execution_error = redact_error(
-                    'No executor registered for required action'
-                )
-                locked.transition_to(
-                    ApprovalStatus.FAILED,
-                    actor_user=request.user,
-                    extra_update_fields=['execution_error'],
-                )
-            elif locked.can_transition_to(ApprovalStatus.EXECUTING):
-                locked.transition_to(ApprovalStatus.EXECUTING, actor_user=request.user)
-
-        # ── Phase 4: Execute via executor (outside transaction) ──
-        effect_result = None
-        if executor:
-            try:
-                effect_result = executor.execute(locked.payload, locked.idempotency_key)
-            except Exception as exc:
-                logger.error('executor_failed', approval_id=str(pk), exc_info=True)
-                effect_result = type(
-                    'EffectResult',
-                    (),
-                    {
-                        'success': False,
-                        'error_message': str(exc),
-                        'result_payload': None,
-                        'effect_ref': None,
-                    },
-                )()
-
-        # ── Phase 5: Record result (new transaction) ──
-        with transaction.atomic():
-            locked = _get_approval_for_update(pk)
-            if locked and locked.status == ApprovalStatus.EXECUTING:
-                if effect_result and effect_result.success:
-                    from .executors import compute_effect_idempotency_key
-
-                    effect_key = compute_effect_idempotency_key(
-                        locked.idempotency_key, locked.action_type
-                    )
-                    ExecutedEffect.objects.get_or_create(
-                        idempotency_key=effect_key,
-                        defaults={
-                            'approval': locked,
-                            'effect_type': locked.action_type,
-                            'effect_ref': getattr(effect_result, 'effect_ref', '')
-                            or '',
-                        },
-                    )
-                    locked.execution_result = (
-                        getattr(effect_result, 'result_payload', None) or {}
-                    )
-                    locked.transition_to(
-                        ApprovalStatus.SUCCEEDED,
-                        actor_user=request.user,
-                        extra_update_fields=['execution_result'],
-                    )
-                elif effect_result and not effect_result.success:
-                    locked.execution_error = redact_error(effect_result.error_message)
-                    locked.transition_to(
-                        ApprovalStatus.FAILED,
-                        actor_user=request.user,
-                        extra_update_fields=['execution_error'],
-                    )
-                else:
-                    if is_executor_required(locked.action_type):
-                        locked.execution_error = redact_error(
-                            'No executor registered for required action'
-                        )
-                        locked.transition_to(
-                            ApprovalStatus.FAILED,
-                            actor_user=request.user,
-                            extra_update_fields=['execution_error'],
-                        )
-                    else:
-                        locked.transition_to(
-                            ApprovalStatus.SUCCEEDED, actor_user=request.user
-                        )
-
-        # ── Phase 6: Agent resume (outside transaction) ──
-        attempt_agent_resume(locked, 'approved', request.user)
-
-        return Response(
-            approval_serializers.ApprovalDetailSerializer(locked).data,
-            status=status.HTTP_200_OK,
-        )
+        except approval_services.ApprovalServiceError as exc:
+            return _error_response(exc.code, exc.detail, exc.http_status, **exc.extra)
+        return Response(result.data, status=result.status)
 
 
 class ApprovalDenyView(CreateAPI):
@@ -667,68 +375,15 @@ class ApprovalDenyView(CreateAPI):
     throttle_classes = [ApprovalDecisionThrottle]
     serializer_class = approval_serializers.DenySerializer
 
-    @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create."""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        approval = _get_approval_for_update(self.kwargs['pk'])
-        if not approval:
-            return _error_response(
-                'not_found',
-                f'Approval {self.kwargs["pk"]} not found',
-                status.HTTP_404_NOT_FOUND,
-            )
-
-        # Idempotent: if already terminal, return
-        if approval.is_terminal:
-            return Response(
-                approval_serializers.ApprovalDetailSerializer(approval).data,
-                status=status.HTTP_200_OK,
-            )
-
-        # Check lock blocks deny for non-holder
+        """Delegate the action to the shared approval service."""
         try:
-            approval.check_lock_allows_action(request.user, 'deny')
-        except ValueError as e:
-            return _error_response(
-                'locked',
-                str(e),
-                status.HTTP_423_LOCKED,
-                holder_user_id=approval.lock_holder_id,
-                expires_at=(
-                    approval.modification_lock_expires_at.isoformat()
-                    if approval.modification_lock_expires_at
-                    else None
-                ),
+            result = approval_services.deny(
+                self.kwargs['pk'], actor=request.user, data=request.data
             )
-
-        if not approval.can_transition_to(ApprovalStatus.DENIED):
-            return _error_response(
-                'conflict',
-                f'Cannot transition from {approval.status} to denied',
-                status.HTTP_409_CONFLICT,
-                current_status=approval.status,
-            )
-
-        reason = serializer.validated_data['reason']
-        approval.deny_reason = reason
-        # D-3: Save deny_reason atomically with transition
-        approval.transition_to(
-            ApprovalStatus.DENIED,
-            actor_user=request.user,
-            event_payload={'reason': reason},
-            extra_update_fields=['deny_reason'],
-        )
-
-        # A-3: Resume agent runtime with denial
-        attempt_agent_resume(approval, 'denied', request.user)
-
-        return Response(
-            approval_serializers.ApprovalDetailSerializer(approval).data,
-            status=status.HTTP_200_OK,
-        )
+        except approval_services.ApprovalServiceError as exc:
+            return _error_response(exc.code, exc.detail, exc.http_status, **exc.extra)
+        return Response(result.data, status=result.status)
 
 
 class ApprovalCancelView(CreateAPI):
@@ -742,77 +397,15 @@ class ApprovalCancelView(CreateAPI):
     throttle_classes = [ApprovalDecisionThrottle]
     serializer_class = approval_serializers.CancelSerializer
 
-    @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create."""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        approval = _get_approval_for_update(self.kwargs['pk'])
-        if not approval:
-            return _error_response(
-                'not_found',
-                f'Approval {self.kwargs["pk"]} not found',
-                status.HTTP_404_NOT_FOUND,
+        """Delegate the action to the shared approval service."""
+        try:
+            result = approval_services.cancel(
+                self.kwargs['pk'], actor=request.user, data=request.data
             )
-
-        # Idempotent: if already terminal, return
-        if approval.is_terminal:
-            return Response(
-                approval_serializers.ApprovalDetailSerializer(approval).data,
-                status=status.HTTP_200_OK,
-            )
-
-        if not approval.can_transition_to(ApprovalStatus.CANCELED):
-            return _error_response(
-                'conflict',
-                f'Cannot transition from {approval.status} to canceled',
-                status.HTTP_409_CONFLICT,
-                current_status=approval.status,
-            )
-
-        reason = serializer.validated_data.get('reason', '')
-
-        # If there are revisions beyond 0, revert to previous
-        if approval.current_revision_number > 0:
-            prev_revision = ApprovalRevision.objects.filter(
-                approval=approval, revision_number=approval.current_revision_number - 1
-            ).first()
-            if prev_revision:
-                old_revision = approval.current_revision_number
-                approval.payload = prev_revision.payload_snapshot
-                # A-7: Update current_revision_number on revert
-                approval.current_revision_number = prev_revision.revision_number
-                approval.save(
-                    update_fields=['payload', 'current_revision_number', 'updated_at']
-                )
-
-                ApprovalEvent.objects.create(
-                    approval=approval,
-                    event_type=EventType.CANCEL_REVERTED,
-                    actor_user=request.user,
-                    event_payload={
-                        'reverted_from_revision': old_revision,
-                        'reverted_to_revision': prev_revision.revision_number,
-                    },
-                )
-
-        # D-3: Store cancel reason and transition atomically
-        approval.canceled_reason = reason
-        approval.transition_to(
-            ApprovalStatus.CANCELED,
-            actor_user=request.user,
-            event_payload={'reason': reason},
-            extra_update_fields=['canceled_reason'],
-        )
-
-        # A-3: Resume agent with cancellation
-        attempt_agent_resume(approval, 'canceled', request.user)
-
-        return Response(
-            approval_serializers.ApprovalDetailSerializer(approval).data,
-            status=status.HTTP_200_OK,
-        )
+        except approval_services.ApprovalServiceError as exc:
+            return _error_response(exc.code, exc.detail, exc.http_status, **exc.extra)
+        return Response(result.data, status=result.status)
 
 
 # ---------------------------------------------------------------------------
@@ -830,42 +423,15 @@ class ApprovalAcquireModifyLockView(CreateAPI):
     throttle_classes = [ApprovalDecisionThrottle]
     serializer_class = approval_serializers.AcquireModifyLockSerializer
 
-    @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create."""
-        approval = _get_approval_for_update(self.kwargs['pk'])
-        if not approval:
-            return _error_response(
-                'not_found',
-                f'Approval {self.kwargs["pk"]} not found',
-                status.HTTP_404_NOT_FOUND,
-            )
-
-        if approval.is_terminal:
-            return _error_response(
-                'conflict',
-                'Cannot modify a terminal approval',
-                status.HTTP_409_CONFLICT,
-                current_status=approval.status,
-            )
-
+        """Delegate the action to the shared approval service."""
         try:
-            lock_meta = approval.acquire_lock(request.user)
-        except ValueError as e:
-            # A-11: Return 423 Locked for lock conflicts
-            return _error_response(
-                'locked',
-                str(e),
-                status.HTTP_423_LOCKED,
-                holder_user_id=approval.lock_holder_id,
-                expires_at=(
-                    approval.modification_lock_expires_at.isoformat()
-                    if approval.modification_lock_expires_at
-                    else None
-                ),
+            result = approval_services.acquire_modify_lock(
+                self.kwargs['pk'], actor=request.user, data=request.data
             )
-
-        return Response(lock_meta, status=status.HTTP_200_OK)
+        except approval_services.ApprovalServiceError as exc:
+            return _error_response(exc.code, exc.detail, exc.http_status, **exc.extra)
+        return Response(result.data, status=result.status)
 
 
 class ApprovalReleaseModifyLockView(CreateAPI):
@@ -878,23 +444,15 @@ class ApprovalReleaseModifyLockView(CreateAPI):
     throttle_classes = [ApprovalDecisionThrottle]
     serializer_class = approval_serializers.ReleaseModifyLockSerializer
 
-    @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create."""
-        approval = _get_approval_for_update(self.kwargs['pk'])
-        if not approval:
-            return _error_response(
-                'not_found',
-                f'Approval {self.kwargs["pk"]} not found',
-                status.HTTP_404_NOT_FOUND,
-            )
-
+        """Delegate the action to the shared approval service."""
         try:
-            approval.release_lock(request.user)
-        except ValueError as e:
-            return _error_response('forbidden', str(e), status.HTTP_403_FORBIDDEN)
-
-        return Response({'detail': 'Lock released'}, status=status.HTTP_200_OK)
+            result = approval_services.release_modify_lock(
+                self.kwargs['pk'], actor=request.user, data=request.data
+            )
+        except approval_services.ApprovalServiceError as exc:
+            return _error_response(exc.code, exc.detail, exc.http_status, **exc.extra)
+        return Response(result.data, status=result.status)
 
 
 class ApprovalReviseView(CreateAPI):
@@ -907,94 +465,15 @@ class ApprovalReviseView(CreateAPI):
     throttle_classes = [ApprovalReviseThrottle]
     serializer_class = approval_serializers.ReviseSerializer
 
-    @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create."""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        approval = _get_approval_for_update(self.kwargs['pk'])
-        if not approval:
-            return _error_response(
-                'not_found',
-                f'Approval {self.kwargs["pk"]} not found',
-                status.HTTP_404_NOT_FOUND,
+        """Delegate the action to the shared approval service."""
+        try:
+            result = approval_services.revise(
+                self.kwargs['pk'], actor=request.user, data=request.data
             )
-
-        # Status restriction: only in_review or changes_requested
-        allowed_statuses = {ApprovalStatus.IN_REVIEW, ApprovalStatus.CHANGES_REQUESTED}
-        if approval.status not in allowed_statuses:
-            return _error_response(
-                'invalid_status',
-                'Revisions are only allowed when status is in_review or changes_requested',
-                status.HTTP_409_CONFLICT,
-                current_status=approval.status,
-            )
-
-        # Lock enforcement
-        if (
-            approval.is_lock_active
-            and approval.modification_lock_user_id != request.user.pk
-        ):
-            return _error_response(
-                'locked',
-                'Approval is being modified by another user',
-                status.HTTP_423_LOCKED,
-                holder_user_id=approval.modification_lock_user_id,
-                expires_at=(
-                    approval.modification_lock_expires_at.isoformat()
-                    if approval.modification_lock_expires_at
-                    else None
-                ),
-            )
-
-        # Optimistic concurrency check
-        expected_rev = serializer.validated_data['expected_revision']
-        if expected_rev != approval.current_revision_number:
-            return _error_response(
-                'conflict',
-                f'Expected revision {expected_rev} but current is {approval.current_revision_number}',
-                status.HTTP_409_CONFLICT,
-                current_revision=approval.current_revision_number,
-            )
-
-        data = serializer.validated_data
-        new_revision_number = approval.current_revision_number + 1
-
-        # A-9: Payload size check moved to ReviseSerializer.validate_payload()
-
-        # Create new revision
-        ApprovalRevision.objects.create(
-            approval=approval,
-            revision_number=new_revision_number,
-            payload_snapshot=data['payload'],
-            diff_summary=data.get('diff_summary'),
-            created_by_user=request.user,
-        )
-
-        # Update approval
-        approval.payload = data['payload']
-        approval.current_revision_number = new_revision_number
-        approval.save(
-            update_fields=['payload', 'current_revision_number', 'updated_at']
-        )
-
-        # Emit revised event
-        ApprovalEvent.objects.create(
-            approval=approval,
-            event_type=EventType.REVISED,
-            actor_user=request.user,
-            event_payload={
-                'revision_number': new_revision_number,
-                'diff_summary': data.get('diff_summary'),
-                'note': data.get('note', ''),
-            },
-        )
-
-        return Response(
-            approval_serializers.ApprovalDetailSerializer(approval).data,
-            status=status.HTTP_200_OK,
-        )
+        except approval_services.ApprovalServiceError as exc:
+            return _error_response(exc.code, exc.detail, exc.http_status, **exc.extra)
+        return Response(result.data, status=result.status)
 
 
 # ---------------------------------------------------------------------------
