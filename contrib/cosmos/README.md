@@ -142,6 +142,9 @@ export INVENTREE_COSMOS_DATABASE="<existing database id>"
 export INVENTREE_COSMOS_CONTAINER="pumphouse_readings"
 ```
 
+The dev containers already set all three, pointing at the local emulator (see below). Override them
+to work against a real account.
+
 ---
 
 ## Access for the application (later, not needed to create the container)
@@ -163,6 +166,70 @@ Seeding documents **writes**, so it cannot be done with that role — seeding is
 own credentials, deliberately.
 
 Never put an account key in this repository, in `data/config.yaml`, in a commit message or in chat.
+
+---
+
+## Local emulator (no Azure account needed)
+
+This is the normal way to work on the connector. Nothing below touches Azure, costs anything, or
+needs a role to be granted — which matters, because the data-plane role on the real account is still
+outstanding and a test suite that can reach production data is one that can damage it.
+
+```bash
+docker compose -f contrib/container/dev-docker-compose.yml --profile cosmos up -d
+```
+
+The emulator is behind the `cosmos` profile, so a plain `docker compose up` does not start it and the
+ordinary dev stack stays as light as it was. Wait for it to report healthy — it takes roughly 25
+seconds, and the image runs its own readiness probe that compose is wired to:
+
+```bash
+docker compose -f contrib/container/dev-docker-compose.yml --profile cosmos ps
+# ... Up 2 minutes (healthy)
+```
+
+Then create the container and fill it. Both scripts pick up their coordinates from the environment
+already set on the dev containers, so there are no flags to remember beyond `--emulator`:
+
+```bash
+docker compose -f contrib/container/dev-docker-compose.yml exec inventree-dev-server \
+    python contrib/cosmos/provision.py --create --emulator
+docker compose -f contrib/container/dev-docker-compose.yml exec inventree-dev-server \
+    python contrib/cosmos/seed.py --emulator
+```
+
+`--create` is refused against anything but an emulator. A partition key cannot be changed after
+creation, so a script that quietly "fixed" a live container would be destroying data rather than
+converging on a schema.
+
+### There is no certificate to install
+
+The classic emulator image serves HTTPS with a self-signed certificate that every client then has to
+be taught to trust, and publishes **amd64 only** — so on an Apple Silicon machine it also runs under
+emulation. The image used here is the vNext one, which ships arm64 alongside amd64 and serves **plain
+HTTP** on 8081. The endpoint is therefore `http://cosmos-emulator:8081` from inside the compose
+network, or `http://localhost:8081` from the host. Writing `https` there fails in a way that looks
+like a certificate problem and sends you off installing a root CA you do not need.
+
+The image is pinned to a dated tag rather than `vnext-preview`: a floating preview tag can change
+overnight and turn an unrelated pull request red.
+
+### The emulator key is not a secret
+
+It is a constant published in Microsoft's own documentation and it opens a throwaway local container.
+It is still passed as an environment variable (`COSMOS_EMULATOR_KEY`) rather than written into a
+config file, because that is the only path the connector will accept a key through at all. Against a
+real endpoint a key is **refused outright** — that is what keeps the Data Reader role, rather than our
+own code, the thing enforcing read-only.
+
+### Starting over
+
+Storage is deliberately ephemeral, so every `up` starts empty. That is what makes a seeded test
+reproducible, and re-seeding takes about a second:
+
+```bash
+docker compose -f contrib/container/dev-docker-compose.yml --profile cosmos down
+```
 
 ---
 

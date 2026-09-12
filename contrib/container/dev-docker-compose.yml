@@ -59,6 +59,19 @@ services:
         environment: &maintenance_scope
             AIMMS_MAINTENANCE_SCOPE_RESOLVER: ${AIMMS_MAINTENANCE_SCOPE_RESOLVER:-tasks.scope.single_site_scope_resolver}
             AIMMS_SINGLE_SITE_CLIENT_CODE: ${AIMMS_SINGLE_SITE_CLIENT_CODE:-internal}
+            # Where contrib/cosmos/{provision,seed}.py look by default: the
+            # emulator service below. Override to point at a real account.
+            INVENTREE_COSMOS_ENDPOINT: ${INVENTREE_COSMOS_ENDPOINT:-http://cosmos-emulator:8081}
+            INVENTREE_COSMOS_DATABASE: ${INVENTREE_COSMOS_DATABASE:-aimms}
+            INVENTREE_COSMOS_CONTAINER: ${INVENTREE_COSMOS_CONTAINER:-pumphouse_readings}
+            # The emulator's key is a constant published in Microsoft's own
+            # documentation, not a secret: it opens a throwaway local container
+            # and nothing else. It is still passed as an environment variable
+            # rather than written into a config file, because that is the only
+            # path the connector accepts a key through - keeping the local
+            # workflow identical to the real one is what stops someone adding a
+            # "just for now" key field to HealthSource later.
+            COSMOS_EMULATOR_KEY: ${COSMOS_EMULATOR_KEY:-C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==}
         restart: unless-stopped
 
     # Background worker process handles long-running or periodic tasks
@@ -75,4 +88,50 @@ services:
         env_file:
             - contrib/container/docker.dev.env
         environment: *maintenance_scope
+        restart: unless-stopped
+
+    # Local Azure Cosmos DB emulator. Opt-in through a profile, so the ordinary
+    # dev stack is not made heavier for everyone working on the rest of the
+    # application:
+    #
+    #     docker compose -f contrib/container/dev-docker-compose.yml \
+    #         --profile cosmos up -d
+    #
+    # This is what lets the pumphouse connector be developed and tested with no
+    # Azure account at all. The alternative - pointing tests at the real account
+    # - would mean every developer needs a data-plane role on a shared, billable
+    # resource, and a test suite that can reach production data is one that can
+    # damage it.
+    #
+    # The vNext image is a deliberate choice. The classic emulator (`:latest`)
+    # publishes amd64 only, so on an Apple Silicon machine it runs under
+    # emulation, and it serves HTTPS with a self-signed certificate that every
+    # client then has to be taught to trust. vNext ships arm64 alongside amd64
+    # and serves plain HTTP on 8081, so there is no certificate handling at all.
+    #
+    # Pinned to a dated tag rather than the floating `vnext-preview`, which can
+    # change under CI overnight and turn an unrelated pull request red.
+    #
+    # Storage is deliberately ephemeral: every `up` starts empty, which is what
+    # makes a seeded test reproducible. `contrib/cosmos/seed.py` refills it in
+    # about a second.
+    cosmos-emulator:
+        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20260907
+        profiles:
+            - cosmos
+        ports:
+            # Data plane. From inside the compose network the endpoint is
+            # http://cosmos-emulator:8081; from the host, http://localhost:8081.
+            - 8081:8081
+        healthcheck:
+            # The image runs its own readiness probe on 8080 and reports the
+            # gateway, its backing postgres and the data explorer separately.
+            # Waiting on that beats a fixed sleep: startup is roughly 25 s on a
+            # developer laptop but slower on a cold CI runner, so a sleep would
+            # have to be either flaky or wasteful.
+            test: ["CMD", "curl", "-fsS", "http://localhost:8080/ready"]
+            interval: 5s
+            timeout: 3s
+            retries: 40
+            start_period: 20s
         restart: unless-stopped

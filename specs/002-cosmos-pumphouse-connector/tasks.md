@@ -73,11 +73,28 @@ Fix the bug the confirmed DDL exposed, and record the schema.
       `Cosmos DB Operator` role cannot read account keys, so its data-plane save had no credential)
 - [ ] `schema/pumphouse_latest.container.json` — deferred with §3.2, nothing would maintain it yet
 
-### 🔵 T4 — Cosmos emulator in the dev stack · 3 h · *ready — T3 done*
-- [ ] `cosmos` profile in `contrib/container/dev-docker-compose.yml` (linux emulator image)
-- [ ] Certificate/TLS handling documented for the SDK
-- [ ] `provision.py --emulator --create` brings up an empty, correctly-shaped container
-**Acceptance**: CI and offline work never need the real Azure account.
+### ✅ T4 — Cosmos emulator in the dev stack · 3 h · *done — 11 tests; the connector now runs against a real Cosmos service offline*
+- [x] `cosmos` profile in `contrib/container/dev-docker-compose.yml`, pinned to the multi-arch
+      vNext image and gated on the image's own `/ready` probe
+- [x] Certificate/TLS handling documented — **there is none**: vNext serves plain HTTP on 8081
+- [x] `provision.py --emulator --create` brings up an empty, correctly-shaped container
+- [x] `INVENTREE_COSMOS_*` and `COSMOS_EMULATOR_KEY` set on the dev server and worker, all
+      overridable, so the scripts need no flags beyond `--emulator`
+**Acceptance**: met — CI and offline work never need the real Azure account.
+
+**Verified end to end, not just configured.** Created the container, seeded the three pilot
+documents, and read them back through the T8 connector: `check()` returned `(True, 'OK')`, a window
+read crossed the hour boundary and returned the `I → R` transition at both station and pump level,
+and `poll()` produced 95/69/72 readings across the three snapshots. That is T8's hierarchical
+partition key, parameterised queries and single-partition scoping proved against a genuine Cosmos
+implementation rather than the mock.
+
+**Two things corrected**
+- The classic emulator image is **amd64 only** and serves self-signed HTTPS; this machine is arm64,
+  so it would have run under emulation *and* needed a root CA installed. The vNext image is
+  multi-arch and plain HTTP, which removes the whole "certificate/TLS handling" line item.
+- `provision.py` and `seed.py` defaulted to `https://localhost:8081`, which this image does not
+  serve. Both now default to `http://`, with a comment saying why so it does not get "fixed" back.
 
 ### ✅ T5 — Manual seeder + pilot documents · 6 h · commit `4520ea38c` · *runnable once D16 is granted*
 This is the sprint's data source (migration is deferred, D2).
@@ -190,7 +207,7 @@ Closes the "mapping approval does not enable live ingestion" gap.
 - [ ] `tsc --noEmit` and `biome check` clean
 **Acceptance**: the offline banner disappears only when bindings exist for that station.
 
-### 🔵 T13 — End-to-end integration test · 4 h · *blocked: T4, T5, T8, T9*
+### 🔵 T13 — End-to-end integration test · 4 h · *ready — T4, T5, T8, T9 … T9 still outstanding*
 - [ ] Seed the emulator → poll → `MachineSignalState` populated with the expected values
 - [ ] `read_window` stays bounded and crosses an hour boundary correctly
 - [ ] Checkpoint advances; a second poll ingests nothing new
@@ -208,8 +225,8 @@ Closes the "mapping approval does not enable live ingestion" gap.
 
 | Bucket | Tickets | Hours |
 |---|---|---|
-| Done | T0, T1, T2, T3, T5, T6, T7, T8 | 40 |
-| Ready now | T4, T9, T10, T11 | 15 |
+| Done | T0, T1, T2, T3, T4, T5, T6, T7, T8 | 43 |
+| Ready now | T9, T10, T11 | 12 |
 | Blocked on earlier tickets | T12, T13, T14 | 12 |
 | **Total** | **15** | **67** |
 
@@ -218,7 +235,8 @@ Closes the "mapping approval does not enable live ingestion" gap.
   *any* container, including `telemetry` and `conversations`; those applications must be using account
   keys, since `localAuthDisabled` is `false`. The developer's `Cosmos DB Operator` role has
   `sqlRoleAssignments/write` and `listKeys` in its notActions, so it cannot grant this to itself. An
-  Owner or User Access Administrator must. **This blocks running T5 and T8, not writing them.**
+  Owner or User Access Administrator must. **Since T4, this no longer blocks development at all** —
+  the emulator runs the whole path offline. It blocks only the *production* read.
 - **Review of the 31 imported dictionary points** before T11 can bind anything end to end.
 
 Resolved since the last revision: **D14** (account `epconchatcosmos9d6b`, RG `EpconChat`, database

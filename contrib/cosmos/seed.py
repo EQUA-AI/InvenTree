@@ -35,7 +35,9 @@ from pathlib import Path
 
 SAMPLES = Path(__file__).parent / 'samples' / 'ph3_snapshots.json'
 HOUR_MS = 3_600_000
-EMULATOR_ENDPOINT = 'https://localhost:8081'
+#: http, not https: the vNext emulator behind the `cosmos` compose profile
+#: serves plain HTTP, so there is no certificate to install. See provision.py.
+EMULATOR_ENDPOINT = 'http://localhost:8081'
 EMULATOR_KEY_ENV = 'COSMOS_EMULATOR_KEY'
 
 

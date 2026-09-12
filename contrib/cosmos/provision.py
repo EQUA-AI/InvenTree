@@ -34,7 +34,12 @@ SCHEMA = Path(__file__).parent / 'schema' / 'pumphouse_readings.container.json'
 #: The emulator's key is published in Microsoft's documentation, so it is a
 #: well-known constant rather than a secret. It is still read from the
 #: environment so that no key-shaped string lives in this repository.
-EMULATOR_ENDPOINT = 'https://localhost:8081'
+#:
+#: The endpoint is **http**, not https. The vNext emulator used by the `cosmos`
+#: compose profile serves plain HTTP, which is why no certificate has to be
+#: installed anywhere; the classic emulator's self-signed TLS is the thing being
+#: avoided here, not an option being skipped.
+EMULATOR_ENDPOINT = 'http://localhost:8081'
 EMULATOR_KEY_ENV = 'COSMOS_EMULATOR_KEY'
 
 
