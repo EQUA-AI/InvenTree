@@ -1,0 +1,21 @@
+{
+  "id": "pumphouse_readings",
+  "partitionKey": {
+    "paths": ["/station_uuid", "/hour_bucket"],
+    "kind": "MultiHash",
+    "version": 2
+  },
+  "defaultTtl": -1,
+  "indexingPolicy": {
+    "indexingMode": "consistent",
+    "automatic": true,
+    "includedPaths": [
+      { "path": "/station_uuid/?" },
+      { "path": "/hour_bucket/?" },
+      { "path": "/sub_time_period/?" },
+      { "path": "/egt/?" },
+      { "path": "/month/?" }
+    ],
+    "excludedPaths": [{ "path": "/*" }, { "path": "/\"_etag\"/?" }]
+  }
+}
