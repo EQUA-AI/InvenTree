@@ -35,6 +35,7 @@ def build_review_sections(approval):
             _section('recipients', 'To', _addresses(payload.get('to'))),
             _section('cc', 'CC', _addresses(payload.get('cc'))),
             _section('bcc', 'BCC', _addresses(payload.get('bcc'))),
+            _section('reply_to', 'Reply-To', _addresses(payload.get('reply_to'))),
             _section('subject', 'Subject', payload.get('subject')),
             _section(
                 'body_summary',
@@ -88,11 +89,34 @@ def build_review_sections(approval):
             _section(
                 'external_effect',
                 'External effect',
-                'Creates a purchasing order record. Issuing an order is a separate confirmed action.'
+                {
+                    'create_purchase_order': 'Creates a draft only; no order is issued and no email is sent.',
+                    'add_po_line_item': 'Adds this reviewed line to the named draft; no email is sent.',
+                    'issue_purchase_order': 'Changes the named order to Placed; this does not send an email.',
+                }.get(
+                    payload.get('operation', 'create_purchase_order'),
+                    'Unavailable operation',
+                )
                 if purchasing
                 else 'Creates a sales order record. Any external notification requires separate confirmation.',
             ),
         ]
+        if purchasing:
+            operation = payload.get('operation', 'create_purchase_order')
+            sections += [
+                _section('operation', 'Purchasing action', operation),
+                _section(
+                    'order_reference',
+                    'Existing order',
+                    payload.get('order_reference') or 'New draft',
+                ),
+                _section('purchasing_details', 'Complete purchasing details', payload),
+                _section(
+                    'order_baseline',
+                    'Existing order at review time',
+                    approval.baseline_context or 'New draft',
+                ),
+            ]
     elif action == ActionType.STOCK_UPDATE:
         for key, label in [
             ('stock_item_id', 'Stock item'),

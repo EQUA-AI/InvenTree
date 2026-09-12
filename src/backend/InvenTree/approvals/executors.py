@@ -227,30 +227,85 @@ registry = ExecutorRegistry()
 
 
 class EmailExecutor(ApprovalExecutor):
-    """Executor for sending emails (Phase 1 stub).
-
-    Real implementation will use the connected email integration.
-    """
+    """Canonical Gmail send with durable approval authority and reconciliation."""
 
     action_type = 'email'
+    implemented = True
 
     def validate(self, payload: dict) -> list[str]:
-        """Validate."""
-        warnings = []
-        if 'to' not in payload or not payload['to']:
-            warnings.append('Missing "to" recipients')
-        if 'subject' not in payload:
-            warnings.append('Missing "subject"')
-        return warnings
+        """Use the same envelope validation as the email tool."""
+        from ai.core.integrations.email.commands import validate_message
+
+        return validate_message(payload)
 
     def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
-        # Phase 1: no live checks, always pass
-        """Check preconditions."""
+        """No mutable business target; envelope and grants are checked at dispatch."""
         return DriftReport(has_drift=False)
 
+    @staticmethod
+    def _effect(result):
+        return EffectResult(
+            success=result['success'],
+            effect_ref=result.get('message_id'),
+            result_payload={
+                k: v
+                for k, v in result.items()
+                if k not in ('success', 'error', 'outcome')
+            },
+            error_message=result.get('error'),
+            outcome=result['outcome'],
+        )
+
+    def execute_for_approval(self, approval, *, actor, execution):
+        """A persisted operation is mandatory; never trust a payload actor ID."""
+        from ai.core.integrations.email.commands import send_message
+
+        from .models import ApprovalExecution
+        from .review_sections import compute_review_hash
+
+        if (
+            not execution.pk
+            or execution.approval_id != approval.pk
+            or execution.actor_id != actor.pk
+        ):
+            return EffectResult(
+                False,
+                error_message='Invalid email authority',
+                outcome='failed_before_effect',
+            )
+        persisted = ApprovalExecution.objects.filter(
+            pk=execution.pk,
+            approval=approval,
+            actor=actor,
+            revision=approval.current_revision_number,
+            review_hash=compute_review_hash(approval),
+        ).first()
+        if persisted is None:
+            return EffectResult(
+                False,
+                error_message='Missing persisted email authority',
+                outcome='failed_before_effect',
+            )
+        if persisted.state != 'submitting':
+            return EffectResult(
+                False,
+                error_message='Email already dispatched; reconcile its recorded status',
+                outcome='unknown',
+            )
+        return self._effect(
+            send_message(approval.payload, actor=actor, operation_id=execution.pk)
+        )
+
+    def reconcile(self, approval, execution):
+        """Query Sent using this durable operation, without ever resending."""
+        from ai.core.integrations.email.commands import reconcile_message
+
+        return self._effect(
+            reconcile_message(approval.payload, operation_id=execution.pk)
+        )
+
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
-        # Phase 1 stub — real implementation in Phase 4
-        """Execute."""
+        """Legacy direct calls lack an authenticated durable approval; refuse."""
         # Recipient allow-list (voice-UX plan P0-11 / OD-5) is enforced here
         # too, so the seam exists before a real executor lands. Lazy import:
         # approvals must not depend on the AI app at import time.
@@ -274,49 +329,67 @@ class EmailExecutor(ApprovalExecutor):
                     'blocked_recipients': list(decision.blocked),
                 },
             )
-        logger.info(
-            'email_executor_stub',
-            to=payload.get('to'),
-            subject=payload.get('subject'),
-            idempotency_key=idempotency_key,
-        )
         return EffectResult(
             success=False,
-            error_message='Canonical business executor is unavailable; no effect dispatched.',
+            error_message='Email requires authenticated durable approval dispatch; not sent.',
             outcome='failed_before_effect',
             result_payload={'unavailable': True},
         )
 
 
 class PurchaseOrderExecutor(ApprovalExecutor):
-    """Executor for creating Purchase Orders (Phase 1 stub)."""
+    """Canonical draft, line and issue commands; never an implicit email."""
 
     action_type = 'purchase_order'
+    implemented = True
+    atomic_execution = True
+    requires_canonical_payload = True
+
+    def prepare_payload(self, payload):
+        """Build the review from current supplier/part/order facts."""
+        from .purchasing import prepare_payload
+
+        return prepare_payload(payload)
+
+    def compute_baseline(self, payload):
+        """Capture current order status and lines on the server."""
+        from .purchasing import baseline
+
+        return baseline(payload)
 
     def validate(self, payload: dict) -> list[str]:
-        """Validate."""
-        warnings = []
-        if 'supplier_id' not in payload:
-            warnings.append('Missing "supplier_id"')
-        if 'line_items' not in payload or not payload['line_items']:
-            warnings.append('Missing or empty "line_items"')
-        return warnings
+        """Every stored review fact must still match canonical business data."""
+        from .purchasing import validate
+
+        return validate(payload)
 
     def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
-        # Phase 4 will check: supplier exists/active, parts valid, etc.
-        """Check preconditions."""
-        return DriftReport(has_drift=False)
+        """Detect order edits before consuming review authority."""
+        try:
+            changed = self.compute_baseline(payload) != baseline_context
+        except Exception:
+            changed = True
+        return DriftReport(
+            has_drift=changed,
+            failed=[
+                {'check': 'order_unchanged', 'reason': 'Order changed since review'}
+            ]
+            if changed
+            else [],
+        )
+
+    def execute_for_approval(self, approval, *, actor, execution):
+        """Run the real command as reviewer, inside the receipt transaction."""
+        from .purchasing import execute
+
+        result = execute(approval, actor=actor)
+        return EffectResult(True, f'purchase-order-{result["order_id"]}', result)
 
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
-        """Execute."""
-        logger.info(
-            'po_executor_stub',
-            supplier_id=payload.get('supplier_id'),
-            idempotency_key=idempotency_key,
-        )
+        """Direct calls without durable approval/reviewer authority are refused."""
         return EffectResult(
             success=False,
-            error_message='Canonical business executor is unavailable; no effect dispatched.',
+            error_message='Purchasing requires authenticated durable approval dispatch.',
             outcome='failed_before_effect',
             result_payload={'unavailable': True},
         )

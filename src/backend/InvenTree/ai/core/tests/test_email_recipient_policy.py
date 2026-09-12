@@ -63,3 +63,32 @@ def test_no_recipients_is_not_allowed_under_an_active_policy():
 )
 def test_normalize_recipients(value, expected):
     assert normalize_recipients(value) == expected
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "bad@evil.test <good@equa.work>",
+        "good@equa.work <bad@evil.test>",
+        "bad@evil.test (good@equa.work)",
+        "good@equa.work\r\nBcc: bad@evil.test",
+        "good@equa.work.evil.test",
+        "good@notequa.work",
+        "good@sub.equa.work",
+        "good@@equa.work",
+        "group:good@equa.work;",
+        "good@equa.work\x00",
+    ],
+)
+def test_spoofed_mailboxes_are_blocked_in_every_envelope_field(address):
+    for field in ("to", "cc", "bcc"):
+        payload = {"to": "good@equa.work", field: address}
+        assert not check_recipients(**payload, environ={ENV_VAR: "@equa.work"}).allowed
+
+
+def test_malformed_syntax_is_invalid_even_without_an_allowlist():
+    assert not check_recipients("good@equa.work\nBcc: bad@evil.test", environ={}).allowed
+
+
+def test_case_insensitive_exact_domain_with_plus_addressing():
+    assert check_recipients("LOKESH+voice@EQUA.WORK", environ={ENV_VAR: "@equa.work"}).allowed

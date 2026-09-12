@@ -234,6 +234,14 @@ class ApprovalCreateSerializer(serializers.Serializer):
 
         if registry.has(attrs['action_type']):
             executor = registry.get(attrs['action_type'])
+            if getattr(executor, 'requires_canonical_payload', False):
+                try:
+                    attrs['payload'] = executor.prepare_payload(attrs['payload'])
+                    attrs['baseline_context'] = executor.compute_baseline(
+                        attrs['payload']
+                    )
+                except Exception as exc:
+                    raise serializers.ValidationError({'payload': str(exc)}) from exc
             warnings = executor.validate(attrs['payload'])
             if warnings:
                 attrs['_validation_warnings'] = warnings

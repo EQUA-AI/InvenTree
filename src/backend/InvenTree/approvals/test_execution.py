@@ -36,6 +36,7 @@ class ApprovalExecutionTests(ApprovalTestBase):
     def test_placeholder_is_failed_before_effect_and_never_dispatched(self):
         """Registration by itself is not permission to claim an effect."""
         placeholder = PurchaseOrderExecutor()
+        placeholder.implemented = False
         with (
             registry.replace_for_tests(placeholder),
             patch.object(placeholder, 'execute') as execute,

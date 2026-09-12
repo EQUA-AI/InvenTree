@@ -1096,7 +1096,8 @@ class ExecutorRegistryTests(TestCase):
             'supplier_id': 42,
             'line_items': [{'part_id': 1, 'qty': 5}],
         })
-        self.assertEqual(len(warnings), 0)
+        # Real purchasing requires reviewed currency, prices and part bindings.
+        self.assertGreater(len(warnings), 0)
 
     def test_executor_check_preconditions(self):
         """Executors check preconditions (Phase 1 stubs always pass)."""

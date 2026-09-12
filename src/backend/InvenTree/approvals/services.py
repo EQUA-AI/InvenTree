@@ -638,6 +638,20 @@ def revise(approval_id, *, actor, data=None, channel='screen', evidence=None):
     data = serializer.validated_data
     new_revision_number = approval.current_revision_number + 1
 
+    from .executors import registry
+
+    executor = (
+        registry.get(approval.action_type)
+        if registry.has(approval.action_type)
+        else None
+    )
+    if getattr(executor, 'requires_canonical_payload', False):
+        try:
+            data['payload'] = executor.prepare_payload(data['payload'])
+            approval.baseline_context = executor.compute_baseline(data['payload'])
+        except Exception as exc:
+            _reject('invalid_payload', str(exc), 400)
+
     # A-9: Payload size check moved to ReviseSerializer.validate_payload()
 
     # Create new revision
@@ -652,7 +666,14 @@ def revise(approval_id, *, actor, data=None, channel='screen', evidence=None):
     # Update approval
     approval.payload = data['payload']
     approval.current_revision_number = new_revision_number
-    approval.save(update_fields=['payload', 'current_revision_number', 'updated_at'])
+    approval.save(
+        update_fields=[
+            'payload',
+            'baseline_context',
+            'current_revision_number',
+            'updated_at',
+        ]
+    )
 
     invalidate(approval)
 

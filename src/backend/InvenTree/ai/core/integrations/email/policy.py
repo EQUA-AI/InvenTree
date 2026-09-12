@@ -18,6 +18,7 @@ can share it.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -26,6 +27,11 @@ if TYPE_CHECKING:
 
 ENV_VAR = "AIMMS_EMAIL_RECIPIENT_ALLOWLIST"
 BLOCKED_ERROR = "blocked_by_policy: recipient not in " + ENV_VAR
+_ADDRESS = re.compile(
+    r"[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+    r"@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?",
+    re.IGNORECASE | re.ASCII,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,11 +64,20 @@ def normalize_recipients(*groups: str | Iterable[str] | None) -> tuple[str, ...]
     for group in groups:
         if group is None:
             continue
-        items = [group] if isinstance(group, str) else list(group)
+        if not isinstance(group, (str, list, tuple)):
+            raise ValueError("Recipients must be email addresses or lists of addresses")
+        items = [group] if isinstance(group, str) else group
         for item in items:
-            for piece in str(item).split(","):
+            if not isinstance(item, str) or any(c in item for c in ("\r", "\n", "\x00")):
+                raise ValueError("Invalid recipient header")
+            for piece in item.split(","):
                 address = piece.strip().lower()
                 if address:
+                    # Require bare mailbox addresses. Display-name syntax, groups,
+                    # comments and quoted local parts can hide extra recipients
+                    # from a naive allow-list and are deliberately unsupported.
+                    if not _ADDRESS.fullmatch(address):
+                        raise ValueError("Use bare email addresses without display names")
                     out.append(address)
     return tuple(out)
 
@@ -70,7 +85,7 @@ def normalize_recipients(*groups: str | Iterable[str] | None) -> tuple[str, ...]
 def _matches(address: str, allowlist: tuple[str, ...]) -> bool:
     for entry in allowlist:
         if entry.startswith("@"):
-            if address.endswith(entry):
+            if address.rsplit("@", 1)[1] == entry[1:]:
                 return True
         elif address == entry:
             return True
@@ -85,8 +100,15 @@ def check_recipients(
     environ: dict[str, str] | None = None,
 ) -> RecipientPolicyDecision:
     """Decide whether a send to these recipients is permitted by the allow-list."""
-    recipients = normalize_recipients(to, cc, bcc)
     allowlist = recipient_allowlist(environ)
+    try:
+        recipients = normalize_recipients(to, cc, bcc)
+    except ValueError:
+        return RecipientPolicyDecision(
+            allowed=False,
+            policy_active=allowlist is not None,
+            blocked=("invalid recipient syntax",),
+        )
     if allowlist is None:
         return RecipientPolicyDecision(allowed=True, policy_active=False, recipients=recipients)
     blocked = tuple(address for address in recipients if not _matches(address, allowlist))

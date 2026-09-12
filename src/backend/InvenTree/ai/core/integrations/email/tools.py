@@ -10,16 +10,12 @@ Includes:
 - generate_and_send_document (PDF generation + email in one call)
 """
 
-import base64 as _b64_mod
 from datetime import datetime
-from email.mime.application import MIMEApplication
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from typing import Any
+from uuid import uuid4
 
 import structlog
 from ai.core.integrations.email.gmail import GmailError, get_gmail_client
-from ai.core.integrations.email.policy import BLOCKED_ERROR, check_recipients
 from ai.core.integrations.email.provider import EmailQuery
 from ai.core.maf_compat import ai_function
 from ai.core.tools.read_only import guard_write_tool
@@ -413,7 +409,7 @@ async def mark_email_processed(
 
 @ai_function
 @guard_write_tool
-async def send_email(  # noqa: RUF029 - ai_function contract is async
+async def send_email(
     to: str | list[str],
     subject: str,
     body: str,
@@ -446,67 +442,30 @@ async def send_email(  # noqa: RUF029 - ai_function contract is async
         - message_id: str (Gmail message id on success)
         - error: str (on failure)
     """
-    # Recipient allow-list (P0-11 / OD-5): refuse BEFORE any provider call so a
-    # dev or harness run can never reach a real mailbox. Inactive when the
-    # variable is unset; see ai.core.integrations.email.policy.
-    decision = check_recipients(to, cc, bcc)
-    if not decision.allowed:
-        logger.warning(
-            "Email blocked by recipient policy",
-            blocked_count=len(decision.blocked),
-            policy_active=decision.policy_active,
+    from ai.core.auth import get_current_principal
+    from ai.core.integrations.email.commands import send_message
+    from asgiref.sync import sync_to_async
+    from django.contrib.auth import get_user_model
+
+    principal = get_current_principal()
+
+    def execute():
+        actor = get_user_model().objects.filter(pk=principal.user_pk if principal else None).first()
+        return send_message(
+            {
+                "to": to,
+                "cc": cc,
+                "bcc": bcc,
+                "reply_to": reply_to,
+                "subject": subject,
+                "body": body,
+                "attachments": attachments,
+            },
+            actor=actor,
+            operation_id=f"email-tool:{uuid4()}",
         )
-        return {
-            "success": False,
-            "error": BLOCKED_ERROR,
-            "blocked_by_policy": True,
-            "blocked_recipients": list(decision.blocked),
-        }
 
-    try:
-        client = get_gmail_client()
-        service = client._get_service()
-
-        # ── Build MIME message ──────────────────────────────────────
-        msg = MIMEMultipart()
-        msg["To"] = ", ".join(to) if isinstance(to, list) else to
-        msg["From"] = client.email  # impersonated user
-        msg["Subject"] = subject
-
-        if cc:
-            msg["Cc"] = ", ".join(cc) if isinstance(cc, list) else cc
-        if bcc:
-            msg["Bcc"] = ", ".join(bcc) if isinstance(bcc, list) else bcc
-        if reply_to:
-            msg["Reply-To"] = reply_to
-
-        msg.attach(MIMEText(body, "plain"))
-
-        # ── Attach files ────────────────────────────────────────────
-        for att in attachments or []:
-            mime = att.get("mime_type", "application/pdf")
-            _maintype, subtype = mime.split("/", 1)
-            part = MIMEApplication(att["data_bytes"], _subtype=subtype)
-            part.add_header(
-                "Content-Disposition",
-                "attachment",
-                filename=att["filename"],
-            )
-            msg.attach(part)
-
-        # ── Send via Gmail API ──────────────────────────────────────
-        raw = _b64_mod.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
-        result = service.users().messages().send(userId="me", body={"raw": raw}).execute()
-
-        logger.info("Email sent", message_id=result["id"], to=to)
-        return {"success": True, "message_id": result["id"]}
-
-    except GmailError as e:
-        logger.error("Send email failed (GmailError)", error=str(e))
-        return {"success": False, "error": str(e)}
-    except Exception as e:
-        logger.exception("Send email failed")
-        return {"success": False, "error": f"Unexpected error: {e}"}
+    return await sync_to_async(execute, thread_sensitive=True)()
 
 
 def _build_sample_data(document_type: str) -> dict[str, Any]:

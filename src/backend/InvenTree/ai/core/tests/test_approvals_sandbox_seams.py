@@ -94,9 +94,9 @@ def test_email_executor_with_empty_allowlist_blocks_everything(monkeypatch):
     assert result.result_payload["blocked_by_policy"] is True
 
 
-def test_email_executor_unchanged_when_policy_inactive(monkeypatch):
+def test_email_executor_without_durable_authority_refuses(monkeypatch):
     monkeypatch.delenv(ENV_VAR, raising=False)
     result = EmailExecutor().execute({"to": "ops@sandbox.test", "subject": "hi"}, "k3")
-    # Still the Phase 1 stub: reports a stub effect (fail-closed change is OD-2 / C6).
-    assert result.success is True
-    assert result.result_payload == {"stub": True}
+    assert result.success is False
+    assert result.outcome == "failed_before_effect"
+    assert result.effect_ref is None
