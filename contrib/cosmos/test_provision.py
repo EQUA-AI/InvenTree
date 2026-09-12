@@ -11,6 +11,7 @@ from pathlib import Path
 from provision import compare, load_expected, normalise
 
 SCHEMA = Path(__file__).parent / 'schema' / 'pumphouse_readings.container.json'
+INDEXING = Path(__file__).parent / 'schema' / 'pumphouse_readings.indexing.json'
 
 
 def az_show_output(**overrides):
@@ -143,6 +144,17 @@ class DefinitionTests(unittest.TestCase):
         self.assertEqual(definition['partitionKey']['kind'], 'MultiHash')
         self.assertEqual(definition['partitionKey']['version'], 2)
         self.assertEqual(definition['defaultTtl'], -1)
+
+    def test_standalone_indexing_file_matches_the_container_definition(self):
+        """`az ... --idx @file` needs the policy alone; it must not drift.
+
+        Two files describing one policy is a duplication we accept because the
+        CLI cannot extract a sub-object, but only while this test makes the
+        duplication impossible to get wrong.
+        """
+        self.assertEqual(
+            load_expected(INDEXING), load_expected(SCHEMA)['indexingPolicy']
+        )
 
 
 if __name__ == '__main__':

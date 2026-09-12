@@ -166,11 +166,56 @@ Never put an account key in this repository, in `data/config.yaml`, in a commit 
 
 ---
 
+## Troubleshooting
+
+### “Authorization header doesn't confirm to the required format” when saving in Data Explorer
+
+Not a problem with the JSON. Data Explorer edits container settings over the **data plane**, and to do
+that it first tries to fetch an account key. The **Cosmos DB Operator** role deliberately cannot read
+keys, so the request goes out without a usable credential and the service rejects the header.
+
+Apply the indexing policy through the **control plane** instead, which is what that role is for:
+
+```bash
+az cosmosdb sql container update \
+  --account-name "$ACCOUNT" -g "$RG" --database-name "$DB" \
+  --name pumphouse_readings \
+  --idx @contrib/cosmos/schema/pumphouse_readings.indexing.json
+```
+
+`--idx` takes the indexing policy **on its own**, which is why `schema/pumphouse_readings.indexing.json`
+exists alongside the full container definition. A test asserts the two stay identical.
+
+The same reasoning applies to the portal: pasting the *whole* container definition into the Indexing
+Policy editor will not work, because that editor expects only the `indexingPolicy` object.
+
+### `AuthorizationFailed` on `Microsoft.DocumentDB/databaseAccounts/read`
+
+Check the account name against your role assignment — they are easy to confuse when accounts differ by a
+single character:
+
+```bash
+az role assignment list --assignee <your-object-id> --all \
+  --query "[].{role:roleDefinitionName, scope:scope}" -o table
+```
+
+The `scope` is authoritative for which account you can actually administer.
+
+### Reading documents fails even though the CLI works
+
+Control plane and data plane are separate in Cosmos. **Cosmos DB Operator** manages containers but cannot
+read a single document; that needs a data-plane role assignment (see above). This is a feature, not an
+obstacle: the application's identity gets read-only *data* access and no ability to alter the container,
+while an administrator can manage the container and not read the data.
+
+---
+
 ## Files here
 
 | File | Purpose |
 |---|---|
 | `schema/pumphouse_readings.container.json` | The container definition: partition key, TTL and indexing policy. Contains **no** database id, account name or credential — those are deployment configuration |
+| `schema/pumphouse_readings.indexing.json` | The indexing policy alone, for `az ... --idx @file`. Kept identical to the definition by a test |
 | `provision.py` | Verifies a live container against that definition; `--create` works only against the emulator |
 | `test_provision.py` | Offline tests for the comparison logic: `python3 -m unittest discover -s contrib/cosmos -p 'test_*.py'` |
 
