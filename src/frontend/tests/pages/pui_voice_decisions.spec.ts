@@ -229,7 +229,8 @@ test('metadata-free Azure read-back reports bound delivery without confirming an
   });
   await expect(page.getByTestId('voice-decision-card')).toBeVisible();
   await page.evaluate(() => {
-    const emit = (window as any).__voiceMock.emit;
+    const mock = (window as any).__voiceMock;
+    const emit = mock.emit.bind(mock);
     emit('response.created', {
       response: { id: 'azure-response', status: 'in_progress' }
     });
