@@ -100,20 +100,47 @@ python3 -c "import json;print(json.dumps(json.load(open('contrib/cosmos/schema/p
 
 ## Verify it
 
+The verifier compares a live container against `schema/pumphouse_readings.container.json` and exits
+non-zero on drift. **The offline mode needs no Azure access at all**, which is the one to reach for first:
+
 ```bash
 az cosmosdb sql container show \
   --account-name "$ACCOUNT" -g "$RG" --database-name "$DB" \
   --name pumphouse_readings \
-  --query "{pk:resource.partitionKey, ttl:resource.defaultTtl, indexing:resource.indexingPolicy}"
+  --query "{pk:resource.partitionKey, ttl:resource.defaultTtl, indexing:resource.indexingPolicy}" \
+  > /tmp/live.json
+
+python3 contrib/cosmos/provision.py --from-json /tmp/live.json --database "$DB"
 ```
 
-Expect:
+A container created from the definition prints:
 
-- `pk.paths` = `["/station_uuid", "/hour_bucket"]`, `pk.kind` = `MultiHash`, `pk.version` = `2`
-- `ttl` = `-1`
-- `indexing.excludedPaths` contains `/*`
+```text
+aimms/pumphouse_readings matches the expected definition.
+```
 
-Paste that output back and the connector work can proceed against a container we know the shape of.
+and one that drifts names each problem, for example:
+
+```text
+  - partition key paths are ['/station_uuid'], expected ['/station_uuid', '/hour_bucket'];
+    this is immutable, so the container has to be recreated to change it
+  - defaultTtl is switched off, expected -1 so that TTL is enabled with no default
+  - payload is being indexed: excludedPaths has no /* entry
+```
+
+Reading the container directly (`--live`) needs a **data-plane** role. Owning the account in the portal
+does not grant one — Cosmos separates control plane from data plane — so `--from-json` is usually the
+quicker route.
+
+### Environment
+
+The application reads these; nothing is hard-coded and none of them is a secret:
+
+```bash
+export INVENTREE_COSMOS_ENDPOINT="https://<account>.documents.azure.com:443/"
+export INVENTREE_COSMOS_DATABASE="<existing database id>"
+export INVENTREE_COSMOS_CONTAINER="pumphouse_readings"
+```
 
 ---
 
@@ -144,6 +171,7 @@ Never put an account key in this repository, in `data/config.yaml`, in a commit 
 | File | Purpose |
 |---|---|
 | `schema/pumphouse_readings.container.json` | The container definition: partition key, TTL and indexing policy. Contains **no** database id, account name or credential — those are deployment configuration |
+| `provision.py` | Verifies a live container against that definition; `--create` works only against the emulator |
+| `test_provision.py` | Offline tests for the comparison logic: `python3 -m unittest discover -s contrib/cosmos -p 'test_*.py'` |
 
-Still to come (tickets T3 and T5): `provision.py` to verify a live container against this definition, and
-`seed.py` plus sample documents for the manual inserts.
+Still to come (ticket T5): `seed.py` plus sample documents for the manual inserts.
