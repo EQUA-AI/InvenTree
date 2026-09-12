@@ -26,7 +26,11 @@ class EmailApprovalTests(ApprovalTestBase):
         self.enterContext(
             patch.dict('os.environ', {'AIMMS_EMAIL_RECIPIENT_ALLOWLIST': '@equa.work'})
         )
-        self.user.groups.add(Group.objects.create(name='aimms.email.send'))
+        email_group = Group.objects.create(name='VOICE-TEST email senders')
+        email_role = email_group.rule_sets.get(name='email')
+        email_role.can_send_emails = True
+        email_role.save()
+        self.user.groups.add(email_group)
         self.approval = self._create_approval_obj(
             action_type=ActionType.EMAIL,
             payload={

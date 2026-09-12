@@ -49,8 +49,13 @@ class RuleSetModelTest(TestCase):
             for e in extra:
                 print('-', e)
 
-        # Check that each ruleset has models assigned
-        empty = [key for key in keys if len(G_RULESETS[key]) == 0]
+        # Capability-only rulesets must define named permissions instead of
+        # manufacturing CRUD access to an unrelated local model.
+        empty = [
+            key
+            for key in keys
+            if not G_RULESETS[key] and not RULESET_CUSTOM_PERMISSIONS.get(key)
+        ]
 
         if len(empty) > 0:  # pragma: no cover
             print(

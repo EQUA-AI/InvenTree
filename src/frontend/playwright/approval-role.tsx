@@ -22,6 +22,18 @@ const roles = [
     can_change: false,
     can_delete: false,
     can_review_approvals: false
+  },
+  {
+    pk: 25,
+    group: 12,
+    name: 'email',
+    label: 'Email',
+    can_view: false,
+    can_add: false,
+    can_change: false,
+    can_delete: false,
+    can_view_emails: false,
+    can_send_emails: false
   }
 ] as RuleSet[];
 
@@ -29,7 +41,10 @@ createRoot(document.getElementById('root')!).render(
   <I18nProvider i18n={i18n}>
     <MantineProvider>
       <Notifications />
-      <RoleTable roles={roles} editable />
+      <RoleTable
+        roles={roles}
+        editable={!new URLSearchParams(window.location.search).has('readonly')}
+      />
     </MantineProvider>
   </I18nProvider>
 );

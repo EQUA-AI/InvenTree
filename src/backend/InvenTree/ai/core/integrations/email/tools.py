@@ -15,6 +15,7 @@ from typing import Any
 from uuid import uuid4
 
 import structlog
+from ai.core.integrations.email.authorization import email_capability
 from ai.core.integrations.email.gmail import GmailError, get_gmail_client
 from ai.core.integrations.email.provider import EmailQuery
 from ai.core.maf_compat import ai_function
@@ -24,6 +25,7 @@ logger = structlog.get_logger(__name__)
 
 
 @ai_function
+@email_capability("view")
 async def list_emails(
     is_unread: bool | None = None,
     has_attachment: bool | None = None,
@@ -142,6 +144,7 @@ async def list_emails(
 
 
 @ai_function
+@email_capability("view")
 async def get_email_details(
     message_id: str,
     include_body: bool = True,
@@ -251,6 +254,7 @@ async def get_email_details(
 
 
 @ai_function
+@email_capability("view")
 async def download_attachment(
     message_id: str,
     attachment_id: str,
@@ -343,6 +347,7 @@ async def download_attachment(
 
 @ai_function
 @guard_write_tool
+@email_capability("send")
 async def mark_email_processed(
     message_id: str,
     add_label: str = "AIMMS-Processed",
@@ -730,6 +735,7 @@ def _build_sample_data(document_type: str) -> dict[str, Any]:
 
 @ai_function
 @guard_write_tool
+@email_capability("send")
 async def generate_and_send_document(
     document_type: str,
     to: str | list[str],

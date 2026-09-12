@@ -120,6 +120,60 @@ test('Permissions - Approval review group role', async ({ browser }) => {
   await expect(permission).toBeChecked({ checked: original });
 });
 
+test('Permissions - Independent email group roles', async ({ browser }) => {
+  const page = await doCachedLogin(browser, {
+    user: adminuser,
+    url: '/settings/admin/'
+  });
+  const openRoles = async () => {
+    await loadTab(page, 'Users / Access');
+    await page.getByRole('button', { name: 'Groups', exact: true }).click();
+    await page.getByRole('cell', { name: 'engineering', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Group Roles', exact: true })
+      .click();
+  };
+  await openRoles();
+  const row = page.getByTestId('email-permissions-row');
+  const read = row.getByRole('checkbox', {
+    name: 'Can read emails and attachments',
+    exact: true
+  });
+  const send = row.getByRole('checkbox', {
+    name: 'Can send emails',
+    exact: true
+  });
+  const original = [await read.isChecked(), await send.isChecked()];
+  const save = async () => {
+    const button = page.getByRole('button', { name: 'Save', exact: true });
+    if (await button.isEnabled()) {
+      await button.click();
+      await expect(button).toBeDisabled();
+      await page.getByText('Group roles updated', { exact: true }).waitFor();
+    }
+  };
+  try {
+    for (const [canRead, canSend] of [
+      [true, false],
+      [false, true],
+      [false, false]
+    ]) {
+      await read.setChecked(canRead);
+      await send.setChecked(canSend);
+      await save();
+      await page.reload();
+      await openRoles();
+      await expect(read).toBeChecked({ checked: canRead });
+      await expect(send).toBeChecked({ checked: canSend });
+    }
+  } finally {
+    // Restore the local fixture permissions, even if an assertion fails.
+    await read.setChecked(original[0]);
+    await send.setChecked(original[1]);
+    await save();
+  }
+});
+
 /**
  * Test the "reader" account
  * - This account is read-only, but should be able to access *most* pages

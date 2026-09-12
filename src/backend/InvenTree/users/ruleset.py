@@ -21,6 +21,7 @@ class RuleSetEnum(StringEnum):
     RETURN_ORDER = 'return_order'
     TRANSFER_ORDER = 'transfer_order'
     WORK_ORDER = 'work_order'
+    EMAIL = 'email'
 
 
 # This is a list of all the ruleset choices available in the system.
@@ -38,6 +39,7 @@ RULESET_CHOICES = [
     (RuleSetEnum.RETURN_ORDER, _('Return Orders')),
     (RuleSetEnum.TRANSFER_ORDER, _('Transfer Orders')),
     (RuleSetEnum.WORK_ORDER, _('Work Orders')),
+    (RuleSetEnum.EMAIL, _('Email')),
 ]
 
 # Ruleset names available in the system.
@@ -51,6 +53,10 @@ RULESET_CHANGE_INHERIT = [('part', 'bomitem')]
 
 # Named action permissions which do not fit the standard model CRUD columns.
 RULESET_CUSTOM_PERMISSIONS = {
+    RuleSetEnum.EMAIL: {
+        'can_view_emails': ('users_ruleset', 'view_email'),
+        'can_send_emails': ('users_ruleset', 'send_email'),
+    },
     RuleSetEnum.WORK_ORDER: {
         'can_review_approvals': ('approvals_approval', 'review'),
         'can_capture_closeout': ('tasks_closeoutcapture', 'capture_closeout'),
@@ -80,7 +86,7 @@ RULESET_CUSTOM_PERMISSIONS = {
             'tasks_jobkit',
             'approve_jobkit_substitution',
         ),
-    }
+    },
 }
 
 
@@ -90,6 +96,9 @@ def get_ruleset_models() -> dict:
     This function maps particular database models to each ruleset.
     """
     ruleset_models = {
+        # Connected mailbox capabilities are not CRUD access to local tables.
+        # In particular they must never confer users_ruleset/admin CRUD access.
+        RuleSetEnum.EMAIL: [],
         RuleSetEnum.ADMIN: [
             'auth_group',
             'auth_user',

@@ -13,7 +13,7 @@ import {
   Tooltip
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconCircleCheck, IconReload } from '@tabler/icons-react';
+import { IconCircleCheck, IconReload, IconX } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../App';
 
@@ -48,6 +48,8 @@ export interface RuleSet {
   can_issue_jobkit: boolean;
   can_approve_jobkit_substitution: boolean;
   can_review_approvals: boolean;
+  can_view_emails: boolean;
+  can_send_emails: boolean;
   edited?: boolean;
 }
 
@@ -73,7 +75,9 @@ type NamedPermissionField =
   | 'can_stage_jobkit'
   | 'can_issue_jobkit'
   | 'can_approve_jobkit_substitution'
-  | 'can_review_approvals';
+  | 'can_review_approvals'
+  | 'can_view_emails'
+  | 'can_send_emails';
 
 const NAMED_PERMISSION_FIELDS: NamedPermissionField[] = [
   'can_capture_closeout',
@@ -97,7 +101,9 @@ const NAMED_PERMISSION_FIELDS: NamedPermissionField[] = [
   'can_stage_jobkit',
   'can_issue_jobkit',
   'can_approve_jobkit_substitution',
-  'can_review_approvals'
+  'can_review_approvals',
+  'can_view_emails',
+  'can_send_emails'
 ];
 
 export function RoleTable({
@@ -108,6 +114,7 @@ export function RoleTable({
   editable?: boolean;
 }) {
   const [rulesets, setRulesets] = useState<RuleSet[]>(roles);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setRulesets(roles);
@@ -117,16 +124,28 @@ export function RoleTable({
 
   // Ensure the rulesets are always displayed in the same order
   const sortedRulesets = useMemo(() => {
-    return rulesets.sort((a, b) => (a.label > b.label ? 1 : -1));
+    return [...rulesets].sort((a, b) => (a.label > b.label ? 1 : -1));
   }, [rulesets]);
 
-  const workOrderRuleset = rulesets.find((rule) => rule.name === 'work_order');
   const namedPermissionSections: {
     key: string;
     testId: string;
     title: string;
+    rulesetName?: string;
+    description?: string;
     permissions: { field: NamedPermissionField; label: string }[];
   }[] = [
+    {
+      key: 'email',
+      testId: 'email-permissions-row',
+      title: t`Email Permissions`,
+      rulesetName: 'email',
+      description: t`Read and send access to the connected mailbox are separate permissions. Sending also allows marking messages as processed.`,
+      permissions: [
+        { field: 'can_view_emails', label: t`Can read emails and attachments` },
+        { field: 'can_send_emails', label: t`Can send emails` }
+      ]
+    },
     {
       key: 'approvals',
       testId: 'approval-permissions-row',
@@ -255,7 +274,7 @@ export function RoleTable({
   // Change the edited state of the ruleset
   const onToggle = useCallback(
     (rule: RuleSet, field: string) => {
-      if (!editable) {
+      if (!editable || saving) {
         return;
       }
       setRulesets((prev) => {
@@ -272,13 +291,15 @@ export function RoleTable({
         return updated;
       });
     },
-    [editable]
+    [editable, saving]
   );
 
   const onSave = async (rulesets: RuleSet[]) => {
-    if (!editable) {
+    if (!editable || saving) {
       return;
     }
+    setSaving(true);
+    let failed = false;
 
     notifications.show({
       id: 'group-roles-update',
@@ -316,17 +337,21 @@ export function RoleTable({
           });
         })
         .catch((error) => {
+          failed = true;
           console.error(error);
         });
     }
+    setSaving(false);
 
     notifications.update({
       id: 'group-roles-update',
-      title: t`Updated`,
-      message: t`Group roles updated`,
-      autoClose: 2000,
-      color: 'green',
-      icon: <IconCircleCheck />,
+      title: failed ? t`Error` : t`Updated`,
+      message: failed
+        ? t`Some group roles could not be saved. Unsaved changes can be retried.`
+        : t`Group roles updated`,
+      autoClose: failed ? false : 2000,
+      color: failed ? 'red' : 'green',
+      icon: failed ? <IconX /> : <IconCircleCheck />,
       loading: false
     });
   };
@@ -365,51 +390,62 @@ export function RoleTable({
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {sortedRulesets.map((rule) => (
-              <Table.Tr key={rule.pk ?? rule.name}>
-                <Table.Td>
-                  <Group gap='xs'>
-                    <Text>{rule.label}</Text>
-                    {rule.edited && <Text>*</Text>}
-                  </Group>
-                </Table.Td>
-                <Table.Td>
-                  <Checkbox
-                    disabled={!editable}
-                    checked={rule.can_view}
-                    onChange={() => onToggle(rule, 'can_view')}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <Checkbox
-                    disabled={!editable}
-                    checked={rule.can_change}
-                    onChange={() => onToggle(rule, 'can_change')}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <Checkbox
-                    disabled={!editable}
-                    checked={rule.can_add}
-                    onChange={() => onToggle(rule, 'can_add')}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <Checkbox
-                    disabled={!editable}
-                    checked={rule.can_delete}
-                    onChange={() => onToggle(rule, 'can_delete')}
-                  />
-                </Table.Td>
-              </Table.Tr>
-            ))}
-            {workOrderRuleset &&
-              namedPermissionSections.map((section) => (
+            {sortedRulesets
+              .filter((rule) => rule.name !== 'email')
+              .map((rule) => (
+                <Table.Tr key={rule.pk ?? rule.name}>
+                  <Table.Td>
+                    <Group gap='xs'>
+                      <Text>{rule.label}</Text>
+                      {rule.edited && <Text>*</Text>}
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>
+                    <Checkbox
+                      disabled={!editable || saving}
+                      checked={rule.can_view}
+                      onChange={() => onToggle(rule, 'can_view')}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <Checkbox
+                      disabled={!editable || saving}
+                      checked={rule.can_change}
+                      onChange={() => onToggle(rule, 'can_change')}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <Checkbox
+                      disabled={!editable || saving}
+                      checked={rule.can_add}
+                      onChange={() => onToggle(rule, 'can_add')}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <Checkbox
+                      disabled={!editable || saving}
+                      checked={rule.can_delete}
+                      onChange={() => onToggle(rule, 'can_delete')}
+                    />
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            {namedPermissionSections.map((section) => {
+              const ruleset = rulesets.find(
+                (rule) => rule.name === (section.rulesetName ?? 'work_order')
+              );
+              if (!ruleset) return null;
+              return (
                 <Table.Tr key={section.key} data-testid={section.testId}>
                   <Table.Td>
                     <Text>{section.title}</Text>
                   </Table.Td>
                   <Table.Td colSpan={4}>
+                    {section.description && (
+                      <Text size='sm' c='dimmed' mb='xs'>
+                        {section.description}
+                      </Text>
+                    )}
                     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing='xs'>
                       {section.permissions.map(({ field, label }) => (
                         <Checkbox
@@ -417,15 +453,16 @@ export function RoleTable({
                           data-testid={`${section.key}-perm-${field}`}
                           label={label}
                           aria-label={label}
-                          disabled={!editable}
-                          checked={workOrderRuleset[field]}
-                          onChange={() => onToggle(workOrderRuleset, field)}
+                          disabled={!editable || saving}
+                          checked={Boolean(ruleset[field])}
+                          onChange={() => onToggle(ruleset, field)}
                         />
                       ))}
                     </SimpleGrid>
                   </Table.Td>
                 </Table.Tr>
-              ))}
+              );
+            })}
           </Table.Tbody>
         </Table>
         {editable && (
@@ -436,7 +473,7 @@ export function RoleTable({
                 onClick={() => {
                   setRulesets(roles);
                 }}
-                disabled={!edited}
+                disabled={!edited || saving}
                 leftSection={<IconReload />}
               >
                 {t`Reset`}
@@ -448,7 +485,8 @@ export function RoleTable({
                 onClick={() => {
                   onSave(rulesets);
                 }}
-                disabled={!edited}
+                disabled={!edited || saving}
+                loading={saving}
                 leftSection={<IconCircleCheck />}
               >
                 {t`Save`}

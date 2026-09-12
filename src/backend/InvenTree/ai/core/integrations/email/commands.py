@@ -66,14 +66,9 @@ def validate_message(payload):
 
 def require_sender(actor):
     """Rehydrate current capability; tool visibility is not execution permission."""
-    from django.contrib.auth import get_user_model
+    from ai.core.integrations.email.authorization import require_email_permission
 
-    owner = get_user_model().objects.filter(pk=getattr(actor, "pk", None), is_active=True).first()
-    if owner is None or not (
-        owner.is_superuser or owner.groups.filter(name="aimms.email.send").exists()
-    ):
-        raise PermissionError("Email sending permission is required")
-    return owner
+    return require_email_permission(actor, "send")
 
 
 def _mime(payload, *, sender, operation_id):

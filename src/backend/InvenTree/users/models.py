@@ -212,6 +212,10 @@ class RuleSet(models.Model):
         """Metaclass defines additional model properties."""
 
         unique_together = (('name', 'group'),)
+        permissions = [
+            ('view_email', 'Can read emails and attachments'),
+            ('send_email', 'Can send emails'),
+        ]
 
     @property
     def label(self) -> str:
@@ -340,6 +344,16 @@ class RuleSet(models.Model):
 
     can_review_approvals = models.BooleanField(
         verbose_name=_('Can review approval requests'), default=False, db_default=False
+    )
+
+    can_view_emails = models.BooleanField(
+        verbose_name=_('Can read emails and attachments'),
+        default=False,
+        db_default=False,
+    )
+
+    can_send_emails = models.BooleanField(
+        verbose_name=_('Can send emails'), default=False, db_default=False
     )
 
     def __str__(self, debug=False):  # pragma: no cover

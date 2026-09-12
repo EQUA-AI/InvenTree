@@ -5,12 +5,12 @@ per run (the shared agent instances stay cached):
 
 - Each RBAC-relevant tool maps to one ``(ruleset, permission)`` pair.
   Inventory/order tools use InvenTree's native vocabulary (``users.ruleset``);
-  kanban and email use AIMMS-native capability permissions gated by a
-  dedicated Django group (see ``_AIMMS_NATIVE_GROUPS``). Only the database
+  email uses named Django permissions managed by the Email group ruleset
+  (see ``_AIMMS_NATIVE_PERMISSIONS``). Only the database
   tools (which enforce per-table RBAC themselves) stay unmapped/pass-through.
 - A user's *permission profile* is the frozenset of granted pairs: InvenTree
   pairs from ``users.permissions.check_user_role`` plus AIMMS-native pairs
-  from group membership (session-cached; superusers short-circuit to
+  from named permissions (superusers short-circuit to
   everything).
 - Filtering is memoized per (toolset, profile) and preserves the base
   ordering, so each profile presents a byte-stable tool schema — which
@@ -187,8 +187,8 @@ def _native_tool_map() -> dict[Any, tuple[str, str]]:
     """Map email tools to their AIMMS-native ``(ruleset, permission)``.
 
     Kept separate from ``_tool_permission_map`` because these pairs are resolved
-    by Django group membership rather than ``check_user_role``. Only email
-    belongs here: it has no InvenTree model and therefore no ruleset. Kanban
+    by named Django permissions rather than CRUD ``check_user_role``. Only email
+    belongs here: its ruleset manages mailbox capabilities, not a local model. Kanban
     used to live here and does not -- its cards are work orders, governed by the
     WORK_ORDER ruleset, so it is mapped in ``_tool_permission_map`` instead.
     """
@@ -214,33 +214,35 @@ def _all_pairs() -> frozenset[tuple[str, str]]:
     return frozenset(_permission_map_cached().values())
 
 
-# AIMMS-native capability permissions have no InvenTree RuleSet. Email (Gmail)
-# is gated by membership in a dedicated Django group; superusers get all.
-# Granting these to a user = adding them to the group.
+# Connected mailbox capabilities use the assignable Email group ruleset.
+# Legacy specially named groups are backfilled once, never a runtime bypass.
 #
 # Kanban was here too, on aimms.kanban.view/change. It was wrong twice over: no
 # migration creates those groups, so only superusers ever passed, and kanban
 # cards are InvenTree work orders with a real ruleset of their own.
-_AIMMS_NATIVE_GROUPS: dict[tuple[str, str], str] = {
-    ("email", "view"): "aimms.email.view",
-    ("email", "send"): "aimms.email.send",
+_AIMMS_NATIVE_PERMISSIONS: dict[tuple[str, str], str] = {
+    ("email", "view"): "users.view_email",
+    ("email", "send"): "users.send_email",
 }
 
 
 def _native_pairs(user) -> frozenset[tuple[str, str]]:
     """AIMMS-native (non-InvenTree) permission pairs granted to a user.
 
-    Fail-closed: inactive/None users and any group-lookup failure yield none.
+    Fail-closed: inactive/None users and any permission-lookup failure yield none.
     """
     if user is None or not getattr(user, "is_active", False):
         return frozenset()
     if getattr(user, "is_superuser", False):
-        return frozenset(_AIMMS_NATIVE_GROUPS)
+        return frozenset(_AIMMS_NATIVE_PERMISSIONS)
     try:
-        group_names = set(user.groups.values_list("name", flat=True))
+        return frozenset(
+            pair
+            for pair, permission in _AIMMS_NATIVE_PERMISSIONS.items()
+            if user.has_perm(permission)
+        )
     except Exception:
         return frozenset()
-    return frozenset(pair for pair, group in _AIMMS_NATIVE_GROUPS.items() if group in group_names)
 
 
 def permission_profile(user) -> frozenset[tuple[str, str]]:
@@ -252,14 +254,14 @@ def permission_profile(user) -> frozenset[tuple[str, str]]:
     if user is None or not getattr(user, "is_active", False):
         return frozenset()
     if getattr(user, "is_superuser", False):
-        return _all_pairs() | frozenset(_AIMMS_NATIVE_GROUPS)
+        return _all_pairs() | frozenset(_AIMMS_NATIVE_PERMISSIONS)
 
     native = _native_pairs(user)
 
     from users.permissions import check_user_role
 
-    # _all_pairs() is InvenTree-only; native (email/kanban) pairs are resolved by
-    # group membership, not check_user_role.
+    # _all_pairs() covers model roles; email pairs are resolved by named
+    # Django permissions, not CRUD check_user_role.
     inventree = frozenset(pair for pair in _all_pairs() if check_user_role(user, pair[0], pair[1]))
     return inventree | native
 
@@ -288,7 +290,7 @@ async def permission_profile_for_user_pk(
 
 @lru_cache(maxsize=1)
 def _filter_map_cached() -> dict[Any, tuple[str, str]]:
-    """Combined map for list filtering: InvenTree + AIMMS-native (email/kanban)."""
+    """Combined map for list filtering: model roles and email capabilities."""
     return {**_permission_map_cached(), **_native_tool_map()}
 
 

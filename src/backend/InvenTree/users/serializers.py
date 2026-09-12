@@ -74,6 +74,8 @@ class RuleSetSerializer(InvenTreeModelSerializer):
             'can_issue_jobkit',
             'can_approve_jobkit_substitution',
             'can_review_approvals',
+            'can_view_emails',
+            'can_send_emails',
         ]
         read_only_fields = ['pk', 'name', 'label', 'group']
 

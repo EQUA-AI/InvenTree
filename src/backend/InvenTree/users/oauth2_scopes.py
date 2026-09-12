@@ -22,6 +22,7 @@ _roles = {
     'return_order': 'Role Return Orders',
     'transfer_order': 'Role Transfer Orders',
     'work_order': 'Role Work Orders',
+    'email': 'Role Email',
 }
 _methods = {'view': 'GET', 'add': 'POST', 'change': 'PUT / PATCH', 'delete': 'DELETE'}
 
