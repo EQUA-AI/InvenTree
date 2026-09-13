@@ -265,6 +265,28 @@ threat model.
 Backend (Django/DRF, Django-Q2) and frontend (React 19 / Mantine 9 / Vite / Playwright / Lingui) are
 separate toolchains — be explicit about which layer a change touches.
 
+### `specs/` is gitignored — new files here need `git add -f`
+
+`.gitignore:70` is a bare `specs/` with no negation rule. The four spec files are tracked (tracking
+beats the ignore rule, so editing and committing them works normally), but **a file you add to
+`specs/` will be silently skipped** by `git add specs/`, `git add .` and `git commit -a`. It will not
+show in `git status` either, so nothing warns you. Use:
+
+```bash
+git add -f specs/002-cosmos-pumphouse-connector/
+git ls-files specs/           # confirm the new file is listed
+```
+
+`git check-ignore specs/<file>` prints nothing for *tracked* files, which reads like "not ignored" and
+is misleading — pass `--no-index` to see the real rule. Currently tracked:
+
+```
+specs/001-repair-playbooks/spec.md
+specs/002-cosmos-pumphouse-connector/HANDOVER.md
+specs/002-cosmos-pumphouse-connector/plan.md
+specs/002-cosmos-pumphouse-connector/tasks.md
+```
+
 ---
 
 ## 6. Out of scope this sprint
