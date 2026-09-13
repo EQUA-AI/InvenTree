@@ -393,6 +393,63 @@ class VoiceInboxTests(ApprovalTestBase):
             self.deliver()
         self.assertFalse(approval.review_deliveries.exists())
 
+    def test_reconnected_terminal_focus_is_receipt_only_and_does_not_trap_intents(self):
+        """The same owner's new session can read a receipt, never rearm old authority."""
+        approval = self.fixture()
+        self.begin(f'Read request {str(approval.pk)[:8]}')
+        self.say('deny: synthetic request')
+        self.deliver()
+        self.say('confirm rejection')
+        current = self.store.read(self.session.thread_id)
+        arguments = {
+            'actor': self.principal,
+            'session_id': str(uuid.uuid4()),
+            'thread_id': self.session.thread_id,
+            'nonce': str(uuid.uuid4()),
+            'context': current.to_public_dict(),
+        }
+        self.assertIsNone(self.coordinator.resolve('Show my approvals', **arguments))
+        receipt = self.coordinator.resolve('last action status', **arguments)
+        self.assertEqual(receipt.event, 'receipt')
+        self.assertEqual(receipt.decision.operation_id, current.operation_id)
+        self.assertEqual(VoiceOperation.objects.count(), 1)
+        with self.assertRaises(DecisionConflict):
+            self.coordinator.resolve(
+                'last action status',
+                **{**arguments, 'actor': principal_for_user(self.user2)},
+            )
+
+    def test_reconnected_disarmed_focus_never_confirms_the_previous_session(self):
+        """An old non-active prompt cannot block a fresh explicit inbox request."""
+        approval = self.fixture()
+        self.begin(f'Read request {str(approval.pk)[:8]}')
+        active = self.store.read(self.session.thread_id)
+        with self.assertRaises(DecisionConflict):
+            self.coordinator.resolve(
+                'deny: different session',
+                actor=self.principal,
+                session_id=str(uuid.uuid4()),
+                thread_id=self.session.thread_id,
+                nonce=str(uuid.uuid4()),
+                context=active.to_public_dict(),
+            )
+        self.say('cancel')
+        current = self.store.read(self.session.thread_id)
+        arguments = {
+            'actor': self.principal,
+            'session_id': str(uuid.uuid4()),
+            'thread_id': self.session.thread_id,
+            'nonce': str(uuid.uuid4()),
+            'context': current.to_public_dict(),
+        }
+        self.assertIsNone(self.coordinator.resolve('Show my approvals', **arguments))
+        self.assertEqual(self.coordinator.resolve('yes', **arguments).event, 'disarmed')
+        self.assertFalse(VoiceOperation.objects.exists())
+        approval.assigned_to_user = self.user2
+        approval.save(update_fields=['assigned_to_user'])
+        with self.assertRaises(DecisionConflict):
+            self.coordinator.resolve('yes', **arguments)
+
     def test_qualified_yes_disarms_and_final_result_does_not_trap_new_intents(self):
         """Corrections never execute, and a receipt is not a new confirmation."""
         self.fixture()

@@ -299,7 +299,7 @@ class ApprovalAdapter:
         from approvals import services
         from approvals.review_evidence import required_sections, review_units
 
-        if str(actor.user_pk) != decision.actor_user_pk or str(session_id) != decision.session_id:
+        if str(actor.user_pk) != decision.actor_user_pk:
             raise DecisionConflict("The session changed. Open your approval inbox again.")
         command = _normalize_command(content)
         if command.startswith("approve "):
@@ -322,11 +322,17 @@ class ApprovalAdapter:
                 else None
             )
         if decision.state != "presented":
-            return (
-                DecisionReply("Nothing is armed. Read the request again.", decision, "disarmed")
-                if command in ("yes", decision.required_phrase)
-                else None
-            )
+            if command in ("yes", decision.required_phrase):
+                # A cached inactive preview is still private after revocation.
+                self.read(decision, actor)
+                return DecisionReply(
+                    "Nothing is armed. Read the request again.", decision, "disarmed"
+                )
+            return None
+        # A same-owner reconnect can read terminal receipts or explicitly open
+        # a new request. Only an active prompt carries session-bound authority.
+        if str(session_id) != decision.session_id:
+            raise DecisionConflict("The session changed. Open your approval inbox again.")
         if c.now() >= decision.expires_at:
             return DecisionReply(
                 "This review expired. Read the request again.",
