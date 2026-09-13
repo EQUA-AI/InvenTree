@@ -215,7 +215,64 @@ Closes the "mapping approval does not enable live ingestion" gap.
 - [ ] Checkpoint advances; a second poll ingests nothing new
 **Acceptance**: runs in CI without the real Azure account.
 
-### 🔵 T14 — Docs and PR · 3 h · *blocked: all*
+### 🔵 T15 — Pumphouse mimic: layout contract + SVG asset  6 h  *blocked: T11*
+The schematic the two reference images describe. This ticket produces the *drawing* and the
+*contract*, not the live behaviour — keeping them apart means the artwork can be redrawn without
+touching React, and the binding can be tested without the artwork being final.
+- [ ] `src/frontend/src/assets/mimic/pumphouse.svg` — station schematic: suction side, forebay /
+      surge pool level indicator, common header, 14 pump bays, discharge. Hand-authored and
+      committed, **not** generated at runtime.
+- [ ] Every live element carries a stable `data-point` attribute holding the **JSON pointer**
+      already used as `DictionaryPoint.path` / `MachineSignalBinding.external_key`
+      (`/pd/P03/st`, `/pd/P03/dv`, `/sl`, `/pmw`). No second naming scheme, no index maths in the
+      component.
+- [ ] `pumphouse.layout.json` — declares which pointers the drawing expects and what each element
+      is (`status` | `value` | `level`), so a missing binding is a *validation* failure, not a
+      blank box a user has to notice.
+- [ ] Validator (backend test or `tsx` script): every `data-point` in the SVG resolves to an
+      approved `DictionaryPoint` for PH_3; every approved point is either drawn or explicitly
+      listed as not-drawn. **The 6 withheld points must appear in the not-drawn list**, so
+      vibration and reactive power cannot silently render as empty gauges.
+- [ ] `biome check` clean; SVG has no embedded raster, no external font, no inline script.
+**Acceptance**: the validator fails if a pointer is renamed on either side. Deliberately reject a
+point and the build tells you which element lost its binding.
+
+### 🔵 T16 — Station mimic state API  4 h  *blocked: T9, T11*
+One request paints the whole diagram. Thirty-one per-signal calls on a screen meant to be left open
+on a wall display is the wrong shape.
+- [ ] `GET /api/machine-health/station/<pk>/mimic/` beside the existing `machine-health` routes in
+      `machine_health/api.py`, reusing `_MachineHealthView`'s scope check — station scope, not
+      per-machine, so the 14 pumps are authorised once.
+- [ ] Response keyed by the same JSON pointers: `{value, unit, quality, observed_at, age_seconds}`
+      per point, plus station-level `{source, last_poll_at, last_error_code, enabled}`.
+- [ ] **Unknown must be representable.** A point with no reading returns `null` with a reason, never
+      `0` and never a last-known value dressed up as current — a stale "Running" on a mimic board is
+      how someone walks up to a live pump.
+- [ ] `age_seconds` computed server-side against the server clock (the client clock is not
+      trustworthy, and this is the same skew trap T8 already hit).
+- [ ] Kill-switch off ⇒ `enabled: false` and every point `null`; the UI must have something honest
+      to show rather than an empty diagram.
+**Acceptance**: one request returns every drawn pointer; a station with no bindings returns a valid
+payload with all values `null` and a reason, HTTP 200, not 404.
+
+### 🔵 T17 — `PumphouseMimic.tsx` live dashboard  8 h  *blocked: T15, T16*
+- [ ] Component under `src/frontend/src/pages/assets/health/`, mounted as a tab on the AIMMS
+      machine page for stations (siblings: `HealthSummary.tsx`, `SignalTable.tsx`)
+- [ ] Inlines the SVG, resolves `data-point` → payload, sets text and fill. Pump bay fill from `st`:
+      `R` running, `I` idle, `null`/stale a distinct **hatched** state — colour alone is not enough
+      for a control-room screen or a colour-blind operator
+- [ ] Staleness threshold from `age_seconds`; a whole-diagram banner when the source last reported an
+      error code or the kill-switch is off
+- [ ] Polls on an interval, pauses when the tab is hidden, and shows *when* the data is from —
+      absolute timestamp, not only "2m ago"
+- [ ] All labels through `lingui` **and re-extracted** (`invoke int.frontend-compile --extract`), or
+      the page ships showing hash IDs again
+- [ ] `tsc --noEmit` and `biome check` clean; unit tests for the pointer→element binding and for the
+      stale/unknown rendering path
+**Acceptance**: seed the emulator, run the poller, the diagram matches the seeded `I → R` transition;
+stop the poller and every bay degrades to stale rather than freezing on the last good value.
+
+### 🔵 T14 — Docs and PR  3 h  *blocked: all*
 - [ ] `docs/docs/…/cosmos-connector.md`: setup, RBAC role, kill-switch, failure codes
 - [ ] Threat-model note: read-only data-plane role, no credential in DB or API response,
       connector cannot write to a control system
@@ -230,7 +287,13 @@ Closes the "mapping approval does not enable live ingestion" gap.
 | Done | T0, T1, T2, T3, T4, T5, T6, T7, T8 | 43 |
 | Ready now | T9, T10, T11 | 12 |
 | Blocked on earlier tickets | T12, T13, T14 | 12 |
-| **Total** | **15** | **67** |
+| Mimic dashboard (added 2026-09-13) | T15, T16, T17 | 18 |
+| **Total** | **18** | **85** |
+
+> **T15–T17 were missing from the original plan.** The sprint was scoped around getting data *in*;
+> the two reference images shared at kick-off describe the pumphouse schematic users actually look
+> *at*, and no ticket covered it. They are additive — nothing in T0–T14 changes — but the sprint is
+> no longer a two-week, one-dev sprint at 85 h. See **D18** before starting T15.
 
 ### What is actually blocking
 - **D16 — RESOLVED 2026-09-12.** A data-plane role assignment now exists on the account. Verified by
@@ -249,14 +312,23 @@ Closes the "mapping approval does not enable live ingestion" gap.
   identity needs its own assignment: role `…000000000001` (**Data Reader**), scoped to
   `/dbs/aimms/colls/pumphouse_readings` rather than the account.
 - **Review of the 31 imported dictionary points** before T11 can bind anything end to end.
+- **D18 — the mimic layout is not yet pinned to the reference images.** T15 is written against what
+  the data model can actually supply (14 pump bays with `st`/`dv`/`pmw`, station `sl`), not against a
+  measured reading of the two images shared at kick-off. Before drawing, re-open them and confirm:
+  which quantity sits next to each pump, whether the level indicator is the forebay or the surge
+  pool (the same question that withheld `/sl` in the dictionary review), and whether valves or
+  headers shown in the drawing correspond to any tag we receive. **Anything in the images with no
+  approved point behind it must be drawn as static geometry, never as a live element** — a mimic
+  that appears to show a valve position we do not actually receive is worse than one that omits it.
 
 Resolved since the last revision: **D14** (account `epconchatcosmos9d6b`, RG `EpconChat`, database
 `aimms`, container `pumphouse_readings` created and verified) and **D7** (a real snapshot confirmed
 `dv`/`pmw`/`pmvar`/`pc`, at both station and pump level).
 
 ### Critical path
-`T8 → T9 → T13 → T14` for the live read, with `T0 → T11 → T12` feeding the UI. Nothing on the
-critical path is now blocked by an answer — only *running* against Azure is, via D16.
+`T8 → T9 → T13 → T14` for the live read, with `T0 → T11 → T12` feeding the UI, and
+`T11 → T15/T16 → T17` feeding the mimic dashboard. Nothing on the critical path is now blocked by an
+answer — only *running* against Azure is, via D16 — except T15, which wants D18 answered first.
 
 ## Out of scope this sprint
 Cassandra → Cosmos migration/CDC job · `pumphouse_latest` maintenance · change-feed polling ·

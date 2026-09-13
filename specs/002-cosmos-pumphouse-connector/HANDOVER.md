@@ -19,7 +19,9 @@ Feature 002 builds a **read-only** connector that reads pumphouse telemetry out 
 (NoSQL API) and turns it into `MachineSignalState` inside InvenTree. The Cassandra → Cosmos
 migration is *not* in this sprint (decision D2); documents are hand-seeded. Everything up to and
 including the connector itself is built and tested (T0–T8, 43 h). What is left is wiring it into the
-scheduler, giving operators a way to activate a station, and proving it end to end (T9–T14, 24 h).
+scheduler, giving operators a way to activate a station, and proving it end to end (T9–T14, 24 h),
+plus the pumphouse mimic dashboard that the original plan omitted entirely (T15–T17, 18 h — see the
+note under the ticket board). Remaining work is **42 h**.
 Nothing on the critical path is blocked on an answer any more — only on someone doing the work, plus
 one Azure role assignment (D17) before go-live.
 
@@ -42,9 +44,18 @@ one Azure role assignment (D17) before go-live.
 | T12 | Live-source UI card | 5 h | ⏸ blocked on T11 |
 | T13 | End-to-end integration test on the emulator | 4 h | ⏸ blocked on T9 |
 | T14 | Docs + PR to `IOT` | 3 h | ⏸ blocked on all of the above |
+| T15 | Mimic layout contract + `pumphouse.svg` | 6 h | ⏸ blocked on T11, **answer D18 first** |
+| T16 | Station mimic state API | 4 h | ⏸ blocked on T9, T11 |
+| T17 | `PumphouseMimic.tsx` live dashboard | 8 h | ⏸ blocked on T15, T16 |
 
-**Critical path:** `T9 → T13 → T14` for the live read, with `T11 → T12` feeding the UI.
+**Critical path:** `T9 → T13 → T14` for the live read, `T11 → T12` for the admin UI, and
+`T11 → T15/T16 → T17` for the mimic dashboard.
 T10 and T11 are independent of T9 and can be done in parallel by a second pair of hands.
+
+> **T15–T17 were added on 2026-09-13 and are not in the original 67 h estimate.** The sprint was
+> scoped end-to-end on *ingestion*; the pumphouse schematic from the two kick-off reference images —
+> the screen an operator actually watches — had no ticket. Remaining work is therefore **42 h, not
+> 24 h**. This is the single biggest correction in this handover: do not quote the old number.
 
 ### 1.3 Work landed after `tasks.md` was last revised
 
@@ -190,6 +201,7 @@ not to the account. Then answer: which identity does AIMMS run as, per environme
 | ID | Question | Default in force | Who can answer |
 |---|---|---|---|
 | **D17** | App identity + Data Reader role, container-scoped | none — dev's Data Contributor is being used | Azure/platform owner |
+| **D18** | Mimic layout — which quantity sits by each pump bay; is the level indicator the forebay or the surge pool; do any valves/headers in the reference images map to tags we actually receive | T15 is drafted from the data model, not from a measured reading of the images | Whoever shared the reference images + plant engineering |
 | **D9** | Vibration units (µm vs mm/s) and alarm bounds | Annex A is a **proposal**, not plant authority | Plant engineering — needs the alarm/trip CSV |
 | **D7b** | `dsc` code set meanings | unmapped | Plant / SCADA vendor |
 | **D11** | Freshness threshold | 300 s | Ops |
@@ -197,6 +209,10 @@ not to the account. Then answer: which identity does AIMMS run as, per environme
 
 **Do not clamp suspect values.** `-242.1`, `3276.7`, valve positions below 0 or above 100 are *not
 confirmed faults*. Until someone says otherwise they pass through as read.
+
+**Do not draw what we do not receive.** Same rule, applied to T15–T17: anything in the reference
+images with no approved `DictionaryPoint` behind it is static geometry. A mimic that appears to show
+a valve position or a vibration level we never read is a worse outcome than one that omits it.
 
 `contrib/pump-cassandra/` is an **offline draft proposal**, not a connector — Gate 1 in its README is
 still partly open (`data2` purpose, `dsc` codes, quality conventions, and which keys carry total

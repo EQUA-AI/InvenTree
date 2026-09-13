@@ -362,11 +362,39 @@ touched files, no secrets in code/fixtures, commit on `inventTree-aniket`.
 **Total ≈ 65 h.** Explicitly **not** in this sprint: Cassandra→Cosmos migration/CDC job, `pumphouse_latest`
 maintenance, change-feed polling, retention/TTL policy values.
 
+### Added 2026-09-13 — pumphouse mimic dashboard (was missing from this plan)
+
+The two reference images shared at kick-off describe a pumphouse schematic with live values. The
+sprint above scopes getting data *in* and never scoped the screen users look *at*. These three
+tickets close that gap. They are additive — nothing above changes.
+
+| # | Ticket | Est | Depends |
+|---|---|---|---|
+| T15 | Mimic layout contract + committed `pumphouse.svg`; every live element carries a `data-point` attribute holding the same JSON pointer used as `DictionaryPoint.path`; validator proves the drawing and the approved points agree | 6 | T11 |
+| T16 | `GET /api/machine-health/station/<pk>/mimic/` — one payload for the whole diagram, server-computed `age_seconds`, `null` + reason where a value is unknown | 4 | T9, T11 |
+| T17 | `PumphouseMimic.tsx` — inlined SVG bound to the payload; running / idle / stale are distinguishable without colour; lingui extracted; `tsc`/`biome` clean | 8 | T15, T16 |
+
+Two constraints carry from the ingestion side and are not negotiable in the UI:
+
+- **The pointer is the contract.** The SVG binds on `/pd/P03/st`, the same string that is
+  `DictionaryPoint.path` and `MachineSignalBinding.external_key`. Introducing a display-side naming
+  scheme would recreate the drift bug that the station rename already had to fix once.
+- **Unknown is a state, not a zero.** Six dictionary points are deliberately withheld and the
+  kill-switch defaults off, so a blank diagram is the *normal* first-run condition. Idle, stale and
+  no-binding must be visually distinct from each other; a mimic board that shows a stale "Running"
+  is a safety problem, not a cosmetic one.
+
+**Revised total ≈ 83 h**, which no longer fits two weeks for one developer. Explicitly **not** in
+this sprint: Cassandra→Cosmos migration/CDC job, `pumphouse_latest`
+maintenance, change-feed polling, retention/TTL policy values.
+
 ### Milestones
 - **M1 (end W1)**: emulator provisioned from repo artefacts, hand-seeded PH_3 documents present across two
   hour buckets, `flatten_snapshot` green, README Gate 1 closed.
 - **M2 (end W2)**: PH_3 registered → dictionary imported → activated → live `MachineSignalState` values read
   out of Cosmos; PR raised to `IOT`.
+- **M3 (mimic, +1 week)**: the PH_3 schematic renders from live state — seeded `I → R` transition
+  visible on the diagram, stale degradation proven by stopping the poller.
 
 ---
 
