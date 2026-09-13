@@ -10,7 +10,7 @@ from typing import Any
 from ai.core.tools.inventree.base import (
     WriteTool,
     ai_function,
-    require_hitl,
+    require_confirmation,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
     name="update_supplier_part",
     description="Update a supplier part record. Modify pricing, SKU, lead time, or other supplier-specific information.",
 )
-@require_hitl(reason="Updating supplier parts requires approval")
+@require_confirmation(reason="Updating supplier parts requires approval")
 async def update_supplier_part(
     supplier_part_id: int,
     sku: str | None = None,
@@ -87,7 +87,7 @@ async def update_supplier_part(
     name="delete_supplier_part",
     description="Delete a supplier part record. This removes the link between a part and a supplier.",
 )
-@require_hitl(reason="Deleting supplier parts requires approval")
+@require_confirmation(reason="Deleting supplier parts requires approval")
 async def delete_supplier_part(
     supplier_part_id: int,
 ) -> dict[str, Any]:
@@ -129,7 +129,7 @@ async def delete_supplier_part(
     name="update_manufacturer_part",
     description="Update a manufacturer part record. Modify MPN or other manufacturer-specific information.",
 )
-@require_hitl(reason="Updating manufacturer parts requires approval")
+@require_confirmation(reason="Updating manufacturer parts requires approval")
 async def update_manufacturer_part(
     manufacturer_part_id: int,
     mpn: str | None = None,
@@ -184,7 +184,7 @@ async def update_manufacturer_part(
     name="delete_manufacturer_part",
     description="Delete a manufacturer part record. This removes the link between a part and a manufacturer.",
 )
-@require_hitl(reason="Deleting manufacturer parts requires approval")
+@require_confirmation(reason="Deleting manufacturer parts requires approval")
 async def delete_manufacturer_part(
     manufacturer_part_id: int,
 ) -> dict[str, Any]:
@@ -226,7 +226,7 @@ async def delete_manufacturer_part(
     name="add_supplier_price_break",
     description="Add a price break for a supplier part. Price breaks define quantity-based pricing tiers.",
 )
-@require_hitl(reason="Adding price breaks requires approval")
+@require_confirmation(reason="Adding price breaks requires approval")
 async def add_supplier_price_break(
     supplier_part_id: int,
     quantity: int,

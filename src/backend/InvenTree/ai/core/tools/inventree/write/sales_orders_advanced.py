@@ -11,13 +11,13 @@ import logging
 from typing import Any
 
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Shipping sales order items")
+@require_confirmation(reason="Shipping sales order items")
 async def ship_so_shipment(
     shipment_id: int,
     tracking_number: str | None = None,
@@ -79,7 +79,7 @@ async def ship_so_shipment(
 
 
 @ai_function
-@require_hitl(reason="Cancelling sales order")
+@require_confirmation(reason="Cancelling sales order")
 async def cancel_sales_order(
     order_id: int,
 ) -> dict[str, Any]:
@@ -120,7 +120,7 @@ async def cancel_sales_order(
 
 
 @ai_function
-@require_hitl(reason="Placing sales order on hold")
+@require_confirmation(reason="Placing sales order on hold")
 async def hold_sales_order(
     order_id: int,
 ) -> dict[str, Any]:
@@ -161,7 +161,7 @@ async def hold_sales_order(
 
 
 @ai_function
-@require_hitl(reason="Completing sales order")
+@require_confirmation(reason="Completing sales order")
 async def complete_sales_order(
     order_id: int,
     accept_incomplete: bool = False,
@@ -214,7 +214,7 @@ async def complete_sales_order(
 
 
 @ai_function
-@require_hitl(reason="Updating sales order")
+@require_confirmation(reason="Updating sales order")
 async def update_sales_order(
     order_id: int,
     reference: str | None = None,

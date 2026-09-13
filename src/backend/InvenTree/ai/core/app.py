@@ -763,7 +763,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     - WORKFLOW_STARTED for workflow selection
     - TEXT_MESSAGE_START/CONTENT/END for response streaming
     - TOOL_CALL_* for tool execution
-    - HITL_REQUIRED for approval requests
+    - Governed decisions via the approval queue
     - ERROR for failures
 
     AG-UI event format (SSE):
@@ -1692,82 +1692,6 @@ async def sync_threads(
     }
 
 
-# ==============================================================================
-# HITL (Human-in-the-Loop) Endpoints
-# ==============================================================================
-
-
-class HITLRespondRequest(BaseModel):
-    """Request model for HITL approval/rejection."""
-
-    request_id: str
-    approved: bool
-    reason: str | None = None
-    user_id: str = "anonymous"
-
-
-class HITLResponse(BaseModel):
-    """Response model for HITL operations."""
-
-    success: bool
-    request_id: str
-    status: str
-    message: str
-
-
-# S35: the in-memory pending-request dict and its register/get/resolve
-# helpers were deleted. The rail was retired in WS7, the helpers had zero
-# callers, and per-process approval state violates the "no in-process
-# cross-request state" invariant (ai/README.md). The endpoints below remain
-# only to answer legacy clients with the retirement notice.
-
-
-#: Voice-UX plan A4: the retired rail answers HTTP 410 Gone. A 200 with
-#: ``success=false`` let legacy callers that only test ``response.ok`` show an
-#: approval as recorded when nothing happened; a 410 cannot be misread.
-HITL_RETIRED_DETAIL: dict[str, str] = {
-    "code": "HITL_RETIRED",
-    "message": (
-        "The legacy approval rail is retired and performs no action. "
-        "Confirm or reject actions on the authenticated proposal "
-        "surface at /api/aichat/proposals/."
-    ),
-}
-
-
-@app.post("/hitl/respond")
-async def respond_to_hitl(request: HITLRespondRequest) -> None:
-    """Retired: always HTTP 410 Gone (voice-UX plan A4).
-
-    The in-memory HITL rail never dispatched a real domain command and
-    body-identity approval is unacceptable. Reviews and confirmations happen
-    only on the authenticated proposal surface (/api/aichat/proposals/).
-    Authentication is still required to receive the notice, and a legacy
-    body identity is still observed for telemetry.
-    """
-    _principal()
-    if "user_id" in request.model_fields_set:
-        _observe_legacy_identity(request.user_id, source="body")
-    logger.info("Legacy HITL respond called; rail is retired (410)")
-    raise HTTPException(status_code=410, detail=HITL_RETIRED_DETAIL)
-
-
-@app.get("/hitl/pending")
-async def get_pending_hitl(
-    thread_id: str | None = None,
-    user_id: str | None = None,
-) -> None:
-    """Retired: always HTTP 410 Gone (voice-UX plan A4).
-
-    The retired rail never surfaces approvable items; the authenticated
-    proposal surface owns pending approvals.
-    """
-    _observe_legacy_identity(user_id, source="query")
-    _principal()
-    logger.info("Legacy HITL pending called; rail is retired (410)")
-    raise HTTPException(status_code=410, detail=HITL_RETIRED_DETAIL)
-
-
 @app.get("/rate-limit/stats")
 async def rate_limit_stats() -> dict[str, Any]:
     """Get rate limiting statistics (per-process; counters live in the cache)."""
@@ -1827,7 +1751,7 @@ async def list_workflows() -> list[dict[str, Any]]:
             "name": "Procurement",
             "tier": "T4",
             "enabled": settings.feature_wf4_procurement,
-            "description": "Purchase order creation with HITL approval",
+            "description": "Purchase order creation with human review approval",
         },
         {
             "id": "wf5_cpq",

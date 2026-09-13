@@ -11,7 +11,7 @@ from typing import Any
 from ai.core.tools.inventree.base import (
     WriteTool,
     ai_function,
-    require_hitl,
+    require_confirmation,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
     name="create_project_code",
     description="Create a new project code for organizing and tracking related inventory items, orders, and builds. Project codes help group items by customer project, internal project, or any logical grouping.",
 )
-@require_hitl(reason="Creating project codes requires approval")
+@require_confirmation(reason="Creating project codes requires approval")
 async def create_project_code(
     code: str,
     description: str = "",
@@ -71,7 +71,7 @@ async def create_project_code(
     name="update_project_code",
     description="Update an existing project code. Modify the description or responsible user.",
 )
-@require_hitl(reason="Updating project codes requires approval")
+@require_confirmation(reason="Updating project codes requires approval")
 async def update_project_code(
     project_code_id: int,
     code: str | None = None,
@@ -123,7 +123,7 @@ async def update_project_code(
     name="delete_project_code",
     description="Delete a project code. This will unlink the project code from any associated items but not delete the items themselves.",
 )
-@require_hitl(reason="Deleting project codes requires approval")
+@require_confirmation(reason="Deleting project codes requires approval")
 async def delete_project_code(
     project_code_id: int,
 ) -> dict[str, Any]:
@@ -165,7 +165,7 @@ async def delete_project_code(
     name="assign_project_code",
     description="Assign a project code to an order (purchase, sales, build, or return order). This links the order to the project for tracking and reporting.",
 )
-@require_hitl(reason="Assigning project codes to orders requires approval")
+@require_confirmation(reason="Assigning project codes to orders requires approval")
 async def assign_project_code(
     project_code_id: int,
     order_type: str,
@@ -222,7 +222,7 @@ async def assign_project_code(
     name="remove_project_code",
     description="Remove a project code from an order. The order will no longer be associated with the project.",
 )
-@require_hitl(reason="Removing project codes from orders requires approval")
+@require_confirmation(reason="Removing project codes from orders requires approval")
 async def remove_project_code(
     order_type: str,
     order_id: int,

@@ -10,7 +10,7 @@ from typing import Any
 from ai.core.tools.inventree.base import (
     WriteTool,
     ai_function,
-    require_hitl,
+    require_confirmation,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
     name="add_part_attachment",
     description="Add an attachment (file or link) to a part. Attachments can be documents, images, datasheets, or external URLs that provide additional information about the part.",
 )
-@require_hitl(reason="Adding attachments to parts requires approval")
+@require_confirmation(reason="Adding attachments to parts requires approval")
 async def add_part_attachment(
     part_id: int,
     attachment_type: str,
@@ -93,7 +93,7 @@ async def add_part_attachment(
     name="delete_attachment",
     description="Delete an attachment from a part, stock item, or other entity. This permanently removes the attachment.",
 )
-@require_hitl(reason="Deleting attachments requires approval")
+@require_confirmation(reason="Deleting attachments requires approval")
 async def delete_attachment(
     attachment_id: int,
     attachment_model: str = "part",
@@ -139,7 +139,7 @@ async def delete_attachment(
     name="add_stock_attachment",
     description="Add an attachment to a stock item. Useful for attaching inspection reports, certificates, photos, or other documentation specific to a stock item.",
 )
-@require_hitl(reason="Adding attachments to stock items requires approval")
+@require_confirmation(reason="Adding attachments to stock items requires approval")
 async def add_stock_attachment(
     stock_item_id: int,
     attachment_type: str,
@@ -211,7 +211,7 @@ async def add_stock_attachment(
     name="print_label",
     description="Print a label for a part, stock item, or location. Generates and sends a label to a configured printer or returns the label data for download.",
 )
-@require_hitl(reason="Printing labels requires approval")
+@require_confirmation(reason="Printing labels requires approval")
 async def print_label(
     item_type: str,
     item_id: int,
@@ -284,7 +284,7 @@ async def print_label(
     name="create_label_template",
     description="Create a new label template for printing part, stock, or location labels. Templates use HTML/CSS with Jinja2 templating for dynamic content.",
 )
-@require_hitl(reason="Creating label templates requires approval")
+@require_confirmation(reason="Creating label templates requires approval")
 async def create_label_template(
     name: str,
     label_type: str,

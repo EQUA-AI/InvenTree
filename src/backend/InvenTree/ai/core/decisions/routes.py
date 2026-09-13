@@ -103,6 +103,17 @@ def install_routes(router):
                     decision = await sync_to_async(coordinator.store.read)(session.thread_id)
             if decision and decision.actor_user_pk != str(actor.user_pk):
                 raise HTTPException(status_code=404, detail="VOICE_SESSION_FORBIDDEN")
+            if decision and (decision.executable or {}).get("adapter") == "approval":
+                try:
+                    await sync_to_async(coordinator.approvals.read)(decision, actor)
+                except Exception:
+                    await sync_to_async(coordinator.disarm)(session.thread_id, "source_invalidated")
+                    return payload(
+                        DecisionReply(
+                            "This request is unavailable in your current review scope. Open your inbox again.",
+                            event="source_invalidated",
+                        )
+                    )
             if decision and decision.state == "presented":
                 if decision.session_id != str(session.pk):
                     reply = await sync_to_async(coordinator.disarm)(
@@ -148,6 +159,7 @@ def install_routes(router):
         actor, session, coordinator = await owned(session_id)
         allowed = {
             "confirm",
+            "respond",
             "cancel",
             "cancel-action",
             "disarm",
@@ -213,20 +225,26 @@ def install_routes(router):
                     session.thread_id, action, set_aside=action == "set-aside"
                 )
             elif action == "acknowledge-review":
-                await sync_to_async(coordinator.revalidate)(decision, actor, session.pk)
-                reply = DecisionReply(
-                    "Review acknowledged. Confirmation is still required.",
-                    await sync_to_async(coordinator.advance)(decision, review_acknowledged=True),
+                if (decision.executable or {}).get("adapter") != "approval":
+                    raise DecisionConflict("This decision has no approval review contract.")
+                reply = await sync_to_async(coordinator.resolve)(
+                    "I have reviewed this request",
+                    actor=actor,
+                    session_id=session.pk,
+                    thread_id=session.thread_id,
+                    nonce=f"control:{decision.decision_id}:{decision.sequence}",
+                    context=request.model_dump(),
+                    touch=True,
                 )
             else:
                 content = (
                     request.confirm_phrase
-                    if action == "confirm"
+                    if action in ("confirm", "respond")
                     else "cancel the action"
                     if action == "cancel-action"
                     else "repeat"
                 )
-                if action == "confirm" and not content:
+                if action in ("confirm", "respond") and not content:
                     raise DecisionConflict("An explicit confirmation is required.")
                 reply = await sync_to_async(coordinator.resolve)(
                     content,
@@ -239,7 +257,7 @@ def install_routes(router):
                 )
                 if reply is None:
                     raise DecisionConflict("Request a fresh preview.")
-                if action == "repeat" or reply.event == "receipt":
+                if action == "repeat" or reply.event in ("receipt", "presented", "review"):
                     from dataclasses import replace
 
                     reply = replace(reply, decision=await speak_reply(session, reply, coordinator))

@@ -1,21 +1,18 @@
 """
-Base Tool Classes and HITL Decorators
+Base Tool Classes and human review Decorators
 
 Provides the foundational classes for InvenTree tools:
 - BaseTool: Abstract base for all tools
 - ReadTool: Base for read-only tools
-- WriteTool: Base for write tools with HITL support
+- WriteTool: Base for write tools with human review support
 - OperationTool: Base for complex multi-step operations
-- requires_hitl: Decorator for Human-in-the-Loop confirmation
+- requires_confirmation: Decorator for Human-in-the-Loop confirmation
 """
 
 from __future__ import annotations
 
-import functools
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from ai.core.maf_compat import ai_function as ai_function  # re-export for submodules
@@ -28,131 +25,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class HITLStatus(StrEnum):
-    """Status of a HITL request."""
+def requires_confirmation(reason: str, display_fields: list[str] | None = None) -> Callable:
+    """Declare preview metadata only; authority belongs to the canonical command.
 
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    TIMEOUT = "timeout"
-
-
-@dataclass
-class HITLContext:
-    """Context for Human-in-the-Loop decisions."""
-
-    approved: bool = False
-    status: HITLStatus = HITLStatus.PENDING
-    user_id: str | None = None
-    reason: str | None = None
-    display_data: dict[str, Any] = field(default_factory=dict)
-    approval_timestamp: str | None = None
-
-
-class HITLPendingError(Exception):
-    """Raised when HITL approval is required but not yet given."""
-
-    def __init__(
-        self,
-        message: str,
-        tool_name: str,
-        display_fields: dict[str, Any],
-        reason: str | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.tool_name = tool_name
-        self.display_fields = display_fields
-        self.reason = reason
-
-
-def requires_hitl(
-    reason: str,
-    display_fields: list[str] | None = None,
-    condition: Callable[[Any], bool] | None = None,
-) -> Callable:
-    """
-    Decorator to mark a tool method as requiring Human-in-the-Loop approval.
-
-    Args:
-        reason: Human-readable reason for requiring approval
-        display_fields: List of input field names to show in approval UI
-        condition: Optional function to determine if HITL is required
-                  (receives the input data, returns bool)
-
-    Example:
-        @requires_hitl(
-            reason="Creating a new part",
-            display_fields=["name", "category_id", "ipn"]
-        )
-        async def execute(self, input: CreatePartInput) -> CreatePartOutput:
-            ...
+    This marker never accepts an in-memory approval context or grants permission.
+    The shared write fence and action adapter authorize every actual invocation.
     """
 
-    def decorator(func: Callable) -> Callable:
-        # Detect whether this is decorating a standalone async function
-        # (no 'self' first param) vs. a class method.  Standalone functions
-        # are registered directly with @ai_function and their signature must
-        # remain untouched so the framework can build a pydantic model from
-        # the parameter names (name, category_id, …).
-        import inspect
+    def decorate(function: Callable) -> Callable:
+        function._requires_confirmation = True
+        function._confirmation_reason = reason
+        function._confirmation_display_fields = display_fields
+        return function
 
-        sig = inspect.signature(func)
-        params = list(sig.parameters.keys())
-        is_standalone = not params or params[0] != "self"
-
-        if is_standalone:
-            # Lightweight marker — just tag metadata, don't wrap the sig
-            func._requires_hitl = True  # type: ignore[attr-defined]
-            func._hitl_reason = reason  # type: ignore[attr-defined]
-            func._hitl_display_fields = display_fields  # type: ignore[attr-defined]
-            return func
-
-        # Class-method path (original behaviour)
-        @functools.wraps(func)
-        async def wrapper(
-            self, input_data: Any, hitl_context: HITLContext | None = None, *args, **kwargs
-        ):
-            # Check if HITL is conditionally required
-            needs_hitl = True
-            if condition is not None:
-                needs_hitl = condition(input_data)
-
-            if not needs_hitl:
-                # HITL not required for this invocation
-                return await func(self, input_data, HITLContext(approved=True), *args, **kwargs)
-
-            # Check if we have approval
-            if hitl_context is None or not hitl_context.approved:
-                # Extract display fields from input
-                display_data = {}
-                if display_fields and hasattr(input_data, "model_dump"):
-                    input_dict = input_data.model_dump()
-                    display_data = {k: input_dict.get(k) for k in display_fields if k in input_dict}
-                elif display_fields and isinstance(input_data, dict):
-                    display_data = {k: input_data.get(k) for k in display_fields if k in input_data}
-
-                raise HITLPendingError(
-                    message=f"HITL approval required: {reason}",
-                    tool_name=getattr(self, "name", func.__name__),
-                    display_fields=display_data,
-                    reason=reason,
-                )
-
-            # Approved - execute the function
-            return await func(self, input_data, hitl_context, *args, **kwargs)
-
-        # Mark the function as requiring HITL
-        wrapper._requires_hitl = True
-        wrapper._hitl_reason = reason
-        wrapper._hitl_display_fields = display_fields
-
-        return wrapper
-
-    return decorator
+    return decorate
 
 
-# Alias for backward compatibility — most of the codebase uses require_hitl
-require_hitl = requires_hitl
+require_confirmation = requires_confirmation
 
 
 class BaseTool(ABC):
@@ -203,23 +92,23 @@ class ReadTool(BaseTool):
     """
     Base class for read-only tools.
 
-    Read tools do not require HITL approval and are safe to call
+    Read tools do not require human review approval and are safe to call
     without user confirmation.
     """
 
-    requires_hitl: bool = False
+    requires_confirmation: bool = False
 
 
 class WriteTool(BaseTool):
     """
     Base class for write tools (create/update/delete).
 
-    Write tools may require HITL approval depending on the operation.
-    Use the @requires_hitl decorator on the execute method to enable
+    Write tools may require human review approval depending on the operation.
+    Use the @requires_confirmation decorator on the execute method to enable
     human approval flow.
     """
 
-    requires_hitl: bool = True
+    requires_confirmation: bool = True
 
 
 class OperationTool(BaseTool):
@@ -227,10 +116,10 @@ class OperationTool(BaseTool):
     Base class for complex multi-step operation tools.
 
     Operation tools handle grouped actions and typically require
-    HITL approval for critical operations.
+    human review approval for critical operations.
     """
 
-    requires_hitl: bool = True
+    requires_confirmation: bool = True
 
     @property
     @abstractmethod

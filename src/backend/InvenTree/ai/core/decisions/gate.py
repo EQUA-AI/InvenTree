@@ -27,6 +27,8 @@ class DecisionVoiceWriteGate:
         spec = action_spec(action)
         spoken = (
             "Say the exact work order reference and the hold reason."
+            if spec.available and action == "work_order.hold"
+            else "Use the assigned approval inbox or request an exact purchasing preview on screen."
             if spec.available
             else spec.unavailable_reason
         )

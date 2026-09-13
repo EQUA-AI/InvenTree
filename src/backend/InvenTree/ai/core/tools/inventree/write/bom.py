@@ -11,13 +11,13 @@ from typing import Any
 
 from ai.core.integrations.data_provider import get_data_provider
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Adding item to bill of materials")
+@require_confirmation(reason="Adding item to bill of materials")
 async def add_bom_item(
     part_id: int,
     sub_part_id: int,
@@ -104,7 +104,7 @@ async def add_bom_item(
 
 
 @ai_function
-@require_hitl(reason="Updating bill of materials item")
+@require_confirmation(reason="Updating bill of materials item")
 async def update_bom_item(
     bom_item_id: int,
     quantity: float | None = None,
@@ -178,7 +178,7 @@ async def update_bom_item(
 
 
 @ai_function
-@require_hitl(reason="Removing item from bill of materials")
+@require_confirmation(reason="Removing item from bill of materials")
 async def delete_bom_item(
     bom_item_id: int,
 ) -> dict[str, Any]:
@@ -215,7 +215,7 @@ async def delete_bom_item(
 
 
 @ai_function
-@require_hitl(reason="Substituting BOM component")
+@require_confirmation(reason="Substituting BOM component")
 async def add_bom_substitute(
     bom_item_id: int,
     substitute_part_id: int,
@@ -272,7 +272,7 @@ async def add_bom_substitute(
 
 
 @ai_function
-@require_hitl(reason="Validating bill of materials")
+@require_confirmation(reason="Validating bill of materials")
 async def validate_bom(
     part_id: int,
 ) -> dict[str, Any]:
@@ -322,7 +322,7 @@ async def validate_bom(
 
 
 @ai_function
-@require_hitl(reason="Deleting BOM substitute")
+@require_confirmation(reason="Deleting BOM substitute")
 async def delete_bom_substitute(
     substitute_id: int,
 ) -> dict[str, Any]:
@@ -353,7 +353,7 @@ async def delete_bom_substitute(
 
 
 @ai_function
-@require_hitl(reason="Updating BOM substitute")
+@require_confirmation(reason="Updating BOM substitute")
 async def update_bom_substitute(
     substitute_id: int,
     part_id: int | None = None,

@@ -63,7 +63,8 @@ def test_offline_benchmark_meets_static_selection_gates(_pinned_lexicons):
     # via ATTACHMENT_CORPUS_TOOLS; 57 since R3 added search_evidence_media via
     # EVIDENCE_MEDIA_TOOLS; 59 grew with S8a; 58 since R5 retired
     # search_part_documents.
-    assert report["baseline"]["tool_count"] == 58
+    # Includes connected mailbox discovery and the Phase C receipt reader.
+    assert report["baseline"]["tool_count"] == 60
     assert report["baseline"]["measurement"] == (
         "normalized_local_contract_bytes_not_provider_tokens"
     )

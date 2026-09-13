@@ -60,12 +60,6 @@ class EventType(Enum):
     # top-level content/delta keys (stale clients would render them as text).
     QUESTION = "QUESTION"
 
-    # HITL events
-    HITL_REQUIRED = "HITL_REQUIRED"
-    HITL_APPROVED = "HITL_APPROVED"
-    HITL_REJECTED = "HITL_REJECTED"
-    HITL_TIMEOUT = "HITL_TIMEOUT"
-
     # Progress events
     PROGRESS_UPDATE = "PROGRESS_UPDATE"
     STEP_STARTED = "STEP_STARTED"
@@ -532,43 +526,6 @@ class RunContext:
                 "toolCallName": tool_name,
                 "message": error,
                 "code": "TOOL_CALL_FAILED",
-            },
-        )
-
-    async def emit_hitl_required(
-        self,
-        action: str,
-        details: dict[str, Any] | None = None,
-        timeout_seconds: int = 300,
-    ) -> None:
-        """Emit HITL approval required event."""
-        await self.emit(
-            EventType.HITL_REQUIRED,
-            {
-                "action": action,
-                "details": details or {},
-                "timeout_seconds": timeout_seconds,
-            },
-        )
-
-    async def emit_hitl_approved(self, action: str, approver: str = "") -> None:
-        """Emit HITL approved event."""
-        await self.emit(
-            EventType.HITL_APPROVED,
-            {
-                "action": action,
-                "approver": approver,
-            },
-        )
-
-    async def emit_hitl_rejected(self, action: str, reason: str = "", rejecter: str = "") -> None:
-        """Emit HITL rejected event."""
-        await self.emit(
-            EventType.HITL_REJECTED,
-            {
-                "action": action,
-                "reason": reason,
-                "rejecter": rejecter,
             },
         )
 

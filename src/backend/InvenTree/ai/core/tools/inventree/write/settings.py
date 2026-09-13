@@ -10,7 +10,7 @@ from typing import Any
 from ai.core.tools.inventree.base import (
     WriteTool,
     ai_function,
-    require_hitl,
+    require_confirmation,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
     name="update_global_setting",
     description="Update a global InvenTree setting. Global settings affect all users and system-wide behavior. Use with caution.",
 )
-@require_hitl(reason="Updating global settings affects all users")
+@require_confirmation(reason="Updating global settings affects all users")
 async def update_global_setting(
     key: str,
     value: str,
@@ -63,7 +63,7 @@ async def update_global_setting(
     name="update_user_setting",
     description="Update a user-specific setting. These settings only affect the current user's experience.",
 )
-@require_hitl(reason="Updating user settings requires approval")
+@require_confirmation(reason="Updating user settings requires approval")
 async def update_user_setting(
     key: str,
     value: str,
@@ -106,7 +106,7 @@ async def update_user_setting(
     name="create_custom_state",
     description="Create a custom state for stock items or orders. Custom states allow tracking items through workflow stages specific to your organization.",
 )
-@require_hitl(reason="Creating custom states affects workflow")
+@require_confirmation(reason="Creating custom states affects workflow")
 async def create_custom_state(
     name: str,
     label: str,
@@ -168,7 +168,7 @@ async def create_custom_state(
     name="update_custom_state",
     description="Update an existing custom state. Modify the label, color, or ordering of the state.",
 )
-@require_hitl(reason="Updating custom states affects workflow")
+@require_confirmation(reason="Updating custom states affects workflow")
 async def update_custom_state(
     state_id: int,
     name: str | None = None,
@@ -227,7 +227,7 @@ async def update_custom_state(
     name="delete_custom_state",
     description="Delete a custom state. Items using this state will need to be reassigned to a different state.",
 )
-@require_hitl(reason="Deleting custom states may affect existing items")
+@require_confirmation(reason="Deleting custom states may affect existing items")
 async def delete_custom_state(
     state_id: int,
 ) -> dict[str, Any]:

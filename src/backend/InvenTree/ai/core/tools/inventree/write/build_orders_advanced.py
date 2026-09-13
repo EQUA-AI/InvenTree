@@ -11,13 +11,13 @@ import logging
 from typing import Any
 
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Placing build order on hold")
+@require_confirmation(reason="Placing build order on hold")
 async def hold_build_order(
     build_id: int,
 ) -> dict[str, Any]:
@@ -58,7 +58,7 @@ async def hold_build_order(
 
 
 @ai_function
-@require_hitl(reason="Updating build order")
+@require_confirmation(reason="Updating build order")
 async def update_build_order(
     build_id: int,
     quantity: float | None = None,
@@ -145,7 +145,7 @@ async def update_build_order(
 
 
 @ai_function
-@require_hitl(reason="Unallocating stock from build order")
+@require_confirmation(reason="Unallocating stock from build order")
 async def unallocate_build_stock(
     build_id: int,
     allocation_id: int | None = None,
@@ -225,7 +225,7 @@ async def unallocate_build_stock(
 
 
 @ai_function
-@require_hitl(reason="Auto-allocating stock to build order")
+@require_confirmation(reason="Auto-allocating stock to build order")
 async def auto_allocate_build(
     build_id: int,
     interchangeable: bool = False,
@@ -281,7 +281,7 @@ async def auto_allocate_build(
 
 
 @ai_function
-@require_hitl(reason="Finishing build order")
+@require_confirmation(reason="Finishing build order")
 async def finish_build_order(
     build_id: int,
     accept_incomplete: bool = False,

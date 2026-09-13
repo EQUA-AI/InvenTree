@@ -46,7 +46,7 @@ def create_full_workflows():
     this uses the DevUICompatibleWorkflow adapters to preserve:
     - Multi-agent orchestration
     - Parallel execution
-    - HITL callbacks
+    - human review callbacks
     - Semantic caching
     - Structured results
 
@@ -102,7 +102,7 @@ def create_full_workflows():
         },
         {
             "name": "T4 Procurement (WF4)",
-            "description": "Procurement with HITL approval for purchase orders",
+            "description": "Procurement with human review approval for purchase orders",
             "factory": ("ai.core.workflows.wf4_procurement", "create_procurement_workflow"),
         },
         {

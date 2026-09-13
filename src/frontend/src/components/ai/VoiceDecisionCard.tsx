@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api } from '../../App';
 import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
+import { ApprovalDecisionControls } from './ApprovalDecisionControls';
 import { matchesConfirmPhrase } from './confirmPhrase';
 import { decisionOutcome } from './decisionOutcome';
 
@@ -54,9 +55,11 @@ export function VoiceDecisionCard() {
   const expired = now >= Date.parse(decision.expires_at);
   const outcome = decisionOutcome(operation.data?.receipt);
   const confirm =
+    decision.required_phrase ??
     decision.allowed_responses.find((response) =>
       response.startsWith('confirm ')
-    ) ?? (decision.allowed_responses.includes('yes') ? 'yes' : null);
+    ) ??
+    (decision.allowed_responses.includes('yes') ? 'yes' : null);
   const act = async (action: string, value?: string) => {
     setBusy(true);
     setError('');
@@ -144,6 +147,13 @@ export function VoiceDecisionCard() {
             placeholder={decision.required_phrase}
             value={phrase}
             onChange={(e) => setPhrase(e.currentTarget.value)}
+          />
+        )}
+        {pending && (
+          <ApprovalDecisionControls
+            key={decision.decision_id}
+            busy={busy || expired}
+            act={act}
           />
         )}
         {pending && (

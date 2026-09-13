@@ -33,7 +33,6 @@ CUSTOM_CHANNELS = (
     "aimms.provenance",
     "aimms.stateDelta",
     "aimms.proposalsRefresh",
-    "aimms.hitl",
     "aimms.custom",
     "aimms.evidenceAnalysis",
     "aimms.analysisProgress",
@@ -270,14 +269,6 @@ class SpecTranslator:
 
         if event_type == EventType.QUESTION:
             return [self._custom("aimms.question", payload, record)]
-        if event_type in (
-            EventType.HITL_REQUIRED,
-            EventType.HITL_APPROVED,
-            EventType.HITL_REJECTED,
-            EventType.HITL_TIMEOUT,
-        ):
-            phase = event_type.value.split("_", 1)[1].lower()
-            return [self._custom("aimms.hitl", {"phase": phase, **payload}, record)]
 
         if event_type == EventType.STATE_DELTA:
             # NEVER spec STATE_DELTA — our payloads are not RFC-6902 patches

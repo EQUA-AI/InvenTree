@@ -80,6 +80,19 @@ def test_foreign_session_cannot_read_or_decide(route_setup):
         )
 
 
+def test_revoked_approval_scope_never_returns_cached_review(route_setup):
+    from dataclasses import replace
+    from unittest.mock import Mock
+
+    actor, settings, session, coordinator, _ = route_setup
+    current = coordinator.store.read(session.thread_id)
+    coordinator.store.install(replace(current, executable={"adapter": "approval"}), current)
+    coordinator.approvals = SimpleNamespace(read=Mock(side_effect=PermissionError("revoked")))
+    response = _run(actor, lambda: endpoint("read_decision")(str(session.pk)), settings)
+    assert response["pending_decision"] is None
+    assert response["decision_event"]["kind"] == "source_invalidated"
+
+
 @pytest.mark.parametrize(
     "changes",
     [

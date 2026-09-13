@@ -89,12 +89,6 @@ class Settings(BaseSettings):
     # the shared Django cache only.
 
     # -------------------------------------------------------------------------
-    # HITL Configuration
-    # -------------------------------------------------------------------------
-    hitl_timeout_seconds: int = Field(default=300, alias="HITL_TIMEOUT_SECONDS")
-    hitl_auto_reject_on_timeout: bool = Field(default=False, alias="HITL_AUTO_REJECT_ON_TIMEOUT")
-
-    # -------------------------------------------------------------------------
     # Feature Flags
     # -------------------------------------------------------------------------
     feature_wf1_diagnostics: bool = Field(
@@ -772,6 +766,26 @@ class Settings(BaseSettings):
             "switch to remain enabled."
         ),
     )
+    feature_voice_approvals: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_VOICE_APPROVALS", "AIMMS_FEATURE_VOICE_APPROVALS"),
+    )
+    feature_voice_auditory_review: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_VOICE_AUDITORY_REVIEW", "AIMMS_FEATURE_VOICE_AUDITORY_REVIEW"
+        ),
+    )
+    feature_voice_external_actions: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_VOICE_EXTERNAL_ACTIONS", "AIMMS_FEATURE_VOICE_EXTERNAL_ACTIONS"
+        ),
+    )
+    voice_action_dry_run: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("VOICE_ACTION_DRY_RUN", "AIMMS_VOICE_ACTION_DRY_RUN"),
+    )
     feature_voice_live_webrtc: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -847,6 +861,14 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_voice_live_transport(self) -> "Settings":
         """Fail closed for inconsistent Voice Live feature dependencies."""
+        if self.feature_voice_approvals and not self.feature_voice_decision_coordinator:
+            raise ValueError("FEATURE_VOICE_APPROVALS requires FEATURE_VOICE_DECISIONS")
+        if self.feature_voice_auditory_review and not self.feature_voice_approvals:
+            raise ValueError("FEATURE_VOICE_AUDITORY_REVIEW requires FEATURE_VOICE_APPROVALS")
+        if self.feature_voice_external_actions and not self.feature_voice_auditory_review:
+            raise ValueError(
+                "FEATURE_VOICE_EXTERNAL_ACTIONS requires FEATURE_VOICE_AUDITORY_REVIEW"
+            )
         if self.feature_voice_decision_coordinator and not self.feature_voice_live:
             raise ValueError("FEATURE_VOICE_DECISIONS requires FEATURE_VOICE_LIVE")
         if self.feature_voice_decision_coordinator and not self.feature_voice_write_confirmation:

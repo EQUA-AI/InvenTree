@@ -74,7 +74,7 @@ class WorkflowType(Enum):
     # T3: Multi-source research (concurrent)
     T3_RESEARCH = "wf3_research"
 
-    # T4: Procurement with HITL
+    # T4: Procurement with human review
     T4_PROCUREMENT = "wf4_procurement"
 
     # T5: Configure-Price-Quote (group chat)

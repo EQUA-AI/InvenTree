@@ -2,7 +2,7 @@
 Read Tools Package
 
 Read-only tools for retrieving data from InvenTree.
-These tools are safe to call without HITL approval.
+These tools are safe to call without human review approval.
 """
 
 from ai.core.tools.inventree.read._registry import READ_TOOLS

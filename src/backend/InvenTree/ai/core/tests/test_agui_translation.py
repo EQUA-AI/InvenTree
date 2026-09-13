@@ -59,10 +59,6 @@ class TestTotality:
         EventType.STEP_STARTED,
         EventType.STEP_FINISHED,
         EventType.QUESTION,
-        EventType.HITL_REQUIRED,
-        EventType.HITL_APPROVED,
-        EventType.HITL_REJECTED,
-        EventType.HITL_TIMEOUT,
         EventType.STATE_DELTA,
         EventType.MESSAGES_SNAPSHOT,
         EventType.CUSTOM,
@@ -313,7 +309,6 @@ def test_custom_channels_are_frozen_and_generated() -> None:
         "aimms.provenance",
         "aimms.stateDelta",
         "aimms.proposalsRefresh",
-        "aimms.hitl",
         "aimms.custom",
         # S10/S11: the consolidated evidence attachment + content-free
         # progress stages ride dedicated channels on the AG-UI wire.

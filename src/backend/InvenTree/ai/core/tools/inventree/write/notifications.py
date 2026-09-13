@@ -10,7 +10,7 @@ from typing import Any
 from ai.core.tools.inventree.base import (
     WriteTool,
     ai_function,
-    require_hitl,
+    require_confirmation,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
     name="mark_notification_read",
     description="Mark a notification as read for the current user. This removes it from the unread notifications list.",
 )
-@require_hitl(reason="Marking notifications as read requires approval")
+@require_confirmation(reason="Marking notifications as read requires approval")
 async def mark_notification_read(
     notification_id: int,
 ) -> dict[str, Any]:
@@ -58,7 +58,7 @@ async def mark_notification_read(
     name="mark_all_notifications_read",
     description="Mark all notifications as read for the current user. Clears the notification inbox.",
 )
-@require_hitl(reason="Marking all notifications as read requires approval")
+@require_confirmation(reason="Marking all notifications as read requires approval")
 async def mark_all_notifications_read() -> dict[str, Any]:
     """
     Mark all notifications as read.
@@ -100,7 +100,7 @@ async def mark_all_notifications_read() -> dict[str, Any]:
     name="delete_notification",
     description="Delete a notification permanently. The notification will be removed from the system.",
 )
-@require_hitl(reason="Deleting notifications requires approval")
+@require_confirmation(reason="Deleting notifications requires approval")
 async def delete_notification(
     notification_id: int,
 ) -> dict[str, Any]:
@@ -135,7 +135,7 @@ async def delete_notification(
     name="create_notification",
     description="Create a notification for a user or group. Used to send alerts about important events, reminders, or system messages.",
 )
-@require_hitl(reason="Creating notifications requires approval")
+@require_confirmation(reason="Creating notifications requires approval")
 async def create_notification(
     target_user_id: int | None = None,
     target_group_id: int | None = None,
@@ -203,7 +203,7 @@ async def create_notification(
     name="send_stock_alert",
     description="Send an alert about stock levels. Notifies relevant users when stock is low, out of stock, or requires attention.",
 )
-@require_hitl(reason="Sending stock alerts requires approval")
+@require_confirmation(reason="Sending stock alerts requires approval")
 async def send_stock_alert(
     part_id: int,
     alert_type: str,

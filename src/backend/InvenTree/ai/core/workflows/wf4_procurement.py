@@ -1,7 +1,7 @@
 """
 WF4: T4 Procurement Workflow
 
-Procurement workflow with Human-in-the-Loop (HITL) approval:
+Procurement workflow with Human-in-the-Loop (human review) approval:
 - Vendor selection and quote gathering
 - Purchase order generation
 - Approval workflow for orders above threshold
@@ -143,7 +143,7 @@ class ProcurementResult:
     error: str | None = None
 
 
-# HITL approval thresholds
+# human review approval thresholds
 APPROVAL_THRESHOLDS = {
     ApprovalType.NONE: 0,
     ApprovalType.MANAGER: 1000,
@@ -172,7 +172,7 @@ class T4ProcurementWorkflow:
     """
     T4 Procurement Workflow implementation.
 
-    Handles procurement operations with HITL approval for
+    Handles procurement operations with human review approval for
     sensitive operations like submitting purchase orders.
 
     The workflow:
@@ -181,7 +181,7 @@ class T4ProcurementWorkflow:
     3. Route for approval based on amount
     4. Submit to supplier upon approval
 
-    HITL Integration:
+    human review Integration:
     - Uses approval_mode="always_require" for submit/cancel actions
     - Provides approval UI through AG-UI events
     - Blocks execution until human confirms

@@ -10,7 +10,7 @@ from typing import Any
 from ai.core.tools.inventree.base import (
     WriteTool,
     ai_function,
-    require_hitl,
+    require_confirmation,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
     name="create_parameter_template",
     description="Create a new parameter template that defines a type of parameter that can be assigned to parts. Templates define the name, units, and validation rules for parameters.",
 )
-@require_hitl(reason="Creating parameter templates requires approval")
+@require_confirmation(reason="Creating parameter templates requires approval")
 async def create_parameter_template(
     name: str,
     units: str = "",
@@ -76,7 +76,7 @@ async def create_parameter_template(
     name="update_parameter_template",
     description="Update an existing parameter template. Changes affect all parts using this template.",
 )
-@require_hitl(reason="Updating parameter templates affects all parts using it")
+@require_confirmation(reason="Updating parameter templates affects all parts using it")
 async def update_parameter_template(
     template_id: int,
     name: str | None = None,
@@ -136,7 +136,7 @@ async def update_parameter_template(
     name="delete_parameter_template",
     description="Delete a parameter template. This will also delete all parameter values using this template from all parts.",
 )
-@require_hitl(reason="Deleting parameter templates removes data from all parts")
+@require_confirmation(reason="Deleting parameter templates removes data from all parts")
 async def delete_parameter_template(
     template_id: int,
 ) -> dict[str, Any]:
@@ -178,7 +178,7 @@ async def delete_parameter_template(
     name="bulk_set_parameters",
     description="Set multiple parameter values for a part in a single operation. Efficiently updates or creates multiple parameters at once.",
 )
-@require_hitl(reason="Bulk parameter updates require approval")
+@require_confirmation(reason="Bulk parameter updates require approval")
 async def bulk_set_parameters(
     part_id: int,
     parameters: list[dict[str, Any]],
@@ -274,7 +274,7 @@ async def bulk_set_parameters(
     name="copy_parameters",
     description="Copy all parameter values from one part to another. Useful when creating similar parts that should share the same parameter values.",
 )
-@require_hitl(reason="Copying parameters between parts requires approval")
+@require_confirmation(reason="Copying parameters between parts requires approval")
 async def copy_parameters(
     source_part_id: int,
     target_part_id: int,

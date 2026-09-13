@@ -44,7 +44,7 @@ def test_quarantined_persistence_plane_is_gone() -> None:
 def test_memory_package_exports_no_cache() -> None:
     import ai.core.memory as memory
 
-    for name in ("SemanticCache", "get_semantic_cache", "HITLSafetyRules"):
+    for name in ("SemanticCache", "get_semantic_cache"):
         assert not hasattr(memory, name), name
 
 

@@ -10,13 +10,13 @@ import logging
 from typing import Any
 
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Creating a return order")
+@require_confirmation(reason="Creating a return order")
 async def create_return_order(
     customer_id: int,
     reference: str | None = None,
@@ -90,7 +90,7 @@ async def create_return_order(
 
 
 @ai_function
-@require_hitl(reason="Adding line item to return order")
+@require_confirmation(reason="Adding line item to return order")
 async def add_ro_line_item(
     order_id: int,
     part_id: int,
@@ -159,7 +159,7 @@ async def add_ro_line_item(
 
 
 @ai_function
-@require_hitl(reason="Issuing return order")
+@require_confirmation(reason="Issuing return order")
 async def issue_return_order(
     order_id: int,
 ) -> dict[str, Any]:
@@ -200,7 +200,7 @@ async def issue_return_order(
 
 
 @ai_function
-@require_hitl(reason="Receiving items from return order")
+@require_confirmation(reason="Receiving items from return order")
 async def receive_ro_items(
     order_id: int,
     line_item_id: int,
@@ -268,7 +268,7 @@ async def receive_ro_items(
 
 
 @ai_function
-@require_hitl(reason="Completing return order")
+@require_confirmation(reason="Completing return order")
 async def complete_return_order(
     order_id: int,
     accept_incomplete: bool = False,
@@ -321,7 +321,7 @@ async def complete_return_order(
 
 
 @ai_function
-@require_hitl(reason="Updating return order")
+@require_confirmation(reason="Updating return order")
 async def update_return_order(
     return_order_id: int,
     customer_id: int | None = None,
@@ -388,7 +388,7 @@ async def update_return_order(
 
 
 @ai_function
-@require_hitl(reason="Cancelling return order")
+@require_confirmation(reason="Cancelling return order")
 async def cancel_return_order(
     return_order_id: int,
 ) -> dict[str, Any]:
@@ -418,7 +418,7 @@ async def cancel_return_order(
 
 
 @ai_function
-@require_hitl(reason="Deleting return order")
+@require_confirmation(reason="Deleting return order")
 async def delete_return_order(
     return_order_id: int,
 ) -> dict[str, Any]:
@@ -449,7 +449,7 @@ async def delete_return_order(
 
 
 @ai_function
-@require_hitl(reason="Deleting return order line item")
+@require_confirmation(reason="Deleting return order line item")
 async def delete_ro_line_item(
     line_item_id: int,
 ) -> dict[str, Any]:

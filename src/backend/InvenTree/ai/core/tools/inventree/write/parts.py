@@ -2,7 +2,7 @@
 Part Write Tools
 
 Write tools for creating and modifying parts in InvenTree.
-These tools require HITL approval for certain operations.
+These tools require human review approval for certain operations.
 """
 
 from __future__ import annotations
@@ -13,13 +13,13 @@ from typing import Any
 from ai.core.integrations.data_provider import get_data_provider
 from ai.core.integrations.inventree.notes import request_with_notes
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Creating a new part in the inventory system")
+@require_confirmation(reason="Creating a new part in the inventory system")
 async def create_part(
     name: str,
     category_id: int,
@@ -148,7 +148,7 @@ async def create_part(
 
 
 @ai_function
-@require_hitl(reason="Updating part information")
+@require_confirmation(reason="Updating part information")
 async def update_part(
     part_id: int,
     name: str | None = None,
@@ -268,7 +268,7 @@ async def update_part(
 
 
 @ai_function
-@require_hitl(reason="Deactivating a part (soft delete)")
+@require_confirmation(reason="Deactivating a part (soft delete)")
 async def deactivate_part(
     part_id: int,
     reason: str | None = None,
@@ -337,7 +337,7 @@ async def deactivate_part(
 
 
 @ai_function
-@require_hitl(reason="Duplicating a part")
+@require_confirmation(reason="Duplicating a part")
 async def duplicate_part(
     source_part_id: int,
     new_name: str,
@@ -418,7 +418,7 @@ async def duplicate_part(
 
 
 @ai_function
-@require_hitl(reason="Setting part parameter value")
+@require_confirmation(reason="Setting part parameter value")
 async def set_part_parameter(
     part_id: int,
     template_id: int | None = None,
@@ -539,7 +539,7 @@ async def set_part_parameter(
 
 
 @ai_function
-@require_hitl(reason="Deleting part")
+@require_confirmation(reason="Deleting part")
 async def delete_part(
     part_id: int,
 ) -> dict[str, Any]:

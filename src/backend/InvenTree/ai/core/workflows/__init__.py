@@ -5,7 +5,7 @@ Contains all workflow definitions for the AIMMS system:
 - WF1: Diagnostics Workflow (T6 - MagenticBuilder)
 - WF2: Sequential Workflow (T2 - SequentialBuilder)
 - WF3: Concurrent Workflow (T3 - ConcurrentBuilder)
-- WF4: Procurement Workflow (T4 - HITL approval)
+- WF4: Procurement Workflow (T4 - human review approval)
 - WF6: Incoming Documents Workflow (Email + Doc Intelligence)
 - WF8: Lookup Workflow (T1 - Single agent fast-path)
 

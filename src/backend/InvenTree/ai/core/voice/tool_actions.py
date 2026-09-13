@@ -104,11 +104,13 @@ def text_chat_tools() -> tuple[Any, ...]:
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
     from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
     from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
+    from ai.core.tools.inventree.read.action_status import get_last_action_status
     from ai.core.tools.inventree.write.purchase_orders import (
         PURCHASE_ORDER_WRITE_TOOLS,
     )
 
     ordered = (
+        get_last_action_status,
         *INVENTORY_TOOLS,
         *PURCHASE_ORDER_WRITE_TOOLS,
         *EMAIL_TOOLS,
@@ -206,7 +208,7 @@ def _capture_proxy(tool: Any, captured: list[_CapturedAction]) -> Callable[..., 
     signature = inspect.signature(tool)
 
     @functools.wraps(tool)
-    async def capture(*args: Any, **kwargs: Any) -> dict[str, bool]:  # noqa: RUF029 - Must retain the async tool protocol.
+    async def capture(*args: Any, **kwargs: Any) -> dict[str, bool]:  # noqa: RUF029 -- tool framework requires a coroutine
         bound = signature.bind(*args, **kwargs)
         arguments = dict(bound.arguments)
         json.dumps(arguments)
@@ -301,7 +303,7 @@ async def _action_summary_async(tool: Any, arguments: dict[str, Any]) -> str:
 def _action_summary(tool: Any, arguments: dict[str, Any]) -> str:
     label = tool_name(tool).replace("_", " ")
     details: list[str] = []
-    display_fields = getattr(tool, "_hitl_display_fields", None)
+    display_fields = getattr(tool, "_confirmation_display_fields", None)
     keys = display_fields or tuple(arguments)
     for key in keys:
         if key not in arguments:

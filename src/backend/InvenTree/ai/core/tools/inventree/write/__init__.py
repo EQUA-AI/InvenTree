@@ -2,7 +2,7 @@
 Write Tools Package
 
 Write tools that modify data in InvenTree.
-These tools may require HITL (Human-in-the-Loop) approval for sensitive operations.
+These tools may require human review (Human-in-the-Loop) approval for sensitive operations.
 """
 
 from ai.core.tools.inventree.write._registry import WRITE_TOOLS

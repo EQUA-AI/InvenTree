@@ -112,6 +112,25 @@ _VOICE_COMPANIONS: dict[str, object] = {
 }
 
 _COMPANION_ENV: dict[str, dict[str, object]] = {
+    **{
+        name: {
+            **_VOICE_COMPANIONS,
+            "FEATURE_VOICE_LIVE": True,
+            "FEATURE_VOICE_WRITE_CONFIRMATION": True,
+            "FEATURE_VOICE_DECISIONS": True,
+            **({"FEATURE_VOICE_APPROVALS": True} if name != "FEATURE_VOICE_APPROVALS" else {}),
+            **(
+                {"FEATURE_VOICE_AUDITORY_REVIEW": True}
+                if name == "FEATURE_VOICE_EXTERNAL_ACTIONS"
+                else {}
+            ),
+        }
+        for name in (
+            "FEATURE_VOICE_APPROVALS",
+            "FEATURE_VOICE_AUDITORY_REVIEW",
+            "FEATURE_VOICE_EXTERNAL_ACTIONS",
+        )
+    },
     "FEATURE_VOICE_LIVE": dict(_VOICE_COMPANIONS),
     "FEATURE_VOICE_LIVE_WEBRTC": {
         **_VOICE_COMPANIONS,

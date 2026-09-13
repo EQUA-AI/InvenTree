@@ -5,6 +5,7 @@ Combines the per-module tool collections into the single READ_TOOLS list
 re-exported by the package ``__init__``.
 """
 
+from ai.core.tools.inventree.read.action_status import get_last_action_status
 from ai.core.tools.inventree.read.additional import ADDITIONAL_READ_TOOLS
 from ai.core.tools.inventree.read.documents import DOCUMENT_READ_TOOLS
 from ai.core.tools.inventree.read.parts import PART_READ_TOOLS
@@ -16,6 +17,7 @@ from ai.core.tools.inventree.read.stock import STOCK_READ_TOOLS
 
 # Combine all read tools (34 total)
 READ_TOOLS = [
+    get_last_action_status,
     *PART_READ_TOOLS,  # 5 tools
     *STOCK_READ_TOOLS,  # 5 tools
     *PURCHASING_READ_TOOLS,  # 5 tools

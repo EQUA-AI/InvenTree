@@ -11,13 +11,13 @@ from typing import Any
 
 from ai.core.integrations.data_provider import get_data_provider
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Creating a purchase order")
+@require_confirmation(reason="Creating a purchase order")
 async def create_purchase_order(
     supplier_id: int,
     reference: str | None = None,
@@ -98,7 +98,7 @@ async def create_purchase_order(
 
 
 @ai_function
-@require_hitl(reason="Adding line item to purchase order")
+@require_confirmation(reason="Adding line item to purchase order")
 async def add_po_line_item(
     order_id: int,
     part_id: int,
@@ -175,7 +175,7 @@ async def add_po_line_item(
 
 
 @ai_function
-@require_hitl(reason="Issuing purchase order to supplier")
+@require_confirmation(reason="Issuing purchase order to supplier")
 async def issue_purchase_order(
     order_id: int,
 ) -> dict[str, Any]:
@@ -216,7 +216,7 @@ async def issue_purchase_order(
 
 
 @ai_function
-@require_hitl(reason="Receiving items from purchase order")
+@require_confirmation(reason="Receiving items from purchase order")
 async def receive_po_items(
     order_id: int,
     line_item_id: int,
@@ -302,7 +302,7 @@ async def receive_po_items(
 
 
 @ai_function
-@require_hitl(reason="Cancelling purchase order")
+@require_confirmation(reason="Cancelling purchase order")
 async def cancel_purchase_order(
     order_id: int,
 ) -> dict[str, Any]:
@@ -343,7 +343,7 @@ async def cancel_purchase_order(
 
 
 @ai_function
-@require_hitl(reason="Updating purchase order")
+@require_confirmation(reason="Updating purchase order")
 async def update_purchase_order(
     purchase_order_id: int,
     supplier_id: int | None = None,
@@ -414,7 +414,7 @@ async def update_purchase_order(
 
 
 @ai_function
-@require_hitl(reason="Completing purchase order")
+@require_confirmation(reason="Completing purchase order")
 async def complete_purchase_order(
     order_id: int,
     accept_incomplete: bool = False,
@@ -450,7 +450,7 @@ async def complete_purchase_order(
 
 
 @ai_function
-@require_hitl(reason="Deleting purchase order")
+@require_confirmation(reason="Deleting purchase order")
 async def delete_purchase_order(
     order_id: int,
 ) -> dict[str, Any]:
@@ -481,7 +481,7 @@ async def delete_purchase_order(
 
 
 @ai_function
-@require_hitl(reason="Deleting purchase order line item")
+@require_confirmation(reason="Deleting purchase order line item")
 async def delete_po_line_item(
     line_item_id: int,
 ) -> dict[str, Any]:

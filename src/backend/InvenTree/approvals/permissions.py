@@ -52,6 +52,28 @@ class ApprovalDecisionThrottle(ApprovalRateThrottle):
     rate = '30/min'
     scope = 'approval_decision'
 
+    def allow_actor(self, actor):
+        """Share an atomic per-user bucket between REST and voice decisions."""
+        if settings.TESTING:
+            return True
+        from django.core.cache import cache
+
+        key = f'approval:decisions:{actor.pk}:{int(self.timer()) // 60}'
+        try:
+            if cache.add(key, 1, timeout=120):
+                return True
+            return cache.incr(key) <= 30
+        except Exception:
+            return False
+
+    def allow_request(self, request, view):
+        """Voice and screen spend the same quota; unavailable cache refuses."""
+        return self.allow_actor(request.user)
+
+    def wait(self):
+        """Maximum time until a fresh minute bucket."""
+        return 60 - int(self.timer()) % 60
+
 
 class ApprovalReviseThrottle(ApprovalRateThrottle):
     """Rate limit for revise endpoint: 20/min per user. Spec §15."""

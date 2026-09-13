@@ -11,13 +11,13 @@ from typing import Any
 
 from ai.core.integrations.inventree.notes import request_with_notes
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Creating a sales order")
+@require_confirmation(reason="Creating a sales order")
 async def create_sales_order(
     customer_id: int,
     reference: str | None = None,
@@ -91,7 +91,7 @@ async def create_sales_order(
 
 
 @ai_function
-@require_hitl(reason="Adding line item to sales order")
+@require_confirmation(reason="Adding line item to sales order")
 async def add_so_line_item(
     order_id: int,
     part_id: int,
@@ -163,7 +163,7 @@ async def add_so_line_item(
 
 
 @ai_function
-@require_hitl(reason="Issuing sales order")
+@require_confirmation(reason="Issuing sales order")
 async def issue_sales_order(
     order_id: int,
 ) -> dict[str, Any]:
@@ -204,7 +204,7 @@ async def issue_sales_order(
 
 
 @ai_function
-@require_hitl(reason="Creating shipment for sales order")
+@require_confirmation(reason="Creating shipment for sales order")
 async def create_so_shipment(
     order_id: int,
     reference: str | None = None,
@@ -276,7 +276,7 @@ async def create_so_shipment(
 
 
 @ai_function
-@require_hitl(reason="Allocating stock to sales order")
+@require_confirmation(reason="Allocating stock to sales order")
 async def allocate_so_stock(
     line_item_id: int,
     stock_item_id: int,
@@ -350,7 +350,7 @@ async def allocate_so_stock(
 
 
 @ai_function
-@require_hitl(reason="Updating sales order")
+@require_confirmation(reason="Updating sales order")
 async def update_sales_order(
     sales_order_id: int,
     customer_id: int | None = None,
@@ -417,7 +417,7 @@ async def update_sales_order(
 
 
 @ai_function
-@require_hitl(reason="Cancelling sales order")
+@require_confirmation(reason="Cancelling sales order")
 async def cancel_sales_order(
     sales_order_id: int,
 ) -> dict[str, Any]:
@@ -447,7 +447,7 @@ async def cancel_sales_order(
 
 
 @ai_function
-@require_hitl(reason="Deleting sales order")
+@require_confirmation(reason="Deleting sales order")
 async def delete_sales_order(
     sales_order_id: int,
 ) -> dict[str, Any]:
@@ -478,7 +478,7 @@ async def delete_sales_order(
 
 
 @ai_function
-@require_hitl(reason="Completing sales order")
+@require_confirmation(reason="Completing sales order")
 async def complete_sales_order(
     sales_order_id: int,
     accept_incomplete: bool = False,
@@ -514,7 +514,7 @@ async def complete_sales_order(
 
 
 @ai_function
-@require_hitl(reason="Deleting sales order line item")
+@require_confirmation(reason="Deleting sales order line item")
 async def delete_so_line_item(
     line_item_id: int,
 ) -> dict[str, Any]:

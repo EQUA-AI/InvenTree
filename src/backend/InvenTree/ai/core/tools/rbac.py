@@ -44,9 +44,11 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
     from ai.core.integrations import source_inventory_tools as sit
     from ai.core.tools.inventree.read import machines as mt
     from ai.core.tools.inventree.read import maintenance as wt
+    from ai.core.tools.inventree.read.action_status import get_last_action_status
     from ai.core.tools.inventree.write import purchase_orders as po
 
     mapping: dict[Any, tuple[str, str]] = {
+        get_last_action_status: ("work_order", "view"),
         # Parts
         it.search_parts: ("part", "view"),
         it.get_part_details: ("part", "view"),
@@ -305,7 +307,7 @@ def is_action_tool(tool: Any) -> bool:
     requirement = tool_requirement(tool)
     if requirement is not None:
         return requirement[1] != "view"
-    return bool(getattr(tool, "_requires_hitl", False))
+    return bool(getattr(tool, "_requires_confirmation", False))
 
 
 def read_tools(tools: Sequence[Any]) -> tuple[Any, ...]:

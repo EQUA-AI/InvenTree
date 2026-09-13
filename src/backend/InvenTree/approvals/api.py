@@ -14,12 +14,12 @@ from django_filters.rest_framework.filterset import FilterSet
 from rest_framework import status
 from rest_framework.response import Response
 
-from aichat.services.email.access import visible_approvals
 from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import CreateAPI, ListAPI, ListCreateAPI, RetrieveAPI
 
 from . import serializers as approval_serializers
 from . import services as approval_services
+from .access import visible_approvals
 from .models import (
     TERMINAL_STATUSES,
     Approval,

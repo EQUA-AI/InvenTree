@@ -376,6 +376,7 @@ class CardPackageSerializer(serializers.Serializer):
     action_type = serializers.CharField()
     status = serializers.CharField()
     payload = serializers.JSONField()
+    execution_result = serializers.JSONField(allow_null=True)
     card_context = serializers.JSONField()
     baseline_context = serializers.JSONField()
     preconditions = serializers.JSONField()
@@ -461,23 +462,30 @@ class ConfirmViewedSerializer(serializers.Serializer):
     sections = serializers.ListField(child=serializers.CharField(), required=False)
 
 
-class RequestChangesSerializer(serializers.Serializer):
+class DecisionFocusSerializer(serializers.Serializer):
+    """Optional wire fields; the scoped rollout requires both in shared services."""
+
+    revision = serializers.IntegerField(required=False, min_value=0)
+    review_hash = serializers.CharField(required=False, min_length=64, max_length=64)
+
+
+class RequestChangesSerializer(DecisionFocusSerializer):
     """Serializer for POST /request-changes."""
 
     instructions = serializers.CharField(required=True)
 
 
-class ApproveSerializer(serializers.Serializer):
+class ApproveSerializer(DecisionFocusSerializer):
     """Serializer for POST /approve (no body required)."""
 
 
-class DenySerializer(serializers.Serializer):
+class DenySerializer(DecisionFocusSerializer):
     """Serializer for POST /deny."""
 
     reason = serializers.CharField(required=True)
 
 
-class CancelSerializer(serializers.Serializer):
+class CancelSerializer(DecisionFocusSerializer):
     """Serializer for POST /cancel."""
 
     reason = serializers.CharField(required=False, default='', allow_blank=True)

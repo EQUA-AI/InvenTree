@@ -10,13 +10,13 @@ import logging
 from typing import Any
 
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Creating a part category")
+@require_confirmation(reason="Creating a part category")
 async def create_part_category(
     name: str,
     parent_id: int | None = None,
@@ -91,7 +91,7 @@ async def create_part_category(
 
 
 @ai_function
-@require_hitl(reason="Updating a part category")
+@require_confirmation(reason="Updating a part category")
 async def update_part_category(
     category_id: int,
     name: str | None = None,
@@ -161,7 +161,7 @@ async def update_part_category(
 
 
 @ai_function
-@require_hitl(reason="Creating a stock location")
+@require_confirmation(reason="Creating a stock location")
 async def create_stock_location(
     name: str,
     parent_id: int | None = None,
@@ -234,7 +234,7 @@ async def create_stock_location(
 
 
 @ai_function
-@require_hitl(reason="Deleting a part category")
+@require_confirmation(reason="Deleting a part category")
 async def delete_part_category(
     category_id: int,
     delete_parts: bool = False,
@@ -285,7 +285,7 @@ async def delete_part_category(
 
 
 @ai_function
-@require_hitl(reason="Deleting a stock location")
+@require_confirmation(reason="Deleting a stock location")
 async def delete_stock_location(
     location_id: int,
     move_to_parent: bool = True,

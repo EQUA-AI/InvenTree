@@ -38,7 +38,7 @@ msgid "Error Details"
 msgstr "Hiba részletei"
 
 #: lib/components/CopyButton.tsx:49
-#: src/components/nav/AIChatDrawer.tsx:880
+#: src/components/nav/AIChatDrawer.tsx:587
 msgid "Copy"
 msgstr "Másolás"
 
@@ -833,6 +833,127 @@ msgstr "A folyamat sikertelen"
 msgid "Process completed successfully"
 msgstr "Folyamat sikeresen befejezve"
 
+#: src/components/ai/ApprovalDecisionControls.tsx:12
+#: src/components/ai/ApprovalInboxPanel.tsx:89
+msgid "Enter a reason of up to 400 characters."
+msgstr ""
+
+#: src/components/ai/ApprovalDecisionControls.tsx:17
+msgid "Next page"
+msgstr ""
+
+#: src/components/ai/ApprovalDecisionControls.tsx:25
+msgid "Next section"
+msgstr ""
+
+#: src/components/ai/ApprovalDecisionControls.tsx:26
+msgid "Skip request"
+msgstr ""
+
+#: src/components/ai/ApprovalDecisionControls.tsx:28
+#: src/components/ai/ApprovalInboxPanel.tsx:134
+msgid "I have reviewed every required section of this request."
+msgstr ""
+
+#: src/components/ai/ApprovalDecisionControls.tsx:29
+#: src/components/ai/ApprovalInboxPanel.tsx:135
+msgid "Confirm reviewed"
+msgstr ""
+
+#: src/components/ai/ApprovalDecisionControls.tsx:30
+#: src/components/ai/ApprovalInboxPanel.tsx:138
+msgid "Prepare approval"
+msgstr ""
+
+#: src/components/ai/ApprovalDecisionControls.tsx:31
+#: src/components/ai/ApprovalInboxPanel.tsx:136
+msgid "Reason or requested changes"
+msgstr ""
+
+#: src/components/ai/ApprovalDecisionControls.tsx:33
+#: src/components/ai/ApprovalInboxPanel.tsx:139
+msgid "Prepare rejection"
+msgstr ""
+
+#: src/components/ai/ApprovalDecisionControls.tsx:34
+#: src/components/ai/ApprovalInboxPanel.tsx:140
+msgid "Request changes"
+msgstr ""
+
+#: src/components/ai/ApprovalDecisionControls.tsx:35
+#: src/components/ai/ApprovalInboxPanel.tsx:143
+msgid "Prepare cancellation"
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:53
+#: src/components/nav/AIChatDrawer.tsx:1541
+#: src/pages/repair/RepairPacketDetail.tsx:256
+msgid "Approvals"
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:54
+msgid "Back"
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:55
+#: src/components/riskradar/RiskRadarPanel.tsx:356
+#: src/pages/assets/health/MachineHealthPanel.tsx:190
+#: src/pages/part/pricing/PricingOverviewPanel.tsx:306
+#: src/pages/repair/components/safety/SafetyPanel.tsx:110
+msgid "Refresh"
+msgstr "Frissítés"
+
+#: src/components/ai/ApprovalInboxPanel.tsx:57
+msgid "This approval is unavailable or your access changed. Refresh the inbox."
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:58
+#: src/components/ai/MailboxApprovalReview.tsx:113
+msgid "Loading review…"
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:66
+msgid "Focused in the shared decision card"
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:70
+msgid "This request is focused in the shared decision card above. Use its controls so voice and touch keep the same confirmation."
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:123
+msgid "The action is recorded as succeeded."
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:123
+msgid "Current recorded status:"
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:125
+msgid "Do not retry an unverified action. Refresh to check its recorded result."
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:130
+msgid "The decision was not verified. Refresh and review the current request before trying again."
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:132
+msgid "Open for review"
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:147
+#: src/components/ai/VoiceDecisionCard.tsx:145
+msgid "Type the required confirmation phrase"
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:148
+msgid "Confirm decision"
+msgstr ""
+
+#: src/components/ai/ApprovalInboxPanel.tsx:149
+#: src/components/ai/VoiceDecisionCard.tsx:188
+msgid "Set aside"
+msgstr ""
+
 #: src/components/ai/ChatActionProposals.tsx:231
 msgid "Review this action in the shared voice decision card above."
 msgstr ""
@@ -865,10 +986,6 @@ msgstr ""
 msgid "This approval is no longer accessible."
 msgstr ""
 
-#: src/components/ai/MailboxApprovalReview.tsx:113
-msgid "Loading review…"
-msgstr ""
-
 #: src/components/ai/MailboxApprovalReview.tsx:137
 msgid "Download attachment"
 msgstr ""
@@ -878,7 +995,7 @@ msgid "Attachment is unavailable. Refresh this review and check mailbox access."
 msgstr ""
 
 #: src/components/ai/MailboxApprovalReview.tsx:150
-#: src/components/ai/VoiceDecisionCard.tsx:116
+#: src/components/ai/VoiceDecisionCard.tsx:118
 msgid "Receipt"
 msgstr ""
 
@@ -1281,37 +1398,37 @@ msgstr ""
 msgid "No longer active — just type your answer"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:67
+#: src/components/ai/VoiceDecisionCard.tsx:69
 msgid "The response is not verified. Refresh the decision before trying again."
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:84
+#: src/components/ai/VoiceDecisionCard.tsx:86
 #: src/pages/stock/StockDetail.tsx:710
 #: src/tables/stock/StockItemTable.tsx:273
 msgid "Expired"
 msgstr "Lejárt"
 
-#: src/components/ai/VoiceDecisionCard.tsx:97
+#: src/components/ai/VoiceDecisionCard.tsx:99
 msgid "Playback"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:97
+#: src/components/ai/VoiceDecisionCard.tsx:99
 msgid "Expires"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:110
+#: src/components/ai/VoiceDecisionCard.tsx:112
 msgid "Change recorded"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:112
+#: src/components/ai/VoiceDecisionCard.tsx:114
 msgid "Not applied"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:113
+#: src/components/ai/VoiceDecisionCard.tsx:115
 msgid "Result not verified — reconciling, do not retry"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:128
+#: src/components/ai/VoiceDecisionCard.tsx:130
 #: src/pages/build/BuildOrderDetailsPanel.tsx:220
 #: src/tables/assets/MaintenanceRecordTable.tsx:121
 #: src/tables/build/BuildOrderTable.tsx:76
@@ -1321,23 +1438,19 @@ msgstr ""
 msgid "Completed"
 msgstr "Kész"
 
-#: src/components/ai/VoiceDecisionCard.tsx:133
+#: src/components/ai/VoiceDecisionCard.tsx:135
 #: src/tables/settings/EmailTable.tsx:29
 msgid "Failed"
 msgstr "Megbukott"
 
-#: src/components/ai/VoiceDecisionCard.tsx:138
+#: src/components/ai/VoiceDecisionCard.tsx:140
 #: src/pages/Index/Settings/AccountSettings/SecurityContent.tsx:242
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:37
 #: src/pages/repair/components/InvestigationPanel.tsx:53
 msgid "Unverified"
 msgstr "Nem ellenőrzött"
 
-#: src/components/ai/VoiceDecisionCard.tsx:143
-msgid "Type the required confirmation phrase"
-msgstr ""
-
-#: src/components/ai/VoiceDecisionCard.tsx:167
+#: src/components/ai/VoiceDecisionCard.tsx:172
 #: src/components/riskradar/RiskFindingDetailModal.tsx:299
 #: src/pages/Auth/ChangePassword.tsx:80
 #: src/pages/repair/components/safety/SafetyGateCard.tsx:157
@@ -1345,19 +1458,15 @@ msgstr ""
 msgid "Confirm"
 msgstr "Megerősítés"
 
-#: src/components/ai/VoiceDecisionCard.tsx:175
+#: src/components/ai/VoiceDecisionCard.tsx:180
 msgid "Change that"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:183
-msgid "Set aside"
-msgstr ""
-
-#: src/components/ai/VoiceDecisionCard.tsx:191
+#: src/components/ai/VoiceDecisionCard.tsx:196
 msgid "Cancel the action"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:198
+#: src/components/ai/VoiceDecisionCard.tsx:203
 msgid "Read back"
 msgstr ""
 
@@ -1635,7 +1744,7 @@ msgid "{forgotten} forgotten"
 msgstr ""
 
 #: src/components/aichat/ThreadMemoryModal.tsx:270
-#: src/components/nav/AIChatDrawer.tsx:630
+#: src/components/nav/AIChatDrawer.tsx:337
 msgid "What this chat remembers"
 msgstr ""
 
@@ -3331,7 +3440,7 @@ msgstr "Az adatok sikeresen importálva"
 #: src/components/importer/ImporterDrawer.tsx:119
 #: src/components/modals/AboutInvenTreeModal.tsx:206
 #: src/components/modals/ServerInfoModal.tsx:134
-#: src/components/nav/AIChatDrawer.tsx:1810
+#: src/components/nav/AIChatDrawer.tsx:1506
 #: src/components/wizards/ImportPartWizard.tsx:773
 #: src/forms/BomForms.tsx:150
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:687
@@ -3810,325 +3919,306 @@ msgstr "Email beállítások"
 msgid "Email settings not configured."
 msgstr "Email beállítások nincsenek konfigurálva."
 
-#: src/components/nav/AIChatDrawer.tsx:144
+#: src/components/nav/AIChatDrawer.tsx:104
 #: src/pages/assets/health/AnomalyList.tsx:165
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
 msgid "Unknown"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:153
-#: src/components/nav/AIChatDrawer.tsx:552
+#: src/components/nav/AIChatDrawer.tsx:113
+#: src/components/nav/AIChatDrawer.tsx:259
 msgid "Just now"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:154
-#: src/components/nav/AIChatDrawer.tsx:553
+#: src/components/nav/AIChatDrawer.tsx:114
+#: src/components/nav/AIChatDrawer.tsx:260
 msgid "{minutes}m ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:155
-#: src/components/nav/AIChatDrawer.tsx:554
+#: src/components/nav/AIChatDrawer.tsx:115
+#: src/components/nav/AIChatDrawer.tsx:261
 msgid "{hours}h ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:156
-#: src/components/nav/AIChatDrawer.tsx:555
+#: src/components/nav/AIChatDrawer.tsx:116
+#: src/components/nav/AIChatDrawer.tsx:262
 msgid "{days}d ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:207
+#: src/components/nav/AIChatDrawer.tsx:167
 msgid "Search conversations..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:217
+#: src/components/nav/AIChatDrawer.tsx:177
 msgid "No conversations match"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:218
+#: src/components/nav/AIChatDrawer.tsx:178
 msgid "No conversations yet"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:240
-#: src/components/nav/AIChatDrawer.tsx:1842
+#: src/components/nav/AIChatDrawer.tsx:200
+#: src/components/nav/AIChatDrawer.tsx:1538
 msgid "Chat"
 msgstr ""
 
 #: src/components/nav/AIChatDrawer.tsx:281
-msgid "Failed to load approvals"
-msgstr ""
+#~ msgid "Failed to load approvals"
+#~ msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:295
-msgid "Failed to load approval detail"
-msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:319
-msgid "Back"
-msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:322
-#: src/components/nav/AIChatDrawer.tsx:441
-#: src/components/riskradar/RiskRadarPanel.tsx:356
-#: src/pages/assets/health/MachineHealthPanel.tsx:190
-#: src/pages/part/pricing/PricingOverviewPanel.tsx:306
-#: src/pages/repair/components/safety/SafetyPanel.tsx:110
-msgid "Refresh"
-msgstr "Frissítés"
-
-#: src/components/nav/AIChatDrawer.tsx:350
-#: src/components/nav/AIChatDrawer.tsx:494
-msgid "Tier"
-msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:367
-msgid "No details available"
-msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:382
-msgid "(complex value)"
-msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:424
-msgid "Developer details"
-msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:439
-#: src/components/nav/AIChatDrawer.tsx:1845
-#: src/pages/repair/RepairPacketDetail.tsx:256
-msgid "Approvals"
-msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:579
+#: src/components/nav/AIChatDrawer.tsx:286
 msgid "New Chat"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:586
+#: src/components/nav/AIChatDrawer.tsx:293
 msgid "Conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:595
-#: src/components/nav/AIChatDrawer.tsx:1797
+#: src/components/nav/AIChatDrawer.tsx:295
+#~ msgid "Failed to load approval detail"
+#~ msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:302
+#: src/components/nav/AIChatDrawer.tsx:1493
 msgid "New conversation"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:617
+#: src/components/nav/AIChatDrawer.tsx:324
 msgid "Rename conversation"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:653
+#: src/components/nav/AIChatDrawer.tsx:350
+#: src/components/nav/AIChatDrawer.tsx:494
+#~ msgid "Tier"
+#~ msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:360
 msgid "Share read-only with username (prefix with - to revoke)"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:704
+#: src/components/nav/AIChatDrawer.tsx:367
+#~ msgid "No details available"
+#~ msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:382
+#~ msgid "(complex value)"
+#~ msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:411
 msgid "Shared with me"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:728
+#: src/components/nav/AIChatDrawer.tsx:424
+#~ msgid "Developer details"
+#~ msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:435
 msgid "Read-only"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:739
+#: src/components/nav/AIChatDrawer.tsx:446
 msgid "No previous conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:757
-#: src/components/nav/AIChatDrawer.tsx:1041
-#: src/components/nav/AIChatDrawer.tsx:1764
+#: src/components/nav/AIChatDrawer.tsx:464
+#: src/components/nav/AIChatDrawer.tsx:748
+#: src/components/nav/AIChatDrawer.tsx:1460
 msgid "AI Assistant"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:880
+#: src/components/nav/AIChatDrawer.tsx:587
 msgid "Copied!"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:893
+#: src/components/nav/AIChatDrawer.tsx:600
 msgid "Good response"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:904
+#: src/components/nav/AIChatDrawer.tsx:611
 msgid "Bad response"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:916
+#: src/components/nav/AIChatDrawer.tsx:623
 msgid "Export as Markdown"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:929
+#: src/components/nav/AIChatDrawer.tsx:636
 msgid "Regenerate"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:960
+#: src/components/nav/AIChatDrawer.tsx:667
 msgid "No matching records among the {populationCount} evaluated."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:961
+#: src/components/nav/AIChatDrawer.tsx:668
 msgid "No matching records in the fully evaluated population."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:963
+#: src/components/nav/AIChatDrawer.tsx:670
 msgid "This falls outside the active scope selection."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:965
+#: src/components/nav/AIChatDrawer.tsx:672
 msgid "Source not available."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:967
+#: src/components/nav/AIChatDrawer.tsx:674
 msgid "The search could not be completed."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:969
+#: src/components/nav/AIChatDrawer.tsx:676
 msgid "Could not determine which documents apply."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:971
+#: src/components/nav/AIChatDrawer.tsx:678
 msgid "Coverage was incomplete; no conclusion was drawn."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:980
+#: src/components/nav/AIChatDrawer.tsx:687
 msgid "Confirming scope"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:982
+#: src/components/nav/AIChatDrawer.tsx:689
 msgid "Reviewing records"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:984
+#: src/components/nav/AIChatDrawer.tsx:691
 msgid "Validating evidence"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:986
+#: src/components/nav/AIChatDrawer.tsx:693
 msgid "Working"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1173
+#: src/components/nav/AIChatDrawer.tsx:880
 msgid "Partial answer — some checks did not finish."
 msgstr ""
 
 #. placeholder {0}: message.confidence
-#: src/components/nav/AIChatDrawer.tsx:1225
+#: src/components/nav/AIChatDrawer.tsx:932
 msgid "Declared confidence: {0}"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1244
+#: src/components/nav/AIChatDrawer.tsx:951
 msgid "No cited sources — not grounded in machine data."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1268
+#: src/components/nav/AIChatDrawer.tsx:975
 msgid "You"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1480
+#: src/components/nav/AIChatDrawer.tsx:1188
 msgid "Search parts"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1481
+#: src/components/nav/AIChatDrawer.tsx:1189
 msgid "Create order"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1482
+#: src/components/nav/AIChatDrawer.tsx:1190
 msgid "Low stock"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1541
+#: src/components/nav/AIChatDrawer.tsx:1237
 msgid "Could not set the machine scope — sending without it."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1668
+#: src/components/nav/AIChatDrawer.tsx:1364
 msgid "Voice session"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1674
+#: src/components/nav/AIChatDrawer.tsx:1370
 msgid "End voice"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1767
+#: src/components/nav/AIChatDrawer.tsx:1463
 msgid "Powered by AIMMS AI"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1774
+#: src/components/nav/AIChatDrawer.tsx:1470
 msgid "Syncing..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1774
+#: src/components/nav/AIChatDrawer.tsx:1470
 msgid "Sync conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1827
+#: src/components/nav/AIChatDrawer.tsx:1523
 msgid "Syncing conversations with server..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1853
+#: src/components/nav/AIChatDrawer.tsx:1549
 #: src/pages/Notifications.tsx:83
 #: src/pages/repair/RepairPacketDetail.tsx:285
 msgid "History"
 msgstr "Előzmények"
 
-#: src/components/nav/AIChatDrawer.tsx:1854
+#: src/components/nav/AIChatDrawer.tsx:1550
 msgid "Mail"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1883
+#: src/components/nav/AIChatDrawer.tsx:1579
 msgid "Sharing failed"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1959
+#: src/components/nav/AIChatDrawer.tsx:1655
 msgid "Hi! 👋 How can I help?"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1962
+#: src/components/nav/AIChatDrawer.tsx:1658
 msgid "I can help you search for parts, create orders, and automate tasks in AIMMS."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2057
+#: src/components/nav/AIChatDrawer.tsx:1753
 msgid "Send again"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2079
+#: src/components/nav/AIChatDrawer.tsx:1775
 msgid "No actions waiting for review"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2096
+#: src/components/nav/AIChatDrawer.tsx:1792
 msgid "Resolved actions"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2106
+#: src/components/nav/AIChatDrawer.tsx:1802
 msgid "No resolved actions yet"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2177
+#: src/components/nav/AIChatDrawer.tsx:1873
 msgid "Asking about"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2218
+#: src/components/nav/AIChatDrawer.tsx:1914
 msgid "Attach file"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2236
+#: src/components/nav/AIChatDrawer.tsx:1932
 msgid "Shared conversation — read-only"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2238
+#: src/components/nav/AIChatDrawer.tsx:1934
 msgid "Answer the question above, or ask something else..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2240
+#: src/components/nav/AIChatDrawer.tsx:1936
 msgid "Add a message about attached files..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2241
+#: src/components/nav/AIChatDrawer.tsx:1937
 msgid "Type a message..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2268
+#: src/components/nav/AIChatDrawer.tsx:1964
 msgid "Stop generating"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2281
+#: src/components/nav/AIChatDrawer.tsx:1977
 msgid "Send message"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2312
+#: src/components/nav/AIChatDrawer.tsx:2008
 msgid "AI may make mistakes. Verify important information."
 msgstr ""
 

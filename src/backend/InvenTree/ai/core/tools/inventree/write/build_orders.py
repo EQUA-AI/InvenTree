@@ -12,13 +12,13 @@ from typing import Any
 from ai.core.integrations.data_provider import get_data_provider
 from ai.core.integrations.inventree.notes import request_with_notes
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Creating a build order")
+@require_confirmation(reason="Creating a build order")
 async def create_build_order(
     part_id: int,
     quantity: float,
@@ -117,7 +117,7 @@ async def create_build_order(
 
 
 @ai_function
-@require_hitl(reason="Issuing build order")
+@require_confirmation(reason="Issuing build order")
 async def issue_build_order(
     build_id: int,
 ) -> dict[str, Any]:
@@ -158,7 +158,7 @@ async def issue_build_order(
 
 
 @ai_function
-@require_hitl(reason="Allocating stock to build order")
+@require_confirmation(reason="Allocating stock to build order")
 async def allocate_build_stock(
     build_id: int,
     bom_item_id: int,
@@ -228,7 +228,7 @@ async def allocate_build_stock(
 
 
 @ai_function
-@require_hitl(reason="Completing build order output")
+@require_confirmation(reason="Completing build order output")
 async def complete_build_output(
     build_id: int,
     quantity: float,
@@ -316,7 +316,7 @@ async def complete_build_output(
 
 
 @ai_function
-@require_hitl(reason="Cancelling build order")
+@require_confirmation(reason="Cancelling build order")
 async def cancel_build_order(
     build_id: int,
 ) -> dict[str, Any]:
@@ -357,7 +357,7 @@ async def cancel_build_order(
 
 
 @ai_function
-@require_hitl(reason="Updating build order")
+@require_confirmation(reason="Updating build order")
 async def update_build_order(
     build_id: int,
     title: str | None = None,
@@ -418,7 +418,7 @@ async def update_build_order(
 
 
 @ai_function
-@require_hitl(reason="Deleting build order")
+@require_confirmation(reason="Deleting build order")
 async def delete_build_order(
     build_id: int,
 ) -> dict[str, Any]:
@@ -449,7 +449,7 @@ async def delete_build_order(
 
 
 @ai_function
-@require_hitl(reason="Finishing build order")
+@require_confirmation(reason="Finishing build order")
 async def finish_build_order(
     build_id: int,
     accept_incomplete: bool = False,
@@ -490,7 +490,7 @@ async def finish_build_order(
 
 
 @ai_function
-@require_hitl(reason="Auto-allocating build stock")
+@require_confirmation(reason="Auto-allocating build stock")
 async def auto_allocate_build(
     build_id: int,
     location_id: int | None = None,
@@ -538,7 +538,7 @@ async def auto_allocate_build(
 
 
 @ai_function
-@require_hitl(reason="Deleting build allocation")
+@require_confirmation(reason="Deleting build allocation")
 async def delete_build_allocation(
     allocation_id: int,
 ) -> dict[str, Any]:

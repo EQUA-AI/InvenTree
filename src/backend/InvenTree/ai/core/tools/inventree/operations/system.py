@@ -11,7 +11,7 @@ from typing import Any
 from ai.core.maf_compat import ai_function
 from ai.core.tools.inventree.base import (
     WriteTool,
-    require_hitl,
+    require_confirmation,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
     name="generate_report",
     description="Generate a report for parts, stock, orders, or builds. Reports can be exported in various formats including PDF, CSV, and Excel. Useful for inventory analysis, order summaries, and build tracking.",
 )
-@require_hitl(reason="Generating reports may access sensitive data")
+@require_confirmation(reason="Generating reports may access sensitive data")
 async def generate_report(
     report_type: str,
     output_format: str = "pdf",
@@ -124,7 +124,7 @@ async def generate_report(
     name="run_scheduled_task",
     description="Run a scheduled background task immediately. Tasks include inventory updates, price updates, cleanup operations, and data synchronization. Useful for triggering maintenance operations on demand.",
 )
-@require_hitl(reason="Running scheduled tasks can affect system data")
+@require_confirmation(reason="Running scheduled tasks can affect system data")
 async def run_scheduled_task(
     task_name: str,
     parameters: dict[str, Any] | None = None,

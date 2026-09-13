@@ -10,13 +10,13 @@ import logging
 from typing import Any
 
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Creating report template")
+@require_confirmation(reason="Creating report template")
 async def create_report_template(
     name: str,
     model_type: str,
@@ -82,7 +82,7 @@ async def create_report_template(
 
 
 @ai_function
-@require_hitl(reason="Updating report template")
+@require_confirmation(reason="Updating report template")
 async def update_report_template(
     template_id: int,
     name: str | None = None,
@@ -134,7 +134,7 @@ async def update_report_template(
 
 
 @ai_function
-@require_hitl(reason="Deleting report template")
+@require_confirmation(reason="Deleting report template")
 async def delete_report_template(
     template_id: int,
 ) -> dict[str, Any]:
@@ -165,7 +165,7 @@ async def delete_report_template(
 
 
 @ai_function
-@require_hitl(reason="Printing report")
+@require_confirmation(reason="Printing report")
 async def print_report(
     template_id: int,
     items: list[int],

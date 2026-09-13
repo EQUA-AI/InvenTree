@@ -63,11 +63,22 @@ class DecisionReply:
 class DecisionCoordinator:
     """Pure interaction policy around injected storage and domain adapters."""
 
-    def __init__(self, *, store, adapter, ttl_s=120, max_review_turns=3, max_armed_s=300, now=None):
+    def __init__(
+        self,
+        *,
+        store,
+        adapter,
+        approval_adapter=None,
+        ttl_s=120,
+        max_review_turns=3,
+        max_armed_s=300,
+        now=None,
+    ):
         if not (1 <= ttl_s <= max_armed_s <= 300 and 0 <= max_review_turns <= 3):
             raise ValueError("Invalid decision lifetime limits")
         self.store = store
         self.adapter = adapter
+        self.approvals = approval_adapter
         self.ttl_s = ttl_s
         self.max_review_turns = max_review_turns
         self.max_armed_s = max_armed_s
@@ -161,6 +172,12 @@ class DecisionCoordinator:
 
     def begin(self, content, *, actor, session_id, thread_id, nonce):
         """Deterministic hold requests are captured before general workflow routing."""
+        if self.approvals is not None:
+            reply = self.approvals.begin(
+                self, content, actor=actor, session_id=session_id, thread_id=thread_id, nonce=nonce
+            )
+            if reply is not None:
+                return reply
         intent = parse_work_order_intent(content)
         if intent is None:
             return None
@@ -178,6 +195,10 @@ class DecisionCoordinator:
         """Read current source state; screen actions and drift invalidate voice focus."""
         if str(actor.user_pk) != decision.actor_user_pk or str(session_id) != decision.session_id:
             raise DecisionConflict("The session changed. Request a fresh preview.")
+        if (decision.executable or {}).get("adapter") == "approval":
+            if self.approvals is None:
+                raise DecisionConflict("Voice approvals are disabled.")
+            return self.approvals.read(decision, actor)
         proposal = self.adapter.read(decision, actor)
         if proposal.state != "proposed":
             if decision.state == State.PRESENTED:
@@ -232,6 +253,22 @@ class DecisionCoordinator:
                     "That decision is no longer available. Request a fresh preview.", event="stale"
                 )
             return None
+        if (decision.executable or {}).get("adapter") == "approval":
+            if self.approvals is None:
+                raise DecisionConflict("Voice approvals are disabled.")
+            self.check_context(decision, context)
+            return self.approvals.resolve(
+                self,
+                decision,
+                content,
+                actor=actor,
+                session_id=session_id,
+                thread_id=thread_id,
+                nonce=nonce,
+                context=context,
+                provider_active=provider_active,
+                touch=touch,
+            )
         kind = classify_decision_utterance(
             content,
             allowed_responses=decision.allowed_responses,
@@ -393,6 +430,11 @@ class DecisionCoordinator:
             operation_id=decision.operation_id,
             decision_id=decision.decision_id,
         )
+        if result is None:
+            return DecisionReply(
+                "The recorded result is unavailable in your current scope. No action was retried.",
+                event="receipt_unavailable",
+            )
         if result and (
             decision.execution_state != result["execution_state"]
             or decision.state == State.EXECUTING
@@ -416,6 +458,10 @@ class DecisionCoordinator:
             raise DecisionConflict("The spoken content does not match its persisted hash.")
         if current.utterance_id == str(utterance_id):
             return current
+        if (current.executable or {}).get("adapter") == "approval":
+            if self.approvals is None:
+                raise DecisionConflict("Voice approvals are disabled.")
+            self.approvals.bind_delivery(current, utterance_id)
         return self.advance(
             current,
             utterance_id=str(utterance_id),
@@ -481,9 +527,21 @@ def get_coordinator():
     backend = django_settings.CACHES.get("default", {}).get("BACKEND", "").lower()
     if "redis" not in backend:
         raise DecisionStoreUnavailable("Voice decisions require the shared Redis cache.")
+    approvals = None
+    if config.feature_voice_approvals:
+        from ai.core.decisions.adapters.approval_adapter import ApprovalAdapter
+        from approvals.access import scoped_inbox_enabled
+        from approvals.review_evidence import revision_binding_enabled
+
+        if not scoped_inbox_enabled() or not revision_binding_enabled():
+            raise DecisionStoreUnavailable(
+                "Voice approvals require scoped, revision-bound screen review."
+            )
+        approvals = ApprovalAdapter()
     return DecisionCoordinator(
         store=CachedPendingDecisionStore(),
         adapter=ProposalAdapter(),
+        approval_adapter=approvals,
         ttl_s=config.voice_decision_ttl_s,
         max_review_turns=config.voice_decision_max_review_turns,
         max_armed_s=config.voice_decision_max_armed_s,

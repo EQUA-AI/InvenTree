@@ -2,7 +2,7 @@
 Stock Write Tools
 
 Write tools for managing stock items in InvenTree.
-These tools require HITL approval for operations that modify inventory.
+These tools require human review approval for operations that modify inventory.
 """
 
 from __future__ import annotations
@@ -13,13 +13,13 @@ from typing import Any
 from ai.core.integrations.data_provider import get_data_provider
 from ai.core.integrations.inventree.notes import request_with_notes
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Adding stock to inventory")
+@require_confirmation(reason="Adding stock to inventory")
 async def add_stock(
     part_id: int,
     quantity: float,
@@ -129,7 +129,7 @@ async def add_stock(
 
 
 @ai_function
-@require_hitl(reason="Removing stock from inventory")
+@require_confirmation(reason="Removing stock from inventory")
 async def remove_stock(
     stock_id: int,
     quantity: float,
@@ -188,7 +188,7 @@ async def remove_stock(
 
 
 @ai_function
-@require_hitl(reason="Transferring stock to a different location")
+@require_confirmation(reason="Transferring stock to a different location")
 async def transfer_stock(
     stock_id: int,
     destination_location_id: int,
@@ -258,7 +258,7 @@ async def transfer_stock(
 
 
 @ai_function
-@require_hitl(reason="Counting/adjusting stock quantity")
+@require_confirmation(reason="Counting/adjusting stock quantity")
 async def count_stock(
     stock_id: int,
     quantity: float,
@@ -314,7 +314,7 @@ async def count_stock(
 
 
 @ai_function
-@require_hitl(reason="Merging multiple stock items")
+@require_confirmation(reason="Merging multiple stock items")
 async def merge_stock(
     stock_ids: list[int],
     destination_location_id: int | None = None,
@@ -378,7 +378,7 @@ async def merge_stock(
 
 
 @ai_function
-@require_hitl(reason="Adding stock quantity to existing item")
+@require_confirmation(reason="Adding stock quantity to existing item")
 async def add_stock_quantity(
     stock_id: int,
     quantity: float,

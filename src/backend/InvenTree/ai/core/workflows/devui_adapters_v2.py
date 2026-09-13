@@ -364,7 +364,7 @@ def create_procurement_workflow() -> DevUICompatibleWorkflow:
     return DevUICompatibleWorkflow(
         T4ProcurementWorkflow(),
         name="T4 Procurement",
-        description="Procurement with HITL (human-in-the-loop) approval. "
+        description="Procurement with human review (human-in-the-loop) approval. "
         "Creates purchase orders with approval workflow.",
     )
 

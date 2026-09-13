@@ -76,7 +76,7 @@ async def resolve(service, run):
         # Domain refusals include unauthorized/ambiguous targets. Do not route
         # them into a different executor, and do not expose private row details.
         reply = DecisionReply(
-            "I could not validate that decision. Say the exact work order and hold reason, or review it on screen.",
+            "I could not validate that decision. Ask for a fresh preview or your assigned approval inbox, or review it on screen.",
             event="refused",
         )
     run.write_canonical = await service._canonical_for_voice_write(

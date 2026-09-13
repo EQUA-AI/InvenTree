@@ -26,7 +26,7 @@ class WorkflowTier(StrEnum):
     T3_CONCURRENT = "t3"
     """Concurrent multi-agent. Parallel execution."""
 
-    T4_HITL = "t4"
+    T4_APPROVAL = "t4"
     """Human-in-the-loop. Requires approval."""
 
     T5_GROUP_CHAT = "t5"
@@ -66,7 +66,7 @@ class WorkflowDefinition:
         tier: Complexity tier
         builder: Workflow builder class or factory
         context_bundles: List of context provider names to attach
-        requires_hitl: Whether workflow requires human approval
+        requires_confirmation: Whether workflow requires human approval
         cacheable: Whether responses can be cached
         tags: Additional tags for filtering
     """
@@ -77,15 +77,15 @@ class WorkflowDefinition:
     tier: WorkflowTier
     builder: type | None = None
     context_bundles: list[str] = field(default_factory=list)
-    requires_hitl: bool = False
+    requires_confirmation: bool = False
     cacheable: bool = True
     tags: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Validate workflow definition."""
-        if self.requires_hitl and self.tier != WorkflowTier.T4_HITL:
+        if self.requires_confirmation and self.tier != WorkflowTier.T4_APPROVAL:
             logger.warning(
-                "Workflow requires HITL but tier is not T4",
+                "Workflow requires human review but tier is not T4",
                 workflow_id=self.workflow_id,
                 tier=self.tier.value,
             )
@@ -250,7 +250,7 @@ class WorkflowRegistry:
         self,
         tier: WorkflowTier | None = None,
         tag: str | None = None,
-        requires_hitl: bool | None = None,
+        requires_confirmation: bool | None = None,
     ) -> list[WorkflowDefinition]:
         """
         List workflow definitions with optional filters.
@@ -258,7 +258,7 @@ class WorkflowRegistry:
         Args:
             tier: Filter by complexity tier.
             tag: Filter by tag.
-            requires_hitl: Filter by HITL requirement.
+            requires_confirmation: Filter by human review requirement.
 
         Returns:
             List of matching workflow definitions.
@@ -271,8 +271,8 @@ class WorkflowRegistry:
         if tag is not None:
             results = [w for w in results if tag in w.tags]
 
-        if requires_hitl is not None:
-            results = [w for w in results if w.requires_hitl == requires_hitl]
+        if requires_confirmation is not None:
+            results = [w for w in results if w.requires_confirmation == requires_confirmation]
 
         return results
 
@@ -323,7 +323,7 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             tier=WorkflowTier.T1_SINGLE_AGENT,
             builder=T1LookupWorkflow,
             cacheable=True,
-            requires_hitl=False,
+            requires_confirmation=False,
             tags=["read-only", "fast", "phase-1"],
         )
     )
@@ -336,7 +336,7 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             tier=WorkflowTier.T1_SINGLE_AGENT,
             builder=RagRetrievalWorkflow,
             cacheable=False,
-            requires_hitl=False,
+            requires_confirmation=False,
             tags=["read-only", "rag", "retrieval", "internal"],
         )
     )
@@ -350,7 +350,7 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             tier=WorkflowTier.T2_SEQUENTIAL,
             builder=T2PartsAnalysisWorkflow,
             cacheable=True,
-            requires_hitl=False,
+            requires_confirmation=False,
             # Orchestrator feedstock (S13): kept registered for S48 to compose,
             # but its regex parsers get no further investment.
             tags=["read-only", "analysis", "phase-1", "orchestrator-feedstock"],
@@ -366,7 +366,7 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             tier=WorkflowTier.T3_CONCURRENT,
             builder=T3ResearchWorkflow,
             cacheable=True,
-            requires_hitl=False,
+            requires_confirmation=False,
             # Orchestrator feedstock (S13); see wf2.
             tags=["read-only", "research", "phase-1", "orchestrator-feedstock"],
         )
@@ -377,11 +377,11 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
         WorkflowDefinition(
             workflow_id="wf4",
             name="T4 Procurement",
-            description="Purchase order creation with HITL approval",
-            tier=WorkflowTier.T4_HITL,
+            description="Purchase order creation with human review approval",
+            tier=WorkflowTier.T4_APPROVAL,
             builder=T4ProcurementWorkflow,
             cacheable=False,
-            requires_hitl=True,
+            requires_confirmation=True,
             tags=["write", "procurement", "phase-2"],
         )
     )
@@ -400,12 +400,12 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             tier=WorkflowTier.T6_MAGENTIC,
             builder=T6DiagnosticsWorkflow,
             # Diagnoses must never be replayed across machines or faults;
-            # HITLSafetyRules.NEVER_CACHE_WORKFLOWS lists wf1 for the same
+            # The no-cache policy lists wf1 for the same
             # reason. (No production code reads this flag today — it is kept
             # truthful so nothing can later wire caching in "because the
             # registry said it was safe".)
             cacheable=False,
-            requires_hitl=False,
+            requires_confirmation=False,
             tags=["analysis", "diagnostics", "phase-2"],
         )
     )
@@ -419,7 +419,7 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             tier=WorkflowTier.T6_MAGENTIC,
             builder=WF7RepairPacketWorkflow,
             cacheable=False,
-            requires_hitl=False,
+            requires_confirmation=False,
             tags=["analysis", "packet", "spine"],
         )
     )
@@ -430,10 +430,10 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             workflow_id="wf6",
             name="Document Processing",
             description="Incoming document processing with Azure Doc Intelligence",
-            tier=WorkflowTier.T4_HITL,
+            tier=WorkflowTier.T4_APPROVAL,
             builder=WF6DocumentWorkflow,
             cacheable=False,
-            requires_hitl=True,
+            requires_confirmation=True,
             tags=["write", "documents", "phase-2"],
         )
     )
@@ -448,7 +448,7 @@ def _register_default_workflows(registry: WorkflowRegistry) -> None:
             tier=WorkflowTier.T1_SINGLE_AGENT,
             builder=T1LookupWorkflow,
             cacheable=True,
-            requires_hitl=False,
+            requires_confirmation=False,
             tags=["general", "fallback"],
         )
     )

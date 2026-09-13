@@ -10,13 +10,13 @@ import logging
 from typing import Any
 
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Creating a company")
+@require_confirmation(reason="Creating a company")
 async def create_company(
     name: str,
     is_supplier: bool = False,
@@ -108,7 +108,7 @@ async def create_company(
 
 
 @ai_function
-@require_hitl(reason="Updating a company")
+@require_confirmation(reason="Updating a company")
 async def update_company(
     company_id: int,
     name: str | None = None,
@@ -202,7 +202,7 @@ async def update_company(
 
 
 @ai_function
-@require_hitl(reason="Creating a supplier part link")
+@require_confirmation(reason="Creating a supplier part link")
 async def create_supplier_part(
     part_id: int,
     supplier_id: int,
@@ -283,7 +283,7 @@ async def create_supplier_part(
 
 
 @ai_function
-@require_hitl(reason="Creating a manufacturer part link")
+@require_confirmation(reason="Creating a manufacturer part link")
 async def create_manufacturer_part(
     part_id: int,
     manufacturer_id: int,
@@ -348,7 +348,7 @@ async def create_manufacturer_part(
 
 
 @ai_function
-@require_hitl(reason="Creating a company contact")
+@require_confirmation(reason="Creating a company contact")
 async def create_company_contact(
     company_id: int,
     name: str,
@@ -414,7 +414,7 @@ async def create_company_contact(
 
 
 @ai_function
-@require_hitl(reason="Deleting a company")
+@require_confirmation(reason="Deleting a company")
 async def delete_company(
     company_id: int,
 ) -> dict[str, Any]:
@@ -445,7 +445,7 @@ async def delete_company(
 
 
 @ai_function
-@require_hitl(reason="Deleting a company contact")
+@require_confirmation(reason="Deleting a company contact")
 async def delete_company_contact(
     contact_id: int,
 ) -> dict[str, Any]:

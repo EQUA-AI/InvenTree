@@ -335,7 +335,11 @@ def test_voice_turn_payload_never_leaks_evidence_keys():
         "replayed",
         "spoken",
         "pending_question",
+        "pending_decision",
+        "decision_event",
     }
+    assert result["pending_decision"] is None
+    assert result["decision_event"] is None
 
 
 # --------------------------------------------------------------------------- #

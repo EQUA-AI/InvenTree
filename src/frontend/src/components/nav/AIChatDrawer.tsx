@@ -12,7 +12,6 @@ import {
   Menu,
   Paper,
   ScrollArea,
-  Skeleton,
   Stack,
   Tabs,
   Text,
@@ -53,6 +52,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Boundary } from '@lib/components/Boundary';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../../App';
 import {
   type ChatMessage,
@@ -67,8 +67,8 @@ import { useVoiceLiveSession } from '../../hooks/useVoiceLiveSession';
 import { useAIChatState } from '../../states/AIChatState';
 import { useLocalState } from '../../states/LocalState';
 import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
+import { ApprovalInboxPanel } from '../ai/ApprovalInboxPanel';
 import { ChatActionProposalList } from '../ai/ChatActionProposals';
-import { MailboxApprovalReview } from '../ai/MailboxApprovalReview';
 import { MailboxPanel } from '../ai/MailboxPanel';
 import { QuestionCard } from '../ai/QuestionCard';
 import { VoiceContextBadge } from '../ai/VoiceContextBadge';
@@ -81,7 +81,7 @@ import { ClaimEvidence } from '../aichat/ClaimEvidence';
 import { ContextUsedDisclosure } from '../aichat/ContextUsedDisclosure';
 import { EntityChips } from '../aichat/EntityChips';
 import { EvidenceChips } from '../aichat/EvidenceChips';
-import { InlineMarkdown, MarkdownMessage } from '../aichat/MarkdownMessage';
+import { MarkdownMessage } from '../aichat/MarkdownMessage';
 import { RetrievalCoverage } from '../aichat/RetrievalCoverage';
 import { ThreadMemoryModal } from '../aichat/ThreadMemoryModal';
 import type { EvidenceAnalysisAttachment } from '../aichat/evidenceAnalysis';
@@ -90,51 +90,10 @@ import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history' | 'mail';
 
-type ApprovalStatus =
-  | 'pending'
-  | 'in_review'
-  | 'changes_requested'
-  | 'approved'
-  | 'executing'
-  | 'succeeded'
-  | 'denied'
-  | 'failed'
-  | 'expired'
-  | 'canceled';
-
-interface ApprovalListItem {
-  id: string;
-  status: ApprovalStatus;
-  risk_tier: number;
-  action_type: string;
-  summary: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface ApprovalDetailItem extends ApprovalListItem {
-  payload: Record<string, unknown>;
-  expires_at?: string | null;
-  viewed_confirmed_at?: string | null;
-  deny_reason?: string | null;
-  canceled_reason?: string | null;
-}
-
 function formatToolDuration(durationMs?: number): string | null {
   if (durationMs === undefined || !Number.isFinite(durationMs)) return null;
   if (durationMs < 1000) return `${Math.round(durationMs)} ms`;
   return `${(durationMs / 1000).toFixed(1)} s`;
-}
-
-function unwrapResults<T>(data: unknown): T[] {
-  if (Array.isArray(data)) return data as T[];
-
-  if (data && typeof data === 'object' && 'results' in data) {
-    const results = (data as { results?: unknown }).results;
-    return Array.isArray(results) ? (results as T[]) : [];
-  }
-
-  return [];
 }
 
 function formatRelativeTimeFromISOString(iso: string): string {
@@ -249,260 +208,6 @@ function ThreadHistoryPanel({
         </UnstyledButton>
       ))}
     </Stack>
-  );
-}
-
-function ApprovalInboxPanel({
-  statuses,
-  emptyText
-}: Readonly<{
-  statuses: ApprovalStatus[];
-  emptyText: string;
-}>) {
-  const theme = useMantineTheme();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [items, setItems] = useState<ApprovalListItem[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<ApprovalDetailItem | null>(null);
-
-  const loadList = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const resp = await api.get('/api/approvals/', {
-        params: {
-          status: statuses.join(','),
-          ordering: '-created_at'
-        }
-      });
-      setItems(unwrapResults<ApprovalListItem>(resp.data));
-    } catch (err: any) {
-      setError(err?.message || t`Failed to load approvals`);
-      setItems([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [statuses]);
-
-  const loadDetail = useCallback(async (approvalId: string) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const resp = await api.get(`/api/approvals/${approvalId}/`);
-      setDetail(resp.data as ApprovalDetailItem);
-    } catch (err: any) {
-      setError(err?.message || t`Failed to load approval detail`);
-      setDetail(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadList();
-  }, [loadList]);
-
-  useEffect(() => {
-    if (selectedId) {
-      loadDetail(selectedId);
-    } else {
-      setDetail(null);
-    }
-  }, [selectedId, loadDetail]);
-
-  if (selectedId) {
-    return (
-      <Box p='md'>
-        <Group justify='space-between' mb='sm'>
-          <Button variant='subtle' onClick={() => setSelectedId(null)}>
-            {t`Back`}
-          </Button>
-          <Button variant='subtle' onClick={() => loadDetail(selectedId)}>
-            {t`Refresh`}
-          </Button>
-        </Group>
-
-        {isLoading && (
-          <Box>
-            <Skeleton height={12} mb='xs' />
-            <Skeleton height={12} mb='xs' />
-            <Skeleton height={12} mb='xs' />
-          </Box>
-        )}
-
-        {error && (
-          <Paper p='sm' radius='md' bg='red.0' mb='md'>
-            <Text size='xs' c='red.7'>
-              {error}
-            </Text>
-          </Paper>
-        )}
-
-        {detail && (
-          <Paper p='md' radius='md' withBorder>
-            <Group justify='space-between' align='flex-start' mb='xs'>
-              <Box style={{ flex: 1 }}>
-                <Text fw={600} component='div'>
-                  <InlineMarkdown content={detail.summary} />
-                </Text>
-                <Text size='xs' c='dimmed'>
-                  {t`Tier`} {detail.risk_tier} • {detail.action_type} •{' '}
-                  {detail.status}
-                </Text>
-              </Box>
-              <Badge variant='light' color='blue'>
-                {formatRelativeTimeFromISOString(detail.created_at)}
-              </Badge>
-            </Group>
-
-            {detail.action_type === 'email' && detail.payload._mailbox ? (
-              <MailboxApprovalReview approvalId={detail.id} />
-            ) : (
-              <>
-                {/* Fallback renderer: show top-level payload fields in a field/value grid */}
-                <Box mt='sm'>
-                  {Object.entries(detail.payload || {}).length === 0 ? (
-                    <Text size='sm' c='dimmed'>
-                      {t`No details available`}
-                    </Text>
-                  ) : (
-                    <Box>
-                      {Object.entries(detail.payload || {}).map(
-                        ([key, value]) => {
-                          const isPrimitive =
-                            value === null ||
-                            value === undefined ||
-                            typeof value === 'string' ||
-                            typeof value === 'number' ||
-                            typeof value === 'boolean';
-
-                          const renderedValue = isPrimitive
-                            ? String(value)
-                            : t`(complex value)`;
-
-                          return (
-                            <Group
-                              key={key}
-                              justify='space-between'
-                              align='flex-start'
-                              gap='md'
-                              py={6}
-                              style={{
-                                borderBottom:
-                                  '1px solid var(--mantine-color-gray-2)'
-                              }}
-                            >
-                              <Text
-                                size='sm'
-                                fw={500}
-                                style={{ flex: '0 0 40%' }}
-                              >
-                                {key}
-                              </Text>
-                              <Text
-                                size='sm'
-                                style={{ flex: 1, textAlign: 'right' }}
-                              >
-                                {renderedValue}
-                              </Text>
-                            </Group>
-                          );
-                        }
-                      )}
-                    </Box>
-                  )}
-
-                  {/* Optional developer detail (collapsed by default): raw JSON */}
-                  <Box mt='sm'>
-                    <Textarea
-                      readOnly
-                      autosize
-                      minRows={4}
-                      maxRows={10}
-                      value={JSON.stringify(detail.payload ?? {}, null, 2)}
-                      label={t`Developer details`}
-                    />
-                  </Box>
-                </Box>
-              </>
-            )}
-          </Paper>
-        )}
-      </Box>
-    );
-  }
-
-  return (
-    <Box p='md'>
-      <Group justify='space-between' mb='sm'>
-        <Text fw={600}>{t`Approvals`}</Text>
-        <Button variant='subtle' onClick={loadList}>
-          {t`Refresh`}
-        </Button>
-      </Group>
-
-      {isLoading && (
-        <Box>
-          <Skeleton height={54} radius='md' mb='sm' />
-          <Skeleton height={54} radius='md' mb='sm' />
-          <Skeleton height={54} radius='md' mb='sm' />
-        </Box>
-      )}
-
-      {error && (
-        <Paper p='sm' radius='md' bg='red.0' mb='md'>
-          <Text size='xs' c='red.7'>
-            {error}
-          </Text>
-        </Paper>
-      )}
-
-      {!isLoading && !error && items.length === 0 && (
-        <Paper p='md' radius='md' withBorder>
-          <Text size='sm' c='dimmed'>
-            {emptyText}
-          </Text>
-        </Paper>
-      )}
-
-      {!isLoading && items.length > 0 && (
-        <Box>
-          {items.map((item) => (
-            <Paper
-              key={item.id}
-              p='sm'
-              radius='md'
-              withBorder
-              mb='sm'
-              style={{ cursor: 'pointer' }}
-              onClick={() => setSelectedId(item.id)}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = theme.colors.blue[4];
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor =
-                  'var(--mantine-color-gray-3)';
-              }}
-            >
-              <Group justify='space-between' align='flex-start'>
-                <Box style={{ flex: 1 }}>
-                  <Text size='sm' fw={600} lineClamp={1} component='div'>
-                    <InlineMarkdown content={item.summary} />
-                  </Text>
-                  <Text size='xs' c='dimmed'>
-                    {t`Tier`} {item.risk_tier} • {item.action_type}
-                  </Text>
-                </Box>
-                <Badge variant='light' color='gray'>
-                  {formatRelativeTimeFromISOString(item.created_at)}
-                </Badge>
-              </Group>
-            </Paper>
-          ))}
-        </Box>
-      )}
-    </Box>
   );
 }
 
@@ -1387,20 +1092,23 @@ export function AIChatDrawer({
     defaultValue: 'chat'
   });
 
-  const [pendingApprovalCount, setPendingApprovalCount] = useState<number>(0);
-  const refreshPendingApprovalCount = useCallback(async () => {
-    try {
+  const approvalCount = useQuery({
+    queryKey: ['approval-count'],
+    enabled: opened,
+    refetchInterval: voiceDecision ? 5000 : 30000,
+    queryFn: async () => {
       const resp = await api.get('/api/approvals/count/', {
         params: {
           status: 'pending'
         }
       });
       const count = Number((resp.data as any)?.count);
-      setPendingApprovalCount(Number.isFinite(count) ? count : 0);
-    } catch {
-      setPendingApprovalCount(0);
+      return Number.isFinite(count) ? count : 0;
     }
-  }, []);
+  });
+  const pendingApprovalCount = approvalCount.isError
+    ? 0
+    : (approvalCount.data ?? 0);
 
   const [inputValue, setInputValue] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([]);
@@ -1500,18 +1208,6 @@ export function AIChatDrawer({
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [opened]);
-
-  // Poll approvals badge count every 30s while drawer is open
-  useEffect(() => {
-    if (!opened) return;
-
-    refreshPendingApprovalCount();
-    const id = setInterval(() => {
-      refreshPendingApprovalCount();
-    }, 30_000);
-
-    return () => clearInterval(id);
-  }, [opened, refreshPendingApprovalCount]);
 
   // S2: a scope PUT seeded by the routing hint is in flight before a send.
   const [isApplyingScope, setIsApplyingScope] = useState(false);

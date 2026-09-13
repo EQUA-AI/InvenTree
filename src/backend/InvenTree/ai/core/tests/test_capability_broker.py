@@ -25,6 +25,7 @@ from ai.core.tools.capabilities import (
     select_capabilities,
     tool_name,
 )
+from ai.core.tools.inventree.read.action_status import get_last_action_status
 
 ALL_VIEW_PROFILE = frozenset({
     ("build", "view"),
@@ -55,14 +56,15 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
     tools are missing here cannot run at all once its middleware is attached.
     wf8's toolset stays the canonical prefix so the manifest order is stable.
     """
-    wf8_tools = tuple(
-        INVENTORY_READ_TOOLS
-        + EMAIL_TOOLS
-        + KANBAN_TOOLS
-        + CONTROLLED_CORPUS_TOOLS
-        + ATTACHMENT_CORPUS_TOOLS
-        + EVIDENCE_MEDIA_TOOLS
-        + SOURCE_INVENTORY_TOOLS
+    wf8_tools = (
+        *INVENTORY_READ_TOOLS,
+        get_last_action_status,
+        *EMAIL_TOOLS,
+        *KANBAN_TOOLS,
+        *CONTROLLED_CORPUS_TOOLS,
+        *ATTACHMENT_CORPUS_TOOLS,
+        *EVIDENCE_MEDIA_TOOLS,
+        *SOURCE_INVENTORY_TOOLS,
     )
     catalog = capability_catalog()
 
@@ -71,9 +73,10 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
     # purchase-order write tools. R2 added search_attachment_docs; R3 added
     # search_evidence_media; S8a added list_document_sources; R5 retired
     # search_part_documents (59 -> 58, catalog 95 -> 94).
-    assert len(wf8_tools) == 58
-    assert len(catalog) == 94
-    assert tuple(entry.tool for entry in catalog[:58]) == wf8_tools
+    # Connected mailbox discovery and the owner-bound receipt reader are additive.
+    assert len(wf8_tools) == 60
+    assert len(catalog) == 96
+    assert tuple(entry.tool for entry in catalog[:60]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -104,13 +107,14 @@ def test_catalog_has_expected_stable_pack_shapes():
         # relaxed back to 2 at R5 when search_part_documents was retired.
         "documents.read": 2,
         "procurement.read": 5,
+        "action_status.read": 1,
         "sales.read": 4,
         "build.read": 3,
         "analytics.read": 2,
         # Every machine-page tab, plus search (spoken-name resolution) and the
         # signal trend: the machine detail page is unreachable without them.
         "machines.read": 9,
-        "email.read": 3,
+        "email.read": 4,
         "email.write": 3,
         "kanban.read": 4,
         # 7, not 8: delete_kanban_card is withheld, though it remains listed in
@@ -148,7 +152,12 @@ def test_every_catalog_entry_has_an_explicit_policy():
         entry.tool_id for entry in catalog if entry.authorization.kind is PolicyKind.DISABLED
     } == {"search_attachment_docs", "search_evidence_media"}
     for tool in EMAIL_TOOLS:
-        permission = "view" if tool in EMAIL_TOOLS[:3] else "send"
+        permission = (
+            "view"
+            if tool.__name__
+            in ("list_mailboxes", "list_emails", "get_email_details", "download_attachment")
+            else "send"
+        )
         policy = policies[tool.__name__]
         assert policy.kind is PolicyKind.NATIVE_PERMISSION
         assert policy.all_of == (("email", permission),)
@@ -316,8 +325,8 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    # Matches the catalog pin above: 94 entries (wf8 58 + specialist writes).
-    assert len(first) == 94
+    # Matches the catalog pin above: 96 entries (wf8 60 + specialist writes).
+    assert len(first) == 96
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)
@@ -774,6 +783,7 @@ def test_native_read_capabilities_require_their_explicit_profile():
     )
 
     assert email.tool_ids == (
+        "list_mailboxes",
         "list_emails",
         "get_email_details",
         "download_attachment",

@@ -39,6 +39,46 @@ class FlagEntry:
 
 
 REGISTRY: tuple[FlagEntry, ...] = (
+    FlagEntry(
+        'APPROVAL_INBOX_SCOPED',
+        'bool',
+        False,
+        'django',
+        config_key='approval_inbox_scoped',
+        description='Assigned-reviewer business-scoped inbox; required before voice approvals',
+    ),
+    FlagEntry(
+        'APPROVAL_REVIEW_REVISION_BOUND',
+        'bool',
+        False,
+        'django',
+        config_key='approval_review_revision_bound',
+        description='Current actor/revision/hash acknowledgment on screen as well as voice',
+    ),
+    FlagEntry(
+        'FEATURE_VOICE_APPROVALS',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_voice_approvals',
+    ),
+    FlagEntry(
+        'FEATURE_VOICE_AUDITORY_REVIEW',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_voice_auditory_review',
+    ),
+    FlagEntry(
+        'FEATURE_VOICE_EXTERNAL_ACTIONS',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_voice_external_actions',
+    ),
+    FlagEntry(
+        'VOICE_ACTION_DRY_RUN', 'bool', False, 'ai', ai_field='voice_action_dry_run'
+    ),
     # --- Django plane (the historic settings.py bridge, order preserved) ---
     FlagEntry(
         'AIMMS_WORK_ORDERS_ENABLED',

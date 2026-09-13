@@ -157,6 +157,11 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
         # match on word boundaries, so the plural needs its own entry.
         ("attachment", "document", "documents", "drawing", "datasheet", "pdf", "file", "uploaded"),
     ),
+    "action_status.read": (
+        ToolEffect.READ,
+        ("get_last_action_status",),
+        ("last action", "action status", "receipt", "did that complete", "was that applied"),
+    ),
     "procurement.read": (
         ToolEffect.READ,
         (
@@ -442,7 +447,7 @@ _PACK_WORKFLOWS: dict[str, frozenset[str]] = {
     "stock.write": _SPECIALIST_WORKFLOWS,
     "company.write": _SPECIALIST_WORKFLOWS,
     "sales.write": _SPECIALIST_WORKFLOWS,
-    # Procurement writes belong to wf4 alone: it is the HITL-gated rail.
+    # Procurement writes belong to wf4 alone: it is the human review-gated rail.
     "procurement.write": frozenset({"wf4"}),
 }
 
@@ -1177,12 +1182,14 @@ def _catalog_tools() -> tuple[Any, ...]:
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
     from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
     from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
+    from ai.core.tools.inventree.read.action_status import get_last_action_status
     from ai.core.tools.inventree.write.purchase_orders import PURCHASE_ORDER_WRITE_TOOLS
 
     ordered: list[Any] = []
     seen: set[str] = set()
     for tool in (
         *INVENTORY_READ_TOOLS,
+        get_last_action_status,
         *EMAIL_TOOLS,
         *KANBAN_TOOLS,
         *CONTROLLED_CORPUS_TOOLS,

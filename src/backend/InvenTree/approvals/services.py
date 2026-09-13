@@ -97,14 +97,36 @@ def _approve_gates(approval, actor, channel):
         _reject('forbidden', str(exc), 403)
 
 
+def _validate_decision_focus(approval, data):
+    """Recheck a non-email decision's preview under the action transaction."""
+    from .access import scoped_inbox_enabled
+
+    if (
+        approval is None
+        or approval.action_type == 'email'
+        or not scoped_inbox_enabled()
+    ):
+        return
+    if not isinstance(data, dict) or (
+        type(data.get('revision')) is not int
+        or data['revision'] != approval.current_revision_number
+        or data.get('review_hash') != compute_review_hash(approval)
+    ):
+        _reject(
+            'conflict',
+            'This request changed. Review the current revision before deciding.',
+            409,
+        )
+
+
 def _get_approval_or_404(pk, *, actor):
-    from aichat.services.email.access import visible_approvals
+    from .access import visible_approvals
 
     return visible_approvals(Approval.objects.filter(pk=pk), actor).first()
 
 
 def _get_approval_for_update(pk, *, actor):
-    from aichat.services.email.access import visible_approvals
+    from .access import visible_approvals
 
     allowed = visible_approvals(Approval.objects.filter(pk=pk), actor).values('pk')
     return Approval.objects.select_for_update().filter(pk__in=allowed).first()
@@ -207,6 +229,7 @@ def request_changes(approval_id, *, actor, data=None, channel='screen', evidence
     serializer.is_valid(raise_exception=True)
 
     approval = _get_approval_for_update(approval_id, actor=actor)
+    _validate_decision_focus(approval, data)
     if not approval:
         return _reject(
             'not_found', f'Approval {approval_id} not found', status.HTTP_404_NOT_FOUND
@@ -239,6 +262,7 @@ def approve(approval_id, *, actor, data=None, channel='screen', evidence=None):
 
     # ── Phase 1: Read-only checks (no lock, no transaction) ──
     approval = _get_approval_or_404(pk, actor=actor)
+    _validate_decision_focus(approval, data)
     if not approval:
         return _reject(
             'not_found', f'Approval {pk} not found', status.HTTP_404_NOT_FOUND
@@ -432,6 +456,7 @@ def deny(approval_id, *, actor, data=None, channel='screen', evidence=None):
     serializer.is_valid(raise_exception=True)
 
     approval = _get_approval_for_update(approval_id, actor=actor)
+    _validate_decision_focus(approval, data)
     if not approval:
         return _reject(
             'not_found', f'Approval {approval_id} not found', status.HTTP_404_NOT_FOUND
@@ -495,6 +520,7 @@ def cancel(approval_id, *, actor, data=None, channel='screen', evidence=None):
     serializer.is_valid(raise_exception=True)
 
     approval = _get_approval_for_update(approval_id, actor=actor)
+    _validate_decision_focus(approval, data)
     if not approval:
         return _reject(
             'not_found', f'Approval {approval_id} not found', status.HTTP_404_NOT_FOUND

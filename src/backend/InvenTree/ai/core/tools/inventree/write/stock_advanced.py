@@ -12,13 +12,13 @@ from typing import Any
 
 from ai.core.integrations.data_provider import get_data_provider
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Serializing stock items")
+@require_confirmation(reason="Serializing stock items")
 async def serialize_stock(
     stock_id: int,
     serial_numbers: list[str],
@@ -97,7 +97,7 @@ async def serialize_stock(
 
 
 @ai_function
-@require_hitl(reason="Installing stock into another item")
+@require_confirmation(reason="Installing stock into another item")
 async def install_stock(
     stock_id: int,
     into_stock_id: int,
@@ -157,7 +157,7 @@ async def install_stock(
 
 
 @ai_function
-@require_hitl(reason="Uninstalling stock from an assembly")
+@require_confirmation(reason="Uninstalling stock from an assembly")
 async def uninstall_stock(
     stock_id: int,
     destination_location_id: int,
@@ -221,7 +221,7 @@ async def uninstall_stock(
 
 
 @ai_function
-@require_hitl(reason="Assigning stock to a customer")
+@require_confirmation(reason="Assigning stock to a customer")
 async def assign_stock(
     stock_id: int,
     customer_id: int,
@@ -287,7 +287,7 @@ async def assign_stock(
 
 
 @ai_function
-@require_hitl(reason="Returning stock from a customer")
+@require_confirmation(reason="Returning stock from a customer")
 async def return_stock(
     stock_id: int,
     destination_location_id: int,

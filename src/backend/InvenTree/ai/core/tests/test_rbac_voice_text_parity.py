@@ -53,6 +53,43 @@ VIEWER = frozenset({("part", "view"), ("stock", "view")})
 NOBODY: frozenset[tuple[str, str]] = frozenset()
 
 
+def test_receipt_tool_is_read_only_and_never_an_action_candidate():
+    from ai.core.tools.inventree.read.action_status import get_last_action_status
+    from ai.core.tools.rbac import is_action_tool
+
+    assert tool_requirement(get_last_action_status) == ("work_order", "view")
+    assert not is_action_tool(get_last_action_status)
+    assert get_last_action_status in text_chat_tools()
+    assert get_last_action_status not in text_chat_action_tools()
+
+
+@pytest.mark.asyncio
+async def test_receipt_tool_passes_only_current_actor_and_owned_lookup(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    from ai.core import auth
+    from ai.core.decisions import receipts
+    from ai.core.tools import rbac
+    from ai.core.tools.inventree.read.action_status import get_last_action_status
+
+    actor = SimpleNamespace(user_pk="11")
+    monkeypatch.setattr(auth, "get_current_principal", lambda: actor)
+    monkeypatch.setattr(
+        rbac, "permission_profile_for_user_pk", AsyncMock(return_value={("work_order", "view")})
+    )
+    lookup = Mock(return_value=None)
+    monkeypatch.setattr(receipts, "lookup_operation", lookup)
+    result = await get_last_action_status("thread-1", "operation-2")
+    assert result["available"] is False
+    lookup.assert_called_once_with(actor=actor, thread_id="thread-1", operation_id="operation-2")
+    assert "not yet verified" in result["message"]
+    lookup.reset_mock()
+    monkeypatch.setattr(rbac, "permission_profile_for_user_pk", AsyncMock(return_value=set()))
+    assert (await get_last_action_status("thread-1"))["available"] is False
+    lookup.assert_not_called()
+
+
 def _voice_allows(tool, profile) -> bool:
     """The question the voice gate asks: does the profile hold this capability?
 

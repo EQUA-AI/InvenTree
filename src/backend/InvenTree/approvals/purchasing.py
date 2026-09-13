@@ -27,6 +27,13 @@ OPERATIONS = frozenset((
 ))
 
 
+def notifications_possible(order):
+    """A responsible owner or a part subscriber can trigger normal order mail."""
+    return order.responsible_id is not None or any(
+        user.pk != order.created_by_id for user in order.subscribed_users()
+    )
+
+
 def _number(value, *, positive=False):
     try:
         number = Decimal(str(value))
@@ -81,6 +88,7 @@ def prepare_payload(payload):
         result['order_reference'] = order.reference
     if operation == 'issue_purchase_order':
         order = PurchaseOrder.objects.get(pk=result['order_id'])
+        result['notifications_possible'] = notifications_possible(order)
         if not order.lines.exists():
             raise ValueError('Review at least one line before issuing an order')
         result['line_items'] = [
@@ -162,6 +170,10 @@ def baseline(payload):
         'updated_at': order.updated_at.isoformat(),
         'status': order.status,
         'supplier_id': order.supplier_id,
+        'responsible_id': order.responsible_id,
+        'notification_subscriber_ids': sorted(
+            user.pk for user in order.subscribed_users()
+        ),
         'currency': order.order_currency,
         'lines': [
             [
@@ -277,5 +289,7 @@ def execute(approval, *, actor):
         'status': order.status,
         'operation': operation,
         'line_ids': list(order.lines.order_by('pk').values_list('pk', flat=True)),
-        'email_sent': False,
+        'supplier_email_sent': False,
+        'email_sent': None if payload.get('notifications_possible') else False,
+        'internal_notifications_possible': bool(payload.get('notifications_possible')),
     }

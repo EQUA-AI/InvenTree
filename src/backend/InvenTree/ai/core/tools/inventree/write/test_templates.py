@@ -11,7 +11,7 @@ from typing import Any
 from ai.core.tools.inventree.base import (
     WriteTool,
     ai_function,
-    require_hitl,
+    require_confirmation,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
     name="create_test_template",
     description="Create a new test template for a part. Test templates define tests that must be performed on parts, such as functionality tests, QC checks, or calibration procedures.",
 )
-@require_hitl(reason="Creating test templates requires approval")
+@require_confirmation(reason="Creating test templates requires approval")
 async def create_test_template(
     part_id: int,
     test_name: str,
@@ -78,7 +78,7 @@ async def create_test_template(
     name="update_test_template",
     description="Update an existing test template. Changes affect future tests but not already recorded results.",
 )
-@require_hitl(reason="Updating test templates requires approval")
+@require_confirmation(reason="Updating test templates requires approval")
 async def update_test_template(
     template_id: int,
     test_name: str | None = None,
@@ -138,7 +138,7 @@ async def update_test_template(
     name="delete_test_template",
     description="Delete a test template from a part. This does not delete existing test results.",
 )
-@require_hitl(reason="Deleting test templates requires approval")
+@require_confirmation(reason="Deleting test templates requires approval")
 async def delete_test_template(
     template_id: int,
 ) -> dict[str, Any]:
@@ -180,7 +180,7 @@ async def delete_test_template(
     name="update_stock_test_result",
     description="Update an existing test result for a stock item. Use this to correct test data or add notes.",
 )
-@require_hitl(reason="Updating test results requires approval")
+@require_confirmation(reason="Updating test results requires approval")
 async def update_stock_test_result(
     result_id: int,
     result: bool | None = None,
@@ -232,7 +232,7 @@ async def update_stock_test_result(
     name="delete_stock_test_result",
     description="Delete a test result from a stock item. Use with caution as this removes quality/test history.",
 )
-@require_hitl(reason="Deleting test results removes quality history")
+@require_confirmation(reason="Deleting test results removes quality history")
 async def delete_stock_test_result(
     result_id: int,
 ) -> dict[str, Any]:

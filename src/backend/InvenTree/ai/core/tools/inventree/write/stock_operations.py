@@ -12,13 +12,13 @@ from typing import Any
 
 from ai.core.integrations.data_provider import get_data_provider
 from ai.core.maf_compat import ai_function
-from ai.core.tools.inventree.base import require_hitl
+from ai.core.tools.inventree.base import require_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 @ai_function
-@require_hitl(reason="Changing stock status")
+@require_confirmation(reason="Changing stock status")
 async def change_stock_status(
     stock_id: int,
     status: int,
@@ -83,7 +83,7 @@ async def change_stock_status(
 
 
 @ai_function
-@require_hitl(reason="Converting stock to a different part")
+@require_confirmation(reason="Converting stock to a different part")
 async def convert_stock(
     stock_id: int,
     target_part_id: int,
@@ -146,7 +146,7 @@ async def convert_stock(
 
 
 @ai_function
-@require_hitl(reason="Recording test result for stock")
+@require_confirmation(reason="Recording test result for stock")
 async def add_stock_test_result(
     stock_id: int,
     test_name: str,
@@ -242,7 +242,7 @@ async def add_stock_test_result(
 
 
 @ai_function
-@require_hitl(reason="Splitting stock into multiple items")
+@require_confirmation(reason="Splitting stock into multiple items")
 async def split_stock(
     stock_id: int,
     quantities: list[float],
@@ -330,7 +330,7 @@ async def split_stock(
 
 
 @ai_function
-@require_hitl(reason="Adjusting stock location")
+@require_confirmation(reason="Adjusting stock location")
 async def update_stock_location(
     location_id: int,
     name: str | None = None,
@@ -398,7 +398,7 @@ async def update_stock_location(
 
 
 @ai_function
-@require_hitl(reason="Creating new stock location")
+@require_confirmation(reason="Creating new stock location")
 async def create_stock_location(
     name: str,
     description: str | None = None,
@@ -441,7 +441,7 @@ async def create_stock_location(
 
 
 @ai_function
-@require_hitl(reason="Deleting stock location")
+@require_confirmation(reason="Deleting stock location")
 async def delete_stock_location(
     location_id: int,
 ) -> dict[str, Any]:
@@ -472,7 +472,7 @@ async def delete_stock_location(
 
 
 @ai_function
-@require_hitl(reason="Updating stock item")
+@require_confirmation(reason="Updating stock item")
 async def update_stock_item(
     stock_id: int,
     quantity: float | None = None,
@@ -527,7 +527,7 @@ async def update_stock_item(
 
 
 @ai_function
-@require_hitl(reason="Deleting stock item")
+@require_confirmation(reason="Deleting stock item")
 async def delete_stock_item(
     stock_id: int,
 ) -> dict[str, Any]:

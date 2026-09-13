@@ -102,7 +102,7 @@ def build_review_sections(approval):
                 {
                     'create_purchase_order': 'Creates a draft only; no order is issued and no email is sent.',
                     'add_po_line_item': 'Adds this reviewed line to the named draft; no email is sent.',
-                    'issue_purchase_order': 'Changes the named order to Placed; this does not send an email.',
+                    'issue_purchase_order': 'Changes the named order to Placed. No supplier email is sent. Normal internal order notifications may be delivered to responsible users or part subscribers.',
                 }.get(
                     payload.get('operation', 'create_purchase_order'),
                     'Unavailable operation',
@@ -192,6 +192,15 @@ def voice_eligibility(approval):
     payload = approval.payload if isinstance(approval.payload, dict) else {}
     if payload.get('attachments'):
         return False, 'Attachments require visual inspection on screen.'
+    if (
+        approval.action_type == ActionType.PURCHASE_ORDER
+        and payload.get('operation') == 'issue_purchase_order'
+        and payload.get('notifications_possible') is not False
+    ):
+        return (
+            False,
+            'This order may notify other users. Issue it on screen; voice issuance requires a reviewed order with no notification recipients.',
+        )
     if approval.risk_tier >= 3:
         return False, 'Tier-3 approval is screen-only under the Phase C pilot policy.'
     if approval.action_type in SCREEN_ONLY_REASONS:

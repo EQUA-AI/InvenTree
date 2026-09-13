@@ -10,7 +10,7 @@ from typing import Any
 from ai.core.tools.inventree.base import (
     WriteTool,
     ai_function,
-    require_hitl,
+    require_confirmation,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
     name="create_company_address",
     description="Create a new address for a company. Addresses can be used for shipping, billing, or other purposes.",
 )
-@require_hitl(reason="Creating company addresses requires approval")
+@require_confirmation(reason="Creating company addresses requires approval")
 async def create_company_address(
     company_id: int,
     title: str = "",
@@ -86,7 +86,7 @@ async def create_company_address(
     name="update_company_address",
     description="Update an existing company address. Modify address details or change primary status.",
 )
-@require_hitl(reason="Updating company addresses requires approval")
+@require_confirmation(reason="Updating company addresses requires approval")
 async def update_company_address(
     address_id: int,
     title: str | None = None,
@@ -162,7 +162,7 @@ async def update_company_address(
     name="delete_company_address",
     description="Delete a company address. The address will be permanently removed.",
 )
-@require_hitl(reason="Deleting company addresses requires approval")
+@require_confirmation(reason="Deleting company addresses requires approval")
 async def delete_company_address(
     address_id: int,
 ) -> dict[str, Any]:
@@ -204,7 +204,7 @@ async def delete_company_address(
     name="update_company_contact",
     description="Update an existing company contact. Modify contact details like name, phone, or email.",
 )
-@require_hitl(reason="Updating company contacts requires approval")
+@require_confirmation(reason="Updating company contacts requires approval")
 async def update_company_contact(
     contact_id: int,
     name: str | None = None,
@@ -260,7 +260,7 @@ async def update_company_contact(
     name="delete_company_contact",
     description="Delete a company contact. The contact will be permanently removed.",
 )
-@require_hitl(reason="Deleting company contacts requires approval")
+@require_confirmation(reason="Deleting company contacts requires approval")
 async def delete_company_contact(
     contact_id: int,
 ) -> dict[str, Any]:
