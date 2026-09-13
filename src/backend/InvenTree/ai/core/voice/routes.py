@@ -66,6 +66,9 @@ class VoiceSessionCreateRequest(BaseModel):
     """Client hints only; the server derives all authority."""
 
     thread_id: str | None = None
+    locale: str = "en-US"
+    voice: str = "en-US-AvaNeural"
+    consent_version: str = ""
 
 
 class VoiceTurnRequest(BaseModel):
@@ -85,7 +88,7 @@ class VoicePromptRequest(BaseModel):
     and ``transcript`` (transcript_review only) is the single sanitized slot.
     """
 
-    kind: Literal["transcript_review", "status"]
+    kind: Literal["transcript_review", "status", "help"]
     transcript: str | None = Field(default=None, max_length=4000)
     item_id: str | None = Field(default=None, max_length=128)
     status: str | None = Field(default=None, max_length=64)
@@ -154,6 +157,9 @@ def _session_payload(session, settings) -> dict[str, Any]:
         policy_version=session.policy_version,
         terminal_reason=session.terminal_reason or None,
         analysis_scope_version=getattr(session, "analysis_scope_version", 0),
+        locale=getattr(session, "locale", "en-US"),
+        voice=getattr(session, "voice", "en-US-AvaNeural"),
+        consent_version=getattr(session, "consent_version", ""),
     ).model_dump(mode="json")
 
 
@@ -201,13 +207,9 @@ async def voice_capability() -> dict:
     """
     settings = get_settings()
     _principal()
-    enabled = settings.feature_voice_live
-    return {
-        "enabled": enabled,
-        "webrtc": enabled and settings.feature_voice_live_webrtc,
-        "relay": enabled and settings.feature_voice_live_relay,
-        "confidence_floor": settings.voice_confidence_floor,
-    }
+    from ai.core.voice.experience import capability
+
+    return capability(settings)
 
 
 @router.post("/sessions", status_code=201)
@@ -215,6 +217,13 @@ async def create_voice_session(request: VoiceSessionCreateRequest) -> dict:
     """Create one owned, bounded, visible realtime session."""
     settings = _require_voice_enabled()
     principal = _principal()
+
+    from ai.core.voice.experience import validate_preferences
+
+    try:
+        validate_preferences(request.locale, request.voice, request.consent_version)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
 
     from aichat.models import generate_thread_id
     from django.contrib.auth import get_user_model
@@ -234,6 +243,9 @@ async def create_voice_session(request: VoiceSessionCreateRequest) -> dict:
             policy_version=principal.policy_version,
             limits=_limits(settings),
             analysis_scope_version=_thread_scope_version(thread_id, principal.user_pk),
+            locale=request.locale,
+            voice=request.voice,
+            consent_version=request.consent_version,
         )
 
     try:
@@ -293,7 +305,27 @@ async def cancel_voice_playback(session_id: str) -> dict:
         ).update(playback_state=PlaybackState.CANCELED)
 
     canceled = await sync_to_async(_cancel, thread_sensitive=True)()
+    channel = _provider_channel_factory(session) if _provider_channel_factory else None
+    send = getattr(channel, "send_control", None)
+    if send is not None:
+        with contextlib.suppress(Exception):
+            await send({"type": "response.cancel"})
     return {"id": str(session.id), "canceled_utterances": canceled}
+
+
+@router.post("/sessions/{session_id}/suspend")
+async def suspend_voice_session(session_id: str) -> dict:
+    """Foreground loss is fail-safe and non-consuming, never an approval."""
+    settings = _require_voice_enabled()
+    session = await _owned_session(_principal(), session_id, settings)
+    await cancel_voice_playback(session_id)
+    if settings.feature_voice_decision_coordinator:
+        from ai.core.decisions.coordinator import get_coordinator
+
+        await sync_to_async(get_coordinator().disarm)(
+            session.thread_id, "foreground_lost", set_aside=True
+        )
+    return {"id": str(session.id), "suspended": True}
 
 
 @router.post("/sessions/{session_id}/prompts")
@@ -317,7 +349,9 @@ async def request_voice_prompt(session_id: str, request: VoicePromptRequest) -> 
     from voice.models import PlaybackState, VoiceUtteranceType
     from voice.services import realtime
 
-    locale = await sync_to_async(resolve_actor_locale, thread_sensitive=True)(principal.user_pk)
+    locale = getattr(session, "locale", None) or await sync_to_async(
+        resolve_actor_locale, thread_sensitive=True
+    )(principal.user_pk)
     if request.kind == "transcript_review":
         if settings.feature_voice_decision_coordinator:
             from ai.core.decisions.coordinator import get_coordinator
@@ -327,6 +361,10 @@ async def request_voice_prompt(session_id: str, request: VoicePromptRequest) -> 
             text = prompts.compose_transcript_review(request.transcript, locale)
         except ValueError:
             raise HTTPException(status_code=422, detail="VOICE_TRANSCRIPT_INCOMPLETE") from None
+    elif request.kind == "help":
+        from ai.core.voice.help import compose_help
+
+        text = await sync_to_async(compose_help)(principal, session, settings)
     else:
         maybe = prompts.status_prompt(request.status, locale)
         if maybe is None:
@@ -337,6 +375,8 @@ async def request_voice_prompt(session_id: str, request: VoicePromptRequest) -> 
     # response); a prompt is its own row, so re-prompting a revised transcript
     # for the same item simply persists again.
     def _persist():
+        if not (request.kind == "status" and request.status == "session_ended"):
+            realtime.touch_session(session=session, limits=_limits(settings))
         return realtime.persist_utterance(
             session=session,
             utterance_type=VoiceUtteranceType.PROMPT,
@@ -353,6 +393,8 @@ async def request_voice_prompt(session_id: str, request: VoicePromptRequest) -> 
     send_control = getattr(channel, "send_control", None)
     if send_control is not None:
         try:
+            if settings.feature_voice_foreground_session:
+                await send_control({"type": "response.cancel"})
             await send_control(
                 build_exact_tts_payload(
                     persisted_text=utterance.spoken_summary,
@@ -468,7 +510,8 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
         correlation_id=correlation_id,
         browser_context=None,
         server_route_hints=("/voice/turns",),
-        locale=await sync_to_async(resolve_actor_locale, thread_sensitive=True)(principal.user_pk),
+        locale=getattr(session, "locale", None)
+        or await sync_to_async(resolve_actor_locale, thread_sensitive=True)(principal.user_pk),
     )
 
     def _touch():
@@ -630,6 +673,7 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
 
         interim_spoken = await _finish_interim()
         spoken: dict[str, Any] | None = None
+        presentation_payload = None
         speak_flag = bool((result.canonical_response or {}).get("speak", False))
         # A3: a set-aside status is spoken BEFORE the answer. The provider plays
         # one app response at a time, so it rides in the same utterance as a
@@ -649,6 +693,25 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
                     spoken_text = f"{prefix} {result.spoken_summary}"
 
             def _persist():
+                nonlocal presentation_payload
+                if (
+                    settings.feature_voice_foreground_session
+                    and not getattr(result, "pending_decision", None)
+                    and not getattr(result, "pending_question", None)
+                ):
+                    from voice.services import presentation
+
+                    item, first = presentation.create(
+                        session=session,
+                        turn_id=result.turn_id,
+                        text=spoken_text,
+                        layout=result.message,
+                        safety_boundary=(result.canonical_response or {}).get(
+                            "safety_boundary", ""
+                        ),
+                    )
+                    presentation_payload = presentation.payload(item)
+                    return first
                 return realtime.persist_utterance(
                     session=session,
                     utterance_type=VoiceUtteranceType.COMPLETED_ANSWER,
@@ -672,7 +735,13 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
             # the payload builder can prove the text/hash pair before any speech
             # request. A missing or failed channel leaves playback honestly
             # pending; the visible chat answer is never blocked by TTS.
-            if send_control is not None:
+            deferred_readback = (
+                settings.feature_voice_foreground_session
+                and (getattr(result, "pending_decision", None) or {}).get("state") == "presented"
+                and (getattr(result, "decision_event", None) or {}).get("kind")
+                in ("presented", "review")
+            )
+            if send_control is not None and not deferred_readback:
                 from ai.core.voice.speech import ExactSpeechViolation
                 from voice.models import PlaybackState
 
@@ -763,6 +832,7 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
             pending_question=None,
             pending_decision=getattr(result, "pending_decision", None),
             decision_event=getattr(result, "decision_event", None),
+            presentation=presentation_payload,
         ).model_dump(mode="json")
         # The S22 question payload passes through VERBATIM — the question
         # schema owns its shape (the generated VoicePendingQuestion models
@@ -778,6 +848,99 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
             except DecisionStoreUnavailable as exc:
                 raise HTTPException(status_code=409, detail="VOICE_DECISION_UNAVAILABLE") from exc
         return payload
+
+
+class PresentationCommandRequest(BaseModel):
+    """Exact advisory answer binding, not a business intent."""
+
+    id: str
+    source_hash: str = Field(min_length=64, max_length=64)
+    index: int = Field(ge=0)
+    presentation_command: Literal["next", "repeat", "slower", "short"]
+
+
+@router.post("/sessions/{session_id}/presentation")
+async def presentation_command(session_id: str, request: PresentationCommandRequest) -> dict:
+    """Speak a stored page without entering the turn/decision pipeline."""
+    settings = _require_voice_enabled()
+    if not settings.feature_voice_foreground_session:
+        raise HTTPException(status_code=404, detail="VOICE_PRESENTATION_UNAVAILABLE")
+    session = await _owned_session(_principal(), session_id, settings)
+    from ai.core.voice.speech import build_exact_tts_payload
+    from voice.services import presentation, realtime
+
+    lock = _turn_locks.setdefault(str(session.id), asyncio.Lock())
+    async with lock:
+        try:
+            await sync_to_async(realtime.touch_session)(session=session, limits=_limits(settings))
+            item, utterance = await sync_to_async(presentation.command)(
+                session=session,
+                presentation_id=request.id,
+                source_hash=request.source_hash,
+                index=request.index,
+                action=request.presentation_command,
+            )
+        except Exception:
+            raise HTTPException(status_code=409, detail="VOICE_PRESENTATION_UNAVAILABLE") from None
+        channel = _provider_channel_factory(session) if _provider_channel_factory else None
+        send = getattr(channel, "send_control", None)
+        if send:
+            try:
+                await send({"type": "response.cancel"})
+                speech = build_exact_tts_payload(
+                    persisted_text=utterance.spoken_summary,
+                    persisted_hash=utterance.spoken_summary_hash,
+                )
+                speech["_aimms_rate"] = 0.8 if request.presentation_command == "slower" else 1.0
+                await send(speech)
+                utterance = await sync_to_async(realtime.mark_playback)(
+                    utterance=utterance, state="requested"
+                )
+            except Exception:
+                utterance = await sync_to_async(realtime.mark_playback)(
+                    utterance=utterance, state="failed"
+                )
+        return {
+            "presentation": presentation.payload(item),
+            "spoken": {
+                "utterance_id": str(utterance.pk),
+                "spoken_summary": utterance.spoken_summary,
+                "spoken_summary_hash": utterance.spoken_summary_hash,
+                "playback_state": utterance.playback_state,
+            },
+        }
+
+
+class VoiceSampleRequest(BaseModel):
+    """No arbitrary text, provider or sampling settings."""
+
+    model_config = {"extra": "forbid"}
+    locale: str
+    voice: str
+
+
+@router.post("/sample")
+async def voice_sample(request: VoiceSampleRequest):
+    """Fixed, bounded pre-session sample. Never creates VoiceSession or transcript."""
+    settings = _require_voice_enabled()
+    principal = _principal()
+    from ai.core.voice.experience import voice_pairs
+    from ai.core.voice.sample import reserve_sample, synthesize_sample
+    from fastapi.responses import Response
+
+    if (request.voice, request.locale) not in voice_pairs():
+        raise HTTPException(status_code=422, detail="VOICE_LOCALE_UNSUPPORTED")
+    if not settings.feature_voice_foreground_session:
+        raise HTTPException(status_code=404, detail="VOICE_SAMPLE_UNAVAILABLE")
+    if not await sync_to_async(reserve_sample)(principal.user_pk):
+        raise HTTPException(
+            status_code=429, detail="VOICE_SAMPLE_LIMIT", headers={"Retry-After": "60"}
+        )
+    try:
+        audio = await synthesize_sample(request.locale, request.voice)
+    except Exception:
+        raise HTTPException(status_code=503, detail="VOICE_SAMPLE_UNAVAILABLE") from None
+    return Response(content=audio, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
 
 class WalkthroughRequest(BaseModel):

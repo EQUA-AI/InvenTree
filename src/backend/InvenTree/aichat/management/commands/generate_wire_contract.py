@@ -125,6 +125,7 @@ class Command(BaseCommand):
             VoicePendingDecision,
             VoicePendingQuestion,
             VoicePendingQuestionOption,
+            VoicePresentationPayload,
             VoiceSessionPayload,
             VoiceSpokenPayload,
             VoiceTransportsAllowed,
@@ -188,6 +189,7 @@ class Command(BaseCommand):
             VoiceSpokenPayload,
             VoicePendingQuestionOption,
             VoicePendingQuestion,
+            VoicePresentationPayload,
             VoiceTurnResponse,
         ):
             if model is VoiceTurnResponse:

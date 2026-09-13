@@ -69,6 +69,9 @@ def test_session_payload_dump_matches_the_historic_dict_shape() -> None:
         "policy_version": "v1",
         "terminal_reason": None,
         "analysis_scope_version": 0,
+        "locale": "en-US",
+        "voice": "en-US-AvaNeural",
+        "consent_version": "",
     }
 
 

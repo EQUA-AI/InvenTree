@@ -273,6 +273,7 @@ class DecisionCoordinator:
             content,
             allowed_responses=decision.allowed_responses,
             required_phrase=decision.required_phrase,
+            locale=decision.locale,
         )
         if context is not None:
             self.check_context(decision, context)

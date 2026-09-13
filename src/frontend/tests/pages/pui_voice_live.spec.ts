@@ -1,6 +1,7 @@
 import { expect, test } from '../baseFixtures.js';
 import { readeruser } from '../defaults.js';
 import { doCachedLogin } from '../login.js';
+import { startVoice } from './voice_harness';
 import { installVoiceMocks, openChat, readMockState } from './voice_harness.js';
 
 /**
@@ -48,7 +49,7 @@ test('server rejection surfaces an honest error instead of a fake session', asyn
   // capability probe fires against the mocked route.
   await page.reload();
   await openChat(page);
-  await page.getByTestId('voice-start').click();
+  await startVoice(page);
   // The UI must show the stable code, not a live-looking mic.
   await expect(page.getByTestId('voice-error')).toHaveText(
     'VOICE_SESSION_UNAVAILABLE'
@@ -63,7 +64,7 @@ test('microphone denial fails honestly and cleans up the session', async ({
   const voice = await installVoiceMocks(page, { denyMicrophone: true });
   await page.reload();
   await openChat(page);
-  await page.getByTestId('voice-start').click();
+  await startVoice(page);
   // The hook must end the server session and report the denial.
   await expect(page.getByTestId('voice-error')).toHaveText('MICROPHONE_DENIED');
   await expect.poll(() => voice.sessionEnded).toBe(true);
@@ -76,7 +77,7 @@ test('closing the drawer ends voice and releases the microphone', async ({
   const voice = await installVoiceMocks(page);
   await page.reload();
   await openChat(page);
-  await page.getByTestId('voice-start').click();
+  await startVoice(page);
   await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
   await page.getByLabel('close-ai-chat').click();
 

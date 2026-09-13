@@ -1,47 +1,7 @@
-/**
- * VoiceSessionControl (WS5-T4): explicit start/stop, truthful state, consent.
- *
- * Starting a session is the consent act (owner decision 2026-07-15): the
- * disclosure is shown on the control itself. The microphone indicator is
- * driven only by real session state — never optimistic.
- */
-
-import { ActionIcon, Badge, Button, Group, Text, Tooltip } from '@mantine/core';
-import {
-  IconMicrophone,
-  IconMicrophoneOff,
-  IconPlayerStopFilled,
-  IconVolumeOff
-} from '@tabler/icons-react';
-import { useMemo } from 'react';
-
+import { t } from '@lingui/core/macro';
+import { Badge, Button, Group, Text } from '@mantine/core';
 import type { VoiceClientState, VoiceError } from '../../../lib/types/Voice';
-
-const STATE_LABELS: Record<VoiceClientState, string> = {
-  unavailable: 'Voice unavailable',
-  ready: 'Voice ready',
-  connecting: 'Connecting…',
-  listening: 'Listening',
-  confirming: 'Confirm transcript',
-  reviewing: 'Reviewing…',
-  speaking: 'Speaking',
-  error: 'Voice error'
-};
-
-const STATE_COLORS: Record<VoiceClientState, string> = {
-  unavailable: 'gray',
-  ready: 'blue',
-  connecting: 'yellow',
-  listening: 'red',
-  confirming: 'orange',
-  reviewing: 'yellow',
-  speaking: 'teal',
-  error: 'red'
-};
-
-const CONSENT_NOTICE =
-  'Starting voice transcribes your speech and stores the transcript with ' +
-  'your chat history. No audio is kept.';
+import { useVoiceSessionState } from '../../states/VoiceSessionState';
 
 export interface VoiceSessionControlProps {
   state: VoiceClientState;
@@ -52,144 +12,99 @@ export interface VoiceSessionControlProps {
   onEnd: () => void;
   onCancel: () => void;
   onToggleMute: () => void;
-  /** Submit the transcript held by the critical-terms policy. */
   onConfirmTranscript?: () => void;
-  /** Discard the held transcript and resume listening. */
   onDiscardTranscript?: () => void;
 }
-
-export function VoiceSessionControl({
-  state,
-  error,
-  muted,
-  webrtcPreview = true,
-  onStart,
-  onEnd,
-  onCancel,
-  onToggleMute,
-  onConfirmTranscript,
-  onDiscardTranscript
-}: Readonly<VoiceSessionControlProps>) {
-  const active = [
-    'connecting',
-    'listening',
-    'confirming',
-    'reviewing',
-    'speaking'
-  ].includes(state);
-
-  const statusBadge = useMemo(
-    () => (
-      <Badge
-        color={STATE_COLORS[state]}
-        variant={state === 'listening' ? 'filled' : 'light'}
-        aria-live='polite'
-        data-testid='voice-state-badge'
-      >
-        {STATE_LABELS[state]}
-      </Badge>
-    ),
-    [state]
-  );
-
-  if (state === 'unavailable') {
-    return null;
-  }
-
+export function VoiceSessionControl(props: Readonly<VoiceSessionControlProps>) {
+  const split = useVoiceSessionState();
+  const active = !['unavailable', 'ready', 'error'].includes(props.state);
+  if (props.state === 'unavailable') return null;
+  const labels: Record<VoiceClientState, string> = {
+    unavailable: t`Voice unavailable`,
+    ready: t`Voice ready`,
+    connecting: t`Connecting…`,
+    listening: t`Listening`,
+    confirming: t`Confirm transcript`,
+    reviewing: t`Reviewing…`,
+    speaking: t`Speaking`,
+    error: t`Voice error`
+  };
   return (
-    <Group gap='xs' wrap='nowrap' data-testid='voice-session-control'>
+    <Group gap='xs' data-testid='voice-session-control' data-voice-surface>
       {!active ? (
-        <Tooltip label={CONSENT_NOTICE} multiline w={280} withArrow>
-          <Button
-            leftSection={<IconMicrophone size={16} />}
-            variant='light'
-            size='xs'
-            onClick={onStart}
-            disabled={
-              state === 'error' && error?.code === 'BROWSER_UNSUPPORTED'
-            }
-            data-testid='voice-start'
-            aria-label='Start voice session'
-          >
-            Voice
-          </Button>
-        </Tooltip>
+        <Button
+          mih={44}
+          onClick={props.onStart}
+          data-testid='voice-start'
+          disabled={props.error?.code === 'BROWSER_UNSUPPORTED'}
+          aria-label={t`Start voice session`}
+          aria-keyshortcuts='Control+Shift+V Meta+Shift+V'
+        >{t`Voice`}</Button>
       ) : (
         <>
-          {statusBadge}
-          <Tooltip label={muted ? 'Unmute microphone' : 'Mute microphone'}>
-            <ActionIcon
-              variant='subtle'
-              size='sm'
-              onClick={onToggleMute}
-              aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
-              data-testid='voice-mute'
-            >
-              {muted ? (
-                <IconMicrophoneOff size={16} />
-              ) : (
-                <IconMicrophone size={16} />
-              )}
-            </ActionIcon>
-          </Tooltip>
-          {state === 'confirming' && (
+          <Badge data-testid='voice-state-badge'>{labels[props.state]}</Badge>
+          <Text size='sm' data-testid='voice-mic-status'>
+            {split.mic === 'listening'
+              ? t`Microphone listening`
+              : split.mic === 'muted'
+                ? t`Microphone muted`
+                : split.mic === 'ptt_idle'
+                  ? t`Microphone waiting for push to talk`
+                  : t`Microphone paused`}
+          </Text>
+          <Text size='sm'>
+            {split.playback === 'playing'
+              ? t`Audio playing`
+              : split.playback === 'pending'
+                ? t`Waiting for audio`
+                : t`Audio stopped`}
+          </Text>
+          <Button
+            mih={44}
+            variant='default'
+            onClick={props.onToggleMute}
+            data-testid='voice-mute'
+            aria-label={props.muted ? t`Unmute microphone` : t`Mute microphone`}
+          >
+            {props.muted ? t`Unmute` : t`Mute`}
+          </Button>
+          {props.state === 'confirming' && (
             <>
               <Button
-                size='compact-xs'
+                mih={44}
                 color='orange'
-                onClick={onConfirmTranscript}
+                onClick={props.onConfirmTranscript}
                 data-testid='voice-confirm-transcript'
-                aria-label='Confirm transcript'
-              >
-                Confirm
-              </Button>
+              >{t`Confirm transcript`}</Button>
               <Button
-                size='compact-xs'
-                variant='subtle'
-                color='gray'
-                onClick={onDiscardTranscript}
+                mih={44}
+                variant='default'
+                onClick={props.onDiscardTranscript}
                 data-testid='voice-discard-transcript'
-                aria-label='Discard transcript'
-              >
-                Discard
-              </Button>
+              >{t`Discard transcript`}</Button>
             </>
           )}
-          {state === 'speaking' && (
-            <Tooltip label='Stop speaking'>
-              <ActionIcon
-                variant='subtle'
-                size='sm'
-                onClick={onCancel}
-                aria-label='Stop speaking'
-                data-testid='voice-stop-speaking'
-              >
-                <IconVolumeOff size={16} />
-              </ActionIcon>
-            </Tooltip>
-          )}
-          <Tooltip label='End voice session'>
-            <ActionIcon
-              variant='subtle'
-              color='red'
-              size='sm'
-              onClick={onEnd}
-              aria-label='End voice session'
-              data-testid='voice-end'
-            >
-              <IconPlayerStopFilled size={16} />
-            </ActionIcon>
-          </Tooltip>
+          <Button
+            mih={44}
+            variant='default'
+            onClick={props.onCancel}
+            data-testid='voice-stop-speaking'
+          >{t`Stop speaking`}</Button>
+          <Button
+            mih={44}
+            color='red'
+            onClick={props.onEnd}
+            data-testid='voice-end'
+            aria-keyshortcuts='Control+Shift+V Meta+Shift+V'
+          >{t`End voice`}</Button>
         </>
       )}
-      {webrtcPreview && active && (
-        <Badge color='grape' variant='outline' size='xs'>
-          preview
-        </Badge>
+      {props.webrtcPreview && active && (
+        <Badge variant='outline'>{t`Preview`}</Badge>
       )}
-      {state === 'error' && error && (
-        <Text size='xs' c='red' data-testid='voice-error'>
-          {error.code}
+      {props.error && (
+        <Text c='red' data-testid='voice-error'>
+          {props.error.code}
         </Text>
       )}
     </Group>

@@ -33,6 +33,7 @@ CAPTURE_ENV = {
 
 class CaptureApiTests(TestCase):
     """CaptureApiTests."""
+
     @classmethod
     def setUpTestData(cls):
         """SetUpTestData."""
@@ -67,6 +68,7 @@ class CaptureApiTests(TestCase):
             '/api/voice/captures/',
             {
                 'purpose': purpose,
+                'consent_version': 'consent-v2',
                 'work_order_id': self.work_order.pk,
                 'work_order_version': self.work_order.lifecycle_version,
             },
@@ -88,7 +90,7 @@ class CaptureApiTests(TestCase):
             created = self._create(client)
             self.assertEqual(created.status_code, 201, created.content)
             capture_id = created.json()['id']
-            self.assertEqual(created.json()['consent_version'], 'consent-v1')
+            self.assertEqual(created.json()['consent_version'], 'consent-v2')
 
             revised = client.post(
                 f'/api/voice/captures/{capture_id}/revise/',
@@ -110,13 +112,9 @@ class CaptureApiTests(TestCase):
             self.assertEqual(accepted.status_code, 200, accepted.content)
             self.assertEqual(accepted.json()['state'], 'accepted')
 
-            committed = client.post(
-                f'/api/voice/captures/{capture_id}/commit/'
-            )
+            committed = client.post(f'/api/voice/captures/{capture_id}/commit/')
             self.assertEqual(committed.status_code, 503)
-            self.assertEqual(
-                committed.json()['error'], 'DESTINATION_UNAVAILABLE'
-            )
+            self.assertEqual(committed.json()['error'], 'DESTINATION_UNAVAILABLE')
 
     def test_hash_mismatch_is_rejected_over_http(self):
         """Hash mismatch is rejected over http."""
@@ -215,6 +213,7 @@ class CaptureApiTests(TestCase):
                 {
                     'purpose': 'fault_intake',
                     'work_order_id': 2_147_483_647,
+                    'consent_version': 'consent-v2',
                     'work_order_version': 1,
                 },
                 content_type='application/json',
@@ -224,6 +223,7 @@ class CaptureApiTests(TestCase):
                 {
                     'purpose': 'fault_intake',
                     'work_order_id': self.work_order.pk,
+                    'consent_version': 'consent-v2',
                     'work_order_version': self.work_order.lifecycle_version + 1,
                 },
                 content_type='application/json',

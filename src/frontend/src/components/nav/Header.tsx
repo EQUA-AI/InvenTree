@@ -45,6 +45,9 @@ import {
   useUserSettingsState
 } from '../../states/SettingsStates';
 import { useUserState } from '../../states/UserState';
+import { VoiceConsentDialog } from '../ai/voice/VoiceConsentDialog';
+import { VoiceGlobalIndicator } from '../ai/voice/VoiceGlobalIndicator';
+import { VoiceHandsFreeSurface } from '../ai/voice/VoiceHandsFreeSurface';
 import { ScanButton } from '../buttons/ScanButton';
 import { SpotlightButton } from '../buttons/SpotlightButton';
 import { AIChatButton, AIChatDrawer } from './AIChatDrawer';
@@ -222,6 +225,8 @@ export function Header() {
         }}
       />
       <AIChatDrawer opened={aiChatDrawerOpened} onClose={closeAIChatDrawer} />
+      <VoiceConsentDialog />
+      <VoiceHandsFreeSurface />
       <Container className={classes.layoutHeaderSection} size='100%'>
         <Group justify='space-between'>
           <Group>
@@ -267,6 +272,7 @@ export function Header() {
               </Tooltip>
             </Indicator>
             <AIChatButton onClick={openAIChatDrawer} />
+            <VoiceGlobalIndicator />
             <Alerts />
             <MainMenu />
           </Group>

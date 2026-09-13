@@ -8,7 +8,7 @@ import {
   emptyDecisionState
 } from './decisionReducer';
 
-interface VoiceDecisionStore extends DecisionState {
+export interface VoiceDecisionStore extends DecisionState {
   setSession: (sessionId: string | null) => void;
   applyTurn: (sessionId: string, snapshot: DecisionSnapshot) => void;
   refresh: () => Promise<void>;

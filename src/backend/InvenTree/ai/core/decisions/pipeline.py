@@ -36,6 +36,11 @@ async def resolve(service, run):
     """Capture focused decisions before legacy writes/questions, then new hold intents."""
     if not enabled() or run.modality != "voice":
         return False
+    from ai.core.voice.experience import writes_eligible
+
+    if not writes_eligible(getattr(run.trusted_context, "locale", "en")):
+        await abandon(service, run, "locale_not_qualified")
+        return False
     try:
         coordinator = get_coordinator()
         current = await service._call_sync(coordinator.store.read, run.thread.pk)

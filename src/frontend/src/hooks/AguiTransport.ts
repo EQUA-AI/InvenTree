@@ -200,7 +200,6 @@ function dispatchCustom(
       break;
     }
     case 'aimms.stateDelta':
-    case 'aimms.hitl':
     case 'aimms.custom':
       // Known channels with no UI consumer yet — deliberate no-ops.
       break;

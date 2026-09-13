@@ -12,6 +12,7 @@ import {
 import { IconAlertTriangle, IconMicrophone } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 
+import { VoiceConsentDisclosure } from '../../../components/ai/voice/VoiceConsentDialog';
 import { useVoiceCapture } from '../../../hooks/useVoiceCapture';
 
 /**
@@ -97,6 +98,7 @@ export default function DictateCloseoutModal({
 
         {!state && (
           <>
+            <VoiceConsentDisclosure />
             <Text size='sm'>
               {t`Dictation goes on the record: the exact transcript you accept becomes the closeout narrative, with voice provenance attached. You will review it before anything is extracted.`}
             </Text>

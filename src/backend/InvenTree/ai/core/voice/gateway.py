@@ -91,10 +91,17 @@ class VoiceLiveChannel:
     the first SDP request and torn down through :func:`close_channel`.
     """
 
-    def __init__(self, session_id: str, user_id: int | None = None) -> None:
+    def __init__(
+        self,
+        session_id: str,
+        user_id: int | None = None,
+        voice_preference: tuple[str, str] | None = None,
+    ) -> None:
         self.session_id = session_id
         #: The session owner's pk, used only to derive actor-scoped ASR hints.
         self._user_id = user_id
+        self._voice_preference = voice_preference
+        self._output_rate = 1.0
         self._ws: Any | None = None
         self._http: Any | None = None
         self._drain_task: asyncio.Task | None = None
@@ -178,6 +185,8 @@ class VoiceLiveChannel:
         Same off-loop discipline as the phrase hints; any failure keeps the
         deployment default voice rather than degrading the session.
         """
+        if self._voice_preference in self.USER_VOICE_MAP.values():
+            return self._voice_preference
         if self._user_id is None:
             return None
         try:
@@ -204,7 +213,7 @@ class VoiceLiveChannel:
         if self._user_id is None:
             return ()
         try:
-            from ai.core.tools.capabilities import actor_phrase_hints
+            from ai.core.voice.vocabulary import actor_phrase_hints
             from asgiref.sync import sync_to_async
 
             return tuple(await sync_to_async(actor_phrase_hints)(self._user_id))
@@ -278,6 +287,22 @@ class VoiceLiveChannel:
         if ws is None or ws.closed:
             raise TransportUnavailable("no active provider channel")
         if payload.get("type") == "response.create":
+            payload = dict(payload)
+            rate = payload.pop("_aimms_rate", 1.0)
+            if rate not in (0.8, 1.0):
+                raise ValueError("unsupported output rate")
+            if rate != self._output_rate:
+                from ai.core.config import get_settings
+
+                preference = await self._actor_voice_override()
+                name = preference[0] if preference else get_settings().azure_voicelive_voice
+                await ws.send_json({
+                    "type": "session.update",
+                    "session": {
+                        "voice": {"type": "azure-standard", "name": name, "rate": str(rate)}
+                    },
+                })
+                self._output_rate = rate
             # Let the gate adopt the acknowledging response id instead of
             # flagging the application's own speech as a policy violation.
             # The client event id lets a provider error be attributed to
@@ -356,7 +381,11 @@ def channel_for_session(session) -> VoiceLiveChannel:
     session_id = str(session.id)
     channel = _channels.get(session_id)
     if channel is None:
-        channel = VoiceLiveChannel(session_id, user_id=getattr(session, "owner_id", None))
+        channel = VoiceLiveChannel(
+            session_id,
+            user_id=getattr(session, "owner_id", None),
+            voice_preference=(getattr(session, "voice", ""), getattr(session, "locale", "")),
+        )
         _channels[session_id] = channel
     return channel
 

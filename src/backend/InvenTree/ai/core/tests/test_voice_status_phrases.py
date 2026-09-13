@@ -70,7 +70,9 @@ def _spoken_texts(sent):
 def _session_for(principal, settings):
     return _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
 

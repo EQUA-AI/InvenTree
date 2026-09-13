@@ -11,6 +11,7 @@
  * this component only shows what was heard, with the critical spans marked.
  */
 
+import { t } from '@lingui/core/macro';
 import { Group, Paper, Text } from '@mantine/core';
 
 import type {
@@ -31,15 +32,15 @@ export interface VoiceTranscriptProps {
 
 function holdPromptLine(prompt: VoiceHoldPrompt | null | undefined): string {
   if (!prompt) {
-    return 'Contains critical values — confirm it was heard correctly, or say the correction.';
+    return t`Contains critical values — confirm it was heard correctly, or say the correction.`;
   }
   if (prompt.playbackState === 'requested') {
-    return 'Read back aloud — say confirm, discard, or say the correction.';
+    return t`Read-back requested — say confirm, discard, or say the correction.`;
   }
   if (prompt.playbackState === 'failed') {
-    return 'The spoken prompt could not be played — read it here, then say confirm, discard, or the correction.';
+    return t`The spoken prompt could not be played — read it here, then say confirm, discard, or the correction.`;
   }
-  return 'Waiting for the spoken prompt…';
+  return t`Waiting for the spoken prompt…`;
 }
 
 /** Render text with its critical spans emphasised. */
@@ -86,13 +87,12 @@ export function VoiceTranscript({
         radius='sm'
         withBorder
         data-testid='voice-pending-transcript'
-        aria-live='polite'
       >
         <Group gap='xs' wrap='nowrap' align='flex-start'>
           <Text size='xs' c='orange' fs='italic' style={{ flexShrink: 0 }}>
             {pendingConfirm.revision && pendingConfirm.revision > 1
-              ? `confirm (revision ${pendingConfirm.revision}):`
-              : 'confirm:'}
+              ? t`Confirm (revision ${pendingConfirm.revision}):`
+              : t`Confirm:`}
           </Text>
           <Text size='sm'>
             <HighlightedText text={pendingConfirm.text} />
@@ -108,16 +108,10 @@ export function VoiceTranscript({
     return null;
   }
   return (
-    <Paper
-      p='xs'
-      radius='sm'
-      withBorder
-      data-testid='voice-partial-transcript'
-      aria-live='polite'
-    >
+    <Paper p='xs' radius='sm' withBorder data-testid='voice-partial-transcript'>
       <Group gap='xs' wrap='nowrap'>
         <Text size='xs' c='dimmed' fs='italic'>
-          hearing…
+          {t`Hearing…`}
         </Text>
         <Text size='sm' c='dimmed'>
           <HighlightedText text={partial.text} />

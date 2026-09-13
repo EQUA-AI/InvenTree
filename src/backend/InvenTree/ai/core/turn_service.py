@@ -798,6 +798,11 @@ class NormalizedTurnService:
         """
         if modality != TurnModality.VOICE or not self._voice_write_enabled():
             return None
+        from ai.core.voice.experience import writes_eligible
+
+        if not writes_eligible(getattr(trusted_context, "locale", "en")):
+            self._abandon_pending_voice_write(modality=modality, thread_id=thread_id)
+            return None
         from ai.core.decisions.pipeline import enabled as decisions_enabled
 
         if decisions_enabled():
@@ -1005,6 +1010,18 @@ class NormalizedTurnService:
         """
         if not self._voice_write_enabled():
             return None
+        from ai.core.voice.experience import write_locale_reason, writes_eligible
+
+        locale = getattr(trusted_context, "locale", "en")
+        if not writes_eligible(locale):
+            return await self._canonical_for_voice_write(
+                thread_id=thread_id,
+                turn_id=turn_id,
+                emitter=emitter,
+                spoken=write_locale_reason(locale),
+                workflow_id="voice_locale_refused",
+                workflow_name="VOICE_LOCALE_REFUSED",
+            )
         # Bounded: the planner resolves ids through an agent loop, and an
         # under-specified request used to keep it running for ~95 seconds before
         # producing a fixed refusal. A timeout here degrades to exactly the same

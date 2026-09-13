@@ -46,6 +46,9 @@ class VoiceSessionPayload(BaseModel):
     # pattern 10). A later material scope change makes turn submissions
     # return 409 VOICE_SCOPE_CHANGED until the session is recreated.
     analysis_scope_version: int = 0
+    locale: str = "en-US"
+    voice: str = "en-US-AvaNeural"
+    consent_version: str = ""
 
 
 class VoiceSpokenPayload(BaseModel):
@@ -136,6 +139,15 @@ class VoiceDecisionEvent(BaseModel):
     message: str
 
 
+class VoicePresentationPayload(BaseModel):
+    """Immutable source binding and zero-based advisory output cursor."""
+
+    id: str
+    source_hash: str
+    index: int
+    total: int
+
+
 class VoiceTurnResponse(BaseModel):
     """One completed (or replayed) voice turn."""
 
@@ -152,6 +164,7 @@ class VoiceTurnResponse(BaseModel):
     pending_question: VoicePendingQuestion | None = None
     pending_decision: VoicePendingDecision | None = None
     decision_event: VoiceDecisionEvent | None = None
+    presentation: VoicePresentationPayload | None = None
 
 
 #: Every error code the SERVER can send a voice client (exception ``code``
@@ -175,6 +188,11 @@ SERVER_VOICE_ERROR_CODES: tuple[str, ...] = (
     "VOICE_DECISION_UNAVAILABLE",
     "VOICE_DECISION_CONFLICT",
     "VOICE_OPERATION_NOT_FOUND",
+    "VOICE_CONSENT_REQUIRED",
+    "VOICE_LOCALE_UNSUPPORTED",
+    "VOICE_PRESENTATION_UNAVAILABLE",
+    "VOICE_SAMPLE_UNAVAILABLE",
+    "VOICE_SAMPLE_LIMIT",
 )
 
 

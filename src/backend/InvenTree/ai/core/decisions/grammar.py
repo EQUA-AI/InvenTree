@@ -107,6 +107,7 @@ def classify_decision_utterance(
     *,
     allowed_responses: Collection[str] = (),
     required_phrase: str | None = None,
+    locale: str = "en-US",
 ) -> DecisionUtteranceKind:
     """Classify one whole reply without granting authority itself.
 
@@ -116,6 +117,10 @@ def classify_decision_utterance(
     grammar v3, including strict phrases and mixed-assent safety.
     """
 
+    from ai.core.voice.experience import writes_eligible
+
+    if not writes_eligible(locale):
+        return DecisionUtteranceKind.UNRELATED
     command = _normalize_command(content)
     allowed = _normalized_allowed(allowed_responses)
     if command in _CANCEL_ACTION_COMMANDS:

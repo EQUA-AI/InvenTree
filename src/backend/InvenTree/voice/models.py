@@ -115,6 +115,14 @@ class VoiceSession(models.Model):
     )
     azure_session_id = models.CharField(max_length=128, blank=True)
     policy_version = models.CharField(max_length=64)
+    # Blank on pre-v2 sessions: a migration must never manufacture consent.
+    consent_version = models.CharField(
+        max_length=32, blank=True, default='', db_default=''
+    )
+    locale = models.CharField(max_length=16, default='en-US', db_default='en-US')
+    voice = models.CharField(
+        max_length=64, default='en-US-AvaNeural', db_default='en-US-AvaNeural'
+    )
     # The thread's analysis-scope version this session is bound to (§13.3
     # pattern 10): a material scope change after creation refuses further
     # turns until the user acknowledges by restarting voice. 0 = the thread
@@ -234,6 +242,29 @@ class VoiceUtterance(models.Model):
                 | Q(response_id=''),
                 name='voice_utterance_answer_binds_response',
             ),
+        ]
+
+
+class VoicePresentation(models.Model):
+    """Immutable answer chunks and a compare-and-swap output-only cursor."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        VoiceSession, on_delete=models.CASCADE, related_name='presentations'
+    )
+    turn_id = models.CharField(max_length=64)
+    source_hash = models.CharField(max_length=64)
+    utterance_ids = models.JSONField(default=list)
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """One immutable presentation per completed answer."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['session', 'turn_id'], name='voice_presentation_turn'
+            )
         ]
 
 

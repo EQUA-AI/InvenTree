@@ -175,7 +175,7 @@ def test_enabled_voice_decision_lifetime_stays_within_hard_ceiling():
 def test_enabled_voice_decision_ceiling_stays_within_session_idle_timeout():
     with pytest.raises(
         ValidationError,
-        match=("VOICE_DECISION_MAX_ARMED_S must not exceed VOICE_LIVE_IDLE_TIMEOUT_S"),
+        match="consent-v2 requires VOICE_LIVE_IDLE_TIMEOUT_S=300",
     ):
         _settings(
             FEATURE_VOICE_DECISIONS=True,

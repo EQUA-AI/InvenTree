@@ -137,6 +137,10 @@ class RealtimeModelConstraintTests(TestCase):
         for model in (VoiceSession, VoiceTransportAttempt, VoiceUtterance):
             for field in model._meta.get_fields():
                 name = field.name.lower()
+                if model is VoiceSession and name == 'voice':
+                    # An allow-listed output voice name, not an ICE credential.
+                    self.assertEqual(field.max_length, 64)
+                    continue
                 for fragment in FORBIDDEN_FIELD_FRAGMENTS:
                     self.assertNotIn(
                         fragment,

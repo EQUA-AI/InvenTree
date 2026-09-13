@@ -22,7 +22,7 @@ import {
   UnstyledButton,
   useMantineTheme
 } from '@mantine/core';
-import { useHotkeys, useLocalStorage } from '@mantine/hooks';
+import { useLocalStorage } from '@mantine/hooks';
 import { showNotification } from '@mantine/notifications';
 import {
   IconBrain,
@@ -67,6 +67,7 @@ import { useVoiceLiveSession } from '../../hooks/useVoiceLiveSession';
 import { useAIChatState } from '../../states/AIChatState';
 import { useLocalState } from '../../states/LocalState';
 import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
+import { useVoiceSurfaceState } from '../../states/VoiceSessionState';
 import { ApprovalInboxPanel } from '../ai/ApprovalInboxPanel';
 import { ChatActionProposalList } from '../ai/ChatActionProposals';
 import { MailboxPanel } from '../ai/MailboxPanel';
@@ -75,6 +76,7 @@ import { VoiceContextBadge } from '../ai/VoiceContextBadge';
 import { VoiceDecisionCard } from '../ai/VoiceDecisionCard';
 import { VoiceSessionControl } from '../ai/VoiceSessionControl';
 import { VoiceTranscript } from '../ai/VoiceTranscript';
+import { VoiceExperienceControls } from '../ai/voice/VoiceExperienceControls';
 import { ActiveScopeBanner } from '../aichat/ActiveScopeBanner';
 import { CitationList } from '../aichat/CitationList';
 import { ClaimEvidence } from '../aichat/ClaimEvidence';
@@ -1079,11 +1081,10 @@ export function AIChatDrawer({
     }
   });
   const handleClose = useCallback(() => {
-    // Preserve the Phase A close behavior when no decision surface is active.
-    // An announced decision instead remains accessible from the header control.
-    if (!useVoiceDecisionState.getState().decision) void voice.end();
+    voice.minimize();
     onClose();
-  }, [onClose, voice.end]);
+  }, [onClose, voice.minimize]);
+  const voiceFullscreen = useVoiceSurfaceState((state) => state.fullscreen);
   const proposals = useChatProposals();
   const voiceDecision = useVoiceDecisionState((state) => state.decision);
 
@@ -1342,34 +1343,10 @@ export function AIChatDrawer({
     [handleSendMessage]
   );
 
-  // Keyboard shortcut to close drawer
-  useHotkeys([['Escape', handleClose]]);
-
   const hasMessages = messages.length > 0;
 
   return (
     <>
-      {!opened && voice.session && (
-        <Group
-          pos='fixed'
-          top={8}
-          right={80}
-          style={{ zIndex: 501 }}
-          data-testid='voice-minimized-indicator'
-        >
-          <Button
-            size='compact-xs'
-            onClick={() => useAIChatState.getState().open()}
-          >
-            {voiceDecision?.target_label ?? t`Voice session`} · {voice.state}
-          </Button>
-          <Button
-            size='compact-xs'
-            color='red'
-            onClick={() => void voice.end()}
-          >{t`End voice`}</Button>
-        </Group>
-      )}
       <Drawer
         opened={opened}
         size={drawerWidth}
@@ -1597,7 +1574,7 @@ export function AIChatDrawer({
             onClose={() => setMemoryThreadId(null)}
           />
 
-          <Box px='md' py='xs'>
+          <Box px='md' py='xs' data-voice-surface>
             <Group gap='xs' mb={6} wrap='nowrap'>
               <VoiceSessionControl
                 state={voice.state}
@@ -1622,7 +1599,10 @@ export function AIChatDrawer({
               pendingConfirm={voice.pendingConfirm}
               holdPrompt={voice.holdPrompt}
             />
-            <VoiceDecisionCard key={voiceDecision?.decision_id ?? 'none'} />
+            {!voiceFullscreen && (
+              <VoiceDecisionCard key={voiceDecision?.decision_id ?? 'none'} />
+            )}
+            {!voiceFullscreen && <VoiceExperienceControls />}
           </Box>
           {/* Main content area */}
           <ScrollArea

@@ -6,9 +6,11 @@ import { apiUrl } from '@lib/functions/Api';
 import type { UserTheme } from '@lib/types/Core';
 import type { HostList } from '@lib/types/Server';
 import { api } from '../App';
+import type { VoicePreferences } from '../components/ai/voice/types';
 import { useUserState } from './UserState';
 
-interface LocalStateProps {
+interface LocalStateProps extends VoicePreferences {
+  setVoicePreferences: (values: Partial<VoicePreferences>) => void;
   autoupdate: boolean;
   toggleAutoupdate: () => void;
   host: string;
@@ -51,6 +53,14 @@ interface LocalStateProps {
 export const useLocalState = create<LocalStateProps>()(
   persist(
     (set, get) => ({
+      voiceListeningMode: 'continuous',
+      voiceEarcons: true,
+      voiceSrAnnounceTranscripts: false,
+      voiceConsentVersion: '',
+      voiceLocale: 'en-US',
+      voiceOutputVoice: 'en-US-AvaNeural',
+      voiceSpeakerNoticeSeen: false,
+      setVoicePreferences: (values) => set(values),
       autoupdate: false,
       toggleAutoupdate: () =>
         set((state) => ({ autoupdate: !state.autoupdate })),

@@ -85,7 +85,31 @@ export const defaultCapability: VoiceCapabilityPayload = {
   enabled: true,
   webrtc: true,
   relay: false,
-  confidence_floor: 0.85
+  confidence_floor: 0.85,
+  foreground_session: false,
+  decisions: true,
+  prompts: true,
+  help: true,
+  presentation: true,
+  mobile_surface: true,
+  wake_lock: true,
+  ice_servers: [],
+  modes: ['continuous', 'push_to_talk'],
+  default_mode: 'continuous',
+  max_queued_turns: 3,
+  idle_timeout_s: 300,
+  mic_silence_rms: 0.01,
+  mic_silence_window_s: 1.5,
+  route_loss_pause: true,
+  tts_timeout_s: 8,
+  decision_max_armed_s: 300,
+  reconnect: { grace_s: 3, max_attempts: 2 },
+  locales: ['en-US'],
+  voices: [{ locale: 'en-US', voice: 'en-US-AvaNeural' }],
+  default_locale: 'en-US',
+  default_voice: 'en-US-AvaNeural',
+  consent_version: 'consent-v2',
+  voice_write_locales: ['en-US']
 };
 
 export function sessionPayload(
@@ -102,6 +126,9 @@ export function sessionPayload(
     policy_version: 'test',
     terminal_reason: null,
     analysis_scope_version: 0,
+    locale: 'en-US',
+    voice: 'en-US-AvaNeural',
+    consent_version: 'consent-v2',
     ...overrides
   };
 }
@@ -119,6 +146,7 @@ export function turnPayload(
     replayed: false,
     spoken: null,
     pending_question: null,
+    presentation: null,
     ...overrides
   };
 }
@@ -233,6 +261,9 @@ export async function installVoiceMocks(
         }
         async setLocalDescription() {}
         async setRemoteDescription() {}
+        async getStats() {
+          return new Map();
+        }
         close() {
           this.connectionState = 'closed';
         }
@@ -240,6 +271,7 @@ export async function installVoiceMocks(
 
       const track = {
         kind: 'audio',
+        addEventListener() {},
         get enabled() {
           return mock.trackEnabled;
         },
@@ -302,6 +334,8 @@ export async function installVoiceMocks(
       };
 
       (window as any).RTCPeerConnection = MockPeerConnection;
+      // The synthetic stream is not a real MediaStream. RMS itself has pure tests.
+      (window as any).AudioContext = undefined;
       (window as any).__voiceMock = mock;
     },
     {
@@ -365,6 +399,9 @@ export async function installVoiceMocks(
       json: { sdp_answer: 'v=0\r\nmock-answer' }
     });
   });
+  await page.route('**/api/ai/voice/sessions/*/suspend', (route) =>
+    route.fulfill({ json: { suspended: true } })
+  );
 
   await page.route(
     '**/api/ai/voice/sessions/*/cancel',
@@ -396,7 +433,12 @@ export async function installVoiceMocks(
         status: 200,
         json: options.onPrompt
           ? options.onPrompt(observed.body ?? {})
-          : { utterance_id: 'utt-prompt', playback_state: 'requested' }
+          : {
+              utterance_id: 'utt-prompt',
+              spoken_summary: 'Fixed spoken prompt.',
+              spoken_summary_hash: 'a'.repeat(64),
+              playback_state: 'requested'
+            }
       });
     }
   );
@@ -430,6 +472,14 @@ export async function installVoiceMocks(
   );
 
   return observations;
+}
+
+export async function startVoice(page: Page) {
+  await page.getByTestId('voice-start').click();
+  await page
+    .getByLabel('I have read the disclosure and want to start voice.')
+    .check();
+  await page.getByTestId('voice-consent-start').click();
 }
 
 export interface TranscriptEvent {

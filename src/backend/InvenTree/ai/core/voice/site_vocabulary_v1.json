@@ -1,0 +1,30 @@
+{
+  "version": "aimms-site-v1",
+  "owner": "AIMMS",
+  "source": "aimms-experimental--0000076, read-only snapshot 2026-09-12",
+  "pronunciation": {"identifiers": "letters separately, digits individually", "quantities": "retain quantities", "dates_and_units": "preserve literal values; no conversion"},
+  "equipment": [
+    {"id": 7, "name": "Electronics Test Bench 1", "location": "Plant A / Engineering Lab / Bench E-01"},
+    {"id": 8, "name": "Boiler Feed Pump B", "location": "Plant A / Boiler House / Feedwater Skid / Position B"},
+    {"id": 9, "name": "Air Compressor #4", "location": "Plant A / Utilities Building / Compressor Room / Pad C4"},
+    {"id": 10, "name": "Unit 3 Switchgear Breaker", "location": "Plant A / Substation U3 / Lineup SG-3 / Cubicle 3B"},
+    {"id": 11, "name": "Packaging Line 2 Conveyor", "location": "Plant A / Packaging Hall / Line 2 / Zone P2-04"},
+    {"id": 12, "name": "Customer Test Stand (ACME)", "location": "ACME Manufacturing / Austin, TX / Quality Lab / Cell A-01"},
+    {"id": 23, "name": "Influent Pump Station No. 1", "location": "Tomahawk Creek WRF / Headworks / Influent Gallery"},
+    {"id": 24, "name": "Aeration Blower No. 2", "location": "Tomahawk Creek WRF / Aeration / Blower Building"},
+    {"id": 25, "name": "Aeration Basin No. 3 Diffuser Grid", "location": "Tomahawk Creek WRF / Aeration / Basin 3"},
+    {"id": 26, "name": "Mechanical Bar Screen No. 1", "location": "Tomahawk Creek WRF / Headworks / Screen Channel 1"},
+    {"id": 27, "name": "Dewatering Centrifuge No. 2", "location": "Tomahawk Creek WRF / Solids / Dewatering Building"},
+    {"id": 28, "name": "Secondary Clarifier No. 4", "location": "Tomahawk Creek WRF / Secondary / Clarifier 4"},
+    {"id": 29, "name": "UV Disinfection Channel No. 1", "location": "Tomahawk Creek WRF / Disinfection / UV Channel 1"},
+    {"id": 30, "name": "UF/RO Skid No. 1", "location": "Industrial Water Plant / Treatment Bay 1"},
+    {"id": 31, "name": "Cooling Water Train A", "location": "Industrial Water Plant / Cooling Yard"},
+    {"id": 32, "name": "Remote Lift Station 14 — Blue River", "location": "Collection System / Basin 4 / Blue River"},
+    {"id": 33, "name": "Siemens SINVERT PVS351 UL", "location": "Site B"},
+    {"id": 34, "name": "SMA Sunny Central HE Series", "location": "Site A"},
+    {"id": 50, "name": "Zen Solar - Site A", "location": "Site A"},
+    {"id": 51, "name": "Zen Solar - Site B", "location": "Site B"},
+    {"id": 52, "name": "Aurora Power - Site A", "location": "Site A"},
+    {"id": 53, "name": "Prairie Energy - Site A", "location": "Site A"}
+  ]
+}

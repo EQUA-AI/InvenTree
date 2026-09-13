@@ -25,10 +25,6 @@ export enum AGUIEventType {
   TOOL_CALL_END = 'TOOL_CALL_END',
   TOOL_CALL_RESULT = 'TOOL_CALL_RESULT',
   QUESTION = 'QUESTION',
-  HITL_REQUIRED = 'HITL_REQUIRED',
-  HITL_APPROVED = 'HITL_APPROVED',
-  HITL_REJECTED = 'HITL_REJECTED',
-  HITL_TIMEOUT = 'HITL_TIMEOUT',
   PROGRESS_UPDATE = 'PROGRESS_UPDATE',
   STEP_STARTED = 'STEP_STARTED',
   STEP_FINISHED = 'STEP_FINISHED',
@@ -57,7 +53,6 @@ export type AimmsCustomChannel =
   | 'aimms.provenance'
   | 'aimms.stateDelta'
   | 'aimms.proposalsRefresh'
-  | 'aimms.hitl'
   | 'aimms.custom'
   | 'aimms.evidenceAnalysis'
   | 'aimms.analysisProgress'
@@ -176,6 +171,9 @@ export interface VoiceSessionPayload {
   policy_version: string;
   terminal_reason: string | null;
   analysis_scope_version: number;
+  locale: string;
+  voice: string;
+  consent_version: string;
 }
 
 export interface VoiceSpokenPayload {
@@ -200,6 +198,13 @@ export interface VoicePendingQuestion {
   options: VoicePendingQuestionOption[];
   expires_at: string | null;
   source: string | null;
+}
+
+export interface VoicePresentationPayload {
+  id: string;
+  source_hash: string;
+  index: number;
+  total: number;
 }
 
 export interface VoiceDecisionContext {
@@ -261,6 +266,7 @@ export interface VoiceTurnResponse {
   pending_question: VoicePendingQuestion | null;
   pending_decision: VoicePendingDecision | null;
   decision_event: VoiceDecisionEvent | null;
+  presentation: VoicePresentationPayload | null;
 }
 
 export type ServerVoiceErrorCode =
@@ -277,7 +283,12 @@ export type ServerVoiceErrorCode =
   | 'VOICE_PROMPT_UNKNOWN'
   | 'VOICE_DECISION_UNAVAILABLE'
   | 'VOICE_DECISION_CONFLICT'
-  | 'VOICE_OPERATION_NOT_FOUND';
+  | 'VOICE_OPERATION_NOT_FOUND'
+  | 'VOICE_CONSENT_REQUIRED'
+  | 'VOICE_LOCALE_UNSUPPORTED'
+  | 'VOICE_PRESENTATION_UNAVAILABLE'
+  | 'VOICE_SAMPLE_UNAVAILABLE'
+  | 'VOICE_SAMPLE_LIMIT';
 
 // --- Analysis scope (ai.core.analysis.scope / .wire) ---
 

@@ -142,7 +142,9 @@ def test_voice_followup_carries_the_preceding_text_turn():
     # Turn 1: VOICE through the real route, session bound to the same thread.
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=thread_id)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=thread_id)
+        ),
         settings,
     )
     assert created["thread_id"] == thread_id

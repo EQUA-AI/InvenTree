@@ -1,0 +1,6 @@
+.voice-hands-free {
+  min-height: calc(100dvh - 100px);
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  font-size: 1.125rem;
+}
+.voice-hands-free button { min-height: 44px; min-width: 44px; }

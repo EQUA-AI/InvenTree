@@ -81,6 +81,9 @@ def create_session(
     policy_version: str,
     limits: SessionLimits,
     analysis_scope_version: int = 0,
+    consent_version: str = '',
+    locale: str = 'en-US',
+    voice: str = 'en-US-AvaNeural',
 ) -> VoiceSession:
     """Create one owned session after enforcing the concurrency limit."""
     if not scope_key:
@@ -103,6 +106,9 @@ def create_session(
             scope_hash=_sha256(scope_key),
             policy_version=policy_version,
             analysis_scope_version=analysis_scope_version,
+            consent_version=consent_version,
+            locale=locale,
+            voice=voice,
         )
 
 

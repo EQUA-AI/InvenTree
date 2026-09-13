@@ -55,7 +55,12 @@ def _speakable_summary_candidates(message: str) -> tuple[str, ...]:
     out") and speak a stronger claim than the visible answer makes.
     """
     plain = _plain_spoken_text(message)
-    if not plain or len(plain) > _SPOKEN_SUMMARY_MAX_CHARS:
+    from ai.core.config import get_settings
+
+    # D14 persists pages of the COMPLETE validated text. Never clip a source
+    # to the former single-utterance ceiling, potentially losing a qualifier.
+    ceiling = 8000 if get_settings().feature_voice_foreground_session else _SPOKEN_SUMMARY_MAX_CHARS
+    if not plain or len(plain) > ceiling:
         return ()
     return (plain,)
 

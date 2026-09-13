@@ -1,7 +1,7 @@
 """B3: route ownership and persisted playback bindings are independent of assent."""
 
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from ai.core.decisions.coordinator import DecisionCoordinator
@@ -134,3 +134,47 @@ def test_valid_start_marks_only_delivery_and_early_completion_refuses(route_setu
             settings,
         )
     assert coordinator.store.read(session.thread_id).playback_completed_at is None
+
+
+def test_foreground_readback_refreshes_delivery_not_consent_or_expiry(route_setup):
+    actor, _, session, coordinator, request = route_setup
+    settings = _settings(FEATURE_VOICE_FOREGROUND_SESSION=True)
+    before = coordinator.store.read(session.thread_id)
+    channel = SimpleNamespace(send_control=AsyncMock())
+    with (
+        patch.object(routes, "_provider_channel_factory", return_value=channel),
+        patch("ai.core.config.get_settings", return_value=settings),
+    ):
+        result = _run(
+            actor,
+            lambda: endpoint("act_on_decision")(str(session.pk), "readback", request),
+            settings,
+        )
+    after = coordinator.store.read(session.thread_id)
+    assert result["pending_decision"]["state"] == "presented"
+    assert after.expires_at == before.expires_at
+    assert after.armed_at == before.armed_at
+    assert not after.review_acknowledged
+    assert after.playback_completed_at is None
+    assert after.utterance_id != before.utterance_id
+    assert not session.operations.exists()
+    assert channel.send_control.await_args_list[0].args == ({"type": "response.cancel"},)
+    assert (
+        channel.send_control.await_args_list[1].args[0]["response"]["metadata"][
+            "aimms_utterance_id"
+        ]
+        == after.utterance_id
+    )
+
+
+def test_readback_is_flag_gated_without_creating_output(route_setup):
+    actor, settings, session, _, request = route_setup
+    before = session.utterances.count()
+    with pytest.raises(HTTPException) as error:
+        _run(
+            actor,
+            lambda: endpoint("act_on_decision")(str(session.pk), "readback", request),
+            settings,
+        )
+    assert error.value.status_code == 409
+    assert session.utterances.count() == before

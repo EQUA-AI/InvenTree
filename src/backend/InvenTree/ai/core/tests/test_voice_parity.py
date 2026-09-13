@@ -109,7 +109,9 @@ def test_absent_confidence_is_not_low_and_the_turn_proceeds():
     principal = _principal(user)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
     fake = _FakeTurnService()
@@ -163,14 +165,18 @@ def test_session_binds_the_thread_scope_version_at_creation():
 
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id="thread_parity_bind")),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id="thread_parity_bind")
+        ),
         settings,
     )
     assert created["analysis_scope_version"] == 3
 
     unbound = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
     assert unbound["analysis_scope_version"] == 0
@@ -186,7 +192,9 @@ def test_scope_change_refuses_the_turn_without_executing_it():
     _thread_for(user, "thread_parity_stale", version=1)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id="thread_parity_stale")),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id="thread_parity_stale")
+        ),
         settings,
     )
 
@@ -218,7 +226,9 @@ def test_scope_change_refuses_the_turn_without_executing_it():
     # and turns proceed.
     fresh = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id="thread_parity_stale")),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id="thread_parity_stale")
+        ),
         settings,
     )
     assert fresh["analysis_scope_version"] == 2
@@ -239,7 +249,9 @@ def test_matching_scope_version_submits_normally():
     _thread_for(user, "thread_parity_match", version=5)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id="thread_parity_match")),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id="thread_parity_match")
+        ),
         settings,
     )
     fake = _FakeTurnService()
@@ -306,7 +318,9 @@ def test_voice_turn_payload_never_leaks_evidence_keys():
     principal = _principal(user)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
 
@@ -326,6 +340,7 @@ def test_voice_turn_payload_never_leaks_evidence_keys():
         _EvidenceLadenService(),
     )
     assert set(result) == {
+        "presentation",
         "session_id",
         "thread_id",
         "turn_id",
@@ -381,7 +396,9 @@ def test_empty_transcript_is_a_typed_422_and_no_turn_runs():
     principal = _principal(user)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
     fake = _FakeTurnService()

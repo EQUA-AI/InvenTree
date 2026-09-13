@@ -40,6 +40,10 @@ async def speak_reply(session, reply, coordinator):
                 spoken_hash=utterance.spoken_summary_hash,
             )
         try:
+            from ai.core.config import get_settings
+
+            if get_settings().feature_voice_foreground_session:
+                await send({"type": "response.cancel"})
             speech = build_exact_tts_payload(
                 persisted_text=utterance.spoken_summary,
                 persisted_hash=utterance.spoken_summary_hash,
@@ -166,6 +170,7 @@ def install_routes(router):
             "set-aside",
             "acknowledge-review",
             "repeat",
+            "readback",
             "playback-started",
             "playback-completed",
         }
@@ -190,7 +195,20 @@ def install_routes(router):
                 )
                 await speak_reply(session, reply, coordinator)
                 return payload(reply)
-            if action.startswith("playback-"):
+            if action == "readback":
+                from ai.core.config import get_settings
+
+                if not get_settings().feature_voice_foreground_session:
+                    raise DecisionConflict("Foreground read-back is unavailable.")
+                if decision.state != "presented" or coordinator.now() >= decision.expires_at:
+                    raise DecisionConflict("Request a fresh preview.")
+                await sync_to_async(coordinator.revalidate)(decision, actor, str(session.pk))
+                # Output only: no reply parsing, assent, review advancement or TTL refresh.
+                reply = DecisionReply(decision.spoken_summary, decision, "review")
+                from dataclasses import replace
+
+                reply = replace(reply, decision=await speak_reply(session, reply, coordinator))
+            elif action.startswith("playback-"):
                 # Verify the persisted utterance itself, not merely a client hash.
                 valid = await sync_to_async(
                     lambda: session.utterances.filter(

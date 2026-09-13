@@ -6,6 +6,7 @@
  * client-side.
  */
 
+import { t } from '@lingui/core/macro';
 import { Badge, Tooltip } from '@mantine/core';
 
 export interface VoiceContextBadgeProps {
@@ -24,8 +25,8 @@ export function VoiceContextBadge({
     <Tooltip
       label={
         scoped
-          ? 'Voice is grounded to the pinned record conversation'
-          : 'Voice is attached to your general assistant conversation'
+          ? t`Voice is grounded to the pinned record conversation`
+          : t`Voice is attached to your general assistant conversation`
       }
     >
       <Badge
@@ -34,7 +35,7 @@ export function VoiceContextBadge({
         color={scoped ? 'teal' : 'gray'}
         data-testid='voice-context-badge'
       >
-        {scoped ? 'record context' : 'general context'}
+        {scoped ? t`Record context` : t`General context`}
       </Badge>
     </Tooltip>
   );

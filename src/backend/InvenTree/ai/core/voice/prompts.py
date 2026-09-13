@@ -14,7 +14,7 @@ import re
 PROMPT_POLICY_VERSION = "voice-prompts-v1"
 TRANSCRIPT_MAX_CHARS = 240
 
-PROMPT_KINDS: tuple[str, ...] = ("transcript_review", "status")
+PROMPT_KINDS: tuple[str, ...] = ("transcript_review", "status", "help")
 
 #: Canonical English templates/phrases (keys of the localized tables).
 TRANSCRIPT_REVIEW_TEMPLATE = (
@@ -26,6 +26,11 @@ STATUS_WAITING_FOR_DECISION = "I'm waiting for your decision. Say confirm, chang
 STATUS_PROMPTS: dict[str, str] = {
     "listening": STATUS_LISTENING,
     "waiting_for_decision": STATUS_WAITING_FOR_DECISION,
+    "queue_dropped": "I did not catch that. Please wait for the current answer, then say it again.",
+    "session_ended": "Voice ended.",
+    "connection_dropped": "The connection dropped. I am checking your last request status. Do not repeat the action yet.",
+    "sounds_off": "Sounds are off. Spoken answers and visible status remain available.",
+    "route_changed": "Your audio route changed. Playback is paused. Resume the read-back when you are ready.",
 }
 
 LOCALIZED_TEMPLATES: dict[str, dict[str, str]] = {

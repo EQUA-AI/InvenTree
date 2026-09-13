@@ -114,7 +114,9 @@ def test_feature_flag_off_hides_every_voice_route():
     settings = _settings([user.pk], FEATURE_VOICE_LIVE=False)
     _expect_http(
         _principal(user),
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
         404,
         "VOICE_SESSION_UNAVAILABLE",
@@ -126,7 +128,9 @@ def test_any_authenticated_user_can_create_a_voice_session():
     settings = _settings([])
     result = _run(
         _principal(user),
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
     assert result["state"] == "created"
@@ -139,12 +143,17 @@ def test_create_get_end_lifecycle_and_credential_free_payload():
 
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
     assert created["state"] == "created"
     assert created["thread_id"]
     assert set(created) == {
+        "locale",
+        "voice",
+        "consent_version",
         "id",
         "state",
         "thread_id",
@@ -182,7 +191,9 @@ def test_scoped_thread_ids_are_rejected_pre_substrate():
     settings = _settings([user.pk])
     _expect_http(
         _principal(user),
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id="scoped_abc123")),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id="scoped_abc123")
+        ),
         settings,
         404,
         "VOICE_SESSION_FORBIDDEN",
@@ -195,12 +206,16 @@ def test_session_limit_returns_429():
     principal = _principal(user)
     _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
     _expect_http(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
         429,
         "VOICE_SESSION_LIMIT",
@@ -213,7 +228,9 @@ def test_sdp_requires_the_webrtc_preview_flag():
     principal = _principal(user)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
     _expect_http(
@@ -231,7 +248,9 @@ def test_sdp_without_provider_channel_is_honestly_unavailable():
     principal = _principal(user)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
     routes.set_provider_channel_factory(None)
@@ -250,7 +269,9 @@ def test_sdp_relay_with_fake_channel_completes_and_binds_transport():
     principal = _principal(user)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
 
@@ -295,7 +316,9 @@ def test_turn_bridge_persists_exact_spoken_summary_and_replays():
     principal = _principal(user)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
     fake = _FakeTurnService()
@@ -344,7 +367,9 @@ def test_turn_bridge_surfaces_a_pending_question():
     principal = _principal(user)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
 
@@ -400,7 +425,9 @@ def test_turn_bridge_rejects_empty_transcript():
     principal = _principal(user)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
     _expect_http(
@@ -425,7 +452,7 @@ def test_capability_probe_reports_disabled_without_erroring():
     assert result["webrtc"] is False
     assert result["relay"] is False
     # The confidence floor is served even when disabled (not a secret).
-    assert result["confidence_floor"] == 0.85  # noqa: RUF069
+    assert result["confidence_floor"] == pytest.approx(0.85)
 
 
 def test_capability_probe_reports_cohort_membership():
@@ -448,7 +475,7 @@ def test_capability_probe_serves_configured_confidence_floor():
     from ai.core.voice.routes import voice_capability
 
     result = _run(_principal(user), lambda: voice_capability(), settings)
-    assert result["confidence_floor"] == 0.7  # noqa: RUF069
+    assert result["confidence_floor"] == pytest.approx(0.7)
 
 
 def test_turn_bridge_dispatches_exact_tts_through_provider_channel():
@@ -457,7 +484,9 @@ def test_turn_bridge_dispatches_exact_tts_through_provider_channel():
     principal = _principal(user)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
 
@@ -505,7 +534,9 @@ def test_turn_bridge_tts_failure_leaves_playback_honestly_pending():
     principal = _principal(user)
     created = _run(
         principal,
-        lambda: create_voice_session(VoiceSessionCreateRequest(thread_id=None)),
+        lambda: create_voice_session(
+            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+        ),
         settings,
     )
 

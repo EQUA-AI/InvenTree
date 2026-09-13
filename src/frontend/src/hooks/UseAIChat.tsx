@@ -2486,21 +2486,6 @@ export function useAIChat(config: AIChatConfig = {}) {
                               'AbortError'
                             );
 
-                          case AGUIEventType.HITL_REQUIRED:
-                          case AGUIEventType.HITL_APPROVED:
-                          case AGUIEventType.HITL_REJECTED: {
-                            // Voice-UX plan A7: the legacy HITL rail is
-                            // retired (its endpoint answers 410). Nothing
-                            // emits these today; if one ever arrives it is
-                            // logged and NEVER rendered as approvable --
-                            // reviews live on the proposal surface.
-                            console.debug(
-                              '[AG-UI] legacy HITL event ignored (rail retired):',
-                              event.type
-                            );
-                            break;
-                          }
-
                           case AGUIEventType.STEP_STARTED:
                           case AGUIEventType.STEP_FINISHED:
                             // Progress events - could be used for UI feedback

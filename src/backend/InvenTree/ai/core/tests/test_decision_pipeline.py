@@ -97,7 +97,7 @@ async def test_refusals_disarm_before_decision_or_legacy_resolution(refusal):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("corrupt", [False, True])
 async def test_contradiction_and_cache_failure_cannot_fall_through(corrupt):
-    async def call(function, *args, **kwargs):  # noqa: RUF029 - production sync-to-async seam
+    async def call(function, *args, **kwargs):  # noqa: RUF029 - async protocol seam
         return function(*args, **kwargs)
 
     coordinator = SimpleNamespace(
@@ -115,6 +115,7 @@ async def test_contradiction_and_cache_failure_cannot_fall_through(corrupt):
     )
     run = SimpleNamespace(
         modality="voice",
+        trusted_context=SimpleNamespace(locale="en-US"),
         thread=SimpleNamespace(pk="thread"),
         turn=SimpleNamespace(pk="turn"),
         emitter=None,
@@ -135,7 +136,7 @@ async def test_contradiction_and_cache_failure_cannot_fall_through(corrupt):
 async def test_provider_activity_is_ephemeral_not_turn_fingerprint_input():
     seen = []
 
-    async def process(**kwargs):  # noqa: RUF029 - service protocol is async
+    async def process(**kwargs):  # noqa: RUF029 - async protocol seam
         seen.append((pipeline.provider_activity.get(), kwargs))
 
     await pipeline.process_with_playback_probe(

@@ -8,6 +8,7 @@ import {
   sseBody,
   threadId
 } from './aichat_harness.js';
+import { startVoice } from './voice_harness';
 import {
   emitTranscript,
   installVoiceMocks,
@@ -66,7 +67,7 @@ test('one decision card and voice controls remain available across all tabs and 
   });
   await page.reload();
   await openChat(page);
-  await page.getByTestId('voice-start').click();
+  await startVoice(page);
   for (const tab of ['Chat', 'Approvals', 'History']) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
     await expect(page.getByTestId('voice-decision-card')).toHaveCount(1);
@@ -118,7 +119,7 @@ test('turns carry decision_context and correction re-presents a fresh target', a
   });
   await page.reload();
   await openChat(page);
-  await page.getByTestId('voice-start').click();
+  await startVoice(page);
   await expect(page.getByTestId('voice-decision-card')).toBeVisible();
   await emitTranscript(page, {
     text: 'no, I meant one hundred forty',
@@ -157,7 +158,7 @@ test('touch confirmation sends hash and revision and unknown result stays unveri
   });
   await page.reload();
   await openChat(page);
-  await page.getByTestId('voice-start').click();
+  await startVoice(page);
   await page.getByTestId('voice-decision-confirm').click();
   await expect.poll(() => voice.decisionActions.length).toBe(1);
   expect(voice.decisionActions[0].body).toMatchObject({
@@ -222,7 +223,7 @@ test('metadata-free Azure read-back reports bound delivery without confirming an
   });
   await page.reload();
   await openChat(page);
-  await page.getByTestId('voice-start').click();
+  await startVoice(page);
   await emitTranscript(page, {
     text: 'Put the work order on hold',
     itemId: 'proposal'

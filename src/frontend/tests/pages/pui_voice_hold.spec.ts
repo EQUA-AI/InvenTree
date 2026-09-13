@@ -1,5 +1,6 @@
 import { expect, test } from '../baseFixtures.js';
 import { doCachedLogin } from '../login.js';
+import { startVoice } from './voice_harness';
 import {
   emitTranscript,
   installVoiceMocks,
@@ -16,7 +17,7 @@ import {
 async function startListening(page: Awaited<ReturnType<typeof doCachedLogin>>) {
   await page.reload();
   await openChat(page);
-  await page.getByTestId('voice-start').click();
+  await startVoice(page);
   await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
 }
 

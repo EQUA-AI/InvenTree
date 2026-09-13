@@ -108,6 +108,7 @@ export function useVoiceCapture(): UseVoiceCaptureResult {
       call(() =>
         api.post('/api/voice/captures/', {
           purpose,
+          consent_version: 'consent-v2',
           work_order_id: workOrderId,
           work_order_version: workOrderVersion
         })

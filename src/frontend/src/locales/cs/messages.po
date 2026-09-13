@@ -69,6 +69,7 @@ msgid "Delete"
 msgstr "Odstranit"
 
 #: lib/components/RowActions.tsx:76
+#: src/components/ai/voice/VoiceConsentDialog.tsx:178
 #: src/components/details/DetailsImage.tsx:82
 #: src/components/editors/TemplateEditor/TemplateEditor.tsx:200
 #: src/components/items/ActionDropdown.tsx:284
@@ -113,7 +114,7 @@ msgstr "Akce"
 
 #: lib/components/SearchInput.tsx:34
 #: src/components/forms/fields/RelatedModelField.tsx:549
-#: src/components/nav/Header.tsx:238
+#: src/components/nav/Header.tsx:243
 #: src/components/wizards/ImportPartWizard.tsx:200
 #: src/components/wizards/ImportPartWizard.tsx:233
 #: src/pages/Index/Settings/UserSettings.tsx:78
@@ -833,69 +834,69 @@ msgstr "Proces se nezdařil"
 msgid "Process completed successfully"
 msgstr "Proces byl úspěšně dokončen"
 
-#: src/components/ai/ApprovalDecisionControls.tsx:12
-#: src/components/ai/ApprovalInboxPanel.tsx:89
+#: src/components/ai/ApprovalDecisionControls.tsx:20
+#: src/components/ai/ApprovalInboxPanel.tsx:179
 msgid "Enter a reason of up to 400 characters."
 msgstr ""
 
-#: src/components/ai/ApprovalDecisionControls.tsx:17
+#: src/components/ai/ApprovalDecisionControls.tsx:40
 msgid "Next page"
 msgstr ""
 
-#: src/components/ai/ApprovalDecisionControls.tsx:25
+#: src/components/ai/ApprovalDecisionControls.tsx:55
 msgid "Next section"
 msgstr ""
 
-#: src/components/ai/ApprovalDecisionControls.tsx:26
+#: src/components/ai/ApprovalDecisionControls.tsx:60
 msgid "Skip request"
 msgstr ""
 
-#: src/components/ai/ApprovalDecisionControls.tsx:28
-#: src/components/ai/ApprovalInboxPanel.tsx:134
+#: src/components/ai/ApprovalDecisionControls.tsx:65
+#: src/components/ai/ApprovalInboxPanel.tsx:286
 msgid "I have reviewed every required section of this request."
 msgstr ""
 
-#: src/components/ai/ApprovalDecisionControls.tsx:29
-#: src/components/ai/ApprovalInboxPanel.tsx:135
+#: src/components/ai/ApprovalDecisionControls.tsx:70
+#: src/components/ai/ApprovalInboxPanel.tsx:291
 msgid "Confirm reviewed"
 msgstr ""
 
-#: src/components/ai/ApprovalDecisionControls.tsx:30
-#: src/components/ai/ApprovalInboxPanel.tsx:138
+#: src/components/ai/ApprovalDecisionControls.tsx:76
+#: src/components/ai/ApprovalInboxPanel.tsx:302
 msgid "Prepare approval"
 msgstr ""
 
-#: src/components/ai/ApprovalDecisionControls.tsx:31
-#: src/components/ai/ApprovalInboxPanel.tsx:136
+#: src/components/ai/ApprovalDecisionControls.tsx:78
+#: src/components/ai/ApprovalInboxPanel.tsx:293
 msgid "Reason or requested changes"
 msgstr ""
 
-#: src/components/ai/ApprovalDecisionControls.tsx:33
-#: src/components/ai/ApprovalInboxPanel.tsx:139
+#: src/components/ai/ApprovalDecisionControls.tsx:86
+#: src/components/ai/ApprovalInboxPanel.tsx:307
 msgid "Prepare rejection"
 msgstr ""
 
-#: src/components/ai/ApprovalDecisionControls.tsx:34
-#: src/components/ai/ApprovalInboxPanel.tsx:140
+#: src/components/ai/ApprovalDecisionControls.tsx:91
+#: src/components/ai/ApprovalInboxPanel.tsx:314
 msgid "Request changes"
 msgstr ""
 
-#: src/components/ai/ApprovalDecisionControls.tsx:35
-#: src/components/ai/ApprovalInboxPanel.tsx:143
+#: src/components/ai/ApprovalDecisionControls.tsx:96
+#: src/components/ai/ApprovalInboxPanel.tsx:322
 msgid "Prepare cancellation"
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:53
-#: src/components/nav/AIChatDrawer.tsx:1541
+#: src/components/ai/ApprovalInboxPanel.tsx:91
+#: src/components/nav/AIChatDrawer.tsx:1518
 #: src/pages/repair/RepairPacketDetail.tsx:256
 msgid "Approvals"
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:54
+#: src/components/ai/ApprovalInboxPanel.tsx:96
 msgid "Back"
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:55
+#: src/components/ai/ApprovalInboxPanel.tsx:104
 #: src/components/riskradar/RiskRadarPanel.tsx:356
 #: src/pages/assets/health/MachineHealthPanel.tsx:190
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
@@ -903,54 +904,54 @@ msgstr ""
 msgid "Refresh"
 msgstr "Aktualizovat"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:57
+#: src/components/ai/ApprovalInboxPanel.tsx:107
 msgid "This approval is unavailable or your access changed. Refresh the inbox."
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:58
+#: src/components/ai/ApprovalInboxPanel.tsx:110
 #: src/components/ai/MailboxApprovalReview.tsx:113
 msgid "Loading review…"
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:66
+#: src/components/ai/ApprovalInboxPanel.tsx:134
 msgid "Focused in the shared decision card"
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:70
+#: src/components/ai/ApprovalInboxPanel.tsx:142
 msgid "This request is focused in the shared decision card above. Use its controls so voice and touch keep the same confirmation."
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:123
+#: src/components/ai/ApprovalInboxPanel.tsx:242
 msgid "The action is recorded as succeeded."
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:123
+#: src/components/ai/ApprovalInboxPanel.tsx:243
 msgid "Current recorded status:"
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:125
+#: src/components/ai/ApprovalInboxPanel.tsx:255
 msgid "Do not retry an unverified action. Refresh to check its recorded result."
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:130
+#: src/components/ai/ApprovalInboxPanel.tsx:271
 msgid "The decision was not verified. Refresh and review the current request before trying again."
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:132
+#: src/components/ai/ApprovalInboxPanel.tsx:279
 msgid "Open for review"
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:147
-#: src/components/ai/VoiceDecisionCard.tsx:145
+#: src/components/ai/ApprovalInboxPanel.tsx:331
+#: src/components/ai/VoiceDecisionCard.tsx:146
 msgid "Type the required confirmation phrase"
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:148
+#: src/components/ai/ApprovalInboxPanel.tsx:340
 msgid "Confirm decision"
 msgstr ""
 
-#: src/components/ai/ApprovalInboxPanel.tsx:149
-#: src/components/ai/VoiceDecisionCard.tsx:188
+#: src/components/ai/ApprovalInboxPanel.tsx:344
+#: src/components/ai/VoiceDecisionCard.tsx:193
 msgid "Set aside"
 msgstr ""
 
@@ -995,7 +996,7 @@ msgid "Attachment is unavailable. Refresh this review and check mailbox access."
 msgstr ""
 
 #: src/components/ai/MailboxApprovalReview.tsx:150
-#: src/components/ai/VoiceDecisionCard.tsx:118
+#: src/components/ai/VoiceDecisionCard.tsx:119
 msgid "Receipt"
 msgstr ""
 
@@ -1398,37 +1399,53 @@ msgstr ""
 msgid "No longer active — just type your answer"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:69
+#: src/components/ai/VoiceContextBadge.tsx:28
+msgid "Voice is grounded to the pinned record conversation"
+msgstr ""
+
+#: src/components/ai/VoiceContextBadge.tsx:29
+msgid "Voice is attached to your general assistant conversation"
+msgstr ""
+
+#: src/components/ai/VoiceContextBadge.tsx:38
+msgid "Record context"
+msgstr ""
+
+#: src/components/ai/VoiceContextBadge.tsx:38
+msgid "General context"
+msgstr ""
+
+#: src/components/ai/VoiceDecisionCard.tsx:70
 msgid "The response is not verified. Refresh the decision before trying again."
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:86
+#: src/components/ai/VoiceDecisionCard.tsx:87
 #: src/pages/stock/StockDetail.tsx:710
 #: src/tables/stock/StockItemTable.tsx:273
 msgid "Expired"
 msgstr "Expirováno"
 
-#: src/components/ai/VoiceDecisionCard.tsx:99
+#: src/components/ai/VoiceDecisionCard.tsx:100
 msgid "Playback"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:99
+#: src/components/ai/VoiceDecisionCard.tsx:100
 msgid "Expires"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:112
+#: src/components/ai/VoiceDecisionCard.tsx:113
 msgid "Change recorded"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:114
+#: src/components/ai/VoiceDecisionCard.tsx:115
 msgid "Not applied"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:115
+#: src/components/ai/VoiceDecisionCard.tsx:116
 msgid "Result not verified — reconciling, do not retry"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:130
+#: src/components/ai/VoiceDecisionCard.tsx:131
 #: src/pages/build/BuildOrderDetailsPanel.tsx:220
 #: src/tables/assets/MaintenanceRecordTable.tsx:121
 #: src/tables/build/BuildOrderTable.tsx:76
@@ -1438,19 +1455,19 @@ msgstr ""
 msgid "Completed"
 msgstr "Dokončeno"
 
-#: src/components/ai/VoiceDecisionCard.tsx:135
+#: src/components/ai/VoiceDecisionCard.tsx:136
 #: src/tables/settings/EmailTable.tsx:29
 msgid "Failed"
 msgstr "Selhalo"
 
-#: src/components/ai/VoiceDecisionCard.tsx:140
+#: src/components/ai/VoiceDecisionCard.tsx:141
 #: src/pages/Index/Settings/AccountSettings/SecurityContent.tsx:242
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:37
 #: src/pages/repair/components/InvestigationPanel.tsx:53
 msgid "Unverified"
 msgstr "Neověřeno"
 
-#: src/components/ai/VoiceDecisionCard.tsx:172
+#: src/components/ai/VoiceDecisionCard.tsx:177
 #: src/components/riskradar/RiskFindingDetailModal.tsx:299
 #: src/pages/Auth/ChangePassword.tsx:80
 #: src/pages/repair/components/safety/SafetyGateCard.tsx:157
@@ -1458,16 +1475,406 @@ msgstr "Neověřeno"
 msgid "Confirm"
 msgstr "Potvrdit"
 
-#: src/components/ai/VoiceDecisionCard.tsx:180
+#: src/components/ai/VoiceDecisionCard.tsx:185
 msgid "Change that"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:196
+#: src/components/ai/VoiceDecisionCard.tsx:201
 msgid "Cancel the action"
 msgstr ""
 
-#: src/components/ai/VoiceDecisionCard.tsx:203
+#: src/components/ai/VoiceDecisionCard.tsx:208
 msgid "Read back"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:23
+msgid "Voice unavailable"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:24
+msgid "Voice ready"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:25
+msgid "Connecting…"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:26
+msgid "Listening"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:27
+#: src/components/ai/VoiceSessionControl.tsx:78
+msgid "Confirm transcript"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:28
+msgid "Reviewing…"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:29
+msgid "Speaking"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:30
+msgid "Voice error"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:40
+msgid "Start voice session"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:42
+msgid "Voice"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:48
+msgid "Microphone listening"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:50
+msgid "Microphone muted"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:52
+msgid "Microphone waiting for push to talk"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:53
+msgid "Microphone paused"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:57
+msgid "Audio playing"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:59
+msgid "Waiting for audio"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:60
+msgid "Audio stopped"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:67
+msgid "Unmute microphone"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:67
+msgid "Mute microphone"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:69
+msgid "Unmute"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:69
+msgid "Mute"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:84
+msgid "Discard transcript"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:92
+msgid "Stop speaking"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:99
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:96
+msgid "End voice"
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:103
+msgid "Preview"
+msgstr ""
+
+#: src/components/ai/VoiceTranscript.tsx:35
+msgid "Contains critical values — confirm it was heard correctly, or say the correction."
+msgstr ""
+
+#: src/components/ai/VoiceTranscript.tsx:38
+msgid "Read-back requested — say confirm, discard, or say the correction."
+msgstr ""
+
+#: src/components/ai/VoiceTranscript.tsx:41
+msgid "The spoken prompt could not be played — read it here, then say confirm, discard, or the correction."
+msgstr ""
+
+#: src/components/ai/VoiceTranscript.tsx:43
+msgid "Waiting for the spoken prompt…"
+msgstr ""
+
+#. placeholder {0}: pendingConfirm.revision
+#: src/components/ai/VoiceTranscript.tsx:94
+msgid "Confirm (revision {0}):"
+msgstr ""
+
+#: src/components/ai/VoiceTranscript.tsx:95
+msgid "Confirm:"
+msgstr ""
+
+#: src/components/ai/VoiceTranscript.tsx:114
+msgid "Hearing…"
+msgstr ""
+
+#: src/components/ai/voice/PushToTalkButton.tsx:66
+msgid "Listening — release to finish"
+msgstr ""
+
+#: src/components/ai/voice/PushToTalkButton.tsx:66
+msgid "Hold to talk"
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:27
+msgid "Starting voice sends your speech to the speech service for live transcription. AIMMS keeps only the text transcript, stored with your chat history; it never keeps a recording of your voice."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:28
+msgid "Your voice is never used to identify you or sign you in. Actions run under the account you are logged in with, and every business change still needs your explicit confirmation."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:29
+msgid "AIMMS listens only inside a session you start; there is no wake word and it never listens in the background."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:30
+msgid "Voice stays on while this tab is visible. If you switch apps or lock the screen, AIMMS stops listening and pauses playback; if the tab stays hidden for 5 minutes the voice session ends. Anything waiting for your confirmation is set aside, nothing is executed, and it is read back again for a fresh confirmation when you return."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:59
+msgid "Please review and accept the disclosure."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:63
+msgid "Choose an available language and voice."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:113
+msgid "Start a voice session"
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:140
+msgid "You can interrupt, say “stop speaking,” or ask “what can I say?”"
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:142
+msgid "Language and output voice"
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:152
+msgid "Voice changes are available only in English during this pilot. Use on-screen review in other languages."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:160
+msgid "Hear a voice sample"
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:163
+msgid "The sample could not play. Please wait a minute and try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:166
+msgid "Play voice status sounds"
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:170
+msgid "I have read the disclosure and want to start voice."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:183
+msgid "Start voice"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:23
+msgid "Voice is paused while this tab is hidden. Pending confirmation is set aside."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:25
+msgid "Voice ended while you were away. Start a new session and request a fresh read-back."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:27
+msgid "Voice ended after five minutes without activity."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:29
+msgid "Connection dropped. Checking the last request; do not repeat the action yet."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:31
+msgid "Voice reconnected. No request was resubmitted. Review the last action status before continuing."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:33
+msgid "Voice could not reconnect. The last action may still be unconfirmed; check its receipt before repeating it."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:35
+msgid "I did not catch that. Please wait for the current answer, then say it again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:37
+msgid "Audio playback is blocked. Select Resume read-back, or read the text here."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:39
+msgid "Speech did not start in time. The text remains available; retry playback without resending your request."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:41
+msgid "The microphone is very quiet. Check its placement or your audio route; this warning does not end the session."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:43
+msgid "Your audio route changed. If playback paused, select Resume read-back."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:45
+msgid "Status sounds are off. Spoken answers and visible status remain available."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:47
+msgid "Confirmation is not armed. Resume available output, or ask for a fresh preview."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:60
+msgid "Listening mode"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:70
+msgid "Continuous"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:71
+msgid "Push to talk"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:83
+msgid "What are you waiting for?"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:88
+msgid "Resume read-back"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:94
+msgid "Hands-free view"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:98
+msgid "Using device speakers?"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:99
+msgid "Continuous listening works on every route. If playback interrupts itself, try push to talk."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:106
+msgid "Got it"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:112
+msgid "Audio output"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:114
+msgid "System default"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:121
+msgid "This browser manages the output route. Change speakers or headphones in your device settings."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:124
+msgid "Voice status sounds"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:131
+msgid "Announce transcripts to screen readers"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:142
+msgid "Spoken answer pages"
+msgstr ""
+
+#. placeholder {0}: s.presentation.index + 1
+#. placeholder {1}: s.presentation.total
+#: src/components/ai/voice/VoiceExperienceControls.tsx:143
+msgid "Page {0} of {1}"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:148
+msgid "Next three"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:152
+msgid "Repeat"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:156
+msgid "Slower"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:160
+msgid "Short version"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:170
+msgid "Transcript revisions"
+msgstr ""
+
+#. placeholder {0}: item.revision ?? 1
+#: src/components/ai/voice/VoiceExperienceControls.tsx:173
+msgid "Revision {0}"
+msgstr ""
+
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:24
+msgid "Start or end voice"
+msgstr ""
+
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:60
+msgid "Voice is listening"
+msgstr ""
+
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:62
+msgid "Voice microphone paused"
+msgstr ""
+
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:63
+msgid "Voice ended"
+msgstr ""
+
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:82
+msgid "Open hands-free voice"
+msgstr ""
+
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:85
+msgid "Voice listening"
+msgstr ""
+
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:85
+msgid "Voice paused"
+msgstr ""
+
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:86
+msgid " — confirmation waiting"
+msgstr ""
+
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:99
+msgid "Voice: Ctrl/⌘+Shift+V · Chat: Ctrl/⌘+K"
+msgstr ""
+
+#: src/components/ai/voice/VoiceHandsFreeSurface.tsx:22
+msgid "Hands-free voice"
+msgstr ""
+
+#: src/components/ai/voice/VoiceHandsFreeSurface.tsx:33
+msgid "Voice stays active only while this tab is visible."
+msgstr ""
+
+#: src/components/ai/voice/VoiceHandsFreeSurface.tsx:37
+msgid "Minimize"
 msgstr ""
 
 #: src/components/aichat/ActiveScopeBanner.tsx:21
@@ -3440,7 +3847,7 @@ msgstr "Data byla úspěšně importována"
 #: src/components/importer/ImporterDrawer.tsx:119
 #: src/components/modals/AboutInvenTreeModal.tsx:206
 #: src/components/modals/ServerInfoModal.tsx:134
-#: src/components/nav/AIChatDrawer.tsx:1506
+#: src/components/nav/AIChatDrawer.tsx:1483
 #: src/components/wizards/ImportPartWizard.tsx:773
 #: src/forms/BomForms.tsx:150
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:687
@@ -3919,47 +4326,47 @@ msgstr "Nastavení e-mailu"
 msgid "Email settings not configured."
 msgstr "Email není nakonfigurován."
 
-#: src/components/nav/AIChatDrawer.tsx:104
+#: src/components/nav/AIChatDrawer.tsx:105
 #: src/pages/assets/health/AnomalyList.tsx:165
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
 msgid "Unknown"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:113
+#: src/components/nav/AIChatDrawer.tsx:114
 #: src/components/nav/AIChatDrawer.tsx:259
 msgid "Just now"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:114
+#: src/components/nav/AIChatDrawer.tsx:115
 #: src/components/nav/AIChatDrawer.tsx:260
 msgid "{minutes}m ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:115
+#: src/components/nav/AIChatDrawer.tsx:116
 #: src/components/nav/AIChatDrawer.tsx:261
 msgid "{hours}h ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:116
+#: src/components/nav/AIChatDrawer.tsx:117
 #: src/components/nav/AIChatDrawer.tsx:262
 msgid "{days}d ago"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:167
+#: src/components/nav/AIChatDrawer.tsx:168
 msgid "Search conversations..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:177
+#: src/components/nav/AIChatDrawer.tsx:178
 msgid "No conversations match"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:178
+#: src/components/nav/AIChatDrawer.tsx:179
 msgid "No conversations yet"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:200
-#: src/components/nav/AIChatDrawer.tsx:1538
+#: src/components/nav/AIChatDrawer.tsx:201
+#: src/components/nav/AIChatDrawer.tsx:1515
 msgid "Chat"
 msgstr ""
 
@@ -3980,7 +4387,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/components/nav/AIChatDrawer.tsx:302
-#: src/components/nav/AIChatDrawer.tsx:1493
+#: src/components/nav/AIChatDrawer.tsx:1470
 msgid "New conversation"
 msgstr ""
 
@@ -4023,7 +4430,7 @@ msgstr ""
 
 #: src/components/nav/AIChatDrawer.tsx:464
 #: src/components/nav/AIChatDrawer.tsx:748
-#: src/components/nav/AIChatDrawer.tsx:1460
+#: src/components/nav/AIChatDrawer.tsx:1437
 msgid "AI Assistant"
 msgstr ""
 
@@ -4108,117 +4515,113 @@ msgstr ""
 msgid "You"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1188
+#: src/components/nav/AIChatDrawer.tsx:1189
 msgid "Search parts"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1189
+#: src/components/nav/AIChatDrawer.tsx:1190
 msgid "Create order"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1190
+#: src/components/nav/AIChatDrawer.tsx:1191
 msgid "Low stock"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1237
+#: src/components/nav/AIChatDrawer.tsx:1238
 msgid "Could not set the machine scope — sending without it."
 msgstr ""
 
 #: src/components/nav/AIChatDrawer.tsx:1364
-msgid "Voice session"
-msgstr ""
+#~ msgid "Voice session"
+#~ msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1370
-msgid "End voice"
-msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:1463
+#: src/components/nav/AIChatDrawer.tsx:1440
 msgid "Powered by AIMMS AI"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1470
+#: src/components/nav/AIChatDrawer.tsx:1447
 msgid "Syncing..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1470
+#: src/components/nav/AIChatDrawer.tsx:1447
 msgid "Sync conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1523
+#: src/components/nav/AIChatDrawer.tsx:1500
 msgid "Syncing conversations with server..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1549
+#: src/components/nav/AIChatDrawer.tsx:1526
 #: src/pages/Notifications.tsx:83
 #: src/pages/repair/RepairPacketDetail.tsx:285
 msgid "History"
 msgstr "Historie"
 
-#: src/components/nav/AIChatDrawer.tsx:1550
+#: src/components/nav/AIChatDrawer.tsx:1527
 msgid "Mail"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1579
+#: src/components/nav/AIChatDrawer.tsx:1556
 msgid "Sharing failed"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1655
+#: src/components/nav/AIChatDrawer.tsx:1635
 msgid "Hi! 👋 How can I help?"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1658
+#: src/components/nav/AIChatDrawer.tsx:1638
 msgid "I can help you search for parts, create orders, and automate tasks in AIMMS."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1753
+#: src/components/nav/AIChatDrawer.tsx:1733
 msgid "Send again"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1775
+#: src/components/nav/AIChatDrawer.tsx:1755
 msgid "No actions waiting for review"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1792
+#: src/components/nav/AIChatDrawer.tsx:1772
 msgid "Resolved actions"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1802
+#: src/components/nav/AIChatDrawer.tsx:1782
 msgid "No resolved actions yet"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1873
+#: src/components/nav/AIChatDrawer.tsx:1853
 msgid "Asking about"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1914
+#: src/components/nav/AIChatDrawer.tsx:1894
 msgid "Attach file"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1932
+#: src/components/nav/AIChatDrawer.tsx:1912
 msgid "Shared conversation — read-only"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1934
+#: src/components/nav/AIChatDrawer.tsx:1914
 msgid "Answer the question above, or ask something else..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1936
+#: src/components/nav/AIChatDrawer.tsx:1916
 msgid "Add a message about attached files..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1937
+#: src/components/nav/AIChatDrawer.tsx:1917
 msgid "Type a message..."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1964
+#: src/components/nav/AIChatDrawer.tsx:1944
 msgid "Stop generating"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1977
+#: src/components/nav/AIChatDrawer.tsx:1957
 msgid "Send message"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2008
+#: src/components/nav/AIChatDrawer.tsx:1988
 msgid "AI may make mistakes. Verify important information."
 msgstr ""
 
@@ -4288,12 +4691,12 @@ msgstr ""
 msgid "{0} of {1}"
 msgstr ""
 
-#: src/components/nav/Header.tsx:101
-#: src/components/nav/Header.tsx:108
+#: src/components/nav/Header.tsx:104
+#: src/components/nav/Header.tsx:111
 msgid "Open search"
 msgstr "Otevřít vyhledávání"
 
-#: src/components/nav/Header.tsx:259
+#: src/components/nav/Header.tsx:264
 #: src/components/nav/NavigationDrawer.tsx:149
 #: src/components/nav/NotificationDrawer.tsx:181
 #: src/pages/Index/Settings/SystemSettings.tsx:146
@@ -4303,15 +4706,15 @@ msgstr "Otevřít vyhledávání"
 msgid "Notifications"
 msgstr "Notifikace"
 
-#: src/components/nav/Header.tsx:282
+#: src/components/nav/Header.tsx:288
 msgid "Superuser Mode"
 msgstr "Režim superuživatele"
 
-#: src/components/nav/Header.tsx:282
+#: src/components/nav/Header.tsx:288
 msgid "Admin Mode"
 msgstr "Režim administrátora"
 
-#: src/components/nav/Header.tsx:288
+#: src/components/nav/Header.tsx:294
 msgid "The current user has elevated privileges and should not be used for regular usage."
 msgstr "Aktuální uživatel má vyšší oprávnění a neměl by být používán pro běžné používání."
 
@@ -5278,7 +5681,7 @@ msgstr "IPN"
 #: src/pages/part/PartDetailsPanel.tsx:107
 #: src/pages/stock/StockDetailsPanel.tsx:99
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:488
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:154
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:156
 #: src/tables/bom/UsedInTable.tsx:56
 #: src/tables/build/BuildOrderTable.tsx:66
 #: src/tables/stock/StockItemTable.tsx:70
@@ -12537,51 +12940,51 @@ msgstr ""
 msgid "Attempts"
 msgstr "Pokusů"
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:86
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:87
 msgid "Dictate closeout narrative"
 msgstr ""
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:93
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:94
 msgid "Voice dictation is not enabled in this deployment."
 msgstr ""
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:101
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:103
 msgid "Dictation goes on the record: the exact transcript you accept becomes the closeout narrative, with voice provenance attached. You will review it before anything is extracted."
 msgstr ""
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:110
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:112
 msgid "I consent — start dictation"
 msgstr ""
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:119
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:121
 msgid "Voice capture"
 msgstr ""
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:123
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:125
 msgid "Transcript"
 msgstr ""
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:124
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:126
 msgid "Dictate with your device microphone (keyboard dictation) or type; review every word — this exact text is what gets accepted."
 msgstr ""
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:139
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:141
 msgid "Submit for review"
 msgstr ""
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:148
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:150
 msgid "Accept and hand off"
 msgstr ""
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:155
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:157
 msgid "accepting binds this exact text by content hash."
 msgstr ""
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:163
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:165
 msgid "Accepted"
 msgstr ""
 
-#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:165
+#: src/pages/tasks/workorders/DictateCloseoutModal.tsx:167
 msgid "Hand off to closeout"
 msgstr ""
 

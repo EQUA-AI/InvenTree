@@ -757,6 +757,19 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("FEATURE_VOICE_LIVE", "AIMMS_FEATURE_VOICE_LIVE"),
     )
+    feature_voice_foreground_session: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_VOICE_FOREGROUND_SESSION", "AIMMS_FEATURE_VOICE_FOREGROUND_SESSION"
+        ),
+    )
+    voice_max_queued_turns: int = Field(default=3, ge=1, le=10, alias="VOICE_MAX_QUEUED_TURNS")
+    voice_mic_silence_rms: float = Field(default=0.01, ge=0, le=1, alias="VOICE_MIC_SILENCE_RMS")
+    voice_mic_silence_window_s: float = Field(
+        default=1.5, ge=0.5, le=10, alias="VOICE_MIC_SILENCE_WINDOW_S"
+    )
+    voice_route_loss_pause: bool = Field(default=True, alias="VOICE_ROUTE_LOSS_PAUSE")
+    voice_tts_timeout_s: float = Field(default=8, ge=1, le=30, alias="VOICE_TTS_TIMEOUT_S")
     feature_voice_decision_coordinator: bool = Field(
         default=False,
         validation_alias=AliasChoices("FEATURE_VOICE_DECISIONS", "AIMMS_FEATURE_VOICE_DECISIONS"),
@@ -861,6 +874,12 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_voice_live_transport(self) -> "Settings":
         """Fail closed for inconsistent Voice Live feature dependencies."""
+        if self.feature_voice_foreground_session and not self.feature_voice_live:
+            raise ValueError("FEATURE_VOICE_FOREGROUND_SESSION requires FEATURE_VOICE_LIVE")
+        if self.feature_voice_live and self.voice_live_idle_timeout_s != 300:
+            raise ValueError(
+                "consent-v2 requires VOICE_LIVE_IDLE_TIMEOUT_S=300; revise consent first"
+            )
         if self.feature_voice_approvals and not self.feature_voice_decision_coordinator:
             raise ValueError("FEATURE_VOICE_APPROVALS requires FEATURE_VOICE_DECISIONS")
         if self.feature_voice_auditory_review and not self.feature_voice_approvals:

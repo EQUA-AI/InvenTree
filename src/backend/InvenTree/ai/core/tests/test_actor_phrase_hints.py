@@ -112,7 +112,7 @@ async def test_actor_hints_resolve_off_the_event_loop(monkeypatch):
         calls.append(user_id)
         return ["Clarifier Drive 2"]
 
-    monkeypatch.setattr("ai.core.tools.capabilities.actor_phrase_hints", _fake_hints)
+    monkeypatch.setattr("ai.core.voice.vocabulary.actor_phrase_hints", _fake_hints)
     channel = VoiceLiveChannel("session-3", user_id=42)
     hints = await channel._actor_phrase_hints()
     assert hints == ("Clarifier Drive 2",)

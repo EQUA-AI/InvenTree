@@ -40,7 +40,9 @@ def _enabled_purposes() -> tuple[str, ...]:
 
 def _consent_version() -> str:
     """Consent version."""
-    return os.environ.get('AIMMS_VOICE_CONSENT_VERSION', 'consent-v1')
+    from ai.core.voice.experience import CONSENT_VERSION
+
+    return CONSENT_VERSION
 
 
 def _payload(capture: VoiceCaptureSession) -> dict:
@@ -136,6 +138,10 @@ class CaptureListCreateView(APIView):
     def post(self, request):
         """Post."""
         data = request.data or {}
+        if data.get('consent_version') != _consent_version():
+            return Response(
+                {'error': 'VOICE_CONSENT_REQUIRED'}, status=status.HTTP_400_BAD_REQUEST
+            )
         scope_key = _policy_scope_key()
         if not scope_key:
             return Response(
