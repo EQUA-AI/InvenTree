@@ -364,27 +364,41 @@ maintenance, change-feed polling, retention/TTL policy values.
 
 ### Added 2026-09-13 — pumphouse mimic dashboard (was missing from this plan)
 
-The two reference images shared at kick-off describe a pumphouse schematic with live values. The
-sprint above scopes getting data *in* and never scoped the screen users look *at*. These three
-tickets close that gap. They are additive — nothing above changes.
+The two reference images shared at kick-off describe a pumphouse schematic with live values — image 1
+a per-pump installation/instrument diagram, image 2 a station HMI overview. The sprint above scopes
+getting data *in* and never scoped the screen users look *at*. These tickets close that gap.
+
+**The central finding from reading the images against the payload:** the mimic is a view over
+`dex`, not over the structured envelope. Every parameter in image 1's mapping table is a `dex` tag
+(`PUMP4_DISCHARGE_PRESSURE`, `PUMP4_MOTOR_CORE_RTD3`, `PUMP4_GUIDED_RADIAL_PAD_1D6`,
+`PUMP4_HOPD_VALVE_POS_PROCESS_VALUE`, …). `flatten_snapshot` already emits these as `/dex/<TAG>`
+and `plan_dictionary` already attributes each to a pump by its `PUMP<n>_` prefix, so **the ingestion
+pipeline needs no change**. What is missing is dictionary *coverage*: the 31 reviewed points came
+from a trimmed sample carrying 35 `dex` tags, while image 1 alone needs ~40 tags per pump across 14
+bays. Hence T18 comes first.
 
 | # | Ticket | Est | Depends |
 |---|---|---|---|
-| T15 | Mimic layout contract + committed `pumphouse.svg`; every live element carries a `data-point` attribute holding the same JSON pointer used as `DictionaryPoint.path`; validator proves the drawing and the approved points agree | 6 | T11 |
-| T16 | `GET /api/machine-health/station/<pk>/mimic/` — one payload for the whole diagram, server-computed `age_seconds`, `null` + reason where a value is unknown | 4 | T9, T11 |
-| T17 | `PumphouseMimic.tsx` — inlined SVG bound to the payload; running / idle / stale are distinguishable without colour; lingui extracted; `tsc`/`biome` clean | 8 | T15, T16 |
+| T18 | Full `dex` dictionary import + catalogue coverage + review (~700 points) | 8 | untrimmed snapshot |
+| T15 | Layout contract + `pumphouse-overview.svg` and `pump-unit.svg`; elements bound by `/dex/PUMP<n>_…` pointer templates; validator against approved points | 8 | T18 |
+| T16 | `GET /api/machine-health/station/<pk>/mimic/` — one payload, `?unit=` for the selected bay, derived plant totals labelled as derived, `null` + reason for unknown | 5 | T9, T11 |
+| T17 | `PumphouseMimic.tsx` — overview + unit detail, running/idle/fault/stale/not-bound distinguishable without colour, alarms only from real thresholds | 10 | T15, T16 |
 
-Two constraints carry from the ingestion side and are not negotiable in the UI:
+Constraints carried from the ingestion side, not negotiable in the UI:
 
-- **The pointer is the contract.** The SVG binds on `/pd/P03/st`, the same string that is
-  `DictionaryPoint.path` and `MachineSignalBinding.external_key`. Introducing a display-side naming
-  scheme would recreate the drift bug that the station rename already had to fix once.
-- **Unknown is a state, not a zero.** Six dictionary points are deliberately withheld and the
-  kill-switch defaults off, so a blank diagram is the *normal* first-run condition. Idle, stale and
-  no-binding must be visually distinct from each other; a mimic board that shows a stale "Running"
-  is a safety problem, not a cosmetic one.
+- **The pointer is the contract.** The SVG binds on `/dex/PUMP4_DISCHARGE_PRESSURE`, the same string
+  that is `DictionaryPoint.path` and `MachineSignalBinding.external_key`. A display-side naming
+  scheme would recreate the drift bug the station rename already had to fix once.
+- **Unknown is a state, not a zero.** Six points are withheld and the kill-switch defaults off, so a
+  blank diagram is the *normal* first-run condition. Idle, stale and not-bound must be visually
+  distinct from each other; a mimic showing a stale "Running" is a safety problem, not a cosmetic one.
+- **Derived values must say they are derived.** Image 2's plant totals, if summed from bays rather
+  than read from a tag, must return `null` when a contributing bay is missing — a quietly-low total
+  reads as a plant derate.
+- **Alarms come from thresholds or not at all.** Image 2's alarm panel is populated; ours stays
+  "no threshold configured" until the alarm/trip CSV lands (D9).
 
-**Revised total ≈ 83 h**, which no longer fits two weeks for one developer. Explicitly **not** in
+**Revised total ≈ 96 h**, which no longer fits two weeks for one developer. Explicitly **not** in
 this sprint: Cassandra→Cosmos migration/CDC job, `pumphouse_latest`
 maintenance, change-feed polling, retention/TTL policy values.
 
