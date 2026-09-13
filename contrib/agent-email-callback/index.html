@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>AIMMS Agent Email</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/callback.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <p class="brand">AIMMS</p>
+      <h1 id="heading">Agent Email</h1>
+      <p id="message">Start connecting your Microsoft mailbox from the Agent mailboxes panel in your AIMMS application.</p>
+      <div id="completion" hidden>
+        <ol>
+          <li>Copy the callback link using the button below.</li>
+          <li>Return to the AIMMS tab where you started connecting your mailbox.</li>
+          <li>Paste the link into the callback URL field and complete the connection.</li>
+        </ol>
+        <button id="copy" type="button">Copy callback link</button>
+        <p id="status" role="status" aria-live="polite"></p>
+        <p class="hint">This link contains a temporary authorization code. Paste it only into the AIMMS connection form.</p>
+      </div>
+      <noscript>After Microsoft consent, copy this page's address and paste it into the callback URL field in the AIMMS tab where you started.</noscript>
+    </main>
+  </body>
+</html>

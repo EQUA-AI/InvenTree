@@ -14,7 +14,7 @@ import {
   TextInput,
   Textarea
 } from '@mantine/core';
-import { isNotEmpty, useForm } from '@mantine/form';
+import { isEmail, isNotEmpty, useForm } from '@mantine/form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../App';
@@ -41,6 +41,11 @@ type Message = {
   sender: string[];
   reply_to: string[];
   attachments: { id: string; filename: string; scan_state: string }[];
+};
+
+type MailboxListResponse = {
+  results: Mailbox[];
+  setup: { microsoft_shared: boolean; send_paused: boolean };
 };
 
 const root = '/api/aichat/email/accounts/';
@@ -158,12 +163,12 @@ export function MailboxPanel({
   const accounts = useQuery({
     queryKey: ['mailboxes', admin],
     queryFn: async () =>
-      (await api.get(root, { params: { manage: admin } })).data
-        .results as Mailbox[],
+      (await api.get(root, { params: { manage: admin } }))
+        .data as MailboxListResponse,
     retry: false,
     refetchInterval: 30000
   });
-  const account = accounts.data?.find((item) => item.id === selected);
+  const account = accounts.data?.results.find((item) => item.id === selected);
   const messages = useQuery({
     queryKey: ['mailbox-messages', selected],
     enabled: !!selected && !!account?.permissions.read,
@@ -191,11 +196,14 @@ export function MailboxPanel({
     return <Alert>{t`Agent mail is unavailable or disabled.`}</Alert>;
   return (
     <Stack>
+      {accounts.data?.setup?.send_paused && (
+        <Alert color='yellow'>{t`Outgoing agent email is paused. You can connect a mailbox and test receiving.`}</Alert>
+      )}
       <Select
         label={t`Mailbox`}
         placeholder={t`Choose a mailbox`}
         value={selected}
-        data={(accounts.data ?? []).map((item) => ({
+        data={(accounts.data?.results ?? []).map((item) => ({
           value: item.id,
           label: `${item.name} (${item.address})`
         }))}
@@ -337,12 +345,18 @@ export function MailboxPanel({
             ))}
         </>
       )}
-      {admin && <MailboxSetup />}
+      {admin && accounts.data && (
+        <MailboxSetup
+          microsoftShared={accounts.data.setup?.microsoft_shared ?? false}
+          onCreated={setSelected}
+        />
+      )}
     </Stack>
   );
 }
 
 function OAuthConnection({ account }: { account: Mailbox }) {
+  const cache = useQueryClient();
   const form = useForm({ initialValues: { callback: '' } });
   const begin = useMutation({
     mutationFn: async () =>
@@ -356,6 +370,11 @@ function OAuthConnection({ account }: { account: Mailbox }) {
         state: params.get('state'),
         code: params.get('code')
       });
+    },
+    onSuccess: () => {
+      form.reset();
+      begin.reset();
+      void cache.invalidateQueries({ queryKey: ['mailboxes'] });
     }
   });
   if (!['graph', 'google'].includes(account.provider)) return null;
@@ -447,13 +466,17 @@ function MailboxGrantForm({ account }: { account: Mailbox }) {
   );
 }
 
-function MailboxSetup() {
+function MailboxSetup({
+  microsoftShared,
+  onCreated
+}: { microsoftShared: boolean; onCreated: (id: string) => void }) {
   const cache = useQueryClient();
   const form = useForm({
     initialValues: {
       name: '',
       address: '',
-      provider: 'smtp_imap',
+      provider: microsoftShared ? 'graph' : 'smtp_imap',
+      use_shared_microsoft: true,
       smtp_host: '',
       smtp_port: 587,
       smtp_tls: 'starttls',
@@ -469,12 +492,14 @@ function MailboxSetup() {
     },
     validate: {
       name: isNotEmpty(t`Required`),
-      address: isNotEmpty(t`Required`)
+      address: isEmail(t`Enter a valid email address`)
     }
   });
   const save = useMutation({
     mutationFn: () => {
       const v = form.values;
+      const shared =
+        v.provider === 'graph' && microsoftShared && v.use_shared_microsoft;
       const options =
         v.provider === 'smtp_imap'
           ? {
@@ -484,10 +509,12 @@ function MailboxSetup() {
               imap_host: v.imap_host,
               imap_port: Number(v.imap_port)
             }
-          : {
-              client_id: v.client_id,
-              ...(v.provider === 'graph' ? { tenant_id: v.tenant_id } : {})
-            };
+          : shared
+            ? { oauth_application: 'shared' }
+            : {
+                client_id: v.client_id,
+                ...(v.provider === 'graph' ? { tenant_id: v.tenant_id } : {})
+              };
       const credentials =
         v.provider === 'smtp_imap'
           ? {
@@ -496,7 +523,9 @@ function MailboxSetup() {
               imap_username: v.username,
               imap_password: v.password
             }
-          : { client_secret: v.client_secret };
+          : shared
+            ? {}
+            : { client_secret: v.client_secret };
       return api.post(root, {
         name: v.name,
         address: v.address,
@@ -510,8 +539,9 @@ function MailboxSetup() {
           .filter(Boolean)
       });
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
       form.reset();
+      onCreated(response.data.id);
       void cache.invalidateQueries({ queryKey: ['mailboxes'] });
     }
   });
@@ -533,6 +563,14 @@ function MailboxSetup() {
           ]}
           {...form.getInputProps('provider')}
         />
+        {form.values.provider === 'graph' && microsoftShared && (
+          <Checkbox
+            label={t`Use AIMMS Microsoft connection`}
+            {...form.getInputProps('use_shared_microsoft', {
+              type: 'checkbox'
+            })}
+          />
+        )}
         {form.values.provider === 'smtp_imap' ? (
           <>
             <TextInput
@@ -570,6 +608,10 @@ function MailboxSetup() {
               {...form.getInputProps('password')}
             />
           </>
+        ) : form.values.provider === 'graph' &&
+          microsoftShared &&
+          form.values.use_shared_microsoft ? (
+          <Text size='sm'>{t`Save your mailbox, then sign in with Microsoft. AIMMS already has the application configuration.`}</Text>
         ) : (
           <>
             {form.values.provider === 'graph' && (

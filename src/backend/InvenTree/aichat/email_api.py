@@ -1,5 +1,6 @@
 """Authenticated mailbox APIs; credentials and message bytes are never serialized."""
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
@@ -53,12 +54,18 @@ class MailboxList(MailboxView):
     @extend_schema(operation_id='agent_mailbox_list', responses={200: dict})
     def get(self, request):
         """Publish mailbox summaries without configuration secrets."""
+        from aichat.services.email.oauth import microsoft_shared_configured
+
         management = request.query_params.get('manage') == 'true'
         permissions = {
             action: set(account_ids(request.user, action))
             for action in ('read', 'draft', 'send', 'admin')
         }
         return Response({
+            'setup': {
+                'microsoft_shared': microsoft_shared_configured(),
+                'send_paused': settings.AGENT_EMAIL_SEND_PAUSED,
+            },
             'results': [
                 {
                     **public_account(a, admin=management),
@@ -69,7 +76,7 @@ class MailboxList(MailboxView):
                 for a in ConnectedMailbox.objects.filter(
                     pk__in=permissions['admin' if management else 'read']
                 )[:100]
-            ]
+            ],
         })
 
     @extend_schema(request=dict, responses={201: dict})

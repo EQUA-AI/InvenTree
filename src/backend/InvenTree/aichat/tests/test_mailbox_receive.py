@@ -61,7 +61,7 @@ class ReceiveTests(TestCase):
 
     def page(self, change=None):
         """Always return the same replayable page."""
-        self.provider.pages[('Inbox', 0)] = SyncPage(
+        self.provider.pages['Inbox', 0] = SyncPage(
             'Inbox',
             (change or MessageChange('upsert', 'same-id', 'same-location', self.raw),),
             checkpoint={},
@@ -187,9 +187,9 @@ class OAuthTests(TestCase):
             owner=self.user,
             enabled=True,
             options={'client_id': 'recording-client'},
-            encrypted_credentials=encrypt_credentials(
-                {'client_secret': 'recording-secret'}
-            ),
+            encrypted_credentials=encrypt_credentials({
+                'client_secret': 'recording-secret'
+            }),
         )
 
     def test_state_is_bound_to_actor_and_consumed_once(self):
@@ -220,9 +220,9 @@ class OAuthTests(TestCase):
 
     def test_refresh_rotation_is_encrypted_and_disconnect_fenced(self):
         """Only the same connection binding can receive refreshed credentials."""
-        self.account.encrypted_credentials = encrypt_credentials(
-            {'refresh_token': 'recording-old'}
-        )
+        self.account.encrypted_credentials = encrypt_credentials({
+            'refresh_token': 'recording-old'
+        })
         self.account.save()
         with patch(
             'aichat.services.email.oauth.exchange',
@@ -242,3 +242,115 @@ class OAuthTests(TestCase):
         ConnectedMailbox.objects.filter(pk=self.account.pk).update(binding_version=2)
         with self.assertRaisesMessage(MailboxError, 'reauthorization_required'):
             oauth.access_token(self.account.pk, 1)
+
+    @override_settings(
+        AGENT_EMAIL_MICROSOFT_CLIENT_ID='shared-client',
+        AGENT_EMAIL_MICROSOFT_CLIENT_SECRET='shared-secret-fixture',
+    )
+    def test_shared_microsoft_connection_keeps_application_secret_on_server(self):
+        """Creation and consent use operator credentials without disclosing them."""
+        from urllib.parse import parse_qs, urlsplit
+
+        from rest_framework.test import APIRequestFactory, force_authenticate
+
+        from aichat.email_api import MailboxList
+        from aichat.services.email.accounts import save_account
+
+        account = save_account(
+            self.user,
+            {
+                'name': 'Microsoft mailbox',
+                'provider': 'graph',
+                'address': 'first@example.test',
+                'options': {'oauth_application': 'shared'},
+                'credentials': {},
+            },
+        )
+        self.assertEqual(account.options['client_id'], 'shared-client')
+        self.assertEqual(account.options['tenant_id'], 'common')
+        self.assertEqual(decrypt_credentials(account.encrypted_credentials), {})
+        url = oauth.begin(self.user, account.pk)['authorization_url']
+        query = parse_qs(urlsplit(url).query)
+        self.assertIn('/common/oauth2/v2.0/authorize', url)
+        self.assertEqual(query['client_id'], ['shared-client'])
+        self.assertNotIn('shared-secret-fixture', url)
+        with patch(
+            'aichat.services.email.oauth.exchange',
+            return_value={
+                'access_token': 'fixture-access',
+                'refresh_token': 'fixture-refresh',
+            },
+        ) as exchange:
+            oauth.callback(self.user, query['state'][0], 'fixture-code')
+            self.assertEqual(
+                exchange.call_args.args[1]['client_secret'], 'shared-secret-fixture'
+            )
+        account.refresh_from_db()
+        stored = decrypt_credentials(account.encrypted_credentials)
+        self.assertNotIn('client_secret', stored)
+        self.assertEqual(stored['refresh_token'], 'fixture-refresh')
+        request = APIRequestFactory().get('/api/aichat/email/accounts/?manage=true')
+        force_authenticate(request, self.user)
+        response = MailboxList.as_view()(request)
+        self.assertTrue(response.data['setup']['microsoft_shared'])
+        self.assertNotIn('shared-secret-fixture', str(response.data))
+
+    @override_settings(
+        AGENT_EMAIL_MICROSOFT_CLIENT_ID='shared-client',
+        AGENT_EMAIL_MICROSOFT_CLIENT_SECRET='shared-secret-fixture',
+    )
+    def test_shared_secret_is_not_used_for_custom_or_rebound_app(self):
+        """A caller cannot send the shared secret under another client identity."""
+        self.account.provider = 'graph'
+        self.account.options = {'tenant_id': 'common', 'client_id': 'custom-client'}
+        self.assertEqual(oauth.client_credentials(self.account, {}), {})
+        self.account.options['oauth_application'] = 'shared'
+        with self.assertRaisesMessage(MailboxError, 'oauth_application_unavailable'):
+            oauth.client_credentials(self.account, {})
+        from aichat.services.email.accounts import save_account
+
+        with self.assertRaisesMessage(MailboxError, 'oauth_application_unavailable'):
+            save_account(
+                self.user,
+                {
+                    'name': 'Wrong binding',
+                    'provider': 'graph',
+                    'address': 'first@example.test',
+                    'options': self.account.options,
+                },
+            )
+
+    @override_settings(
+        AGENT_EMAIL_MICROSOFT_CLIENT_ID='shared-client',
+        AGENT_EMAIL_MICROSOFT_CLIENT_SECRET='rotated-secret-fixture',
+    )
+    def test_shared_refresh_uses_current_secret_without_storing_it(self):
+        """Secret rotation is independent of each mailbox's encrypted tokens."""
+        self.account.provider = 'graph'
+        self.account.options = {
+            'oauth_application': 'shared',
+            'client_id': 'shared-client',
+            'tenant_id': 'common',
+            'auth': 'delegated',
+        }
+        self.account.encrypted_credentials = encrypt_credentials({
+            'refresh_token': 'fixture-refresh'
+        })
+        self.account.save()
+        with patch(
+            'aichat.services.email.oauth.exchange',
+            return_value={'access_token': 'new-access'},
+        ) as exchange:
+            self.assertEqual(oauth.access_token(self.account.pk, 1), 'new-access')
+            self.assertEqual(
+                exchange.call_args.args[1]['client_secret'], 'rotated-secret-fixture'
+            )
+        self.account.refresh_from_db()
+        self.assertNotIn(
+            'client_secret', decrypt_credentials(self.account.encrypted_credentials)
+        )
+        with override_settings(AGENT_EMAIL_MICROSOFT_CLIENT_ID='replacement-client'):
+            with self.assertRaisesMessage(
+                MailboxError, 'oauth_application_unavailable'
+            ):
+                oauth.access_token(self.account.pk, 1)

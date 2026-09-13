@@ -20,6 +20,34 @@ from .credentials import decrypt_credentials, encrypt_credentials
 from .drafts import digest
 
 
+def microsoft_shared_configured():
+    """Advertise readiness without publishing application credentials."""
+    return bool(
+        settings.AGENT_EMAIL_MICROSOFT_CLIENT_ID
+        and settings.AGENT_EMAIL_MICROSOFT_CLIENT_SECRET
+        and settings.AGENT_EMAIL_OAUTH_REDIRECT_URI
+        and settings.AGENT_EMAIL_CREDENTIAL_KEYS
+    )
+
+
+def client_credentials(account, credentials):
+    """Resolve the operator's secret only for an explicitly bound shared app."""
+    if (
+        account.provider == 'graph'
+        and account.options.get('oauth_application') == 'shared'
+    ):
+        if (
+            not microsoft_shared_configured()
+            or account.options.get('client_id')
+            != settings.AGENT_EMAIL_MICROSOFT_CLIENT_ID
+            or account.options.get('tenant_id') != 'common'
+            or account.options.get('auth', 'delegated') != 'delegated'
+        ):
+            raise MailboxError('oauth_application_unavailable')
+        return {'client_secret': settings.AGENT_EMAIL_MICROSOFT_CLIENT_SECRET}
+    return credentials
+
+
 def configuration(account):
     """Only provider-owned token endpoints can receive credentials."""
     if account.provider == 'google':
@@ -82,6 +110,7 @@ def begin(actor, account_id):
     """Issue state and PKCE bound to this user, mailbox and binding version."""
     require_enabled()
     account = require_account(actor, account_id, 'admin')
+    client_credentials(account, {})
     redirect = settings.AGENT_EMAIL_OAUTH_REDIRECT_URI
     if urlsplit(redirect).scheme != 'https':
         raise MailboxError('oauth_redirect_required')
@@ -112,6 +141,8 @@ def begin(actor, account_id):
     }
     if account.provider == 'google':
         fields.update(access_type='offline', prompt='consent')
+    elif account.provider == 'graph':
+        fields.update(prompt='select_account', login_hint=account.address)
     return {'authorization_url': auth_url + '?' + urlencode(fields)}
 
 
@@ -148,8 +179,9 @@ def callback(actor, state, code):
         'redirect_uri': verifier['redirect_uri'],
         'code_verifier': verifier['verifier'],
     }
-    if credentials.get('client_secret'):
-        fields['client_secret'] = credentials['client_secret']
+    client = client_credentials(account, credentials)
+    if client.get('client_secret'):
+        fields['client_secret'] = client['client_secret']
     tokens = exchange(account, fields)
     tokens['expires_at'] = time.time() + int(tokens.pop('expires_in', 3600))
     with transaction.atomic():
@@ -174,6 +206,7 @@ def access_token(account_id, version):
         if account.binding_version != version or not account.enabled:
             raise MailboxError('reauthorization_required')
         credentials = decrypt_credentials(account.encrypted_credentials)
+        client = client_credentials(account, credentials)
         if (
             credentials.get('access_token')
             and credentials.get('expires_at', 0) > time.time() + 60
@@ -194,8 +227,8 @@ def access_token(account_id, version):
         else:
             raise MailboxError('reauthorization_required')
         fields['client_id'] = account.options.get('client_id', '')
-        if credentials.get('client_secret'):
-            fields['client_secret'] = credentials['client_secret']
+        if client.get('client_secret'):
+            fields['client_secret'] = client['client_secret']
         lease = timezone.now() + timedelta(seconds=60)
         account.oauth_refresh_until = lease
         account.save(update_fields=['oauth_refresh_until'])

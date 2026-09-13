@@ -27,7 +27,7 @@ OPTION_KEYS = {
         'sent_copy',
         'auth',
     },
-    'graph': {'tenant_id', 'client_id', 'inbox', 'sent', 'auth'},
+    'graph': {'tenant_id', 'client_id', 'inbox', 'sent', 'auth', 'oauth_application'},
     'google': {'client_id', 'inbox', 'sent'},
     'recording': set(),
 }
@@ -104,6 +104,23 @@ def _validate(account):
     if len(str(account.options)) > 4096 or len(account.signature) > 10000:
         raise MailboxError('configuration_too_large')
     options = account.options
+    if account.provider == 'graph' and 'oauth_application' in options:
+        from .oauth import microsoft_shared_configured
+
+        if (
+            options['oauth_application'] != 'shared'
+            or not microsoft_shared_configured()
+            or options.get('auth', 'delegated') != 'delegated'
+            or options.get('client_id', settings.AGENT_EMAIL_MICROSOFT_CLIENT_ID)
+            != settings.AGENT_EMAIL_MICROSOFT_CLIENT_ID
+            or options.get('tenant_id', 'common') != 'common'
+        ):
+            raise MailboxError('oauth_application_unavailable')
+        options.update(
+            client_id=settings.AGENT_EMAIL_MICROSOFT_CLIENT_ID,
+            tenant_id='common',
+            auth='delegated',
+        )
     if any(
         not isinstance(value, (str, int)) or isinstance(value, bool)
         for value in options.values()

@@ -21,6 +21,8 @@ Set configuration through the deployment secret manager, not chat, source contro
 | `INVENTREE_AGENT_EMAIL_CREDENTIAL_KEYS` | Comma-separated Fernet keys; first key encrypts, all keys may decrypt |
 | `INVENTREE_AGENT_EMAIL_MESSAGE_ID_DOMAIN` | Operator-controlled domain for stable RFC Message-IDs |
 | `INVENTREE_AGENT_EMAIL_OAUTH_REDIRECT_URI` | Exact registered HTTPS redirect URI for consent |
+| `INVENTREE_AGENT_EMAIL_MICROSOFT_CLIENT_ID` | Shared Microsoft application ID for customer mailbox connections |
+| `INVENTREE_AGENT_EMAIL_MICROSOFT_CLIENT_SECRET` | Shared application credential, supplied through a deployment secret reference |
 | `INVENTREE_AGENT_EMAIL_PRIVATE_NETWORKS` | Explicit administrator-approved CIDRs for private SMTP/IMAP endpoints |
 | `INVENTREE_AGENT_EMAIL_CLAMAV_SOCKET` | ClamAV Unix socket; defaults to `/var/run/clamav/clamd.ctl` |
 | `AIMMS_EMAIL_RECIPIENT_ALLOWLIST` | Existing deployment-wide recipient restriction, applied in addition to account policy |
@@ -36,6 +38,9 @@ Global Email view/send permissions and per-account grants are both required. Sen
 1. Configure the key ring, Message-ID domain, scanning service and pilot recipient restrictions. Enable the feature with sending globally paused while configuring accounts.
 2. Open **Admin → Email → Agent mailboxes** and add an account. SMTP requires explicit SMTP and IMAP endpoints and credentials. Ports support mandatory STARTTLS or implicit TLS for SMTP, and implicit TLS for IMAP. Certificate validation cannot be disabled. DNS addresses are checked and pinned before connecting; metadata/link-local endpoints remain blocked.
 3. For Graph or Google, register an OAuth application, enter the client configuration, and start consent. Open the returned authorization URL, then paste the resulting callback URL into the connection form. State is short-lived, one-use, bound to the initiating administrator and account version, and protected with PKCE. Graph application credentials are configured through the account API with `options.auth = "application"`; restrict the application's mailbox access in the tenant.
+
+   When the shared Microsoft client ID, secret, redirect URI and encryption keys are configured, select **Microsoft Graph → Use AIMMS Microsoft connection**. Enter the mailbox name and email address, save it, and select **Connect with OAuth → Open provider consent**. No application secret is entered in the browser. The shared application uses the `common` Microsoft authority with delegated permissions, supporting work and personal accounts when the app registration permits them. Its secret stays in deployment configuration; only account tokens are stored encrypted in the mailbox record. Existing custom registrations remain available by clearing the shared-connection checkbox. Changing the shared client ID requires reconnecting existing shared mailboxes; secret rotation under the same client ID does not.
+
 4. Grant read/draft/send/admin capabilities to the intended users or groups. Configure aliases, signature, allowlist and retention through the account PATCH API. User grant controls are available in the panel; group grants are also supported by the API.
 5. Enable the account and receiving, then request a receive test. A completed authorized collection sync verifies the read connection. It does **not** prove end-to-end delivery of a canary reply.
 6. Once live test recipients and permission are recorded, unpause global sending and create an administrator verification message to the allowlisted recipient. Review its entire content and approve it. This uses the normal durable dispatch ledger. Successful submission verifies the send connection; it does not assert recipient delivery.

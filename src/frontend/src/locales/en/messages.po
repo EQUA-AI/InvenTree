@@ -898,24 +898,24 @@ msgid "Cancel draft"
 msgstr "Cancel draft"
 
 #: src/components/ai/MailboxApprovalReview.tsx:230
-#: src/components/ai/MailboxPanel.tsx:105
+#: src/components/ai/MailboxPanel.tsx:110
 #: src/pages/repair/RepairPacketDetail.tsx:294
 #: src/tables/settings/EmailTable.tsx:85
 msgid "To"
 msgstr "To"
 
 #: src/components/ai/MailboxApprovalReview.tsx:231
-#: src/components/ai/MailboxPanel.tsx:107
+#: src/components/ai/MailboxPanel.tsx:112
 msgid "CC"
 msgstr "CC"
 
 #: src/components/ai/MailboxApprovalReview.tsx:232
-#: src/components/ai/MailboxPanel.tsx:108
+#: src/components/ai/MailboxPanel.tsx:113
 msgid "BCC"
 msgstr "BCC"
 
 #: src/components/ai/MailboxApprovalReview.tsx:233
-#: src/components/ai/MailboxPanel.tsx:110
+#: src/components/ai/MailboxPanel.tsx:115
 #: src/tables/settings/EmailTable.tsx:80
 msgid "Subject"
 msgstr "Subject"
@@ -932,189 +932,192 @@ msgstr "Save revision for new review"
 msgid "Revision could not be saved. Refresh the current draft."
 msgstr "Revision could not be saved. Refresh the current draft."
 
-#: src/components/ai/MailboxPanel.tsx:68
+#: src/components/ai/MailboxPanel.tsx:73
 msgid "Enter a recipient"
 msgstr "Enter a recipient"
 
-#: src/components/ai/MailboxPanel.tsx:69
+#: src/components/ai/MailboxPanel.tsx:74
 msgid "Enter a subject"
 msgstr "Enter a subject"
 
-#: src/components/ai/MailboxPanel.tsx:103
+#: src/components/ai/MailboxPanel.tsx:108
 #: src/pages/repair/RepairPacketDetail.tsx:293
 msgid "From"
 msgstr "From"
 
-#: src/components/ai/MailboxPanel.tsx:112
+#: src/components/ai/MailboxPanel.tsx:117
 #: src/tables/notifications/NotificationTable.tsx:41
 #: src/tables/plugin/PluginErrorTable.tsx:39
 #: src/tables/settings/ErrorTable.tsx:50
 msgid "Message"
 msgstr "Message"
 
-#: src/components/ai/MailboxPanel.tsx:118
+#: src/components/ai/MailboxPanel.tsx:123
 msgid "Attach a document"
 msgstr "Attach a document"
 
-#: src/components/ai/MailboxPanel.tsx:123
+#: src/components/ai/MailboxPanel.tsx:128
 msgid "Attachments ready"
 msgstr "Attachments ready"
 
-#: src/components/ai/MailboxPanel.tsx:126
+#: src/components/ai/MailboxPanel.tsx:131
 msgid "This attachment is quarantined or could not be scanned. It cannot be sent."
 msgstr "This attachment is quarantined or could not be scanned. It cannot be sent."
 
-#: src/components/ai/MailboxPanel.tsx:130
+#: src/components/ai/MailboxPanel.tsx:135
 msgid "Administrator verification message"
 msgstr "Administrator verification message"
 
-#: src/components/ai/MailboxPanel.tsx:135
+#: src/components/ai/MailboxPanel.tsx:140
 msgid "Draft could not be created. Check mailbox access, recipient restrictions and connection status."
 msgstr "Draft could not be created. Check mailbox access, recipient restrictions and connection status."
 
-#: src/components/ai/MailboxPanel.tsx:138
+#: src/components/ai/MailboxPanel.tsx:143
 msgid "Draft created. Review it in Approvals before sending."
 msgstr "Draft created. Review it in Approvals before sending."
 
-#: src/components/ai/MailboxPanel.tsx:144
+#: src/components/ai/MailboxPanel.tsx:149
 msgid "Create draft for review"
 msgstr "Create draft for review"
 
-#: src/components/ai/MailboxPanel.tsx:191
+#: src/components/ai/MailboxPanel.tsx:196
 msgid "Agent mail is unavailable or disabled."
 msgstr "Agent mail is unavailable or disabled."
 
-#: src/components/ai/MailboxPanel.tsx:195
+#: src/components/ai/MailboxPanel.tsx:200
+msgid "Outgoing agent email is paused. You can connect a mailbox and test receiving."
+msgstr "Outgoing agent email is paused. You can connect a mailbox and test receiving."
+
+#: src/components/ai/MailboxPanel.tsx:203
 msgid "Mailbox"
 msgstr "Mailbox"
 
-#: src/components/ai/MailboxPanel.tsx:196
+#: src/components/ai/MailboxPanel.tsx:204
 msgid "Choose a mailbox"
 msgstr "Choose a mailbox"
 
-#: src/components/ai/MailboxPanel.tsx:212
+#: src/components/ai/MailboxPanel.tsx:220
 msgid "Sending enabled"
 msgstr "Sending enabled"
 
-#: src/components/ai/MailboxPanel.tsx:212
+#: src/components/ai/MailboxPanel.tsx:220
 msgid "Sending paused"
 msgstr "Sending paused"
 
-#: src/components/ai/MailboxPanel.tsx:219
+#: src/components/ai/MailboxPanel.tsx:227
 msgid "History coverage has gaps"
 msgstr "History coverage has gaps"
 
-#: src/components/ai/MailboxPanel.tsx:229
+#: src/components/ai/MailboxPanel.tsx:237
 msgid "Pause account"
 msgstr "Pause account"
 
-#: src/components/ai/MailboxPanel.tsx:229
+#: src/components/ai/MailboxPanel.tsx:237
 msgid "Enable account"
 msgstr "Enable account"
 
-#: src/components/ai/MailboxPanel.tsx:240
+#: src/components/ai/MailboxPanel.tsx:248
 msgid "Pause receive"
 msgstr "Pause receive"
 
-#: src/components/ai/MailboxPanel.tsx:241
+#: src/components/ai/MailboxPanel.tsx:249
 msgid "Enable receive"
 msgstr "Enable receive"
 
-#: src/components/ai/MailboxPanel.tsx:249
+#: src/components/ai/MailboxPanel.tsx:257
 msgid "Pause send"
 msgstr "Pause send"
 
-#: src/components/ai/MailboxPanel.tsx:249
+#: src/components/ai/MailboxPanel.tsx:257
 msgid "Enable send"
 msgstr "Enable send"
 
-#: src/components/ai/MailboxPanel.tsx:254
+#: src/components/ai/MailboxPanel.tsx:262
 msgid "Test receive / sync"
 msgstr "Test receive / sync"
 
-#: src/components/ai/MailboxPanel.tsx:259
+#: src/components/ai/MailboxPanel.tsx:267
 msgid "Disconnect"
 msgstr "Disconnect"
 
-#: src/components/ai/MailboxPanel.tsx:262
+#: src/components/ai/MailboxPanel.tsx:270
 msgid "Mailbox control failed. Check account permissions and verification."
 msgstr "Mailbox control failed. Check account permissions and verification."
 
-#: src/components/ai/MailboxPanel.tsx:275
+#: src/components/ai/MailboxPanel.tsx:283
 msgid "Compose email"
 msgstr "Compose email"
 
-#: src/components/ai/MailboxPanel.tsx:287
+#: src/components/ai/MailboxPanel.tsx:295
 msgid "Messages are no longer accessible."
 msgstr "Messages are no longer accessible."
 
-#: src/components/ai/MailboxPanel.tsx:306
+#: src/components/ai/MailboxPanel.tsx:314
 msgid "No plain text body available."
 msgstr "No plain text body available."
 
-#: src/components/ai/MailboxPanel.tsx:335
+#: src/components/ai/MailboxPanel.tsx:343
 msgid "Draft reply"
 msgstr "Draft reply"
 
-#: src/components/ai/MailboxPanel.tsx:367
+#: src/components/ai/MailboxPanel.tsx:386
 msgid "Connect with OAuth"
 msgstr "Connect with OAuth"
 
-#: src/components/ai/MailboxPanel.tsx:374
+#: src/components/ai/MailboxPanel.tsx:393
 msgid "Open provider consent"
 msgstr "Open provider consent"
 
-#: src/components/ai/MailboxPanel.tsx:377
+#: src/components/ai/MailboxPanel.tsx:396
 msgid "Paste the callback URL after consent"
 msgstr "Paste the callback URL after consent"
 
-#: src/components/ai/MailboxPanel.tsx:383
+#: src/components/ai/MailboxPanel.tsx:402
 msgid "Complete connection"
 msgstr "Complete connection"
 
-#: src/components/ai/MailboxPanel.tsx:385
+#: src/components/ai/MailboxPanel.tsx:404
 msgid "OAuth connection failed. Start a new consent attempt."
 msgstr "OAuth connection failed. Start a new consent attempt."
 
-#: src/components/ai/MailboxPanel.tsx:388
+#: src/components/ai/MailboxPanel.tsx:407
 msgid "Connected. Verify sending and receiving before enabling sends."
 msgstr "Connected. Verify sending and receiving before enabling sends."
 
-#: src/components/ai/MailboxPanel.tsx:415
+#: src/components/ai/MailboxPanel.tsx:434
 msgid "User ID for mailbox access"
 msgstr "User ID for mailbox access"
 
-#: src/components/ai/MailboxPanel.tsx:421
+#: src/components/ai/MailboxPanel.tsx:440
 #: src/tables/settings/EmailTable.tsx:33
 msgid "Read"
 msgstr "Read"
 
-#: src/components/ai/MailboxPanel.tsx:425
+#: src/components/ai/MailboxPanel.tsx:444
 msgid "Draft"
 msgstr "Draft"
 
-#: src/components/ai/MailboxPanel.tsx:429
+#: src/components/ai/MailboxPanel.tsx:448
 msgid "Send"
 msgstr "Send"
 
-#: src/components/ai/MailboxPanel.tsx:433
+#: src/components/ai/MailboxPanel.tsx:452
 msgid "Administer"
 msgstr "Administer"
 
-#: src/components/ai/MailboxPanel.tsx:440
+#: src/components/ai/MailboxPanel.tsx:459
 msgid "Save mailbox access"
 msgstr "Save mailbox access"
 
-#: src/components/ai/MailboxPanel.tsx:442
+#: src/components/ai/MailboxPanel.tsx:461
 msgid "Could not save mailbox access."
 msgstr "Could not save mailbox access."
 
-#: src/components/ai/MailboxPanel.tsx:444
+#: src/components/ai/MailboxPanel.tsx:463
 msgid "Mailbox access saved."
 msgstr "Mailbox access saved."
 
-#: src/components/ai/MailboxPanel.tsx:471
-#: src/components/ai/MailboxPanel.tsx:472
+#: src/components/ai/MailboxPanel.tsx:494
 #: src/pages/part/PartDetail.tsx:605
 #: src/pages/repair/RepairPacketDetail.tsx:236
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:833
@@ -1124,11 +1127,15 @@ msgstr "Mailbox access saved."
 msgid "Required"
 msgstr "Required"
 
-#: src/components/ai/MailboxPanel.tsx:521
+#: src/components/ai/MailboxPanel.tsx:495
+msgid "Enter a valid email address"
+msgstr "Enter a valid email address"
+
+#: src/components/ai/MailboxPanel.tsx:551
 msgid "Add agent mailbox"
 msgstr "Add agent mailbox"
 
-#: src/components/ai/MailboxPanel.tsx:522
+#: src/components/ai/MailboxPanel.tsx:552
 #: src/components/forms/HostOptionsForm.tsx:42
 #: src/components/forms/HostOptionsForm.tsx:70
 #: src/components/forms/InstanceOptions.tsx:125
@@ -1158,77 +1165,85 @@ msgstr "Add agent mailbox"
 msgid "Name"
 msgstr "Name"
 
-#: src/components/ai/MailboxPanel.tsx:524
+#: src/components/ai/MailboxPanel.tsx:554
 msgid "Email address"
 msgstr "Email address"
 
-#: src/components/ai/MailboxPanel.tsx:528
+#: src/components/ai/MailboxPanel.tsx:558
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:427
 msgid "Provider"
 msgstr "Provider"
 
-#: src/components/ai/MailboxPanel.tsx:539
+#: src/components/ai/MailboxPanel.tsx:568
+msgid "Use AIMMS Microsoft connection"
+msgstr "Use AIMMS Microsoft connection"
+
+#: src/components/ai/MailboxPanel.tsx:577
 msgid "SMTP host"
 msgstr "SMTP host"
 
-#: src/components/ai/MailboxPanel.tsx:543
+#: src/components/ai/MailboxPanel.tsx:581
 msgid "SMTP port"
 msgstr "SMTP port"
 
-#: src/components/ai/MailboxPanel.tsx:547
+#: src/components/ai/MailboxPanel.tsx:585
 msgid "SMTP encryption"
 msgstr "SMTP encryption"
 
-#: src/components/ai/MailboxPanel.tsx:555
+#: src/components/ai/MailboxPanel.tsx:593
 msgid "IMAP host"
 msgstr "IMAP host"
 
-#: src/components/ai/MailboxPanel.tsx:559
+#: src/components/ai/MailboxPanel.tsx:597
 msgid "IMAP TLS port"
 msgstr "IMAP TLS port"
 
-#: src/components/ai/MailboxPanel.tsx:563
+#: src/components/ai/MailboxPanel.tsx:601
 msgid "Mailbox username"
 msgstr "Mailbox username"
 
-#: src/components/ai/MailboxPanel.tsx:568
+#: src/components/ai/MailboxPanel.tsx:606
 msgid "Mailbox password"
 msgstr "Mailbox password"
 
-#: src/components/ai/MailboxPanel.tsx:577
+#: src/components/ai/MailboxPanel.tsx:614
+msgid "Save your mailbox, then sign in with Microsoft. AIMMS already has the application configuration."
+msgstr "Save your mailbox, then sign in with Microsoft. AIMMS already has the application configuration."
+
+#: src/components/ai/MailboxPanel.tsx:619
 msgid "Tenant ID"
 msgstr "Tenant ID"
 
-#: src/components/ai/MailboxPanel.tsx:582
+#: src/components/ai/MailboxPanel.tsx:624
 msgid "OAuth client ID"
 msgstr "OAuth client ID"
 
-#: src/components/ai/MailboxPanel.tsx:586
+#: src/components/ai/MailboxPanel.tsx:628
 msgid "OAuth client secret"
 msgstr "OAuth client secret"
 
-#: src/components/ai/MailboxPanel.tsx:593
+#: src/components/ai/MailboxPanel.tsx:635
 msgid "Allowed recipients or @domains, separated by commas"
 msgstr "Allowed recipients or @domains, separated by commas"
 
-#: src/components/ai/MailboxPanel.tsx:594
+#: src/components/ai/MailboxPanel.tsx:636
 msgid "An empty list blocks all sends."
 msgstr "An empty list blocks all sends."
 
-#: src/components/ai/MailboxPanel.tsx:597
+#: src/components/ai/MailboxPanel.tsx:639
 #: src/pages/repair/components/safety/safetyApi.ts:181
 msgid "Signature"
 msgstr "Signature"
 
-#: src/components/ai/MailboxPanel.tsx:601
+#: src/components/ai/MailboxPanel.tsx:643
 msgid "Save disabled mailbox"
 msgstr "Save disabled mailbox"
 
-#: src/components/ai/MailboxPanel.tsx:603
+#: src/components/ai/MailboxPanel.tsx:645
 msgid "Mailbox could not be saved. Check configuration and administrative access."
 msgstr "Mailbox could not be saved. Check configuration and administrative access."
 
-#: src/components/ai/MailboxPanel.tsx:606
+#: src/components/ai/MailboxPanel.tsx:648
 msgid "Mailbox saved. Select it to connect and verify."
 msgstr "Mailbox saved. Select it to connect and verify."
 
@@ -11471,14 +11486,14 @@ msgid "Failed to save lockout point"
 msgstr "Failed to save lockout point"
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:100
-#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
-msgid "Edit lockout point"
-msgstr "Edit lockout point"
-
-#: src/pages/repair/components/safety/LockoutPointModal.tsx:100
 #: src/pages/repair/components/safety/LockoutPointTable.tsx:61
 msgid "Add lockout point"
 msgstr "Add lockout point"
+
+#: src/pages/repair/components/safety/LockoutPointModal.tsx:100
+#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
+msgid "Edit lockout point"
+msgstr "Edit lockout point"
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:104
 msgid "Energy source"
