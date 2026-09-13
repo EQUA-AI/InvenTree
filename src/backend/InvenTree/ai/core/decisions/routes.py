@@ -16,7 +16,7 @@ class DecisionActionRequest(VoiceDecisionContext):
     spoken_summary_hash: str | None = None
 
 
-async def speak_reply(session, reply, coordinator):
+async def speak_reply(session, reply, coordinator, *, include_spoken=False):
     """Persist-before-speak for button/reconnect read-back requests."""
     from ai.core.voice import routes
     from ai.core.voice.speech import build_exact_tts_payload
@@ -54,15 +54,25 @@ async def speak_reply(session, reply, coordinator):
                     "aimms_spoken_hash": decision.spoken_summary_hash,
                 }
             await send(speech)
-            await sync_to_async(realtime.mark_playback, thread_sensitive=True)(
+            utterance = await sync_to_async(realtime.mark_playback, thread_sensitive=True)(
                 utterance=utterance, state="requested"
             )
         except Exception:
+            utterance = await sync_to_async(realtime.mark_playback, thread_sensitive=True)(
+                utterance=utterance, state="failed"
+            )
             # Delivery is not outcome. Keep the preview visible and say pending.
             if decision and decision.state == "presented":
                 decision = await sync_to_async(coordinator.advance, thread_sensitive=True)(
                     decision, delivery_state="failed"
                 )
+    if include_spoken:
+        return decision, {
+            "utterance_id": str(utterance.pk),
+            "spoken_summary": utterance.spoken_summary,
+            "spoken_summary_hash": utterance.spoken_summary_hash,
+            "playback_state": utterance.playback_state,
+        }
     return decision
 
 

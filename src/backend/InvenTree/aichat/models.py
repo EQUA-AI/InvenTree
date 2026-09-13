@@ -934,6 +934,35 @@ class ProposalAction(models.TextChoices):
     DEPENDENCY_CREATE = 'dependency.create', 'Create dependency'
     DEPENDENCY_DELETE = 'dependency.delete', 'Delete dependency'
     SCHEDULE_OPTIMIZE = 'schedule.optimize', 'Optimize schedule (bulk)'
+    STOCK_ADD = 'stock.add', 'Add stock'
+    STOCK_REMOVE = 'stock.remove', 'Remove stock'
+    STOCK_TRANSFER = 'stock.transfer', 'Transfer stock'
+    STOCK_COUNT = 'stock.count', 'Count stock'
+    PROCEDURE_COMPLETE = 'procedure.complete', 'Complete procedure step'
+    CLOSEOUT_CONSENT = 'closeout.consent', 'Consent to closeout dictation'
+    CLOSEOUT_ACCEPT = 'closeout.accept', 'Accept closeout note'
+    CLOSEOUT_HANDOFF = 'closeout.handoff', 'Hand off accepted closeout note'
+
+
+class StockCommandReceipt(models.Model):
+    """Atomic inventory effect evidence, retained after stock depletion."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    action = models.CharField(max_length=32)
+    idempotency_key = models.CharField(max_length=128)
+    request_hash = models.CharField(max_length=64)
+    receipt = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """One reviewed command per actor/key across all execution rails."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['actor', 'idempotency_key'], name='aichat_stock_command_key'
+            )
+        ]
 
 
 class ProposalState(models.TextChoices):
@@ -977,6 +1006,8 @@ class ChatActionProposal(models.Model):
     # Nullable so future non-single-target actions (dependency pairs, bulk plans)
     # can share the rail; every AI-2 action still binds exactly one target.
     target_work_order_id = models.PositiveIntegerField(null=True, blank=True)
+    # Plain nullable identity, not a cascading FK: depletion may delete the row.
+    target_stock_item_id = models.PositiveIntegerField(null=True, blank=True)
     target_version = models.PositiveIntegerField(null=True, blank=True)
     # Server-validated action parameters (schedule window, assignee, plan fields).
     # Never trusted from the model: re-derived/re-checked at confirmation.

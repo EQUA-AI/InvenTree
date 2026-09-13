@@ -2,5 +2,10 @@
   min-height: calc(100dvh - 100px);
   padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   font-size: 1.125rem;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
 }
 .voice-hands-free button { min-height: 44px; min-width: 44px; }
+.voice-hands-free pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.voice-hands-free input, .voice-hands-free select { min-height: 44px; font-size: 16px; }

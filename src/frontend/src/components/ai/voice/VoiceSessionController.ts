@@ -7,7 +7,10 @@ import type {
   VoiceTurnResponse
 } from '../../../../lib/types/Voice';
 import type { VoiceDecisionStore } from '../../../states/VoiceDecisionState';
-import { decisionContext } from '../../../states/decisionReducer';
+import {
+  type DecisionSnapshot,
+  decisionContext
+} from '../../../states/decisionReducer';
 import { DecisionPlayback } from '../decisionPlayback';
 import {
   VOICE_CONFIRM_RE,
@@ -19,6 +22,7 @@ import {
 } from '../voiceCriticalTerms';
 import { monitorMicrophone, outputDisappeared } from './audioRoute';
 import { type Earcon, Earcons } from './earcons';
+import { selectedCandidateDiagnostics } from './networkDiagnostics';
 import { TurnQueue } from './turnQueue';
 import {
   type VoiceCapability,
@@ -149,6 +153,7 @@ export class VoiceSessionController {
     if (down) this.bounds.touch();
   };
   toggleMute = () => {
+    if (this.snapshot.transport !== 'connected') return;
     this.update({ muted: !this.snapshot.muted });
     this.gateMicrophone();
   };
@@ -423,6 +428,46 @@ export class VoiceSessionController {
     if (this.decisions.getState().decision?.state === 'presented')
       return this.resumeOutput();
     return this.prompt('help');
+  };
+  walkthrough = async (
+    workOrderId: number,
+    position: number,
+    utterance: string,
+    value?: string,
+    passed?: boolean
+  ) => {
+    const active = this.snapshot.session;
+    if (
+      !active ||
+      this.snapshot.hidden ||
+      this.snapshot.transport !== 'connected'
+    )
+      return null;
+    this.bounds.touch();
+    this.stopLocal();
+    const generation = this.generation;
+    const outputEpoch = this.outputEpoch;
+    const epoch = this.playback.beginTurn();
+    const reply = await this.request<
+      DecisionSnapshot & {
+        position: number;
+        total: number;
+        speak_text: string;
+        spoken: VoiceSpokenPayload;
+      }
+    >('procedures/walkthrough', 'POST', {
+      work_order_id: workOrderId,
+      position,
+      utterance,
+      value,
+      passed,
+      session_id: active.id
+    });
+    if (!this.outputIsCurrent(generation, outputEpoch)) return null;
+    this.decisions.getState().applyTurn(active.id, reply);
+    this.playback.bindTurn(epoch, reply.pending_decision);
+    this.expectSpeech(reply.spoken);
+    return reply;
   };
   resumeOutput = async () => {
     if (this.snapshot.hidden) return;
@@ -851,7 +896,8 @@ export class VoiceSessionController {
       error: null,
       hidden: false,
       mode: p.voiceListeningMode,
-      muted: false,
+      muted: reconnecting,
+      networkDiagnostics: null,
       pendingConfirm: null,
       holdPrompt: null,
       partial: null,
@@ -949,6 +995,18 @@ export class VoiceSessionController {
         });
         this.gateMicrophone();
         this.cue('ready');
+        if (typeof peer.getStats === 'function')
+          void peer
+            .getStats()
+            .then((stats) => {
+              if (generation === this.generation)
+                this.update({
+                  networkDiagnostics: selectedCandidateDiagnostics(stats)
+                });
+            })
+            .catch(() => {
+              /* Unavailable diagnostics are not a connectivity claim. */
+            });
         void this.acquireWakeLock();
         void this.decisions
           .getState()
@@ -1009,7 +1067,7 @@ export class VoiceSessionController {
       if (channel.readyState !== 'open')
         this.connectTimer = window.setTimeout(
           () => this.connectionLost(),
-          12000
+          (cap.direct_connect_timeout_s ?? 12) * 1000
         );
     } catch (error) {
       if (generation !== this.generation) return;
@@ -1046,6 +1104,7 @@ export class VoiceSessionController {
     if (!this.snapshot.session) return;
     this.update({
       transport: 'reconnecting',
+      muted: true,
       notice: 'reconnecting',
       lastSubmitted:
         this.snapshot.lastSubmitted?.status === 'pending'
@@ -1150,6 +1209,7 @@ export class VoiceSessionController {
     this.decisions.getState().setSession(null);
     this.update({
       session: null,
+      networkDiagnostics: null,
       mic: 'off',
       playback: 'idle',
       transport: 'off',

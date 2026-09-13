@@ -51,6 +51,16 @@ def capability(settings) -> dict:
         "relay": enabled and settings.feature_voice_live_relay,
         "foreground_session": foreground,
         "decisions": enabled and settings.feature_voice_decision_coordinator,
+        "inventory_actions": enabled
+        and getattr(settings, "feature_voice_inventory_actions", False),
+        "procedure_complete": enabled
+        and getattr(settings, "feature_voice_procedure_complete", False),
+        "guided_procedures": enabled and getattr(settings, "feature_guided_procedures", False),
+        "closeout": enabled and getattr(settings, "feature_voice_closeout", False),
+        "turn": False,
+        "turn_provider": None,
+        "direct_connect_timeout_s": getattr(settings, "voice_direct_connect_timeout_s", 12),
+        "network_qualification": "direct_stun_only_unqualified_networks_require_testing",
         "prompts": enabled,
         "help": foreground,
         "presentation": foreground,

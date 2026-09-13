@@ -133,6 +133,60 @@ class PurchasingVoiceTests(VoiceInboxTests):
         self.assertEqual(order.status, PurchaseOrderStatus.PLACED.value)
         self.assertEqual(ExecutedEffect.objects.count(), 3)
 
+    def test_receipt_recovery_rejects_mismatched_effect_evidence_without_resending(
+        self,
+    ):
+        """A row for the same approval is not proof of this exact committed effect."""
+        approval = self.draft_review()
+        self.acknowledge(approval)
+        self.say(f'approve {str(approval.pk)[:8]}', touch=True)
+        approval.refresh_from_db()
+        effect = ExecutedEffect.objects.get(approval=approval)
+        execution = ApprovalExecution.objects.get(approval=approval)
+        lookup_args = {'actor': self.principal, 'thread_id': self.session.thread_id}
+        self.assertEqual(
+            lookup_operation(**lookup_args)['execution_state'], 'succeeded'
+        )
+        for field, invalid in (
+            ('effect_ref', 'different-order'),
+            ('effect_type', 'different-action'),
+            ('idempotency_key', '0' * 64),
+        ):
+            with self.subTest(field=field):
+                original = getattr(effect, field)
+                ExecutedEffect.objects.filter(approval=approval).update(**{
+                    field: invalid
+                })
+                result = lookup_operation(**lookup_args)
+                self.assertEqual(result['execution_state'], 'unknown')
+                self.assertEqual(result['receipt'], {})
+                self.assertIsNone(result['receipt_ref'])
+                ExecutedEffect.objects.filter(approval=approval).update(**{
+                    field: original
+                })
+                self.assertEqual(
+                    lookup_operation(**lookup_args)['execution_state'], 'succeeded'
+                )
+        for model, invalid in (
+            (Approval, {'execution_result': {'order_id': 'invented'}}),
+            (ApprovalExecution, {'result': {'payload': {}, 'effect_ref': 'invented'}}),
+            (ApprovalExecution, {'revision': execution.revision + 1}),
+        ):
+            with self.subTest(model=model.__name__, field=next(iter(invalid))):
+                original_record = approval if model is Approval else execution
+                original = {field: getattr(original_record, field) for field in invalid}
+                model.objects.filter(pk=original_record.pk).update(**invalid)
+                self.assertEqual(
+                    lookup_operation(**lookup_args)['execution_state'], 'unknown'
+                )
+                model.objects.filter(pk=original_record.pk).update(**original)
+        self.assertEqual(
+            lookup_operation(**lookup_args)['execution_state'], 'succeeded'
+        )
+        self.assertEqual(PurchaseOrder.objects.count(), 1)
+        self.assertEqual(ExecutedEffect.objects.count(), 1)
+        self.assertEqual(ApprovalExecution.objects.count(), 1)
+
     def test_disabled_or_incomplete_requests_never_create_effects(self):
         """Missing quantities/currency never use pricing or LLM guesses."""
         self.assertEqual(self.begin('create a purchase order').event, 'clarification')

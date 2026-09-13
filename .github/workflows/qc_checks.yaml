@@ -770,7 +770,7 @@ jobs:
           PGPASSWORD: password
         run: psql -h 127.0.0.1 -U inventree -d postgres -c 'DROP DATABASE IF EXISTS test_inventree WITH (FORCE)'
       - name: Layer 2 - backend integration on PostgreSQL
-        run: invoke dev.test --keepdb --disable-pty --runtest='aichat.tests.test_voice_bridge aichat.tests.test_voice_hold_journey aichat.tests.test_action_proposal_api aichat.tests.test_seed_voice_action_fixtures voice.tests tasks.tests.test_workorder_services tasks.tests.test_procedure_walkthrough approvals.tests approvals.test_services approvals.test_review_sections approvals.test_review_binding approvals.test_execution approvals.test_repair_work_package_executor approvals.test_purchasing approvals.test_voice_inbox approvals.test_voice_purchasing'
+        run: invoke dev.test --keepdb --disable-pty --runtest='aichat.tests.test_voice_bridge aichat.tests.test_voice_hold_journey aichat.tests.test_action_proposal_api aichat.tests.test_seed_voice_action_fixtures aichat.tests.test_voice_inventory_readback voice.tests tasks.tests.test_workorder_services tasks.tests.test_workorder_voice_readback tasks.tests.test_procedure_walkthrough tasks.tests.test_voice_procedure_completion tasks.tests.test_closeout_capture approvals.tests approvals.test_services approvals.test_review_sections approvals.test_review_binding approvals.test_execution approvals.test_repair_work_package_executor approvals.test_purchasing approvals.test_inventory approvals.test_phase_e_executors approvals.test_voice_inbox approvals.test_voice_purchasing users.test_notification_role'
       - name: Decision CAS on real Redis
         run: |
           cd src/backend/InvenTree

@@ -72,6 +72,38 @@ def complete(h):
     )
 
 
+@pytest.mark.parametrize(
+    "verb",
+    [
+        "split",
+        "merge",
+        "convert",
+        "install",
+        "uninstall",
+        "assign",
+        "unassign",
+        "serialize",
+        "change status of",
+    ],
+)
+def test_unsupported_stock_movements_refuse_without_a_proposal(harness, verb):
+    before = harness.store.read("7")
+    reply = harness.c.begin(
+        f"{verb} stock item 42",
+        actor=harness.actor,
+        session_id="session-1",
+        thread_id="7",
+        nonce="unsupported-stock",
+    )
+    assert reply.event == "unavailable"
+    assert reply.decision is None
+    assert reply.spoken == (
+        "Only adding, removing, transferring and counting stock are available by voice. "
+        "Review this inventory action on screen."
+    )
+    assert harness.store.read("7") == before
+
+
 def test_clock_starts_at_completion_and_has_three_refreshes(harness):
     h = harness
     h.now[0] += timedelta(seconds=20)

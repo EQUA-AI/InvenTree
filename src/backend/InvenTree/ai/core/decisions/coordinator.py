@@ -111,21 +111,57 @@ class DecisionCoordinator:
         ).strip()
         if not label:
             label = f"Work order {proposal.target_work_order_id}"
+        if intent.action.startswith("stock."):
+            label = f"{preview['part_name']} ({preview['IPN'] or 'no IPN'}), stock item {preview['stock_item_id'] or 'new'}"
         reason = str(preview.get("reason") or "").strip()
-        if not reason:
-            raise DecisionConflict("Say the reason for the hold and request a fresh preview.")
+        is_cancel = intent.action == "work_order.cancel"
+        if not reason and intent.action in (
+            "work_order.hold",
+            "work_order.cancel",
+            "work_order.delete",
+        ):
+            raise DecisionConflict("Say the reason for the action and request a fresh preview.")
         eligible = len(reason) <= 300 and len(label) <= 160
         # Spell identifiers without changing quantity semantics elsewhere.
         spoken_label = spoken_target(label)
+        required_phrase = str(preview.get("confirm_phrase") or "") if is_cancel else None
+        if is_cancel and required_phrase != "confirm cancel order":
+            raise DecisionConflict("Request a fresh cancellation preview with its strict phrase.")
         spoken = (
             (
-                f"Put {spoken_label} on hold. Reason: {reason}. "
+                f"Cancel {spoken_label}. Reason: {reason}. This cannot be undone. "
+                "This does not change any safety status. Say confirm cancel order to proceed. "
+                "To keep the work order as it is, say no. Say change that to correct it."
+                if is_cancel
+                else f"Put {spoken_label} on hold. Reason: {reason}. "
                 "This does not change any safety status. Say confirm hold or yes to proceed, "
                 "change that to correct it, or cancel to set it aside."
             )
             if eligible
             else "This preview is too long for voice confirmation. Review it on screen."
         )
+        sections = tuple(
+            {"id": key, "label": key.replace("_", " ").title(), "text": str(preview.get(key) or "")}
+            for key in ("current_status", "resulting_status", "reason", "warning")
+        )
+        allowed_responses = (
+            ("confirm cancel order", "no", "change that", "cancel the action")
+            if is_cancel
+            else ("confirm hold", "yes", "change that", "cancel", "cancel the action")
+        )
+        if intent.action not in ("work_order.hold", "work_order.cancel"):
+            if intent.action.startswith("stock."):
+                from ai.core.decisions.inventory import review
+            else:
+                from ai.core.decisions.work_order_review import review
+
+            spoken, sections, required_phrase = review(intent.action, preview, spoken_label)
+            eligible = len(spoken) <= 1800 and len(label) <= 160
+            allowed_responses = (required_phrase or "yes", "no", "change that", "cancel the action")
+            if not eligible:
+                spoken = (
+                    "This preview needs a full on-screen review. No voice confirmation is armed."
+                )
         now = self.now()
         decision = PendingDecision(
             decision_id=str(uuid4()),
@@ -134,15 +170,9 @@ class DecisionCoordinator:
             revision=proposal.target_version,
             state=State.PRESENTED,
             target_label=label[:255],
-            sections=tuple(
-                {
-                    "id": key,
-                    "label": key.replace("_", " ").title(),
-                    "text": str(preview.get(key) or ""),
-                }
-                for key in ("current_status", "resulting_status", "reason", "warning")
-            ),
-            allowed_responses=("confirm hold", "yes", "change that", "cancel", "cancel the action"),
+            sections=sections,
+            allowed_responses=allowed_responses,
+            required_phrase=required_phrase,
             expires_at=now + timedelta(seconds=self.max_armed_s),
             sequence=1,
             actor_user_pk=str(actor.user_pk),
@@ -157,7 +187,10 @@ class DecisionCoordinator:
                 "adapter": "proposal",
                 "action": intent.action,
                 "reference": intent.reference,
+                "target_reference": str(preview.get("reference") or ""),
+                "target_id": str(proposal.target_work_order_id),
                 "reason": reason,
+                "parameters": intent.parameters,
             },
             voice_eligible=eligible,
             voice_ineligible_reason=None if eligible else "Full on-screen review required.",
@@ -171,16 +204,58 @@ class DecisionCoordinator:
         return DecisionReply(spoken, decision, "presented")
 
     def begin(self, content, *, actor, session_id, thread_id, nonce):
-        """Deterministic hold requests are captured before general workflow routing."""
+        """Deterministic work-order requests precede general workflow routing."""
+        if re.match(
+            r"^(?:split|merge|convert|install|uninstall|assign|unassign|serialize|change status of) (?:the )?stock\b",
+            content.strip(),
+            re.I,
+        ):
+            return DecisionReply(
+                "Only adding, removing, transferring and counting stock are available by voice. Review this inventory action on screen.",
+                event="unavailable",
+            )
+        if re.match(
+            r"^(?:record|file|capture|start)(?: a)? fault (?:note|intake)\b", content.strip(), re.I
+        ):
+            return DecisionReply("Fault notes cannot be filed by voice yet.", event="unavailable")
+        if re.match(
+            r"^(?:start closeout|note |replace note |read the whole note|accept this note|handoff this note|cancel closeout note|change .+ to )",
+            content.strip(),
+            re.I,
+        ):
+            from ai.core.config import get_settings
+
+            if getattr(get_settings(), "feature_voice_closeout", False):
+                from ai.core.decisions.adapters.capture_adapter import begin as begin_capture
+
+                reply = begin_capture(
+                    self,
+                    content,
+                    actor=actor,
+                    session_id=session_id,
+                    thread_id=thread_id,
+                    nonce=nonce,
+                )
+                if reply is not None:
+                    return reply
+            elif not content.lower().startswith("change "):
+                return DecisionReply("Closeout by voice is disabled.", event="unavailable")
         if self.approvals is not None:
             reply = self.approvals.begin(
                 self, content, actor=actor, session_id=session_id, thread_id=thread_id, nonce=nonce
             )
             if reply is not None:
                 return reply
-        intent = parse_work_order_intent(content)
+        from ai.core.decisions.inventory import parse_stock_intent
+
+        intent = parse_stock_intent(content) or parse_work_order_intent(content)
         if intent is None:
             return None
+        if intent.action == "stock.read":
+            from ai.core.decisions.inventory import read_stock
+
+            owner, _ = self.adapter.owner_scope(actor)
+            return DecisionReply(read_stock(owner, intent.parameters))
         return self.present(
             intent,
             actor=actor,
@@ -274,6 +349,11 @@ class DecisionCoordinator:
             allowed_responses=decision.allowed_responses,
             required_phrase=decision.required_phrase,
             locale=decision.locale,
+            target_references=tuple(
+                str((decision.executable or {}).get(key) or "")
+                for key in ("target_reference", "target_id")
+                if (decision.executable or {}).get(key)
+            ),
         )
         if context is not None:
             self.check_context(decision, context)
@@ -300,7 +380,8 @@ class DecisionCoordinator:
                 self.advance(current, state=State.DISARMED)
             raise
         echo_match = bool(_echo_text(content)) and (
-            _echo_text(content) == _echo_text(decision.required_phrase or "")
+            (kind == Kind.AFFIRM and decision.required_phrase == "confirm cancel order")
+            or _echo_text(content) == _echo_text(decision.required_phrase or "")
             or f" {_echo_text(content)} " in f" {_echo_text(decision.spoken_summary)} "
         )
         if (
@@ -328,7 +409,11 @@ class DecisionCoordinator:
                     decision,
                     "undelivered",
                 )
-            return self.execute(decision, actor, content)
+            # The whole-utterance grammar verified the optional reference and
+            # strict phrase. Dispatch only the canonical phrase, not a prefix
+            # extracted from an arbitrary utterance.
+            phrase = decision.required_phrase if decision.required_phrase else content
+            return self.execute(decision, actor, phrase)
         if kind in (Kind.DECLINE, Kind.DISARM):
             return self.disarm(thread_id, "declined")
         if kind == Kind.CANCEL_ACTION:
@@ -336,7 +421,7 @@ class DecisionCoordinator:
             decision = self.advance(decision, state=State.DISARMED)
             self.adapter.reject(decision, actor)
             return DecisionReply(
-                "The proposed action was canceled. The work order was not changed.",
+                "The proposed action was canceled. No business record was changed.",
                 decision,
                 "canceled",
             )
@@ -346,12 +431,15 @@ class DecisionCoordinator:
             intent = apply_correction(
                 content,
                 WorkOrderIntent(
-                    str(original.get("reference", "")), str(original.get("reason", ""))
+                    str(original.get("reference", "")),
+                    str(original.get("reason", "")),
+                    str(original.get("action") or "work_order.hold"),
+                    dict(original.get("parameters") or {}),
                 ),
             )
             if intent is None:
                 return DecisionReply(
-                    "The old confirmation is set aside. Say the work order and the corrected hold reason.",
+                    "The old confirmation is set aside. Say the work order, action and corrected reason.",
                     decision,
                     "amended",
                 )

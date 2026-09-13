@@ -408,136 +408,199 @@ class PurchaseOrderExecutor(ApprovalExecutor):
 
 
 class SalesOrderExecutor(ApprovalExecutor):
-    """Executor for creating Sales Orders (Phase 1 stub)."""
+    """Real draft-only sales orders with exact prices and canonical serializers."""
 
     action_type = 'sales_order'
+    implemented = True
+    atomic_execution = True
+    requires_canonical_payload = True
+    requires_payload_actor = True
+
+    def prepare_payload(self, payload, *, actor):
+        """Resolve current customer and part identities before review."""
+        from .sales import prepare_payload
+
+        return prepare_payload(payload, actor=actor)
+
+    def compute_baseline(self, payload):
+        """Bind the whole draft contract, including mutable names and units."""
+        from .sales import prepare_payload
+
+        return prepare_payload(payload)
 
     def validate(self, payload: dict) -> list[str]:
         """Validate."""
-        warnings = []
-        if 'customer_id' not in payload:
-            warnings.append('Missing "customer_id"')
-        if 'line_items' not in payload or not payload['line_items']:
-            warnings.append('Missing or empty "line_items"')
-        return warnings
+        from .sales import validate
+
+        return validate(payload)
 
     def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
         """Check preconditions."""
-        return DriftReport(has_drift=False)
+        try:
+            return DriftReport(
+                has_drift=self.compute_baseline(payload) != baseline_context
+            )
+        except Exception:
+            return DriftReport(has_drift=True)
+
+    def execute_for_approval(self, approval, *, actor, execution):
+        """No caller-provided actor identity or external dispatch."""
+        from .sales import execute
+
+        receipt = execute(approval, actor)
+        return EffectResult(
+            True,
+            effect_ref=f'sales-order:{receipt["order_id"]}',
+            result_payload=receipt,
+        )
 
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
         """Execute."""
-        logger.info(
-            'so_executor_stub',
-            customer_id=payload.get('customer_id'),
-            idempotency_key=idempotency_key,
-        )
         return EffectResult(
             success=False,
-            error_message='Canonical business executor is unavailable; no effect dispatched.',
+            error_message='Sales order creation requires authenticated durable approval dispatch.',
             outcome='failed_before_effect',
             result_payload={'unavailable': True},
         )
 
 
 class StockUpdateExecutor(ApprovalExecutor):
-    """Executor for stock updates (Phase 1 stub)."""
+    """Four reviewed movements through the shared transactional stock command."""
 
     action_type = 'stock_update'
+    implemented = True
+    atomic_execution = True
+    requires_canonical_payload = True
+    requires_payload_actor = True
+
+    def prepare_payload(self, payload, *, actor):
+        """Resolve identities as the authenticated request author."""
+        from .inventory import prepare_payload
+
+        return prepare_payload(payload, actor=actor)
+
+    def compute_baseline(self, payload):
+        """Capture canonical quantity, source and destination before review."""
+        from .inventory import baseline
+
+        return baseline(payload)
 
     def validate(self, payload: dict) -> list[str]:
-        """Validate."""
-        warnings = []
-        if 'stock_item_id' not in payload and 'part_id' not in payload:
-            warnings.append('Missing "stock_item_id" or "part_id"')
-        if 'action' not in payload:
-            warnings.append('Missing "action" (transfer/adjust/consume)')
-        if 'quantity' not in payload:
-            warnings.append('Missing "quantity"')
-        return warnings
+        """Require a complete, current canonical snapshot."""
+        from .inventory import validate
+
+        return validate(payload)
 
     def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
-        """Check preconditions."""
-        return DriftReport(has_drift=False)
+        """Any domain drift requires a fresh reviewed revision."""
+        try:
+            drift = self.compute_baseline(payload) != baseline_context
+        except Exception:
+            drift = True
+        return DriftReport(has_drift=drift)
 
-    def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
-        """Execute."""
-        logger.info(
-            'stock_executor_stub',
-            stock_item_id=payload.get('stock_item_id'),
-            action=payload.get('action'),
-            idempotency_key=idempotency_key,
+    def execute_for_approval(self, approval, *, actor, execution):
+        """Current reviewer permissions; no actor ID from the payload is used."""
+        from aichat.services.stock_commands import execute
+
+        receipt = execute(
+            actor=actor,
+            action=approval.payload['action'],
+            intent=approval.payload['intent'],
+            preview=approval.payload['snapshot'],
+            idempotency_key=execution.idempotency_key,
         )
         return EffectResult(
+            True,
+            effect_ref=f'stock-command:{receipt["stock_command_id"]}',
+            result_payload=receipt,
+        )
+
+    def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
+        """No unbound legacy dispatch can mutate stock."""
+        return EffectResult(
             success=False,
-            error_message='Canonical business executor is unavailable; no effect dispatched.',
+            error_message='Stock changes require authenticated durable approval dispatch.',
             outcome='failed_before_effect',
             result_payload={'unavailable': True},
         )
 
 
-class WorkflowExecutor(ApprovalExecutor):
-    """Executor for running workflows (Phase 1 stub)."""
+class InternalActionExecutor(ApprovalExecutor):
+    """Shared mechanics for two explicit screen-only, database-only contracts."""
+
+    implemented = True
+    atomic_execution = True
+    requires_canonical_payload = True
+    requires_payload_actor = True
+
+    def _prepare(self, payload, actor=None):
+        from .internal_actions import prepare_notification, prepare_workflow
+
+        prepare = (
+            prepare_workflow if self.action_type == 'workflow' else prepare_notification
+        )
+        return prepare(payload, actor=actor)
+
+    def prepare_payload(self, payload, *, actor):
+        """Resolve current identities and permission for the authenticated author."""
+        return self._prepare(payload, actor)
+
+    def compute_baseline(self, payload):
+        """Store the complete canonical review, not a caller's baseline."""
+        return self._prepare(payload)
+
+    def validate(self, payload):
+        """Legacy placeholders are not executable contracts."""
+        try:
+            return (
+                []
+                if self._prepare(payload) == payload
+                else ['The reviewed details changed']
+            )
+        except Exception as exc:
+            return [str(exc)]
+
+    def check_preconditions(self, payload, baseline_context):
+        """Any mutable identity or record drift invalidates review."""
+        try:
+            return DriftReport(has_drift=self._prepare(payload) != baseline_context)
+        except Exception:
+            return DriftReport(has_drift=True)
+
+    def execute_for_approval(self, approval, *, actor, execution):
+        """Dispatch once under the approval's atomic effect ledger."""
+        from .internal_actions import execute_notification, execute_workflow
+
+        dispatch = (
+            execute_workflow if self.action_type == 'workflow' else execute_notification
+        )
+        receipt = dispatch(approval, actor, execution.idempotency_key)
+        return EffectResult(
+            True,
+            effect_ref=f'{self.action_type}:{execution.idempotency_key}',
+            result_payload=receipt,
+        )
+
+    def execute(self, payload, idempotency_key):
+        """No direct unbound call can borrow approval authority."""
+        return EffectResult(
+            False,
+            outcome='failed_before_effect',
+            error_message='This action requires authenticated durable approval dispatch.',
+        )
+
+
+class WorkflowExecutor(InternalActionExecutor):
+    """One allow-listed canonical work-order plan update; no arbitrary runner."""
 
     action_type = 'workflow'
 
-    def validate(self, payload: dict) -> list[str]:
-        """Validate."""
-        warnings = []
-        if 'workflow_id' not in payload and 'workflow_name' not in payload:
-            warnings.append('Missing "workflow_id" or "workflow_name"')
-        return warnings
 
-    def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
-        """Check preconditions."""
-        return DriftReport(has_drift=False)
-
-    def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
-        """Execute."""
-        logger.info(
-            'workflow_executor_stub',
-            workflow_id=payload.get('workflow_id'),
-            idempotency_key=idempotency_key,
-        )
-        return EffectResult(
-            success=False,
-            error_message='Canonical business executor is unavailable; no effect dispatched.',
-            outcome='failed_before_effect',
-            result_payload={'unavailable': True},
-        )
-
-
-class NotificationExecutor(ApprovalExecutor):
-    """Executor for sending notifications (Phase 1 stub)."""
+class NotificationExecutor(InternalActionExecutor):
+    """In-app records only; never queue or send email."""
 
     action_type = 'notification'
-
-    def validate(self, payload: dict) -> list[str]:
-        """Validate."""
-        warnings = []
-        if 'recipients' not in payload or not payload['recipients']:
-            warnings.append('Missing "recipients"')
-        if 'message' not in payload:
-            warnings.append('Missing "message"')
-        return warnings
-
-    def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
-        """Check preconditions."""
-        return DriftReport(has_drift=False)
-
-    def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
-        """Execute."""
-        logger.info(
-            'notification_executor_stub',
-            recipients=payload.get('recipients'),
-            idempotency_key=idempotency_key,
-        )
-        return EffectResult(
-            success=False,
-            error_message='Canonical business executor is unavailable; no effect dispatched.',
-            outcome='failed_before_effect',
-            result_payload={'unavailable': True},
-        )
 
 
 class SafetyGateExecutor(ApprovalExecutor):

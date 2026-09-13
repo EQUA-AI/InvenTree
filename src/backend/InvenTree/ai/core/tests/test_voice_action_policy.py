@@ -88,7 +88,7 @@ def test_proposal_rail_defaults():
     delete = action_policy("work_order.delete")
     assert delete is not None and delete.confirm_phrase == "confirm delete"
     cancel = action_policy("work_order.cancel")
-    assert cancel is not None and cancel.confirm_phrase == "confirm cancel"  # OD-3 fail-closed
+    assert cancel is not None and cancel.confirm_phrase == "confirm cancel order"
     optimize = action_policy("schedule.optimize")
     assert optimize is not None and optimize.voice_execution_allowed is False
 

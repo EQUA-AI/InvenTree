@@ -7,6 +7,14 @@ Every business write requires a read-back and an explicit spoken confirmation (o
 
 | Rail | Action | Severity | Confirmation | Change label | Review | Voice review | Voice execution | Reason / follow-up |
 |---|---|---|---|---|---|---|---|---|
+| proposal | `stock.add` | reversible | short assent | stock addition recorded | full | yes | yes | — |
+| proposal | `stock.remove` | irreversible | `confirm remove` | stock removal recorded | full | yes | yes | — |
+| proposal | `stock.transfer` | reversible | short assent | stock transfer recorded | full | yes | yes | — |
+| proposal | `stock.count` | reversible | short assent | stock count recorded | full | yes | yes | — |
+| proposal | `procedure.complete` | reversible | short assent | procedure step result recorded | full | yes | yes | — |
+| proposal | `closeout.consent` | reversible | short assent | closeout dictation consent recorded | full | yes | yes | — |
+| proposal | `closeout.accept` | irreversible | `accept this note` | exact closeout note accepted; not handed off | full | yes | yes | — |
+| proposal | `closeout.handoff` | irreversible | `confirm handoff` | accepted note handed off; work order not closed | full | yes | yes | — |
 | proposal | `work_order.hold` | reversible | short assent | is now on hold | brief | yes | yes | — |
 | proposal | `work_order.resume` | reversible | short assent | is now in progress | brief | yes | yes | — |
 | proposal | `work_order.schedule` | reversible | short assent | has been scheduled | brief | yes | yes | — |
@@ -20,7 +28,7 @@ Every business write requires a read-back and an explicit spoken confirmation (o
 | proposal | `dependency.delete` | reversible | short assent | no longer has that dependency | brief | yes | yes | — |
 | proposal | `repair_work_package.create` | reversible | short assent | repair work package has been created | full | yes | yes | — |
 | proposal | `work_order.delete` | irreversible | `confirm delete` | has been deleted | full | yes | yes | — |
-| proposal | `work_order.cancel` | irreversible | `confirm cancel` | is now cancelled | full | yes | yes | — |
+| proposal | `work_order.cancel` | irreversible | `confirm cancel order` | is now cancelled | full | yes | yes | — |
 | proposal | `work_order.create` | reversible | short assent | has been created | brief | yes | no | creating work orders by voice needs a screen preview (F-WO-2) |
 | proposal | `schedule.optimize` | irreversible | `confirm optimize schedule` | schedule has been optimized | full | yes | no | batch scheduling must be reviewed on screen (F-WO-2) |
 | tool | `add_bom_item` | reversible | short assent | now has the new bill-of-materials line | brief | yes | no | that change is not available by voice yet (F-OTHER) |

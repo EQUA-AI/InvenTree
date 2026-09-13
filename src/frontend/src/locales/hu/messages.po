@@ -61,7 +61,7 @@ msgstr "Szerkesztés"
 #: lib/components/RowActions.tsx:66
 #: src/components/forms/ApiForm.tsx:854
 #: src/components/items/ActionDropdown.tsx:263
-#: src/components/items/RoleTable.tsx:387
+#: src/components/items/RoleTable.tsx:394
 #: src/hooks/UseForm.tsx:174
 #: src/pages/Notifications.tsx:109
 #: src/tables/plugin/PluginListTable.tsx:253
@@ -732,7 +732,7 @@ msgstr ""
 #: src/components/importer/ImportDataSelector.tsx:206
 #: src/components/importer/ImporterColumnSelector.tsx:330
 #: src/components/importer/ImporterDrawer.tsx:91
-#: src/components/items/RoleTable.tsx:348
+#: src/components/items/RoleTable.tsx:355
 #: src/components/modals/LicenseModal.tsx:85
 #: src/components/nav/NavigationTree.tsx:398
 #: src/components/nav/NotificationDrawer.tsx:235
@@ -1456,6 +1456,7 @@ msgid "Completed"
 msgstr "Kész"
 
 #: src/components/ai/VoiceDecisionCard.tsx:136
+#: src/components/ai/voice/VoiceProcedureControls.tsx:106
 #: src/tables/settings/EmailTable.tsx:29
 msgid "Failed"
 msgstr "Megbukott"
@@ -1525,6 +1526,7 @@ msgid "Start voice session"
 msgstr ""
 
 #: src/components/ai/VoiceSessionControl.tsx:42
+#: src/views/VoiceMobileAppView.tsx:24
 msgid "Voice"
 msgstr ""
 
@@ -1581,7 +1583,7 @@ msgid "Stop speaking"
 msgstr ""
 
 #: src/components/ai/VoiceSessionControl.tsx:99
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:96
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:117
 msgid "End voice"
 msgstr ""
 
@@ -1703,8 +1705,12 @@ msgid "Connection dropped. Checking the last request; do not repeat the action y
 msgstr ""
 
 #: src/components/ai/voice/VoiceExperienceControls.tsx:31
-msgid "Voice reconnected. No request was resubmitted. Review the last action status before continuing."
+msgid "Voice reconnected. No request was resubmitted. Review the last action status, then unmute to resume listening."
 msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:31
+#~ msgid "Voice reconnected. No request was resubmitted. Review the last action status before continuing."
+#~ msgstr ""
 
 #: src/components/ai/voice/VoiceExperienceControls.tsx:33
 msgid "Voice could not reconnect. The last action may still be unconfirmed; check its receipt before repeating it."
@@ -1738,130 +1744,139 @@ msgstr ""
 msgid "Confirmation is not armed. Resume available output, or ask for a fresh preview."
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:60
+#: src/components/ai/voice/VoiceExperienceControls.tsx:62
 msgid "Listening mode"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:70
+#: src/components/ai/voice/VoiceExperienceControls.tsx:72
 msgid "Continuous"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:71
+#: src/components/ai/voice/VoiceExperienceControls.tsx:73
 msgid "Push to talk"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:83
+#: src/components/ai/voice/VoiceExperienceControls.tsx:85
 msgid "What are you waiting for?"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:88
+#: src/components/ai/voice/VoiceExperienceControls.tsx:90
 msgid "Resume read-back"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:94
+#: src/components/ai/voice/VoiceExperienceControls.tsx:96
 msgid "Hands-free view"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:98
+#: src/components/ai/voice/VoiceExperienceControls.tsx:100
 msgid "Using device speakers?"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:99
+#: src/components/ai/voice/VoiceExperienceControls.tsx:101
 msgid "Continuous listening works on every route. If playback interrupts itself, try push to talk."
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:106
+#: src/components/ai/voice/VoiceExperienceControls.tsx:108
 msgid "Got it"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:112
+#: src/components/ai/voice/VoiceExperienceControls.tsx:114
 msgid "Audio output"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:114
+#: src/components/ai/voice/VoiceExperienceControls.tsx:116
 msgid "System default"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:121
+#: src/components/ai/voice/VoiceExperienceControls.tsx:123
 msgid "This browser manages the output route. Change speakers or headphones in your device settings."
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:124
+#: src/components/ai/voice/VoiceExperienceControls.tsx:126
 msgid "Voice status sounds"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:131
+#: src/components/ai/voice/VoiceExperienceControls.tsx:133
 msgid "Announce transcripts to screen readers"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:142
+#: src/components/ai/voice/VoiceExperienceControls.tsx:145
+msgid "Connection route"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:151
 msgid "Spoken answer pages"
 msgstr ""
 
 #. placeholder {0}: s.presentation.index + 1
 #. placeholder {1}: s.presentation.total
-#: src/components/ai/voice/VoiceExperienceControls.tsx:143
+#: src/components/ai/voice/VoiceExperienceControls.tsx:152
 msgid "Page {0} of {1}"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:148
+#: src/components/ai/voice/VoiceExperienceControls.tsx:157
 msgid "Next three"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:152
+#: src/components/ai/voice/VoiceExperienceControls.tsx:161
 msgid "Repeat"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:156
+#: src/components/ai/voice/VoiceExperienceControls.tsx:165
 msgid "Slower"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:160
+#: src/components/ai/voice/VoiceExperienceControls.tsx:169
 msgid "Short version"
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:170
+#: src/components/ai/voice/VoiceExperienceControls.tsx:179
 msgid "Transcript revisions"
 msgstr ""
 
 #. placeholder {0}: item.revision ?? 1
-#: src/components/ai/voice/VoiceExperienceControls.tsx:173
+#: src/components/ai/voice/VoiceExperienceControls.tsx:182
 msgid "Revision {0}"
 msgstr ""
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:24
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:29
 msgid "Start or end voice"
 msgstr ""
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:60
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:65
 msgid "Voice is listening"
 msgstr ""
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:62
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:67
 msgid "Voice microphone paused"
 msgstr ""
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:63
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:68
 msgid "Voice ended"
 msgstr ""
 
 #: src/components/ai/voice/VoiceGlobalIndicator.tsx:82
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:89
+msgid "Back to voice"
+msgstr ""
+
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:103
 msgid "Open hands-free voice"
 msgstr ""
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:85
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:106
 msgid "Voice listening"
 msgstr ""
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:85
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:106
 msgid "Voice paused"
 msgstr ""
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:86
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:107
 msgid " — confirmation waiting"
 msgstr ""
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:99
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:120
 msgid "Voice: Ctrl/⌘+Shift+V · Chat: Ctrl/⌘+K"
 msgstr ""
 
@@ -1869,12 +1884,65 @@ msgstr ""
 msgid "Hands-free voice"
 msgstr ""
 
-#: src/components/ai/voice/VoiceHandsFreeSurface.tsx:33
+#: src/components/ai/voice/VoiceHandsFreeSurface.tsx:24
+msgid "Minimize voice"
+msgstr ""
+
+#: src/components/ai/voice/VoiceHandsFreeSurface.tsx:46
 msgid "Voice stays active only while this tab is visible."
 msgstr ""
 
-#: src/components/ai/voice/VoiceHandsFreeSurface.tsx:37
+#: src/components/ai/voice/VoiceHandsFreeSurface.tsx:51
 msgid "Minimize"
+msgstr ""
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:46
+msgid "The procedure is unavailable. Review the work order on screen."
+msgstr ""
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:59
+msgid "Guided procedure"
+msgstr ""
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:61
+msgid "Work order ID"
+msgstr ""
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:77
+msgid "Read step"
+msgstr ""
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:82
+msgid "Previous step"
+msgstr ""
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:87
+msgid "Next step"
+msgstr ""
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:95
+msgid "Measured value (literal units)"
+msgstr ""
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:100
+msgid "Step result"
+msgstr ""
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:104
+msgid "Not supplied"
+msgstr ""
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:105
+#: src/tables/stock/StockItemTestResultTable.tsx:413
+msgid "Passed"
+msgstr "Megfelelt"
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:113
+msgid "Review step completion"
+msgstr ""
+
+#: src/components/ai/voice/VoiceProcedureControls.tsx:114
+msgid "This only requests a read-back. Confirm the shared decision separately."
 msgstr ""
 
 #: src/components/aichat/ActiveScopeBanner.tsx:21
@@ -3059,7 +3127,7 @@ msgid "Delete image"
 msgstr "Kép törlése"
 
 #: src/components/editors/NotesEditor.tsx:89
-#: src/components/items/RoleTable.tsx:348
+#: src/components/items/RoleTable.tsx:355
 #: src/components/settings/ConfigValueList.tsx:42
 #: src/components/tables/ColumnRenderers.tsx:776
 #: src/pages/part/pricing/BomPricingPanel.tsx:158
@@ -3281,7 +3349,7 @@ msgstr "Aktuális sablon elmentése és előnézet frissítése"
 
 #: src/components/editors/TemplateEditor/TemplateEditor.tsx:387
 #: src/components/forms/HostOptionsForm.tsx:90
-#: src/components/items/RoleTable.tsx:492
+#: src/components/items/RoleTable.tsx:499
 #: src/components/items/TransferList.tsx:215
 #: src/components/items/TransferList.tsx:223
 #: src/components/tables/FilterSelectDrawer.tsx:719
@@ -3628,7 +3696,7 @@ msgid "Uncategorized"
 msgstr "Kategorizálatlan"
 
 #: src/components/forms/fields/IconField.tsx:221
-#: src/components/nav/Layout.tsx:144
+#: src/components/nav/Layout.tsx:126
 #: src/components/nav/NavigationTree.tsx:378
 #: src/tables/part/PartThumbTable.tsx:209
 msgid "Search..."
@@ -3981,174 +4049,178 @@ msgstr "Importálás beszállítótól"
 msgid "Import parts from a supplier plugin"
 msgstr "Alkatrészek importálása beszállítói bővítményből"
 
-#: src/components/items/RoleTable.tsx:141
+#: src/components/items/RoleTable.tsx:144
 msgid "Email Permissions"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:143
+#: src/components/items/RoleTable.tsx:146
 msgid "Read and send access to the connected mailbox are separate permissions. Sending also allows marking messages as processed."
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:145
+#: src/components/items/RoleTable.tsx:148
 msgid "Can read emails and attachments"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:146
+#: src/components/items/RoleTable.tsx:149
 msgid "Can send emails"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:152
+#: src/components/items/RoleTable.tsx:155
 msgid "Approval Permissions"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:156
+#: src/components/items/RoleTable.tsx:159
 msgid "Can review approval requests"
 msgstr ""
 
 #: src/components/items/RoleTable.tsx:163
+msgid "Can create in-app notifications"
+msgstr ""
+
+#: src/components/items/RoleTable.tsx:170
 msgid "Closeout Permissions"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:167
+#: src/components/items/RoleTable.tsx:174
 msgid "Can capture closeout narratives"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:171
+#: src/components/items/RoleTable.tsx:178
 msgid "Can review closeout proposals"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:175
+#: src/components/items/RoleTable.tsx:182
 msgid "Can reconcile closeout part usage"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:179
+#: src/components/items/RoleTable.tsx:186
 msgid "Can verify completed closeouts"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:183
+#: src/components/items/RoleTable.tsx:190
 msgid "Can amend completed closeouts"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:187
+#: src/components/items/RoleTable.tsx:194
 msgid "Can view closeout audit surfaces"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:194
+#: src/components/items/RoleTable.tsx:201
 msgid "Work Order Lifecycle"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:198
+#: src/components/items/RoleTable.tsx:205
 msgid "Can plan work orders"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:202
+#: src/components/items/RoleTable.tsx:209
 msgid "Can assign work orders"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:206
+#: src/components/items/RoleTable.tsx:213
 msgid "Can transition work orders"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:210
+#: src/components/items/RoleTable.tsx:217
 msgid "Can execute work orders"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:214
+#: src/components/items/RoleTable.tsx:221
 msgid "Can complete work orders"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:218
+#: src/components/items/RoleTable.tsx:225
 msgid "Can view work order audit surfaces"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:225
+#: src/components/items/RoleTable.tsx:232
 msgid "Procedure Permissions"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:229
+#: src/components/items/RoleTable.tsx:236
 msgid "Can author procedures"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:233
+#: src/components/items/RoleTable.tsx:240
 msgid "Can review procedures"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:237
+#: src/components/items/RoleTable.tsx:244
 msgid "Can publish procedures"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:241
+#: src/components/items/RoleTable.tsx:248
 msgid "Can apply procedures to work orders"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:248
+#: src/components/items/RoleTable.tsx:255
 msgid "Job Kit Permissions"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:252
+#: src/components/items/RoleTable.tsx:259
 msgid "Can manage job kits"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:256
+#: src/components/items/RoleTable.tsx:263
 msgid "Can reserve job kit stock"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:260
+#: src/components/items/RoleTable.tsx:267
 msgid "Can stage job kits"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:264
+#: src/components/items/RoleTable.tsx:271
 msgid "Can issue job kits"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:268
+#: src/components/items/RoleTable.tsx:275
 msgid "Can approve job kit substitutions"
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:306
+#: src/components/items/RoleTable.tsx:313
 msgid "Updating"
 msgstr "Frissítés"
 
-#: src/components/items/RoleTable.tsx:307
+#: src/components/items/RoleTable.tsx:314
 msgid "Updating group roles"
 msgstr "Csoport szerepkörök frissítése"
 
-#: src/components/items/RoleTable.tsx:350
+#: src/components/items/RoleTable.tsx:357
 msgid "Some group roles could not be saved. Unsaved changes can be retried."
 msgstr ""
 
-#: src/components/items/RoleTable.tsx:351
+#: src/components/items/RoleTable.tsx:358
 msgid "Group roles updated"
 msgstr "Csoport szerepkörök frissítve"
 
-#: src/components/items/RoleTable.tsx:367
+#: src/components/items/RoleTable.tsx:374
 msgid "Role"
 msgstr "Szerepkör"
 
-#: src/components/items/RoleTable.tsx:372
+#: src/components/items/RoleTable.tsx:379
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:906
 msgid "View"
 msgstr "Megtekintés"
 
-#: src/components/items/RoleTable.tsx:377
+#: src/components/items/RoleTable.tsx:384
 msgid "Change"
 msgstr "Módosítás"
 
-#: src/components/items/RoleTable.tsx:382
+#: src/components/items/RoleTable.tsx:389
 #: src/forms/StockForms.tsx:1682
 #: src/tables/stock/StockItemTestResultTable.tsx:366
 msgid "Add"
 msgstr "Hozzáadás"
 
-#: src/components/items/RoleTable.tsx:470
+#: src/components/items/RoleTable.tsx:477
 msgid "Reset group roles"
 msgstr "Csoport szerepkörök visszaállítása"
 
-#: src/components/items/RoleTable.tsx:479
+#: src/components/items/RoleTable.tsx:486
 msgid "Reset"
 msgstr "Visszaállítás"
 
-#: src/components/items/RoleTable.tsx:482
+#: src/components/items/RoleTable.tsx:489
 msgid "Save group roles"
 msgstr "Csoport szerepkörök mentése"
 
@@ -4718,7 +4790,7 @@ msgstr ""
 msgid "The current user has elevated privileges and should not be used for regular usage."
 msgstr ""
 
-#: src/components/nav/Layout.tsx:147
+#: src/components/nav/Layout.tsx:129
 msgid "Nothing found..."
 msgstr "Nincs találat..."
 
@@ -15839,10 +15911,6 @@ msgstr "Beépítettek beleértve"
 msgid "Show results for installed stock items"
 msgstr "Beépített készlet tételek eredményeinek megjelenítése"
 
-#: src/tables/stock/StockItemTestResultTable.tsx:413
-msgid "Passed"
-msgstr "Megfelelt"
-
 #: src/tables/stock/StockItemTestResultTable.tsx:414
 msgid "Show only passed tests"
 msgstr "Csak a megfelelt tesztek megjelenítése"
@@ -15916,18 +15984,39 @@ msgstr ""
 msgid "Transferred"
 msgstr ""
 
-#: src/views/MobileAppView.tsx:25
+#: src/views/MobileAppView.tsx:24
 msgid "Mobile viewport detected"
 msgstr "Mobil kijelző érzékelve"
 
-#: src/views/MobileAppView.tsx:28
-msgid "Equa AIMMS UI is optimized for Tablets and Desktops, you can use the official app for a mobile experience."
+#: src/views/MobileAppView.tsx:27
+msgid "The full app is optimized for tablets and desktops. Voice is available in this browser when enabled by your administrator."
 msgstr ""
 
+#: src/views/MobileAppView.tsx:28
+#~ msgid "Equa AIMMS UI is optimized for Tablets and Desktops, you can use the official app for a mobile experience."
+#~ msgstr ""
+
 #: src/views/MobileAppView.tsx:34
-msgid "Read the docs"
-msgstr "Olvasd el a dokumentációt"
+#~ msgid "Read the docs"
+#~ msgstr "Olvasd el a dokumentációt"
+
+#: src/views/MobileAppView.tsx:36
+msgid "Open voice"
+msgstr ""
 
 #: src/views/MobileAppView.tsx:42
-msgid "Ignore and continue to Desktop view"
-msgstr "Kihagyás és folytatás asztali nézetben"
+#~ msgid "Ignore and continue to Desktop view"
+#~ msgstr "Kihagyás és folytatás asztali nézetben"
+
+#: src/views/MobileAppView.tsx:44
+#: src/views/VoiceMobileAppView.tsx:32
+msgid "Open full app (not optimized for phones)"
+msgstr ""
+
+#: src/views/VoiceMobileAppView.tsx:34
+msgid "Log out"
+msgstr ""
+
+#: src/views/VoiceMobileAppView.tsx:43
+msgid "Voice is unavailable. You can continue in the full app."
+msgstr ""

@@ -59,6 +59,36 @@ def visible_approvals(queryset, actor, *, force_scoped=False):
     if not user.has_perm('approvals.review'):
         return queryset.filter(emails)
     allowed = Q(pk__in=[])
+    from .inventory import visible as stock_visible
+
+    stock_ids = [
+        approval.pk
+        for approval in queryset.filter(
+            action_type='stock_update', assigned_to_user=user
+        ).iterator()
+        if stock_visible(approval, user)
+    ]
+    allowed |= Q(action_type='stock_update', pk__in=stock_ids)
+    from .sales import visible as sales_visible
+
+    sales_ids = [
+        approval.pk
+        for approval in queryset.filter(
+            action_type='sales_order', assigned_to_user=user
+        ).iterator()
+        if sales_visible(approval, user)
+    ]
+    allowed |= Q(action_type='sales_order', pk__in=sales_ids)
+    from .internal_actions import visible as internal_visible
+
+    internal_ids = [
+        approval.pk
+        for approval in queryset.filter(
+            action_type__in=['workflow', 'notification'], assigned_to_user=user
+        ).iterator()
+        if internal_visible(approval, user)
+    ]
+    allowed |= Q(pk__in=internal_ids)
     if has_purchase_view(user):
         from company.models import Company
         from order.models import PurchaseOrder

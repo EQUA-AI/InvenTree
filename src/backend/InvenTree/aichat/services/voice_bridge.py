@@ -11,7 +11,7 @@ it dispatches a **pre-created** ``ChatActionProposal`` through the shared comman
 service, exactly as the visual confirm endpoint does. Because the proposal is
 created at propose-time (by ``proposals.create_proposal`` — the same server-
 derived preview the read-back is spoken from) and merely *confirmed* here, the
-gate's human verbal confirmation remains the authenticating act; the AI never
+gate's human verbal confirmation authorizes intent, never identity; the AI never
 confirms its own proposal. Voice keeps its verbal-confirmation UX and gets the
 version guard, audit event, scope check and exactly-once receipt for free.
 
@@ -82,6 +82,11 @@ def _voice_summary(action_type: str, preview: dict[str, Any]) -> str:
         )
     verb = _ACTION_VERB.get(action_type, 'change')
     subject = preview.get('reference') or f'work order {preview.get("work_order_id")}'
+    if action_type == ProposalAction.WORK_ORDER_CANCEL.value:
+        return (
+            f"I'll cancel {subject}. Reason: {preview.get('reason', '')}. "
+            'This does not change any safety status.'
+        )
     return f"I'll {verb} {subject}. Confirm?"
 
 
@@ -95,11 +100,11 @@ def _proposed_action(
         action_class=(
             WriteActionClass.IRREVERSIBLE
             if proposal.action_type in _IRREVERSIBLE_ACTIONS
+            or proposal.preview.get('irreversible')
             else WriteActionClass.CONFIRMABLE
         ),
-        confirm_phrase=proposals.IRREVERSIBLE_CONFIRM_PHRASE.get(
-            proposal.action_type, ''
-        ),
+        confirm_phrase=proposal.preview.get('confirm_phrase')
+        or proposals.IRREVERSIBLE_CONFIRM_PHRASE.get(proposal.action_type, ''),
     )
 
 
@@ -129,6 +134,13 @@ def build_voice_proposal(
     proposal id. The gate later confirms it via ``ProposalConfirmingVoiceExecutor``
     — nothing dispatches a domain command until that verbal confirmation.
     """
+    if (
+        action_type.startswith(('stock.', 'closeout.'))
+        or action_type == 'procedure.complete'
+    ):
+        raise proposals.CapabilityDenied(
+            'This action requires the shared decision coordinator and its workflow flag.'
+        )
     proposal = proposals.create_proposal(
         owner=owner,
         scope_key=scope_key,

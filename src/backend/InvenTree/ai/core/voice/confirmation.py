@@ -587,9 +587,14 @@ def propose(
                 ),
             )
         pending = PendingVoiceConfirmation(nonce=nonce, thread_id=thread_id, action=action)
+        decline = (
+            "To keep the order as it is, say no."
+            if action.confirm_phrase == "confirm cancel order"
+            else "To cancel, say cancel."
+        )
         spoken = (
             f"{action.summary} This cannot be undone. To confirm, say "
-            f"{action.confirm_phrase}. To cancel, say cancel."
+            f"{action.confirm_phrase}. {decline}"
         )
         return (
             pending,

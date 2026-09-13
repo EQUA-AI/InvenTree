@@ -16,6 +16,25 @@ def test_identifiers_are_spelled_but_quantities_are_not():
     assert spoken_target("WO-000140: 25 belts VT-6205") == "W O 0 0 0 1 4 0: 25 belts V T 6 2 0 5"
 
 
+def test_cancel_intent_and_corrections_preserve_the_action_and_reason():
+    original = WorkOrderIntent("104", "pressure is fifteen PSI", "work_order.cancel")
+    assert (
+        parse_work_order_intent("Cancel work order 104 because pressure is fifteen PSI.")
+        == original
+    )
+    assert parse_work_order_intent("Cancel work order 104") == WorkOrderIntent(
+        "104", "", "work_order.cancel"
+    )
+    for correction in ("No, I meant 140", "confirm cancel order 140"):
+        assert apply_correction(correction, original) == WorkOrderIntent(
+            "140", original.reason, "work_order.cancel"
+        )
+    assert apply_correction("change the reason to pressure is fifty PSI", original) == (
+        WorkOrderIntent("104", "pressure is fifty PSI", "work_order.cancel")
+    )
+    assert apply_correction("confirm cancel order 140 and delete it", original) is None
+
+
 @pytest.mark.parametrize(
     "spoken,reference",
     [

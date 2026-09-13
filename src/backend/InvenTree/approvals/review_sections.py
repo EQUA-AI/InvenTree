@@ -108,7 +108,7 @@ def build_review_sections(approval):
                     'Unavailable operation',
                 )
                 if purchasing
-                else 'Creates a sales order record. Any external notification requires separate confirmation.',
+                else 'Creates a draft sales order only. No issuance, allocation, shipment or email.',
             ),
         ]
         if purchasing:
@@ -127,15 +127,38 @@ def build_review_sections(approval):
                     approval.baseline_context or 'New draft',
                 ),
             ]
+        else:
+            sections += [
+                _section('sales_details', 'Complete sales draft details', payload),
+                _section(
+                    'sales_baseline',
+                    'Sales draft at review time',
+                    approval.baseline_context,
+                ),
+            ]
     elif action == ActionType.STOCK_UPDATE:
-        for key, label in [
-            ('stock_item_id', 'Stock item'),
-            ('location_id', 'Location'),
-            ('quantity', 'Quantity'),
-            ('units', 'Units'),
-            ('direction', 'Direction'),
-        ]:
-            sections.append(_section(key, label, payload.get(key)))
+        snapshot = payload.get('snapshot') or {}
+        sections.append(_section('action', 'Inventory action', payload.get('action')))
+        for key in (
+            'part_name',
+            'IPN',
+            'stock_item_id',
+            'serial',
+            'quantity',
+            'units',
+            'quantity_before',
+            'quantity_after',
+            'location',
+            'destination',
+            'reason',
+            'warning',
+        ):
+            sections.append(
+                _section(key, key.replace('_', ' ').title(), snapshot.get(key))
+            )
+        sections.append(
+            _section('inventory_contract', 'Complete inventory details', payload)
+        )
     elif action == ActionType.REPAIR_WORK_PACKAGE:
         for key, label in [
             ('machine_id', 'Machine'),
@@ -182,8 +205,8 @@ SCREEN_ONLY_REASONS = {
     ActionType.SAFETY_GATE: 'Safety-gate waivers require visual evidence inspection.',
     ActionType.PROCEDURE_PUBLISH: 'Procedure publishing requires screen review; the second-read policy is unsettled.',
     ActionType.JOB_KIT_SUBSTITUTION: 'Job-kit substitution has no registered business executor.',
-    ActionType.WORKFLOW: 'Workflow auditory-review and real-executor contracts are not implemented.',
-    ActionType.NOTIFICATION: 'Notification auditory-review and real-executor contracts are not implemented.',
+    ActionType.WORKFLOW: 'Workflow execution requires on-screen review under the current voice policy.',
+    ActionType.NOTIFICATION: 'In-app notifications require on-screen review under the current voice policy.',
 }
 
 
@@ -207,10 +230,15 @@ def voice_eligibility(approval):
         return False, SCREEN_ONLY_REASONS[approval.action_type]
     if approval.action_type not in ActionType.values:
         return False, 'No reviewed auditory contract exists for this action.'
-    if approval.action_type in (ActionType.SALES_ORDER, ActionType.STOCK_UPDATE):
+    if approval.action_type == ActionType.STOCK_UPDATE:
+        from ai.core.config import get_settings
+
+        if not get_settings().feature_voice_inventory_actions:
+            return False, 'Inventory actions by voice are disabled.'
+    if approval.action_type == ActionType.SALES_ORDER:
         return (
             False,
-            'The canonical business executor is not yet implemented for voice.',
+            'Draft sales orders require on-screen review until their auditory contract is qualified.',
         )
     from .executors import registry
 

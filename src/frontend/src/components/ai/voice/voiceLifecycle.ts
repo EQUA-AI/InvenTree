@@ -40,12 +40,16 @@ export function installVoiceLifecycle(callbacks: {
   window.addEventListener('pagehide', callbacks.pagehide);
   window.addEventListener('offline', callbacks.offline);
   window.addEventListener('online', callbacks.online);
+  const connection = (navigator as Navigator & { connection?: EventTarget })
+    .connection;
+  connection?.addEventListener('change', callbacks.offline);
   const timer = window.setInterval(callbacks.tick, 500);
   return () => {
     document.removeEventListener('visibilitychange', visibility);
     window.removeEventListener('pagehide', callbacks.pagehide);
     window.removeEventListener('offline', callbacks.offline);
     window.removeEventListener('online', callbacks.online);
+    connection?.removeEventListener('change', callbacks.offline);
     window.clearInterval(timer);
   };
 }

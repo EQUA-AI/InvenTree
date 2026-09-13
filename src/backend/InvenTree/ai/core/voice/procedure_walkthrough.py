@@ -13,10 +13,8 @@ utterance re-reads the scoped execution rows, so a step completed from the
 normal screen mid-walkthrough is honestly reflected, and there is no
 server-side session state to leak or desync.
 
-**Writes ride the existing rail.** "Complete" posts through
-``tasks.services.procedure_execution.complete_step`` as the acting user with
-the execution's own version and a deterministic idempotency key — the same
-audited command every button in the UI uses. This module adds no authority.
+**Completion is only a request.** "Done" never performs a write. The caller
+may offer a separately reviewed, hash-bound decision through the coordinator.
 """
 
 from __future__ import annotations
@@ -38,7 +36,7 @@ _STOP_RE = re.compile(
     r"^\s*(?:stop|exit|quit|end (?:the )?(?:walkthrough|procedure)|cancel)\b", re.IGNORECASE
 )
 
-WALKTHROUGH_POLICY_VERSION = "procedure-walkthrough-v1"
+WALKTHROUGH_POLICY_VERSION = "procedure-walkthrough-v2"
 
 
 @dataclass(frozen=True)
@@ -53,6 +51,8 @@ class WalkthroughReply:
     step_key: str | None = None
     completed: bool = False
     error: str | None = None
+    application_id: int | None = None
+    step_version: int | None = None
 
 
 def interpret_walkthrough_command(content: str) -> str:
@@ -157,43 +157,14 @@ def walkthrough_reply(
 
     if command == "complete":
         execution = executions[position]
-        try:
-            from tasks.services.procedure_execution import complete_step
-
-            updated = complete_step(
-                work_order_id=work_order_id,
-                application_id=execution.application_id,
-                step_key=execution.step_key,
-                actor=actor,
-                expected_version=execution.version,
-                idempotency_key=(
-                    f"voice-procedure:{execution.application_id}:"
-                    f"{execution.step_key}:{execution.version}"
-                ),
-            )
-            completed = True
-            outcome = f"Step {position + 1} marked {updated.status}."
-        except Exception as exc:
-            completed = False
-            outcome = (
-                "I could not complete that step: "
-                f"{type(exc).__name__}. Use the screen to resolve it."
-            )
-        next_position = min(position + 1, total - 1)
-        follow = (
-            _step_line(executions[next_position], next_position, total)
-            if completed and position + 1 < total
-            else ""
-        )
         return WalkthroughReply(
-            action="complete",
-            position=next_position if completed else position,
+            action="complete_requested",
+            position=position,
             total=total,
-            speak_text=f"{outcome} {follow}".strip(),
-            done=completed and position + 1 >= total,
+            speak_text="Completion needs a separate review and confirmation. No step has been changed.",
             step_key=str(execution.step_key),
-            completed=completed,
-            error=None if completed else "COMPLETE_FAILED",
+            application_id=execution.application_id,
+            step_version=execution.version,
         )
 
     if command == "next":

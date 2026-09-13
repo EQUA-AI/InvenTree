@@ -11,7 +11,7 @@ from ai.core.voice.confirmation import ConfirmationReply, interpret_confirmation
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-DECISION_GRAMMAR_POLICY_VERSION = "decision-grammar-v1"
+DECISION_GRAMMAR_POLICY_VERSION = "decision-grammar-v2"
 
 
 class DecisionUtteranceKind(StrEnum):
@@ -108,6 +108,7 @@ def classify_decision_utterance(
     allowed_responses: Collection[str] = (),
     required_phrase: str | None = None,
     locale: str = "en-US",
+    target_references: Collection[str] = (),
 ) -> DecisionUtteranceKind:
     """Classify one whole reply without granting authority itself.
 
@@ -137,6 +138,18 @@ def classify_decision_utterance(
         return DecisionUtteranceKind.REVIEW
     if command in _HISTORY_COMMANDS:
         return DecisionUtteranceKind.HISTORY
+    if required_phrase == "confirm cancel order" and target_references:
+        from ai.core.decisions.resolver import cancel_confirmation_reference
+
+        reference = cancel_confirmation_reference(command)
+        if reference is not None:
+            if reference.casefold() not in {str(ref).casefold() for ref in target_references}:
+                return DecisionUtteranceKind.AMEND
+            return (
+                DecisionUtteranceKind.AFFIRM
+                if _allows_affirm(allowed_responses, required_phrase)
+                else DecisionUtteranceKind.UNRELATED
+            )
     # A reversible action may offer a labelled assent AND ordinary yes.
     # The labelled phrase is exact; mixed assent still goes through grammar v3.
     if required_phrase is None and command in allowed and command.startswith("confirm "):

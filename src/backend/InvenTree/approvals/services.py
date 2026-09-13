@@ -712,7 +712,12 @@ def revise(approval_id, *, actor, data=None, channel='screen', evidence=None):
     )
     if getattr(executor, 'requires_canonical_payload', False):
         try:
-            data['payload'] = executor.prepare_payload(data['payload'])
+            actor_args = (
+                {'actor': actor}
+                if getattr(executor, 'requires_payload_actor', False)
+                else {}
+            )
+            data['payload'] = executor.prepare_payload(data['payload'], **actor_args)
             approval.baseline_context = executor.compute_baseline(data['payload'])
         except Exception as exc:
             _reject('invalid_payload', str(exc), 400)

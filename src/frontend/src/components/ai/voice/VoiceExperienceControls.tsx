@@ -28,7 +28,7 @@ export function noticeText(notice: VoiceNotice): string {
     case 'reconnecting':
       return t`Connection dropped. Checking the last request; do not repeat the action yet.`;
     case 'reconnected':
-      return t`Voice reconnected. No request was resubmitted. Review the last action status before continuing.`;
+      return t`Voice reconnected. No request was resubmitted. Review the last action status, then unmute to resume listening.`;
     case 'connection_failed':
       return t`Voice could not reconnect. The last action may still be unconfirmed; check its receipt before repeating it.`;
     case 'queue_full':
@@ -49,7 +49,9 @@ export function noticeText(notice: VoiceNotice): string {
       return '';
   }
 }
-export function VoiceExperienceControls() {
+export function VoiceExperienceControls({
+  embedded = false
+}: { embedded?: boolean }) {
   const s = useVoiceSessionState();
   const p = useLocalState();
   if (!s.session) return s.notice ? <Text>{noticeText(s.notice)}</Text> : null;
@@ -86,7 +88,7 @@ export function VoiceExperienceControls() {
           variant='default'
           onClick={() => void voiceController.resumeOutput()}
         >{t`Resume read-back`}</Button>
-        {s.capability?.mobile_surface && (
+        {s.capability?.mobile_surface && !embedded && (
           <Button
             mih={44}
             variant='default'
@@ -138,6 +140,13 @@ export function VoiceExperienceControls() {
         />
       </Group>
       {s.notice && <Text>{noticeText(s.notice)}</Text>}
+      {s.networkDiagnostics && (
+        <Text size='sm' data-testid='voice-network-diagnostics'>
+          {t`Connection route`}: {s.networkDiagnostics.localCandidateType} /{' '}
+          {s.networkDiagnostics.remoteCandidateType} (
+          {s.networkDiagnostics.protocol})
+        </Text>
+      )}
       {s.presentation && (
         <Group aria-label={t`Spoken answer pages`}>
           <Text>{t`Page ${s.presentation.index + 1} of ${s.presentation.total}`}</Text>

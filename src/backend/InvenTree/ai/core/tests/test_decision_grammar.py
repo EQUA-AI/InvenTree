@@ -94,4 +94,58 @@ def test_safe_negative_outcomes_ignore_allowed_response_gating():
 
 
 def test_policy_is_versioned():
-    assert DECISION_GRAMMAR_POLICY_VERSION == "decision-grammar-v1"
+    assert DECISION_GRAMMAR_POLICY_VERSION == "decision-grammar-v2"
+
+
+@pytest.mark.parametrize(
+    "reply,expected",
+    [
+        ("confirm cancel order", DecisionUtteranceKind.AFFIRM),
+        ("confirm cancel order 104", DecisionUtteranceKind.AFFIRM),
+        ("confirm cancel order one hundred four", DecisionUtteranceKind.AFFIRM),
+        ("confirm cancel order WO-000104", DecisionUtteranceKind.AFFIRM),
+        ("confirm cancel order 140", DecisionUtteranceKind.AMEND),
+        ("confirm cancel order 104 and delete it", DecisionUtteranceKind.AMEND),
+        ("confirm cancel order, but change the reason", DecisionUtteranceKind.AMEND),
+        ("confirm cancel order, no wait", DecisionUtteranceKind.DECLINE),
+        ("confirm cancel order not yet", DecisionUtteranceKind.DEFER),
+        ("no", DecisionUtteranceKind.DECLINE),
+        ("cancel", DecisionUtteranceKind.DECLINE),
+    ],
+)
+def test_cancel_order_strict_phrase_and_optional_bound_reference(reply, expected):
+    """OD-3: the cancel verb is not a decline inside the exact strict phrase."""
+    assert (
+        classify_decision_utterance(
+            reply,
+            required_phrase="confirm cancel order",
+            allowed_responses=("confirm cancel order", "no", "change that"),
+            target_references=("104", "WO-000104"),
+        )
+        is expected
+    )
+
+
+@pytest.mark.parametrize("reply", ["yes", "confirm", "confirm cancel", "confirm cancel the order"])
+def test_cancel_order_short_assent_never_confirms(reply):
+    assert (
+        classify_decision_utterance(
+            reply,
+            required_phrase="confirm cancel order",
+            allowed_responses=("confirm cancel order", "no"),
+        )
+        is not DecisionUtteranceKind.AFFIRM
+    )
+
+
+def test_optional_reference_does_not_infer_a_target_or_bypass_allowed_responses():
+    for references, allowed in [((), ("confirm cancel order",)), (("104",), ())]:
+        assert (
+            classify_decision_utterance(
+                "confirm cancel order 104",
+                required_phrase="confirm cancel order",
+                target_references=references,
+                allowed_responses=allowed,
+            )
+            is not DecisionUtteranceKind.AFFIRM
+        )

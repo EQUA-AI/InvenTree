@@ -116,6 +116,24 @@ _COMPANION_ENV: dict[str, dict[str, object]] = {
         name: {
             **_VOICE_COMPANIONS,
             "FEATURE_VOICE_LIVE": True,
+            "FEATURE_VOICE_DECISIONS": True,
+            "FEATURE_VOICE_WRITE_CONFIRMATION": True,
+            **(
+                {"FEATURE_GUIDED_PROCEDURES": True}
+                if name == "FEATURE_VOICE_PROCEDURE_COMPLETE"
+                else {}
+            ),
+        }
+        for name in (
+            "FEATURE_VOICE_INVENTORY_ACTIONS",
+            "FEATURE_VOICE_CLOSEOUT",
+            "FEATURE_VOICE_PROCEDURE_COMPLETE",
+        )
+    },
+    **{
+        name: {
+            **_VOICE_COMPANIONS,
+            "FEATURE_VOICE_LIVE": True,
             "FEATURE_VOICE_WRITE_CONFIRMATION": True,
             "FEATURE_VOICE_DECISIONS": True,
             **({"FEATURE_VOICE_APPROVALS": True} if name != "FEATURE_VOICE_APPROVALS" else {}),
@@ -200,5 +218,9 @@ def test_every_bool_flag_env_round_trips(entry, value) -> None:
     """
     env = {entry.env_name: value}
     env.update(_COMPANION_ENV.get(entry.env_name, {}))
+    if entry.env_name == "FEATURE_VOICE_LIVE_TURN" and value:
+        with pytest.raises(ValueError, match="unavailable until a TURN provider"):
+            Settings(_env_file=None, **env)
+        return
     settings = Settings(_env_file=None, **env)
     assert getattr(settings, entry.ai_field) == value

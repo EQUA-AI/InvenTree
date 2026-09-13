@@ -345,6 +345,11 @@ class RuleSet(models.Model):
     can_review_approvals = models.BooleanField(
         verbose_name=_('Can review approval requests'), default=False, db_default=False
     )
+    can_publish_notifications = models.BooleanField(
+        verbose_name=_('Can create in-app notifications'),
+        default=False,
+        db_default=False,
+    )
 
     can_view_emails = models.BooleanField(
         verbose_name=_('Can read emails and attachments'),

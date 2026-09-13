@@ -74,6 +74,7 @@ class RuleSetSerializer(InvenTreeModelSerializer):
             'can_issue_jobkit',
             'can_approve_jobkit_substitution',
             'can_review_approvals',
+            'can_publish_notifications',
             'can_view_emails',
             'can_send_emails',
         ]

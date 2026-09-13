@@ -165,6 +165,14 @@ def _tool_policy(name: str) -> ActionPolicy:
 # pure module never imports Django -- the exhaustiveness test compares them)   #
 # --------------------------------------------------------------------------- #
 _LIFECYCLE_LABELS = {
+    "stock.add": "stock addition recorded",
+    "stock.remove": "stock removal recorded",
+    "stock.transfer": "stock transfer recorded",
+    "stock.count": "stock count recorded",
+    "procedure.complete": "procedure step result recorded",
+    "closeout.consent": "closeout dictation consent recorded",
+    "closeout.accept": "exact closeout note accepted; not handed off",
+    "closeout.handoff": "accepted note handed off; work order not closed",
     "work_order.hold": "is now on hold",
     "work_order.resume": "is now in progress",
     "work_order.schedule": "has been scheduled",
@@ -212,6 +220,29 @@ def _proposal(
 PROPOSAL_POLICIES: dict[str, ActionPolicy] = {
     policy.name: policy
     for policy in (
+        _proposal("stock.add", review="full"),
+        _proposal(
+            "stock.remove",
+            review="full",
+            severity=WriteSeverity.IRREVERSIBLE,
+            confirm_phrase="confirm remove",
+        ),
+        _proposal("stock.transfer", review="full"),
+        _proposal("stock.count", review="full"),
+        _proposal("procedure.complete", review="full"),
+        _proposal("closeout.consent", review="full"),
+        _proposal(
+            "closeout.accept",
+            severity=WriteSeverity.IRREVERSIBLE,
+            confirm_phrase="accept this note",
+            review="full",
+        ),
+        _proposal(
+            "closeout.handoff",
+            severity=WriteSeverity.IRREVERSIBLE,
+            confirm_phrase="confirm handoff",
+            review="full",
+        ),
         _proposal("work_order.hold"),
         _proposal("work_order.resume"),
         _proposal("work_order.schedule"),
@@ -230,12 +261,11 @@ PROPOSAL_POLICIES: dict[str, ActionPolicy] = {
             confirm_phrase="confirm delete",
             review="full",
         ),
-        # OD-3: no strict phrase exists on the proposal rail today; fail closed
-        # to a strict phrase until the owner decides otherwise.
+        # OD-3: text and voice share the same irreversible cancellation phrase.
         _proposal(
             "work_order.cancel",
             severity=WriteSeverity.IRREVERSIBLE,
-            confirm_phrase="confirm cancel",
+            confirm_phrase="confirm cancel order",
             review="full",
         ),
         _proposal(

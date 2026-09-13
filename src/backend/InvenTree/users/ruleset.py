@@ -73,6 +73,10 @@ RULESET_CUSTOM_PERMISSIONS = {
     },
     RuleSetEnum.WORK_ORDER: {
         'can_review_approvals': ('approvals_approval', 'review'),
+        'can_publish_notifications': (
+            'common_notificationmessage',
+            'add_notificationmessage',
+        ),
         'can_capture_closeout': ('tasks_closeoutcapture', 'capture_closeout'),
         'can_review_closeout': ('tasks_closeoutcapture', 'review_closeout'),
         'can_reconcile_closeout_parts': (
@@ -299,6 +303,7 @@ def get_ruleset_ignore() -> list[str]:
         # permissions (e.g. approvals.review, work_order RBAC role checks,
         # scoped-conversation grants) instead of the generic ruleset table
         'aichat_chatactionproposal',
+        'aichat_stockcommandreceipt',
         'aichat_chatmessage',
         'aichat_chatthread',
         'aichat_chatturn',

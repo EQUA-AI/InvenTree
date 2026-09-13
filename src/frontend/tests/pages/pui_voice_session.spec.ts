@@ -231,3 +231,74 @@ test('hidden tab suspends, return refreshes without assent, logout releases medi
   await expect.poll(() => voice.sessionEnded).toBe(true);
   expect((await readMockState(page)).trackStopped).toBe(true);
 });
+
+test('hands-free layout survives portrait, landscape and keyboard-sized viewports', async ({
+  page
+}) => {
+  const voice = await installVoiceMocks(page, {
+    capability: { ...defaultCapability, foreground_session: true }
+  });
+  await page.goto('/playwright/voice-session.html');
+  await startVoice(page);
+  await page.getByRole('button', { name: 'Navigate and toggle panel' }).click();
+  await page.getByLabel('Open hands-free voice').click();
+  const surface = page.getByTestId('voice-hands-free');
+  for (const viewport of [
+    { width: 393, height: 851 },
+    { width: 851, height: 393 },
+    { width: 393, height: 320 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(surface).toBeVisible();
+    expect(
+      await surface.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth + 1
+      )
+    ).toBe(true);
+    expect(voice.sessionCreates).toHaveLength(1);
+    expect((await readMockState(page)).trackStopped).toBe(false);
+    await expect
+      .poll(() =>
+        surface
+          .getByRole('button')
+          .evaluateAll((buttons) =>
+            buttons.every(
+              (button) => button.getBoundingClientRect().height >= 44
+            )
+          )
+      )
+      .toBe(true);
+  }
+  await page.getByTestId('voice-end').click();
+});
+
+test('network interruption never resubmits and requires explicit microphone rearm', async ({
+  page
+}) => {
+  const voice = await installVoiceMocks(page, {
+    capability: { ...defaultCapability, foreground_session: true }
+  });
+  await page.goto('/playwright/voice-session.html');
+  await startVoice(page);
+  await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
+  await emitTranscript(page, {
+    text: 'read the last work order',
+    itemId: 'network-test',
+    confidence: 1
+  });
+  await expect.poll(() => voice.turns.length).toBe(1);
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  expect((await readMockState(page)).trackEnabled).toBe(false);
+  await expect(
+    page
+      .locator('[data-voice-surface]')
+      .getByText(
+        'Voice reconnected. No request was resubmitted. Review the last action status, then unmute to resume listening.'
+      )
+  ).toBeVisible();
+  expect(voice.turns).toHaveLength(1);
+  expect((await readMockState(page)).trackEnabled).toBe(false);
+  await page.getByTestId('voice-mute').click();
+  expect((await readMockState(page)).trackEnabled).toBe(true);
+  await page.getByTestId('voice-end').click();
+});

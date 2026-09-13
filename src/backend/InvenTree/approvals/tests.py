@@ -1068,7 +1068,7 @@ class ExecutorRegistryTests(TestCase):
         """Registration alone cannot turn a placeholder into a real executor."""
         for action_type in registry.list_registered():
             self.assertIsInstance(registry.get(action_type).implemented, bool)
-        self.assertFalse(registry.get(ActionType.STOCK_UPDATE).implemented)
+        self.assertTrue(registry.get(ActionType.STOCK_UPDATE).implemented)
 
     def test_executor_required_actions(self):
         """Every current and future effect requires a real executor."""

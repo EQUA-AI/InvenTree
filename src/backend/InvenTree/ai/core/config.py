@@ -783,6 +783,22 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("FEATURE_VOICE_APPROVALS", "AIMMS_FEATURE_VOICE_APPROVALS"),
     )
+    feature_voice_procedure_complete: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_VOICE_PROCEDURE_COMPLETE", "AIMMS_FEATURE_VOICE_PROCEDURE_COMPLETE"
+        ),
+    )
+    feature_voice_inventory_actions: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_VOICE_INVENTORY_ACTIONS", "AIMMS_FEATURE_VOICE_INVENTORY_ACTIONS"
+        ),
+    )
+    feature_voice_closeout: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_VOICE_CLOSEOUT", "AIMMS_FEATURE_VOICE_CLOSEOUT"),
+    )
     feature_voice_auditory_review: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -804,6 +820,13 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices(
             "FEATURE_VOICE_LIVE_WEBRTC", "AIMMS_FEATURE_VOICE_LIVE_WEBRTC"
         ),
+    )
+    feature_voice_live_turn: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FEATURE_VOICE_LIVE_TURN", "AIMMS_FEATURE_VOICE_LIVE_TURN"),
+    )
+    voice_direct_connect_timeout_s: int = Field(
+        default=12, ge=5, le=30, alias="VOICE_DIRECT_CONNECT_TIMEOUT_S"
     )
     feature_voice_live_relay: bool = Field(
         default=False,
@@ -874,6 +897,20 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_voice_live_transport(self) -> "Settings":
         """Fail closed for inconsistent Voice Live feature dependencies."""
+        if self.feature_voice_live_turn:
+            raise ValueError(
+                "FEATURE_VOICE_LIVE_TURN is unavailable until a TURN provider and credential policy are configured"
+            )
+        if self.feature_voice_closeout and not self.feature_voice_decision_coordinator:
+            raise ValueError("FEATURE_VOICE_CLOSEOUT requires FEATURE_VOICE_DECISIONS")
+        if self.feature_voice_procedure_complete and not (
+            self.feature_guided_procedures and self.feature_voice_decision_coordinator
+        ):
+            raise ValueError(
+                "FEATURE_VOICE_PROCEDURE_COMPLETE requires FEATURE_GUIDED_PROCEDURES and FEATURE_VOICE_DECISIONS"
+            )
+        if self.feature_voice_inventory_actions and not self.feature_voice_decision_coordinator:
+            raise ValueError("FEATURE_VOICE_INVENTORY_ACTIONS requires FEATURE_VOICE_DECISIONS")
         if self.feature_voice_foreground_session and not self.feature_voice_live:
             raise ValueError("FEATURE_VOICE_FOREGROUND_SESSION requires FEATURE_VOICE_LIVE")
         if self.feature_voice_live and self.voice_live_idle_timeout_s != 300:

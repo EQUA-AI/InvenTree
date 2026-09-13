@@ -8,6 +8,7 @@ import type {
   VoiceSpokenPayload,
   VoiceTurnResponse
 } from '../../../../lib/types/Voice';
+import type { VoiceNetworkDiagnostics } from './networkDiagnostics';
 
 export type ListeningMode = 'continuous' | 'push_to_talk';
 export type VoiceNotice =
@@ -29,6 +30,14 @@ export interface VoiceCapability {
   enabled: boolean;
   foreground_session: boolean;
   decisions: boolean;
+  inventory_actions?: boolean;
+  procedure_complete?: boolean;
+  guided_procedures?: boolean;
+  closeout?: boolean;
+  turn?: false;
+  turn_provider?: null;
+  direct_connect_timeout_s?: number;
+  network_qualification?: string;
   prompts: boolean;
   help: boolean;
   presentation: boolean;
@@ -63,6 +72,7 @@ export interface VoicePreferences {
   voiceSpeakerNoticeSeen: boolean;
 }
 export interface VoiceSnapshot {
+  networkDiagnostics: VoiceNetworkDiagnostics | null;
   state: VoiceClientState;
   mic: 'off' | 'muted' | 'listening' | 'ptt_idle' | 'suspended';
   playback: 'idle' | 'pending' | 'playing' | 'paused' | 'blocked' | 'text_only';
@@ -93,6 +103,7 @@ export interface VoiceSnapshot {
   outputSelectionSupported: boolean;
 }
 export const initialVoiceSnapshot: VoiceSnapshot = {
+  networkDiagnostics: null,
   state: 'unavailable',
   mic: 'off',
   playback: 'idle',

@@ -279,6 +279,35 @@ class VoiceProposeSideTests(TestCase):
         self.assertEqual(resolved.action.action_class.value, 'irreversible')
         self.assertEqual(resolved.action.confirm_phrase, 'confirm delete')
 
+    def test_cancel_reads_reason_and_enforces_the_shared_strict_phrase(self):
+        """The legacy bridge cannot bypass OD-3 using a lenient voice reply."""
+        from ai.core.voice.confirmation import propose
+
+        self.work_order.lifecycle_status = WorkOrderLifecycle.PLANNED
+        self.work_order.save(update_fields=['lifecycle_status'])
+        resolved = self._build(action='work_order.cancel', key='vp-cancel')
+        proposal = ChatActionProposal.objects.get(
+            pk=resolved.executable.arguments['proposal_id']
+        )
+        self.assertEqual(resolved.action.action_class.value, 'irreversible')
+        self.assertEqual(resolved.action.confirm_phrase, 'confirm cancel order')
+        self.assertIn(proposal.reason, resolved.action.summary)
+        _, spoken, _ = propose(
+            resolved.action, thread_id=7, nonce='cancel-bridge', has_permission=True
+        )
+        self.assertIn('say no', spoken)
+        self.assertNotIn('To cancel, say cancel', spoken)
+        executor = ProposalConfirmingVoiceExecutor()
+        refused = executor._confirm(resolved.executable, _principal(self.actor))
+        self.assertFalse(refused.ok)
+        self.assertEqual(refused.detail, 'STRICT_CONFIRMATION_REQUIRED')
+        confirmed = executor._confirm(
+            replace(resolved.executable, confirmation_phrase='confirm cancel order'),
+            _principal(self.actor),
+        )
+        self.assertTrue(confirmed.ok)
+        self.assertEqual(confirmed.detail, 'cancel')
+
     def test_propose_then_confirm_round_trip(self):
         """The propose-side proposal is confirmable by the executor seam."""
         resolved = self._build(key='vp-roundtrip')

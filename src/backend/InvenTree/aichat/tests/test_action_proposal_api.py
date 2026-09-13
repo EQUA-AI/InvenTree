@@ -36,9 +36,7 @@ class ProposalRailTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         """SetUpTestData."""
-        cls.customer = Company.objects.create(
-            name='Proposal Cust', is_customer=True
-        )
+        cls.customer = Company.objects.create(name='Proposal Cust', is_customer=True)
         suffix = uuid.uuid4().hex[:8]
         cls.client_tenant = Client.objects.create(
             name=f'Tenant {suffix}', code=f'tenant-{suffix}'
@@ -87,15 +85,24 @@ class ProposalRailTestCase(TestCase):
 
 class ProposalServiceTests(ProposalRailTestCase):
     """ProposalServiceTests."""
+
     def test_allow_list_is_exactly_the_governed_actions(self):
         """The allow list is the complete set of governed executable actions."""
         self.assertEqual(
             svc.allowed_actions(),
             (
+                'closeout.accept',
+                'closeout.consent',
+                'closeout.handoff',
                 'dependency.create',
                 'dependency.delete',
+                'procedure.complete',
                 'repair_work_package.create',
                 'schedule.optimize',
+                'stock.add',
+                'stock.count',
+                'stock.remove',
+                'stock.transfer',
                 'work_order.assign',
                 'work_order.cancel',
                 'work_order.create',
@@ -119,9 +126,7 @@ class ProposalServiceTests(ProposalRailTestCase):
         """Create snapshots server derived preview and version."""
         proposal = self._create()
         self.assertEqual(proposal.state, ProposalState.PROPOSED)
-        self.assertEqual(
-            proposal.target_version, self.work_order.lifecycle_version
-        )
+        self.assertEqual(proposal.target_version, self.work_order.lifecycle_version)
         self.assertEqual(proposal.preview['current_status'], 'in_progress')
         self.assertEqual(proposal.preview['resulting_status'], 'on_hold')
         self.assertIn('does not change any safety status', proposal.preview['warning'])
@@ -142,23 +147,17 @@ class ProposalServiceTests(ProposalRailTestCase):
         """Confirm executes the canonical hold command once."""
         proposal = self._create()
         confirmed = svc.confirm_proposal(
-            owner=self.actor,
-            scope_hash=proposal.scope_hash,
-            proposal_id=proposal.id,
+            owner=self.actor, scope_hash=proposal.scope_hash, proposal_id=proposal.id
         )
         self.work_order.refresh_from_db()
-        self.assertEqual(
-            self.work_order.lifecycle_status, WorkOrderLifecycle.ON_HOLD
-        )
+        self.assertEqual(self.work_order.lifecycle_status, WorkOrderLifecycle.ON_HOLD)
         self.assertEqual(confirmed.state, ProposalState.EXECUTED)
         self.assertEqual(confirmed.receipt['command'], 'hold')
         self.assertEqual(confirmed.receipt['lifecycle_status'], 'on_hold')
 
         version_after_first = self.work_order.lifecycle_version
         replay = svc.confirm_proposal(
-            owner=self.actor,
-            scope_hash=proposal.scope_hash,
-            proposal_id=proposal.id,
+            owner=self.actor, scope_hash=proposal.scope_hash, proposal_id=proposal.id
         )
         self.work_order.refresh_from_db()
         self.assertEqual(replay.receipt, confirmed.receipt)
@@ -219,14 +218,10 @@ class ProposalServiceTests(ProposalRailTestCase):
         """Reject is idempotent and blocks confirmation."""
         proposal = self._create()
         svc.reject_proposal(
-            owner=self.actor,
-            scope_hash=proposal.scope_hash,
-            proposal_id=proposal.id,
+            owner=self.actor, scope_hash=proposal.scope_hash, proposal_id=proposal.id
         )
         svc.reject_proposal(
-            owner=self.actor,
-            scope_hash=proposal.scope_hash,
-            proposal_id=proposal.id,
+            owner=self.actor, scope_hash=proposal.scope_hash, proposal_id=proposal.id
         )
         with self.assertRaises(svc.ProposalStateConflict):
             svc.confirm_proposal(
@@ -250,18 +245,14 @@ class ProposalServiceTests(ProposalRailTestCase):
                 )
         with self.assertRaises(svc.ProposalNotFound):
             svc.confirm_proposal(
-                owner=stranger,
-                scope_hash=proposal.scope_hash,
-                proposal_id=proposal.id,
+                owner=stranger, scope_hash=proposal.scope_hash, proposal_id=proposal.id
             )
 
     def test_resume_round_trip_through_the_rail(self):
         """Resume round trip through the rail."""
         hold = self._create(key='hold-key')
         svc.confirm_proposal(
-            owner=self.actor,
-            scope_hash=hold.scope_hash,
-            proposal_id=hold.id,
+            owner=self.actor, scope_hash=hold.scope_hash, proposal_id=hold.id
         )
         self.work_order.refresh_from_db()
         resume = self._create(
@@ -270,9 +261,7 @@ class ProposalServiceTests(ProposalRailTestCase):
             reason='Spoken request: resume the job.',
         )
         confirmed = svc.confirm_proposal(
-            owner=self.actor,
-            scope_hash=resume.scope_hash,
-            proposal_id=resume.id,
+            owner=self.actor, scope_hash=resume.scope_hash, proposal_id=resume.id
         )
         self.work_order.refresh_from_db()
         self.assertEqual(confirmed.state, ProposalState.EXECUTED)
@@ -390,12 +379,15 @@ class SchedulingProposalTests(ProposalRailTestCase):
         # Irreversible: a confirm without the strict phrase is refused.
         with self.assertRaises(svc.StrictConfirmationRequired):
             svc.confirm_proposal(
-                owner=self.actor, scope_hash=proposal.scope_hash,
+                owner=self.actor,
+                scope_hash=proposal.scope_hash,
                 proposal_id=proposal.id,
             )
         self.assertTrue(WorkOrder.objects.filter(pk=work_order_id).exists())
         confirmed = svc.confirm_proposal(
-            owner=self.actor, scope_hash=proposal.scope_hash, proposal_id=proposal.id,
+            owner=self.actor,
+            scope_hash=proposal.scope_hash,
+            proposal_id=proposal.id,
             confirm_phrase='confirm delete',
         )
         self.assertEqual(confirmed.state, ProposalState.EXECUTED)
@@ -480,7 +472,10 @@ class GapClosingProposalTests(ProposalRailTestCase):
 
     def _confirm(self, proposal):
         return svc.confirm_proposal(
-            owner=self.actor, scope_hash=proposal.scope_hash, proposal_id=proposal.id
+            owner=self.actor,
+            scope_hash=proposal.scope_hash,
+            proposal_id=proposal.id,
+            confirm_phrase=proposal.preview.get('confirm_phrase', ''),
         )
 
     def _set_lifecycle(self, status):
@@ -492,7 +487,12 @@ class GapClosingProposalTests(ProposalRailTestCase):
         self._set_lifecycle(WorkOrderLifecycle.PLANNED)
         proposal = self._create(action='work_order.cancel', key='cancel-1')
         self.assertEqual(proposal.preview['resulting_status'], 'canceled')
-        confirmed = self._confirm(proposal)
+        confirmed = svc.confirm_proposal(
+            owner=self.actor,
+            scope_hash=proposal.scope_hash,
+            proposal_id=proposal.id,
+            confirm_phrase='confirm cancel order',
+        )
         self.assertEqual(confirmed.receipt['command'], 'cancel')
         self.work_order.refresh_from_db()
         self.assertEqual(self.work_order.lifecycle_status, WorkOrderLifecycle.CANCELED)
@@ -565,9 +565,7 @@ class GapClosingProposalTests(ProposalRailTestCase):
 
     def test_generate_procurement_action_with_no_parts_is_a_noop_child(self):
         """Generate-procurement returns a null child when nothing is needed."""
-        proposal = self._create(
-            action='work_order.generate_procurement', key='proc-1'
-        )
+        proposal = self._create(action='work_order.generate_procurement', key='proc-1')
         confirmed = self._confirm(proposal)
         self.assertEqual(confirmed.receipt['command'], 'generate_procurement')
         self.assertIsNone(confirmed.receipt['child_id'])
@@ -577,9 +575,12 @@ class GapClosingProposalTests(ProposalRailTestCase):
         from tasks.models import WorkOrderDependency
 
         successor = WorkOrder.objects.create(
-            title='Successor', status=WorkOrder.STATUS_REVIEW,
-            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
-            machine=self.machine, lifecycle_status=WorkOrderLifecycle.IN_PROGRESS,
+            title='Successor',
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM,
+            customer=self.customer,
+            machine=self.machine,
+            lifecycle_status=WorkOrderLifecycle.IN_PROGRESS,
         )
         create = self._create(
             action='dependency.create',
@@ -609,9 +610,12 @@ class GapClosingProposalTests(ProposalRailTestCase):
         self.work_order.scheduled_end = None
         self.work_order.save()
         second = WorkOrder.objects.create(
-            title='Second', status=WorkOrder.STATUS_REVIEW,
-            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
-            machine=self.machine, estimated_minutes=60,
+            title='Second',
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM,
+            customer=self.customer,
+            machine=self.machine,
+            estimated_minutes=60,
             lifecycle_status=WorkOrderLifecycle.IN_PROGRESS,
         )
         proposal = self._create(
@@ -631,7 +635,9 @@ class GapClosingProposalTests(ProposalRailTestCase):
         """An optimize with no candidates fails at creation, before any row."""
         with self.assertRaises(svc.ProposalError):
             self._create(
-                action='schedule.optimize', key='opt-empty', intent={'candidate_ids': []}
+                action='schedule.optimize',
+                key='opt-empty',
+                intent={'candidate_ids': []},
             )
 
 
@@ -680,17 +686,17 @@ class StrictConfirmationTests(ProposalRailTestCase):
     """§5.3 point 3: irreversible actions demand an exact phrase on the text rail."""
 
     def _delete_proposal(self, key='del-strict'):
-        return self._create(
-            action='work_order.delete', key=key, reason='remove it'
-        )
+        return self._create(action='work_order.delete', key=key, reason='remove it')
 
     def test_wrong_phrase_is_refused_and_writes_nothing(self):
         """A mismatched phrase refuses without deleting."""
         proposal = self._delete_proposal()
         with self.assertRaises(svc.StrictConfirmationRequired):
             svc.confirm_proposal(
-                owner=self.actor, scope_hash=proposal.scope_hash,
-                proposal_id=proposal.id, confirm_phrase='yes',
+                owner=self.actor,
+                scope_hash=proposal.scope_hash,
+                proposal_id=proposal.id,
+                confirm_phrase='yes',
             )
         self.assertTrue(WorkOrder.objects.filter(pk=self.work_order.pk).exists())
         proposal.refresh_from_db()
@@ -700,8 +706,10 @@ class StrictConfirmationTests(ProposalRailTestCase):
         """The exact phrase matches regardless of case/surrounding whitespace."""
         proposal = self._delete_proposal(key='del-case')
         confirmed = svc.confirm_proposal(
-            owner=self.actor, scope_hash=proposal.scope_hash,
-            proposal_id=proposal.id, confirm_phrase='  Confirm Delete  ',
+            owner=self.actor,
+            scope_hash=proposal.scope_hash,
+            proposal_id=proposal.id,
+            confirm_phrase='  Confirm Delete  ',
         )
         self.assertEqual(confirmed.state, ProposalState.EXECUTED)
 
@@ -751,9 +759,7 @@ class ProposalApiTests(ProposalRailTestCase):
             body = created.json()
             self.assertEqual(body['state'], 'proposed')
 
-            confirmed = client.post(
-                f"/api/aichat/proposals/{body['id']}/confirm/"
-            )
+            confirmed = client.post(f'/api/aichat/proposals/{body["id"]}/confirm/')
             self.assertEqual(confirmed.status_code, 200, confirmed.content)
             receipt = confirmed.json()['receipt']
             self.assertEqual(receipt['command'], 'hold')
@@ -783,9 +789,7 @@ class ProposalApiTests(ProposalRailTestCase):
 
             missing = client.post(f'/api/aichat/proposals/{pid}/confirm/')
             self.assertEqual(missing.status_code, 400, missing.content)
-            self.assertEqual(
-                missing.json()['error'], 'STRICT_CONFIRMATION_REQUIRED'
-            )
+            self.assertEqual(missing.json()['error'], 'STRICT_CONFIRMATION_REQUIRED')
             self.assertTrue(WorkOrder.objects.filter(pk=self.work_order.pk).exists())
 
             ok = client.post(
@@ -815,12 +819,10 @@ class ProposalApiTests(ProposalRailTestCase):
             )
             self.assertEqual(created.status_code, 201, created.content)
             body = created.json()
-            self.assertEqual(
-                body['intent']['scheduled_start'], '2026-08-03T09:00:00'
-            )
+            self.assertEqual(body['intent']['scheduled_start'], '2026-08-03T09:00:00')
             self.assertEqual(body['preview']['proposed_start'], '2026-08-03T09:00:00')
 
-            confirmed = client.post(f"/api/aichat/proposals/{body['id']}/confirm/")
+            confirmed = client.post(f'/api/aichat/proposals/{body["id"]}/confirm/')
             self.assertEqual(confirmed.status_code, 200, confirmed.content)
             self.assertEqual(confirmed.json()['receipt']['command'], 'schedule')
             self.work_order.refresh_from_db()
@@ -920,9 +922,7 @@ class ProposalApiTests(ProposalRailTestCase):
         with self.settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda _actor: set()):
             listed = self.client.get('/api/aichat/proposals/')
             detailed = self.client.get(f'/api/aichat/proposals/{proposal_id}/')
-            replayed = self.client.post(
-                f'/api/aichat/proposals/{proposal_id}/confirm/'
-            )
+            replayed = self.client.post(f'/api/aichat/proposals/{proposal_id}/confirm/')
 
         self.assertEqual(listed.status_code, 403)
         self.assertEqual(detailed.status_code, 404)
@@ -996,8 +996,7 @@ class ProposalApiTests(ProposalRailTestCase):
         self.assertEqual(body['error'], 'DUPLICATE_OPEN_REPAIR')
         self.assertTrue(body['duplicate_open_repairs'])
         self.assertEqual(
-            body['duplicate_open_repairs'][0]['work_order_id'],
-            existing.work_order_id,
+            body['duplicate_open_repairs'][0]['work_order_id'], existing.work_order_id
         )
         proposal.refresh_from_db()
         self.assertEqual(proposal.state, ProposalState.FAILED)
@@ -1014,9 +1013,7 @@ def _machine_scope_resolver(actor):
         scopes.add(MaintenanceScope(customer_id=customer.pk, site_key=None))
     for client_row in Client.objects.all():
         scopes.add(
-            MaintenanceScope(
-                customer_id=None, site_key=None, client_id=client_row.pk
-            )
+            MaintenanceScope(customer_id=None, site_key=None, client_id=client_row.pk)
         )
     return scopes
 

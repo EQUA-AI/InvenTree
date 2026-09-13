@@ -114,6 +114,34 @@ jobs:
       - name: Unit tests (pure modules)
         run: cd src/frontend && yarn test:unit
 
+  voice-mobile:
+    name: Voice desktop and Pixel 7 (recording-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: ["paths-filter"]
+    if: github.ref == 'refs/heads/master' || needs.paths-filter.outputs.frontend == 'true' || needs.paths-filter.outputs.force == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Environment Setup
+        uses: ./.github/actions/setup
+        with:
+          npm: true
+      - name: Install frontend dependencies
+        run: cd src/frontend && yarn install --frozen-lockfile
+      - name: Install Chromium
+        run: cd src/frontend && yarn playwright install --with-deps chromium
+      - name: Compile translations
+        run: cd src/frontend && yarn compile
+      - name: Recording-only browser tests (no backend or live seeding)
+        run: cd src/frontend && yarn playwright test --config playwright.voice.config.ts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: voice-mobile-failure-evidence
+          path: src/frontend/test-results/voice
+
   firefox:
     name: Tests [Firefox ${{ matrix.shard }} / 2]
     runs-on: ubuntu-24.04

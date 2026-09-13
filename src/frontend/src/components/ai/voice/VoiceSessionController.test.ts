@@ -316,6 +316,11 @@ it('reconnect creates a same-thread session without replaying the submitted item
       .filter((r) => r.path.endsWith('/sessions') && r.method === 'POST')
       .map((r) => r.body?.thread_id)
   ).toEqual(['thread-1', 'thread-1']);
+  expect(state.getState().muted).toBe(true);
+  expect(track.enabled).toBe(false);
+  controller.toggleMute();
+  expect(state.getState().muted).toBe(false);
+  expect(track.enabled).toBe(true);
 });
 it('global shortcut and Escape leave typing and barcode inputs alone', () => {
   const target = new FakeElement();

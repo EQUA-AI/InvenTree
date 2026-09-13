@@ -246,7 +246,14 @@ class ApprovalCreateSerializer(serializers.Serializer):
             executor = registry.get(attrs['action_type'])
             if getattr(executor, 'requires_canonical_payload', False):
                 try:
-                    attrs['payload'] = executor.prepare_payload(attrs['payload'])
+                    actor_args = (
+                        {'actor': getattr(self.context.get('request'), 'user', None)}
+                        if getattr(executor, 'requires_payload_actor', False)
+                        else {}
+                    )
+                    attrs['payload'] = executor.prepare_payload(
+                        attrs['payload'], **actor_args
+                    )
                     attrs['baseline_context'] = executor.compute_baseline(
                         attrs['payload']
                     )

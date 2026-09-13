@@ -1,9 +1,9 @@
+import { getBaseUrl } from '@lib/functions/Navigation';
 import { Trans } from '@lingui/react/macro';
 import { Anchor, Center, Container, Stack, Text, Title } from '@mantine/core';
 
 import { useShallow } from 'zustand/react/shallow';
 import { ThemeContext } from '../contexts/ThemeContext';
-import { docLinks } from '../defaults/links';
 import { IS_DEV } from '../main';
 import { useLocalState } from '../states/LocalState';
 
@@ -14,7 +14,6 @@ export default function MobileAppView() {
 
   function ignore() {
     setAllowMobile(true);
-    window.location.reload();
   }
   return (
     <ThemeContext>
@@ -26,12 +25,15 @@ export default function MobileAppView() {
             </Title>
             <Text>
               <Trans>
-                Equa AIMMS UI is optimized for Tablets and Desktops, you can use
-                the official app for a mobile experience.
+                The full app is optimized for tablets and desktops. Voice is
+                available in this browser when enabled by your administrator.
               </Trans>
             </Text>
-            <Anchor href={docLinks.app}>
-              <Trans>Read the docs</Trans>
+            <Anchor
+              href={`${getBaseUrl().replace(/\/$/, '')}/voice`}
+              style={{ minHeight: 44 }}
+            >
+              <Trans>Open voice</Trans>
             </Anchor>
             {(IS_DEV ||
               window.INVENTREE_SETTINGS.mobile_mode === 'allow-ignore') && (
@@ -39,7 +41,7 @@ export default function MobileAppView() {
                 onClick={ignore}
                 style={{ cursor: 'pointer', textDecoration: 'underline' }}
               >
-                <Trans>Ignore and continue to Desktop view</Trans>
+                <Trans>Open full app (not optimized for phones)</Trans>
               </Text>
             )}
           </Stack>

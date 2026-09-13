@@ -32,6 +32,7 @@ def _payload(proposal: ChatActionProposal) -> dict:
         'action_type': proposal.action_type,
         'state': proposal.state,
         'work_order_id': proposal.target_work_order_id,
+        'stock_item_id': proposal.target_stock_item_id,
         'target_version': proposal.target_version,
         'intent': proposal.intent,
         'preview': proposal.preview,
@@ -107,7 +108,7 @@ class ProposalListCreateView(APIView):
         # Creating actions are targetless: the service authorizes against the
         # machine (or candidate set) named in the intent instead of a work
         # order. Every other action still requires an integer target.
-        targetless = action_type in {
+        targetless = action_type.startswith('stock.') or action_type in {
             ProposalAction.WORK_ORDER_CREATE.value,
             ProposalAction.REPAIR_WORK_PACKAGE_CREATE.value,
             ProposalAction.SCHEDULE_OPTIMIZE.value,

@@ -6,8 +6,8 @@ import {
   createSpotlight
 } from '@mantine/spotlight';
 import { IconSearch } from '@tabler/icons-react';
-import { type JSX, useEffect, useMemo, useState } from 'react';
-import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { Boundary } from '@lib/components/Boundary';
 import { identifierString } from '@lib/functions/Conversion';
@@ -32,26 +32,8 @@ import {
 import GlobalPreviewDrawer from '../previews/GlobalPreviewDrawer';
 import { Footer } from './Footer';
 import { Header } from './Header';
-
-export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
-  const location = useLocation();
-  const { isLoggedIn } = useUserState();
-
-  if (!isLoggedIn()) {
-    return (
-      <Navigate
-        to='/logged-in'
-        state={{
-          redirectUrl: location.pathname,
-          queryParams: location.search,
-          anchor: location.hash
-        }}
-      />
-    );
-  }
-
-  return children;
-};
+import { ProtectedRoute } from './ProtectedRoute';
+export { ProtectedRoute } from './ProtectedRoute';
 
 export const [firstStore, firstSpotlight] = createSpotlight();
 

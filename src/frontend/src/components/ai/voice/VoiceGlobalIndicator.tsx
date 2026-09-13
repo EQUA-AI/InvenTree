@@ -1,7 +1,9 @@
 import { useInvenTreeHotkeys } from '@lib/functions/Events';
+import { getBaseUrl } from '@lib/functions/Navigation';
 import { t } from '@lingui/core/macro';
 import { Button, Group, Text, VisuallyHidden } from '@mantine/core';
 import { useEffect } from 'react';
+import { Link, useInRouterContext } from 'react-router-dom';
 import { useThrottledAriaLive } from '../../../hooks/useThrottledAriaLive';
 import { useAIChatState } from '../../../states/AIChatState';
 import { useLocalState } from '../../../states/LocalState';
@@ -14,7 +16,10 @@ import {
 import { noticeText } from './VoiceExperienceControls';
 import { isVoiceShortcut, voiceEscape } from './voiceShortcuts';
 
-export function VoiceGlobalIndicator() {
+export function VoiceGlobalIndicator({
+  embedded = false
+}: { embedded?: boolean }) {
+  const routed = useInRouterContext();
   const s = useVoiceSessionState();
   const decision = useVoiceDecisionState((state) => state.decision);
   const sr = useLocalState((state) => state.voiceSrAnnounceTranscripts);
@@ -67,10 +72,26 @@ export function VoiceGlobalIndicator() {
   if (!s.capability?.enabled) return null;
   return (
     <Group gap='xs' data-testid='voice-global-indicator'>
+      {!embedded &&
+        (routed ? (
+          <Button
+            component={Link}
+            to='/voice'
+            mih={44}
+            variant='subtle'
+          >{t`Back to voice`}</Button>
+        ) : (
+          <Button
+            component='a'
+            href={`${getBaseUrl().replace(/\/$/, '')}/voice`}
+            mih={44}
+            variant='subtle'
+          >{t`Back to voice`}</Button>
+        ))}
       <VisuallyHidden component='output' aria-live='polite' aria-atomic='true'>
         {announced}
       </VisuallyHidden>
-      {s.session && (
+      {s.session && !embedded && (
         <>
           <Button
             mih={44}

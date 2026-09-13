@@ -40,6 +40,31 @@ class FlagEntry:
 
 REGISTRY: tuple[FlagEntry, ...] = (
     FlagEntry(
+        'FEATURE_VOICE_INVENTORY_ACTIONS',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_voice_inventory_actions',
+    ),
+    FlagEntry(
+        'FEATURE_VOICE_CLOSEOUT', 'bool', False, 'ai', ai_field='feature_voice_closeout'
+    ),
+    FlagEntry(
+        'FEATURE_VOICE_PROCEDURE_COMPLETE',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_voice_procedure_complete',
+    ),
+    FlagEntry(
+        'FEATURE_VOICE_LIVE_TURN',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_voice_live_turn',
+        description='Reserved; enabling is refused until provider and credential policy are implemented',
+    ),
+    FlagEntry(
         'APPROVAL_INBOX_SCOPED',
         'bool',
         False,

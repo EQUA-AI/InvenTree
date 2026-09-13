@@ -33,9 +33,10 @@ async def abandon(service, run, reason):
 
 
 async def resolve(service, run):
-    """Capture focused decisions before legacy writes/questions, then new hold intents."""
+    """Capture focused decisions before legacy writes/questions, then work-order intents."""
     if not enabled() or run.modality != "voice":
         return False
+    from ai.core.decisions.inventory import InventoryAmbiguity, pending_selection
     from ai.core.voice.experience import writes_eligible
 
     if not writes_eligible(getattr(run.trusted_context, "locale", "en")):
@@ -72,9 +73,44 @@ async def resolve(service, run):
             if reply is None or reply.route_normally:
                 if reply:
                     run.pre_speech_status = reply.spoken
-                reply = await service._call_sync(coordinator.begin, run.content, **arguments)
+                reply = await pending_selection(service, run, coordinator, arguments)
+                if reply is None:
+                    reply = await service._call_sync(coordinator.begin, run.content, **arguments)
                 if reply is None:
                     return False
+    except InventoryAmbiguity as exc:
+        from dataclasses import asdict
+
+        from ai.core.config import get_settings
+        from ai.core.decisions.inventory import parse_stock_intent
+        from ai.core.questions.promotion import set_question_proposal
+        from ai.core.questions.schema import render_question_text
+
+        speech = render_question_text(str(exc), exc.options, modality="voice")
+        if not get_settings().feature_question_cards or len(speech) > 700:
+            reply = DecisionReply(
+                "The inventory identity is ambiguous. Use an exact IPN or full location path.",
+                event="refused",
+            )
+        else:
+            owner, (_, scope_hash) = await service._call_sync(
+                coordinator.adapter.owner_scope, run.actor
+            )
+            for option in exc.options:
+                option["ref"].update(
+                    actor_id=owner.pk,
+                    scope_hash=scope_hash,
+                    session_id=arguments["session_id"],
+                    intent=asdict(
+                        getattr(exc, "resume_intent", None) or parse_stock_intent(run.content)
+                    ),
+                )
+            set_question_proposal({
+                "source": "voice_inventory",
+                "question_text": str(exc),
+                "options": exc.options,
+            })
+            reply = DecisionReply(speech, event="question")
     except (DecisionConflict, DecisionStoreUnavailable) as exc:
         reply = DecisionReply(str(exc), event="refused")
     except Exception:

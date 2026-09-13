@@ -949,6 +949,9 @@ class WalkthroughRequest(BaseModel):
     work_order_id: int
     utterance: str = ""
     position: int = 0
+    session_id: str | None = None
+    value: Any = None
+    passed: bool | None = None
 
 
 @router.post("/procedures/walkthrough")
@@ -970,7 +973,7 @@ async def procedure_walkthrough(request: WalkthroughRequest) -> dict[str, Any]:
     def perform():
         from django.contrib.auth import get_user_model
 
-        actor = get_user_model().objects.get(pk=principal.user_pk)
+        actor = get_user_model().objects.get(pk=principal.user_pk, is_active=True)
         return walkthrough_reply(
             actor=actor,
             work_order_id=request.work_order_id,
@@ -978,11 +981,20 @@ async def procedure_walkthrough(request: WalkthroughRequest) -> dict[str, Any]:
             position=request.position,
         )
 
+    from django.contrib.auth import get_user_model
+    from django.core.exceptions import PermissionDenied
+    from tasks.models import WorkOrder
+    from tasks.scope import ScopeError
+
     try:
         reply = await sync_to_async(perform, thread_sensitive=True)()
-    except Exception:
+    except (WorkOrder.DoesNotExist, get_user_model().DoesNotExist, ScopeError):
         raise HTTPException(status_code=404, detail="Not found") from None
-    return {
+    except PermissionDenied:
+        raise HTTPException(status_code=403, detail="PROCEDURE_PERMISSION_REQUIRED") from None
+    except Exception:
+        raise HTTPException(status_code=503, detail="PROCEDURE_WALKTHROUGH_UNAVAILABLE") from None
+    result = {
         "action": reply.action,
         "position": reply.position,
         "total": reply.total,
@@ -991,7 +1003,72 @@ async def procedure_walkthrough(request: WalkthroughRequest) -> dict[str, Any]:
         "step_key": reply.step_key,
         "completed": reply.completed,
         "error": reply.error,
+        "application_id": reply.application_id,
+        "step_version": reply.step_version,
+        "audio_available": False,
     }
+    if request.session_id:
+        from uuid import uuid4
+
+        from ai.core.decisions.coordinator import DecisionReply, get_coordinator
+        from ai.core.decisions.resolver import WorkOrderIntent
+        from ai.core.decisions.routes import speak_reply
+        from ai.core.voice.experience import writes_eligible
+        from aichat.services.proposals import ProposalError
+
+        settings = _require_voice_enabled()
+        session = await _owned_session(principal, request.session_id, settings)
+        try:
+            coordinator = get_coordinator() if settings.feature_voice_decision_coordinator else None
+        except Exception:
+            raise HTTPException(status_code=409, detail="VOICE_DECISION_UNAVAILABLE") from None
+        decision_reply = DecisionReply(reply.speak_text)
+        if coordinator is not None:
+            disarmed = await sync_to_async(coordinator.disarm, thread_sensitive=True)(
+                session.thread_id, "procedure_navigation"
+            )
+            decision_reply = DecisionReply(
+                reply.speak_text, disarmed.decision, event="procedure_navigation"
+            )
+        if (
+            reply.action == "complete_requested"
+            and coordinator is not None
+            and settings.feature_voice_procedure_complete
+            and writes_eligible(session.locale)
+        ):
+            try:
+                decision_reply = await sync_to_async(coordinator.present, thread_sensitive=True)(
+                    WorkOrderIntent(
+                        str(request.work_order_id),
+                        "",
+                        "procedure.complete",
+                        {
+                            "application_id": reply.application_id,
+                            "step_key": reply.step_key,
+                            "value": request.value,
+                            "passed": request.passed,
+                        },
+                    ),
+                    actor=principal,
+                    session_id=str(session.pk),
+                    thread_id=session.thread_id,
+                    nonce=str(uuid4()),
+                    source_content=request.utterance,
+                    expected=await sync_to_async(coordinator.store.read)(session.thread_id),
+                )
+            except ProposalError as exc:
+                decision_reply = DecisionReply(str(exc), event="refused")
+        decision, spoken = await speak_reply(
+            session, decision_reply, coordinator, include_spoken=True
+        )
+        result.update(
+            speak_text=decision_reply.spoken,
+            spoken=spoken,
+            audio_available=spoken["playback_state"] == "requested",
+            pending_decision=decision.to_public_dict() if decision else None,
+            decision_event=decision_reply.event_dict(),
+        )
+    return result
 
 
 from ai.core.decisions.routes import install_routes as _install_decision_routes  # noqa: E402

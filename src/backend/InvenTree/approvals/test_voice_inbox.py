@@ -183,11 +183,16 @@ class VoiceInboxTests(ApprovalTestBase):
     ):
         """Enumeration, counts and object endpoints reveal only assigned scoped rows."""
         own = self.fixture()
+        # A retained pre-E19 placeholder is not a valid new notification contract.
+        legacy_notification = self.fixture()
+        Approval.objects.filter(pk=legacy_notification.pk).update(
+            action_type='notification'
+        )
         hidden = [
             self.fixture(assigned=self.user2.pk),
             self.fixture(machine=self.other_machine),
             self.fixture(payload={'client_id': self.tenant.pk}),
-            self.fixture(action_type='notification'),
+            legacy_notification,
         ]
         rows = self.client.get('/api/approvals/').data
         self.assertEqual([str(row['id']) for row in rows], [str(own.pk)])

@@ -126,7 +126,11 @@ class StrictConfirmationRequired(ProposalError):  # noqa: N818
 #: too (§5.3 point 3 / §6.1). The phrase is surfaced in the preview so the UI
 #: knows what to ask; voice reuses the same map so both rails demand one control.
 IRREVERSIBLE_CONFIRM_PHRASE: dict[str, str] = {
-    ProposalAction.WORK_ORDER_DELETE.value: 'confirm delete'
+    ProposalAction.CLOSEOUT_ACCEPT.value: 'accept this note',
+    ProposalAction.CLOSEOUT_HANDOFF.value: 'confirm handoff',
+    ProposalAction.WORK_ORDER_DELETE.value: 'confirm delete',
+    ProposalAction.WORK_ORDER_CANCEL.value: 'confirm cancel order',
+    ProposalAction.STOCK_REMOVE.value: 'confirm remove',
 }
 
 
@@ -215,6 +219,10 @@ def _authorize_and_bind(owner, action_type: str, work_order_id, intent):
     creating actions the target is ``None``; scope is checked against the
     machine (create) or every candidate card (optimize) named in the intent.
     """
+    if action_type.startswith('stock.'):
+        from aichat.services.stock_commands import prepare
+
+        return None, 1, prepare(actor=owner, action=action_type, intent=intent)
     if action_type in {
         ProposalAction.WORK_ORDER_CREATE.value,
         ProposalAction.REPAIR_WORK_PACKAGE_CREATE.value,
@@ -237,6 +245,18 @@ def _authorize_and_bind(owner, action_type: str, work_order_id, intent):
         _authorized_work_order(owner, int(intent.get('predecessor_id')))
         return successor.pk, successor.lifecycle_version, successor
     work_order = _authorized_work_order(owner, int(work_order_id))
+    if action_type.startswith('closeout.'):
+        from ai.core.decisions.adapters.capture_adapter import authorize, bound_capture
+
+        authorize(owner, work_order, intent)
+        if action_type != 'closeout.consent':
+            capture = bound_capture(intent, owner)
+            if capture.target_work_order_id != work_order.pk:
+                raise ProposalError('The capture belongs to a different work order.')
+    if action_type == 'procedure.complete':
+        from aichat.services.procedure_commands import authorize
+
+        return work_order.pk, authorize(owner, work_order, intent), work_order
     return work_order.pk, work_order.lifecycle_version, work_order
 
 
@@ -282,6 +302,7 @@ def _dependency_successor(owner, dependency_id):
     dependency = WorkOrderDependency.objects.filter(pk=dependency_id).first()
     if dependency is None:
         raise ProposalNotFound('no such dependency')
+    _authorized_work_order(owner, dependency.predecessor_id)
     return _authorized_work_order(owner, dependency.successor_id)
 
 
@@ -304,6 +325,16 @@ def _dt(value: Any) -> datetime | None:
     parsed = parse_datetime(value) if isinstance(value, str) else value
     if not isinstance(parsed, datetime):
         raise ProposalError('intent contains an unparsable datetime')
+    return parsed
+
+
+def _storage_dt(value):
+    """Preserve the instant when a deployment stores local naive datetimes."""
+    from django.conf import settings
+
+    parsed = _dt(value)
+    if parsed is not None and timezone.is_aware(parsed) and not settings.USE_TZ:
+        return timezone.make_naive(parsed, timezone.get_default_timezone())
     return parsed
 
 
@@ -346,11 +377,24 @@ def _preview_schedule(work_order, intent: dict[str, Any]) -> dict[str, Any]:
 
 
 def _preview_resize(work_order, intent: dict[str, Any]) -> dict[str, Any]:
+    end = _storage_dt(intent.get('scheduled_end'))
+    minutes = intent.get('estimated_minutes')
+    if minutes is None and end is not None and work_order.scheduled_start is not None:
+        from tasks.services.calendars import spec_for_card
+        from tasks.services.working_time import working_minutes_between
+
+        minutes = round(
+            working_minutes_between(
+                spec_for_card(work_order), work_order.scheduled_start, end
+            )
+        )
     return {
         'current_estimated_minutes': work_order.estimated_minutes,
-        'proposed_estimated_minutes': intent.get('estimated_minutes'),
+        'proposed_estimated_minutes': minutes
+        if minutes is not None
+        else work_order.estimated_minutes,
         'current_end': _iso(work_order.scheduled_end),
-        'proposed_end': _iso(_dt(intent.get('scheduled_end'))),
+        'proposed_end': _iso(end if end is not None else work_order.scheduled_end),
     }
 
 
@@ -371,14 +415,27 @@ def _preview_update(work_order, intent: dict[str, Any]) -> dict[str, Any]:
 
 
 def _preview_assign(work_order, intent: dict[str, Any]) -> dict[str, Any]:
+    from django.contrib.auth import get_user_model
+
+    def name(pk):
+        if pk is None:
+            return 'Unassigned'
+        user = get_user_model().objects.filter(pk=pk, is_active=True).first()
+        if user is None:
+            raise ProposalError('The assignee is unavailable; request a fresh preview.')
+        return user.get_full_name().strip() or user.get_username()
+
     return {
         'current_assigned_to_id': work_order.assigned_to_id,
         'proposed_assigned_to_id': intent.get('assigned_to'),
+        'current_assigned_to_name': name(work_order.assigned_to_id),
+        'proposed_assigned_to_name': name(intent.get('assigned_to')),
     }
 
 
 def _preview_delete(work_order, intent: dict[str, Any]) -> dict[str, Any]:
     return {
+        'reason': str(intent.get('reason') or ''),
         'resulting_status': 'deleted',
         'irreversible': True,
         'confirm_phrase': IRREVERSIBLE_CONFIRM_PHRASE[
@@ -390,11 +447,33 @@ def _preview_delete(work_order, intent: dict[str, Any]) -> dict[str, Any]:
 def _preview_cancel(work_order, intent: dict[str, Any]) -> dict[str, Any]:
     from tasks.models import WorkOrderLifecycle
 
-    return {'resulting_status': str(WorkOrderLifecycle.CANCELED)}
+    reason = str(intent.get('reason') or '').strip()
+    if not reason or len(reason) > 2000:
+        raise ProposalError('Supply a cancellation reason of 1 to 2000 characters.')
+    return {
+        'resulting_status': str(WorkOrderLifecycle.CANCELED),
+        'reason': reason,
+        'irreversible': True,
+        'confirm_phrase': IRREVERSIBLE_CONFIRM_PHRASE[
+            ProposalAction.WORK_ORDER_CANCEL.value
+        ],
+    }
 
 
 def _preview_transition(work_order, intent: dict[str, Any]) -> dict[str, Any]:
-    return {'resulting_status': intent.get('to_status')}
+    if intent.get('to_status') == 'canceled':
+        raise ProposalError('Use work_order.cancel with a reason to cancel an order.')
+    from tasks.services.work_orders import LEGAL_TRANSITIONS
+
+    target = intent.get('to_status')
+    irreversible = work_order.lifecycle_status not in LEGAL_TRANSITIONS.get(
+        target, set()
+    )
+    return {
+        'resulting_status': target,
+        'irreversible': irreversible,
+        'confirm_phrase': 'confirm transition' if irreversible else '',
+    }
 
 
 def _preview_create(work_order, intent: dict[str, Any]) -> dict[str, Any]:
@@ -477,15 +556,32 @@ def _preview_create_child(work_order, intent: dict[str, Any]) -> dict[str, Any]:
 def _preview_generate_procurement(work_order, intent: dict[str, Any]) -> dict[str, Any]:
     return {
         'parent_id': work_order.pk,
+        'parts_snapshot': [
+            {
+                'part_id': row.part_id,
+                'name': row.part.name,
+                'IPN': row.part.IPN,
+                'quantity': str(row.quantity),
+                'allocated_quantity': str(row.allocated_quantity),
+                'units': row.part.units or 'each',
+                'allocation_status': row.allocation_status,
+            }
+            for row in work_order.work_order_parts.select_related('part').order_by('pk')
+        ],
         'note': 'Generates a procurement child for unfulfilled parts, if any.',
     }
 
 
 def _preview_dependency_create(work_order, intent: dict[str, Any]) -> dict[str, Any]:
-    from tasks.models import WorkOrderDependency
+    from tasks.models import WorkOrder, WorkOrderDependency
+
+    predecessor = WorkOrder.objects.get(pk=intent.get('predecessor_id'))
 
     return {
         'predecessor_id': intent.get('predecessor_id'),
+        'predecessor_reference': predecessor.reference,
+        'predecessor_version': predecessor.lifecycle_version,
+        'successor_reference': work_order.reference,
         'successor_id': work_order.pk,
         'dependency_type': intent.get('dependency_type', WorkOrderDependency.TYPE_FS),
         'lag_minutes': int(intent.get('lag_minutes', 0)),
@@ -493,7 +589,19 @@ def _preview_dependency_create(work_order, intent: dict[str, Any]) -> dict[str, 
 
 
 def _preview_dependency_delete(work_order, intent: dict[str, Any]) -> dict[str, Any]:
-    return {'dependency_id': intent.get('dependency_id'), 'successor_id': work_order.pk}
+    from tasks.models import WorkOrderDependency
+
+    edge = WorkOrderDependency.objects.select_related('predecessor', 'successor').get(
+        pk=intent['dependency_id']
+    )
+    return {
+        'dependency_id': edge.pk,
+        'successor_id': work_order.pk,
+        'predecessor_reference': edge.predecessor.reference,
+        'successor_reference': edge.successor.reference,
+        'dependency_type': edge.dependency_type,
+        'lag_minutes': edge.lag_minutes,
+    }
 
 
 def _preview_optimize(work_order, intent: dict[str, Any]) -> dict[str, Any]:
@@ -534,6 +642,8 @@ def _preview(work_order, action_type: str, intent: dict[str, Any]) -> dict[str, 
     have no pinned card; their builders read only from the (server-validated)
     intent.
     """
+    if action_type.startswith('stock.'):
+        return dict(work_order)
     base = {
         'action': action_type,
         'warning': _SAFETY_LINE,
@@ -547,6 +657,14 @@ def _preview(work_order, action_type: str, intent: dict[str, Any]) -> dict[str, 
             'current_status': work_order.lifecycle_status,
         })
     builder = _PREVIEW_BUILDERS.get(action_type)
+    if action_type.startswith('closeout.'):
+        from ai.core.decisions.adapters.capture_adapter import preview
+
+        base.update(preview(work_order, intent, action_type))
+    if action_type == 'procedure.complete':
+        from aichat.services.procedure_commands import preview
+
+        builder = preview
     if builder is not None:
         base.update(builder(work_order, intent or {}))
     return base
@@ -558,6 +676,14 @@ def _preview(work_order, action_type: str, intent: dict[str, Any]) -> dict[str, 
 #: dispatched by ``_dispatch`` below (asserted in the parity test). Adding an
 #: action means adding both its command mapping here and its ``_dispatch`` branch.
 ACTION_COMMAND: dict[str, str] = {
+    ProposalAction.CLOSEOUT_CONSENT.value: 'create_capture',
+    ProposalAction.CLOSEOUT_ACCEPT.value: 'accept_revision',
+    ProposalAction.CLOSEOUT_HANDOFF.value: 'handoff_capture',
+    ProposalAction.PROCEDURE_COMPLETE.value: 'complete_step',
+    ProposalAction.STOCK_ADD.value: 'stock_commands.execute',
+    ProposalAction.STOCK_REMOVE.value: 'stock_commands.execute',
+    ProposalAction.STOCK_TRANSFER.value: 'stock_commands.execute',
+    ProposalAction.STOCK_COUNT.value: 'stock_commands.execute',
     ProposalAction.WORK_ORDER_HOLD.value: 'hold_work_order',
     ProposalAction.WORK_ORDER_RESUME.value: 'resume_work_order',
     ProposalAction.WORK_ORDER_SCHEDULE.value: 'schedule_work_order',
@@ -620,6 +746,15 @@ def create_proposal(
     # checked here (before the read-back) and again at confirmation.
     _require_role(owner, action_type)
     intent = dict(intent or {})
+    if action_type == ProposalAction.WORK_ORDER_CANCEL:
+        supplied_reason = str(reason or '').strip()
+        intent_reason = str(intent.get('reason') or '').strip()
+        if supplied_reason and intent_reason and supplied_reason != intent_reason:
+            raise ProposalError(
+                'The cancellation reasons differ; request a fresh preview.'
+            )
+        reason = intent_reason or supplied_reason
+        intent['reason'] = reason
     target_id, target_version, work_order = _authorize_and_bind(
         owner, action_type, work_order_id, intent
     )
@@ -637,6 +772,9 @@ def create_proposal(
                 source_turn_id=source_turn_id,
                 action_type=action_type,
                 target_work_order_id=target_id,
+                target_stock_item_id=intent.get('stock_item_id')
+                if action_type.startswith('stock.')
+                else None,
                 target_version=target_version,
                 intent=intent,
                 preview=preview,
@@ -958,7 +1096,25 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
     # S36: thread the turn's correlation id into the audited command so one
     # id joins utterance -> proposal -> WorkOrderEvent. None (blank or
     # unparsable) lets the command mint, exactly the pre-S36 behavior.
-    correlation = _as_uuid(proposal.correlation_id)
+    correlation = _as_uuid(proposal.correlation_id) or uuid.uuid4()
+    if action.startswith('closeout.'):
+        from ai.core.decisions.adapters.capture_adapter import execute
+
+        return execute(proposal, owner)
+    if action == 'procedure.complete':
+        from aichat.services.procedure_commands import execute
+
+        return execute(proposal, owner, correlation)
+    if action.startswith('stock.'):
+        from aichat.services.stock_commands import execute
+
+        return execute(
+            actor=owner,
+            action=action,
+            intent=intent,
+            preview=proposal.preview,
+            idempotency_key=idem,
+        )
     from ai.core.tracing import turn_span
 
     with turn_span(
@@ -967,9 +1123,40 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
         action_type=action,
         correlation_id=proposal.correlation_id,
     ):
-        return _dispatch_command(
+        result = _dispatch_command(
             proposal, owner, action, idem, wo_id, version, intent, reason, correlation
         )
+        if action in (
+            'dependency.create',
+            'dependency.delete',
+            'work_order.generate_procurement',
+        ):
+            from tasks.models import WorkOrderCommand, WorkOrderEvent
+
+            event = WorkOrderEvent.objects.create(
+                work_order_id=wo_id,
+                actor=owner,
+                event_type='PROPOSAL_RECORDED',
+                correlation_id=correlation,
+                idempotency_key=idem,
+                metadata=result,
+            )
+            WorkOrderCommand.objects.create(
+                work_order_id=wo_id,
+                command=result['command'],
+                status='succeeded',
+                correlation_id=correlation,
+                idempotency_key=idem,
+                request_hash=proposal.preview_hash,
+                result_ref=str(event.pk),
+            )
+            result.update(
+                event_id=event.pk,
+                work_order_id=wo_id,
+                correlation_id=str(correlation),
+                idempotency_key=idem,
+            )
+        return result
 
 
 def _dispatch_command(
@@ -1016,8 +1203,8 @@ def _dispatch_command(
                 actor=owner,
                 expected_version=version,
                 idempotency_key=idem,
-                scheduled_start=_dt(intent.get('scheduled_start')),
-                scheduled_end=_dt(intent.get('scheduled_end')),
+                scheduled_start=_storage_dt(intent.get('scheduled_start')),
+                scheduled_end=_storage_dt(intent.get('scheduled_end')),
                 correlation_id=correlation,
             )
         )
@@ -1029,7 +1216,7 @@ def _dispatch_command(
                 expected_version=version,
                 idempotency_key=idem,
                 estimated_minutes=intent.get('estimated_minutes'),
-                scheduled_end=_dt(intent.get('scheduled_end')),
+                scheduled_end=_storage_dt(intent.get('scheduled_end')),
                 correlation_id=correlation,
             )
         )
@@ -1212,12 +1399,64 @@ def confirm_proposal(
             # Irreversible actions demand their exact strict phrase — the same
             # control voice enforces verbally, now on the text rail (§5.3). Voice
             # asserts it already did this at the gate; text always supplies it.
-            if not strict_phrase_satisfied:
+            if proposal.action_type == ProposalAction.WORK_ORDER_CANCEL:
+                # No legacy bypass or placeholder reason for OD-3 cancellation.
+                reviewed = _preview_cancel(None, proposal.intent)
+                if reviewed['reason'] != proposal.reason or reviewed[
+                    'reason'
+                ] != proposal.preview.get('reason'):
+                    raise ProposalPreviewChanged(
+                        'Review the cancellation reason again.'
+                    )
+            if (
+                proposal.action_type == ProposalAction.WORK_ORDER_TRANSITION
+                and proposal.intent.get('to_status') == 'canceled'
+            ):
+                raise ProposalError(
+                    'Use work_order.cancel with a reason to cancel an order.'
+                )
+            if (
+                not strict_phrase_satisfied
+                or proposal.action_type.startswith('closeout.')
+                or proposal.action_type
+                in (
+                    ProposalAction.WORK_ORDER_CANCEL,
+                    ProposalAction.WORK_ORDER_TRANSITION,
+                    ProposalAction.WORK_ORDER_DELETE,
+                    ProposalAction.STOCK_REMOVE,
+                )
+            ):
                 _require_strict_phrase(proposal.action_type, confirm_phrase)
+                dynamic_phrase = proposal.preview.get('confirm_phrase')
+                if (
+                    dynamic_phrase
+                    and (confirm_phrase or '').strip().casefold()
+                    != dynamic_phrase.casefold()
+                ):
+                    raise StrictConfirmationRequired(
+                        f'This action requires "{dynamic_phrase}".'
+                    )
             # Re-check the RBAC role at execution time: a grant may have been
             # revoked between propose and confirm (§5.3 defense in depth).
             _require_role(owner, proposal.action_type)
             if expected_preview_hash is not None:
+                from tasks.models import WorkOrder
+
+                if proposal.target_work_order_id:
+                    list(
+                        WorkOrder.objects
+                        .select_for_update()
+                        .filter(
+                            pk__in=sorted({
+                                int(proposal.target_work_order_id),
+                                int(
+                                    proposal.intent.get('predecessor_id')
+                                    or proposal.target_work_order_id
+                                ),
+                            })
+                        )
+                        .order_by('pk')
+                    )
                 _, version, target = _authorize_and_bind(
                     owner,
                     proposal.action_type,
@@ -1264,6 +1503,10 @@ def confirm_proposal(
             'PROPOSAL_REVALIDATION_FAILED',
         )
         raise ProposalRevalidationFailed(str(exc)) from exc
+    except wo_commands.ReadinessBlocked as exc:
+        _mark(owner, scope_hash, proposal_id, ProposalState.FAILED, exc.code)
+        reasons = '; '.join(blocker.message for blocker in exc.readiness.blockers)
+        raise ProposalStateConflict(f'Readiness blocked: {reasons}') from exc
     except wo_commands.WorkOrderCommandError as exc:
         _mark(
             owner,

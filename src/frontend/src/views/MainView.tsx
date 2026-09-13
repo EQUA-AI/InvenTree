@@ -45,6 +45,11 @@ export default function MainView() {
 
   // Check if mobile
   const isMobile =
+    // Explicit voice access and authentication routes must never be hidden by
+    // the legacy viewport warning. Automatic phone routing awaits its policy.
+    !/\/(voice|login|logged-in|logout|mfa|mfa-setup)\/?$/.test(
+      window.location.pathname
+    ) &&
     !allowMobile &&
     window.INVENTREE_SETTINGS.mobile_mode !== 'allow-always' &&
     checkMobile();

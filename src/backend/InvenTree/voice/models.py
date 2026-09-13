@@ -299,6 +299,13 @@ class VoiceCaptureSession(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    live_session = models.ForeignKey(
+        'voice.VoiceSession',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='captures',
+    )
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -374,6 +381,7 @@ class VoiceTranscriptRevision(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+'
     )
     edit_reason = models.CharField(max_length=128, blank=True)
+    source_turn_id = models.CharField(max_length=128, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -381,6 +389,11 @@ class VoiceTranscriptRevision(models.Model):
 
         ordering = ['revision']
         constraints = [
+            models.UniqueConstraint(
+                fields=['capture', 'source_turn_id'],
+                condition=~Q(source_turn_id=''),
+                name='voice_revision_turn_key',
+            ),
             models.UniqueConstraint(
                 fields=['capture', 'revision'], name='voice_revision_monotonic'
             ),

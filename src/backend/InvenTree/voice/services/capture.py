@@ -303,6 +303,4 @@ def handoff_capture(*, capture: VoiceCaptureSession):
                 locked.save(update_fields=['state', 'updated_at'])
             capture.state = locked.state
         return closeout_row
-    raise DestinationUnavailable(
-        'canonical Repair packet intake service (WS11) is not live'
-    )
+    raise DestinationUnavailable('Fault notes cannot be filed by voice yet.')

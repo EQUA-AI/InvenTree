@@ -38,6 +38,30 @@ def test_voice_live_is_off_by_default():
     assert settings.voice_decision_max_armed_s == 300
     assert settings.feature_capability_broker_enforce is True
     assert settings.feature_voice_fast_path is False
+    assert settings.feature_voice_inventory_actions is False
+    assert settings.feature_voice_procedure_complete is False
+    assert settings.feature_voice_live_turn is False
+
+
+def test_phase_e_flags_fail_closed_without_their_dependencies():
+    with pytest.raises(ValidationError, match="INVENTORY_ACTIONS requires FEATURE_VOICE_DECISIONS"):
+        _settings(FEATURE_VOICE_INVENTORY_ACTIONS=True)
+    with pytest.raises(
+        ValidationError, match="PROCEDURE_COMPLETE requires FEATURE_GUIDED_PROCEDURES"
+    ):
+        _settings(FEATURE_VOICE_PROCEDURE_COMPLETE=True)
+    with pytest.raises(ValidationError, match="TURN is unavailable"):
+        _settings(FEATURE_VOICE_LIVE_TURN=True)
+    configured = _settings(
+        FEATURE_VOICE_LIVE=True,
+        AZURE_VOICELIVE_ENDPOINT=VALID_HOST,
+        FEATURE_VOICE_DECISIONS=True,
+        FEATURE_GUIDED_PROCEDURES=True,
+        FEATURE_VOICE_INVENTORY_ACTIONS=True,
+        FEATURE_VOICE_PROCEDURE_COMPLETE=True,
+    )
+    assert configured.feature_voice_inventory_actions
+    assert configured.feature_voice_procedure_complete
 
 
 def test_voice_writes_are_governed_by_rbac_not_by_the_modality():

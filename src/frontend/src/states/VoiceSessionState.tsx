@@ -40,6 +40,7 @@ useUserState.subscribe((state, previous) => {
     (previous.is_authed && !state.is_authed)
   ) {
     voiceController.logout();
+    useLocalState.getState().setAllowMobile(false);
     useVoiceSurfaceState.setState({ fullscreen: false, consent: false });
   }
 });
