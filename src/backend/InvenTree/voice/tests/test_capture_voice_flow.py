@@ -73,6 +73,25 @@ class CaptureVoiceFlowTests(WorkOrderVoiceFixture, TestCase):
         self.consent()
         self.assertFalse(VoiceTranscriptRevision.objects.exists())
 
+    def test_previous_orm_can_insert_transcripts_after_additive_migrations(self):
+        """Rollback code omits source_turn_id; the database supplies an empty key."""
+        from django.db import connection
+        from django.db.migrations.executor import MigrationExecutor
+
+        capture = self.consent()
+        previous = MigrationExecutor(connection).loader.project_state(
+            [('voice', '0007_voicepresentation')]
+        ).apps.get_model('voice', 'VoiceTranscriptRevision')
+        row = previous.objects.create(
+            capture_id=capture.pk,
+            revision=1,
+            full_text='VOICE-TEST old ORM compatibility only.',
+            content_hash='a' * 64,
+            segments=[],
+            created_by_id=self.actor.pk,
+        )
+        self.assertEqual(VoiceTranscriptRevision.objects.get(pk=row.pk).source_turn_id, '')
+
     def test_exact_correction_acceptance_and_separate_handoff(self):
         """Canonical destination and voice receipt commit once with exact text."""
         capture = self.consent()

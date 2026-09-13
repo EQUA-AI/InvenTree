@@ -381,7 +381,9 @@ class VoiceTranscriptRevision(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+'
     )
     edit_reason = models.CharField(max_length=128, blank=True)
-    source_turn_id = models.CharField(max_length=128, blank=True, default='')
+    source_turn_id = models.CharField(
+        max_length=128, blank=True, default='', db_default=''
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
