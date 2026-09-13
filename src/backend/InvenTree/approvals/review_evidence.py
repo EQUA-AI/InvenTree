@@ -1,5 +1,6 @@
 """Server-owned review evidence: exact content, actor, scope and delivery."""
 
+import hashlib
 import os
 import textwrap
 
@@ -55,6 +56,22 @@ def required_sections(approval):
     return [s['id'] for s in build_review_sections(approval) if s['required']]
 
 
+def _session_scope_hash(actor):
+    """Voice sessions bind the AI boundary scope, not the maintenance scope.
+
+    Both must match independently: delivery/acknowledgment rows carry current
+    business scope, while their utterance session carries the principal scope
+    used by the canonical create_session/get_owned_session service.
+    """
+    from ai.core.auth import principal_for_user
+
+    try:
+        scope = principal_for_user(actor).scope
+    except ValueError as exc:
+        raise ReviewEvidenceError('The current voice scope is unavailable.') from exc
+    return hashlib.sha256(scope.encode('utf-8')).hexdigest()
+
+
 def review_units(approval):
     """Bounded spoken pages covering every required section, including full body."""
     units = []
@@ -82,7 +99,7 @@ def record_delivery(approval, *, actor, utterance, unit_ids):
     scope_hash = _scope_hash(actor)
     if (
         utterance.session.owner_id != actor.pk
-        or utterance.session.scope_hash != scope_hash
+        or utterance.session.scope_hash != _session_scope_hash(actor)
     ):
         raise ReviewEvidenceError(
             'Review delivery belongs to a different actor or scope.'
@@ -95,8 +112,6 @@ def record_delivery(approval, *, actor, utterance, unit_ids):
     ):
         raise ReviewEvidenceError('Unknown or repeated review page.')
     expected = ' '.join(pages[u] for u in unit_ids)
-    import hashlib
-
     if (
         utterance.spoken_summary != expected
         or utterance.spoken_summary_hash
@@ -166,7 +181,7 @@ def acknowledge(approval, *, actor, channel, evidence):
             **binding,
             utterance__playback_state=PlaybackState.DONE,
             utterance__session__owner=actor,
-            utterance__session__scope_hash=binding['scope_hash'],
+            utterance__session__scope_hash=_session_scope_hash(actor),
         )
         latest_invalidation = (
             approval.review_acknowledgments

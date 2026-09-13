@@ -16,9 +16,9 @@ from ai.core.decisions.coordinator import (
     estimated_playback_seconds,
 )
 from ai.core.decisions.store import InMemoryPendingDecisionStore
-from aichat.services.scope_strings import scope_strings
 from assets.models import AssetMachine, Client
-from voice.models import VoiceOperation, VoiceSession, VoiceUtterance
+from voice.models import VoiceOperation, VoiceUtterance
+from voice.services.realtime import SessionLimits, create_session
 
 from . import services
 from .models import ApprovalExecution, ApprovalReviewAcknowledgment
@@ -58,13 +58,12 @@ class VoiceInboxTests(ApprovalTestBase):
             name='Not in scope', client=self.other_tenant
         )
         self.principal = principal_for_user(self.user)
-        scope, scope_hash = scope_strings(self.user)
-        self.session = VoiceSession.objects.create(
+        self.session = create_session(
             owner=self.user,
             thread_id='voice-inbox',
-            scope_key=scope,
-            scope_hash=scope_hash,
+            scope_key=self.principal.scope,
             policy_version='test',
+            limits=SessionLimits(),
         )
         self.clock = [datetime.now(UTC)]
         self.store = InMemoryPendingDecisionStore()

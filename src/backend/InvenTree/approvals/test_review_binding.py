@@ -7,8 +7,10 @@ from unittest.mock import patch
 
 from django.test import override_settings
 
+from ai.core.auth import principal_for_user
 from aichat.services.scope_strings import scope_strings
-from voice.models import PlaybackState, VoiceSession, VoiceUtterance
+from voice.models import PlaybackState, VoiceUtterance
+from voice.services.realtime import SessionLimits, create_session
 
 from . import services
 from .executors import DriftReport, EffectResult, registry
@@ -41,14 +43,36 @@ class ReviewBindingTests(ApprovalTestBase):
         self.approval = self._create_approval_obj(assigned_to_user_id=self.user.pk)
         services.open_approval(self.approval.pk, actor=self.user)
         self.approval.refresh_from_db()
-        scope_key, scope_hash = scope_strings(self.user)
-        self.session = VoiceSession.objects.create(
+        self.session = create_session(
             owner=self.user,
             thread_id='review-test',
-            scope_key=scope_key,
-            scope_hash=scope_hash,
+            scope_key=principal_for_user(self.user).scope,
             policy_version='test',
+            limits=SessionLimits(),
         )
+
+    def test_transport_and_business_scope_are_independently_bound(self):
+        """Real sessions use principal.scope; business hashes must not replace it."""
+        _, business_hash = scope_strings(self.user)
+        self.assertNotEqual(self.session.scope_hash, business_hash)
+        self.deliver()
+        services.confirm_viewed(
+            self.approval.pk, actor=self.user, channel='voice', evidence=self.evidence()
+        )
+        self.assertEqual(
+            self.approval.review_acknowledgments.get().scope_hash, business_hash
+        )
+        self.session.scope_hash = business_hash
+        self.session.save(update_fields=['scope_hash'])
+        with self.assertRaises(services.ApprovalConflictError):
+            services.confirm_viewed(
+                self.approval.pk,
+                actor=self.user,
+                channel='voice',
+                evidence=self.evidence(),
+            )
+        with self.assertRaises(ReviewEvidenceError):
+            self.deliver()
 
     def evidence(self):
         """An acknowledgment asserts focus, not that playback happened."""
