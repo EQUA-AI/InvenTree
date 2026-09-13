@@ -285,5 +285,6 @@ while an administrator can manage the container and not read the data.
 | `schema/pumphouse_readings.indexing.json` | The indexing policy alone, for `az ... --idx @file`. Kept identical to the definition by a test |
 | `provision.py` | Verifies a live container against that definition; `--create` works only against the emulator |
 | `test_provision.py` | Offline tests for the comparison logic: `python3 -m unittest discover -s contrib/cosmos -p 'test_*.py'` |
-
-Still to come (ticket T5): `seed.py` plus sample documents for the manual inserts.
+| `seed.py` | Validates the §3.1 invariants, then upserts the manual inserts; `--dry-run` writes nothing |
+| `samples/ph3_snapshots.json` | Three pilot documents across two hour buckets, including an `I → R` transition |
+| `test_seed.py` | Offline tests for the seeder's validation and derived fields |
