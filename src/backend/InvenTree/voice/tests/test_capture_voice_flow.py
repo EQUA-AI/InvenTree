@@ -124,6 +124,26 @@ class CaptureVoiceFlowTests(WorkOrderVoiceFixture, TestCase):
         self.order.refresh_from_db()
         self.assertEqual(self.order.lifecycle_status, WorkOrderLifecycle.IN_PROGRESS)
 
+    def test_asr_punctuation_and_spacing_preserve_literal_note_payloads(self):
+        """Command punctuation is syntax; dictation punctuation remains evidence."""
+        decision = self.say(
+            f'Start close out for work order {self.order.pk}.'
+        ).decision
+        self.respond('yes', self.deliver(decision))
+        capture = VoiceCaptureSession.objects.get()
+        self.say('Note Synthetic test: pressure fifteen PSI. No physical work performed!')
+        self.say('Change fifteen to fifty PSI.')
+        self.assertEqual(
+            capture.revisions.order_by('-revision').first().full_text,
+            'Synthetic test: pressure fifty PSI. No physical work performed!',
+        )
+        self.assertIn('fifty PSI.', self.say('Read the whole note.').spoken)
+        decision = self.say('Accept this note.').decision
+        self.respond('accept this note.', self.deliver(decision))
+        self.assertEqual(VoiceTranscriptAcceptance.objects.count(), 1)
+        self.assertEqual(self.say('Hand off this note.').decision.required_phrase, 'confirm handoff')
+        self.assertFalse(CloseoutCapture.objects.exists())
+
     def test_correction_invalidates_old_acceptance_review(self):
         """Old hashes cannot accept newly dictated evidence."""
         self.consent()

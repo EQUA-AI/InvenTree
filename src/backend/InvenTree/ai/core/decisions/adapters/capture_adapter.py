@@ -7,7 +7,7 @@ commands are never silently recorded as closeout evidence.
 import os
 import re
 
-from ai.core.decisions.resolver import WorkOrderIntent
+from ai.core.decisions.resolver import WorkOrderIntent, _reference
 from ai.core.voice.experience import CONSENT_VERSION
 from aichat.services.proposals import ProposalError, _authorized_work_order
 from django.conf import settings
@@ -254,12 +254,20 @@ def begin(coordinator, content, *, actor, session_id, thread_id, nonce):
     """Explicit deterministic capture commands, with no model-generated edits."""
     from ai.core.decisions.coordinator import DecisionReply
 
+    # ASR adds sentence punctuation to commands. Preserve literal dictation and
+    # replacement-note payloads, including their punctuation, in their entirety.
+    text = content.strip()
+    command_text = (
+        text
+        if re.match(r"^(?:note |replace note with )", text, re.I)
+        else text.rstrip(".!?").strip()
+    )
     start = re.fullmatch(
-        r"start closeout(?: note)? for (?:work order )?(\S+)", content.strip(), re.I
+        r"start close\s*out(?: note)? for (?:work order )?(.{1,120})", command_text, re.I
     )
     command = re.fullmatch(
-        r"(?:note (.+)|replace note with (.+)|change (.+) to (.+)|read the whole note(?: page (\d+))?|accept this note|handoff this note|cancel closeout note)",
-        content.strip(),
+        r"(?:note (.+)|replace note with (.+)|change (.+) to (.+)|read the whole note(?: page (\d+))?|accept this note|hand\s*off this note|cancel close\s*out note)",
+        command_text,
         re.I | re.S,
     )
     if not start and not command:
@@ -281,7 +289,10 @@ def begin(coordinator, content, *, actor, session_id, thread_id, nonce):
     require_enabled()
     if start:
         intent = WorkOrderIntent(
-            start[1], "", "closeout.consent", {"live_session_id": str(session.pk)}
+            _reference(start[1]) or start[1],
+            "",
+            "closeout.consent",
+            {"live_session_id": str(session.pk)},
         )
     else:
         with transaction.atomic():
@@ -301,7 +312,7 @@ def begin(coordinator, content, *, actor, session_id, thread_id, nonce):
                 raise ProposalError(
                     "Start a closeout note and explicitly consent before dictating."
                 )
-            if content.strip().lower() == "cancel closeout note":
+            if re.fullmatch(r"cancel close\s*out note", command_text, re.I):
                 captures.cancel_capture(capture=capture)
                 return DecisionReply(
                     "Closeout capture canceled. Its existing transcript revisions are retained for audit. No handoff was submitted."
@@ -371,7 +382,7 @@ def begin(coordinator, content, *, actor, session_id, thread_id, nonce):
                 )
             if latest is None:
                 raise ProposalError("Dictate a note before requesting review.")
-            if content.lower().startswith("read the whole note"):
+            if command_text.lower().startswith("read the whole note"):
                 # Exact bounded chunks: concatenating their text yields the original
                 # note, without summarization, unit conversion or omitted words.
                 pieces = re.findall(r".{1,900}(?:\s+|$)|\S{1,900}", latest.full_text, re.S)
@@ -389,7 +400,9 @@ def begin(coordinator, content, *, actor, session_id, thread_id, nonce):
             intent = WorkOrderIntent(
                 str(work_order.pk),
                 "",
-                "closeout.accept" if content.lower() == "accept this note" else "closeout.handoff",
+                "closeout.accept"
+                if command_text.lower() == "accept this note"
+                else "closeout.handoff",
                 {
                     "live_session_id": str(session.pk),
                     "capture_id": str(capture.pk),

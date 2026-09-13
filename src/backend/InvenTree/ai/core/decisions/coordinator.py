@@ -219,7 +219,7 @@ class DecisionCoordinator:
         ):
             return DecisionReply("Fault notes cannot be filed by voice yet.", event="unavailable")
         if re.match(
-            r"^(?:start closeout|note |replace note |read the whole note|accept this note|handoff this note|cancel closeout note|change .+ to )",
+            r"^(?:start close\s*out|note |replace note |read the whole note|accept this note|hand\s*off this note|cancel close\s*out note|change .+ to )",
             content.strip(),
             re.I,
         ):
