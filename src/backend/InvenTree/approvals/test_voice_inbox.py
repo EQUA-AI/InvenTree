@@ -21,7 +21,7 @@ from voice.models import VoiceOperation, VoiceUtterance
 from voice.services.realtime import SessionLimits, create_session
 
 from . import services
-from .models import ApprovalExecution, ApprovalReviewAcknowledgment
+from .models import Approval, ApprovalExecution, ApprovalReviewAcknowledgment
 from .review_evidence import review_units
 from .review_sections import compute_review_hash
 from .serializers import ApprovalCreateSerializer
@@ -87,7 +87,7 @@ class VoiceInboxTests(ApprovalTestBase):
             patch('ai.core.config.get_settings', return_value=self.config)
         )
 
-    def fixture(self, *, machine=None, assigned=None, **overrides):
+    def fixture(self, *, machine=None, assigned=None, approval_id=None, **overrides):
         """Create only a test approval; an actual service call still checks its scope."""
         key = str(uuid.uuid4())
         data = {
@@ -107,6 +107,13 @@ class VoiceInboxTests(ApprovalTestBase):
         data.update(overrides)
         serializer = ApprovalCreateSerializer(data=data)
         serializer.is_valid(raise_exception=True)
+        if approval_id:
+            with patch.object(
+                Approval._meta.get_field('id'), 'get_default', return_value=approval_id
+            ):
+                approval = serializer.save()
+            self.assertEqual(approval.pk, approval_id)
+            return approval
         return serializer.save()
 
     def begin(self, content='What needs my approval?'):
@@ -208,6 +215,49 @@ class VoiceInboxTests(ApprovalTestBase):
         self.assertEqual(selected.decision.kind, 'approval_review')
         self.assertFalse(ApprovalExecution.objects.exists())
         self.assertFalse(ApprovalReviewAcknowledgment.objects.exists())
+
+    def test_exact_reference_selects_from_active_inbox(self):
+        """The displayed reference works while the frozen numbered menu is open."""
+        self.fixture()
+        approval = self.fixture()
+        self.begin()
+        selected = self.say(f'Review request {str(approval.pk)[:8]}')
+        self.assertEqual(selected.decision.source_id, str(approval.pk))
+        self.assertEqual(selected.decision.kind, 'approval_review')
+        self.assertFalse(ApprovalExecution.objects.exists())
+        self.assertFalse(ApprovalReviewAcknowledgment.objects.exists())
+
+    def test_spoken_reference_selects_from_active_inbox(self):
+        """Digit names and conventional letter names retain the exact target."""
+        approval = self.fixture(
+            approval_id=uuid.UUID('08298de6-1111-4111-8111-111111111111')
+        )
+        self.begin()
+        selected = self.say('Read request zero eight two nine eight dee ee six')
+        self.assertEqual(selected.decision.source_id, str(approval.pk))
+        self.assertEqual(selected.decision.kind, 'approval_review')
+        self.assertFalse(ApprovalExecution.objects.exists())
+
+    def test_reference_cannot_select_outside_frozen_inbox_page(self):
+        """Knowing an off-page reference does not bypass the frozen selection."""
+        rows = [self.fixture() for _ in range(10)]
+        inbox = self.begin().decision
+        outside = next(a for a in rows if str(a.pk) not in inbox.executable['ids'])
+        result = self.say(f'Review request {str(outside.pk)[:8]}')
+        self.assertEqual(result.decision.decision_id, inbox.decision_id)
+        self.assertEqual(result.decision.kind, 'selection')
+        outside.refresh_from_db()
+        self.assertEqual(outside.status, 'pending')
+
+    def test_ambiguous_reference_does_not_select_from_inbox(self):
+        """An eight-character collision is never resolved by first-match order."""
+        self.fixture(approval_id=uuid.UUID('aaaaaaaa-1111-4111-8111-111111111111'))
+        self.fixture(approval_id=uuid.UUID('aaaaaaaa-2222-4222-8222-222222222222'))
+        inbox = self.begin().decision
+        result = self.say('Review request aaaaaaaa')
+        self.assertEqual(result.decision.decision_id, inbox.decision_id)
+        self.assertEqual(result.decision.kind, 'selection')
+        self.assertFalse(ApprovalExecution.objects.exists())
 
     def test_email_is_excluded_from_voice_inbox(self):
         """Paused email work cannot enter this voice campaign even with email roles."""

@@ -373,16 +373,26 @@ class ApprovalAdapter:
             if command == "next page" and decision.executable.get("has_more"):
                 return self.inbox(c, **args, offset=int(decision.executable.get("offset", 0)) + 9)
             normalized = re.sub(
-                r"^(?:read |review |select )?(?:the )?(?:request |number |option )?", "", command
+                r"^(?:read |review |open |select )?(?:the )?(?:request |number |option )?",
+                "",
+                command,
             )
             normalized = re.sub(
                 r"(?: one| request)?(?:[,.]? read (?:the )?details)?$", "", normalized
             )
             ordinal = int(normalized) if normalized.isdecimal() else ORDINALS.get(normalized)
             ids = decision.executable["ids"]
-            if ordinal and 1 <= ordinal <= len(ids):
+            selected_id = ids[ordinal - 1] if ordinal and 1 <= ordinal <= len(ids) else None
+            if selected_id is None:
+                requested = reference(normalized)
+                matches = [
+                    pk for pk in ids if requested and pk.replace("-", "").startswith(requested)
+                ]
+                if len(matches) == 1:
+                    selected_id = matches[0]
+            if selected_id is not None:
                 owner, _ = self.owner(actor)
-                selected = self.queryset(owner).get(pk=ids[ordinal - 1])
+                selected = self.queryset(owner).get(pk=selected_id)
                 return self.review(c, selected, **args)
             return DecisionReply(decision.spoken_summary, decision, "review")
         if command == "what changed":
