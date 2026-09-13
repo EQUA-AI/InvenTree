@@ -180,12 +180,25 @@ snapshot whose second batch fails leaves the checkpoint untouched.
   have reported it in production as `NETWORK`. Two tests now pin the behaviour.
 
 
-### 🔵 T9 — Scheduled poller · 4 h · *ready — T8 done*
+### 🔵 T9 — Scheduled poller  6 h  *ready — T8 done*
+**Scope corrected 2026-09-13: the estate is 10–12 pumphouses, not one.** `IngestionCheckpoint` is
+unique on `(source, station_uuid)` and `poll()` takes a checkpoint, so the connector already supports
+many stations per source — but the loop must iterate **checkpoints, not sources**, or eleven
+pumphouses will share one station's cursor.
 - [ ] `assets/tasks.py: poll_cosmos_pumphouse_sources()` at `ScheduledTask.MINUTES, 1`
 - [ ] `AIMMS_COSMOS_PUMPHOUSE_ENABLED` kill-switch, default **off** (`get_boolean_setting`)
-- [ ] Per-source time budget (≤ 20 s) and document cap so one slow account cannot starve the worker
-- [ ] `record_source_error()` on failure; `freshness_threshold_seconds` default **300 s** (D11)
-**Acceptance**: with the flag off, the task performs zero network calls.
+- [ ] Iterate every `(source, station_uuid)` checkpoint; one station's failure must not abort the
+      others in the run
+- [ ] **Per-station** time and document budget, plus a **fair starting point** — resume the sweep
+      after the last station handled rather than always starting at the first, so a slow or
+      erroring station near the front cannot starve the ones behind it every single minute
+- [ ] Hold the whole-run budget too, so twelve stations cannot collectively overrun the worker
+- [ ] `record_source_error()` on failure, recorded **per station**, not per source — "the source is
+      down" and "pumphouse 7 is down" are different operational facts
+- [ ] `freshness_threshold_seconds` default **300 s** (D11)
+**Acceptance**: with the flag off, the task performs zero network calls. With twelve checkpoints and
+one of them erroring, the other eleven still ingest, and the erroring one is not retried first
+forever.
 
 ### 🔵 T10 — `import_pumphouse_dump` command · 3 h · *ready — needs no Azure access*
 - [ ] JSON rows → `flatten_snapshot` → `ingest_readings`, with `--dry-run`
@@ -220,8 +233,10 @@ The two reference images are **two different screens** and both are needed:
 *image 1* is a per-pump installation/instrument diagram (the "Pump Unit" detail), *image 2* is a
 station HMI overview (pump row, one selected unit's telemetry, plant totals, alarm list).
 This ticket produces the *drawings* and the *contract*, not the live behaviour.
-- [ ] `src/frontend/src/assets/mimic/pumphouse-overview.svg` — station row of pump bays, forebay /
-      river, common discharge header, per-bay status lamp + valve lamp (image 2, left/centre)
+- [ ] `src/frontend/src/assets/mimic/pumphouse-overview.svg` — forebay / river, common discharge
+      header, and a **bay template repeated at render time from `pd`**, not a fixed row of 14.
+      The estate runs 10–12 stations with differing counts, and Lakshmi's numbering is sparse
+      (01–06, 09, 10, 13–17), so bays are **keyed by pump key, never indexed by position**
 - [ ] `src/frontend/src/assets/mimic/pump-unit.svg` — one pump unit: casing/spiral case, thrust
       bearing, guide/radial pad, coupling, motor, cooling circuit, HOPD/EOPD valves (image 1)
 - [ ] Every live element carries a `data-point` attribute holding the **JSON pointer already
@@ -231,8 +246,12 @@ This ticket produces the *drawings* and the *contract*, not the live behaviour.
 - [ ] `pumphouse.layout.json` — per element: pointer template, role (`status` | `value` | `level` |
       `valve`), and the label shown. Panel grouping follows image 2's cards (HYD / MTR / BRG / CLR /
       VLV / ELE) so the mapping to the drawing is reviewable without reading TSX.
+      **One layout serves the estate**; a station that lacks a tag renders that element as
+      not-bound. Per-station layout overrides only if a station genuinely differs — twelve
+      near-identical layout files would drift apart within a month
 - [ ] Validator: every `data-point` resolves to an **approved** `DictionaryPoint`; every approved
-      point is drawn or explicitly listed as not-drawn.
+      point is drawn or explicitly listed as not-drawn. Runs **per station**, so onboarding a
+      thirteenth pumphouse with an unexpected tag set fails loudly rather than rendering gaps
 - [ ] `biome check` clean; no embedded raster, no external font, no inline script in the SVGs.
 **Acceptance**: rename a pointer on either side and the validator fails naming the element.
 
@@ -281,8 +300,11 @@ transition; stop the poller and every bay degrades to stale rather than freezing
 carrying 35 `dex` tags. Image 1's unit diagram alone needs roughly 40 tags per pump — discharge
 pressure, 6 core RTDs, 11 winding temps, DE/NDE vibration, thrust and guide pad temps, 5 cooling
 inlet + 4 outlet temps, 4 cold-air + 2 hot-air temps, HOPD/EOPD valve positions, speed, frequency,
-9 electrical quantities — which is ~560 points across 14 bays, plus station commons.
-- [ ] Obtain one **untrimmed** production snapshot (the real payload is ~700 `dex` tags)
+9 electrical quantities — which is ~560 points across 14 bays, plus station commons. **Across a
+10–12 station estate that is several thousand points**, which is precisely why the catalogue and
+`ALIASES` must do the work and the review must stay a version-controlled file.
+- [ ] Obtain one **untrimmed** production snapshot **per station** (the real PH_3 payload is ~700
+      `dex` tags; a 17-pump station will carry more)
 - [ ] Re-run the dictionary import for PH_3 — `plan_dictionary` already walks `dex`, attributes each
       tag to its pump via the `PUMP<n>_` prefix, and matches against the catalogue, so **no code
       change is expected**; this ticket is mostly catalogue coverage and review
@@ -292,6 +314,25 @@ inlet + 4 outlet temps, 4 cold-air + 2 hot-air temps, HOPD/EOPD valve positions,
 - [ ] Review via `apply_dictionary_review` as before, not 700 UI modals
 **Acceptance**: every `data-point` the T15 layout wants resolves to an approved point, or is listed
 as not-drawn with a reason.
+
+### 🔵 T19 — Onboard the rest of the estate (10–12 pumphouses)  6 h  *blocked: T11*
+One station is registered. The estate is 10–12, with differing pump counts (Lakshmi has 17, sparsely
+numbered) and possibly differing tag sets. The machinery exists — this ticket uses it at scale and
+finds what only breaks on the second station.
+- [ ] Obtain the station list: `entity_uuid`, SCADA code (`dex.ID`), plant name, pump count
+- [ ] `register_pump_station --mapping` per station, one mapping file each; **the registered UUID is
+      authoritative and immutable**, so record it back into the mapping file at registration time —
+      the drift that bit PH_3 will otherwise bite eleven more times
+- [ ] Confirm every station lands in the same container and that `parent_entity_uuid` really is
+      shared across the estate (the mapping draft asserts this from one station's evidence; with
+      twelve stations it becomes checkable)
+- [ ] One `HealthSource` for the account with a checkpoint per station, **not** twelve sources — the
+      credential and endpoint are the same; the cursor is what differs
+- [ ] Verify station isolation: a query for station A must never return station B's documents, and
+      activating A must not create bindings on B
+- [ ] Confirm RU cost and poll duration for a full sweep before enabling the kill-switch in anger
+**Acceptance**: twelve stations registered, each with its own checkpoint; a full poll sweep stays
+inside the worker budget; cross-station leakage test passes.
 
 ### 🔵 T14 — Docs and PR  3 h  *blocked: all*
 - [ ] `docs/docs/…/cosmos-connector.md`: setup, RBAC role, kill-switch, failure codes
@@ -306,17 +347,19 @@ as not-drawn with a reason.
 | Bucket | Tickets | Hours |
 |---|---|---|
 | Done | T0, T1, T2, T3, T4, T5, T6, T7, T8 | 43 |
-| Ready now | T9, T10, T11 | 12 |
+| Ready now | T9, T10, T11 | 14 |
 | Blocked on earlier tickets | T12, T13, T14 | 12 |
 | Mimic dashboard (added 2026-09-13) | T18, T15, T16, T17 | 31 |
-| **Total** | **19** | **98** |
+| Estate rollout (added 2026-09-13) | T19 | 6 |
+| **Total** | **20** | **106** |
 
-> **T15–T18 were missing from the original plan.** The sprint was scoped around getting data *in*;
-> the two reference images describe the pumphouse schematic users actually look *at*, and no ticket
-> covered it. They are additive — nothing in T0–T14 changes — but the sprint is no longer a
-> two-week, one-dev sprint at 98 h. **Start with T18**: the 25 approved points cover only a fraction
-> of image 1, and drawing before the dictionary covers the tags means drawing against nothing.
-> Read D18 and D19 first — D19 questions whether image 2 is even this station.
+> **T15–T19 were missing from the original plan.** The sprint was scoped around getting data *in*
+> for **one** station; the estate is **10–12 pumphouses**, and the two reference images describe the
+> schematic users actually look *at*. Nothing in T0–T8 needs rewriting — the backend carries no
+> single-station or fixed-pump-count assumption (verified 2026-09-13) — but **T9 did**, and has been
+> corrected to iterate checkpoints rather than sources. Remaining work is **63 h**, not 24 h.
+> **Start with T18**: the 25 approved points cover only a fraction of image 1, and drawing before the
+> dictionary covers the tags means drawing against nothing.
 
 ### What is actually blocking
 - **D16 — RESOLVED 2026-09-12.** A data-plane role assignment now exists on the account. Verified by
@@ -355,15 +398,19 @@ as not-drawn with a reason.
     stays withheld until `var` is added to the custom registry — the blocker is ours, not the
     plant's. Image 2 confirms the quantity is genuinely reactive power, so recording it under `MVA`
     would have been a false statement.
-- **D19 — pump count disagrees with the data, and the station may not be the one we named.**
-  Image 2 is titled *"LAKSHMI PUMP HOUSE — SCADA HMI OVERVIEW (17 PUMPS TOTAL | Kaleshwaram KLIP)"*
-  and draws bays 01–06, 09, 10, 13–17 fed from the **Godavari river**. Our registry holds **14** pump
-  slots, derived from `pd` P1–P14 in the observed payload, and the station was renamed to
-  *"Effluent Pump Station 03"* — a treated-wastewater label. A Godavari lift-irrigation scheme is not
-  an effluent station. Before T15: confirm whether image 2 is PH_3 at all, or a mock-up of a
-  different pumphouse. If it *is* PH_3, both the name and the 14-slot registration are wrong.
-  `rename_station` fixes the label safely; the slot count needs a fresh look at `pd`.
-  **Do not draw 17 bays because a picture shows 17** — draw what `pd` carries, and reconcile first.
+- **D19 — RESOLVED 2026-09-13.** The estate is **10–12 pumphouses**. *Lakshmi Pump House*
+  (17 pumps, Kaleshwaram KLIP, Godavari) in image 2 is **one of them, and is not the station we
+  built against**; our registered station is `PH_3` / *Effluent Pump Station 03*. So the 14 slots
+  and the 17 in the picture were never in conflict — they are different pumphouses. The station
+  **name remains provisional and is not blocking**; `rename_station` changes a label safely by
+  source identity whenever the plant supplies real names.
+  What this *does* change is scope: **nothing may assume one station or a fixed pump count.**
+  Verified on 2026-09-13 — the backend is already clean (no `PH_3` or `14` outside a comment;
+  `IngestionCheckpoint` is unique on `(source, station_uuid)`; the Cosmos partition key is
+  `/station_uuid` + `/hour_bucket`; `plan_dictionary` derives pump slots from `pd`, capped at 100).
+  The gaps are **T9** (corrected above — iterate checkpoints, not sources) and **T19** below.
+  For the mimic: the bay row is rendered from `pd`, **never from a constant** — Lakshmi's 17 with
+  gaps at 07/08/11/12 shows the numbering is sparse, so bays are *keyed* by pump key, not indexed.
 
 Resolved since the last revision: **D14** (account `epconchatcosmos9d6b`, RG `EpconChat`, database
 `aimms`, container `pumphouse_readings` created and verified) and **D7** (a real snapshot confirmed

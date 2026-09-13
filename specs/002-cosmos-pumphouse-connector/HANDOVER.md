@@ -19,9 +19,9 @@ Feature 002 builds a **read-only** connector that reads pumphouse telemetry out 
 (NoSQL API) and turns it into `MachineSignalState` inside InvenTree. The Cassandra → Cosmos
 migration is *not* in this sprint (decision D2); documents are hand-seeded. Everything up to and
 including the connector itself is built and tested (T0–T8, 43 h). What is left is wiring it into the
-scheduler, giving operators a way to activate a station, and proving it end to end (T9–T14, 24 h),
-plus the pumphouse mimic dashboard that the original plan omitted entirely (T15–T18, 31 h — see the
-note under the ticket board). Remaining work is **55 h**.
+scheduler, giving operators a way to activate a station, and proving it end to end (T9–T14, 26 h),
+the pumphouse mimic dashboard that the original plan omitted entirely (T15–T18, 31 h), and rolling
+out to the rest of the **10–12 station estate** (T19, 6 h). Remaining work is **63 h**.
 Nothing on the critical path is blocked on an answer any more — only on someone doing the work, plus
 one Azure role assignment (D17) before go-live.
 
@@ -38,29 +38,35 @@ one Azure role assignment (D17) before go-live.
 | T6 | `flatten_snapshot()` normalisation | 7 h | ✅ done |
 | T7 | `IngestionCheckpoint` model | 3 h | ✅ done |
 | T8 | `CosmosPumphouseConnector` | 10 h | ✅ done, 53 tests |
-| **T9** | **Scheduled poller** | **4 h** | 🔵 **next — start here** |
+| **T9** | **Scheduled poller** | **6 h** | 🔵 **next — start here** |
 | **T10** | **`import_pumphouse_dump` command** | **3 h** | 🔵 ready, needs no Azure access |
 | **T11** | **Registry → live bridge (`activate/`)** | **5 h** | 🔵 ready — its data blocker cleared, §1.3 |
 | T12 | Live-source UI card | 5 h | ⏸ blocked on T11 |
 | T13 | End-to-end integration test on the emulator | 4 h | ⏸ blocked on T9 |
 | T14 | Docs + PR to `IOT` | 3 h | ⏸ blocked on all of the above |
-| T15 | Mimic layout contract + overview & unit SVGs | 8 h | ⏸ blocked on T18, **D19 first** |
+| T15 | Mimic layout contract + overview & unit SVGs | 8 h | ⏸ blocked on T18 |
 | T16 | Station mimic state API | 5 h | ⏸ blocked on T9, T11 |
 | T17 | `PumphouseMimic.tsx` live dashboard | 10 h | ⏸ blocked on T15, T16 |
 | T18 | Full `dex` dictionary import + review | 8 h | 🔴 needs an untrimmed production snapshot |
+| T19 | Onboard the rest of the estate (10–12 pumphouses) | 6 h | ⏸ blocked on T11 |
 
-**Critical path:** `T9 → T13 → T14` for the live read, `T11 → T12` for the admin UI, and
-`T11 → T18 → T15/T16 → T17` for the mimic dashboard.
+**Critical path:** `T9 → T13 → T14` for the live read, `T11 → T12` for the admin UI,
+`T11 → T18 → T15/T16 → T17` for the mimic dashboard, and `T11 → T19` for the estate.
 T10 and T11 are independent of T9 and can be done in parallel by a second pair of hands.
 
-> **T15–T18 were added on 2026-09-13 and are not in the original 67 h estimate.** The sprint was
-> scoped end-to-end on *ingestion*; the pumphouse schematic from the two reference images — the
-> screen an operator actually watches — had no ticket. Remaining work is **55 h, not 24 h**. This is
-> the single biggest correction in this handover: do not quote the old number.
+> **T15–T19 were added on 2026-09-13 and are not in the original 67 h estimate.** Two things were
+> missing: the pumphouse schematic from the reference images, and the fact that the estate is
+> **10–12 pumphouses**, not one. Remaining work is **63 h, not 24 h**. This is the single biggest
+> correction in this handover: do not quote the old number.
 
-> **Read D18 and D19 before touching the mimic.** The images were analysed against the real payload
-> on 2026-09-13. They closed three open questions and opened one serious one — including whether the
-> station we named "Effluent Pump Station 03" is a Godavari lift-irrigation pumphouse with 17 pumps.
+> **The estate is 10–12 pumphouses.** *Lakshmi Pump House* (17 pumps, Kaleshwaram KLIP) in image 2
+> is one of them and is **not** the station built against — that is `PH_3` / *Effluent Pump Station
+> 03*. The backend was checked on 2026-09-13 and carries no single-station or fixed-pump-count
+> assumption: no `PH_3`/`14` literals outside one comment, `IngestionCheckpoint` unique on
+> `(source, station_uuid)`, Cosmos partitioned on `/station_uuid` + `/hour_bucket`, pump slots
+> derived from `pd`. **T9's draft did assume one station per source and has been rewritten.**
+> Station names are provisional; `rename_station` relabels safely by source identity, so real plant
+> names can land at any time without touching identity, bindings or dictionary points.
 
 ### 1.3 Work landed after `tasks.md` was last revised
 
@@ -108,7 +114,7 @@ must stay unbound and must read `unknown`, never a fabricated `normal`.
 
 ## 2. Start here — the next three tickets in detail
 
-### T9 — Scheduled poller (4 h) · *the critical path*
+### T9 — Scheduled poller (6 h) · *the critical path*
 
 Create `src/backend/InvenTree/assets/tasks.py`. It does not exist yet; that file being absent is the
 cleanest signal that T9 is untouched.
@@ -116,10 +122,20 @@ cleanest signal that T9 is untouched.
 - [ ] `poll_cosmos_pumphouse_sources()` registered at `ScheduledTask.MINUTES, 1` (Django-Q2)
 - [ ] `AIMMS_COSMOS_PUMPHOUSE_ENABLED` kill-switch, **default off**, read via `get_boolean_setting`.
       Follow the existing `AIMMS_CLOSEOUT_*` settings as the pattern.
-- [ ] Per-source time budget ≤ 20 s and a document cap, so one slow account cannot starve the worker
-- [ ] `record_source_error()` on failure; `freshness_threshold_seconds` default **300 s** (D11)
+- [ ] **Iterate `(source, station_uuid)` checkpoints, not sources.** The estate is 10–12 pumphouses
+      behind one account; `IngestionCheckpoint` is unique on `(source, station_uuid)` and `poll()`
+      takes a checkpoint, so the connector already supports this — but a loop over `HealthSource`
+      would hand eleven pumphouses one shared cursor.
+- [ ] **Per-station** time and document budget, a whole-run budget, and a **rotating start point** so
+      a slow or erroring station near the front cannot starve those behind it every minute
+- [ ] One station's failure must not abort the rest of the sweep
+- [ ] `record_source_error()` on failure, **per station** — "the account is down" and "pumphouse 7 is
+      down" are different operational facts
+- [ ] `freshness_threshold_seconds` default **300 s** (D11)
 
 **Acceptance:** with the flag off, the task issues **zero** network calls. Assert that in a test.
+With twelve checkpoints and one erroring, the other eleven still ingest, and the failing one is not
+retried first forever.
 
 **Watch for:** T8 fixed a bug where the connector forwarded its `now` (the *source-clock* read
 horizon) into `ingest_readings(now=...)` (the *server clock* skew is measured against). `USE_TZ` is
@@ -207,7 +223,7 @@ not to the account. Then answer: which identity does AIMMS run as, per environme
 |---|---|---|---|
 | **D17** | App identity + Data Reader role, container-scoped | none — dev's Data Contributor is being used | Azure/platform owner |
 | **D18** | Mimic layout vs the reference images | **RESOLVED 2026-09-13** — see `tasks.md`; mimic is a `dex` view, `/sl` == forebay level, motor vibration is mm/s | — |
-| **D19** | Is image 2 ("Lakshmi Pump House, 17 pumps, Kaleshwaram KLIP, Godavari river") actually PH_3? If so, both the name *Effluent Pump Station 03* and the 14-slot registration are wrong | 14 slots from `pd` P1–P14; name applied from a US-style naming request | Whoever supplied the images + plant |
+| **D19** | Real plant names + station list for the estate (10–12 pumphouses): `entity_uuid`, SCADA code, name, pump count | **RESOLVED as a conflict** — Lakshmi is a *different* pumphouse, not PH_3. Names stay provisional; `rename_station` applies real ones safely. Blocks **T19** only | Plant / SCADA owner |
 | **D9** | Vibration units (µm vs mm/s) and alarm bounds | **Motor** DE/NDE settled as **mm/s** by image 2 ("Motor Vibration 2.1 mm/s"); **bearing pad** vibration still unconfirmed and withheld. Alarm bounds still need the plant's alarm/trip CSV — Annex A is a **proposal**, not plant authority | Plant engineering |
 | **D7b** | `dsc` code set meanings | unmapped | Plant / SCADA vendor |
 | **D11** | Freshness threshold | 300 s | Ops |

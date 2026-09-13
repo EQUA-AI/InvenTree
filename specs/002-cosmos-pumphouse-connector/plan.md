@@ -379,10 +379,25 @@ bays. Hence T18 comes first.
 
 | # | Ticket | Est | Depends |
 |---|---|---|---|
-| T18 | Full `dex` dictionary import + catalogue coverage + review (~700 points) | 8 | untrimmed snapshot |
-| T15 | Layout contract + `pumphouse-overview.svg` and `pump-unit.svg`; elements bound by `/dex/PUMP<n>_…` pointer templates; validator against approved points | 8 | T18 |
+| T18 | Full `dex` dictionary import + catalogue coverage + review (~700 points/station) | 8 | untrimmed snapshot |
+| T15 | Layout contract + `pumphouse-overview.svg` and `pump-unit.svg`; bays repeated from `pd` and keyed by pump key; elements bound by `/dex/PUMP<n>_…` pointer templates; validator per station | 8 | T18 |
 | T16 | `GET /api/machine-health/station/<pk>/mimic/` — one payload, `?unit=` for the selected bay, derived plant totals labelled as derived, `null` + reason for unknown | 5 | T9, T11 |
 | T17 | `PumphouseMimic.tsx` — overview + unit detail, running/idle/fault/stale/not-bound distinguishable without colour, alarms only from real thresholds | 10 | T15, T16 |
+| T19 | Onboard the remaining 10–12 pumphouses: mapping file each, registered UUID written back, one `HealthSource` with a checkpoint per station, cross-station isolation test, RU/sweep-duration check | 6 | T11 |
+
+### The estate is 10–12 pumphouses, not one
+
+*Lakshmi Pump House* (17 pumps, Kaleshwaram KLIP) is one of them; the station built against is
+`PH_3` / *Effluent Pump Station 03*. Differing pump counts and **sparse pump numbering** (Lakshmi
+runs 01–06, 09, 10, 13–17) are therefore normal, not anomalies.
+
+Checked 2026-09-13 — the backend already holds no single-station assumption: no `PH_3` or `14`
+literals outside one comment, `IngestionCheckpoint` unique on `(source, station_uuid)`, Cosmos
+partitioned hierarchically on `/station_uuid` + `/hour_bucket`, and `plan_dictionary` deriving pump
+slots from `pd` (capped at 100). **The poller draft in §4 above did assume one station per source
+and is superseded by the corrected T9.** In the UI, bays are *keyed* by pump key and never indexed
+by position. Station names are provisional throughout; `rename_station` applies real plant names by
+source identity without disturbing UUIDs, bindings or dictionary points.
 
 Constraints carried from the ingestion side, not negotiable in the UI:
 
@@ -398,7 +413,7 @@ Constraints carried from the ingestion side, not negotiable in the UI:
 - **Alarms come from thresholds or not at all.** Image 2's alarm panel is populated; ours stays
   "no threshold configured" until the alarm/trip CSV lands (D9).
 
-**Revised total ≈ 96 h**, which no longer fits two weeks for one developer. Explicitly **not** in
+**Revised total ≈ 106 h**, which no longer fits two weeks for one developer. Explicitly **not** in
 this sprint: Cassandra→Cosmos migration/CDC job, `pumphouse_latest`
 maintenance, change-feed polling, retention/TTL policy values.
 
