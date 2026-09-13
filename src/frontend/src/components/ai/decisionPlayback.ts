@@ -1,4 +1,7 @@
-import type { VoicePendingDecision } from '../../../lib/types/Voice';
+import type {
+  VoicePendingDecision,
+  VoiceSpokenPayload
+} from '../../../lib/types/Voice';
 
 interface PlaybackItem {
   utterance: string;
@@ -33,6 +36,7 @@ export class DecisionPlayback {
   private items = new Map<string, PlaybackItem>();
   private epoch = 0;
   private binding: VoicePendingDecision | null = null;
+  private outputStopped = false;
 
   constructor(private now: () => number = () => performance.now()) {}
 
@@ -40,6 +44,7 @@ export class DecisionPlayback {
     for (const item of this.items.values()) item.canceled = true;
     this.epoch += 1;
     this.binding = null;
+    this.outputStopped = false;
   }
 
   beginTurn(): number {
@@ -52,6 +57,10 @@ export class DecisionPlayback {
   }
 
   event(event: Record<string, unknown>) {
+    // Azure can omit response_id on a buffer stop. This marker is UI-only:
+    // never attach it to a decision or use it to certify heard delivery.
+    if (event.type === 'output_audio_buffer.stopped') this.outputStopped = true;
+    if (event.type === 'response.created') this.outputStopped = false;
     const response = event.response as
       | { id?: string; status?: string; metadata?: Record<string, string> }
       | undefined;
@@ -114,6 +123,23 @@ export class DecisionPlayback {
       response.status !== 'completed'
     )
       item.canceled = true;
+  }
+
+  ordinaryOutputStopped(spoken: VoiceSpokenPayload): boolean {
+    if (!this.outputStopped) return false;
+    const matches = [...this.items.values()].filter(
+      (item) =>
+        !item.canceled &&
+        item.epoch === this.epoch &&
+        item.started &&
+        item.transcript === spoken.spoken_summary &&
+        (!item.hasBindingMetadata ||
+          (item.utterance === spoken.utterance_id &&
+            item.hash === spoken.spoken_summary_hash))
+    );
+    return (
+      matches.length === 1 && matches[0].done && matches[0].responseComplete
+    );
   }
 
   failed(decision: VoicePendingDecision, event: string) {

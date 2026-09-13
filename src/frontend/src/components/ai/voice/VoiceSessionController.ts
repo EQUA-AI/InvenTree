@@ -370,6 +370,16 @@ export class VoiceSessionController {
       this.update({ playback: spoken ? 'text_only' : 'idle' });
       return;
     }
+    // Ordinary speech can finish on the provider channel before the HTTP
+    // result arrives. Preserve that observed UI stop instead of reopening
+    // pending playback. This never marks a decision as heard or confirmed.
+    if (
+      this.decisions.getState().decision?.state !== 'presented' &&
+      this.playback.ordinaryOutputStopped(spoken)
+    ) {
+      this.update({ playback: 'idle' });
+      return;
+    }
     this.update({ playback: 'pending' });
     void this.playAudio();
     this.ttsTimer = window.setTimeout(

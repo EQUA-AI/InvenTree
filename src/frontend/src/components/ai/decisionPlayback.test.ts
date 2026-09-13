@@ -79,3 +79,81 @@ it('a cancelled response cannot supply delivery evidence', () => {
   });
   expect(playback.next(decision)).toBeNull();
 });
+
+it('an unbound buffer stop updates ordinary UI without shortening decision delivery', () => {
+  let now = 0;
+  const playback = new DecisionPlayback(() => now);
+  start(playback, false);
+  playback.event({
+    type: 'response.audio_transcript.done',
+    response_id: 'r1',
+    transcript: decision.spoken_summary
+  });
+  playback.event({ type: 'response.audio.done', response_id: 'r1' });
+  playback.event({ type: 'output_audio_buffer.stopped' });
+  playback.event({
+    type: 'response.done',
+    response: { id: 'r1', status: 'completed' }
+  });
+  const spoken = {
+    utterance_id: 'u1',
+    spoken_summary_hash: 'h1',
+    spoken_summary: decision.spoken_summary,
+    playback_state: 'requested' as const
+  };
+  expect(playback.ordinaryOutputStopped(spoken)).toBe(true);
+  expect(playback.next(decision)).toBe('playback-started');
+  expect(playback.next({ ...decision, delivery_state: 'playing' })).toBeNull();
+  now = estimatedDecisionPlaybackMs(decision.spoken_summary);
+  expect(playback.next({ ...decision, delivery_state: 'playing' })).toBe(
+    'playback-completed'
+  );
+  playback.beginTurn();
+  expect(playback.ordinaryOutputStopped(spoken)).toBe(false);
+});
+
+it.each([
+  'wrong-text',
+  'wrong-metadata',
+  'canceled',
+  'no-stop',
+  'no-completion',
+  'ambiguous'
+])('ordinary UI does not claim stopped output for %s evidence', (problem) => {
+  const playback = new DecisionPlayback();
+  start(playback, problem === 'wrong-metadata');
+  playback.event({
+    type: 'response.audio_transcript.done',
+    response_id: 'r1',
+    transcript:
+      problem === 'wrong-text' ? 'Different output' : decision.spoken_summary
+  });
+  playback.event({ type: 'response.audio.done', response_id: 'r1' });
+  if (problem === 'ambiguous') {
+    playback.event({ type: 'response.created', response: { id: 'r2' } });
+    playback.event({ type: 'response.audio.delta', response_id: 'r2' });
+    playback.event({
+      type: 'response.audio_transcript.done',
+      response_id: 'r2',
+      transcript: decision.spoken_summary
+    });
+  }
+  if (problem !== 'no-stop')
+    playback.event({ type: 'output_audio_buffer.stopped' });
+  if (problem !== 'no-completion')
+    playback.event({
+      type: 'response.done',
+      response: {
+        id: 'r1',
+        status: problem === 'canceled' ? 'cancelled' : 'completed'
+      }
+    });
+  expect(
+    playback.ordinaryOutputStopped({
+      utterance_id: 'u1',
+      spoken_summary_hash: problem === 'wrong-metadata' ? 'other-hash' : 'h1',
+      spoken_summary: decision.spoken_summary,
+      playback_state: 'requested'
+    })
+  ).toBe(false);
+});

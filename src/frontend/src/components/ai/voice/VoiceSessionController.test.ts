@@ -295,6 +295,68 @@ it('speech timeout stays text-only and retry uses presentation, never turns', as
   expect(requests.some((r) => r.path.endsWith('/presentation'))).toBe(true);
   expect(requests.some((r) => r.path.endsWith('/turns'))).toBe(false);
 });
+it.each(['before', 'after'] as const)(
+  'ordinary output completion %s the HTTP result leaves the UI listening',
+  async (ordering) => {
+    await controller.start();
+    let finish!: (response: unknown) => void;
+    fetcher.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    await controller.submitTranscript({
+      text: 'record a fault note',
+      itemId: 'fault-1',
+      confidence: 1,
+      language: 'en-US'
+    });
+    const completeOutput = () => {
+      for (const event of [
+        { type: 'response.created', response: { id: 'ordinary-1' } },
+        { type: 'output_audio_buffer.started', response_id: 'ordinary-1' },
+        {
+          type: 'response.audio_transcript.done',
+          response_id: 'ordinary-1',
+          transcript: 'Fault notes cannot be filed by voice yet.'
+        },
+        { type: 'response.audio.done', response_id: 'ordinary-1' },
+        { type: 'output_audio_buffer.stopped' },
+        {
+          type: 'response.done',
+          response: { id: 'ordinary-1', status: 'completed' }
+        }
+      ])
+        controller.handleEvent(JSON.stringify(event));
+    };
+    if (ordering === 'before') completeOutput();
+    finish({
+      ok: true,
+      json: async () => ({
+        session_id: 'session-1',
+        thread_id: 'thread-1',
+        turn_id: 'turn-1',
+        response_state: 'complete',
+        pending_decision: null,
+        spoken: {
+          utterance_id: 'fault-utterance',
+          spoken_summary: 'Fault notes cannot be filed by voice yet.',
+          spoken_summary_hash: 'fault-hash',
+          playback_state: 'requested'
+        }
+      })
+    });
+    await flush();
+    if (ordering === 'after') completeOutput();
+    expect(state.getState().playback).toBe('idle');
+    expect(state.getState().state).toBe('listening');
+    expect(decisions.getState().decide).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(state.getState().notice).not.toBe('tts_timeout');
+    expect(requests.some((r) => r.path.endsWith('/cancel'))).toBe(false);
+  }
+);
 it('reconnect creates a same-thread session without replaying the submitted item', async () => {
   await controller.start();
   await controller.submitTranscript({
