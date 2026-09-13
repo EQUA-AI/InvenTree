@@ -106,6 +106,8 @@ msgstr "Cancel"
 #: src/forms/StockForms.tsx:1682
 #: src/forms/StockForms.tsx:1800
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:976
+#: src/pages/assets/EquipmentRegistry.tsx:493
+#: src/pages/assets/EquipmentRegistry.tsx:617
 msgid "Actions"
 msgstr "Actions"
 
@@ -184,7 +186,7 @@ msgstr "No"
 #: src/pages/part/bom/BomCompare.tsx:203
 #: src/pages/repair/RepairPacketDetail.tsx:235
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:364
-#: src/tables/assets/MachinePartTable.tsx:23
+#: src/tables/assets/MachinePartTable.tsx:44
 #: src/tables/build/BuildOrderParametricTable.tsx:29
 #: src/tables/part/PartTestResultTable.tsx:251
 #: src/tables/part/RelatedPartTable.tsx:53
@@ -210,6 +212,7 @@ msgid "Parts"
 msgstr "Parts"
 
 #: lib/enums/ModelInformation.tsx:71
+#: src/pages/assets/EquipmentRegistry.tsx:614
 msgid "Parameter"
 msgstr "Parameter"
 
@@ -568,6 +571,9 @@ msgstr "Contacts"
 
 #: lib/enums/ModelInformation.tsx:285
 #: src/components/tables/ColumnRenderers.tsx:687
+#: src/pages/assets/EquipmentRegistry.tsx:489
+#: src/pages/assets/EquipmentRegistry.tsx:575
+#: src/pages/assets/EquipmentRegistry.tsx:727
 msgid "Owner"
 msgstr "Owner"
 
@@ -601,6 +607,9 @@ msgstr "Users"
 
 #: lib/enums/ModelInformation.tsx:299
 #: src/pages/core/GroupDetail.tsx:76
+#: src/tables/assets/MachinePartTable.tsx:30
+#: src/tables/assets/MachinePartTable.tsx:54
+#: src/tables/part/PartTableFilters.tsx:167
 msgid "Group"
 msgstr "Group"
 
@@ -692,9 +701,10 @@ msgstr "Machine"
 #: src/defaults/links.tsx:59
 #: src/pages/Index/Settings/AdminCenter/Index.tsx:261
 #: src/pages/Index/Settings/AdminCenter/MachineManagementPanel.tsx:52
+#: src/pages/assets/EquipmentRegistry.tsx:366
 #: src/pages/assets/MachineDetail.tsx:171
-#: src/pages/assets/MachineIndex.tsx:20
-#: src/pages/assets/MachineIndex.tsx:29
+#: src/pages/assets/MachineIndex.tsx:21
+#: src/pages/assets/MachineIndex.tsx:30
 #: src/tables/machine/MachineTypeTable.tsx:326
 msgid "Machines"
 msgstr "Machines"
@@ -1384,7 +1394,7 @@ msgid "Latest parts"
 msgstr "Latest parts"
 
 #: src/components/dashboard/DashboardWidgetLibrary.tsx:66
-#: src/tables/part/PartTableFilters.tsx:79
+#: src/tables/part/PartTableFilters.tsx:84
 msgid "Low Stock"
 msgstr "Low Stock"
 
@@ -1393,7 +1403,7 @@ msgid "Show the number of parts which are low on stock"
 msgstr "Show the number of parts which are low on stock"
 
 #: src/components/dashboard/DashboardWidgetLibrary.tsx:77
-#: src/tables/part/PartTableFilters.tsx:85
+#: src/tables/part/PartTableFilters.tsx:90
 msgid "High Stock"
 msgstr "High Stock"
 
@@ -2811,7 +2821,7 @@ msgstr "Import Parts"
 
 #: src/components/items/PartCreationMenu.tsx:62
 #: src/pages/part/PartDetail.tsx:661
-#: src/tables/part/PartTable.tsx:199
+#: src/tables/part/PartTable.tsx:201
 msgid "Add Part"
 msgstr "Add Part"
 
@@ -3801,7 +3811,7 @@ msgstr "Attachments"
 #: src/components/panels/NotesPanel.tsx:27
 #: src/forms/StockForms.tsx:1545
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:368
-#: src/tables/assets/MachinePartTable.tsx:33
+#: src/tables/assets/MachinePartTable.tsx:59
 #: src/tables/part/PartTestResultTable.tsx:218
 #: src/tables/stock/StockTrackingTable.tsx:279
 msgid "Notes"
@@ -3898,7 +3908,7 @@ msgstr "Date"
 #: src/tables/company/ParametricCompanyTable.tsx:22
 #: src/tables/machine/MachineListTable.tsx:385
 #: src/tables/machine/MachineListTable.tsx:800
-#: src/tables/part/PartTableFilters.tsx:13
+#: src/tables/part/PartTableFilters.tsx:18
 #: src/tables/part/PartVariantTable.tsx:15
 #: src/tables/plugin/PluginListTable.tsx:101
 #: src/tables/plugin/PluginListTable.tsx:427
@@ -4061,7 +4071,7 @@ msgstr "Inactive"
 
 #: src/components/render/Part.tsx:31
 #: src/pages/part/PartDetail.tsx:626
-#: src/tables/part/PartTableFilters.tsx:103
+#: src/tables/part/PartTableFilters.tsx:108
 #: src/tables/part/PartVariantTable.tsx:25
 msgid "Virtual"
 msgstr "Virtual"
@@ -4081,8 +4091,8 @@ msgstr "No stock"
 #: src/pages/part/PartDetailsPanel.tsx:174
 #: src/tables/bom/BomTable.tsx:478
 #: src/tables/build/BuildLineTable.tsx:241
-#: src/tables/part/PartTable.tsx:83
-#: src/tables/part/PartTableFilters.tsx:149
+#: src/tables/part/PartTable.tsx:85
+#: src/tables/part/PartTableFilters.tsx:154
 msgid "On Order"
 msgstr "On Order"
 
@@ -4172,7 +4182,7 @@ msgstr "Serial Number"
 #: src/pages/part/pricing/PriceBreakPanel.tsx:173
 #: src/pages/stock/StockDetail.tsx:663
 #: src/pages/stock/StockDetailsPanel.tsx:197
-#: src/tables/assets/MachinePartTable.tsx:28
+#: src/tables/assets/MachinePartTable.tsx:49
 #: src/tables/build/BuildLineTable.tsx:99
 #: src/tables/part/PartPurchaseOrdersTable.tsx:103
 #: src/tables/part/PartTestResultTable.tsx:282
@@ -4922,6 +4932,8 @@ msgstr "Include results for part variants"
 #: src/forms/StockForms.tsx:649
 #: src/forms/StockForms.tsx:1387
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:87
+#: src/pages/assets/EquipmentRegistry.tsx:492
+#: src/pages/assets/EquipmentRegistry.tsx:616
 #: src/pages/build/BuildOrderDetailsPanel.tsx:67
 #: src/pages/core/UserDetail.tsx:146
 #: src/pages/maintenance/MaintenanceBoard.tsx:1733
@@ -5754,7 +5766,7 @@ msgstr "Next"
 
 #: src/components/wizards/ImportPartWizard.tsx:540
 #: src/pages/part/PartDetail.tsx:648
-#: src/tables/part/PartTable.tsx:161
+#: src/tables/part/PartTable.tsx:163
 msgid "Edit Part"
 msgstr "Edit Part"
 
@@ -5926,7 +5938,7 @@ msgstr "Please correct the errors in the selected parts"
 
 #: src/components/wizards/OrderPartsWizard.tsx:629
 #: src/tables/build/BuildLineTable.tsx:908
-#: src/tables/part/PartTable.tsx:267
+#: src/tables/part/PartTable.tsx:269
 #: src/tables/sales/SalesOrderLineItemTable.tsx:426
 #: src/tables/stock/TransferOrderLineItemTable.tsx:333
 msgid "Order Parts"
@@ -6687,7 +6699,7 @@ msgstr "Select project code for this item"
 #: src/pages/part/PartCategoryDetailsPanel.tsx:58
 #: src/pages/part/PartDetailsPanel.tsx:269
 #: src/tables/part/PartCategoryTable.tsx:95
-#: src/tables/part/PartTableFilters.tsx:155
+#: src/tables/part/PartTableFilters.tsx:160
 msgid "Subscribed"
 msgstr "Subscribed"
 
@@ -6993,10 +7005,12 @@ msgid "The following items are installed within this stock item, but do not matc
 msgstr "The following items are installed within this stock item, but do not match a listed component. They will be uninstalled during disassembly."
 
 #: src/forms/StockForms.tsx:906
+#: src/pages/assets/EquipmentRegistry.tsx:490
+#: src/pages/assets/EquipmentRegistry.tsx:589
 #: src/pages/part/pricing/BomPricingPanel.tsx:81
 #: src/pages/part/pricing/BomPricingPanel.tsx:105
 #: src/tables/bom/UsedInTable.tsx:66
-#: src/tables/part/PartTableFilters.tsx:43
+#: src/tables/part/PartTableFilters.tsx:48
 msgid "Component"
 msgstr "Component"
 
@@ -9105,6 +9119,325 @@ msgstr "Mark as unread"
 #~ msgid "Delete notifications"
 #~ msgstr "Delete notifications"
 
+#: src/pages/assets/EquipmentRegistry.tsx:198
+#: src/pages/assets/EquipmentRegistry.tsx:199
+#: src/pages/assets/EquipmentRegistry.tsx:200
+#: src/pages/assets/EquipmentRegistry.tsx:201
+#: src/pages/assets/EquipmentRegistry.tsx:202
+#: src/pages/assets/EquipmentRegistry.tsx:208
+#: src/pages/assets/EquipmentRegistry.tsx:209
+#: src/pages/assets/EquipmentRegistry.tsx:210
+#: src/pages/part/PartDetail.tsx:596
+#: src/pages/repair/RepairPacketDetail.tsx:236
+#: src/pages/tasks/workorders/CloseoutPanel.tsx:810
+#: src/pages/tasks/workorders/WorkOrderDetail.tsx:365
+#: src/tables/part/PartTestTemplateTable.tsx:116
+#: src/tables/stock/StockItemTestResultTable.tsx:406
+msgid "Required"
+msgstr "Required"
+
+#: src/pages/assets/EquipmentRegistry.tsx:277
+msgid "Saved successfully"
+msgstr "Saved successfully"
+
+#: src/pages/assets/EquipmentRegistry.tsx:280
+msgid "Registry update failed"
+msgstr "Registry update failed"
+
+#: src/pages/assets/EquipmentRegistry.tsx:306
+msgid "JSON files must be no larger than 8 MiB"
+msgstr "JSON files must be no larger than 8 MiB"
+
+#: src/pages/assets/EquipmentRegistry.tsx:317
+msgid "Preview failed"
+msgstr "Preview failed"
+
+#. placeholder {0}: result.created
+#. placeholder {1}: result.preserved
+#: src/pages/assets/EquipmentRegistry.tsx:331
+msgid "Created {0} points; preserved {1} existing points"
+msgstr "Created {0} points; preserved {1} existing points"
+
+#: src/pages/assets/EquipmentRegistry.tsx:360
+#: src/pages/assets/MachineIndex.tsx:32
+msgid "Equipment Registry"
+msgstr "Equipment Registry"
+
+#: src/pages/assets/EquipmentRegistry.tsx:370
+#: src/pages/assets/EquipmentRegistry.tsx:822
+msgid "Register station"
+msgstr "Register station"
+
+#: src/pages/assets/EquipmentRegistry.tsx:373
+msgid "Offline registry only. Inferred components are drafts, not verified installations. Mapping approval does not enable live ingestion. Uploaded readings are not stored as live values."
+msgstr "Offline registry only. Inferred components are drafts, not verified installations. Mapping approval does not enable live ingestion. Uploaded readings are not stored as live values."
+
+#: src/pages/assets/EquipmentRegistry.tsx:376
+msgid "Registry could not be loaded. Check your work-order permissions and configured Client scope, then retry."
+msgstr "Registry could not be loaded. Check your work-order permissions and configured Client scope, then retry."
+
+#: src/pages/assets/EquipmentRegistry.tsx:380
+msgid "Retry"
+msgstr "Retry"
+
+#: src/pages/assets/EquipmentRegistry.tsx:386
+msgid "Pump station"
+msgstr "Pump station"
+
+#: src/pages/assets/EquipmentRegistry.tsx:395
+#: src/pages/assets/EquipmentRegistry.tsx:931
+msgid "Equipment owner"
+msgstr "Equipment owner"
+
+#: src/pages/assets/EquipmentRegistry.tsx:398
+msgid "Station and all pumps"
+msgstr "Station and all pumps"
+
+#: src/pages/assets/EquipmentRegistry.tsx:408
+msgid "Station UUID"
+msgstr "Station UUID"
+
+#: src/pages/assets/EquipmentRegistry.tsx:411
+#: src/pages/assets/EquipmentRegistry.tsx:814
+msgid "Source entity UUID"
+msgstr "Source entity UUID"
+
+#: src/pages/assets/EquipmentRegistry.tsx:416
+#: src/pages/assets/EquipmentRegistry.tsx:446
+msgid "Equipment"
+msgstr "Equipment"
+
+#: src/pages/assets/EquipmentRegistry.tsx:417
+msgid "Components"
+msgstr "Components"
+
+#: src/pages/assets/EquipmentRegistry.tsx:418
+msgid "Dictionary and review"
+msgstr "Dictionary and review"
+
+#: src/pages/assets/EquipmentRegistry.tsx:419
+msgid "Preview and import"
+msgstr "Preview and import"
+
+#: src/pages/assets/EquipmentRegistry.tsx:425
+msgid "New pump source key"
+msgstr "New pump source key"
+
+#: src/pages/assets/EquipmentRegistry.tsx:440
+msgid "Register pump slot"
+msgstr "Register pump slot"
+
+#: src/pages/assets/EquipmentRegistry.tsx:447
+msgid "Source key"
+msgstr "Source key"
+
+#: src/pages/assets/EquipmentRegistry.tsx:448
+msgid "UUID"
+msgstr "UUID"
+
+#: src/pages/assets/EquipmentRegistry.tsx:477
+msgid "Identifiable component occurrences"
+msgstr "Identifiable component occurrences"
+
+#: src/pages/assets/EquipmentRegistry.tsx:481
+#: src/pages/assets/EquipmentRegistry.tsx:829
+msgid "Add component occurrence"
+msgstr "Add component occurrence"
+
+#: src/pages/assets/EquipmentRegistry.tsx:483
+msgid "Choose an equipment owner above before adding a component. Leaving it empty assigns the component to the station."
+msgstr "Choose an equipment owner above before adding a component. Leaving it empty assigns the component to the station."
+
+#: src/pages/assets/EquipmentRegistry.tsx:491
+#: src/pages/assets/EquipmentRegistry.tsx:845
+msgid "Catalogue part"
+msgstr "Catalogue part"
+
+#: src/pages/assets/EquipmentRegistry.tsx:510
+msgid "Logical group"
+msgstr "Logical group"
+
+#: src/pages/assets/EquipmentRegistry.tsx:530
+#: src/pages/tasks/workorders/CloseoutPanel.tsx:398
+msgid "Review"
+msgstr "Review"
+
+#: src/pages/assets/EquipmentRegistry.tsx:538
+msgid "Select a pump to narrow the component list. Showing the first 500 occurrences."
+msgstr "Select a pump to narrow the component list. Showing the first 500 occurrences."
+
+#: src/pages/assets/EquipmentRegistry.tsx:546
+msgid "Search tags"
+msgstr "Search tags"
+
+#: src/pages/assets/EquipmentRegistry.tsx:554
+#: src/pages/assets/EquipmentRegistry.tsx:988
+msgid "Mapping status"
+msgstr "Mapping status"
+
+#: src/pages/assets/EquipmentRegistry.tsx:564
+msgid "Match method"
+msgstr "Match method"
+
+#: src/pages/assets/EquipmentRegistry.tsx:605
+msgid "Dictionary points"
+msgstr "Dictionary points"
+
+#: src/pages/assets/EquipmentRegistry.tsx:612
+msgid "Source tag / path"
+msgstr "Source tag / path"
+
+#: src/pages/assets/EquipmentRegistry.tsx:613
+msgid "Owner / component"
+msgstr "Owner / component"
+
+#: src/pages/assets/EquipmentRegistry.tsx:615
+#: src/pages/part/PartDetailsPanel.tsx:134
+msgid "Units"
+msgstr "Units"
+
+#: src/pages/assets/EquipmentRegistry.tsx:640
+#: src/pages/assets/EquipmentRegistry.tsx:744
+msgid "Station"
+msgstr "Station"
+
+#: src/pages/assets/EquipmentRegistry.tsx:641
+msgid "Pump"
+msgstr "Pump"
+
+#: src/pages/assets/EquipmentRegistry.tsx:647
+msgid "Unresolved"
+msgstr "Unresolved"
+
+#: src/pages/assets/EquipmentRegistry.tsx:668
+msgid "Review mapping"
+msgstr "Review mapping"
+
+#: src/pages/assets/EquipmentRegistry.tsx:684
+msgid "Select the authoritative station before uploading. Accepts a pd/dex payload, a Cassandra row with data1, or up to 100 rows. Maximum 8 MiB and 25,000 distinct points. Preview performs no equipment/dictionary writes. Existing mappings are preserved during import."
+msgstr "Select the authoritative station before uploading. Accepts a pd/dex payload, a Cassandra row with data1, or up to 100 rows. Maximum 8 MiB and 25,000 distinct points. Preview performs no equipment/dictionary writes. Existing mappings are preserved during import."
+
+#: src/pages/assets/EquipmentRegistry.tsx:686
+msgid "Pumphouse JSON file"
+msgstr "Pumphouse JSON file"
+
+#: src/pages/assets/EquipmentRegistry.tsx:701
+msgid "Preview dictionary"
+msgstr "Preview dictionary"
+
+#: src/pages/assets/EquipmentRegistry.tsx:707
+msgid "Import draft mappings"
+msgstr "Import draft mappings"
+
+#: src/pages/assets/EquipmentRegistry.tsx:719
+msgid "Pump slots"
+msgstr "Pump slots"
+
+#: src/pages/assets/EquipmentRegistry.tsx:726
+msgid "Raw tag"
+msgstr "Raw tag"
+
+#: src/pages/assets/EquipmentRegistry.tsx:728
+msgid "Proposed part / parameter"
+msgstr "Proposed part / parameter"
+
+#: src/pages/assets/EquipmentRegistry.tsx:729
+#: src/pages/repair/components/PacketCloseoutModal.tsx:156
+#: src/pages/tasks/workorders/CloseoutPanel.tsx:953
+#: src/pages/tasks/workorders/WorkOrderDetail.tsx:525
+#: src/tables/settings/BarcodeScanHistoryTable.tsx:89
+#: src/tables/settings/BarcodeScanHistoryTable.tsx:208
+#: src/tables/stock/StockItemTestResultTable.tsx:192
+msgid "Result"
+msgstr "Result"
+
+#: src/pages/assets/EquipmentRegistry.tsx:751
+msgid "Preserved"
+msgstr "Preserved"
+
+#: src/pages/assets/EquipmentRegistry.tsx:778
+msgid "Select or register a station to manage pump slots and review its dictionary."
+msgstr "Select or register a station to manage pump slots and review its dictionary."
+
+#: src/pages/assets/EquipmentRegistry.tsx:783
+msgid "Register pump station"
+msgstr "Register pump station"
+
+#: src/pages/assets/EquipmentRegistry.tsx:800
+#: src/pages/assets/EquipmentRegistry.tsx:859
+#: src/pages/assets/EquipmentRegistry.tsx:967
+msgid "Display name"
+msgstr "Display name"
+
+#: src/pages/assets/EquipmentRegistry.tsx:804
+msgid "Authorized Client"
+msgstr "Authorized Client"
+
+#: src/pages/assets/EquipmentRegistry.tsx:809
+msgid "Source namespace"
+msgstr "Source namespace"
+
+#: src/pages/assets/EquipmentRegistry.tsx:818
+msgid "Source code"
+msgstr "Source code"
+
+#: src/pages/assets/EquipmentRegistry.tsx:854
+msgid "Occurrence code"
+msgstr "Occurrence code"
+
+#: src/pages/assets/EquipmentRegistry.tsx:865
+msgid "Create draft occurrence"
+msgstr "Create draft occurrence"
+
+#: src/pages/assets/EquipmentRegistry.tsx:872
+msgid "Review component assignment"
+msgstr "Review component assignment"
+
+#: src/pages/assets/EquipmentRegistry.tsx:880
+#: src/pages/assets/EquipmentRegistry.tsx:994
+msgid "Review note"
+msgstr "Review note"
+
+#: src/pages/assets/EquipmentRegistry.tsx:899
+msgid "Verify assignment"
+msgstr "Verify assignment"
+
+#: src/pages/assets/EquipmentRegistry.tsx:899
+msgid "Keep draft"
+msgstr "Keep draft"
+
+#: src/pages/assets/EquipmentRegistry.tsx:908
+msgid "Review dictionary mapping"
+msgstr "Review dictionary mapping"
+
+#: src/pages/assets/EquipmentRegistry.tsx:943
+msgid "Component occurrence"
+msgstr "Component occurrence"
+
+#: src/pages/assets/EquipmentRegistry.tsx:958
+msgid "Parameter definition"
+msgstr "Parameter definition"
+
+#: src/pages/assets/EquipmentRegistry.tsx:972
+msgid "Data type"
+msgstr "Data type"
+
+#: src/pages/assets/EquipmentRegistry.tsx:977
+msgid "Source unit"
+msgstr "Source unit"
+
+#: src/pages/assets/EquipmentRegistry.tsx:983
+msgid "Unit review"
+msgstr "Unit review"
+
+#: src/pages/assets/EquipmentRegistry.tsx:997
+msgid "Approval requires a mapped component and parameter, confirmed units/type and a review note. Confirm engineering information; do not infer it from sample values."
+msgstr "Approval requires a mapped component and parameter, confirmed units/type and a review note. Confirm engineering information; do not infer it from sample values."
+
+#: src/pages/assets/EquipmentRegistry.tsx:998
+msgid "Save review"
+msgstr "Save review"
+
 #: src/pages/assets/MachineDetail.tsx:79
 #: src/tables/assets/AssetMachineTable.tsx:37
 #: src/tables/general/BarcodeScanTable.tsx:52
@@ -11050,15 +11383,6 @@ msgstr "Part parameters cannot be edited, as the part is locked"
 #~ msgid "Consumable Part"
 #~ msgstr "Consumable Part"
 
-#: src/pages/part/PartDetail.tsx:596
-#: src/pages/repair/RepairPacketDetail.tsx:236
-#: src/pages/tasks/workorders/CloseoutPanel.tsx:810
-#: src/pages/tasks/workorders/WorkOrderDetail.tsx:365
-#: src/tables/part/PartTestTemplateTable.tsx:116
-#: src/tables/stock/StockItemTestResultTable.tsx:406
-msgid "Required"
-msgstr "Required"
-
 #: src/pages/part/PartDetail.tsx:613
 #~ msgid "Scheduling"
 #~ msgstr "Scheduling"
@@ -11071,7 +11395,7 @@ msgstr "Deficit"
 #: src/pages/part/bom/BomCompare.tsx:38
 #: src/tables/bom/BomTable.tsx:503
 #: src/tables/build/BuildLineTable.tsx:216
-#: src/tables/part/PartTableFilters.tsx:109
+#: src/tables/part/PartTableFilters.tsx:114
 msgid "Consumable"
 msgstr "Consumable"
 
@@ -11103,7 +11427,7 @@ msgid "Search by serial number"
 msgstr "Search by serial number"
 
 #: src/pages/part/PartDetail.tsx:767
-#: src/tables/part/PartTable.tsx:251
+#: src/tables/part/PartTable.tsx:253
 msgid "Part Actions"
 msgstr "Part Actions"
 
@@ -11135,10 +11459,6 @@ msgstr "Revision of"
 msgid "Category Default Location"
 msgstr "Category Default Location"
 
-#: src/pages/part/PartDetailsPanel.tsx:134
-msgid "Units"
-msgstr "Units"
-
 #: src/pages/part/PartDetailsPanel.tsx:141
 #: src/tables/settings/PendingTasksTable.tsx:51
 msgid "Keywords"
@@ -11147,7 +11467,7 @@ msgstr "Keywords"
 #: src/pages/part/PartDetailsPanel.tsx:168
 #: src/tables/bom/BomTable.tsx:473
 #: src/tables/build/BuildLineTable.tsx:325
-#: src/tables/part/PartTableFilters.tsx:143
+#: src/tables/part/PartTableFilters.tsx:148
 #: src/tables/sales/SalesOrderLineItemTable.tsx:146
 #: src/tables/stock/TransferOrderLineItemTable.tsx:121
 msgid "Available Stock"
@@ -11176,7 +11496,7 @@ msgstr "Maximum Stock"
 #: src/pages/part/PartDetailsPanel.tsx:245
 #: src/pages/repair/components/safety/safetyApi.ts:143
 #: src/tables/bom/UsedInTable.tsx:97
-#: src/tables/part/PartTableFilters.tsx:19
+#: src/tables/part/PartTableFilters.tsx:24
 #: src/tables/settings/SelectionListDrawer.tsx:174
 msgid "Locked"
 msgstr "Locked"
@@ -11223,7 +11543,7 @@ msgstr "days"
 #: src/pages/part/PartDetailsPanel.tsx:308
 #: src/pages/part/pricing/BomPricingPanel.tsx:82
 #: src/pages/part/pricing/VariantPricingPanel.tsx:98
-#: src/tables/part/PartTable.tsx:90
+#: src/tables/part/PartTable.tsx:92
 msgid "Price Range"
 msgstr "Price Range"
 
@@ -11951,15 +12271,6 @@ msgstr "Action taken"
 msgid "What was repaired or replaced?"
 msgstr "What was repaired or replaced?"
 
-#: src/pages/repair/components/PacketCloseoutModal.tsx:156
-#: src/pages/tasks/workorders/CloseoutPanel.tsx:953
-#: src/pages/tasks/workorders/WorkOrderDetail.tsx:525
-#: src/tables/settings/BarcodeScanHistoryTable.tsx:89
-#: src/tables/settings/BarcodeScanHistoryTable.tsx:208
-#: src/tables/stock/StockItemTestResultTable.tsx:192
-msgid "Result"
-msgstr "Result"
-
 #: src/pages/repair/components/PacketCloseoutModal.tsx:157
 msgid "What is the equipment doing now?"
 msgstr "What is the equipment doing now?"
@@ -12005,14 +12316,14 @@ msgid "Failed to save lockout point"
 msgstr "Failed to save lockout point"
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:100
-#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
-msgid "Edit lockout point"
-msgstr "Edit lockout point"
-
-#: src/pages/repair/components/safety/LockoutPointModal.tsx:100
 #: src/pages/repair/components/safety/LockoutPointTable.tsx:61
 msgid "Add lockout point"
 msgstr "Add lockout point"
+
+#: src/pages/repair/components/safety/LockoutPointModal.tsx:100
+#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
+msgid "Edit lockout point"
+msgstr "Edit lockout point"
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:104
 msgid "Energy source"
@@ -12915,10 +13226,6 @@ msgstr "Work order completed"
 msgid "Narrative"
 msgstr "Narrative"
 
-#: src/pages/tasks/workorders/CloseoutPanel.tsx:398
-msgid "Review"
-msgstr "Review"
-
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:418
 msgid "Readings"
 msgstr "Readings"
@@ -13287,6 +13594,11 @@ msgstr "Error loading icon package from server"
 #~ msgid "Upload Data"
 #~ msgstr "Upload Data"
 
+#: src/tables/assets/MachinePartTable.tsx:31
+#: src/tables/part/PartTableFilters.tsx:168
+msgid "Filter by part group"
+msgstr "Filter by part group"
+
 #: src/tables/assets/MaintenanceRecordTable.tsx:15
 msgid "Corrective"
 msgstr "Corrective"
@@ -13474,7 +13786,7 @@ msgid "Show consumable items"
 msgstr "Show consumable items"
 
 #: src/tables/bom/BomTable.tsx:508
-#: src/tables/part/PartTableFilters.tsx:137
+#: src/tables/part/PartTableFilters.tsx:142
 msgid "Has Pricing"
 msgstr "Has Pricing"
 
@@ -13560,7 +13872,7 @@ msgstr "Bill of materials cannot be edited, as the part is locked"
 #: src/tables/bom/UsedInTable.tsx:47
 #: src/tables/build/BuildLineTable.tsx:226
 #: src/tables/part/PartBuildAllocationsTable.tsx:61
-#: src/tables/part/PartTableFilters.tsx:25
+#: src/tables/part/PartTableFilters.tsx:30
 #: src/tables/stock/StockItemTable.tsx:208
 msgid "Assembly"
 msgstr "Assembly"
@@ -13574,7 +13886,7 @@ msgid "Show active assemblies"
 msgstr "Show active assemblies"
 
 #: src/tables/bom/UsedInTable.tsx:112
-#: src/tables/part/PartTableFilters.tsx:55
+#: src/tables/part/PartTableFilters.tsx:60
 #: src/tables/part/PartVariantTable.tsx:30
 msgid "Trackable"
 msgstr "Trackable"
@@ -13723,7 +14035,7 @@ msgid "Show optional lines"
 msgstr "Show optional lines"
 
 #: src/tables/build/BuildLineTable.tsx:231
-#: src/tables/part/PartTableFilters.tsx:49
+#: src/tables/part/PartTableFilters.tsx:54
 msgid "Testable"
 msgstr "Testable"
 
@@ -14293,7 +14605,7 @@ msgid "Show templates with choices"
 msgstr "Show templates with choices"
 
 #: src/tables/general/ParameterTemplateTable.tsx:143
-#: src/tables/part/PartTableFilters.tsx:61
+#: src/tables/part/PartTableFilters.tsx:66
 msgid "Has Units"
 msgstr "Has Units"
 
@@ -14594,7 +14906,7 @@ msgid "You are subscribed to notifications for this category"
 msgstr "You are subscribed to notifications for this category"
 
 #: src/tables/part/PartCategoryTable.tsx:85
-#: src/tables/part/PartTableFilters.tsx:37
+#: src/tables/part/PartTableFilters.tsx:42
 msgid "Include Subcategories"
 msgstr "Include Subcategories"
 
@@ -14699,16 +15011,16 @@ msgstr "Show outstanding orders"
 msgid "Show completed line items"
 msgstr "Show completed line items"
 
-#: src/tables/part/PartTable.tsx:214
-#: src/tables/part/PartTable.tsx:257
+#: src/tables/part/PartTable.tsx:216
+#: src/tables/part/PartTable.tsx:259
 msgid "Set Category"
 msgstr "Set Category"
 
-#: src/tables/part/PartTable.tsx:259
+#: src/tables/part/PartTable.tsx:261
 msgid "Set category for selected parts"
 msgstr "Set category for selected parts"
 
-#: src/tables/part/PartTable.tsx:269
+#: src/tables/part/PartTable.tsx:271
 msgid "Order selected parts"
 msgstr "Order selected parts"
 
@@ -14724,139 +15036,139 @@ msgstr "Order selected parts"
 #~ msgid "Filter by parts which have stocktake information"
 #~ msgstr "Filter by parts which have stocktake information"
 
-#: src/tables/part/PartTableFilters.tsx:14
+#: src/tables/part/PartTableFilters.tsx:19
 msgid "Filter by part active status"
 msgstr "Filter by part active status"
 
-#: src/tables/part/PartTableFilters.tsx:20
+#: src/tables/part/PartTableFilters.tsx:25
 msgid "Filter by part locked status"
 msgstr "Filter by part locked status"
 
-#: src/tables/part/PartTableFilters.tsx:26
+#: src/tables/part/PartTableFilters.tsx:31
 msgid "Filter by assembly attribute"
 msgstr "Filter by assembly attribute"
 
-#: src/tables/part/PartTableFilters.tsx:31
+#: src/tables/part/PartTableFilters.tsx:36
 msgid "BOM Valid"
 msgstr "BOM Valid"
 
-#: src/tables/part/PartTableFilters.tsx:32
+#: src/tables/part/PartTableFilters.tsx:37
 msgid "Filter by parts with a valid BOM"
 msgstr "Filter by parts with a valid BOM"
 
-#: src/tables/part/PartTableFilters.tsx:38
+#: src/tables/part/PartTableFilters.tsx:43
 msgid "Include parts in subcategories"
 msgstr "Include parts in subcategories"
 
-#: src/tables/part/PartTableFilters.tsx:44
+#: src/tables/part/PartTableFilters.tsx:49
 msgid "Filter by component attribute"
 msgstr "Filter by component attribute"
 
-#: src/tables/part/PartTableFilters.tsx:50
+#: src/tables/part/PartTableFilters.tsx:55
 msgid "Filter by testable attribute"
 msgstr "Filter by testable attribute"
 
-#: src/tables/part/PartTableFilters.tsx:56
+#: src/tables/part/PartTableFilters.tsx:61
 msgid "Filter by trackable attribute"
 msgstr "Filter by trackable attribute"
 
-#: src/tables/part/PartTableFilters.tsx:62
+#: src/tables/part/PartTableFilters.tsx:67
 msgid "Filter by parts which have units"
 msgstr "Filter by parts which have units"
 
-#: src/tables/part/PartTableFilters.tsx:67
+#: src/tables/part/PartTableFilters.tsx:72
 msgid "Has IPN"
 msgstr "Has IPN"
 
-#: src/tables/part/PartTableFilters.tsx:68
+#: src/tables/part/PartTableFilters.tsx:73
 msgid "Filter by parts which have an internal part number"
 msgstr "Filter by parts which have an internal part number"
 
-#: src/tables/part/PartTableFilters.tsx:73
+#: src/tables/part/PartTableFilters.tsx:78
 msgid "Has Stock"
 msgstr "Has Stock"
 
-#: src/tables/part/PartTableFilters.tsx:74
+#: src/tables/part/PartTableFilters.tsx:79
 msgid "Filter by parts which have stock"
 msgstr "Filter by parts which have stock"
 
-#: src/tables/part/PartTableFilters.tsx:80
+#: src/tables/part/PartTableFilters.tsx:85
 msgid "Filter by parts which have low stock"
 msgstr "Filter by parts which have low stock"
 
-#: src/tables/part/PartTableFilters.tsx:86
+#: src/tables/part/PartTableFilters.tsx:91
 msgid "Filter by parts which have high stock"
 msgstr "Filter by parts which have high stock"
 
-#: src/tables/part/PartTableFilters.tsx:91
+#: src/tables/part/PartTableFilters.tsx:96
 msgid "Purchaseable"
 msgstr "Purchaseable"
 
-#: src/tables/part/PartTableFilters.tsx:92
+#: src/tables/part/PartTableFilters.tsx:97
 msgid "Filter by parts which are purchaseable"
 msgstr "Filter by parts which are purchaseable"
 
-#: src/tables/part/PartTableFilters.tsx:97
+#: src/tables/part/PartTableFilters.tsx:102
 msgid "Salable"
 msgstr "Salable"
 
-#: src/tables/part/PartTableFilters.tsx:98
+#: src/tables/part/PartTableFilters.tsx:103
 msgid "Filter by parts which are salable"
 msgstr "Filter by parts which are salable"
 
-#: src/tables/part/PartTableFilters.tsx:104
+#: src/tables/part/PartTableFilters.tsx:109
 msgid "Filter by parts which are virtual"
 msgstr "Filter by parts which are virtual"
 
-#: src/tables/part/PartTableFilters.tsx:110
+#: src/tables/part/PartTableFilters.tsx:115
 msgid "Filter by parts which are consumable"
 msgstr "Filter by parts which are consumable"
 
-#: src/tables/part/PartTableFilters.tsx:115
+#: src/tables/part/PartTableFilters.tsx:120
 msgid "Is Template"
 msgstr "Is Template"
 
-#: src/tables/part/PartTableFilters.tsx:116
+#: src/tables/part/PartTableFilters.tsx:121
 msgid "Filter by parts which are templates"
 msgstr "Filter by parts which are templates"
 
-#: src/tables/part/PartTableFilters.tsx:121
+#: src/tables/part/PartTableFilters.tsx:126
 msgid "Is Variant"
 msgstr "Is Variant"
 
-#: src/tables/part/PartTableFilters.tsx:122
+#: src/tables/part/PartTableFilters.tsx:127
 msgid "Filter by parts which are variants"
 msgstr "Filter by parts which are variants"
 
-#: src/tables/part/PartTableFilters.tsx:127
+#: src/tables/part/PartTableFilters.tsx:132
 msgid "Is Revision"
 msgstr "Is Revision"
 
-#: src/tables/part/PartTableFilters.tsx:128
+#: src/tables/part/PartTableFilters.tsx:133
 msgid "Filter by parts which are revisions"
 msgstr "Filter by parts which are revisions"
 
-#: src/tables/part/PartTableFilters.tsx:132
+#: src/tables/part/PartTableFilters.tsx:137
 msgid "Has Revisions"
 msgstr "Has Revisions"
 
-#: src/tables/part/PartTableFilters.tsx:133
+#: src/tables/part/PartTableFilters.tsx:138
 msgid "Filter by parts which have revisions"
 msgstr "Filter by parts which have revisions"
 
-#: src/tables/part/PartTableFilters.tsx:138
+#: src/tables/part/PartTableFilters.tsx:143
 msgid "Filter by parts which have pricing information"
 msgstr "Filter by parts which have pricing information"
 
-#: src/tables/part/PartTableFilters.tsx:144
+#: src/tables/part/PartTableFilters.tsx:149
 msgid "Filter by parts which have available stock"
 msgstr "Filter by parts which have available stock"
 
-#: src/tables/part/PartTableFilters.tsx:150
+#: src/tables/part/PartTableFilters.tsx:155
 msgid "Filter by parts which are on order"
 msgstr "Filter by parts which are on order"
 
-#: src/tables/part/PartTableFilters.tsx:156
+#: src/tables/part/PartTableFilters.tsx:161
 msgid "Filter by parts to which the user is subscribed"
 msgstr "Filter by parts to which the user is subscribed"
 

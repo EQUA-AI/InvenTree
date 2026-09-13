@@ -84,6 +84,10 @@ google-api-python-client                # Gmail integration (ai email tools)
 google-auth                             # Gmail integration auth
 tenacity                                # Retry policies (ai InvenTree client)
 azure-ai-documentintelligence>=1.0.0    # Azure Document Intelligence
-azure-identity>=1.15.0                  # Azure Identity
+# 1.16.1 is the floor that fixes CVE-2024-35255 (elevation of privilege); the
+# Cosmos pumphouse connector authenticates with DefaultAzureCredential, so this
+# is now on a data path and not only an AI one.
+azure-identity>=1.16.1                  # Azure Identity
 azure-search-documents                  # Azure AI Search integration
+azure-cosmos>=4.9.0                     # Cosmos DB for NoSQL (read-only pumphouse telemetry)
 openai>=1.12.0                          # OpenAI SDK

@@ -77,6 +77,12 @@ class HealthConnector(abc.ABC):
 
 _REGISTRY: dict[str, type[HealthConnector]] = {}
 
+#: Modules whose import side effect is registering a built-in adapter. They are
+#: imported on first lookup rather than from this module, because a connector may
+#: import models and this module is imported while Django is still loading apps.
+_BUILTIN_MODULES = ('machine_health.connectors.cosmos_pumphouse',)
+_loaded = False
+
 
 def register(connector_class: type[HealthConnector]) -> type[HealthConnector]:
     """Register a connector implementation under its ``key``."""
@@ -86,6 +92,19 @@ def register(connector_class: type[HealthConnector]) -> type[HealthConnector]:
     return connector_class
 
 
+def load_builtin_connectors() -> None:
+    """Import the adapters shipped with the application, once."""
+    global _loaded
+    if _loaded:
+        return
+    _loaded = True
+
+    import importlib
+
+    for module in _BUILTIN_MODULES:
+        importlib.import_module(module)
+
+
 def get_connector(source):
     """Return the adapter configured for a source, or None when it has none.
 
@@ -93,6 +112,7 @@ def get_connector(source):
     to some default: silently reading a machine through the wrong adapter would
     be worse than showing the source as unconfigured.
     """
+    load_builtin_connectors()
     connector_class = _REGISTRY.get(source.connector_type)
     return connector_class(source) if connector_class else None
 

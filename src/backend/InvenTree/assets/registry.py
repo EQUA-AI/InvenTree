@@ -155,6 +155,36 @@ def register_station(
         return station
 
 
+def pump_display_name(station, key):
+    """Build the label for a pump slot under a station.
+
+    One definition, used both when a slot is first registered and when a station
+    is renamed. Keeping the format in two places is how a rename ends up
+    producing children that look subtly unlike the ones created by an import.
+
+    The trailing UUID fragment is not decoration: ``AssetMachine.name`` is
+    globally unique, so two stations that a utility genuinely calls the same
+    thing would otherwise collide on their first pump. It is therefore added
+    only when the plain name is actually taken - carrying it on every pump in
+    the plant to pay for a collision that usually never happens makes the whole
+    equipment list harder to read.
+
+    Nothing reads the fragment back; identity lives in ``uuid`` and the
+    ``source_*`` fields.
+    """
+    base = f'{station.name[:170]} / Pump {int(key[1:]):02d}'
+
+    # A slot keeps its own name. Excluding itself is what makes relabelling
+    # idempotent instead of appending a suffix on every pass.
+    taken = (
+        AssetMachine.objects
+        .filter(name=base)
+        .exclude(parent=station, source_key=key)
+        .exists()
+    )
+    return base if not taken else f'{base} [{str(station.uuid)[:8]}]'
+
+
 def ensure_pump(station, key):
     """Register a pump slot, not a verified physical installation or stock item."""
     if not re.fullmatch(r'P[1-9][0-9]{0,3}', key):
@@ -166,11 +196,52 @@ def ensure_pump(station, key):
             'uuid': uuid5(station.uuid, f'pump:{key}'),
             'asset_type': 'pump',
             'client': station.client,
-            'name': f'{station.name[:170]} / Pump {int(key[1:]):02d} [{str(station.uuid)[:8]}]',
+            'name': pump_display_name(station, key),
             'description': 'Registered source pump slot; installed equipment details require review.',
         },
     )
     return pump
+
+
+def rename_station(station, name):
+    """Rename a station and re-label its pump slots to match.
+
+    Only the human label changes. ``uuid``, ``source_namespace``,
+    ``source_entity_uuid`` and ``source_key`` are the station's identity, they
+    are immutable, and every lookup - re-import, dictionary points, bindings -
+    goes through them. A station may therefore be renamed freely without
+    orphaning anything.
+
+    The children matter here. ``ensure_pump`` writes a pump's name only in
+    ``defaults``, so it is set once at creation and never revisited; renaming
+    just the station would leave fourteen pumps advertising the old one
+    indefinitely. Returns the number of rows changed.
+    """
+    name = (name or '').strip()
+    if not name:
+        raise ValidationError('A station name cannot be blank.')
+
+    clash = AssetMachine.objects.filter(name=name).exclude(pk=station.pk).first()
+    if clash is not None:
+        raise ValidationError(
+            f'Machine {clash.pk} already uses that name; machine names are unique.'
+        )
+
+    station.name = name
+    station.full_clean()
+    station.save(update_fields=['name'])
+
+    changed = 1
+    for pump in station.children.filter(asset_type='pump'):
+        relabelled = pump_display_name(station, pump.source_key)
+        if pump.name == relabelled:
+            continue
+        pump.name = relabelled
+        pump.full_clean()
+        pump.save(update_fields=['name'])
+        changed += 1
+
+    return changed
 
 
 def observed_type(value):
@@ -270,23 +341,41 @@ def plan_dictionary(station, raw):
     def pointer(value):
         return value.replace('~', '~0').replace('/', '~1')
 
+    def epoch_ms(value):
+        """Read an epoch-ms timestamp that Cassandra may carry as text or bigint.
+
+        ``time_period`` is a ``text`` column and ``sub_time_period`` a ``bigint``,
+        so an export of the same row yields a string for one and a number for the
+        other. Both are epoch milliseconds; a booleans-are-ints accident and a
+        float that cannot be a millisecond count are rejected rather than coerced.
+        """
+        if type(value) is int:
+            return value
+        if isinstance(value, str) and re.fullmatch(r'-?[0-9]{1,19}', value):
+            return int(value)
+        return None
+
+    matched = 0
+
     for row in rows:
         if not isinstance(row, dict):
             raise ValidationError('Each row/payload must be an object.')
         payload = row
         if 'data1' in row:
+            # An hour slice is naturally multi-station: entity_uuid clusters after
+            # sub_time_period, so a bounded read returns every station in the
+            # bucket. Skip the other stations instead of rejecting the export.
             if str(row.get('entity_uuid')) != str(station.source_entity_uuid):
-                raise ValidationError(
-                    'Row entity_uuid does not match the selected station.'
-                )
+                continue
             for key, expected in station.source_context.items():
                 if key in row and row[key] != expected:
                     raise ValidationError(f'Row selector mismatch: {key}')
             if 'time_period' in row or 'sub_time_period' in row:
-                hour, sample = row.get('time_period'), row.get('sub_time_period')
+                hour = epoch_ms(row.get('time_period'))
+                sample = epoch_ms(row.get('sub_time_period'))
                 if (
-                    type(hour) is not int
-                    or type(sample) is not int
+                    hour is None
+                    or sample is None
                     or not hour <= sample < hour + 3600000
                 ):
                     raise ValidationError(
@@ -295,6 +384,7 @@ def plan_dictionary(station, raw):
             payload = row['data1']
             if isinstance(payload, str):
                 payload = decode_upload(payload.encode('utf-8'))
+        matched += 1
         if (
             not isinstance(payload, dict)
             or not isinstance(payload.get('dex'), dict)
@@ -341,6 +431,8 @@ def plan_dictionary(station, raw):
                 local,
                 allow_match=bool(match) or tag == 'COMMAN_FORBAY_LEVEL',
             )
+    if not matched:
+        raise ValidationError('No row in this export belongs to the selected station.')
     if len(pumps) > 100:
         raise ValidationError(
             'At most 100 pump slots are supported per station import.'
@@ -385,6 +477,7 @@ def plan_dictionary(station, raw):
         'station': station.pk,
         'source_hash': digest,
         'rows': len(rows),
+        'rows_matched': matched,
         'pumps': sorted(pumps, key=lambda k: int(k[1:])),
         'counts': dict(counts),
         'points': list(points.values()),
