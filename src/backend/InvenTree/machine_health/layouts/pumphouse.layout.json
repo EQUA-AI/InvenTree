@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "review_status": "provisional",
+  "not_drawn_reason": "Available in the selected equipment's reviewed-point table; diagram placement awaits plant review.",
+  "status_values": {"running": ["R"], "idle": ["I"], "fault": []},
+  "elements": [
+    {"id": "forebay", "view": "station", "pointer": "/sl", "role": "level", "label": "Forebay level", "x": 70, "y": 95},
+    {"id": "station-status", "view": "station", "pointer": "/st", "role": "status", "label": "Station status", "x": 420, "y": 45},
+    {"id": "pump-status", "view": "unit", "pointer": "/pd/{pump}/st", "role": "status", "label": "Pump status", "x": 260, "y": 50},
+    {"id": "pump-power", "view": "unit", "pointer": "/pd/{pump}/pmw", "role": "value", "label": "Input power", "x": 370, "y": 120},
+    {"id": "pump-flow", "view": "unit", "pointer": "/pd/{pump}/dv", "role": "value", "label": "Discharge flow", "x": 390, "y": 255}
+  ],
+  "totals": [
+    {"id": "power", "direct": "/pmw", "per_pump": "/pd/{pump}/pmw", "unit": "MW"},
+    {"id": "flow", "direct": "/dv", "per_pump": "/pd/{pump}/dv", "unit": "m^3/s"}
+  ]
+}

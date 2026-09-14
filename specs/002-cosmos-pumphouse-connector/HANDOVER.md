@@ -19,6 +19,20 @@ substitutes. T18 dictionary expansion, T15 reference-based drawings and T19 esta
 remain blocked until the user or plant supplies them. Continue implementation that does
 not depend on these inputs; the existing abridged fixtures are suitable only for tests.
 
+## Full implementation handoff — subsequent user instruction
+
+The user has authorized implementing all remaining sections with provisional mappings and
+schematics so the developer with snapshots can finish plant-specific verification. Missing
+inputs no longer block implementing the tools or UI. They still prevent claiming verified
+plant coverage, real station onboarding, or production readiness. Do not manufacture real
+station identities, source readings, units, thresholds, or reference-image fidelity.
+
+**T15 implementation complete:** shared versioned layout JSON, generic station/pump SVGs and
+`validate_pumphouse_layout` coverage checks are implemented. The layout is deliberately
+`provisional`; every unresolved pointer is reported, and approved points outside the drawing
+are listed with a reason (they remain available in the detail table). Two asset/escaping tests
+passed. Plant review must update the exact pointers/geometry and approve the layout.
+
 ## Implementation continuation — local `IoT` (2026-09-13)
 
 The worktree now starts from remote `IOT` commit `9576f17f39`; no commits from
