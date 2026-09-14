@@ -1,0 +1,81 @@
+name: Cosmos emulator integration
+
+on:
+  push:
+    paths:
+      - 'src/backend/InvenTree/assets/**'
+      - 'src/backend/InvenTree/machine_health/**'
+      - 'src/backend/requirements*'
+      - 'contrib/cosmos/**'
+      - 'contrib/container/dev-docker-compose.yml'
+      - '.github/workflows/cosmos_integration.yaml'
+  pull_request:
+    paths:
+      - 'src/backend/InvenTree/assets/**'
+      - 'src/backend/InvenTree/machine_health/**'
+      - 'src/backend/requirements*'
+      - 'contrib/cosmos/**'
+      - 'contrib/container/dev-docker-compose.yml'
+      - '.github/workflows/cosmos_integration.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      python_version: '3.12'
+      INVENTREE_DB_ENGINE: sqlite3
+      INVENTREE_DB_NAME: /tmp/iot-integration.sqlite3
+      INVENTREE_MEDIA_ROOT: /tmp/iot-media
+      INVENTREE_STATIC_ROOT: /tmp/iot-static
+      INVENTREE_SITE_URL: http://localhost:8000
+      INVENTREE_PLUGINS_ENABLED: 'false'
+      INVENTREE_TEST_COSMOS_EMULATOR: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          apt-dependency: gettext poppler-utils
+          dev-install: true
+      - name: Start disposable local emulator
+        run: |
+          docker run -d --name iot-cosmos -p 127.0.0.1:8081:8081 \
+            mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator@sha256:d57611d7750a042c7d74a3ff35c70c5d0133cffd176321ca572cc3552f21ec5c \
+            --protocol http --enable-explorer false
+          for attempt in $(seq 1 60); do
+            if docker exec iot-cosmos curl -fsS http://localhost:8080/ready; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs --tail 50 iot-cosmos
+          exit 1
+      - name: Exercise real SDK, scheduler and history
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+          import yaml
+
+          # Reuse the public emulator-only default already supplied by Compose.
+          # No Azure credentials, login or subscription are used by this job.
+          compose = yaml.safe_load(Path('contrib/container/dev-docker-compose.yml').read_text())
+          value = compose['services']['inventree-dev-server']['environment']['COSMOS_EMULATOR_KEY']
+          os.environ['COSMOS_EMULATOR_KEY'] = value.split(':-', 1)[1][:-1]
+          result = subprocess.run([
+              sys.executable, 'src/backend/InvenTree/manage.py', 'test',
+              'machine_health.tests.test_cosmos_emulator', '--keepdb', '--noinput',
+          ])
+          raise SystemExit(result.returncode)
+          PY
+      - name: Stop emulator
+        if: always()
+        run: docker rm -f iot-cosmos || true

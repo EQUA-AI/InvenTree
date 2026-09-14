@@ -217,11 +217,12 @@ remains off; this ticket does not enable live ingestion or apply production migr
 - [x] Refresh/status polling and role-based controls; Client reassignment hides prior source details
 - [x] TypeScript/Biome checks; Lingui extraction/compilation; Chromium activation/deactivation/view-only smoke checks
 
-### 🔵 T13 — End-to-end integration test · 4 h · *ready — T4, T5, T8 and T9 implemented*
-- [ ] Seed the emulator → poll → `MachineSignalState` populated with the expected values
-- [ ] `read_window` stays bounded and crosses an hour boundary correctly
-- [ ] Checkpoint advances; a second poll ingests nothing new
-**Acceptance**: runs in CI without the real Azure account.
+### ✅ T13 — End-to-end integration test · 4 h · completed locally; CI workflow added
+- [x] Real SDK + schema-defined emulator container → capped connector ingest → scheduled poll → latest state
+- [x] Bounded history crosses two hours and excludes another station's identical document ID
+- [x] Checkpoint advances; second scheduled poll leaves latest state unchanged
+- [x] Opt-in test creates/removes its own loopback-only database; pinned emulator CI job needs no Azure account
+- [x] Local integration test passed; GitHub workflow execution awaits a future push
 
 ### 🔵 T15 — Pumphouse mimic: layout contract + SVG assets  8 h  *blocked: T18*
 The two reference images are **two different screens** and both are needed:
@@ -341,8 +342,8 @@ inside the worker budget; cross-station leakage test passes.
 
 | Bucket | Tickets | Hours |
 |---|---|---|
-| Done | T0–T12 | 62 |
-| Ready now | T13 | 4 |
+| Done | T0–T13 | 66 |
+| Ready now | T14 documentation | 0* |
 | Blocked on earlier tickets / human review | T14 | 3 |
 | Mimic dashboard (added 2026-09-13) | T18, T15, T16, T17 | 31 |
 | Estate rollout (added 2026-09-13) | T19 | 6 |
@@ -352,7 +353,7 @@ inside the worker budget; cross-station leakage test passes.
 > for **one** station; the estate is **10–12 pumphouses**, and the two reference images describe the
 > schematic users actually look *at*. Nothing in T0–T8 needs rewriting — the backend carries no
 > single-station or fixed-pump-count assumption (verified 2026-09-13) — but **T9 did**, and has been
-> corrected to iterate checkpoints rather than sources. Remaining work is nominally **44 h** after T12; re-estimate the remaining integration and rollout work.
+> corrected to iterate checkpoints rather than sources. Remaining work is nominally **40 h** after T13; re-estimate the remaining integration and rollout work.
 > **Start with T18**: the 25 approved points cover only a fraction of image 1, and drawing before the
 > dictionary covers the tags means drawing against nothing.
 

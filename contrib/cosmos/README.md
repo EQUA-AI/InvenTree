@@ -357,3 +357,24 @@ progress. Revoking approval or changing measurement meaning disables the corresp
 and removes cached state; refresh activation after review. Confirmed thresholds are preserved
 only while the measurement meaning is unchanged. Status includes bound/unbound counts, last
 poll time and a fixed error code; it distinguishes activation from globally enabled polling.
+
+## Emulator integration check (T13)
+
+With the local emulator running and its public key in `COSMOS_EMULATOR_KEY`, run:
+
+```bash
+INVENTREE_TEST_COSMOS_EMULATOR=1 python src/backend/InvenTree/manage.py test \
+  machine_health.tests.test_cosmos_emulator --keepdb --noinput
+```
+
+The endpoint defaults to `http://localhost:8081`. `INVENTREE_TEST_COSMOS_ENDPOINT` can change
+its port, but the test accepts only loopback HTTP endpoints. It creates a uniquely named
+test database, uses the checked-in partition/index definition, and deletes that database at
+cleanup. The test covers a capped poll and resume, two-hour history, station isolation,
+scheduler ingestion and replay. Ordinary test runs skip it unless explicitly enabled.
+
+`.github/workflows/cosmos_integration.yaml` starts a disposable emulator pinned to the
+locally tested image digest, waits on port 8080's `/ready` endpoint and runs this check.
+It reuses the public emulator key already provided in the development Compose file;
+no Azure subscription or credentials are required. This verifies transport and query
+behaviour, not production RBAC, networking or plant data completeness.

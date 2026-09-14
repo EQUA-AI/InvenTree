@@ -92,7 +92,15 @@ Validation: TypeScript and Biome passed; Lingui catalogs extracted/compiled; Chr
 checks passed for activate/deactivate, preview bodies, paused polling and view-only controls.
 The 11 activation API tests also passed after the Client-reassignment status regression check.
 
-**Next: T13 emulator integration.** The global polling flag remains
+**T13 completed:** a real-SDK test creates an isolated emulator database with the checked-in
+hierarchical partition/index definition, seeds two hour buckets plus another station's row,
+resumes after a one-document cap, reads bounded history, and runs the scheduled poll twice.
+The latest value and cursor advance once; replay leaves cached state unchanged. This passed
+locally against the emulator image pinned by digest in the new CI workflow. The workflow is
+added but has not run on GitHub. Tests refuse non-loopback provisioning endpoints and remove
+their temporary database. No real Azure account was used.
+
+**Next: operational documentation and the mimic API contract.** The global polling flag remains
 off by default and no production migrations or cloud changes have been applied. Full snapshots
 (T18), the station inventory (T19), reference images (T15), plant units/thresholds and the
 application identity/role (D17) remain external inputs. T16 can proceed independently using
