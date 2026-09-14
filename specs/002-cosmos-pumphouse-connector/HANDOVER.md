@@ -33,6 +33,12 @@ station identities, source readings, units, thresholds, or reference-image fidel
 are listed with a reason (they remain available in the detail table). Two asset/escaping tests
 passed. Plant review must update the exact pointers/geometry and approve the layout.
 
+**T16 implementation complete:** the scoped station mimic endpoint returns sparse bay keys,
+selected-unit values, source status, reviewed-point groups, explicit null reasons and actual
+threshold alarms. Totals prefer a reviewed station measurement or sum every registered bay
+with unit conversion; missing/stale/bad contributors produce null. API/activation regression
+tests and type checks passed. No network calls occur during mimic reads.
+
 ## Implementation continuation — local `IoT` (2026-09-13)
 
 The worktree now starts from remote `IOT` commit `9576f17f39`; no commits from
