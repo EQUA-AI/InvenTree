@@ -39,6 +39,14 @@ threshold alarms. Totals prefer a reviewed station measurement or sum every regi
 with unit conversion; missing/stale/bad contributors produce null. API/activation regression
 tests and type checks passed. No network calls occur during mimic reads.
 
+**T18 tooling complete:** `export_dictionary_review --station <pk>` emits exact-path review
+packs, including unresolved tags and portable catalogue crosswalks. Applying a pack checks its
+dictionary hash and station identity, rejects conflicting decisions, and supports explicit
+part/component/parameter mappings. Withholding a formerly approved point now revokes approval
+and disables its live binding. 27 review tests passed, including a 700-tag dictionary export.
+The developer must still populate and approve the real full dictionaries; no readings or
+plant-specific mappings were fabricated.
+
 ## Implementation continuation — local `IoT` (2026-09-13)
 
 The worktree now starts from remote `IOT` commit `9576f17f39`; no commits from

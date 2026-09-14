@@ -16,16 +16,21 @@ writing the reason onto the point keeps it attached to the thing it is about
 rather than living only in someone's notes.
 """
 
-import json
 from pathlib import Path
 from uuid import UUID
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import (
+    MultipleObjectsReturned,
+    ObjectDoesNotExist,
+    ValidationError,
+)
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from assets.dictionary_review import dictionary_hash, map_review_point
 from assets.models import AssetMachine
+from assets.registry import MAX_BYTES, decode_upload
 from assets.registry_models import DictionaryPoint
 
 
@@ -46,11 +51,19 @@ class Command(BaseCommand):
         except (KeyError, TypeError, ValueError) as exc:
             raise CommandError(f'Review file needs a station_source_uuid: {exc}')
 
-        station = AssetMachine.objects.filter(
+        stations = AssetMachine.objects.filter(
             asset_type='pumphouse', source_entity_uuid=source_uuid
-        ).first()
-        if station is None:
-            raise CommandError(f'No registered station for source {source_uuid}.')
+        )
+        if review.get('station_uuid'):
+            stations = stations.filter(uuid=review['station_uuid'])
+        if review.get('source_namespace'):
+            stations = stations.filter(source_namespace=review['source_namespace'])
+        if stations.count() != 1:
+            raise CommandError(
+                'Review must identify exactly one registered station; include its local UUID and namespace.'
+            )
+        station = stations.select_for_update().get()
+
         return station
 
     def check_approval(self, point, entry):
@@ -107,71 +120,104 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """Apply every decision atomically, or none of them."""
         try:
-            review = json.loads(options['review'].read_text(encoding='utf-8'))
-        except (OSError, ValueError) as exc:
+            with options['review'].open('rb') as stream:
+                review = decode_upload(stream.read(MAX_BYTES + 1))
+            if not isinstance(review, dict):
+                raise CommandError('Review must be a JSON object.')
+        except (OSError, ValueError, ValidationError) as exc:
             raise CommandError(f'Could not read the review file: {exc}') from exc
 
-        approved = withheld = 0
-
         try:
-            with transaction.atomic():
-                station = self.station_for(review)
-                points = {
-                    point.path: point
-                    for point in DictionaryPoint.objects.select_related(
-                        'template', 'component'
-                    ).filter(station=station)
-                }
-
-                for entry in review.get('approve', []):
-                    for path in entry['paths']:
-                        point = points.get(path)
-                        if point is None:
-                            raise CommandError(f'No dictionary point at {path!r}.')
-
-                        self.check_approval(point, entry)
-                        point.data_type = entry['data_type']
-                        point.unit = entry.get('unit', '')
-                        point.unit_status = entry['unit_status']
-                        point.review_note = entry['note']
-                        point.status = 'approved'
-                        point.issue = ''
-                        point.reviewed_at = timezone.now()
-                        point.save()
-                        approved += 1
-
-                for entry in review.get('withhold', []):
-                    for path in entry['paths']:
-                        point = points.get(path)
-                        if point is None:
-                            raise CommandError(f'No dictionary point at {path!r}.')
-
-                        note = entry['reason']
-                        if entry.get('recommendation'):
-                            note = f'{note} Recommended: {entry["recommendation"]}'
-                        point.review_note = note
-                        point.reviewed_at = timezone.now()
-                        point.save(update_fields=['review_note', 'reviewed_at'])
-                        withheld += 1
-
-                self.stdout.write(f'station   : {station.name}')
-                self.stdout.write(f'approved  : {approved}')
-                self.stdout.write(
-                    f'withheld  : {withheld} (reason recorded on the point)'
-                )
-                remaining = (
-                    DictionaryPoint.objects
-                    .filter(station=station)
-                    .exclude(status='approved')
-                    .count()
-                )
-                self.stdout.write(f'unapproved: {remaining}')
-
-                if options['dry_run']:
-                    transaction.set_rollback(True)
-
-            self.stdout.write(
-                'Rolled back preview.' if options['dry_run'] else 'Review applied.'
-            )
+            self.apply_review(review, options['dry_run'])
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+            ObjectDoesNotExist,
+            MultipleObjectsReturned,
+        ) as exc:
+            raise CommandError(f'Invalid review: {exc}') from exc
         except ValidationError as exc:
             raise CommandError(f'Refused: {"; ".join(exc.messages)}') from exc
+
+    def apply_review(self, review, dry_run=False):
+        """Apply a previously decoded review under one station transaction."""
+        approved = withheld = 0
+        with transaction.atomic():
+            station = self.station_for(review)
+            if review.get('dictionary_hash') and review[
+                'dictionary_hash'
+            ] != dictionary_hash(station):
+                raise CommandError('Dictionary changed; export a fresh review pack.')
+            paths = [
+                path
+                for section in ('approve', 'withhold')
+                for entry in review.get(section, [])
+                for path in entry['paths']
+            ]
+            if len(paths) != len(set(paths)):
+                raise CommandError('A source path may have only one review decision.')
+            points = {
+                point.path: point
+                for point in DictionaryPoint.objects.select_related(
+                    'template', 'component'
+                ).filter(station=station)
+            }
+
+            for entry in review.get('approve', []):
+                for path in entry['paths']:
+                    point = points.get(path)
+                    if point is None:
+                        raise CommandError(f'No dictionary point at {path!r}.')
+
+                    map_review_point(point, entry)
+                    self.check_approval(point, entry)
+                    if not point.component.part.parameters_list.filter(
+                        template=point.template
+                    ).exists():
+                        raise ValidationError(
+                            'Parameter does not belong to its component.'
+                        )
+                    point.data_type = entry['data_type']
+                    point.unit = entry.get('unit', '')
+                    point.unit_status = entry['unit_status']
+                    point.review_note = entry['note']
+                    point.status = 'approved'
+                    point.issue = ''
+                    point.reviewed_at = timezone.now()
+                    point.save()
+                    approved += 1
+
+            for entry in review.get('withhold', []):
+                for path in entry['paths']:
+                    point = points.get(path)
+                    if point is None:
+                        raise CommandError(f'No dictionary point at {path!r}.')
+
+                    note = entry['reason']
+                    if not isinstance(note, str) or not note.strip():
+                        raise CommandError('Withholding requires a reason.')
+                    if entry.get('recommendation'):
+                        note = f'{note} Recommended: {entry["recommendation"]}'
+                    point.review_note = note
+                    point.reviewed_at = timezone.now()
+                    if point.status == 'approved':
+                        point.status = 'draft'
+                    point.save(update_fields=['review_note', 'reviewed_at', 'status'])
+                    withheld += 1
+
+            self.stdout.write(f'station   : {station.name}')
+            self.stdout.write(f'approved  : {approved}')
+            self.stdout.write(f'withheld  : {withheld} (reason recorded on the point)')
+            remaining = (
+                DictionaryPoint.objects
+                .filter(station=station)
+                .exclude(status='approved')
+                .count()
+            )
+            self.stdout.write(f'unapproved: {remaining}')
+
+            if dry_run:
+                transaction.set_rollback(True)
+
+        self.stdout.write('Rolled back preview.' if dry_run else 'Review applied.')

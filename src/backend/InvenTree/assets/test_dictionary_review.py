@@ -299,6 +299,77 @@ class ApplyReviewTests(TestCase):
         self.point.refresh_from_db()
         self.assertEqual(self.point.review_note, '')
 
+    def test_export_pack_preserves_pending_and_rejects_stale_review(self):
+        """An exported review is tied to the exact observed dictionary and decisions."""
+        output = StringIO()
+        call_command('export_dictionary_review', station=self.station.pk, stdout=output)
+        pack = json.loads(output.getvalue())
+        self.assertEqual(pack['approve'], [])
+        self.assertEqual(pack['pending'][0]['paths'], ['/st'])
+        pack['approve'] = [pack['pending'].pop()]
+        pack['approve'][0]['note'] = 'Reviewed run status'
+        self.point.unit_status = 'unresolved'
+        self.point.save()
+        with self.assertRaisesMessage(CommandError, 'Dictionary changed'):
+            self.apply(pack)
+
+    def test_explicit_crosswalk_maps_unresolved_exact_source_spelling(self):
+        """A reviewer can map unusual tags without normalizing upstream identity."""
+        self.point.component = None
+        self.point.template = None
+        self.point.path = '/dex/POWERFATCOR WITH SPACE'
+        self.point.save()
+        review = self.review(
+            paths=[self.point.path],
+            mapping={
+                'part_ipn': self.status_component.part.IPN,
+                'component_code': self.status_component.code,
+                'parameter': self.status_template.name,
+            },
+        )
+        self.apply(review)
+        self.point.refresh_from_db()
+        self.assertEqual(self.point.status, 'approved')
+        self.assertEqual(self.point.path, '/dex/POWERFATCOR WITH SPACE')
+        self.assertEqual(self.point.template_id, self.status_template.pk)
+
+    def test_withholding_revokes_an_existing_approval(self):
+        """Withholding cannot leave a formerly approved point live."""
+        self.apply(self.review())
+        self.apply({
+            'station_source_uuid': str(SOURCE_UUID),
+            'withhold': [{'paths': ['/st'], 'reason': 'Plant interpretation changed'}],
+        })
+        self.point.refresh_from_db()
+        self.assertEqual(self.point.status, 'draft')
+
+    def test_duplicate_decisions_are_rejected_atomically(self):
+        """A source path cannot be both approved and withheld in one file."""
+        review = self.review()
+        review['withhold'] = [{'paths': ['/st'], 'reason': 'Conflict'}]
+        with self.assertRaisesMessage(CommandError, 'only one review decision'):
+            self.apply(review)
+        self.point.refresh_from_db()
+        self.assertEqual(self.point.status, 'draft')
+
+    def test_full_dictionary_pack_retains_hundreds_of_unknown_tags(self):
+        """Large dictionaries can be exported for review without inventing mappings."""
+        from assets.dictionary_review import export_review
+        from assets.registry import import_dictionary, plan_dictionary
+
+        raw = json.dumps({
+            'dex': {
+                'ID': 'PH_3',
+                **{f'PUMP1_UNREVIEWED_{number}': number for number in range(700)},
+            },
+            'pd': {'P1': {'st': 'I'}},
+        }).encode()
+        plan = plan_dictionary(self.station, raw)
+        import_dictionary(self.station, raw, expected_hash=plan['source_hash'])
+        pack = export_review(self.station)
+        self.assertGreaterEqual(len(pack['pending']), 700)
+        self.assertEqual(pack['approve'], [])
+
 
 class ShippedReviewFileTests(TestCase):
     """The review file committed for the PH_3 pilot."""
