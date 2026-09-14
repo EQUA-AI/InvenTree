@@ -1,0 +1,1088 @@
+{
+  "schema_version": 1,
+  "source_baseline": "3e3f8959b6e56705dba71fddaf3f3645937343dd",
+  "watch": [
+    "src/backend/InvenTree/ai/core/tests/test_voice_*.py",
+    "src/backend/InvenTree/ai/core/tests/test_decision_*.py",
+    "src/backend/InvenTree/ai/core/tests/test_realtime_*.py",
+    "src/backend/InvenTree/ai/core/tests/test_tracing_*.py",
+    "src/frontend/tests/pages/pui_voice_*.spec.ts"
+  ],
+  "suites": [
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_approval_reference.py",
+      "label": "ai/core/tests/test_approval_reference.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_approvals_sandbox_seams.py",
+      "label": "ai/core/tests/test_approvals_sandbox_seams.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_decision_coordinator.py",
+      "label": "ai/core/tests/test_decision_coordinator.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_decision_grammar.py",
+      "label": "ai/core/tests/test_decision_grammar.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_decision_pipeline.py",
+      "label": "ai/core/tests/test_decision_pipeline.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_decision_routes.py",
+      "label": "ai/core/tests/test_decision_routes.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_decision_store.py",
+      "label": "ai/core/tests/test_decision_store.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_email_recipient_policy.py",
+      "label": "ai/core/tests/test_email_recipient_policy.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_legacy_approval_removed.py",
+      "label": "ai/core/tests/test_legacy_approval_removed.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_normalized_turn_service.py",
+      "label": "ai/core/tests/test_normalized_turn_service.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_question_answers.py",
+      "label": "ai/core/tests/test_question_answers.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_rbac_voice_text_parity.py",
+      "label": "ai/core/tests/test_rbac_voice_text_parity.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_realtime_session_api.py",
+      "label": "ai/core/tests/test_realtime_session_api.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_sandbox_seams.py",
+      "label": "ai/core/tests/test_sandbox_seams.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_tracing_allowlist.py",
+      "label": "ai/core/tests/test_tracing_allowlist.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_action_policy.py",
+      "label": "ai/core/tests/test_voice_action_policy.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_action_severity.py",
+      "label": "ai/core/tests/test_voice_action_severity.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_complexity_routing.py",
+      "label": "ai/core/tests/test_voice_complexity_routing.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_experience.py",
+      "label": "ai/core/tests/test_voice_experience.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_followup_context.py",
+      "label": "ai/core/tests/test_voice_followup_context.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_gateway.py",
+      "label": "ai/core/tests/test_voice_gateway.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_honesty.py",
+      "label": "ai/core/tests/test_voice_honesty.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_injection_guard.py",
+      "label": "ai/core/tests/test_voice_injection_guard.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_latency.py",
+      "label": "ai/core/tests/test_voice_latency.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_native_sts.py",
+      "label": "ai/core/tests/test_voice_native_sts.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_parity.py",
+      "label": "ai/core/tests/test_voice_parity.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_pilot_policy.py",
+      "label": "ai/core/tests/test_voice_pilot_policy.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_prompts.py",
+      "label": "ai/core/tests/test_voice_prompts.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_quality_telemetry.py",
+      "label": "ai/core/tests/test_voice_quality_telemetry.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_read_only_fence.py",
+      "label": "ai/core/tests/test_voice_read_only_fence.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_reverification_fixes.py",
+      "label": "ai/core/tests/test_voice_reverification_fixes.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_sample.py",
+      "label": "ai/core/tests/test_voice_sample.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_signaling.py",
+      "label": "ai/core/tests/test_voice_signaling.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_spoken_summary.py",
+      "label": "ai/core/tests/test_voice_spoken_summary.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_status_phrases.py",
+      "label": "ai/core/tests/test_voice_status_phrases.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_timing.py",
+      "label": "ai/core/tests/test_voice_timing.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_tool_actions.py",
+      "label": "ai/core/tests/test_voice_tool_actions.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_transport_config.py",
+      "label": "ai/core/tests/test_voice_transport_config.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_tts_allowance.py",
+      "label": "ai/core/tests/test_voice_tts_allowance.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_wire.py",
+      "label": "ai/core/tests/test_voice_wire.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_write_confirmation.py",
+      "label": "ai/core/tests/test_voice_write_confirmation.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_write_gate.py",
+      "label": "ai/core/tests/test_voice_write_gate.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_write_governance.py",
+      "label": "ai/core/tests/test_voice_write_governance.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_wf8_voice_readonly.py",
+      "label": "ai/core/tests/test_wf8_voice_readonly.py"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/aichat/tests/test_voice_bridge.py",
+      "label": "aichat.tests.test_voice_bridge"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/aichat/tests/test_voice_hold_journey.py",
+      "label": "aichat.tests.test_voice_hold_journey"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/aichat/tests/test_action_proposal_api.py",
+      "label": "aichat.tests.test_action_proposal_api"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/aichat/tests/test_seed_voice_action_fixtures.py",
+      "label": "aichat.tests.test_seed_voice_action_fixtures"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/aichat/tests/test_voice_inventory_readback.py",
+      "label": "aichat.tests.test_voice_inventory_readback"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/voice/tests",
+      "label": "voice.tests"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/tasks/tests/test_workorder_services.py",
+      "label": "tasks.tests.test_workorder_services"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/tasks/tests/test_workorder_voice_readback.py",
+      "label": "tasks.tests.test_workorder_voice_readback"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/tasks/tests/test_procedure_walkthrough.py",
+      "label": "tasks.tests.test_procedure_walkthrough"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/tasks/tests/test_voice_procedure_completion.py",
+      "label": "tasks.tests.test_voice_procedure_completion"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/tasks/tests/test_closeout_capture.py",
+      "label": "tasks.tests.test_closeout_capture"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/approvals/tests.py",
+      "label": "approvals.tests"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/approvals/test_services.py",
+      "label": "approvals.test_services"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/approvals/test_review_sections.py",
+      "label": "approvals.test_review_sections"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/approvals/test_review_binding.py",
+      "label": "approvals.test_review_binding"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/approvals/test_execution.py",
+      "label": "approvals.test_execution"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/approvals/test_repair_work_package_executor.py",
+      "label": "approvals.test_repair_work_package_executor"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/approvals/test_purchasing.py",
+      "label": "approvals.test_purchasing"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/approvals/test_inventory.py",
+      "label": "approvals.test_inventory"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/approvals/test_phase_e_executors.py",
+      "label": "approvals.test_phase_e_executors"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/approvals/test_voice_inbox.py",
+      "label": "approvals.test_voice_inbox"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/approvals/test_voice_purchasing.py",
+      "label": "approvals.test_voice_purchasing"
+    },
+    {
+      "runner": "django",
+      "path": "src/backend/InvenTree/users/test_notification_role.py",
+      "label": "users.test_notification_role"
+    },
+    {
+      "runner": "playwright",
+      "path": "src/frontend/tests/pages/pui_voice_decisions.spec.ts",
+      "label": "pui_voice_decisions.spec.ts"
+    },
+    {
+      "runner": "playwright",
+      "path": "src/frontend/tests/pages/pui_voice_hold.spec.ts",
+      "label": "pui_voice_hold.spec.ts"
+    },
+    {
+      "runner": "playwright",
+      "path": "src/frontend/tests/pages/pui_voice_live.spec.ts",
+      "label": "pui_voice_live.spec.ts"
+    },
+    {
+      "runner": "playwright",
+      "path": "src/frontend/tests/pages/pui_voice_mobile.spec.ts",
+      "label": "pui_voice_mobile.spec.ts"
+    },
+    {
+      "runner": "playwright",
+      "path": "src/frontend/tests/pages/pui_voice_session.spec.ts",
+      "label": "pui_voice_session.spec.ts"
+    },
+    {
+      "runner": "redis",
+      "path": "src/backend/InvenTree/ai/core/tests/test_decision_redis.py",
+      "label": "ai/core/tests/test_decision_redis.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_voice_validation.py",
+      "label": "ai/core/tests/test_voice_validation.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_capability_invocation_guard.py",
+      "label": "ai/core/tests/test_capability_invocation_guard.py"
+    },
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_tool_events.py",
+      "label": "ai/core/tests/test_tool_events.py"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S01",
+      "invariant": "Brief read-back and separate confirmation",
+      "required_layers": [
+        "L1",
+        "L2",
+        "L4"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/ai/core/tests/test_decision_grammar.py",
+          "test": "test_confirmation_v3_is_the_base_grammar"
+        },
+        {
+          "path": "src/backend/InvenTree/aichat/tests/test_voice_bridge.py",
+          "test": "test_confirmed_voice_write_dispatches_the_canonical_command"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Live per-action adverse coverage remains incomplete.",
+      "external_evidence": [
+        {
+          "layer": "L4",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Fresh scoped campaign not run; historical Phase B-E reports are not Phase V baseline."
+        }
+      ]
+    },
+    {
+      "id": "S02",
+      "invariant": "Full review and action-specific confirmation",
+      "required_layers": [
+        "L1",
+        "L2",
+        "L4"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/ai/core/tests/test_voice_action_policy.py",
+          "test": "test_external_and_irreversible_tools_require_full_review"
+        },
+        {
+          "path": "src/backend/InvenTree/approvals/test_review_binding.py",
+          "test": "test_only_all_completed_pages_allow_voice_acknowledgment"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Email paused; screen-only policy exceptions are not hands-free completions.",
+      "external_evidence": [
+        {
+          "layer": "L4",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Fresh scoped campaign not run; historical Phase B-E reports are not Phase V baseline."
+        }
+      ]
+    },
+    {
+      "id": "S03",
+      "invariant": "Critical-value hold, correct or discard",
+      "required_layers": [
+        "L1",
+        "L3",
+        "L4"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/ai/core/tests/test_voice_prompts.py",
+          "test": "test_transcript_review_prompt_is_persisted_then_spoken"
+        },
+        {
+          "path": "src/frontend/tests/pages/pui_voice_hold.spec.ts",
+          "test": "a critical value is held and the server is asked to read it back"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Live ASR two/to and page two/too cases remain.",
+      "external_evidence": [
+        {
+          "layer": "L4",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Fresh scoped campaign not run; historical Phase B-E reports are not Phase V baseline."
+        }
+      ]
+    },
+    {
+      "id": "S04",
+      "invariant": "No/cancel/stop act on the focused interaction",
+      "required_layers": [
+        "L1",
+        "L3",
+        "L4"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/ai/core/tests/test_decision_grammar.py",
+          "test": "test_cancel_that_disarms_but_cancel_the_action_rejects_source"
+        },
+        {
+          "path": "src/frontend/tests/pages/pui_voice_hold.spec.ts",
+          "test": "a bare cancel during a hold discards it without a turn"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Repeat across eligible action variants.",
+      "external_evidence": [
+        {
+          "layer": "L4",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Fresh scoped campaign not run; historical Phase B-E reports are not Phase V baseline."
+        }
+      ]
+    },
+    {
+      "id": "S05",
+      "invariant": "Correction or negation never executes old preview",
+      "required_layers": [
+        "L1"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/ai/core/tests/test_decision_grammar.py",
+          "test": "test_confirmation_v3_is_the_base_grammar"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Parameterized grammar is deterministic, not accent evidence.",
+      "external_evidence": []
+    },
+    {
+      "id": "S06",
+      "invariant": "Transcript review disarms underlying proposal",
+      "required_layers": [
+        "L1",
+        "L3"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/ai/core/tests/test_decision_coordinator.py",
+          "test": "test_stale_focus_never_confirms"
+        },
+        {
+          "path": "src/frontend/tests/pages/pui_voice_hold.spec.ts",
+          "test": "speech during a hold becomes a new revision and re-prompts"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Add direct combined domain-focus/transcript browser journey if required.",
+      "external_evidence": []
+    },
+    {
+      "id": "S07",
+      "invariant": "No approval without one reviewed target",
+      "required_layers": [
+        "L1",
+        "L2"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/ai/core/tests/test_decision_grammar.py",
+          "test": "test_disallowed_positive_and_source_cancel_commands_fail_closed"
+        },
+        {
+          "path": "src/backend/InvenTree/approvals/test_voice_inbox.py",
+          "test": "test_selection_is_not_approval_and_bare_yes_never_selects"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Unreviewed and ambiguous selection variants.",
+      "external_evidence": []
+    },
+    {
+      "id": "S08",
+      "invariant": "Ordinal selection bound to frozen list",
+      "required_layers": [
+        "L1",
+        "L3"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/ai/core/tests/test_question_answers.py",
+          "test": "test_ordinals_select"
+        },
+        {
+          "path": "src/frontend/tests/pages/pui_voice_decisions.spec.ts",
+          "test": "turns carry decision_context and correction re-presents a fresh target"
+        },
+        {
+          "path": "src/backend/InvenTree/approvals/test_voice_inbox.py",
+          "test": "test_inbox_content_changes_require_new_selection"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Direct ordinal-reorder browser scenario is a carried-forward gap; sibling browser coverage is not a pass.",
+      "external_evidence": []
+    },
+    {
+      "id": "S09",
+      "invariant": "Revision invalidates earlier review",
+      "required_layers": [
+        "L2"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/approvals/test_review_binding.py",
+          "test": "test_revision_invalidates_review_and_legacy_timestamp"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Shared policy plus per-action revision variants.",
+      "external_evidence": []
+    },
+    {
+      "id": "S10",
+      "invariant": "Interrupted/blocked audio cannot complete review",
+      "required_layers": [
+        "L3",
+        "L4"
+      ],
+      "tests": [
+        {
+          "path": "src/frontend/tests/pages/pui_voice_decisions.spec.ts",
+          "test": "metadata-free Azure read-back reports bound delivery without confirming an action"
+        },
+        {
+          "path": "src/frontend/tests/pages/pui_voice_session.spec.ts",
+          "test": "optional numeric timing cannot acknowledge delivery or retry a business turn"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Real acoustic interruption and blocked-output campaign required.",
+      "external_evidence": [
+        {
+          "layer": "L4",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Fresh scoped campaign not run; historical Phase B-E reports are not Phase V baseline."
+        }
+      ]
+    },
+    {
+      "id": "S11",
+      "invariant": "Revocation, scope/version changes and expiry fail closed",
+      "required_layers": [
+        "L2"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/approvals/test_review_binding.py",
+          "test": "test_permission_revoked_during_revalidation_blocks_execution"
+        },
+        {
+          "path": "src/backend/InvenTree/approvals/test_review_binding.py",
+          "test": "test_revision_change_during_revalidation_blocks_execution"
+        },
+        {
+          "path": "src/backend/InvenTree/voice/tests/test_timing.py",
+          "test": "test_owner_scope_hash_generation_and_old_utterance_are_refused"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Per-action expiry and scope cases in integration suite; retain uncovered variants.",
+      "external_evidence": []
+    },
+    {
+      "id": "S12",
+      "invariant": "Repeated/cross-modality confirmation has at most one effect",
+      "required_layers": [
+        "L2",
+        "L3"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/aichat/tests/test_voice_bridge.py",
+          "test": "test_voice_and_visual_confirm_produce_the_same_receipt_shape"
+        },
+        {
+          "path": "src/frontend/tests/pages/pui_voice_decisions.spec.ts",
+          "test": "touch confirmation sends hash and revision and unknown result stays unverified"
+        },
+        {
+          "path": "src/backend/InvenTree/voice/tests/test_timing.py",
+          "test": "test_first_write_wins_without_authority_or_activity_change"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "True simultaneous touch/voice race must be identified separately from parity.",
+      "external_evidence": []
+    },
+    {
+      "id": "S13",
+      "invariant": "Network loss reconciles original operation",
+      "required_layers": [
+        "L2",
+        "L3",
+        "L4"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/approvals/test_voice_inbox.py",
+          "test": "test_reconnected_terminal_focus_is_receipt_only_and_does_not_trap_intents"
+        },
+        {
+          "path": "src/frontend/tests/pages/pui_voice_session.spec.ts",
+          "test": "network interruption never resubmits and requires explicit microphone rearm"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Live lost HTTP receipt injection and Listening-with-no-turn/expired-session remain.",
+      "external_evidence": [
+        {
+          "layer": "L4",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Fresh scoped campaign not run; historical Phase B-E reports are not Phase V baseline."
+        }
+      ]
+    },
+    {
+      "id": "S14",
+      "invariant": "Retired HITL/business failure never reports success",
+      "required_layers": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/ai/core/tests/test_legacy_approval_removed.py",
+          "test": "test_removed_legacy_routes_and_context_types"
+        },
+        {
+          "path": "src/backend/InvenTree/aichat/tests/test_action_proposal_api.py",
+          "test": "test_stale_target_version_fails_revalidation_without_effect"
+        },
+        {
+          "path": "src/frontend/tests/pages/pui_voice_decisions.spec.ts",
+          "test": "HTTP 200 with business failure shows no success"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Preserve failure as an attempted case in reports.",
+      "external_evidence": []
+    },
+    {
+      "id": "S15",
+      "invariant": "Echo/read-aloud text is not operator assent",
+      "required_layers": [
+        "L1",
+        "L4",
+        "L5"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/ai/core/tests/test_decision_coordinator.py",
+          "test": "test_echo_keeps_decision_without_refresh_or_execution"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Nearby-speaker physical qualification remains open; speech is not authentication.",
+      "external_evidence": [
+        {
+          "layer": "L4",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Fresh scoped campaign not run; historical Phase B-E reports are not Phase V baseline."
+        },
+        {
+          "layer": "L5",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Participants/devices/reviewer unavailable; no sign-off inferred."
+        }
+      ]
+    },
+    {
+      "id": "S16",
+      "invariant": "Queue overload and interruption retain no stale assent",
+      "required_layers": [
+        "L3",
+        "L4"
+      ],
+      "tests": [
+        {
+          "path": "src/frontend/tests/pages/pui_voice_session.spec.ts",
+          "test": "network interruption never resubmits and requires explicit microphone rearm"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Dedicated live queue saturation and long-answer correction remain.",
+      "external_evidence": [
+        {
+          "layer": "L4",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Fresh scoped campaign not run; historical Phase B-E reports are not Phase V baseline."
+        }
+      ]
+    },
+    {
+      "id": "S17",
+      "invariant": "Closeout/procedure correct revision and readiness",
+      "required_layers": [
+        "L2",
+        "L4"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/tasks/tests/test_closeout_capture.py",
+          "test": "test_handoff_snapshots_exact_revision_once"
+        },
+        {
+          "path": "src/backend/tasks/tests/test_voice_procedure_completion.py",
+          "test": "test_required_value_and_visual_evidence_refuse_without_effect"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Voice-only value entry is unqualified; hybrid completion is not hands-free.",
+      "external_evidence": [
+        {
+          "layer": "L4",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Fresh scoped campaign not run; historical Phase B-E reports are not Phase V baseline."
+        }
+      ]
+    },
+    {
+      "id": "S18",
+      "invariant": "US/CA/GB accent, identifiers, quantities, negation and noise",
+      "required_layers": [
+        "L4",
+        "L5"
+      ],
+      "tests": [],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "At least 30 real-provider turns per accent plus separate +15% stratum; real participants needed.",
+      "external_evidence": [
+        {
+          "layer": "L4",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Fresh scoped campaign not run; historical Phase B-E reports are not Phase V baseline."
+        },
+        {
+          "layer": "L5",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Participants/devices/reviewer unavailable; no sign-off inferred."
+        }
+      ]
+    },
+    {
+      "id": "S19",
+      "invariant": "Mode, route, noise, echo and accidental input",
+      "required_layers": [
+        "L3",
+        "L5"
+      ],
+      "tests": [
+        {
+          "path": "src/frontend/tests/pages/pui_voice_session.spec.ts",
+          "test": "sounds command is local and PTT preference survives a new session"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "BYOD route/noise minimums and failing-setup degradation rule need owner decision.",
+      "external_evidence": [
+        {
+          "layer": "L5",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Participants/devices/reviewer unavailable; no sign-off inferred."
+        }
+      ]
+    },
+    {
+      "id": "S20",
+      "invariant": "Foreground navigation retains global voice and scope safety",
+      "required_layers": [
+        "L3",
+        "L5"
+      ],
+      "tests": [
+        {
+          "path": "src/frontend/tests/pages/pui_voice_session.spec.ts",
+          "test": "StrictMode session survives panel close and route navigation, global view reuses it"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Human foreground-web validation still required.",
+      "external_evidence": [
+        {
+          "layer": "L5",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Participants/devices/reviewer unavailable; no sign-off inferred."
+        }
+      ]
+    },
+    {
+      "id": "S21",
+      "invariant": "Guided review/error/choice explains next action",
+      "required_layers": [
+        "L1",
+        "L3"
+      ],
+      "tests": [
+        {
+          "path": "src/backend/InvenTree/ai/core/tests/test_voice_prompts.py",
+          "test": "test_status_prompts_are_allow_listed_and_localized"
+        },
+        {
+          "path": "src/frontend/tests/pages/pui_voice_mobile.spec.ts",
+          "test": "guided steps use the active session and only request completion review"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Guided voice-only completion is distinct from screen-assisted flow.",
+      "external_evidence": []
+    },
+    {
+      "id": "S22",
+      "invariant": "Browser lifecycle privacy; native lifecycle deferred",
+      "required_layers": [
+        "L3",
+        "L5"
+      ],
+      "tests": [
+        {
+          "path": "src/frontend/tests/pages/pui_voice_session.spec.ts",
+          "test": "hidden tab suspends, return refreshes without assent, logout releases media"
+        },
+        {
+          "path": "src/frontend/tests/pages/pui_voice_mobile.spec.ts",
+          "test": "explicit route survives rotation, escape and logout resets the override"
+        }
+      ],
+      "status": "NOT RUN",
+      "owner": "AIMMS engineering; human qualification: owner-named reviewer pending",
+      "gap": "Phase F/native lock/call/headset controls DEFERRED to mobile version; actual foreground mobile-web remains BLOCKED on hardware.",
+      "external_evidence": [
+        {
+          "layer": "L5",
+          "status": "BLOCKED",
+          "reference": "docs/docs/aimms/voice-live-validation.md",
+          "reason": "Participants/devices/reviewer unavailable; no sign-off inferred."
+        }
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "family": "work_orders",
+      "variants": [
+        "hold",
+        "resume",
+        "assign",
+        "transition",
+        "cancel",
+        "delete",
+        "schedule",
+        "resize",
+        "update",
+        "dependency.create",
+        "dependency.delete",
+        "create_child",
+        "generate_procurement",
+        "create",
+        "schedule.optimize"
+      ],
+      "tests": [
+        "src/backend/InvenTree/aichat/tests/test_voice_bridge.py",
+        "src/backend/tasks/tests/test_workorder_services.py",
+        "src/backend/InvenTree/aichat/tests/test_action_proposal_api.py"
+      ],
+      "gap": "Wider adverse live variants remain. Creation/bulk optimization and other screen-required cases retain their policy exclusions; refusal is not hands-free completion."
+    },
+    {
+      "family": "approvals",
+      "variants": [
+        "frozen_selection",
+        "full_review",
+        "revision",
+        "reject",
+        "cancel"
+      ],
+      "tests": [
+        "src/backend/InvenTree/approvals/test_review_binding.py",
+        "src/backend/InvenTree/approvals/test_voice_inbox.py"
+      ],
+      "gap": "Paused email and explicit screen-only policy exclusions below."
+    },
+    {
+      "family": "inventory",
+      "variants": [
+        "add",
+        "remove",
+        "transfer",
+        "count",
+        "serial",
+        "second_location"
+      ],
+      "tests": [
+        "src/backend/InvenTree/approvals/test_inventory.py",
+        "src/backend/InvenTree/aichat/tests/test_voice_inventory_readback.py"
+      ],
+      "gap": "Real stock excluded; fresh dedicated-fixture campaign required."
+    },
+    {
+      "family": "closeout",
+      "variants": [
+        "revise",
+        "pages",
+        "accept",
+        "handoff"
+      ],
+      "tests": [
+        "src/backend/tasks/tests/test_closeout_capture.py"
+      ],
+      "gap": "Use current revision and fresh review; old approvals cannot be reused."
+    },
+    {
+      "family": "procedures",
+      "variants": [
+        "values",
+        "completion",
+        "hold_points"
+      ],
+      "tests": [
+        "src/backend/tasks/tests/test_voice_procedure_completion.py"
+      ],
+      "gap": "Voice-only values not yet qualified; no implied physical safety verification."
+    },
+    {
+      "family": "draft_workflows",
+      "variants": [
+        "sales_draft",
+        "workflow",
+        "notification_refusal"
+      ],
+      "tests": [
+        "src/backend/InvenTree/approvals/test_phase_e_executors.py",
+        "src/backend/InvenTree/users/test_notification_role.py"
+      ],
+      "gap": "Notification-positive live test blocked on admin permission; screen-only stays outside hands-free denominator."
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "EMAIL_LIVE",
+      "status": "BLOCKED",
+      "reason": "Owner paused provider/email/reply testing; isolated deterministic email-policy CI regressions stay enabled."
+    },
+    {
+      "id": "EXTERNAL_REAL_EFFECT",
+      "status": "N/A",
+      "reason": "No supplier contact, real stock changes, production approvals or role grants in this implementation."
+    },
+    {
+      "id": "NATIVE_PHASE_F",
+      "status": "DEFERRED",
+      "reason": "Owner deferred Phase F to mobile version; foreground web privacy tests remain required."
+    },
+    {
+      "id": "HUMAN_QUALIFICATION",
+      "status": "BLOCKED",
+      "reason": "No real participants/devices/networks or named reviewer; emulation never qualifies hardware."
+    }
+  ]
+}

@@ -174,6 +174,7 @@ class VoiceTurnResponse(BaseModel):
 #: hand-listed there; the generated union covers this tuple. A source test
 #: (test_voice_wire.py) asserts this list never falls behind the code.
 SERVER_VOICE_ERROR_CODES: tuple[str, ...] = (
+    "VOICE_TIMING_UNAVAILABLE",
     "VOICE_SESSION_UNAVAILABLE",
     "VOICE_SESSION_FORBIDDEN",
     "VOICE_SESSION_LIMIT",

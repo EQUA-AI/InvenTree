@@ -51,6 +51,9 @@ jobs:
         with:
           filters: |
             server:
+              - '.github/voice_validation_manifest.json'
+              - '.github/scripts/**'
+              - '.github/workflows/**'
               - 'src/backend/InvenTree/**'
               - 'src/backend/tasks/**'
               - 'src/backend/requirements.txt'
@@ -736,36 +739,17 @@ jobs:
           dev-install: true
           update: true
           npm: true
-      - name: Layer 1 - deterministic island suite
+      - name: Validate voice scenario registration
         run: |
-          cd src/backend/InvenTree
-          DJANGO_SETTINGS_MODULE=ai.core.tests.settings python -m pytest -q -p no:cacheprovider \
-            ai/core/tests/test_decision_store.py \
-            ai/core/tests/test_decision_grammar.py \
-            ai/core/tests/test_decision_coordinator.py \
-            ai/core/tests/test_decision_routes.py \
-            ai/core/tests/test_decision_pipeline.py \
-            ai/core/tests/test_voice_write_confirmation.py \
-            ai/core/tests/test_voice_write_gate.py \
-            ai/core/tests/test_voice_write_governance.py \
-            ai/core/tests/test_voice_action_severity.py \
-            ai/core/tests/test_voice_action_policy.py \
-            ai/core/tests/test_voice_tool_actions.py \
-            ai/core/tests/test_voice_wire.py \
-            ai/core/tests/test_voice_status_phrases.py \
-            ai/core/tests/test_voice_prompts.py \
-            ai/core/tests/test_question_answers.py \
-            ai/core/tests/test_voice_read_only_fence.py \
-            ai/core/tests/test_wf8_voice_readonly.py \
-            ai/core/tests/test_voice_injection_guard.py \
-            ai/core/tests/test_legacy_approval_removed.py \
-            ai/core/tests/test_approval_reference.py \
-            ai/core/tests/test_rbac_voice_text_parity.py \
-            ai/core/tests/test_sandbox_seams.py \
-            ai/core/tests/test_email_recipient_policy.py \
-            ai/core/tests/test_approvals_sandbox_seams.py \
-            ai/core/tests/test_normalized_turn_service.py
-      - name: Fresh test database
+          python .github/scripts/check_voice_validation_manifest.py
+          python -m unittest discover -s .github/scripts -p 'test_voice_validation_manifest.py'
+      - name: Layer 1 - deterministic island suite and collection guard
+        run: |
+          PYTHONPATH=src/backend:src/backend/InvenTree DJANGO_SETTINGS_MODULE=ai.core.tests.settings python .github/scripts/check_voice_validation_manifest.py --run pytest
+      - name: Collect canonical voice integration scenarios
+        run: |
+          PYTHONPATH=src/backend:src/backend/InvenTree DJANGO_SETTINGS_MODULE=InvenTree.settings python .github/scripts/check_voice_validation_manifest.py --collect django
+      - name: Reset isolated CI test database
         env:
           PGPASSWORD: password
         run: psql -h 127.0.0.1 -U inventree -d postgres -c 'DROP DATABASE IF EXISTS test_inventree WITH (FORCE)'
@@ -784,6 +768,7 @@ jobs:
           cd src/frontend
           yarn install
           yarn test:unit
+          yarn tsc --noEmit
 
   no-egress:
     # M1 prerequisite B6 (GR-26): the AI surface must boot and test with every
@@ -837,7 +822,7 @@ jobs:
         # asyncio's self-pipe is a socketpair, hence the unix-socket allowance.
         run: |
           DJANGO_SETTINGS_MODULE=ai.core.tests.settings python -m pytest -q ai/core/tests \
-            -p pytest_socket --disable-socket --allow-hosts=127.0.0.1 --allow-unix-socket
+            --disable-socket --allow-hosts=127.0.0.1 --allow-unix-socket
       - name: Offline boot under the Django runner
         # The test disables sockets itself in setUpClass so the denial holds
         # without the pytest plugin.

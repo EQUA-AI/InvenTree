@@ -15,6 +15,8 @@ never prompt text, error text, tool arguments, or user content.
 from __future__ import annotations
 
 import logging
+import math
+import re
 from contextlib import contextmanager
 from typing import Any
 
@@ -39,6 +41,15 @@ _ALLOWED_ATTRS = frozenset({
     "aimms.proposal_id",
     "aimms.action_type",
     "aimms.turn_sequence",
+    "aimms.decision_id",
+    "aimms.operation_id",
+    "aimms.utterance_id",
+    "aimms.decision_state",
+    "aimms.ms_server_receipt",
+    "aimms.ms_route",
+    "aimms.ms_tool",
+    "aimms.ms_tts_request",
+    "aimms.ms_result",
     # S0 (analysis rail): content-free scope/intent/validation telemetry.
     # Enum codes, versions, counts, and hash PREFIXES only — never machine
     # names, filters, claims, or any other scope/answer content.
@@ -103,11 +114,61 @@ def span_attrs(**kwargs: Any) -> dict[str, Any]:
         full_key = key if key.startswith("aimms.") else f"aimms.{key}"
         if full_key not in _ALLOWED_ATTRS or value is None:
             continue
+        if full_key.startswith("aimms.ms_"):
+            if type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 300000:
+                allowed[full_key] = value
+            continue
+        if full_key in {"aimms.decision_id", "aimms.operation_id", "aimms.utterance_id"}:
+            value = opaque_voice_id(value)
+            if value:
+                allowed[full_key] = value
+            continue
+        if full_key == "aimms.decision_state":
+            if type(value) is str and value in {
+                "presented",
+                "armed",
+                "executing",
+                "completed",
+                "failed",
+                "unknown",
+                "canceled",
+                "cancelled",
+                "expired",
+                "set_aside",
+                "reviewing",
+                "resolved",
+                "disarmed",
+            }:
+                allowed[full_key] = value
+            continue
         if isinstance(value, bool | int):
             allowed[full_key] = int(value)
-        else:
+        elif isinstance(value, str):
+            allowed[full_key] = value[:_MAX_ATTR_LEN]
+        elif type(value) is float and math.isfinite(value):
+            # Keep existing non-V3 float encoding compatible. Never stringify
+            # arbitrary objects: exceptions/dicts may contain operational text.
             allowed[full_key] = str(value)[:_MAX_ATTR_LEN]
     return allowed
+
+
+def opaque_voice_id(value: Any) -> str | None:
+    """Only canonical UUID/hex IDs, never arbitrary strings or __str__ payloads."""
+    if type(value) is str and re.fullmatch(
+        r"[a-fA-F0-9]{32}|[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}", value
+    ):
+        return value
+    return None
+
+
+def decision_log_ids(value: Any) -> tuple[str, str]:
+    """Never stringify content or fail a turn for a malformed optional projection."""
+    if type(value) is not dict:
+        return "-", "-"
+    return (
+        opaque_voice_id(value.get("decision_id")) or "-",
+        opaque_voice_id(value.get("operation_id")) or "-",
+    )
 
 
 @contextmanager
@@ -119,24 +180,33 @@ def turn_span(name: str, **attrs: Any):
     enter/exit are swallowed (the work continues untraced); exceptions from
     the traced body always propagate unchanged.
     """
-    tracer = _tracer()
+    try:
+        tracer = _tracer()
+    except Exception:
+        tracer = None
     if tracer is None:
         yield None
         return
     ctx = None
     span = None
     try:
-        ctx = tracer.start_as_current_span(name, attributes=span_attrs(**attrs))
+        ctx = tracer.start_as_current_span(
+            name,
+            attributes=span_attrs(**attrs),
+            record_exception=False,
+            set_status_on_exception=False,
+        )
         span = ctx.__enter__()
     except Exception:
         logger.warning("tracing span start failed name=%s", name)
         ctx = None
     try:
         yield span
-    except BaseException as exc:
+    except BaseException:
         if ctx is not None:
             try:
-                ctx.__exit__(type(exc), exc, exc.__traceback__)
+                # The exporter must never receive a business exception or traceback.
+                ctx.__exit__(None, None, None)
             except Exception:  # pragma: no cover - SDK exit failure
                 logger.debug("tracing span exit failed name=%s", name)
         raise

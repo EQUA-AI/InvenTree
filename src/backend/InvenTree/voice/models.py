@@ -135,6 +135,8 @@ class VoiceSession(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     last_activity_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
+    timing_epoch = models.UUIDField(null=True, blank=True)
+    timing_epoch_started_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         """Owner-first indexes and terminal-state consistency."""
@@ -210,6 +212,10 @@ class VoiceUtterance(models.Model):
     spoken_summary = models.TextField()
     spoken_summary_hash = models.CharField(max_length=64)
     response_id = models.CharField(max_length=64, blank=True)
+    # Client-reported RTP-energy proxy, never delivery/review authority.
+    first_playback_at = models.DateTimeField(null=True, blank=True)
+    timing_reported_at = models.DateTimeField(null=True, blank=True)
+    timing_metrics = models.JSONField(null=True, blank=True)
     policy_version = models.CharField(max_length=64)
     playback_state = models.CharField(
         max_length=16, choices=PlaybackState.choices, default=PlaybackState.PENDING

@@ -29,6 +29,7 @@ export type VoiceNotice =
 export interface VoiceCapability {
   enabled: boolean;
   foreground_session: boolean;
+  validation_metrics?: boolean;
   decisions: boolean;
   inventory_actions?: boolean;
   procedure_complete?: boolean;

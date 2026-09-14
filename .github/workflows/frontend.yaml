@@ -54,6 +54,10 @@ jobs:
         with:
           filters: |
             frontend:
+              - '.github/voice_validation_manifest.json'
+              - '.github/scripts/**'
+              - '.github/workflows/**'
+              - 'src/backend/InvenTree/ai/core/voice/**'
               - 'src/frontend/**'
       - name: Is CI being forced?
         run: echo "force=true" >> $GITHUB_OUTPUT
@@ -135,7 +139,10 @@ jobs:
       - name: Compile translations
         run: cd src/frontend && yarn compile
       - name: Recording-only browser tests (no backend or live seeding)
-        run: cd src/frontend && yarn playwright test --config playwright.voice.config.ts
+        run: |
+          python3 .github/scripts/check_voice_validation_manifest.py --collect playwright
+          cd src/frontend
+          yarn playwright test --config playwright.voice.config.ts
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:

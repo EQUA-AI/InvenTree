@@ -83,3 +83,84 @@ stored audio object, or provider result copy exists to validate.
 | Managed-identity suite green on target host | | |
 | Proxy WebSocket probe green | | |
 | WebRTC matrix accepted or WebRTC deferred | | |
+
+## Voice UX Phase V — 2026-09-14
+
+This section supersedes neither the historical WS2 blanks above nor actual human
+acceptance. Phase F/native lifecycle work is deferred by the owner to the mobile
+version. Foreground web privacy, truthful state and existing browser behavior
+remain in scope. Latest OS is a minimum assumption, **not device qualification**.
+Email/provider testing and reply monitoring remain owner-paused.
+
+The tracked scenario/CI registry is `.github/voice_validation_manifest.json`.
+It maps S01–S22, six workflow families, exact test definitions and explicit gaps.
+Its collection guard checks registration, not semantic completeness or sign-off.
+Timing definitions and privacy boundaries: [Voice timing](voice-timing.md).
+The pure scorer is `ai/core/voice/validation.py`; the ignored LocalTesting entry
+point is `AIMMSVoiceHarness/scripts/phase_v_summarize.py`. It makes no network or
+database calls. Input carries the complete planned attempt ledger, content-free
+source/flags/artifact references, failures, exclusions and linked reruns.
+
+### Result record (one per measured cell)
+
+| Field | Required content |
+| --- | --- |
+| Date, source SHA, deployed revision/image | Actual tested source and UTC run time; no inherited deployment assumption |
+| Scenario, workflow variant, run/attempt ID | Exact S01–S22 and canonical receipt/artifact references |
+| Method | Unit / integration / emulated / synthetic real-provider / human; never interchange |
+| Outcome | PASS / FAIL / NOT RUN / BLOCKED / DEFERRED / justified N/A |
+| Measurement | Attempted/planned denominator, missingness, p50/p95 nearest-rank, proxy/acoustic provenance |
+| Limitation and next step | Include failed attempts and explicit reruns; never silently replace evidence |
+| Tester and reviewer | Consented pseudonymous tester; actual named reviewer, decision and date |
+
+Do not paste operational transcripts, spoken previews, customer/supplier labels,
+audio, credentials, configuration dumps, SDP or network addresses into records.
+An artifact hash is a reference, not independent proof that its content was
+audited. Reviewers must inspect the scoped source evidence before acceptance.
+
+### VX-T1 — accent and decision phrases
+
+| Cell | Required evidence | Status / limitation |
+| --- | --- | --- |
+| US / CA / GB human accents | Decision phrases, unusual identifiers, fifteen/fifty, negation, correction, unsupported language | BLOCKED — participants and reviewer not supplied |
+| US Jenny/Andrew, CA Clara/Liam, GB Sonia/Ryan | Verify selected resource availability; ≥30 real-provider base-rate turns per accent; +15% variants separately | NOT RUN — fresh scoped campaign required; virtual-mic evidence is L4, not human qualification |
+| Output and vocabulary | en-US / Ava, AIMMS-owned app-scoped vocabulary fixed across comparisons | Owner choices resolved; not a measurement result |
+
+### VX-T2 — user-owned audio routes and modes
+
+| Cell | Required evidence | Status / limitation |
+| --- | --- | --- |
+| Headset / earbuds / device speaker × continuous / PTT | Actual make/model, OS/browser versions, route, quiet/noise condition, echo, interruption and accidental input | BLOCKED — no physical devices/participants supplied |
+| Route/noise minimums and failing-setup degradation | Owner-selected minimum matrix and safe fallback criteria | BLOCKED — owner decision needed |
+| Local screen/keyboard stop | Same-browser-clock pause latency, p95 ≤250 ms from first measured run; acoustic tail separately | NOT RUN on physical hardware; local-control proxy does not certify acoustic stop |
+
+### VX-T3 — foreground browser and network behavior
+
+| Cell | Required evidence | Status / limitation |
+| --- | --- | --- |
+| Foreground navigation/rotation, visibility and mic permission | Emulated regression plus actual browser/device result; truthful mic/audio/global state | Automated registration available; physical foreground mobile-web NOT RUN |
+| Direct-route corporate / home / mobile network | Actual target network, candidate type only, success/failure and honest degradation | BLOCKED — target devices/networks unavailable; TURN remains off |
+| Lost response before/after confirmation | Original-operation reconciliation and exact one-effect canonical audit; no blind resubmission | NOT RUN in a fresh Phase V campaign; historical post-receipt reconnect is narrower evidence |
+| Lock-screen, native app switch/call/headset controls | Future mobile-version lifecycle work | DEFERRED — Phase F owner decision; no support claim |
+
+### VX-T4 — human-observed safety checklist
+
+For every in-scope workflow variant, verify current review revision/hash,
+mandatory pages, correct target/permission/scope, strict confirmation where
+required, idempotency receipt, exact effect count and truthful UI/speech outcome.
+Exercise correction, cancel/stop, stale focus, interrupted review, permission
+revocation and disconnect. A safe refusal is not successful task completion.
+
+| Gate | Status | Required owner / evidence |
+| --- | --- | --- |
+| S01–S22 human-observed checklist and canonical receipt/privacy audit | BLOCKED | Actual tester and reviewer; exact scoped run |
+| Notification-positive fixture | BLOCKED | Admin grant of publication permission; no agent role grant |
+| Fresh experimental campaign source/flags/fixtures | NOT RUN | Separate rollout/test authorization and fresh preflight; prior campaign is closed |
+| Latency / hands-free enforcement | BLOCKED | ≥30 base-rate real-provider turns per accent, six-family denominator, owner re-baselining and first enforcing phase |
+| Final pilot acceptance | NOT SIGNED | Named human reviewer, decision and date |
+
+Wrong/duplicate/stale/unauthorized effects, review integrity and truthful outcomes
+remain blocking. Acknowledgment ≤1.5 s (earcons prerequisite), useful audio ≤5 s
+reads / ≤8 s previews and hands-free ≥90% remain tracking targets until the owner
+records the enforcement decision. Missing acoustic evidence cannot pass an audible
+target. A completed template or green automated suite is not human sign-off.

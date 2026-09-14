@@ -54,6 +54,53 @@ def test_capability_defaults_and_foreground_dependency():
         _settings(FEATURE_VOICE_LIVE=False, FEATURE_VOICE_FOREGROUND_SESSION=True)
 
 
+def test_validation_metrics_default_dependency_and_owner_only_epoch():
+    from ai.core.voice.timing import VoiceTimingReport
+    from django.utils import timezone
+    from voice.services.realtime import persist_utterance
+
+    assert capability(_settings())["validation_metrics"] is False
+    with pytest.raises(ValueError, match="requires FEATURE_VOICE_FOREGROUND_SESSION"):
+        _settings(FEATURE_VOICE_VALIDATION_METRICS=True)
+    enabled = _settings(
+        FEATURE_VOICE_FOREGROUND_SESSION=True, FEATURE_VOICE_VALIDATION_METRICS=True
+    )
+    user = _user()
+    session = session_for(user, enabled)
+    assert capability(enabled)["validation_metrics"] is True
+    with pytest.raises(HTTPException) as caught:
+        _run(_principal(user), lambda: routes.begin_timing_epoch(str(session.pk)), _settings())
+    assert caught.value.status_code == 404
+    with pytest.raises(HTTPException) as caught:
+        _run(_principal(_user()), lambda: routes.begin_timing_epoch(str(session.pk)), enabled)
+    assert caught.value.status_code == 404  # Unknown and foreign sessions are indistinguishable.
+    result = _run(_principal(user), lambda: routes.begin_timing_epoch(str(session.pk)), enabled)
+    assert len(result["epoch"]) == 32
+    utterance = persist_utterance(
+        session=session, utterance_type="completed_answer", spoken_summary="PRIVATE_SENTINEL"
+    )
+    observation = VoiceTimingReport(
+        epoch=result["epoch"],
+        utterance_id=str(utterance.pk),
+        spoken_hash=utterance.spoken_summary_hash,
+        provenance="rtp_energy_proxy",
+        first_playback_epoch_ms=timezone.now().timestamp() * 1000,
+        timing={"submit_to_observed_playback_ms": 20},
+    )
+    assert _run(
+        _principal(user), lambda: routes.report_voice_timing(str(session.pk), observation), enabled
+    ) == {"accepted": True}
+    utterance.refresh_from_db()
+    assert timezone.is_aware(utterance.first_playback_at)
+    assert utterance.playback_state == "pending"
+    session.refresh_from_db()
+    activity = session.last_activity_at
+    _run(_principal(user), lambda: routes.suspend_voice_session(str(session.pk)), enabled)
+    session.refresh_from_db()
+    assert session.timing_epoch is None
+    assert session.last_activity_at == activity
+
+
 @pytest.mark.parametrize("timeout", [30, 299, 301, 3600])
 def test_consent_timeout_coupling(timeout):
     with pytest.raises(ValueError, match="consent-v2"):

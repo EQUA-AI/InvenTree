@@ -32,6 +32,7 @@ import {
 } from './types';
 import { VoiceHttpError, endOnPageHide, voiceHttp } from './voiceHttp';
 import { ForegroundBounds, installVoiceLifecycle } from './voiceLifecycle';
+import { VoiceTiming } from './voiceTiming';
 
 const TERMINAL = ['ended', 'expired', 'failed'];
 const FILLER = /^(?:uh|um|hmm+|mm+|mhm|huh|erm|ah|oh)[.!?,\s]*$/i;
@@ -66,6 +67,31 @@ export class VoiceSessionController {
   private droppedPending = false;
   private idleEnding = false;
   private outputEnergy = 0;
+  private timing = new VoiceTiming((report) => {
+    if (!this.snapshot.capability?.validation_metrics || this.snapshot.hidden)
+      return;
+    // Numeric/opaque-ID payload only; harness collection does not require audio.
+    window.dispatchEvent(
+      new CustomEvent('aimms:voice-timing', { detail: report })
+    );
+    void this.control('timing', report).catch(() => {});
+  });
+  private timingGeneration = 0;
+  private refreshTiming() {
+    const generation = ++this.timingGeneration;
+    this.timing.reset();
+    if (!this.snapshot.capability?.validation_metrics) return;
+    void this.control<{ epoch: string }>('timing-epoch')
+      .then((body) => {
+        if (
+          body &&
+          generation === this.timingGeneration &&
+          !this.snapshot.hidden
+        )
+          this.timing.reset(body.epoch);
+      })
+      .catch(() => {});
+  }
   private lastAudioAt = 0;
   readonly listeners = new Set<{
     onTurnResult?: (turn: VoiceTurnResponse) => void;
@@ -90,6 +116,10 @@ export class VoiceSessionController {
     if (!this.snapshot.session) this.threadId = threadId;
   }
   setCapability(capability: VoiceCapability | null) {
+    if (!capability?.validation_metrics) {
+      this.timingGeneration++;
+      this.timing.reset();
+    }
     this.update({
       capability,
       persistence: capability?.foreground_session
@@ -225,6 +255,8 @@ export class VoiceSessionController {
     this.wakeLock = null;
   }
   private hide() {
+    this.timingGeneration++;
+    this.timing.reset();
     if (this.starting && this.snapshot.transport !== 'connected') {
       void this.end('ended_away');
       return;
@@ -265,6 +297,7 @@ export class VoiceSessionController {
       await this.decisions.getState().refresh();
       if (generation !== this.generation || document.hidden) return;
       this.update({ notice: 'readback_available' });
+      this.refreshTiming();
       this.gateMicrophone();
       await this.acquireWakeLock();
       if (this.snapshot.transport === 'reconnecting') this.scheduleReconnect();
@@ -347,6 +380,7 @@ export class VoiceSessionController {
           energy += Number(report.totalAudioEnergy ?? 0);
       });
       if (energy > this.outputEnergy) {
+        this.timing.energy();
         this.lastAudioAt = Date.now();
         if (['pending', 'playing'].includes(this.snapshot.playback))
           this.update({ playback: 'playing' });
@@ -364,6 +398,7 @@ export class VoiceSessionController {
     }
   }
   private expectSpeech(spoken: VoiceSpokenPayload | null) {
+    this.timing.bind(spoken);
     this.update({ lastSpoken: spoken });
     window.clearTimeout(this.ttsTimer);
     if (spoken?.playback_state !== 'requested') {
@@ -396,6 +431,7 @@ export class VoiceSessionController {
   private stopLocal() {
     this.outputEpoch++;
     this.playback.stop();
+    this.timing.stop();
     this.audio?.pause();
     window.clearTimeout(this.ttsTimer);
     this.update({ playback: 'paused' });
@@ -409,7 +445,11 @@ export class VoiceSessionController {
     }
     return true;
   }
-  cancel = async () => {
+  cancel = () => this.cancelOutput(true);
+  private async cancelOutput(measureLocal: boolean) {
+    const stopStarted = performance.now();
+    this.audio?.pause();
+    if (measureLocal) this.timing.localStop(stopStarted);
     this.stopLocal(); // Always before any network/queue wait.
     this.bounds.touch();
     try {
@@ -417,7 +457,7 @@ export class VoiceSessionController {
     } catch {
       /* Local stop is already complete. */
     }
-  };
+  }
   async prompt(kind: 'help' | 'status', status?: string) {
     if (this.snapshot.hidden || !this.snapshot.session) return;
     const generation = this.generation;
@@ -458,6 +498,7 @@ export class VoiceSessionController {
     const generation = this.generation;
     const outputEpoch = this.outputEpoch;
     const epoch = this.playback.beginTurn();
+    this.timing.begin();
     const reply = await this.request<
       DecisionSnapshot & {
         position: number;
@@ -502,6 +543,7 @@ export class VoiceSessionController {
     this.stopLocal();
     const outputEpoch = this.outputEpoch;
     const epoch = this.playback.beginTurn();
+    this.timing.begin();
     if (this.cue('decision'))
       await new Promise<void>((resolve) => window.setTimeout(resolve, 125));
     if (!this.outputIsCurrent(generation, outputEpoch)) return;
@@ -531,6 +573,7 @@ export class VoiceSessionController {
     const generation = this.generation;
     const epoch = this.outputEpoch;
     try {
+      this.timing.begin();
       const body = await this.control<{
         presentation: VoiceTurnResponse['presentation'];
         spoken: VoiceSpokenPayload;
@@ -605,6 +648,7 @@ export class VoiceSessionController {
     this.update({ lastSubmitted });
     this.bounds.touch();
     const epoch = this.playback.beginTurn();
+    const clientTiming = this.timing.begin(transcript.itemId);
     // A newly requested turn may speak a fixed status before its HTTP result.
     void this.playAudio();
     try {
@@ -613,7 +657,8 @@ export class VoiceSessionController {
         item_id: transcript.itemId,
         confidence: transcript.confidence,
         language: transcript.language,
-        decision_context: transcript.decisionContext ?? null
+        decision_context: transcript.decisionContext ?? null,
+        ...(clientTiming ? { timing: clientTiming } : {})
       });
       if (!turn || generation !== this.generation) return;
       this.playback.bindTurn(
@@ -736,6 +781,7 @@ export class VoiceSessionController {
       return;
     }
     if (this.snapshot.hidden || !this.snapshot.session) return;
+    this.timing.event(event);
     this.playback.event(event);
     const type = event.type;
     if (type === 'input_audio_buffer.speech_started') {
@@ -776,14 +822,15 @@ export class VoiceSessionController {
     const text = String(event.transcript ?? '').trim();
     const command = normalizeDecisionUtterance(text);
     if (VOICE_STOP_RE.test(command)) {
-      void this.cancel();
+      void this.cancelOutput(false);
       return;
     }
     if (!/[\p{L}\p{N}]/u.test(text) || FILLER.test(text)) return;
     // Finals can arrive after PTT release; track gating prevents new capture.
     if (this.snapshot.muted || this.snapshot.transport !== 'connected') return;
     this.bounds.touch();
-    this.cue('heard');
+    if (this.cue('heard'))
+      this.timing.acknowledged(String(event.item_id ?? ''));
     if (/^(?:what can i say|help|what are you waiting for)$/.test(command)) {
       void this.help();
       return;
@@ -1014,6 +1061,7 @@ export class VoiceSessionController {
         });
         this.gateMicrophone();
         this.cue('ready');
+        this.refreshTiming();
         if (typeof peer.getStats === 'function')
           void peer
             .getStats()
@@ -1163,6 +1211,7 @@ export class VoiceSessionController {
               await this.decisions.getState().refresh();
               if (generation !== this.generation || document.hidden) return;
               this.update({ transport: 'connected', notice: 'reconnected' });
+              this.refreshTiming();
               this.gateMicrophone();
               await this.acquireWakeLock();
             })
@@ -1187,6 +1236,8 @@ export class VoiceSessionController {
     );
   }
   private releaseMedia() {
+    this.timingGeneration++;
+    this.timing.reset();
     this.generation++;
     this.starting = false;
     this.reporting = false;

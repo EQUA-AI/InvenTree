@@ -535,6 +535,7 @@ class DecisionCoordinator:
         """Claim the focus before recording submission and invoking the domain command."""
         from ai.core.decisions.receipts import finish_operation, start_operation
         from ai.core.tools.read_only import confirmed_write_exception
+        from ai.core.voice.timing import stage
         from aichat.services.proposals import ProposalError
 
         decision = self.advance(decision, state=State.EXECUTING, execution_state="executing")
@@ -543,7 +544,7 @@ class DecisionCoordinator:
         if not created:
             return self.history(decision, actor)
         try:
-            with confirmed_write_exception():
+            with confirmed_write_exception(), stage("tool"):
                 proposal = self.adapter.execute(decision, actor, phrase)
             finish_operation(operation, state="succeeded", receipt=proposal.receipt)
         except ProposalError as exc:

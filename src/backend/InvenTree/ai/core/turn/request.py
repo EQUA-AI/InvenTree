@@ -90,7 +90,10 @@ def turn_request_fingerprint(
             "content": content,
             "modality": modality,
             "trusted_context": trusted_context,
-            "modality_metadata": modality_metadata,
+            # Optional observations cannot change a business replay fingerprint.
+            "modality_metadata": {
+                k: v for k, v in modality_metadata.items() if k != "voice_timing"
+            },
         },
         sort_keys=True,
         separators=(",", ":"),

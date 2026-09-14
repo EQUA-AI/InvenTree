@@ -50,6 +50,8 @@ def capability(settings) -> dict:
         "webrtc": enabled and settings.feature_voice_live_webrtc,
         "relay": enabled and settings.feature_voice_live_relay,
         "foreground_session": foreground,
+        "validation_metrics": foreground
+        and getattr(settings, "feature_voice_validation_metrics", False),
         "decisions": enabled and settings.feature_voice_decision_coordinator,
         "inventory_actions": enabled
         and getattr(settings, "feature_voice_inventory_actions", False),

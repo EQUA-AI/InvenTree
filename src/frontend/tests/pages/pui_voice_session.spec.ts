@@ -17,6 +17,73 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test('optional numeric timing cannot acknowledge delivery or retry a business turn', async ({
+  page
+}) => {
+  const reports: Record<string, unknown>[] = [];
+  let epochs = 0;
+  const voice = await installVoiceMocks(page, {
+    capability: {
+      ...defaultCapability,
+      foreground_session: true,
+      validation_metrics: true
+    },
+    onTurn: () =>
+      turnPayload({
+        spoken: {
+          utterance_id: '11111111-1111-1111-1111-111111111111',
+          spoken_summary: 'PRIVATE_SENTINEL',
+          spoken_summary_hash: 'a'.repeat(64),
+          playback_state: 'requested'
+        }
+      })
+  });
+  await page.route('**/api/ai/voice/sessions/*/timing-epoch', async (route) => {
+    epochs++;
+    await route.fulfill({ json: { epoch: 'a'.repeat(32) } });
+  });
+  await page.route('**/api/ai/voice/sessions/*/timing', async (route) => {
+    reports.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 503,
+      json: { detail: 'VOICE_TIMING_UNAVAILABLE' }
+    });
+  });
+  await page.goto('/playwright/voice-session.html');
+  await startVoice(page);
+  await expect.poll(() => epochs).toBe(1);
+  await page.evaluate(() =>
+    (window as any).__voiceMock.emit('input_audio_buffer.speech_stopped', {
+      item_id: 'timing-item'
+    })
+  );
+  await emitTranscript(page, {
+    text: 'hello there',
+    itemId: 'timing-item',
+    confidence: 1
+  });
+  await expect.poll(() => voice.turns.length).toBe(1);
+  const body = voice.turns[0].body as { timing: Record<string, number> };
+  expect(Object.keys(body.timing).sort()).toEqual([
+    'final_to_submit_ms',
+    'speech_to_final_ms'
+  ]);
+  expect(
+    Object.values(body.timing).every(
+      (value) => typeof value === 'number' && value >= 0
+    )
+  ).toBe(true);
+  await page.getByTestId('voice-stop-speaking').click();
+  await expect.poll(() => reports.length).toBe(1);
+  expect(reports[0].provenance).toBe('local_pause_proxy');
+  expect(reports[0]).not.toHaveProperty('first_playback_epoch_ms');
+  expect(JSON.stringify(reports)).not.toContain('PRIVATE_SENTINEL');
+  expect(voice.turns).toHaveLength(1);
+  expect(voice.decisionActions).toHaveLength(0);
+  await page.getByTestId('voice-end').click();
+  expect(voice.turns).toHaveLength(1);
+});
+
 test('sounds command is local and PTT preference survives a new session', async ({
   page
 }) => {

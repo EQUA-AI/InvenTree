@@ -76,7 +76,15 @@ export type ProposalActionType =
   | 'work_order.generate_procurement'
   | 'dependency.create'
   | 'dependency.delete'
-  | 'schedule.optimize';
+  | 'schedule.optimize'
+  | 'stock.add'
+  | 'stock.remove'
+  | 'stock.transfer'
+  | 'stock.count'
+  | 'procedure.complete'
+  | 'closeout.consent'
+  | 'closeout.accept'
+  | 'closeout.handoff';
 
 export const PROPOSAL_ACTION_LABELS: Record<ProposalActionType, string> = {
   'work_order.hold': 'Hold work order',
@@ -95,6 +103,14 @@ export const PROPOSAL_ACTION_LABELS: Record<ProposalActionType, string> = {
   'dependency.create': 'Create dependency',
   'dependency.delete': 'Delete dependency',
   'schedule.optimize': 'Optimize schedule (bulk)',
+  'stock.add': 'Add stock',
+  'stock.remove': 'Remove stock',
+  'stock.transfer': 'Transfer stock',
+  'stock.count': 'Count stock',
+  'procedure.complete': 'Complete procedure step',
+  'closeout.consent': 'Consent to closeout dictation',
+  'closeout.accept': 'Accept closeout note',
+  'closeout.handoff': 'Hand off accepted closeout note',
 };
 
 export type ProposalStateType =
@@ -154,6 +170,23 @@ export const RISK_FINDING_FIELDS = [
 ] as const;
 
 // --- Voice wire payloads (ai.core.voice.wire) ---
+
+export interface VoiceClientTiming {
+  speech_to_final_ms?: number | null;
+  final_to_submit_ms?: number | null;
+  ack_schedule_ms?: number | null;
+  submit_to_observed_playback_ms?: number | null;
+  local_stop_ms?: number | null;
+}
+
+export interface VoiceTimingReport {
+  epoch: string;
+  utterance_id: string;
+  spoken_hash: string;
+  provenance: 'rtp_energy_proxy' | 'local_pause_proxy';
+  first_playback_epoch_ms?: number | null;
+  timing: VoiceClientTiming;
+}
 
 export interface VoiceTransportsAllowed {
   webrtc: boolean;
@@ -270,6 +303,7 @@ export interface VoiceTurnResponse {
 }
 
 export type ServerVoiceErrorCode =
+  | 'VOICE_TIMING_UNAVAILABLE'
   | 'VOICE_SESSION_UNAVAILABLE'
   | 'VOICE_SESSION_FORBIDDEN'
   | 'VOICE_SESSION_LIMIT'

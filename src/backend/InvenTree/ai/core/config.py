@@ -763,6 +763,12 @@ class Settings(BaseSettings):
             "FEATURE_VOICE_FOREGROUND_SESSION", "AIMMS_FEATURE_VOICE_FOREGROUND_SESSION"
         ),
     )
+    feature_voice_validation_metrics: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_VOICE_VALIDATION_METRICS", "AIMMS_FEATURE_VOICE_VALIDATION_METRICS"
+        ),
+    )
     voice_max_queued_turns: int = Field(default=3, ge=1, le=10, alias="VOICE_MAX_QUEUED_TURNS")
     voice_mic_silence_rms: float = Field(default=0.01, ge=0, le=1, alias="VOICE_MIC_SILENCE_RMS")
     voice_mic_silence_window_s: float = Field(
@@ -913,6 +919,10 @@ class Settings(BaseSettings):
             raise ValueError("FEATURE_VOICE_INVENTORY_ACTIONS requires FEATURE_VOICE_DECISIONS")
         if self.feature_voice_foreground_session and not self.feature_voice_live:
             raise ValueError("FEATURE_VOICE_FOREGROUND_SESSION requires FEATURE_VOICE_LIVE")
+        if self.feature_voice_validation_metrics and not self.feature_voice_foreground_session:
+            raise ValueError(
+                "FEATURE_VOICE_VALIDATION_METRICS requires FEATURE_VOICE_FOREGROUND_SESSION"
+            )
         if self.feature_voice_live and self.voice_live_idle_timeout_s != 300:
             raise ValueError(
                 "consent-v2 requires VOICE_LIVE_IDLE_TIMEOUT_S=300; revise consent first"

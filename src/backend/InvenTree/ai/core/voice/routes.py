@@ -15,6 +15,8 @@ from typing import Any, Literal
 from ai.core.auth import AIPrincipal, get_current_principal
 from ai.core.config import get_settings
 from ai.core.voice import signaling as sdp_signaling
+from ai.core.voice import timing
+from ai.core.voice.timing import VoiceClientTiming  # noqa: TC002 - Pydantic resolves at runtime
 from ai.core.voice.transcription import (
     FINAL_EVENT_TYPE,
     TranscriptEventError,
@@ -79,6 +81,7 @@ class VoiceTurnRequest(BaseModel):
     confidence: float | None = None
     language: str = "en-US"
     decision_context: dict[str, Any] | None = None
+    timing: VoiceClientTiming | None = None
 
 
 class VoicePromptRequest(BaseModel):
@@ -318,6 +321,9 @@ async def suspend_voice_session(session_id: str) -> dict:
     """Foreground loss is fail-safe and non-consuming, never an approval."""
     settings = _require_voice_enabled()
     session = await _owned_session(_principal(), session_id, settings)
+    from voice.services.timing import invalidate_epoch
+
+    await sync_to_async(invalidate_epoch)(session)
     await cancel_voice_playback(session_id)
     if settings.feature_voice_decision_coordinator:
         from ai.core.decisions.coordinator import get_coordinator
@@ -326,6 +332,42 @@ async def suspend_voice_session(session_id: str) -> dict:
             session.thread_id, "foreground_lost", set_aside=True
         )
     return {"id": str(session.id), "suspended": True}
+
+
+async def _timing_call(session_id, report=None):
+    settings = _require_voice_enabled()
+    if not getattr(settings, "feature_voice_validation_metrics", False):
+        raise HTTPException(status_code=404, detail="VOICE_TIMING_UNAVAILABLE")
+    principal = _principal()
+    # Resolve untrusted IDs before any reporting query and do not disclose existence.
+    await _owned_session(principal, session_id, settings)
+    from voice.services import timing as reporting
+
+    kwargs = {
+        "owner": principal.user_pk,
+        "scope_key": principal.scope,
+        "session_id": session_id,
+        "limits": _limits(settings),
+    }
+    try:
+        if report is None:
+            return await sync_to_async(reporting.begin_epoch)(**kwargs)
+        return await sync_to_async(reporting.report)(**kwargs, observation=report)
+    except Exception:
+        # This independent endpoint never retries or changes the business turn.
+        raise HTTPException(status_code=409, detail="VOICE_TIMING_UNAVAILABLE") from None
+
+
+@router.post("/sessions/{session_id}/timing-epoch")
+async def begin_timing_epoch(session_id: str) -> dict:
+    """Mint a telemetry-only generation for the current owner/session."""
+    return await _timing_call(session_id)
+
+
+@router.post("/sessions/{session_id}/timing")
+async def report_voice_timing(session_id: str, request: timing.VoiceTimingReport) -> dict:
+    """Observations are never playback acknowledgments or review completion."""
+    return await _timing_call(session_id, request)
 
 
 @router.post("/sessions/{session_id}/prompts")
@@ -463,6 +505,20 @@ async def relay_sdp(session_id: str, request: VoiceSdpRequest) -> dict:
 @router.post("/sessions/{session_id}/turns")
 async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
     """Submit one completed transcript to the shared normalized turn service."""
+    with timing.measurement():
+        result = await _submit_voice_turn(session_id, request)
+        decision = result.get("pending_decision") or {}
+        timing.attributes(
+            decision_id=decision.get("decision_id"),
+            operation_id=decision.get("operation_id"),
+            decision_state=decision.get("state"),
+            utterance_id=(result.get("spoken") or {}).get("utterance_id"),
+        )
+        return result
+
+
+async def _submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
+    """Business path; timing has no effect on authority or idempotency."""
     settings = _require_voice_enabled()
     principal = _principal()
     session = await _owned_session(principal, session_id, settings)
@@ -611,11 +667,16 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
             from ai.core.tracing import turn_span
 
             with turn_span(
-                "aimms.voice.turn",
+                "aimms.voice.process",
                 correlation_id=correlation_id,
                 session_correlation_id=str(session.correlation_id),
                 turn_sequence=getattr(session, "turn_count", None),
             ):
+                timing.attributes(
+                    correlation_id=correlation_id,
+                    session_correlation_id=str(session.correlation_id),
+                    turn_sequence=getattr(session, "turn_count", None),
+                )
                 from ai.core.decisions.pipeline import process_with_playback_probe
 
                 result = await process_with_playback_probe(
@@ -630,6 +691,12 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
                         **final.modality_metadata(),
                         "voice_session_id": str(session.pk),
                         "decision_context": request.decision_context,
+                        **(
+                            {"voice_timing": request.timing.model_dump(exclude_none=True)}
+                            if request.timing is not None
+                            and getattr(settings, "feature_voice_validation_metrics", False)
+                            else {}
+                        ),
                     },
                     idempotency_key=idempotency_key,
                     correlation_id=correlation_id,
@@ -776,7 +843,9 @@ async def submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict:
                             }
                         else:
                             raise ValueError("The decision changed before speech dispatch.")
-                    await send_control(tts_payload)
+                    with turn_span("aimms.voice.tts_request", utterance_id=str(utterance.pk)):
+                        await send_control(tts_payload)
+                    timing.mark("ms_tts_request")
                 except ExactSpeechViolation as exc:
                     raise HTTPException(status_code=409, detail="IDEMPOTENCY_CONFLICT") from exc
                 except Exception:

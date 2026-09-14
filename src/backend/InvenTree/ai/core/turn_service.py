@@ -1541,7 +1541,11 @@ class NormalizedTurnService:
             # strictly precede routing (routing.build_route), and routing
             # strictly precedes execution.
             await pending.resolve_preconditions(self, run)
-            await routing.build_route(self, run)
+            from ai.core.tracing import decision_log_ids
+            from ai.core.voice.timing import stage
+
+            with stage("route"):
+                await routing.build_route(self, run)
             canonical = await execution.build_canonical(self, run)
             canonical = await finalize.enrich_canonical(self, run, canonical)
             finalized, _, response_state = await finalize.complete(self, run, canonical)
@@ -1553,7 +1557,7 @@ class NormalizedTurnService:
             logger.info(
                 "ai.turn modality=%s workflow=%s route=%s state=%s "
                 "duration_ms=%d thread_id=%s turn_id=%s correlation_id=%s "
-                "outcome_code=%s tool_rounds=%s tool_names=%s",
+                "outcome_code=%s tool_rounds=%s tool_names=%s decision=%s operation=%s",
                 modality,
                 canonical.get("workflow_used") or capture.workflow_id or "unknown",
                 (canonical.get("route") or {}).get("mode", "none"),
@@ -1570,6 +1574,7 @@ class NormalizedTurnService:
                 provenance.get("outcome_code") or "-",
                 provenance.get("tool_rounds", "-"),
                 ",".join(provenance.get("tool_names") or ()) or "-",
+                *decision_log_ids(canonical.get("pending_decision")),
             )
             # S13: one content-free SLO line per turn against the §8.9 table
             # (the root-span attrs are set in process(), which owns the span).

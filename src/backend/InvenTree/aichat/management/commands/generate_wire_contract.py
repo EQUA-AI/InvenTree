@@ -117,6 +117,7 @@ class Command(BaseCommand):
         )
 
     def _render(self) -> str:
+        from ai.core.voice.timing import VoiceClientTiming, VoiceTimingReport
         from ai.core.voice.wire import (
             SERVER_VOICE_ERROR_CODES,
             VoiceDecisionContext,
@@ -184,6 +185,8 @@ class Command(BaseCommand):
 
         sections.append('// --- Voice wire payloads (ai.core.voice.wire) ---\n')
         for model in (
+            VoiceClientTiming,
+            VoiceTimingReport,
             VoiceTransportsAllowed,
             VoiceSessionPayload,
             VoiceSpokenPayload,
@@ -200,7 +203,18 @@ class Command(BaseCommand):
                     VoiceDecisionEvent,
                 ):
                     sections.append(_emit_model_interface(decision_model))
-            sections.append(_emit_model_interface(model))
+            sections.append(
+                _emit_model_interface(
+                    model,
+                    optional_fields=tuple(
+                        name
+                        for name, field in model.model_fields.items()
+                        if not field.is_required()
+                    )
+                    if model in (VoiceClientTiming, VoiceTimingReport)
+                    else (),
+                )
+            )
         sections.append(
             'export type ServerVoiceErrorCode =\n'
             f'  | {_ts_string_union(list(SERVER_VOICE_ERROR_CODES))};\n'

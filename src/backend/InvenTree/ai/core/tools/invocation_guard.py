@@ -366,7 +366,10 @@ class CapabilityInvocationMiddleware(FunctionMiddleware):
                     await sink.ended(tool_call_id, tool_id, "error", _elapsed_ms())
                 raise
             try:
-                await next(context)
+                from ai.core.voice.timing import stage
+
+                with stage("tool"):
+                    await next(context)
             except Exception:
                 if sink is not None:
                     await sink.ended(tool_call_id, tool_id, "error", _elapsed_ms())

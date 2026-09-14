@@ -34,7 +34,7 @@ def test_none_values_are_dropped_and_scalars_coerced():
     assert "aimms.workflow_id" not in attrs
     assert attrs["aimms.coverage_complete"] == 1
     assert attrs["aimms.scope_version"] == 7
-    assert attrs["aimms.outcome_code"] == "boom"
+    assert "aimms.outcome_code" not in attrs  # Exceptions are not safe scalar codes.
 
 
 def test_values_are_truncated_to_the_bound():
@@ -60,6 +60,15 @@ def test_the_vocabulary_is_frozen():
             "aimms.proposal_id",
             "aimms.action_type",
             "aimms.turn_sequence",
+            "aimms.decision_id",
+            "aimms.operation_id",
+            "aimms.utterance_id",
+            "aimms.decision_state",
+            "aimms.ms_server_receipt",
+            "aimms.ms_route",
+            "aimms.ms_tool",
+            "aimms.ms_tts_request",
+            "aimms.ms_result",
             "aimms.task_intent",
             "aimms.effect_intent",
             "aimms.scope_mode",
