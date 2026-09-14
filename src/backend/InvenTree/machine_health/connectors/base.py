@@ -137,7 +137,10 @@ def get_connector(source, *, machine=None):
         ):
             return None
         checkpoint = IngestionCheckpoint.objects.filter(
-            source=source, station=station, station_uuid=str(station.source_entity_uuid)
+            source=source,
+            station=station,
+            station_uuid=str(station.source_entity_uuid),
+            active=True,
         ).first()
         if checkpoint is None:
             return None

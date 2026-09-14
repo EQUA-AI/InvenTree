@@ -32,6 +32,7 @@ from assets.health_models import (
     MachineSignalState,
     SignalQuality,
 )
+from assets.models import AssetMachine
 
 logger = logging.getLogger('inventree')
 
@@ -210,10 +211,18 @@ def ingest_readings(
     if station is not None:
         if station.asset_type != 'pumphouse' or not station.pk or not station.client_id:
             raise IngestionError('Ingestion scope must be a registered station.')
+        # A review change must not race a cached binding into recreating state
+        # after approval was revoked. Dictionary saves use the same station lock.
+        AssetMachine.objects.select_for_update().get(pk=station.pk)
         candidates = candidates.filter(
             Q(machine=station) | Q(machine__parent=station),
             machine__client_id=station.client_id,
             machine__active=True,
+        )
+    if station is not None:
+        candidates = candidates.filter(
+            Q(dictionary_point__isnull=True)
+            | Q(dictionary_point__station=station, dictionary_point__status='approved')
         )
     bindings = {}
     for binding in candidates:

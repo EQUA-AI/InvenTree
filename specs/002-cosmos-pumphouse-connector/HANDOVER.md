@@ -11,6 +11,14 @@ Where the two disagree with this file, this file is newer.
 
 ---
 
+## Remembered project constraint — confirmed by user 2026-09-13
+
+The user does **not currently have** the untrimmed station snapshots, station inventory,
+or the two mimic reference images. Do not repeatedly request these inputs or invent
+substitutes. T18 dictionary expansion, T15 reference-based drawings and T19 estate rollout
+remain blocked until the user or plant supplies them. Continue implementation that does
+not depend on these inputs; the existing abridged fixtures are suitable only for tests.
+
 ## Implementation continuation — local `IoT` (2026-09-13)
 
 The worktree now starts from remote `IOT` commit `9576f17f39`; no commits from
@@ -59,18 +67,27 @@ and `in_batches`, and imports the entire file atomically. `--dry-run` rolls back
 pure replay also preserves source timestamps. The command never contacts Cosmos or moves
 polling checkpoints. Validation: 37 importer/normalizer tests passed; type checks passed.
 
-**Next: T11.** T11 must create/link the checkpoint using both the registered station
-and its source identity, choose an explicit initial read position, and create only approved
-bindings. Existing checkpoints receive a nullable station link in migration
-`0013_station_poll_progress`; there is deliberately no guess-based data backfill. Deactivation
-must remove or disable the station's polling checkpoint as well as its bindings. The scheduler
-is implemented but remains disabled; activation, live UI and emulator integration (T13) are
-still outstanding.
+**T11 completed:** activation status/preview (`GET .../activate/?source=<pk>`) and
+hash-locked `POST`/`DELETE` now bridge approved dictionary points into live bindings.
+`HealthSource.client` must be explicitly assigned by a deployment administrator; migration
+`0014_station_activation` leaves legacy sources unassigned, so they are not offered to users.
+Only same-Client sources configured for the station source UUID are offered. New checkpoints
+start five minutes before activation; existing cursors are preserved. Deactivation pauses
+polling and removes only this station/source's dictionary-managed bindings. Manual bindings
+are preserved. Unit/type/owner review is revalidated; thresholds stay unset until confirmed.
+Review revocation or remapping clears cached state and disables affected bindings immediately.
+Activation and polling lease claims share a station lock; active polls reject activation edits.
+Status responses contain no endpoint, credentials or credential reference.
 
-The old 63-hour remainder is now nominally **57 hours** after removing T9's six-hour estimate;
-that is ticket arithmetic, not a revised delivery forecast. Full snapshots (T18), the station
-inventory (T19), plant units/thresholds and the application identity/role (D17) are still external
-inputs. The earlier statements that D17 is the only external dependency are superseded.
+**Validation:** 253 backend tests passed, including activation, registry/review, scheduling,
+offline import and connector regression coverage; type checks and migration consistency passed.
+The tests use isolated SQLite and do not prove PostgreSQL lock scheduling or Azure integration.
+
+**Next: T12 live-source UI**, then T13 emulator integration. The global polling flag remains
+off by default and no production migrations or cloud changes have been applied. Full snapshots
+(T18), the station inventory (T19), reference images (T15), plant units/thresholds and the
+application identity/role (D17) remain external inputs. T16 can proceed independently using
+reviewed points; full mimic completion still needs those external inputs.
 
 ---
 

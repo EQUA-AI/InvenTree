@@ -125,6 +125,7 @@ class IngestionCheckpointTests(InvenTreeTestCase):
                 'id',
                 'source',
                 'station',
+                'active',
                 'station_uuid',
                 'hour_bucket',
                 'sub_time_period',

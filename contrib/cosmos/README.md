@@ -333,3 +333,27 @@ this directory's `{station_uuid, snapshots}` sample envelope. Every row must ide
 selected source station. Files are limited to 8 MiB and 2000 rows. The entire file commits
 or rolls back together; pure replays and dry runs leave database values unchanged. Cosmos
 is never contacted and the live polling checkpoint is never advanced by this command.
+
+## Station activation (T11)
+
+After applying migration `0014_station_activation`, a deployment administrator must assign
+`HealthSource.client` in the Health Source admin and configure the account's `stations` with
+its source entity UUIDs. Legacy sources remain unassigned until this is done. Connection
+configuration and `secret_ref` are never returned by the registry API.
+
+1. Review the station dictionary and approve only verified mappings and units.
+2. `GET /api/assets/registry/<station pk>/activate/?source=<source pk>` returns status and
+   `preview.source_hash`, without contacting Cosmos.
+3. `POST` that URL with `{"source": <pk>, "source_hash": "<preview hash>"}`. The actor needs
+   station Client scope and work-order add/change permission. A changed review/configuration
+   or in-progress station poll requires refreshing/retrying. No thresholds are inferred.
+4. Enable `AIMMS_COSMOS_PUMPHOUSE_ENABLED` only after deployment configuration and read access
+   have been verified. Activation alone does not turn on the global scheduler flag.
+5. `DELETE` with the same preview-shaped body deactivates this station/source (change permission).
+   It preserves the accepted cursor and manual bindings, and removes managed bindings/state.
+
+New checkpoints start five minutes before activation. Retries and reactivation retain existing
+progress. Revoking approval or changing measurement meaning disables the corresponding binding
+and removes cached state; refresh activation after review. Confirmed thresholds are preserved
+only while the measurement meaning is unchanged. Status includes bound/unbound counts, last
+poll time and a fixed error code; it distinguishes activation from globally enabled polling.

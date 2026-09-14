@@ -544,10 +544,15 @@ class CosmosPumphouseConnector(HealthConnector):
         self.last_error_code = ''
         if (
             checkpoint.source_id != self.source.pk
+            or not checkpoint.active
             or checkpoint.station_uuid not in self.stations
             or not checkpoint.station_id
             or checkpoint.station.asset_type != 'pumphouse'
             or not checkpoint.station.active
+            or (
+                self.source.client_id is not None
+                and self.source.client_id != checkpoint.station.client_id
+            )
             or str(checkpoint.station.source_entity_uuid) != checkpoint.station_uuid
         ):
             raise CosmosConfigError(

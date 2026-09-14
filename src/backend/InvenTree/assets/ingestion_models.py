@@ -79,6 +79,7 @@ class IngestionCheckpoint(models.Model):
     )
 
     updated_at = models.DateTimeField(auto_now=True)
+    active = models.BooleanField(default=True, db_index=True)
 
     # Exclusive end of the last completely scanned range. Unlike the accepted
     # sample position, this can advance through hours with no documents.

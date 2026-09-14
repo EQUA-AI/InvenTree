@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404
 from django.urls import path
 from django.utils import timezone
 
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -19,6 +20,8 @@ from InvenTree.permissions import InvenTreeTokenMatchesOASRequirements, map_scop
 from part.models import Part, PartCategoryParameterTemplate
 from users.permissions import check_user_role
 
+from .activation import activate_station, activation_plan, live_status
+from .health_models import HealthSource
 from .models import AssetComponent, AssetMachine, Client, DictionaryPoint
 from .registry import (
     MAX_BYTES,
@@ -229,6 +232,101 @@ class RegistryAPI(APIView):
         return file.read(MAX_BYTES + 1)
 
 
+class ActivationInput(serializers.Serializer):
+    """Require the exact mapping preview before changing live bindings."""
+
+    source = serializers.IntegerField(min_value=1)
+    source_hash = serializers.RegexField(r'^[0-9a-f]{64}$')
+
+
+class LiveSourceSerializer(serializers.Serializer):
+    """Public source identity without connection configuration."""
+
+    pk = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class ActivationPreviewSerializer(ActivationInput):
+    """Reviewed mapping count and opaque activation token."""
+
+    approved = serializers.IntegerField()
+
+
+class LiveStatusSerializer(serializers.Serializer):
+    """Polling status and authorized source choices for one station."""
+
+    activated = serializers.BooleanField()
+    enabled = serializers.BooleanField()
+    source = LiveSourceSerializer(allow_null=True)
+    sources = LiveSourceSerializer(many=True)
+    bound = serializers.IntegerField()
+    unbound = serializers.IntegerField()
+    approved = serializers.IntegerField()
+    last_poll_at = serializers.DateTimeField(allow_null=True)
+    last_error_code = serializers.CharField(allow_blank=True)
+    preview = ActivationPreviewSerializer(required=False)
+
+
+class StationActivation(RegistryAPI):
+    """Scoped live-source status, activation preview and idempotent mutations."""
+
+    def source(self, station, source_id):
+        """Resolve a same-Client source without disclosing other connections."""
+        return get_object_or_404(
+            HealthSource,
+            pk=source_id,
+            client_id=station.client_id,
+            connector_type='cosmos_pumphouse',
+        )
+
+    @extend_schema(
+        responses=LiveStatusSerializer,
+        parameters=[OpenApiParameter('source', int, required=False)],
+    )
+    def get(self, request, pk):
+        """Read status and optional activation preview without contacting Cosmos."""
+        station = self.machine()
+        if station.asset_type != 'pumphouse':
+            raise ValidationError('Live sources belong to pump stations.')
+        result = live_status(station)
+        if request.query_params.get('source'):
+            source_id = serializers.IntegerField(min_value=1).run_validation(
+                request.query_params['source']
+            )
+            result['preview'] = activation_plan(
+                station, self.source(station, source_id)
+            )
+        return Response(result)
+
+    @extend_schema(request=ActivationInput, responses=LiveStatusSerializer)
+    def post(self, request, pk):
+        """Activate exactly the reviewed mappings represented by the preview."""
+        self.require_role('add')
+        self.require_role('change')
+        return self.mutate(request)
+
+    @extend_schema(request=ActivationInput, responses=LiveStatusSerializer)
+    def delete(self, request, pk):
+        """Stop only this station and remove only its registry-managed bindings."""
+        self.require_role('change')
+        return self.mutate(request, deactivate=True)
+
+    def mutate(self, request, *, deactivate=False):
+        """Revalidate the hash and ownership within the activation transaction."""
+        station = self.machine()
+        form = ActivationInput(data=request.data)
+        form.is_valid(raise_exception=True)
+        values = form.validated_data
+        return Response(
+            activate_station(
+                station,
+                self.source(station, values['source']),
+                expected_hash=values['source_hash'],
+                deactivate=deactivate,
+            )
+        )
+
+
 class RegistryOptions(RegistryAPI):
     """Authorized Client choices and shared catalogue review definitions."""
 
@@ -421,7 +519,7 @@ class PointReview(RegistryAPI):
         """Record an explicit mapping decision with a station-wide approval lock."""
         self.require_role('change')
         selected = self.machine()
-        points = DictionaryPoint.objects.select_for_update()
+        points = DictionaryPoint.objects.all()
         points = (
             points.filter(station=selected)
             if selected.asset_type == 'pumphouse'
@@ -429,6 +527,7 @@ class PointReview(RegistryAPI):
         )
         point = get_object_or_404(points, pk=point_pk)
         AssetMachine.objects.select_for_update().get(pk=point.station_id)
+        point = points.select_for_update().get(pk=point.pk)
         form = ReviewInput(data=request.data)
         form.is_valid(raise_exception=True)
         values = dict(form.validated_data)
@@ -509,6 +608,7 @@ registry_urls = [
     path('', RegistryList.as_view(), name='registry-list'),
     path('options/', RegistryOptions.as_view(), name='registry-options'),
     path('<int:pk>/', RegistryDetail.as_view(), name='registry-detail'),
+    path('<int:pk>/activate/', StationActivation.as_view(), name='registry-activate'),
     path('<int:pk>/components/', Components.as_view(), name='registry-components'),
     path(
         '<int:pk>/components/<int:component_pk>/review/',

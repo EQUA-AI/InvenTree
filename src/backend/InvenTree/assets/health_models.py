@@ -117,6 +117,15 @@ class HealthSource(models.Model):
 
     name = models.CharField(max_length=200, unique=True, verbose_name=_('Name'))
 
+    client = models.ForeignKey(
+        'assets.Client',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='health_sources',
+        help_text=_('Client authorized to activate stations on this source'),
+    )
+
     source_type = models.CharField(
         max_length=16,
         choices=SourceType.choices,
@@ -214,14 +223,23 @@ class MachineSignalBinding(models.Model):
     )
 
     #: Opaque to AIMMS. Never interpolated into a query built from client input.
+    dictionary_point = models.ForeignKey(
+        'assets.DictionaryPoint',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='signal_bindings',
+    )
+    dictionary_hash = models.CharField(max_length=64, blank=True)
+
     external_key = models.CharField(
-        max_length=255,
+        max_length=500,
         db_index=True,
         help_text=_('Tag / point identifier in the source system'),
         verbose_name=_('External Key'),
     )
 
-    display_name = models.CharField(max_length=200, verbose_name=_('Display Name'))
+    display_name = models.CharField(max_length=255, verbose_name=_('Display Name'))
 
     signal_kind = models.CharField(
         max_length=64,

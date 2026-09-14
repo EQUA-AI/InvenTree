@@ -4,10 +4,12 @@ import time
 from datetime import timedelta
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models import F, Q
 from django.utils import timezone
 
 from assets.ingestion_models import IngestionCheckpoint
+from assets.models import AssetMachine
 from InvenTree.tasks import ScheduledTask, scheduled_task
 from machine_health.connectors.cosmos_pumphouse import (
     CosmosConfigError,
@@ -37,7 +39,9 @@ def poll_cosmos_pumphouse_sources():
     checkpoints = (
         IngestionCheckpoint.objects
         .select_related('source', 'station')
-        .filter(source__active=True, source__connector_type='cosmos_pumphouse')
+        .filter(
+            active=True, source__active=True, source__connector_type='cosmos_pumphouse'
+        )
         .order_by(F('last_poll_at').asc(nulls_first=True), 'pk')
     )
     attempted = 0
@@ -46,12 +50,17 @@ def poll_cosmos_pumphouse_sources():
             break
         now = timezone.now()
         lease_until = now + timedelta(seconds=LEASE_SECONDS)
-        claimed = (
-            IngestionCheckpoint.objects
-            .filter(pk=checkpoint.pk)
-            .filter(Q(lease_until__isnull=True) | Q(lease_until__lte=now))
-            .update(lease_until=lease_until, last_poll_at=now)
-        )
+        with transaction.atomic():
+            # Serialize the lease claim with activation/deactivation. Never hold
+            # this lock while waiting for the provider.
+            if checkpoint.station_id:
+                AssetMachine.objects.select_for_update().get(pk=checkpoint.station_id)
+            claimed = (
+                IngestionCheckpoint.objects
+                .filter(pk=checkpoint.pk, active=True)
+                .filter(Q(lease_until__isnull=True) | Q(lease_until__lte=now))
+                .update(lease_until=lease_until, last_poll_at=now)
+            )
         if not claimed:
             continue
 

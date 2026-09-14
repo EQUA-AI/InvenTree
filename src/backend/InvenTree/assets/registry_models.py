@@ -4,7 +4,7 @@ import uuid
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 
 
 class AssetComponent(models.Model):
@@ -105,8 +105,35 @@ class DictionaryPoint(models.Model):
 
     def save(self, *args, **kwargs):
         """Enforce ownership when editing an existing point."""
-        self.clean()
-        return super().save(*args, **kwargs)
+        from assets.models import AssetMachine, MachineSignalState
+
+        with transaction.atomic():
+            AssetMachine.objects.select_for_update().get(pk=self.station_id)
+            fields = (
+                'station_id',
+                'machine_id',
+                'path',
+                'component_id',
+                'template_id',
+                'data_type',
+                'unit',
+                'unit_status',
+                'status',
+            )
+            previous = (
+                type(self).objects.filter(pk=self.pk).values(*fields).first()
+                if self.pk
+                else None
+            )
+            self.clean()
+            result = super().save(*args, **kwargs)
+            if previous and any(
+                previous[field] != getattr(self, field) for field in fields
+            ):
+                bindings = self.signal_bindings.all()
+                MachineSignalState.objects.filter(binding__in=bindings).delete()
+                bindings.update(active=False)
+            return result
 
     class Meta:
         """Identity is station-scoped exact source path, independent of display names."""

@@ -6,6 +6,7 @@ from .models import (
     AssetMachine,
     AssetMaintenanceRecord,
     Client,
+    HealthSource,
     IngestionCheckpoint,
     MachinePart,
 )
@@ -78,6 +79,7 @@ class IngestionCheckpointAdmin(admin.ModelAdmin):
 
     list_display = (
         'source',
+        'active',
         'station_uuid',
         'hour_bucket',
         'sub_time_period',
@@ -90,6 +92,7 @@ class IngestionCheckpointAdmin(admin.ModelAdmin):
     ordering = ('source__name', 'station_uuid')
     readonly_fields = (
         'source',
+        'active',
         'station_uuid',
         'hour_bucket',
         'sub_time_period',
@@ -107,3 +110,18 @@ class IngestionCheckpointAdmin(admin.ModelAdmin):
     def has_add_permission(self, request) -> bool:
         """Checkpoints are created by the poller, never by hand."""
         return False
+
+
+@admin.register(HealthSource)
+class HealthSourceAdmin(admin.ModelAdmin):
+    """Deployment-admin configuration; station APIs never expose connection config."""
+
+    list_display = ('name', 'client', 'connector_type', 'active')
+    list_filter = ('client', 'connector_type', 'active')
+    readonly_fields = (
+        'last_success_at',
+        'last_error_at',
+        'last_error_code',
+        'created_at',
+        'updated_at',
+    )
