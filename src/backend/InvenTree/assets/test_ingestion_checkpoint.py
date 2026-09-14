@@ -124,10 +124,17 @@ class IngestionCheckpointTests(InvenTreeTestCase):
             {
                 'id',
                 'source',
+                'station',
                 'station_uuid',
                 'hour_bucket',
                 'sub_time_period',
                 'continuation_token',
                 'updated_at',
+                'scan_until',
+                'last_poll_at',
+                'last_success_at',
+                'last_error_at',
+                'last_error_code',
+                'lease_until',
             },
         )

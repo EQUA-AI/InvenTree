@@ -36,7 +36,9 @@ ACCOUNT = 'https://epconchatcosmos9d6b.documents.azure.com'
 EMULATOR = 'https://localhost:8081'
 
 
-def snapshot(sub_time_period: int, *, station: str = STATION, sl=132.0, st='I', dex=None):
+def snapshot(
+    sub_time_period: int, *, station: str = STATION, sl=132.0, st='I', dex=None
+):
     """Build a document shaped exactly as the seeder writes one."""
     payload = {
         'sr': 'SCADA',
@@ -362,9 +364,7 @@ class ReadLatestTests(SimpleTestCase):
         """A recovered reading must look as old as it is."""
         sample = self.previous + 60_000
         connector = connector_for([snapshot(sample)])
-        reading = next(
-            r for r in connector.read_latest() if r.external_key == '/sl'
-        )
+        reading = next(r for r in connector.read_latest() if r.external_key == '/sl')
         self.assertEqual(to_epoch_ms(reading.observed_at), sample)
 
     def test_nothing_in_either_hour_returns_nothing(self):
@@ -376,9 +376,7 @@ class ReadLatestTests(SimpleTestCase):
         """A caller asking for one tag does not receive the whole snapshot."""
         connector = connector_for([snapshot(self.current + 1000)])
         readings = connector.read_latest(['/sl', '/pd/P1/dv'])
-        self.assertEqual(
-            {r.external_key for r in readings}, {'/sl', '/pd/P1/dv'}
-        )
+        self.assertEqual({r.external_key for r in readings}, {'/sl', '/pd/P1/dv'})
 
     def test_pump_and_station_keys_come_from_the_same_snapshot(self):
         """Position decides ownership: '/sl' is the station, '/pd/P1/dv' a pump."""
@@ -496,9 +494,7 @@ class PollTests(SimpleTestCase):
 
         produced = [doc for doc, _ in connector.poll(checkpoint, now=self.now)]
 
-        self.assertEqual(
-            [d['sub_time_period'] for d in produced], self.samples[1:]
-        )
+        self.assertEqual([d['sub_time_period'] for d in produced], self.samples[1:])
 
     def test_the_query_starts_one_millisecond_past_the_checkpoint(self):
         """The bound is explicit, not left to a >= that would re-read."""
@@ -537,6 +533,10 @@ class IngestTests(HealthEnvMixin, TestCase):
     def setUp(self):
         """A source with two mapped keys and a snapshot that spans batches."""
         self.build_health_env()
+        self.machine.asset_type = 'pumphouse'
+        self.machine.source_namespace = 'klsw'
+        self.machine.source_entity_uuid = STATION
+        self.machine.save()
         self.source.connector_type = 'cosmos_pumphouse'
         self.source.config = {
             'endpoint': ACCOUNT,
@@ -561,9 +561,7 @@ class IngestTests(HealthEnvMixin, TestCase):
         # ~700 extension tags is what a real snapshot carries; the point is that
         # one snapshot cannot fit in a single 500-reading batch.
         self.dex = {f'TAG_{index}': str(index) for index in range(700)}
-        self.documents = [
-            snapshot(sample, dex=self.dex) for sample in self.samples
-        ]
+        self.documents = [snapshot(sample, dex=self.dex) for sample in self.samples]
         self.now = datetime.fromtimestamp(
             (self.base + HOUR_MS - 1) / 1000, tz=timezone.utc
         )
@@ -573,6 +571,7 @@ class IngestTests(HealthEnvMixin, TestCase):
         self.start_position = self.base - 1
         self.checkpoint = IngestionCheckpoint.objects.create(
             source=self.source,
+            station=self.machine,
             station_uuid=STATION,
             hour_bucket=str(self.base - HOUR_MS),
             sub_time_period=self.start_position,
@@ -588,9 +587,7 @@ class IngestTests(HealthEnvMixin, TestCase):
 
     def test_a_snapshot_larger_than_one_batch_is_applied(self):
         """A single ``ingest_readings`` call would raise above 500 readings."""
-        documents, readings = self.connector().ingest(
-            self.checkpoint, now=self.now
-        )
+        documents, readings = self.connector().ingest(self.checkpoint, now=self.now)
 
         self.assertEqual(documents, 2)
         self.assertEqual(readings, 4)
@@ -609,7 +606,7 @@ class IngestTests(HealthEnvMixin, TestCase):
         calls = {'count': 0}
         from machine_health.services import ingestion
 
-        def failing(source, readings, *, now=None):
+        def failing(source, readings, *, now=None, station=None):
             calls['count'] += 1
             if calls['count'] == 2:
                 raise ingestion.IngestionError('batch rejected')

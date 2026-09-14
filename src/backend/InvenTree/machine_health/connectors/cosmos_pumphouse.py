@@ -30,7 +30,10 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from datetime import datetime, timezone
+
+from django.db import transaction
 
 from machine_health.connectors.base import (
     HealthConnector,
@@ -55,7 +58,16 @@ HOUR_MS = 3_600_000
 #: row. ``CONFIG`` covers a source that cannot be used as configured - calling
 #: that ``NETWORK`` would send an operator to look at a firewall for a missing
 #: setting.
-ERROR_CODES = frozenset({'OK', 'AUTH', 'NOT_FOUND', 'THROTTLED', 'NETWORK', 'CONFIG'})
+ERROR_CODES = frozenset({
+    'OK',
+    'AUTH',
+    'NOT_FOUND',
+    'THROTTLED',
+    'NETWORK',
+    'CONFIG',
+    'SNAPSHOT',
+    'INGEST',
+})
 
 #: Page size for slice queries. Small enough that a slow account cannot hand back
 #: an unbounded response in one round trip.
@@ -70,6 +82,10 @@ MAX_BUCKETS_PER_READ = 24 * 31
 #: up over several runs rather than issuing hundreds of queries in one tick and
 #: starving every other source sharing the worker.
 MAX_BUCKETS_PER_POLL = 6
+
+# Revisit recently scanned empty ranges for delayed documents. Older arrivals
+# need an explicit backfill; this connector maintains latest state, not history.
+POLL_LOOKBACK_MS = 300_000
 
 #: Endpoints the local emulator is reachable on. A key may be used against these
 #: and nowhere else.
@@ -97,6 +113,10 @@ class CosmosConfigError(Exception):
     """
 
 
+class PollBudgetError(Exception):
+    """Stop at a resumable boundary when the worker's time slice expires."""
+
+
 def bucket_of(moment_ms: int) -> int:
     """Return the hour bucket a sample timestamp belongs to."""
     return int(moment_ms) - int(moment_ms) % HOUR_MS
@@ -119,6 +139,14 @@ def _classify(exc: Exception) -> str:
 
     The exception itself is never returned, logged or stored - only this code.
     """
+    if isinstance(exc, CosmosConfigError):
+        return 'CONFIG'
+    if isinstance(exc, SnapshotError):
+        return 'SNAPSHOT'
+    from machine_health.services.ingestion import IngestionError
+
+    if isinstance(exc, IngestionError):
+        return 'INGEST'
     status = getattr(exc, 'status_code', None)
     if status in (401, 403):
         return 'AUTH'
@@ -143,10 +171,15 @@ class CosmosPumphouseConnector(HealthConnector):
 
     key = 'cosmos_pumphouse'
 
-    def __init__(self, source):
+    def __init__(self, source, *, station_uuid=None, deadline=None):
         """Bind to a source; no client is built until one is needed."""
         super().__init__(source)
         self._container = None
+        self._client = None
+        self._identity = None
+        self._station_uuid = station_uuid
+        self.deadline = deadline
+        self.last_error_code = ''
 
     # ------------------------------------------------------------------
     # Configuration
@@ -180,6 +213,10 @@ class CosmosPumphouseConnector(HealthConnector):
         Rather than pick a winner, this refuses - one source, one station.
         """
         stations = self.stations
+        if self._station_uuid is not None:
+            if self._station_uuid not in stations:
+                raise CosmosConfigError('Station is not configured for this source.')
+            return self._station_uuid
         if len(stations) == 1:
             return stations[0]
         if not stations:
@@ -235,7 +272,10 @@ class CosmosPumphouseConnector(HealthConnector):
         if not ref:
             from azure.identity import DefaultAzureCredential
 
-            return DefaultAzureCredential()
+            self._identity = DefaultAzureCredential(
+                process_timeout=5, connection_timeout=5, read_timeout=5, retry_total=0
+            )
+            return self._identity
 
         if not self._is_emulator():
             raise CosmosConfigError(
@@ -281,11 +321,28 @@ class CosmosPumphouseConnector(HealthConnector):
 
         from azure.cosmos import CosmosClient
 
-        client = CosmosClient(endpoint, credential=self._credential())
+        client = CosmosClient(
+            endpoint,
+            credential=self._credential(),
+            timeout=self.request_timeout(),
+            connection_timeout=5,
+            read_timeout=5,
+            retry_total=0,
+        )
+        self._client = client
         self._container = client.get_database_client(database).get_container_client(
             container
         )
         return self._container
+
+    def close(self):
+        """Release HTTP sessions and credential transports after a scheduled poll."""
+        try:
+            if self._client is not None:
+                self._client.close()
+        finally:
+            if self._identity is not None:
+                self._identity.close()
 
     # ------------------------------------------------------------------
     # Reading
@@ -320,13 +377,24 @@ class CosmosPumphouseConnector(HealthConnector):
         the query text.
         """
         partition_key = self._partition_key(station, hour_bucket)
-        return self.container().query_items(
+        self.request_timeout()
+        container = self.container()
+        timeout = self.request_timeout()
+        return container.query_items(
             query=query,
             parameters=parameters,
             partition_key=partition_key,
             max_item_count=PAGE_SIZE,
             enable_cross_partition_query=False,
+            timeout=timeout,
         )
+
+    def request_timeout(self):
+        """Bound each request by the remaining station and sweep budget."""
+        remaining = 5.0 if self.deadline is None else self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise PollBudgetError
+        return min(5.0, remaining)
 
     def latest_document(self, station: str, hour_bucket) -> dict | None:
         """Newest snapshot in one station-hour, or None when the hour is empty."""
@@ -424,7 +492,7 @@ class CosmosPumphouseConnector(HealthConnector):
     # Polling
     # ------------------------------------------------------------------
 
-    def poll(self, checkpoint, *, now=None, max_documents=None):
+    def poll(self, checkpoint, *, now=None, max_documents=None, on_scanned=None):
         """Yield ``(document, readings)`` from just after the checkpoint onward.
 
         Strictly after: ``sub_time_period`` is the last sample already accepted,
@@ -434,19 +502,29 @@ class CosmosPumphouseConnector(HealthConnector):
         """
         station = checkpoint.station_uuid
         now_ms = to_epoch_ms(now or datetime.now(tz=timezone.utc))
-        from_ts = int(checkpoint.sub_time_period) + 1
+        from_ts = max(
+            int(checkpoint.sub_time_period) + 1,
+            (getattr(checkpoint, 'scan_until', None) or 0) - POLL_LOOKBACK_MS,
+        )
         cap = int(max_documents or self.config.get('max_docs_per_poll') or 200)
         produced = 0
 
         for bucket in self._buckets(from_ts, now_ms + 1, MAX_BUCKETS_PER_POLL):
+            self.request_timeout()
             window_from = max(from_ts, bucket)
+            window_to = min(now_ms + 1, bucket + HOUR_MS)
             for document in self.documents_in_bucket(
-                station, bucket, window_from, bucket + HOUR_MS
+                station, bucket, window_from, window_to
             ):
+                self.request_timeout()
+                if str(document.get('station_uuid')) != str(station):
+                    raise SnapshotError('Snapshot belongs to another station.')
                 yield document, flatten_snapshot(document)
                 produced += 1
                 if produced >= cap:
                     return
+            if on_scanned is not None:
+                on_scanned(window_to)
 
     def ingest(self, checkpoint, *, now=None, max_documents=None):
         """Read forward from the checkpoint and apply what is read.
@@ -463,11 +541,29 @@ class CosmosPumphouseConnector(HealthConnector):
 
         Returns ``(documents_applied, readings_applied)``.
         """
-        from machine_health.services.ingestion import ingest_readings
+        self.last_error_code = ''
+        if (
+            checkpoint.source_id != self.source.pk
+            or checkpoint.station_uuid not in self.stations
+            or not checkpoint.station_id
+            or checkpoint.station.asset_type != 'pumphouse'
+            or not checkpoint.station.active
+            or str(checkpoint.station.source_entity_uuid) != checkpoint.station_uuid
+        ):
+            raise CosmosConfigError(
+                'Checkpoint requires matching registered station ownership.'
+            )
+
+        def scanned(until):
+            if until > (checkpoint.scan_until or 0):
+                checkpoint.scan_until = until
+                checkpoint.save(update_fields=['scan_until', 'updated_at'])
 
         documents = 0
         readings_applied = 0
-        snapshots = self.poll(checkpoint, now=now, max_documents=max_documents)
+        snapshots = self.poll(
+            checkpoint, now=now, max_documents=max_documents, on_scanned=scanned
+        )
 
         while True:
             # Reading and applying are stopped by the same rule but fail for
@@ -478,36 +574,51 @@ class CosmosPumphouseConnector(HealthConnector):
                 document, readings = next(snapshots)
             except StopIteration:
                 break
+            except PollBudgetError:
+                break
             except Exception as exc:
                 self._stopped(checkpoint, exc)
                 break
 
             try:
-                applied = 0
-                for batch in in_batches(readings):
-                    # `now` is deliberately not forwarded. Here it is the source
-                    # clock - how far forward to read - while ingestion's `now` is
-                    # the server clock it measures skew against. Passing one as the
-                    # other makes every historical sample look like a clock fault.
-                    result = ingest_readings(
-                        self.source, [reading.as_dict() for reading in batch]
-                    )
-                    applied += result.accepted
+                applied = self._apply_snapshot(checkpoint, document, readings)
+            except PollBudgetError:
+                break
             except Exception as exc:
                 self._stopped(checkpoint, exc)
                 break
 
-            checkpoint.advance_to(
-                document.get('hour_bucket'), int(document['sub_time_period'])
-            )
             documents += 1
             readings_applied += applied
 
         return documents, readings_applied
 
+    @transaction.atomic
+    def _apply_snapshot(self, checkpoint, document, readings):
+        """Commit every batch and its accepted position together, or none of them."""
+        from machine_health.services.ingestion import ingest_readings
+
+        applied = 0
+        for batch in in_batches(readings):
+            self.request_timeout()
+            # The source read horizon is not the server clock for future skew.
+            result = ingest_readings(
+                self.source,
+                [reading.as_dict() for reading in batch],
+                station=checkpoint.station,
+            )
+            if result.rejected:
+                raise SnapshotError('Snapshot contains rejected readings.')
+            applied += result.accepted
+        checkpoint.advance_to(
+            document.get('hour_bucket'), int(document['sub_time_period'])
+        )
+        return applied
+
     def _stopped(self, checkpoint, exc: Exception) -> None:
         """Log a halted run as a code, leaving the checkpoint untouched."""
-        code = 'SNAPSHOT' if isinstance(exc, SnapshotError) else _classify(exc)
+        code = _classify(exc)
+        self.last_error_code = code
         logger.warning(
             'machine_health.cosmos ingest stopped source=%s station=%s at=%s code=%s',
             self.source.pk,

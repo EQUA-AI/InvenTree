@@ -23,6 +23,7 @@ from datetime import datetime
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from assets.health_models import (
@@ -170,7 +171,9 @@ def _parse_reading(entry, index: int):
 
 
 @transaction.atomic
-def ingest_readings(source: HealthSource, readings, *, now=None) -> IngestResult:
+def ingest_readings(
+    source: HealthSource, readings, *, now=None, station=None
+) -> IngestResult:
     """Apply a batch of normalized readings from one source.
 
     Unmapped tags are counted and dropped rather than auto-creating bindings: a
@@ -195,14 +198,28 @@ def ingest_readings(source: HealthSource, readings, *, now=None) -> IngestResult
     if not parsed:
         return result
 
-    bindings = {
-        binding.external_key: binding
-        for binding in MachineSignalBinding.objects.select_related('machine').filter(
-            source=source,
-            active=True,
-            external_key__in=[item['external_key'] for item in parsed],
+    candidates = MachineSignalBinding.objects.select_related('machine').filter(
+        source=source,
+        active=True,
+        external_key__in=[item['external_key'] for item in parsed],
+    )
+    if source.connector_type == 'cosmos_pumphouse' and station is None:
+        raise IngestionError(
+            'Cosmos ingestion requires an explicit registered station.'
         )
-    }
+    if station is not None:
+        if station.asset_type != 'pumphouse' or not station.pk or not station.client_id:
+            raise IngestionError('Ingestion scope must be a registered station.')
+        candidates = candidates.filter(
+            Q(machine=station) | Q(machine__parent=station),
+            machine__client_id=station.client_id,
+            machine__active=True,
+        )
+    bindings = {}
+    for binding in candidates:
+        if binding.external_key in bindings:
+            raise IngestionError('Ambiguous signal binding within ingestion scope.')
+        bindings[binding.external_key] = binding
 
     for item in parsed:
         binding = bindings.get(item['external_key'])
@@ -264,13 +281,18 @@ def ingest_readings(source: HealthSource, readings, *, now=None) -> IngestResult
     return result
 
 
-def record_source_error(source: HealthSource, code: str, *, now=None) -> None:
+def record_source_error(
+    source: HealthSource, code: str, *, now=None, checkpoint=None
+) -> None:
     """Record a redacted connector failure against the source.
 
     Only a short classification is stored. Provider messages can carry endpoints,
     tag names and occasionally credentials, none of which belong in a row that
     surfaces in the Health blade.
     """
-    source.last_error_at = now or timezone.now()
-    source.last_error_code = (code or 'ERROR')[:64]
-    source.save(update_fields=['last_error_at', 'last_error_code', 'updated_at'])
+    if checkpoint is not None and checkpoint.source_id != source.pk:
+        raise IngestionError('Checkpoint does not belong to this source.')
+    target = checkpoint if checkpoint is not None else source
+    target.last_error_at = now or timezone.now()
+    target.last_error_code = (code or 'ERROR')[: 32 if checkpoint is not None else 64]
+    target.save(update_fields=['last_error_at', 'last_error_code', 'updated_at'])

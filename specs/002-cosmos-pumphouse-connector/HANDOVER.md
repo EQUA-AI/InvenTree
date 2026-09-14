@@ -11,7 +11,63 @@ Where the two disagree with this file, this file is newer.
 
 ---
 
-## 1. Where the work stands
+## Implementation continuation — local `IoT` (2026-09-13)
+
+The worktree now starts from remote `IOT` commit `9576f17f39`; no commits from
+`equa/customizations` were imported. The older `inventTree-aniket` checkout and pull
+instructions below are historical. Continue on local `IoT`.
+
+**T9 is implemented**, including prerequisites the earlier multi-station assessment missed:
+
+- `assets.tasks.poll_cosmos_pumphouse_sources` is registered every minute and returns
+  before database access or connector construction while the default-off flag is disabled.
+- Checkpoints explicitly link to a local registered `station`. Their `station_uuid`
+  remains the **source entity UUID**, not `AssetMachine.uuid`. Ingestion rejects absent
+  or mismatched ownership before network access. Bindings are resolved within that station
+  and its children; duplicate pointers inside that scope fail rather than choosing a row.
+- Scheduled attempts keep per-station success/error timestamps and fixed error codes.
+  Least-recently attempted stations go first, including after failure or budget exhaustion.
+  A conditional 120-second database lease prevents overlapping station polls and recovers
+  after a worker crash. Poll budgets are 20 seconds/station, 50 seconds/sweep, at most
+  200 documents/station (a lower `max_docs_per_poll` is honoured).
+- SDK requests have a five-second timeout, bounded by remaining worker time; automatic
+  SDK retries are disabled so the next scheduled poll owns retry. Time limits are checked
+  between requests/documents/batches; an in-flight operation must return before Python can
+  check its deadline. This is cooperative budgeting, not process preemption.
+- `scan_until` records the exclusive end of fully scanned ranges, separately from the last
+  accepted sample. Empty hours can advance it. A five-minute overlap revisits recent delayed
+  documents; arrivals behind the accepted sample or older than that overlap need a separate
+  backfill policy. A failed, interrupted or capped range is not marked fully scanned.
+- All batches of one snapshot and its accepted checkpoint commit atomically. Rejected
+  readings fail the snapshot. Errors expose `CONFIG`, `SNAPSHOT`, or `INGEST` where appropriate,
+  in addition to the existing provider codes.
+- History reads derive station scope from the requested machine and its linked checkpoint.
+  Connector and credential transports are closed after scheduled and trend reads.
+- Newly created Cosmos sources default to 300-second freshness; explicit values and
+  existing rows are preserved. Check existing sources before enabling them.
+
+**Validation:** 200 tests passed across `assets.test_tasks`,
+`assets.test_ingestion_checkpoint`, and `machine_health.tests`, using an isolated SQLite
+test database with `--keepdb`. This includes the twelve-station failure/isolation case,
+scoped history, lease recovery, deadline interruption, delayed documents and snapshot rollback.
+No real Cosmos or emulator integration was run here; that remains T13.
+
+**Next: T10 and T11.** T11 must create/link the checkpoint using both the registered station
+and its source identity, choose an explicit initial read position, and create only approved
+bindings. Existing checkpoints receive a nullable station link in migration
+`0013_station_poll_progress`; there is deliberately no guess-based data backfill. Deactivation
+must remove or disable the station's polling checkpoint as well as its bindings. The scheduler
+is implemented but remains disabled; activation, live UI and emulator integration (T13) are
+still outstanding.
+
+The old 63-hour remainder is now nominally **57 hours** after removing T9's six-hour estimate;
+that is ticket arithmetic, not a revised delivery forecast. Full snapshots (T18), the station
+inventory (T19), plant units/thresholds and the application identity/role (D17) are still external
+inputs. The earlier statements that D17 is the only external dependency are superseded.
+
+---
+
+## 1. Original handover snapshot (superseded by the continuation above)
 
 ### 1.1 One-paragraph summary
 

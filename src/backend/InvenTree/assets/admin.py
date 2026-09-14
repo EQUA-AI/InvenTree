@@ -81,6 +81,8 @@ class IngestionCheckpointAdmin(admin.ModelAdmin):
         'station_uuid',
         'hour_bucket',
         'sub_time_period',
+        'last_poll_at',
+        'last_error_code',
         'updated_at',
     )
     list_filter = ('source',)
@@ -92,6 +94,13 @@ class IngestionCheckpointAdmin(admin.ModelAdmin):
         'hour_bucket',
         'sub_time_period',
         'continuation_token',
+        'station',
+        'scan_until',
+        'last_poll_at',
+        'last_success_at',
+        'last_error_at',
+        'last_error_code',
+        'lease_until',
         'updated_at',
     )
 

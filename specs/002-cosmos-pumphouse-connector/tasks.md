@@ -1,11 +1,12 @@
 # Task list: Azure Cosmos DB schema + read-only pumphouse connector
 
-Companion to `plan.md`. Branch `inventTree-aniket`; PR to `IOT` at the end (human review required —
-see `AGENTS.md`).
+Companion to `plan.md`. Current implementation branch: local `IoT`, based on remote
+`IOT` at `9576f17f39`. The original sprint ran on `inventTree-aniket`. Human review is
+required before any PR; see `AGENTS.md`.
 
 **Definition of done, every ticket**: unit tests for the new behaviour; `prek run --files <changed>`
 clean; `ty` clean on touched files; no credential in code, config, fixture or log; commit on
-`inventTree-aniket` with a message that says *why*, not just *what*.
+`IoT` with a message that says *why*, not just *what*.
 
 | Status | Meaning |
 |---|---|
@@ -180,37 +181,33 @@ snapshot whose second batch fails leaves the checkpoint untouched.
   have reported it in production as `NETWORK`. Two tests now pin the behaviour.
 
 
-### 🔵 T9 — Scheduled poller  6 h  *ready — T8 done*
-**Scope corrected 2026-09-13: the estate is 10–12 pumphouses, not one.** `IngestionCheckpoint` is
-unique on `(source, station_uuid)` and `poll()` takes a checkpoint, so the connector already supports
-many stations per source — but the loop must iterate **checkpoints, not sources**, or eleven
-pumphouses will share one station's cursor.
-- [ ] `assets/tasks.py: poll_cosmos_pumphouse_sources()` at `ScheduledTask.MINUTES, 1`
-- [ ] `AIMMS_COSMOS_PUMPHOUSE_ENABLED` kill-switch, default **off** (`get_boolean_setting`)
-- [ ] Iterate every `(source, station_uuid)` checkpoint; one station's failure must not abort the
-      others in the run
-- [ ] **Per-station** time and document budget, plus a **fair starting point** — resume the sweep
-      after the last station handled rather than always starting at the first, so a slow or
-      erroring station near the front cannot starve the ones behind it every single minute
-- [ ] Hold the whole-run budget too, so twelve stations cannot collectively overrun the worker
-- [ ] `record_source_error()` on failure, recorded **per station**, not per source — "the source is
-      down" and "pumphouse 7 is down" are different operational facts
-- [ ] `freshness_threshold_seconds` default **300 s** (D11)
-**Acceptance**: with the flag off, the task performs zero network calls. With twelve checkpoints and
-one of them erroring, the other eleven still ingest, and the erroring one is not retried first
-forever.
+### ✅ T9 — Scheduled poller · 6 h original estimate · implemented
+- [x] Minute scheduler and default-off kill-switch; disabled task makes zero queries/calls
+- [x] Explicit checkpoint → registered station ownership; ingestion and history isolate shared pointers
+- [x] Per-station status, 120-second lease, least-recently attempted first (including failures)
+- [x] 20-second station / 50-second sweep budgets and at most 200 documents per station
+- [x] Separate empty-range scan cursor, five-minute overlap, bounded source-time horizon
+- [x] Atomic snapshot batches plus checkpoint; failed snapshots cannot partially update state
+- [x] New Cosmos sources default to 300-second freshness; explicit/existing values preserved
+- [x] Regression coverage for twelve stations, failures, overlap, budgets and scan recovery
+
+Migration `0013_station_poll_progress` leaves existing station links null. T11 must link
+checkpoints explicitly and create them at a defined initial position. See the continuation
+at the top of `HANDOVER.md` for lifecycle rules and budget limitations. The global flag
+remains off; this ticket does not enable live ingestion or apply production migrations.
 
 ### 🔵 T10 — `import_pumphouse_dump` command · 3 h · *ready — needs no Azure access*
 - [ ] JSON rows → `flatten_snapshot` → `ingest_readings`, with `--dry-run`
 - [ ] Shares the T6 path exactly — no second normaliser
 **Acceptance**: the same file imported twice changes nothing the second time.
 
-### 🔵 T11 — Registry → live bridge · 5 h · *ready to build — T0/T7 done; end-to-end proof needs the 31 points reviewed*
+### 🔵 T11 — Registry → live bridge · 5 h · *next — pilot review completed*
 Closes the "mapping approval does not enable live ingestion" gap.
 - [ ] `POST /api/assets/registry/<pk>/activate/` with `{"source": <HealthSource id>}`
 - [ ] Creates/refreshes `MachineSignalBinding` for every `DictionaryPoint(status='approved')`;
       rejected and unresolved points are never bound
-- [ ] Idempotent and hash-locked like import; deactivation removes only that station's bindings
+- [ ] Create/link `IngestionCheckpoint.station` and source `station_uuid`, with an explicit initial read position
+- [ ] Idempotent and hash-locked like import; deactivation stops that station's checkpoint and removes only its bindings
 - [ ] Units seeded from `DictionaryPoint.unit`, else Annex A; thresholds left unset when unconfirmed
       so health reads `unknown` rather than a fabricated `normal`
 **Acceptance**: activating twice creates no duplicate bindings; a rejected point never appears.
@@ -222,7 +219,7 @@ Closes the "mapping approval does not enable live ingestion" gap.
 - [ ] `tsc --noEmit` and `biome check` clean
 **Acceptance**: the offline banner disappears only when bindings exist for that station.
 
-### 🔵 T13 — End-to-end integration test · 4 h · *ready — T4, T5, T8, T9 … T9 still outstanding*
+### 🔵 T13 — End-to-end integration test · 4 h · *ready — T4, T5, T8 and T9 implemented*
 - [ ] Seed the emulator → poll → `MachineSignalState` populated with the expected values
 - [ ] `read_window` stays bounded and crosses an hour boundary correctly
 - [ ] Checkpoint advances; a second poll ingests nothing new
@@ -346,8 +343,8 @@ inside the worker budget; cross-station leakage test passes.
 
 | Bucket | Tickets | Hours |
 |---|---|---|
-| Done | T0, T1, T2, T3, T4, T5, T6, T7, T8 | 43 |
-| Ready now | T9, T10, T11 | 14 |
+| Done | T0–T9 | 49 |
+| Ready now | T10, T11 | 8 |
 | Blocked on earlier tickets | T12, T13, T14 | 12 |
 | Mimic dashboard (added 2026-09-13) | T18, T15, T16, T17 | 31 |
 | Estate rollout (added 2026-09-13) | T19 | 6 |
@@ -357,7 +354,7 @@ inside the worker budget; cross-station leakage test passes.
 > for **one** station; the estate is **10–12 pumphouses**, and the two reference images describe the
 > schematic users actually look *at*. Nothing in T0–T8 needs rewriting — the backend carries no
 > single-station or fixed-pump-count assumption (verified 2026-09-13) — but **T9 did**, and has been
-> corrected to iterate checkpoints rather than sources. Remaining work is **63 h**, not 24 h.
+> corrected to iterate checkpoints rather than sources. Remaining work is nominally **57 h** after T9; re-estimate the remaining integration and rollout work.
 > **Start with T18**: the 25 approved points cover only a fraction of image 1, and drawing before the
 > dictionary covers the tags means drawing against nothing.
 
@@ -377,7 +374,7 @@ inside the worker budget; cross-station leakage test passes.
   is lost, and a bug in the connector could delete plant history. Before go-live the app's managed
   identity needs its own assignment: role `…000000000001` (**Data Reader**), scoped to
   `/dbs/aimms/colls/pumphouse_readings` rather than the account.
-- **Review of the 31 imported dictionary points** before T11 can bind anything end to end.
+- **Pilot review completed:** 25 points approved, six withheld; T11 may bind only approved points.
 - **D18 — RESOLVED 2026-09-13** by reading the two reference images against the payload. Findings,
   all verified against `samples/ph3_snapshots.json` and `PH_3.pilot-excerpt.json`:
   - **The mimic is a `dex` view.** Every entry in image 1's "Example Parameter Mapping" table is a
@@ -405,10 +402,9 @@ inside the worker budget; cross-station leakage test passes.
   **name remains provisional and is not blocking**; `rename_station` changes a label safely by
   source identity whenever the plant supplies real names.
   What this *does* change is scope: **nothing may assume one station or a fixed pump count.**
-  Verified on 2026-09-13 — the backend is already clean (no `PH_3` or `14` outside a comment;
-  `IngestionCheckpoint` is unique on `(source, station_uuid)`; the Cosmos partition key is
-  `/station_uuid` + `/hour_bucket`; `plan_dictionary` derives pump slots from `pd`, capped at 100).
-  The gaps are **T9** (corrected above — iterate checkpoints, not sources) and **T19** below.
+  The original assessment missed source-wide binding resolution and single-station history
+  reads. T9 now adds explicit checkpoint ownership and station-scoped ingestion/history.
+  Estate activation and rollout still belong to T11/T19.
   For the mimic: the bay row is rendered from `pd`, **never from a constant** — Lakshmi's 17 with
   gaps at 07/08/11/12 shows the numbering is sparse, so bays are *keyed* by pump key, not indexed.
 
@@ -417,7 +413,7 @@ Resolved since the last revision: **D14** (account `epconchatcosmos9d6b`, RG `Ep
 `dv`/`pmw`/`pmvar`/`pc`, at both station and pump level).
 
 ### Critical path
-`T8 → T9 → T13 → T14` for the live read, with `T0 → T11 → T12` feeding the UI, and
+`T13 → T14` for the live-read integration proof (T9 implemented), with `T0 → T11 → T12` feeding the UI, and
 `T11 → T18 → T15/T16 → T17` feeding the mimic dashboard. Nothing on the critical path is blocked by
 an answer except **T18**, which needs an untrimmed production snapshot, and **T15**, which needs D19
 reconciled before anyone draws bays.
@@ -428,5 +424,5 @@ retention/TTL policy values · writing to any control system (never in scope)
 
 ## Open decisions
 `D7b` `dsc` code set · `D9` units and alarm bounds (Annex A is a proposal, not plant authority) ·
-`D11` freshness threshold · `D16` data-plane role assignment. Defaults for each are recorded in
+`D11` freshness threshold · `D17` application identity and Data Reader role. Defaults for each are recorded in
 `plan.md` §8.

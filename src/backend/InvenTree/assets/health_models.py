@@ -105,6 +105,16 @@ class HealthSource(models.Model):
     approval context or a browser.
     """
 
+    def __init__(self, *args, **kwargs):
+        """Default new Cosmos sources to the source's five-minute validity.
+
+        Explicit thresholds and positional database hydration are preserved.
+        Other connector types retain their existing default.
+        """
+        if not args and kwargs.get('connector_type') == 'cosmos_pumphouse':
+            kwargs.setdefault('freshness_threshold_seconds', 300)
+        super().__init__(*args, **kwargs)
+
     name = models.CharField(max_length=200, unique=True, verbose_name=_('Name'))
 
     source_type = models.CharField(

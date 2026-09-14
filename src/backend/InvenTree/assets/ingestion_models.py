@@ -35,6 +35,16 @@ class IngestionCheckpoint(models.Model):
         verbose_name=_('Source'),
     )
 
+    # Explicit local ownership avoids conflating the registry UUID with the
+    # source UUID, or guessing between namespaces that reuse a source identity.
+    station = models.ForeignKey(
+        'assets.AssetMachine',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='ingestion_checkpoints',
+    )
+
     #: Station identity in the source system, opaque to the application. Kept as
     #: text rather than a foreign key: a checkpoint must survive a station that
     #: has not been registered yet, and must never imply the station exists here.
@@ -70,6 +80,15 @@ class IngestionCheckpoint(models.Model):
 
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Exclusive end of the last completely scanned range. Unlike the accepted
+    # sample position, this can advance through hours with no documents.
+    scan_until = models.BigIntegerField(null=True, blank=True)
+    last_poll_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error_at = models.DateTimeField(null=True, blank=True)
+    last_error_code = models.CharField(max_length=32, blank=True)
+    lease_until = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         """One position per source and station."""
 
@@ -94,6 +113,13 @@ class IngestionCheckpoint(models.Model):
 
     def clean(self) -> None:
         """Reject a position the source could not have produced."""
+        if self.station_id and (
+            self.station.asset_type != 'pumphouse'
+            or str(self.station.source_entity_uuid) != self.station_uuid
+        ):
+            raise ValidationError({
+                'station': _('Station source identity does not match.')
+            })
         try:
             bucket = int(self.hour_bucket)
         except (TypeError, ValueError):

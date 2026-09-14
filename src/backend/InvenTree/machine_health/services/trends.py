@@ -93,7 +93,7 @@ def read_trend(
         },
     }
 
-    connector = get_connector(binding.source)
+    connector = get_connector(binding.source, machine=machine)
     if connector is None:
         return {
             **base,
@@ -123,7 +123,6 @@ def read_trend(
             'machine_health.trend_failed source=%s binding=%s',
             binding.source_id,
             binding.pk,
-            exc_info=True,
         )
         return {
             **base,
@@ -132,6 +131,14 @@ def read_trend(
             'detail': 'The source could not be reached for this window.',
             'samples': [],
         }
+
+    finally:
+        try:
+            connector.close()
+        except Exception:
+            logger.warning(
+                'machine_health.trend_close_failed source=%s', binding.source_id
+            )
 
     # Trim server-side even if the connector ignored the cap: the bound is ours
     # to enforce, not the remote platform's to respect.

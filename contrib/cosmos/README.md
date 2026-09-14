@@ -288,3 +288,31 @@ while an administrator can manage the container and not read the data.
 | `seed.py` | Validates the §3.1 invariants, then upserts the manual inserts; `--dry-run` writes nothing |
 | `samples/ph3_snapshots.json` | Three pilot documents across two hour buckets, including an `I → R` transition |
 | `test_seed.py` | Offline tests for the seeder's validation and derived fields |
+
+## Scheduled polling (T9)
+
+`assets.tasks.poll_cosmos_pumphouse_sources` runs every minute through Django-Q2.
+`AIMMS_COSMOS_PUMPHOUSE_ENABLED` defaults to false. Leave it off until T11 activation
+links each `IngestionCheckpoint.station` to its registered pumphouse and creates approved
+signal bindings. The checkpoint's `station_uuid` is the station's **source entity UUID**;
+it is not the registry's local UUID. Migration `0013_station_poll_progress` leaves old
+links null rather than guessing ownership. No running database is changed by the source
+code migration alone.
+
+Each station gets up to 20 seconds and 200 documents (`max_docs_per_poll` may lower that
+cap), within a 50-second sweep. Least-recently attempted stations go first. A two-minute
+lease prevents overlapping scheduled polls, and per-station timestamps/error codes are
+visible in the checkpoint admin. Cosmos sources created without an explicit freshness
+threshold default to 300 seconds; existing source configuration is preserved.
+
+Requests use bounded timeouts and no SDK retries. The next scheduled sweep retries failures.
+These are cooperative budgets: an in-flight HTTP or credential operation must return
+before the worker checks time again. Empty scan ranges advance `scan_until`, independently
+of the last accepted sample, with a five-minute overlap for delayed documents. Documents
+older than the overlap or behind the last accepted sample require a separate backfill
+policy; this poller maintains latest state rather than importing historical series.
+
+Errors use fixed codes: `AUTH`, `NOT_FOUND`, `THROTTLED`, `NETWORK`, `CONFIG`, `SNAPSHOT`,
+`INGEST`. One station's failure does not mark the whole account failed. Every snapshot's
+batches and accepted checkpoint commit together, so a batch failure leaves no partial
+snapshot in the cache. Check `HANDOVER.md` for remaining activation and deployment work.

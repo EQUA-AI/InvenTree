@@ -14,6 +14,7 @@ from __future__ import annotations
 import abc
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TypeVar
 
 #: Trend reads are bounded so one request cannot pull a historian dry.
 MAX_TREND_SAMPLES = 2000
@@ -74,8 +75,13 @@ class HealthConnector(abc.ABC):
         """Optional push subscription. Not required for polling sources."""
         raise NotImplementedError(f'{type(self).__name__} does not support subscribe')
 
+    def close(self):
+        """Release any resources owned by an adapter after a read."""
+        return None
+
 
 _REGISTRY: dict[str, type[HealthConnector]] = {}
+ConnectorType = TypeVar('ConnectorType', bound=HealthConnector)
 
 #: Modules whose import side effect is registering a built-in adapter. They are
 #: imported on first lookup rather than from this module, because a connector may
@@ -84,7 +90,7 @@ _BUILTIN_MODULES = ('machine_health.connectors.cosmos_pumphouse',)
 _loaded = False
 
 
-def register(connector_class: type[HealthConnector]) -> type[HealthConnector]:
+def register(connector_class: type[ConnectorType]) -> type[ConnectorType]:
     """Register a connector implementation under its ``key``."""
     if not connector_class.key:
         raise ValueError('A connector must declare a key')
@@ -105,7 +111,7 @@ def load_builtin_connectors() -> None:
         importlib.import_module(module)
 
 
-def get_connector(source):
+def get_connector(source, *, machine=None):
     """Return the adapter configured for a source, or None when it has none.
 
     A source with an unregistered connector returns None rather than falling back
@@ -114,6 +120,28 @@ def get_connector(source):
     """
     load_builtin_connectors()
     connector_class = _REGISTRY.get(source.connector_type)
+    if (
+        connector_class
+        and source.connector_type == 'cosmos_pumphouse'
+        and machine is not None
+    ):
+        from assets.ingestion_models import IngestionCheckpoint
+        from machine_health.connectors.cosmos_pumphouse import CosmosPumphouseConnector
+
+        station = machine if machine.asset_type == 'pumphouse' else machine.parent
+        if (
+            station is None
+            or station.asset_type != 'pumphouse'
+            or station.client_id != machine.client_id
+            or not station.active
+        ):
+            return None
+        checkpoint = IngestionCheckpoint.objects.filter(
+            source=source, station=station, station_uuid=str(station.source_entity_uuid)
+        ).first()
+        if checkpoint is None:
+            return None
+        return CosmosPumphouseConnector(source, station_uuid=checkpoint.station_uuid)
     return connector_class(source) if connector_class else None
 
 

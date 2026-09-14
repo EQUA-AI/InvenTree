@@ -1438,6 +1438,11 @@ AIMMS_GOVERNED_KANBAN_WRITES = get_boolean_setting(
     'AIMMS_GOVERNED_KANBAN_WRITES', 'aimms_governed_kanban_writes', False
 )
 
+# Read-only station telemetry is opt-in, including in development.
+AIMMS_COSMOS_PUMPHOUSE_ENABLED = get_boolean_setting(
+    'AIMMS_COSMOS_PUMPHOUSE_ENABLED', 'aimms_cosmos_pumphouse_enabled', False
+)
+
 # Closeout extraction (S19): master gate, extractor seam (dotted path to the
 # ai.core capability binding), provenance label, and the capture wizard.
 AIMMS_CLOSEOUT_EXTRACTION_ENABLED = get_boolean_setting(

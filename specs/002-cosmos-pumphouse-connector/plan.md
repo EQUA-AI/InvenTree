@@ -2,7 +2,8 @@
 
 **Feature Branch**: `inventTree-aniket` (PR to `IOT` at sprint end)
 **Created**: 2026-09-11 · **Revised**: 2026-09-11 (decisions D2–D5 answered)
-**Status**: Draft — open items in §8
+**Status**: T9 implemented on local `IoT`; see the continuation in `HANDOVER.md`.
+Older research and pseudocode below describe the original design, not the current code.
 **Input**: Cassandra `iwm_data_YYYYMM` schema (confirmed), PH_3 pilot excerpt, basic-params list, existing
 `machine_health` connector framework and `assets` equipment registry.
 
@@ -286,18 +287,28 @@ continuation_token text, updated_at)` with unique `(source, station_uuid)`. Reje
 `continuation_token` is reserved for the later change-feed mode and stays empty this sprint. Replaces the
 ad-hoc "data/checkpoints" idea; survives worker restarts and is visible in admin.
 
-### 4.5 Scheduled task (`assets/tasks.py`)
+### 4.5 Scheduled task (`assets/tasks.py`) — implemented
 
-```python
-@scheduled_task(ScheduledTask.MINUTES, 1)
-def poll_cosmos_pumphouse_sources():
-    if not settings.AIMMS_COSMOS_PUMPHOUSE_ENABLED: return
-    for source in HealthSource.objects.filter(active=True, connector_type='cosmos_pumphouse'):
-        connector = get_connector(source); readings, cp = connector.poll(checkpoint_for(source))
-        ingest_readings(source, [r.as_dict() for r in readings]); save(cp)
-        # on exception: record_source_error(source, code)
-```
-Per-source time budget (≤ 20 s) and doc cap so one slow account cannot starve the worker.
+Every minute, with `AIMMS_COSMOS_PUMPHOUSE_ENABLED` defaulting off, the task visits
+active Cosmos sources' checkpoints in least-recently attempted order. Each checkpoint
+links the source UUID to an explicit local registered station. Ingestion resolves the
+JSON pointer within that station and its children, not across every binding on the account.
+The trend service derives the same scope from the authorized machine.
+
+Budgets: 20 seconds per station, 50 seconds per sweep, 200 documents per station maximum.
+Requests have a five-second timeout capped by the remaining budget, with SDK retries off.
+A conditional 120-second database lease protects a station from overlapping scheduled
+attempts. Per-station poll/success/error timestamps preserve failures independently.
+
+`scan_until` is a separate exclusive scan boundary that can advance across empty hours;
+the accepted `(hour_bucket, sub_time_period)` still advances only after a whole snapshot
+commits. A five-minute overlap revisits recent delayed data, subject to the accepted
+sample replay guard. Older late arrivals/backfill remain a separate policy decision.
+All batches and the accepted checkpoint update share one transaction. Database migration
+`0013_station_poll_progress` adds ownership, scan progress, status and lease fields.
+
+T11 must link existing checkpoints and define the initial position for new ones. It must
+also stop the checkpoint on station deactivation. No production source is enabled by T9.
 
 ---
 
@@ -391,13 +402,11 @@ bays. Hence T18 comes first.
 `PH_3` / *Effluent Pump Station 03*. Differing pump counts and **sparse pump numbering** (Lakshmi
 runs 01–06, 09, 10, 13–17) are therefore normal, not anomalies.
 
-Checked 2026-09-13 — the backend already holds no single-station assumption: no `PH_3` or `14`
-literals outside one comment, `IngestionCheckpoint` unique on `(source, station_uuid)`, Cosmos
-partitioned hierarchically on `/station_uuid` + `/hour_bucket`, and `plan_dictionary` deriving pump
-slots from `pd` (capped at 100). **The poller draft in §4 above did assume one station per source
-and is superseded by the corrected T9.** In the UI, bays are *keyed* by pump key and never indexed
-by position. Station names are provisional throughout; `rename_station` applies real plant names by
-source identity without disturbing UUIDs, bindings or dictionary points.
+The original multi-station assessment overlooked source-wide binding lookup and the
+single-station history guard. T9 now supplies explicit checkpoint ownership and scoped
+binding resolution/history reads (§4.5). Per-station checkpoints and partition keys alone
+were not enough. Activation and estate rollout remain T11/T19. Pump bays still derive from
+`pd` and are keyed by pump key; station labels remain independent from identity.
 
 Constraints carried from the ingestion side, not negotiable in the UI:
 
