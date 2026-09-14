@@ -83,7 +83,16 @@ Status responses contain no endpoint, credentials or credential reference.
 offline import and connector regression coverage; type checks and migration consistency passed.
 The tests use isolated SQLite and do not prove PostgreSQL lock scheduling or Azure integration.
 
-**Next: T12 live-source UI**, then T13 emulator integration. The global polling flag remains
+**T12 completed:** the Dictionary and review tab has a live-source card with authorized
+source selection, hash-locked activation/deactivation, counts, last poll/error and refresh.
+The banner distinguishes no bindings, activated-but-paused and polling-enabled states.
+Status refreshes every 30 seconds. Client reassignment hides previously linked sources and
+bindings from the former Client; inactive/unconfigured stations are not shown as polling-enabled.
+Validation: TypeScript and Biome passed; Lingui catalogs extracted/compiled; Chromium smoke
+checks passed for activate/deactivate, preview bodies, paused polling and view-only controls.
+The 11 activation API tests also passed after the Client-reassignment status regression check.
+
+**Next: T13 emulator integration.** The global polling flag remains
 off by default and no production migrations or cloud changes have been applied. Full snapshots
 (T18), the station inventory (T19), reference images (T15), plant units/thresholds and the
 application identity/role (D17) remain external inputs. T16 can proceed independently using

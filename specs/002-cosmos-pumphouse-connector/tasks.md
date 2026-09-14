@@ -211,12 +211,11 @@ remains off; this ticket does not enable live ingestion or apply production migr
 - [x] Revoked/remapped reviews invalidate cached state and require reactivation
 - [x] 253 backend tests; type checks and generated migration consistency passed
 
-### 🔵 T12 — Live-source UI · 5 h · *next*
-- [ ] "Live source" card on the *Dictionary and review* tab of `EquipmentRegistry.tsx`: pick a
-      `HealthSource`, show bound/unbound counts, last poll time, last error code
-- [ ] Banner text becomes conditional on activation
-- [ ] `tsc --noEmit` and `biome check` clean
-**Acceptance**: the offline banner disappears only when bindings exist for that station.
+### ✅ T12 — Live-source UI · 5 h · completed
+- [x] Live-source card: authorized source selection, activation/deactivation, counts and poll/error status
+- [x] Conditional banner requires station bindings; activation and enabled polling are distinct
+- [x] Refresh/status polling and role-based controls; Client reassignment hides prior source details
+- [x] TypeScript/Biome checks; Lingui extraction/compilation; Chromium activation/deactivation/view-only smoke checks
 
 ### 🔵 T13 — End-to-end integration test · 4 h · *ready — T4, T5, T8 and T9 implemented*
 - [ ] Seed the emulator → poll → `MachineSignalState` populated with the expected values
@@ -342,8 +341,8 @@ inside the worker budget; cross-station leakage test passes.
 
 | Bucket | Tickets | Hours |
 |---|---|---|
-| Done | T0–T11 | 57 |
-| Ready now | T12, T13 | 9 |
+| Done | T0–T12 | 62 |
+| Ready now | T13 | 4 |
 | Blocked on earlier tickets / human review | T14 | 3 |
 | Mimic dashboard (added 2026-09-13) | T18, T15, T16, T17 | 31 |
 | Estate rollout (added 2026-09-13) | T19 | 6 |
@@ -353,7 +352,7 @@ inside the worker budget; cross-station leakage test passes.
 > for **one** station; the estate is **10–12 pumphouses**, and the two reference images describe the
 > schematic users actually look *at*. Nothing in T0–T8 needs rewriting — the backend carries no
 > single-station or fixed-pump-count assumption (verified 2026-09-13) — but **T9 did**, and has been
-> corrected to iterate checkpoints rather than sources. Remaining work is nominally **49 h** after T11; re-estimate the remaining integration and rollout work.
+> corrected to iterate checkpoints rather than sources. Remaining work is nominally **44 h** after T12; re-estimate the remaining integration and rollout work.
 > **Start with T18**: the 25 approved points cover only a fraction of image 1, and drawing before the
 > dictionary covers the tags means drawing against nothing.
 

@@ -28,6 +28,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../App';
 import { showApiErrorMessage } from '../../functions/notifications';
 import { useUserState } from '../../states/UserState';
+import { StationLiveSource, useStationLiveStatus } from './StationLiveSource';
 
 type Equipment = {
   pk: number;
@@ -107,6 +108,7 @@ export default function EquipmentRegistry() {
   const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const stationId = params.get('station') ?? '';
+  const live = useStationLiveStatus(stationId);
   const ownerId = params.get('owner') ?? '';
   const selectedId = ownerId || stationId;
   const [tab, setTab] = useState<string | null>('dictionary');
@@ -370,7 +372,25 @@ export default function EquipmentRegistry() {
           >{t`Register station`}</Button>
         </Group>
       </Group>
-      <Alert color='blue'>{t`Offline registry only. Inferred components are drafts, not verified installations. Mapping approval does not enable live ingestion. Uploaded readings are not stored as live values.`}</Alert>
+      {!stationId ? (
+        <Alert color='blue'>{t`Select a station to review its mappings and live source.`}</Alert>
+      ) : live.isError ? (
+        <Alert color='red'>{t`Live source status is unavailable. Refresh the live source card to retry.`}</Alert>
+      ) : live.isLoading ? (
+        <Loader size='sm' />
+      ) : live.data?.activated && live.data.bound > 0 ? (
+        <Alert color={live.data.enabled ? 'green' : 'yellow'}>
+          {live.data.enabled
+            ? t`This station is activated for live polling. Unbound points have no live values.`
+            : t`This station has live bindings, but polling is paused. Ask your administrator to enable polling.`}
+        </Alert>
+      ) : (
+        <Alert color='blue'>{t`This station is not activated for live polling. Approve mappings, then activate a configured live source.`}</Alert>
+      )}
+      <Text
+        size='sm'
+        c='dimmed'
+      >{t`Inferred components are drafts, not verified installations. Registry uploads review mappings; uploaded readings are not stored as live values.`}</Text>
       {error && (
         <Alert color='red'>
           {t`Registry could not be loaded. Check your work-order permissions and configured Client scope, then retry.`}
@@ -540,6 +560,13 @@ export default function EquipmentRegistry() {
               </Stack>
             </Tabs.Panel>
             <Tabs.Panel value='dictionary' pt='md'>
+              <StationLiveSource
+                key={stationId}
+                stationId={stationId}
+                canAdd={canAdd}
+                canChange={canChange}
+                busy={busy}
+              />
               <Stack>
                 <Group grow>
                   <TextInput

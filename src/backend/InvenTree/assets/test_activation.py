@@ -170,10 +170,15 @@ class StationActivationTests(InvenTreeAPITestCase):
 
     def test_other_client_source_and_station_are_not_disclosed(self):
         """Neither source IDs nor station IDs bypass exact Client scope."""
+        self.assertEqual(self.activate().status_code, 200)
         other = Client.objects.create(code='activation-other', name='Other')
         self.source.client = other
         self.source.save()
-        self.assertEqual(self.client.get(self.url).data['sources'], [])
+        status = self.client.get(self.url).data
+        self.assertEqual(status['sources'], [])
+        self.assertIsNone(status['source'])
+        self.assertEqual(status['bound'], 0)
+        self.assertFalse(status['activated'])
         self.assertEqual(
             self.client.get(self.url, {'source': self.source.pk}).status_code, 404
         )

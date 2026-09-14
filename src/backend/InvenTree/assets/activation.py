@@ -140,11 +140,13 @@ def activation_plan(station, source):
 def live_status(station):
     """Return station state without endpoint, configuration or credential references."""
     checkpoints = IngestionCheckpoint.objects.filter(
-        station=station, active=True
+        station=station, active=True, source__client_id=station.client_id
     ).select_related('source')
     checkpoint = checkpoints.first()
     bindings = MachineSignalBinding.objects.filter(
-        dictionary_point__station=station, active=True
+        dictionary_point__station=station,
+        active=True,
+        source__client_id=station.client_id,
     )
     approved = DictionaryPoint.objects.filter(
         station=station, status='approved'
@@ -157,6 +159,10 @@ def live_status(station):
             settings.AIMMS_COSMOS_PUMPHOUSE_ENABLED
             and checkpoint
             and checkpoint.source.active
+            and station.active
+            and station.client.active
+            and str(station.source_entity_uuid)
+            in configured_stations(checkpoint.source)
         ),
         'source': {'pk': checkpoint.source_id, 'name': checkpoint.source.name}
         if checkpoint

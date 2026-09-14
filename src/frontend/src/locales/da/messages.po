@@ -111,8 +111,8 @@ msgstr "Annuller"
 #: src/forms/StockForms.tsx:1682
 #: src/forms/StockForms.tsx:1800
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:976
-#: src/pages/assets/EquipmentRegistry.tsx:493
-#: src/pages/assets/EquipmentRegistry.tsx:617
+#: src/pages/assets/EquipmentRegistry.tsx:513
+#: src/pages/assets/EquipmentRegistry.tsx:644
 msgid "Actions"
 msgstr "Handlinger"
 
@@ -217,7 +217,7 @@ msgid "Parts"
 msgstr "Dele"
 
 #: lib/enums/ModelInformation.tsx:71
-#: src/pages/assets/EquipmentRegistry.tsx:614
+#: src/pages/assets/EquipmentRegistry.tsx:641
 msgid "Parameter"
 msgstr "Parameter"
 
@@ -576,9 +576,9 @@ msgstr "Kontakter"
 
 #: lib/enums/ModelInformation.tsx:285
 #: src/components/tables/ColumnRenderers.tsx:687
-#: src/pages/assets/EquipmentRegistry.tsx:489
-#: src/pages/assets/EquipmentRegistry.tsx:575
-#: src/pages/assets/EquipmentRegistry.tsx:727
+#: src/pages/assets/EquipmentRegistry.tsx:509
+#: src/pages/assets/EquipmentRegistry.tsx:602
+#: src/pages/assets/EquipmentRegistry.tsx:754
 msgid "Owner"
 msgstr "Ejer"
 
@@ -706,7 +706,7 @@ msgstr "Maskine"
 #: src/defaults/links.tsx:59
 #: src/pages/Index/Settings/AdminCenter/Index.tsx:261
 #: src/pages/Index/Settings/AdminCenter/MachineManagementPanel.tsx:52
-#: src/pages/assets/EquipmentRegistry.tsx:366
+#: src/pages/assets/EquipmentRegistry.tsx:368
 #: src/pages/assets/MachineDetail.tsx:171
 #: src/pages/assets/MachineIndex.tsx:21
 #: src/pages/assets/MachineIndex.tsx:30
@@ -3301,6 +3301,7 @@ msgstr ""
 #: src/components/nav/AIChatDrawer.tsx:294
 #: src/components/nav/AIChatDrawer.tsx:397
 #: src/components/riskradar/RiskRadarPanel.tsx:353
+#: src/pages/assets/StationLiveSource.tsx:116
 #: src/pages/assets/health/MachineHealthPanel.tsx:190
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
 #: src/pages/repair/components/safety/SafetyPanel.tsx:110
@@ -4359,6 +4360,7 @@ msgid "Setting"
 msgstr "Indstilling"
 
 #: src/components/settings/ConfigValueList.tsx:39
+#: src/pages/assets/StationLiveSource.tsx:133
 #: src/pages/assets/health/HealthSourceStatus.tsx:33
 #: src/pages/assets/health/SignalTable.tsx:67
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:78
@@ -4937,8 +4939,8 @@ msgstr ""
 #: src/forms/StockForms.tsx:649
 #: src/forms/StockForms.tsx:1387
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:87
-#: src/pages/assets/EquipmentRegistry.tsx:492
-#: src/pages/assets/EquipmentRegistry.tsx:616
+#: src/pages/assets/EquipmentRegistry.tsx:512
+#: src/pages/assets/EquipmentRegistry.tsx:643
 #: src/pages/build/BuildOrderDetailsPanel.tsx:67
 #: src/pages/core/UserDetail.tsx:146
 #: src/pages/maintenance/MaintenanceBoard.tsx:1733
@@ -7010,8 +7012,8 @@ msgid "The following items are installed within this stock item, but do not matc
 msgstr ""
 
 #: src/forms/StockForms.tsx:906
-#: src/pages/assets/EquipmentRegistry.tsx:490
-#: src/pages/assets/EquipmentRegistry.tsx:589
+#: src/pages/assets/EquipmentRegistry.tsx:510
+#: src/pages/assets/EquipmentRegistry.tsx:616
 #: src/pages/part/pricing/BomPricingPanel.tsx:81
 #: src/pages/part/pricing/BomPricingPanel.tsx:105
 #: src/tables/bom/UsedInTable.tsx:66
@@ -9124,14 +9126,14 @@ msgstr "Marker som ulæst"
 #~ msgid "Delete notifications"
 #~ msgstr "Delete notifications"
 
-#: src/pages/assets/EquipmentRegistry.tsx:198
-#: src/pages/assets/EquipmentRegistry.tsx:199
 #: src/pages/assets/EquipmentRegistry.tsx:200
 #: src/pages/assets/EquipmentRegistry.tsx:201
 #: src/pages/assets/EquipmentRegistry.tsx:202
-#: src/pages/assets/EquipmentRegistry.tsx:208
-#: src/pages/assets/EquipmentRegistry.tsx:209
+#: src/pages/assets/EquipmentRegistry.tsx:203
+#: src/pages/assets/EquipmentRegistry.tsx:204
 #: src/pages/assets/EquipmentRegistry.tsx:210
+#: src/pages/assets/EquipmentRegistry.tsx:211
+#: src/pages/assets/EquipmentRegistry.tsx:212
 #: src/pages/part/PartDetail.tsx:596
 #: src/pages/repair/RepairPacketDetail.tsx:236
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:810
@@ -9141,212 +9143,236 @@ msgstr "Marker som ulæst"
 msgid "Required"
 msgstr "Påkrævet"
 
-#: src/pages/assets/EquipmentRegistry.tsx:277
+#: src/pages/assets/EquipmentRegistry.tsx:279
 msgid "Saved successfully"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:280
+#: src/pages/assets/EquipmentRegistry.tsx:282
 msgid "Registry update failed"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:306
+#: src/pages/assets/EquipmentRegistry.tsx:308
 msgid "JSON files must be no larger than 8 MiB"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:317
+#: src/pages/assets/EquipmentRegistry.tsx:319
 msgid "Preview failed"
 msgstr ""
 
 #. placeholder {0}: result.created
 #. placeholder {1}: result.preserved
-#: src/pages/assets/EquipmentRegistry.tsx:331
+#: src/pages/assets/EquipmentRegistry.tsx:333
 msgid "Created {0} points; preserved {1} existing points"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:360
+#: src/pages/assets/EquipmentRegistry.tsx:362
 #: src/pages/assets/MachineIndex.tsx:32
 msgid "Equipment Registry"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:370
-#: src/pages/assets/EquipmentRegistry.tsx:822
+#: src/pages/assets/EquipmentRegistry.tsx:372
+#: src/pages/assets/EquipmentRegistry.tsx:849
 msgid "Register station"
 msgstr ""
 
 #: src/pages/assets/EquipmentRegistry.tsx:373
-msgid "Offline registry only. Inferred components are drafts, not verified installations. Mapping approval does not enable live ingestion. Uploaded readings are not stored as live values."
-msgstr ""
+#~ msgid "Offline registry only. Inferred components are drafts, not verified installations. Mapping approval does not enable live ingestion. Uploaded readings are not stored as live values."
+#~ msgstr ""
 
 #: src/pages/assets/EquipmentRegistry.tsx:376
+msgid "Select a station to review its mappings and live source."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:378
+msgid "Live source status is unavailable. Refresh the live source card to retry."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:384
+msgid "This station is activated for live polling. Unbound points have no live values."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:385
+msgid "This station has live bindings, but polling is paused. Ask your administrator to enable polling."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:388
+msgid "This station is not activated for live polling. Approve mappings, then activate a configured live source."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:393
+msgid "Inferred components are drafts, not verified installations. Registry uploads review mappings; uploaded readings are not stored as live values."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:396
 msgid "Registry could not be loaded. Check your work-order permissions and configured Client scope, then retry."
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:380
+#: src/pages/assets/EquipmentRegistry.tsx:400
 msgid "Retry"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:386
+#: src/pages/assets/EquipmentRegistry.tsx:406
 msgid "Pump station"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:395
-#: src/pages/assets/EquipmentRegistry.tsx:931
+#: src/pages/assets/EquipmentRegistry.tsx:415
+#: src/pages/assets/EquipmentRegistry.tsx:958
 msgid "Equipment owner"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:398
+#: src/pages/assets/EquipmentRegistry.tsx:418
 msgid "Station and all pumps"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:408
+#: src/pages/assets/EquipmentRegistry.tsx:428
 msgid "Station UUID"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:411
-#: src/pages/assets/EquipmentRegistry.tsx:814
+#: src/pages/assets/EquipmentRegistry.tsx:431
+#: src/pages/assets/EquipmentRegistry.tsx:841
 msgid "Source entity UUID"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:416
-#: src/pages/assets/EquipmentRegistry.tsx:446
+#: src/pages/assets/EquipmentRegistry.tsx:436
+#: src/pages/assets/EquipmentRegistry.tsx:466
 msgid "Equipment"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:417
+#: src/pages/assets/EquipmentRegistry.tsx:437
 msgid "Components"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:418
+#: src/pages/assets/EquipmentRegistry.tsx:438
 msgid "Dictionary and review"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:419
+#: src/pages/assets/EquipmentRegistry.tsx:439
 msgid "Preview and import"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:425
+#: src/pages/assets/EquipmentRegistry.tsx:445
 msgid "New pump source key"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:440
+#: src/pages/assets/EquipmentRegistry.tsx:460
 msgid "Register pump slot"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:447
+#: src/pages/assets/EquipmentRegistry.tsx:467
 msgid "Source key"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:448
+#: src/pages/assets/EquipmentRegistry.tsx:468
 msgid "UUID"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:477
+#: src/pages/assets/EquipmentRegistry.tsx:497
 msgid "Identifiable component occurrences"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:481
-#: src/pages/assets/EquipmentRegistry.tsx:829
+#: src/pages/assets/EquipmentRegistry.tsx:501
+#: src/pages/assets/EquipmentRegistry.tsx:856
 msgid "Add component occurrence"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:483
+#: src/pages/assets/EquipmentRegistry.tsx:503
 msgid "Choose an equipment owner above before adding a component. Leaving it empty assigns the component to the station."
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:491
-#: src/pages/assets/EquipmentRegistry.tsx:845
+#: src/pages/assets/EquipmentRegistry.tsx:511
+#: src/pages/assets/EquipmentRegistry.tsx:872
 msgid "Catalogue part"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:510
+#: src/pages/assets/EquipmentRegistry.tsx:530
 msgid "Logical group"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:530
+#: src/pages/assets/EquipmentRegistry.tsx:550
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:398
 msgid "Review"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:538
+#: src/pages/assets/EquipmentRegistry.tsx:558
 msgid "Select a pump to narrow the component list. Showing the first 500 occurrences."
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:546
+#: src/pages/assets/EquipmentRegistry.tsx:573
 msgid "Search tags"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:554
-#: src/pages/assets/EquipmentRegistry.tsx:988
+#: src/pages/assets/EquipmentRegistry.tsx:581
+#: src/pages/assets/EquipmentRegistry.tsx:1015
 msgid "Mapping status"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:564
+#: src/pages/assets/EquipmentRegistry.tsx:591
 msgid "Match method"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:605
+#: src/pages/assets/EquipmentRegistry.tsx:632
 msgid "Dictionary points"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:612
+#: src/pages/assets/EquipmentRegistry.tsx:639
 msgid "Source tag / path"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:613
+#: src/pages/assets/EquipmentRegistry.tsx:640
 msgid "Owner / component"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:615
+#: src/pages/assets/EquipmentRegistry.tsx:642
 #: src/pages/part/PartDetailsPanel.tsx:134
 msgid "Units"
 msgstr "Enheder"
 
-#: src/pages/assets/EquipmentRegistry.tsx:640
-#: src/pages/assets/EquipmentRegistry.tsx:744
+#: src/pages/assets/EquipmentRegistry.tsx:667
+#: src/pages/assets/EquipmentRegistry.tsx:771
 msgid "Station"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:641
+#: src/pages/assets/EquipmentRegistry.tsx:668
 msgid "Pump"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:647
+#: src/pages/assets/EquipmentRegistry.tsx:674
 msgid "Unresolved"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:668
+#: src/pages/assets/EquipmentRegistry.tsx:695
 msgid "Review mapping"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:684
+#: src/pages/assets/EquipmentRegistry.tsx:711
 msgid "Select the authoritative station before uploading. Accepts a pd/dex payload, a Cassandra row with data1, or up to 100 rows. Maximum 8 MiB and 25,000 distinct points. Preview performs no equipment/dictionary writes. Existing mappings are preserved during import."
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:686
+#: src/pages/assets/EquipmentRegistry.tsx:713
 msgid "Pumphouse JSON file"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:701
+#: src/pages/assets/EquipmentRegistry.tsx:728
 msgid "Preview dictionary"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:707
+#: src/pages/assets/EquipmentRegistry.tsx:734
 msgid "Import draft mappings"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:719
+#: src/pages/assets/EquipmentRegistry.tsx:746
 msgid "Pump slots"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:726
+#: src/pages/assets/EquipmentRegistry.tsx:753
 msgid "Raw tag"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:728
+#: src/pages/assets/EquipmentRegistry.tsx:755
 msgid "Proposed part / parameter"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:729
+#: src/pages/assets/EquipmentRegistry.tsx:756
 #: src/pages/repair/components/PacketCloseoutModal.tsx:156
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:953
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:525
@@ -9356,90 +9382,90 @@ msgstr ""
 msgid "Result"
 msgstr "Resultat"
 
-#: src/pages/assets/EquipmentRegistry.tsx:751
+#: src/pages/assets/EquipmentRegistry.tsx:778
 msgid "Preserved"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:778
+#: src/pages/assets/EquipmentRegistry.tsx:805
 msgid "Select or register a station to manage pump slots and review its dictionary."
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:783
+#: src/pages/assets/EquipmentRegistry.tsx:810
 msgid "Register pump station"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:800
-#: src/pages/assets/EquipmentRegistry.tsx:859
-#: src/pages/assets/EquipmentRegistry.tsx:967
+#: src/pages/assets/EquipmentRegistry.tsx:827
+#: src/pages/assets/EquipmentRegistry.tsx:886
+#: src/pages/assets/EquipmentRegistry.tsx:994
 msgid "Display name"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:804
+#: src/pages/assets/EquipmentRegistry.tsx:831
 msgid "Authorized Client"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:809
+#: src/pages/assets/EquipmentRegistry.tsx:836
 msgid "Source namespace"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:818
+#: src/pages/assets/EquipmentRegistry.tsx:845
 msgid "Source code"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:854
+#: src/pages/assets/EquipmentRegistry.tsx:881
 msgid "Occurrence code"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:865
+#: src/pages/assets/EquipmentRegistry.tsx:892
 msgid "Create draft occurrence"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:872
+#: src/pages/assets/EquipmentRegistry.tsx:899
 msgid "Review component assignment"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:880
-#: src/pages/assets/EquipmentRegistry.tsx:994
+#: src/pages/assets/EquipmentRegistry.tsx:907
+#: src/pages/assets/EquipmentRegistry.tsx:1021
 msgid "Review note"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:899
+#: src/pages/assets/EquipmentRegistry.tsx:926
 msgid "Verify assignment"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:899
+#: src/pages/assets/EquipmentRegistry.tsx:926
 msgid "Keep draft"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:908
+#: src/pages/assets/EquipmentRegistry.tsx:935
 msgid "Review dictionary mapping"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:943
+#: src/pages/assets/EquipmentRegistry.tsx:970
 msgid "Component occurrence"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:958
+#: src/pages/assets/EquipmentRegistry.tsx:985
 msgid "Parameter definition"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:972
+#: src/pages/assets/EquipmentRegistry.tsx:999
 msgid "Data type"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:977
+#: src/pages/assets/EquipmentRegistry.tsx:1004
 msgid "Source unit"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:983
+#: src/pages/assets/EquipmentRegistry.tsx:1010
 msgid "Unit review"
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:997
+#: src/pages/assets/EquipmentRegistry.tsx:1024
 msgid "Approval requires a mapped component and parameter, confirmed units/type and a review note. Confirm engineering information; do not infer it from sample values."
 msgstr ""
 
-#: src/pages/assets/EquipmentRegistry.tsx:998
+#: src/pages/assets/EquipmentRegistry.tsx:1025
 msgid "Save review"
 msgstr ""
 
@@ -9505,6 +9531,98 @@ msgstr ""
 
 #: src/pages/assets/StartRepairModal.tsx:218
 msgid "Review blockers"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:79
+msgid "Refresh the source preview before continuing."
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:90
+msgid "Station deactivated"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:91
+msgid "Station mappings activated"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:95
+msgid "Live source update failed"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:110
+msgid "Live source"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:120
+msgid "Live source status could not be loaded. Refresh to retry."
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:126
+msgid "Activated"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:126
+msgid "Not activated"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:129
+msgid "Polling enabled"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:129
+msgid "Polling paused"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:141
+msgid "Select a configured source"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:144
+msgid "No source is configured for this station. Ask your administrator to assign one."
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:148
+msgid "Approved"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:151
+msgid "Bound"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:154
+msgid "Unbound"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:158
+msgid "Last poll"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:161
+msgid "Not polled yet"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:165
+msgid "Last poll error"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:169
+msgid "Source preview could not be loaded. Refresh before trying again."
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:172
+msgid "Activation binds approved mappings. Polling must also be enabled by your administrator. Deactivation stops this station and clears its managed live values."
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:187
+msgid "Refresh approved bindings"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:188
+msgid "Activate station"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:201
+msgid "Deactivate station"
 msgstr ""
 
 #: src/pages/assets/health/AnomalyList.tsx:34
