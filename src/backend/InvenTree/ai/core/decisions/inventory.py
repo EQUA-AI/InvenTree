@@ -2,7 +2,7 @@
 
 import re
 
-from ai.core.decisions.resolver import WorkOrderIntent
+from ai.core.decisions.resolver import _DIGITS, WorkOrderIntent, _reference, _under_thousand
 from ai.core.decisions.work_order_review import readable
 
 
@@ -14,27 +14,54 @@ class InventoryAmbiguity(ValueError):
         self.options = options
 
 
+def _quantity(value):
+    """Decode only the quantity slot; no homophones, estimates or unit conversion."""
+    value = value.strip().lower()
+    if re.fullmatch(r"\d+(?:\.\d+)?", value):
+        return value
+    if not re.fullmatch(r"[a-z]+(?:[ -][a-z]+)*", value):
+        return None
+    pieces = value.replace("-", " ").split(" point ")
+    if len(pieces) > 2:
+        return None
+    whole = _under_thousand(pieces[0].split())
+    if whole is None:
+        return None
+    if len(pieces) == 1:
+        return str(whole)
+    fraction = pieces[1].split()
+    if not fraction or len(fraction) > 8 or any(word not in _DIGITS for word in fraction):
+        return None
+    return str(whole) + "." + "".join(str(_DIGITS[word]) for word in fraction)
+
+
 def parse_stock_intent(content):
     """Recognize only the four governed movements; never infer quantities."""
     text = content.strip().rstrip(".!?")
+    quantity = r"(?P<quantity>[a-z0-9. -]{1,100}?)"
+    stock_id = r"(?P<stock_item_id>[a-z0-9, -]{1,120}?)"
     patterns = (
         (
             "stock.read",
             r"(?:show stock|stock|how much stock) of part (?P<part_name>.+?)(?: page (?P<page>\d+))?",
         ),
-        ("stock.add", r"add (?P<quantity>\d+(?:\.\d+)?) to stock item (?P<stock_item_id>\d+)"),
+        ("stock.add", rf"add {quantity} to stock item {stock_id}"),
         (
             "stock.remove",
-            r"remove (?P<quantity>\d+(?:\.\d+)?) from stock item (?P<stock_item_id>\d+)",
+            rf"remove {quantity} from stock item {stock_id}",
         ),
-        ("stock.count", r"count stock item (?P<stock_item_id>\d+) as (?P<quantity>\d+(?:\.\d+)?)"),
+        ("stock.count", rf"count stock item {stock_id} as {quantity}"),
         (
             "stock.transfer",
-            r"transfer (?P<quantity>\d+(?:\.\d+)?) from stock item (?P<stock_item_id>\d+) to location (?P<location_name>.+?)",
+            rf"transfer {quantity} from stock item {stock_id} to location id (?P<location_id>[a-z0-9, -]{{1,120}}?)",
+        ),
+        (
+            "stock.transfer",
+            rf"transfer {quantity} from stock item {stock_id} to location (?P<location_name>.+?)",
         ),
         (
             "stock.add",
-            r"add (?P<quantity>\d+(?:\.\d+)?) of part (?P<part_name>.+?) to location (?P<location_name>.+?)",
+            rf"add {quantity} of part (?P<part_name>.+?) to location (?P<location_name>.+?)",
         ),
     )
     for action, pattern in patterns:
@@ -42,8 +69,16 @@ def parse_stock_intent(content):
         if match:
             params = {key: value for key, value in match.groupdict().items() if value is not None}
             reason = params.pop("reason", "")
-            if "stock_item_id" in params:
-                params["stock_item_id"] = int(params["stock_item_id"])
+            if "quantity" in params:
+                params["quantity"] = _quantity(params["quantity"])
+                if params["quantity"] is None:
+                    return None
+            for field in ("stock_item_id", "location_id"):
+                if field in params:
+                    identifier = _reference(params[field])
+                    if not identifier or not identifier.isascii() or not identifier.isdigit():
+                        return None
+                    params[field] = int(identifier)
             return WorkOrderIntent(
                 str(params.get("stock_item_id") or params.get("part_name")), reason, action, params
             )
@@ -72,7 +107,7 @@ def _ambiguous(question, rows, field, label):
 
 
 def resolve_parameters(actor, parameters):
-    """Resolve names/IPNs and full paths to exact IDs under current ownership."""
+    """Resolve names/IPNs, paths and explicit IDs under current ownership."""
     from aichat.services.proposals import ProposalError
     from aichat.services.stock_commands import require_role
     from django.db.models import Q
@@ -81,6 +116,10 @@ def resolve_parameters(actor, parameters):
 
     require_role(actor, "view")
     params = dict(parameters)
+    if "location_id" in params:
+        location = StockLocation.objects.filter(pk=params["location_id"]).first()
+        if location is None or not location.check_ownership(actor):
+            raise ProposalError("The location is unavailable in your current scope.")
     name = params.pop("part_name", None)
     if name is not None:
         parts = list(
@@ -100,7 +139,7 @@ def resolve_parameters(actor, parameters):
         params["part_id"] = parts[0].pk
     name = params.pop("location_name", None)
     if name is not None:
-        # Full paths are derived, not a user-supplied numeric scope override.
+        # Names and paths remain exact: punctuation is not fuzzily discarded.
         locations = []
         for row in (
             StockLocation.objects
