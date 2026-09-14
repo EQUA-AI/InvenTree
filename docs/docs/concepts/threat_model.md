@@ -34,6 +34,15 @@ Deploying InvenTree to production requires to knowledge of the security assumpti
 
 There are various checks to gate against common attack vectors but above vectors are explicitly not addressed as they require organisational policies and procedures to mitigate.
 
+## Industrial telemetry
+
+The [Cosmos pumphouse connector](../aimms/cosmos-connector.md#trust-boundaries)
+uses a read-only data-plane identity and exposes no equipment-control operation.
+Trusted deployment administrators configure endpoints and Client ownership;
+registry users select only authorized sources. Connection configuration and
+credential references are excluded from operator responses. Plugins and templates
+retain the server and environment access described under Assumed Trust.
+
 ## Secure Development Cycle
 
 The InvenTree project is developed following best practices. Read more in the [project security guide](../security.md).

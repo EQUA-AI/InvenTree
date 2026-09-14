@@ -251,7 +251,7 @@ This ticket produces the *drawings* and the *contract*, not the live behaviour.
 - [ ] `biome check` clean; no embedded raster, no external font, no inline script in the SVGs.
 **Acceptance**: rename a pointer on either side and the validator fails naming the element.
 
-### 🔵 T16 — Station mimic state API  5 h  *blocked: T9, T11*
+### 🔵 T16 — Station mimic state API · 5 h · ready for reviewed-point contract; full coverage needs T18/T15
 One request paints the whole diagram. Image 2 shows ~40 live fields for the selected unit plus a
 lamp and a valve state for every bay plus two plant totals — that is one payload, not 100 calls.
 - [ ] `GET /api/machine-health/station/<pk>/mimic/` beside the existing `machine-health` routes in
@@ -330,9 +330,9 @@ finds what only breaks on the second station.
 **Acceptance**: twelve stations registered, each with its own checkpoint; a full poll sweep stays
 inside the worker budget; cross-station leakage test passes.
 
-### 🔵 T14 — Docs and PR  3 h  *blocked: all*
-- [ ] `docs/docs/…/cosmos-connector.md`: setup, RBAC role, kill-switch, failure codes
-- [ ] Threat-model note: read-only data-plane role, no credential in DB or API response,
+### 🟡 T14 — Docs and PR · 3 h · documentation completed; PR pending human review
+- [x] `docs/docs/aimms/cosmos-connector.md`: setup, RBAC role, kill-switch, failure codes
+- [x] Threat-model note: read-only data-plane role, no credential in DB or API response,
       connector cannot write to a control system
 - [ ] PR to `IOT` — **human review required before opening** (`AGENTS.md`)
 
@@ -343,8 +343,7 @@ inside the worker budget; cross-station leakage test passes.
 | Bucket | Tickets | Hours |
 |---|---|---|
 | Done | T0–T13 | 66 |
-| Ready now | T14 documentation | 0* |
-| Blocked on earlier tickets / human review | T14 | 3 |
+| Documentation done; PR pending human review | T14 | 3 |
 | Mimic dashboard (added 2026-09-13) | T18, T15, T16, T17 | 31 |
 | Estate rollout (added 2026-09-13) | T19 | 6 |
 | **Total** | **20** | **106** |

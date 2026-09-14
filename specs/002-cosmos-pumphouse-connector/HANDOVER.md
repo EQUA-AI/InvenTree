@@ -1,9 +1,9 @@
 # Handover — AIMMS / Cosmos pumphouse connector
 
 **Date:** 2026-09-13
-**Branch:** `inventTree-aniket` (pushed, up to date with `origin/inventTree-aniket` at `1d4d7313f`)
-**PR target at sprint end:** `IOT`
-**Working tree:** clean — nothing uncommitted, nothing stashed.
+**Branch:** local `IoT`, isolated worktree `InvenTree-IoT`; implementation commits are local.
+**Upstream:** `origin/IOT`; opening a PR requires prior human review.
+**Commit policy:** commit every completed section to `IoT`; check `git status` for current state.
 
 This document exists so the next engineer can pick the sprint up cold. Read it with
 [`plan.md`](./plan.md) (architecture and decisions) and [`tasks.md`](./tasks.md) (the ticket list).
@@ -100,7 +100,20 @@ locally against the emulator image pinned by digest in the new CI workflow. The 
 added but has not run on GitHub. Tests refuse non-loopback provisioning endpoints and remove
 their temporary database. No real Azure account was used.
 
-**Next: operational documentation and the mimic API contract.** The global polling flag remains
+**T14 documentation completed:** `docs/docs/aimms/cosmos-connector.md` documents
+configuration, reviewed activation, the global flag, pause/resume, budgets, failure codes,
+offline import, emulator validation and trust boundaries. Existing machine-health and threat
+model pages link to it. T14's PR step is not performed: repository instructions require human
+review before opening a PR, and no push or PR was requested.
+
+**Next: T16's reviewed-point mimic API contract.** Its scope can be developed from existing
+reviewed points, but complete screen coverage and semantic plant totals still depend on the
+full dictionary and drawings. Do not mark the mimic or estate rollout complete using abridged
+test data. T15/T17/T18/T19 remain incomplete with the unavailable inputs noted above.
+
+Completed implementation commits: T9 `d208867a0`, T10 `136f8acd7`, T11 `e069904c2`,
+T12 `c3530ef18`, T13 `2e0b59f5f`. The documentation commit follows these.
+ The global polling flag remains
 off by default and no production migrations or cloud changes have been applied. Full snapshots
 (T18), the station inventory (T19), reference images (T15), plant units/thresholds and the
 application identity/role (D17) remain external inputs. T16 can proceed independently using
