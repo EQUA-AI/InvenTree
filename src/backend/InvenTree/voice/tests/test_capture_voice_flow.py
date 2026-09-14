@@ -160,6 +160,18 @@ class CaptureVoiceFlowTests(WorkOrderVoiceFixture, TestCase):
         self.assertEqual(
             self.say('Hand off this note.').decision.required_phrase, 'confirm handoff'
         )
+
+    def test_lowercase_asr_psi_correction_keeps_one_literal_unit(self):
+        """Lowercase ASR units do not duplicate or convert a pressure unit."""
+        capture = self.consent()
+        for source_unit, replacement_unit in [('psi', 'psi'), ('PSI', 'psi'), ('psi', 'PSI')]:
+            with self.subTest(source_unit=source_unit, replacement_unit=replacement_unit):
+                self.say(f'replace note with Pressure 15 {source_unit}. No physical work performed.')
+                self.say(f'change 15 to 50 {replacement_unit}')
+                self.assertEqual(
+                    capture.revisions.order_by('-revision').first().full_text,
+                    f'Pressure 50 {replacement_unit}. No physical work performed.',
+                )
         self.assertFalse(CloseoutCapture.objects.exists())
 
     def test_correction_invalidates_old_acceptance_review(self):
@@ -196,7 +208,8 @@ class CaptureVoiceFlowTests(WorkOrderVoiceFixture, TestCase):
             self.assertTrue(spoken.startswith(prefix))
             self.assertTrue(spoken.endswith(suffix))
             pages.append(spoken[len(prefix) : -len(suffix)])
-        self.assertEqual(''.join(pages), text)
+        self.assertEqual(' '.join(' '.join(pages).split()), ' '.join(text.split()))
+        self.assertEqual(VoiceTranscriptRevision.objects.latest('created_at').full_text, text)
         self.assertEqual(capture.revisions.get().full_text, text)
         decision = self.say('accept this note').decision
         self.assertFalse(decision.voice_eligible)

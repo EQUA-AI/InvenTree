@@ -49,6 +49,7 @@ class DecisionReply:
     decision: PendingDecision | None = None
     event: str = "status"
     route_normally: bool = False
+    spoken_layout: str | None = None
 
     def event_dict(self):
         """Bound event used to decide whether this reply needs a read-back binding."""
@@ -273,10 +274,10 @@ class DecisionCoordinator:
         if intent is None:
             return None
         if intent.action == "stock.read":
-            from ai.core.decisions.inventory import read_stock
+            from ai.core.decisions.inventory import stock_read_reply
 
             owner, _ = self.adapter.owner_scope(actor)
-            return DecisionReply(read_stock(owner, intent.parameters))
+            return stock_read_reply(owner, intent.parameters)
         return self.present(
             intent,
             actor=actor,

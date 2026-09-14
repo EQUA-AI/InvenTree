@@ -15,6 +15,7 @@ import django
 
 django.setup()
 
+from ai.core.turn.responses import _canonical_voice_write  # noqa: E402
 from ai.core.turn_service import (  # noqa: E402
     _SPOKEN_SUMMARY_MAX_CHARS,
     _canonical_response_for_legacy,
@@ -52,6 +53,15 @@ class PlainSpokenTextTests(SimpleTestCase):
 
     def test_control_characters_become_spaces(self):
         self.assertEqual(_plain_spoken_text("a\tb\r\nc"), "a b c")
+
+    def test_inventory_layout_is_bound_to_complete_plain_speech(self):
+        layout = "Inventory page 1.\n1. Stock item 175: 1 each; serial not set.\n2. Stock item 176: 2 each; serial not set."
+        plain = _plain_spoken_text(layout)
+        response = _canonical_voice_write(plain, layout=layout)
+        self.assertEqual(response.detailed_response, layout)
+        self.assertEqual(response.spoken_summary, plain)
+        with self.assertRaisesMessage(ValueError, "does not match"):
+            _canonical_voice_write("Inventory has no stock.", layout=layout)
 
 
 class SpeakableLegacyResponseTests(SimpleTestCase):

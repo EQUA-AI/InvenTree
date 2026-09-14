@@ -14,6 +14,7 @@ import '@mantine/core/styles.css';
 
 i18n.load('en', messages);
 i18n.activate('en');
+api.defaults.timeout = 5000;
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
 });

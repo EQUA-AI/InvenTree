@@ -236,6 +236,35 @@ it('missing consent cannot mint a session or request the microphone', async () =
   expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
   expect(state.getState().error?.code).toBe('VOICE_CONSENT_REQUIRED');
 });
+it('a stale null turn refreshes focus once without resubmitting', async () => {
+  await controller.start();
+  await flush();
+  vi.mocked(decisions.getState().refresh).mockClear();
+  fetcher.mockResolvedValueOnce({
+    ok: true,
+    json: async () => ({
+      session_id: 'session-1',
+      thread_id: 'thread-1',
+      turn_id: 'stale-turn',
+      response_state: 'complete',
+      spoken: null,
+      pending_decision: null,
+      decision_event: { kind: 'stale', decision_id: null, sequence: null }
+    })
+  });
+  await controller.submitTranscript({
+    text: 'Read the whole note.',
+    itemId: 'read-note',
+    confidence: 1,
+    language: 'en-US'
+  });
+  await flush();
+  expect(decisions.getState().refresh).toHaveBeenCalledTimes(1);
+  expect(
+    fetcher.mock.calls.filter(([url]) => url.endsWith('/turns'))
+  ).toHaveLength(1);
+  expect(track.enabled).toBe(true);
+});
 it('hide stops capture immediately, sets aside and expires at the reported bound', async () => {
   await controller.start();
   doc.hidden = true;

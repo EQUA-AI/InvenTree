@@ -39,6 +39,10 @@ type Review = Item & {
   }[];
 };
 
+// Full review revalidation and canonical execution can exceed the generic
+// five-second API default. This stays bounded and never enables a retry.
+const approvalRequest = { timeout: 30_000 };
+
 /** All-tab screen review consumes the same sections, hashes and action endpoints. */
 export function ApprovalInboxPanel({
   statuses,
@@ -67,7 +71,12 @@ export function ApprovalInboxPanel({
     queryKey: ['approval-review', selected],
     queryFn: async () =>
       ({
-        ...(await api.get(`/api/approvals/${selected}/card-package/`)).data,
+        ...(
+          await api.get(
+            `/api/approvals/${selected}/card-package/`,
+            approvalRequest
+          )
+        ).data,
         id: selected
       }) as Review,
     enabled: !!selected,
@@ -186,24 +195,34 @@ function ApprovalScreenReview({
   };
   const mutation = useMutation({
     mutationFn: async (action: string) => {
-      const latest = (await api.get(`${path}card-package/`)).data as Review;
+      const latest = (await api.get(`${path}card-package/`, approvalRequest))
+        .data as Review;
       if (latest.review_hash !== review.review_hash)
         throw new Error('Review changed');
-      if (action === 'open') return api.post(`${path}open/`);
+      if (action === 'open')
+        return api.post(`${path}open/`, undefined, approvalRequest);
       if (action === 'confirm-viewed')
-        return api.post(`${path}confirm-viewed/`, {
-          ...focus,
-          sections: review.review_sections
-            .filter((section) => section.required)
-            .map((section) => section.id)
-        });
+        return api.post(
+          `${path}confirm-viewed/`,
+          {
+            ...focus,
+            sections: review.review_sections
+              .filter((section) => section.required)
+              .map((section) => section.id)
+          },
+          approvalRequest
+        );
       if (!preview || !matchesConfirmPhrase(phrase, preview.phrase))
         throw new Error('Confirmation required');
-      return api.post(`${path}${action}/`, {
-        ...focus,
-        reason: preview.reason,
-        instructions: preview.reason
-      });
+      return api.post(
+        `${path}${action}/`,
+        {
+          ...focus,
+          reason: preview.reason,
+          instructions: preview.reason
+        },
+        approvalRequest
+      );
     },
     onSuccess: (_response, action) => {
       setAcknowledged(action === 'confirm-viewed');

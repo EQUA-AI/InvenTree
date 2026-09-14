@@ -264,19 +264,21 @@ def _canonical_safety_refusal(*, voice: bool = False, locale: str = "en") -> Can
     )
 
 
-def _canonical_voice_write(message: str) -> CanonicalTurnResponse:
+def _canonical_voice_write(message: str, *, layout: str | None = None) -> CanonicalTurnResponse:
     """A spoken voice write-confirmation read-back or outcome (Phase 4).
 
     ``message`` is always server-authored -- an exact read-back of a resolved
     action, or a fixed outcome phrase from the confirmation allow-list. It is
-    spoken (an eyes-free technician must hear it) and the spoken summary equals
-    the visible text, so speech adds nothing the record does not show.
+    spoken (an eyes-free technician must hear it). Optional read-only list layout
+    must normalize to the complete spoken text; action read-backs stay verbatim.
     """
+    if layout is not None and _plain_spoken_text(layout) != message:
+        raise ValueError("Voice layout does not match its complete spoken text")
     return CanonicalTurnResponse(
         kind="voice_write_confirmation",
         response_version=1,
         response_state="complete",
-        detailed_response=message,
+        detailed_response=layout if layout is not None else message,
         spoken_summary=message,
         reasoning_summary="Voice write-confirmation gate response.",
         confidence="high",

@@ -642,9 +642,10 @@ class NormalizedTurnService:
         emitter: Any,
         workflow_id: str,
         workflow_name: str,
+        spoken_layout: str | None = None,
     ) -> dict[str, Any]:
         """Build and emit the canonical for a spoken write read-back or outcome."""
-        response = _canonical_voice_write(spoken)
+        response = _canonical_voice_write(spoken, layout=spoken_layout)
         await self._emit_canonical_events(
             emitter=emitter,
             thread_id=thread_id,

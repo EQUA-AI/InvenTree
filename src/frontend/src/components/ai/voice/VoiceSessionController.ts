@@ -623,6 +623,15 @@ export class VoiceSessionController {
           : null
       );
       this.decisions.getState().applyTurn(active.id, turn);
+      if (!turn.pending_decision && turn.decision_event?.kind === 'stale') {
+        // Null turn snapshots have no sequence and cannot blindly clear a
+        // newer focus. The store's compare-and-set refresh retires the exact
+        // expired focus instead; never resubmit the user's turn.
+        void this.decisions
+          .getState()
+          .refresh()
+          .catch(() => {});
+      }
       this.update({
         partial: null,
         error: ['failed', 'incomplete'].includes(turn.response_state)

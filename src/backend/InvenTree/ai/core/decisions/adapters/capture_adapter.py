@@ -346,7 +346,16 @@ def begin(coordinator, content, *, actor, session_id, thread_id, nonce):
                     # Repeating the SAME literal unit in a correction must not
                     # produce "fifty PSI PSI". No unit conversion is performed.
                     unit = replacement.split()[-1]
-                    if unit in {
+                    if unit.casefold() == "psi":
+                        # ASR commonly emits lowercase psi. Match only this
+                        # unambiguous unit case-insensitively; SI prefixes such
+                        # as mPa versus MPa must never be folded together.
+                        matches = list(
+                            re.finditer(re.escape(old) + r"\s+(?i:psi)\b", latest.full_text)
+                        )
+                        if len(matches) == 1:
+                            old = matches[0].group()
+                    elif unit in {
                         "PSI",
                         "bar",
                         "kPa",

@@ -169,6 +169,15 @@ def read_stock(actor, parameters):
     return "\n".join(lines)
 
 
+def stock_read_reply(actor, parameters):
+    """Retain list layout for paging, with separate schema-valid plain speech."""
+    from ai.core.decisions.coordinator import DecisionReply
+    from ai.core.turn.responses import _plain_spoken_text
+
+    layout = read_stock(actor, parameters)
+    return DecisionReply(_plain_spoken_text(layout), spoken_layout=layout)
+
+
 async def pending_selection(service, run, coordinator, arguments):
     """Consume inventory choices once, with actor/session/scope and identity checks."""
     from dataclasses import replace
@@ -225,7 +234,7 @@ async def pending_selection(service, run, coordinator, arguments):
     intent = replace(intent, parameters=parameters)
     try:
         if intent.action == "stock.read":
-            return DecisionReply(await service._call_sync(read_stock, owner, parameters))
+            return await service._call_sync(stock_read_reply, owner, parameters)
         return await service._call_sync(
             coordinator.present,
             intent,

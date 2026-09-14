@@ -19,16 +19,19 @@ from aichat.services.scope_strings import scope_strings
 from django.db import transaction
 from voice.models import VoiceCaptureReview, VoiceUtterance
 
-POLICY = "closeout-full-review-v1"
+POLICY = "closeout-full-review-v2"
 
 
 def note_pages(revision):
-    """Keep all original characters, including whitespace and literal units."""
+    """Speak every word and literal unit; retain original whitespace in the revision."""
+    from ai.core.turn.responses import _canonical_voice_write
+    from pydantic import ValidationError
+
     pieces = re.findall(r".{1,900}(?:\s+|$)|\S{1,900}", revision.full_text, re.S)
     if not pieces or "".join(pieces) != revision.full_text:
         raise ProposalError("Read this note on screen; its full text could not be paged.")
-    return [
-        f"Note revision {revision.revision}, page {index} of {len(pieces)}. {piece}"
+    pages = [
+        f"Note revision {revision.revision}, page {index} of {len(pieces)}. {' '.join(piece.split())}"
         + (
             f" Say read the whole note page {index + 1} for the next page."
             if index < len(pieces)
@@ -36,6 +39,14 @@ def note_pages(revision):
         )
         for index, piece in enumerate(pieces, start=1)
     ]
+    try:
+        for page in pages:
+            _canonical_voice_write(page)
+    except ValidationError as exc:
+        raise ProposalError(
+            "Read this note on screen; its full text cannot be spoken safely."
+        ) from exc
+    return pages
 
 
 def digest(text):

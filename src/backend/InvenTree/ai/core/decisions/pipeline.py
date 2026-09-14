@@ -127,6 +127,7 @@ async def resolve(service, run):
         emitter=run.emitter,
         workflow_id="voice_decision",
         workflow_name="VOICE_DECISION",
+        **({"spoken_layout": reply.spoken_layout} if reply.spoken_layout else {}),
     )
     run.write_canonical.update(
         pending_decision=reply.decision.to_public_dict() if reply.decision else None,

@@ -14,6 +14,100 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+for (const slow of ['revalidation', 'execution']) {
+  test(`screen approval waits for slow ${slow} without redispatch`, async ({
+    page
+  }) => {
+    const id = '895b150b-2d71-4d7d-a9a6-bed00edc6890';
+    let status = 'in_review';
+    let confirming = false;
+    let delayed = false;
+    const writes: string[] = [];
+    await page.route('**/api/approvals/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (route.request().method() === 'POST') {
+        writes.push(path);
+        if (path.endsWith('/approve/')) {
+          expect(route.request().postDataJSON()).toMatchObject({
+            revision: 0,
+            review_hash: 'same-review'
+          });
+          if (slow === 'execution')
+            await new Promise((resolve) => setTimeout(resolve, 6000));
+          status = 'succeeded';
+        }
+        await route.fulfill({ json: { status } });
+      } else if (path.endsWith('/card-package/')) {
+        if (slow === 'revalidation' && confirming && !delayed) {
+          delayed = true;
+          await new Promise((resolve) => setTimeout(resolve, 6000));
+        }
+        await route.fulfill({
+          json: {
+            approval_id: id,
+            summary: 'Recording-only workflow',
+            action_type: 'workflow',
+            status,
+            risk_tier: 2,
+            current_revision_number: 0,
+            review_hash: 'same-review',
+            payload: {},
+            execution_result:
+              status === 'succeeded' ? { recorded: true } : null,
+            review_sections: [
+              {
+                id: 'summary',
+                label: 'Request',
+                text: 'Synthetic only; no external effect.',
+                required: true
+              }
+            ]
+          }
+        });
+      } else
+        await route.fulfill({
+          json: [
+            {
+              id,
+              summary: 'Recording-only workflow',
+              status,
+              action_type: 'workflow',
+              risk_tier: 2
+            }
+          ]
+        });
+    });
+    await page.goto('/playwright/approval-flow.html');
+    await page
+      .getByRole('button', { name: 'Recording-only workflow', exact: true })
+      .click();
+    const panel = page.getByTestId('approval-screen-review');
+    await panel.getByRole('checkbox').check();
+    await panel
+      .getByRole('button', { name: 'Confirm reviewed', exact: true })
+      .click();
+    await panel
+      .getByRole('button', { name: 'Prepare approval', exact: true })
+      .click();
+    await panel
+      .getByLabel('Type the required confirmation phrase')
+      .fill('approve 895b150b');
+    confirming = true;
+    await panel
+      .getByRole('button', { name: 'Confirm decision', exact: true })
+      .click();
+    await expect(page.getByTestId('approval-recorded-outcome')).toContainText(
+      'succeeded',
+      { timeout: 15000 }
+    );
+    expect(writes).toEqual([
+      `/api/approvals/${id}/confirm-viewed/`,
+      `/api/approvals/${id}/approve/`
+    ]);
+    if (slow === 'revalidation') expect(delayed).toBe(true);
+  });
+}
+
 test('explicit voice route preserves the login return target', async ({
   page
 }) => {
