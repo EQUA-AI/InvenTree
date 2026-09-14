@@ -23,7 +23,22 @@ type Output = {
   stopped?: boolean;
   observed?: number;
   wall?: number;
+  ambiguous?: boolean;
+  reason?: TimingDiagnostic;
 };
+
+export type TimingDiagnostic =
+  | 'inactive'
+  | 'awaiting_energy'
+  | 'missing_baseline'
+  | 'crossed_output_boundary'
+  | 'overlapping_output'
+  | 'incomplete_history'
+  | 'repeated_text'
+  | 'binding_mismatch'
+  | 'canceled_output'
+  | 'no_correlated_energy'
+  | 'reported';
 
 /** Bounded, ephemeral correlation only. Never records audio or exports speech. */
 export class VoiceTiming {
@@ -34,10 +49,19 @@ export class VoiceTiming {
   private submitted: number | undefined;
   private values: VoiceClientTiming = {};
   private reported = false;
+  private contextVersion = 0;
+  get samplingContext() {
+    return this.contextVersion;
+  }
+  private totalEnergy: number | undefined;
+  private boundaryPending = false;
+  private bufferOwner: string | null = null;
+  private diagnostic: TimingDiagnostic = 'inactive';
   constructor(
     private send: (report: VoiceTimingReport) => void,
     private now = () => performance.now(),
-    private wall = () => Date.now()
+    private wall = () => Date.now(),
+    private diagnose: (reason: TimingDiagnostic) => void = () => {}
   ) {}
   reset(epoch: string | null = null) {
     this.epoch =
@@ -46,16 +70,22 @@ export class VoiceTiming {
     this.stop();
   }
   stop() {
+    this.contextVersion++;
     this.outputs.clear();
     this.binding = null;
     this.submitted = undefined;
     this.values = {};
     this.reported = false;
+    this.totalEnergy = undefined;
+    this.boundaryPending = false;
+    this.bufferOwner = null;
+    this.note('inactive');
   }
   begin(itemId?: string) {
     this.stop();
     if (!this.epoch) return undefined;
     this.submitted = this.now();
+    this.note('awaiting_energy');
     const item = itemId ? this.inputs.get(itemId) : undefined;
     this.values = {
       speech_to_final_ms:
@@ -91,20 +121,42 @@ export class VoiceTiming {
     const response = event.response as
       | { id?: string; status?: string; metadata?: Record<string, string> }
       | undefined;
-    const id =
+    let id =
       typeof event.response_id === 'string' ? event.response_id : response?.id;
+    if (!id && type === 'output_audio_buffer.started') {
+      const candidates = this.active();
+      if (candidates.length !== 1) return;
+      id = candidates[0][0];
+      this.bufferOwner = id;
+    }
+    if (!id && type === 'output_audio_buffer.stopped') {
+      // Ordered channel lifecycle may close only the window it opened.
+      // An unbound stop alone must never retire a newer candidate.
+      id = this.bufferOwner ?? undefined;
+    }
     if (!id || id.length > 128) return;
     if (type === 'response.created' && !this.outputs.has(id)) {
-      // More than one output may mean interim speech. Keep all candidates so
-      // ambiguity reduces coverage instead of assigning audio to the wrong turn.
       if (this.outputs.size >= 16) {
         this.stop();
         return;
       }
+      const active = this.active();
+      for (const [, previous] of active) {
+        previous.ambiguous = true;
+        previous.reason = 'overlapping_output';
+      }
       this.outputs.set(id, {
         utterance: response?.metadata?.aimms_utterance_id,
-        hash: response?.metadata?.aimms_spoken_hash
+        hash: response?.metadata?.aimms_spoken_hash,
+        ambiguous: active.length > 0 || this.boundaryPending,
+        reason: active.length
+          ? 'overlapping_output'
+          : this.boundaryPending
+            ? 'crossed_output_boundary'
+            : undefined
       });
+      if (active.length) this.note('overlapping_output');
+      else if (this.boundaryPending) this.note('crossed_output_boundary');
     }
     const item = this.outputs.get(id);
     if (!item) return;
@@ -113,15 +165,23 @@ export class VoiceTiming {
       type === 'output_audio_buffer.started'
     )
       item.started = true;
-    if (type === 'output_audio_buffer.stopped') item.stopped = true;
+    if (type === 'output_audio_buffer.stopped' && !item.stopped) {
+      item.stopped = true;
+      if (this.bufferOwner === id) this.bufferOwner = null;
+      // Provider completion is not proof of drained RTP. A subsequent quiet
+      // energy interval, before another output, is required to reuse the rail.
+      this.boundaryPending = true;
+    }
     if (
       type === 'response.audio_transcript.done' &&
       typeof event.transcript === 'string' &&
       event.transcript.length <= 16000
     )
       item.text = event.transcript;
-    if (type === 'response.done' && response?.status !== 'completed')
+    if (type === 'response.done' && response?.status !== 'completed') {
       item.canceled = true;
+      this.boundaryPending = true;
+    }
     this.flush();
   }
   bind(spoken: VoiceSpokenPayload | null) {
@@ -140,19 +200,86 @@ export class VoiceTiming {
     this.flush();
   }
   energy() {
-    // Aggregate RTP energy has no response ID: only one unambiguous candidate.
-    if (!this.epoch || this.outputs.size !== 1) return;
-    const item = [...this.outputs.values()][0];
+    // Consume a verified increase in a single window. Production callers use
+    // sampleEnergy, which also verifies the interval's drain/baseline boundary.
+    const active = this.active();
+    if (!this.epoch || active.length !== 1) return;
+    const item = active[0][1];
     if (
       !item.started ||
       item.stopped ||
       item.canceled ||
+      item.ambiguous ||
       item.observed !== undefined
     )
       return;
     item.observed = this.now();
     item.wall = this.wall();
     this.flush();
+  }
+  sampleEnergy(total: number, context = this.contextVersion) {
+    if (context !== this.contextVersion) return;
+    if (
+      !this.epoch ||
+      this.submitted === undefined ||
+      !Number.isFinite(total) ||
+      total < 0
+    )
+      return;
+    const previous = this.totalEnergy;
+    this.totalEnergy = total;
+    const active = this.active();
+    if (previous === undefined || total < previous) {
+      // Zero is a genuine clean initial baseline. A positive first sample or
+      // counter reset cannot establish this output's original first onset.
+      if (total !== 0 || (previous !== undefined && total < previous)) {
+        this.boundaryPending = true;
+        for (const [, item] of active) {
+          item.ambiguous = true;
+          item.reason = 'missing_baseline';
+        }
+        this.note('missing_baseline');
+      }
+      return;
+    }
+    if (!active.length) {
+      if (total === previous) this.boundaryPending = false;
+      else this.boundaryPending = true;
+      return;
+    }
+    if (total > previous) {
+      if (this.boundaryPending) {
+        for (const [, item] of active) {
+          item.ambiguous = true;
+          item.reason = 'crossed_output_boundary';
+        }
+        this.note('crossed_output_boundary');
+      } else this.energy();
+    }
+  }
+  private active() {
+    return [...this.outputs.entries()].filter(
+      ([, item]) => !item.stopped && !item.canceled
+    );
+  }
+  invalidateEnergy() {
+    if (!this.epoch || this.submitted === undefined) return;
+    this.totalEnergy = undefined;
+    this.boundaryPending = true;
+    for (const [, item] of this.active()) {
+      item.ambiguous = true;
+      item.reason = 'missing_baseline';
+    }
+    this.note('missing_baseline');
+  }
+  private note(reason: TimingDiagnostic) {
+    if (reason === this.diagnostic) return;
+    this.diagnostic = reason;
+    try {
+      this.diagnose(reason);
+    } catch {
+      /* Diagnostics cannot affect speech. */
+    }
   }
   localStop(started: number) {
     const value = interval(this.now(), started);
@@ -175,24 +302,44 @@ export class VoiceTiming {
   }
   private flush() {
     const binding = this.binding;
-    if (!this.epoch || !binding || this.reported || this.outputs.size !== 1)
+    if (!this.epoch || !binding || this.reported) return;
+    const outputs = [...this.outputs.values()];
+    if (outputs.some((item) => item.text === undefined)) {
+      this.note('incomplete_history');
       return;
-    const item = [...this.outputs.values()][0];
-    if (
-      item.canceled ||
-      item.observed === undefined ||
-      item.text !== binding.spoken_summary
-    )
+    }
+    const matches = outputs.filter(
+      (item) => item.text === binding.spoken_summary
+    );
+    if (matches.length !== 1) {
+      this.note(matches.length > 1 ? 'repeated_text' : 'binding_mismatch');
       return;
+    }
+    const item = matches[0];
+    if (item.canceled) {
+      this.note('canceled_output');
+      return;
+    }
+    if (item.ambiguous) {
+      this.note(item.reason ?? 'overlapping_output');
+      return;
+    }
+    if (item.observed === undefined) {
+      this.note(item.stopped ? 'no_correlated_energy' : 'awaiting_energy');
+      return;
+    }
     if (
       (item.utterance || item.hash) &&
       (item.utterance !== binding.utterance_id ||
         item.hash !== binding.spoken_summary_hash)
-    )
+    ) {
+      this.note('binding_mismatch');
       return;
+    }
     const elapsed = interval(item.observed, this.submitted);
     if (elapsed === undefined) return;
     this.reported = true;
+    this.note('reported');
     this.emit({
       epoch: this.epoch,
       utterance_id: binding.utterance_id,

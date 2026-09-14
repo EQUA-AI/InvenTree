@@ -210,6 +210,9 @@ export async function installVoiceMocks(
         autoplayBlocked,
         playAttempts: 0,
         wakeLockRequests: 0,
+        // Explicitly synthetic RTP seam for recording-only timing regression.
+        timingEnergy: null as number | null,
+        statsPolls: 0,
         /** Deliver a provider event over every open data channel. */
         emit(type: string, payload: Record<string, unknown> = {}) {
           const data = JSON.stringify({ type, ...payload });
@@ -262,7 +265,20 @@ export async function installVoiceMocks(
         async setLocalDescription() {}
         async setRemoteDescription() {}
         async getStats() {
-          return new Map();
+          mock.statsPolls++;
+          return mock.timingEnergy === null
+            ? new Map()
+            : new Map([
+                [
+                  'synthetic-rtp',
+                  {
+                    id: 'synthetic-rtp',
+                    type: 'inbound-rtp',
+                    kind: 'audio',
+                    totalAudioEnergy: mock.timingEnergy
+                  }
+                ]
+              ]);
         }
         close() {
           this.connectionState = 'closed';

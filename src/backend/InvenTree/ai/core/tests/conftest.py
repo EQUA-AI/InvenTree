@@ -65,3 +65,17 @@ class RecordingExecutor:
 def recording_executor() -> RecordingExecutor:
     """A fresh recording executor per test."""
     return RecordingExecutor()
+
+
+@pytest.fixture(autouse=True)
+def initialized_runtime_for_component_tests(monkeypatch):
+    """Component tests do not run provider startup; model its completed state.
+
+    Runtime lifecycle/gate tests replace this with an independent starting
+    supervisor and exercise transitions explicitly, without provider traffic.
+    """
+    from ai.core.runtime import runtime
+
+    monkeypatch.setattr(runtime, "state", "ready")
+    monkeypatch.setattr(runtime, "failure", None)
+    monkeypatch.setattr(runtime, "retry_at", None)

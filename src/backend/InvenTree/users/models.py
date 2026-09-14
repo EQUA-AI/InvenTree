@@ -9,7 +9,7 @@ from django.contrib.auth.models import Group, User
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.validators import MinLengthValidator
-from django.db import models
+from django.db import models, router, transaction
 from django.db.models import Q, UniqueConstraint
 from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.db.utils import IntegrityError
@@ -378,18 +378,35 @@ class RuleSet(models.Model):
         It does not make sense to be able to change / create something,
         but not be able to view it!
         """
-        if self.can_add or self.can_change or self.can_delete:
-            self.can_view = True
-
-        if self.can_add or self.can_delete:
-            self.can_change = True
-
-        super().save(*args, **kwargs)
-
-        if self.group:
-            # Update the group too!
-            # Note: This will trigger the 'update_group_roles' signal
-            self.group.save()
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and not update_fields:
+            return
+        database = kwargs.get('using') or router.db_for_write(type(self), instance=self)
+        with transaction.atomic(using=database):
+            if self.group_id:
+                Group.objects.using(database).select_for_update().get(pk=self.group_id)
+            if update_fields is not None and self.pk:
+                # Partial checkbox edits normalize against the locked database
+                # values, not stale unsaved fields from another administrator.
+                current = type(self).objects.using(database).get(pk=self.pk)
+                for field in ('can_add', 'can_change', 'can_delete', 'can_view'):
+                    if field not in update_fields:
+                        setattr(self, field, getattr(current, field))
+            if self.can_add or self.can_change or self.can_delete:
+                self.can_view = True
+            if self.can_add or self.can_delete:
+                self.can_change = True
+            # Save implied view/change fields even for partial model saves.
+            if update_fields is not None:
+                kwargs['update_fields'] = set(update_fields) | {
+                    'can_view',
+                    'can_change',
+                }
+            super().save(*args, **kwargs)
+            if self.group_id:
+                # The post-save rebuild takes the same lock and sees these
+                # committed-in-transaction values, not an intermediate snapshot.
+                self.group.save(using=database)
 
     def get_models(self):
         """Return the database tables / models that this ruleset covers."""

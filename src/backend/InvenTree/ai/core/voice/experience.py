@@ -42,11 +42,14 @@ def write_locale_reason(locale: str) -> str:
 
 def capability(settings) -> dict:
     """Non-secret contract; permission-sensitive help is composed per request."""
+    from ai.core.runtime import runtime
+
     enabled = settings.feature_voice_live
     foreground = enabled and settings.feature_voice_foreground_session
     pairs = voice_pairs()
     return {
         "enabled": enabled,
+        "runtime": runtime.snapshot().model_dump(),
         "webrtc": enabled and settings.feature_voice_live_webrtc,
         "relay": enabled and settings.feature_voice_live_relay,
         "foreground_session": foreground,

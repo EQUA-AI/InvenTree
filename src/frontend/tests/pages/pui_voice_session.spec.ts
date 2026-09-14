@@ -17,6 +17,162 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test('synthetic interim/final RTP fixture reports once without decision authority or business replay', async ({
+  page
+}) => {
+  const reports: Record<string, any>[] = [];
+  const spoken = {
+    utterance_id: '11111111-1111-1111-1111-111111111111',
+    spoken_summary: 'Synthetic final response',
+    spoken_summary_hash: 'a'.repeat(64),
+    playback_state: 'requested'
+  };
+  const voice = await installVoiceMocks(page, {
+    capability: {
+      ...defaultCapability,
+      foreground_session: true,
+      validation_metrics: true
+    },
+    onTurn: () => turnPayload({ spoken })
+  });
+  await page.route('**/api/ai/voice/sessions/*/timing-epoch', (route) =>
+    route.fulfill({ json: { epoch: 'a'.repeat(32) } })
+  );
+  await page.route('**/api/ai/voice/sessions/*/timing', (route) => {
+    reports.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 503,
+      json: { detail: 'VOICE_TIMING_UNAVAILABLE' }
+    });
+  });
+  await page.goto('/playwright/voice-session.html');
+  // This fixture has no audio source. A local-only fake playing element allows
+  // the real controller's stats loop to exercise synthetic energy, never live evidence.
+  await page.evaluate(() =>
+    Object.defineProperty(HTMLMediaElement.prototype, 'paused', {
+      configurable: true,
+      get: () => false
+    })
+  );
+  await startVoice(page);
+  await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
+  await page.evaluate(() => {
+    for (const peer of (window as any).__voiceMock.peers)
+      peer.dispatch('track', { streams: [new MediaStream()] });
+  });
+  await emitTranscript(page, {
+    text: 'list machines',
+    itemId: 'synthetic-timing',
+    confidence: 1
+  });
+  await expect.poll(() => voice.turns.length).toBe(1);
+  const sample = async (energy: number) => {
+    const before = await page.evaluate((value) => {
+      const m = (window as any).__voiceMock;
+      m.timingEnergy = value;
+      return m.statsPolls;
+    }, energy);
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__voiceMock.statsPolls))
+      .toBeGreaterThan(before);
+  };
+  await sample(0);
+  await page.evaluate(() => {
+    const m = (window as any).__voiceMock;
+    m.emit('response.created', { response: { id: 'synthetic-interim' } });
+    m.emit('response.audio_transcript.delta', {
+      response_id: 'synthetic-interim',
+      delta: 'One moment.'
+    });
+    m.emit('output_audio_buffer.started');
+  });
+  await sample(1);
+  await page.evaluate(() => {
+    const m = (window as any).__voiceMock;
+    m.emit('response.audio_transcript.done', {
+      response_id: 'synthetic-interim',
+      transcript: 'One moment.'
+    });
+    m.emit('response.audio.done', { response_id: 'synthetic-interim' });
+    m.emit('output_audio_buffer.stopped');
+    m.emit('response.done', {
+      response: { id: 'synthetic-interim', status: 'completed' }
+    });
+  });
+  await sample(1); // Quiet after drain, before the next output is created.
+  await page.evaluate(() => {
+    const m = (window as any).__voiceMock;
+    m.emit('response.created', { response: { id: 'synthetic-final' } });
+    m.emit('response.audio_transcript.delta', {
+      response_id: 'synthetic-final',
+      delta: 'Synthetic'
+    });
+    m.emit('output_audio_buffer.started');
+  });
+  await sample(2);
+  await page.evaluate((text) => {
+    const m = (window as any).__voiceMock;
+    m.emit('response.audio_transcript.done', {
+      response_id: 'synthetic-final',
+      transcript: text
+    });
+    m.emit('response.audio.done', { response_id: 'synthetic-final' });
+    m.emit('output_audio_buffer.stopped');
+  }, spoken.spoken_summary);
+  await expect.poll(() => reports.length).toBe(1);
+  expect(reports[0].provenance).toBe('rtp_energy_proxy');
+  expect(reports[0].timing.submit_to_observed_playback_ms).toBeGreaterThan(0);
+  expect(JSON.stringify(reports)).not.toContain(spoken.spoken_summary);
+  expect(voice.decisionActions).toHaveLength(0);
+  expect(voice.turns).toHaveLength(1);
+  await page.getByTestId('voice-end').click();
+});
+
+test('unavailable startup is visible, cannot request microphone/session, and recovers', async ({
+  page
+}) => {
+  const voice = await installVoiceMocks(page, {
+    capability: {
+      ...defaultCapability,
+      foreground_session: true,
+      runtime: {
+        state: 'transiently_unavailable',
+        available: false,
+        reason: 'provider_throttled',
+        retry_after_s: 1
+      }
+    }
+  });
+  await page.goto('/playwright/voice-session.html');
+  await expect(page.getByTestId('voice-runtime-unavailable')).toContainText(
+    'temporarily unavailable'
+  );
+  await expect(page.getByTestId('voice-start')).toBeDisabled();
+  await page.keyboard.press('Control+Shift+V');
+  await expect(
+    page.getByRole('dialog', { name: 'Start a voice session' })
+  ).toHaveCount(0);
+  expect(voice.sessionCreates).toHaveLength(0);
+  await page.route('**/api/ai/voice/capability', (route) =>
+    route.fulfill({
+      json: {
+        ...defaultCapability,
+        foreground_session: true,
+        runtime: {
+          state: 'ready',
+          available: true,
+          reason: null,
+          retry_after_s: null
+        }
+      }
+    })
+  );
+  await expect(page.getByTestId('voice-start')).toBeEnabled({ timeout: 10000 });
+  await startVoice(page);
+  expect(voice.sessionCreates).toHaveLength(1);
+  await page.getByTestId('voice-end').click();
+});
+
 test('optional numeric timing cannot acknowledge delivery or retry a business turn', async ({
   page
 }) => {

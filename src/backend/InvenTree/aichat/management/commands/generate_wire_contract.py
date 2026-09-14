@@ -137,6 +137,10 @@ class Command(BaseCommand):
         from repair.risk_serializers import RiskFindingSerializer
 
         sections: list[str] = [HEADER]
+        from ai.core.runtime import RuntimeAvailability
+
+        sections.append('// --- Cached AI runtime availability (ai.core.runtime) ---\n')
+        sections.append(_emit_model_interface(RuntimeAvailability))
 
         sections.append('// --- AG-UI event types (ai.core.streaming.EventType) ---\n')
         sections.append(_emit_event_enum())

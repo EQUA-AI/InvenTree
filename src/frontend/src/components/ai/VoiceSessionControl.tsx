@@ -18,7 +18,20 @@ export interface VoiceSessionControlProps {
 export function VoiceSessionControl(props: Readonly<VoiceSessionControlProps>) {
   const split = useVoiceSessionState();
   const active = !['unavailable', 'ready', 'error'].includes(props.state);
-  if (props.state === 'unavailable') return null;
+  if (props.state === 'unavailable') {
+    if (!split.capability?.enabled) return null;
+    const failed = split.capability.runtime?.state === 'permanently_failed';
+    return (
+      <Group gap='xs' data-testid='voice-runtime-unavailable'>
+        <Button disabled mih={44} data-testid='voice-start'>{t`Voice`}</Button>
+        <Text component='output' aria-live='polite' size='sm'>
+          {failed
+            ? t`Voice is unavailable. An administrator needs to check AI startup.`
+            : t`Voice is temporarily unavailable while AI starts or recovers. Please wait.`}
+        </Text>
+      </Group>
+    );
+  }
   const labels: Record<VoiceClientState, string> = {
     unavailable: t`Voice unavailable`,
     ready: t`Voice ready`,

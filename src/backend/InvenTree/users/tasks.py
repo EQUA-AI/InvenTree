@@ -1,218 +1,147 @@
-"""Background tasks for the users app."""
+"""Deterministic, serialized projection of administrator roles to permissions."""
 
-from typing import Any
+from dataclasses import dataclass
 
 from django.contrib.auth.models import Group, Permission
-from django.contrib.contenttypes.models import ContentType
+from django.db import transaction
 
 import structlog
 
 from InvenTree.ready import canAppAccessDatabase
 from users.models import RuleSet
-from users.permissions import get_model_permission_string, split_permission
+from users.permissions import split_model
 from users.ruleset import (
     RULESET_CHANGE_INHERIT,
-    RULESET_CHOICES,
     RULESET_CUSTOM_PERMISSIONS,
     RULESET_NAMES,
+    get_ruleset_models,
 )
 
 logger = structlog.get_logger('inventree')
+ACTIONS = ('view', 'add', 'change', 'delete')
+
+
+@dataclass(frozen=True)
+class RolePermissionPlan:
+    """A read-only diff; callers can inspect it without saving rules or grants."""
+
+    add_ids: tuple[int, ...]
+    remove_ids: tuple[int, ...]
+    add: tuple[str, ...]
+    remove: tuple[str, ...]
+    missing: tuple[str, ...]
+
+
+def group_permission_plan(group: Group) -> RolePermissionPlan:
+    """Compute the complete desired managed set before changing any permission.
+
+    A grant from any role wins. Child inheritance is action-by-action from the
+    effective parent grants, never yesterday's database snapshot. Permissions
+    outside the role/inheritance mappings remain untouched.
+    """
+    database = group._state.db or 'default'
+    rules = {r.name: r for r in RuleSet.objects.using(database).filter(group=group)}
+    managed = set()
+    desired = set()
+
+    def include(model_name, codename, allowed):
+        model, app = split_model(model_name)
+        key = (app, model, codename)
+        managed.add(key)
+        if allowed:
+            desired.add(key)
+
+    for name, models in get_ruleset_models().items():
+        role = rules.get(name) or RuleSet(group=group, name=name)
+        for model_name in models:
+            model, _app = split_model(model_name)
+            for action in ACTIONS:
+                include(model_name, f'{action}_{model}', getattr(role, f'can_{action}'))
+        for field, (model_name, codename) in RULESET_CUSTOM_PERMISSIONS.get(
+            name, {}
+        ).items():
+            include(model_name, codename, getattr(role, field))
+
+    # Preserve the native per-action mapping; a parent's change grant does not
+    # newly confer add/delete. Explicit BOM/Build grants still win independently.
+    for parent, child in RULESET_CHANGE_INHERIT:
+        for action in ACTIONS:
+            parent_key = (parent, parent, f'{action}_{parent}')
+            include(f'{parent}_{child}', f'{action}_{child}', parent_key in desired)
+
+    permissions = {
+        (p.content_type.app_label, p.content_type.model, p.codename): p.pk
+        for p in Permission.objects.using(database).select_related('content_type')
+    }
+    existing = set(group.permissions.using(database).values_list('pk', flat=True))
+    desired_ids = {permissions[key] for key in desired if key in permissions}
+    managed_ids = {permissions[key] for key in managed if key in permissions}
+    add_ids = desired_ids - existing
+    remove_ids = (managed_ids & existing) - desired_ids
+
+    def labels(ids):
+        return tuple(
+            sorted(
+                f'{app}.{code}'
+                for (app, _model, code), pk in permissions.items()
+                if pk in ids
+            )
+        )
+
+    return RolePermissionPlan(
+        add_ids=tuple(sorted(add_ids)),
+        remove_ids=tuple(sorted(remove_ids)),
+        add=labels(add_ids),
+        remove=labels(remove_ids),
+        missing=tuple(
+            sorted(
+                f'{app}.{model}:{code}'
+                for app, model, code in desired - permissions.keys()
+            )
+        ),
+    )
 
 
 def rebuild_all_permissions() -> None:
-    """Rebuild all user permissions.
-
-    This function is called when a user is created or when a group is modified.
-    It rebuilds the permissions for all users in the system.
-    """
+    """Rebuild each group's role projection under its own transaction/lock."""
     logger.info('Rebuilding permissions')
-
-    # Rebuild permissions for each group
-    for group in Group.objects.all():
+    for group in Group.objects.all().order_by('pk'):
         update_group_roles(group)
 
 
 def update_group_roles(group: Group, debug: bool = False) -> None:
-    """Update the roles for a particular group.
-
-    Arguments:
-        group: The group object to update roles for.
-        debug: Whether to enable debug logging
-
-    This function performs the following tasks:
-    - Remove any RuleSet objects which have become outdated
-    - Ensure that the group has a mapped RuleSet for each role
-    - Rebuild the permissions for the group, based on the assigned RuleSet objects
-    """
+    """Apply one final diff, serialized with RuleSet.save and other rebuilds."""
     if not canAppAccessDatabase(allow_test=True):
-        return  # pragma: no cover
+        return
 
-    logger.info('Updating group roles for %s', group)
-
-    # Remove any outdated RuleSet objects
-    outdated_rules = group.rule_sets.exclude(name__in=RULESET_NAMES)
-
-    if outdated_rules.exists():
-        logger.info(
-            'Deleting %s outdated rulesets from group %s', outdated_rules.count(), group
-        )
-        outdated_rules.delete()
-
-    # Add any missing RuleSet objects
-    for rule in RULESET_NAMES:
-        if not group.rule_sets.filter(name=rule).exists():
-            logger.info('Adding ruleset %s to group %s', rule, group)
-            RuleSet.objects.create(group=group, name=rule)
-
-    # Update the permissions for the group
-    # List of permissions already associated with this group
-    group_permissions = set()
-
-    # Iterate through each permission already assigned to this group,
-    # and create a simplified permission key string
-    for p in group.permissions.all().prefetch_related('content_type'):
-        (permission, app, model) = p.natural_key()
-        permission_string = f'{app}.{permission}'
-        group_permissions.add(permission_string)
-
-    # List of permissions which must be added to the group
-    permissions_to_add = set()
-
-    # List of permissions which must be removed from the group
-    permissions_to_delete = set()
-
-    # Explicit model ownership for named permissions whose codenames do not
-    # follow Django's standard ``action_model`` format.
-    custom_permission_models = {}
-
-    def add_permission(permission_string, allowed):
-        """Add or remove a permission from the desired group state."""
-        if allowed:
-            # An 'allowed' action is always preferenced over a 'forbidden' action
-            permissions_to_delete.discard(permission_string)
-            permissions_to_add.add(permission_string)
-        elif permission_string not in permissions_to_add:
-            permissions_to_delete.add(permission_string)
-
-    def add_model(name, action, allowed):
-        """Add a new model to the pile.
-
-        Args:
-            name: The name of the model e.g. part_part
-            action: The permission action e.g. view
-            allowed: Whether or not the action is allowed
-        """
-        if action not in ['view', 'add', 'change', 'delete']:  # pragma: no cover
-            raise ValueError(f'Action {action} is invalid')
-
-        permission_string = get_model_permission_string(model, action)
-
-        add_permission(permission_string, allowed)
-
-    # Pre-fetch all the RuleSet objects
-    rulesets: dict[Any, RuleSet] = {
-        r.name: r for r in RuleSet.objects.filter(group=group).prefetch_related('group')
-    }
-
-    # Get all the rulesets associated with this group
-    for rule_name, _rule_label in RULESET_CHOICES:
-        if rule_name in rulesets:
-            ruleset = rulesets[rule_name]
-        else:
-            try:
-                ruleset = RuleSet.objects.get(group=group, name=rule_name)
-            except RuleSet.DoesNotExist:
-                ruleset = RuleSet.objects.create(group=group, name=rule_name)
-
-        # Which database tables does this RuleSet touch?
-        models = ruleset.get_models()
-
-        for model in models:
-            # Keep track of the available permissions for each model
-            add_model(model, 'view', ruleset.can_view)
-            add_model(model, 'add', ruleset.can_add)
-            add_model(model, 'change', ruleset.can_change)
-            add_model(model, 'delete', ruleset.can_delete)
-
-        for field, (model_name, codename) in RULESET_CUSTOM_PERMISSIONS.get(
-            rule_name, {}
-        ).items():
-            app = model_name.split('_', maxsplit=1)[0]
-            permission_string = f'{app}.{codename}'
-            custom_permission_models[permission_string] = model_name
-            add_permission(permission_string, getattr(ruleset, field))
-
-    def get_permission_object(permission_string):
-        """Find the permission object in the database, from the simplified permission string.
-
-        Args:
-            permission_string: a simplified permission_string e.g. 'part.view_partcategory'
-
-        Returns the permission object in the database associated with the permission string
-        """
-        (app, perm) = permission_string.split('.')
-
-        if model_name := custom_permission_models.get(permission_string):
-            _model_app, model = model_name.split('_', maxsplit=1)
-        else:
-            perm, model = split_permission(app, perm)
-        permission = None
-
-        try:
-            content_type = ContentType.objects.get(app_label=app, model=model)
-            permission = Permission.objects.get(
-                content_type=content_type, codename=perm
+    database = group._state.db or 'default'
+    with transaction.atomic(using=database):
+        # RuleSet.save takes this same lock before changing role values.
+        Group.objects.using(database).select_for_update().get(pk=group.pk)
+        rules = RuleSet.objects.using(database).filter(group=group)
+        rules.exclude(name__in=RULESET_NAMES).delete()
+        existing_names = set(rules.values_list('name', flat=True))
+        # All fields are default-off. Avoid RuleSet.save -> Group.save -> this
+        # signal recursively publishing a half-created permission projection.
+        RuleSet.objects.using(database).bulk_create([
+            RuleSet(group=group, name=name)
+            for name in RULESET_NAMES
+            if name not in existing_names
+        ])
+        plan = group_permission_plan(group)
+        if plan.missing:
+            # Configuration/schema faults must not publish a partial grant diff.
+            raise ValueError(
+                'Role permission definitions are missing: ' + ', '.join(plan.missing)
             )
-        except ContentType.DoesNotExist:  # pragma: no cover
-            logger.warning("No ContentType found matching '%s' and '%s'", app, model)
-        except Permission.DoesNotExist:
-            logger.warning("No Permission found matching '%s' and '%s'", app, perm)
-
-        return permission
-
-    # Add any required permissions to the group
-    for perm in permissions_to_add:
-        # Ignore if permission is already in the group
-        if perm in group_permissions:
-            continue
-
-        if permission := get_permission_object(perm):
-            group.permissions.add(permission)
-            if debug:  # pragma: no cover
-                logger.debug('Adding permission %s to group %s', perm, group.name)
-
-    # Remove any extra permissions from the group
-    for perm in permissions_to_delete:
-        # Ignore if the permission is not already assigned
-        if perm not in group_permissions:
-            continue
-
-        if permission := get_permission_object(perm):
-            group.permissions.remove(permission)
-            if debug:  # pragma: no cover
-                logger.debug('Removing permission %s from group %s', perm, group.name)
-
-    # Enable all action permissions for certain children models
-    # if parent model has 'change' permission
-    for parent, child in RULESET_CHANGE_INHERIT:
-        parent_child_string = f'{parent}_{child}'
-
-        # Check each type of permission
-        for action in ['view', 'change', 'add', 'delete']:
-            parent_perm = f'{parent}.{action}_{parent}'
-
-            if parent_perm in group_permissions:
-                child_perm = f'{parent}.{action}_{child}'
-
-                # Check if child permission not already in group
-                if child_perm not in group_permissions:
-                    # Create permission object
-                    add_model(parent_child_string, action, ruleset.can_delete)
-                    # Add to group
-                    permission = get_permission_object(child_perm)
-                    if permission:
-                        group.permissions.add(permission)
-                        logger.debug(
-                            'Adding permission %s to group %s', child_perm, group.name
-                        )
+        if plan.add_ids:
+            group.permissions.add(*plan.add_ids)
+        if plan.remove_ids:
+            group.permissions.remove(*plan.remove_ids)
+        if debug:
+            logger.debug(
+                'Role projection group_id=%s added=%s removed=%s',
+                group.pk,
+                len(plan.add_ids),
+                len(plan.remove_ids),
+            )

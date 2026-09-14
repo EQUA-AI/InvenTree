@@ -5,6 +5,7 @@ It exposes the ASGI callable as a module-level variable named ``application``.
 It mounts the AIMMS FastAPI app under /api/ai/ to serve AI features alongside Django.
 """
 
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -12,7 +13,7 @@ from contextlib import asynccontextmanager
 from django.core.asgi import get_asgi_application
 
 from starlette.applications import Starlette
-from starlette.routing import Mount
+from starlette.routing import Mount, Route
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'InvenTree.settings')
 
@@ -24,11 +25,37 @@ django_app = get_asgi_application()
 # http request on the mount gets its own thread-sensitive executor whose
 # Django connection is released once the response has been sent (M2 PR 6;
 # the auth middleware sits inside so its ORM hop is covered too).
-from ai.core.app import app as ai_app
 from ai.core.auth import AIBoundaryAuthMiddleware
 from ai.core.db_hygiene import ConnectionReleaseMiddleware
+from ai.core.runtime import Failure, liveness, readiness, runtime
 
-authenticated_ai_app = ConnectionReleaseMiddleware(AIBoundaryAuthMiddleware(ai_app))
+
+async def unavailable_ai(scope, receive, send):
+    """No AI application is mounted if its configuration cannot even load."""
+    from starlette.responses import JSONResponse
+
+    if scope['type'] == 'websocket':
+        await send({'type': 'websocket.close', 'code': 1013})
+    elif scope['type'] == 'http':
+        await JSONResponse({'detail': 'AI_RUNTIME_UNAVAILABLE'}, status_code=503)(
+            scope, receive, send
+        )
+
+
+try:
+    from ai.core.app import app as ai_app
+
+    authenticated_ai_app = ConnectionReleaseMiddleware(AIBoundaryAuthMiddleware(ai_app))
+except Exception:
+    # Invalid settings can fail before lifespan entry, including construction of
+    # the auth policy. Do not mount any AI routes with a fabricated auth policy.
+    ai_app = None
+    authenticated_ai_app = unavailable_ai
+    runtime.state = 'permanently_failed'
+    runtime.failure = Failure(False, 'configuration')
+    logging.getLogger('inventree').error(
+        'AIMMS configuration could not load; AI mount unavailable'
+    )
 
 
 @asynccontextmanager
@@ -40,7 +67,9 @@ async def lifespan(_: Starlette) -> AsyncIterator[None]:
     working InvenTree server with the AI mount unavailable, not kill the
     whole ASGI application at startup.
     """
-    import logging
+    if ai_app is None:
+        yield
+        return
 
     context = ai_app.router.lifespan_context(ai_app)
     started = False
@@ -48,9 +77,9 @@ async def lifespan(_: Starlette) -> AsyncIterator[None]:
         await context.__aenter__()
         started = True
     except Exception:
-        logging.getLogger('inventree').exception(
-            'AIMMS startup failed - continuing without AI features'
-        )
+        runtime.state = 'permanently_failed'
+        runtime.failure = Failure(False, 'initialization')
+        logging.getLogger('inventree').error('AIMMS lifecycle failed; AI unavailable')
 
     try:
         yield
@@ -62,6 +91,11 @@ async def lifespan(_: Starlette) -> AsyncIterator[None]:
 # Mount the FastAPI app under /api/ai
 # Requests to /api/ai/chat/stream will be routed to ai_app as /chat/stream
 application = Starlette(
-    routes=[Mount('/api/ai', app=authenticated_ai_app), Mount('/', app=django_app)],
+    routes=[
+        Route('/health/live', liveness),
+        Route('/health/ai-ready', readiness),
+        Mount('/api/ai', app=authenticated_ai_app),
+        Mount('/', app=django_app),
+    ],
     lifespan=lifespan,
 )

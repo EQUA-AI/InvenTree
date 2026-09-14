@@ -8,6 +8,7 @@ caller persisted first, so a paraphrase can never reach the provider.
 from __future__ import annotations
 
 import hashlib
+import uuid
 from typing import Any
 
 
@@ -24,6 +25,7 @@ def build_exact_tts_payload(
     *,
     persisted_text: str,
     persisted_hash: str,
+    utterance_id: str | None = None,
 ) -> dict[str, Any]:
     """Return the exact ``response.create`` body for persisted text.
 
@@ -34,7 +36,7 @@ def build_exact_tts_payload(
         raise ExactSpeechViolation("refusing to speak empty text")
     if spoken_summary_hash(persisted_text) != persisted_hash:
         raise ExactSpeechViolation("spoken text does not match its persisted hash")
-    return {
+    payload = {
         "type": "response.create",
         "response": {
             "pre_generated_assistant_message": {
@@ -44,6 +46,18 @@ def build_exact_tts_payload(
             }
         },
     }
+    if utterance_id is not None:
+        try:
+            identifier = str(uuid.UUID(utterance_id))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ExactSpeechViolation("invalid opaque utterance binding") from exc
+        # Telemetry consistency only. This metadata never establishes delivery
+        # authority, and consumers must tolerate providers not echoing it.
+        payload["response"]["metadata"] = {
+            "aimms_utterance_id": identifier,
+            "aimms_spoken_hash": persisted_hash,
+        }
+    return payload
 
 
 def speakable_response_state(response_state: str) -> bool:

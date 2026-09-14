@@ -1,3 +1,4 @@
+import type { RuntimeAvailability } from '../../../../lib/types/AimmsWire.generated';
 import type {
   VoiceClientState,
   VoiceError,
@@ -28,6 +29,7 @@ export type VoiceNotice =
   | null;
 export interface VoiceCapability {
   enabled: boolean;
+  runtime?: RuntimeAvailability;
   foreground_session: boolean;
   validation_metrics?: boolean;
   decisions: boolean;
@@ -130,7 +132,8 @@ export const initialVoiceSnapshot: VoiceSnapshot = {
   outputSelectionSupported: false
 };
 export function legacyClientState(s: VoiceSnapshot): VoiceClientState {
-  if (!s.capability?.enabled) return 'unavailable';
+  if (!s.capability?.enabled || s.capability.runtime?.available === false)
+    return 'unavailable';
   if (s.error && !s.session) return 'error';
   if (s.transport === 'connecting' || s.transport === 'reconnecting')
     return 'connecting';

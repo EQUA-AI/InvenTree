@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
@@ -151,18 +152,21 @@ CHAT_PROBE_MAX_COMPLETION_TOKENS = 16
 
 def _probe_chat_deployment(settings: Settings, deployment: str, expected: str) -> None:
     """Resolve one chat deployment with a minimal call and assert its pin."""
+    from ai.core.integrations.boot_budget import openai_probe_options
     from openai import AzureOpenAI
 
     client = AzureOpenAI(
         azure_endpoint=settings.azure_openai_endpoint,
         api_key=settings.azure_openai_api_key,
         api_version=settings.azure_openai_api_version,
+        **openai_probe_options(),
     )
-    response = client.chat.completions.create(
-        model=deployment,
-        messages=[{"role": "user", "content": "ping"}],
-        max_completion_tokens=CHAT_PROBE_MAX_COMPLETION_TOKENS,
-    )
+    with _probe_client(lambda: client):
+        response = client.chat.completions.create(
+            model=deployment,
+            messages=[{"role": "user", "content": "ping"}],
+            max_completion_tokens=CHAT_PROBE_MAX_COMPLETION_TOKENS,
+        )
     resolved = str(getattr(response, "model", "") or "")
     record_resolved_model(deployment, resolved)
     if expected and resolved and resolved != expected:
@@ -170,6 +174,21 @@ def _probe_chat_deployment(settings: Settings, deployment: str, expected: str) -
             f"Deployment {deployment!r} resolves to {resolved!r}, pinned to {expected!r}",
             code="CHAT_MODEL_PIN_MISMATCH",
         )
+
+
+@contextmanager
+def _probe_client(factory):
+    """Each attempt releases its own clients, including failed probe calls."""
+    from ai.core.integrations.boot_budget import probe_timeout
+
+    probe_timeout()
+    client = factory()
+    try:
+        yield client
+    finally:
+        close = getattr(client, "close", None)
+        if callable(close):
+            close()
 
 
 def run_boot_probes(
@@ -215,7 +234,8 @@ def run_boot_probes(
 
             embedding_client_factory = AzureOpenAIEmbeddingClient.from_settings
         try:
-            vectors = embedding_client_factory().embed_batch([_PROBE_TEXT])
+            with _probe_client(embedding_client_factory) as client:
+                vectors = client.embed_batch([_PROBE_TEXT])
         except ModelPinError:
             raise
         except Exception as exc:
@@ -267,6 +287,9 @@ def run_boot_probes(
             if not deployment:
                 continue
             try:
+                from ai.core.integrations.boot_budget import probe_timeout
+
+                probe_timeout()
                 prober(settings, deployment, expected)
             except ModelPinError:
                 raise
@@ -309,7 +332,8 @@ def _probe_attachment_plane(
 
         client_factory = CohereEmbeddingClient.from_settings
     try:
-        vectors = client_factory().embed_batch([_PROBE_TEXT])
+        with _probe_client(client_factory) as client:
+            vectors = client.embed_batch([_PROBE_TEXT])
     except ModelPinError:
         raise
     except Exception as exc:
@@ -350,7 +374,8 @@ def _probe_media_plane(
 
         client_factory = GeminiEmbeddingClient.from_settings
     try:
-        vector = client_factory().embed_query(_PROBE_TEXT)
+        with _probe_client(client_factory) as client:
+            vector = client.embed_query(_PROBE_TEXT)
     except ModelPinError:
         raise
     except Exception as exc:

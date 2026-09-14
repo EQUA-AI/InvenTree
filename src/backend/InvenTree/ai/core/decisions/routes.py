@@ -47,6 +47,7 @@ async def speak_reply(session, reply, coordinator, *, include_spoken=False):
             speech = build_exact_tts_payload(
                 persisted_text=utterance.spoken_summary,
                 persisted_hash=utterance.spoken_summary_hash,
+                utterance_id=str(utterance.id),
             )
             if decision and decision.utterance_id == str(utterance.pk):
                 speech["response"]["metadata"] = {

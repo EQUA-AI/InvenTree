@@ -5,6 +5,15 @@
 //     python manage.py generate_wire_contract
 // CI runs `generate_wire_contract --check` and fails on drift.
 
+// --- Cached AI runtime availability (ai.core.runtime) ---
+
+export interface RuntimeAvailability {
+  state: 'starting' | 'ready' | 'transiently_unavailable' | 'permanently_failed' | 'stopping';
+  available: boolean;
+  reason: 'provider_throttled' | 'provider_unreachable' | 'authentication' | 'configuration' | 'model_pin' | 'initialization' | null;
+  retry_after_s: number | null;
+}
+
 // --- AG-UI event types (ai.core.streaming.EventType) ---
 
 export enum AGUIEventType {

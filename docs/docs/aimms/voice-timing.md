@@ -35,3 +35,41 @@ output**. Audible acknowledgment/useful-audio gates require separately measured
 evidence. No transcript, speech, preview, consent, recipient, supplier, exception
 message, SDP, credential, recording or device fingerprint belongs in timing.
 Opaque IDs belong in traces/events, not high-cardinality metric labels.
+
+## Active playback windows
+
+The collector keeps bounded history, but attributes energy to a unique active
+output, not the number of historical responses. A provider-shaped interim → final
+sequence may omit metadata and buffer-event response IDs. An unbound start opens
+only one causal candidate; an unbound stop closes only that opened window.
+Generation completion alone is not a drain boundary. After interim output ends,
+a quiet RTP interval is required before another candidate can qualify. A poll
+spanning both outputs stays missing.
+
+The controller requires a real finite energy counter from one identified inbound
+audio RTP stream and a playing, unmuted, nonzero-volume media element. Missing
+stats are not a zero baseline. Positive initial samples, counter/source resets,
+overlap, incomplete historical transcripts, repeated matching text, cancellation
+and binding mismatches cannot invent first onset. Stop, visibility/reconnect epoch
+changes and new turns invalidate pending stats contexts. An eventual exact-text
+and utterance/hash binding can arrive after the original first energy observation;
+its original timestamp is retained.
+
+Persisted exact-TTS paths include consistent opaque metadata where supported.
+Provider echo remains optional and is never decision-delivery authority. Decision
+playback/review logic stays separate. Paged output gets a fresh timing context.
+First-valid persistence, bounds and epoch/owner/scope validation are unchanged;
+historical nulls are not backfilled.
+
+With metrics enabled, content-free `aimms:voice-timing-diagnostic` events explain
+missingness (`missing_baseline`, `crossed_output_boundary`, `overlapping_output`,
+`incomplete_history`, `repeated_text`, `binding_mismatch`, `canceled_output`,
+`no_correlated_energy`) or current progress. They are ephemeral harness
+diagnostics, not persisted DTO fields or acoustic evidence.
+
+LocalTesting follow-ups require the current page's observed successful session,
+issued epoch, genuine client timing event and matching successful timing POST.
+They never select a resource-history URL or reuse a zero UUID/closed campaign.
+Finite probes journal method/path/status without credentials or response bodies.
+New sessions invalidate older endpoint evidence; stale probes must match observed
+ended sessions or invalidated/rotated epochs. Retain failed attempts and reruns.

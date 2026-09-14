@@ -164,3 +164,33 @@ remain blocking. Acknowledgment ≤1.5 s (earcons prerequisite), useful audio �
 reads / ≤8 s previews and hands-free ≥90% remain tracking targets until the owner
 records the enforcement decision. Missing acoustic evidence cannot pass an audible
 target. A completed template or green automated suite is not human sign-off.
+
+### Remediation execution methods (prepared, not run)
+
+Before VX-T1–VX-T4, record consent, pseudonymous participant ID, actual OS/browser,
+user-owned audio route and quiet/noise/network condition. Do not substitute
+“latest OS” or an emulation preset. Agree methods and retention with the actual
+tester and named reviewer before collection.
+
+- VX-T1: freeze the identifier/negation/correction scenarios across consented
+  US/CA/GB participants. Score critical fields, holds, corrections and missing
+  turns against every planned attempt. Keep synthetic input voices and +15% rate
+  strata separate from human-accent evidence.
+- VX-T2: compare continuous/PTT on each agreed physical route in quiet and agreed
+  noise. Check echo/self-interruption and unintended input. Local Stop uses the
+  monotonic proxy. Acoustic onset/tail needs an approved external method, such as
+  synchronized timing/level detection retaining event times only, with clock
+  alignment and uncertainty documented. This worksheet authorizes no speech
+  recordings. Without an approved method, acoustic cells stay BLOCKED.
+- VX-T3: exercise visibility, navigation, foreground rotation, mic permission and
+  network loss on actual agreed home/corporate/mobile networks. Capture candidate
+  type and explicit recovery/degradation, not IPs or SDP. Never resubmit an
+  uncertain operation just to finish a test. Native/lock-screen stays deferred.
+- VX-T4: predeclare exact fixtures/intents/receipts and permissions for all six
+  families before live effects. Separate safe refusals from hands-free completion;
+  audit one-effect outcomes and failures. Email stays paused; grants are admin work.
+
+Owner fields remain open: actual reviewer/name/date; OD-27 BYOD route/noise minimum
+and safe degradation; OD-14 measured re-baseline and first enforcing phase;
+accepted exclusions; dataset/source/image/artifact references. AIMMS vocabulary
+ownership is not reviewer sign-off.

@@ -21,7 +21,7 @@ import os
 import sys
 import uuid
 from collections.abc import AsyncIterator  # noqa: TC003
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 
@@ -43,6 +43,7 @@ from ai.core.middleware import (
 )
 from ai.core.pilot_latch import PilotLatchUnavailable, PilotStopped
 from ai.core.quota.admission import AdmissionSaturated
+from ai.core.runtime import RuntimeAvailability, require_ai_runtime, runtime
 from ai.core.streaming import AGUIEvent, EventType, InMemoryEventEmitter, SSEEventStream
 from ai.core.trusted_context import build_trusted_turn_context, resolve_actor_locale
 from ai.core.turn_service import (
@@ -139,6 +140,7 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     environment: str
+    runtime: RuntimeAvailability
 
 
 def summary_label(summary: str | None) -> str:
@@ -319,70 +321,48 @@ def _observe_legacy_identity(value: str | None, *, source: str) -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """
-    Application lifespan manager.
-
-    Handles startup and shutdown tasks:
-    - Initialize root workflow
-    - Run the S17 model/embedding boot probes
-    - Start DevUI if enabled
-    """
+async def initialize_runtime(deadline: float) -> AsyncIterator[None]:
+    """A fresh attempt owns and cleans up even partially installed resources."""
     settings = get_settings()
     devui_settings = get_devui_settings()
-
-    logger.info(f"Starting AIMMS Backend (env: {settings.env})")
-
-    # Initialize root workflow
-    get_workflow_root()
-    logger.info("Root workflow initialized")
-
-    # S17 model/embedding pins: refuse to serve a retrieval plane whose live
-    # embedding output cannot be stored in the configured index. A ModelPinError
-    # here aborts startup by design; EMBEDDING_BOOT_PROBE_ENABLED=false is the
-    # one-env rollback. Unconfigured planes skip loudly inside the probe.
+    from ai.core.integrations.boot_budget import probe_budget, probe_timeout
     from ai.core.integrations.model_pins import run_boot_probes
 
-    await asyncio.to_thread(run_boot_probes)
+    def probes():
+        with probe_budget(deadline):
+            run_boot_probes()
+            probe_timeout()  # An over-budget thread cannot publish readiness.
 
-    # Voice Live provider gateway (WS4-T4 deployment wiring). Installed only
-    # when the realtime flag is on; otherwise the SDP relay keeps reporting
-    # honestly unavailable and text remains the fallback.
-    if settings.feature_voice_live:
-        from ai.core.voice import gateway as voice_gateway
-        from ai.core.voice.routes import (
-            set_provider_channel_closer,
-            set_provider_channel_factory,
-        )
+    async with AsyncExitStack() as resources:
+        await asyncio.to_thread(probes)
+        get_workflow_root()
+        if settings.feature_voice_live:
+            from ai.core.voice import gateway as voice_gateway
+            from ai.core.voice.routes import (
+                set_provider_channel_closer,
+                set_provider_channel_factory,
+            )
 
-        set_provider_channel_factory(voice_gateway.channel_for_session)
-        set_provider_channel_closer(voice_gateway.close_channel)
-        logger.info("Voice Live provider gateway installed")
+            resources.push_async_callback(voice_gateway.shutdown)
+            resources.callback(set_provider_channel_closer, None)
+            resources.callback(set_provider_channel_factory, None)
+            set_provider_channel_factory(voice_gateway.channel_for_session)
+            set_provider_channel_closer(voice_gateway.close_channel)
+        if devui_settings.enabled:
+            devui = get_devui()
+            resources.push_async_callback(devui.stop)
+            await devui.start()
+        yield
 
-    # Durable threads and turns are owned exclusively by the aichat repository.
-    # The workflow's legacy memory object is execution-local and is not an
-    # authorization or persistence source.
-    logger.info("Authorized aichat persistence boundary initialized")
 
-    # Start DevUI if enabled
-    if devui_settings.enabled:
-        devui = get_devui()
-        await devui.start()
-        logger.info(f"DevUI available at {devui.url}")
-
-    yield
-
-    # Cleanup
-    if settings.feature_voice_live:
-        from ai.core.voice import gateway as voice_gateway
-
-        await voice_gateway.shutdown()
-
-    if devui_settings.enabled:
-        devui = get_devui()
-        await devui.stop()
-
-    logger.info("AIMMS Backend shutdown complete")
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Start one supervisor; base service stays live while AI is gated."""
+    runtime.start(initialize_runtime)
+    try:
+        yield
+    finally:
+        await runtime.close()
 
 
 # Create FastAPI app. Interactive docs and the OpenAPI schema are exposed in
@@ -394,7 +374,7 @@ app = FastAPI(
     description="AI-powered Manufacturing Management System",
     version="2.3.0",
     lifespan=lifespan,
-    dependencies=[Depends(require_ai_principal)],
+    dependencies=[Depends(require_ai_principal), Depends(require_ai_runtime)],
     docs_url="/docs" if _expose_docs else None,
     redoc_url="/redoc" if _expose_docs else None,
     openapi_url="/openapi.json" if _expose_docs else None,
@@ -628,13 +608,16 @@ async def upload_file(
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check() -> HealthResponse:
-    """Health check endpoint."""
+async def health_check(response: Response) -> HealthResponse:
+    """Authenticated, cached readiness detail; never calls a provider."""
     settings = get_settings()
+    availability = runtime.snapshot()
+    response.status_code = 200 if availability.available else 503
     return HealthResponse(
-        status="healthy",
+        status="healthy" if availability.available else "unavailable",
         version="2.3.0",
         environment=settings.env,
+        runtime=availability,
     )
 
 

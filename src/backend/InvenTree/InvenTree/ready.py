@@ -209,6 +209,7 @@ def isInMainThread():
 def readOnlyCommands():
     """Return a list of read-only management commands which should not trigger database writes."""
     return [
+        'audit_role_permissions',
         'help',
         'check',
         'shell',
@@ -268,6 +269,7 @@ def canAppAccessDatabase(
     # If any of the following management commands are being executed,
     # prevent custom "on load" code from running!
     excluded_commands = [
+        'audit_role_permissions',
         'compilemessages',
         'createsuperuser',
         'collectstatic',

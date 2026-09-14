@@ -110,6 +110,7 @@ class AzureOpenAIEmbeddingClient:
         self._api_version = api_version
         self._api_key = api_key
         self._client: Any | None = None
+        self._credential: Any | None = None
 
     @classmethod
     def from_settings(cls) -> AzureOpenAIEmbeddingClient:
@@ -131,6 +132,8 @@ class AzureOpenAIEmbeddingClient:
 
     def _get_client(self) -> Any:
         """Lazily create a key-backed local client or managed-identity client."""
+        from ai.core.integrations.boot_budget import azure_probe_options, openai_probe_options
+
         if self._client is not None:
             return self._client
         try:
@@ -144,6 +147,7 @@ class AzureOpenAIEmbeddingClient:
                 azure_endpoint=self._endpoint,
                 api_key=self._api_key,
                 api_version=self._api_version,
+                **openai_probe_options(),
             )
             return self._client
         try:
@@ -153,14 +157,26 @@ class AzureOpenAIEmbeddingClient:
                 "Azure Identity SDK is unavailable",
                 code="CONTROLLED_DOCUMENT_EMBEDDING_UNAVAILABLE",
             ) from exc
+        self._credential = DefaultAzureCredential(**azure_probe_options())
         self._client = AzureOpenAI(
             azure_endpoint=self._endpoint,
             api_version=self._api_version,
             azure_ad_token_provider=get_bearer_token_provider(
-                DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+                self._credential, "https://cognitiveservices.azure.com/.default"
             ),
+            **openai_probe_options(),
         )
         return self._client
+
+    def close(self) -> None:
+        """Release SDK and identity transports owned by this adapter."""
+        try:
+            if self._client is not None:
+                self._client.close()
+        finally:
+            if self._credential is not None:
+                self._credential.close()
+            self._client = self._credential = None
 
     def embed_batch(self, inputs: list[str]) -> list[list[float]]:
         """Embed a bounded input batch without logging any source text."""
@@ -247,6 +263,8 @@ class AzureSearchProjection:
 
     def _get_index_client(self) -> Any:
         """Create a schema-level client with the same credential posture."""
+        from ai.core.integrations.boot_budget import azure_probe_options
+
         try:
             from azure.core.credentials import AzureKeyCredential
             from azure.search.documents.indexes import SearchIndexClient
@@ -265,8 +283,19 @@ class AzureSearchProjection:
                     "Azure Identity SDK is unavailable",
                     code="CONTROLLED_DOCUMENT_SEARCH_UNAVAILABLE",
                 ) from exc
-            credential = DefaultAzureCredential()
-        return SearchIndexClient(endpoint=self._endpoint, credential=credential)
+            credential = DefaultAzureCredential(**azure_probe_options())
+        try:
+            client = SearchIndexClient(
+                endpoint=self._endpoint, credential=credential, **azure_probe_options()
+            )
+        except Exception:
+            if not self._api_key:
+                credential.close()
+            raise
+        # Ownership belongs to this specific client, not the shared projection:
+        # concurrent schema reads must not close each other's identity transport.
+        client._aimms_owned_credential = None if self._api_key else credential
+        return client
 
     def vector_dimensions(self) -> int | None:
         """Return the live index's ``text_vector`` dimensions, or None if unreadable.
@@ -274,14 +303,26 @@ class AzureSearchProjection:
         ``None`` means the schema could not be read (typically a data-plane-only
         credential) — callers must treat that as "unknown", never as a match.
         """
+        client = None
         try:
-            index = self._get_index_client().get_index(self._index_name)
+            client = self._get_index_client()
+            index = client.get_index(self._index_name)
             for field in index.fields:
                 if field.name == "text_vector":
                     return getattr(field, "vector_search_dimensions", None)
             return None
         except Exception:
             return None
+        finally:
+            if client is not None:
+                try:
+                    close = getattr(client, "close", None)
+                    if callable(close):
+                        close()
+                finally:
+                    credential = getattr(client, "_aimms_owned_credential", None)
+                    if credential is not None:
+                        credential.close()
 
     def ensure_stamp_fields(self) -> None:
         """Additively add the S17 embedding stamp fields to the index schema.

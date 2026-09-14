@@ -97,6 +97,31 @@ let fetcher: ReturnType<typeof vi.fn>;
 const flush = async () => {
   await vi.advanceTimersByTimeAsync(0);
 };
+it('refuses startup while the configured voice runtime is unavailable, then recovers', async () => {
+  controller.setCapability({
+    ...cap,
+    runtime: {
+      state: 'transiently_unavailable',
+      available: false,
+      reason: 'provider_throttled',
+      retry_after_s: 30
+    }
+  });
+  await controller.start();
+  expect(state.getState().state).toBe('unavailable');
+  expect(requests).toEqual([]);
+  expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  controller.setCapability({
+    ...cap,
+    runtime: {
+      state: 'ready',
+      available: true,
+      reason: null,
+      retry_after_s: null
+    }
+  });
+  expect(state.getState().state).toBe('ready');
+});
 beforeEach(() => {
   vi.useFakeTimers();
   FakePeer.peers = [];

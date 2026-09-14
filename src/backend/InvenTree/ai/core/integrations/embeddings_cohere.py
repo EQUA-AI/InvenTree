@@ -49,8 +49,17 @@ class AttachmentEmbeddingError(Exception):
 
     code = "ATTACHMENT_EMBEDDING_FAILED"
 
-    def __init__(self, message: str, *, code: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        status_code: int | None = None,
+        retry_after: str | None = None,
+    ) -> None:
         super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
         if code is not None:
             self.code = code
 
@@ -129,7 +138,10 @@ class CohereEmbeddingClient:
                     "Azure Identity SDK is unavailable",
                     code="ATTACHMENT_EMBEDDING_UNAVAILABLE",
                 ) from exc
-            self._token_provider = get_bearer_token_provider(DefaultAzureCredential(), _MI_SCOPE)
+            from ai.core.integrations.boot_budget import azure_probe_options
+
+            self._credential = DefaultAzureCredential(**azure_probe_options())
+            self._token_provider = get_bearer_token_provider(self._credential, _MI_SCOPE)
         return f"Bearer {self._token_provider()}"
 
     def _get_client(self) -> Any:
@@ -155,6 +167,10 @@ class CohereEmbeddingClient:
         if callable(closer):
             with contextlib.suppress(Exception):
                 closer()
+        credential = getattr(self, "_credential", None)
+        if credential is not None:
+            credential.close()
+            self._credential = self._token_provider = None
 
     @staticmethod
     def _ordered_items(data: Any) -> list[Any]:
@@ -172,6 +188,8 @@ class CohereEmbeddingClient:
     def embed_batch(self, inputs: list[str], *, input_type: str = "document") -> list[list[float]]:
         """Embed inputs in provider-sized sub-batches without logging source text."""
         vectors: list[list[float]] = []
+        from ai.core.integrations.boot_budget import probe_timeout
+
         for start in range(0, len(inputs), COHERE_BATCH_LIMIT):
             chunk = inputs[start : start + COHERE_BATCH_LIMIT]
             try:
@@ -181,7 +199,9 @@ class CohereEmbeddingClient:
                 # no vector in the corpus is invalidated by this transport.
                 http = self._get_client()
                 raw = None
-                for attempt in range(_THROTTLE_RETRIES + 1):
+                timeout = probe_timeout()
+                retries = _THROTTLE_RETRIES if timeout is None else 0
+                for attempt in range(retries + 1):
                     raw = http.post(
                         "/embeddings",
                         params={"api-version": self._api_version},
@@ -193,8 +213,9 @@ class CohereEmbeddingClient:
                             "input_type": input_type,
                             "encoding_format": "float",
                         },
+                        **({"timeout": probe_timeout()} if timeout is not None else {}),
                     )
-                    if raw.status_code != 429 or attempt == _THROTTLE_RETRIES:
+                    if raw.status_code != 429 or attempt == retries:
                         break
                     # A 520-chunk manual bursts past the deployment's TPM cap
                     # mid-attachment (live finding, R5 repair run): back-to-back
@@ -215,6 +236,8 @@ class CohereEmbeddingClient:
                     raise AttachmentEmbeddingError(
                         "Embedding request failed",
                         code="ATTACHMENT_EMBEDDING_FAILED",
+                        status_code=raw.status_code,
+                        retry_after=raw.headers.get("retry-after"),
                     )
                 response = raw.json()
             except AttachmentEmbeddingError:

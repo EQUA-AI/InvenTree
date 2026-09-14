@@ -441,6 +441,7 @@ async def request_voice_prompt(session_id: str, request: VoicePromptRequest) -> 
                 build_exact_tts_payload(
                     persisted_text=utterance.spoken_summary,
                     persisted_hash=utterance.spoken_summary_hash,
+                    utterance_id=str(utterance.id),
                 )
             )
         except Exception:
@@ -604,6 +605,7 @@ async def _submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict
                 build_exact_tts_payload(
                     persisted_text=utterance.spoken_summary,
                     persisted_hash=utterance.spoken_summary_hash,
+                    utterance_id=str(utterance.id),
                 )
             )
         except Exception:
@@ -817,6 +819,7 @@ async def _submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict
                     tts_payload = build_exact_tts_payload(
                         persisted_text=utterance.spoken_summary,
                         persisted_hash=utterance.spoken_summary_hash,
+                        utterance_id=str(utterance.id),
                     )
                     if getattr(result, "decision_event", None) and result.decision_event.get(
                         "kind"
@@ -959,6 +962,7 @@ async def presentation_command(session_id: str, request: PresentationCommandRequ
                 speech = build_exact_tts_payload(
                     persisted_text=utterance.spoken_summary,
                     persisted_hash=utterance.spoken_summary_hash,
+                    utterance_id=str(utterance.id),
                 )
                 speech["_aimms_rate"] = 0.8 if request.presentation_command == "slower" else 1.0
                 await send(speech)

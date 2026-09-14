@@ -67,15 +67,28 @@ export class VoiceSessionController {
   private droppedPending = false;
   private idleEnding = false;
   private outputEnergy = 0;
-  private timing = new VoiceTiming((report) => {
-    if (!this.snapshot.capability?.validation_metrics || this.snapshot.hidden)
-      return;
-    // Numeric/opaque-ID payload only; harness collection does not require audio.
-    window.dispatchEvent(
-      new CustomEvent('aimms:voice-timing', { detail: report })
-    );
-    void this.control('timing', report).catch(() => {});
-  });
+  private timingRtpSource: string | null = null;
+  private timing = new VoiceTiming(
+    (report) => {
+      if (!this.snapshot.capability?.validation_metrics || this.snapshot.hidden)
+        return;
+      // Numeric/opaque-ID payload only; harness collection does not require audio.
+      window.dispatchEvent(
+        new CustomEvent('aimms:voice-timing', { detail: report })
+      );
+      void this.control('timing', report).catch(() => {});
+    },
+    undefined,
+    undefined,
+    (reason) => {
+      if (this.snapshot.capability?.validation_metrics && !this.snapshot.hidden)
+        window.dispatchEvent(
+          new CustomEvent('aimms:voice-timing-diagnostic', {
+            detail: { reason }
+          })
+        );
+    }
+  );
   private timingGeneration = 0;
   private refreshTiming() {
     const generation = ++this.timingGeneration;
@@ -126,7 +139,11 @@ export class VoiceSessionController {
         ? 'keep_on_minimize'
         : 'end_on_close'
     });
-    if (!capability?.enabled && this.snapshot.session) void this.end();
+    if (
+      (!capability?.enabled || capability.runtime?.available === false) &&
+      this.snapshot.session
+    )
+      void this.end();
   }
   private request<T>(path: string, method = 'GET', body?: unknown) {
     return voiceHttp<T>(this.host, path, method, body, this.abort.signal);
@@ -370,17 +387,41 @@ export class VoiceSessionController {
   private async checkOutput() {
     if (!this.peer || this.snapshot.hidden || this.audio?.paused) return;
     const peer = this.peer;
+    const timingContext = this.timing.samplingContext;
     try {
       const stats = await peer.getStats();
       if (peer !== this.peer || this.snapshot.hidden || this.audio?.paused)
         return;
       let energy = 0;
+      const measured: { id: string; total: number }[] = [];
       stats.forEach((report) => {
-        if (report.type === 'inbound-rtp' && report.kind === 'audio')
+        if (report.type === 'inbound-rtp' && report.kind === 'audio') {
           energy += Number(report.totalAudioEnergy ?? 0);
+          if (
+            typeof report.id === 'string' &&
+            typeof report.totalAudioEnergy === 'number' &&
+            Number.isFinite(report.totalAudioEnergy) &&
+            report.totalAudioEnergy >= 0
+          )
+            measured.push({ id: report.id, total: report.totalAudioEnergy });
+        }
       });
+      if (timingContext !== this.timing.samplingContext) return;
+      if (
+        measured.length === 1 &&
+        this.audio &&
+        !this.audio.muted &&
+        this.audio.volume !== 0
+      ) {
+        if (
+          this.timingRtpSource !== null &&
+          this.timingRtpSource !== measured[0].id
+        )
+          this.timing.invalidateEnergy();
+        this.timingRtpSource = measured[0].id;
+        this.timing.sampleEnergy(measured[0].total, timingContext);
+      } else this.timing.invalidateEnergy();
       if (energy > this.outputEnergy) {
-        this.timing.energy();
         this.lastAudioAt = Date.now();
         if (['pending', 'playing'].includes(this.snapshot.playback))
           this.update({ playback: 'playing' });
@@ -935,6 +976,7 @@ export class VoiceSessionController {
     const cap = this.snapshot.capability;
     if (
       !cap?.enabled ||
+      cap.runtime?.available === false ||
       this.starting ||
       this.snapshot.session ||
       document.hidden
@@ -954,6 +996,7 @@ export class VoiceSessionController {
     this.starting = true;
     this.idleEnding = false;
     this.outputEnergy = 0;
+    this.timingRtpSource = null;
     const generation = ++this.generation;
     this.abort = new AbortController();
     this.ears.unlock();

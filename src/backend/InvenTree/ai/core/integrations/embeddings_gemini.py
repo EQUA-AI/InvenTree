@@ -151,10 +151,18 @@ class GeminiEmbeddingClient:
             )
         try:
             import google.auth
+            from ai.core.integrations.boot_budget import bounded_google_request, probe_timeout
 
-            credentials, _project = google.auth.load_credentials_from_file(
-                self._credentials_path, scopes=[_CLOUD_PLATFORM_SCOPE]
-            )
+            request = bounded_google_request() if probe_timeout() is not None else None
+            try:
+                credentials, _project = google.auth.load_credentials_from_file(
+                    self._credentials_path,
+                    scopes=[_CLOUD_PLATFORM_SCOPE],
+                    **({"request": request} if request is not None else {}),
+                )
+            finally:
+                if request is not None:
+                    request.session.close()
         except MediaEmbeddingError:
             raise
         except ImportError as exc:  # pragma: no cover - deployment packaging
@@ -165,7 +173,7 @@ class GeminiEmbeddingClient:
         except Exception as exc:
             raise MediaEmbeddingError(
                 "GCP credential loading failed",
-                code="MEDIA_EMBEDDING_CONFIG_INVALID",
+                code="MEDIA_EMBEDDING_UNAVAILABLE",
             ) from exc
         return credentials
 
@@ -182,11 +190,30 @@ class GeminiEmbeddingClient:
             ) from exc
         credentials = self._load_credentials()
         try:
+            from ai.core.integrations.boot_budget import bounded_google_request, probe_timeout
+
+            timeout = probe_timeout()
+            if timeout is not None and not credentials.valid:
+                request = bounded_google_request()
+                try:
+                    credentials.refresh(request)
+                finally:
+                    request.session.close()
             self._client = genai.Client(
                 vertexai=True,
                 project=self._project_id,
                 location=self._location,
                 credentials=credentials,
+                **(
+                    {
+                        "http_options": {
+                            "timeout": max(1, int(probe_timeout() * 1000)),
+                            "retry_options": {"attempts": 1},
+                        }
+                    }
+                    if timeout is not None
+                    else {}
+                ),
             )
         except Exception as exc:
             from ai.core.faults import log_fault

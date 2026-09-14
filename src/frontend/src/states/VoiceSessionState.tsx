@@ -30,7 +30,11 @@ export const useVoiceSurfaceState = create<{
   consent: false,
   openFullscreen: () => set({ fullscreen: true }),
   closeFullscreen: () => set({ fullscreen: false }),
-  requestStart: () => set({ consent: true }),
+  requestStart: () => {
+    const capability = useVoiceSessionState.getState().capability;
+    if (capability?.enabled && capability.runtime?.available !== false)
+      set({ consent: true });
+  },
   closeConsent: () => set({ consent: false })
 }));
 // Account boundaries, unlike component unmounts, always release media.

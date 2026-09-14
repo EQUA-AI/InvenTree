@@ -28,7 +28,10 @@ export function useVoiceLiveSession(options: UseVoiceLiveSessionOptions) {
     queryKey: ['voice-capability', options.host],
     enabled: options.enabled,
     queryFn: () => voiceHttp<VoiceCapability>(options.host, 'capability'),
-    staleTime: 60_000
+    staleTime: 60_000,
+    refetchInterval: (query) =>
+      query.state.data?.runtime?.available === false ? 5_000 : 60_000,
+    refetchIntervalInBackground: false
   });
   useEffect(() => {
     voiceController.configure(options.host, options.threadId);

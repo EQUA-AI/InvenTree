@@ -11,6 +11,37 @@ from ai.core.voice.timing import VoiceClientTiming, VoiceTimingReport, measureme
 from pydantic import ValidationError
 
 
+def test_exact_speech_metadata_is_opaque_optional_and_not_a_speech_bypass():
+    from ai.core.voice.speech import (
+        ExactSpeechViolation,
+        build_exact_tts_payload,
+        spoken_summary_hash,
+    )
+
+    text = "Synthetic private response"
+    identifier = "11111111-1111-1111-1111-111111111111"
+    hashed = spoken_summary_hash(text)
+    payload = build_exact_tts_payload(
+        persisted_text=text, persisted_hash=hashed, utterance_id=identifier
+    )
+    assert payload["response"]["metadata"] == {
+        "aimms_utterance_id": identifier,
+        "aimms_spoken_hash": hashed,
+    }
+    assert (
+        "metadata"
+        not in build_exact_tts_payload(persisted_text=text, persisted_hash=hashed)["response"]
+    )
+    with pytest.raises(ExactSpeechViolation):
+        build_exact_tts_payload(
+            persisted_text="paraphrased", persisted_hash=hashed, utterance_id=identifier
+        )
+    with pytest.raises(ExactSpeechViolation):
+        build_exact_tts_payload(
+            persisted_text=text, persisted_hash=hashed, utterance_id="private-label"
+        )
+
+
 @pytest.mark.parametrize(
     "value", [True, False, "1", -1, 300001, float("nan"), float("inf"), {}, []]
 )
