@@ -319,6 +319,37 @@ class CaptureVoiceFlowTests(WorkOrderVoiceFixture, TestCase):
         self.assertFalse(self.say('accept this note').decision.voice_eligible)
         self.assertFalse(VoiceTranscriptAcceptance.objects.exists())
 
+    def test_transcript_hold_disarms_action_but_keeps_completed_note_pages(self):
+        """Reviewing an ASR transcript is not a session pause or a write confirmation."""
+        text, review = self.review_long_note()
+        decision = self.say('accept this note').decision
+        reply = self.coordinator.disarm(self.session.thread_id, 'transcript_review')
+        self.assertEqual(reply.decision.state, 'disarmed')
+        review.refresh_from_db()
+        self.assertFalse(review.invalidated)
+        self.assertFalse(VoiceTranscriptAcceptance.objects.exists())
+        fresh = self.say('accept this note').decision
+        self.assertNotEqual(fresh.decision_id, decision.decision_id)
+        self.assertTrue(fresh.voice_eligible)
+        self.assertNotEqual(fresh.delivery_state, 'done')
+        accepted = self.respond('accept this note', self.deliver(fresh))
+        self.assertEqual(accepted.decision.execution_state, 'succeeded')
+        self.coordinator.disarm(self.session.thread_id, 'transcript_review')
+        handoff = self.say('handoff this note').decision
+        self.assertTrue(handoff.voice_eligible)
+        self.assertIn('finished playing', handoff.spoken_summary)
+        self.assertFalse(CloseoutCapture.objects.exists())
+        result = self.respond('confirm handoff', self.deliver(handoff))
+        self.assertEqual(result.decision.execution_state, 'succeeded')
+        self.assertEqual(CloseoutCapture.objects.get().current_revision.narrative, text)
+
+    def test_transcript_hold_never_completes_missing_note_pages(self):
+        """A prompt cannot replace a missing exact-page playback receipt."""
+        self.review_long_note(skip=2)
+        self.coordinator.disarm(self.session.thread_id, 'transcript_review')
+        self.assertFalse(self.say('accept this note').decision.voice_eligible)
+        self.assertFalse(VoiceTranscriptAcceptance.objects.exists())
+
     def test_replacement_or_scope_drift_cannot_reuse_page_evidence(self):
         """Neither a new note nor a new scope inherits an old certificate."""
         self.review_long_note()

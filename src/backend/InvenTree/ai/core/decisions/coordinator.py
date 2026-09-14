@@ -95,13 +95,21 @@ class DecisionCoordinator:
     def disarm(self, thread_id, reason="disarmed", *, set_aside=False):
         """Invalidate interaction authority, retaining the durable source and ledger."""
         decision = self.store.read(thread_id)
-        if decision and (
-            (decision.executable or {}).get("adapter") == "capture_review"
-            or str((decision.executable or {}).get("action", "")).startswith("closeout.")
+        if (
+            decision
+            and reason != "transcript_review"
+            and (
+                (decision.executable or {}).get("adapter") == "capture_review"
+                or str((decision.executable or {}).get("action", "")).startswith("closeout.")
+            )
         ):
             from ai.core.decisions.adapters.capture_review import invalidate
 
             invalidate(decision.session_id)
+        # A held transcript always disarms the current action, but is not a
+        # session pause. Completed immutable note pages remain read evidence;
+        # acceptance/handoff still require a fresh proposal and full delivery.
+        # A changed note, scope, target or session cannot reuse those pages.
         if decision and decision.state == State.PRESENTED:
             decision = self.advance(
                 decision, state=State.SET_ASIDE if set_aside else State.DISARMED
