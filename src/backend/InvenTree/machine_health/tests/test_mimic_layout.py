@@ -34,5 +34,8 @@ class MimicLayoutTests(SimpleTestCase):
         """Keys are identifiers, not array positions; escape slash and tilde."""
         self.assertEqual(expand_pointer('/pd/{pump}/st', 'P17'), '/pd/P17/st')
         self.assertEqual(expand_pointer('/pd/{pump}/st', 'P/1~'), '/pd/P~11~0/st')
+        self.assertEqual(
+            expand_pointer('/dex/PUMP{pump_number}_CORE', 'P17'), '/dex/PUMP17_CORE'
+        )
         with self.assertRaises(ValidationError):
             expand_pointer('/pd/{wrong}/st', 'P17')

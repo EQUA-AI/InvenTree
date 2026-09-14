@@ -137,10 +137,12 @@ function Diagram({ data, unit }: { data: MimicData; unit?: string }) {
       {data.layout.elements
         .filter((e) => e.view === view)
         .map((element) => {
-          const pointer = element.pointer.replace(
-            '{pump}',
-            (unit ?? '').replaceAll('~', '~0').replaceAll('/', '~1')
-          );
+          const pointer = element.pointer
+            .replaceAll('{pump_number}', (unit ?? '').replace(/^P/, ''))
+            .replaceAll(
+              '{pump}',
+              (unit ?? '').replaceAll('~', '~0').replaceAll('/', '~1')
+            );
           const point = points[pointer];
           return (
             <g key={element.id} data-point={pointer}>

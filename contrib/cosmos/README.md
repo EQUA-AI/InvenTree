@@ -315,7 +315,7 @@ policy; this poller maintains latest state rather than importing historical seri
 Errors use fixed codes: `AUTH`, `NOT_FOUND`, `THROTTLED`, `NETWORK`, `CONFIG`, `SNAPSHOT`,
 `INGEST`. One station's failure does not mark the whole account failed. Every snapshot's
 batches and accepted checkpoint commit together, so a batch failure leaves no partial
-snapshot in the cache. Check `HANDOVER.md` for remaining activation and deployment work.
+snapshot in the cache. See [HANDOFF.md](HANDOFF.md) for the complete activation and deployment procedure.
 
 ## Offline dump import (T10)
 
@@ -378,3 +378,16 @@ locally tested image digest, waits on port 8080's `/ready` endpoint and runs thi
 It reuses the public emulator key already provided in the development Compose file;
 no Azure subscription or credentials are required. This verifies transport and query
 behaviour, not production RBAC, networking or plant data completeness.
+
+## Mimic and estate handoff (T15–T19)
+
+[HANDOFF.md](HANDOFF.md) walks the receiving developer through full dictionary review,
+exact catalogue crosswalks, numbered `dex` pointers, provisional geometry replacement,
+atomic manifest onboarding, activation, readiness and read-only RU/duration checks.
+[examples/estate.example.json](examples/estate.example.json) is an editable manifest template;
+its identity placeholders must be replaced with the real inventory.
+
+The station mimic uses reviewed cached state and never queries Azure during a page read.
+Unknown/stale values remain unavailable; totals require complete valid contributors and alarms
+require configured thresholds. The geometry remains provisional until plant review. A local
+[PR draft](PR_DRAFT.md) is provided for human review; no PR has been opened.

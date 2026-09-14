@@ -107,6 +107,26 @@ across two hours, capped resume, scheduler ingestion and replay. See the runbook
 the command and `.github/workflows/cosmos_integration.yaml` for CI setup. This does
 not validate production RBAC, networking, or complete station data.
 
+## Mimic dashboard and estate onboarding
+
+Registered pumphouse pages include a **Pumphouse mimic** tab with sparse pump selection,
+selected-unit measurements, grouped reviewed points, source status, totals and threshold
+alarms. The page polls cached API state while visible. Stale, disabled, unreviewed or failed
+reads stay unavailable. Derived totals require valid reviewed inputs from every registered bay.
+Alarm limits are never inferred. The shared SVG/layout geometry is explicitly provisional.
+
+Use `export_dictionary_review --station <pk>` and `apply_dictionary_review --review <file>`
+for full dictionary review packs and exact catalogue crosswalks. The estate command
+`onboard_pumphouse_estate <manifest> --source <pk> --dry-run` previews registration/import/review;
+remove `--dry-run` to commit atomically and add `--activate` for approved bindings. Replays
+preserve station UUIDs and polling progress. No command enables the global polling flag.
+
+`validate_pumphouse_layout` checks the SVG contract and per-station coverage.
+`check_pumphouse_readiness --source <pk>` checks local readiness; `--probe` additionally contacts
+Cosmos. `benchmark_pumphouse_reads --source <pk>` measures bounded read duration and query RU
+without writing samples or checkpoints. These reports do not establish production acceptance.
+See `contrib/cosmos/HANDOFF.md` and its example manifest for the complete developer procedure.
+
 ## Trust boundaries
 
 This follows InvenTree's [threat model](../concepts/threat_model.md): deployment

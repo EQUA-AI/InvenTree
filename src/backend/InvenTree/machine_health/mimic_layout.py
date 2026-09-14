@@ -1,6 +1,7 @@
 """Shared, reviewable layout contract and per-station coverage checks."""
 
 import json
+import re
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -9,6 +10,7 @@ from django.core.exceptions import ValidationError
 from assets.models import DictionaryPoint
 
 PUMP_TOKEN = '{pump}'
+NUMBER_TOKEN = '{pump_number}'
 
 LAYOUT_PATH = Path(__file__).parent / 'layouts/pumphouse.layout.json'
 
@@ -43,6 +45,13 @@ def expand_pointer(template, pump):
     value = template.replace(
         PUMP_TOKEN, str(pump).replace('~', '~0').replace('/', '~1')
     )
+    if NUMBER_TOKEN in value:
+        match = re.fullmatch(r'P([1-9][0-9]*)', str(pump))
+        if not match:
+            raise ValidationError(
+                'A numbered pointer requires a registered P-number key.'
+            )
+        value = value.replace(NUMBER_TOKEN, match[1])
     if not value.startswith('/') or '{' in value or '}' in value:
         raise ValidationError(
             'Layout pointers must be absolute with only the pump placeholder.'

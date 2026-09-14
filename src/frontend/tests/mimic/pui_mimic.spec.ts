@@ -28,7 +28,7 @@ function fixture(unit: string | null, stale = false, enabled = true) {
       elements: [
         {
           id: 'pump-power',
-          pointer: '/pd/{pump}/pmw',
+          pointer: '/dex/PUMP{pump_number}_POWER',
           view: 'unit',
           role: 'value',
           label: 'Power',
@@ -46,7 +46,14 @@ function fixture(unit: string | null, stale = false, enabled = true) {
       points: {}
     })),
     selected_unit: unit,
-    points: unit ? { [`/pd/${unit}/pmw`]: point(`/pd/${unit}/pmw`, 7.5) } : {},
+    points: unit
+      ? {
+          [`/dex/PUMP${unit.slice(1)}_POWER`]: point(
+            `/dex/PUMP${unit.slice(1)}_POWER`,
+            7.5
+          )
+        }
+      : {},
     totals: {
       power: {
         value: null,
@@ -71,7 +78,7 @@ test('sparse bays bind the selected pointer and never invent totals or threshold
   );
   await page.goto('/');
   await page.getByRole('button', { name: 'P17: Running', exact: true }).click();
-  await expect(page.locator('g[data-point="/pd/P17/pmw"]')).toContainText(
+  await expect(page.locator('g[data-point="/dex/PUMP17_POWER"]')).toContainText(
     '7.5 MW'
   );
   await expect(
@@ -100,7 +107,7 @@ test('stale and disabled readings remain explicitly unavailable', async ({
   );
   await page.goto('/');
   await page.getByRole('button', { name: 'P17: Stale', exact: true }).click();
-  await expect(page.locator('g[data-point="/pd/P17/pmw"]')).toContainText(
+  await expect(page.locator('g[data-point="/dex/PUMP17_POWER"]')).toContainText(
     'Unavailable'
   );
   await expect(page.getByText('7.5 MW', { exact: true })).toHaveCount(0);
@@ -129,7 +136,7 @@ test('request failure hides cached readings and hidden views stop polling', asyn
   });
   await page.goto('/');
   await page.getByRole('button', { name: 'P17: Running', exact: true }).click();
-  await expect(page.locator('g[data-point="/pd/P17/pmw"]')).toContainText(
+  await expect(page.locator('g[data-point="/dex/PUMP17_POWER"]')).toContainText(
     '7.5 MW'
   );
   failed = true;
@@ -140,7 +147,9 @@ test('request failure hides cached readings and hidden views stop polling', asyn
       { exact: true }
     )
   ).toBeVisible();
-  await expect(page.locator('g[data-point="/pd/P17/pmw"]')).toHaveCount(0);
+  await expect(page.locator('g[data-point="/dex/PUMP17_POWER"]')).toHaveCount(
+    0
+  );
   await page.locator('#root').evaluate((node) => {
     node.style.display = 'none';
   });
