@@ -32,6 +32,71 @@ def dictionary_hash(station):
     return hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
 
 
+def observation_hash(station):
+    """Identify the observed source dictionary independently of review decisions."""
+    rows = list(
+        DictionaryPoint.objects
+        .filter(station=station)
+        .order_by('path')
+        .values('path', 'source_hash', 'machine_id')
+    )
+    return hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
+
+
+def review_already_applied(station, review):
+    """Accept an identical replay only if observations and every decision still match."""
+    if review.get('observation_hash') != observation_hash(station):
+        return False
+    points = {
+        point.path: point
+        for point in DictionaryPoint.objects.filter(station=station).select_related(
+            'machine', 'component__part', 'template'
+        )
+    }
+    for entry in review.get('approve', []):
+        for path in entry['paths']:
+            point = points.get(path)
+            if (
+                point is None
+                or point.status != 'approved'
+                or point.review_note != entry['note']
+            ):
+                return False
+            if any(
+                getattr(point, key) != entry.get(key, '')
+                for key in ('data_type', 'unit', 'unit_status')
+            ):
+                return False
+            if (
+                entry.get('owner_key', point.machine.source_key)
+                != point.machine.source_key
+            ):
+                return False
+            if entry.get('mapping'):
+                if not point.component_id or not point.template_id:
+                    return False
+                mapping = entry['mapping']
+                if (
+                    point.component.part.IPN,
+                    point.component.code,
+                    point.template.name,
+                ) != (
+                    mapping['part_ipn'],
+                    mapping['component_code'],
+                    mapping['parameter'],
+                ):
+                    return False
+    for entry in review.get('withhold', []):
+        note = entry['reason']
+        if entry.get('recommendation'):
+            note = f'{note} Recommended: {entry["recommendation"]}'
+        for path in entry['paths']:
+            point = points.get(path)
+            if point is None or point.status == 'approved' or point.review_note != note:
+                return False
+    return True
+
+
 def export_review(station):
     """Export exact source paths, existing approvals and actionable pending mappings."""
     result = {
@@ -39,6 +104,7 @@ def export_review(station):
         'station_source_uuid': str(station.source_entity_uuid),
         'source_namespace': station.source_namespace,
         'dictionary_hash': dictionary_hash(station),
+        'observation_hash': observation_hash(station),
         'approve': [],
         'withhold': [],
         'pending': [],

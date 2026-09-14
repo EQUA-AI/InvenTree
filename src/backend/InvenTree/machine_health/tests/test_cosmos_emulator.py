@@ -125,6 +125,15 @@ class CosmosEmulatorTests(TestCase):
             checkpoint.refresh_from_db()
             self.assertEqual(checkpoint.sub_time_period, first)
             self.assertEqual(connector.last_error_code, '')
+            # The vNext emulator may omit RU headers. Never turn absent cost
+            # metadata into a misleading zero-cost measurement.
+            self.assertTrue(
+                connector._charge_missing or connector.request_charge is not None
+            )
+            if connector._charge_missing:
+                self.assertIsNone(connector.request_charge)
+            else:
+                self.assertGreaterEqual(connector.request_charge, 0)
             start = datetime.fromtimestamp((first - 1) / 1000, tz=timezone.utc)
             end = datetime.fromtimestamp((second + 1) / 1000, tz=timezone.utc)
             history = connector.read_window('/sl', start, end, max_samples=10)

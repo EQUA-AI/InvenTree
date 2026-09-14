@@ -264,6 +264,31 @@ class QueryShapeTests(SimpleTestCase):
         self.assertEqual(self.call['max_item_count'], PAGE_SIZE)
 
 
+class RequestChargeTests(SimpleTestCase):
+    """Cost reports cannot confuse omitted metadata with a zero charge."""
+
+    def test_query_hook_accumulates_pages_and_missing_metadata_invalidates_total(self):
+        """Exercise the callback passed to the query transport, including a free page."""
+        connector = connector_for([])
+        connector.latest_document(STATION, 1752850800000)
+        hook = connector._container.calls[-1]['response_hook']
+        self.assertIsNone(connector.request_charge)
+        for charge in ('1.25', '0', '2.5'):
+            hook({'x-ms-request-charge': charge}, {})
+        self.assertEqual(connector.request_charge, 3.75)
+        hook({}, {})
+        hook({'x-ms-request-charge': '9'}, {})
+        self.assertIsNone(connector.request_charge)
+
+    def test_invalid_charge_is_unknown(self):
+        """Malformed or non-finite metadata never produces a misleading total."""
+        for charge in ('NaN', 'inf', '-1', 'invalid', None):
+            with self.subTest(charge=charge):
+                connector = CosmosPumphouseConnector(StubSource())
+                connector._record_charge({'x-ms-request-charge': charge}, {})
+                self.assertIsNone(connector.request_charge)
+
+
 class CheckTests(SimpleTestCase):
     """``check()`` returns a code, and only a code."""
 

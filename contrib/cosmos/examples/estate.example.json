@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "stations": [
+    {
+      "name": "REPLACE with plant station name",
+      "source_namespace": "REPLACE with source namespace",
+      "source_uuid": "REPLACE with source entity UUID",
+      "source_key": "REPLACE with the exact dex.ID code",
+      "pumps": [],
+      "snapshot": "snapshots/station.json"
+    }
+  ]
+}

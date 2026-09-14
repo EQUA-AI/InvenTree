@@ -180,6 +180,8 @@ class CosmosPumphouseConnector(HealthConnector):
         self._station_uuid = station_uuid
         self.deadline = deadline
         self.last_error_code = ''
+        self.request_charge: float | None = None
+        self._charge_missing = False
 
     # ------------------------------------------------------------------
     # Configuration
@@ -387,7 +389,22 @@ class CosmosPumphouseConnector(HealthConnector):
             max_item_count=PAGE_SIZE,
             enable_cross_partition_query=False,
             timeout=timeout,
+            response_hook=self._record_charge,
         )
+
+    def _record_charge(self, headers, response):
+        """Accumulate query RU charges without retaining headers or response bodies."""
+        if self._charge_missing:
+            return
+        try:
+            charge = float(headers.get('x-ms-request-charge'))
+            if not 0 <= charge < float('inf'):
+                raise ValueError('Invalid request charge.')
+        except (TypeError, ValueError):
+            self._charge_missing = True
+            self.request_charge = None
+            return
+        self.request_charge = (self.request_charge or 0.0) + charge
 
     def request_timeout(self):
         """Bound each request by the remaining station and sweep budget."""

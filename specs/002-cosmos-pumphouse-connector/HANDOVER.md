@@ -15,9 +15,10 @@ Where the two disagree with this file, this file is newer.
 
 The user does **not currently have** the untrimmed station snapshots, station inventory,
 or the two mimic reference images. Do not repeatedly request these inputs or invent
-substitutes. T18 dictionary expansion, T15 reference-based drawings and T19 estate rollout
-remain blocked until the user or plant supplies them. Continue implementation that does
-not depend on these inputs; the existing abridged fixtures are suitable only for tests.
+plant facts. The user subsequently authorized completing all software with provisional
+geometry and configurable mappings. The receiving developer will supply the missing inputs
+and make plant-specific corrections. Those inputs block plant acceptance, not implementation;
+the existing abridged fixtures are suitable only for tests.
 
 ## Full implementation handoff — subsequent user instruction
 
@@ -54,6 +55,36 @@ never display cached values as current; hidden panels pause polling. Three isola
 checks passed (selection/pointer binding, stale/disabled, network failure/hidden view); TypeScript,
 Biome and Lingui extraction/compilation passed. The browser checks are included in CI and
 require no live backend. The provisional banner remains until the layout receives plant review.
+
+**T19 implementation complete:** `onboard_pumphouse_estate` registers sparse station/pump
+inventories, imports snapshots, applies explicit review packs and activates one account source
+with separate station checkpoints. Dry runs roll back; a failed station rolls back the estate;
+replays preserve registered UUIDs and polling progress. Review packs can be replayed after
+application but are refused after source observations change. `check_pumphouse_readiness`
+reports local configuration/coverage gaps and optionally probes connectivity, without claiming
+production acceptance. `benchmark_pumphouse_reads` measures bounded, read-only query RU and
+duration without ingesting values or moving checkpoints.
+
+**Receiving developer:** start with [`contrib/cosmos/HANDOFF.md`](../../contrib/cosmos/HANDOFF.md).
+It includes manifest/review examples, exact pointer configuration (including numbered `dex`
+keys), layout validation, activation, readiness and benchmark commands. Missing snapshots,
+inventory, reference images, approved units/thresholds/status codes and the deployed identity
+remain explicit plant/platform acceptance work. No production onboarding is claimed.
+
+## Final local validation record
+
+- Combined regression run: 277 tests, successful with one opt-in emulator test skipped.
+- Follow-up connector/estate run: 61 tests passed, including the real SDK emulator test,
+  RU metadata handling and incomplete-window checks.
+- Three Chromium mimic tests passed, including numeric `dex` pointer substitution, stale and
+  disabled values, failed requests hiding cached data, and hidden views pausing polling.
+- TypeScript, backend `ty`, Lingui extraction/compilation and migration consistency passed.
+- API schema generation succeeded and includes the station mimic endpoint. The repository
+  still reports pre-existing schema diagnostics (4 warnings, 122 unique errors); this is not
+  a claim that the entire repository schema is clean.
+- Commit hooks run on each completed section. Tests use isolated SQLite and a disposable
+  loopback Cosmos emulator; they do not establish PostgreSQL lock scheduling or production
+  Azure identity/capacity. The emulator omits RU headers, which are reported as unknown.
 
 ## Implementation continuation — local `IoT` (2026-09-13)
 
@@ -142,18 +173,15 @@ offline import, emulator validation and trust boundaries. Existing machine-healt
 model pages link to it. T14's PR step is not performed: repository instructions require human
 review before opening a PR, and no push or PR was requested.
 
-**Next: T16's reviewed-point mimic API contract.** Its scope can be developed from existing
-reviewed points, but complete screen coverage and semantic plant totals still depend on the
-full dictionary and drawings. Do not mark the mimic or estate rollout complete using abridged
-test data. T15/T17/T18/T19 remain incomplete with the unavailable inputs noted above.
+**Current state:** T9–T19 software and operational documentation are implemented locally.
+T15 geometry is provisional; T18 full production dictionary review and T19 real estate rollout
+belong to the receiving developer's acceptance work. The global flag remains off by default.
+No production migrations, cloud changes, push or PR opening have been performed.
 
 Completed implementation commits: T9 `d208867a0`, T10 `136f8acd7`, T11 `e069904c2`,
-T12 `c3530ef18`, T13 `2e0b59f5f`. The documentation commit follows these.
- The global polling flag remains
-off by default and no production migrations or cloud changes have been applied. Full snapshots
-(T18), the station inventory (T19), reference images (T15), plant units/thresholds and the
-application identity/role (D17) remain external inputs. T16 can proceed independently using
-reviewed points; full mimic completion still needs those external inputs.
+T12 `c3530ef18`, T13 `2e0b59f5f`, T15 `48e92d21c`, T16 `397aa663b`,
+T18 `bc503d3c8`, T17 `2dd6d05f5`. See branch history for T19 and final handoff commits.
+All original estimates, next-ticket directions and deployment claims below are historical.
 
 ---
 

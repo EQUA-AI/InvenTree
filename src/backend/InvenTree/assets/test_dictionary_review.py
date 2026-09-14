@@ -299,6 +299,24 @@ class ApplyReviewTests(TestCase):
         self.point.refresh_from_db()
         self.assertEqual(self.point.review_note, '')
 
+    def test_completed_review_pack_can_be_replayed_but_not_after_observation_change(
+        self,
+    ):
+        """Estate retries can reuse an applied pack, while new source data needs review."""
+        from assets.dictionary_review import export_review
+
+        pack = export_review(self.station)
+        pack['approve'] = [pack['pending'].pop()]
+        pack['approve'][0]['note'] = 'Confirmed interpretation'
+        self.apply(pack)
+        self.apply(pack)
+        self.point.refresh_from_db()
+        self.assertEqual(self.point.status, 'approved')
+        self.point.source_hash = 'changed'
+        self.point.save()
+        with self.assertRaisesMessage(CommandError, 'Dictionary changed'):
+            self.apply(pack)
+
     def test_export_pack_preserves_pending_and_rejects_stale_review(self):
         """An exported review is tied to the exact observed dictionary and decisions."""
         output = StringIO()

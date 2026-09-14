@@ -28,7 +28,11 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from assets.dictionary_review import dictionary_hash, map_review_point
+from assets.dictionary_review import (
+    dictionary_hash,
+    map_review_point,
+    review_already_applied,
+)
 from assets.models import AssetMachine
 from assets.registry import MAX_BYTES, decode_upload
 from assets.registry_models import DictionaryPoint
@@ -145,9 +149,11 @@ class Command(BaseCommand):
         approved = withheld = 0
         with transaction.atomic():
             station = self.station_for(review)
-            if review.get('dictionary_hash') and review[
-                'dictionary_hash'
-            ] != dictionary_hash(station):
+            if (
+                review.get('dictionary_hash')
+                and review['dictionary_hash'] != dictionary_hash(station)
+                and not review_already_applied(station, review)
+            ):
                 raise CommandError('Dictionary changed; export a fresh review pack.')
             paths = [
                 path
