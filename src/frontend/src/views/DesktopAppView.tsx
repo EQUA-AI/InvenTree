@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { getBaseUrl } from '@lib/functions/Navigation';
 import { useShallow } from 'zustand/react/shallow';
 import { api, queryClient } from '../App';
+import { PhoneVoiceRouting } from '../components/ai/voice/PhoneVoiceRouting';
 import { ApiProvider } from '../contexts/ApiContext';
 import { ThemeContext } from '../contexts/ThemeContext';
 import { defaultHostList } from '../defaults/defaultHostList';
@@ -22,7 +23,9 @@ export default function DesktopAppView() {
   return (
     <ApiProvider client={queryClient} api={api}>
       <ThemeContext>
-        <BrowserRouter basename={getBaseUrl()}>{routes}</BrowserRouter>
+        <BrowserRouter basename={getBaseUrl()}>
+          <PhoneVoiceRouting>{routes}</PhoneVoiceRouting>
+        </BrowserRouter>
       </ThemeContext>
     </ApiProvider>
   );

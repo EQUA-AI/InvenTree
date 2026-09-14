@@ -162,9 +162,34 @@ def test_pages_total_first_three_and_short_keep_warning():
     text = "Warning: never energize before inspection.\n1. Alpha\n2. Bravo\n3. Charlie\n4. Delta"
     pages = chunks(text)
     assert len(pages) == 2 and "4 items" in pages[0]
+    assert pages[0].count("Warning: never energize before inspection.") == 1
     assert "Charlie" in pages[0] and "Delta" not in pages[0]
     assert all("never energize before inspection" in page for page in pages)
     assert "never energize before inspection" in short_text(pages[1])
+
+
+def test_missing_inventory_fields_do_not_reorder_records_but_warnings_repeat():
+    from ai.core.turn.responses import _plain_spoken_text
+
+    layout = "Inventory page 1.\n" + "\n".join(
+        f"{index}. Stock item {index}: 0.25000 metres; location A / B; serial not set."
+        for index in range(1, 6)
+    )
+    pages = chunks(_plain_spoken_text(layout), layout=layout)
+    assert len(pages) == 2
+    assert pages[0].count("Inventory page 1.") == 1
+    assert "5 items" in pages[0]
+    assert "Stock item 4" not in pages[0] and "Stock item 5" not in pages[0]
+    assert [pages[0].index(f"Stock item {index}:") for index in (1, 2, 3)] == sorted(
+        pages[0].index(f"Stock item {index}:") for index in (1, 2, 3)
+    )
+    assert pages[0].count("0.25000 metres; location A / B; serial not set.") == 3
+    assert pages[1].count("0.25000 metres; location A / B; serial not set.") == 2
+    warning = " Never use this stock before inspection."
+    warned = layout + warning
+    assert all(
+        warning.strip() in page for page in chunks(_plain_spoken_text(warned), layout=warned)
+    )
 
 
 def test_validated_long_answer_and_layout_are_paged_without_raw_text_bypass():

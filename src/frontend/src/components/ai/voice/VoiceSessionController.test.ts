@@ -384,6 +384,43 @@ it('reconnect creates a same-thread session without replaying the submitted item
   expect(state.getState().muted).toBe(false);
   expect(track.enabled).toBe(true);
 });
+it('quality estimates preserve a live read-back; a real interface handoff still pauses', async () => {
+  const connection = Object.assign(new EventTarget(), {
+    type: 'wifi',
+    rtt: 50,
+    downlink: 10,
+    effectiveType: '4g'
+  });
+  Object.defineProperty(navigator, 'connection', { value: connection });
+  await controller.start();
+  await controller.prompt('help');
+  controller.handleEvent(
+    JSON.stringify({ type: 'output_audio_buffer.started' })
+  );
+  for (const change of [
+    { rtt: 200 },
+    { downlink: 1 },
+    { effectiveType: '3g' }
+  ]) {
+    Object.assign(connection, change);
+    connection.dispatchEvent(new Event('change'));
+    await flush();
+  }
+  expect(state.getState().transport).toBe('connected');
+  expect(track.enabled).toBe(true);
+  expect(requests.filter((r) => r.path.endsWith('/suspend'))).toHaveLength(0);
+  expect(decisions.getState().decide).not.toHaveBeenCalled();
+  connection.type = 'cellular';
+  connection.dispatchEvent(new Event('change'));
+  expect(track.enabled).toBe(false);
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(state.getState().transport).toBe('connected');
+  expect(state.getState().muted).toBe(true);
+  expect(requests.filter((r) => r.path.endsWith('/turns'))).toHaveLength(0);
+  expect(
+    requests.filter((r) => r.path.endsWith('/sessions') && r.method === 'POST')
+  ).toHaveLength(1);
+});
 it('global shortcut and Escape leave typing and barcode inputs alone', () => {
   const target = new FakeElement();
   const event = {

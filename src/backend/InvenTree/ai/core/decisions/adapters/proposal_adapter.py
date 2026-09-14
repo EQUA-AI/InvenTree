@@ -71,8 +71,20 @@ class ProposalAdapter:
         params = dict(intent.parameters)
         allowed = {
             "closeout.consent": {"live_session_id"},
-            "closeout.accept": {"live_session_id", "capture_id", "revision_id", "content_hash"},
-            "closeout.handoff": {"live_session_id", "capture_id", "revision_id", "content_hash"},
+            "closeout.accept": {
+                "live_session_id",
+                "capture_id",
+                "revision_id",
+                "content_hash",
+                "auditory_review_id",
+            },
+            "closeout.handoff": {
+                "live_session_id",
+                "capture_id",
+                "revision_id",
+                "content_hash",
+                "auditory_review_id",
+            },
             "procedure.complete": {"application_id", "step_key", "value", "passed"},
             "work_order.assign": {"assignee_name"},
             "work_order.resize": {"estimated_minutes"},

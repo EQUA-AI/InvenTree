@@ -268,6 +268,31 @@ class VoicePresentation(models.Model):
         ]
 
 
+class VoiceCaptureReview(models.Model):
+    """Exact revision/page delivery evidence; never assent or a business receipt.
+
+    Page bindings are server-authored before dispatch. Completion is checked
+    against the actual VoiceUtterance rows, not a client-provided page count.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    revision = models.ForeignKey(
+        'voice.VoiceTranscriptRevision',
+        on_delete=models.PROTECT,
+        related_name='voice_reviews',
+    )
+    session = models.ForeignKey(
+        VoiceSession, on_delete=models.PROTECT, related_name='capture_reviews'
+    )
+    scope_hash = models.CharField(max_length=64)
+    target_version = models.PositiveBigIntegerField()
+    policy_version = models.CharField(max_length=64)
+    page_hashes = models.JSONField(default=list)
+    utterance_ids = models.JSONField(default=list)
+    invalidated = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class CapturePurpose(models.TextChoices):
     """Governed capture destinations; nothing else may be recorded."""
 

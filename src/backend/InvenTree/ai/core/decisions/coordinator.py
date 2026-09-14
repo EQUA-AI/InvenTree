@@ -94,6 +94,13 @@ class DecisionCoordinator:
     def disarm(self, thread_id, reason="disarmed", *, set_aside=False):
         """Invalidate interaction authority, retaining the durable source and ledger."""
         decision = self.store.read(thread_id)
+        if decision and (
+            (decision.executable or {}).get("adapter") == "capture_review"
+            or str((decision.executable or {}).get("action", "")).startswith("closeout.")
+        ):
+            from ai.core.decisions.adapters.capture_review import invalidate
+
+            invalidate(decision.session_id)
         if decision and decision.state == State.PRESENTED:
             decision = self.advance(
                 decision, state=State.SET_ASIDE if set_aside else State.DISARMED
@@ -156,6 +163,20 @@ class DecisionCoordinator:
                 from ai.core.decisions.work_order_review import review
 
             spoken, sections, required_phrase = review(intent.action, preview, spoken_label)
+            if intent.action in ("closeout.accept", "closeout.handoff") and preview.get(
+                "auditory_review_id"
+            ):
+                # Every full-text page has durable exact playback evidence.
+                # Keep the full note on screen, then arm a NEW bounded action
+                # read-back with target, revision/hash, disclosure and phrase.
+                from ai.core.decisions.work_order_review import VERBS
+
+                spoken = (
+                    f"{VERBS[intent.action]} {spoken_label}. "
+                    f"Every page of note revision {preview['revision']} finished playing. "
+                    f"Content hash: {preview['content_hash']}. {preview['warning']} "
+                    f"Say {required_phrase} to proceed, or no to set it aside."
+                )
             eligible = len(spoken) <= 1800 and len(label) <= 160
             allowed_responses = (required_phrase or "yes", "no", "change that", "cancel the action")
             if not eligible:
@@ -270,6 +291,10 @@ class DecisionCoordinator:
         """Read current source state; screen actions and drift invalidate voice focus."""
         if str(actor.user_pk) != decision.actor_user_pk or str(session_id) != decision.session_id:
             raise DecisionConflict("The session changed. Request a fresh preview.")
+        if (decision.executable or {}).get("adapter") == "capture_review":
+            from ai.core.decisions.adapters.capture_review import read
+
+            return read(self, decision, actor, session_id)
         if (decision.executable or {}).get("adapter") == "approval":
             if self.approvals is None:
                 raise DecisionConflict("Voice approvals are disabled.")
@@ -328,6 +353,21 @@ class DecisionCoordinator:
                     "That decision is no longer available. Request a fresh preview.", event="stale"
                 )
             return None
+        if (decision.executable or {}).get("adapter") == "capture_review":
+            from ai.core.decisions.adapters.capture_review import resolve
+
+            return resolve(
+                self,
+                decision,
+                content,
+                actor=actor,
+                session_id=session_id,
+                thread_id=thread_id,
+                nonce=nonce,
+                context=context,
+                provider_active=provider_active,
+                touch=touch,
+            )
         if (decision.executable or {}).get("adapter") == "approval":
             if self.approvals is None:
                 raise DecisionConflict("Voice approvals are disabled.")
@@ -547,6 +587,10 @@ class DecisionCoordinator:
             raise DecisionConflict("The spoken content does not match its persisted hash.")
         if current.utterance_id == str(utterance_id):
             return current
+        if (current.executable or {}).get("adapter") == "capture_review":
+            from ai.core.decisions.adapters.capture_review import bind
+
+            bind(current, utterance_id, spoken_text)
         if (current.executable or {}).get("adapter") == "approval":
             if self.approvals is None:
                 raise DecisionConflict("Voice approvals are disabled.")

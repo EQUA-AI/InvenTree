@@ -4,6 +4,7 @@ import { type ComponentType, useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { setApiDefaults } from '../App';
+import { phoneRoutingEnabled } from '../components/ai/voice/phoneRouting';
 import { useLocalState } from '../states/LocalState';
 
 function checkMobile() {
@@ -43,16 +44,19 @@ export default function MainView() {
     mobileViewPromise.then((Component) => setMobileView(() => Component));
   }, []);
 
-  // Check if mobile
+  const legacySmallViewport = checkMobile();
+  // The pilot uses a sticky screen/touch classifier, not viewport height.
+  // Authentication and /voice always stay in the shared router.
   const isMobile =
-    // Explicit voice access and authentication routes must never be hidden by
-    // the legacy viewport warning. Automatic phone routing awaits its policy.
+    !phoneRoutingEnabled(
+      window.INVENTREE_SETTINGS?.voice_phone_short_edge_px
+    ) &&
     !/\/(voice|login|logged-in|logout|mfa|mfa-setup)\/?$/.test(
       window.location.pathname
     ) &&
     !allowMobile &&
     window.INVENTREE_SETTINGS.mobile_mode !== 'allow-always' &&
-    checkMobile();
+    legacySmallViewport;
 
   const View = isMobile ? MobileView : DesktopView;
 

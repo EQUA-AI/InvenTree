@@ -108,6 +108,11 @@ def preview(work_order, intent, action):
         raise ProposalError("The note changed. Read and accept its latest revision.")
     if action == "closeout.handoff" and capture.accepted_revision_id != latest.pk:
         raise ProposalError("Accept the exact note before requesting handoff.")
+    if intent.get("auditory_review_id"):
+        from ai.core.decisions.adapters.capture_review import require_complete
+
+        reviewed = require_complete(intent["auditory_review_id"], capture, latest)
+        base["auditory_review_id"] = str(reviewed.pk)
     return {
         **base,
         "capture_id": str(capture.pk),
@@ -383,20 +388,20 @@ def begin(coordinator, content, *, actor, session_id, thread_id, nonce):
             if latest is None:
                 raise ProposalError("Dictate a note before requesting review.")
             if command_text.lower().startswith("read the whole note"):
-                # Exact bounded chunks: concatenating their text yields the original
-                # note, without summarization, unit conversion or omitted words.
-                pieces = re.findall(r".{1,900}(?:\s+|$)|\S{1,900}", latest.full_text, re.S)
-                page = int(command[5] or 1)
-                if not 1 <= page <= len(pieces):
-                    raise ProposalError("That note page is unavailable.")
-                suffix = (
-                    f" Say read the whole note page {page + 1} for the next page."
-                    if page < len(pieces)
-                    else " End of note."
+                from ai.core.decisions.adapters.capture_review import present
+
+                return present(
+                    coordinator,
+                    capture=capture,
+                    revision=latest,
+                    page=int(command[5] or 1),
+                    actor=actor,
+                    nonce=nonce,
+                    expected=coordinator.store.read(thread_id),
                 )
-                return DecisionReply(
-                    f"Note revision {latest.revision}, page {page} of {len(pieces)}. {pieces[page - 1]}{suffix}"
-                )
+            from ai.core.decisions.adapters.capture_review import available
+
+            reviewed = available(capture, latest)
             intent = WorkOrderIntent(
                 str(work_order.pk),
                 "",
@@ -408,6 +413,7 @@ def begin(coordinator, content, *, actor, session_id, thread_id, nonce):
                     "capture_id": str(capture.pk),
                     "revision_id": str(latest.pk),
                     "content_hash": latest.content_hash,
+                    **({"auditory_review_id": str(reviewed.pk)} if reviewed else {}),
                 },
             )
     return coordinator.present(

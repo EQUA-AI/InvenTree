@@ -136,3 +136,124 @@ test('guided steps use the active session and only request completion review', a
   expect(voice.decisionActions).toHaveLength(0);
   await page.getByTestId('voice-end').click();
 });
+
+test('pilot phone defaults to voice and preserves one session across escape and resize', async ({
+  page
+}) => {
+  const voice = await installVoiceMocks(page, {
+    capability: { ...defaultCapability, foreground_session: true }
+  });
+  await page.addInitScript(() => {
+    (window as any).INVENTREE_SETTINGS = { voice_phone_short_edge_px: 600 };
+    Object.defineProperty(navigator, 'maxTouchPoints', {
+      value: 5,
+      configurable: true
+    });
+    Object.defineProperty(window.screen, 'width', {
+      value: 393,
+      configurable: true
+    });
+    Object.defineProperty(window.screen, 'height', {
+      value: 851,
+      configurable: true
+    });
+    const matchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query) =>
+      query === '(pointer: coarse)'
+        ? ({ ...matchMedia(query), matches: true } as MediaQueryList)
+        : matchMedia(query);
+  });
+  await page.goto('/playwright/voice-mobile.html?pilot');
+  await expect(page.getByTestId('voice-mobile-page')).toBeVisible();
+  await startVoice(page);
+  for (const viewport of [
+    { width: 851, height: 393 },
+    { width: 393, height: 320 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
+    expect((await readMockState(page)).trackStopped).toBe(false);
+  }
+  await page
+    .getByRole('link', { name: 'Open full app (not optimized for phones)' })
+    .click();
+  await expect(page.getByText('Full app fixture')).toBeVisible();
+  await page.getByRole('link', { name: 'Back to voice', exact: true }).click();
+  await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
+  expect(voice.sessionCreates).toHaveLength(1);
+  await page.getByRole('link', { name: 'Log out' }).click();
+  await expect(
+    page.getByText('Signed out. Full app preference: false')
+  ).toBeVisible();
+});
+
+test('pilot tablet remains in full app even with a short keyboard viewport', async ({
+  page
+}) => {
+  await installVoiceMocks(page);
+  await page.addInitScript(() => {
+    (window as any).INVENTREE_SETTINGS = { voice_phone_short_edge_px: 600 };
+    Object.defineProperty(navigator, 'maxTouchPoints', {
+      value: 5,
+      configurable: true
+    });
+    Object.defineProperty(window.screen, 'width', {
+      value: 768,
+      configurable: true
+    });
+    Object.defineProperty(window.screen, 'height', {
+      value: 1024,
+      configurable: true
+    });
+  });
+  await page.goto('/playwright/voice-mobile.html?pilot');
+  await page.setViewportSize({ width: 768, height: 300 });
+  await expect(page.getByText('Full app fixture')).toBeVisible();
+  await expect(page.getByTestId('voice-mobile-page')).toHaveCount(0);
+});
+
+test('network estimates keep listening; actual interface handoff pauses without resending', async ({
+  page
+}) => {
+  const voice = await installVoiceMocks(page, {
+    capability: { ...defaultCapability, foreground_session: true }
+  });
+  const suspends: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().endsWith('/suspend')) suspends.push(request.url());
+  });
+  await page.addInitScript(() => {
+    const connection = Object.assign(new EventTarget(), {
+      type: 'wifi',
+      effectiveType: '4g',
+      rtt: 20,
+      downlink: 10
+    });
+    Object.defineProperty(navigator, 'connection', {
+      value: connection,
+      configurable: true
+    });
+  });
+  await page.goto('/playwright/voice-mobile.html');
+  await startVoice(page);
+  await page.evaluate(() => {
+    const connection = (navigator as any).connection;
+    Object.assign(connection, { effectiveType: '3g', rtt: 400, downlink: 0.5 });
+    connection.dispatchEvent(new Event('change'));
+  });
+  await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
+  expect((await readMockState(page)).trackEnabled).toBe(true);
+  expect(suspends).toHaveLength(0);
+  await page.evaluate(() => {
+    const connection = (navigator as any).connection;
+    connection.type = 'cellular';
+    connection.dispatchEvent(new Event('change'));
+  });
+  await expect
+    .poll(async () => (await readMockState(page)).trackEnabled)
+    .toBe(false);
+  await expect.poll(() => suspends.length).toBeGreaterThan(0);
+  expect(voice.turns).toHaveLength(0);
+  expect(voice.sessionCreates).toHaveLength(1);
+  await page.getByTestId('voice-end').click();
+});

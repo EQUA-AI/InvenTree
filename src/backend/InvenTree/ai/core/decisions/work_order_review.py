@@ -82,9 +82,24 @@ def review(action, preview, spoken_label):
     )
     phrase = preview.get("confirm_phrase") or None
     instruction = f"Say {phrase} to proceed" if phrase else "Say yes to proceed"
+    # The consent preview retains the disclosure as a warning for screen/audit
+    # consumers. Read the identical text once, without omitting any disclosure.
+    spoken_sections = [
+        section
+        for section in sections
+        if not (
+            action == "closeout.consent"
+            and section["id"] == "warning"
+            and preview.get("warning") == preview.get("disclosure")
+        )
+    ]
     spoken = (
         f"{VERBS[action]} {spoken_label}. "
-        + " ".join(f"{section['label']}: {section['text']}." for section in sections)
+        + " ".join(
+            f"{section['label']}: {section['text']}"
+            + ("" if section["text"].endswith((".", "!", "?")) else ".")
+            for section in spoken_sections
+        )
         + f" {instruction}, change that to correct it, or no to set it aside."
     )
     return spoken, sections, phrase

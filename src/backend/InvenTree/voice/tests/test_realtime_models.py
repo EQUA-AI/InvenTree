@@ -11,6 +11,7 @@ from django.test import TestCase, TransactionTestCase, tag
 from django.utils import timezone
 
 from voice.models import (
+    VoiceCaptureReview,
     VoiceSession,
     VoiceSessionState,
     VoiceTransport,
@@ -134,7 +135,12 @@ class RealtimeModelConstraintTests(TestCase):
 
     def test_no_model_carries_signaling_or_audio_fields(self):
         """The redaction contract is structural: the columns cannot exist."""
-        for model in (VoiceSession, VoiceTransportAttempt, VoiceUtterance):
+        for model in (
+            VoiceSession,
+            VoiceTransportAttempt,
+            VoiceUtterance,
+            VoiceCaptureReview,
+        ):
             for field in model._meta.get_fields():
                 name = field.name.lower()
                 if model is VoiceSession and name == 'voice':

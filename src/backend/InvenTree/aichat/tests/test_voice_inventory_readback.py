@@ -90,6 +90,14 @@ class VoiceInventoryJourneyTests(WorkOrderVoiceFixture, TestCase):
         result = read_stock(self.actor, {'part_name': 'E-LIVE'})
         self.assertEqual(result.count('Stock item'), 5)
         self.assertIn('page 2', result)
+        from ai.core.turn.responses import _plain_spoken_text
+        from ai.core.voice.presentation import chunks
+
+        pages = chunks(_plain_spoken_text(result), layout=result)
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(pages[0].count('Stock item'), 3)
+        self.assertEqual(pages[1].count('Stock item'), 2)
+        self.assertEqual(pages[0].count('Inventory page 1.'), 1)
         self.assertEqual(
             read_stock(self.actor, {'part_name': 'E-LIVE', 'page': '2'}).count(
                 'Stock item'

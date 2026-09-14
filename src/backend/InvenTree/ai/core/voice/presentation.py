@@ -14,6 +14,7 @@ _CRITICAL = re.compile(
     re.I,
 )
 _CAUTION = re.compile(_CRITICAL.pattern.removesuffix("|\\d"), re.I)
+_MISSING_FIELD = re.compile(r"\b(?:serial|location|IPN)\s*:?\s+not set\b", re.I)
 
 
 def chunks(text: str, *, layout: str = "", safety_boundary: str = "") -> list[str]:
@@ -40,7 +41,10 @@ def chunks(text: str, *, layout: str = "", safety_boundary: str = "") -> list[st
     else:
         intro, records = "", re.split(r"(?<=[.!?])\s+", text)
     critical = (
-        [intro, *(record for record in records if _CAUTION.search(record))]
+        [
+            intro,
+            *(record for record in records if _CAUTION.search(_MISSING_FIELD.sub("", record))),
+        ]
         if is_list
         else [part for part in re.split(r"(?<=[.!?])\s+|\n", text) if _CRITICAL.search(part)]
     )
@@ -52,10 +56,10 @@ def chunks(text: str, *, layout: str = "", safety_boundary: str = "") -> list[st
         warnings = [part for part in critical if part]
         if isinstance(safety_boundary, str) and safety_boundary and safety_boundary in text:
             warnings.append(safety_boundary)
-        prefix = " ".join(part for part in warnings if part not in page)
-        page = " ".join(part for part in (prefix, page) if part)
         if index == 0 and is_list:
             page = f"{intro} {len(records)} items. {page}".strip()
+        prefix = " ".join(dict.fromkeys(part for part in warnings if part not in page))
+        page = " ".join(part for part in (prefix, page) if part)
         if index + 3 < len(records):
             page += " Say next three for more, or repeat."
         pages.append(page)

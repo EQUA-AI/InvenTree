@@ -154,9 +154,9 @@ def read_stock(actor, parameters):
     if not rows:
         return f"{label}. No visible stock records on page {page}."
     lines = [f"{label}. Inventory page {page}."]
-    for item in rows[:5]:
+    for index, item in enumerate(rows[:5], start=1):
         lines.append(
-            f"Stock item {item.pk}: {item.quantity} {part.units or 'each'}; "
+            f"{index}. Stock item {item.pk}: {item.quantity} {part.units or 'each'}; "
             f"location {item.location.pathstring if item.location else 'not set'}; "
             f"serial {item.serial or 'not set'}."
         )
@@ -164,7 +164,9 @@ def read_stock(actor, parameters):
         lines.append(
             f"More records are available. Say stock of part {part.IPN or part.name} page {page + 1}."
         )
-    return " ".join(lines)
+    # Preserve record boundaries through canonical speech validation. Otherwise
+    # the prose chunker treats numeric identifiers as cross-page qualifiers.
+    return "\n".join(lines)
 
 
 async def pending_selection(service, run, coordinator, arguments):

@@ -1451,7 +1451,7 @@ msgid "Completed"
 msgstr "Completed"
 
 #: src/components/ai/VoiceDecisionCard.tsx:136
-#: src/components/ai/voice/VoiceProcedureControls.tsx:106
+#: src/components/ai/voice/VoiceProcedureControls.tsx:109
 #: src/tables/settings/EmailTable.tsx:29
 msgid "Failed"
 msgstr "Failed"
@@ -1614,6 +1614,12 @@ msgstr "Confirm:"
 #: src/components/ai/VoiceTranscript.tsx:114
 msgid "Hearing…"
 msgstr "Hearing…"
+
+#: src/components/ai/voice/PhoneVoiceRouting.tsx:35
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:82
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:89
+msgid "Back to voice"
+msgstr "Back to voice"
 
 #: src/components/ai/voice/PushToTalkButton.tsx:66
 msgid "Listening — release to finish"
@@ -1850,11 +1856,6 @@ msgstr "Voice microphone paused"
 msgid "Voice ended"
 msgstr "Voice ended"
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:82
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:89
-msgid "Back to voice"
-msgstr "Back to voice"
-
 #: src/components/ai/voice/VoiceGlobalIndicator.tsx:103
 msgid "Open hands-free voice"
 msgstr "Open hands-free voice"
@@ -1903,40 +1904,40 @@ msgstr "Guided procedure"
 msgid "Work order ID"
 msgstr "Work order ID"
 
-#: src/components/ai/voice/VoiceProcedureControls.tsx:77
+#: src/components/ai/voice/VoiceProcedureControls.tsx:78
 msgid "Read step"
 msgstr "Read step"
 
-#: src/components/ai/voice/VoiceProcedureControls.tsx:82
+#: src/components/ai/voice/VoiceProcedureControls.tsx:83
 msgid "Previous step"
 msgstr "Previous step"
 
-#: src/components/ai/voice/VoiceProcedureControls.tsx:87
+#: src/components/ai/voice/VoiceProcedureControls.tsx:88
 msgid "Next step"
 msgstr "Next step"
 
-#: src/components/ai/voice/VoiceProcedureControls.tsx:95
+#: src/components/ai/voice/VoiceProcedureControls.tsx:96
 msgid "Measured value (literal units)"
 msgstr "Measured value (literal units)"
 
-#: src/components/ai/voice/VoiceProcedureControls.tsx:100
+#: src/components/ai/voice/VoiceProcedureControls.tsx:102
 msgid "Step result"
 msgstr "Step result"
 
-#: src/components/ai/voice/VoiceProcedureControls.tsx:104
+#: src/components/ai/voice/VoiceProcedureControls.tsx:107
 msgid "Not supplied"
 msgstr "Not supplied"
 
-#: src/components/ai/voice/VoiceProcedureControls.tsx:105
+#: src/components/ai/voice/VoiceProcedureControls.tsx:108
 #: src/tables/stock/StockItemTestResultTable.tsx:413
 msgid "Passed"
 msgstr "Passed"
 
-#: src/components/ai/voice/VoiceProcedureControls.tsx:113
+#: src/components/ai/voice/VoiceProcedureControls.tsx:116
 msgid "Review step completion"
 msgstr "Review step completion"
 
-#: src/components/ai/voice/VoiceProcedureControls.tsx:114
+#: src/components/ai/voice/VoiceProcedureControls.tsx:117
 msgid "This only requests a read-back. Confirm the shared decision separately."
 msgstr "This only requests a read-back. Confirm the shared decision separately."
 

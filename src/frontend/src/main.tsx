@@ -37,6 +37,7 @@ declare global {
       sentry_dsn?: string;
       environment?: string;
       mobile_mode?: 'default' | 'allow-ignore' | 'allow-always';
+      voice_phone_short_edge_px?: number;
     };
     react: typeof React;
     React: typeof React;

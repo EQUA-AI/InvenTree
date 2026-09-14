@@ -12,6 +12,7 @@ import {
   Routes,
   useLocation
 } from 'react-router-dom';
+import { PhoneVoiceRouting } from '../src/components/ai/voice/PhoneVoiceRouting';
 import { messages } from '../src/locales/en/messages';
 import { useLocalState } from '../src/states/LocalState';
 import { useUserState } from '../src/states/UserState';
@@ -22,7 +23,7 @@ i18n.load('en', messages);
 i18n.activate('en');
 useLocalState.setState({
   getHost: () => window.location.origin,
-  allowMobile: true
+  allowMobile: !window.location.search.includes('pilot')
 });
 if (!window.location.search.includes('signed_out')) {
   useUserState.setState({
@@ -52,23 +53,29 @@ createRoot(document.getElementById('root')!).render(
     <I18nProvider i18n={i18n}>
       <MantineProvider>
         <QueryClientProvider client={client}>
-          <MemoryRouter initialEntries={['/voice']}>
-            <Routes>
-              <Route path='/voice' element={<VoiceMobileAppView />} />
-              <Route
-                path='/'
-                element={
-                  <Stack>
-                    <Text>Full app fixture</Text>
-                    <Button component={Link} to='/voice'>
-                      Return to voice fixture
-                    </Button>
-                  </Stack>
-                }
-              />
-              <Route path='/logout' element={<LoggedOut />} />
-              <Route path='/logged-in' element={<SignIn />} />
-            </Routes>
+          <MemoryRouter
+            initialEntries={[
+              window.location.search.includes('pilot') ? '/' : '/voice'
+            ]}
+          >
+            <PhoneVoiceRouting>
+              <Routes>
+                <Route path='/voice' element={<VoiceMobileAppView />} />
+                <Route
+                  path='/'
+                  element={
+                    <Stack>
+                      <Text>Full app fixture</Text>
+                      <Button component={Link} to='/voice'>
+                        Return to voice fixture
+                      </Button>
+                    </Stack>
+                  }
+                />
+                <Route path='/logout' element={<LoggedOut />} />
+                <Route path='/logged-in' element={<SignIn />} />
+              </Routes>
+            </PhoneVoiceRouting>
           </MemoryRouter>
         </QueryClientProvider>
       </MantineProvider>
