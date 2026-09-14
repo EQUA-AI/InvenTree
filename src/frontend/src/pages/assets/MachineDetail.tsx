@@ -30,6 +30,7 @@ import { MaintenanceRecordTable } from '../../tables/assets/MaintenanceRecordTab
 import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateModal';
 import { StartRepairModal } from './StartRepairModal';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
+import PumphouseMimic from './health/PumphouseMimic';
 
 export default function MachineDetail() {
   const { id } = useParams();
@@ -130,6 +131,18 @@ export default function MachineDetail() {
           </ItemDetailsGrid>
         ) : null
       },
+      ...(machine?.asset_type === 'pumphouse'
+        ? [
+            {
+              name: 'mimic',
+              label: t`Pumphouse mimic`,
+              icon: <IconActivityHeartbeat />,
+              content: (
+                <PumphouseMimic key={machine.pk} stationId={machine.pk} />
+              )
+            }
+          ]
+        : []),
       {
         // Health sits immediately after Details: an operator opening a machine
         // asks how it is doing before asking what it is made of.

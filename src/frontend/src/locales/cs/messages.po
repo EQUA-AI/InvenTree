@@ -143,6 +143,7 @@ msgstr "Selhání"
 #: lib/components/YesNoButton.tsx:43
 #: src/components/tables/Filter.tsx:41
 #: src/components/tables/Filter.tsx:77
+#: src/pages/assets/health/PumphouseMimic.tsx:109
 #: src/tables/assets/AssetMachineTable.tsx:49
 msgid "Yes"
 msgstr "Ano"
@@ -150,6 +151,7 @@ msgstr "Ano"
 #: lib/components/YesNoButton.tsx:44
 #: src/components/tables/Filter.tsx:41
 #: src/components/tables/Filter.tsx:78
+#: src/pages/assets/health/PumphouseMimic.tsx:109
 #: src/tables/assets/AssetMachineTable.tsx:49
 msgid "No"
 msgstr "Ne"
@@ -707,7 +709,7 @@ msgstr "Zařízení"
 #: src/pages/Index/Settings/AdminCenter/Index.tsx:261
 #: src/pages/Index/Settings/AdminCenter/MachineManagementPanel.tsx:52
 #: src/pages/assets/EquipmentRegistry.tsx:368
-#: src/pages/assets/MachineDetail.tsx:171
+#: src/pages/assets/MachineDetail.tsx:184
 #: src/pages/assets/MachineIndex.tsx:21
 #: src/pages/assets/MachineIndex.tsx:30
 #: src/tables/machine/MachineTypeTable.tsx:326
@@ -857,7 +859,7 @@ msgstr "Předměty"
 
 #: src/components/ai/HITLApprovalModal.tsx:203
 #: src/components/render/Part.tsx:78
-#: src/pages/assets/MachineDetail.tsx:119
+#: src/pages/assets/MachineDetail.tsx:120
 #: src/tables/assets/MaintenanceRecordTable.tsx:165
 #: src/tables/stock/StockTrackingTable.tsx:273
 msgid "Details"
@@ -2295,7 +2297,7 @@ msgstr "Server"
 #: src/components/forms/InstanceOptions.tsx:125
 #: src/components/plugins/PluginDrawer.tsx:68
 #: src/pages/Index/Settings/AdminCenter/UnitManagementPanel.tsx:19
-#: src/pages/assets/MachineDetail.tsx:52
+#: src/pages/assets/MachineDetail.tsx:53
 #: src/pages/maintenance/MaintenanceBoard.tsx:2097
 #: src/pages/part/PartCategoryDetailsPanel.tsx:22
 #: src/pages/part/PartDetailsPanel.tsx:79
@@ -2411,6 +2413,7 @@ msgid "Stopped"
 msgstr "Zastaveno"
 
 #: src/components/forms/InstanceOptions.tsx:151
+#: src/pages/assets/health/PumphouseMimic.tsx:97
 msgid "Running"
 msgstr "Spuštěno"
 
@@ -3244,6 +3247,10 @@ msgstr "Email není nakonfigurován."
 
 #: src/components/nav/AIChatDrawer.tsx:116
 #: src/pages/assets/health/AnomalyList.tsx:165
+#: src/pages/assets/health/PumphouseMimic.tsx:102
+#: src/pages/assets/health/PumphouseMimic.tsx:104
+#: src/pages/assets/health/PumphouseMimic.tsx:230
+#: src/pages/assets/health/PumphouseMimic.tsx:237
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
 msgid "Unknown"
@@ -3303,6 +3310,7 @@ msgstr ""
 #: src/components/riskradar/RiskRadarPanel.tsx:353
 #: src/pages/assets/StationLiveSource.tsx:116
 #: src/pages/assets/health/MachineHealthPanel.tsx:190
+#: src/pages/assets/health/PumphouseMimic.tsx:287
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
 #: src/pages/repair/components/safety/SafetyPanel.tsx:110
 msgid "Refresh"
@@ -3683,7 +3691,7 @@ msgstr "Prodej"
 
 #: src/components/nav/NavigationDrawer.tsx:105
 #: src/defaults/links.tsx:85
-#: src/pages/assets/MachineDetail.tsx:153
+#: src/pages/assets/MachineDetail.tsx:166
 #: src/pages/maintenance/MaintenanceIndex.tsx:73
 msgid "Maintenance"
 msgstr ""
@@ -3867,7 +3875,7 @@ msgstr "Informace o pluginu"
 
 #: src/components/plugins/PluginDrawer.tsx:73
 #: src/components/tables/ColumnRenderers.tsx:495
-#: src/pages/assets/MachineDetail.tsx:97
+#: src/pages/assets/MachineDetail.tsx:98
 #: src/pages/build/BuildOrderDetailsPanel.tsx:96
 #: src/pages/company/CompanyDetailsPanel.tsx:29
 #: src/pages/company/ManufacturerPartDetailsPanel.tsx:46
@@ -3903,7 +3911,7 @@ msgstr "Datum"
 
 #: src/components/plugins/PluginDrawer.tsx:93
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:68
-#: src/pages/assets/MachineDetail.tsx:57
+#: src/pages/assets/MachineDetail.tsx:58
 #: src/pages/core/UserDetail.tsx:76
 #: src/pages/core/UserDetail.tsx:206
 #: src/pages/part/PartDetailsPanel.tsx:244
@@ -4144,7 +4152,7 @@ msgstr "Kategorie"
 #: src/forms/StockForms.tsx:1844
 #: src/forms/StockForms.tsx:1888
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:88
-#: src/pages/assets/MachineDetail.tsx:62
+#: src/pages/assets/MachineDetail.tsx:63
 #: src/pages/core/UserDetail.tsx:153
 #: src/pages/stock/StockDetailsPanel.tsx:237
 #: src/tables/assets/AssetMachineTable.tsx:27
@@ -4154,7 +4162,7 @@ msgstr "Lokace"
 
 #: src/components/render/Stock.tsx:94
 #: src/forms/StockForms.tsx:679
-#: src/pages/assets/MachineDetail.tsx:84
+#: src/pages/assets/MachineDetail.tsx:85
 #: src/pages/stock/StockDetail.tsx:657
 #: src/pages/stock/StockDetailsPanel.tsx:135
 #: src/tables/build/BuildOutputTable.tsx:109
@@ -4217,6 +4225,7 @@ msgid "Batch"
 msgstr "Dávka"
 
 #: src/components/riskradar/RiskRadarCommon.tsx:316
+#: src/pages/assets/health/PumphouseMimic.tsx:232
 #: src/pages/assets/health/common.tsx:55
 #: src/pages/assets/health/common.tsx:78
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:438
@@ -4362,6 +4371,7 @@ msgstr "Nastavení"
 #: src/components/settings/ConfigValueList.tsx:39
 #: src/pages/assets/StationLiveSource.tsx:133
 #: src/pages/assets/health/HealthSourceStatus.tsx:33
+#: src/pages/assets/health/PumphouseMimic.tsx:316
 #: src/pages/assets/health/SignalTable.tsx:67
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:78
 #: src/pages/repair/components/InvestigationPanel.tsx:95
@@ -5006,7 +5016,7 @@ msgid "Filter by user"
 msgstr "Filter by user"
 
 #: src/components/tables/Filter.tsx:454
-#: src/pages/assets/MachineDetail.tsx:74
+#: src/pages/assets/MachineDetail.tsx:75
 #: src/pages/company/CompanyDetailsPanel.tsx:78
 #: src/pages/company/ManufacturerDetail.tsx:8
 #: src/pages/company/ManufacturerPartDetail.tsx:189
@@ -5084,6 +5094,7 @@ msgstr "Odstranit filtr"
 #: src/components/tables/FilterSelectDrawer.tsx:249
 #: src/components/tables/FilterSelectDrawer.tsx:276
 #: src/components/tables/FilterSelectDrawer.tsx:290
+#: src/pages/assets/health/PumphouseMimic.tsx:191
 #: src/pages/assets/health/SignalTable.tsx:62
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:77
 #: src/pages/part/PartStockHistoryDetail.tsx:67
@@ -9469,35 +9480,39 @@ msgstr ""
 msgid "Save review"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:79
+#: src/pages/assets/MachineDetail.tsx:80
 #: src/tables/assets/AssetMachineTable.tsx:37
 #: src/tables/general/BarcodeScanTable.tsx:52
 msgid "Model"
 msgstr "Model"
 
-#: src/pages/assets/MachineDetail.tsx:137
+#: src/pages/assets/MachineDetail.tsx:138
+msgid "Pumphouse mimic"
+msgstr ""
+
+#: src/pages/assets/MachineDetail.tsx:150
 msgid "Health"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:145
+#: src/pages/assets/MachineDetail.tsx:158
 msgid "Installed Parts"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:170
+#: src/pages/assets/MachineDetail.tsx:183
 #: src/tables/machine/MachineListTable.tsx:766
 msgid "Machine Detail"
 msgstr "Detail zařízení"
 
-#: src/pages/assets/MachineDetail.tsx:190
+#: src/pages/assets/MachineDetail.tsx:203
 msgid "Ask about this machine"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:200
+#: src/pages/assets/MachineDetail.tsx:213
 #: src/pages/assets/health/AnomalyList.tsx:140
 msgid "Create repair"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:211
+#: src/pages/assets/MachineDetail.tsx:224
 #: src/pages/assets/StartRepairModal.tsx:131
 #: src/pages/assets/StartRepairModal.tsx:203
 msgid "Start repair"
@@ -9594,10 +9609,12 @@ msgid "Unbound"
 msgstr ""
 
 #: src/pages/assets/StationLiveSource.tsx:158
+#: src/pages/assets/health/PumphouseMimic.tsx:319
 msgid "Last poll"
 msgstr ""
 
 #: src/pages/assets/StationLiveSource.tsx:161
+#: src/pages/assets/health/PumphouseMimic.tsx:322
 msgid "Not polled yet"
 msgstr ""
 
@@ -9719,6 +9736,7 @@ msgid "{0} min"
 msgstr ""
 
 #: src/pages/assets/health/HealthSummary.tsx:39
+#: src/pages/assets/health/PumphouseMimic.tsx:194
 msgid "Condition"
 msgstr ""
 
@@ -9938,6 +9956,244 @@ msgstr ""
 msgid "{0} signal(s) of poor quality"
 msgstr ""
 
+#: src/pages/assets/health/PumphouseMimic.tsx:78
+msgid "Polling disabled"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:79
+#: src/pages/assets/health/PumphouseMimic.tsx:101
+#: src/pages/assets/health/PumphouseMimic.tsx:316
+msgid "Not bound"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:80
+msgid "Not approved"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:81
+#: src/pages/assets/health/PumphouseMimic.tsx:218
+#: src/pages/assets/health/common.tsx:184
+msgid "No reading"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:82
+#: src/pages/assets/health/PumphouseMimic.tsx:100
+#: src/pages/assets/health/common.tsx:193
+#: src/pages/stock/StockDetail.tsx:694
+#: src/tables/stock/StockItemTable.tsx:279
+msgid "Stale"
+msgstr "Zastaralé"
+
+#: src/pages/assets/health/PumphouseMimic.tsx:83
+msgid "Unusable quality"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:84
+msgid "Source clock is ahead"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:85
+msgid "Mapping changed"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:86
+msgid "Unexpected value type"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:87
+#: src/pages/assets/health/PumphouseMimic.tsx:389
+msgid "Inactive equipment"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:88
+msgid "Missing contributors"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:89
+msgid "Unit needs review"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:90
+msgid "Incompatible units"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:92
+#: src/pages/assets/health/PumphouseMimic.tsx:108
+#: src/pages/assets/health/PumphouseMimic.tsx:341
+#: src/pages/stock/StockDetail.tsx:706
+msgid "Unavailable"
+msgstr "Není k dispozici"
+
+#: src/pages/assets/health/PumphouseMimic.tsx:98
+msgid "Idle"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:99
+#: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:64
+#: src/pages/repair/RepairPacketDetail.tsx:184
+#: src/pages/tasks/workorders/WorkOrderDetail.tsx:471
+msgid "Fault"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:115
+msgid "Forebay level"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:116
+msgid "Station status"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:117
+msgid "Pump status"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:118
+msgid "Input power"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:119
+msgid "Discharge flow"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:132
+msgid "Pump unit schematic"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:132
+msgid "Station schematic"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:190
+#: src/pages/assets/health/SignalTable.tsx:61
+msgid "Signal"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:192
+#: src/pages/assets/health/SignalTable.tsx:66
+msgid "Quality"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:193
+msgid "Observed at"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:213
+#: src/pages/assets/health/common.tsx:127
+msgid "Good"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:213
+msgid "Unusable or unknown"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:221
+msgid "Age at response"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:222
+msgid "seconds"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:228
+msgid "No threshold configured"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:234
+#: src/pages/assets/health/common.tsx:49
+#: src/pages/assets/health/common.tsx:84
+msgid "Warning"
+msgstr "Warning"
+
+#: src/pages/assets/health/PumphouseMimic.tsx:236
+#: src/pages/assets/health/common.tsx:43
+msgid "Normal"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:275
+msgid "Other reviewed points"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:282
+msgid "Pumphouse overview"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:291
+msgid "Live readings are unavailable. Refresh to retry; cached values are hidden."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:296
+#: src/pages/assets/health/PumphouseMimic.tsx:409
+msgid "Overview only"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:304
+msgid "This schematic awaits plant review. Missing mappings are shown as unavailable."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:307
+msgid "Polling is disabled for this station. Live values are unavailable."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:311
+msgid "Last station polling error"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:325
+msgid "Response time"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:334
+msgid "Plant power"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:336
+msgid "Plant flow"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:345
+msgid "Derived total"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:345
+msgid "Source measurement"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:396
+msgid "No pump slots are registered for this station."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:398
+msgid "Station readings"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:404
+msgid "Pump unit"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:413
+msgid "Filter unit readings"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:424
+msgid "No matching readings."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:428
+msgid "Select a pump bay to view its instruments and readings."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:430
+msgid "Threshold alarms"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:434
+msgid "No active alarms from configured thresholds."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:438
+msgid "Points without configured thresholds"
+msgstr ""
+
 #. placeholder {0}: warn_min ?? '−∞'
 #. placeholder {1}: warn_max ?? '∞'
 #: src/pages/assets/health/SignalTable.tsx:29
@@ -9954,10 +10210,6 @@ msgstr ""
 msgid "No signals are mapped for this machine."
 msgstr ""
 
-#: src/pages/assets/health/SignalTable.tsx:61
-msgid "Signal"
-msgstr ""
-
 #: src/pages/assets/health/SignalTable.tsx:64
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:79
 #: src/pages/repair/components/InvestigationPanel.tsx:96
@@ -9966,10 +10218,6 @@ msgstr ""
 
 #: src/pages/assets/health/SignalTable.tsx:65
 msgid "Trend"
-msgstr ""
-
-#: src/pages/assets/health/SignalTable.tsx:66
-msgid "Quality"
 msgstr ""
 
 #: src/pages/assets/health/SignalTable.tsx:68
@@ -10007,21 +10255,8 @@ msgstr ""
 msgid "(trimmed)"
 msgstr ""
 
-#: src/pages/assets/health/common.tsx:43
-msgid "Normal"
-msgstr ""
-
-#: src/pages/assets/health/common.tsx:49
-#: src/pages/assets/health/common.tsx:84
-msgid "Warning"
-msgstr "Warning"
-
 #: src/pages/assets/health/common.tsx:61
 msgid "Offline"
-msgstr ""
-
-#: src/pages/assets/health/common.tsx:127
-msgid "Good"
 msgstr ""
 
 #: src/pages/assets/health/common.tsx:129
@@ -10075,16 +10310,6 @@ msgstr ""
 #: src/pages/assets/health/common.tsx:148
 msgid "Manual"
 msgstr ""
-
-#: src/pages/assets/health/common.tsx:184
-msgid "No reading"
-msgstr ""
-
-#: src/pages/assets/health/common.tsx:193
-#: src/pages/stock/StockDetail.tsx:694
-#: src/tables/stock/StockItemTable.tsx:279
-msgid "Stale"
-msgstr "Zastaralé"
 
 #: src/pages/build/BuildDetail.tsx:66
 msgid "No Required Items"
@@ -11295,12 +11520,6 @@ msgstr ""
 #. placeholder {0}: packet.criticality
 #: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:54
 msgid "Criticality: {0}"
-msgstr ""
-
-#: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:64
-#: src/pages/repair/RepairPacketDetail.tsx:184
-#: src/pages/tasks/workorders/WorkOrderDetail.tsx:471
-msgid "Fault"
 msgstr ""
 
 #: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:83
@@ -13209,10 +13428,6 @@ msgstr "Převést tuto skladovou položku k jinému dílu"
 #: src/tables/stock/StockItemTable.tsx:273
 msgid "Expired"
 msgstr "Expirováno"
-
-#: src/pages/stock/StockDetail.tsx:706
-msgid "Unavailable"
-msgstr "Není k dispozici"
 
 #: src/pages/stock/StockDetail.tsx:762
 #~ msgid "Return Stock Item"

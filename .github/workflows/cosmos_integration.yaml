@@ -7,6 +7,10 @@ on:
       - 'src/backend/InvenTree/machine_health/**'
       - 'src/backend/requirements*'
       - 'contrib/cosmos/**'
+      - 'src/frontend/src/pages/assets/**'
+      - 'src/frontend/src/assets/mimic/**'
+      - 'src/frontend/tests/mimic/**'
+      - 'src/frontend/playwright.mimic.config.ts'
       - 'contrib/container/dev-docker-compose.yml'
       - '.github/workflows/cosmos_integration.yaml'
   pull_request:
@@ -15,6 +19,10 @@ on:
       - 'src/backend/InvenTree/machine_health/**'
       - 'src/backend/requirements*'
       - 'contrib/cosmos/**'
+      - 'src/frontend/src/pages/assets/**'
+      - 'src/frontend/src/assets/mimic/**'
+      - 'src/frontend/tests/mimic/**'
+      - 'src/frontend/playwright.mimic.config.ts'
       - 'contrib/container/dev-docker-compose.yml'
       - '.github/workflows/cosmos_integration.yaml'
   workflow_dispatch:
@@ -79,3 +87,27 @@ jobs:
       - name: Stop emulator
         if: always()
         run: docker rm -f iot-cosmos || true
+
+  mimic-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      node_version: '24'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          python: false
+          npm: true
+      - name: Install browser dependencies
+        working-directory: src/frontend
+        run: |
+          yarn install --frozen-lockfile
+          node node_modules/.bin/playwright install --with-deps chromium
+      - name: Check isolated mimic UI
+        working-directory: src/frontend
+        run: |
+          node node_modules/typescript/bin/tsc --noEmit
+          node node_modules/.bin/playwright test --config playwright.mimic.config.ts

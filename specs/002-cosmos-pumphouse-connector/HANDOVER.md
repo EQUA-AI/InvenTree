@@ -47,6 +47,14 @@ and disables its live binding. 27 review tests passed, including a 700-tag dicti
 The developer must still populate and approve the real full dictionaries; no readings or
 plant-specific mappings were fabricated.
 
+**T17 implementation complete:** the Pumphouse mimic tab is mounted on registered station
+pages. It renders overview/unit geometry, sparse selectable bays, reviewed point groups,
+source status, complete-input totals and actual threshold alarms. Stale/disabled/failed reads
+never display cached values as current; hidden panels pause polling. Three isolated Chromium
+checks passed (selection/pointer binding, stale/disabled, network failure/hidden view); TypeScript,
+Biome and Lingui extraction/compilation passed. The browser checks are included in CI and
+require no live backend. The provisional banner remains until the layout receives plant review.
+
 ## Implementation continuation — local `IoT` (2026-09-13)
 
 The worktree now starts from remote `IOT` commit `9576f17f39`; no commits from

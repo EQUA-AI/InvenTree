@@ -30,6 +30,7 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'name',
             'description',
             'active',
+            'asset_type',
             'location',
             'client',
             'manufacturer',
@@ -38,7 +39,7 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         )
-        read_only_fields = ('pk', 'created_at', 'updated_at')
+        read_only_fields = ('pk', 'created_at', 'updated_at', 'asset_type')
 
     def create(self, validated_data):
         """Ensure every machine created through the API carries a client."""
