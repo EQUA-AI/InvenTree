@@ -6,9 +6,15 @@
     "src/backend/InvenTree/ai/core/tests/test_decision_*.py",
     "src/backend/InvenTree/ai/core/tests/test_realtime_*.py",
     "src/backend/InvenTree/ai/core/tests/test_tracing_*.py",
+    "src/backend/InvenTree/ai/core/tests/test_flag_registry.py",
     "src/frontend/tests/pages/pui_voice_*.spec.ts"
   ],
   "suites": [
+    {
+      "runner": "pytest",
+      "path": "src/backend/InvenTree/ai/core/tests/test_flag_registry.py",
+      "label": "ai/core/tests/test_flag_registry.py"
+    },
     {
       "runner": "pytest",
       "path": "src/backend/InvenTree/ai/core/tests/test_approval_reference.py",

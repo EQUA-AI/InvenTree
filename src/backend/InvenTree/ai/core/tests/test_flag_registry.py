@@ -154,6 +154,11 @@ _COMPANION_ENV: dict[str, dict[str, object]] = {
         **_VOICE_COMPANIONS,
         "FEATURE_VOICE_LIVE": True,
     },
+    "FEATURE_VOICE_VALIDATION_METRICS": {
+        **_VOICE_COMPANIONS,
+        "FEATURE_VOICE_LIVE": True,
+        "FEATURE_VOICE_FOREGROUND_SESSION": True,
+    },
     "FEATURE_VOICE_LIVE_WEBRTC": {
         **_VOICE_COMPANIONS,
         "FEATURE_VOICE_LIVE": True,

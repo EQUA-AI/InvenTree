@@ -111,6 +111,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         'ai',
         ai_field='feature_voice_foreground_session',
     ),
+    FlagEntry(
+        'FEATURE_VOICE_VALIDATION_METRICS',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_voice_validation_metrics',
+        description='Content-free foreground timing observations; never execution authority',
+    ),
     # --- Django plane (the historic settings.py bridge, order preserved) ---
     FlagEntry(
         'AIMMS_WORK_ORDERS_ENABLED',
