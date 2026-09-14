@@ -196,10 +196,11 @@ checkpoints explicitly and create them at a defined initial position. See the co
 at the top of `HANDOVER.md` for lifecycle rules and budget limitations. The global flag
 remains off; this ticket does not enable live ingestion or apply production migrations.
 
-### 🔵 T10 — `import_pumphouse_dump` command · 3 h · *ready — needs no Azure access*
-- [ ] JSON rows → `flatten_snapshot` → `ingest_readings`, with `--dry-run`
-- [ ] Shares the T6 path exactly — no second normaliser
-**Acceptance**: the same file imported twice changes nothing the second time.
+### ✅ T10 — `import_pumphouse_dump` command · 3 h · completed
+- [x] Bounded JSON/Cassandra rows and seed-file envelopes → `flatten_snapshot` → `in_batches` → `ingest_readings`
+- [x] Explicit source and registered station; mixed-station files fail before writes
+- [x] Whole-file transaction, `--dry-run`, pure replays preserve state/source timestamps
+- [x] 37 importer/normalizer tests passed; no Azure calls or polling checkpoint changes
 
 ### 🔵 T11 — Registry → live bridge · 5 h · *next — pilot review completed*
 Closes the "mapping approval does not enable live ingestion" gap.

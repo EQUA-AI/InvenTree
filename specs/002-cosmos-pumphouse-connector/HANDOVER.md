@@ -52,7 +52,14 @@ test database with `--keepdb`. This includes the twelve-station failure/isolatio
 scoped history, lease recovery, deadline interruption, delayed documents and snapshot rollback.
 No real Cosmos or emulator integration was run here; that remains T13.
 
-**Next: T10 and T11.** T11 must create/link the checkpoint using both the registered station
+**T10 completed:** `import_pumphouse_dump <file> --station <local pk> --source <pk>`
+accepts Cosmos rows, Cassandra `data1` rows and the seed-file snapshot envelope. It validates
+explicit source/station identity, bounds files to 8 MiB / 2000 rows, uses `flatten_snapshot`
+and `in_batches`, and imports the entire file atomically. `--dry-run` rolls back all writes;
+pure replay also preserves source timestamps. The command never contacts Cosmos or moves
+polling checkpoints. Validation: 37 importer/normalizer tests passed; type checks passed.
+
+**Next: T11.** T11 must create/link the checkpoint using both the registered station
 and its source identity, choose an explicit initial read position, and create only approved
 bindings. Existing checkpoints receive a nullable station link in migration
 `0013_station_poll_progress`; there is deliberately no guess-based data backfill. Deactivation

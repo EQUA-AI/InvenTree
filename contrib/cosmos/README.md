@@ -316,3 +316,20 @@ Errors use fixed codes: `AUTH`, `NOT_FOUND`, `THROTTLED`, `NETWORK`, `CONFIG`, `
 `INGEST`. One station's failure does not mark the whole account failed. Every snapshot's
 batches and accepted checkpoint commit together, so a batch failure leaves no partial
 snapshot in the cache. Check `HANDOVER.md` for remaining activation and deployment work.
+
+## Offline dump import (T10)
+
+From the backend directory, run:
+
+```bash
+python manage.py import_pumphouse_dump /path/to/dump.json --station 17 --source 1 --dry-run
+python manage.py import_pumphouse_dump /path/to/dump.json --station 17 --source 1
+```
+
+IDs must name your local registered station and configured Cosmos source. Existing signal
+bindings determine which values are accepted; the command does not approve points or create
+bindings. It accepts Cosmos document arrays, Cassandra rows with `data1` objects/text, and
+this directory's `{station_uuid, snapshots}` sample envelope. Every row must identify the
+selected source station. Files are limited to 8 MiB and 2000 rows. The entire file commits
+or rolls back together; pure replays and dry runs leave database values unchanged. Cosmos
+is never contacted and the live polling checkpoint is never advanced by this command.
