@@ -591,7 +591,7 @@ async def get_bom(
             - optional: Whether the component is optional
             - consumable: Whether it's consumed during build
             - allow_variants: Whether variants can be substituted
-            - inherited: Whether inherited from template
+            - inherited: Whether this line applies to descendant assembly variants
             - validated: Whether validated for production
             - note: Notes about the BOM line
             - in_stock: Current stock (if include_stock=True)
@@ -630,6 +630,26 @@ async def get_bom(
 
     # Get BOM items
     bom_items = await provider.get_bom_items(part_id)
+
+    # Nested serializer part details repeat dozens of unrelated fields per
+    # line. Keep the documented tool contract flat so neighboring booleans
+    # (especially inherited and allow_variants) are not buried in that noise.
+    item_fields = (
+        "pk",
+        "part",
+        "sub_part",
+        "quantity",
+        "reference",
+        "optional",
+        "consumable",
+        "allow_variants",
+        "inherited",
+        "validated",
+        "note",
+        "sub_part_name",
+        "sub_part_ipn",
+    )
+    bom_items = [{key: row[key] for key in item_fields if key in row} for row in bom_items]
 
     # Filter inherited if requested
     if not include_inherited:
@@ -674,6 +694,10 @@ async def get_bom(
         "part_name": part.get("name"),
         "is_active": True,
         "items": bom_items,
+        "field_meanings": {
+            "allow_variants": "Component variants may substitute for this component",
+            "inherited": "This line applies to descendant assembly variants",
+        },
         "total_items": len(bom_items),
         "buildable_quantity": int(min_buildable) if min_buildable is not None else None,
     }

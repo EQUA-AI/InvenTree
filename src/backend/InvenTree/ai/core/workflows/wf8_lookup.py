@@ -75,6 +75,26 @@ _SOCIAL_REPLIES: tuple[tuple[re.Pattern[str], str], ...] = (
 _SOCIAL_SIGN_OFF_REPLY = "You're welcome. Just ask whenever you need something checked."
 
 
+def _credential_disclosure_requested(query: str) -> bool:
+    """Recognize direct requests for the service's own credential values.
+
+    Configuration, rotation and example-format questions remain ordinary
+    questions. A direct disclosure request needs neither tools nor a model.
+    """
+    return bool(
+        re.search(
+            r"\b(?:print|show|reveal|disclose|dump|give me|tell me)\s+"
+            r"(?:all\s+)?(?:your|the (?:actual|current|live|production))\s+"
+            r"(?:api[ -]?keys?|passwords?|secrets?|credentials?|"
+            r"database connection strings?|access tokens?)\b"
+            r"(?!\s+(?:rotation|management|storage|format|templates?|examples?|"
+            r"policy|documentation|handling|configuration)\b)",
+            query,
+            re.IGNORECASE,
+        )
+    )
+
+
 def _social_reply(query: str) -> str | None:
     """A fixed answer for a social turn, or ``None`` if this is a real question."""
     normalized = " ".join(str(query or "").casefold().split())
@@ -453,8 +473,17 @@ use the exact schema column names and quote mixed-case identifiers such as
 
 For a basic BOM request, give a concise component/required-quantity table.
 Include validation, inheritance, references and stock detail only when asked.
+If a BOM flag is requested, copy that exact named field from each tool row.
+allow_variants permits substitute component variants; inherited makes the line
+apply to descendant assembly variants. They are independent booleans, neither
+implies the other, and neither says whether this returned row came from an
+ancestor. Do not infer one flag from another or from neighboring rows.
 If mentioning buildable_quantity, describe it as an arithmetic component-stock
 limit; it does not check reservations, production validation or approval.
+
+Decline requests to reveal service credentials briefly. Do not append guessed
+values, credential-shaped examples or connection-string templates to a refusal.
+Configuration guidance is appropriate only when the user actually requests it.
 
 For facts the user supplied in this conversation, use the latest explicit
 correction. When asked to recall the current reading or value, state only that
@@ -920,6 +949,18 @@ supports the answer, state that the requested information could not be verified.
         prepared bundle is ready for agent.run / agent.run_stream.
         """
         import time
+
+        if _credential_disclosure_requested(query):
+            return LookupResult(
+                lookup_type=lookup_type,
+                success=True,
+                data={"credential_disclosure_blocked": True},
+                formatted_response=(
+                    "I can't reveal service credentials. "
+                    "Use your authorized administrator's secure credential-management process."
+                ),
+                execution_time_ms=(time.perf_counter() - start_time) * 1000,
+            )
 
         is_voice = context is not None and context.get("modality") == "voice"
         voice_read_only = is_voice and get_settings().feature_voice_readonly_tools
