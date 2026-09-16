@@ -1761,6 +1761,11 @@ def _ordered_pack_ids(
     ]
     candidates.sort(key=lambda pack_id: (-scores[pack_id], pack_id))
     selected = [primary, *candidates[:max_adjacent]]
+    # Stock and BOM tools take numeric part IDs. Even when the question says
+    # only a catalogue name or category, include the tools that resolve it.
+    # Otherwise the model must guess an ID or hand-write SQL for a basic read.
+    if primary in {"stock.read", "bom.read"} and "parts.read" not in selected:
+        selected.insert(1, "parts.read")
     # An explicit documentation request must never lose the single-tool
     # manuals pack to adjacency scoring. "What does the manual say about the
     # pump's repair boundaries" scores maintenance/machines above manuals, and

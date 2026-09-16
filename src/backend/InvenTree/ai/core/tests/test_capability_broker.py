@@ -339,14 +339,19 @@ def test_stock_superlative_selects_stock_and_analytics():
         authenticated=True,
     )
 
-    assert selected.pack_ids == ("stock.read", "analytics.read")
+    assert selected.pack_ids == ("stock.read", "parts.read", "analytics.read")
     assert selected.tool_ids == (
+        "search_parts",
+        "get_part",
         "check_low_stock",
+        "get_part_parameters",
+        "get_part_pricing",
         "get_stock_levels",
         "get_stock_quantity",
         "get_stock_item",
         "get_stock_at_location",
         "get_stock_locations",
+        "get_categories",
         "list_database_tables",
         "query_database",
     )
@@ -381,7 +386,7 @@ def test_selector_fails_closed_without_an_authenticated_principal():
         authenticated=False,
     )
 
-    assert selected.pack_ids == ("stock.read", "analytics.read")
+    assert selected.pack_ids == ("stock.read", "parts.read", "analytics.read")
     assert selected.tools == ()
     assert selected.tool_ids == ()
 
@@ -1724,3 +1729,13 @@ def test_sticky_eviction_drops_the_packs_at_the_tail_of_the_catalog_first(monkey
         assert max(position(p) for p in kept) < min(position(p) for p in dropped)
     # The sticky packs' own scores never outrank a named pack.
     assert selection.pack_ids[0] == baseline.pack_ids[0]
+
+
+@pytest.mark.parametrize(
+    "query", ["How many ABC-123 are on hand?", "Show the bill of materials for Control Cabinet."]
+)
+def test_stock_and_bom_resolve_names_without_sql(query):
+    selected = select_capabilities(query, profile=ALL_VIEW_PROFILE, authenticated=True)
+    assert "search_parts" in selected.tool_ids
+    assert "get_categories" in selected.tool_ids
+    assert len(selected.tool_ids) <= MAX_INITIAL_TOOLS

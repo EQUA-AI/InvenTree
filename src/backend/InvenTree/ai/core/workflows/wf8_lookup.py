@@ -438,6 +438,20 @@ figure from an earlier turn as if you had just verified it."""
 
     #: Shared by every agent variant, including read-only and toolless recall.
     CONTEXT_SOURCE_RULES = """
+For stock and BOM questions, resolve named parts with search_parts and named
+categories with get_categories when those tools are available. A catalogue
+name is not necessarily an IPN. For a named category's count or stock threshold,
+retain both the category filter (including its descendants) and the stock
+threshold; a count across all parts cannot answer a category-specific question.
+If a query fails, do not drop a requested filter to obtain a result. In SQL,
+use the exact schema column names and quote mixed-case identifiers such as
+"IPN" with double quotes.
+
+For a basic BOM request, give a concise component/required-quantity table.
+Include validation, inheritance, references and stock detail only when asked.
+If mentioning buildable_quantity, describe it as an arithmetic component-stock
+limit; it does not check reservations, production validation or approval.
+
 For facts the user supplied in this conversation, use the latest explicit
 correction. When asked to recall the current reading or value, state only that
 value and any remaining uncertainty; do not repeat superseded values unless

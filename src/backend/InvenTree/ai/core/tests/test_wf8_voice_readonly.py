@@ -129,4 +129,7 @@ class VoicePromptTests(SimpleTestCase):
             instructions = build.call_args.args[0].instructions
             self.assertIn("latest explicit\ncorrection", instructions)
             self.assertIn("include_superseded=True", instructions)
+            self.assertIn("resolve named parts with search_parts", instructions)
+            self.assertIn("concise component/required-quantity table", instructions)
+            self.assertIn("do not drop a requested filter", instructions)
             self.assertIn("Do not\nname or quote unrelated results", instructions)
