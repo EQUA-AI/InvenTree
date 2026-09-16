@@ -335,6 +335,13 @@ items:
     # order (spellings "hx200"/"WO-EVAL-HX200"), so a machine-name key is
     # judge-brittle (live finding, 2026-08-21).
     ground_truth_keys: ["16 bar"]
+    reference_context: >-
+      Full visible text independently transcribed from frozen
+      eval-hx200-nameplate.png (SHA-256
+      fe41bebc95a1b52762b4dac56e0372da500c3cc99082ff21f4d52624f9a37378):
+      HX-200 HEAT EXCHANGER; SERIAL: EVAL-HX200;
+      MAX WORKING PRESSURE: 16 BAR; TEST PRESSURE: 24 BAR;
+      YEAR OF MANUFACTURE: 2019. This is a nameplate, not a gauge reading.
     trap_type: none
     corpus_version: aimms-media-fixtures-v2
     dataset: live
@@ -364,6 +371,13 @@ items:
       The fixture evidence is a nameplate photo, not a gauge photo. The
       assistant must say the captured evidence does not show a gauge reading
       rather than inventing one.
+    reference_context: >-
+      Full visible text independently transcribed from frozen
+      eval-hx200-nameplate.png (SHA-256
+      fe41bebc95a1b52762b4dac56e0372da500c3cc99082ff21f4d52624f9a37378):
+      HX-200 HEAT EXCHANGER; SERIAL: EVAL-HX200;
+      MAX WORKING PRESSURE: 16 BAR; TEST PRESSURE: 24 BAR;
+      YEAR OF MANUFACTURE: 2019. This is a nameplate, not a gauge reading.
     trap_type: absent_spec
     corpus_version: aimms-media-fixtures-v2
     dataset: live
@@ -585,6 +599,13 @@ items:
       and the nameplate photo's OCR text (MAX WORKING PRESSURE: 16 BAR),
       with both sources cited.
     ground_truth_keys: ["16 bar"]
+    reference_context: >-
+      Full visible text independently transcribed from frozen
+      eval-hx200-nameplate.png (SHA-256
+      fe41bebc95a1b52762b4dac56e0372da500c3cc99082ff21f4d52624f9a37378):
+      HX-200 HEAT EXCHANGER; SERIAL: EVAL-HX200;
+      MAX WORKING PRESSURE: 16 BAR; TEST PRESSURE: 24 BAR;
+      YEAR OF MANUFACTURE: 2019. This is a nameplate, not a gauge reading.
     trap_type: none
     # Cross-corpus agreement item: runs only when BOTH fixture sets are
     # deployed — from either corpus alone the value is answerable and the
