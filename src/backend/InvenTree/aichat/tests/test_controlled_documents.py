@@ -60,6 +60,36 @@ class ControlledDocumentModelTests(TestCase):
                 )
             )
 
+    def test_reindex_preserves_current_state_constraint_and_republishes(self):
+        """A real indexed row can be rebuilt and becomes current only on success."""
+        doc = ControlledDocument.objects.create(**self.document_values())
+        coordinates = {
+            'scope_key': doc.scope_key, 'scope_hash': doc.scope_hash,
+            'document_id': doc.document_id, 'revision': doc.revision,
+        }
+        rebuilding = controlled_documents.begin_reindex(**coordinates)
+        self.assertEqual(rebuilding.state, ControlledDocumentState.INDEXING)
+        self.assertFalse(rebuilding.is_current)
+        published = controlled_documents.mark_indexed(
+            **coordinates, source_sha256=doc.source_sha256,
+            search_index_name=doc.search_index_name,
+        )
+        self.assertTrue(published.is_current)
+        self.assertEqual(published.state, ControlledDocumentState.INDEXED)
+        self.assertEqual(published.pk, doc.pk)
+
+    def test_failed_reindex_remains_unavailable(self):
+        """Failed projection cannot leave the registry claiming a current source."""
+        doc = ControlledDocument.objects.create(**self.document_values())
+        coordinates = {
+            'scope_key': doc.scope_key, 'scope_hash': doc.scope_hash,
+            'document_id': doc.document_id, 'revision': doc.revision,
+        }
+        controlled_documents.begin_reindex(**coordinates)
+        failed = controlled_documents.mark_failed(**coordinates, error_code='SEARCH_FAILED')
+        self.assertEqual(failed.state, ControlledDocumentState.FAILED)
+        self.assertFalse(failed.is_current)
+
     def test_indexed_revision_requires_source_fingerprint_and_index(self):
         """Indexed state always records immutable source and index coordinates."""
         with self.assertRaises(IntegrityError), transaction.atomic():

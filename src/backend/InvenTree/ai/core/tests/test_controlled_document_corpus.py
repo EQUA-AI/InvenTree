@@ -199,11 +199,14 @@ def test_unknown_document_class_is_refused(site_scope):
     assert search_client.calls == 0
 
 
-def test_allowlisted_document_class_narrows_the_filter(site_scope):
+@pytest.mark.parametrize(
+    "document_class", ["knowledge_base", "service_manual", "site_supplement", "fleet_bulletin"]
+)
+def test_allowlisted_document_class_narrows_the_filter(site_scope, document_class):
     """A recognised document_class appends a filter clause."""
-    search_client, _, result = _run(document_class="knowledge_base")
+    search_client, _, result = _run(document_class=document_class)
     assert search_client.kwargs["filter"] == (
-        f"{BASE_FILTER} and document_class eq 'knowledge_base'"
+        f"{BASE_FILTER} and document_class eq '{document_class}'"
     )
     assert result["machine_filter"] == "not_requested"
 

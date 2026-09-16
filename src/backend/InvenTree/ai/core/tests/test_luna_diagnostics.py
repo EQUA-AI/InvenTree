@@ -326,13 +326,17 @@ def test_complete_diagnosis_recommending_action_without_evidence_is_incomplete()
             "requires_approval": False,
         }
     ]
-    client = _Client([_response(response_id="uncited", text=json.dumps(payload))])
+    client = _Client([
+        _response(response_id="uncited", text=json.dumps(payload)),
+        _response(response_id="uncited_retry", text=json.dumps(payload)),
+    ])
     uncited = asyncio.run(_adapter(client).reason(envelope=_envelope()))
 
     assert uncited.response.response_state == "incomplete"
     assert uncited.provenance.outcome_code == "uncited_recommendation"
     assert uncited.response.recommended_actions == []
     assert uncited.response.speak is False
+    assert len(client.responses.calls) == 2
 
     abstention_client = _Client([_response(response_id="abstain", text=_canonical_json())])
     abstention = asyncio.run(_adapter(abstention_client).reason(envelope=_envelope()))
@@ -360,11 +364,61 @@ def test_uncited_gate_cannot_be_dodged_by_kind_drift() -> None:
             "requires_approval": False,
         }
     ]
-    client = _Client([_response(response_id="drift", text=json.dumps(payload))])
+    client = _Client([
+        _response(response_id="drift", text=json.dumps(payload)),
+        _response(response_id="drift_retry", text=json.dumps(payload)),
+    ])
     outcome = asyncio.run(_adapter(client).reason(envelope=_envelope()))
 
     assert outcome.response.response_state == "incomplete"
     assert outcome.provenance.outcome_code == "uncited_recommendation"
+
+
+def test_uncited_recommendation_can_recover_as_honest_clarification() -> None:
+    payload = json.loads(_canonical_json())
+    payload["recommended_actions"] = [
+        {
+            "kind": "read_only",
+            "title": "Inspect bearing",
+            "detail": "Inspect bearing",
+            "requires_approval": False,
+        }
+    ]
+    clarification = json.loads(_canonical_json())
+    clarification["next_questions"] = ["Is the reported fault still present?"]
+    client = _Client([
+        _response(text=json.dumps(payload)),
+        _response(text=json.dumps(clarification)),
+    ])
+    outcome = asyncio.run(_adapter(client).reason(envelope=_envelope()))
+    assert outcome.response.response_state == "complete"
+    assert outcome.response.recommended_actions == []
+    assert outcome.response.next_questions == clarification["next_questions"]
+    assert len(client.responses.calls) == 2
+    assert (
+        "without authorized supporting evidence"
+        in client.responses.calls[1]["input"][-1]["content"]
+    )
+
+
+def test_uncited_repair_shares_the_single_schema_correction_budget() -> None:
+    payload = json.loads(_canonical_json())
+    payload["recommended_actions"] = [
+        {
+            "kind": "read_only",
+            "title": "Inspect bearing",
+            "detail": "Inspect bearing",
+            "requires_approval": False,
+        }
+    ]
+    client = _Client([
+        _response(text="{invalid"),
+        _response(text=json.dumps(payload)),
+    ])
+    outcome = asyncio.run(_adapter(client).reason(envelope=_envelope()))
+    assert outcome.provenance.outcome_code == "uncited_recommendation"
+    assert outcome.response.response_state == "incomplete"
+    assert len(client.responses.calls) == 2
 
 
 def test_invalid_tool_arguments_are_incomplete() -> None:

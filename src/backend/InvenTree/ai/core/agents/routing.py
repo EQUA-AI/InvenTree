@@ -31,6 +31,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_CONVERSATION_FACT_UPDATE = re.compile(
+    r"^(?:(?:for the record[, :]*)?(?:note|remember) that\b[^\n?!;]{1,500}"
+    r"|correction\s*[-—:,]\s*(?:it|that|the (?:reading|value|measurement)) "
+    r"(?:was|is|should be)\b[^\n?!;]{1,500})[.!]?$",
+    re.IGNORECASE,
+)
+
 
 class AzureOpenAIEmbeddingClient:
     """Wrapper for Azure OpenAI Embeddings using the official SDK."""
@@ -810,6 +817,16 @@ class UnifiedRouter:
                 workflow_type=WorkflowType.T1_LOOKUP,
                 confidence=1.0,
                 reasoning="Explicit existing-document lookup",
+                use_fast_path=False,
+            )
+
+        # A factual note or correction is conversational context, handled by
+        # the read-only lookup workflow. It grants no database write authority.
+        if _CONVERSATION_FACT_UPDATE.fullmatch(message.strip()):
+            return RoutingDecision(
+                workflow_type=WorkflowType.T1_LOOKUP,
+                confidence=1.0,
+                reasoning="Conversational fact update",
                 use_fast_path=False,
             )
 

@@ -109,6 +109,42 @@ async def test_unified_router_degrades_to_llm_classification():
 @pytest.mark.parametrize(
     "message",
     [
+        "For the record, note that the room temperature was 26 degrees.",
+        "Remember that the gauge reading was 12 bar.",
+        "Correction - it was 17, not 12.",
+        "Correction: the measurement is 18 bar.",
+    ],
+)
+async def test_conversational_fact_updates_use_read_only_lookup(message):
+    router = UnifiedRouter()
+
+    async def unexpected(*args, **kwargs):  # noqa: RUF029 - async provider stand-in
+        raise AssertionError("A conversational fact does not need a provider classifier")
+
+    router.fast_path.try_fast_path = unexpected
+    router.semantic.route = unexpected
+    router.classifier.classify = unexpected
+    decision = await router.route(message, "fact-thread")
+    assert decision.workflow_type is WorkflowType.T1_LOOKUP
+    assert decision.reasoning == "Conversational fact update"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Update the equipment record to 17 bar.",
+        "Remember to order a replacement pump.",
+        "Correction - create a work order.",
+        "What was the last correction?",
+    ],
+)
+def test_conversation_fact_rule_does_not_capture_actions_or_questions(message):
+    assert not routing_module._CONVERSATION_FACT_UPDATE.fullmatch(message)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
         "According to the uploaded HX-200 documents, how often should the plate pack be leak-inspected?",
         "What does the uploaded HX-200 manual say about frame-bolt torque?",
     ],

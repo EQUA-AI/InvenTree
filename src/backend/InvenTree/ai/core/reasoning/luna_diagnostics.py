@@ -312,7 +312,18 @@ _CITATION_RETRY_NOTE = (
     "EXACTLY from a tool result citation, and any claim you cannot cite that "
     "way must be removed or the response converted to an abstention."
 )
-_CORRECTIVE_RETRY_CODES = frozenset({"invalid_final_schema", "unauthorized_evidence"})
+_UNCITED_RETRY_NOTE = (
+    "The response recommended an action without authorized supporting evidence. "
+    "Return a corrected CanonicalTurnResponse: cite only evidence actually returned "
+    "by an authorized tool, or give an honest complete abstention with no "
+    "recommended_actions. Ask for missing observations in next_questions. "
+    "Do not invent evidence, diagnoses, safety state, or a resolved fault."
+)
+_CORRECTIVE_RETRY_CODES = frozenset({
+    "invalid_final_schema",
+    "unauthorized_evidence",
+    "uncited_recommendation",
+})
 
 
 def _denied_tool_output(call_id: str) -> dict[str, Any]:
@@ -338,6 +349,10 @@ If the authorized evidence does not directly support a diagnosis, return an
 abstention instead of a recommendation: a wrong diagnosis on this machinery can
 injure someone, and declining is always acceptable. Never recommend an action
 you cannot support with a cited evidence entry.
+A proposed or completed maintenance step does not establish that the reported
+fault is resolved. Without a confirming observation, the outcome is unknown.
+Ask for missing observations in next_questions, not recommended_actions; an
+honest clarification with no diagnosis or recommended actions is complete.
 Call only functions that appear in your tool list, with their exact names;
 never invent or guess a tool name.
 Never declare equipment safe, isolated, approved, cleared, or restored. Return
@@ -1351,11 +1366,10 @@ class LunaDiagnosticsAdapter:
                         outcome.provenance.outcome_code,
                         request_id,
                     )
-                    note = (
-                        _CITATION_RETRY_NOTE
-                        if outcome.provenance.outcome_code == "unauthorized_evidence"
-                        else _SCHEMA_RETRY_NOTE
-                    )
+                    note = {
+                        "unauthorized_evidence": _CITATION_RETRY_NOTE,
+                        "uncited_recommendation": _UNCITED_RETRY_NOTE,
+                    }.get(outcome.provenance.outcome_code, _SCHEMA_RETRY_NOTE)
                     transcript.extend(_replayable_output(response))
                     transcript.append({"role": "user", "content": note})
                     request = self._base_request(

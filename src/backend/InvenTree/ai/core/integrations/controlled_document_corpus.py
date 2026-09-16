@@ -48,6 +48,9 @@ _DOCUMENT_CLASS_ALLOWLIST = (
     "procedure",
     "specification",
     "knowledge_base",
+    "service_manual",
+    "site_supplement",
+    "fleet_bulletin",
     # The live corpus's actual class (found 2026-08-06 when every allowlisted
     # narrowing filtered out the whole manual). "Grows only by decision" —
     # this is that decision; retire it after the manual is re-classed to

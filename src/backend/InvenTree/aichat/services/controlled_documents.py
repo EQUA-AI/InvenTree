@@ -226,9 +226,9 @@ def begin_reindex(
 ) -> ControlledDocument:
     """Return an INDEXED revision to INDEXING for a governed re-embed (S17).
 
-    ``is_current`` is deliberately left set: the revision keeps answering until
-    ``mark_indexed`` republishes it with fresh vectors, and a failure lands in
-    the same FAILED state any indexing failure does.
+    Clear ``is_current`` while rebuilding: the database invariant permits only
+    INDEXED rows to be current. ``mark_indexed`` republishes the revision after
+    successful projection; failure leaves it unavailable in FAILED state.
     """
     with transaction.atomic():
         document = _scoped_document(
@@ -241,8 +241,11 @@ def begin_reindex(
         if document.state != ControlledDocumentState.INDEXED:
             raise ControlledDocumentStateConflict('document is not indexed')
         document.state = ControlledDocumentState.INDEXING
+        document.is_current = False
         document.indexing_error_code = ''
-        document.save(update_fields=['state', 'indexing_error_code', 'updated_at'])
+        document.save(
+            update_fields=['state', 'is_current', 'indexing_error_code', 'updated_at']
+        )
         return document
 
 
