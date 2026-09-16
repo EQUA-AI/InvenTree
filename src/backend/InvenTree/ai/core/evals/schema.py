@@ -31,6 +31,8 @@ class GoldenItem:
     #: pinned set is deployed (an agreement question needs both corpora).
     corpus_version: str | tuple[str, ...] | None = None
     dataset: str = "demo"
+    #: Independent facts for checking extra claims, not required answer content.
+    reference_context: str = ""
 
     @property
     def is_trap(self) -> bool:
@@ -84,6 +86,7 @@ ITEM_FIELDS = frozenset({
     "locale",
     "corpus_version",
     "dataset",
+    "reference_context",
 })
 
 
@@ -117,6 +120,7 @@ def load_items(path: Path | None = None) -> list[GoldenItem]:
                 locale=str(entry.get("locale") or "en"),
                 corpus_version=_typed_corpus_version(entry.get("corpus_version")),
                 dataset=str(entry.get("dataset") or "demo"),
+                reference_context=str(entry.get("reference_context") or "").strip(),
             )
         )
     return items

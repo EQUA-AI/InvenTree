@@ -286,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
         # S15 (WP-B6): the judge's own spend, invisible to server-side
         # accounting because it runs out-of-process.
         "judge_usage": drain_judge_usage(),
+        "judge_fingerprint": judge_mod.judge_fingerprint(),
         # R5 WP-I: item ids where the judge's cited_keys_present disputed the
         # authoritative literal check — a judge-calibration signal, not a gate.
         "judge_key_disagreements": drain_key_disagreements(),

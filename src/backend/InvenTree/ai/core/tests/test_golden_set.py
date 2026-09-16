@@ -468,3 +468,25 @@ def test_literal_key_si_separator_variants_normalize():
     assert judge_mod.literal_keys_present(item, "tighten to 38 N·m")
     assert judge_mod.literal_keys_present(item, "tighten to 38 N⋅m")
     assert not judge_mod.literal_keys_present(item, "tighten to 138 Nm")
+
+
+def test_supplementary_reference_is_separate_from_required_facts():
+    import json
+
+    item = schema_mod.GoldenItem(
+        id="bom",
+        question="Show the BOM.",
+        expected_behavior="answer",
+        ground_truth="Bracket and bolt.",
+        reference_context='{"stock": 42, "assembly_id": 7}',
+    )
+    payloads = []
+
+    def judge_call(payload):
+        payloads.append(json.loads(payload))
+        return {"verdict": "correct", "cited_keys_present": True, "rationale": ""}
+
+    judge_mod.judge_item(item, "Bracket and bolt.", judge_call=judge_call)
+    assert payloads[0]["ground_truth"] == "Bracket and bolt."
+    assert json.loads(payloads[0]["reference_context"])["stock"] == 42
+    assert "Required answer content comes from" in judge_mod._JUDGE_SYSTEM_PROMPT

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .schema import GoldenItem
 
-VERSION = "live-inventory-reference-v1"
+VERSION = "live-inventory-reference-v2"
 PART_NAME = "R_10K_0402_1%"
 BOM_PART_NAME = "Widget Assembly"
 
@@ -70,10 +70,23 @@ def capture_reference() -> dict[str, Any]:
             "bom": {
                 "part_name": BOM_PART_NAME,
                 "part_id": assembly.pk,
+                "ipn": assembly.IPN or "",
+                "is_template": assembly.is_template,
+                "variant_of_id": assembly.variant_of_id,
+                "variants": list(
+                    assembly.get_descendants(include_self=False).values(
+                        "pk", "name", "IPN", "variant_of_id"
+                    )
+                ),
                 "items": [
                     {
                         "part_id": row.sub_part_id,
                         "name": row.sub_part.name,
+                        "ipn": row.sub_part.IPN or "",
+                        "reference": row.reference,
+                        "defined_on_part_id": row.part_id,
+                        "inherited_by_variants": row.inherited,
+                        "validated": row.validated,
                         "quantity": str(row.quantity),
                         "optional": row.optional,
                         "stock_quantity": str(component_stock.get(row.sub_part_id, 0)),
@@ -126,6 +139,7 @@ def apply_reference(items: list[GoldenItem], reference: dict[str, Any]) -> list[
             f"Per-location stock for {PART_NAME}: {breakdown}. Total: {total} units."
         ),
     }
+    contexts = {}
     if "bom" in reference:
         bom = reference["bom"]
         if (
@@ -147,7 +161,7 @@ def apply_reference(items: list[GoldenItem], reference: dict[str, Any]) -> list[
             stock = Decimal(str(row.get("stock_quantity")))
             if any(not value.is_finite() or value < 0 for value in (quantity, stock)):
                 raise ValueError("Invalid BOM quantity")
-            lines.append(f"{row['name']}: quantity {quantity}, stock {stock}")
+            lines.append(row["name"])
             if quantity > 0 and not row["optional"]:
                 build_limits.append(int(stock / quantity))
         truths["bom-widget-assembly"] = (
@@ -155,13 +169,26 @@ def apply_reference(items: list[GoldenItem], reference: dict[str, Any]) -> list[
             + "; ".join(lines)
             + "."
         )
-        if build_limits:
-            truths["bom-widget-assembly"] += (
-                f" Component stock divided by required quantities permits {min(build_limits)} "
-                "assemblies arithmetically; this is not an approval or a reservation check."
-            )
+        # The original golden asks for the BOM's seven components. Additional
+        # verified tool facts must not silently become new answer requirements.
+        contexts["bom-widget-assembly"] = json.dumps(
+            {
+                **bom,
+                "arithmetic_buildable_quantity": min(build_limits) if build_limits else None,
+                "stock_scope": "all stock rows including descendant variants",
+                "build_limit_meaning": "component-stock arithmetic, not approval, production validation or reservation checks",
+            },
+            sort_keys=True,
+        )
     return [
-        replace(item, ground_truth=truths[item.id]) if item.id in truths else item for item in items
+        replace(
+            item,
+            ground_truth=truths[item.id],
+            reference_context=contexts.get(item.id, item.reference_context),
+        )
+        if item.id in truths
+        else item
+        for item in items
     ]
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -63,6 +64,7 @@ def test_reference_updates_live_facts_preserving_question_and_assertions():
     "key,value",
     [
         ("version", "unknown"),
+        ("version", "live-inventory-reference-v1"),
         ("stock_part", "different fixture"),
         ("part_count", -1),
         ("part_count", True),
@@ -115,8 +117,12 @@ def test_bom_reference_includes_verified_quantities_and_limiting_stock():
     }
     original = next(item for item in schema.load_items() if item.id == "bom-widget-assembly")
     updated = reference.apply_reference([original], snapshot)[0]
-    assert "Bracket: quantity 2, stock 12" in updated.ground_truth
-    assert "permits 5 assemblies arithmetically" in updated.ground_truth
+    assert "Bracket; Bolt; Cover" in updated.ground_truth
+    assert "stock" not in updated.ground_truth
+    assert "quantity" not in updated.ground_truth
+    context = json.loads(updated.reference_context)
+    assert context["items"][0]["stock_quantity"] == "12"
+    assert context["arithmetic_buildable_quantity"] == 5
     assert updated.question == original.question
     assert updated.expected_behavior == original.expected_behavior
     snapshot["bom"]["items"][0]["quantity"] = "-1"
