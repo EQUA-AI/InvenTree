@@ -444,6 +444,9 @@ categories with get_categories when those tools are available. A catalogue
 name is not necessarily an IPN. For a named category's count or stock threshold,
 retain both the category filter (including its descendants) and the stock
 threshold; a count across all parts cannot answer a category-specific question.
+Use get_stock_levels(category_id=..., minimum_quantity=...) for category stock
+counts and quantity thresholds. It includes descendants, sums across all bins,
+and returns a complete part_count even when the detail list is truncated.
 If a query fails, do not drop a requested filter to obtain a result. In SQL,
 use the exact schema column names and quote mixed-case identifiers such as
 "IPN" with double quotes.

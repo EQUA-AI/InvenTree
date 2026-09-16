@@ -247,6 +247,9 @@ items:
     # too (citations spell "hx200"). The VALUE is the key.
     ground_truth_keys: ["38 Nm"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -261,6 +264,9 @@ items:
     # R5 WP-I: was ["HX-200"] — see attachment-torque-grounded.
     ground_truth_keys: ["6 months"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -275,6 +281,9 @@ items:
       cited.
     ground_truth_keys: ["gasket"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -288,6 +297,9 @@ items:
       must say the uploaded documents do not cover it rather than inventing
       a value.
     trap_type: absent_spec
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -420,6 +432,9 @@ items:
       answer; any OTHER temperature stated as the limit is wrong.
     ground_truth_keys: ["150 °C"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -433,6 +448,9 @@ items:
       HX-200 manual fixture's operating limits.
     ground_truth_keys: ["12 m³/h"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -456,6 +474,9 @@ items:
       only consequences the manual does not state as fabrications.
     ground_truth_keys: ["certification"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -469,6 +490,9 @@ items:
       new gasket (uploaded HX-200 documentation).
     ground_truth_keys: ["isopropyl"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -482,6 +506,9 @@ items:
       fixture).
     ground_truth_keys: ["cross pattern"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -495,6 +522,9 @@ items:
       manual fixture).
     ground_truth_keys: ["36 months"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -508,6 +538,9 @@ items:
       (uploaded gasket datasheet fixture).
     ground_truth_keys: ["EPDM", "140 °C"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -521,6 +554,9 @@ items:
       fixture).
     ground_truth_keys: ["110"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -533,6 +569,9 @@ items:
       uploaded gasket datasheet fixture.
     ground_truth_keys: ["25 °C"]
     trap_type: none
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version: aimms-attachment-fixtures-v2
     dataset: live
 
@@ -550,6 +589,9 @@ items:
     # Cross-corpus agreement item: runs only when BOTH fixture sets are
     # deployed — from either corpus alone the value is answerable and the
     # judge could not tell which source was used.
+    reference_context_files:
+      - fixtures/attachments/eval-hx200-manual.md
+      - fixtures/attachments/eval-hx200-gasket-datasheet.md
     corpus_version:
       - aimms-attachment-fixtures-v2
       - aimms-media-fixtures-v2

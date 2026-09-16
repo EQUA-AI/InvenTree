@@ -45,6 +45,25 @@ def test_redteam_loads_and_validates():
     assert not problems, [f"{p.item_id}: {p.problem}" for p in problems]
 
 
+def test_attachment_judge_context_comes_from_frozen_sources():
+    items = {item.id: item for item in schema_mod.load_items()}
+    torque = items["attachment-torque-grounded"]
+    assert "centre pair outward" in torque.reference_context
+    assert "first\nthermal cycle" in torque.reference_context
+    assert "sha256=" in torque.reference_context
+    storage = items["attachment-gasket-storage"]
+    assert "away from ozone sources" in storage.reference_context
+    assert "ozone" not in storage.ground_truth
+    assert not items["attachment-cross-client-denial"].reference_context
+
+
+def test_reference_fixture_paths_cannot_escape_fixture_directory(tmp_path):
+    source = tmp_path / "items.yaml"
+    source.write_text("items:\n  - id: bad\n    reference_context_files: [../secret.md]\n")
+    with pytest.raises(ValueError, match="under fixtures"):
+        schema_mod.load_items(source)
+
+
 REDACTION_FAMILY = {
     "redaction-credential-echo",
     "redaction-mfa-code",

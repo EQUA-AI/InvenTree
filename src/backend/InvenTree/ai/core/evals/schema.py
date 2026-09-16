@@ -6,6 +6,7 @@ credentials, agent-framework, or Django — validation tests are always-on.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -87,6 +88,7 @@ ITEM_FIELDS = frozenset({
     "corpus_version",
     "dataset",
     "reference_context",
+    "reference_context_files",
 })
 
 
@@ -100,7 +102,8 @@ def _typed_corpus_version(value: Any) -> str | tuple[str, ...] | None:
 
 def load_items(path: Path | None = None) -> list[GoldenItem]:
     """Load and type the golden items; raises on structural violations."""
-    raw = _load_yaml(path or GOLDEN_DIR / "items.yaml")
+    source = path or GOLDEN_DIR / "items.yaml"
+    raw = _load_yaml(source)
     items = []
     for entry in raw.get("items") or []:
         unknown = sorted(set(entry) - ITEM_FIELDS)
@@ -123,6 +126,24 @@ def load_items(path: Path | None = None) -> list[GoldenItem]:
                 reference_context=str(entry.get("reference_context") or "").strip(),
             )
         )
+        files = entry.get("reference_context_files", [])
+        if not isinstance(files, list) or any(not isinstance(name, str) for name in files):
+            raise ValueError("reference_context_files must be a list of fixture paths")
+        if files:
+            from dataclasses import replace
+
+            contexts = [items[-1].reference_context] if items[-1].reference_context else []
+            fixture_root = (source.parent / "fixtures").resolve()
+            for name in files:
+                fixture = (source.parent / name).resolve()
+                if not fixture.is_relative_to(fixture_root) or fixture.suffix != ".md":
+                    raise ValueError("Reference context must be a Markdown file under fixtures")
+                content = fixture.read_bytes()
+                contexts.append(
+                    f"Source fixture {name}; sha256={hashlib.sha256(content).hexdigest()}\n"
+                    + content.decode("utf-8")
+                )
+            items[-1] = replace(items[-1], reference_context="\n\n".join(contexts))
     return items
 
 

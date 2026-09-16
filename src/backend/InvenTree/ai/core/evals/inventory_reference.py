@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .schema import GoldenItem
 
-VERSION = "live-inventory-reference-v2"
+VERSION = "live-inventory-reference-v3"
 PART_NAME = "R_10K_0402_1%"
 BOM_PART_NAME = "Widget Assembly"
 
@@ -35,9 +35,9 @@ def capture_reference() -> dict[str, Any]:
         locations = list(
             StockItem.objects
             .filter(part=part)
-            .values("location__name")
+            .values("location__pathstring")
             .annotate(quantity=Sum("quantity"))
-            .order_by("location__name")
+            .order_by("location__pathstring")
         )
         assembly = Part.objects.get(name=BOM_PART_NAME, active=True)
         bom_items = list(assembly.get_bom_items().order_by("pk"))
@@ -62,7 +62,7 @@ def capture_reference() -> dict[str, Any]:
             "stock_part_id": part.pk,
             "stock_by_location": [
                 {
-                    "location": row["location__name"] or "No location",
+                    "location": row["location__pathstring"] or "No location",
                     "quantity": str(row["quantity"]),
                 }
                 for row in locations

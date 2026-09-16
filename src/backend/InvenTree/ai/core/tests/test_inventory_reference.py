@@ -65,6 +65,7 @@ def test_reference_updates_live_facts_preserving_question_and_assertions():
     [
         ("version", "unknown"),
         ("version", "live-inventory-reference-v1"),
+        ("version", "live-inventory-reference-v2"),
         ("stock_part", "different fixture"),
         ("part_count", -1),
         ("part_count", True),

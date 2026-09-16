@@ -89,6 +89,7 @@ from ai.core.tools.inventree.read.sales import (
     get_sales_orders as list_sales_orders,
 )
 from ai.core.tools.inventree.read.stock import (
+    category_stock_summary,
     get_bom,
     get_stock_at_location,
     get_stock_item,
@@ -166,9 +167,11 @@ logger = logging.getLogger(__name__)
 async def get_stock_levels(
     part_id: int | None = None,
     location_id: int | None = None,
+    category_id: int | None = None,
+    minimum_quantity: float | None = None,
 ) -> dict[str, Any] | list[dict[str, Any]]:
     """
-    Get the total stock held for a part, broken down by location.
+    Get stock for a part/location, or count stocked parts in a category subtree.
 
     For a part this returns the answer directly -- the summed total plus a
     per-location breakdown -- so there is no need to add up individual stock
@@ -178,13 +181,33 @@ async def get_stock_levels(
     Args:
         part_id: The part ID to report stock for.
         location_id: Alternatively, report the stock items held at a location.
+        category_id: Alternatively, summarize this category and all descendants.
+            Resolve with get_categories first. Use this for category stock counts.
+        minimum_quantity: For category_id only: count parts whose SUM across all
+            stock bins is strictly greater than this threshold (default 0).
 
     Returns:
         For a part: {part_id, part_name, part_ipn, description, units,
         total_in_stock, item_count, locations: [{name, quantity}], resolved}.
         For a location: the list of stock items held there.
+        For a category: {resolved, category_id, category_name, include_descendants,
+        quantity_greater_than, part_count, parts, truncated}. part_count covers all
+        matching parts; the detail list is capped at 200. Category and quantity
+        filters are applied together by the server. Prefer this to SQL for queries
+        such as how many fastener parts have more than 2000 units in stock.
         When neither argument is given: {"resolved": false, "error": ...}.
     """
+    if category_id is not None:
+        if part_id is not None or location_id is not None:
+            return {
+                "resolved": False,
+                "error": "Use category_id alone, without part_id or location_id",
+            }
+        from asgiref.sync import sync_to_async
+
+        return await sync_to_async(category_stock_summary)(category_id, minimum_quantity)
+    if minimum_quantity is not None:
+        return {"resolved": False, "error": "minimum_quantity requires category_id"}
     if location_id is not None:
         return await get_stock_at_location(location_id=location_id)
     if part_id is None:

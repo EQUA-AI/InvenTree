@@ -7,12 +7,64 @@ Read-only tools for retrieving stock information from InvenTree.
 from __future__ import annotations
 
 import logging
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from ai.core.integrations.data_provider import get_data_provider
 from ai.core.maf_compat import ai_function
 
 logger = logging.getLogger(__name__)
+
+
+def category_stock_summary(category_id: int, minimum_quantity: float | None) -> dict[str, Any]:
+    """Aggregate a category subtree with the existing inventory role boundary."""
+    from ai.core.tools.inventree.read.database import _current_user
+    from django.db.models import Sum
+    from part.models import Part, PartCategory
+    from users.permissions import check_user_role
+
+    if type(category_id) is not int or category_id <= 0:
+        return {"error": "category_id must be a positive integer", "resolved": False}
+    try:
+        minimum = None if minimum_quantity is None else Decimal(str(minimum_quantity))
+        if minimum is not None and (not minimum.is_finite() or minimum < 0):
+            raise ValueError
+    except (InvalidOperation, ValueError):
+        return {"error": "minimum_quantity must be finite and nonnegative", "resolved": False}
+    user = _current_user()
+    if user is None or not all(check_user_role(user, role, "view") for role in ("part", "stock")):
+        return {"error": "Permission denied for category stock summary", "resolved": False}
+    try:
+        category = PartCategory.objects.get(pk=category_id)
+    except PartCategory.DoesNotExist:
+        return {"error": "Category not found", "resolved": False}
+    parts = (
+        Part.objects
+        .filter(category__in=category.get_descendants(include_self=True))
+        .annotate(total=Sum("stock_items__quantity"))
+        .filter(total__gt=minimum if minimum is not None else 0)
+        .order_by("pk")
+    )
+    count = parts.count()
+    rows = list(parts.values("pk", "name", "category_id", "total")[:200])
+    return {
+        "resolved": True,
+        "category_id": category.pk,
+        "category_name": category.name,
+        "include_descendants": True,
+        "quantity_greater_than": str(minimum if minimum is not None else 0),
+        "part_count": count,
+        "parts": [
+            {
+                "part_id": row["pk"],
+                "name": row["name"],
+                "category_id": row["category_id"],
+                "total_stock": str(row["total"]),
+            }
+            for row in rows
+        ],
+        "truncated": count > len(rows),
+    }
 
 
 @ai_function
