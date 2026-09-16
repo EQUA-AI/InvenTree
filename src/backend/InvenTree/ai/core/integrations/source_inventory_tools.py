@@ -79,7 +79,9 @@ async def list_document_sources(
             from assets.ai_read import machines_in_scope
 
             rows = machines_in_scope(user, query=machine) or []
-            exact = [row for row in rows if str(row.get("name", "")).lower() == machine.lower()]
+            # machines_in_scope returns authorized AssetMachine instances,
+            # not the serialized dictionaries exposed by search_machines.
+            exact = [row for row in rows if row.name.casefold() == machine.casefold()]
             candidates = exact or rows
             if not candidates:
                 return {
@@ -92,9 +94,9 @@ async def list_document_sources(
             if len(candidates) > 1:
                 return {
                     "machine_filter": "ambiguous",
-                    "machine_candidates": [str(row.get("name", "")) for row in candidates[:5]],
+                    "machine_candidates": [row.name for row in candidates[:5]],
                 }
-            machine_ids = [int(candidates[0]["machine_id"])]
+            machine_ids = [candidates[0].pk]
         classes = None
         if source_class:
             if source_class not in SOURCE_CLASSES:

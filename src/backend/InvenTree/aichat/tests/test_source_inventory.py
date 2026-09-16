@@ -66,6 +66,12 @@ class SourceInventoryTests(TestCase):
     def setUpTestData(cls):
         """One authorized machine world under the 'acme' site client."""
         from assets.models import AssetMachine, Client
+        from django.contrib.contenttypes.models import ContentType
+
+        # Startup can cache live-database content-type ids before Django
+        # switches to its reusable test database. Owner signals must resolve
+        # the ids from the database used by this fixture.
+        ContentType.objects.clear_cache()
 
         cls.acme = Client.objects.create(name='Acme Solar', code='acme')
         cls.machine = AssetMachine.objects.create(
@@ -82,6 +88,81 @@ class SourceInventoryTests(TestCase):
         }
 
     # -- controlled documents ------------------------------------------
+
+    def _list_named_sources(self, name, **kwargs):
+        from ai.core.integrations.source_inventory_tools import list_document_sources
+        from asgiref.sync import async_to_sync
+
+        with mock.patch(
+            'ai.core.integrations.source_inventory_tools._current_user',
+            return_value=self.user,
+        ):
+            return async_to_sync(list_document_sources)(machine=name, **kwargs)
+
+    def test_named_tool_uses_real_machine_records(self):
+        """A resolved name forwards its authorized pk and lifecycle filter."""
+        with mock.patch('ai.core.analysis.source_gateway.inventory') as inventory:
+            inventory.return_value = {'sections': []}
+            result = self._list_named_sources(
+                self.machine.name.lower(),
+                source_class='controlled_document',
+                include_superseded=True,
+            )
+        self.assertEqual(result, {'sections': []})
+        inventory.assert_called_once_with(
+            self.user,
+            machine_ids=[self.machine.pk],
+            source_classes=['controlled_document'],
+            include_superseded=True,
+        )
+
+    def test_named_tool_resolves_exact_name_before_partial_matches(self):
+        from assets.models import AssetMachine
+
+        AssetMachine.objects.create(
+            name=self.machine.name + ' Backup', client=self.acme, serial='BACKUP'
+        )
+        with mock.patch('ai.core.analysis.source_gateway.inventory') as inventory:
+            self._list_named_sources(self.machine.name)
+        self.assertEqual(inventory.call_args.kwargs['machine_ids'], [self.machine.pk])
+
+    def test_named_tool_returns_real_ambiguous_candidates(self):
+        from assets.models import AssetMachine
+
+        other = AssetMachine.objects.create(
+            name='HX-200 Backup', client=self.acme, serial='BACKUP'
+        )
+        with mock.patch('ai.core.analysis.source_gateway.inventory') as inventory:
+            result = self._list_named_sources('HX-200')
+        inventory.assert_not_called()
+        self.assertEqual(result['machine_filter'], 'ambiguous')
+        self.assertCountEqual(
+            result['machine_candidates'], [self.machine.name, other.name]
+        )
+
+    def test_named_tool_does_not_fall_back_to_unfiltered_on_missing_name(self):
+        with mock.patch('ai.core.analysis.source_gateway.inventory') as inventory:
+            result = self._list_named_sources('No such machine')
+        inventory.assert_not_called()
+        self.assertEqual(result['machine_filter'], 'not_resolved')
+
+    def test_named_tool_cannot_resolve_an_unauthorized_machine(self):
+        from assets.models import AssetMachine, Client
+
+        other_client = Client.objects.create(name='Other client', code='other')
+        foreign = AssetMachine.objects.create(
+            name='Private compressor', client=other_client, serial='PRIVATE'
+        )
+        self.user = get_user_model().objects.create_user(username='scoped-inventory')
+        _GRANTS[self.user.username] = {
+            MaintenanceScope(customer_id=None, site_key=None, client_id=self.acme.pk)
+        }
+        self.addCleanup(_GRANTS.pop, self.user.username, None)
+        with mock.patch('ai.core.analysis.source_gateway.inventory') as inventory:
+            result = self._list_named_sources(foreign.name)
+        inventory.assert_not_called()
+        self.assertEqual(result['machine_filter'], 'not_resolved')
+        self.assertNotIn(foreign.name, str(result))
 
     def test_document_lifecycle_matrix_reports_honest_states(self):
         """Current / superseded / failed / draft rows each state honestly."""
