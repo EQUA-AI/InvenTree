@@ -168,7 +168,13 @@ _SOURCE_INVENTORY = re.compile(
     rf"\b(?:what|which|list|show)\b[^.?!]{{0,40}}\b{_DOC_NOUN}\b"
     r"[^.?!]{0,50}\b(?:do you have|do we have|are (?:available|indexed|"
     r"on file|uploaded|stored)|available|can you (?:access|see|search|find|"
-    r"read)|exist)\b",
+    r"read)|exist)\b"
+    r"|\b(?:which|what)\s+revision\b[^.?!]{0,60}\b(?:is|was)\s+"
+    r"(?:current|superseded)\s*[?!.]?\s*$"
+    r"|^\s*(?:and\s+|what about\s+)?(?:the\s+)?superseded\s+"
+    r"(?:one|revision|version)\s*[?!.]?\s*$"
+    r"|\b(?:is|are)\s+there\b[^.?!]{0,30}\b(?:newer|latest|current)\b"
+    r"[^.?!]{0,25}\b(?:fleet\s+)?(?:bulletins?|manuals?|documents?)\b",
     re.IGNORECASE,
 )
 

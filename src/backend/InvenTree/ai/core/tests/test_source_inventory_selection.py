@@ -79,6 +79,67 @@ def test_intent_and_selection_share_one_shape():
     assert not is_source_inventory_question(CONTENT_QUESTION)
 
 
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Which revision of its service manual is current?",
+        "And the superseded one?",
+        "What about the superseded version?",
+        "Is there a newer fleet bulletin that applies to both of them?",
+        "Are there current documents for these machines?",
+    ],
+)
+def test_registry_metadata_questions_keep_history_and_fleet_sources(question):
+    assert is_source_inventory_question(question)
+    decision = classify_rules(question)
+    assert decision is not None and decision.intent is TaskIntent.SOURCE_INVENTORY
+    selection = select_capabilities(question, profile=PROFILE, authenticated=True)
+    assert selection.tool_ids == ("list_document_sources",)
+
+
+def test_registry_turn_does_not_reintroduce_content_search_from_sticky_packs(monkeypatch):
+    monkeypatch.setattr(capabilities, "stable_tool_prefix_enabled", lambda: True)
+    monkeypatch.setattr(capabilities, "selection_v2_enabled", lambda: True)
+    monkeypatch.setattr(
+        capabilities, "_sticky_packs", lambda *_args, **_kwargs: ("manuals.read", "documents.read")
+    )
+    selection = select_capabilities(
+        "List available nameplate photos",
+        profile=PROFILE,
+        authenticated=True,
+        task_intent="source_inventory",
+    )
+    assert selection.tool_ids == ("list_document_sources",)
+    assert "registry_inventory_only" in selection.signals
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What does the current manual say about bolt torque?",
+        "Which revision specifies the new tightening procedure?",
+        "Show the difference in torque between revisions A and B.",
+    ],
+)
+def test_content_and_revision_comparison_questions_keep_content_tools(question):
+    assert not is_source_inventory_question(question)
+    selection = select_capabilities(
+        question, profile=PROFILE, authenticated=True, task_intent="manual_fact"
+    )
+    assert "search_manuals" in selection.tool_ids
+
+
+def test_registry_only_selection_still_requires_authenticated_work_order_role():
+    for profile, authenticated in ((frozenset(), True), (PROFILE, False)):
+        selection = select_capabilities(
+            "And the superseded one?",
+            profile=profile,
+            authenticated=authenticated,
+            task_intent="source_inventory",
+        )
+        assert not selection.tool_ids
+
+
 def test_router_fast_paths_inventory_before_semantic_search():
     """The misroute S8a fixes: registry questions never reach similarity."""
     from ai.core.agents.routing import (

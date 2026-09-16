@@ -1883,9 +1883,10 @@ _INTENT_PACKS: dict[str, tuple[str, ...]] = {
     "trend_analysis": ("analytics.read", "maintenance.read"),
     "record_retrieval": ("maintenance.read", "machines.read"),
     "manual_wo_comparison": ("maintenance.read", "manuals.read"),
-    # S8a: inventory questions get the registry tool FIRST; manuals rides
-    # along for the follow-up content question.
-    "source_inventory": ("sources.read", "machines.read", "manuals.read"),
+    # Registry inventory includes authorized machine resolution, site-wide
+    # sources and revision history. Content search cannot prove absence here;
+    # a later content question selects its own tools on that later turn.
+    "source_inventory": ("sources.read",),
     # documents.read rides along: R2's uploaded corpus is a manuals-question
     # surface by design, and the typed intent REPLACES lexical selection, so
     # omitting it here silently cut search_attachment_docs out of every
@@ -1931,6 +1932,7 @@ def select_capabilities(
             requires_specialist=True,
         )
 
+    registry_only = task_intent == "source_inventory"
     widened = selection_v2_enabled()
     lexicon = category_lexicon() if widened and category_lexicon_enabled() else frozenset()
     signals: list[str] = []
@@ -1978,7 +1980,11 @@ def select_capabilities(
         # before the SQL hatch; the trim loop then evicts the score-0
         # analytics hatch first, so the named-evidence rider survives at
         # exactly MAX_INITIAL_TOOLS.
-        if "evidence.read" not in pack_ids and scores.get("evidence.read", 0) > 0:
+        if (
+            not registry_only
+            and "evidence.read" not in pack_ids
+            and scores.get("evidence.read", 0) > 0
+        ):
             pack_ids = (*pack_ids, "evidence.read")
             signals.append("evidence_rider")
     else:
@@ -1991,8 +1997,9 @@ def select_capabilities(
         # routing and selection cannot drift.
         from ai.core.analysis.intent import is_source_inventory_question
 
-        if primary is None and is_source_inventory_question(normalized):
+        if is_source_inventory_question(normalized):
             primary = "sources.read"
+            registry_only = True
             scores["sources.read"] = scores.get("sources.read", 0) + _SHAPE_SCORE
             signals.append("source_inventory_shape")
         if primary is None and scores:
@@ -2026,7 +2033,12 @@ def select_capabilities(
             )
 
         pack_ids = _ordered_pack_ids(primary, scores, max_adjacent=2 if widened else 1)
-    if stable_tool_prefix_enabled():
+    if registry_only:
+        # Do not let adjacency, a sticky prior content pack, or the SQL hatch
+        # substitute a partial search for the complete registry population.
+        pack_ids = ("sources.read",)
+        signals.append("registry_inventory_only")
+    if not registry_only and stable_tool_prefix_enabled():
         # M1 (GR-33): packs the thread already ran with ride along, after the
         # turn's own picks, so consecutive turns present the same tool
         # definitions and the provider's cached prefix survives. They score
@@ -2044,7 +2056,7 @@ def select_capabilities(
             # the sentence itself named.
             for pack_id in sticky:
                 scores[pack_id] = -1 - _catalog_pack_position(pack_id)
-    if widened:
+    if widened and not registry_only:
         with_hatch = _with_sql_escape_hatch(pack_ids)
         if with_hatch != pack_ids:
             signals.append("sql_escape_hatch")
