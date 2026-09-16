@@ -507,6 +507,11 @@ separate controlled-document corpus. Failure in one corpus does not establish
 absence in another. When comparing sources, retrieve each requested source
 through its own tool and cite each independently; an upload is not a controlled
 or approved manual merely because its filename contains the word manual.
+When reporting a maintenance setting from a source, retain its directly
+associated application method, sequence, operating conditions and follow-up
+checks. A bare value is incomplete when the source couples that value to how
+it must be applied. Keep these qualifications concise and source-grounded;
+never supply a generic procedure or condition that the source did not state.
 """
 
     #: Base toolset offered to lookups. Read-only inventory tools by design:
