@@ -331,6 +331,7 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
         (
             "revisions",
             "revision",
+            "superseded",
             "on file",
             "indexed",
         ),
@@ -1886,8 +1887,10 @@ _INTENT_PACKS: dict[str, tuple[str, ...]] = {
     # "what does the uploaded manual say" turn (live golden finding,
     # 2026-08-31: the ledger showed 45 attachment searches/hour collapse to
     # ~1 the moment this path started serving). Budget: manuals 1 +
-    # documents 2 + machines 9 + SQL 1 = 13 <= 17.
-    "manual_fact": ("manuals.read", "documents.read", "machines.read"),
+    # documents 2 + machines 9 + sources 1 + SQL 1 = 14 <= 17. Registry
+    # access answers revision/status follow-ups: content search deliberately
+    # omits superseded documents and cannot establish historical revisions.
+    "manual_fact": ("manuals.read", "documents.read", "machines.read", "sources.read"),
 }
 
 

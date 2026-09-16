@@ -112,7 +112,8 @@ def check_user_role(
     # Default for no match
     result = False
 
-    groups = groups or prefetch_rule_sets(user)
+    if groups is None:
+        groups = prefetch_rule_sets(user)
 
     for group in groups:
         for rule in group.prefetched_rule_sets:
@@ -165,7 +166,8 @@ def check_user_permission(
     if table_name in get_ruleset_ignore():
         return True
 
-    groups = groups or prefetch_rule_sets(user)
+    if groups is None:
+        groups = prefetch_rule_sets(user)
 
     for role, table_names in get_ruleset_models().items():
         if table_name in table_names:

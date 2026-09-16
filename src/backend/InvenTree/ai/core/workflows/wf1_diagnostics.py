@@ -145,7 +145,11 @@ Format your analysis as:
 **Initial Assessment:** [brief summary]
 
 If the description gives you nothing concrete to analyze - no named equipment,
-no observed symptom, no data - do NOT produce the format above. Reply with a
+no observed symptom, no data - do NOT produce the format above. A generic noise
+or "something is broken" without identified equipment and specific observations
+is also insufficient. Do not assign urgency, likely causes or confidence from
+that alone. Use equipment and observations already supplied in the conversation
+when available; otherwise ask for the missing details. Reply with a
 single line starting with exactly:
 INSUFFICIENT_EVIDENCE: [one sentence naming what is missing]
 Never invent symptoms, components or causes to fill the format."""
@@ -629,6 +633,10 @@ Recommend practical solutions to address the identified root causes."""
         "no information available",
         "cannot determine whether a problem exists",
         "unable to determine whether a problem exists",
+        "unspecified machine",
+        "machine not identified",
+        "equipment not identified",
+        "description is too vague",
     )
 
     @classmethod

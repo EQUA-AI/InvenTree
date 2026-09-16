@@ -102,8 +102,44 @@ class TestEffectSeparation:
         assert decision.intent is TaskIntent.GOVERNED_ACTION
         assert decision.effect is EffectIntent.EFFECT_REQUEST
 
+    def test_diagnostic_starting_point_is_read_only(self) -> None:
+        decision = classify_rules("The motor trips during startup. Where should I start?")
+        assert decision is not None
+        assert decision.intent is TaskIntent.DIAGNOSTIC
+        assert decision.effect is EffectIntent.READ_ONLY
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Where do I start the conveyor?",
+            "The motor trips. Where do I start? Please delete the job.",
+        ],
+    )
+    def test_starting_point_exception_preserves_explicit_actions(self, text: str) -> None:
+        decision = classify_rules(text)
+        assert decision is not None
+        assert decision.effect is EffectIntent.EFFECT_REQUEST
+
 
 class TestFamilies:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "List the BOM for the controller assembly.",
+            "Get the bill of materials for the drive module.",
+        ],
+    )
+    def test_inventory_bom_does_not_become_a_manual_fact(self, text: str) -> None:
+        decision = classify_rules(text)
+        assert decision is not None
+        assert decision.intent is TaskIntent.GENERAL
+        assert decision.effect is EffectIntent.READ_ONLY
+
+    def test_bom_question_explicitly_about_manual_keeps_document_intent(self) -> None:
+        decision = classify_rules("What does the manual say about the BOM revision?")
+        assert decision is not None
+        assert decision.intent is TaskIntent.MANUAL_FACT
+
     def test_source_inventory(self) -> None:
         decision = classify_rules("Which manuals do you have for the inverters?")
         assert decision is not None

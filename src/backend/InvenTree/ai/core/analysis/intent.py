@@ -294,6 +294,11 @@ def classify_rules(text: str) -> IntentDecision | None:
         # "Create me a table of the maintenance records" is a presentation
         # of retrieved records, not an effect (Q64 control).
         return _rules_decision(TaskIntent.RECORD_RETRIEVAL, "retrieval_rules")
+    if not has_docs and re.search(r"\b(?:bom|bill of materials)\b", content, re.IGNORECASE):
+        # Inventory BOMs belong to assembly parts. Let the capability broker
+        # select bom.read and parts.read instead of a model reclassifying
+        # this as a manual fact and restricting it to machine/document tools.
+        return _rules_decision(TaskIntent.GENERAL, "inventory_bom_rules")
     if VoiceComplexityRouter._matches_any(content, VoiceComplexityRouter._DIAGNOSTIC_PATTERNS):
         return _rules_decision(TaskIntent.DIAGNOSTIC, "diagnostic_rules")
     return None

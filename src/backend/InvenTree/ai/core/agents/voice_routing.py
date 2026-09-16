@@ -278,7 +278,7 @@ class VoiceComplexityRouter:
     _EFFECT_PATTERNS: ClassVar[tuple[re.Pattern[str], ...]] = tuple(
         re.compile(pattern, re.IGNORECASE)
         for pattern in (
-            rf"^\s*(?:(?:please|kindly)\s+)?{_EFFECT_VERB}\b",
+            rf"(?:^|[.!?])\s*(?:(?:please|kindly)\s+)?{_EFFECT_VERB}\b",
             rf"\b(?:can|could|would|will)\s+you\s+(?:please\s+)?{_EFFECT_VERB}\b",
             rf"\b(?:i|we)\s+(?:want|need|would like)\s+(?:you\s+)?to\s+{_EFFECT_VERB}\b",
             rf"\b(?:go ahead and|let(?:'s| us)|we should)\s+{_EFFECT_VERB}\b",
@@ -287,6 +287,10 @@ class VoiceComplexityRouter:
             rf"\bhelp\s+me\s+(?:to\s+)?{_EFFECT_VERB}\b",
             rf"\bi\s+{_EFFECT_VERB}\b",
         )
+    )
+    _START_GUIDANCE_QUESTION = re.compile(
+        r"\bwhere\s+(?:do|should|can)\s+(?:i|we)\s+(?:start|begin)\s*(?=[?.!]|$)",
+        re.IGNORECASE,
     )
     _NON_EFFECT_PATTERNS: ClassVar[tuple[re.Pattern[str], ...]] = tuple(
         re.compile(pattern, re.IGNORECASE)
@@ -530,6 +534,10 @@ class VoiceComplexityRouter:
     @classmethod
     def _is_effect_intent(cls, content: str) -> bool:
         """Match effect syntax while excluding common informational phrases."""
+        # A bare request for a starting point is not a command to start an
+        # asset or job. Remove only that clause, so another explicit action
+        # in the same turn still takes the governed path.
+        content = cls._START_GUIDANCE_QUESTION.sub("", content)
         if cls._matches_any(content, cls._NON_EFFECT_PATTERNS):
             return False
         return cls._matches_any(content, cls._EFFECT_PATTERNS) or cls._matches_any(

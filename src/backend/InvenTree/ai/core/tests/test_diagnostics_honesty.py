@@ -102,6 +102,22 @@ async def test_grounded_analysis_still_produces_the_report():
     assert technical.calls == 1
 
 
+async def test_unspecified_equipment_does_not_generate_confident_causes():
+    """An admitted missing subject must stop before root-cause generation."""
+    workflow, technical = _workflow_with(
+        "**Category:** Equipment Failure\n**Symptoms:**\n- abnormal sound\n"
+        "**Affected Components:**\n- Unspecified machine\n"
+        "**Initial Assessment:** More observations are needed."
+    )
+    result = await workflow.execute("There is an unusual sound. What failed?")
+    assert result.success is True
+    assert "Diagnostic Report" not in result.formatted_response
+    assert "which machine" in result.formatted_response
+    assert result.root_causes == []
+    assert technical.calls == 0
+    assert workflow.solution_agent.calls == 0
+
+
 def test_analysis_prompt_offers_the_sentinel():
     """The detector only works if the agent was told how to admit absence."""
     prompt = ProblemAnalysisAgent.SYSTEM_PROMPT

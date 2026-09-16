@@ -235,6 +235,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-redteam", action="store_true")
     parser.add_argument("--json-out", default="")
+    parser.add_argument(
+        "--inventory-reference",
+        default="",
+        help="Pre-run live inventory snapshot replacing mutable demo counts/locations",
+    )
     args = parser.parse_args(argv)
 
     base_url = os.environ.get("AIMMS_GOLDEN_BASE_URL", "")
@@ -243,6 +248,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     items = schema_mod.load_items()
+    inventory_reference = None
+    if args.inventory_reference:
+        from .inventory_reference import apply_reference, reference_digest
+
+        inventory_reference = json.loads(pathlib.Path(args.inventory_reference).read_text())
+        items = apply_reference(items, inventory_reference)
     problems = schema_mod.validate_items(items)
     if problems:
         for problem in problems:
@@ -279,6 +290,11 @@ def main(argv: list[str] | None = None) -> int:
         # authoritative literal check — a judge-calibration signal, not a gate.
         "judge_key_disagreements": drain_key_disagreements(),
     }
+    if inventory_reference is not None:
+        report["inventory_reference"] = {
+            "snapshot": inventory_reference,
+            "sha256": reference_digest(inventory_reference),
+        }
     if args.json_out:
         with pathlib.Path(args.json_out).open("w", encoding="utf-8") as handle:
             json.dump(report, handle, indent=2)

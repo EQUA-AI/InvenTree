@@ -1511,6 +1511,8 @@ def test_manual_fact_intent_carries_the_uploaded_corpus(monkeypatch):
         assert "documents.read" in selection.pack_ids
         assert "search_attachment_docs" in selection.tool_ids
         assert "search_manuals" in selection.tool_ids
+        assert "list_document_sources" in selection.tool_ids
+        assert len(selection.tool_ids) <= MAX_INITIAL_TOOLS
     finally:
         capability_catalog.cache_clear()
 
