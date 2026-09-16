@@ -18,15 +18,28 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .schema import GoldenItem
 
-VERSION = "live-inventory-reference-v4"
+VERSION = "live-inventory-reference-v5"
 PART_NAME = "R_10K_0402_1%"
 BOM_PART_NAME = "Widget Assembly"
+
+
+def _indexed_markdown(attachment: Any, indexed_hashes: set[str]) -> dict[str, str]:
+    """Accept source text only when stored bytes match an indexed revision."""
+    with attachment.attachment.open("rb") as stream:
+        data = stream.read(65537)
+    if len(data) > 65536:
+        raise ValueError("Supplementary evaluation source exceeds 64 KiB")
+    digest = hashlib.sha256(data).hexdigest()
+    if digest not in indexed_hashes:
+        raise ValueError("Supplementary evaluation source differs from indexed bytes")
+    return {"source_sha256": digest, "source_text": data.decode("utf-8")}
 
 
 def _capture_fixture_sources() -> list[dict[str, Any]]:
     """Resolve immutable fixture hashes to their actual stored names and owners."""
     from aichat.models import AttachmentIngest
     from common.models import Attachment
+    from django.db.models import Q
     from tasks.models import WorkOrder
 
     fixtures = Path(__file__).parent / "golden" / "fixtures"
@@ -63,6 +76,37 @@ def _capture_fixture_sources() -> list[dict[str, Any]]:
                     "owner_id": attachment.model_id,
                     "owner_reference": owner_reference,
                 })
+    # Questions refer to uploaded documents on the fixture entities, which
+    # can legitimately include non-canonical uploads. Freeze those independently
+    # before evaluation; never infer their existence or contents from an answer.
+    owners = {(source["owner_type"], source["owner_id"]) for source in sources}
+    canonical_ids = {source["attachment_id"] for source in sources}
+    owner_filter = Q()
+    for owner_type, owner_id in sorted(owners):
+        owner_filter |= Q(model_type=owner_type, model_id=owner_id)
+    if owners:
+        for attachment in (
+            Attachment.objects.filter(owner_filter).exclude(pk__in=canonical_ids).order_by("pk")
+        ):
+            filename = Path(attachment.attachment.name).name
+            if not filename.lower().endswith(".md"):
+                continue
+            hashes = set(
+                AttachmentIngest.objects.filter(
+                    attachment_id=attachment.pk, state="indexed"
+                ).values_list("source_sha256", flat=True)
+            )
+            if not hashes:
+                continue
+            sources.append({
+                "corpus_version": "aimms-attachment-fixtures-v2",
+                "supplementary_upload": True,
+                "attachment_id": attachment.pk,
+                "stored_filename": filename,
+                "owner_type": attachment.model_type,
+                "owner_id": attachment.model_id,
+                **_indexed_markdown(attachment, hashes),
+            })
     return sources
 
 

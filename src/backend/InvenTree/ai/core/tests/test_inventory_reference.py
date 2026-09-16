@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
+import io
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -67,6 +71,7 @@ def test_reference_updates_live_facts_preserving_question_and_assertions():
         ("version", "live-inventory-reference-v1"),
         ("version", "live-inventory-reference-v2"),
         ("version", "live-inventory-reference-v3"),
+        ("version", "live-inventory-reference-v4"),
         ("stock_part", "different fixture"),
         ("part_count", -1),
         ("part_count", True),
@@ -86,6 +91,27 @@ def test_snapshot_digest_changes_when_inventory_changes():
     before = _snapshot()
     after = {**before, "part_count": 801}
     assert reference.reference_digest(before) != reference.reference_digest(after)
+
+
+def test_supplementary_source_requires_exact_indexed_bytes():
+    data = b"# Uploaded source\nA verified additional fact.\n"
+    attachment = SimpleNamespace(attachment=Mock())
+    attachment.attachment.open.side_effect = lambda _mode: io.BytesIO(data)
+    digest = hashlib.sha256(data).hexdigest()
+    assert reference._indexed_markdown(attachment, {digest}) == {
+        "source_sha256": digest,
+        "source_text": data.decode(),
+    }
+    with pytest.raises(ValueError, match="differs from indexed"):
+        reference._indexed_markdown(attachment, {"old-revision"})
+
+
+def test_supplementary_source_limit_does_not_silently_truncate():
+    data = b"x" * 65537
+    attachment = SimpleNamespace(attachment=Mock())
+    attachment.attachment.open.return_value = io.BytesIO(data)
+    with pytest.raises(ValueError, match="exceeds 64 KiB"):
+        reference._indexed_markdown(attachment, {hashlib.sha256(data).hexdigest()})
 
 
 def test_stored_source_identity_supplements_only_the_matching_corpus():
