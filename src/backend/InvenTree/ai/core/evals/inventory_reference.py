@@ -1,8 +1,9 @@
 """Frozen live-inventory references for goldens whose demo data can change.
 
 Capture before sending any evaluation question. The snapshot is independent
-of the assistant and replaces only mutable counts and stock locations; the
-questions, required behavior, tolerance and corpus assertions stay intact.
+of the assistant and replaces mutable inventory counts, stock locations and
+BOM quantities; questions, required behavior, tolerance and corpus assertions
+stay intact.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 
 VERSION = "live-inventory-reference-v1"
 PART_NAME = "R_10K_0402_1%"
+BOM_PART_NAME = "Widget Assembly"
 
 
 def capture_reference() -> dict[str, Any]:
@@ -37,6 +39,17 @@ def capture_reference() -> dict[str, Any]:
             .annotate(quantity=Sum("quantity"))
             .order_by("location__name")
         )
+        assembly = Part.objects.get(name=BOM_PART_NAME, active=True)
+        bom_items = list(assembly.get_bom_items().order_by("pk"))
+        # Stock API's part filter includes descendant variants by default.
+        # Capture that same scope independently, including every stock row.
+        component_stock = {
+            row.sub_part_id: StockItem.objects.filter(
+                part__in=row.sub_part.get_descendants(include_self=True)
+            ).aggregate(quantity=Sum("quantity"))["quantity"]
+            or Decimal(0)
+            for row in bom_items
+        }
         return {
             "version": VERSION,
             "captured_at": timezone.now().isoformat(),
@@ -54,6 +67,20 @@ def capture_reference() -> dict[str, Any]:
                 }
                 for row in locations
             ],
+            "bom": {
+                "part_name": BOM_PART_NAME,
+                "part_id": assembly.pk,
+                "items": [
+                    {
+                        "part_id": row.sub_part_id,
+                        "name": row.sub_part.name,
+                        "quantity": str(row.quantity),
+                        "optional": row.optional,
+                        "stock_quantity": str(component_stock.get(row.sub_part_id, 0)),
+                    }
+                    for row in bom_items
+                ],
+            },
         }
 
 
@@ -99,6 +126,40 @@ def apply_reference(items: list[GoldenItem], reference: dict[str, Any]) -> list[
             f"Per-location stock for {PART_NAME}: {breakdown}. Total: {total} units."
         ),
     }
+    if "bom" in reference:
+        bom = reference["bom"]
+        if (
+            bom.get("part_name") != BOM_PART_NAME
+            or not isinstance(bom.get("items"), list)
+            or not bom["items"]
+        ):
+            raise ValueError("Invalid BOM reference")
+        lines = []
+        build_limits = []
+        for row in bom["items"]:
+            if (
+                not isinstance(row.get("name"), str)
+                or not row["name"].strip()
+                or type(row.get("optional")) is not bool
+            ):
+                raise ValueError("Invalid BOM line")
+            quantity = Decimal(str(row.get("quantity")))
+            stock = Decimal(str(row.get("stock_quantity")))
+            if any(not value.is_finite() or value < 0 for value in (quantity, stock)):
+                raise ValueError("Invalid BOM quantity")
+            lines.append(f"{row['name']}: quantity {quantity}, stock {stock}")
+            if quantity > 0 and not row["optional"]:
+                build_limits.append(int(stock / quantity))
+        truths["bom-widget-assembly"] = (
+            f"The frozen live BOM for {BOM_PART_NAME} has {len(lines)} lines: "
+            + "; ".join(lines)
+            + "."
+        )
+        if build_limits:
+            truths["bom-widget-assembly"] += (
+                f" Component stock divided by required quantities permits {min(build_limits)} "
+                "assemblies arithmetically; this is not an approval or a reservation check."
+            )
     return [
         replace(item, ground_truth=truths[item.id]) if item.id in truths else item for item in items
     ]

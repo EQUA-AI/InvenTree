@@ -125,6 +125,31 @@ class TestFamilies:
     @pytest.mark.parametrize(
         "text",
         [
+            "How many washers have more than 300 units in stock?",
+            "What parts are low on stock?",
+            "Which part has the highest inventory quantity?",
+            "Show parts below their minimum levels.",
+        ],
+    )
+    def test_inventory_stock_queries_keep_inventory_capabilities(self, text: str) -> None:
+        decision = classify_rules(text)
+        assert decision is not None
+        assert decision.intent is TaskIntent.GENERAL
+        assert decision.effect is EffectIntent.READ_ONLY
+
+    def test_stock_rule_does_not_override_document_or_effect_requests(self) -> None:
+        assert (
+            classify_rules("What does the manual say about stock requirements?").intent
+            is TaskIntent.MANUAL_FACT
+        )
+        assert (
+            classify_rules("Update the stock quantity to 300.").effect
+            is EffectIntent.EFFECT_REQUEST
+        )
+
+    @pytest.mark.parametrize(
+        "text",
+        [
             "List the BOM for the controller assembly.",
             "Get the bill of materials for the drive module.",
         ],
@@ -313,6 +338,21 @@ class TestCapabilitySelection:
     def test_no_intent_keeps_legacy_selection(self) -> None:
         selection = self._select("how many parts are in stock")
         assert "task_intent" not in selection.signals
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "How many washers have over 300 units in stock?",
+            "What parts are low on stock?",
+        ],
+    )
+    def test_stock_intent_does_not_remove_stock_tools(self, query: str) -> None:
+        decision = classify_rules(query)
+        selection = self._select(query, task_intent=decision.intent.value)
+        assert "stock.read" in selection.pack_ids
+        assert "analytics.read" in selection.pack_ids
+        assert "maintenance.read" not in selection.pack_ids
+        assert "sources.read" not in selection.pack_ids
 
 
 class TestRoutingIntegration:

@@ -265,6 +265,20 @@ def classify_rules(text: str) -> IntentDecision | None:
     has_records = _record_noun(content)
     has_docs = _doc_noun(content)
 
+    if (
+        not has_records
+        and not has_docs
+        and re.search(
+            r"\b(?:stock|inventory|on[- ]hand|reorder levels?|minimum levels?)\b",
+            content,
+            re.IGNORECASE,
+        )
+    ):
+        # Inventory counts and shortage lookups are not maintenance-population
+        # analysis or document inventory. Keep category, stock and SQL tools
+        # available rather than letting the classifier choose an analysis pack.
+        return _rules_decision(TaskIntent.GENERAL, "inventory_stock_rules")
+
     if has_docs and has_records and _COMPARISON.search(content):
         return _rules_decision(TaskIntent.MANUAL_WO_COMPARISON, "comparison_rules")
     if has_records and _TREND.search(content):

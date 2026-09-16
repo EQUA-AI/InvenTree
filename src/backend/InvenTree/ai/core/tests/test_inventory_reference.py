@@ -82,3 +82,43 @@ def test_snapshot_digest_changes_when_inventory_changes():
     before = _snapshot()
     after = {**before, "part_count": 801}
     assert reference.reference_digest(before) != reference.reference_digest(after)
+
+
+def test_bom_reference_includes_verified_quantities_and_limiting_stock():
+    snapshot = _snapshot()
+    snapshot["bom"] = {
+        "part_name": reference.BOM_PART_NAME,
+        "part_id": 77,
+        "items": [
+            {
+                "part_id": 1,
+                "name": "Bracket",
+                "quantity": "2",
+                "stock_quantity": "12",
+                "optional": False,
+            },
+            {
+                "part_id": 2,
+                "name": "Bolt",
+                "quantity": "4",
+                "stock_quantity": "20",
+                "optional": False,
+            },
+            {
+                "part_id": 3,
+                "name": "Cover",
+                "quantity": "1",
+                "stock_quantity": "0",
+                "optional": True,
+            },
+        ],
+    }
+    original = next(item for item in schema.load_items() if item.id == "bom-widget-assembly")
+    updated = reference.apply_reference([original], snapshot)[0]
+    assert "Bracket: quantity 2, stock 12" in updated.ground_truth
+    assert "permits 5 assemblies arithmetically" in updated.ground_truth
+    assert updated.question == original.question
+    assert updated.expected_behavior == original.expected_behavior
+    snapshot["bom"]["items"][0]["quantity"] = "-1"
+    with pytest.raises(ValueError):
+        reference.apply_reference([original], snapshot)
