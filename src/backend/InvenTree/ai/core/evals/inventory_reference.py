@@ -12,14 +12,58 @@ import hashlib
 import json
 from dataclasses import replace
 from decimal import Decimal
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .schema import GoldenItem
 
-VERSION = "live-inventory-reference-v3"
+VERSION = "live-inventory-reference-v4"
 PART_NAME = "R_10K_0402_1%"
 BOM_PART_NAME = "Widget Assembly"
+
+
+def _capture_fixture_sources() -> list[dict[str, Any]]:
+    """Resolve immutable fixture hashes to their actual stored names and owners."""
+    from aichat.models import AttachmentIngest
+    from common.models import Attachment
+    from tasks.models import WorkOrder
+
+    fixtures = Path(__file__).parent / "golden" / "fixtures"
+    sources = []
+    for directory in ("attachments", "media"):
+        for fixture in sorted((fixtures / directory).glob("eval-hx200*")):
+            digest = hashlib.sha256(fixture.read_bytes()).hexdigest()
+            ingests = AttachmentIngest.objects.filter(source_sha256=digest)
+            corpus = (
+                "aimms-attachment-fixtures-v2"
+                if directory == "attachments"
+                else "aimms-video-fixtures-v2"
+                if fixture.suffix == ".mp4"
+                else "aimms-media-fixtures-v2"
+            )
+            for attachment in Attachment.objects.filter(
+                pk__in=ingests.values("attachment_id")
+            ).order_by("pk"):
+                owner_reference = None
+                if attachment.model_type == "workorder":
+                    owner_reference = (
+                        WorkOrder.objects
+                        .filter(pk=attachment.model_id)
+                        .values_list("reference", flat=True)
+                        .first()
+                    )
+                sources.append({
+                    "corpus_version": corpus,
+                    "canonical_filename": fixture.name,
+                    "source_sha256": digest,
+                    "attachment_id": attachment.pk,
+                    "stored_filename": Path(attachment.attachment.name).name,
+                    "owner_type": attachment.model_type,
+                    "owner_id": attachment.model_id,
+                    "owner_reference": owner_reference,
+                })
+    return sources
 
 
 def capture_reference() -> dict[str, Any]:
@@ -60,6 +104,7 @@ def capture_reference() -> dict[str, Any]:
             .count(),
             "stock_part": PART_NAME,
             "stock_part_id": part.pk,
+            "corpus_sources": _capture_fixture_sources(),
             "stock_by_location": [
                 {
                     "location": row["location__pathstring"] or "No location",
@@ -86,6 +131,8 @@ def capture_reference() -> dict[str, Any]:
                         "reference": row.reference,
                         "defined_on_part_id": row.part_id,
                         "inherited_by_variants": row.inherited,
+                        "allow_variants": row.allow_variants,
+                        "consumable": row.consumable,
                         "validated": row.validated,
                         "quantity": str(row.quantity),
                         "optional": row.optional,
@@ -176,20 +223,35 @@ def apply_reference(items: list[GoldenItem], reference: dict[str, Any]) -> list[
                 **bom,
                 "arithmetic_buildable_quantity": min(build_limits) if build_limits else None,
                 "stock_scope": "all stock rows including descendant variants",
+                "field_definitions": {
+                    "inherited_by_variants": "BOM line applies to descendant assembly variants",
+                    "allow_variants": "a variant of the component may substitute for it; independent of line inheritance",
+                },
                 "build_limit_meaning": "component-stock arithmetic, not approval, production validation or reservation checks",
             },
             sort_keys=True,
         )
-    return [
-        replace(
+    updated_items = []
+    for item in items:
+        updated = replace(
             item,
-            ground_truth=truths[item.id],
+            ground_truth=truths.get(item.id, item.ground_truth),
             reference_context=contexts.get(item.id, item.reference_context),
         )
-        if item.id in truths
-        else item
-        for item in items
-    ]
+        sources = [
+            source
+            for source in reference.get("corpus_sources", [])
+            if source["corpus_version"] in item.corpus_pins
+        ]
+        if sources:
+            updated = replace(
+                updated,
+                reference_context=updated.reference_context
+                + "\nStored source identities:\n"
+                + json.dumps(sources, sort_keys=True),
+            )
+        updated_items.append(updated)
+    return updated_items
 
 
 def reference_digest(reference: dict[str, Any]) -> str:

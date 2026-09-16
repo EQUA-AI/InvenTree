@@ -66,6 +66,7 @@ def test_reference_updates_live_facts_preserving_question_and_assertions():
         ("version", "unknown"),
         ("version", "live-inventory-reference-v1"),
         ("version", "live-inventory-reference-v2"),
+        ("version", "live-inventory-reference-v3"),
         ("stock_part", "different fixture"),
         ("part_count", -1),
         ("part_count", True),
@@ -85,6 +86,29 @@ def test_snapshot_digest_changes_when_inventory_changes():
     before = _snapshot()
     after = {**before, "part_count": 801}
     assert reference.reference_digest(before) != reference.reference_digest(after)
+
+
+def test_stored_source_identity_supplements_only_the_matching_corpus():
+    snapshot = _snapshot()
+    snapshot["corpus_sources"] = [
+        {
+            "corpus_version": "aimms-media-fixtures-v2",
+            "canonical_filename": "eval-hx200-nameplate.png",
+            "stored_filename": "eval-hx200-nameplate_suffix.png",
+            "owner_type": "workorder",
+            "owner_id": 131,
+            "owner_reference": "WO-EVAL-HX200",
+        }
+    ]
+    originals = {item.id: item for item in schema.load_items()}
+    updated = {
+        item.id: item for item in reference.apply_reference(list(originals.values()), snapshot)
+    }
+    for name in ("media-nameplate-grounded", "cross-corpus-pressure-agreement"):
+        assert "eval-hx200-nameplate_suffix.png" in updated[name].reference_context
+        assert updated[name].ground_truth == originals[name].ground_truth
+        assert updated[name].ground_truth_keys == originals[name].ground_truth_keys
+    assert updated["attachment-torque-grounded"] == originals["attachment-torque-grounded"]
 
 
 def test_bom_reference_includes_verified_quantities_and_limiting_stock():
