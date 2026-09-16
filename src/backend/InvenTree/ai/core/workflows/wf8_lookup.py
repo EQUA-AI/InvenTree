@@ -35,6 +35,7 @@ from ai.core.tools.invocation_guard import (
 )
 from ai.core.tools.rbac import read_tools
 from ai.core.usage import record_usage
+from asgiref.sync import sync_to_async
 
 logger = logging.getLogger(__name__)
 
@@ -696,7 +697,7 @@ supports the answer, state that the requested information could not be verified.
 
             machines = await _scoped_machines()
             machine_terms = list(matched_machine_terms(query, machines, history))
-            category_terms = list(matched_category_terms(query, history))
+            category_terms = list(await sync_to_async(matched_category_terms)(query, history))
             options = promote_lexicon_options(
                 machine_terms=machine_terms,
                 category_terms=category_terms,
@@ -928,7 +929,10 @@ supports the answer, state that the requested information could not be verified.
 
         tools = await tools_for_current_user(self._base_tools_for(is_voice=is_voice))
 
-        selection = self._capability_selection(
+        # A cold category/machine lexicon loads Django models. Keep those
+        # synchronous reads off the event loop rather than silently degrading
+        # the lexicon to empty after SynchronousOnlyOperation.
+        selection = await sync_to_async(self._capability_selection)(
             query=query,
             lookup_type=lookup_type,
             context=context,
@@ -966,7 +970,7 @@ supports the answer, state that the requested information could not be verified.
             reselect_query = f"machine overview for {selected_option['label']}"
             if intent:
                 reselect_query = f"{intent} — {reselect_query}"
-            reselect = self._capability_selection(
+            reselect = await sync_to_async(self._capability_selection)(
                 query=reselect_query,
                 lookup_type=lookup_type,
                 context=context,
@@ -1012,7 +1016,7 @@ supports the answer, state that the requested information could not be verified.
             # on `clarify` instead let a social turn (V18) and a
             # history-inheriting turn (V12) receive the hint with an empty
             # toolset.
-            run_input = self._with_category_hint(run_input, query, context)
+            run_input = await sync_to_async(self._with_category_hint)(run_input, query, context)
             run_input = self._with_question_resolution(run_input, context)
             run_input = self._with_locale_hint(run_input, context)
         # M1 (GR-33): the packs this run exposes ride the assistant row so the

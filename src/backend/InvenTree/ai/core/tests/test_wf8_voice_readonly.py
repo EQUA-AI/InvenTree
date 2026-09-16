@@ -133,3 +133,51 @@ class VoicePromptTests(SimpleTestCase):
             self.assertIn("concise component/required-quantity table", instructions)
             self.assertIn("do not drop a requested filter", instructions)
             self.assertIn("Do not\nname or quote unrelated results", instructions)
+
+    async def test_lookup_preparation_bridges_orm_backed_selection_and_hints(self):
+        """Cold lexicon reads must work under Django's async safety guard."""
+        import time
+        from unittest.mock import AsyncMock
+
+        from ai.core.workflows.wf8_lookup import LookupType
+        from django.utils.asyncio import async_unsafe
+
+        workflow = T1LookupWorkflow()
+        tool = object()
+        selected = SimpleNamespace(
+            requires_specialist=False,
+            clarification_required=False,
+            tools=(tool,),
+            pack_ids=("stock.read", "parts.read"),
+        )
+        calls = []
+
+        @async_unsafe("selection must not query Django on the event loop")
+        def select(**kwargs):
+            calls.append("selection")
+            return selected
+
+        @async_unsafe("category hints must not query Django on the event loop")
+        def hint(run_input, query, context):
+            calls.append("hint")
+            return run_input
+
+        with (
+            patch.object(workflow, "_capability_selection", side_effect=select),
+            patch.object(workflow, "_with_category_hint", side_effect=hint),
+            patch.object(workflow, "_get_agent", new=AsyncMock(return_value=object())),
+            patch("ai.core.tools.rbac.tools_for_current_user", new=AsyncMock(return_value=[tool])),
+            patch(
+                "ai.core.workflows.wf8_lookup.get_settings",
+                return_value=SimpleNamespace(feature_capability_broker_enforce=True),
+            ),
+            patch("ai.core.agents.factory.prompt_cache_options", return_value={}),
+        ):
+            prepared = await workflow._prepare_run(
+                query="How many washers are in stock?",
+                lookup_type=LookupType.GENERAL_LOOKUP,
+                context=None,
+                start_time=time.perf_counter(),
+            )
+        self.assertEqual(calls, ["selection", "hint"])
+        self.assertEqual(prepared.runtime_tools, [tool])
