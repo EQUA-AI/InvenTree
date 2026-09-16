@@ -411,9 +411,16 @@ class LiveDataProviderAsync:
         return await self._client.get_stock(part_id=part_id)
 
     async def get_stock_quantity(self, part_id: int) -> float:
-        """Get stock quantity for a part."""
-        stock = await self._client.get_stock(part_id=part_id)
-        return sum(item.get("quantity", 0) for item in stock)
+        """Sum every stock page so large inventories are not undercounted."""
+        total = 0.0
+        offset = 0
+        page_size = 100
+        while True:
+            stock = await self._client.get_stock(part_id=part_id, limit=page_size, offset=offset)
+            total += sum(item.get("quantity", 0) for item in stock)
+            if len(stock) < page_size:
+                return total
+            offset += len(stock)
 
     async def get_bom_items(self, part_id: int) -> list[dict[str, Any]]:
         """Get BOM items for a part."""
