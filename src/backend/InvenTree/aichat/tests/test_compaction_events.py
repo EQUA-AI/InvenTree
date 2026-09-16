@@ -284,7 +284,11 @@ class TwoPhaseEventTest(_ThreadMixin, TestCase):
         self.assertEqual(self.thread.summary_through_sequence, 0)
 
     def test_cap_hit_and_dropped_are_recorded(self):
-        prior = {'machine_facts': [f'fact {i}' for i in range(25)]}
+        prior = {
+            'machine_facts': [
+                f'fact {i}' for i in range(tasks.COMPACTION_MACHINE_FACTS_CAP + 5)
+            ]
+        }
         self.thread.summary = 'Old\n' + json.dumps(prior)
         self.thread.summary_through_sequence = 2
         self.thread.save(update_fields=['summary', 'summary_through_sequence'])
@@ -295,11 +299,57 @@ class TwoPhaseEventTest(_ThreadMixin, TestCase):
         (event,) = self._events()
         self.assertEqual(event.outcome, 'ok')
         self.assertTrue(event.cap_hit)
-        # 26 distinct machine facts capped at 20 → 6 dropped; kept counts every
-        # protected list after the merge.
+        # Six facts beyond capacity are lost; kept counts every protected list.
         self.assertEqual(event.dropped, 6)
-        self.assertEqual(event.kept, 20 + 1 + 1)
+        self.assertEqual(event.kept, tasks.COMPACTION_MACHINE_FACTS_CAP + 1 + 1)
         self.assertEqual((event.from_sequence, event.through_sequence), (3, 20))
+
+    def test_protected_list_exactly_at_cap_is_not_a_cap_hit(self):
+        """A full protected list preserves every item without a loss event."""
+        facts = [f'fact {i}' for i in range(tasks.COMPACTION_MACHINE_FACTS_CAP)]
+        with mock.patch.object(
+            tasks, '_summarize', return_value=_summary_payload(machine_facts=facts)
+        ):
+            tasks.compact_thread_summary(self.thread.pk)
+        (event,) = self._events()
+        self.assertEqual(event.outcome, 'ok')
+        self.assertFalse(event.cap_hit)
+        self.assertEqual(event.dropped, 0)
+        self.thread.refresh_from_db()
+        body = tasks.parse_summary_body(self.thread.summary)
+        self.assertEqual([item['text'] for item in body['machine_facts']], facts)
+
+    def test_citation_list_exactly_at_cap_is_not_a_cap_hit(self):
+        """Reaching the citation capacity alone is not a cap hit."""
+        keys = [f'manual:section:{i}' for i in range(tasks.COMPACTION_PROTECTED_CAP)]
+        with mock.patch.object(
+            tasks, '_summarize', return_value=_summary_payload(citation_keys=keys)
+        ):
+            tasks.compact_thread_summary(self.thread.pk)
+        (event,) = self._events()
+        self.assertEqual(event.outcome, 'ok')
+        self.assertFalse(event.cap_hit)
+        self.assertEqual(event.dropped, 0)
+        self.thread.refresh_from_db()
+        body = tasks.parse_summary_body(self.thread.summary)
+        self.assertEqual(body['citation_keys'], keys)
+
+    def test_citation_list_over_cap_records_actual_drops(self):
+        """Citation overflow records both the cap hit and the number lost."""
+        keys = [
+            f'manual:section:{i}' for i in range(tasks.COMPACTION_PROTECTED_CAP + 1)
+        ]
+        with mock.patch.object(
+            tasks, '_summarize', return_value=_summary_payload(citation_keys=keys)
+        ):
+            tasks.compact_thread_summary(self.thread.pk)
+        (event,) = self._events()
+        self.assertEqual(event.outcome, 'ok')
+        self.assertTrue(event.cap_hit)
+        self.assertEqual(event.dropped, 1)
+        self.thread.refresh_from_db()
+        body = tasks.parse_summary_body(self.thread.summary)
+        self.assertEqual(body['citation_keys'], keys[:-1])
 
     def test_truncated_batch_is_flagged(self):
         with (

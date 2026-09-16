@@ -101,17 +101,24 @@ FEATURE_TOOL_EVENTS=1
 FEATURE_QUESTION_CARDS=1
 FEATURE_AGUI_ENDPOINT=1
 FEATURE_THREAD_COMPACTION_SHADOW=1
-FEATURE_THREAD_COMPACTION=1   # live on aimms-experimental since 2026-08-13 (revision --0000040); accepted in writing 2026-09-02 (D-02) on gpt-4.1 pending the CR-2 routing override, due with the Pre-work core
+FEATURE_THREAD_COMPACTION=1   # D-02 accepted full mode; set on BOTH web and worker; summarization override live on both workers
 ```
 
-Per-app compaction posture (verified 2026-09-01; the earlier "shadow
-only" wording of this manifest was stale):
+Per-app compaction posture (verified 2026-09-16 during M1/M2 closeout):
 
 | App | `FEATURE_THREAD_COMPACTION` | `..._SHADOW` | `FEATURE_MODEL_TIERING_ENFORCE` | Role |
 |---|---|---|---|---|
 | aimms-experimental (web + AI mount) | true | true | true (proven no-op under the identity table, `test_model_policy`) | enqueues at backlog >= 16 and consumes the summary note |
-| inventree-worker | unset | unset | unset | runs `compact_thread_summary` -> `_summarize`; the worker env decides the deployment |
-| aimms-dev / aimms-dev-worker | unset | unset | unset | parity catch-up in M2 |
+| inventree-worker | true | true | unset | executes compaction; rechecks its own flags and uses `gpt-5.6-luna-dz` |
+| aimms-dev | true | true | unset | enqueues compaction and consumes the summary note |
+| aimms-dev-worker | true | true | unset | executes compaction; rechecks its own flags and uses `gpt-5.6-luna-dz` |
+
+The worker flags are binding at execution, independently of the enqueue-time
+web flags. With both worker flags off, queued jobs record `skipped/flags_off`.
+With full mode true, full takes precedence over shadow. To stop execution of
+new compactions, both worker flags must be off; disabling only full leaves
+shadow jobs running. Decide the web enqueue/replay posture separately so a
+pause does not inadvertently remove retained summaries from conversation context.
 
 D-02 failure action (i): if the routing override below is not live on both
 workers by 2026-09-19, `FEATURE_THREAD_COMPACTION` is paused on

@@ -36,7 +36,8 @@ from aichat.models import ProposalAction
 from aichat.services import proposals
 
 #: Every canonical mutation command reachable from the Maintenance workspace,
-#: the machine page and the repair surfaces, with its dispatching endpoint. Keep this list in lockstep with the API: a new
+#: the machine page, repair, capture and proposal-review surfaces, with its
+#: dispatching endpoint. Keep this list in lockstep with the API: a new
 #: mutation endpoint must add its command here (and then either govern it or add
 #: it to _NOT_YET_GOVERNED), or the partition assertion below fails.
 UI_MUTATION_COMMANDS = {
@@ -62,6 +63,14 @@ UI_MUTATION_COMMANDS = {
     'create_repair_work_package',   # RepairWorkPackageCreate (maintenance intake)
     'start_repair_packet',          # RepairPacketStart
     'close_repair_packet',          # RepairPacketClose
+    # voice/api.py — reviewed closeout capture lifecycle
+    'create_capture',               # CaptureListCreateView
+    'accept_revision',              # CaptureAcceptView
+    'handoff_capture',              # CaptureCommitView
+    # tasks/procedure_execution_api.py — step execution
+    'complete_step',                # StepExecutionComplete
+    # aichat proposal confirmation / approval — reviewed stock movements
+    'stock_commands.execute',
 }
 
 #: UI mutations that do not yet have a governed ``ProposalAction``. Each entry
@@ -117,14 +126,17 @@ class UiCommandParityInvariant(SimpleTestCase):
 
     def test_governed_command_names_resolve_to_callable_services(self):
         """Each governed command is a real command-service callable, not a typo."""
-        from tasks.services import scheduling
+        from tasks.services import procedure_execution, scheduling
         from tasks.services import work_orders as wo
+        from voice.services import capture
 
+        from aichat.services import stock_commands
         from repair import work_packages
 
         # The canonical command modules. A governed action must dispatch into
         # one of these; nothing else is a write path AI may reach.
-        modules = (scheduling, wo, work_packages)
+        modules = (scheduling, wo, work_packages, capture, procedure_execution)
+        qualified_commands = {'stock_commands.execute': stock_commands.execute}
 
         for command in proposals.ACTION_COMMAND.values():
             resolved = next(
@@ -133,7 +145,7 @@ class UiCommandParityInvariant(SimpleTestCase):
                     for module in modules
                     if callable(getattr(module, command, None))
                 ),
-                None,
+                qualified_commands.get(command),
             )
             self.assertTrue(
                 callable(resolved), f'{command} is not a callable command service'

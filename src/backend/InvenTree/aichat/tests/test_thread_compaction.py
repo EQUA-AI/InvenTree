@@ -85,11 +85,34 @@ class MergeHelpersTest(TestCase):
         )
 
     def test_protected_fields_cap_bounds_growth(self):
-        prior = {'machine_facts': [f'fact {i}' for i in range(30)]}
+        prior = {
+            'machine_facts': [
+                f'fact {i}' for i in range(tasks.COMPACTION_MACHINE_FACTS_CAP + 10)
+            ]
+        }
         merged = tasks.merge_protected_fields(prior, _summary_payload(machine_facts=[]))
         self.assertEqual(
-            len(active_items(merged, 'machine_facts')), tasks.COMPACTION_PROTECTED_CAP
+            len(active_items(merged, 'machine_facts')), tasks.COMPACTION_MACHINE_FACTS_CAP
         )
+
+    def test_long_thread_preserves_the_observed_soak_burst(self):
+        """Retain the old 20 facts plus all 25 observations lost in the soak."""
+        facts = [f'machine observation {i}' for i in range(45)]
+        body = {'machine_facts': facts[:20]}
+        start = 20
+        for added in (6, 3, 8, 4, 4):
+            body, counts = tasks.merge_protected_fields_counted(
+                body,
+                _summary_payload(machine_facts=facts[start : start + added]),
+                fresh_seq=start,
+            )
+            start += added
+            self.assertEqual(counts['dropped'], 0)
+            self.assertFalse(counts['cap_hit'])
+            self.assertEqual(
+                [item_text(item) for item in active_items(body, 'machine_facts')],
+                facts[:start],
+            )
 
     def test_corrections_cap_never_drops_a_newer_correction(self):
         # Plan §8.8 Q56: a supersession against a full corrections list lands

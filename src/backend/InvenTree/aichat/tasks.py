@@ -67,10 +67,18 @@ def expire_stale_chat_action_proposals():
 #: Counts ACTIVE items only (M2 PR 3).
 COMPACTION_PROTECTED_CAP = 20
 
+#: Long-thread observations need more room than questions and proposals.
+#: The M2 soak lost 25 items across five runs of one 160-message thread.
+#: Sixty-four covers the retained 20 plus that entire observed burst with
+#: headroom, while the other lists retain their existing bounds. Overflow
+#: remains visible in the unchanged <5% soak gate.
+COMPACTION_MACHINE_FACTS_CAP = 64
+
 #: Non-active items (superseded, expired, withdrawn, resolved, forgotten)
 #: retained per list as history; pruned lowest ``created_seq`` first and
 #: never counted as ``dropped`` (they are history, not facts). Together
-#: with the active cap this bounds every list at 40 items.
+#: with the active caps this bounds machine facts at 84 items and the
+#: other object lists at 40 items.
 COMPACTION_INACTIVE_CAP = 20
 
 #: Per-job batch bounds. Without them, the first compaction of a
@@ -249,11 +257,15 @@ def _minted_in_run(item: dict, minted_from: int) -> bool:
 
 
 def _prune_list(
-    items: list[dict], *, newest_wins: bool = False, minted_from: int = 0
+    items: list[dict],
+    *,
+    newest_wins: bool = False,
+    minted_from: int = 0,
+    cap: int = COMPACTION_PROTECTED_CAP,
 ) -> tuple[list[dict], int, bool]:
     """Cap one item list: ``(items, dropped, cap_hit)``.
 
-    Active items beyond ``COMPACTION_PROTECTED_CAP`` are dropped and
+    Active items beyond the list's ``cap`` are dropped and
     counted. By default they go in list (prior-first) order, so
     long-standing facts survive. With ``newest_wins`` — the ``corrections``
     list, plan §8.8 Q56: the cap never drops a newer correction — the
@@ -274,11 +286,11 @@ def _prune_list(
                 i,
             ),
         )
-        keep = set(ranked_active[-COMPACTION_PROTECTED_CAP:])
+        keep = set(ranked_active[-cap:])
     else:
-        keep = set(active_positions[:COMPACTION_PROTECTED_CAP])
+        keep = set(active_positions[:cap])
     dropped = len(active_positions) - len(keep)
-    cap_hit = len(keep) >= COMPACTION_PROTECTED_CAP
+    cap_hit = dropped > 0
     ranked = sorted(
         inactive_positions, key=lambda i: (int(items[i].get('created_seq') or 0), i)
     )
@@ -293,7 +305,14 @@ def _cap_lists(body: dict, *, minted_from: int) -> tuple[int, bool]:
     cap_hit = False
     for field in ITEM_LISTS:
         body[field], field_dropped, field_cap_hit = _prune_list(
-            body[field], newest_wins=field == 'corrections', minted_from=minted_from
+            body[field],
+            newest_wins=field == 'corrections',
+            minted_from=minted_from,
+            cap=(
+                COMPACTION_MACHINE_FACTS_CAP
+                if field == 'machine_facts'
+                else COMPACTION_PROTECTED_CAP
+            ),
         )
         dropped += field_dropped
         cap_hit = cap_hit or field_cap_hit
@@ -524,8 +543,9 @@ def merge_protected_fields_counted(
     capped = combined[:COMPACTION_PROTECTED_CAP]
     body[CITATION_LIST] = capped
     kept += len(capped)
-    counts['dropped'] += len(combined) - len(capped)
-    if len(capped) >= COMPACTION_PROTECTED_CAP:
+    citation_drops = len(combined) - len(capped)
+    counts['dropped'] += citation_drops
+    if citation_drops > 0:
         counts['cap_hit'] = True
 
     # Step 8: narrative is regenerated, never patched, once anything moved.
