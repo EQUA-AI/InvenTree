@@ -116,3 +116,17 @@ class VoicePromptTests(SimpleTestCase):
         """Documentation answers must name their source on every prompt path."""
         self.assertIn("cite the source", T1LookupWorkflow.READ_SYSTEM_PROMPT.lower())
         self.assertIn("say which document", T1LookupWorkflow.VOICE_SYSTEM_PROMPT.lower())
+
+    async def test_all_agent_variants_receive_context_and_source_rules(self):
+        """Read-only selection must not drop correction and source constraints."""
+        for options in ({}, {"read_only": True}, {"voice": True}, {"clarify": True}):
+            workflow = T1LookupWorkflow()
+            with (
+                patch("ai.core.workflows.wf8_lookup.build_agent") as build,
+                patch("ai.core.model_policy.select_deployment", return_value="test-deployment"),
+            ):
+                await workflow._get_agent(**options)
+            instructions = build.call_args.args[0].instructions
+            self.assertIn("latest explicit\ncorrection", instructions)
+            self.assertIn("include_superseded=True", instructions)
+            self.assertIn("Do not\nname or quote unrelated results", instructions)

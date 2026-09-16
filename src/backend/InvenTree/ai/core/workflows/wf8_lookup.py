@@ -339,12 +339,6 @@ You have access to indexed technical documentation and evidence in corpora of di
 
 Always verify data from the tools before responding.
 
-For facts the user supplied in this conversation, use the latest explicit
-correction. When asked to recall the current reading or value, state only that
-value and any remaining uncertainty; do not repeat superseded values unless
-the user explicitly asks for the correction history. A conversational note or
-correction does not itself update an equipment record; do not claim such a write.
-
 An empty tool result is not proof that nothing exists — it usually means the filter was
 wrong. Before reporting none or zero, widen the search, try a synonym the catalogue may
 use, or resolve the category or part first and query by its id. A part's total stock is
@@ -441,6 +435,24 @@ Ask one short question that would let you answer it next turn, naming the specif
 detail you need. If earlier messages narrow it down, refer to them when you ask.
 Never state inventory facts, quantities, or statuses here, and never repeat a
 figure from an earlier turn as if you had just verified it."""
+
+    #: Shared by every agent variant, including read-only and toolless recall.
+    CONTEXT_SOURCE_RULES = """
+For facts the user supplied in this conversation, use the latest explicit
+correction. When asked to recall the current reading or value, state only that
+value and any remaining uncertainty; do not repeat superseded values unless
+the user explicitly asks for the correction history. Attribute it to the user,
+not to a newly verified equipment record. A conversational note or correction
+does not itself update an equipment record; do not claim such a write.
+
+If list_document_sources is available, use it for document inventory and
+revision history. Set include_superseded=True when historical revisions are
+requested; preserve document IDs and revisions, label historical sources, and
+distinguish an indexed association from verified equipment applicability.
+Use only search results relevant to the requested equipment or subject. Do not
+name or quote unrelated results even to explain their irrelevance. If none
+supports the answer, state that the requested information could not be verified.
+"""
 
     #: Base toolset offered to lookups. Read-only inventory tools by design:
     #: a lookup agent never mutates, and the smaller schema cuts prompt size
@@ -743,7 +755,8 @@ figure from an earlier turn as if you had just verified it."""
                     else self.READ_SYSTEM_PROMPT
                     if read_only
                     else self.SYSTEM_PROMPT
-                ),
+                )
+                + self.CONTEXT_SOURCE_RULES,
                 name=(
                     "T1 Clarification Agent"
                     if clarify
