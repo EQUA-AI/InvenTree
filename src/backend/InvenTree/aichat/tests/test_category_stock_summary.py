@@ -71,3 +71,42 @@ class CategoryStockSummaryTests(TestCase):
             self.assertFalse(category_stock_summary(self.root.pk, 2000)['resolved'])
         for minimum in [float('nan'), float('inf'), -1]:
             self.assertFalse(category_stock_summary(self.root.pk, minimum)['resolved'])
+
+    def test_zero_stock_includes_missing_rows_and_zero_rows_in_all_categories(self):
+        no_rows = Part.objects.create(name='No stock records', category=self.child)
+        explicit_zero = Part.objects.create(name='Empty stock record', category=self.root)
+        StockItem.objects.create(part=explicit_zero, quantity=0)
+        outside = Part.objects.create(name='Outside empty part', category=self.other)
+        with (
+            patch('ai.core.tools.inventree.read.database._current_user', return_value=self.user),
+            patch('users.permissions.check_user_role', return_value=True),
+        ):
+            global_result = category_stock_summary(None, None, zero_stock=True)
+            scoped_result = category_stock_summary(self.root.pk, None, zero_stock=True)
+        self.assertEqual(global_result['part_count'], 3)
+        self.assertEqual({p['part_id'] for p in global_result['parts']}, {no_rows.pk, explicit_zero.pk, outside.pk})
+        self.assertIsNone(global_result['category_id'])
+        self.assertIsNone(global_result['quantity_greater_than'])
+        self.assertTrue(all(p['total_stock'] == '0' for p in global_result['parts']))
+        self.assertEqual(scoped_result['part_count'], 2)
+        self.assertEqual({p['part_id'] for p in scoped_result['parts']}, {no_rows.pk, explicit_zero.pk})
+
+    def test_zero_stock_count_is_complete_beyond_detail_cap(self):
+        for index in range(203):
+            Part.objects.create(name=f'Empty stock {index}', category=self.child)
+        with (
+            patch('ai.core.tools.inventree.read.database._current_user', return_value=self.user),
+            patch('users.permissions.check_user_role', return_value=True),
+        ):
+            result = category_stock_summary(None, None, zero_stock=True)
+        self.assertEqual(result['part_count'], 203)
+        self.assertEqual(len(result['parts']), 200)
+        self.assertTrue(result['truncated'])
+
+    def test_zero_stock_preserves_permissions_and_rejects_conflicting_filters(self):
+        with (
+            patch('ai.core.tools.inventree.read.database._current_user', return_value=self.user),
+            patch('users.permissions.check_user_role', side_effect=lambda _user, role, _permission: role == 'part'),
+        ):
+            self.assertFalse(category_stock_summary(None, None, zero_stock=True)['resolved'])
+        self.assertFalse(category_stock_summary(None, 0, zero_stock=True)['resolved'])

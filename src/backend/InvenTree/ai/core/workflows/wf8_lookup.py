@@ -467,6 +467,8 @@ threshold; a count across all parts cannot answer a category-specific question.
 Use get_stock_levels(category_id=..., minimum_quantity=...) for category stock
 counts and quantity thresholds. It includes descendants, sums across all bins,
 and returns a complete part_count even when the detail list is truncated.
+For an exact count of parts with zero stock, use get_stock_levels(zero_stock=True).
+This includes parts with no stock rows and can retain a requested category_id.
 If a query fails, do not drop a requested filter to obtain a result. In SQL,
 use the exact schema column names and quote mixed-case identifiers such as
 "IPN" with double quotes.
@@ -499,6 +501,12 @@ distinguish an indexed association from verified equipment applicability.
 Use only search results relevant to the requested equipment or subject. Do not
 name or quote unrelated results even to explain their irrelevance. If none
 supports the answer, state that the requested information could not be verified.
+Use search_attachment_docs for an uploaded manual/document and
+search_evidence_media for an uploaded photo/video. search_manuals searches the
+separate controlled-document corpus. Failure in one corpus does not establish
+absence in another. When comparing sources, retrieve each requested source
+through its own tool and cite each independently; an upload is not a controlled
+or approved manual merely because its filename contains the word manual.
 """
 
     #: Base toolset offered to lookups. Read-only inventory tools by design:

@@ -129,6 +129,75 @@ def test_content_and_revision_comparison_questions_keep_content_tools(question):
     assert "search_manuals" in selection.tool_ids
 
 
+@pytest.mark.parametrize("typed", [None, "manual_fact"])
+def test_uploaded_manual_comparison_searches_both_named_upload_surfaces(
+    typed, monkeypatch, lit_upload_tools
+):
+    monkeypatch.setattr(capabilities, "stable_tool_prefix_enabled", lambda: True)
+    monkeypatch.setattr(capabilities, "_sticky_packs", lambda *_args, **_kwargs: ("manuals.read",))
+    selection = select_capabilities(
+        "Do the uploaded HX-200 manual and the nameplate photo agree on pressure?",
+        profile=PROFILE,
+        authenticated=True,
+        task_intent=typed,
+    )
+    assert "search_attachment_docs" in selection.tool_ids
+    assert "search_evidence_media" in selection.tool_ids
+    assert "search_manuals" not in selection.tool_ids
+    assert len(selection.tool_ids) <= MAX_INITIAL_TOOLS
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Compare the uploaded manual and the controlled manual on pressure.",
+        "Compare the uploaded photo with the controlled service manual.",
+        "What does the service manual say about pressure?",
+    ],
+)
+def test_controlled_and_unspecified_manual_requests_keep_controlled_search(question):
+    selection = select_capabilities(
+        question,
+        profile=PROFILE,
+        authenticated=True,
+        task_intent="manual_fact",
+    )
+    assert "search_manuals" in selection.tool_ids
+
+
+def test_uploaded_content_selection_cannot_bypass_authorization(lit_upload_tools):
+    for profile, authenticated in ((frozenset(), True), (PROFILE, False)):
+        selection = select_capabilities(
+            "Read the uploaded technical manual",
+            profile=profile,
+            authenticated=authenticated,
+            task_intent="manual_fact",
+        )
+        assert "search_attachment_docs" not in selection.tool_ids
+
+
+@pytest.fixture
+def lit_upload_tools(monkeypatch):
+    from types import SimpleNamespace
+
+    from ai.core import config as ai_config
+
+    monkeypatch.setattr(
+        ai_config,
+        "get_settings",
+        lambda: SimpleNamespace(
+            single_site_policy_key="site-a",
+            feature_attachment_rag_retrieval=True,
+            feature_media_rag_retrieval=True,
+        ),
+    )
+    capabilities.capability_catalog.cache_clear()
+    try:
+        yield
+    finally:
+        capabilities.capability_catalog.cache_clear()
+
+
 def test_registry_only_selection_still_requires_authenticated_work_order_role():
     for profile, authenticated in ((frozenset(), True), (PROFILE, False)):
         selection = select_capabilities(

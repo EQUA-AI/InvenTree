@@ -16,15 +16,21 @@ from ai.core.maf_compat import ai_function
 logger = logging.getLogger(__name__)
 
 
-def category_stock_summary(category_id: int, minimum_quantity: float | None) -> dict[str, Any]:
-    """Aggregate a category subtree with the existing inventory role boundary."""
+def category_stock_summary(
+    category_id: int | None, minimum_quantity: float | None, *, zero_stock: bool = False
+) -> dict[str, Any]:
+    """Aggregate stock with the existing inventory role boundary."""
     from ai.core.tools.inventree.read.database import _current_user
-    from django.db.models import Sum
+    from django.db.models import Q, Sum
     from part.models import Part, PartCategory
     from users.permissions import check_user_role
 
-    if type(category_id) is not int or category_id <= 0:
+    if category_id is not None and (type(category_id) is not int or category_id <= 0):
         return {"error": "category_id must be a positive integer", "resolved": False}
+    if type(zero_stock) is not bool or (zero_stock and minimum_quantity is not None):
+        return {"error": "zero_stock cannot be combined with minimum_quantity", "resolved": False}
+    if category_id is None and not zero_stock:
+        return {"error": "category_id is required for a positive-stock summary", "resolved": False}
     try:
         minimum = None if minimum_quantity is None else Decimal(str(minimum_quantity))
         if minimum is not None and (not minimum.is_finite() or minimum < 0):
@@ -34,32 +40,38 @@ def category_stock_summary(category_id: int, minimum_quantity: float | None) -> 
     user = _current_user()
     if user is None or not all(check_user_role(user, role, "view") for role in ("part", "stock")):
         return {"error": "Permission denied for category stock summary", "resolved": False}
-    try:
-        category = PartCategory.objects.get(pk=category_id)
-    except PartCategory.DoesNotExist:
-        return {"error": "Category not found", "resolved": False}
-    parts = (
-        Part.objects
-        .filter(category__in=category.get_descendants(include_self=True))
-        .annotate(total=Sum("stock_items__quantity"))
-        .filter(total__gt=minimum if minimum is not None else 0)
-        .order_by("pk")
-    )
+    category = None
+    parts = Part.objects.all()
+    if category_id is not None:
+        try:
+            category = PartCategory.objects.get(pk=category_id)
+        except PartCategory.DoesNotExist:
+            return {"error": "Category not found", "resolved": False}
+        parts = parts.filter(category__in=category.get_descendants(include_self=True))
+    parts = parts.annotate(total=Sum("stock_items__quantity"))
+    if zero_stock:
+        # A part with no stock rows is just as empty as one whose rows sum
+        # to zero. Low-stock reports exclude some of these parts entirely.
+        parts = parts.filter(Q(total__isnull=True) | Q(total=0))
+    else:
+        parts = parts.filter(total__gt=minimum if minimum is not None else 0)
+    parts = parts.order_by("pk")
     count = parts.count()
     rows = list(parts.values("pk", "name", "category_id", "total")[:200])
     return {
         "resolved": True,
-        "category_id": category.pk,
-        "category_name": category.name,
-        "include_descendants": True,
-        "quantity_greater_than": str(minimum if minimum is not None else 0),
+        "category_id": category.pk if category else None,
+        "category_name": category.name if category else None,
+        "include_descendants": category is not None,
+        "zero_stock": zero_stock,
+        "quantity_greater_than": None if zero_stock else str(minimum if minimum is not None else 0),
         "part_count": count,
         "parts": [
             {
                 "part_id": row["pk"],
                 "name": row["name"],
                 "category_id": row["category_id"],
-                "total_stock": str(row["total"]),
+                "total_stock": str(row["total"] or 0),
             }
             for row in rows
         ],

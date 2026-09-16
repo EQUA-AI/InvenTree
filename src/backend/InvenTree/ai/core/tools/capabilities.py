@@ -2062,6 +2062,24 @@ def select_capabilities(
             signals.append("sql_escape_hatch")
         pack_ids = with_hatch
 
+    if (
+        not registry_only
+        and not re.search(r"\b(?:controlled|approved|governed)\b", normalized)
+        and re.search(
+            r"\buploaded(?:\s+(?!and\b|or\b|photo\b|image\b)[\w-]+){0,3}"
+            r"\s+(?:manuals?|documents?|pdfs?)\b",
+            normalized,
+        )
+    ):
+        # The user named the upload corpus. A controlled-manual search is
+        # neither an equivalent read nor evidence that this upload is absent.
+        # Apply after sticky packs so a prior controlled read cannot replace it.
+        pack_ids = tuple(pack for pack in pack_ids if pack != "manuals.read")
+        if "documents.read" not in pack_ids:
+            pack_ids = ("documents.read", *pack_ids)
+        scores["documents.read"] = scores.get("documents.read", 0) + _SHAPE_SCORE
+        signals.append("uploaded_document_content")
+
     entries = _authorized_read_entries(pack_ids, profile, authenticated=authenticated)
     # Trim the weakest adjacent pack rather than collapsing to the primary: the
     # old collapse silently discarded exactly the pack that made a question
