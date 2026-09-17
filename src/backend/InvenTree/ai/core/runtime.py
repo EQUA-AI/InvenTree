@@ -10,6 +10,7 @@ import asyncio
 import logging
 import random
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Literal
 
@@ -124,6 +125,8 @@ class RuntimeSupervisor:
         self.retry_at: float | None = None
         self._task: asyncio.Task | None = None
         self._stop: asyncio.Event | None = None
+        self._initial_result: asyncio.Event | None = None
+        self._initial_deadline: float = 0
 
     def snapshot(self) -> RuntimeAvailability:
         return RuntimeAvailability(
@@ -139,13 +142,33 @@ class RuntimeSupervisor:
         """Idempotent within a lifespan; a new lifespan gets fresh probe state."""
         if self._task is None or self._task.done():
             self._stop = asyncio.Event()
+            self._initial_result = asyncio.Event()
+            self._initial_deadline = time.monotonic() + self.policy.cycle_s
             self.state, self.failure, self.retry_at = "starting", None, None
             self._task = asyncio.create_task(self._run(initialize), name="ai-runtime-startup")
         return self._task
 
+    async def wait_for_initial_result(self) -> None:
+        """Wait for the existing initializer, within its original startup budget.
+
+        A recycled ASGI worker can accept a request before its background
+        initializer finishes. Admission waits before any business work; it
+        never starts another initializer or replays the request. A failure,
+        shutdown, cancellation or expired budget still fails closed.
+        """
+        if self.state != "starting" or self._initial_result is None:
+            return
+        remaining = self._initial_deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        with suppress(TimeoutError):
+            await asyncio.wait_for(self._initial_result.wait(), timeout=remaining)
+
     async def close(self) -> None:
         """Wait for the single in-flight attempt's structured cleanup."""
         self.state, self.retry_at = "stopping", None
+        if self._initial_result is not None:
+            self._initial_result.set()
         if self._stop is not None:
             self._stop.set()
         if self._task is not None:
@@ -171,6 +194,7 @@ class RuntimeSupervisor:
                     async with initialize(deadline):
                         if not self._stop.is_set():
                             self.state, self.failure = "ready", None
+                        self._initial_result.set()
                         await self._stop.wait()
                     return
                 except Exception as error:
@@ -182,6 +206,7 @@ class RuntimeSupervisor:
                         if self.failure.transient
                         else "permanently_failed"
                     )
+                    self._initial_result.set()
                     logger.warning(
                         "ai.runtime state=%s reason=%s status=%s attempt=%s",
                         self.state,
@@ -206,7 +231,7 @@ class RuntimeSupervisor:
 runtime = RuntimeSupervisor()
 
 
-async def require_ai_runtime(request: Request) -> None:  # noqa: RUF029 - event-loop-owned state
+async def require_ai_runtime(request: Request) -> None:
     """Gate before endpoint parsing/writes, after the principal dependency.
 
     Health and capability are authenticated read-only diagnostics. No other
@@ -219,6 +244,7 @@ async def require_ai_runtime(request: Request) -> None:  # noqa: RUF029 - event-
         "/voice/capability",
     }:
         return
+    await runtime.wait_for_initial_result()
     status = runtime.snapshot()
     if not status.available:
         raise HTTPException(

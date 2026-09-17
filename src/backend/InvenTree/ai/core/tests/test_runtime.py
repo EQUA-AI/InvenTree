@@ -11,6 +11,7 @@ import pytest
 from ai.core.integrations.boot_budget import openai_probe_options, probe_budget, probe_timeout
 from ai.core.integrations.model_pins import ModelPinError
 from ai.core.runtime import (
+    RetryPolicy,
     RuntimeSupervisor,
     classify_failure,
     liveness,
@@ -207,6 +208,182 @@ async def test_readiness_gate_prevents_orphan_business_state(monkeypatch):
         assert (await client.get("/health/ai-ready")).status_code == 200
         assert (await client.post("/api/ai/voice/sessions")).status_code == 200
         writes.assert_called_once()
+
+
+def admission_app(writes):
+    """Real ASGI requests exercise admission before the business endpoint."""
+    app = FastAPI(dependencies=[Depends(require_ai_runtime)])
+
+    @app.post("/turn")
+    async def turn():
+        writes()
+        return {"done": True}
+
+    return Starlette(
+        routes=[
+            Route("/health/live", liveness),
+            Route("/health/ai-ready", readiness),
+            Mount("/api/ai", app),
+        ]
+    )
+
+
+async def test_initial_admission_waits_once_without_blocking_health(monkeypatch):
+    import ai.core.runtime as module
+
+    supervisor = RuntimeSupervisor()
+    monkeypatch.setattr(module, "runtime", supervisor)
+    entered, release = asyncio.Event(), asyncio.Event()
+    initialized, writes = Mock(), Mock()
+
+    @asynccontextmanager
+    async def initialize(deadline):
+        initialized()
+        entered.set()
+        await release.wait()
+        yield
+
+    supervisor.start(initialize)
+    await entered.wait()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=admission_app(writes)), base_url="http://test"
+    ) as client:
+        requests = [asyncio.create_task(client.post("/api/ai/turn")) for _ in range(2)]
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert all(not request.done() for request in requests)
+        writes.assert_not_called()
+        assert (await client.get("/health/live")).status_code == 200
+        assert (await client.get("/health/ai-ready")).status_code == 503
+        release.set()
+        assert [response.status_code for response in await asyncio.gather(*requests)] == [200, 200]
+        assert writes.call_count == 2
+        initialized.assert_called_once()
+    await supervisor.close()
+
+
+@pytest.mark.parametrize("error", [ProviderError(401), TimeoutError()])
+async def test_initial_admission_failure_never_executes_business_work(monkeypatch, error):
+    import ai.core.runtime as module
+
+    supervisor = RuntimeSupervisor()
+    monkeypatch.setattr(module, "runtime", supervisor)
+    entered, release = asyncio.Event(), asyncio.Event()
+    initialized, writes = Mock(), Mock()
+
+    @asynccontextmanager
+    async def initialize(deadline):
+        initialized()
+        entered.set()
+        await release.wait()
+        raise error
+        yield  # pragma: no cover
+
+    supervisor.start(initialize)
+    await entered.wait()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=admission_app(writes)), base_url="http://test"
+    ) as client:
+        request = asyncio.create_task(client.post("/api/ai/turn"))
+        await asyncio.sleep(0)
+        release.set()
+        response = await request
+        assert response.status_code == 503
+        assert "PRIVATE" not in response.text
+        writes.assert_not_called()
+        initialized.assert_called_once()
+    await supervisor.close()
+
+
+async def test_cancelled_admission_and_expired_budget_do_not_restart_initializer(monkeypatch):
+    import ai.core.runtime as module
+
+    supervisor = RuntimeSupervisor()
+    monkeypatch.setattr(module, "runtime", supervisor)
+    entered, release = asyncio.Event(), asyncio.Event()
+    initialized, writes = Mock(), Mock()
+
+    @asynccontextmanager
+    async def initialize(deadline):
+        initialized()
+        entered.set()
+        await release.wait()
+        yield
+
+    task = supervisor.start(initialize)
+    await entered.wait()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=admission_app(writes)), base_url="http://test"
+    ) as client:
+        request = asyncio.create_task(client.post("/api/ai/turn"))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        request.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+        assert not task.done()
+        supervisor._initial_deadline = time.monotonic() - 1
+        assert (await client.post("/api/ai/turn")).status_code == 503
+        writes.assert_not_called()
+        initialized.assert_called_once()
+    release.set()
+    await supervisor.close()
+
+
+async def test_shutdown_releases_waiting_admission_without_business_work(monkeypatch):
+    import ai.core.runtime as module
+
+    supervisor = RuntimeSupervisor()
+    monkeypatch.setattr(module, "runtime", supervisor)
+    entered, release = asyncio.Event(), asyncio.Event()
+    writes = Mock()
+
+    @asynccontextmanager
+    async def initialize(deadline):
+        entered.set()
+        await release.wait()
+        yield
+
+    supervisor.start(initialize)
+    await entered.wait()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=admission_app(writes)), base_url="http://test"
+    ) as client:
+        request = asyncio.create_task(client.post("/api/ai/turn"))
+        await asyncio.sleep(0)
+        closing = asyncio.create_task(supervisor.close())
+        assert (await request).status_code == 503
+        assert not closing.done()
+        writes.assert_not_called()
+        release.set()
+        await closing
+
+
+async def test_admission_wait_is_bounded_without_cancelling_slow_initializer(monkeypatch):
+    import ai.core.runtime as module
+
+    supervisor = RuntimeSupervisor(RetryPolicy(cycle_s=0.02))
+    monkeypatch.setattr(module, "runtime", supervisor)
+    entered, release = asyncio.Event(), asyncio.Event()
+    writes = Mock()
+
+    @asynccontextmanager
+    async def initialize(deadline):
+        entered.set()
+        await release.wait()
+        yield
+
+    task = supervisor.start(initialize)
+    await entered.wait()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=admission_app(writes)), base_url="http://test"
+    ) as client:
+        response = await asyncio.wait_for(client.post("/api/ai/turn"), timeout=1)
+        assert response.status_code == 503
+        writes.assert_not_called()
+        assert not task.done()
+    release.set()
+    await supervisor.close()
 
 
 def test_probe_budget_limits_only_probe_sdk_calls():
