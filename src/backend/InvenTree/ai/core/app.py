@@ -1245,6 +1245,30 @@ async def get_evidence_set_members(
     return payload
 
 
+class ThreadDeleteAllRequest(BaseModel):
+    """A bounded owner-scoped deletion scan with explicit user intent."""
+
+    confirm: Literal[True]
+    limit: int = Field(default=20, ge=1, le=100)
+    request_token: str | None = Field(default=None, max_length=2048)
+    cursor: str | None = Field(default=None, max_length=4096)
+
+
+@app.delete("/threads")
+async def delete_all_threads(request: ThreadDeleteAllRequest, response: Response) -> dict[str, Any]:
+    """Delete only the authenticated owner's current server-scope threads."""
+    response.headers["Cache-Control"] = "private, no-store"
+    try:
+        result = await sync_to_async(_repository(_principal()).delete_all, thread_sensitive=True)(
+            limit=request.limit, request_token=request.request_token, cursor=request.cursor
+        )
+    except InvalidBoundary:
+        raise HTTPException(status_code=400, detail="Invalid deletion continuation") from None
+    if result["status"] == "purge_incomplete":
+        response.status_code = 202
+    return result
+
+
 @app.delete("/threads/{thread_id}")
 async def delete_thread(thread_id: str, response: Response) -> dict[str, str]:
     """Delete a thread through the sole authorized repository."""

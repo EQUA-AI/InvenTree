@@ -386,6 +386,20 @@ class ThreadRepository:
             )
         return retention.thread_purge_receipt(thread_id)
 
+    def delete_all(self, *, limit=20, request_token=None, cursor=None) -> dict:
+        """Delete a bounded page of owned threads, preserving retry receipts."""
+        from .owned_lifecycle import delete_owned_batch
+
+        return delete_owned_batch(
+            self, limit=limit, request_token=request_token, cursor=cursor
+        )
+
+    def export_transcript_records(self, *, chunk_size=200):
+        """Stream this owner's scoped transcript projection for an operator."""
+        from .owned_lifecycle import transcript_records
+
+        return transcript_records(self, chunk_size=chunk_size)
+
     def _append_locked(
         self,
         thread: ChatThread,
