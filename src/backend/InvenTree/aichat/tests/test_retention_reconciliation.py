@@ -723,16 +723,25 @@ class DetailFamilyTests(RetentionEnvMixin, TestCase):
         """Exactly thirteen months old stays; one month older goes; no day drift."""
         from datetime import date
 
-        self.assertEqual(retention._months_before(date(2026, 9, 5), 13), date(2025, 8, 1))
-        self.assertEqual(retention._months_before(date(2026, 1, 31), 13), date(2024, 12, 1))
+        self.assertEqual(
+            retention._months_before(date(2026, 9, 5), 13), date(2025, 8, 1)
+        )
+        self.assertEqual(
+            retention._months_before(date(2026, 1, 31), 13), date(2024, 12, 1)
+        )
         today = timezone.now().date()
         keep = retention._months_before(today, 13)
         drop = retention._months_before(today, 14)
-        AIUsageMonthlyAggregate.objects.create(month=keep, source='turn_usage', user_id=1)
-        AIUsageMonthlyAggregate.objects.create(month=drop, source='turn_usage', user_id=1)
+        AIUsageMonthlyAggregate.objects.create(
+            month=keep, source='turn_usage', user_id=1
+        )
+        AIUsageMonthlyAggregate.objects.create(
+            month=drop, source='turn_usage', user_id=1
+        )
         self.assertEqual(retention.purge_usage_aggregates(), {'usage_aggregates': 1})
         self.assertEqual(
-            list(AIUsageMonthlyAggregate.objects.values_list('month', flat=True)), [keep]
+            list(AIUsageMonthlyAggregate.objects.values_list('month', flat=True)),
+            [keep],
         )
 
 
@@ -854,7 +863,11 @@ class OutboxRegistryTests(RetentionEnvMixin, TestCase):
 
     def test_registry_lists_upload_dir_and_thread_summary(self):
         """Both kinds are registered with a handler and a probe."""
-        self.assertEqual(set(retention.OUTBOX_KINDS), {'upload_dir', 'thread_summary'})
+        self.assertLessEqual({'upload_dir', 'thread_summary'}, set(retention.OUTBOX_KINDS))
+        self.assertLessEqual(
+            {entry.outbox_kind for entry in retention.THREAD_DERIVATIVES.entries},
+            set(retention.OUTBOX_KINDS)
+        )
         for name, kind in retention.OUTBOX_KINDS.items():
             self.assertEqual(kind.name, name)
             self.assertTrue(callable(kind.handler))
@@ -965,7 +978,12 @@ class OutboxRegistryTests(RetentionEnvMixin, TestCase):
         self.assertEqual(status['pending'], 1)
         self.assertEqual(status['failed_permanent'], 2)
         self.assertEqual(
-            status['residual_by_kind'], {'upload_dir': 1, 'thread_summary': 1}
+            status['residual_by_kind'],
+            {
+                **dict.fromkeys(retention.OUTBOX_KINDS, 0),
+                'upload_dir': 1,
+                'thread_summary': 1,
+            },
         )
 
 

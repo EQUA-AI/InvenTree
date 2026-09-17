@@ -56,6 +56,9 @@ class AIChatConfig(AppConfig):
         self._register_attachment_rag_receivers()
         self._probe_attachment_rag_config()
         self._register_rollback_floor_check()
+        from aichat.retention_checks import register_retention_checks
+
+        register_retention_checks()
 
     def _register_rollback_floor_check(self):
         """Register the Django-plane rollback-floor system check (§14).

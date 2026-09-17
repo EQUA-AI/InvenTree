@@ -1769,7 +1769,7 @@ class AIUsageMonthlyAggregate(models.Model):
 
 
 class AIRetentionOutbox(models.Model):
-    """Retryable record of one external deletion the purge owes (S16).
+    """Retryable record of registered derivative cleanup the purge owes (S16).
 
     Filesystem and search-index removals cannot ride a database
     transaction, so each is recorded here and driven to completion with
@@ -1778,9 +1778,9 @@ class AIRetentionOutbox(models.Model):
     """
 
     #: Registered in ``aichat.services.retention.OUTBOX_KINDS``:
-    #: ``upload_dir`` and ``thread_summary`` (M2 PR 3: re-apply a thread's
-    #: summary exclusions); ``search_index`` reserved for thread-linked
-    #: index artifacts added later.
+    #: ``ThreadDerivativeRegistry`` installs ``thread_*`` cleanup kinds and
+    #: ``upload_dir``. ``thread_summary`` separately reapplies live summary
+    #: exclusions; future kinds must register a handler and residual probe.
     kind = models.CharField(max_length=32)
     #: The target: the thread id for ``upload_dir`` and ``thread_summary``.
     reference = models.CharField(max_length=255)

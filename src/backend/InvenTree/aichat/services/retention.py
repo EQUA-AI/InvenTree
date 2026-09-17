@@ -35,13 +35,16 @@ queries — never an implicit purge failure.
 
 import json
 import logging
+import re
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from django.apps import apps
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from aichat.models import (
@@ -73,6 +76,8 @@ logger = logging.getLogger('inventree')
 #: Q48: transcripts, turns, evidence, feedback, voice, terminal proposals,
 #: tombstones.
 RETENTION_TRANSCRIPT_DAYS = 400
+#: A separate policy clock, measured from deletion; pending cleanup pins it.
+RETENTION_TOMBSTONE_DAYS = 400
 #: Q48: usage metadata detail, RetrievalMiss, AIRequestRejection, settled
 #: quota reservations.
 RETENTION_DETAIL_DAYS = 90
@@ -185,6 +190,7 @@ def _purge_thread(
     thread; any straggler rows appended mid-purge ride that final cascade.
     """
     thread_id = thread.pk
+    THREAD_DERIVATIVES.require_coverage()
     counts = {
         'messages': ChatMessage.objects.filter(thread_id=thread_id).count(),
         'turns': ChatTurn.objects.filter(thread_id=thread_id).count(),
@@ -221,8 +227,9 @@ def _purge_thread(
         dry_run=False,
     )
 
-    purge_voice_for_thread(thread_id, batch_size=batch_size)
-    scrub_proposals_for_thread(thread_id)
+    # Registrants own dangling content and future derivatives. A failure owes
+    # durable retry work; it must never turn into a successful deletion receipt.
+    THREAD_DERIVATIVES.purge(thread_id)
 
     with transaction.atomic():
         locked = ChatThread.objects.select_for_update().filter(pk=thread_id).first()
@@ -263,7 +270,8 @@ def _purge_thread(
                 pk__in=[grant.pk for grant in grants]
             ).delete()
         locked.delete()
-        enqueue_outbox('upload_dir', thread_id)
+        for derivative in THREAD_DERIVATIVES.entries:
+            enqueue_outbox(derivative.outbox_kind, thread_id)
         transaction.on_commit(lambda: _try_remove_upload_dir(thread_id))
 
     logger.info(
@@ -279,13 +287,17 @@ def _purge_thread(
 
 def purge_tombstones(
     *,
-    days: int = RETENTION_TRANSCRIPT_DAYS,
+    days: int = RETENTION_TOMBSTONE_DAYS,
     batch_size: int = PURGE_BATCH_SIZE,
     dry_run: bool = False,
 ) -> dict:
-    """Purge tombstones 400 days after the deletion they record."""
+    """Expire deletion receipts only when their retry obligations have settled."""
     count = _batched_delete(
-        ChatThreadTombstone.objects.filter(deleted_at__lt=_cutoff(days)),
+        ChatThreadTombstone.objects.filter(deleted_at__lt=_cutoff(days)).exclude(
+            thread_id__in=AIRetentionOutbox.objects.exclude(state='done').values(
+                'reference'
+            )
+        ),
         family='tombstones',
         batch_size=batch_size,
         dry_run=dry_run,
@@ -878,6 +890,139 @@ def register_outbox_kind(kind: OutboxKind) -> None:
     OUTBOX_KINDS[kind.name] = kind
 
 
+class DerivativeRegistrationError(Exception):
+    """A thread-keyed model has no declared deletion lifecycle."""
+
+
+@dataclass(frozen=True)
+class ThreadDerivative:
+    """One deletion family, registered before its first durable write.
+
+    Purge and probe are idempotent and accept a thread id. Probes count content
+    remaining after deletion, not intentionally retained operational receipts.
+    """
+
+    family: str
+    model_labels: tuple[str, ...]
+    purge: Callable[[str], object]
+    probe: Callable[[str], int]
+    outbox_kind: str
+    inline: bool = True
+    requires_tombstone: bool = True
+
+
+class ThreadDerivativeRegistry:
+    """Ordered in-process manifest and outbox registration in one operation."""
+
+    def __init__(self, outbox_kinds=None):
+        """Allow an isolated registry for registration-contract tests."""
+        self._entries: dict[str, ThreadDerivative] = {}
+        self.exemptions: dict[str, str] = {}
+        self.outbox_kinds = OUTBOX_KINDS if outbox_kinds is None else outbox_kinds
+
+    @property
+    def entries(self) -> tuple[ThreadDerivative, ...]:
+        """Return the immutable ordered registration snapshot."""
+        return tuple(self._entries.values())
+
+    def register(self, derivative: ThreadDerivative) -> None:
+        """Install both layers or reject the entire registration."""
+        covered = {label for entry in self.entries for label in entry.model_labels}
+        labels = derivative.model_labels
+        if (
+            not re.fullmatch(r'[a-z][a-z0-9_]{0,31}', derivative.family)
+            or not re.fullmatch(r'[a-z][a-z0-9_]{0,31}', derivative.outbox_kind)
+            or derivative.family in self._entries
+            or derivative.outbox_kind in self.outbox_kinds
+            or len(set(labels)) != len(labels)
+            or any(label != label.lower() or '.' not in label for label in labels)
+            or covered.intersection(labels)
+            or self.exemptions.keys() & set(labels)
+            or not callable(derivative.purge)
+            or not callable(derivative.probe)
+        ):
+            raise ValueError('Invalid or duplicate derivative registration')
+
+        def retry(thread_id: str) -> None:
+            # The in-process hook runs while the parent exists; the outbox runs
+            # only after its tombstone commits. Never erase a live thread via a
+            # generic outbox reference, even if a row was incorrectly enqueued.
+            if derivative.requires_tombstone and (
+                ChatThread.objects.filter(pk=thread_id).exists()
+                or not ChatThreadTombstone.objects.filter(thread_id=thread_id).exists()
+            ):
+                raise OutboxReferenceError()
+            derivative.purge(thread_id)
+
+        self._entries[derivative.family] = derivative
+        self.outbox_kinds[derivative.outbox_kind] = OutboxKind(
+            derivative.outbox_kind, retry, derivative.probe
+        )
+
+    def exempt(self, model_label: str, reason: str) -> None:
+        """Declare a reviewed lifecycle exception, never an implicit exclusion."""
+        if (
+            not reason.strip()
+            or model_label in self.exemptions
+            or any(model_label in entry.model_labels for entry in self.entries)
+        ):
+            raise ValueError('Invalid or duplicate derivative exemption')
+        self.exemptions[model_label] = reason
+
+    def uncovered_models(self, models=None) -> list[str]:
+        """Find direct thread references lacking a purge contract or exemption."""
+        covered = {
+            label for entry in self.entries for label in entry.model_labels
+        } | self.exemptions.keys()
+        missing = []
+        for model in apps.get_models() if models is None else models:
+            fields = model._meta.get_fields()
+            direct = model._meta.app_label in {
+                'aichat',
+                'voice',
+                'memory',
+                'topology',
+            } and any(field.name in {'thread', 'thread_id'} for field in fields)
+            linked = any(
+                getattr(field, 'related_model', None) is ChatThread
+                and not field.auto_created
+                for field in fields
+            )
+            if (direct or linked) and model._meta.label_lower not in covered:
+                missing.append(model._meta.label_lower)
+        return sorted(missing)
+
+    def require_coverage(self) -> None:
+        """Refuse an incomplete manifest before deleting any content."""
+        if self.uncovered_models():
+            raise DerivativeRegistrationError('Unregistered thread derivatives')
+
+    def purge(self, thread_id: str) -> None:
+        """Attempt every family; the caller enqueues all families on commit."""
+        for entry in self.entries:
+            if not entry.inline:
+                continue
+            try:
+                # Isolate database errors so later families can still run.
+                with transaction.atomic():
+                    entry.purge(thread_id)
+            except Exception:
+                logger.warning(
+                    'retention_derivative_purge_failed family=%s', entry.family
+                )
+
+
+THREAD_DERIVATIVES = ThreadDerivativeRegistry()
+
+
+def checked_residual(probe: Callable[[str], int], reference: str) -> int:
+    """Reject invalid probe results instead of treating them as zero evidence."""
+    value = probe(reference)
+    if type(value) is not int or value < 0:
+        raise ValueError('Invalid residual count')
+    return value
+
+
 def _contained_upload_dir(reference: str) -> Path:
     """The upload dir for ``reference``; raises when containment fails.
 
@@ -951,9 +1096,20 @@ def thread_purge_receipt(thread_id: str) -> dict[str, str]:
     Called only after the repository authorizes a live thread or its tombstone.
     Retrying DELETE must not report success merely because the parent row was
     removed. Unknown kinds, probe failures and outstanding rows remain pending;
-    the scheduled outbox worker remains the backstop. This covers the current
-    thread purge/outbox, not the future full derivative registry.
+    the scheduled outbox worker remains the backstop. Every registered family
+    is probed even if its prior outbox work was marked done or is missing.
     """
+    if (
+        not ChatThread.objects.filter(pk=thread_id).exists()
+        and ChatThreadTombstone.objects.filter(thread_id=thread_id).exists()
+    ):
+        for entry in THREAD_DERIVATIVES.entries:
+            try:
+                needs_retry = checked_residual(entry.probe, thread_id) != 0
+            except Exception:
+                needs_retry = True
+            if needs_retry:
+                enqueue_outbox(entry.outbox_kind, thread_id)
     rows = AIRetentionOutbox.objects.filter(reference=thread_id).exclude(state='done')
     for row in rows.order_by('pk')[:100]:
         kind = OUTBOX_KINDS.get(row.kind)
@@ -961,7 +1117,7 @@ def thread_purge_receipt(thread_id: str) -> dict[str, str]:
             continue
         try:
             kind.handler(thread_id)
-            if kind.probe(thread_id) != 0:
+            if checked_residual(kind.probe, thread_id) != 0:
                 continue
         except Exception:
             # No content, paths or provider errors in the public receipt.
@@ -969,10 +1125,12 @@ def thread_purge_receipt(thread_id: str) -> dict[str, str]:
         AIRetentionOutbox.objects.filter(pk=row.pk).update(
             state='done', completed_at=timezone.now(), last_error_code=''
         )
-    try:
-        residual = _probe_upload_dir(thread_id)
-    except (OSError, OutboxReferenceError):
-        residual = 1
+    residual = bool(THREAD_DERIVATIVES.uncovered_models())
+    for kind in OUTBOX_KINDS.values():
+        try:
+            residual |= checked_residual(kind.probe, thread_id) != 0
+        except Exception:
+            residual = True
     incomplete = (
         bool(residual)
         or rows.exists()
@@ -1072,7 +1230,10 @@ def process_retention_outbox(*, batch_size: int = 100) -> dict:
         else:
             try:
                 kind.handler(row.reference)
-                succeeded = True
+                if checked_residual(kind.probe, row.reference) == 0:
+                    succeeded = True
+                else:
+                    error_code = 'residual_remaining'
             except OutboxReferenceError:
                 error_code = 'invalid_reference'
             except Exception as exc:
@@ -1116,6 +1277,14 @@ def process_retention_outbox(*, batch_size: int = 100) -> dict:
 # Orchestration and status
 # ---------------------------------------------------------------------------
 
+
+def audit_retention(*, dry_run: bool = False) -> dict:
+    """Probe a bounded deletion sample; only real runs record the evidence."""
+    from aichat.services.retention_audit import audit_deleted_threads
+
+    return audit_deleted_threads(record=not dry_run)
+
+
 #: Family name -> callable(dry_run=..., batch_size-defaulted). Order is the
 #: execution order; content-bearing families first.
 FAMILIES = {
@@ -1135,6 +1304,7 @@ FAMILIES = {
     'outbox': lambda dry_run=False: (
         {'skipped': 'dry_run'} if dry_run else process_retention_outbox()
     ),
+    'retention_audit': audit_retention,
 }
 
 
@@ -1183,6 +1353,8 @@ def last_run() -> dict | None:
 
 def retention_status() -> dict:
     """Cheap read-only status for the operations report and gate evidence."""
+    from aichat.services.retention_audit import last_audit
+
     cutoff_transcript = _cutoff(RETENTION_TRANSCRIPT_DAYS)
     cutoff_detail = _cutoff(RETENTION_DETAIL_DAYS)
     receipt = last_run()
@@ -1214,6 +1386,7 @@ def retention_status() -> dict:
     return {
         'last_run_age_days': last_run_age_days,
         'last_run': receipt,
+        'deletion_audit': last_audit(),
         'backlog': {
             'threads': ChatThread.objects.filter(
                 updated_at__lt=cutoff_transcript
@@ -1245,9 +1418,9 @@ def retention_status() -> dict:
     }
 
 
-def _outbox_residual_by_kind() -> dict[str, int]:
+def _outbox_residual_by_kind() -> dict[str, int | None]:
     """Residual counts over a bounded sample of ``failed_permanent`` rows."""
-    residual: dict[str, int] = {}
+    residual: dict[str, int | None] = {}
     for name, kind in OUTBOX_KINDS.items():
         references = AIRetentionOutbox.objects.filter(
             kind=name, state='failed_permanent'
@@ -1255,15 +1428,108 @@ def _outbox_residual_by_kind() -> dict[str, int]:
         total = 0
         for reference in references:
             try:
-                total += int(kind.probe(reference))
+                total += checked_residual(kind.probe, reference)
             except Exception:
                 logger.warning('retention_outbox_probe_failed kind=%s', name)
-        residual[name] = total
+                residual[name] = None
+                break
+        else:
+            residual[name] = total
     return residual
 
 
-register_outbox_kind(
-    OutboxKind('upload_dir', handler=_handle_upload_dir, probe=_probe_upload_dir)
+def _register_model_derivative(family: str, model_label: str, lookup: str) -> None:
+    """Declare a model's thread lookup once for both purge and residual probe."""
+
+    def queryset(thread_id):
+        return apps.get_model(model_label).objects.filter(**{lookup: thread_id})
+
+    def purge(thread_id):
+        return _batched_delete(
+            queryset(thread_id),
+            family=family,
+            batch_size=PURGE_BATCH_SIZE,
+            dry_run=False,
+        )
+
+    THREAD_DERIVATIVES.register(
+        ThreadDerivative(
+            family,
+            (model_label,),
+            purge,
+            lambda thread_id: queryset(thread_id).count(),
+            f'thread_{family}',
+        )
+    )
+
+
+def _proposal_residual(thread_id: str) -> int:
+    """Retained execution receipts are exempt; proposed state/content are not."""
+    return (
+        ChatActionProposal.objects
+        .filter(thread_id=thread_id)
+        .filter(
+            Q(state=ProposalState.PROPOSED)
+            | ~Q(reason='')
+            | ~Q(intent={})
+            | ~Q(preview={})
+        )
+        .count()
+    )
+
+
+for _family, _model, _lookup in (
+    ('evidence_members', 'aichat.chatevidencesetmember', 'set__turn__thread_id'),
+    ('evidence_sets', 'aichat.chatevidenceset', 'turn__thread_id'),
+    ('feedback', 'aichat.messagefeedback', 'message__thread_id'),
+    ('turns', 'aichat.chatturn', 'thread_id'),
+    ('messages', 'aichat.chatmessage', 'thread_id'),
+    ('compaction', 'aichat.chatcompactionevent', 'thread_id'),
+    ('voice', 'voice.voicesession', 'thread_id'),
+):
+    _register_model_derivative(_family, _model, _lookup)
+
+THREAD_DERIVATIVES.register(
+    ThreadDerivative(
+        'worker_usage',
+        ('aichat.aiworkerusageevent',),
+        lambda reference: AIWorkerUsageEvent.objects.filter(thread_id=reference).update(
+            thread=None
+        ),
+        lambda reference: AIWorkerUsageEvent.objects.filter(
+            thread_id=reference
+        ).count(),
+        'thread_worker_usage',
+    )
+)
+
+THREAD_DERIVATIVES.register(
+    ThreadDerivative(
+        'proposals',
+        ('aichat.chatactionproposal',),
+        scrub_proposals_for_thread,
+        _proposal_residual,
+        'thread_proposals',
+    )
+)
+THREAD_DERIVATIVES.register(
+    ThreadDerivative(
+        'uploads',
+        (),
+        _handle_upload_dir,
+        _probe_upload_dir,
+        'upload_dir',
+        inline=False,
+        requires_tombstone=False,
+    )
+)
+THREAD_DERIVATIVES.exempt(
+    'aichat.chatthreadgrant',
+    'Core purge atomically transfers protected grants to content-free tombstones before deleting the parent; audited with the root.',
+)
+THREAD_DERIVATIVES.exempt(
+    'aichat.chatthreadtombstone',
+    'Content-free deletion receipt retained on its separate deletion-time clock.',
 )
 register_outbox_kind(
     OutboxKind(
