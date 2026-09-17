@@ -384,6 +384,35 @@ def test_judge_item_serializes_without_creds():
     assert '"question": "q"' in captured["payload"]
 
 
+@pytest.mark.parametrize(
+    ("answer", "present"),
+    [
+        ("Store below 25\u202f°C.", True),
+        ("Store below 25 ℃.", True),
+        ("Store below 125 °C.", False),
+        ("Store below 26 °C.", False),
+    ],
+)
+def test_judge_receives_authoritative_key_match_without_overriding_factual_failure(answer, present):
+    """Unit typography is deterministic; a factual rejection still fails."""
+    import json
+
+    captured = {}
+
+    def judge_call(payload):
+        captured.update(json.loads(payload))
+        return {
+            "verdict": "wrong",
+            "cited_keys_present": captured["required_citation_keys_present"],
+            "rationale": "An independent factual claim is unsupported.",
+        }
+
+    item = _item(ground_truth_keys=("25 °C",))
+    verdict = judge_mod.judge_item(item, answer, judge_call=judge_call)
+    assert captured["required_citation_keys_present"] is present
+    assert judge_mod.score_item(item, verdict, answer=answer).outcome == "fail"
+
+
 # --- live gate ---------------------------------------------------------------
 
 

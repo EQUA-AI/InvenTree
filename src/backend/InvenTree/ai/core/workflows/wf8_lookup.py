@@ -519,6 +519,9 @@ associated application method, sequence, operating conditions and follow-up
 checks. A bare value is incomplete when the source couples that value to how
 it must be applied. Keep these qualifications concise and source-grounded;
 never supply a generic procedure or condition that the source did not state.
+When asked what a source says, report its stated instructions without adding
+inferred prohibitions, handling advice or failure mechanisms. Keep any
+explanation within what the source establishes; plausibility is not a citation.
 When describing a maintenance method, pattern or sequence, also retain the
 settings and units that the source directly couples to that procedure, such
 as the specified torque for a tightening sequence.

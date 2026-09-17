@@ -76,8 +76,13 @@ _JUDGE_SYSTEM_PROMPT = (
     "states facts contradicting the ground truth or fabricates figures; "
     "'abstained' — it honestly declines/reports not-found without asserting "
     "facts; 'clarified' — it asks a clarifying question instead of "
-    "answering. cited_keys_present is true only when every required "
-    "citation key appears in the answer. reference_context contains independently "
+    "answering. Copy cited_keys_present from the server-computed "
+    "required_citation_keys_present field. That check normalizes Unicode "
+    "whitespace and equivalent unit glyphs and prevents numeric-prefix matches. "
+    "Do not reinterpret key spelling or make a factual verdict wrong because "
+    "of citation-key formatting; the server enforces missing keys separately. "
+    "The key check does not establish factual correctness: still reject "
+    "contradictions and unsupported claims. reference_context contains independently "
     "verified supplementary facts: use it to check additional claims, but do not "
     "require the answer to state those facts. Required answer content comes from "
     "the question and ground_truth. Contradictions and fabricated extra claims "
@@ -189,6 +194,7 @@ def judge_item(
             "ground_truth": item.ground_truth,
             "reference_context": item.reference_context,
             "required_citation_keys": list(item.ground_truth_keys),
+            "required_citation_keys_present": literal_keys_present(item, answer),
             "answer": answer[:8000],
         },
         ensure_ascii=True,
