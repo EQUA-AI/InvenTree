@@ -5,6 +5,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
+from django.utils import timezone
 
 from pgvector.django import VectorField
 
@@ -1639,6 +1640,20 @@ class AIRequestRejection(models.Model):
     def __str__(self) -> str:
         """Return a safe diagnostic representation."""
         return f'request rejection {self.code}'
+
+
+class AccountErasureTombstone(models.Model):
+    """Durable local erasure intent, retained for restore reconciliation.
+
+    Scalar identity survives loss of the user row. The original join timestamp
+    guards against replay onto a reused primary key. No personal text or
+    credentials are stored; there is deliberately no automatic expiry yet.
+    This records intent, including incomplete cleanup, not erasure acceptance.
+    """
+
+    user_id = models.PositiveBigIntegerField(primary_key=True)
+    user_joined_at = models.DateTimeField()
+    requested_at = models.DateTimeField(default=timezone.now)
 
 
 class ChatThreadTombstone(models.Model):

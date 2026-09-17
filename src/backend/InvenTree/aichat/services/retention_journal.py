@@ -1,4 +1,4 @@
-"""Signed, bounded thread-deletion journals for an isolated restored database.
+"""Signed, bounded deletion journals for an isolated restored database.
 
 The source must be quiescent when exporting. A journal proves the exported
 records, not the completeness of the source's history or a whole-account erase.
@@ -16,13 +16,21 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from aichat.models import AIRetentionOutbox, ChatThread, ChatThreadTombstone
+from aichat.models import (
+    AccountErasureTombstone,
+    AIRetentionOutbox,
+    ChatThread,
+    ChatThreadTombstone,
+)
 from aichat.services import retention
+from aichat.services.account_erasure import erase_account
+from aichat.services.account_erasure_log import record_erasure
 from InvenTree.restore_hold import restore_hold_enabled
 
 SALT = 'aichat.retention-journal.v1'
 MAX_ROWS = 10000
 MAX_BYTES = 16 * 1024 * 1024
+ACCOUNT_FIELDS = ('user_id', 'user_joined_at', 'requested_at')
 FIELDS = (
     'thread_id',
     'owner_id',
@@ -67,7 +75,9 @@ def _reference(value):
 def export_journal(*, since):
     """Export retained deletions since the restore point plus all owed cleanup.
 
-    Old tombstones referenced by unfinished outbox rows are included as well.
+    Old thread tombstones referenced by unfinished outbox rows are included too.
+    Include every retained account intent, even before the restore point: an
+    intent is not proof its credential/content cleanup ever finished.
     Refuse oversized exports rather than silently truncating their coverage.
     """
     source = journal_source()
@@ -88,22 +98,32 @@ def export_journal(*, since):
         Q(deleted_at__gte=lower) | Q(thread_id__in=pending.values('reference'))
     )
     rows = list(tombstones.order_by('thread_id').values(*FIELDS)[: MAX_ROWS + 1])
-    if len(rows) + len(obligations) > MAX_ROWS:
+    accounts = list(
+        AccountErasureTombstone.objects
+        .filter(requested_at__lte=upper)
+        .order_by('user_id')
+        .values(*ACCOUNT_FIELDS)[: MAX_ROWS + 1]
+    )
+    if len(rows) + len(obligations) + len(accounts) > MAX_ROWS:
         raise JournalError(
             'Journal exceeds the record limit; no partial export was created'
         )
     for row in rows:
         for key in ('thread_created_at', 'deleted_at'):
             row[key] = row[key].isoformat()
+    for row in accounts:
+        for key in ('user_joined_at', 'requested_at'):
+            row[key] = row[key].isoformat()
     payload = {
-        'schema_version': 1,
+        'schema_version': 2,
         'source': source,
         'since': lower.isoformat(),
         'as_of': upper.isoformat(),
-        'scope': 'retained_thread_deletions',
+        'scope': 'retained_threads_and_local_account_intents',
         'kinds': sorted(retention.OUTBOX_KINDS),
         'threads': rows,
         'outbox': obligations,
+        'accounts': accounts,
     }
     token = signing.dumps(payload, salt=SALT, compress=False)
     if len(token.encode('utf-8')) > MAX_BYTES:
@@ -126,7 +146,12 @@ def read_journal(token, *, since):
     except Exception:
         raise JournalError('Journal signature or encoding is invalid') from None
     try:
-        if set(payload) != {
+        if not isinstance(payload, dict):
+            raise ValueError
+        version = payload.get('schema_version')
+        if type(version) is not int or version not in (1, 2):
+            raise ValueError
+        fields = {
             'schema_version',
             'source',
             'since',
@@ -135,22 +160,28 @@ def read_journal(token, *, since):
             'kinds',
             'threads',
             'outbox',
-        }:
+        }
+        if version == 2:
+            fields.add('accounts')
+        if set(payload) != fields:
             raise ValueError
-        if type(payload['schema_version']) is not int or payload['schema_version'] != 1:
-            raise ValueError
-        if (
-            payload['source'] != journal_source()
-            or payload['scope'] != 'retained_thread_deletions'
-        ):
+        scope = (
+            'retained_threads_and_local_account_intents'
+            if version == 2
+            else 'retained_thread_deletions'
+        )
+        if payload['source'] != journal_source() or payload['scope'] != scope:
             raise ValueError
         lower, upper = aware_time(payload['since']), aware_time(payload['as_of'])
         if lower != aware_time(since) or lower > upper or upper > timezone.now():
             raise ValueError
         rows, pending, kinds = payload['threads'], payload['outbox'], payload['kinds']
-        if not all(isinstance(items, list) for items in (rows, pending, kinds)):
+        accounts = payload.get('accounts', [])
+        if not all(
+            isinstance(items, list) for items in (rows, pending, kinds, accounts)
+        ):
             raise ValueError
-        if len(rows) + len(pending) > MAX_ROWS or len(kinds) > 1000:
+        if len(rows) + len(pending) + len(accounts) > MAX_ROWS or len(kinds) > 1000:
             raise ValueError
         if not all(
             isinstance(k, str) and re.fullmatch(r'[a-z][a-z0-9_]{0,31}', k)
@@ -159,6 +190,19 @@ def read_journal(token, *, since):
             raise ValueError
         if len(set(kinds)) != len(kinds):
             raise ValueError
+        subjects = set()
+        for row in accounts:
+            if (
+                set(row) != set(ACCOUNT_FIELDS)
+                or type(row['user_id']) is not int
+                or not 0 < row['user_id'] <= 9223372036854775807
+                or row['user_id'] in subjects
+                or not aware_time(row['user_joined_at'])
+                <= aware_time(row['requested_at'])
+                <= upper
+            ):
+                raise ValueError
+            subjects.add(row['user_id'])
         references = set()
         for row in rows:
             if (
@@ -223,6 +267,38 @@ def _same_thread(existing, row, *, tombstone=False):
     )
 
 
+def _account_conflict(row):
+    user = get_user_model().objects.filter(pk=row['user_id']).first()
+    stone = AccountErasureTombstone.objects.filter(user_id=row['user_id']).first()
+    joined = aware_time(row['user_joined_at'])
+    return (user is not None and user.date_joined != joined) or (
+        stone is not None and stone.user_joined_at != joined
+    )
+
+
+def _replay_account(row):
+    """Preserve missing-account intents or disable a matching restored account."""
+    user_id = row['user_id']
+    joined, requested = (
+        aware_time(row['user_joined_at']),
+        aware_time(row['requested_at']),
+    )
+    # Restore isolation is mandatory: a missing PK cannot be row-locked against
+    # arbitrary future insertion. Preserve its obligation without creating a user.
+    with transaction.atomic(durable=True):
+        user = get_user_model().objects.select_for_update().filter(pk=user_id).first()
+        if user is None:
+            record_erasure(
+                user_id=user_id, user_joined_at=joined, requested_at=requested
+            )
+            return True
+        if user.date_joined != joined:
+            raise JournalError('Account identity changed during replay')
+    # erase_account owns its durable disable/intent commit; do not nest it.
+    result = erase_account(user_id, expected_joined_at=joined, requested_at=requested)
+    return result['status'] == 'purged'
+
+
 def replay_journal(token, *, since, execute=False):
     """Preflight the full journal, then replay only its targets under serving hold.
 
@@ -240,6 +316,8 @@ def replay_journal(token, *, since, execute=False):
     # A future non-thread outbox kind needs an explicit journal/replay contract.
     unknown |= retention.OUTBOX_KINDS.keys() - thread_kinds
     conflicts = unsupported = 0
+    accounts = payload.get('accounts', [])
+    account_conflicts = sum(bool(_account_conflict(row)) for row in accounts)
     references = {row['thread_id'] for row in payload['threads']}
     for row in payload['threads']:
         root = ChatThread.objects.filter(pk=row['thread_id']).first()
@@ -258,13 +336,18 @@ def replay_journal(token, *, since, execute=False):
             ):
                 unsupported += 1
     report = {
-        'schema_version': 1,
+        'schema_version': 2,
+        'journal_schema_version': payload['schema_version'],
         'scope': payload['scope'],
         'journal_sha256': hashlib.sha256(token.encode()).hexdigest(),
         'since': payload['since'],
         'as_of': payload['as_of'],
         'threads': len(references),
         'outbox': len(payload['outbox']),
+        'accounts': len(accounts),
+        'account_conflicts': account_conflicts,
+        'account_journal_missing': payload['schema_version'] == 1,
+        'account_erasure_complete': False,
         'conflicts': conflicts,
         'unsupported_obligations': unsupported,
         'unknown_kinds': len(unknown),
@@ -272,11 +355,27 @@ def replay_journal(token, *, since, execute=False):
         'serving_hold': restore_hold_enabled(),
         'hold_released': False,
     }
-    if conflicts or unsupported or unknown or gaps:
+    if (
+        conflicts
+        or account_conflicts
+        or unsupported
+        or unknown
+        or gaps
+        or report['account_journal_missing']
+    ):
         return {**report, 'status': 'replay_incomplete'}
     if not execute:
         return {**report, 'status': 'dry_run'}
     failed = completed = 0
+    completed_accounts = account_failures = 0
+    for row in accounts:
+        try:
+            if not _replay_account(row):
+                account_failures += 1
+            else:
+                completed_accounts += 1
+        except Exception:
+            account_failures += 1
     for row in payload['threads']:
         ref = row['thread_id']
         try:
@@ -331,8 +430,10 @@ def replay_journal(token, *, since, execute=False):
             failed += 1
     return {
         **report,
-        'status': 'replay_incomplete' if failed else 'replayed',
+        'status': 'replay_incomplete' if failed or account_failures else 'replayed',
+        'completed_accounts': completed_accounts,
+        'account_failures': account_failures,
         'completed_threads': completed,
-        'failures': failed,
+        'failures': failed + account_failures,
         'finished_at': timezone.now().isoformat(),
     }

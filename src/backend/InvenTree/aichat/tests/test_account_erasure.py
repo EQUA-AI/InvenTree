@@ -20,13 +20,14 @@ from django.db.models.deletion import ProtectedError
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from aichat.models import ChatThread, ChatThreadGrant
+from aichat.models import AccountErasureTombstone, ChatThread, ChatThreadGrant
 from aichat.services import ThreadNotFound, ThreadRepository, retention
 from aichat.services.account_erasure import (
     PROFILE_VALUES,
     AccountErasureError,
     erase_account,
 )
+from aichat.services.account_erasure_log import ErasureIdentityConflictError
 from users.models import ApiToken, UserProfile
 
 
@@ -238,6 +239,50 @@ class AccountErasureTests(TestCase):
         self.owner.refresh_from_db()
         self.assertTrue(self.owner.is_active)
 
+    def test_intent_survives_cleanup_failure_and_retry_preserves_first_clock(self):
+        """Partial cleanup still supplies an independent restore obligation."""
+        with mock.patch.object(retention, 'purge_user', side_effect=RuntimeError):
+            result = erase_account(self.owner.pk)
+        stone = AccountErasureTombstone.objects.get(user_id=self.owner.pk)
+        requested = stone.requested_at
+        self.assertTrue(result['erasure_intent_recorded'])
+        self.assertEqual(stone.user_joined_at, self.owner.date_joined)
+        self.assertEqual(result['status'], 'purge_incomplete')
+        self.assertEqual(erase_account(self.owner.pk)['status'], 'purged')
+        stone.refresh_from_db()
+        self.assertEqual(stone.requested_at, requested)
+
+    def test_intent_and_disabling_roll_back_together(self):
+        """Neither half of the durable transaction can commit on its own."""
+        with mock.patch.object(
+            get_user_model(), 'set_unusable_password', side_effect=RuntimeError
+        ):
+            with self.assertRaises(RuntimeError):
+                erase_account(self.owner.pk)
+        self.owner.refresh_from_db()
+        self.assertTrue(self.owner.is_active)
+        self.assertFalse(AccountErasureTombstone.objects.exists())
+        with mock.patch(
+            'aichat.services.account_erasure.record_erasure', side_effect=RuntimeError
+        ):
+            with self.assertRaises(RuntimeError):
+                erase_account(self.owner.pk)
+        self.owner.refresh_from_db()
+        self.assertTrue(self.owner.is_active)
+        self.assertTrue(self.owner.has_usable_password())
+
+    def test_marker_identity_conflict_refuses_account_mutation(self):
+        """A reused primary key cannot inherit another account's erase intent."""
+        AccountErasureTombstone.objects.create(
+            user_id=self.owner.pk,
+            user_joined_at=self.owner.date_joined - timedelta(days=1),
+        )
+        with self.assertRaises(ErasureIdentityConflictError):
+            erase_account(self.owner.pk)
+        self.owner.refresh_from_db()
+        self.assertTrue(self.owner.is_active)
+        self.assertEqual(self.owner.username, 'account-owner')
+
     def test_preview_and_cli_require_explicit_execution(self):
         """Preview reads counts without changing identity or credentials."""
         token = ApiToken.objects.create(user=self.owner)
@@ -247,6 +292,7 @@ class AccountErasureTests(TestCase):
         self.owner.refresh_from_db()
         self.assertTrue(self.owner.is_active)
         self.assertTrue(ApiToken.objects.filter(pk=token.pk).exists())
+        self.assertFalse(AccountErasureTombstone.objects.exists())
         output = io.StringIO()
         with mock.patch.object(
             retention, 'purge_user', return_value={'status': 'purge_incomplete'}

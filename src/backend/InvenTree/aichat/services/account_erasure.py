@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.utils.crypto import salted_hmac
 
 from aichat.services import retention
+from aichat.services.account_erasure_log import record_erasure
 from aichat.services.voice_retention import selected_ids
 from users.models import UserProfile
 
@@ -112,7 +113,14 @@ def _identity_residuals(user, username, models):
     }
 
 
-def erase_account(user_id, *, dry_run=False, batch_size=500):
+def erase_account(
+    user_id,
+    *,
+    dry_run=False,
+    batch_size=500,
+    expected_joined_at=None,
+    requested_at=None,
+):
     """Disable first, scrub local credentials/profile, then compose purge_user.
 
     Deactivation commits before cleanup. Later failures never restore login.
@@ -128,6 +136,16 @@ def erase_account(user_id, *, dry_run=False, batch_size=500):
     user = users.filter(pk=user_id).first()
     if user is None:
         raise AccountErasureError('Unknown erasure owner')
+    expected_joined_at = expected_joined_at or user.date_joined
+    if user.date_joined != expected_joined_at:
+        raise AccountErasureError('Account erasure identity mismatch')
+    requested_at = requested_at or timezone.now()
+    if (
+        timezone.is_naive(expected_joined_at)
+        or timezone.is_naive(requested_at)
+        or not expected_joined_at <= requested_at <= timezone.now()
+    ):
+        raise AccountErasureError('Invalid account erasure timestamps')
     models = _credential_models()
     username = (
         'erased_' + salted_hmac('aichat.erased-username.v1', str(user_id)).hexdigest()
@@ -168,10 +186,19 @@ def erase_account(user_id, *, dry_run=False, batch_size=500):
     # Short independent commit: subsequent store failures cannot restore access.
     with transaction.atomic(durable=True):
         user = users.select_for_update().get(pk=user_id)
+        if user.date_joined != expected_joined_at:
+            raise AccountErasureError('Account erasure identity mismatch')
+        stone = record_erasure(
+            user_id=user_id,
+            user_joined_at=expected_joined_at,
+            requested_at=requested_at,
+        )
         user.set_unusable_password()
         users.filter(pk=user_id).update(
             is_active=False, is_staff=False, is_superuser=False, password=user.password
         )
+    report['erasure_intent_recorded'] = True
+    report['erasure_requested_at'] = stone.requested_at.isoformat()
     failures = []
     try:
         with transaction.atomic():

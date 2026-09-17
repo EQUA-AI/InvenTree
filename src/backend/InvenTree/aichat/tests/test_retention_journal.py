@@ -18,8 +18,14 @@ from django.utils import timezone
 
 from asgiref.sync import async_to_sync
 
-from aichat.models import AIRetentionOutbox, ChatThread, ChatThreadTombstone
+from aichat.models import (
+    AccountErasureTombstone,
+    AIRetentionOutbox,
+    ChatThread,
+    ChatThreadTombstone,
+)
 from aichat.services import ThreadRepository, retention
+from aichat.services.account_erasure import erase_account
 from aichat.services.retention_journal import (
     SALT,
     JournalError,
@@ -32,6 +38,7 @@ from InvenTree.restore_hold import (
     RestoreHoldWSGI,
     restore_hold_enabled,
 )
+from users.models import ApiToken
 
 
 class RetentionJournalTests(TestCase):
@@ -86,6 +93,198 @@ class RetentionJournalTests(TestCase):
         )
         self.repo.append(thread.pk, role='user', content='Restored private transcript')
         return thread
+
+    def source_account_erasure(self):
+        """Snapshot identity before erasure, emulating data lost during restore."""
+        snapshot = (
+            get_user_model()
+            .objects.filter(pk=self.user.pk)
+            .values(
+                'username',
+                'email',
+                'first_name',
+                'last_name',
+                'password',
+                'is_active',
+                'is_staff',
+                'is_superuser',
+                'date_joined',
+                'last_login',
+            )
+            .get()
+        )
+        self.assertEqual(erase_account(self.user.pk)['status'], 'purged')
+        return snapshot
+
+    def restore_account(self, snapshot):
+        """Roll back account identity and its intent, then resurrect a credential."""
+        AccountErasureTombstone.objects.filter(user_id=self.user.pk).delete()
+        get_user_model().objects.filter(pk=self.user.pk).update(**snapshot)
+        return ApiToken.objects.create(user=self.user)
+
+    def test_account_and_thread_restore_replay_revokes_resurrected_credentials(self):
+        """One journal replays account intent and preserves source deletion clocks."""
+        thread = self.source_deletion()
+        account = self.source_account_erasure()
+        requested = AccountErasureTombstone.objects.get(
+            user_id=self.user.pk
+        ).requested_at
+        deleted = ChatThreadTombstone.objects.get(thread_id=thread['id']).deleted_at
+        token = export_journal(since=self.since)
+        payload = read_journal(token, since=self.since)
+        self.assertEqual(payload['schema_version'], 2)
+        self.assertEqual(len(payload['accounts']), 1)
+        self.assertNotIn('journal-owner', json.dumps(payload))
+        credential = self.restore_account(account)
+        self.restore(thread)
+        preview = replay_journal(token, since=self.since)
+        self.assertEqual(preview['status'], 'dry_run')
+        self.assertTrue(ApiToken.objects.filter(pk=credential.pk).exists())
+        self.assertFalse(AccountErasureTombstone.objects.exists())
+        result = replay_journal(token, since=self.since, execute=True)
+        self.assertEqual(result['status'], 'replayed')
+        self.assertEqual(result['completed_accounts'], 1)
+        self.assertFalse(result['account_erasure_complete'])
+        self.assertFalse(result['hold_released'])
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
+        self.assertFalse(self.user.has_usable_password())
+        self.assertFalse(ApiToken.objects.filter(pk=credential.pk).exists())
+        self.assertFalse(ChatThread.objects.filter(pk=thread['id']).exists())
+        self.assertEqual(
+            AccountErasureTombstone.objects.get(user_id=self.user.pk).requested_at,
+            requested,
+        )
+        self.assertEqual(
+            ChatThreadTombstone.objects.get(thread_id=thread['id']).deleted_at, deleted
+        )
+        self.assertEqual(
+            replay_journal(token, since=self.since, execute=True)['status'], 'replayed'
+        )
+
+    def test_account_conflict_blocks_all_thread_and_account_writes(self):
+        """An account mismatch is detected before any other journal target changes."""
+        thread = self.source_deletion()
+        account = self.source_account_erasure()
+        token = export_journal(since=self.since)
+        self.restore_account(account)
+        self.restore(thread)
+        get_user_model().objects.filter(pk=self.user.pk).update(
+            date_joined=account['date_joined'] - timedelta(days=1)
+        )
+        result = replay_journal(token, since=self.since, execute=True)
+        self.assertEqual(result['status'], 'replay_incomplete')
+        self.assertEqual(result['account_conflicts'], 1)
+        self.assertTrue(ChatThread.objects.filter(pk=thread['id']).exists())
+        self.assertFalse(AccountErasureTombstone.objects.exists())
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_active)
+
+    def test_account_marker_conflict_blocks_replay(self):
+        """Even an absent user cannot overwrite a different retained identity."""
+        self.source_account_erasure()
+        token = export_journal(since=self.since)
+        AccountErasureTombstone.objects.filter(user_id=self.user.pk).update(
+            user_joined_at=self.user.date_joined - timedelta(days=1)
+        )
+        result = replay_journal(token, since=self.since, execute=True)
+        self.assertEqual(result['account_conflicts'], 1)
+        self.assertEqual(result['status'], 'replay_incomplete')
+
+    def test_missing_account_preserves_intent_without_creating_an_account(self):
+        """An account created after the restore point need not exist on the clone."""
+        self.source_account_erasure()
+        requested = AccountErasureTombstone.objects.get(
+            user_id=self.user.pk
+        ).requested_at
+        token = export_journal(since=self.since)
+        get_user_model().objects.filter(pk=self.user.pk).delete()
+        self.assertTrue(
+            AccountErasureTombstone.objects.filter(user_id=self.user.pk).exists()
+        )
+        AccountErasureTombstone.objects.all().delete()
+        result = replay_journal(token, since=self.since, execute=True)
+        self.assertEqual(result['status'], 'replayed')
+        self.assertFalse(get_user_model().objects.filter(pk=self.user.pk).exists())
+        self.assertEqual(
+            AccountErasureTombstone.objects.get(user_id=self.user.pk).requested_at,
+            requested,
+        )
+
+    def test_account_cleanup_failure_retains_intent_and_hold_until_retry(self):
+        """Credential failures cannot silently qualify account replay."""
+        account = self.source_account_erasure()
+        token = export_journal(since=self.since)
+        credential = self.restore_account(account)
+        with mock.patch.object(
+            retention, '_batched_delete', side_effect=RuntimeError('PRIVATE')
+        ):
+            result = replay_journal(token, since=self.since, execute=True)
+        self.assertEqual(result['status'], 'replay_incomplete')
+        self.assertEqual(result['account_failures'], 1)
+        self.assertFalse(result['hold_released'])
+        self.assertNotIn('PRIVATE', json.dumps(result))
+        self.assertTrue(
+            AccountErasureTombstone.objects.filter(user_id=self.user.pk).exists()
+        )
+        self.assertTrue(ApiToken.objects.filter(pk=credential.pk).exists())
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
+        self.assertEqual(
+            replay_journal(token, since=self.since, execute=True)['status'], 'replayed'
+        )
+
+    def test_account_only_export_counts_toward_limits_and_ignores_lower_bound(self):
+        """Earlier intents remain owed even without new thread deletions."""
+        self.source_account_erasure()
+        # Restore point after the request; intent must still be exported.
+        since = timezone.now().isoformat()
+        payload = read_journal(export_journal(since=since), since=since)
+        self.assertEqual(len(payload['accounts']), 1)
+        with mock.patch('aichat.services.retention_journal.MAX_ROWS', 0):
+            with self.assertRaises(JournalError):
+                export_journal(since=since)
+
+    def test_legacy_thread_only_journal_is_readable_but_cannot_qualify_replay(self):
+        """Old signatures cannot silently imply coverage for account erasures."""
+        snapshot = self.source_deletion()
+        payload = read_journal(export_journal(since=self.since), since=self.since)
+        payload.pop('accounts')
+        payload.update(schema_version=1, scope='retained_thread_deletions')
+        token = signing.dumps(payload, salt=SALT)
+        self.assertEqual(read_journal(token, since=self.since)['schema_version'], 1)
+        self.restore(snapshot)
+        result = replay_journal(token, since=self.since, execute=True)
+        self.assertEqual(result['status'], 'replay_incomplete')
+        self.assertTrue(result['account_journal_missing'])
+        self.assertTrue(ChatThread.objects.filter(pk=snapshot['id']).exists())
+
+    def test_account_schema_refuses_invalid_or_duplicate_targets_before_writes(self):
+        """A valid signature alone cannot authorize malformed erasure targets."""
+        account = self.source_account_erasure()
+        payload = read_journal(export_journal(since=self.since), since=self.since)
+        self.restore_account(account)
+        row = payload['accounts'][0]
+        bad_rows = [
+            [{**row, 'user_id': True}],
+            [{**row, 'user_id': -1}],
+            [{**row, 'user_id': 2**64}],
+            [{**row, 'user_joined_at': '2026-01-01'}],
+            [{**row, 'requested_at': (timezone.now() + timedelta(days=1)).isoformat()}],
+            [{**row, 'email': 'fixture@example.invalid'}],
+            [row, row],
+        ]
+        for accounts in bad_rows:
+            with self.subTest(accounts=accounts):
+                with self.assertRaises(JournalError):
+                    replay_journal(
+                        signing.dumps({**payload, 'accounts': accounts}, salt=SALT),
+                        since=self.since,
+                        execute=True,
+                    )
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_active)
+        self.assertFalse(AccountErasureTombstone.objects.exists())
 
     def test_roundtrip_replay_restores_tombstone_and_preserves_original_clock(self):
         """A restored root is erased and its original journal timestamp survives."""

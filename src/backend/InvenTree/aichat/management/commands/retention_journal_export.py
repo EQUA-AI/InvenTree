@@ -1,4 +1,4 @@
-"""Export a signed thread deletion journal outside the database being restored."""
+"""Export signed deletion/erasure intents outside the database being restored."""
 
 import hashlib
 import json
@@ -14,7 +14,8 @@ class Command(BaseCommand):
     """Write a new private file; the operator must first quiesce source writers."""
 
     help = (
-        'Export retained thread deletions and outstanding cleanup to a new signed file.'
+        'Export retained thread deletions, account intents and outstanding cleanup '
+        'to a new signed file.'
     )
 
     def add_arguments(self, parser):
@@ -57,6 +58,9 @@ class Command(BaseCommand):
             json.dumps(
                 {
                     'status': 'exported',
+                    'schema_version': payload['schema_version'],
+                    'scope': payload['scope'],
+                    'accounts': len(payload['accounts']),
                     'threads': len(payload['threads']),
                     'outbox': len(payload['outbox']),
                     'journal_sha256': hashlib.sha256(token.encode()).hexdigest(),

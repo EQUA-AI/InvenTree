@@ -11,7 +11,7 @@ from aichat.services.retention_journal import MAX_BYTES, JournalError, replay_jo
 class Command(BaseCommand):
     """Preview by default; execution requires the deployment serving hold."""
 
-    help = 'Replay a signed external thread journal under restore hold. Preview unless --execute is set.'
+    help = 'Replay a signed external thread/account journal under restore hold. Preview unless --execute is set.'
 
     def add_arguments(self, parser):
         """Require an external journal; restored tombstones alone are insufficient."""
