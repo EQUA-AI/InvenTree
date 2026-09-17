@@ -15,6 +15,8 @@ from django.core.asgi import get_asgi_application
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 
+from InvenTree.restore_hold import RestoreHoldASGI, restore_hold_enabled
+
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'InvenTree.settings')
 
 django_app = get_asgi_application()
@@ -67,7 +69,7 @@ async def lifespan(_: Starlette) -> AsyncIterator[None]:
     working InvenTree server with the AI mount unavailable, not kill the
     whole ASGI application at startup.
     """
-    if ai_app is None:
+    if ai_app is None or restore_hold_enabled():
         yield
         return
 
@@ -99,3 +101,4 @@ application = Starlette(
     ],
     lifespan=lifespan,
 )
+application = RestoreHoldASGI(application)
