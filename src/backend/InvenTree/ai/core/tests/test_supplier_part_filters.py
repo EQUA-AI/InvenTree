@@ -1,7 +1,7 @@
 """Part and supplier identifiers remain distinct through provider adapters."""
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 from ai.core.integrations.data_provider import DemoDataProviderAsync, LiveDataProviderAsync
@@ -82,6 +82,64 @@ def test_supplier_listing_counts_by_supplier_identity():
         result = asyncio.run(purchasing.get_suppliers(has_parts=True))
     assert result[0]["parts_count"] == 1
     provider.get_supplier_parts.assert_awaited_once_with(supplier_id=7)
+
+
+@pytest.mark.parametrize("has_parts, expected", [(None, [0, 234]), (True, [234]), (False, [0])])
+def test_supplier_listing_reuses_complete_api_counts(has_parts, expected):
+    """Zero and counts beyond one page must not trigger supplier-part scans."""
+    provider = AsyncMock()
+    provider.get_suppliers.return_value = [
+        {"pk": 7, "parts_supplied": 0},
+        {"pk": 8, "parts_supplied": 234},
+    ]
+    with patch.object(purchasing, "get_data_provider", return_value=provider):
+        result = asyncio.run(purchasing.get_suppliers(has_parts=has_parts))
+    assert [row["parts_count"] for row in result] == expected
+    provider.get_supplier_parts.assert_not_awaited()
+
+
+def test_supplier_parts_reuse_embedded_details_across_skus():
+    """A large supplier page needs no detail requests for already included parts."""
+    provider = AsyncMock()
+    provider.get_supplier_parts.return_value = [
+        {
+            "pk": index,
+            "part": index % 40 + 1,
+            "part_detail": {"name": f"Part {index % 40 + 1}", "IPN": f"IPN-{index % 40 + 1}"},
+            "price": 12,
+            "pack_quantity": 3,
+        }
+        for index in range(100)
+    ]
+    with patch.object(purchasing, "get_data_provider", return_value=provider):
+        result = asyncio.run(purchasing.get_supplier_parts(supplier_id=7))
+    assert len(result) == 100
+    assert all(row["part_name"] == f"Part {row['part']}" for row in result)
+    assert all(row["part_ipn"] == f"IPN-{row['part']}" for row in result)
+    assert all(row["effective_price"] == 4 for row in result)
+    provider.get_part.assert_not_awaited()
+
+
+def test_supplier_parts_fallback_is_once_per_part_including_missing_parts():
+    """Legacy responses reuse details and missing results within the tool call."""
+    provider = AsyncMock()
+    provider.get_supplier_parts.return_value = [
+        {"pk": index, "part": part_id} for index, part_id in enumerate([1, 2, 1, 2, 3, 3])
+    ]
+    # A later row can supply details for an earlier SKU for the same part.
+    provider.get_supplier_parts.return_value[-1]["part_detail"] = {"name": "Embedded", "IPN": "EMB"}
+    provider.get_part.side_effect = [{"name": "Legacy", "IPN": "OLD"}, None]
+    with patch.object(purchasing, "get_data_provider", return_value=provider):
+        result = asyncio.run(purchasing.get_supplier_parts(supplier_id=7))
+    assert [row.get("part_name") for row in result] == [
+        "Legacy",
+        None,
+        "Legacy",
+        None,
+        "Embedded",
+        "Embedded",
+    ]
+    assert provider.get_part.await_args_list == [call(1), call(2)]
 
 
 def test_reverse_bom_reuses_returned_parent_details():

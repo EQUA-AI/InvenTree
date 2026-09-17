@@ -227,6 +227,12 @@ async def get_suppliers(
     # Get parts count for each supplier
     for supplier in suppliers:
         supplier_id = supplier.get("pk")
+        supplied_count = supplier.get("parts_supplied")
+        if type(supplied_count) is int and supplied_count >= 0:
+            # The company serializer already counts all supplied parts, including
+            # zero and counts larger than one supplier-part response page.
+            supplier["parts_count"] = supplied_count
+            continue
         if supplier_id:
             try:
                 parts = await provider.get_supplier_parts(supplier_id=supplier_id)
@@ -303,12 +309,24 @@ async def get_supplier_parts(
         raise ValueError("Either part_id or supplier_id must be provided")
     supplier_parts = await provider.get_supplier_parts(part_id=part_id, supplier_id=supplier_id)
 
+    # The live endpoint includes part_detail. Reuse it across supplier SKUs;
+    # older/demo providers need at most one fallback lookup per distinct part.
+    part_details = {
+        sp["part"]: sp["part_detail"]
+        for sp in supplier_parts
+        if sp.get("part")
+        and isinstance(sp.get("part_detail"), dict)
+        and "name" in sp["part_detail"]
+    }
+
     # Enrich with part and supplier names
     for sp in supplier_parts:
         # Add part info
         pid = sp.get("part")
         if pid and not sp.get("part_name"):
-            part = await provider.get_part(pid)
+            if pid not in part_details:
+                part_details[pid] = await provider.get_part(pid)
+            part = part_details[pid]
             if part:
                 sp["part_name"] = part.get("name")
                 sp["part_ipn"] = part.get("IPN")
