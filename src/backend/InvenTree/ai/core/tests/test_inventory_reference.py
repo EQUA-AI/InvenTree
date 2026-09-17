@@ -72,6 +72,7 @@ def test_reference_updates_live_facts_preserving_question_and_assertions():
         ("version", "live-inventory-reference-v2"),
         ("version", "live-inventory-reference-v3"),
         ("version", "live-inventory-reference-v4"),
+        ("version", "live-inventory-reference-v5"),
         ("stock_part", "different fixture"),
         ("part_count", -1),
         ("part_count", True),
@@ -134,6 +135,33 @@ def test_stored_source_identity_supplements_only_the_matching_corpus():
         assert "eval-hx200-nameplate_suffix.png" in updated[name].reference_context
         assert updated[name].ground_truth == originals[name].ground_truth
         assert updated[name].ground_truth_keys == originals[name].ground_truth_keys
+    assert updated["attachment-torque-grounded"] == originals["attachment-torque-grounded"]
+
+
+def test_video_reference_distinguishes_domain_record_id_from_attachment_id():
+    """The work-order primary key and reference identify the same owner record."""
+    snapshot = _snapshot()
+    snapshot["corpus_sources"] = [
+        {
+            "corpus_version": "aimms-video-fixtures-v2",
+            "attachment_id": 11,
+            "owner_type": "workorder",
+            "owner_id": 132,
+            "owner_reference": "WO-EVAL-HX200-VIDEO",
+        }
+    ]
+    originals = {item.id: item for item in schema.load_items()}
+    updated = {
+        item.id: item for item in reference.apply_reference(list(originals.values()), snapshot)
+    }
+    video = updated["video-seal-segment-grounded"]
+    assert "owner_id is the work order ID" in video.reference_context
+    assert "attachment_id is the separate attachment record ID" in video.reference_context
+    assert '"owner_id": 132' in video.reference_context
+    assert '"owner_reference": "WO-EVAL-HX200-VIDEO"' in video.reference_context
+    assert video.ground_truth == originals[video.id].ground_truth
+    assert video.ground_truth_keys == originals[video.id].ground_truth_keys
+    assert video.question == originals[video.id].question
     assert updated["attachment-torque-grounded"] == originals["attachment-torque-grounded"]
 
 

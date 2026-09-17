@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .schema import GoldenItem
 
-VERSION = "live-inventory-reference-v5"
+VERSION = "live-inventory-reference-v6"
 PART_NAME = "R_10K_0402_1%"
 BOM_PART_NAME = "Widget Assembly"
 
@@ -292,7 +292,12 @@ def apply_reference(items: list[GoldenItem], reference: dict[str, Any]) -> list[
                 updated,
                 reference_context=updated.reference_context
                 + "\nStored source identities:\n"
-                + json.dumps(sources, sort_keys=True),
+                + "Field definitions: owner_type is the domain model of the record "
+                "to which the attachment is attached. owner_id is that record's "
+                "database primary key in owner_type; owner_reference is the "
+                "human-readable reference of that same record. For owner_type "
+                "workorder, owner_id is the work order ID. attachment_id is the "
+                "separate attachment record ID.\n" + json.dumps(sources, sort_keys=True),
             )
         updated_items.append(updated)
     return updated_items
