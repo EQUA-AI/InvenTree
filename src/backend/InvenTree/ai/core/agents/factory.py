@@ -40,6 +40,8 @@ class AgentSpec:
     middleware: Any = None
     max_tool_iterations: int | None = None
     include_detailed_errors: bool | None = None
+    request_timeout_s: float | None = None
+    request_max_retries: int | None = None
     #: Catalogue id (wf1..wf9, routing, reflection, voice) — for the AST
     #: tests and the constructor-toolset carve-out, never for routing.
     workflow: str = ""
@@ -60,6 +62,8 @@ def build_agent(spec: AgentSpec) -> ChatAgent:
         spec.deployment,
         max_iterations=spec.max_tool_iterations,
         include_detailed_errors=spec.include_detailed_errors,
+        request_timeout_s=spec.request_timeout_s,
+        request_max_retries=spec.request_max_retries,
     )
     return ChatAgent(
         chat_client=client,

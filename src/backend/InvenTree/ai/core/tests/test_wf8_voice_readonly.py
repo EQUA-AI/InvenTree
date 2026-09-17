@@ -126,7 +126,10 @@ class VoicePromptTests(SimpleTestCase):
                 patch("ai.core.model_policy.select_deployment", return_value="test-deployment"),
             ):
                 await workflow._get_agent(**options)
-            instructions = build.call_args.args[0].instructions
+            spec = build.call_args.args[0]
+            self.assertEqual(spec.request_timeout_s, 30.0)
+            self.assertEqual(spec.request_max_retries, 1)
+            instructions = spec.instructions
             self.assertIn("latest explicit\ncorrection", instructions)
             self.assertIn("include_superseded=True", instructions)
             self.assertIn("resolve named parts with search_parts", instructions)

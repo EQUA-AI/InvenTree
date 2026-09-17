@@ -174,3 +174,85 @@ def test_setting_defaults_dark():
     settings = Settings(_env_file=None)
     assert settings.aimms_openai_keyless is False
     assert Settings(_env_file=None, AIMMS_OPENAI_KEYLESS="1").aimms_openai_keyless is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("responses", "expected_error"),
+    [
+        (["timeout", 200], None),
+        (["timeout", "timeout"], "APITimeoutError"),
+        ([500, 500], "InternalServerError"),
+        ([400], "BadRequestError"),
+    ],
+)
+async def test_lookup_transport_limits_reach_sdk_and_bound_recovery(
+    monkeypatch, responses, expected_error
+):
+    """A stalled model request can recover once; repeated failure stays bounded."""
+    import httpx
+    import openai
+    from agent_framework.azure import AzureOpenAIChatClient
+
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        assert request.extensions["timeout"] == {
+            "connect": 5.0,
+            "read": 30.0,
+            "write": 30.0,
+            "pool": 30.0,
+        }
+        result = responses[len(requests) - 1]
+        if result == "timeout":
+            raise httpx.ReadTimeout("synthetic stalled connection", request=request)
+        body = (
+            {
+                "id": "test",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "Recovered"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "created": 0,
+                "model": "dep",
+                "object": "chat.completion",
+            }
+            if result == 200
+            else {"error": {"message": "synthetic error", "type": "test"}}
+        )
+        return httpx.Response(result, json=body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as transport:
+        sdk = openai.AsyncAzureOpenAI(
+            azure_endpoint="https://example.openai.azure.com",
+            api_version="2024-10-21",
+            api_key="test-key",
+            http_client=transport,
+        )
+        monkeypatch.setattr(builder, "get_settings", lambda: _settings())
+        monkeypatch.setattr(
+            builder,
+            "AzureOpenAIChatClient",
+            lambda **kwargs: AzureOpenAIChatClient(async_client=sdk, **kwargs),
+        )
+        client = builder.build_chat_client("dep", request_timeout_s=30.0, request_max_retries=1)
+        # Copying transport options preserves the resolved deployment endpoint,
+        # API version and auth, and leaves unrelated SDK clients unchanged.
+        assert client.client.base_url == sdk.base_url
+        assert client.client.api_key == sdk.api_key
+        assert client.client.default_query == sdk.default_query
+        assert sdk.max_retries == 2 and sdk.timeout.read == 600
+        call = client.client.chat.completions.create(
+            model="dep", messages=[{"role": "user", "content": "Synthetic lookup"}]
+        )
+        if expected_error:
+            with pytest.raises(getattr(openai, expected_error)):
+                await call
+        else:
+            response = await call
+            assert response.choices[0].message.content == "Recovered"
+        assert len(requests) == len(responses)

@@ -127,8 +127,8 @@ def test_build_agent_applies_the_spec(monkeypatch):
 
     clients = []
 
-    def fake_client(deployment, *, max_iterations=None, include_detailed_errors=None):
-        clients.append((deployment, max_iterations, include_detailed_errors))
+    def fake_client(deployment, *, max_iterations=None, include_detailed_errors=None, **kwargs):
+        clients.append((deployment, max_iterations, include_detailed_errors, kwargs))
         return "client"
 
     monkeypatch.setattr(factory, "ChatAgent", FakeAgent)
@@ -143,11 +143,13 @@ def test_build_agent_applies_the_spec(monkeypatch):
             middleware=middleware,
             max_tool_iterations=8,
             include_detailed_errors=False,
+            request_timeout_s=30.0,
+            request_max_retries=1,
             workflow="wf8",
         )
     )
     assert isinstance(agent, FakeAgent)
-    assert clients == [("gpt-x", 8, False)]
+    assert clients == [("gpt-x", 8, False, {"request_timeout_s": 30.0, "request_max_retries": 1})]
     assert captured["chat_client"] == "client"
     assert captured["description"] is None
     assert captured["tools"] is None

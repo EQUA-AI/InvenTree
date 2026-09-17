@@ -71,12 +71,17 @@ def build_chat_client(
     *,
     max_iterations: int | None = None,
     include_detailed_errors: bool | None = None,
+    request_timeout_s: float | None = None,
+    request_max_retries: int | None = None,
 ) -> Any:
     """Return a chat client for ``deployment`` with the invocation limits applied.
 
     ``max_iterations`` bounds the tool loop; ``include_detailed_errors``
     False keeps provider error text out of model-visible tool results.
     Either left ``None`` keeps the SDK default.
+
+    Transport limits are optional per rail. They bound individual network
+    waits, not the whole agent/tool loop; the root turn deadline still applies.
     """
     settings = get_settings()
     client = AzureOpenAIChatClient(
@@ -84,6 +89,20 @@ def build_chat_client(
         endpoint=settings.azure_openai_endpoint,
         api_key=settings.azure_openai_api_key,
     )
+    transport_options: dict[str, Any] = {}
+    if request_timeout_s is not None:
+        import httpx
+
+        transport_options["timeout"] = httpx.Timeout(
+            request_timeout_s, connect=min(5.0, request_timeout_s)
+        )
+    if request_max_retries is not None:
+        transport_options["max_retries"] = request_max_retries
+    if transport_options:
+        # Preserve MAF's resolved endpoint, API version and authentication.
+        # Supplying arbitrary constructor kwargs to MAF does not configure
+        # its underlying SDK transport; use the SDK's supported copy API.
+        client.client = client.client.with_options(**transport_options)
     config = getattr(client, "function_invocation_config", None)
     if config is not None:
         if max_iterations is not None:

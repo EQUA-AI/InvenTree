@@ -847,6 +847,13 @@ as the specified torque for a tightening sequence.
                 middleware=CapabilityInvocationMiddleware(),
                 max_tool_iterations=self.MAX_TOOL_ITERATIONS,
                 include_detailed_errors=False,
+                # The SDK defaults to 600-second transport waits, longer
+                # than the entire interactive turn. Let a stalled connection
+                # reach its existing SDK recovery path before that deadline.
+                # One retry is fewer than the SDK default of two; tool
+                # execution and application turn submission are not retried.
+                request_timeout_s=30.0,
+                request_max_retries=1,
                 workflow="wf8",
             )
         )
