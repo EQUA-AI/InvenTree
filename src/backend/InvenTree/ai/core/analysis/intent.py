@@ -274,10 +274,16 @@ def classify_rules(text: str) -> IntentDecision | None:
     if (
         not has_records
         and not has_docs
-        and re.search(
-            r"\b(?:stock|inventory|on[- ]hand|reorder levels?|minimum levels?)\b",
-            content,
-            re.IGNORECASE,
+        and (
+            re.search(
+                r"\b(?:stock|inventory|on[- ]hand|reorder levels?|minimum levels?)\b",
+                content,
+                re.IGNORECASE,
+            )
+            or (
+                _AGGREGATE.search(content)
+                and re.search(r"\b(?:parts?|components?|skus?)\b", content, re.IGNORECASE)
+            )
         )
     ):
         # Inventory counts and shortage lookups are not maintenance-population

@@ -165,6 +165,35 @@ class TestFamilies:
         assert decision is not None
         assert decision.intent is TaskIntent.MANUAL_FACT
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "What is the total number of components?",
+            "Give me the count of parts in this system.",
+            "How many SKUs are there?",
+            "Show the number of parts by category.",
+        ],
+    )
+    def test_part_counts_do_not_call_the_document_intent_classifier(self, text: str) -> None:
+        with mock.patch.object(intent_module, "_classify_with_model") as classifier:
+            decision = asyncio.run(classify(text))
+        assert decision.intent is TaskIntent.GENERAL
+        assert decision.effect is EffectIntent.READ_ONLY
+        assert decision.source == "rules"
+        classifier.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("How many components were replaced in repair records?", TaskIntent.FLEET_AGGREGATE),
+            ("How many parts does the manual say are required?", TaskIntent.MANUAL_FACT),
+            ("Which documents do we have about spare parts?", TaskIntent.SOURCE_INVENTORY),
+            ("Set the number of parts to zero.", TaskIntent.GOVERNED_ACTION),
+        ],
+    )
+    def test_part_count_rule_preserves_document_record_and_effect_intents(self, text, expected):
+        assert classify_rules(text).intent is expected
+
     def test_source_inventory(self) -> None:
         decision = classify_rules("Which manuals do you have for the inverters?")
         assert decision is not None

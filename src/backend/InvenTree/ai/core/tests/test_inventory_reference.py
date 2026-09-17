@@ -10,7 +10,7 @@ import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -73,6 +73,7 @@ def test_reference_updates_live_facts_preserving_question_and_assertions():
         ("version", "live-inventory-reference-v3"),
         ("version", "live-inventory-reference-v4"),
         ("version", "live-inventory-reference-v5"),
+        ("version", "live-inventory-reference-v6"),
         ("stock_part", "different fixture"),
         ("part_count", -1),
         ("part_count", True),
@@ -92,6 +93,43 @@ def test_snapshot_digest_changes_when_inventory_changes():
     before = _snapshot()
     after = {**before, "part_count": 801}
     assert reference.reference_digest(before) != reference.reference_digest(after)
+
+
+@pytest.mark.parametrize(
+    "kind,app,model_name,row,expected",
+    [
+        (
+            "assetmachine",
+            "assets",
+            "AssetMachine",
+            {"name": "Pump", "serial": "PUMP-7"},
+            {"owner_reference": None, "owner_name": "Pump", "owner_serial": "PUMP-7"},
+        ),
+        (
+            "part",
+            "part",
+            "Part",
+            {"name": "Seal", "IPN": "SEAL-1"},
+            {"owner_reference": None, "owner_name": "Seal", "owner_ipn": "SEAL-1"},
+        ),
+        ("workorder", "tasks", "WorkOrder", {"reference": "WO-24"}, {"owner_reference": "WO-24"}),
+    ],
+)
+def test_source_owner_identity_uses_the_typed_domain_record(kind, app, model_name, row, expected):
+    model = Mock()
+    model.objects.filter.return_value.values.return_value.first.return_value = row
+    with patch("django.apps.apps.get_model", return_value=model) as resolve:
+        assert reference._source_owner_identity(kind, 19) == expected
+    resolve.assert_called_once_with(app, model_name)
+    model.objects.filter.assert_called_once_with(pk=19)
+    model.objects.filter.return_value.values.assert_called_once_with(*row)
+
+
+def test_missing_source_owner_does_not_invent_labels():
+    model = Mock()
+    model.objects.filter.return_value.values.return_value.first.return_value = None
+    with patch("django.apps.apps.get_model", return_value=model):
+        assert reference._source_owner_identity("assetmachine", 19) == {"owner_reference": None}
 
 
 def test_supplementary_source_requires_exact_indexed_bytes():

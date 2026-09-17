@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .schema import GoldenItem
 
-VERSION = "live-inventory-reference-v6"
+VERSION = "live-inventory-reference-v7"
 PART_NAME = "R_10K_0402_1%"
 BOM_PART_NAME = "Widget Assembly"
 
@@ -35,12 +35,33 @@ def _indexed_markdown(attachment: Any, indexed_hashes: set[str]) -> dict[str, st
     return {"source_sha256": digest, "source_text": data.decode("utf-8")}
 
 
+def _source_owner_identity(owner_type: str, owner_id: int) -> dict[str, Any]:
+    """Read labels from the attached domain record, independently of answers."""
+    from django.apps import apps
+
+    definitions = {
+        "assetmachine": (
+            "assets",
+            "AssetMachine",
+            {"name": "owner_name", "serial": "owner_serial"},
+        ),
+        "part": ("part", "Part", {"name": "owner_name", "IPN": "owner_ipn"}),
+        "workorder": ("tasks", "WorkOrder", {"reference": "owner_reference"}),
+    }
+    identity: dict[str, Any] = {"owner_reference": None}
+    if definition := definitions.get(owner_type):
+        app, model, fields = definition
+        row = apps.get_model(app, model).objects.filter(pk=owner_id).values(*fields).first()
+        if row is not None:
+            identity.update({label: row[field] for field, label in fields.items()})
+    return identity
+
+
 def _capture_fixture_sources() -> list[dict[str, Any]]:
     """Resolve immutable fixture hashes to their actual stored names and owners."""
     from aichat.models import AttachmentIngest
     from common.models import Attachment
     from django.db.models import Q
-    from tasks.models import WorkOrder
 
     fixtures = Path(__file__).parent / "golden" / "fixtures"
     sources = []
@@ -58,14 +79,6 @@ def _capture_fixture_sources() -> list[dict[str, Any]]:
             for attachment in Attachment.objects.filter(
                 pk__in=ingests.values("attachment_id")
             ).order_by("pk"):
-                owner_reference = None
-                if attachment.model_type == "workorder":
-                    owner_reference = (
-                        WorkOrder.objects
-                        .filter(pk=attachment.model_id)
-                        .values_list("reference", flat=True)
-                        .first()
-                    )
                 sources.append({
                     "corpus_version": corpus,
                     "canonical_filename": fixture.name,
@@ -74,7 +87,7 @@ def _capture_fixture_sources() -> list[dict[str, Any]]:
                     "stored_filename": Path(attachment.attachment.name).name,
                     "owner_type": attachment.model_type,
                     "owner_id": attachment.model_id,
-                    "owner_reference": owner_reference,
+                    **_source_owner_identity(attachment.model_type, attachment.model_id),
                 })
     # Questions refer to uploaded documents on the fixture entities, which
     # can legitimately include non-canonical uploads. Freeze those independently
@@ -105,6 +118,7 @@ def _capture_fixture_sources() -> list[dict[str, Any]]:
                 "stored_filename": filename,
                 "owner_type": attachment.model_type,
                 "owner_id": attachment.model_id,
+                **_source_owner_identity(attachment.model_type, attachment.model_id),
                 **_indexed_markdown(attachment, hashes),
             })
     return sources
@@ -297,7 +311,10 @@ def apply_reference(items: list[GoldenItem], reference: dict[str, Any]) -> list[
                 "database primary key in owner_type; owner_reference is the "
                 "human-readable reference of that same record. For owner_type "
                 "workorder, owner_id is the work order ID. attachment_id is the "
-                "separate attachment record ID.\n" + json.dumps(sources, sort_keys=True),
+                "separate attachment record ID. owner_name, owner_serial and "
+                "owner_ipn are the attached record's name, machine serial and "
+                "part internal number respectively, when present.\n"
+                + json.dumps(sources, sort_keys=True),
             )
         updated_items.append(updated)
     return updated_items
