@@ -49,7 +49,13 @@ import {
   IconUser,
   IconX
 } from '@tabler/icons-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState
+} from 'react';
 
 import { Boundary } from '@lib/components/Boundary';
 import { useQuery } from '@tanstack/react-query';
@@ -85,9 +91,14 @@ import { EntityChips } from '../aichat/EntityChips';
 import { EvidenceChips } from '../aichat/EvidenceChips';
 import { MarkdownMessage } from '../aichat/MarkdownMessage';
 import { RetrievalCoverage } from '../aichat/RetrievalCoverage';
+import {
+  type ThreadAction,
+  ThreadActionsModal
+} from '../aichat/ThreadActionsModal';
 import { ThreadMemoryModal } from '../aichat/ThreadMemoryModal';
 import type { EvidenceAnalysisAttachment } from '../aichat/evidenceAnalysis';
 import { composeAnswerMarkdown } from '../aichat/evidenceFormat';
+import type { ThreadDeleteResult } from '../aichat/threadDeletion';
 import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history' | 'mail';
@@ -128,39 +139,92 @@ function ThreadHistoryPanel({
   threads,
   activeThreadId,
   searchThreads,
-  onResume
+  onResume,
+  hasMoreThreads,
+  loadingMoreThreads,
+  onLoadMore
 }: Readonly<{
   threads: { id: string; title: string; updatedAt: Date }[];
   activeThreadId: string | null;
   searchThreads: (
-    query: string
-  ) => Promise<{ id: string; title: string; updatedAt: Date }[]>;
+    query: string,
+    cursor?: string | null
+  ) => Promise<{ threads: ChatThread[]; nextCursor: string | null }>;
   onResume: (threadId: string) => void;
+  hasMoreThreads: boolean;
+  loadingMoreThreads: boolean;
+  onLoadMore: () => void;
 }>) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<
     { id: string; title: string; updatedAt: Date }[] | null
   >(null);
   const [searching, setSearching] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState(false);
+  const queryRef = useRef(query);
+  const searchVersionRef = useRef(0);
+  queryRef.current = query;
 
   useEffect(() => {
+    const version = ++searchVersionRef.current;
     const term = query.trim();
+    setResults(null);
+    setNextCursor(null);
+    setSearchError(false);
     if (!term) {
-      setResults(null);
       setSearching(false);
       return;
     }
     setSearching(true);
+    let live = true;
     const handle = setTimeout(() => {
       searchThreads(term)
-        .then((rows) => setResults(rows))
-        .catch(() => setResults([]))
-        .finally(() => setSearching(false));
+        .then((page) => {
+          if (live && version === searchVersionRef.current) {
+            setResults(page.threads);
+            setNextCursor(page.nextCursor);
+          }
+        })
+        .catch(() => {
+          if (live) setSearchError(true);
+        })
+        .finally(() => {
+          if (live) setSearching(false);
+        });
     }, 300);
-    return () => clearTimeout(handle);
+    return () => {
+      live = false;
+      clearTimeout(handle);
+    };
   }, [query, searchThreads]);
 
-  const rows = results ?? threads;
+  const loadMoreSearch = async () => {
+    if (!nextCursor || searching) return;
+    const version = searchVersionRef.current;
+    const term = query;
+    setSearching(true);
+    setSearchError(false);
+    try {
+      const page = await searchThreads(term, nextCursor);
+      if (version !== searchVersionRef.current || queryRef.current !== term)
+        return;
+      setResults((prev) => {
+        const ids = new Set((prev ?? []).map((thread) => thread.id));
+        return [
+          ...(prev ?? []),
+          ...page.threads.filter((thread) => !ids.has(thread.id))
+        ];
+      });
+      setNextCursor(page.nextCursor);
+    } catch {
+      if (version === searchVersionRef.current) setSearchError(true);
+    } finally {
+      if (version === searchVersionRef.current) setSearching(false);
+    }
+  };
+
+  const rows = query.trim() ? (results ?? []) : threads;
 
   return (
     <Stack gap='xs' data-testid='ai-chat-thread-history'>
@@ -172,7 +236,10 @@ function ThreadHistoryPanel({
         rightSection={searching ? <Loader size='xs' /> : undefined}
         aria-label='search-ai-chat-history'
       />
-      {rows.length === 0 && (
+      {searchError && (
+        <Alert color='red'>{t`Conversation search failed. Edit the search or retry loading more results.`}</Alert>
+      )}
+      {!searching && !searchError && rows.length === 0 && (
         <Text size='sm' c='dimmed' ta='center' py='md'>
           {results !== null
             ? t`No conversations match`
@@ -209,6 +276,16 @@ function ThreadHistoryPanel({
           </Paper>
         </UnstyledButton>
       ))}
+      {(query.trim() ? Boolean(nextCursor) : hasMoreThreads) && (
+        <Button
+          variant='subtle'
+          loading={query.trim() ? searching : loadingMoreThreads}
+          onClick={() => {
+            if (query.trim()) void loadMoreSearch();
+            else onLoadMore();
+          }}
+        >{t`Load more conversations`}</Button>
+      )}
     </Stack>
   );
 }
@@ -233,9 +310,13 @@ function ThreadSelector({
   activeThreadId: string;
   onSelectThread: (threadId: string) => void;
   onNewThread: () => void;
-  onDeleteThread: (threadId: string) => void;
-  onRenameThread: (threadId: string, title: string) => void;
-  onShareThread?: (threadId: string, entry: string) => void;
+  onDeleteThread: (threadId: string) => Promise<ThreadDeleteResult>;
+  onRenameThread: (threadId: string, title: string) => Promise<boolean>;
+  onShareThread?: (
+    threadId: string,
+    username: string,
+    revoke: boolean
+  ) => Promise<{ ok: boolean }>;
   /**
    * M2 PR 9 (GR-16): "What this chat remembers" — offered on owned,
    * persisted rows only; shared rows never get the affordance.
@@ -244,6 +325,7 @@ function ThreadSelector({
   disabled?: boolean;
 }>) {
   const theme = useMantineTheme();
+  const [action, setAction] = useState<ThreadAction | null>(null);
   const activeThread =
     threads.find((t) => t.id === activeThreadId) ??
     sharedThreads.find((t) => t.id === activeThreadId);
@@ -263,191 +345,199 @@ function ThreadSelector({
   };
 
   return (
-    <Menu shadow='md' width={280} position='bottom-start'>
-      <Menu.Target>
-        <UnstyledButton
-          aria-label='select-ai-chat-thread'
-          disabled={disabled}
-          px='sm'
-          py={6}
-          style={{
-            borderRadius: 'var(--mantine-radius-md)',
-            border: '1px solid var(--mantine-color-gray-3)',
-            background: 'var(--mantine-color-body)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            maxWidth: 200,
-            transition: 'border-color 0.2s ease'
-          }}
-        >
-          <IconMessages size={16} style={{ flexShrink: 0 }} />
-          <Text size='sm' truncate style={{ flex: 1 }}>
-            {activeThread?.title || t`New Chat`}
-          </Text>
-          <IconChevronDown size={14} style={{ flexShrink: 0, opacity: 0.5 }} />
-        </UnstyledButton>
-      </Menu.Target>
+    <>
+      <Menu shadow='md' width={280} position='bottom-start'>
+        <Menu.Target>
+          <UnstyledButton
+            aria-label='select-ai-chat-thread'
+            disabled={disabled}
+            px='sm'
+            py={6}
+            style={{
+              borderRadius: 'var(--mantine-radius-md)',
+              border: '1px solid var(--mantine-color-gray-3)',
+              background: 'var(--mantine-color-body)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              maxWidth: 200,
+              transition: 'border-color 0.2s ease'
+            }}
+          >
+            <IconMessages size={16} style={{ flexShrink: 0 }} />
+            <Text size='sm' truncate style={{ flex: 1 }}>
+              {activeThread?.title || t`New Chat`}
+            </Text>
+            <IconChevronDown
+              size={14}
+              style={{ flexShrink: 0, opacity: 0.5 }}
+            />
+          </UnstyledButton>
+        </Menu.Target>
 
-      <Menu.Dropdown>
-        <Menu.Label>{t`Conversations`}</Menu.Label>
+        <Menu.Dropdown>
+          <Menu.Label>{t`Conversations`}</Menu.Label>
 
-        {/* New chat option */}
-        <Menu.Item
-          aria-label='new-ai-chat-thread'
-          leftSection={<IconMessagePlus size={16} />}
-          onClick={onNewThread}
-          color='blue'
-        >
-          {t`New conversation`}
-        </Menu.Item>
+          {/* New chat option */}
+          <Menu.Item
+            aria-label='new-ai-chat-thread'
+            leftSection={<IconMessagePlus size={16} />}
+            onClick={onNewThread}
+            color='blue'
+          >
+            {t`New conversation`}
+          </Menu.Item>
 
-        {threads.length > 0 && <Menu.Divider />}
+          {threads.length > 0 && <Menu.Divider />}
 
-        {/* Thread list */}
-        <ScrollArea.Autosize mah={300}>
-          {threads.map((thread) => (
-            <Menu.Item
-              key={thread.id}
-              onClick={() => onSelectThread(thread.id)}
-              rightSection={
-                <Group gap={2} wrap='nowrap'>
-                  <ActionIcon
-                    aria-label={`rename-ai-chat-thread-${thread.id}`}
-                    size='xs'
-                    variant='subtle'
-                    color='gray'
-                    disabled={disabled}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const title = window.prompt(
-                        t`Rename conversation`,
-                        thread.title
-                      );
-                      if (title?.trim()) {
-                        onRenameThread(thread.id, title.trim());
-                      }
-                    }}
-                  >
-                    <IconPencil size={12} />
-                  </ActionIcon>
-                  {onInspectMemory && thread.isPersisted && !thread.shared && (
+          {/* Thread list */}
+          <ScrollArea.Autosize mah={300}>
+            {threads.map((thread) => (
+              <Menu.Item
+                key={thread.id}
+                onClick={() => onSelectThread(thread.id)}
+                rightSection={
+                  <Group gap={2} wrap='nowrap'>
                     <ActionIcon
-                      aria-label={`memory-ai-chat-thread-${thread.id}`}
-                      title={t`What this chat remembers`}
+                      aria-label={`rename-ai-chat-thread-${thread.id}`}
                       size='xs'
                       variant='subtle'
                       color='gray'
                       disabled={disabled}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onInspectMemory(thread.id);
+                        setAction({ kind: 'rename', thread });
                       }}
                     >
-                      <IconBrain size={12} />
+                      <IconPencil size={12} />
                     </ActionIcon>
-                  )}
-                  {onShareThread && (
+                    {onInspectMemory &&
+                      thread.isPersisted &&
+                      !thread.shared && (
+                        <ActionIcon
+                          aria-label={`memory-ai-chat-thread-${thread.id}`}
+                          title={t`What this chat remembers`}
+                          size='xs'
+                          variant='subtle'
+                          color='gray'
+                          disabled={disabled}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onInspectMemory(thread.id);
+                          }}
+                        >
+                          <IconBrain size={12} />
+                        </ActionIcon>
+                      )}
+                    {onShareThread && (
+                      <ActionIcon
+                        aria-label={`share-ai-chat-thread-${thread.id}`}
+                        size='xs'
+                        variant='subtle'
+                        color='gray'
+                        disabled={disabled}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAction({ kind: 'share', thread });
+                        }}
+                      >
+                        <IconShare2 size={12} />
+                      </ActionIcon>
+                    )}
                     <ActionIcon
-                      aria-label={`share-ai-chat-thread-${thread.id}`}
+                      aria-label={`delete-ai-chat-thread-${thread.id}`}
                       size='xs'
                       variant='subtle'
-                      color='gray'
+                      color='red'
                       disabled={disabled}
                       onClick={(e) => {
                         e.stopPropagation();
-                        const entry = window.prompt(
-                          t`Share read-only with username (prefix with - to revoke)`
-                        );
-                        if (entry?.trim()) {
-                          onShareThread(thread.id, entry.trim());
-                        }
+                        setAction({ kind: 'delete', thread });
                       }}
                     >
-                      <IconShare2 size={12} />
+                      <IconTrash size={12} />
                     </ActionIcon>
-                  )}
-                  <ActionIcon
-                    aria-label={`delete-ai-chat-thread-${thread.id}`}
-                    size='xs'
-                    variant='subtle'
-                    color='red'
-                    disabled={disabled}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteThread(thread.id);
+                  </Group>
+                }
+                style={{
+                  backgroundColor:
+                    thread.id === activeThreadId
+                      ? theme.colors.blue[0]
+                      : undefined
+                }}
+              >
+                <Box>
+                  <Text
+                    size='sm'
+                    truncate
+                    fw={thread.id === activeThreadId ? 600 : 400}
+                  >
+                    {thread.title}
+                  </Text>
+                  <Text size='xs' c='dimmed'>
+                    {formatTime(thread.updatedAt)}
+                  </Text>
+                </Box>
+              </Menu.Item>
+            ))}
+          </ScrollArea.Autosize>
+
+          {sharedThreads.length > 0 && (
+            <>
+              <Menu.Divider />
+              <Menu.Label>{t`Shared with me`}</Menu.Label>
+              <ScrollArea.Autosize mah={160}>
+                {sharedThreads.map((thread) => (
+                  <Menu.Item
+                    key={thread.id}
+                    data-testid={`shared-thread-${thread.id}`}
+                    onClick={() => onSelectThread(thread.id)}
+                    rightSection={
+                      <IconEye size={12} style={{ opacity: 0.6 }} />
+                    }
+                    style={{
+                      backgroundColor:
+                        thread.id === activeThreadId
+                          ? theme.colors.blue[0]
+                          : undefined
                     }}
                   >
-                    <IconTrash size={12} />
-                  </ActionIcon>
-                </Group>
-              }
-              style={{
-                backgroundColor:
-                  thread.id === activeThreadId
-                    ? theme.colors.blue[0]
-                    : undefined
-              }}
-            >
-              <Box>
-                <Text
-                  size='sm'
-                  truncate
-                  fw={thread.id === activeThreadId ? 600 : 400}
-                >
-                  {thread.title}
-                </Text>
-                <Text size='xs' c='dimmed'>
-                  {formatTime(thread.updatedAt)}
-                </Text>
-              </Box>
-            </Menu.Item>
-          ))}
-        </ScrollArea.Autosize>
+                    <Box>
+                      <Text
+                        size='sm'
+                        truncate
+                        fw={thread.id === activeThreadId ? 600 : 400}
+                      >
+                        {thread.title}
+                      </Text>
+                      <Text size='xs' c='dimmed'>
+                        {t`Read-only`}
+                      </Text>
+                    </Box>
+                  </Menu.Item>
+                ))}
+              </ScrollArea.Autosize>
+            </>
+          )}
 
-        {sharedThreads.length > 0 && (
-          <>
-            <Menu.Divider />
-            <Menu.Label>{t`Shared with me`}</Menu.Label>
-            <ScrollArea.Autosize mah={160}>
-              {sharedThreads.map((thread) => (
-                <Menu.Item
-                  key={thread.id}
-                  data-testid={`shared-thread-${thread.id}`}
-                  onClick={() => onSelectThread(thread.id)}
-                  rightSection={<IconEye size={12} style={{ opacity: 0.6 }} />}
-                  style={{
-                    backgroundColor:
-                      thread.id === activeThreadId
-                        ? theme.colors.blue[0]
-                        : undefined
-                  }}
-                >
-                  <Box>
-                    <Text
-                      size='sm'
-                      truncate
-                      fw={thread.id === activeThreadId ? 600 : 400}
-                    >
-                      {thread.title}
-                    </Text>
-                    <Text size='xs' c='dimmed'>
-                      {t`Read-only`}
-                    </Text>
-                  </Box>
-                </Menu.Item>
-              ))}
-            </ScrollArea.Autosize>
-          </>
-        )}
-
-        {threads.length === 0 && sharedThreads.length === 0 && (
-          <Text size='xs' c='dimmed' ta='center' py='sm'>
-            {t`No previous conversations`}
-          </Text>
-        )}
-      </Menu.Dropdown>
-    </Menu>
+          {threads.length === 0 && sharedThreads.length === 0 && (
+            <Text size='xs' c='dimmed' ta='center' py='sm'>
+              {t`No previous conversations`}
+            </Text>
+          )}
+        </Menu.Dropdown>
+      </Menu>
+      {action && (
+        <ThreadActionsModal
+          key={`${action.kind}:${action.thread.id}`}
+          action={action}
+          onClose={() => setAction(null)}
+          onDelete={onDeleteThread}
+          onRename={onRenameThread}
+          onShare={onShareThread}
+        />
+      )}
+    </>
   );
 }
 
@@ -1011,6 +1101,7 @@ export function AIChatDrawer({
     isLoading,
     error,
     activeThreadId,
+    activeThreadDeletionPending,
     threads,
     sendMessage,
     clearChat,
@@ -1022,6 +1113,12 @@ export function AIChatDrawer({
     isSyncing,
     syncThreads,
     searchThreads,
+    hasEarlierMessages,
+    loadingEarlier,
+    loadEarlierMessages,
+    hasMoreThreads,
+    loadingMoreThreads,
+    loadMoreThreads,
     // S32b: read-only sharing
     sharedThreads,
     activeThreadShared,
@@ -1042,7 +1139,12 @@ export function AIChatDrawer({
   } = useAIChat();
 
   // S14 B5: machine routing hint preloaded by "Ask about this machine".
-  const routingHint = useAIChatState((state) => state.routingHint);
+  const pendingRoutingHint = useAIChatState((state) => state.routingHint);
+  const hintThreadId = useAIChatState((state) => state.hintThreadId);
+  const routingHint =
+    hintThreadId === null || hintThreadId === activeThreadId
+      ? pendingRoutingHint
+      : undefined;
   const clearRoutingHint = useAIChatState((state) => state.clearHint);
 
   // S22: resolutions live on the answering turn's assistant message; the
@@ -1082,8 +1184,9 @@ export function AIChatDrawer({
   });
   const handleClose = useCallback(() => {
     voice.minimize();
+    clearRoutingHint();
     onClose();
-  }, [onClose, voice.minimize]);
+  }, [onClose, voice.minimize, clearRoutingHint]);
   const voiceFullscreen = useVoiceSurfaceState((state) => state.fullscreen);
   const proposals = useChatProposals();
   const voiceDecision = useVoiceDecisionState((state) => state.decision);
@@ -1118,6 +1221,11 @@ export function AIChatDrawer({
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const earlierScrollRef = useRef<{
+    threadId: string;
+    top: number;
+    height: number;
+  } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeThreadIdRef = useRef(activeThreadId);
   const previousThreadIdRef = useRef(activeThreadId);
@@ -1191,17 +1299,22 @@ export function AIChatDrawer({
     { label: t`Low stock`, message: 'Show me low stock items' }
   ];
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      const scrollContainer = scrollAreaRef.current.querySelector(
-        '[data-radix-scroll-area-viewport]'
-      );
-      if (scrollContainer) {
-        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+  // Keep the visible position while prepending history; new replies follow
+  // the bottom as before. Mantine exposes the actual viewport via its ref.
+  useLayoutEffect(() => {
+    const viewport = scrollAreaRef.current;
+    if (!viewport) return;
+    const anchor = earlierScrollRef.current;
+    if (anchor?.threadId === activeThreadId) {
+      if (!loadingEarlier) {
+        viewport.scrollTop = anchor.top + viewport.scrollHeight - anchor.height;
+        earlierScrollRef.current = null;
       }
+      return;
     }
-  }, [messages]);
+    earlierScrollRef.current = null;
+    viewport.scrollTop = viewport.scrollHeight;
+  }, [messages, activeThreadId, loadingEarlier]);
 
   // Focus input when drawer opens
   useEffect(() => {
@@ -1242,6 +1355,10 @@ export function AIChatDrawer({
           setIsApplyingScope(false);
         }
       }
+      // Closing or switching during the scope request cancels this send intent.
+      // The hint is bound to one thread and is cleared by those transitions.
+      if (routingHint && useAIChatState.getState().routingHint !== routingHint)
+        return;
       sendMessage(text, fileIds.length > 0 ? fileIds : undefined);
       if (routingHint) {
         clearRoutingHint();
@@ -1314,10 +1431,21 @@ export function AIChatDrawer({
   // owned thread — the composer is disabled on shared transcripts, so the
   // ask could never be sent there.
   useEffect(() => {
-    if (opened && routingHint && activeThreadShared) {
-      handleNewThread();
+    if (!opened || !routingHint) return;
+    if (activeThreadShared) {
+      const id = createNewThread();
+      useAIChatState.getState().openWithHint(routingHint);
+      useAIChatState.getState().bindHint(id);
+    } else {
+      useAIChatState.getState().bindHint(activeThreadId);
     }
-  }, [opened, routingHint, activeThreadShared, handleNewThread]);
+  }, [
+    opened,
+    routingHint,
+    activeThreadShared,
+    activeThreadId,
+    createNewThread
+  ]);
 
   const handleClearChat = useCallback(() => {
     setAttachedFiles([]);
@@ -1327,7 +1455,7 @@ export function AIChatDrawer({
   const handleDeleteThread = useCallback(
     (threadId: string) => {
       setAttachedFiles([]);
-      deleteThread(threadId);
+      return deleteThread(threadId);
     },
     [deleteThread]
   );
@@ -1542,24 +1670,13 @@ export function AIChatDrawer({
                   onNewThread={handleNewThread}
                   onDeleteThread={handleDeleteThread}
                   onRenameThread={renameThread}
-                  onShareThread={(threadId, entry) => {
-                    const revoke = entry.startsWith('-');
-                    const username = revoke ? entry.slice(1).trim() : entry;
-                    if (!username) return;
-                    void (
-                      revoke
-                        ? revokeThreadShare(threadId, username)
-                        : shareThread(threadId, username)
-                    ).then((result) => {
-                      if (!result.ok) {
-                        window.alert(
-                          `${t`Sharing failed`}: ${result.detail ?? ''}`
-                        );
-                      }
-                    });
-                  }}
+                  onShareThread={(threadId, username, revoke) =>
+                    revoke
+                      ? revokeThreadShare(threadId, username)
+                      : shareThread(threadId, username)
+                  }
                   onInspectMemory={setMemoryThreadId}
-                  disabled={isLoading}
+                  disabled={isLoading || isSyncing || isApplyingScope}
                 />
               </Box>
             )}
@@ -1609,10 +1726,28 @@ export function AIChatDrawer({
             style={{ flex: 1 }}
             offsetScrollbars
             scrollbarSize={6}
-            ref={scrollAreaRef}
+            viewportRef={scrollAreaRef}
           >
             {activeTab === 'chat' && (
               <Box p='md'>
+                {hasEarlierMessages && (
+                  <Button
+                    variant='subtle'
+                    fullWidth
+                    loading={loadingEarlier}
+                    disabled={isLoading}
+                    onClick={() => {
+                      const viewport = scrollAreaRef.current;
+                      if (viewport)
+                        earlierScrollRef.current = {
+                          threadId: activeThreadId,
+                          top: viewport.scrollTop,
+                          height: viewport.scrollHeight
+                        };
+                      void loadEarlierMessages();
+                    }}
+                  >{t`Load earlier messages`}</Button>
+                )}
                 {/* Welcome message when no messages */}
                 {!hasMessages && (
                   <Box ta='center' py='xl'>
@@ -1763,6 +1898,9 @@ export function AIChatDrawer({
                   threads={threads}
                   activeThreadId={activeThreadId}
                   searchThreads={searchThreads}
+                  hasMoreThreads={hasMoreThreads}
+                  loadingMoreThreads={loadingMoreThreads || isSyncing}
+                  onLoadMore={() => void loadMoreThreads()}
                   onResume={(threadId) => {
                     switchThread(threadId);
                     setActiveTab('chat');
@@ -1861,7 +1999,9 @@ export function AIChatDrawer({
                 <ActiveScopeBanner
                   scope={activeScope}
                   readOnly={
-                    activeThreadShared || activeScope?.editable === false
+                    activeThreadShared ||
+                    activeThreadDeletionPending ||
+                    activeScope?.editable === false
                   }
                   busy={isApplyingScope}
                   hint={routingHint ?? undefined}
@@ -1899,7 +2039,13 @@ export function AIChatDrawer({
                       variant='subtle'
                       color='gray'
                       onClick={() => fileInputRef.current?.click()}
-                      disabled={isLoading || isUploading || isSyncing}
+                      disabled={
+                        isLoading ||
+                        isUploading ||
+                        isSyncing ||
+                        activeThreadShared ||
+                        activeThreadDeletionPending
+                      }
                       loading={isUploading}
                     >
                       <IconPaperclip size={18} />
@@ -1922,7 +2068,12 @@ export function AIChatDrawer({
                     autosize
                     minRows={1}
                     maxRows={4}
-                    disabled={isLoading || isSyncing || activeThreadShared}
+                    disabled={
+                      isLoading ||
+                      isSyncing ||
+                      activeThreadShared ||
+                      activeThreadDeletionPending
+                    }
                     styles={{
                       input: {
                         border: 'none',
@@ -1966,6 +2117,7 @@ export function AIChatDrawer({
                             !inputValue.trim() ||
                             isSyncing ||
                             activeThreadShared ||
+                            activeThreadDeletionPending ||
                             isApplyingScope
                           }
                           style={{

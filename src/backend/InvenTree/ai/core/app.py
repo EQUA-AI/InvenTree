@@ -23,7 +23,7 @@ import uuid
 from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from ai.core.api import get_devui
 from ai.core.auth import (
@@ -59,6 +59,7 @@ from aichat.services import (
     ThreadNotFound,
     ThreadRepository,
 )
+from aichat.services.threads import InvalidBoundary
 from asgiref.sync import sync_to_async
 from fastapi import (
     Depends,
@@ -179,6 +180,7 @@ class ThreadSyncResponse(BaseModel):
     threads: list[ThreadInfo]
     sync_token: str | None = None
     has_more: bool = False
+    next_cursor: str | None = None
     # S32b: read-only threads granted to the caller (empty when the
     # feature is dark, so the response shape is always stable).
     shared_threads: list[ThreadInfo] = []
@@ -937,6 +939,7 @@ async def list_threads(
     include_persisted: bool = True,
     limit: int = Query(default=50, ge=1, le=100),
     q: str | None = Query(default=None, max_length=200),
+    cursor: str | None = None,
 ) -> ThreadSyncResponse:
     """List only threads within the authenticated owner/scope boundary.
 
@@ -964,28 +967,34 @@ async def list_threads(
             active_scope=repository.scope_summary(thread),
         )
 
-    def materialize() -> tuple[list[ThreadInfo], int, list[ThreadInfo]]:
+    def materialize() -> tuple[list[ThreadInfo], str | None, list[ThreadInfo]]:
         """Materialize."""
-        all_threads = repository.search(q, limit=limit) if q else repository.list()
-        selected = all_threads[: max(1, min(limit, 100))]
+        selected, next_cursor = repository.list_page(limit=limit, cursor=cursor, query=q or "")
         result = [_info(thread) for thread in selected]
         # S32b: shared threads ride the same response; list_shared returns
         # [] whenever the feature is dark. The search box intentionally
         # does not search shared transcripts.
         shared = [] if q else [_info(thread, shared=True) for thread in repository.list_shared()]
-        return result, len(all_threads), shared
+        return result, next_cursor, shared
 
-    threads, total, shared_threads = await sync_to_async(materialize, thread_sensitive=True)()
+    try:
+        threads, next_cursor, shared_threads = await sync_to_async(
+            materialize, thread_sensitive=True
+        )()
+    except InvalidBoundary:
+        raise HTTPException(status_code=400, detail="Invalid thread cursor") from None
     return ThreadSyncResponse(
         threads=threads,
         sync_token=None,
-        has_more=total > len(threads),
+        has_more=next_cursor is not None,
+        next_cursor=next_cursor,
         shared_threads=shared_threads,
         capabilities={
             "agui": bool(getattr(get_settings(), "feature_agui_endpoint", False)),
             # S1: the scope endpoints exist — the frontend gates the whole
             # scope-banner flow on this advertisement (no endpoint probing).
             "thread_scope": True,
+            "thread_pagination": True,
             # S10: evidence-set expansion endpoints exist while the gate is
             # not "off" (rows only exist once the executor writes them).
             "evidence_sets": getattr(get_settings(), "evidence_gate_mode", "off") != "off",
@@ -1051,6 +1060,7 @@ async def get_thread(
     thread_id: str,
     include_messages: bool = True,
     message_limit: int = Query(default=50, ge=1, le=200),
+    before_sequence: Annotated[int | None, Query(ge=1)] = None,
 ) -> dict[str, Any]:
     """Return a durable thread only after scope-first authorization."""
 
@@ -1062,8 +1072,13 @@ async def get_thread(
         # S32b: reads (and only reads) honor explicit grants; the shared
         # marker lets the client withhold every write affordance.
         thread, shared = repository.get_readable(thread_id)
-        stored_messages = repository.readable_messages(thread_id) if include_messages else []
-        selected = stored_messages[-max(1, min(message_limit, 200)) :]
+        selected, has_earlier = (
+            repository.readable_message_page(
+                thread_id, limit=message_limit, before_sequence=before_sequence
+            )
+            if include_messages
+            else ([], False)
+        )
         return {
             "thread_id": thread.pk,
             "user_id": principal.user_pk,
@@ -1076,6 +1091,7 @@ async def get_thread(
             "messages": [
                 {
                     "id": message.pk,
+                    "sequence": message.sequence,
                     "role": message.role,
                     "content": message.content,
                     "timestamp": message.created_at.isoformat(),
@@ -1106,6 +1122,8 @@ async def get_thread(
                 for message in selected
             ],
             "metrics": {},
+            "has_earlier": has_earlier,
+            "next_before_sequence": selected[0].sequence if has_earlier else None,
             "created_at": thread.created_at.isoformat(),
             "updated_at": thread.updated_at.isoformat(),
             "is_persisted": True,
@@ -1226,14 +1244,18 @@ async def get_evidence_set_members(
 
 
 @app.delete("/threads/{thread_id}")
-async def delete_thread(thread_id: str) -> dict[str, str]:
+async def delete_thread(thread_id: str, response: Response) -> dict[str, str]:
     """Delete a thread through the sole authorized repository."""
 
     try:
-        await sync_to_async(_repository(_principal()).delete, thread_sensitive=True)(thread_id)
+        result = await sync_to_async(_repository(_principal()).delete, thread_sensitive=True)(
+            thread_id
+        )
     except (ThreadNotFound, ScopedThreadRejected):
         raise HTTPException(status_code=404, detail="Thread not found") from None
-    return {"status": "deleted", "thread_id": thread_id}
+    if result["status"] == "purge_incomplete":
+        response.status_code = 202
+    return result
 
 
 @app.put("/threads/{thread_id}")

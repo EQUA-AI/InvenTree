@@ -936,15 +936,52 @@ def enqueue_outbox(kind: str, reference: str) -> None:
 def _try_remove_upload_dir(thread_id: str) -> bool:
     """Best-effort inline removal; the outbox row is the retry backstop."""
     try:
-        target = _upload_root() / thread_id
-        if target.is_dir():
-            shutil.rmtree(target)
+        _handle_upload_dir(thread_id)
         AIRetentionOutbox.objects.filter(
             kind='upload_dir', reference=thread_id, state='pending'
         ).update(state='done', completed_at=timezone.now())
         return True
-    except OSError:
+    except (OSError, OutboxReferenceError):
         return False
+
+
+def thread_purge_receipt(thread_id: str) -> dict[str, str]:
+    """Finish registered thread cleanup and return a content-free receipt.
+
+    Called only after the repository authorizes a live thread or its tombstone.
+    Retrying DELETE must not report success merely because the parent row was
+    removed. Unknown kinds, probe failures and outstanding rows remain pending;
+    the scheduled outbox worker remains the backstop. This covers the current
+    thread purge/outbox, not the future full derivative registry.
+    """
+    rows = AIRetentionOutbox.objects.filter(reference=thread_id).exclude(state='done')
+    for row in rows.order_by('pk')[:100]:
+        kind = OUTBOX_KINDS.get(row.kind)
+        if kind is None:
+            continue
+        try:
+            kind.handler(thread_id)
+            if kind.probe(thread_id) != 0:
+                continue
+        except Exception:
+            # No content, paths or provider errors in the public receipt.
+            continue
+        AIRetentionOutbox.objects.filter(pk=row.pk).update(
+            state='done', completed_at=timezone.now(), last_error_code=''
+        )
+    try:
+        residual = _probe_upload_dir(thread_id)
+    except (OSError, OutboxReferenceError):
+        residual = 1
+    incomplete = (
+        bool(residual)
+        or rows.exists()
+        or ChatThread.objects.filter(pk=thread_id).exists()
+    )
+    return {
+        'status': 'purge_incomplete' if incomplete else 'deleted',
+        'thread_id': thread_id,
+    }
 
 
 def sweep_upload_dirs(

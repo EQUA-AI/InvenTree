@@ -35,8 +35,21 @@ if workers is None:
 
 logger.info('Starting gunicorn server with %s workers', workers)
 
-max_requests = 1000
-max_requests_jitter = 50
+# A lone ASGI worker stops accepting health probes while request-count
+# recycling waits for long-lived chat requests to finish. Keep it available;
+# health-based restarts and deployments still replace unhealthy workers.
+# Multi-worker installations retain the existing recycling defaults. Operators
+# may override these values explicitly; monitor RSS for long-lived workers.
+max_requests = int(
+    os.environ.get('INVENTREE_GUNICORN_MAX_REQUESTS', '0' if workers == 1 else '1000')
+)
+max_requests_jitter = int(
+    os.environ.get('INVENTREE_GUNICORN_MAX_REQUESTS_JITTER', '50')
+)
+if max_requests < 0 or max_requests_jitter < 0:
+    raise ValueError('Gunicorn request recycling limits must be nonnegative')
+if max_requests == 0:
+    max_requests_jitter = 0
 
 # preload app so that the ready functions are only executed once
 preload_app = True

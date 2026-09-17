@@ -22,6 +22,7 @@ from django.utils import timezone
 from aichat.models import (
     ChatMessage,
     ChatThread,
+    ChatThreadTombstone,
     ChatTurn,
     MessageRole,
     ThreadNamespace,
@@ -199,6 +200,12 @@ class ThreadRepository:
             raise InvalidBoundary('Thread title is invalid')
         self._reject_wrong_namespace_id(thread_id)
 
+        # A client may retry a turn/upload after deletion. Never recreate the
+        # deleted id while its receipt exists; cleanup retries resolve that
+        # receipt through delete(), not through a new live conversation.
+        if ChatThreadTombstone.objects.filter(thread_id=thread_id).exists():
+            raise ThreadNotFound('Thread not found')
+
         existing = self._threads().filter(pk=thread_id).first()
         if existing is not None:
             return existing, False
@@ -252,6 +259,62 @@ class ThreadRepository:
         """Return one thread within the complete boundary."""
         return self._get_thread(thread_id)
 
+    def list_page(
+        self, *, limit: int = 50, cursor: str | None = None, query: str = ''
+    ) -> tuple[builtins.list[ChatThread], str | None]:
+        """Bounded keyset page, with a cursor bound to actor, scope and search.
+
+        A cursor is only a position, never authorization. The current boundary
+        queryset is reapplied on every page; equal timestamps use the primary
+        key as a deterministic tie-breaker.
+        """
+        from django.core import signing
+        from django.utils.dateparse import parse_datetime
+
+        limit = max(1, min(int(limit), 100))
+        term = str(query or '').strip()[:200]
+        boundary = [str(self.actor_id), self.scope_hash, self.namespace, term]
+        rows = self._threads()
+        if term:
+            rows = rows.filter(
+                models.Q(title__icontains=term)
+                | models.Q(messages__content__icontains=term)
+            ).distinct()
+        if cursor:
+            try:
+                payload = signing.loads(
+                    cursor, salt='aichat.thread-list', max_age=86400
+                )
+                if payload['boundary'] != boundary:
+                    raise ValueError('cursor boundary')
+                updated = parse_datetime(payload['updated'])
+                if updated is None or timezone.is_naive(updated):
+                    raise ValueError('cursor timestamp')
+                before_id = payload['id']
+                if not isinstance(before_id, str):
+                    raise ValueError('cursor id')
+            except (signing.BadSignature, KeyError, TypeError, ValueError):
+                raise InvalidBoundary('Invalid thread cursor') from None
+            rows = rows.filter(
+                models.Q(updated_at__lt=updated)
+                | models.Q(updated_at=updated, pk__lt=before_id)
+            )
+        selected = list(rows.order_by('-updated_at', '-pk')[: limit + 1])
+        has_more = len(selected) > limit
+        selected = selected[:limit]
+        next_cursor = None
+        if has_more:
+            last = selected[-1]
+            next_cursor = signing.dumps(
+                {
+                    'boundary': boundary,
+                    'updated': last.updated_at.isoformat(),
+                    'id': last.pk,
+                },
+                salt='aichat.thread-list',
+            )
+        return selected, next_cursor
+
     def rename(self, thread_id: str, title: str) -> ChatThread:
         """Rename one boundary-visible thread."""
         if not isinstance(title, str) or len(title) > 255:
@@ -262,7 +325,7 @@ class ThreadRepository:
             thread.save(update_fields=['title', 'updated_at'])
         return thread
 
-    def delete(self, thread_id: str) -> None:
+    def delete(self, thread_id: str) -> dict[str, str]:
         """Purge one boundary-visible transcript through the retention path.
 
         The retention service (S16) is the only correct deletion path: a
@@ -273,12 +336,26 @@ class ThreadRepository:
         """
         from aichat.services import retention
 
-        thread = self._get_thread(thread_id)
-        retention.purge_thread_now(
-            thread.pk,
-            actor_user_id=thread.owner_id,
-            reason=retention.TOMBSTONE_USER_DELETE,
-        )
+        self._reject_wrong_namespace_id(thread_id)
+        try:
+            thread = self._get_thread(thread_id)
+        except ThreadNotFound:
+            # Retry external cleanup only for the original owner's boundary.
+            # A foreign tombstone is indistinguishable from an unknown id.
+            if not ChatThreadTombstone.objects.filter(
+                thread_id=thread_id,
+                owner_id=self.actor_id,
+                scope_hash=self.scope_hash,
+                namespace=self.namespace,
+            ).exists():
+                raise
+        else:
+            retention.purge_thread_now(
+                thread.pk,
+                actor_user_id=thread.owner_id,
+                reason=retention.TOMBSTONE_USER_DELETE,
+            )
+        return retention.thread_purge_receipt(thread_id)
 
     def _append_locked(
         self,
@@ -859,6 +936,20 @@ class ThreadRepository:
         """Return the transcript of one readable (owned or granted) thread."""
         thread, _ = self.get_readable(thread_id)
         return list(ChatMessage.objects.filter(thread=thread))
+
+    def readable_message_page(
+        self, thread_id: str, *, limit: int = 50, before_sequence: int | None = None
+    ) -> tuple[builtins.list[ChatMessage], bool]:
+        """Read a bounded transcript page, reauthorizing grants on every call."""
+        thread, _ = self.get_readable(thread_id)
+        rows = ChatMessage.objects.filter(thread=thread)
+        if before_sequence is not None:
+            if before_sequence < 1:
+                raise InvalidBoundary('Invalid message sequence')
+            rows = rows.filter(sequence__lt=before_sequence)
+        limit = max(1, min(int(limit), 200))
+        selected = list(rows.order_by('-sequence')[: limit + 1])
+        return list(reversed(selected[:limit])), len(selected) > limit
 
     def evidence_set(self, thread_id: str, set_id: str):
         """Resolve one evidence set inside the readable-thread boundary (S10).

@@ -19,6 +19,8 @@ export interface AIChatRoutingHint {
 interface AIChatStateProps {
   isOpen: boolean;
   routingHint?: AIChatRoutingHint;
+  hintThreadId: string | null;
+  bindHint: (threadId: string) => void;
   open: () => void;
   openWithHint: (hint: AIChatRoutingHint) => void;
   close: () => void;
@@ -28,11 +30,19 @@ interface AIChatStateProps {
 export const useAIChatState = create<AIChatStateProps>()((set) => ({
   isOpen: false,
   routingHint: undefined,
+  hintThreadId: null,
+  bindHint: (threadId) =>
+    set((state) =>
+      state.routingHint && state.hintThreadId === null
+        ? { hintThreadId: threadId }
+        : {}
+    ),
   open: () => set({ isOpen: true }),
   openWithHint: (hint: AIChatRoutingHint) =>
-    set({ isOpen: true, routingHint: hint }),
-  close: () => set({ isOpen: false }),
-  clearHint: () => set({ routingHint: undefined })
+    set({ isOpen: true, routingHint: hint, hintThreadId: null }),
+  close: () =>
+    set({ isOpen: false, routingHint: undefined, hintThreadId: null }),
+  clearHint: () => set({ routingHint: undefined, hintThreadId: null })
 }));
 
 export function openGlobalAIChat(hint?: AIChatRoutingHint) {

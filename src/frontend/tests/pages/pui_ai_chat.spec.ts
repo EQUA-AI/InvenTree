@@ -648,11 +648,13 @@ test('thread rename and delete use credentialed server mutations', async ({
   await openChat(page);
   await page.getByLabel('select-ai-chat-thread').click();
 
-  page.once('dialog', async (dialog) => {
-    expect(dialog.type()).toBe('prompt');
-    await dialog.accept('Renamed server conversation');
-  });
   await page.getByLabel(`rename-ai-chat-thread-${threadId}`).click();
+  const rename = page.getByRole('dialog', { name: 'Rename conversation' });
+  await rename
+    .getByLabel('Conversation title')
+    .fill('Renamed server conversation');
+  await rename.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(rename).toBeHidden();
   // The renamed title legitimately renders in both the thread selector and
   // the thread menu, so a strict single-element match would be wrong here.
   await expect(
@@ -665,6 +667,12 @@ test('thread rename and delete use credentialed server mutations', async ({
     await page.getByLabel('select-ai-chat-thread').click();
   }
   await deleteButton.click();
+  const deletion = page.getByRole('dialog', { name: 'Delete conversation?' });
+  await expect(deletion).toBeVisible();
+  expect(foundation.threadMutations.length).toBe(1);
+  await deletion
+    .getByRole('button', { name: 'Delete conversation', exact: true })
+    .click();
   await expect.poll(() => foundation.threadMutations.length).toBe(2);
 
   for (const mutation of foundation.threadMutations) {

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '../App';
+import type { ThreadDeleteResult } from '../components/aichat/threadDeletion';
 import { getCsrfCookie } from '../functions/auth';
+import { useAIChatState } from '../states/AIChatState';
 import { useLocalState } from '../states/LocalState';
 import { useUserState } from '../states/UserState';
 import {
@@ -465,6 +467,7 @@ interface StoredThread {
   createdAt: string;
   updatedAt: string;
   isPersisted?: boolean;
+  deletionPending?: boolean;
 }
 
 /**
@@ -489,6 +492,7 @@ interface ThreadSyncResponse {
   threads: ThreadInfo[];
   sync_token: string | null;
   has_more: boolean;
+  next_cursor?: string | null;
   /** S32b: read-only threads granted to the caller ([] when dark). */
   shared_threads?: ThreadInfo[];
   /** S49: server capability advertisement (absent on older backends). */
@@ -582,14 +586,15 @@ function saveStoredThreads(threads: StoredThread[]): void {
  */
 async function fetchServerThreads(
   host: string,
-  query?: string
+  query?: string,
+  cursor?: string | null
 ): Promise<ThreadSyncResponse | null> {
   try {
     const search = query?.trim()
       ? `&q=${encodeURIComponent(query.trim().slice(0, 200))}`
       : '';
     const response = await fetch(
-      `${host}/threads?include_persisted=true&limit=50${search}`,
+      `${host}/threads?include_persisted=true&limit=50${search}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
       {
         method: 'GET',
         headers: {
@@ -638,7 +643,8 @@ function wirePreference(sessionDisabled: boolean): 'agui' | 'legacy' {
  */
 async function fetchServerThread(
   threadId: string,
-  host: string
+  host: string,
+  beforeSequence?: number
 ): Promise<{
   messages: ChatMessage[];
   title: string;
@@ -646,10 +652,11 @@ async function fetchServerThread(
   updated_at: string;
   active_scope: ActiveScopeSummary | null;
   shared: boolean;
+  nextBeforeSequence: number | null;
 } | null> {
   try {
     const response = await fetch(
-      `${host}/threads/${encodeURIComponent(threadId)}?include_messages=true&message_limit=50`,
+      `${host}/threads/${encodeURIComponent(threadId)}?include_messages=true&message_limit=50${beforeSequence ? `&before_sequence=${beforeSequence}` : ''}`,
       {
         method: 'GET',
         headers: {
@@ -707,7 +714,11 @@ async function fetchServerThread(
       updated_at: data.updated_at,
       // S1: compact scope summary (absent on older backends).
       active_scope: data.active_scope ?? null,
-      shared: Boolean(data.shared)
+      shared: Boolean(data.shared),
+      nextBeforeSequence:
+        data.has_earlier && Number.isSafeInteger(data.next_before_sequence)
+          ? data.next_before_sequence
+          : null
     };
   } catch (error) {
     console.error('Error fetching server thread:', error);
@@ -808,7 +819,7 @@ async function updateThreadScope(
 async function deleteServerThread(
   threadId: string,
   host: string
-): Promise<boolean> {
+): Promise<ThreadDeleteResult> {
   try {
     const response = await fetch(
       `${host}/threads/${encodeURIComponent(threadId)}`,
@@ -821,10 +832,17 @@ async function deleteServerThread(
         credentials: 'include'
       }
     );
-    return response.ok;
+    if (response.status === 404) return 'deleted';
+    if (!response.ok) return 'error';
+    const result = await response.json();
+    return result.status === 'purge_incomplete'
+      ? 'purge_incomplete'
+      : result.status === 'deleted'
+        ? 'deleted'
+        : 'error';
   } catch (error) {
     console.error('Error deleting server thread:', error);
-    return false;
+    return 'error';
   }
 }
 
@@ -1034,6 +1052,16 @@ export function useAIChat(config: AIChatConfig = {}) {
   const aguiDisabledRef = useRef(false);
   const storedThreadsRef = useRef(storedThreads);
   const activeThreadIdRef = useRef(activeThreadId);
+  const selectionVersionRef = useRef(0);
+  const [messageCursors, setMessageCursors] = useState<
+    Record<string, number | null>
+  >({});
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const earlierRequestRef = useRef(0);
+  const [threadCursor, setThreadCursor] = useState<string | null>(null);
+  const [loadingMoreThreads, setLoadingMoreThreads] = useState(false);
+  const moreThreadsRequestRef = useRef(false);
+  const threadListVersionRef = useRef(0);
   storedThreadsRef.current = storedThreads;
   activeThreadIdRef.current = activeThreadId;
 
@@ -1049,22 +1077,33 @@ export function useAIChat(config: AIChatConfig = {}) {
    * Merges server threads with local threads, server wins on conflicts
    */
   const syncThreads = useCallback(async () => {
-    if (syncInProgressRef.current || !isLoggedIn) {
+    if (
+      syncInProgressRef.current ||
+      !isLoggedIn ||
+      abortControllerRef.current
+    ) {
       return;
     }
 
     syncInProgressRef.current = true;
     setIsSyncing(true);
+    const selectionVersion = selectionVersionRef.current;
+    const listVersion = ++threadListVersionRef.current;
 
     try {
       const serverData = await fetchServerThreads(aiHost);
 
-      if (!serverData) {
+      if (
+        !serverData ||
+        selectionVersion !== selectionVersionRef.current ||
+        listVersion !== threadListVersionRef.current
+      ) {
         return;
       }
 
       // S1: the capability advertisement gates the whole scope feature.
       setScopeCapable(Boolean(serverData.capabilities?.thread_scope));
+      setThreadCursor(serverData.next_cursor ?? null);
 
       const localThreads = storedThreadsRef.current;
       setSharedThreads(
@@ -1101,9 +1140,25 @@ export function useAIChat(config: AIChatConfig = {}) {
       // were previously known to be durable but disappeared from the server
       // are removed rather than resurrected from stale localStorage.
       for (const localThread of localThreads) {
-        if (!serverIds.has(localThread.id) && !localThread.isPersisted) {
+        if (
+          !serverIds.has(localThread.id) &&
+          (!localThread.isPersisted || localThread.deletionPending)
+        ) {
           mergedThreads.push(localThread);
         }
+      }
+
+      // Absence from page one is not deletion. Keep a selected older row only
+      // long enough to reauthorize it through the detail endpoint below.
+      const olderActive = localThreads.find(
+        (thread) =>
+          thread.id === activeThreadIdRef.current &&
+          thread.isPersisted &&
+          !thread.deletionPending
+      );
+      if (olderActive && !serverIds.has(olderActive.id)) {
+        mergedThreads.push({ ...olderActive, messages: [] });
+        serverIds.add(olderActive.id);
       }
 
       mergedThreads.sort(
@@ -1116,6 +1171,10 @@ export function useAIChat(config: AIChatConfig = {}) {
         nextActiveThreadId = mergedThreads[0]?.id || generateThreadId();
         activeThreadIdRef.current = nextActiveThreadId;
         setActiveThreadId(nextActiveThreadId);
+        useAIChatState.getState().clearHint();
+        setMessages([]);
+        setPendingQuestion(null);
+        applyScopeState(null);
       }
 
       storedThreadsRef.current = mergedThreads;
@@ -1127,7 +1186,16 @@ export function useAIChat(config: AIChatConfig = {}) {
           nextActiveThreadId,
           aiHost
         );
+        if (
+          selectionVersion !== selectionVersionRef.current ||
+          listVersion !== threadListVersionRef.current
+        )
+          return;
         if (serverThread) {
+          setMessageCursors((prev) => ({
+            ...prev,
+            [nextActiveThreadId]: serverThread.nextBeforeSequence
+          }));
           const withAuthoritativeMessages = mergedThreads.map((thread) =>
             thread.id === nextActiveThreadId
               ? {
@@ -1146,9 +1214,26 @@ export function useAIChat(config: AIChatConfig = {}) {
             setMessages(serverThread.messages);
             // S1: the detail's scope summary is authoritative for the UI.
             applyScopeSummary(serverThread.active_scope, serverThread.shared);
+            setActiveThreadShared(serverThread.shared);
+            const last = serverThread.messages.at(-1);
+            const unexpired =
+              !last?.question?.expires_at ||
+              new Date(last.question.expires_at) > new Date();
+            setPendingQuestion(
+              !serverThread.shared && last?.question && unexpired
+                ? last.question
+                : null
+            );
           }
         } else if (activeThreadIdRef.current === nextActiveThreadId) {
           setMessages([]);
+          setPendingQuestion(null);
+          applyScopeState(null);
+          setMessageCursors((prev) => ({
+            ...prev,
+            [nextActiveThreadId]: null
+          }));
+          setError('Conversation is unavailable. Refresh and try again.');
         }
       } else {
         const localActive = mergedThreads.find(
@@ -1156,6 +1241,11 @@ export function useAIChat(config: AIChatConfig = {}) {
         );
         if (activeThreadIdRef.current === nextActiveThreadId) {
           setMessages(localActive?.messages || []);
+          if (localActive?.deletionPending) {
+            setError(
+              'Conversation deletion is awaiting cleanup. Retry deletion to finish.'
+            );
+          }
         }
       }
 
@@ -1166,26 +1256,41 @@ export function useAIChat(config: AIChatConfig = {}) {
       setIsSyncing(false);
       syncInProgressRef.current = false;
     }
-  }, [isLoggedIn, aiHost, applyScopeSummary]);
+  }, [isLoggedIn, aiHost, applyScopeSummary, applyScopeState]);
 
   /**
    * Load thread messages from server if not available locally
    */
   const loadThreadFromServer = useCallback(
     async (threadId: string): Promise<ChatMessage[] | null> => {
+      const selectionVersion = selectionVersionRef.current;
       const serverData = await fetchServerThread(threadId, aiHost);
+      if (
+        selectionVersion !== selectionVersionRef.current ||
+        activeThreadIdRef.current !== threadId
+      )
+        return null;
       if (serverData) {
+        setMessageCursors((prev) => ({
+          ...prev,
+          [threadId]: serverData.nextBeforeSequence
+        }));
         // S22 reload fidelity: re-arm iff the question is on the LAST message
         // and unexpired — matching the server's answer-window semantics
         // (only the immediately-following turn can answer).
         const last = serverData.messages[serverData.messages.length - 1];
         const expiresAt = last?.question?.expires_at;
         const unexpired = !expiresAt || new Date(expiresAt) > new Date();
-        setPendingQuestion(last?.question && unexpired ? last.question : null);
+        setPendingQuestion(
+          !serverData.shared && last?.question && unexpired
+            ? last.question
+            : null
+        );
         // S1: scope rides the detail projection; only the active thread's
         // scope may occupy the banner state.
         if (activeThreadIdRef.current === threadId) {
           applyScopeSummary(serverData.active_scope, serverData.shared);
+          setActiveThreadShared(serverData.shared);
         }
         // Update stored thread with messages
         setStoredThreads((prev) => {
@@ -1201,6 +1306,22 @@ export function useAIChat(config: AIChatConfig = {}) {
             };
             saveStoredThreads(updated);
             storedThreadsRef.current = updated;
+            return updated;
+          }
+          if (!serverData.shared) {
+            const updated = [
+              ...prev,
+              {
+                id: threadId,
+                title: serverData.title,
+                messages: serverData.messages,
+                createdAt: serverData.created_at,
+                updatedAt: serverData.updated_at,
+                isPersisted: true
+              }
+            ];
+            storedThreadsRef.current = updated;
+            saveStoredThreads(updated);
             return updated;
           }
           return prev;
@@ -1222,30 +1343,22 @@ export function useAIChat(config: AIChatConfig = {}) {
   /**
    * Get all threads sorted by most recent
    */
-  // S22/S23 reload fidelity (battery finding 2026-08-10): a page reload
-  // restores the active thread from LOCAL storage, which never ran the
-  // server projection's re-arm rule — an unexpired question on the last
-  // message stayed frozen. Arm from the restored copy immediately, then
-  // converge messages + resolutions from the server for persisted threads.
+  // Re-arm only legacy local questions here. The single mount sync above
+  // restores persisted transcripts and their questions together; a second
+  // competing detail fetch could otherwise overwrite a newly started turn.
   const mountFidelityRan = useRef(false);
   useEffect(() => {
     if (mountFidelityRan.current) return;
     mountFidelityRan.current = true;
+    const active = storedThreadsRef.current.find(
+      (thread) => thread.id === activeThreadIdRef.current
+    );
+    if (active?.isPersisted) return;
     const last = messages[messages.length - 1];
     const expiresAt = last?.question?.expires_at;
     const unexpired = !expiresAt || new Date(expiresAt) > new Date();
     if (last?.question && unexpired) {
       setPendingQuestion(last.question);
-    }
-    const active = storedThreadsRef.current.find(
-      (t) => t.id === activeThreadIdRef.current
-    );
-    if (active?.isPersisted) {
-      void loadThreadFromServer(active.id).then((serverMessages) => {
-        if (serverMessages && activeThreadIdRef.current === active.id) {
-          setMessages(serverMessages);
-        }
-      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1264,18 +1377,23 @@ export function useAIChat(config: AIChatConfig = {}) {
    * Returns lightweight rows without touching local thread state.
    */
   const searchThreads = useCallback(
-    async (query: string): Promise<ChatThread[]> => {
-      const serverData = await fetchServerThreads(aiHost, query);
-      if (!serverData) {
-        return [];
-      }
-      return serverData.threads.map((thread) => ({
-        id: thread.thread_id,
-        title: thread.title || threadSummaryLabel(thread.summary) || 'Chat',
-        messages: [],
-        createdAt: new Date(thread.created_at ?? Date.now()),
-        updatedAt: new Date(thread.last_activity ?? Date.now())
-      }));
+    async (
+      query: string,
+      cursor?: string | null
+    ): Promise<{ threads: ChatThread[]; nextCursor: string | null }> => {
+      const serverData = await fetchServerThreads(aiHost, query, cursor);
+      if (!serverData) throw new Error('Conversation search unavailable');
+      return {
+        threads: serverData.threads.map((thread) => ({
+          id: thread.thread_id,
+          title: thread.title || threadSummaryLabel(thread.summary) || 'Chat',
+          messages: [],
+          createdAt: new Date(thread.created_at ?? Date.now()),
+          updatedAt: new Date(thread.last_activity ?? Date.now()),
+          isPersisted: true
+        })),
+        nextCursor: serverData.next_cursor ?? null
+      };
     },
     [aiHost]
   );
@@ -1356,85 +1474,61 @@ export function useAIChat(config: AIChatConfig = {}) {
    */
   const switchThread = useCallback(
     async (threadId: string) => {
-      // Save current thread before switching — never for a shared
-      // transcript, which must not leak into the owner-local store.
-      if (messages.length > 0 && !activeThreadShared) {
+      // A running turn owns its stream callbacks until it settles. Detail
+      // fetches may be superseded freely; their version guards discard replies.
+      if (abortControllerRef.current) return;
+      if (messages.length > 0 && !activeThreadShared)
         saveCurrentThread(messages);
-      }
-
-      // S32b: a shared thread is viewed read-only straight from the server.
-      const shared = sharedThreads.find((t) => t.id === threadId);
-      if (shared) {
-        activeThreadIdRef.current = threadId;
-        setActiveThreadId(threadId);
-        setActiveThreadShared(true);
-        // S1: clear synchronously so the outgoing thread's scope can never
-        // leak into this one while the detail fetch is in flight.
-        applyScopeState(null);
-        setError(null);
-        setIsLoading(true);
-        try {
-          const serverMessages = await loadThreadFromServer(threadId);
-          setMessages(serverMessages ?? []);
-        } catch (err) {
-          console.error('Failed to load shared thread:', err);
-          setMessages([]);
-        } finally {
-          setIsLoading(false);
-        }
+      const version = ++selectionVersionRef.current;
+      earlierRequestRef.current += 1;
+      setLoadingEarlier(false);
+      useAIChatState.getState().clearHint();
+      activeThreadIdRef.current = threadId;
+      setActiveThreadId(threadId);
+      setActiveThreadShared(
+        Boolean(sharedThreads.find((thread) => thread.id === threadId))
+      );
+      applyScopeState(null);
+      setPendingQuestion(null);
+      setAnsweredQuestionIds(new Set());
+      setScopeConflict(false);
+      setError(null);
+      setMessages([]);
+      const local = storedThreadsRef.current.find(
+        (thread) => thread.id === threadId
+      );
+      if (local?.deletionPending) {
+        setIsLoading(false);
+        setError(
+          'Conversation deletion is awaiting cleanup. Retry deletion to finish.'
+        );
         return;
       }
-      setActiveThreadShared(false);
-
-      const thread = storedThreads.find((t: StoredThread) => t.id === threadId);
-
-      if (thread) {
-        activeThreadIdRef.current = threadId;
-        setActiveThreadId(threadId);
-        // S1: no cross-thread scope leakage (see the shared branch above).
-        applyScopeState(null);
-        setError(null);
-
-        // If thread has no messages locally but is persisted, load from server
-        if (thread.messages.length === 0 && thread.isPersisted) {
-          setIsLoading(true);
-          try {
-            const serverMessages = await loadThreadFromServer(threadId);
-            if (serverMessages) {
-              setMessages(serverMessages);
-            } else {
-              setMessages([]);
-            }
-          } catch (err) {
-            console.error('Failed to load thread from server:', err);
-            setMessages([]);
-          } finally {
-            setIsLoading(false);
-          }
-        } else {
-          setMessages(thread.messages);
-          // S1: local messages skip the detail fetch, so recover the scope
-          // in the background (404 → stays unconfirmed, which is correct).
-          if (thread.isPersisted) {
-            void fetchThreadScope(threadId, aiHost).then((payload) => {
-              if (activeThreadIdRef.current === threadId) {
-                applyScopePayload(payload);
-              }
-            });
-          }
-        }
+      if (local && !local.isPersisted) {
+        setIsLoading(false);
+        setMessages(local.messages);
+        return;
+      }
+      // Every persisted selection is reauthorized, even when a previous visit
+      // left messages in this tab's memory. Search results may be outside page 1.
+      setIsLoading(true);
+      try {
+        const serverMessages = await loadThreadFromServer(threadId);
+        if (version !== selectionVersionRef.current) return;
+        setMessages(serverMessages ?? []);
+        if (!serverMessages)
+          setError('Conversation is unavailable. Refresh and try again.');
+      } finally {
+        if (version === selectionVersionRef.current) setIsLoading(false);
       }
     },
     [
       messages,
-      storedThreads,
-      sharedThreads,
       activeThreadShared,
       saveCurrentThread,
-      loadThreadFromServer,
+      sharedThreads,
       applyScopeState,
-      applyScopePayload,
-      aiHost
+      loadThreadFromServer
     ]
   );
 
@@ -1442,12 +1536,21 @@ export function useAIChat(config: AIChatConfig = {}) {
    * Create a new thread and switch to it
    */
   const createNewThread = useCallback(() => {
+    if (abortControllerRef.current) return activeThreadIdRef.current;
     // Save current thread before creating new one (never a shared view).
     if (messages.length > 0 && !activeThreadShared) {
       saveCurrentThread(messages);
     }
 
     const newId = generateThreadId();
+    selectionVersionRef.current += 1;
+    earlierRequestRef.current += 1;
+    useAIChatState.getState().clearHint();
+    setLoadingEarlier(false);
+    setIsLoading(false);
+    setPendingQuestion(null);
+    setAnsweredQuestionIds(new Set());
+    setScopeConflict(false);
     activeThreadIdRef.current = newId;
     setActiveThreadId(newId);
     setActiveThreadShared(false);
@@ -1458,52 +1561,156 @@ export function useAIChat(config: AIChatConfig = {}) {
     return newId;
   }, [messages, activeThreadShared, saveCurrentThread, applyScopeState]);
 
+  const loadEarlierMessages = useCallback(async () => {
+    const threadId = activeThreadIdRef.current;
+    const before = messageCursors[threadId];
+    if (!before || loadingEarlier || abortControllerRef.current) return;
+    const version = selectionVersionRef.current;
+    const request = ++earlierRequestRef.current;
+    setLoadingEarlier(true);
+    try {
+      const page = await fetchServerThread(threadId, aiHost, before);
+      if (
+        version !== selectionVersionRef.current ||
+        request !== earlierRequestRef.current
+      )
+        return;
+      if (!page) {
+        // Access may have been revoked since the preceding page. Do not keep
+        // showing a cached transcript after the authorized read fails.
+        setMessages([]);
+        setPendingQuestion(null);
+        applyScopeState(null);
+        setMessageCursors((prev) => ({ ...prev, [threadId]: null }));
+        setError('Conversation could not be loaded. Refresh and try again.');
+        return;
+      }
+      setMessages((prev) => {
+        const ids = new Set(prev.map((message) => message.id));
+        return [
+          ...page.messages.filter((message) => !ids.has(message.id)),
+          ...prev
+        ];
+      });
+      setMessageCursors((prev) => ({
+        ...prev,
+        [threadId]: page.nextBeforeSequence
+      }));
+    } finally {
+      if (request === earlierRequestRef.current) setLoadingEarlier(false);
+    }
+  }, [messageCursors, loadingEarlier, aiHost, applyScopeState]);
+
+  const loadMoreThreads = useCallback(async () => {
+    if (
+      !threadCursor ||
+      moreThreadsRequestRef.current ||
+      syncInProgressRef.current
+    )
+      return;
+    moreThreadsRequestRef.current = true;
+    setLoadingMoreThreads(true);
+    const version = selectionVersionRef.current;
+    const listVersion = threadListVersionRef.current;
+    try {
+      const page = await fetchServerThreads(aiHost, undefined, threadCursor);
+      if (
+        version !== selectionVersionRef.current ||
+        listVersion !== threadListVersionRef.current
+      )
+        return;
+      if (!page) {
+        setError('More conversations could not be loaded. Please try again.');
+        return;
+      }
+      setStoredThreads((prev) => {
+        const ids = new Set(prev.map((thread) => thread.id));
+        const next = [
+          ...prev,
+          ...page.threads
+            .filter((thread) => !ids.has(thread.thread_id))
+            .map((thread) => ({
+              id: thread.thread_id,
+              title:
+                thread.title || threadSummaryLabel(thread.summary) || 'Chat',
+              messages: [],
+              createdAt: thread.created_at || new Date().toISOString(),
+              updatedAt: thread.last_activity || new Date().toISOString(),
+              isPersisted: true
+            }))
+        ];
+        storedThreadsRef.current = next;
+        saveStoredThreads(next);
+        return next;
+      });
+      setThreadCursor(page.next_cursor ?? null);
+    } finally {
+      moreThreadsRequestRef.current = false;
+      setLoadingMoreThreads(false);
+    }
+  }, [aiHost, threadCursor]);
+
   /**
    * Delete a thread (both locally and on server)
    */
   const deleteThread = useCallback(
-    async (threadId: string) => {
+    async (threadId: string): Promise<ThreadDeleteResult> => {
+      if (abortControllerRef.current) return 'error';
+      threadListVersionRef.current += 1;
       const durable = storedThreadsRef.current.find(
         (thread) => thread.id === threadId
       )?.isPersisted;
-      if (durable && !(await deleteServerThread(threadId, aiHost))) {
-        setError('Failed to delete conversation from the server');
-        return;
-      }
+      const result = durable
+        ? await deleteServerThread(threadId, aiHost)
+        : 'deleted';
+      if (result === 'error') return result;
 
-      // Then delete locally
-      setStoredThreads((prev: StoredThread[]) => {
-        const newThreads = prev.filter((t: StoredThread) => t.id !== threadId);
-        saveStoredThreads(newThreads);
-        storedThreadsRef.current = newThreads;
-        return newThreads;
+      setStoredThreads((prev) => {
+        const next =
+          result === 'deleted'
+            ? prev.filter((thread) => thread.id !== threadId)
+            : prev.map((thread) =>
+                thread.id === threadId
+                  ? { ...thread, messages: [], deletionPending: true }
+                  : thread
+              );
+        saveStoredThreads(next);
+        storedThreadsRef.current = next;
+        return next;
       });
-
-      // If deleting active thread, switch to another or create new
-      if (threadId === activeThreadId) {
-        const remaining = storedThreads.filter(
-          (t: StoredThread) => t.id !== threadId
-        );
-        if (remaining.length > 0) {
-          activeThreadIdRef.current = remaining[0].id;
-          setActiveThreadId(remaining[0].id);
-          setMessages(remaining[0].messages);
-        } else {
-          const newId = generateThreadId();
-          activeThreadIdRef.current = newId;
-          setActiveThreadId(newId);
-          setMessages([]);
-        }
+      setMessageCursors((prev) => {
+        const next = { ...prev };
+        delete next[threadId];
+        return next;
+      });
+      useAIChatState.getState().clearHint();
+      if (threadId === activeThreadIdRef.current) {
+        selectionVersionRef.current += 1;
+        earlierRequestRef.current += 1;
+        const newId = generateThreadId();
+        activeThreadIdRef.current = newId;
+        setActiveThreadId(newId);
+        setActiveThreadShared(false);
+        applyScopeState(null);
+        setPendingQuestion(null);
+        setAnsweredQuestionIds(new Set());
+        setScopeConflict(false);
+        setMessages([]);
+        setError(null);
+        setIsLoading(false);
+        setLoadingEarlier(false);
       }
+      return result;
     },
-    [activeThreadId, storedThreads, aiHost]
+    [aiHost, applyScopeState]
   );
 
   /**
    * Rename a thread (both locally and on server)
    */
   const renameThread = useCallback(
-    async (threadId: string, newTitle: string) => {
+    async (threadId: string, newTitle: string): Promise<boolean> => {
+      if (!newTitle.trim() || newTitle.length > 255) return false;
       const durable = storedThreadsRef.current.find(
         (thread) => thread.id === threadId
       )?.isPersisted;
@@ -1511,8 +1718,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         durable &&
         !(await updateServerThreadTitle(threadId, newTitle, aiHost))
       ) {
-        setError('Failed to rename conversation on the server');
-        return;
+        return false;
       }
 
       setStoredThreads((prev: StoredThread[]) => {
@@ -1525,6 +1731,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         storedThreadsRef.current = newThreads;
         return newThreads;
       });
+      return true;
     },
     [aiHost]
   );
@@ -1769,7 +1976,16 @@ export function useAIChat(config: AIChatConfig = {}) {
    */
   const sendMessage = useCallback(
     async (userContent: string, fileIds?: string[]) => {
-      if (!userContent.trim() || isLoading) return;
+      if (
+        !userContent.trim() ||
+        isLoading ||
+        abortControllerRef.current ||
+        activeThreadIdRef.current !== activeThreadId ||
+        activeThreadShared ||
+        storedThreadsRef.current.find((thread) => thread.id === activeThreadId)
+          ?.deletionPending
+      )
+        return;
 
       setError(null);
       // S1: every send clears a standing conflict and becomes the turn a
@@ -2711,6 +2927,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     [
       isLoading,
       activeThreadId,
+      activeThreadShared,
       mergedConfig,
       messages,
       refreshThreadScope,
@@ -2801,6 +3018,10 @@ export function useAIChat(config: AIChatConfig = {}) {
     isLoading,
     error,
     activeThreadId,
+    activeThreadDeletionPending: Boolean(
+      storedThreads.find((thread) => thread.id === activeThreadId)
+        ?.deletionPending
+    ),
 
     // Message actions
     sendMessage,
@@ -2816,6 +3037,12 @@ export function useAIChat(config: AIChatConfig = {}) {
     deleteThread,
     renameThread,
     clearChat,
+    hasEarlierMessages: Boolean(messageCursors[activeThreadId]),
+    loadingEarlier,
+    loadEarlierMessages,
+    hasMoreThreads: Boolean(threadCursor),
+    loadingMoreThreads,
+    loadMoreThreads,
 
     // S32b: read-only sharing
     sharedThreads,
