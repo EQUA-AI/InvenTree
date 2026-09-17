@@ -92,6 +92,7 @@ OUTBOX_MAX_ATTEMPTS = 10
 LAST_RUN_SETTING = '_AIMMS_RETENTION_LAST_RUN'
 
 TOMBSTONE_USER_DELETE = 'user_delete'
+TOMBSTONE_USER_ERASURE = 'user_erasure'
 TOMBSTONE_RETENTION_EXPIRY = 'retention_expiry'
 
 _THREAD_DIR_CHARSET = set(
@@ -363,17 +364,19 @@ def purge_voice_for_thread(
     ``VoiceSession.thread_id`` is a plain CharField that would dangle —
     and its utterances carry spoken content bound to the purged thread.
     Captures are work-order-bound, not thread-bound; they keep their own
-    400-day clock in :func:`purge_expired_voice`.
+    400-day clock in :func:`purge_expired_voice`. Protected capture/operation
+    evidence keeps its session and the thread's cleanup receipt incomplete.
     """
     from voice.models import VoiceSession
 
-    count = _batched_delete(
-        VoiceSession.objects.filter(thread_id=thread_id),
-        family='voice_sessions',
+    from .voice_retention import purge_sessions
+
+    return purge_sessions(
+        VoiceSession.objects.filter(
+            thread_id=thread_id, created_at__lte=timezone.now()
+        ),
         batch_size=batch_size,
-        dry_run=False,
     )
-    return {'voice_sessions': count}
 
 
 def purge_expired_voice(
@@ -386,81 +389,55 @@ def purge_expired_voice(
 
     Captures still ACTIVE/REVIEW are never touched. The transcript
     revision chain is self-referential PROTECT, so deletion is leaf-first:
-    acceptances, then the ``accepted_revision`` pins, then revisions no
-    surviving row supersedes, repeating until the chain is gone.
+    delivery reviews, acceptances, then the ``accepted_revision`` pins, then
+    revisions no surviving row supersedes. Captures precede linked sessions;
+    blocked roots are counted independently without deleting protected receipts.
     """
-    from voice.models import (
-        TERMINAL_SESSION_STATES,
-        CaptureState,
-        VoiceCaptureSession,
-        VoiceSession,
-        VoiceTranscriptAcceptance,
-        VoiceTranscriptRevision,
-    )
+    from voice.models import TERMINAL_SESSION_STATES, VoiceCaptureSession, VoiceSession
+
+    from .voice_retention import SETTLED_CAPTURE_STATES, purge_captures, purge_sessions
 
     cutoff = _cutoff(days)
     sessions_qs = VoiceSession.objects.filter(
         state__in=TERMINAL_SESSION_STATES, ended_at__lt=cutoff
     )
-    settled_states = (
-        CaptureState.CANCELED,
-        CaptureState.FAILED,
-        CaptureState.ACCEPTED,
-        CaptureState.COMMITTED,
-    )
     captures_qs = VoiceCaptureSession.objects.filter(
-        state__in=settled_states, updated_at__lt=cutoff
+        state__in=SETTLED_CAPTURE_STATES, updated_at__lt=cutoff
     )
-
     if dry_run:
         return {
             'voice_sessions': sessions_qs.count(),
             'voice_captures': captures_qs.count(),
         }
 
-    sessions = _batched_delete(
-        sessions_qs, family='voice_sessions', batch_size=batch_size, dry_run=False
-    )
-
-    capture_ids = list(captures_qs.values_list('pk', flat=True))
-    captures = 0
-    if capture_ids:
-        with transaction.atomic():
-            VoiceTranscriptAcceptance.objects.filter(
-                revision__capture_id__in=capture_ids
-            ).delete()
-            VoiceCaptureSession.objects.filter(pk__in=capture_ids).update(
-                accepted_revision=None
-            )
-        # Leaf-first: a revision may be deleted only once nothing in the
-        # target set still supersedes it. A pass that deletes nothing while
-        # rows remain means an out-of-set PROTECT reference — fail loudly.
-        while True:
-            remaining = VoiceTranscriptRevision.objects.filter(
-                capture_id__in=capture_ids
-            )
-            leaves = remaining.exclude(
-                pk__in=remaining.filter(supersedes__isnull=False).values(
-                    'supersedes_id'
-                )
-            )
-            pks = list(leaves.values_list('pk', flat=True)[:batch_size])
-            if not pks:
-                if remaining.exists():
-                    raise RuntimeError(
-                        'voice revision purge stalled: rows remain with no '
-                        'deletable leaf (out-of-set supersedes reference?)'
-                    )
-                break
-            with transaction.atomic():
-                VoiceTranscriptRevision.objects.filter(pk__in=pks).delete()
-        captures = _batched_delete(
-            VoiceCaptureSession.objects.filter(pk__in=capture_ids),
-            family='voice_captures',
-            batch_size=batch_size,
-            dry_run=False,
+    # Captures/reviews can PROTECT a live_session. Clear only eligible captures
+    # first; operational references and newer/in-flight captures keep sessions.
+    report = purge_captures(captures_qs, batch_size=batch_size)
+    report.update(purge_sessions(sessions_qs, batch_size=batch_size))
+    report['status'] = (
+        'purge_incomplete'
+        if any(
+            value
+            for key, value in report.items()
+            if key.endswith(('_blocked', '_failed'))
         )
-    return {'voice_sessions': sessions, 'voice_captures': captures}
+        else 'purged'
+    )
+    return report
+
+
+def purge_user(
+    user_id: int, *, dry_run: bool = False, batch_size: int = PURGE_BATCH_SIZE
+) -> dict:
+    """Operator-authorized current-store erasure; never deletes the user account.
+
+    Callers must resolve/authorize the target before invoking this all-scope
+    service. It has no interactive API. The receipt explicitly identifies
+    account/legacy/provider work and backup verification still outstanding.
+    """
+    from .user_erasure import purge_user_content
+
+    return purge_user_content(user_id, dry_run=dry_run, batch_size=batch_size)
 
 
 # ---------------------------------------------------------------------------
@@ -1321,6 +1298,8 @@ def run_all(*, dry_run: bool = False, families: set[str] | None = None) -> dict:
             continue
         try:
             report['families'][name] = func(dry_run=dry_run)
+            if report['families'][name].get('status') == 'purge_incomplete':
+                report['errors'][name] = 'PurgeIncomplete'
         except Exception as exc:
             report['errors'][name] = type(exc).__name__
             logger.exception('retention_family_failed family=%s', name)

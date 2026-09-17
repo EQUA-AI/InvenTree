@@ -1664,7 +1664,7 @@ class ChatThreadTombstone(models.Model):
     scope_hash = models.CharField(max_length=64)
     thread_created_at = models.DateTimeField()
     deleted_at = models.DateTimeField(auto_now_add=True)
-    #: Why the thread was purged: ``user_delete`` | ``retention_expiry``.
+    #: Why purged: ``user_delete`` | ``user_erasure`` | ``retention_expiry``.
     reason = models.CharField(max_length=32)
     deleted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
