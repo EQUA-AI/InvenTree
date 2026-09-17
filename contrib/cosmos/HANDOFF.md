@@ -113,24 +113,42 @@ The station now holds **905 dictionary points**: 606 exact catalogue matches, 25
 approvals were preserved untouched. 225 component occurrences exist, and every matched point
 has one. The pack contains 25 `approve` and 880 `pending` entries.
 
-Nothing has been approved from this snapshot. That is the next decision, and it is smaller
-than 880 suggests - the pending points collapse into **108 families**, most of them repeated
-once per bay. Grouped by what actually has to be decided:
+The unit review has since been done from the observed values and applied: **581 approved,
+264 withheld with the reason recorded on the point, 60 left pending.** 581 bindings now
+exist. The reasoning is in `contrib/pump-cassandra/UNIT_REVIEW.md` and the applied decisions
+in `contrib/pump-cassandra/PH_3.unit-review.json`.
 
-- **609 already carry a proposed unit.** Temperatures in `degC`, `ACTIVE_POWER` in `kW`,
-  `PUMP_CURRENT_AVG` in `A`, `PUMP_FREQUENCY` in `Hz`, `SPEED` in `rpm`, valve position in
-  `percent`, `DISCHARGE_PRESSURE` in `bar`. These need confirming, not inventing.
-- **Vibration, unit unresolved.** The reference images give **mm/s** for motor DE/NDE. The
-  *pad* channels - `PUMP_GUIDED_RADIAL_PAD_*`, `PUMP_THRUST_AXIAL_PAD_*`, `SPIRAL_CASE1` -
-  are a different instrument and remain unresolved; do not borrow mm/s for them.
-- **Reactive power, 14 points.** Confirmed MVAR, but blocked: `var` is not in the unit
-  registry yet. The same blocker applies to `/pmvar`.
-- **70 points were observed only as `null`,** so `data_type` is `unknown`. Leave them pending.
-  Approving one fixes a type and a unit on no evidence at all.
-- **Station-envelope keys** `/pc`, `/dv`, `/sl`, `/pmw`, `/pmvar` remain unresolved. `/sl` is
-  bit-identical to `dex.COMMAN_FORBAY_LEVEL` across all four samples, which is evidence of an
-  alias but is not yet an approved one.
-- `MOTOR_ON_STATUS`, `MOTOR_OFF_STATUS` and `PUMP_POWERFATCOR` are correctly `unitless`.
+The governing finding is that **the reference snapshot was taken with the station shut
+down** - every bay reports `st=I` and `MOTOR_ON_STATUS=0`, with zero power, current and
+voltage. A unit is a claim about magnitude, so anything that only has a magnitude while
+running cannot be confirmed from it. Those tags were withheld rather than guessed. A
+snapshot taken while pumping settles most of them in one reading, and is the single most
+useful thing to obtain next.
+
+Confirmed: `degC` for 479 temperature points, `Hz` for 14 (six bays sense 50.0 Hz at the
+breaker), `percent` for 28 valve positions clustered at the end stops, and unitless for the
+motor status and power factor points. Still open:
+
+- **Everything that only has a magnitude while running.** `ACTIVE_POWER` (kW vs MW differ
+  by 1000x), `PUMP_CURRENT_AVG`, `PUMP_LINE_TO_LINE_VOLTAGE` (V predicts ~11000, kV ~11),
+  `SPEED`, `DISCHARGE_PRESSURE` (bar, kg/cm2 and metres of head are all plausible). All read
+  zero or noise. **Get a running snapshot.**
+- **Vibration**, seven families, all reading -0.18 to 0.48. The negatives are informative:
+  neither velocity RMS nor displacement can be negative, so these are uncalibrated raw
+  channels. mm/s matches the reference images and the ISO 20816 convention for motor DE/NDE,
+  but confirm it against a running sample instead of assuming it.
+- **Reactive power, 14 points.** Expected MVAR, but blocked regardless: `var` is not in the
+  unit registry. The same blocker applies to `/pmvar`.
+- **70 points carry `data_type: unknown`** because the *catalogue* declares it so for the
+  pad and spiral-case channels, not because they were observed as null - the snapshot has
+  no nulls. The open question is what the instrument measures, not its unit. The observed
+  values now argue that the pad channels are temperatures and `SPIRAL_CASE1` is a pressure;
+  see `UNIT_REVIEW.md`. That is an argument, not a confirmation.
+- **`EXCITATION_FLD_CURR` needs explaining.** Thirteen bays read about 0 and P6 reads
+  1048.29 with its motor off.
+- **Station-envelope keys** `/pc`, `/dv`, `/sl`, `/pmw`, `/pmvar` remain unresolved, with no
+  catalogue parameter to attach to. `/sl` is bit-identical to `dex.COMMAN_FORBAY_LEVEL`
+  across all four samples, which is evidence of an alias but is not yet an approved one.
 
 Twelve families cover 13 bays rather than 14, every one of them missing **pump 7** - its
 discharge-pressure transmitter and all eleven winding RTDs. Recording that as missing is

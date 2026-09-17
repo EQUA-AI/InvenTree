@@ -305,7 +305,12 @@ tags plus the `pd` and station-envelope points. That is still **one** snapshot, 
 it remains a lower bound: tags that appear only in other operating modes or event
 types are not in it, and absence here is not evidence that a tag does not exist.
 
-Seventy points were observed only as `null`, so their transport type is `unknown`.
-They must not be approved from this snapshot - approving one fixes a data type and
-a unit on no evidence at all. They are mostly the radial/axial pad and spiral-case
-channels, which is consistent with the bearing-pad instruments already withheld.
+Seventy points carry `data_type: unknown`. An earlier note here said they were
+"observed only as null"; that was wrong. The snapshot contains no nulls at all -
+all 845 `dex` values are JSON strings. Those points are `match_method: exact`, so
+their data type came from the **catalogue**, which deliberately declares the guide
+radial pad, thrust axial pad and spiral case channels unknown and asks for the
+quantity to be confirmed. The open question was never the unit; it was what the
+instrument measures. See `UNIT_REVIEW.md`, which argues from the observed values
+that the pad channels behave like temperatures and that `SPIRAL_CASE1` behaves
+like a pressure.
