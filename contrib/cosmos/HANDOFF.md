@@ -97,6 +97,45 @@ Changed observations or conflicting decisions invalidate an exported review. An 
 already-applied pack can be replayed. Add `"review": "relative/path/station-review.json"`
 to its manifest station after the review is ready.
 
+### Status for station 17 (`PH_3`)
+
+Done: the full snapshot is imported and the review pack is exported.
+
+| Artefact | Path |
+|---|---|
+| Untrimmed source row | `contrib/pump-cassandra/PH_3.full-snapshot.json` |
+| Reshaped for the importer | `contrib/pump-cassandra/PH_3.full-snapshot.rows.json` |
+| The reshape | `contrib/pump-cassandra/make_rows.py` |
+| Exported review pack | `contrib/pump-cassandra/PH_3.full-review.json` |
+
+The station now holds **905 dictionary points**: 606 exact catalogue matches, 252 by alias,
+47 unresolved, and **no** owner/parameter conflicts. The 31 excerpt-era points and their 25
+approvals were preserved untouched. 225 component occurrences exist, and every matched point
+has one. The pack contains 25 `approve` and 880 `pending` entries.
+
+Nothing has been approved from this snapshot. That is the next decision, and it is smaller
+than 880 suggests - the pending points collapse into **108 families**, most of them repeated
+once per bay. Grouped by what actually has to be decided:
+
+- **609 already carry a proposed unit.** Temperatures in `degC`, `ACTIVE_POWER` in `kW`,
+  `PUMP_CURRENT_AVG` in `A`, `PUMP_FREQUENCY` in `Hz`, `SPEED` in `rpm`, valve position in
+  `percent`, `DISCHARGE_PRESSURE` in `bar`. These need confirming, not inventing.
+- **Vibration, unit unresolved.** The reference images give **mm/s** for motor DE/NDE. The
+  *pad* channels - `PUMP_GUIDED_RADIAL_PAD_*`, `PUMP_THRUST_AXIAL_PAD_*`, `SPIRAL_CASE1` -
+  are a different instrument and remain unresolved; do not borrow mm/s for them.
+- **Reactive power, 14 points.** Confirmed MVAR, but blocked: `var` is not in the unit
+  registry yet. The same blocker applies to `/pmvar`.
+- **70 points were observed only as `null`,** so `data_type` is `unknown`. Leave them pending.
+  Approving one fixes a type and a unit on no evidence at all.
+- **Station-envelope keys** `/pc`, `/dv`, `/sl`, `/pmw`, `/pmvar` remain unresolved. `/sl` is
+  bit-identical to `dex.COMMAN_FORBAY_LEVEL` across all four samples, which is evidence of an
+  alias but is not yet an approved one.
+- `MOTOR_ON_STATUS`, `MOTOR_OFF_STATUS` and `PUMP_POWERFATCOR` are correctly `unitless`.
+
+Twelve families cover 13 bays rather than 14, every one of them missing **pump 7** - its
+discharge-pressure transmitter and all eleven winding RTDs. Recording that as missing is
+correct; it must not become zero, and it is not by itself a fault.
+
 ## 4. Finish the schematic contract against the references
 
 Edit `src/backend/InvenTree/machine_health/layouts/pumphouse.layout.json` and the two SVGs
@@ -150,6 +189,39 @@ After the platform and plant checks pass, enable the global flag and restart the
 Django-Q2 worker. Verify fresh readings and timestamps against the source. The **Pumphouse
 mimic** tab is on registered station machine pages. Check stale, disabled and network-failure
 behaviour; verify approved thresholds before interpreting any alarm as a plant limit.
+
+## 5a. Known gap: the trend UI is a sparkline only
+
+The backend side of trends is complete. AIMMS stores no time series - `MachineSignalState`
+is one row per binding, a current-state cache - so a trend is a *federated* read: the
+connector is asked for a window and the answer is bounded before it is returned.
+
+```
+GET /api/machine-health/machine/<pk>/trend/?binding=<binding_pk>&from=<iso>&to=<iso>
+```
+
+Defaults to the last 24 hours; capped at 2000 samples and a 30-day window. The client names
+a **binding, never a tag** - that is the tag-injection boundary. A source that cannot serve
+history returns `available: false` rather than a line synthesized from the current value,
+because a fabricated line is worse than no line.
+
+The frontend does not yet use any of that. `src/frontend/src/pages/assets/health/SignalTrend.tsx`
+is a 135-line sparkline: no parameter picker, no range selection, no axes, no units, no zoom.
+So there is currently **no way in the UI to select a time range and chart a parameter**, which
+is what the endpoint was built for. Remaining work, roughly a day:
+
+- A parameter picker over the station's approved bindings, and preset ranges (1 h / 24 h /
+  7 d / custom) that map onto `from`/`to`.
+- Axes labelled with the reviewed unit. An unreviewed unit must render unitless rather than
+  borrow a plausible one.
+- Surface `available: false` as an explicit "this source does not serve history", distinct
+  from "no samples in this window". They are different failures and must not look alike.
+- Keep `truncated` visible. The cap silently clips the *newest* end of a wide window; a
+  chart that hides that is actively misleading about what the plant did.
+
+Sequencing: this is worth doing after section 3, not before. Until the full dictionary is
+reviewed, most bound signals are status codes with no unit, and a correctly built chart
+would still look broken - for reasons that are not the chart's fault.
 
 ## 6. Re-run checks and release review
 

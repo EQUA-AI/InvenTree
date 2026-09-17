@@ -1,9 +1,36 @@
 # PH_3 Cassandra mapping proposal
 
 This is an **offline draft**, not a Cassandra connector or equipment importer.
-It records the identifiers, envelope structure and representative tag variations
-from the user-provided Cassandra row. It does **not** store the full raw snapshot,
-claim a complete tag count, create database records or enable live ingestion.
+It records the identifiers, envelope structure and tag variations from the
+user-provided Cassandra rows. It does not enable live ingestion.
+
+## Files
+
+| File | What it is |
+|---|---|
+| `PH_3.pilot-excerpt.json` | The original 17-tag excerpt. Demonstrates the tests; never a dictionary. |
+| `PH_3.full-snapshot.json` | The full untrimmed row supplied by the plant feed. 845 `dex` tags. |
+| `PH_3.full-snapshot.rows.json` | The same row reshaped into the registry's `rows` form. Produced by `make_rows.py`; sha256 `3861d504...52781a`. |
+| `make_rows.py` | The reshape. Pure key movement plus a coverage report; asserts the hash above. |
+| `PH_3.full-review.json` | Exported review pack for station 17: 25 already approved, 880 pending. |
+| `PH_3.mapping.draft.json` | Station/pump identity crosswalk. |
+| `PH_3.review.json` | The earlier, excerpt-scale review. |
+
+### What the full snapshot contains
+
+845 `dex` tags across 61 per-pump families, plus three non-pump keys: `ID`,
+`TIMESTAMP` and `COMMAN_FORBAY_LEVEL`. `pd` carries `P1`-`P14` with no gaps.
+
+Coverage is **ragged, and that is the reassuring part.** Forty-nine families cover
+all fourteen bays; twelve cover thirteen, and every one of those twelve is missing
+**pump 7 specifically** - `DISCHARGE_PRESSURE` and all eleven
+`PUMP_MOTOR_WINDING_TEMPERATURED*` channels. That is a coherent physical story, one
+bay's pressure transmitter and winding-RTD card not reporting, rather than noise.
+It is also the shape a fabricated transcription would *not* have: filling in the
+missing fourteenth entry is exactly what pattern-completion does. P7 is present in
+the other forty-nine families, so the bay exists; only that instrument set is absent.
+
+Missing still means unknown - not zero, offline or faulty.
 
 ## Names and stable identities
 
@@ -263,4 +290,22 @@ hour boundaries and cadence, timestamp consistency, the eleven basic params and
 expiry rule, eight alias examples,
 exact-spelling exceptions, and unresolved keys. This validates the
 **draft configuration and representative matching logic**, not a production
-connector, the full supplied JSON or the full 1,000–1,200-tag dictionary.
+connector.
+
+## Full dictionary import
+
+The full dictionary has since been imported from `PH_3.full-snapshot.rows.json`
+into station 17: **905 points**, of which 858 matched the catalogue (606 exact,
+252 by alias) and 47 stayed unresolved, with **zero** owner/parameter conflicts.
+The 31 points from the earlier excerpt were preserved untouched, including their
+25 existing approvals.
+
+The earlier "1,000-1,200 tags" was an estimate. The observed count is 845 `dex`
+tags plus the `pd` and station-envelope points. That is still **one** snapshot, so
+it remains a lower bound: tags that appear only in other operating modes or event
+types are not in it, and absence here is not evidence that a tag does not exist.
+
+Seventy points were observed only as `null`, so their transport type is `unknown`.
+They must not be approved from this snapshot - approving one fixes a data type and
+a unit on no evidence at all. They are mostly the radial/axial pad and spiral-case
+channels, which is consistent with the bearing-pad instruments already withheld.
