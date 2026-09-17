@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   CHAT_INDEX_TTL_MS,
   LEGACY_CHAT_KEY,
   chatIndexKey,
+  chatInvalidationKey,
   clearChatIndices,
+  publishChatInvalidation,
   readChatIndex,
   readLegacyChatArchive,
   removeLegacyChatArchive,
@@ -45,6 +47,30 @@ const row = {
 };
 
 describe('chat navigation index', () => {
+  it('sends repeated content-free invalidations without deleting the current index', () => {
+    const storage = new MemoryStorage();
+    writeChatIndex(
+      key,
+      [{ ...row, deletionPending: true }],
+      context,
+      storage,
+      now
+    );
+    const before = storage.getItem(key);
+    const writes = vi.spyOn(storage, 'setItem');
+    publishChatInvalidation(key, storage);
+    publishChatInvalidation(key, storage);
+    expect(writes.mock.calls).toEqual([
+      [chatInvalidationKey(key), 'changed'],
+      [chatInvalidationKey(key), 'changed']
+    ]);
+    expect(storage.getItem(chatInvalidationKey(key)!)).toBeNull();
+    expect(storage.getItem(key)).toBe(before);
+    expect(
+      chatInvalidationKey(chatIndexKey('https://example.test', 2))
+    ).not.toBe(chatInvalidationKey(key));
+    expect(chatInvalidationKey(null)).toBeNull();
+  });
   it('stores only explicit metadata and excludes shared and unsaved conversations', () => {
     const storage = new MemoryStorage();
     const rich = {

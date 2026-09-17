@@ -24,6 +24,17 @@ describe('chat session boundary', () => {
     });
   });
 
+  it('resets RAM for another tab without clearing its pending-deletion receipt', () => {
+    useAIChatState.getState().open();
+    useAIChatState.getState().resetSession(false);
+    expect(mocks.clearIndices).not.toHaveBeenCalled();
+    expect(mocks.removeQueries).toHaveBeenCalledOnce();
+    expect(useAIChatState.getState()).toMatchObject({
+      isOpen: false,
+      sessionGeneration: 1
+    });
+  });
+
   it('invalidates async generations, clears navigation hints and discards private query results', () => {
     useAIChatState
       .getState()

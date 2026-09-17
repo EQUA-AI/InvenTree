@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { api } from '../App';
+import { api, queryClient } from '../App';
 import type { ThreadDeleteResult } from '../components/aichat/threadDeletion';
 import { getCsrfCookie } from '../functions/auth';
 import {
   chatIndexKey,
+  publishChatInvalidation,
   readChatIndex,
   writeChatIndex
 } from '../functions/chatThreadCache';
@@ -16,6 +17,11 @@ import {
   AguiUnavailableError,
   runAguiTurn
 } from './AguiTransport';
+
+import {
+  emptyChatThreadRuntime,
+  useChatThreadRuntime
+} from './useChatThreadRuntime';
 
 // ===== Retry Configuration =====
 
@@ -451,6 +457,8 @@ export interface QuestionResolution {
  * Chat conversation/thread structure
  */
 export interface ChatThread {
+  /** The server has removed content but external cleanup needs a retry. */
+  deletionPending?: boolean;
   id: string;
   title: string;
   messages: ChatMessage[];
@@ -936,6 +944,24 @@ export function useAIChat(config: AIChatConfig = {}) {
         chatIndexKey(useLocalState.getState().getHost(), currentUser.userId())
     );
   }, [cacheKey, generation]);
+  // Every list/search/page response can reveal a changed client boundary.
+  const acceptThreadContext = useCallback(
+    (response: ThreadSyncResponse) => {
+      if (!sessionIsCurrent()) return false;
+      const context = response.cache_context ?? null;
+      if (
+        cacheContextRef.current &&
+        context &&
+        cacheContextRef.current !== context
+      ) {
+        useAIChatState.getState().resetSession();
+        return false;
+      }
+      cacheContextRef.current = context;
+      return true;
+    },
+    [sessionIsCurrent]
+  );
   const saveStoredThreads = useCallback(
     (rows: StoredThread[]) => {
       if (sessionIsCurrent())
@@ -1019,10 +1045,20 @@ export function useAIChat(config: AIChatConfig = {}) {
   const [activeThreadId, setActiveThreadId] = useState<string>(
     () => initialIndex.threads[0]?.id ?? generateThreadId()
   );
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    messages,
+    setMessages,
+    isLoading,
+    setIsLoading,
+    error,
+    setError,
+    beforeSequence,
+    loadingEarlier,
+    setLoadingEarlier,
+    setBeforeSequence,
+    patch: patchThreadRuntime,
+    retire: retireThreadRuntime
+  } = useChatThreadRuntime(activeThreadId, sessionIsCurrent);
   const [isSyncing, setIsSyncing] = useState(isLoggedIn);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
@@ -1045,10 +1081,6 @@ export function useAIChat(config: AIChatConfig = {}) {
   const storedThreadsRef = useRef(storedThreads);
   const activeThreadIdRef = useRef(activeThreadId);
   const selectionVersionRef = useRef(0);
-  const [messageCursors, setMessageCursors] = useState<
-    Record<string, number | null>
-  >({});
-  const [loadingEarlier, setLoadingEarlier] = useState(false);
   const earlierRequestRef = useRef(0);
   const [threadCursor, setThreadCursor] = useState<string | null>(null);
   const [loadingMoreThreads, setLoadingMoreThreads] = useState(false);
@@ -1070,6 +1102,21 @@ export function useAIChat(config: AIChatConfig = {}) {
       storedThreadsRef.current = [];
     };
   }, []);
+
+  const clearThreadContent = useCallback(
+    (threadId: string) => {
+      patchThreadRuntime(threadId, emptyChatThreadRuntime());
+      queryClient.removeQueries({ queryKey: ['ai-evidence-set', threadId] });
+      setStoredThreads((previous) => {
+        const next = previous.map((thread) =>
+          thread.id === threadId ? { ...thread, messages: [] } : thread
+        );
+        storedThreadsRef.current = next;
+        return next;
+      });
+    },
+    [patchThreadRuntime]
+  );
 
   // Get absolute chat and API URLs from the configured Django backend.
   const chatEndpoint = resolveBackendUrl(
@@ -1110,18 +1157,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         return;
       }
 
-      // A client-entitlement change clears transcripts and local drafts before
-      // publishing the new listing. This opaque tag is not authorization.
-      const context = serverData.cache_context ?? null;
-      if (
-        cacheContextRef.current &&
-        context &&
-        cacheContextRef.current !== context
-      ) {
-        useAIChatState.getState().resetSession();
-        return;
-      }
-      cacheContextRef.current = context;
+      if (!acceptThreadContext(serverData)) return;
       capabilitiesRef.current = serverData.capabilities ?? {};
       // S1: the capability advertisement gates the whole scope feature.
       setScopeCapable(Boolean(serverData.capabilities?.thread_scope));
@@ -1195,7 +1231,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         activeThreadIdRef.current = nextActiveThreadId;
         setActiveThreadId(nextActiveThreadId);
         useAIChatState.getState().clearHint();
-        setMessages([]);
+        patchThreadRuntime(nextActiveThreadId, emptyChatThreadRuntime());
         setPendingQuestion(null);
         applyScopeState(null);
       }
@@ -1216,10 +1252,10 @@ export function useAIChat(config: AIChatConfig = {}) {
         )
           return;
         if (serverThread) {
-          setMessageCursors((prev) => ({
-            ...prev,
-            [nextActiveThreadId]: serverThread.nextBeforeSequence
-          }));
+          patchThreadRuntime(nextActiveThreadId, {
+            beforeSequence: serverThread.nextBeforeSequence,
+            error: null
+          });
           const withAuthoritativeMessages = mergedThreads.map((thread) =>
             thread.id === nextActiveThreadId
               ? {
@@ -1236,7 +1272,10 @@ export function useAIChat(config: AIChatConfig = {}) {
           saveStoredThreads(withAuthoritativeMessages);
           setStoredThreads(withAuthoritativeMessages);
           if (activeThreadIdRef.current === nextActiveThreadId) {
-            setMessages(serverThread.messages);
+            patchThreadRuntime(nextActiveThreadId, {
+              messages: serverThread.messages,
+              isLoading: false
+            });
             // S1: the detail's scope summary is authoritative for the UI.
             applyScopeSummary(serverThread.active_scope, serverThread.shared);
             setActiveThreadShared(serverThread.shared);
@@ -1251,25 +1290,27 @@ export function useAIChat(config: AIChatConfig = {}) {
             );
           }
         } else if (activeThreadIdRef.current === nextActiveThreadId) {
-          setMessages([]);
+          clearThreadContent(nextActiveThreadId);
           setPendingQuestion(null);
           applyScopeState(null);
-          setMessageCursors((prev) => ({
-            ...prev,
-            [nextActiveThreadId]: null
-          }));
-          setError('Conversation is unavailable. Refresh and try again.');
+          patchThreadRuntime(nextActiveThreadId, {
+            error: 'Conversation is unavailable. Refresh and try again.'
+          });
         }
       } else {
         const localActive = mergedThreads.find(
           (thread) => thread.id === nextActiveThreadId
         );
         if (activeThreadIdRef.current === nextActiveThreadId) {
-          setMessages(localActive?.messages || []);
+          patchThreadRuntime(nextActiveThreadId, {
+            messages: localActive?.messages || [],
+            isLoading: false
+          });
           if (localActive?.deletionPending) {
-            setError(
-              'Conversation deletion is awaiting cleanup. Retry deletion to finish.'
-            );
+            patchThreadRuntime(nextActiveThreadId, {
+              error:
+                'Conversation deletion is awaiting cleanup. Retry deletion to finish.'
+            });
           }
         }
       }
@@ -1289,7 +1330,10 @@ export function useAIChat(config: AIChatConfig = {}) {
     applyScopeSummary,
     applyScopeState,
     sessionIsCurrent,
-    saveStoredThreads
+    saveStoredThreads,
+    patchThreadRuntime,
+    clearThreadContent,
+    acceptThreadContext
   ]);
 
   /**
@@ -1306,10 +1350,9 @@ export function useAIChat(config: AIChatConfig = {}) {
       )
         return null;
       if (serverData) {
-        setMessageCursors((prev) => ({
-          ...prev,
-          [threadId]: serverData.nextBeforeSequence
-        }));
+        patchThreadRuntime(threadId, {
+          beforeSequence: serverData.nextBeforeSequence
+        });
         // S22 reload fidelity: re-arm iff the question is on the LAST message
         // and unexpired — matching the server's answer-window semantics
         // (only the immediately-following turn can answer).
@@ -1365,9 +1408,17 @@ export function useAIChat(config: AIChatConfig = {}) {
         });
         return serverData.messages;
       }
+      clearThreadContent(threadId);
       return null;
     },
-    [aiHost, applyScopeSummary, sessionIsCurrent, saveStoredThreads]
+    [
+      aiHost,
+      applyScopeSummary,
+      sessionIsCurrent,
+      saveStoredThreads,
+      patchThreadRuntime,
+      clearThreadContent
+    ]
   );
 
   // Revalidate on entry and when returning to the tab, including grant changes
@@ -1406,7 +1457,8 @@ export function useAIChat(config: AIChatConfig = {}) {
       cursor?: string | null
     ): Promise<{ threads: ChatThread[]; nextCursor: string | null }> => {
       const serverData = await fetchServerThreads(aiHost, query, cursor);
-      if (!serverData) throw new Error('Conversation search unavailable');
+      if (!serverData || !acceptThreadContext(serverData))
+        throw new Error('Conversation search unavailable');
       return {
         threads: serverData.threads.map((thread) => ({
           id: thread.thread_id,
@@ -1419,7 +1471,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         nextCursor: serverData.next_cursor ?? null
       };
     },
-    [aiHost]
+    [aiHost, acceptThreadContext]
   );
 
   /** S32b: grant read access on one owned thread to a username. */
@@ -1441,6 +1493,8 @@ export function useAIChat(config: AIChatConfig = {}) {
    */
   const saveCurrentThread = useCallback(
     (currentMessages: ChatMessage[], title?: string, markPersisted = false) => {
+      if (!sessionIsCurrent() || activeThreadIdRef.current !== activeThreadId)
+        return;
       setStoredThreads((prev: StoredThread[]) => {
         const existingIndex = prev.findIndex(
           (t: StoredThread) => t.id === activeThreadId
@@ -1490,7 +1544,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         return newThreads;
       });
     },
-    [activeThreadId, saveStoredThreads]
+    [activeThreadId, saveStoredThreads, sessionIsCurrent]
   );
 
   /**
@@ -1501,12 +1555,15 @@ export function useAIChat(config: AIChatConfig = {}) {
     async (threadId: string) => {
       // A running turn owns its stream callbacks until it settles. Detail
       // fetches may be superseded freely; their version guards discard replies.
-      if (abortControllerRef.current) return;
+      if (!sessionIsCurrent() || abortControllerRef.current) return;
       if (messages.length > 0 && !activeThreadShared)
         saveCurrentThread(messages);
       const version = ++selectionVersionRef.current;
       earlierRequestRef.current += 1;
-      setLoadingEarlier(false);
+      patchThreadRuntime(activeThreadIdRef.current, {
+        isLoading: false,
+        loadingEarlier: false
+      });
       useAIChatState.getState().clearHint();
       activeThreadIdRef.current = threadId;
       setActiveThreadId(threadId);
@@ -1517,34 +1574,38 @@ export function useAIChat(config: AIChatConfig = {}) {
       setPendingQuestion(null);
       setAnsweredQuestionIds(new Set());
       setScopeConflict(false);
-      setError(null);
-      setMessages([]);
+      patchThreadRuntime(threadId, emptyChatThreadRuntime());
+      lastTurnRef.current = null;
       const local = storedThreadsRef.current.find(
         (thread) => thread.id === threadId
       );
       if (local?.deletionPending) {
-        setIsLoading(false);
-        setError(
-          'Conversation deletion is awaiting cleanup. Retry deletion to finish.'
-        );
+        patchThreadRuntime(threadId, {
+          error:
+            'Conversation deletion is awaiting cleanup. Retry deletion to finish.'
+        });
         return;
       }
       if (local && !local.isPersisted) {
-        setIsLoading(false);
-        setMessages(local.messages);
+        patchThreadRuntime(threadId, { messages: local.messages });
         return;
       }
       // Every persisted selection is reauthorized, even when a previous visit
       // left messages in this tab's memory. Search results may be outside page 1.
-      setIsLoading(true);
+      patchThreadRuntime(threadId, { isLoading: true });
       try {
         const serverMessages = await loadThreadFromServer(threadId);
-        if (version !== selectionVersionRef.current) return;
-        setMessages(serverMessages ?? []);
-        if (!serverMessages)
-          setError('Conversation is unavailable. Refresh and try again.');
+        if (!sessionIsCurrent() || version !== selectionVersionRef.current)
+          return;
+        patchThreadRuntime(threadId, {
+          messages: serverMessages ?? [],
+          error: serverMessages
+            ? null
+            : 'Conversation is unavailable. Refresh and try again.'
+        });
       } finally {
-        if (version === selectionVersionRef.current) setIsLoading(false);
+        if (version === selectionVersionRef.current)
+          patchThreadRuntime(threadId, { isLoading: false });
       }
     },
     [
@@ -1553,7 +1614,9 @@ export function useAIChat(config: AIChatConfig = {}) {
       saveCurrentThread,
       sharedThreads,
       applyScopeState,
-      loadThreadFromServer
+      loadThreadFromServer,
+      patchThreadRuntime,
+      sessionIsCurrent
     ]
   );
 
@@ -1571,8 +1634,10 @@ export function useAIChat(config: AIChatConfig = {}) {
     selectionVersionRef.current += 1;
     earlierRequestRef.current += 1;
     useAIChatState.getState().clearHint();
-    setLoadingEarlier(false);
-    setIsLoading(false);
+    patchThreadRuntime(activeThreadIdRef.current, {
+      isLoading: false,
+      loadingEarlier: false
+    });
     setPendingQuestion(null);
     setAnsweredQuestionIds(new Set());
     setScopeConflict(false);
@@ -1581,21 +1646,35 @@ export function useAIChat(config: AIChatConfig = {}) {
     setActiveThreadShared(false);
     // S1: a new thread starts unconfirmed — no scope carries over.
     applyScopeState(null);
-    setMessages([]);
-    setError(null);
+    patchThreadRuntime(newId, emptyChatThreadRuntime());
+    lastTurnRef.current = null;
     return newId;
-  }, [messages, activeThreadShared, saveCurrentThread, applyScopeState]);
+  }, [
+    messages,
+    activeThreadShared,
+    saveCurrentThread,
+    applyScopeState,
+    patchThreadRuntime
+  ]);
 
   const loadEarlierMessages = useCallback(async () => {
-    const threadId = activeThreadIdRef.current;
-    const before = messageCursors[threadId];
-    if (!before || loadingEarlier || abortControllerRef.current) return;
+    const threadId = activeThreadId;
+    const before = beforeSequence;
+    if (
+      !sessionIsCurrent() ||
+      activeThreadIdRef.current !== threadId ||
+      !before ||
+      loadingEarlier ||
+      abortControllerRef.current
+    )
+      return;
     const version = selectionVersionRef.current;
     const request = ++earlierRequestRef.current;
     setLoadingEarlier(true);
     try {
       const page = await fetchServerThread(threadId, aiHost, before);
       if (
+        !sessionIsCurrent() ||
         version !== selectionVersionRef.current ||
         request !== earlierRequestRef.current
       )
@@ -1603,10 +1682,10 @@ export function useAIChat(config: AIChatConfig = {}) {
       if (!page) {
         // Access may have been revoked since the preceding page. Do not keep
         // showing a cached transcript after the authorized read fails.
-        setMessages([]);
+        clearThreadContent(threadId);
         setPendingQuestion(null);
         applyScopeState(null);
-        setMessageCursors((prev) => ({ ...prev, [threadId]: null }));
+        setBeforeSequence(null);
         setError('Conversation could not be loaded. Refresh and try again.');
         return;
       }
@@ -1617,14 +1696,23 @@ export function useAIChat(config: AIChatConfig = {}) {
           ...prev
         ];
       });
-      setMessageCursors((prev) => ({
-        ...prev,
-        [threadId]: page.nextBeforeSequence
-      }));
+      setBeforeSequence(page.nextBeforeSequence);
     } finally {
       if (request === earlierRequestRef.current) setLoadingEarlier(false);
     }
-  }, [messageCursors, loadingEarlier, aiHost, applyScopeState]);
+  }, [
+    beforeSequence,
+    loadingEarlier,
+    aiHost,
+    applyScopeState,
+    setMessages,
+    setError,
+    setBeforeSequence,
+    setLoadingEarlier,
+    activeThreadId,
+    sessionIsCurrent,
+    clearThreadContent
+  ]);
 
   const loadMoreThreads = useCallback(async () => {
     if (
@@ -1648,6 +1736,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         setError('More conversations could not be loaded. Please try again.');
         return;
       }
+      if (!acceptThreadContext(page)) return;
       setStoredThreads((prev) => {
         const ids = new Set(prev.map((thread) => thread.id));
         const next = [
@@ -1674,7 +1763,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       moreThreadsRequestRef.current = false;
       setLoadingMoreThreads(false);
     }
-  }, [aiHost, threadCursor, saveStoredThreads]);
+  }, [aiHost, threadCursor, saveStoredThreads, setError, acceptThreadContext]);
 
   /**
    * Delete a thread (both locally and on server)
@@ -1692,29 +1781,27 @@ export function useAIChat(config: AIChatConfig = {}) {
       if (!sessionIsCurrent()) return 'error';
       if (result === 'error') return result;
 
-      setStoredThreads((prev) => {
-        const next =
-          result === 'deleted'
-            ? prev.filter((thread) => thread.id !== threadId)
-            : prev.map((thread) =>
-                thread.id === threadId
-                  ? {
-                      ...thread,
-                      messages: [],
-                      deletionPending: true,
-                      cachedAt: Date.now()
-                    }
-                  : thread
-              );
-        saveStoredThreads(next);
-        storedThreadsRef.current = next;
-        return next;
-      });
-      setMessageCursors((prev) => {
-        const next = { ...prev };
-        delete next[threadId];
-        return next;
-      });
+      // Publish after the metadata update so another tab reopens against the
+      // deletion receipt, including the row needed for an incomplete-purge retry.
+      const next =
+        result === 'deleted'
+          ? storedThreadsRef.current.filter((thread) => thread.id !== threadId)
+          : storedThreadsRef.current.map((thread) =>
+              thread.id === threadId
+                ? {
+                    ...thread,
+                    messages: [],
+                    deletionPending: true,
+                    cachedAt: Date.now()
+                  }
+                : thread
+            );
+      storedThreadsRef.current = next;
+      saveStoredThreads(next);
+      setStoredThreads(next);
+      retireThreadRuntime(threadId);
+      queryClient.removeQueries({ queryKey: ['ai-evidence-set', threadId] });
+      publishChatInvalidation(cacheKey);
       useAIChatState.getState().clearHint();
       if (threadId === activeThreadIdRef.current) {
         selectionVersionRef.current += 1;
@@ -1727,14 +1814,20 @@ export function useAIChat(config: AIChatConfig = {}) {
         setPendingQuestion(null);
         setAnsweredQuestionIds(new Set());
         setScopeConflict(false);
-        setMessages([]);
-        setError(null);
-        setIsLoading(false);
-        setLoadingEarlier(false);
+        patchThreadRuntime(newId, emptyChatThreadRuntime());
+        lastTurnRef.current = null;
       }
       return result;
     },
-    [aiHost, applyScopeState, sessionIsCurrent, saveStoredThreads]
+    [
+      aiHost,
+      applyScopeState,
+      sessionIsCurrent,
+      saveStoredThreads,
+      retireThreadRuntime,
+      patchThreadRuntime,
+      cacheKey
+    ]
   );
 
   /**
@@ -1789,7 +1882,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       setMessages((prev) => [...prev, message]);
       return message;
     },
-    []
+    [setMessages]
   );
 
   /**
@@ -1802,33 +1895,41 @@ export function useAIChat(config: AIChatConfig = {}) {
           msg.id === messageId ? { ...msg, content, isStreaming: false } : msg
         );
         // Cancellation and terminal errors are part of the visible history and
-        // must survive closing or reloading the drawer.
+        // remain visible in this session without writing bodies to browser storage.
         saveCurrentThread(updated);
         return updated;
       });
     },
-    [saveCurrentThread]
+    [saveCurrentThread, setMessages]
   );
 
   /** Drop partial output before replaying the same turn after a failure. */
-  const resetStreamingMessage = useCallback((messageId: string) => {
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === messageId ? { ...msg, content: '', isStreaming: true } : msg
-      )
-    );
-  }, []);
+  const resetStreamingMessage = useCallback(
+    (messageId: string) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId
+            ? { ...msg, content: '', isStreaming: true }
+            : msg
+        )
+      );
+    },
+    [setMessages]
+  );
 
   /**
    * Append content to a streaming message
    */
-  const appendToMessage = useCallback((messageId: string, chunk: string) => {
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === messageId ? { ...msg, content: msg.content + chunk } : msg
-      )
-    );
-  }, []);
+  const appendToMessage = useCallback(
+    (messageId: string, chunk: string) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, content: msg.content + chunk } : msg
+        )
+      );
+    },
+    [setMessages]
+  );
 
   /** Attach diagnosis-rail provenance (citations + declared confidence). */
   const attachProvenance = useCallback(
@@ -1839,7 +1940,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         )
       );
     },
-    []
+    [setMessages]
   );
 
   /** S28: attach server-observed entity chips to their message. */
@@ -1849,7 +1950,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         prev.map((msg) => (msg.id === messageId ? { ...msg, entities } : msg))
       );
     },
-    []
+    [setMessages]
   );
 
   /** R4: attach server-verified media evidence to its message. */
@@ -1861,7 +1962,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         )
       );
     },
-    []
+    [setMessages]
   );
 
   /** S11: attach the consolidated v2 evidence attachment; clears progress. */
@@ -1875,7 +1976,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         )
       );
     },
-    []
+    [setMessages]
   );
 
   /** S11: show one content-free buffered-execution stage (closed enum). */
@@ -1887,7 +1988,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         )
       );
     },
-    []
+    [setMessages]
   );
 
   /** M2 PR 9: attach the normalized Context used record to its message. */
@@ -1899,7 +2000,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         )
       );
     },
-    []
+    [setMessages]
   );
 
   /** S46: upsert one tool call's lifecycle entry, keyed by toolCallId. */
@@ -1919,7 +2020,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         })
       );
     },
-    []
+    [setMessages]
   );
 
   /** S22: attach the question payload to its message and arm the singleton. */
@@ -1932,7 +2033,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       );
       setPendingQuestion(payload);
     },
-    []
+    [setMessages]
   );
 
   /** S22: freeze the armed question (answered, superseded, or expired). */
@@ -1960,12 +2061,17 @@ export function useAIChat(config: AIChatConfig = {}) {
   /** S1: re-fetch the active thread's full scope (null → unconfirmed). */
   const refreshThreadScope = useCallback(async () => {
     const threadId = activeThreadIdRef.current;
-    if (!threadId) return;
+    const version = selectionVersionRef.current;
+    if (!threadId || !sessionIsCurrent()) return;
     const payload = await fetchThreadScope(threadId, aiHost);
-    if (activeThreadIdRef.current === threadId) {
+    if (
+      sessionIsCurrent() &&
+      version === selectionVersionRef.current &&
+      activeThreadIdRef.current === threadId
+    ) {
       applyScopePayload(payload);
     }
-  }, [aiHost, applyScopePayload]);
+  }, [aiHost, applyScopePayload, sessionIsCurrent]);
 
   /**
    * S1: replace the active thread's analysis scope. On a version conflict
@@ -1978,16 +2084,22 @@ export function useAIChat(config: AIChatConfig = {}) {
       scope: AnalysisScopeUpdate
     ): Promise<{ ok: boolean; code?: string }> => {
       const threadId = activeThreadIdRef.current;
-      if (!threadId) return { ok: false, code: 'error' };
+      const version = selectionVersionRef.current;
+      const currentSelection = () =>
+        sessionIsCurrent() &&
+        version === selectionVersionRef.current &&
+        activeThreadIdRef.current === threadId;
+      if (!threadId || !currentSelection()) return { ok: false, code: 'error' };
       let result = await updateThreadScope(
         threadId,
         aiHost,
         activeScopeVersionRef.current ?? 0,
         scope
       );
+      if (!currentSelection()) return { ok: false, code: 'error' };
       if (!result.ok && result.code === 'scope_version_conflict') {
         const current = await fetchThreadScope(threadId, aiHost);
-        if (activeThreadIdRef.current !== threadId) {
+        if (!currentSelection()) {
           return { ok: false, code: 'error' };
         }
         applyScopePayload(current);
@@ -1998,15 +2110,14 @@ export function useAIChat(config: AIChatConfig = {}) {
           scope
         );
       }
+      if (!currentSelection()) return { ok: false, code: 'error' };
       if (result.ok) {
-        if (activeThreadIdRef.current === threadId) {
-          applyScopePayload(result.payload);
-        }
+        applyScopePayload(result.payload);
         return { ok: true };
       }
       return { ok: false, code: result.code };
     },
-    [aiHost, applyScopePayload]
+    [aiHost, applyScopePayload, sessionIsCurrent]
   );
 
   /**
@@ -2982,6 +3093,9 @@ export function useAIChat(config: AIChatConfig = {}) {
       saveCurrentThread,
       resetStreamingMessage,
       sessionIsCurrent,
+      setMessages,
+      setError,
+      setIsLoading,
       chatEndpoint
     ]
   );
@@ -2991,6 +3105,12 @@ export function useAIChat(config: AIChatConfig = {}) {
    */
   const uploadFile = useCallback(
     async (file: File): Promise<UploadedFile | null> => {
+      const version = selectionVersionRef.current;
+      const currentSelection = () =>
+        sessionIsCurrent() &&
+        version === selectionVersionRef.current &&
+        activeThreadIdRef.current === activeThreadId;
+      if (!currentSelection()) return null;
       try {
         const formData = new FormData();
         formData.append('file', file);
@@ -3010,14 +3130,16 @@ export function useAIChat(config: AIChatConfig = {}) {
           );
         }
 
-        return (await response.json()) as UploadedFile;
+        const uploaded = (await response.json()) as UploadedFile;
+        return currentSelection() ? uploaded : null;
       } catch (err) {
         console.error('File upload failed:', err);
-        setError(err instanceof Error ? err.message : 'File upload failed');
+        if (currentSelection())
+          setError(err instanceof Error ? err.message : 'File upload failed');
         return null;
       }
     },
-    [activeThreadId, aiHost]
+    [activeThreadId, aiHost, setError, sessionIsCurrent]
   );
 
   /**
@@ -3040,9 +3162,12 @@ export function useAIChat(config: AIChatConfig = {}) {
   /**
    * Remove a specific message
    */
-  const removeMessage = useCallback((messageId: string) => {
-    setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
-  }, []);
+  const removeMessage = useCallback(
+    (messageId: string) => {
+      setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+    },
+    [setMessages]
+  );
 
   /**
    * S1: replay the turn that bounced on a scope conflict. The replay is an
@@ -3081,7 +3206,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     deleteThread,
     renameThread,
     clearChat,
-    hasEarlierMessages: Boolean(messageCursors[activeThreadId]),
+    hasEarlierMessages: Boolean(beforeSequence),
     loadingEarlier,
     loadEarlierMessages,
     hasMoreThreads: Boolean(threadCursor),

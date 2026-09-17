@@ -1,8 +1,30 @@
 /** Browser persistence is an expiring navigation index, never a transcript. */
 export const CHAT_INDEX_PREFIX = 'aimms.chat.index:v2:';
+const CHAT_INVALIDATION_PREFIX = 'aimms.chat.invalidate:v1:';
 export const LEGACY_CHAT_KEY = 'ai-chat-threads';
 export const CHAT_INDEX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_ENTRIES = 200;
+
+export function chatInvalidationKey(indexKey: string | null): string | null {
+  return indexKey?.startsWith(CHAT_INDEX_PREFIX)
+    ? `${CHAT_INVALIDATION_PREFIX}${indexKey.slice(CHAT_INDEX_PREFIX.length)}`
+    : null;
+}
+
+/** Content-free notification to other tabs, removed immediately after sending. */
+export function publishChatInvalidation(
+  indexKey: string | null,
+  storage = browserStorage()
+): void {
+  const key = chatInvalidationKey(indexKey);
+  if (!key || !storage) return;
+  try {
+    storage.setItem(key, 'changed');
+    storage.removeItem(key);
+  } catch {
+    /* Server revalidation remains the fallback if browser storage is disabled. */
+  }
+}
 
 export interface ChatIndexRow {
   id: string;

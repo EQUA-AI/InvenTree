@@ -62,7 +62,8 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../App';
 import {
   CHAT_INDEX_PREFIX,
-  chatIndexKey
+  chatIndexKey,
+  chatInvalidationKey
 } from '../../functions/chatThreadCache';
 import {
   type ChatMessage,
@@ -1106,6 +1107,12 @@ export function AIChatDrawer(props: AIChatDrawerProps) {
   const key = chatIndexKey(host, userId);
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
+      if (event.key === chatInvalidationKey(key) && event.newValue !== null) {
+        // Keep the writer's current index, including any pending-delete row.
+        // Rebuild all RAM/query/voice state without a second invalidation loop.
+        useAIChatState.getState().resetSession(false);
+        return;
+      }
       // A reset/deletion in another tab must not leave a cached transcript in
       // this one. Ordinary metadata updates are not a reason to reload chat.
       if (
@@ -1113,7 +1120,7 @@ export function AIChatDrawer(props: AIChatDrawerProps) {
         event.newValue === null &&
         (event.key === null || event.key.startsWith(CHAT_INDEX_PREFIX))
       ) {
-        useAIChatState.getState().resetSession();
+        useAIChatState.getState().resetSession(false);
       }
     };
     window.addEventListener('storage', onStorage);
@@ -1264,11 +1271,17 @@ function AIChatSessionDrawer({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeThreadIdRef = useRef(activeThreadId);
   const previousThreadIdRef = useRef(activeThreadId);
+  const composerVersionRef = useRef(0);
   activeThreadIdRef.current = activeThreadId;
 
   useEffect(() => {
     if (previousThreadIdRef.current !== activeThreadId) {
+      composerVersionRef.current += 1;
+      setInputValue('');
       setAttachedFiles([]);
+      setIsUploading(false);
+      setIsApplyingScope(false);
+      setMemoryThreadId(null);
       previousThreadIdRef.current = activeThreadId;
     }
   }, [activeThreadId]);
@@ -1366,6 +1379,7 @@ function AIChatSessionDrawer({
     async (messageText?: string) => {
       const text = messageText || inputValue;
       if (!text.trim() || isLoading || isSyncing || isApplyingScope) return;
+      const version = composerVersionRef.current;
       const fileIds = attachedFiles.map((f) => f.file_id);
       // S2: the machine hint is now a SCOPE SEED, never message text — it
       // becomes a server-side explicit-assets scope on this thread before
@@ -1387,9 +1401,10 @@ function AIChatSessionDrawer({
             });
           }
         } finally {
-          setIsApplyingScope(false);
+          if (version === composerVersionRef.current) setIsApplyingScope(false);
         }
       }
+      if (version !== composerVersionRef.current) return;
       // Closing or switching during the scope request cancels this send intent.
       // The hint is bound to one thread and is cleared by those transitions.
       if (routingHint && useAIChatState.getState().routingHint !== routingHint)
@@ -1424,17 +1439,27 @@ function AIChatSessionDrawer({
 
       setIsUploading(true);
       const uploadThreadId = activeThreadId;
+      const version = composerVersionRef.current;
       try {
         for (const file of Array.from(files)) {
+          if (
+            version !== composerVersionRef.current ||
+            activeThreadIdRef.current !== uploadThreadId
+          )
+            break;
           const result = await uploadFile(file);
-          if (result && activeThreadIdRef.current === uploadThreadId) {
+          if (
+            result &&
+            version === composerVersionRef.current &&
+            activeThreadIdRef.current === uploadThreadId
+          ) {
             setAttachedFiles((prev) => [...prev, result]);
           }
         }
       } finally {
-        setIsUploading(false);
+        if (version === composerVersionRef.current) setIsUploading(false);
         // Reset file input so the same file can be selected again
-        if (fileInputRef.current) {
+        if (version === composerVersionRef.current && fileInputRef.current) {
           fileInputRef.current.value = '';
         }
       }
@@ -1447,18 +1472,16 @@ function AIChatSessionDrawer({
     setAttachedFiles((prev) => prev.filter((f) => f.file_id !== fileId));
   }, []);
 
-  // Uploads are bound to the thread which created them. Never carry an
-  // attachment into another conversation.
+  // Actual selection changes clear the composer in the effect above. A switch
+  // refused during an active turn must not silently discard attachments.
   const handleSwitchThread = useCallback(
     (threadId: string) => {
-      setAttachedFiles([]);
       switchThread(threadId);
     },
     [switchThread]
   );
 
   const handleNewThread = useCallback(() => {
-    setAttachedFiles([]);
     createNewThread();
   }, [createNewThread]);
 
@@ -1489,10 +1512,10 @@ function AIChatSessionDrawer({
 
   const handleDeleteThread = useCallback(
     (threadId: string) => {
-      setAttachedFiles([]);
+      if (memoryThreadId === threadId) setMemoryThreadId(null);
       return deleteThread(threadId);
     },
-    [deleteThread]
+    [deleteThread, memoryThreadId]
   );
 
   // Handle Enter key to send message

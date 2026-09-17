@@ -21,7 +21,7 @@ export interface AIChatRoutingHint {
 interface AIChatStateProps {
   isOpen: boolean;
   sessionGeneration: number;
-  resetSession: () => void;
+  resetSession: (clearIndex?: boolean) => void;
   routingHint?: AIChatRoutingHint;
   hintThreadId: string | null;
   bindHint: (threadId: string) => void;
@@ -34,8 +34,8 @@ interface AIChatStateProps {
 export const useAIChatState = create<AIChatStateProps>()((set) => ({
   isOpen: false,
   sessionGeneration: 0,
-  resetSession: () => {
-    clearChatIndices();
+  resetSession: (clearIndex = true) => {
+    if (clearIndex) clearChatIndices();
     // Drawer tabs share the application query cache. Remove their old account
     // data as well as the component state; a remount alone would reuse it.
     const privateQueries = new Set([

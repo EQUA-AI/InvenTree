@@ -41,7 +41,9 @@ export function ThreadActionsModal({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [incomplete, setIncomplete] = useState(false);
+  const [incomplete, setIncomplete] = useState(
+    Boolean(action.thread.deletionPending)
+  );
   const deletion = threadDeletionCopy(
     incomplete,
     Boolean(action.thread.isPersisted)
