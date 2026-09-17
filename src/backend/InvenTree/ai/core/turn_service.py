@@ -686,8 +686,6 @@ class NormalizedTurnService:
         turn must not be able to confirm a stored write or reach a workflow.
         Content-only -- no permission or tool state is consulted.
         """
-        if modality != TurnModality.VOICE:
-            return None
         from ai.core.voice.injection import (
             INJECTION_REFUSAL_PHRASE,
             has_instruction_override,
@@ -696,7 +694,12 @@ class NormalizedTurnService:
         if not has_instruction_override(content):
             return None
         # Bounded and transcript-free: the refused text is never echoed back.
-        logger.warning("voice.injection.refused thread_id=%s turn_id=%s", thread_id, turn_id)
+        logger.warning(
+            "instruction_override.refused modality=%s thread_id=%s turn_id=%s",
+            modality,
+            thread_id,
+            turn_id,
+        )
         return await self._canonical_for_voice_write(
             thread_id=thread_id,
             turn_id=turn_id,

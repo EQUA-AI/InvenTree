@@ -319,3 +319,49 @@ async def test_root_workflow_error_path_is_locatable_and_redacted(caplog):
     assert "stage=routing" in rendered
     assert "error_type=RuntimeError" in rendered
     assert "raised_at=" in rendered and "raised_at=unknown" not in rendered
+
+
+@pytest.mark.parametrize("intent", ["manual_fact", "record_retrieval", "source_inventory"])
+async def test_server_classified_retrieval_needs_no_second_classifier(intent):
+    from unittest.mock import AsyncMock
+
+    router = UnifiedRouter()
+    router.fast_path.try_fast_path = AsyncMock()
+    router.semantic.route = AsyncMock()
+    router.classifier.classify = AsyncMock()
+    result = await router.route(
+        "Show the relevant passage or recorded scene",
+        "retrieval-thread",
+        {"modality": "text", "task_intent": intent, "effect_intent": "read_only"},
+    )
+    assert result.get_workflow_id() == "wf8"
+    assert result.use_fast_path is False
+    router.fast_path.try_fast_path.assert_not_awaited()
+    router.semantic.route.assert_not_awaited()
+    router.classifier.classify.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "context",
+    [
+        {"task_intent": "record_retrieval"},
+        {"task_intent": "record_retrieval", "effect_intent": "effect_request"},
+        {"task_intent": "diagnostic", "effect_intent": "read_only"},
+        {"modality": "voice", "task_intent": "record_retrieval", "effect_intent": "read_only"},
+        {
+            "untrusted_client_context": {
+                "task_intent": "record_retrieval",
+                "effect_intent": "read_only",
+            }
+        },
+    ],
+)
+async def test_retrieval_shortcut_does_not_override_other_routes_or_client_hints(context):
+    from unittest.mock import AsyncMock
+
+    router = UnifiedRouter()
+    expected = RoutingDecision(WorkflowType.T6_DIAGNOSTICS, 0.9, "ordinary route")
+    router.fast_path.try_fast_path = AsyncMock(return_value=None)
+    router.semantic.route = AsyncMock(return_value=expected)
+    assert await router.route("Find the cause of this fault", "other-thread", context) is expected
+    router.semantic.route.assert_awaited_once()

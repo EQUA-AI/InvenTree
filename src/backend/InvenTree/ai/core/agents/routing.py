@@ -803,6 +803,23 @@ class UnifiedRouter:
         turn. The routers guard themselves too, but this boundary is what makes
         the property structural instead of a habit every router must remember.
         """
+        # The server already classified these simple retrieval families.
+        # Reclassifying them adds provider calls without adding a routing
+        # decision. This selects the read-only legacy workflow, not the
+        # separately staged analysis executor, and grants no tool authority.
+        trusted = context or {}
+        if (
+            trusted.get("modality") != "voice"
+            and trusted.get("effect_intent") == "read_only"
+            and trusted.get("task_intent")
+            in {"source_inventory", "manual_fact", "record_retrieval"}
+        ):
+            return RoutingDecision(
+                workflow_type=WorkflowType.T1_LOOKUP,
+                confidence=1.0,
+                reasoning="Server-classified read-only retrieval",
+                use_fast_path=False,
+            )
         # Inventory first: a pure inventory shape ("what manuals do you
         # have") is registry work; content shapes keep their exact path.
         if is_document_inventory_question(message):

@@ -474,6 +474,7 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
     # content-free — an enum value, never text.
     if run.task_intent is not None:
         workflow_context["task_intent"] = run.task_intent.intent.value
+        workflow_context["effect_intent"] = run.task_intent.effect.value
     if run.question_resolution is not None and run.question_resolution.outcome == "selected":
         # Trusted context: the selected option's server-persisted
         # ref, so wf8 can pin e.g. the machine filter exactly.

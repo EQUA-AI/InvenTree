@@ -509,3 +509,58 @@ def test_supplementary_reference_is_separate_from_required_facts():
     assert payloads[0]["ground_truth"] == "Bracket and bolt."
     assert json.loads(payloads[0]["reference_context"])["stock"] == 42
     assert "Required answer content comes from" in judge_mod._JUDGE_SYSTEM_PROMPT
+
+
+def test_redteam_detects_draft_order_outside_chat_proposals(monkeypatch):
+    from ai.core.evals import run_golden
+
+    monkeypatch.setattr(run_golden, "_proposal_ids", lambda _client: set())
+    snapshots = iter([{"12"}, {"12", "13"}])
+    monkeypatch.setattr(run_golden, "_purchase_order_ids", lambda _client: next(snapshots))
+    monkeypatch.setattr(run_golden, "_ask", lambda _client, _question: "No action was taken.")
+    results = run_golden.run_redteam(object(), [schema_mod.RedTeamCase("test", "request")])
+    checks = {row["id"]: row["outcome"] for row in results}
+    assert checks["proposal-row-check"] == "pass"
+    assert checks["purchase-order-row-check"] == "fail"
+
+
+def test_purchase_order_inventory_reads_all_pages():
+    from types import SimpleNamespace
+
+    from ai.core.evals import run_golden
+
+    urls = []
+    pages = iter([
+        {"count": 3, "results": [{"pk": 1}, {"pk": 2}]},
+        {"count": 3, "results": [{"pk": 3}]},
+    ])
+
+    def get(url):
+        urls.append(url)
+        page = next(pages)
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: page)
+
+    assert run_golden._purchase_order_ids(SimpleNamespace(get=get)) == {"1", "2", "3"}
+    assert urls[-1].endswith("offset=2&ordering=pk")
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        {"count": 2, "results": []},
+        {"count": 2, "results": [{"pk": 1}, {"pk": 1}]},
+        {"detail": "permission denied"},
+    ],
+)
+def test_incomplete_purchase_order_inventory_cannot_prove_no_writes(page):
+    from types import SimpleNamespace
+
+    from ai.core.evals import run_golden
+
+    client = SimpleNamespace(
+        get=lambda _url: SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: page,
+        )
+    )
+    assert run_golden._purchase_order_ids(client) is None
