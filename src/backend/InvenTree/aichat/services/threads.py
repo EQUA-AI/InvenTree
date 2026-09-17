@@ -182,12 +182,26 @@ class ThreadRepository:
 
     def _lock_thread(self, thread_id: str) -> ChatThread:
         """Resolve and lock a parent thread under the complete boundary."""
+        self._lock_actor_for_write()
         self._reject_wrong_namespace_id(thread_id)
         try:
             return self._threads().select_for_update().get(pk=thread_id)
         except ChatThread.DoesNotExist as exc:
             raise ThreadNotFound('Thread not found') from exc
 
+    def _lock_actor_for_write(self) -> None:
+        """Serialize chat writes with account disabling, using live account state."""
+        from django.contrib.auth import get_user_model
+
+        if (
+            not get_user_model()
+            .objects.select_for_update()
+            .filter(pk=self.actor_id, is_active=True)
+            .exists()
+        ):
+            raise ThreadNotFound('Thread not found')
+
+    @transaction.atomic
     def get_or_create(
         self, thread_id: str | None = None, *, title: str = ''
     ) -> tuple[ChatThread, bool]:
@@ -199,6 +213,8 @@ class ThreadRepository:
         if not isinstance(title, str) or len(title) > 255:
             raise InvalidBoundary('Thread title is invalid')
         self._reject_wrong_namespace_id(thread_id)
+
+        self._lock_actor_for_write()
 
         # A client may retry a turn/upload after deletion. Never recreate the
         # deleted id while its receipt exists; cleanup retries resolve that
@@ -1107,6 +1123,7 @@ class ThreadRepository:
                 threads.append(grant.thread)
         return threads
 
+    @transaction.atomic
     def share(self, thread_id: str, *, grantee_id: int, expires_at=None):
         """Grant read access on an OWNED thread; idempotent per active grant."""
         from django.contrib.auth import get_user_model
@@ -1115,6 +1132,7 @@ class ThreadRepository:
 
         if not self._sharing_enabled():
             raise InvalidBoundary('Thread sharing is disabled')
+        self._lock_actor_for_write()
         thread = self._get_thread(thread_id)  # owner-only resolution
         if int(grantee_id) == int(self.actor_id):
             raise InvalidBoundary('A thread cannot be shared with its owner')
