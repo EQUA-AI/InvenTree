@@ -12,8 +12,15 @@ import collections
 import json
 import re
 import statistics
+import sys
 
-SOURCE = 'contrib/pump-cassandra/PH_3.full-snapshot.json'
+# Pass a path to analyse any snapshot - in particular the running one, when it
+# arrives. Defaults to the shut-down reference row.
+SOURCE = (
+    sys.argv[1]
+    if len(sys.argv) > 1
+    else 'contrib/pump-cassandra/PH_3.full-snapshot.json'
+)
 
 with open(SOURCE, encoding='utf-8') as fh:
     src = json.load(fh)

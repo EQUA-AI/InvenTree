@@ -15,6 +15,13 @@ one active `cosmos_pumphouse` Health Source for the account, assigned to the cor
 The configuration keys are `endpoint`, `database`, `readings_container` and `stations`.
 Check the source freshness setting explicitly; the default for new sources is 300 seconds.
 
+> **Blocked, and made precise in `BLOCKERS.md`.** There was no application identity at
+> all - zero managed identities in the subscription, and the only data-plane grant was
+> Data Contributor on a *human* account at *account* scope. A dedicated service principal
+> `aimms-pumphouse-connector` now exists with no credentials and no permissions. The Data
+> Reader grant itself needs Owner or Contributor: the developer holds Cosmos DB Operator,
+> which lists `sqlRoleAssignments/write` under notActions by design.
+
 For Azure, leave `secret_ref` empty and provide the application identity through the
 deployment environment. The platform owner must verify that this identity has Cosmos DB
 Built-in Data Reader at the required container scope and no data writer permission. A
@@ -123,7 +130,14 @@ down** - every bay reports `st=I` and `MOTOR_ON_STATUS=0`, with zero power, curr
 voltage. A unit is a claim about magnitude, so anything that only has a magnitude while
 running cannot be confirmed from it. Those tags were withheld rather than guessed. A
 snapshot taken while pumping settles most of them in one reading, and is the single most
-useful thing to obtain next.
+useful thing to obtain next. `BLOCKERS.md` states exactly what to ask for.
+
+Every payload in the repository was checked for a running bay first. The only one is
+`contrib/cosmos/samples/ph3_snapshots.json`, whose own note says it was **synthesised**
+for the tests - so its power and current figures are authored, not measured, and cannot
+confirm a unit. That file also seeds the local emulator, which means the dev mimic shows
+a *running* station built from invented numbers. Use it to check layout, never as
+evidence about scale.
 
 Confirmed: `degC` for 479 temperature points, `Hz` for 14 (six bays sense 50.0 Hz at the
 breaker), `percent` for 28 valve positions clustered at the end stops, and unitless for the
