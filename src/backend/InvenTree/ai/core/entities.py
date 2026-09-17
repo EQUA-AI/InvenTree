@@ -42,13 +42,13 @@ _MAX_UNOBSERVED_ROOTS = 3
 
 
 def build_entity_manifest(
-    *, canonical: dict[str, Any], record_roots: Any = (), observed_ids: Any = None
+    *, canonical: dict[str, Any], record_roots: Any = (), observed_entities: Any = None
 ) -> list[dict[str, Any]]:
     """Build the deduplicated, bounded manifest for one terminal turn.
 
     Sources, in trust order: server-resolved diagnostic record roots, then
     validated canonical evidence entries. Free text never contributes.
-    ``observed_ids`` (identifier strings some tool actually returned) keeps
+    ``observed_entities`` (model/ID pairs some tool actually returned) keeps
     root chips to records the turn actually touched; without it, roots only
     qualify when the root set itself is small.
     """
@@ -56,9 +56,17 @@ def build_entity_manifest(
     seen: set[tuple[str, int]] = set()
 
     roots = list(record_roots or ())
-    observed = {str(value) for value in (observed_ids or ())}
-    if observed:
-        roots = [root for root in roots if str(getattr(root, "entity_id", "")) in observed]
+    if observed_entities is not None:
+        observed = set(observed_entities)
+        roots = [
+            root
+            for root in roots
+            if (
+                SERVER_MODEL_MAP.get(str(getattr(root, "entity_type", "")).lower()),
+                getattr(root, "entity_id", None),
+            )
+            in observed
+        ]
     elif len(roots) > _MAX_UNOBSERVED_ROOTS:
         roots = []
 

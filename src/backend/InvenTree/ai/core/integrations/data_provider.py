@@ -64,7 +64,9 @@ class InventoryProvider(Protocol):
         """Get all suppliers."""
         ...
 
-    async def get_supplier_parts(self, part_id: int) -> list[dict[str, Any]]:
+    async def get_supplier_parts(
+        self, part_id: int | None = None, *, supplier_id: int | None = None
+    ) -> list[dict[str, Any]]:
         """Get supplier information for a part."""
         ...
 
@@ -219,9 +221,11 @@ class DemoDataProviderAsync:
         """Get all suppliers."""
         return self._provider.get_suppliers()
 
-    async def get_supplier_parts(self, part_id: int) -> list[dict[str, Any]]:
+    async def get_supplier_parts(
+        self, part_id: int | None = None, *, supplier_id: int | None = None
+    ) -> list[dict[str, Any]]:
         """Get supplier parts."""
-        return self._provider.get_supplier_parts(part_id)
+        return self._provider.get_supplier_parts(part_id=part_id, supplier_id=supplier_id)
 
     async def get_low_stock_parts(self, threshold: float | None = None) -> list[dict[str, Any]]:
         """Get low stock parts."""
@@ -434,9 +438,11 @@ class LiveDataProviderAsync:
         """Get all suppliers via API."""
         return await self._client.list_suppliers()
 
-    async def get_supplier_parts(self, part_id: int) -> list[dict[str, Any]]:
+    async def get_supplier_parts(
+        self, part_id: int | None = None, *, supplier_id: int | None = None
+    ) -> list[dict[str, Any]]:
         """Get supplier parts via API."""
-        return await self._client.get_supplier_parts(part_id)
+        return await self._client.get_supplier_parts(part_id=part_id, supplier_id=supplier_id)
 
     async def get_low_stock_parts(self, threshold: float | None = None) -> list[dict[str, Any]]:
         """Get low stock parts via API."""
@@ -477,7 +483,7 @@ class LiveDataProviderAsync:
             pricing["internal_price"] = part.get("pricing_data", {})
 
         if include_supplier_prices:
-            supplier_parts = await self._client.get_supplier_parts(part_id)
+            supplier_parts = await self._client.get_supplier_parts(part_id=part_id)
             pricing["supplier_prices"] = [
                 {
                     "supplier": sp.get("supplier_name", "Unknown"),

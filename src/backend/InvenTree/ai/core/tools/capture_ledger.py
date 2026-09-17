@@ -63,6 +63,7 @@ class ToolCaptureLedger:
     captures: list[dict[str, Any]] = field(default_factory=list)
     total_bytes: int = 0
     observed: set[str] = field(default_factory=set)
+    entity_refs: set[tuple[str, int]] = field(default_factory=set)
     #: S5: the INTERNAL half of each retrieval envelope (authorization scope
     #: hash, raw client codes) — server-only coordinates that must never
     #: transit the model payload. Evidence records and telemetry read them
@@ -95,6 +96,7 @@ class ToolCaptureLedger:
             capture["machine_candidates"] = machine_candidates
         self.captures.append(capture)
         _harvest_observed(payload, self.observed, depth=0)
+        _harvest_entity_refs(payload, self.entity_refs, depth=0)
 
     def manuals_citations(self) -> list[dict[str, Any]]:
         """Every captured manuals citation dict, in call order."""
@@ -106,6 +108,10 @@ class ToolCaptureLedger:
     def observed_values(self) -> frozenset[str]:
         """Identifier-like strings some tool actually returned this turn."""
         return frozenset(self.observed)
+
+    def observed_entity_refs(self) -> frozenset[tuple[str, int]]:
+        """Typed record identities; generic IDs cannot establish a machine observation."""
+        return frozenset(self.entity_refs)
 
     def manuals_machine_candidates(self) -> list[dict[str, Any]]:
         """Return the first captured ambiguous manual-machine option set."""
@@ -213,6 +219,37 @@ def _manuals_machine_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]
             "serial": str(candidate.get("serial") or "")[:255],
         })
     return result if len(result) >= 2 else []
+
+
+_ENTITY_ID_KEYS = {
+    "machine_id": "assetmachine",
+    "work_order_id": "workorder",
+    "repair_packet_id": "repairpacket",
+    "packet_id": "repairpacket",
+}
+
+
+def _harvest_entity_refs(value: Any, into: set[tuple[str, int]], *, depth: int) -> None:
+    """Keep model identity beside IDs; supplier/part primary keys are not machines."""
+    if len(into) >= _MAX_OBSERVED_VALUES or depth > _MAX_HARVEST_DEPTH:
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if len(into) >= _MAX_OBSERVED_VALUES:
+                break
+            model = _ENTITY_ID_KEYS.get(key)
+            if model and type(item) in (int, str):
+                try:
+                    pk = int(item)
+                except (ValueError, OverflowError):
+                    continue
+                if pk > 0:
+                    into.add((model, pk))
+            else:
+                _harvest_entity_refs(item, into, depth=depth + 1)
+    elif isinstance(value, list):
+        for item in value[:100]:
+            _harvest_entity_refs(item, into, depth=depth + 1)
 
 
 def _harvest_observed(value: Any, into: set[str], *, depth: int) -> None:

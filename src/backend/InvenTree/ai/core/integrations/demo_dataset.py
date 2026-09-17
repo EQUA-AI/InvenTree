@@ -416,13 +416,17 @@ class DemoDatasetProvider:
         """Get companies that are suppliers."""
         return [company for company in self.get_companies() if company.get("is_supplier")]
 
-    def get_supplier_parts(self, part_id: int) -> list[dict[str, Any]]:
+    def get_supplier_parts(
+        self, part_id: int | None = None, *, supplier_id: int | None = None
+    ) -> list[dict[str, Any]]:
         """Get supplier information for a part."""
         supplier_parts = self.data.get("company_supplierpart", [])
 
         result = []
         for sp in supplier_parts:
-            if sp.get("part") == part_id:
+            if (part_id is None or sp.get("part") == part_id) and (
+                supplier_id is None or sp.get("supplier") == supplier_id
+            ):
                 supplier = next(
                     (c for c in self.get_companies() if c.get("pk") == sp.get("supplier")), None
                 )

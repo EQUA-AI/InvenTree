@@ -78,8 +78,10 @@ class TestBuildEntityManifest:
 
     def test_dedupe_and_bound(self) -> None:
         roots = [_root(entity_id=44)] * 3 + [_root(entity_id=index) for index in range(1, 30)]
-        observed = {str(root.entity_id) for root in roots}
-        entities = build_entity_manifest(canonical={}, record_roots=roots, observed_ids=observed)
+        observed = {("assetmachine", root.entity_id) for root in roots}
+        entities = build_entity_manifest(
+            canonical={}, record_roots=roots, observed_entities=observed
+        )
         assert len(entities) == MAX_ENTITIES
         assert len({(e["model"], e["pk"]) for e in entities}) == MAX_ENTITIES
 
@@ -97,7 +99,7 @@ class TestBuildEntityManifest:
         """Only machines a tool actually returned become chips."""
         roots = [_root(entity_id=index) for index in range(1, 13)]
         entities = build_entity_manifest(
-            canonical={}, record_roots=roots, observed_ids={"7", "TC-INF-PS1-001"}
+            canonical={}, record_roots=roots, observed_entities={("assetmachine", 7)}
         )
         assert [e["pk"] for e in entities] == [7]
 
@@ -177,3 +179,81 @@ class TestTurnSeam:
             for event in terminal["canonical_result"]["events"]
             if event.get("kind") == "entity_manifest"
         ]
+
+
+class TestTypedObservations:
+    """Tool identifiers cannot cross model boundaries when selecting chips."""
+
+    def test_part_and_supplier_ids_do_not_select_machine_roots(self):
+        from ai.core.tools.capture_ledger import ToolCaptureLedger
+
+        ledger = ToolCaptureLedger()
+        ledger.record("get_suppliers", [{"pk": 7, "name": "Parts vendor"}])
+        ledger.record("get_part", {"pk": 44, "part_id": 9, "name": "Filter"})
+        assert {"7", "44", "9"}.issubset(ledger.observed_values())
+        assert (
+            build_entity_manifest(
+                canonical={},
+                record_roots=[_root(entity_id=7), _root(entity_id=44)],
+                observed_entities=ledger.observed_entity_refs(),
+            )
+            == []
+        )
+
+    def test_nested_machine_and_work_order_ids_keep_their_types(self):
+        from ai.core.tools.capture_ledger import ToolCaptureLedger
+
+        ledger = ToolCaptureLedger()
+        ledger.record(
+            "get_work_order_overview",
+            {
+                "identity": {"work_order_id": 7},
+                "machine": {"machine_id": 44},
+                "parts": [{"pk": 8}],
+            },
+        )
+        roots = [
+            _root(entity_id=7),
+            _root(entity_id=44),
+            _root(entity_type="work_order", entity_id=7),
+            _root(entity_type="work_order", entity_id=44),
+        ]
+        entities = build_entity_manifest(
+            canonical={},
+            record_roots=roots,
+            observed_entities=ledger.observed_entity_refs(),
+        )
+        assert {(e["model"], e["pk"]) for e in entities} == {
+            ("assetmachine", 44),
+            ("workorder", 7),
+        }
+
+    def test_invalid_entity_ids_and_free_text_are_ignored(self):
+        from ai.core.tools.capture_ledger import ToolCaptureLedger
+
+        ledger = ToolCaptureLedger()
+        ledger.record(
+            "search_machines",
+            {
+                "machines": [
+                    {"machine_id": True},
+                    {"machine_id": -2},
+                    {"machine_id": "bad"},
+                    {"machine_id": 4.5},
+                    {"machine_id": "44"},
+                ],
+                "message": "machine_id: 9",
+            },
+        )
+        assert ledger.observed_entity_refs() == frozenset({("assetmachine", 44)})
+
+    def test_entity_observations_are_bounded(self):
+        from ai.core.tools.capture_ledger import ToolCaptureLedger
+
+        ledger = ToolCaptureLedger()
+        for batch in range(10):
+            ledger.record(
+                "search_machines",
+                {"machines": [{"machine_id": batch * 100 + n + 1} for n in range(100)]},
+            )
+        assert len(ledger.observed_entity_refs()) == 500

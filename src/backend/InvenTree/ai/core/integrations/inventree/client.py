@@ -1216,7 +1216,8 @@ class InvenTreeClient:
             List of BOM items where this part is used.
         """
         params: dict[str, Any] = {
-            "sub_part": part_id,
+            "uses": part_id,
+            "part_detail": "true",
             "limit": limit,
         }
 

@@ -95,6 +95,15 @@ class DetailParamTests(SimpleTestCase):
         ):
             self.assertEqual(params.get(key), "true", key)
 
+    def test_reverse_bom_uses_supported_component_filter(self):
+        """BomFilter accepts uses; sub_part is silently ignored by the API."""
+        client, transport = _client()
+        asyncio.run(client.get_where_used(1081))
+        params = transport.requests[0]["params"]
+        self.assertEqual(params["uses"], 1081)
+        self.assertEqual(params["part_detail"], "true")
+        self.assertNotIn("sub_part", params)
+
     def test_bom_requests_sub_part_detail(self):
         """routing.py and tools.py read sub_part_detail from BOM rows."""
         client, transport = _client()

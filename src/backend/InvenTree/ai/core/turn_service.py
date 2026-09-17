@@ -527,7 +527,9 @@ class NormalizedTurnService:
             entities = build_entity_manifest(
                 canonical=canonical,
                 record_roots=getattr(diagnostic_context, "record_roots", ()),
-                observed_ids=ledger.observed_values() if ledger is not None else None,
+                observed_entities=ledger.observed_entity_refs()
+                if ledger is not None and ledger.captures
+                else None,
             )
             if not entities:
                 return canonical

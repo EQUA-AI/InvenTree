@@ -61,7 +61,7 @@ async def get_where_used(
     for item in bom_items:
         parent_id = item.get("part")
         if parent_id:
-            parent_part = await provider.get_part(parent_id)
+            parent_part = item.get("part_detail") or await provider.get_part(parent_id)
             if parent_part:
                 item["part_name"] = parent_part.get("name")
                 item["part_ipn"] = parent_part.get("IPN")
@@ -229,7 +229,7 @@ async def get_suppliers(
         supplier_id = supplier.get("pk")
         if supplier_id:
             try:
-                parts = await provider.get_supplier_parts(supplier_id)
+                parts = await provider.get_supplier_parts(supplier_id=supplier_id)
                 supplier["parts_count"] = len(parts) if parts else 0
             except Exception:
                 supplier["parts_count"] = 0
@@ -299,22 +299,9 @@ async def get_supplier_parts(
 
     logger.info(f"Getting supplier parts, part_id={part_id}, supplier_id={supplier_id}")
 
-    if part_id is not None:
-        supplier_parts = await provider.get_supplier_parts(part_id)
-    elif supplier_id is not None:
-        # Get all parts and filter by supplier
-        # Note: This may need optimization for large datasets
-        all_parts = await provider.search_parts(limit=500)
-        supplier_parts = []
-        for part in all_parts:
-            pid = part.get("pk")
-            if pid:
-                sp_list = await provider.get_supplier_parts(pid)
-                for sp in sp_list:
-                    if sp.get("supplier") == supplier_id:
-                        supplier_parts.append(sp)
-    else:
+    if part_id is None and supplier_id is None:
         raise ValueError("Either part_id or supplier_id must be provided")
+    supplier_parts = await provider.get_supplier_parts(part_id=part_id, supplier_id=supplier_id)
 
     # Enrich with part and supplier names
     for sp in supplier_parts:
