@@ -2,6 +2,6 @@
   <path d="M20 30v115h120V30M25 115q15-10 30 0t30 0t30 0t20 0"/>
   <path d="M140 125h95V70h330M235 125h330"/>
   <path d="m550 60 15 10-15 10M300 70v55M420 70v55"/>
-  <g id="forebay" data-point="/sl"/>
+  <g id="forebay" data-point="/dex/COMMAN_FORBAY_LEVEL"/>
   <g id="station-status" data-point="/st"/>
 </svg>

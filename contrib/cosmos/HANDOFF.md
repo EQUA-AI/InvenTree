@@ -183,6 +183,36 @@ python src/backend/InvenTree/manage.py validate_pumphouse_layout --station STATI
 The strict command fails on provisional review, SVG/JSON drift, or a drawn pointer without
 approval. Run it for every station; omit `--station` to check the entire registered estate.
 
+### Status: what the reviewed dictionary changed
+
+The drawing was written against 25 approved points. There are now 581, across **59
+approved families** - every motor core RTD, winding, cooling water inlet and outlet,
+hot and cold air temperature, both valve positions, frequency, power factor and
+motor on/off status, each repeated per bay. All of it is currently *not drawn*.
+
+More urgently, **three of the five drawn elements pointed at points the review could
+not approve**, which is what fails strict validation:
+
+| Element | Pointer | State |
+|---|---|---|
+| `forebay` | was `/sl` | **Fixed** - repointed to `/dex/COMMAN_FORBAY_LEVEL`, which is approved in `m`. The two are bit-identical across all four samples, so this draws the reviewed point rather than merging two levels. It now resolves: 132.11 m, quality good. |
+| `station-status` | `/st` | approved |
+| `pump-status` | `/pd/{pump}/st` | approved |
+| `pump-power` | `/pd/{pump}/pmw` | **blocked** - unresolved, no catalogue parameter |
+| `pump-flow` | `/pd/{pump}/dv` | **blocked** - unresolved, no catalogue parameter |
+
+`pump-power` and `pump-flow` have no approved equivalent to point at. The nearest,
+`/dex/PUMP{n}_ACTIVE_POWER`, is still draft because kW and MW cannot be told apart
+from a shut-down plant. Both elements were left in place rather than deleted: they
+record intent, and `totals.power` and `totals.flow` correctly report `null` with
+`reason: incomplete` rather than inventing a sum. They will resolve once a running
+snapshot settles the power unit, or once a reviewed alias maps `pmw`/`dv` onto a
+catalogue parameter.
+
+So the ordering for the rest of section 4 is: get the running snapshot, then place
+the 59 approved families on the drawing. Placing them first would mean laying out a
+diagram whose two headline numbers are still blank.
+
 ## 5. Activate and measure
 
 ```bash
