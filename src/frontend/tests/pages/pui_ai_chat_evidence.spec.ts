@@ -503,7 +503,10 @@ test('progress stages never leak into the final answer or storage', async ({
   await expect(page.getByTestId('analysis-progress')).toHaveCount(0);
   // ...and never persisted.
   const stored = await page.evaluate(() =>
-    localStorage.getItem('ai-chat-threads')
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('aimms.chat.index:v2:'))
+      .map((key) => localStorage.getItem(key))
+      .join('')
   );
   expect(stored ?? '').not.toContain('progressStage');
   expect(stored ?? '').not.toContain('reviewing_records');

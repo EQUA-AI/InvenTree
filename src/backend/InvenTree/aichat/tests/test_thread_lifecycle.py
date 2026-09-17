@@ -40,17 +40,28 @@ class ThreadLifecycleTests(TestCase):
 
     def add_messages(self, count):
         """Create an ordered transcript without invoking the model pipeline."""
-        ChatMessage.objects.bulk_create(
-            [
-                ChatMessage(
-                    thread=self.thread,
-                    sequence=index,
-                    role=MessageRole.USER,
-                    content=f'Turn {index}',
-                )
-                for index in range(1, count + 1)
-            ]
-        )
+        ChatMessage.objects.bulk_create([
+            ChatMessage(
+                thread=self.thread,
+                sequence=index,
+                role=MessageRole.USER,
+                content=f'Turn {index}',
+            )
+            for index in range(1, count + 1)
+        ])
+
+    def test_cache_context_tracks_current_clients_without_disclosing_them(self):
+        """Grant changes invalidate browser state; order does not change the tag."""
+        with mock.patch(
+            'tasks.scope.client_codes_for_actor', return_value={'alpha', 'beta'}
+        ):
+            first = self.repo.cache_context()
+            self.assertEqual(first, self.repo.cache_context())
+            self.assertNotEqual(first, self.other_repo.cache_context())
+        with mock.patch('tasks.scope.client_codes_for_actor', return_value={'beta'}):
+            self.assertNotEqual(first, self.repo.cache_context())
+        self.assertRegex(first, r'^[a-f0-9]{64}$')
+        self.assertNotIn('alpha', first)
 
     def test_message_pages_are_bounded_chronological_and_do_not_overlap(self):
         """Enforce the database limit and recover each sequence exactly once."""

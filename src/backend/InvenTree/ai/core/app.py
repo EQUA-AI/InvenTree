@@ -181,6 +181,7 @@ class ThreadSyncResponse(BaseModel):
     sync_token: str | None = None
     has_more: bool = False
     next_cursor: str | None = None
+    cache_context: str | None = None
     # S32b: read-only threads granted to the caller (empty when the
     # feature is dark, so the response shape is always stable).
     shared_threads: list[ThreadInfo] = []
@@ -967,7 +968,7 @@ async def list_threads(
             active_scope=repository.scope_summary(thread),
         )
 
-    def materialize() -> tuple[list[ThreadInfo], str | None, list[ThreadInfo]]:
+    def materialize() -> tuple[list[ThreadInfo], str | None, list[ThreadInfo], str]:
         """Materialize."""
         selected, next_cursor = repository.list_page(limit=limit, cursor=cursor, query=q or "")
         result = [_info(thread) for thread in selected]
@@ -975,10 +976,10 @@ async def list_threads(
         # [] whenever the feature is dark. The search box intentionally
         # does not search shared transcripts.
         shared = [] if q else [_info(thread, shared=True) for thread in repository.list_shared()]
-        return result, next_cursor, shared
+        return result, next_cursor, shared, repository.cache_context()
 
     try:
-        threads, next_cursor, shared_threads = await sync_to_async(
+        threads, next_cursor, shared_threads, cache_context = await sync_to_async(
             materialize, thread_sensitive=True
         )()
     except InvalidBoundary:
@@ -988,6 +989,7 @@ async def list_threads(
         sync_token=None,
         has_more=next_cursor is not None,
         next_cursor=next_cursor,
+        cache_context=cache_context,
         shared_threads=shared_threads,
         capabilities={
             "agui": bool(getattr(get_settings(), "feature_agui_endpoint", False)),

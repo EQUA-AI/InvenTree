@@ -293,14 +293,14 @@ test('memory affordance appears on owned persisted rows only, never on shared or
 
   await expect(
     page.getByText('Legacy local conversation', { exact: true })
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByLabel('memory-ai-chat-thread-legacy-local-only')
   ).toHaveCount(0);
-  // The row is otherwise a normal owned row (rename/delete stay).
+  // Unscoped legacy browser history is never treated as an owned server row.
   await expect(
     page.getByLabel('delete-ai-chat-thread-legacy-local-only')
-  ).toBeVisible();
+  ).toHaveCount(0);
 });
 
 test('memory modal fetches the body and renders it as a summary, not verified data', async ({
@@ -707,9 +707,12 @@ async function expectLiveDisclosure(page: Page, degraded: string | null) {
   await expect(page.getByText('LEAKED-LIVE-TEXT')).toHaveCount(0);
   await expect(page.getByText('LEAKED-LIVE-ITEM')).toHaveCount(0);
   expect(await disclosure.innerHTML()).not.toContain('LEAKED');
-  // The allow-listed record is what reaches React state and storage.
+  // The disclosure is transient; the browser index stores no message record.
   const stored = await page.evaluate(() =>
-    localStorage.getItem('ai-chat-threads')
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('aimms.chat.index:v2:'))
+      .map((key) => localStorage.getItem(key))
+      .join('')
   );
   expect(stored ?? '').not.toContain('LEAKED');
 }

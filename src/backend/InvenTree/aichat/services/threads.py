@@ -234,6 +234,35 @@ class ThreadRepository:
         # resolve to this method, which shadows the builtin in the class body.
         return list(self._threads())
 
+    def cache_context(self) -> str:
+        """Opaque change detector for browser state, never an access credential.
+
+        Resolve current client grants on each sync. The browser can discard
+        previous content when entitlements change without receiving client codes.
+        All repository reads still perform their ordinary authorization.
+        """
+        from django.contrib.auth import get_user_model
+        from django.utils.crypto import salted_hmac
+
+        from tasks.scope import ScopeError, client_codes_for_actor
+
+        actor = (
+            get_user_model().objects.filter(pk=self.actor_id, is_active=True).first()
+        )
+        try:
+            clients = sorted(client_codes_for_actor(actor))
+        except ScopeError:
+            clients = []
+        value = json.dumps([
+            str(self.actor_id),
+            self.scope_hash,
+            self.namespace,
+            clients,
+        ])
+        return salted_hmac(
+            'aichat.browser-cache-context', value, algorithm='sha256'
+        ).hexdigest()
+
     def search(self, query: str, *, limit: int = 50) -> builtins.list[ChatThread]:
         """Search titles and message content within the complete boundary (S20).
 

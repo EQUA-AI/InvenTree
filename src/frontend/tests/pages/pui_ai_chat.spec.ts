@@ -51,7 +51,7 @@ test('typed chat uses authoritative server history and renders ordered AG-UI eve
   await page.getByLabel('select-ai-chat-thread').click();
   await expect(
     page.getByText('Legacy local conversation', { exact: true })
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page.getByLabel('select-ai-chat-thread').click();
 
   await page.getByPlaceholder('Type a message...').fill('Inspect the pump');
@@ -105,18 +105,22 @@ test('typed chat uses authoritative server history and renders ordered AG-UI eve
   expect(new URL(listRequest!.url).searchParams.has('user_id')).toBe(false);
   expect(listRequest?.headers['x-user-id']).toBeUndefined();
 
-  const stored = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('ai-chat-threads') || '[]')
+  const indices = await page.evaluate(() =>
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('aimms.chat.index:v2:'))
+      .map((key) => JSON.parse(localStorage.getItem(key)!))
   );
-  const durable = stored.find((thread: any) => thread.id === threadId);
-  expect(
-    durable.messages.some(
-      (message: any) => message.content === 'Durable server history'
-    )
-  ).toBe(true);
-  expect(stored.some((thread: any) => thread.id === 'legacy-local-only')).toBe(
-    true
+  const durable = indices
+    .flatMap((index) => index.threads)
+    .find((thread) => thread.id === threadId);
+  expect(durable).toBeDefined();
+  expect(durable).not.toHaveProperty('messages');
+  expect(JSON.stringify(indices)).not.toContain('Golden typed response');
+  // The unresolved legacy archive is preserved, but not admitted to live chat.
+  const legacy = await page.evaluate(() =>
+    localStorage.getItem('ai-chat-threads')
   );
+  expect(legacy).toContain('Local-only compatible history');
 });
 
 test('tool activity strip shows the completed duration', async ({
@@ -502,7 +506,7 @@ test('typed chat reuses its idempotency key and removes partial output on retry'
   }
 });
 
-test('typed chat cancellation is visible and durably retained locally', async ({
+test('typed chat cancellation is visible without persisting transcript bodies', async ({
   browser
 }) => {
   const page = await doCachedLogin(browser);
@@ -542,21 +546,14 @@ test('typed chat cancellation is visible and durably retained locally', async ({
     page.getByText('(Message cancelled)', { exact: true })
   ).toBeVisible();
 
-  const storedMessages = await page.evaluate(
-    ({ durableThreadId }) => {
-      const threads = JSON.parse(
-        localStorage.getItem('ai-chat-threads') || '[]'
-      );
-      return threads.find((thread: any) => thread.id === durableThreadId)
-        ?.messages;
-    },
-    { durableThreadId: threadId }
+  const storedIndices = await page.evaluate(() =>
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('aimms.chat.index:v2:'))
+      .map((key) => localStorage.getItem(key))
+      .join('')
   );
-  expect(
-    storedMessages.some(
-      (message: any) => message.content === '(Message cancelled)'
-    )
-  ).toBe(true);
+  expect(storedIndices).not.toContain('(Message cancelled)');
+  expect(storedIndices).not.toContain('"messages"');
 
   releaseRoute?.();
 });

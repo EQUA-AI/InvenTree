@@ -3,6 +3,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../App';
 import type { ThreadDeleteResult } from '../components/aichat/threadDeletion';
 import { getCsrfCookie } from '../functions/auth';
+import {
+  chatIndexKey,
+  readChatIndex,
+  writeChatIndex
+} from '../functions/chatThreadCache';
 import { useAIChatState } from '../states/AIChatState';
 import { useLocalState } from '../states/LocalState';
 import { useUserState } from '../states/UserState';
@@ -458,9 +463,10 @@ export interface ChatThread {
 }
 
 /**
- * Serializable thread for storage
+ * In-memory thread state; browser persistence projects metadata only.
  */
 interface StoredThread {
+  cachedAt?: number;
   id: string;
   title: string;
   messages: ChatMessage[];
@@ -493,18 +499,12 @@ interface ThreadSyncResponse {
   sync_token: string | null;
   has_more: boolean;
   next_cursor?: string | null;
+  cache_context?: string | null;
   /** S32b: read-only threads granted to the caller ([] when dark). */
   shared_threads?: ThreadInfo[];
   /** S49: server capability advertisement (absent on older backends). */
   capabilities?: Record<string, boolean>;
 }
-
-/**
- * S50: the last capabilities advertisement seen on /threads. Module scope by
- * design — the flag is server-global, and the auto wire selection must work
- * before any particular hook instance re-fetches.
- */
-let lastServerCapabilities: Record<string, boolean> = {};
 
 /**
  * Server message format
@@ -556,31 +556,6 @@ Be concise, helpful, and proactive in suggesting actions.`,
   maxTokens: 2048
 };
 
-const STORAGE_KEY = 'ai-chat-threads';
-
-/**
- * Load threads from localStorage
- */
-function loadStoredThreads(): StoredThread[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Save threads to localStorage
- */
-function saveStoredThreads(threads: StoredThread[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(threads));
-  } catch {
-    console.error('Failed to save chat threads to localStorage');
-  }
-}
-
 /**
  * Fetch threads from server
  */
@@ -610,9 +585,6 @@ async function fetchServerThreads(
     }
 
     const data = (await response.json()) as ThreadSyncResponse;
-    if (data.capabilities && typeof data.capabilities === 'object') {
-      lastServerCapabilities = data.capabilities;
-    }
     return data;
   } catch (error) {
     console.error('Error fetching server threads:', error);
@@ -625,7 +597,10 @@ async function fetchServerThreads(
  * (`aimms.wire`), else auto — agui iff the server advertised it on the last
  * /threads sync. `sessionDisabled` is the mid-session 404/405 fallback latch.
  */
-function wirePreference(sessionDisabled: boolean): 'agui' | 'legacy' {
+function wirePreference(
+  sessionDisabled: boolean,
+  capabilities: Record<string, boolean>
+): 'agui' | 'legacy' {
   // The 404/405 latch wins even over a forced 'agui' — otherwise a forced
   // preference against a flag-off server probes /agui once per send.
   if (sessionDisabled) return 'legacy';
@@ -635,7 +610,7 @@ function wirePreference(sessionDisabled: boolean): 'agui' | 'legacy' {
   } catch {
     // Storage unavailable (private mode) — fall through to auto.
   }
-  return lastServerCapabilities.agui === true ? 'agui' : 'legacy';
+  return capabilities.agui === true ? 'agui' : 'legacy';
 }
 
 /**
@@ -945,9 +920,40 @@ export function useAIChat(config: AIChatConfig = {}) {
   const isLoggedIn = user.isLoggedIn();
   const backendHost = useLocalState((state) => state.getHost());
 
-  // State for stored threads (persisted to localStorage)
-  const [storedThreads, setStoredThreads] =
-    useState<StoredThread[]>(loadStoredThreads);
+  const generation = useAIChatState((state) => state.sessionGeneration);
+  const cacheKey = chatIndexKey(backendHost, user.userId());
+  const sessionAliveRef = useRef(true);
+  const [initialIndex] = useState(() => readChatIndex(cacheKey));
+  const cacheContextRef = useRef(initialIndex.context);
+  const capabilitiesRef = useRef<Record<string, boolean>>({});
+  const sessionIsCurrent = useCallback(() => {
+    const currentUser = useUserState.getState();
+    return (
+      sessionAliveRef.current &&
+      currentUser.isLoggedIn() &&
+      generation === useAIChatState.getState().sessionGeneration &&
+      cacheKey ===
+        chatIndexKey(useLocalState.getState().getHost(), currentUser.userId())
+    );
+  }, [cacheKey, generation]);
+  const saveStoredThreads = useCallback(
+    (rows: StoredThread[]) => {
+      if (sessionIsCurrent())
+        writeChatIndex(cacheKey, rows, cacheContextRef.current);
+    },
+    [cacheKey, sessionIsCurrent]
+  );
+
+  // Cached ids can seed a resume request, but cached titles/messages never
+  // render before a current server read. Unsaved conversations live in RAM.
+  const [storedThreads, setStoredThreads] = useState<StoredThread[]>(() =>
+    initialIndex.threads.map((row) => ({
+      ...row,
+      title: '',
+      messages: [],
+      isPersisted: true
+    }))
+  );
 
   // S32b: read-only threads granted by other users. Server-only state —
   // never written to localStorage, so a revocation takes effect on the
@@ -964,9 +970,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     null
   );
   const activeScopeVersionRef = useRef<number | null>(null);
-  const [scopeCapable, setScopeCapable] = useState<boolean>(() =>
-    Boolean(lastServerCapabilities.thread_scope)
-  );
+  const [scopeCapable, setScopeCapable] = useState(false);
   // S1: a send bounced on scope_version_conflict; the bounced turn is kept
   // for one-click resend once the refreshed scope has been reviewed.
   const [scopeConflict, setScopeConflict] = useState(false);
@@ -1012,23 +1016,10 @@ export function useAIChat(config: AIChatConfig = {}) {
     [applyScopeState]
   );
 
-  const [activeThreadId, setActiveThreadId] = useState<string>(() => {
-    // Initialize with the most recent thread or create a new one
-    const threads = loadStoredThreads();
-    if (threads.length > 0) {
-      return threads[0].id;
-    }
-    return generateThreadId();
-  });
-
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    // Load messages from active thread
-    const threads = loadStoredThreads();
-    const activeThread = threads.find(
-      (t: StoredThread) => t.id === activeThreadId
-    );
-    return activeThread?.messages || [];
-  });
+  const [activeThreadId, setActiveThreadId] = useState<string>(
+    () => initialIndex.threads[0]?.id ?? generateThreadId()
+  );
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1047,6 +1038,7 @@ export function useAIChat(config: AIChatConfig = {}) {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const syncInProgressRef = useRef(false);
+  const syncRunRef = useRef(0);
   // S50: latched when /agui answers 404/405 mid-session — the rest of the
   // session stays on the legacy wire without further probing.
   const aguiDisabledRef = useRef(false);
@@ -1065,6 +1057,20 @@ export function useAIChat(config: AIChatConfig = {}) {
   storedThreadsRef.current = storedThreads;
   activeThreadIdRef.current = activeThreadId;
 
+  useEffect(() => {
+    sessionAliveRef.current = true;
+    return () => {
+      sessionAliveRef.current = false;
+      selectionVersionRef.current += 1;
+      threadListVersionRef.current += 1;
+      earlierRequestRef.current += 1;
+      syncRunRef.current += 1;
+      syncInProgressRef.current = false;
+      abortControllerRef.current?.abort();
+      storedThreadsRef.current = [];
+    };
+  }, []);
+
   // Get absolute chat and API URLs from the configured Django backend.
   const chatEndpoint = resolveBackendUrl(
     mergedConfig.endpoint || DEFAULT_CONFIG.endpoint!,
@@ -1079,6 +1085,7 @@ export function useAIChat(config: AIChatConfig = {}) {
   const syncThreads = useCallback(async () => {
     if (
       syncInProgressRef.current ||
+      !sessionIsCurrent() ||
       !isLoggedIn ||
       abortControllerRef.current
     ) {
@@ -1086,6 +1093,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     }
 
     syncInProgressRef.current = true;
+    const syncRun = ++syncRunRef.current;
     setIsSyncing(true);
     const selectionVersion = selectionVersionRef.current;
     const listVersion = ++threadListVersionRef.current;
@@ -1095,12 +1103,26 @@ export function useAIChat(config: AIChatConfig = {}) {
 
       if (
         !serverData ||
+        !sessionIsCurrent() ||
         selectionVersion !== selectionVersionRef.current ||
         listVersion !== threadListVersionRef.current
       ) {
         return;
       }
 
+      // A client-entitlement change clears transcripts and local drafts before
+      // publishing the new listing. This opaque tag is not authorization.
+      const context = serverData.cache_context ?? null;
+      if (
+        cacheContextRef.current &&
+        context &&
+        cacheContextRef.current !== context
+      ) {
+        useAIChatState.getState().resetSession();
+        return;
+      }
+      cacheContextRef.current = context;
+      capabilitiesRef.current = serverData.capabilities ?? {};
       // S1: the capability advertisement gates the whole scope feature.
       setScopeCapable(Boolean(serverData.capabilities?.thread_scope));
       setThreadCursor(serverData.next_cursor ?? null);
@@ -1132,11 +1154,12 @@ export function useAIChat(config: AIChatConfig = {}) {
           messages: [],
           createdAt: serverThread.created_at || new Date().toISOString(),
           updatedAt: serverThread.last_activity || new Date().toISOString(),
-          isPersisted: true
+          isPersisted: true,
+          cachedAt: Date.now()
         })
       );
 
-      // Preserve only genuinely local legacy conversations. Threads which
+      // Preserve only current-session unsaved conversations. Threads which
       // were previously known to be durable but disappeared from the server
       // are removed rather than resurrected from stale localStorage.
       for (const localThread of localThreads) {
@@ -1187,6 +1210,7 @@ export function useAIChat(config: AIChatConfig = {}) {
           aiHost
         );
         if (
+          !sessionIsCurrent() ||
           selectionVersion !== selectionVersionRef.current ||
           listVersion !== threadListVersionRef.current
         )
@@ -1203,7 +1227,8 @@ export function useAIChat(config: AIChatConfig = {}) {
                   title: serverThread.title || thread.title,
                   messages: serverThread.messages,
                   createdAt: serverThread.created_at || thread.createdAt,
-                  updatedAt: serverThread.updated_at || thread.updatedAt
+                  updatedAt: serverThread.updated_at || thread.updatedAt,
+                  cachedAt: Date.now()
                 }
               : thread
           );
@@ -1253,10 +1278,19 @@ export function useAIChat(config: AIChatConfig = {}) {
     } catch (error) {
       console.error('Error syncing threads:', error);
     } finally {
-      setIsSyncing(false);
-      syncInProgressRef.current = false;
+      if (syncRun === syncRunRef.current) {
+        setIsSyncing(false);
+        syncInProgressRef.current = false;
+      }
     }
-  }, [isLoggedIn, aiHost, applyScopeSummary, applyScopeState]);
+  }, [
+    isLoggedIn,
+    aiHost,
+    applyScopeSummary,
+    applyScopeState,
+    sessionIsCurrent,
+    saveStoredThreads
+  ]);
 
   /**
    * Load thread messages from server if not available locally
@@ -1266,6 +1300,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       const selectionVersion = selectionVersionRef.current;
       const serverData = await fetchServerThread(threadId, aiHost);
       if (
+        !sessionIsCurrent() ||
         selectionVersion !== selectionVersionRef.current ||
         activeThreadIdRef.current !== threadId
       )
@@ -1302,7 +1337,8 @@ export function useAIChat(config: AIChatConfig = {}) {
               messages: serverData.messages,
               title: serverData.title || updated[idx].title,
               createdAt: serverData.created_at || updated[idx].createdAt,
-              updatedAt: serverData.updated_at || updated[idx].updatedAt
+              updatedAt: serverData.updated_at || updated[idx].updatedAt,
+              cachedAt: Date.now()
             };
             saveStoredThreads(updated);
             storedThreadsRef.current = updated;
@@ -1317,7 +1353,8 @@ export function useAIChat(config: AIChatConfig = {}) {
                 messages: serverData.messages,
                 createdAt: serverData.created_at,
                 updatedAt: serverData.updated_at,
-                isPersisted: true
+                isPersisted: true,
+                cachedAt: Date.now()
               }
             ];
             storedThreadsRef.current = updated;
@@ -1330,44 +1367,31 @@ export function useAIChat(config: AIChatConfig = {}) {
       }
       return null;
     },
-    [aiHost, applyScopeSummary]
+    [aiHost, applyScopeSummary, sessionIsCurrent, saveStoredThreads]
   );
 
-  // Sync on mount and when user changes
+  // Revalidate on entry and when returning to the tab, including grant changes
+  // made elsewhere. Long-running turns keep ownership until they settle.
   useEffect(() => {
-    if (isLoggedIn) {
-      syncThreads();
-    }
-  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
+    void syncThreads();
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void syncThreads();
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [syncThreads]);
 
-  /**
-   * Get all threads sorted by most recent
-   */
-  // Re-arm only legacy local questions here. The single mount sync above
-  // restores persisted transcripts and their questions together; a second
-  // competing detail fetch could otherwise overwrite a newly started turn.
-  const mountFidelityRan = useRef(false);
-  useEffect(() => {
-    if (mountFidelityRan.current) return;
-    mountFidelityRan.current = true;
-    const active = storedThreadsRef.current.find(
-      (thread) => thread.id === activeThreadIdRef.current
-    );
-    if (active?.isPersisted) return;
-    const last = messages[messages.length - 1];
-    const expiresAt = last?.question?.expires_at;
-    const unexpired = !expiresAt || new Date(expiresAt) > new Date();
-    if (last?.question && unexpired) {
-      setPendingQuestion(last.question);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const threads: ChatThread[] = storedThreads.map((t: StoredThread) => ({
-    ...t,
-    createdAt: new Date(t.createdAt),
-    updatedAt: new Date(t.updatedAt)
-  }));
+  const threads: ChatThread[] = storedThreads
+    .filter((thread) => thread.title || thread.deletionPending)
+    .map((t: StoredThread) => ({
+      ...t,
+      createdAt: new Date(t.createdAt),
+      updatedAt: new Date(t.updatedAt)
+    }));
 
   /**
    * Search durable threads by title or message content (S20 A8).
@@ -1444,6 +1468,7 @@ export function useAIChat(config: AIChatConfig = {}) {
           messages: persistable,
           createdAt: prev[existingIndex]?.createdAt || now,
           updatedAt: now,
+          cachedAt: markPersisted ? Date.now() : prev[existingIndex]?.cachedAt,
           isPersisted:
             markPersisted || prev[existingIndex]?.isPersisted || false
         };
@@ -1465,7 +1490,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         return newThreads;
       });
     },
-    [activeThreadId]
+    [activeThreadId, saveStoredThreads]
   );
 
   /**
@@ -1636,7 +1661,8 @@ export function useAIChat(config: AIChatConfig = {}) {
               messages: [],
               createdAt: thread.created_at || new Date().toISOString(),
               updatedAt: thread.last_activity || new Date().toISOString(),
-              isPersisted: true
+              isPersisted: true,
+              cachedAt: Date.now()
             }))
         ];
         storedThreadsRef.current = next;
@@ -1648,14 +1674,14 @@ export function useAIChat(config: AIChatConfig = {}) {
       moreThreadsRequestRef.current = false;
       setLoadingMoreThreads(false);
     }
-  }, [aiHost, threadCursor]);
+  }, [aiHost, threadCursor, saveStoredThreads]);
 
   /**
    * Delete a thread (both locally and on server)
    */
   const deleteThread = useCallback(
     async (threadId: string): Promise<ThreadDeleteResult> => {
-      if (abortControllerRef.current) return 'error';
+      if (!sessionIsCurrent() || abortControllerRef.current) return 'error';
       threadListVersionRef.current += 1;
       const durable = storedThreadsRef.current.find(
         (thread) => thread.id === threadId
@@ -1663,6 +1689,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       const result = durable
         ? await deleteServerThread(threadId, aiHost)
         : 'deleted';
+      if (!sessionIsCurrent()) return 'error';
       if (result === 'error') return result;
 
       setStoredThreads((prev) => {
@@ -1671,7 +1698,12 @@ export function useAIChat(config: AIChatConfig = {}) {
             ? prev.filter((thread) => thread.id !== threadId)
             : prev.map((thread) =>
                 thread.id === threadId
-                  ? { ...thread, messages: [], deletionPending: true }
+                  ? {
+                      ...thread,
+                      messages: [],
+                      deletionPending: true,
+                      cachedAt: Date.now()
+                    }
                   : thread
               );
         saveStoredThreads(next);
@@ -1702,7 +1734,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       }
       return result;
     },
-    [aiHost, applyScopeState]
+    [aiHost, applyScopeState, sessionIsCurrent, saveStoredThreads]
   );
 
   /**
@@ -1710,7 +1742,8 @@ export function useAIChat(config: AIChatConfig = {}) {
    */
   const renameThread = useCallback(
     async (threadId: string, newTitle: string): Promise<boolean> => {
-      if (!newTitle.trim() || newTitle.length > 255) return false;
+      if (!sessionIsCurrent() || !newTitle.trim() || newTitle.length > 255)
+        return false;
       const durable = storedThreadsRef.current.find(
         (thread) => thread.id === threadId
       )?.isPersisted;
@@ -1721,10 +1754,16 @@ export function useAIChat(config: AIChatConfig = {}) {
         return false;
       }
 
+      if (!sessionIsCurrent()) return false;
       setStoredThreads((prev: StoredThread[]) => {
         const newThreads = prev.map((t: StoredThread) =>
           t.id === threadId
-            ? { ...t, title: newTitle, updatedAt: new Date().toISOString() }
+            ? {
+                ...t,
+                title: newTitle,
+                updatedAt: new Date().toISOString(),
+                cachedAt: Date.now()
+              }
             : t
         );
         saveStoredThreads(newThreads);
@@ -1733,7 +1772,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       });
       return true;
     },
-    [aiHost]
+    [aiHost, sessionIsCurrent, saveStoredThreads]
   );
 
   /**
@@ -1977,6 +2016,7 @@ export function useAIChat(config: AIChatConfig = {}) {
   const sendMessage = useCallback(
     async (userContent: string, fileIds?: string[]) => {
       if (
+        !sessionIsCurrent() ||
         !userContent.trim() ||
         isLoading ||
         abortControllerRef.current ||
@@ -2063,7 +2103,10 @@ export function useAIChat(config: AIChatConfig = {}) {
           // S50: wire selection — official client against /agui, or the
           // legacy hand-rolled SSE path (kept byte-for-byte as the escape
           // hatch and for servers that have not enabled the adapter).
-          let wire = wirePreference(aguiDisabledRef.current);
+          let wire = wirePreference(
+            aguiDisabledRef.current,
+            capabilitiesRef.current
+          );
 
           while (retryAttempt < retryConfig.maxAttempts) {
             try {
@@ -2938,6 +2981,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       attachEntities,
       saveCurrentThread,
       resetStreamingMessage,
+      sessionIsCurrent,
       chatEndpoint
     ]
   );

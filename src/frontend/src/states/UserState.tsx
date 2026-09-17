@@ -7,6 +7,7 @@ import { apiUrl } from '@lib/functions/Api';
 import type { UserProps, UserStateProps } from '@lib/types/User';
 import { api, setApiDefaults } from '../App';
 import { clearCsrfCookie } from '../functions/auth';
+import { useAIChatState } from './AIChatState';
 import { useServerApiState } from './ServerApiState';
 
 /**
@@ -16,6 +17,7 @@ export const useUserState = create<UserStateProps>((set, get) => ({
   user: undefined,
   is_authed: false,
   setAuthenticated: (authed = true) => {
+    if (!authed && get().is_authed) useAIChatState.getState().resetSession();
     set({ is_authed: authed });
     setApiDefaults();
   },
@@ -32,9 +34,27 @@ export const useUserState = create<UserStateProps>((set, get) => ({
       return user?.username ?? '';
     }
   },
-  setUser: (newUser: UserProps | undefined) => set({ user: newUser }),
+  setUser: (newUser: UserProps | undefined) => {
+    const previous = get().user;
+    // Profile/theme updates do not reset chat. Identity and entitlement
+    // changes clear the entire chat subtree, including pending async work.
+    const boundary = (user?: UserProps) =>
+      JSON.stringify([
+        user?.pk,
+        user?.roles,
+        user?.permissions,
+        user?.groups,
+        user?.is_staff,
+        user?.is_superuser
+      ]);
+    if (previous && boundary(previous) !== boundary(newUser)) {
+      useAIChatState.getState().resetSession();
+    }
+    set({ user: newUser });
+  },
   getUser: () => get().user,
   clearUserState: () => {
+    useAIChatState.getState().resetSession();
     set({ user: undefined, is_authed: false });
     clearCsrfCookie();
     setApiDefaults();

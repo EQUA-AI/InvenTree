@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { queryClient } from '../App';
+import { clearChatIndices } from '../functions/chatThreadCache';
 
 /**
  * A machine hint carried into the AI chat drawer (S14 B5, repurposed S2).
@@ -18,6 +20,8 @@ export interface AIChatRoutingHint {
 
 interface AIChatStateProps {
   isOpen: boolean;
+  sessionGeneration: number;
+  resetSession: () => void;
   routingHint?: AIChatRoutingHint;
   hintThreadId: string | null;
   bindHint: (threadId: string) => void;
@@ -29,6 +33,34 @@ interface AIChatStateProps {
 
 export const useAIChatState = create<AIChatStateProps>()((set) => ({
   isOpen: false,
+  sessionGeneration: 0,
+  resetSession: () => {
+    clearChatIndices();
+    // Drawer tabs share the application query cache. Remove their old account
+    // data as well as the component state; a remount alone would reuse it.
+    const privateQueries = new Set([
+      'chat-action-proposals',
+      'ai-evidence-set',
+      'voice-capability',
+      'voice-operation',
+      'approval-inbox',
+      'approval-review',
+      'approval-count',
+      'mailboxes',
+      'mailbox-messages',
+      'mailbox-review',
+      'mailbox-operation'
+    ]);
+    queryClient.removeQueries({
+      predicate: (query) => privateQueries.has(String(query.queryKey[0]))
+    });
+    set((state) => ({
+      sessionGeneration: state.sessionGeneration + 1,
+      isOpen: false,
+      routingHint: undefined,
+      hintThreadId: null
+    }));
+  },
   routingHint: undefined,
   hintThreadId: null,
   bindHint: (threadId) =>

@@ -4,6 +4,7 @@ import {
   type VoiceSnapshot,
   initialVoiceSnapshot
 } from '../components/ai/voice/types';
+import { useAIChatState } from './AIChatState';
 import { useLocalState } from './LocalState';
 import { useUserState } from './UserState';
 import { useVoiceDecisionState } from './VoiceDecisionState';
@@ -38,13 +39,33 @@ export const useVoiceSurfaceState = create<{
   closeConsent: () => set({ consent: false })
 }));
 // Account boundaries, unlike component unmounts, always release media.
+function clearVoiceBoundary() {
+  const voice = useVoiceSessionState.getState();
+  if (
+    voice.transport !== 'off' ||
+    voice.mic !== 'off' ||
+    voice.playback !== 'idle' ||
+    voice.session ||
+    voice.revisions.length ||
+    voice.lastSubmitted ||
+    voice.lastSpoken ||
+    voice.presentation
+  ) {
+    voiceController.logout();
+  }
+  voiceController.setCapability(null);
+  useVoiceSurfaceState.setState({ fullscreen: false, consent: false });
+}
+useAIChatState.subscribe((state, previous) => {
+  if (state.sessionGeneration !== previous.sessionGeneration)
+    clearVoiceBoundary();
+});
 useUserState.subscribe((state, previous) => {
   if (
     state.user?.pk !== previous.user?.pk ||
     (previous.is_authed && !state.is_authed)
   ) {
-    voiceController.logout();
+    clearVoiceBoundary();
     useLocalState.getState().setAllowMobile(false);
-    useVoiceSurfaceState.setState({ fullscreen: false, consent: false });
   }
 });

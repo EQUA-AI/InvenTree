@@ -61,6 +61,10 @@ import { Boundary } from '@lib/components/Boundary';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../App';
 import {
+  CHAT_INDEX_PREFIX,
+  chatIndexKey
+} from '../../functions/chatThreadCache';
+import {
   type ChatMessage,
   type ChatThread,
   type QuestionPayload,
@@ -72,6 +76,7 @@ import { useChatProposals } from '../../hooks/useChatProposals';
 import { useVoiceLiveSession } from '../../hooks/useVoiceLiveSession';
 import { useAIChatState } from '../../states/AIChatState';
 import { useLocalState } from '../../states/LocalState';
+import { useUserState } from '../../states/UserState';
 import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
 import { useVoiceSurfaceState } from '../../states/VoiceSessionState';
 import { ApprovalInboxPanel } from '../ai/ApprovalInboxPanel';
@@ -89,6 +94,7 @@ import { ClaimEvidence } from '../aichat/ClaimEvidence';
 import { ContextUsedDisclosure } from '../aichat/ContextUsedDisclosure';
 import { EntityChips } from '../aichat/EntityChips';
 import { EvidenceChips } from '../aichat/EvidenceChips';
+import { LegacyChatStorageNotice } from '../aichat/LegacyChatStorageNotice';
 import { MarkdownMessage } from '../aichat/MarkdownMessage';
 import { RetrievalCoverage } from '../aichat/RetrievalCoverage';
 import {
@@ -1088,7 +1094,36 @@ function ChatMessageItem({
 /**
  * AI Chat Drawer component - CopilotKit-style side panel
  */
-export function AIChatDrawer({
+type AIChatDrawerProps = Readonly<{ opened: boolean; onClose: () => void }>;
+
+/** Identity/entitlement changes discard the whole chat/voice/composer subtree. */
+export function AIChatDrawer(props: AIChatDrawerProps) {
+  const userId = useUserState((state) =>
+    state.isLoggedIn() ? state.userId() : undefined
+  );
+  const host = useLocalState((state) => state.getHost());
+  const generation = useAIChatState((state) => state.sessionGeneration);
+  const key = chatIndexKey(host, userId);
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      // A reset/deletion in another tab must not leave a cached transcript in
+      // this one. Ordinary metadata updates are not a reason to reload chat.
+      if (
+        (event.key === key || event.key === null) &&
+        event.newValue === null &&
+        (event.key === null || event.key.startsWith(CHAT_INDEX_PREFIX))
+      ) {
+        useAIChatState.getState().resetSession();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [key]);
+  if (!userId || !key) return null;
+  return <AIChatSessionDrawer key={`${key}:${generation}`} {...props} />;
+}
+
+function AIChatSessionDrawer({
   opened,
   onClose
 }: Readonly<{
@@ -1730,6 +1765,7 @@ export function AIChatDrawer({
           >
             {activeTab === 'chat' && (
               <Box p='md'>
+                <LegacyChatStorageNotice />
                 {hasEarlierMessages && (
                   <Button
                     variant='subtle'
