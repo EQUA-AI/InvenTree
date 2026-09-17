@@ -49,6 +49,37 @@ class _FakeHistorian(HealthConnector):
 
 
 @register
+class _ObedientHistorian(HealthConnector):
+    """A connector that honours ``max_samples``, the way the real ones do.
+
+    This distinction is the whole point of the test below. ``_FakeHistorian``
+    ignores the cap and returns everything, so the service trims it and notices.
+    A real connector stops reading once it has enough, which means the service
+    sees exactly the number it asked for and cannot tell a full window from an
+    overflowing one - unless it deliberately asks for one more than it needs.
+    """
+
+    key = 'test-obedient'
+
+    canned_readings: list[Reading] = []
+    last_max_samples: int | None = None
+
+    def check(self):
+        """Always reachable."""
+        return True, ''
+
+    def read_latest(self, external_keys):
+        """Not used by the trend path."""
+        return []
+
+    def read_window(self, external_key, start, end, *, max_samples=None):
+        """Return at most ``max_samples`` readings, stopping early like Cosmos."""
+        type(self).last_max_samples = max_samples
+        readings = list(type(self).canned_readings)
+        return readings[:max_samples] if max_samples else readings
+
+
+@register
 class _BrokenHistorian(HealthConnector):
     """A connector whose history read fails."""
 
@@ -140,6 +171,58 @@ class TrendReadTest(HealthEnvMixin, TestCase):
 
         self.assertEqual(len(result['samples']), 2)
         self.assertTrue(result['truncated'])
+
+    def test_truncation_is_reported_when_the_connector_honours_the_cap(self):
+        """A connector that stops at the cap must still produce a truncation flag.
+
+        Regression: the service used to ask for exactly the number of samples it
+        would return, so a connector that obeyed the cap always looked like a
+        complete window. The chart would silently drop the newest part of the
+        range while telling the operator it was whole.
+        """
+        self.source.connector_type = 'test-obedient'
+        self.source.save(update_fields=['connector_type'])
+        _ObedientHistorian.canned_readings = [
+            Reading(
+                external_key=self.binding.external_key,
+                value=float(index),
+                observed_at=self.now - timedelta(minutes=index),
+            )
+            for index in range(10)
+        ]
+
+        result = read_trend(
+            self.machine, binding_id=self.binding.pk, max_samples=4, now=self.now
+        )
+
+        self.assertEqual(len(result['samples']), 4)
+        self.assertTrue(result['truncated'])
+        # The probe is what makes the detection possible.
+        self.assertEqual(_ObedientHistorian.last_max_samples, 5)
+
+    def test_an_exactly_full_window_is_not_reported_as_truncated(self):
+        """No false alarm when the data happens to fill the cap exactly.
+
+        A warning that cries wolf is worse than none, because operators learn to
+        dismiss it.
+        """
+        self.source.connector_type = 'test-obedient'
+        self.source.save(update_fields=['connector_type'])
+        _ObedientHistorian.canned_readings = [
+            Reading(
+                external_key=self.binding.external_key,
+                value=float(index),
+                observed_at=self.now - timedelta(minutes=index),
+            )
+            for index in range(4)
+        ]
+
+        result = read_trend(
+            self.machine, binding_id=self.binding.pk, max_samples=4, now=self.now
+        )
+
+        self.assertEqual(len(result['samples']), 4)
+        self.assertFalse(result['truncated'])
 
     def test_source_without_a_connector_reports_unavailable(self):
         """No trend is invented for a source that cannot serve one."""

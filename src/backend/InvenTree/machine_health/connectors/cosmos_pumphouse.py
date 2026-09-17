@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 from django.db import transaction
 
 from machine_health.connectors.base import (
+    MAX_TREND_SAMPLES,
     HealthConnector,
     Reading,
     bounded_window,
@@ -476,7 +477,9 @@ class CosmosPumphouseConnector(HealthConnector):
         Timestamps are never rounded to a display interval and gaps are never
         filled: a trend drawn from this shows where the source actually had data.
         """
-        start, end, samples = bounded_window(start, end, max_samples=max_samples)
+        start, end, samples = bounded_window(
+            start, end, max_samples=max_samples, ceiling=MAX_TREND_SAMPLES + 1
+        )
         station = self.station
         start_ms, end_ms = to_epoch_ms(start), to_epoch_ms(end)
 

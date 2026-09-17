@@ -30,6 +30,7 @@ import { AnomalyList } from './AnomalyList';
 import { HealthSourceStatusTable } from './HealthSourceStatus';
 import { HealthSummaryPanel } from './HealthSummary';
 import { SignalTable } from './SignalTable';
+import { SignalTrendChart } from './SignalTrendChart';
 
 /**
  * Machine Health blade.
@@ -227,6 +228,11 @@ export function MachineHealthPanel({
       <Stack gap='sm'>
         <Title order={4}>{t`Signals`}</Title>
         <SignalTable signals={signals} machineId={machineId} />
+      </Stack>
+
+      <Stack gap='sm'>
+        <Title order={4}>{t`Trend`}</Title>
+        <SignalTrendChart machineId={machineId} signals={signals} />
       </Stack>
 
       <Stack gap='sm'>

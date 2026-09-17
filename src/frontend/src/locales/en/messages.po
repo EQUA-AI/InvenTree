@@ -215,6 +215,7 @@ msgstr "Parts"
 
 #: lib/enums/ModelInformation.tsx:71
 #: src/pages/assets/EquipmentRegistry.tsx:641
+#: src/pages/assets/health/SignalTrendChart.tsx:185
 msgid "Parameter"
 msgstr "Parameter"
 
@@ -3304,7 +3305,7 @@ msgstr "Back"
 #: src/components/nav/AIChatDrawer.tsx:397
 #: src/components/riskradar/RiskRadarPanel.tsx:353
 #: src/pages/assets/StationLiveSource.tsx:116
-#: src/pages/assets/health/MachineHealthPanel.tsx:190
+#: src/pages/assets/health/MachineHealthPanel.tsx:191
 #: src/pages/assets/health/PumphouseMimic.tsx:289
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
 #: src/pages/repair/components/safety/SafetyPanel.tsx:110
@@ -9680,7 +9681,7 @@ msgstr "Detection is deterministic: a source alarm or a configured threshold, ne
 
 #: src/pages/assets/health/AnomalyList.tsx:174
 #: src/pages/assets/health/HealthSummary.tsx:73
-#: src/pages/assets/health/MachineHealthPanel.tsx:228
+#: src/pages/assets/health/MachineHealthPanel.tsx:229
 msgid "Signals"
 msgstr "Signals"
 
@@ -9740,7 +9741,7 @@ msgid "Last observation"
 msgstr "Last observation"
 
 #: src/pages/assets/health/HealthSummary.tsx:56
-#: src/pages/assets/health/MachineHealthPanel.tsx:215
+#: src/pages/assets/health/MachineHealthPanel.tsx:216
 msgid "Active anomalies"
 msgstr "Active anomalies"
 
@@ -9786,48 +9787,53 @@ msgstr "Degraded data"
 msgid "Some signals are stale or reported with poor quality. Confirm the readings you rely on before acting on them."
 msgstr "Some signals are stale or reported with poor quality. Confirm the readings you rely on before acting on them."
 
-#: src/pages/assets/health/MachineHealthPanel.tsx:115
+#: src/pages/assets/health/MachineHealthPanel.tsx:116
 msgid "Could not acknowledge the anomaly"
 msgstr "Could not acknowledge the anomaly"
 
-#: src/pages/assets/health/MachineHealthPanel.tsx:142
+#: src/pages/assets/health/MachineHealthPanel.tsx:143
 msgid "Could not analyze the anomaly"
 msgstr "Could not analyze the anomaly"
 
-#: src/pages/assets/health/MachineHealthPanel.tsx:166
+#: src/pages/assets/health/MachineHealthPanel.tsx:167
 msgid "Health data unavailable"
 msgstr "Health data unavailable"
 
-#: src/pages/assets/health/MachineHealthPanel.tsx:167
+#: src/pages/assets/health/MachineHealthPanel.tsx:168
 msgid "The health service could not be reached. Work-order creation is unaffected."
 msgstr "The health service could not be reached. Work-order creation is unaffected."
 
-#: src/pages/assets/health/MachineHealthPanel.tsx:183
+#: src/pages/assets/health/MachineHealthPanel.tsx:184
 msgid "Current condition"
 msgstr "Current condition"
 
-#: src/pages/assets/health/MachineHealthPanel.tsx:199
+#: src/pages/assets/health/MachineHealthPanel.tsx:200
 msgid "No health source is configured for this machine"
 msgstr "No health source is configured for this machine"
 
-#: src/pages/assets/health/MachineHealthPanel.tsx:203
+#: src/pages/assets/health/MachineHealthPanel.tsx:204
 msgid "Map this machine's tags to a health source to see live signals and anomalies here. Until then, its condition is unknown rather than healthy."
 msgstr "Map this machine's tags to a health source to see live signals and anomalies here. Until then, its condition is unknown rather than healthy."
 
-#: src/pages/assets/health/MachineHealthPanel.tsx:206
+#: src/pages/assets/health/MachineHealthPanel.tsx:207
 msgid "Creating work orders for this machine works normally in the meantime."
 msgstr "Creating work orders for this machine works normally in the meantime."
 
-#: src/pages/assets/health/MachineHealthPanel.tsx:233
+#: src/pages/assets/health/MachineHealthPanel.tsx:234
+#: src/pages/assets/health/SignalTable.tsx:65
+msgid "Trend"
+msgstr "Trend"
+
+#: src/pages/assets/health/MachineHealthPanel.tsx:239
 msgid "Source connections"
 msgstr "Source connections"
 
-#: src/pages/assets/health/MachineHealthPanel.tsx:250
+#: src/pages/assets/health/MachineHealthPanel.tsx:256
 msgid "Repair created"
 msgstr "Repair created"
 
 #. placeholder {0}: result.work_order_reference
-#: src/pages/assets/health/MachineHealthPanel.tsx:251
+#: src/pages/assets/health/MachineHealthPanel.tsx:257
 msgid "{0} was created from this anomaly and is planned, not started."
 msgstr "{0} was created from this anomaly and is planned, not started."
 
@@ -10211,10 +10217,6 @@ msgstr "No signals are mapped for this machine."
 msgid "Observed"
 msgstr "Observed"
 
-#: src/pages/assets/health/SignalTable.tsx:65
-msgid "Trend"
-msgstr "Trend"
-
 #: src/pages/assets/health/SignalTable.tsx:68
 msgid "Limits"
 msgstr "Limits"
@@ -10223,32 +10225,132 @@ msgstr "Limits"
 msgid "Not configured"
 msgstr "Not configured"
 
-#: src/pages/assets/health/SignalTrend.tsx:86
+#: src/pages/assets/health/SignalTrend.tsx:88
+#: src/pages/assets/health/SignalTrendChart.tsx:81
 msgid "No trend data is available."
 msgstr "No trend data is available."
 
-#: src/pages/assets/health/SignalTrend.tsx:88
+#: src/pages/assets/health/SignalTrend.tsx:90
 msgid "No trend"
 msgstr "No trend"
 
-#: src/pages/assets/health/SignalTrend.tsx:97
+#: src/pages/assets/health/SignalTrend.tsx:99
 msgid "Too few samples"
 msgstr "Too few samples"
 
 #. placeholder {0}: trend.samples.length
 #. placeholder {1}: trend.source_name
-#: src/pages/assets/health/SignalTrend.tsx:104
+#: src/pages/assets/health/SignalTrend.tsx:106
 msgid "{0} samples from {1}"
 msgstr "{0} samples from {1}"
 
 #. placeholder {0}: trend.display_name
-#: src/pages/assets/health/SignalTrend.tsx:113
+#: src/pages/assets/health/SignalTrend.tsx:115
 msgid "Recent trend for {0}"
 msgstr "Recent trend for {0}"
 
-#: src/pages/assets/health/SignalTrend.tsx:127
+#: src/pages/assets/health/SignalTrend.tsx:129
 msgid "(trimmed)"
 msgstr "(trimmed)"
+
+#: src/pages/assets/health/SignalTrendChart.tsx:29
+msgid "Last hour"
+msgstr "Last hour"
+
+#: src/pages/assets/health/SignalTrendChart.tsx:30
+msgid "Last 6 hours"
+msgstr "Last 6 hours"
+
+#: src/pages/assets/health/SignalTrendChart.tsx:31
+msgid "Last 24 hours"
+msgstr "Last 24 hours"
+
+#: src/pages/assets/health/SignalTrendChart.tsx:32
+msgid "Last 7 days"
+msgstr "Last 7 days"
+
+#: src/pages/assets/health/SignalTrendChart.tsx:33
+msgid "Last 30 days"
+msgstr "Last 30 days"
+
+#: src/pages/assets/health/SignalTrendChart.tsx:75
+msgid "This source has no configured connector, so no history can be read."
+msgstr "This source has no configured connector, so no history can be read."
+
+#. placeholder {0}: trend.source_name
+#: src/pages/assets/health/SignalTrendChart.tsx:77
+msgid "{0} cannot serve historical windows. Only the current value is available."
+msgstr "{0} cannot serve historical windows. Only the current value is available."
+
+#. placeholder {0}: trend.source_name
+#: src/pages/assets/health/SignalTrendChart.tsx:79
+msgid "{0} could not be reached for this window. This is an outage, not an absence of data."
+msgstr "{0} could not be reached for this window. This is an outage, not an absence of data."
+
+#: src/pages/assets/health/SignalTrendChart.tsx:173
+msgid "No mapped signals are available to chart."
+msgstr "No mapped signals are available to chart."
+
+#: src/pages/assets/health/SignalTrendChart.tsx:198
+msgid "Range"
+msgstr "Range"
+
+#. placeholder {0}: points.length
+#: src/pages/assets/health/SignalTrendChart.tsx:210
+msgid "{0} samples"
+msgstr "{0} samples"
+
+#: src/pages/assets/health/SignalTrendChart.tsx:218
+msgid "Could not load the trend"
+msgstr "Could not load the trend"
+
+#: src/pages/assets/health/SignalTrendChart.tsx:219
+msgid "The request for this window failed. No data is shown rather than a partial line."
+msgstr "The request for this window failed. No data is shown rather than a partial line."
+
+#: src/pages/assets/health/SignalTrendChart.tsx:224
+msgid "No history for this signal"
+msgstr "No history for this signal"
+
+#: src/pages/assets/health/SignalTrendChart.tsx:230
+msgid "This window was truncated"
+msgstr "This window was truncated"
+
+#. placeholder {0}: trend.limits.max_samples
+#: src/pages/assets/health/SignalTrendChart.tsx:231
+msgid "The source returned more than the {0} sample limit, so the most recent part of this window is not shown. Choose a shorter range to see it."
+msgstr "The source returned more than the {0} sample limit, so the most recent part of this window is not shown. Choose a shorter range to see it."
+
+#: src/pages/assets/health/SignalTrendChart.tsx:236
+msgid "Some samples are not plottable"
+msgstr "Some samples are not plottable"
+
+#. placeholder {0}: trend.samples.length
+#: src/pages/assets/health/SignalTrendChart.tsx:237
+msgid "{skipped} of {0} samples are not numeric and were left off the chart rather than coerced to a number."
+msgstr "{skipped} of {0} samples are not numeric and were left off the chart rather than coerced to a number."
+
+#: src/pages/assets/health/SignalTrendChart.tsx:242
+msgid "No samples in this window"
+msgstr "No samples in this window"
+
+#. placeholder {0}: trend.source_name
+#: src/pages/assets/health/SignalTrendChart.tsx:243
+msgid "{0} served this window but had no data in it. That is different from the source being unable to answer."
+msgstr "{0} served this window but had no data in it. That is different from the source being unable to answer."
+
+#: src/pages/assets/health/SignalTrendChart.tsx:267
+msgid "Only one sample"
+msgstr "Only one sample"
+
+#: src/pages/assets/health/SignalTrendChart.tsx:268
+msgid "A single point is not a trend. Widen the range to see whether it is moving."
+msgstr "A single point is not a trend. Widen the range to see whether it is moving."
+
+#. placeholder {0}: trend.source_name
+#: src/pages/assets/health/SignalTrendChart.tsx:274
+msgid "Read live from {0}. AIMMS does not store this history."
+msgstr "Read live from {0}. AIMMS does not store this history."
 
 #: src/pages/assets/health/common.tsx:61
 msgid "Offline"
@@ -12653,14 +12755,14 @@ msgid "Failed to save lockout point"
 msgstr "Failed to save lockout point"
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:100
-#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
-msgid "Edit lockout point"
-msgstr "Edit lockout point"
-
-#: src/pages/repair/components/safety/LockoutPointModal.tsx:100
 #: src/pages/repair/components/safety/LockoutPointTable.tsx:61
 msgid "Add lockout point"
 msgstr "Add lockout point"
+
+#: src/pages/repair/components/safety/LockoutPointModal.tsx:100
+#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
+msgid "Edit lockout point"
+msgstr "Edit lockout point"
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:104
 msgid "Energy source"

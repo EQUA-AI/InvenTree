@@ -55,8 +55,10 @@ export function SignalTrendSparkline({
       return null;
     }
 
-    // Samples arrive newest-first from the historian; draw them left-to-right.
-    const ordered = [...samples].reverse();
+    // Samples arrive oldest-first: `read_window` walks hour buckets forwards and
+    // queries each with ORDER BY sub_time_period ASC. Verified against the
+    // emulator. Draw them in the order given - reversing runs time backwards.
+    const ordered = samples;
     const min = Math.min(...ordered);
     const max = Math.max(...ordered);
     const span = max - min || 1;

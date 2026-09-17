@@ -148,8 +148,17 @@ def get_connector(source, *, machine=None):
     return connector_class(source) if connector_class else None
 
 
-def bounded_window(start, end, *, max_samples=None) -> tuple[datetime, datetime, int]:
-    """Clamp a requested trend window and sample count to the service limits."""
+def bounded_window(
+    start, end, *, max_samples=None, ceiling=MAX_TREND_SAMPLES
+) -> tuple[datetime, datetime, int]:
+    """Clamp a requested trend window and sample count to the service limits.
+
+    ``ceiling`` exists so a caller can deliberately ask for one sample more than
+    it intends to return. Without that, a read that stops exactly on the cap is
+    indistinguishable from one that happened to contain exactly that many
+    samples, and truncation can never be reported - the chart would silently drop
+    data and claim it was complete.
+    """
     if end < start:
         raise ValueError('Trend window end must not precede its start')
 
@@ -159,5 +168,5 @@ def bounded_window(start, end, *, max_samples=None) -> tuple[datetime, datetime,
             f'Trend window may not exceed {MAX_TREND_WINDOW_SECONDS // 3600} hours'
         )
 
-    samples = min(int(max_samples or MAX_TREND_SAMPLES), MAX_TREND_SAMPLES)
+    samples = min(int(max_samples or ceiling), ceiling)
     return start, end, max(samples, 1)

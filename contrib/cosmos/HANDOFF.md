@@ -252,7 +252,7 @@ Django-Q2 worker. Verify fresh readings and timestamps against the source. The *
 mimic** tab is on registered station machine pages. Check stale, disabled and network-failure
 behaviour; verify approved thresholds before interpreting any alarm as a plant limit.
 
-## 5a. Known gap: the trend UI is a sparkline only
+## 5a. Trends: federated reads, and the chart over them
 
 The backend side of trends is complete. AIMMS stores no time series - `MachineSignalState`
 is one row per binding, a current-state cache - so a trend is a *federated* read: the
@@ -267,23 +267,38 @@ a **binding, never a tag** - that is the tag-injection boundary. A source that c
 history returns `available: false` rather than a line synthesized from the current value,
 because a fabricated line is worse than no line.
 
-The frontend does not yet use any of that. `src/frontend/src/pages/assets/health/SignalTrend.tsx`
-is a 135-line sparkline: no parameter picker, no range selection, no axes, no units, no zoom.
-So there is currently **no way in the UI to select a time range and chart a parameter**, which
-is what the endpoint was built for. Remaining work, roughly a day:
+**Done.** `src/frontend/src/pages/assets/health/SignalTrendChart.tsx` adds a searchable
+parameter picker over the machine's bindings, preset ranges (1 h / 6 h / 24 h / 7 d / 30 d,
+capped at the server's 30-day maximum), axes labelled with the reviewed unit, and distinct
+messages for every way a window can come back empty. It is wired into the health panel below
+the signal table.
 
-- A parameter picker over the station's approved bindings, and preset ranges (1 h / 24 h /
-  7 d / custom) that map onto `from`/`to`.
-- Axes labelled with the reviewed unit. An unreviewed unit must render unitless rather than
-  borrow a plausible one.
-- Surface `available: false` as an explicit "this source does not serve history", distinct
-  from "no samples in this window". They are different failures and must not look alike.
-- Keep `truncated` visible. The cap silently clips the *newest* end of a wide window; a
-  chart that hides that is actively misleading about what the plant did.
+Three bugs were found while building it, all of which made the chart lie:
 
-Sequencing: this is worth doing after section 3, not before. Until the full dictionary is
-reviewed, most bound signals are status codes with no unit, and a correctly built chart
-would still look broken - for reasons that are not the chart's fault.
+1. **Samples were being drawn backwards.** The old sparkline's comment claimed the historian
+   returns newest-first and reversed them. It does not: `read_window` walks hour buckets
+   forwards and queries each with `ORDER BY sub_time_period ASC`. Verified against the
+   emulator - 591 samples, strictly ascending. The reverse has been removed.
+
+2. **`truncated` could never be true for a real connector.** The service asked for exactly
+   the number of samples it would return, so a connector that honours the cap - as the Cosmos
+   one does, returning early once it has enough - always looked like a complete window. The
+   flag only fired for a connector that *ignored* the cap, which is what the one existing
+   test did. The service now asks for one sample more than it returns and trims the extra,
+   so an overflow is detectable. `bounded_window` grew a `ceiling` argument to let that probe
+   through. Two regression tests cover it, and both were confirmed to fail without the fix.
+
+3. **Truncation drops the newest data, not the oldest.** Verified: with a cap of 10 on a
+   24-hour window, the samples kept run from 10:16 to 10:25 and the remaining 24 hours are
+   absent. So the chart says the *most recent* part of the range is missing, and suggests a
+   shorter range. A silently clipped chart would assert the plant did nothing during a period
+   nobody looked at.
+
+The chart also refuses to interpolate: `connectNulls` is off, non-numeric samples are counted
+and excluded rather than coerced, and a single sample is called out as not being a trend.
+
+Still worth knowing: most bindings currently carry status codes or saturated sensors, so many
+charts will legitimately look flat or empty until a running snapshot arrives.
 
 ## 6. Re-run checks and release review
 

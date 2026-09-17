@@ -105,8 +105,14 @@ def read_trend(
 
     try:
         # The connector receives the *mapped* external key, never a client string.
+        #
+        # Ask for one more sample than will be returned. A read that stops
+        # exactly on the cap is otherwise indistinguishable from a window that
+        # happened to hold exactly that many samples, so truncation could never
+        # be reported and the chart would drop data while claiming to be
+        # complete. The extra sample is trimmed below and never reaches the API.
         readings = connector.read_window(
-            binding.external_key, start, end, max_samples=samples
+            binding.external_key, start, end, max_samples=samples + 1
         )
     except NotImplementedError:
         return {
