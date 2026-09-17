@@ -778,6 +778,31 @@ def is_document_inventory_question(message: str) -> bool:
     )
 
 
+def is_explicit_media_lookup(message: str) -> bool:
+    """Recognize factual questions about existing photo/video evidence.
+
+    Task families alone do not determine complexity: research can also be
+    classified as a manual fact. Preserve research/comparison/diagnosis routes.
+    """
+    return bool(
+        not _DOCUMENT_ACTION_REQUEST.search(message)
+        and not re.search(
+            r"\b(?:research|compare|comparison|analy[sz]e|diagnos\w*|troubleshoot\w*)\b",
+            message,
+            re.IGNORECASE,
+        )
+        and re.search(
+            r"\b(?:recordings?|videos?|photos?|images?|footage)\b", message, re.IGNORECASE
+        )
+        and re.search(
+            r"\b(?:show\s+(?:me\s+)?(?:where|when)|what\s+(?:does|do|is|was)|"
+            r"when\s+(?:was|did)|where\s+(?:was|did)|according\s+to)\b",
+            message,
+            re.IGNORECASE,
+        )
+    )
+
+
 class UnifiedRouter:
     """
     Unified router that combines FastPath, Semantic, and LLM routing.
@@ -803,21 +828,20 @@ class UnifiedRouter:
         turn. The routers guard themselves too, but this boundary is what makes
         the property structural instead of a habit every router must remember.
         """
-        # The server already classified these simple retrieval families.
-        # Reclassifying them adds provider calls without adding a routing
-        # decision. This selects the read-only legacy workflow, not the
-        # separately staged analysis executor, and grants no tool authority.
+        # Only an explicit, simple evidence lookup can reuse the task family
+        # as its complexity route. Broader manual/record requests still need
+        # the legacy complexity router; a read-only task can require research.
         trusted = context or {}
         if (
             trusted.get("modality") != "voice"
             and trusted.get("effect_intent") == "read_only"
-            and trusted.get("task_intent")
-            in {"source_inventory", "manual_fact", "record_retrieval"}
+            and trusted.get("task_intent") in {"manual_fact", "record_retrieval"}
+            and is_explicit_media_lookup(message)
         ):
             return RoutingDecision(
                 workflow_type=WorkflowType.T1_LOOKUP,
                 confidence=1.0,
-                reasoning="Server-classified read-only retrieval",
+                reasoning="Explicit read-only media lookup",
                 use_fast_path=False,
             )
         # Inventory first: a pure inventory shape ("what manuals do you

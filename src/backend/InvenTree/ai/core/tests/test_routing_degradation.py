@@ -321,8 +321,16 @@ async def test_root_workflow_error_path_is_locatable_and_redacted(caplog):
     assert "raised_at=" in rendered and "raised_at=unknown" not in rendered
 
 
-@pytest.mark.parametrize("intent", ["manual_fact", "record_retrieval", "source_inventory"])
-async def test_server_classified_retrieval_needs_no_second_classifier(intent):
+@pytest.mark.parametrize("intent", ["manual_fact", "record_retrieval"])
+@pytest.mark.parametrize(
+    "message",
+    [
+        "In the recording on work order WO-27, show where the bearing was replaced.",
+        "In the uploaded video, when was the coupling inspected?",
+        "What does the uploaded photo show on the nameplate?",
+    ],
+)
+async def test_explicit_media_retrieval_needs_no_second_classifier(intent, message):
     from unittest.mock import AsyncMock
 
     router = UnifiedRouter()
@@ -330,7 +338,7 @@ async def test_server_classified_retrieval_needs_no_second_classifier(intent):
     router.semantic.route = AsyncMock()
     router.classifier.classify = AsyncMock()
     result = await router.route(
-        "Show the relevant passage or recorded scene",
+        message,
         "retrieval-thread",
         {"modality": "text", "task_intent": intent, "effect_intent": "read_only"},
     )
@@ -342,11 +350,38 @@ async def test_server_classified_retrieval_needs_no_second_classifier(intent):
 
 
 @pytest.mark.parametrize(
+    "message",
+    [
+        "Research the specifications for the V-900 cooling pump.",
+        "Research the video evidence: when was the bearing replaced?",
+        "Compare what the two uploaded photos show.",
+        "Diagnose what was wrong using the recording.",
+        "Extract data from the uploaded image.",
+    ],
+)
+async def test_read_only_task_family_does_not_override_complexity_routing(message):
+    from unittest.mock import AsyncMock
+
+    router = UnifiedRouter()
+    expected = RoutingDecision(WorkflowType.T3_RESEARCH, 0.9, "research request")
+    router.fast_path.try_fast_path = AsyncMock(return_value=None)
+    router.semantic.route = AsyncMock(return_value=expected)
+    result = await router.route(
+        message,
+        "research-thread",
+        {"modality": "text", "task_intent": "manual_fact", "effect_intent": "read_only"},
+    )
+    assert result is expected
+    router.semantic.route.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
     "context",
     [
         {"task_intent": "record_retrieval"},
         {"task_intent": "record_retrieval", "effect_intent": "effect_request"},
         {"task_intent": "diagnostic", "effect_intent": "read_only"},
+        {"task_intent": "source_inventory", "effect_intent": "read_only"},
         {"modality": "voice", "task_intent": "record_retrieval", "effect_intent": "read_only"},
         {
             "untrusted_client_context": {
@@ -363,5 +398,10 @@ async def test_retrieval_shortcut_does_not_override_other_routes_or_client_hints
     expected = RoutingDecision(WorkflowType.T6_DIAGNOSTICS, 0.9, "ordinary route")
     router.fast_path.try_fast_path = AsyncMock(return_value=None)
     router.semantic.route = AsyncMock(return_value=expected)
-    assert await router.route("Find the cause of this fault", "other-thread", context) is expected
+    assert (
+        await router.route(
+            "In the recording, show where the bearing was replaced.", "other-thread", context
+        )
+        is expected
+    )
     router.semantic.route.assert_awaited_once()
