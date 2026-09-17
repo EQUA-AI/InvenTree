@@ -222,6 +222,34 @@ class TestExecuteStreaming:
             _collect(workflow.execute_streaming(query="how many parts?"))
         assert getattr(excinfo.value, "failure_class", None) == "provider_outage"
 
+    @pytest.mark.parametrize("streaming", [False, True])
+    def test_failure_logs_original_location_without_provider_content(self, caplog, streaming):
+        """A wrapped failure stays diagnosable without disclosing provider data."""
+        sensitive = "private provider payload must never be logged"
+
+        class FailingAgent:
+            async def run(self, *args, **kwargs):
+                raise ValueError(sensitive)
+
+            async def run_stream(self, *args, **kwargs):
+                yield _FakeUpdate("partial")
+                raise ValueError(sensitive)
+
+        workflow = _workflow_with_prepared(FailingAgent())
+        with caplog.at_level("ERROR"):
+            if streaming:
+                with pytest.raises(RuntimeError) as excinfo:
+                    _collect(workflow.execute_streaming(query="how many parts?"))
+                assert isinstance(excinfo.value.__cause__, ValueError)
+                assert excinfo.value.failure_class == "internal"
+            else:
+                result = asyncio.run(workflow.execute(query="how many parts?"))
+                assert result.success is False
+                assert result.failure_class == "internal"
+        assert "error_type=ValueError" in caplog.text
+        assert "FailingAgent.run" in caplog.text
+        assert sensitive not in caplog.text
+
     def test_usage_extracted_from_real_maf_update_contents(self) -> None:
         """Real MAF updates carry usage as UsageContent in contents — the
         response-shaped ``usage_details`` attribute never exists on them."""

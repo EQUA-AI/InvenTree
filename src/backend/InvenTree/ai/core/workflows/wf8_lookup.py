@@ -1233,15 +1233,9 @@ as the specified torque for a tightening sequence.
 
         except Exception as e:
             execution_time = (time.perf_counter() - start_time) * 1000
+            from ai.core.faults import log_fault
 
-            logger.error(
-                "T1 lookup failed",
-                extra={
-                    "thread_id": thread_id,
-                    "lookup_type": lookup_type.value,
-                    "error_type": type(e).__name__,
-                },
-            )
+            log_fault(logger, "T1 lookup failed", e, stage="wf8_lookup")
 
             from ai.core.failure_taxonomy import classify_turn_failure
 
@@ -1290,15 +1284,9 @@ as the specified torque for a tightening sequence.
 
         def _raise_classified(exc: Exception) -> None:
             from ai.core.failure_taxonomy import classify_turn_failure
+            from ai.core.faults import log_fault
 
-            logger.error(
-                "T1 streaming lookup failed",
-                extra={
-                    "thread_id": thread_id,
-                    "lookup_type": lookup_type.value,
-                    "error_type": type(exc).__name__,
-                },
-            )
+            log_fault(logger, "T1 streaming lookup failed", exc, stage="wf8_streaming")
             failure = RuntimeError("lookup_failed")
             failure.failure_class = classify_turn_failure(exc).value
             raise failure from exc
