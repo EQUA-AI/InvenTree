@@ -56,6 +56,7 @@ import {
   useRef,
   useState
 } from 'react';
+import { Link } from 'react-router-dom';
 
 import { Boundary } from '@lib/components/Boundary';
 import { useQuery } from '@tanstack/react-query';
@@ -404,6 +405,11 @@ function ThreadSelector({
 
         <Menu.Dropdown>
           <Menu.Label>{t`Conversations`}</Menu.Label>
+          <Menu.Item
+            component={Link}
+            to='/memory/'
+            leftSection={<IconBrain size={16} />}
+          >{t`What AIMMS remembers`}</Menu.Item>
 
           {/* New chat option */}
           <Menu.Item

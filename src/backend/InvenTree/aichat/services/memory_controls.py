@@ -5,6 +5,7 @@ from django.db import transaction
 
 from ai.core.config import get_settings
 from aichat.models import (
+    AIRetentionOutbox,
     MemoryExtractionClaim,
     MemoryFactEvent,
     MemoryMode,
@@ -40,12 +41,18 @@ NOTICE_COPY = {
 
 def memory_status(owner):
     """Expose exact available notice copy and owner settings without client IDs."""
-    if not get_user_model().objects.filter(pk=owner.pk, is_active=True).exists():
+    owner = get_user_model().objects.filter(pk=owner.pk, is_active=True).first()
+    if owner is None:
         raise ValueError('Memory controls unavailable')
     config = get_settings()
     version = config.aimms_memory_notice_version
     copy = NOTICE_COPY.get(version)
     return {
+        'can_write': owner.has_perm('aichat.write_memory'),
+        'cleanup_pending': AIRetentionOutbox.objects
+        .filter(kind='memory_owner_purge', reference__startswith=f'{owner.pk}:')
+        .exclude(state='done')
+        .exists(),
         'notice_version': version,
         'notice_text': copy,
         'notice_available': copy is not None,

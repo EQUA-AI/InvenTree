@@ -23,6 +23,7 @@ import {
   Text
 } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
+import { ThreadLearningControls } from './ThreadLearningControls';
 
 import type {
   ThreadMemoryItem,
@@ -275,6 +276,13 @@ export function ThreadMemoryModal({
       closeButtonProps={{ 'aria-label': 'thread-memory-close' }}
     >
       <Stack gap='sm'>
+        {opened && threadId && (
+          <ThreadLearningControls
+            key={`${host}:${threadId}`}
+            threadId={threadId}
+            host={host}
+          />
+        )}
         <Alert
           color='yellow'
           icon={<IconAlertTriangle size={16} />}

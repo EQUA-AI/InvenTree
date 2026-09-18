@@ -15,6 +15,10 @@ export const LoginLayoutComponent = EagerLoadable(
   () => import('./pages/Auth/Layout')
 );
 
+export const MemoryPage = Loadable(
+  lazy(() => import('./pages/Memory/MemoryPage'))
+);
+
 export const Home = Loadable(lazy(() => import('./pages/Index/Home')));
 export const VoiceMobile = Loadable(
   lazy(() => import('./views/VoiceMobileAppView'))
@@ -205,6 +209,7 @@ export const routes = (
     <Route path='*' element={<NotFound />} errorElement={<ErrorPage />} />
     <Route path='/' element={<LayoutComponent />} errorElement={<ErrorPage />}>
       <Route index element={<Home />} />,
+      <Route path='memory/' element={<MemoryPage />} />
       <Route path='home/' element={<Home />} />,
       <Route path='notifications/*' element={<Notifications />} />,
       <Route path='scan/' element={<Scan />} />,
