@@ -4,6 +4,7 @@ import hashlib
 import json
 from unittest import TestCase
 
+from ai.core.evals.run_extraction_study import SCORING_CONVENTIONS
 from ai.core.evals.score_extraction_study import score_reviewed
 
 
@@ -15,6 +16,11 @@ def fixture(*, duplicates=1):
         "runs": 5,
         "corpus_sha256": "fixture-corpus",
         "expected_model": "fixture-model",
+        "scoring_conventions": {
+            **SCORING_CONVENTIONS,
+            "status": "reviewed",
+            "reviewer": "fixture-human",
+        },
     }
     cases = [
         {
@@ -111,6 +117,26 @@ class ExtractionScoringTests(TestCase):
     def test_hard_zero_is_recomputed_not_trusted_from_journal_flag(self):
         args = list(fixture())
         args[3] = args[3].replace(b"synthetic preference", b"OFFLIMITS")
+        args[-1]["journal_sha256"] = hashlib.sha256(args[3]).hexdigest()
+        with self.assertRaises(ValueError):
+            score_reviewed(*args)
+
+    def test_unreviewed_or_changed_conventions_refuse(self):
+        for key, value in (("status", "draft"), ("precision", "different"), ("reviewer", " ")):
+            args = list(fixture())
+            args[0]["scoring_conventions"][key] = value
+            with self.assertRaises(ValueError):
+                score_reviewed(*args)
+
+    def test_boolean_pass_and_skipped_provider_candidates_refuse(self):
+        args = list(fixture())
+        args[-1]["case_reviews"][1]["pass_index"] = True
+        with self.assertRaises(ValueError):
+            score_reviewed(*args)
+        args = list(fixture())
+        records = [json.loads(line) for line in args[3].splitlines()]
+        records[2]["result"].update(provider_skipped=True, resolved_model="changed")
+        args[3] = "\n".join(json.dumps(row) for row in records).encode()
         args[-1]["journal_sha256"] = hashlib.sha256(args[3]).hexdigest()
         with self.assertRaises(ValueError):
             score_reviewed(*args)

@@ -90,3 +90,16 @@ exceed 1. With no matched atoms it equals the proposal count (zero for abstentio
 The output contains metrics/identities, never candidate text, and stays
 `not_qualified`: human atom scoring does not manufacture judge calibration, Mem0
 admission, cost thresholds or elapsed shadow evidence. No grader has been run.
+
+## Consolidated validation handoff
+
+`validation_manifest.json` registers authored coverage through batch 52 and
+migrations 0041–0053. Runtime testing remains paused; the manifest is a queue of
+required evidence, not execution results or release approval. Read its explicit
+implementation gaps and conditional-track status before treating Track A as closed.
+
+Both study execution and offline scoring require `scoring_conventions.status`
+to be `reviewed`, a named reviewer, and the exact supported metric definitions.
+Changing definitions requires a corresponding reviewed implementation before
+freezing a new campaign. A skipped provider window must have empty raw and
+admitted candidates; integer pass identities cannot be booleans.

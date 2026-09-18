@@ -52,6 +52,7 @@
     "recall": "unique_matched_gold_over_gold",
     "empty_prediction_precision": 1,
     "abstention_recall": "one_only_if_no_predictions",
-    "duplicate_rate": "max(0, proposals/unique_matched_gold-1); no matched gold uses proposal count"
+    "duplicate_rate": "max(0, proposals/unique_matched_gold-1); no matched gold uses proposal count",
+    "reviewer": ""
   }
 }

@@ -20,6 +20,29 @@ from .scenarios import assert_outside_repo
 
 DEFAULT_CAMPAIGN = Path(__file__).with_name("memory_campaign.yaml")
 MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
+SCORING_CONVENTIONS = {
+    "precision": "correctly_matched_proposals_over_proposals",
+    "recall": "unique_matched_gold_over_gold",
+    "empty_prediction_precision": 1,
+    "abstention_recall": "one_only_if_no_predictions",
+    "duplicate_rate": "max(0, proposals/unique_matched_gold-1); no matched gold uses proposal count",
+}
+
+
+def require_scoring_review(campaign):
+    """Refuse unreviewed or unsupported metric definitions before spend or scoring."""
+    conventions = campaign.get("scoring_conventions", {})
+    if (
+        not isinstance(conventions, dict)
+        or conventions.get("status") != "reviewed"
+        or not isinstance(conventions.get("reviewer"), str)
+        or not conventions["reviewer"].strip()
+        or any(
+            type(conventions.get(key)) is not type(value) or conventions[key] != value
+            for key, value in SCORING_CONVENTIONS.items()
+        )
+    ):
+        raise ValueError("reviewed_supported_scoring_conventions_required")
 
 
 def digest(value):
@@ -100,6 +123,7 @@ def require_execution(campaign, cases, settings):
         )
     ):
         raise ValueError("human_corpus_review_required")
+    require_scoring_review(campaign)
     for key in (
         "extraction_deployment",
         "expected_model",

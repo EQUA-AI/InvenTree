@@ -13,9 +13,28 @@
     "0047",
     "0048",
     "0049",
-    "0050"
+    "0050",
+    "0051",
+    "0052",
+    "0053"
   ],
   "suites": [
+    "src/backend/InvenTree/ai/core/tests/test_attachment_corpus.py",
+    "src/backend/InvenTree/ai/core/tests/test_controlled_document_corpus.py",
+    "src/backend/InvenTree/ai/core/tests/test_extraction_scoring.py",
+    "src/backend/InvenTree/ai/core/tests/test_extraction_study.py",
+    "src/backend/InvenTree/ai/core/tests/test_media_corpus.py",
+    "src/backend/InvenTree/ai/core/tests/test_memory_context_builder.py",
+    "src/backend/InvenTree/ai/core/tests/test_memory_extractor.py",
+    "src/backend/InvenTree/ai/core/tests/test_memory_providers.py",
+    "src/backend/InvenTree/ai/core/tests/test_memory_query_embedding.py",
+    "src/backend/InvenTree/ai/core/tests/test_retrieval_planning.py",
+    "src/backend/InvenTree/ai/core/tests/test_source_inventory_selection.py",
+    "src/backend/InvenTree/aichat/tests/test_account_domains.py",
+    "src/backend/InvenTree/aichat/tests/test_account_erasure.py",
+    "src/backend/InvenTree/aichat/tests/test_account_export.py",
+    "src/backend/InvenTree/aichat/tests/test_attachment_memory.py",
+    "src/backend/InvenTree/aichat/tests/test_client_memory_erasure.py",
     "src/backend/InvenTree/aichat/tests/test_memory_budget.py",
     "src/backend/InvenTree/aichat/tests/test_memory_commands.py",
     "src/backend/InvenTree/aichat/tests/test_memory_controls.py",
@@ -30,17 +49,17 @@
     "src/backend/InvenTree/aichat/tests/test_memory_policy.py",
     "src/backend/InvenTree/aichat/tests/test_memory_reads.py",
     "src/backend/InvenTree/aichat/tests/test_memory_recall.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_shadow_report.py",
     "src/backend/InvenTree/aichat/tests/test_memory_summary_guard.py",
     "src/backend/InvenTree/aichat/tests/test_memory_worker.py",
     "src/backend/InvenTree/aichat/tests/test_memory_writes.py",
-    "src/backend/InvenTree/aichat/tests/test_client_memory_erasure.py",
-    "src/backend/InvenTree/aichat/tests/test_attachment_memory.py",
-    "src/backend/InvenTree/aichat/tests/test_retention_journal.py",
     "src/backend/InvenTree/aichat/tests/test_projection_audit.py",
-    "src/backend/InvenTree/ai/core/tests/test_memory_query_embedding.py",
-    "src/backend/InvenTree/ai/core/tests/test_memory_context_builder.py",
-    "src/frontend/tests/pages/pui_durable_memory.spec.ts",
+    "src/backend/InvenTree/aichat/tests/test_projection_orphans.py",
+    "src/backend/InvenTree/aichat/tests/test_retention_journal.py",
+    "src/backend/InvenTree/aichat/tests/test_retrieval_authority.py",
+    "src/backend/InvenTree/aichat/tests/test_user_erasure.py",
     "src/frontend/tests/pages/pui_ai_chat_memory.spec.ts",
+    "src/frontend/tests/pages/pui_durable_memory.spec.ts",
     "src/frontend/tests/pages/pui_voice_session.spec.ts"
   ],
   "historical_m1_pair": {
@@ -96,7 +115,22 @@
         "attachment_cleanup_overflow",
         "client_identity_reuse",
         "query_embedding_deadline",
-        "closeout_amendment_race"
+        "closeout_amendment_race",
+        "search_only_orphan_without_ingest",
+        "controlled_orphan_latches_recall",
+        "missing_index_is_not_deleted_document_proof",
+        "retired_index_refuses_current_adapter",
+        "role_or_entity_revoked_before_excerpt",
+        "unindexed_inventory_native_scope_denial",
+        "attachment_claim_incarnation_reuse",
+        "journal_v6_attachment_severance_replay",
+        "account_deactivation_blocks_query_logging",
+        "shared_mailbox_preservation",
+        "partial_account_export_removed",
+        "scoring_conventions_unreviewed_or_changed",
+        "incomplete_human_case_review",
+        "skipped_provider_with_candidates",
+        "scoring_hard_zero_recomputed"
       ]
     }
   ],
@@ -106,17 +140,50 @@
     "minimum_adversarial_fraction": 0.2,
     "minimum_judge_agreement": 0.9,
     "runtime_model_pins": "required",
-    "platform_release_review": "required"
+    "platform_release_review": "required",
+    "scoring_conventions_review": "required_before_execution_and_scoring",
+    "corpus_diversity_review": "required_synthetic_template_count_is_not_power",
+    "full_account_client_ownership_rules": "required",
+    "external_projection_and_backup_inventory": "required"
   },
   "known_implementation_gaps": [
-    "full_client_transcript_partition_and_offboarding",
-    "full_account_non_chat_store_coverage",
-    "attachment_source_restore_severance_proof",
-    "retrieval_route_audit_and_builder_planning",
-    "projection_search_only_orphan_audit"
+    "full_client_transcript_partition_and_offboarding_requires_ownership_contract",
+    "shared_mailbox_transfer_or_delete_requires_disposition_contract",
+    "complete_account_export_and_erasure_require_remaining_store_inventory",
+    "native_attachment_file_and_search_restore_deletion_coverage",
+    "retired_index_identity_and_adapter_inventory",
+    "automated_semantic_judge_integration_requires_reviewed_calibration_contract"
   ],
   "conditional_tracks": {
-    "mem0": "not_admitted",
-    "graph": "domain_and_funding_decisions_required"
-  }
+    "mem0": "not_admitted_adapter_unimplemented_custom_only_default",
+    "graph": "unimplemented_separate_G0_to_G4_program_requires_domain_decisions_G5_funded_demand_only"
+  },
+  "implemented_since_initial_manifest": {
+    "attachment_claim_restore_proof": "journal_v6_claim_fact_owner_incarnation_bound_native_attachment_deletion_excluded",
+    "retrieval_authority": "current_native_checks_for_attachment_media_controlled_and_inventory",
+    "retrieval_planning": "builder_owned_manual_source_plan",
+    "search_origin_orphan_audit": "bounded_samples_current_configured_indices_all_three_corpora",
+    "account_domains": "local_grants_mailbox_credentials_owned_queries_partial_coverage",
+    "account_export": "bounded_private_projection_explicit_exclusions",
+    "shadow_report": "count_only_unknown_quality_gates_not_qualified",
+    "atom_scoring": "complete_byte_bound_human_review_required_no_promotion_verdict"
+  },
+  "release_state": {
+    "code": "authored_static_checked_runtime_unqualified",
+    "migrations": "authored_unapplied",
+    "deployment": "not_performed",
+    "semantic_enablement": "off",
+    "m1_m2_acceptance": "not_signed",
+    "full_plan": "incomplete",
+    "next_runtime_action": "none_until_testing_resumed_and_prerequisites_reviewed"
+  },
+  "ordered_validation": [
+    "review_decisions_inventory_and_frozen_inputs",
+    "unit_service_pgvector_migration_authorization_deletion_no_egress",
+    "approved_platform_deploy_restore_and_worker_health",
+    "lifecycle_browser_voice_and_both_environment_readiness",
+    "frozen_M1_pair_and_semantic_campaigns",
+    "M2_elapsed_soak_human_reviews_and_restore_proof",
+    "milestone_specific_signoff_then_explicit_enablement"
+  ]
 }

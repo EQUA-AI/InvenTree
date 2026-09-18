@@ -16,6 +16,7 @@ from .run_extraction_study import (
     PrivateJournal,
     deterministic_failures,
     load_study,
+    require_scoring_review,
     windows,
 )
 from .scenarios import assert_outside_repo
@@ -25,6 +26,7 @@ MAX_PRIVATE_BYTES = 64 * 1024 * 1024
 
 def score_reviewed(campaign, cases, campaign_hash, journal_bytes, review):
     """Return per-case/pass metrics only after complete explicit human annotation."""
+    require_scoring_review(campaign)
     if (
         len(journal_bytes) > MAX_PRIVATE_BYTES
         or campaign.get("status") != "approved"
@@ -89,6 +91,7 @@ def score_reviewed(campaign, cases, campaign_hash, journal_bytes, review):
         case_id, pass_index = expected[identity]
         if (
             row.get("case_id") != case_id
+            or type(row.get("pass_index")) is not int
             or row.get("pass_index") != pass_index
             or row.get("deterministic_failures") != []
         ):
@@ -109,6 +112,9 @@ def score_reviewed(campaign, cases, campaign_hash, journal_bytes, review):
         proposals = result.get("candidates")
         if not isinstance(proposals, list) or len(proposals) > 5:
             raise ValueError("Invalid admitted candidate list")
+        skipped = result.get("provider_skipped", False)
+        if type(skipped) is not bool or (skipped and (raw or proposals)):
+            raise ValueError("Skipped provider cannot produce extraction candidates")
         if any(candidate not in raw for candidate in proposals):
             raise ValueError("Admitted candidate not present in raw extraction")
         for index, candidate in enumerate(proposals):
@@ -129,7 +135,12 @@ def score_reviewed(campaign, cases, campaign_hash, journal_bytes, review):
     seen_passes = set()
     for row in reviewed_passes:
         key = (row.get("case_id"), row.get("pass_index"))
-        if key not in expected_passes or key in seen_passes or row.get("reviewed") is not True:
+        if (
+            type(row.get("pass_index")) is not int
+            or key not in expected_passes
+            or key in seen_passes
+            or row.get("reviewed") is not True
+        ):
             raise ValueError("Invalid transcript-pass review")
         seen_passes.add(key)
     annotations = review.get("annotations")
