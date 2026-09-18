@@ -112,17 +112,21 @@ def build_chat_client(
     return client
 
 
-def client_auth_mode(settings: Any | None = None) -> str:
+def client_auth_mode(settings: Any | None = None, *, require_keyless: bool = False) -> str:
     """``"keyless"`` when the raw client uses managed identity, else ``"key"``.
 
     Value-free by construction (an enum word, never the key) so probes and
     reports can print it.
     """
     settings = settings if settings is not None else get_settings()
-    return "keyless" if bool(getattr(settings, "aimms_openai_keyless", False)) else "key"
+    return (
+        "keyless"
+        if require_keyless or bool(getattr(settings, "aimms_openai_keyless", False))
+        else "key"
+    )
 
 
-def build_openai_client(*, settings: Any | None = None) -> Any:
+def build_openai_client(*, settings: Any | None = None, require_keyless: bool = False) -> Any:
     """Return a raw ``openai.AzureOpenAI`` client for the configured endpoint.
 
     Keyless mode (``AIMMS_OPENAI_KEYLESS=1``) passes the process-cached
@@ -132,6 +136,9 @@ def build_openai_client(*, settings: Any | None = None) -> Any:
     The OpenAI import is deferred to the call so test doubles patched at
     ``openai.AzureOpenAI`` keep working; key-mode callers never touch
     ``azure.identity``.
+
+    Memory callers set ``require_keyless=True``; no key fallback is attempted
+    even when the general client flag is off or token acquisition fails.
     """
     from openai import AzureOpenAI
 
@@ -140,7 +147,7 @@ def build_openai_client(*, settings: Any | None = None) -> Any:
         "azure_endpoint": settings.azure_openai_endpoint,
         "api_version": settings.azure_openai_api_version,
     }
-    if client_auth_mode(settings) == "keyless":
+    if require_keyless or client_auth_mode(settings) == "keyless":
         kwargs["azure_ad_token_provider"] = _keyless_token_provider()
     else:
         kwargs["api_key"] = settings.azure_openai_api_key

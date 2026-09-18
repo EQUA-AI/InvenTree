@@ -21,6 +21,8 @@ properties:
             value: "300"
           - name: AIMMS_MEMORY_WORKER_ENABLED
             value: "false"
+          - name: AIMMS_EGRESS_MODE
+            value: enforce
           - name: MEM0_TELEMETRY
             value: "false"
           - name: MEM0_DIR

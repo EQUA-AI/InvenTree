@@ -41,6 +41,8 @@ ENV INVENTREE_BACKEND_DIR="${INVENTREE_HOME}/src/backend"
 # stage inherits it through /root/.local, so a no-egress deployment never
 # reaches out at runtime (asserted offline in .github/workflows/docker.yaml).
 ENV TIKTOKEN_CACHE_DIR="/root/.local/share/tiktoken"
+ENV MEM0_TELEMETRY="false"
+ENV MEM0_DIR="/tmp/mem0"
 
 # InvenTree configuration files
 ENV INVENTREE_CONFIG_FILE="${INVENTREE_DATA_DIR}/config.yaml"

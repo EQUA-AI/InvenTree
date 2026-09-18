@@ -150,6 +150,22 @@ def test_client_auth_mode_values(monkeypatch):
     assert builder.client_auth_mode() == "keyless"
 
 
+def test_memory_client_cannot_fall_back_to_a_key(monkeypatch, fake_identity):
+    monkeypatch.setattr("openai.AzureOpenAI", _FakeAzureOpenAI)
+    settings = _settings(aimms_openai_keyless=False)
+    client = builder.build_openai_client(settings=settings, require_keyless=True)
+    assert "api_key" not in client.kwargs
+    assert callable(client.kwargs["azure_ad_token_provider"])
+    assert builder.client_auth_mode(settings, require_keyless=True) == "keyless"
+
+    def unavailable():
+        raise RuntimeError("credential unavailable")
+
+    monkeypatch.setattr(builder, "_keyless_token_provider", unavailable)
+    with pytest.raises(RuntimeError, match="credential unavailable"):
+        builder.build_openai_client(settings=settings, require_keyless=True)
+
+
 def test_constructor_is_looked_up_at_call_time(monkeypatch):
     """A patch applied AFTER import is honoured — the seam existing tests rely on."""
     import openai

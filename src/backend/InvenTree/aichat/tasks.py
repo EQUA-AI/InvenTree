@@ -662,9 +662,8 @@ def _summarize(
     system_prompt = (
         _COMPACTION_SYSTEM_PROMPT if system_prompt is None else system_prompt
     )
-    # M2 PR 7 (GR-23): the shared factory picks the credential — managed
-    # identity when AIMMS_OPENAI_KEYLESS is on, the API key otherwise.
-    client = build_openai_client(settings=settings)
+    # Memory calls require Entra credentials even when other rails still use keys.
+    client = build_openai_client(settings=settings, require_keyless=True)
     redacted = redact_payload({'prior_summary': prior_body, 'new_messages': transcript})
     if redacted.redacted:
         # Content-free by construction: category names and counts only; the

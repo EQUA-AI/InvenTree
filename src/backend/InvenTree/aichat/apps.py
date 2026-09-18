@@ -22,6 +22,10 @@ class AIChatConfig(AppConfig):
         Registration is best-effort: the lexicon already fails open, and chat must
         not block application startup.
         """
+        from ai.core.egress import disable_optional_memory_telemetry, install_guard
+
+        disable_optional_memory_telemetry()
+        install_guard()
         try:
             from django.db.models.signals import post_delete, post_save
 

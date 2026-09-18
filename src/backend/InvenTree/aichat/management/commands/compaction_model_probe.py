@@ -110,7 +110,9 @@ class Command(BaseCommand):
 
         self.stdout.write(f'deployment                = {deployment}')
         self.stdout.write(f'schema                    = {"v2" if delta_ops else "v1"}')
-        self.stdout.write(f'client                    = {client_auth_mode(settings)}')
+        self.stdout.write(
+            f'client                    = {client_auth_mode(settings, require_keyless=True)}'
+        )
         self.stdout.write(f'override_set              = {bool(options_sent)}')
         self.stdout.write(
             f'reasoning_effort_sent     = {options_sent.get("reasoning_effort", "")}'
@@ -126,7 +128,7 @@ class Command(BaseCommand):
 
         # M2 PR 7 (GR-23): the shared factory picks key vs managed identity,
         # so the probe proves the same credential path the worker job uses.
-        client = build_openai_client(settings=settings)
+        client = build_openai_client(settings=settings, require_keyless=True)
         try:
             response = client.chat.completions.create(
                 model=deployment,

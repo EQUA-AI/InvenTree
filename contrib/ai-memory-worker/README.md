@@ -24,7 +24,10 @@ Preserve/review registry access, environment/resource IDs, unified DB secret
 references, database host/port/pooling policy, signing-key continuity, mounts,
 networking and managed identity. Do not copy secret values into this package.
 Assign the required model/data roles to each new identity under the separate
-identity rollout. This package does not implement or qualify keyless model calls.
+identity rollout. Compaction now requires keyless authentication through the
+shared factory; other client rails retain their existing configuration. Qualify
+worker credentials before deploying this change to compaction consumers. There
+is no key fallback for memory calls; rollback uses the previous image.
 Memory-worker applications need no public HTTP ingress; adapt inherited probes
 for a queue consumer. The default worker must continue running ingestion and
 its existing schedules.
@@ -96,3 +99,25 @@ memory consumer. Never delete queue rows as an automatic rollback step.
 
 The web restore hold does not stop worker processes. Restore procedures must
 still fence all workers; the new wrapper/heartbeat check is an additional guard.
+
+## Hostname guard and telemetry
+
+The review overlay selects `AIMMS_EGRESS_MODE=enforce`. Existing environments
+default to `off` until explicitly configured. `audit` records denied attempts
+but permits the connection; switching mode after startup requires a restart.
+`AIMMS_EGRESS_ALLOW` is an optional comma-separated replacement of the canonical
+host list in `ai/core/egress.py`. Review the replacement database FQDN and every
+required provider destination before activation. Wildcards match one DNS label,
+never suffix lookalikes or arbitrary nested domains. The ACA `IDENTITY_ENDPOINT`
+may add its configured local/private IP; IMDS is excluded.
+
+The guard wraps Python DNS resolution and `socket.create_connection` from
+`AIChatConfig.ready` (there is no separate installed `ai` AppConfig). Denials log
+only `egress.blocked` and mode. This is a compensating control: direct socket/IP
+connections, DNS rebinding, libpq, gRPC, native clients and subprocesses are not
+contained by it. Network-level controls and the signed risk decision remain open.
+The existing no-egress CI island will collect the authored guard cases.
+
+The image and startup set `MEM0_TELEMETRY=false`; this does not admit or import
+Mem0, disable other vendors' telemetry, or prove absence of vendor egress. Mem0
+admission and its package-specific verification remain separate prerequisites.

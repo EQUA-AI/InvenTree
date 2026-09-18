@@ -22,6 +22,7 @@ class _FakeCompletions:
         self.calls: list[dict] = []
 
     def create(self, **kwargs):
+        """Verify create."""
         self.calls.append(kwargs)
         message = mock.Mock(content=json.dumps(self.body))
         return mock.Mock(choices=[mock.Mock(message=message)])
@@ -69,6 +70,7 @@ class MergeHelpersTest(TestCase):
     """Pure helpers: summary parsing and the protected-field merge."""
 
     def test_parse_summary_body_reads_json_under_the_label_line(self):
+        """Verify parse summary body reads json under the label line."""
         summary = 'Label\n{"machine_facts": ["fact"]}'
         self.assertEqual(tasks.parse_summary_body(summary), {'machine_facts': ['fact']})
         self.assertEqual(tasks.parse_summary_body('label only, no body'), {})
@@ -76,6 +78,7 @@ class MergeHelpersTest(TestCase):
 
     def test_protected_fields_union_prior_first_with_cap(self):
         # M2 PR 3: items are per-fact objects; the contract is on their texts.
+        """Verify protected fields union prior first with cap."""
         prior = {'machine_facts': ['old fact', 'shared']}
         fresh = _summary_payload(machine_facts=['shared', 'new fact'])
         merged = tasks.merge_protected_fields(prior, fresh)
@@ -85,6 +88,7 @@ class MergeHelpersTest(TestCase):
         )
 
     def test_protected_fields_cap_bounds_growth(self):
+        """Verify protected fields cap bounds growth."""
         prior = {
             'machine_facts': [
                 f'fact {i}' for i in range(tasks.COMPACTION_MACHINE_FACTS_CAP + 10)
@@ -92,7 +96,8 @@ class MergeHelpersTest(TestCase):
         }
         merged = tasks.merge_protected_fields(prior, _summary_payload(machine_facts=[]))
         self.assertEqual(
-            len(active_items(merged, 'machine_facts')), tasks.COMPACTION_MACHINE_FACTS_CAP
+            len(active_items(merged, 'machine_facts')),
+            tasks.COMPACTION_MACHINE_FACTS_CAP,
         )
 
     def test_long_thread_preserves_the_observed_soak_burst(self):
@@ -117,6 +122,7 @@ class MergeHelpersTest(TestCase):
     def test_corrections_cap_never_drops_a_newer_correction(self):
         # Plan §8.8 Q56: a supersession against a full corrections list lands
         # its correction and the original's pointer resolves to a stored id.
+        """Verify corrections cap never drops a newer correction."""
         prior = {
             'machine_facts': ['pump 3 seal worn'],
             'corrections': [f'correction {i}' for i in range(20)],
@@ -140,6 +146,7 @@ class MergeHelpersTest(TestCase):
         self.assertTrue(counts['cap_hit'])
 
     def test_a_run_mints_at_most_one_cap_of_corrections(self):
+        """Verify a run mints at most one cap of corrections."""
         fresh = _summary_payload(corrections=[f'c{i}' for i in range(25)])
         merged, counts = tasks.merge_protected_fields_counted({}, fresh)
         self.assertEqual(
@@ -153,6 +160,7 @@ class CompactionJobTest(TestCase):
     """The job summarizes above the watermark and CAS-advances it."""
 
     def setUp(self):
+        """Prepare isolated compaction fixtures."""
         cache.clear()
         self.user = get_user_model().objects.create_user(username='compact-user')
         self.thread = ChatThread.objects.create(
@@ -172,6 +180,7 @@ class CompactionJobTest(TestCase):
         self.addCleanup(patcher.stop)
 
     def test_job_writes_label_line_and_advances_watermark(self):
+        """Verify job writes label line and advances watermark."""
         with mock.patch.object(
             tasks, '_summarize', return_value=_summary_payload()
         ) as summarize:
@@ -187,6 +196,7 @@ class CompactionJobTest(TestCase):
         self.assertEqual(len(transcript), 20)
 
     def test_prior_protected_facts_merge_forward(self):
+        """Verify prior protected facts merge forward."""
         self.thread.summary = 'Old label\n{"machine_facts": ["ancient fact"]}'
         self.thread.summary_through_sequence = 2
         self.thread.save(update_fields=['summary', 'summary_through_sequence'])
@@ -199,6 +209,7 @@ class CompactionJobTest(TestCase):
         self.assertIn('pump 3 seal worn', self.thread.summary)
 
     def test_lock_contention_is_a_noop(self):
+        """Verify lock contention is a noop."""
         cache.add(f'aimms:compaction:{self.thread.pk}', True, timeout=60)
         with mock.patch.object(tasks, '_summarize') as summarize:
             tasks.compact_thread_summary(self.thread.pk)
@@ -207,6 +218,8 @@ class CompactionJobTest(TestCase):
         self.assertEqual(self.thread.summary_through_sequence, 0)
 
     def test_lost_watermark_race_is_a_noop(self):
+        """Verify lost watermark race is a noop."""
+
         def _move_watermark(*args, **kwargs):
             ChatThread.objects.filter(pk=self.thread.pk).update(
                 summary_through_sequence=5
@@ -221,6 +234,7 @@ class CompactionJobTest(TestCase):
         self.assertEqual(self.thread.summary, '')
 
     def test_small_backlog_never_summarizes(self):
+        """Verify small backlog never summarizes."""
         self.thread.summary_through_sequence = 10
         self.thread.save(update_fields=['summary_through_sequence'])
         with mock.patch.object(tasks, '_summarize') as summarize:
@@ -228,6 +242,7 @@ class CompactionJobTest(TestCase):
         summarize.assert_not_called()
 
     def test_summarize_failure_leaves_state_untouched(self):
+        """Verify summarize failure leaves state untouched."""
         with mock.patch.object(
             tasks, '_summarize', side_effect=RuntimeError('llm down')
         ):
@@ -241,6 +256,7 @@ class CompactionTriggerTest(TestCase):
     """The terminal-path trigger is flag-gated and backlog-gated."""
 
     def setUp(self):
+        """Prepare isolated compaction fixtures."""
         cache.clear()
         self.repo = ThreadRepository.__new__(ThreadRepository)
 
@@ -261,6 +277,7 @@ class CompactionTriggerTest(TestCase):
         )
 
     def test_trigger_offloads_when_backlog_is_large(self):
+        """Verify trigger offloads when backlog is large."""
         with (
             mock.patch('ai.core.config.get_settings', return_value=self._settings()),
             mock.patch('InvenTree.tasks.offload_task') as offload,
@@ -273,6 +290,7 @@ class CompactionTriggerTest(TestCase):
         self.assertEqual(offload.call_args.kwargs.get('timeout'), 300)
 
     def test_trigger_skips_small_backlog(self):
+        """Verify trigger skips small backlog."""
         with (
             mock.patch('ai.core.config.get_settings', return_value=self._settings()),
             mock.patch('InvenTree.tasks.offload_task') as offload,
@@ -281,6 +299,7 @@ class CompactionTriggerTest(TestCase):
         offload.assert_not_called()
 
     def test_trigger_skips_when_flags_off(self):
+        """Verify trigger skips when flags off."""
         with (
             mock.patch(
                 'ai.core.config.get_settings',
@@ -352,7 +371,7 @@ class SummarizeRedactionTest(TestCase):
             self.assertNotIn(leak, joined)
 
     def test_summarize_builds_the_client_through_the_shared_factory(self):
-        """M2 PR 7 (GR-23): endpoint/version reach the SDK; keyless rides settings."""
+        """Memory always selects keyless auth, independently of other rails."""
         constructed: list[dict] = []
 
         class _Recording(_FakeAzureOpenAI):
@@ -364,6 +383,10 @@ class SummarizeRedactionTest(TestCase):
         with (
             mock.patch('openai.AzureOpenAI', _Recording),
             mock.patch('ai.core.config.get_settings', _ai_settings),
+            mock.patch(
+                'ai.core.integrations.azure_openai_client._keyless_token_provider',
+                return_value='fake-provider',
+            ),
         ):
             body = tasks._summarize([{'role': 'user', 'content': 'hi'}], {})
         self.assertEqual(body['label'], 'Pump 3 diagnosis')
@@ -374,7 +397,7 @@ class SummarizeRedactionTest(TestCase):
             {
                 'azure_endpoint': 'https://example.openai.azure.com',
                 'api_version': '2024-10-21',
-                'api_key': 'test-key',
+                'azure_ad_token_provider': 'fake-provider',
             },
         )
 
@@ -384,7 +407,8 @@ class SummarizeRedactionTest(TestCase):
         completions = _FakeCompletions(_summary_payload())
         _FakeAzureOpenAI.completions = completions
 
-        def fake_factory(*, settings=None):
+        def fake_factory(*, settings=None, require_keyless=False):
+            self.assertTrue(require_keyless)
             seen.append(settings)
             return _FakeAzureOpenAI()
 
@@ -408,6 +432,7 @@ class PriorSummaryRedactionTest(TestCase):
     """CR-2: secrets already stored in a summary do not survive the merge."""
 
     def setUp(self):
+        """Prepare isolated compaction fixtures."""
         cache.clear()
         self.user = get_user_model().objects.create_user(username='compact-prior')
         self.thread = ChatThread.objects.create(
@@ -421,9 +446,9 @@ class PriorSummaryRedactionTest(TestCase):
                 content=f'message {i}',
             )
         self.thread.next_sequence = 21
-        self.thread.summary = 'Old label\n' + json.dumps(
-            {'machine_facts': ['the password is hunter2', 'pump 3 seal worn']}
-        )
+        self.thread.summary = 'Old label\n' + json.dumps({
+            'machine_facts': ['the password is hunter2', 'pump 3 seal worn']
+        })
         self.thread.summary_through_sequence = 2
         self.thread.save(
             update_fields=['next_sequence', 'summary', 'summary_through_sequence']
