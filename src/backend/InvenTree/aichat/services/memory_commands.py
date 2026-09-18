@@ -292,7 +292,9 @@ def _supersede(fact, owner):
         client_code=fact.client_code,
         slot_fingerprint=slot_fingerprint(fact),
         claim_fingerprint=fact.claim_fingerprint,
+        fact_id=fact.pk,
         defaults={
+            'owner_joined_at': fact.owner.date_joined,
             'source_fingerprint': fingerprint(
                 'source-v1', [fact.source_thread_id, fact.source_message_id]
             ),
@@ -300,7 +302,6 @@ def _supersede(fact, owner):
                 'latest'
             ]
             or 0,
-            'fact_id': fact.pk,
             'reason': 'supersede',
             'residual_pending': False,
         },

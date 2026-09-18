@@ -90,9 +90,10 @@ def _forget_locked(fact, *, actor_id, reason):
         client_code=fact.client_code,
         slot_fingerprint=slot_fingerprint(fact),
         claim_fingerprint=fact.claim_fingerprint,
+        fact_id=fact.pk,
         defaults={
+            'owner_joined_at': fact.owner.date_joined,
             'source_fingerprint': source,
-            'fact_id': fact.pk,
             'reason': reason,
             'deleted_at': timezone.now(),
             'source_sequence': fact.claims.aggregate(latest=Max('source_sequence'))[
@@ -185,11 +186,21 @@ def forget_fact(owner, fact_id, *, expected_version):
 
 @transaction.atomic
 def forget_owner_facts(
-    owner_id, *, cutoff, reason='erasure', client_code=None, limit=200
+    owner_id,
+    *,
+    cutoff,
+    reason='erasure',
+    client_code=None,
+    limit=200,
+    replay_deleted_at=None,
 ):
     """Authorized operator/lifecycle seam; a fixed cutoff bounds every retry."""
     if reason not in FORGET_REASONS or not 1 <= limit <= 1000:
         raise ValueError('Invalid memory purge request')
+    if replay_deleted_at is not None and (
+        not restore_hold_enabled() or replay_deleted_at > timezone.now()
+    ):
+        raise ValueError('Invalid restore deletion clock')
     get_user_model().objects.select_for_update().get(pk=owner_id)
     rows = MemoryFact.objects.filter(
         owner_id=owner_id, created_at__lte=cutoff, lifecycle_state__in=LIVE_STATES
@@ -199,6 +210,10 @@ def forget_owner_facts(
     selected = list(rows.select_for_update().order_by('pk')[:limit])
     for fact in selected:
         _forget_locked(fact, actor_id=None, reason=reason)
+        if replay_deleted_at is not None:
+            MemoryFactTombstone.objects.filter(
+                owner_id=owner_id, fact_id=fact.pk
+            ).update(deleted_at=replay_deleted_at)
     if selected:
         _invalidate_summaries(owner_id)
     remaining = rows.count()

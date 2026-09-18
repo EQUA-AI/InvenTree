@@ -132,7 +132,7 @@ class RetentionJournalTests(TestCase):
         deleted = ChatThreadTombstone.objects.get(thread_id=thread['id']).deleted_at
         token = export_journal(since=self.since)
         payload = read_journal(token, since=self.since)
-        self.assertEqual(payload['schema_version'], 2)
+        self.assertEqual(payload['schema_version'], 3)
         self.assertEqual(len(payload['accounts']), 1)
         self.assertNotIn('journal-owner', json.dumps(payload))
         credential = self.restore_account(account)
@@ -250,6 +250,7 @@ class RetentionJournalTests(TestCase):
         snapshot = self.source_deletion()
         payload = read_journal(export_journal(since=self.since), since=self.since)
         payload.pop('accounts')
+        payload.pop('memories')
         payload.update(schema_version=1, scope='retained_thread_deletions')
         token = signing.dumps(payload, salt=SALT)
         self.assertEqual(read_journal(token, since=self.since)['schema_version'], 1)

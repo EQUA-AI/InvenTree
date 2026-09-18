@@ -282,6 +282,7 @@ class MemoryFactTombstone(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner_id = models.PositiveBigIntegerField(db_index=True)
+    owner_joined_at = models.DateTimeField(null=True, blank=True)
     client_code = models.CharField(max_length=64, blank=True, default='')
     slot_fingerprint = models.CharField(max_length=64)
     claim_fingerprint = models.CharField(max_length=64)
@@ -311,8 +312,9 @@ class MemoryFactTombstone(models.Model):
                     'client_code',
                     'slot_fingerprint',
                     'claim_fingerprint',
+                    'fact_id',
                 ],
-                name='memory_tombstone_claim',
+                name='memory_tombstone_fact_claim',
             ),
             models.CheckConstraint(
                 condition=~Q(slot_fingerprint='')

@@ -22,7 +22,7 @@ from aichat.models import (
     ChatThread,
     ChatThreadTombstone,
 )
-from aichat.services import retention
+from aichat.services import memory_journal, retention
 from aichat.services.account_erasure import erase_account
 from aichat.services.account_erasure_log import record_erasure
 from InvenTree.restore_hold import restore_hold_enabled
@@ -104,7 +104,16 @@ def export_journal(*, since):
         .order_by('user_id')
         .values(*ACCOUNT_FIELDS)[: MAX_ROWS + 1]
     )
-    if len(rows) + len(obligations) + len(accounts) > MAX_ROWS:
+    try:
+        memories = memory_journal.export_memory(
+            upper=upper, pending=obligations, limit=MAX_ROWS
+        )
+    except ValueError:
+        raise JournalError('Memory deletion proof is incomplete') from None
+    memory_count = sum(
+        len(memories[key]) for key in ('tombstones', 'opt_outs', 'purges')
+    )
+    if len(rows) + len(obligations) + len(accounts) + memory_count > MAX_ROWS:
         raise JournalError(
             'Journal exceeds the record limit; no partial export was created'
         )
@@ -115,15 +124,16 @@ def export_journal(*, since):
         for key in ('user_joined_at', 'requested_at'):
             row[key] = row[key].isoformat()
     payload = {
-        'schema_version': 2,
+        'schema_version': 3,
         'source': source,
         'since': lower.isoformat(),
         'as_of': upper.isoformat(),
-        'scope': 'retained_threads_and_local_account_intents',
+        'scope': 'retained_threads_accounts_and_memory',
         'kinds': sorted(retention.OUTBOX_KINDS),
         'threads': rows,
         'outbox': obligations,
         'accounts': accounts,
+        'memories': memories,
     }
     token = signing.dumps(payload, salt=SALT, compress=False)
     if len(token.encode('utf-8')) > MAX_BYTES:
@@ -149,7 +159,7 @@ def read_journal(token, *, since):
         if not isinstance(payload, dict):
             raise ValueError
         version = payload.get('schema_version')
-        if type(version) is not int or version not in (1, 2):
+        if type(version) is not int or version not in (1, 2, 3):
             raise ValueError
         fields = {
             'schema_version',
@@ -161,12 +171,16 @@ def read_journal(token, *, since):
             'threads',
             'outbox',
         }
-        if version == 2:
+        if version >= 2:
             fields.add('accounts')
+        if version == 3:
+            fields.add('memories')
         if set(payload) != fields:
             raise ValueError
         scope = (
-            'retained_threads_and_local_account_intents'
+            'retained_threads_accounts_and_memory'
+            if version == 3
+            else 'retained_threads_and_local_account_intents'
             if version == 2
             else 'retained_thread_deletions'
         )
@@ -181,7 +195,17 @@ def read_journal(token, *, since):
             isinstance(items, list) for items in (rows, pending, kinds, accounts)
         ):
             raise ValueError
-        if len(rows) + len(pending) + len(accounts) > MAX_ROWS or len(kinds) > 1000:
+        memory_count = (
+            memory_journal.validate_memory(
+                payload['memories'], upper=upper, parse_time=aware_time
+            )
+            if version == 3
+            else 0
+        )
+        if (
+            len(rows) + len(pending) + len(accounts) + memory_count > MAX_ROWS
+            or len(kinds) > 1000
+        ):
             raise ValueError
         if not all(
             isinstance(k, str) and re.fullmatch(r'[a-z][a-z0-9_]{0,31}', k)
@@ -240,14 +264,31 @@ def read_journal(token, *, since):
             if (
                 set(row) != {'kind', 'reference'}
                 or row['kind'] not in kinds
-                or not _reference(row['reference'])
+                or not (
+                    _reference(row['reference'])
+                    or (
+                        version == 3
+                        and row['kind'] == 'memory_owner_purge'
+                        and isinstance(row['reference'], str)
+                        and len(row['reference']) <= 255
+                    )
+                )
             ):
                 raise ValueError
             pair = (row['kind'], row['reference'])
             if pair in pairs:
                 raise ValueError
             pairs.add(pair)
-    except (ValueError, TypeError, KeyError):
+        if version == 3:
+            proof_refs = {row['reference'] for row in payload['memories']['purges']}
+            outbox_refs = {
+                row['reference']
+                for row in pending
+                if row['kind'] == 'memory_owner_purge'
+            }
+            if proof_refs != outbox_refs:
+                raise ValueError
+    except (ValueError, TypeError, KeyError, AttributeError):
         raise JournalError(
             'Journal schema, source or restore point is invalid'
         ) from None
@@ -314,10 +355,20 @@ def replay_journal(token, *, since, execute=False):
         entry.outbox_kind for entry in retention.THREAD_DERIVATIVES.entries
     } | {'thread_summary'}
     # A future non-thread outbox kind needs an explicit journal/replay contract.
-    unknown |= retention.OUTBOX_KINDS.keys() - thread_kinds
+    known_non_thread = (
+        {'memory_owner_purge'} if payload['schema_version'] == 3 else set()
+    )
+    unknown |= retention.OUTBOX_KINDS.keys() - thread_kinds - known_non_thread
     conflicts = unsupported = 0
     accounts = payload.get('accounts', [])
     account_conflicts = sum(bool(_account_conflict(row)) for row in accounts)
+    memories = payload.get('memories')
+    try:
+        memory_conflicts = (
+            memory_journal.conflicts(memories, parse_time=aware_time) if memories else 0
+        )
+    except ValueError:
+        memory_conflicts = 1
     references = {row['thread_id'] for row in payload['threads']}
     for row in payload['threads']:
         root = ChatThread.objects.filter(pk=row['thread_id']).first()
@@ -327,6 +378,8 @@ def replay_journal(token, *, since, execute=False):
         ):
             conflicts += 1
     for row in payload['outbox']:
+        if row['kind'] in known_non_thread:
+            continue
         if row['reference'] not in references:
             # A live summary correction needs its lost exclusion payload. A
             # reference alone cannot reconstruct it, nor authorize root erasure.
@@ -336,7 +389,7 @@ def replay_journal(token, *, since, execute=False):
             ):
                 unsupported += 1
     report = {
-        'schema_version': 2,
+        'schema_version': 3,
         'journal_schema_version': payload['schema_version'],
         'scope': payload['scope'],
         'journal_sha256': hashlib.sha256(token.encode()).hexdigest(),
@@ -346,6 +399,10 @@ def replay_journal(token, *, since, execute=False):
         'outbox': len(payload['outbox']),
         'accounts': len(accounts),
         'account_conflicts': account_conflicts,
+        'memory_conflicts': memory_conflicts,
+        'memory_journal_missing': payload['schema_version'] < 3,
+        'memory_tombstones': len(memories['tombstones']) if memories else 0,
+        'memory_opt_outs': len(memories['opt_outs']) if memories else 0,
         'account_journal_missing': payload['schema_version'] == 1,
         'account_erasure_complete': False,
         'conflicts': conflicts,
@@ -362,11 +419,26 @@ def replay_journal(token, *, since, execute=False):
         or unknown
         or gaps
         or report['account_journal_missing']
+        or memory_conflicts
+        or report['memory_journal_missing']
     ):
         return {**report, 'status': 'replay_incomplete'}
     if not execute:
         return {**report, 'status': 'dry_run'}
     failed = completed = 0
+    completed_memories = memory_failures = 0
+    for family, handler in (
+        ('tombstones', memory_journal.replay_tombstone),
+        ('opt_outs', memory_journal.replay_opt_out),
+    ):
+        for row in memories[family]:
+            try:
+                if handler(row, parse_time=aware_time):
+                    completed_memories += 1
+                else:
+                    memory_failures += 1
+            except Exception:
+                memory_failures += 1
     completed_accounts = account_failures = 0
     for row in accounts:
         try:
@@ -412,15 +484,24 @@ def replay_journal(token, *, since, execute=False):
         except Exception:
             failed += 1
     for row in payload['outbox']:
-        if row['reference'] in references:
+        if row['kind'] not in known_non_thread and row['reference'] in references:
             continue
         try:
             ref, kind = row['reference'], row['kind']
-            if ChatThread.objects.filter(pk=ref).exists():
+            if (
+                kind not in known_non_thread
+                and ChatThread.objects.filter(pk=ref).exists()
+            ):
                 raise JournalError('Orphan reference acquired a live root')
             retention.enqueue_outbox(kind, ref)
             cleanup = retention.OUTBOX_KINDS[kind]
-            cleanup.handler(ref)
+            if kind == 'memory_owner_purge':
+                proof = next(
+                    row for row in memories['purges'] if row['reference'] == ref
+                )
+                memory_journal.replay_purge(proof, parse_time=aware_time)
+            else:
+                cleanup.handler(ref)
             if retention.checked_residual(cleanup.probe, ref):
                 raise JournalError('Residual remains')
             AIRetentionOutbox.objects.filter(kind=kind, reference=ref).exclude(
@@ -430,10 +511,14 @@ def replay_journal(token, *, since, execute=False):
             failed += 1
     return {
         **report,
-        'status': 'replay_incomplete' if failed or account_failures else 'replayed',
+        'status': 'replay_incomplete'
+        if failed or account_failures or memory_failures
+        else 'replayed',
         'completed_accounts': completed_accounts,
         'account_failures': account_failures,
         'completed_threads': completed,
-        'failures': failed + account_failures,
+        'completed_memories': completed_memories,
+        'memory_failures': memory_failures,
+        'failures': failed + account_failures + memory_failures,
         'finished_at': timezone.now().isoformat(),
     }
