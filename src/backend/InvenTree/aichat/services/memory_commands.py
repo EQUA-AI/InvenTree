@@ -8,8 +8,6 @@ from django.db.models import Max
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from tasks.scope import ScopeError, client_codes_for_actor
-
 from ai.core.config import get_settings
 from aichat.models import (
     MemoryFact,
@@ -101,12 +99,9 @@ def _decision_budget(owner):
 
 
 def _can_read(owner, fact):
-    if not fact.client_code:
-        return fact.entity_kind == 'user' and fact.entity_id == str(owner.pk)
-    try:
-        return fact.client_code in client_codes_for_actor(owner)
-    except ScopeError:
-        return False
+    from aichat.services.memory_reads import can_read
+
+    return can_read(owner, fact)
 
 
 def authorize_preview(owner, proposal):

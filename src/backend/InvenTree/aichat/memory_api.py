@@ -193,3 +193,18 @@ class MemoryProposalDecisionView(MemorySettingsView):
             return Response(_payload(proposal))
         except proposals.ProposalError as exc:
             return _error(exc)
+
+
+class MemoryFactListView(MemorySettingsView):
+    """Paged inspection and export share the exact current authorization path."""
+
+    def get(self, request):
+        """Return bounded plain records with an opaque, owner-bound continuation."""
+        from aichat.services.memory_reads import list_facts
+
+        if set(request.query_params) - {'state', 'memory_type', 'topic', 'cursor'}:
+            return Response({'error': 'invalid_memory_selection'}, status=400)
+        try:
+            return Response(list_facts(request.user, **request.query_params.dict()))
+        except ValueError:
+            return Response({'error': 'memory_list_unavailable'}, status=400)

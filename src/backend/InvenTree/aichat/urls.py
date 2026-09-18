@@ -24,6 +24,7 @@ from aichat.email_api import (
 )
 from aichat.media_stream import EvidenceMediaStreamView
 from aichat.memory_api import (
+    MemoryFactListView,
     MemoryNoticeView,
     MemoryOptOutView,
     MemoryProposalDecisionView,
@@ -42,6 +43,8 @@ urlpatterns = [
         MemoryProposalDecisionView.as_view(),
         name='memory-proposal-decision',
     ),
+    path('memory/facts/', MemoryFactListView.as_view(), name='memory-facts'),
+    path('memory/export/', MemoryFactListView.as_view(), name='memory-export'),
     path('memory/settings/', MemorySettingsView.as_view(), name='memory-settings'),
     path('memory/notice/', MemoryNoticeView.as_view(), name='memory-notice'),
     path('memory/opt-out/', MemoryOptOutView.as_view(), name='memory-opt-out'),
