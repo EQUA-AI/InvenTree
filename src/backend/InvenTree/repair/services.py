@@ -1624,6 +1624,28 @@ _DIAGNOSTIC_SIMILAR_CANDIDATE_LIMIT = 100
 _DIAGNOSTIC_SIMILAR_RESULT_LIMIT = 5
 
 
+def similar_repair_candidates(machines):
+    """Canonical verified, same-machine/same-model and same-client candidate set.
+
+    The caller supplies currently authorized root machines. Customer-owned work
+    orders cannot borrow their asset's client authorization. This lazy predicate
+    is shared by the diagnostic reader and the bounded memory context read.
+    """
+    from django.db.models import Exists, F, OuterRef, Q
+
+    roots = machines.filter(client_id=OuterRef('machine__client_id')).filter(
+        Q(pk=OuterRef('machine_id'))
+        | (~Q(model='') & Q(model=OuterRef('machine__model')))
+    )
+    return RepairPacket.objects.filter(
+        Exists(roots),
+        machine_id=F('work_order__machine_id'),
+        work_order__customer__isnull=True,
+        work_order__structured_closeout__verified_by__isnull=False,
+        work_order__structured_closeout__verified_at__isnull=False,
+    )
+
+
 def read_diagnostic_similar_past_repairs(
     *,
     actor,
@@ -1653,8 +1675,6 @@ def read_diagnostic_similar_past_repairs(
         or not _diagnostic_reauthorize(actor, authorization, expected_revision)
     ):
         return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
-
-    from django.db.models import Q
 
     from tasks.services.closeout_amend import effective_closeout
 
@@ -1691,15 +1711,10 @@ def read_diagnostic_similar_past_repairs(
             current.findings.order_by().values_list('category', flat=True).distinct()
         )
 
-    same_model = (
-        Q(machine__client_id=machine.client_id, machine__model=machine.model)
-        if machine.model
-        else Q(machine_id=machine_id)
-    )
     candidates = (
-        RepairPacket.objects
-        .filter(work_order__structured_closeout__verified_by__isnull=False)
-        .filter(Q(machine_id=machine_id) | same_model)
+        similar_repair_candidates(
+            AssetMachine.objects.filter(pk=machine_id, client_id=machine.client_id)
+        )
         .exclude(pk=repair_packet_id)
         .select_related('work_order', 'work_order__structured_closeout')
         .prefetch_related('approved_scopes', 'findings')
@@ -1773,6 +1788,22 @@ def read_diagnostic_similar_past_repairs(
                 untrusted=True,
             )
         )
+    # Scope may change while amendments/evidence are materialized. Recheck the
+    # root and each selected packet's current client/work-order relationship.
+    if not _diagnostic_reauthorize(actor, authorization, expected_revision):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+    current_ids = set(
+        similar_repair_candidates(
+            AssetMachine.objects.filter(pk=machine_id, client_id=machine.client_id)
+        )
+        .filter(pk__in=[row[2].pk for row in scored[:bounded]])
+        .values_list('pk', flat=True)
+    )
+    evidence = [
+        item
+        for item, row in zip(evidence, scored[:bounded], strict=True)
+        if row[2].pk in current_ids
+    ]
     return _diagnostic_result(*evidence, reason=_DIAGNOSTIC_ABSTENTION)
 
 

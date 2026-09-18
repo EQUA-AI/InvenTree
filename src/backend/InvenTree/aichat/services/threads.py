@@ -1243,6 +1243,7 @@ class ThreadRepository:
         limit: int,
         exclude_latest: int = 1,
         memory_query: bool = False,
+        episode_recall: bool = False,
     ):
         """M1 (GR-31 seat 1): the replay window AND the summary in ONE statement.
 
@@ -1263,6 +1264,10 @@ class ThreadRepository:
             from aichat.services.memory_recall import query_admission
 
             annotations['memory_query_allowed'] = query_admission(self, thread_id)
+        if episode_recall:
+            from aichat.services.memory_episodes import annotation
+
+            annotations['episode_candidates'] = annotation(self, thread_id)
         rows = list(
             ChatMessage.objects
             .filter(thread__in=self._threads().filter(pk=thread_id))
@@ -1312,6 +1317,7 @@ class ThreadRepository:
             next_sequence=int(first['thread_next'] or 0),
             db_round_trips=1,
             memory_query_allowed=bool(first.get('memory_query_allowed', False)),
+            episode_candidates=tuple(first.get('episode_candidates') or ()),
         )
 
     def recent_messages(

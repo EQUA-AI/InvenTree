@@ -227,3 +227,14 @@ class SimilarPastRepairsReadTest(TestCase):
         self.assertEqual(len(claims), 2)
         self.assertIn(newer.fault_summary, claims[0])
         self.assertIn(older.fault_summary, claims[1])
+
+    def test_customer_work_order_cannot_borrow_machine_client_scope(self):
+        """A work-order customer is a separate boundary even on a local asset."""
+        from company.models import Company
+
+        packet = self._closed_packet(machine=self.machine)
+        customer = Company.objects.create(
+            name='Unrelated customer fixture', is_customer=True
+        )
+        WorkOrder.objects.filter(pk=packet.work_order_id).update(customer=customer)
+        self.assertEqual(self._read()['evidence'], ())

@@ -79,30 +79,9 @@ def _eligible(repository, thread_id):
     from tasks.models import WorkOrder
 
     config = get_settings()
-    resolver = getattr(django_settings, 'AIMMS_MAINTENANCE_SCOPE_RESOLVER', None)
-    if resolver not in SUPPORTED_RESOLVERS:
-        raise ValueError('memory_scope_resolver_unavailable')
     now = timezone.now()
     actor_id = repository.actor_id
-    role = RuleSet.objects.filter(
-        group__user__pk=actor_id, name='work_order', can_view=True
-    )
-    owner = (
-        get_user_model()
-        .objects.filter(pk=actor_id, is_active=True)
-        .filter(Q(is_superuser=True) | Q(Exists(role)))
-    )
-    grants = ClientScopeGrant.objects.filter(user_id=actor_id, client__active=True)
-    clients = Client.objects.filter(active=True).filter(Exists(owner))
-    fallback = Q(
-        code=getattr(django_settings, 'AIMMS_SINGLE_SITE_CLIENT_CODE', 'internal')
-    )
-    if resolver.endswith('granted_client_scope_resolver'):
-        clients = clients.filter(
-            Q(pk__in=grants.values('client_id')) | (fallback & ~Q(Exists(grants)))
-        )
-    else:
-        clients = clients.filter(fallback)
+    clients = authorized_clients(actor_id)
     thread = repository._threads().filter(
         pk=thread_id, owner__is_active=True, analysis_scope__schema_version=1
     )
@@ -349,3 +328,30 @@ def query_admission(repository, thread_id):
         .exclude(memory_type='user_preference')
         .filter(embedding__isnull=False, embedding_profile=profile)
     )
+
+
+def authorized_clients(actor_id):
+    """Lazy SQL counterpart of the two shipped maintenance scope resolvers."""
+    resolver = getattr(django_settings, 'AIMMS_MAINTENANCE_SCOPE_RESOLVER', None)
+    if resolver not in SUPPORTED_RESOLVERS:
+        raise ValueError('memory_scope_resolver_unavailable')
+    role = RuleSet.objects.filter(
+        group__user__pk=actor_id, name='work_order', can_view=True
+    )
+    owner = (
+        get_user_model()
+        .objects.filter(pk=actor_id, is_active=True)
+        .filter(Q(is_superuser=True) | Q(Exists(role)))
+    )
+    grants = ClientScopeGrant.objects.filter(user_id=actor_id, client__active=True)
+    clients = Client.objects.filter(active=True).filter(Exists(owner))
+    fallback = Q(
+        code=getattr(django_settings, 'AIMMS_SINGLE_SITE_CLIENT_CODE', 'internal')
+    )
+    if resolver.endswith('granted_client_scope_resolver'):
+        clients = clients.filter(
+            Q(pk__in=grants.values('client_id')) | (fallback & ~Q(Exists(grants)))
+        )
+    else:
+        clients = clients.filter(fallback)
+    return clients

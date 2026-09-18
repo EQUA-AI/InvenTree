@@ -45,14 +45,16 @@ def _memory_lineage(run) -> dict[str, Any]:
         for slot in ("user_preferences", "verified_entity_facts")
         for item in bundle.section(slot).items
     ]
-    if not items:
+    episodes = bundle.section("recalled_episodes").items
+    if not items and not episodes:
         return {}
     return {
         "memory_informed_clients": sorted({
-            code for item in items for code in item.scope.client_codes
+            code for item in (*items, *episodes) for code in item.scope.client_codes
         }),
         "memory_fact_ids": [item.item_id for item in items],
         "memory_fact_versions": {item.item_id: item.version for item in items},
+        "memory_episode_sources": [item.source_pointer for item in episodes],
     }
 
 

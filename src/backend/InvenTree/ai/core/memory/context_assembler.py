@@ -180,6 +180,9 @@ class RecallWindow:
     memory_reason: str = ""
     facts_reason: str = ""
     memory_query_allowed: bool = False
+    episode_candidates: tuple[dict[str, Any], ...] = ()
+    episodes: tuple[dict[str, Any], ...] = ()
+    episodes_reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,10 +307,14 @@ class ContextBundle:
             },
             "degrade_reason": self.degrade_reason,
         }
-        semantic = (Slot.USER_PREFERENCES, Slot.VERIFIED_ENTITY_FACTS)
+        semantic = (Slot.USER_PREFERENCES, Slot.VERIFIED_ENTITY_FACTS, Slot.RECALLED_EPISODES)
         if any(
             self.section(slot).reason
-            not in {EmptyReason.NO_PREFERENCE_STORE, EmptyReason.NO_VERIFIED_FACTS}
+            not in {
+                EmptyReason.NO_PREFERENCE_STORE,
+                EmptyReason.NO_VERIFIED_FACTS,
+                EmptyReason.NOT_A_DIAGNOSTIC_ROUTE,
+            }
             for slot in semantic
         ):
             record["memory_sources"] = {
@@ -317,6 +324,7 @@ class ContextBundle:
                     "n": len(self.section(slot).items),
                 }
                 for slot in semantic
+                if self.section(slot).reason != EmptyReason.NOT_A_DIAGNOSTIC_ROUTE
             }
         envelopes = (
             (retrieval_snapshot or {}).get("envelopes")
@@ -616,6 +624,19 @@ class ContextAssembler:
                 total_chars=max_total_chars - (len(summary_item.text) if summary_item else 0),
                 max_message_chars=max_message_chars,
             )
+        if window.episodes_reason:
+            from ai.core.memory.semantic_context import episode_section
+
+            remaining = max_total_chars - (len(summary_item.text) if summary_item else 0)
+            remaining -= sum(
+                item.chars + 1 for section in semantic_sections.values() for item in section.items
+            )
+            semantic_sections[str(Slot.RECALLED_EPISODES)] = episode_section(
+                window,
+                estimator=self._estimator,
+                total_chars=remaining,
+                max_message_chars=max_message_chars,
+            )
         semantic_chars = sum(
             item.chars + 1 for section in semantic_sections.values() for item in section.items
         )
@@ -665,6 +686,21 @@ class ContextAssembler:
             str(DegradeReason.RECALL_ERROR),
         }:
             degrade_reason = window.memory_reason
+        ledger = _default_ledger()
+        if window.episodes_reason:
+            episodes = sections[str(Slot.RECALLED_EPISODES)].items
+            ledger = tuple(
+                LedgerEntry(
+                    corpus=str(Corpus.REPAIR_HISTORY),
+                    tool_id="context.verified_closeouts",
+                    state=str(LedgerState.USED if episodes else LedgerState.CONSULTED_NONE),
+                    n=len(episodes),
+                    retrieval_ids=tuple(item.source_pointer for item in episodes),
+                )
+                if entry.corpus == str(Corpus.REPAIR_HISTORY)
+                else entry
+                for entry in ledger
+            )
         items = ([summary_item] if summary_item else []) + list(turn_items)
         items.extend(item for section in semantic_sections.values() for item in section.items)
         return ContextBundle(
@@ -675,7 +711,7 @@ class ContextAssembler:
             watermark=watermark,
             next_sequence=window.next_sequence,
             sections=sections,
-            ledger=_default_ledger(),
+            ledger=ledger,
             retrieval_plan=plan,
             recall_filter=recall_filter,
             routing_fields=routing_fields,

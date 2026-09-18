@@ -86,6 +86,11 @@ export function ContextUsedDisclosure({
       populated: t`included in context`,
       no_eligible_memories: t`no eligible memories`,
       query_embedding_unavailable: t`query embedding unavailable`,
+      query_embedding_timeout: t`query embedding timed out`,
+      query_embedding_input_bounds: t`query exceeds the memory recall limit`,
+      query_embedding_input_excluded: t`query excluded by memory content policy`,
+      query_embedding_budget_unavailable: t`query embedding budget unavailable`,
+      no_verified_closeouts: t`no usable verified repair history`,
       budget_timeout: t`recall time budget exceeded`,
       recall_error: t`recall unavailable`
     };
@@ -94,7 +99,9 @@ export function ContextUsedDisclosure({
       label:
         source.slot === 'user_preferences'
           ? t`Preference recall`
-          : t`Fact recall`,
+          : source.slot === 'recalled_episodes'
+            ? t`Verified repair history`
+            : t`Fact recall`,
       value: `${reasons[source.reason] ?? t`unavailable`} · ${source.n}`
     });
   }

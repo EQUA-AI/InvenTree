@@ -42,7 +42,7 @@ export interface ContextUsedRecord {
   preferencesUsed: number | null;
   factsUsed: number | null;
   memorySources?: Array<{
-    slot: 'user_preferences' | 'verified_entity_facts';
+    slot: 'user_preferences' | 'verified_entity_facts' | 'recalled_episodes';
     state: string;
     reason: string;
     n: number;
@@ -147,10 +147,19 @@ export function normalizeContextUsed(raw: unknown): ContextUsedRecord | null {
       'populated',
       'no_eligible_memories',
       'query_embedding_unavailable',
+      'query_embedding_timeout',
+      'query_embedding_input_bounds',
+      'query_embedding_input_excluded',
+      'query_embedding_budget_unavailable',
+      'no_verified_closeouts',
       'budget_timeout',
       'recall_error'
     ]);
-    for (const slot of ['user_preferences', 'verified_entity_facts'] as const) {
+    for (const slot of [
+      'user_preferences',
+      'verified_entity_facts',
+      'recalled_episodes'
+    ] as const) {
       const entry = raw.memory_sources[slot];
       if (
         !isRecord(entry) ||
