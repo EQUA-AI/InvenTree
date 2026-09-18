@@ -1,0 +1,18 @@
+{
+  "production": {
+    "source_file": "production.reference-only-worker.json",
+    "name": "production-memory-worker",
+    "image": "REQUIRED_REGISTRY/REVIEWED_IMAGE@sha256:REQUIRED_DIGEST",
+    "database_role": "aimms_app",
+    "identity_resource_id": "REQUIRED_USER_ASSIGNED_IDENTITY_RESOURCE_ID",
+    "identity_client_id": "REQUIRED_IDENTITY_CLIENT_UUID"
+  },
+  "experimental": {
+    "source_file": "experimental.reference-only-worker.json",
+    "name": "experimental-memory-worker",
+    "image": "REQUIRED_REGISTRY/REVIEWED_IMAGE@sha256:REQUIRED_DIGEST",
+    "database_role": "aimms_dev_app",
+    "identity_resource_id": "REQUIRED_USER_ASSIGNED_IDENTITY_RESOURCE_ID",
+    "identity_client_id": "REQUIRED_IDENTITY_CLIENT_UUID"
+  }
+}

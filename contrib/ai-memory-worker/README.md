@@ -1,5 +1,10 @@
 # Dedicated memory worker preparation
 
+Full offline definition preparation for both environments is now available in
+[CUTOVER.md](CUTOVER.md), using `render_deployments.py` and
+`deployments.example.json`. It requires reviewed reference-only source exports;
+no cloud resource is created and no feature is activated by rendering.
+
 This is a deployment review package, not a deployment script. No infrastructure
 is created by importing the code or installing the heartbeat schedule. The
 producer switch `AIMMS_MEMORY_WORKER_ENABLED` defaults to `false`.
@@ -82,9 +87,10 @@ commands are review inputs for a later authorized qualification period:
 No fallback sends admitted memory work to another queue or executes it inline.
 The default-off path retains the existing compaction placement. A dedicated-path
 failure is logged with a fixed reason/counts and leaves the transcript backlog
-intact. A later terminal turn can retry scheduling. Durable extraction claim rows,
-the ten-minute recovery sweep and extraction-deferred turn stamps remain M3a work;
-this batch does not promise autonomous recovery for a thread with no later turns.
+intact. A later terminal turn can retry scheduling. Extraction has separate durable claim rows and one-minute bounded recovery,
+including missed admission discovery. That does not add durable publication
+claims to ordinary M2 compaction; a compaction enqueue failure may still wait
+for another trigger.
 
 Admission is not deduplication. Concurrent attempts may enqueue duplicate jobs;
 the existing compactor checks its summary watermark on write, but duplicate model
@@ -147,6 +153,7 @@ reservation totals; they are not measured provider usage.
 
 Model and shield clients are keyless, bounded and have no SDK retry/fallback.
 No provider call, queue schedule or semantic flag has been activated by these
-source changes. Embedding/rescreen workers and runtime qualification are separate.
+source changes. Version-bound embedding/rescreen jobs are implemented separately; all runtime
+qualification remains outstanding.
 Legacy voice sources are excluded until their actual session carries the new
 memory-disclosing consent version; prior consent is never inferred or backfilled.

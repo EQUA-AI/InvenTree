@@ -1,0 +1,26 @@
+--- a/.github/workflows/qc_checks.yaml
++++ b/.github/workflows/qc_checks.yaml
+@@ -505 +505 @@
+-        image: pgvector/pgvector:pg15
++        image: pgvector/pgvector:pg17
+@@ -630,2 +630,2 @@
+-    # PostgreSQL the estate runs (pgvector/pgvector:pg15 until the CR-3 cutover
+-    # bumps it to pg17). Tests that SQLite cannot reproduce carry
++    # PostgreSQL the estate runs after the CR-3 cutover (pgvector/pgvector:pg17).
++    # Tests that SQLite cannot reproduce carry
+@@ -655 +655 @@
+-        image: pgvector/pgvector:pg15
++        image: pgvector/pgvector:pg17
+@@ -718 +718 @@
+-        image: pgvector/pgvector:pg15
++        image: pgvector/pgvector:pg17
+--- a/contrib/container/dev-docker-compose.yml
++++ b/contrib/container/dev-docker-compose.yml
+@@ -21 +21 @@
+-        image: pgvector/pgvector:pg15
++        image: pgvector/pgvector:pg17
+--- a/contrib/container/docker-compose.yml
++++ b/contrib/container/docker-compose.yml
+@@ -45 +45 @@
+-        image: pgvector/pgvector:pg15
++        image: pgvector/pgvector:pg17

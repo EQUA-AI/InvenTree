@@ -1,0 +1,32 @@
+-- REVIEW INPUT ONLY. Run against the new target database in the cutover window.
+-- Supply psql identifiers: database_name, schema_owner, migration_role, runtime_role.
+-- Passwords never belong in this script or psql arguments. Provision login
+-- credentials separately through the approved secret store before switching apps.
+\set ON_ERROR_STOP on
+BEGIN;
+DO $$ BEGIN
+  IF current_setting('server_version_num')::integer < 170000 THEN
+    RAISE EXCEPTION 'This reviewed role script requires PostgreSQL 17 or later';
+  END IF;
+END $$;
+
+-- New roles only: existing-role collisions stop the transaction for review.
+CREATE ROLE :"schema_owner" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
+CREATE ROLE :"migration_role" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
+CREATE ROLE :"runtime_role" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
+GRANT :"schema_owner" TO :"migration_role";
+REVOKE ALL ON DATABASE :"database_name" FROM PUBLIC;
+GRANT CONNECT ON DATABASE :"database_name" TO :"migration_role", :"runtime_role";
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+ALTER SCHEMA public OWNER TO :"schema_owner";
+GRANT USAGE ON SCHEMA public TO :"runtime_role";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"runtime_role";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO :"runtime_role";
+ALTER DEFAULT PRIVILEGES FOR ROLE :"schema_owner" IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"runtime_role";
+ALTER DEFAULT PRIVILEGES FOR ROLE :"schema_owner" IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO :"runtime_role";
+COMMIT;
+-- Migrations must SET ROLE to schema_owner before object creation. Restored
+-- objects must already have reviewed ownership; ALTER SCHEMA does not transfer
+-- ownership of tables/sequences/functions contained within it.
