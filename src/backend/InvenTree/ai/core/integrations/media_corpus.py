@@ -68,10 +68,13 @@ _MEDIA_MODEL_TYPES = ("workorder", "workorderstepexecution", "assetmachine")
 #: returned. Anything else is refused (the argument comes from the model).
 _MEDIA_TYPE_ALLOWLIST = ("image", "video_segment")
 
-#: Retrieval projection of the index. Never ``client_codes``, ``scope_key``,
-#: ``source_sha256`` or the vector — authorization coordinates and content
-#: identity stay server-side.
+#: Metadata is selected for final native reauthorization, then omitted from
+#: model-visible chunks. Vectors are never selected.
 _SELECT_FIELDS = [
+    "client_codes",
+    "scope_key",
+    "source_sha256",
+    "is_current",
     "id",
     "attachment_id",
     "media_type",
@@ -529,6 +532,18 @@ def search_corpus_media(
             logger.warning("media adjacency expansion failed (ignored)")
             adjacent = []
 
+    from ai.core.integrations.retrieval_authority import attachment_rows
+
+    # Recheck primaries and neighbours together, then retain neighbours only
+    # when their primary still survives current native authorization.
+    approved = attachment_rows(rows + [row for row, _ in adjacent], user=user, corpus="media")
+    identities = {row["id"] for row in approved}
+    rows = [row for row in rows if row.get("id") in identities]
+    adjacent = [
+        (row, parent)
+        for row, parent in adjacent
+        if row.get("id") in identities and parent in {item["id"] for item in rows}
+    ]
     chunks: list[dict[str, Any]] = [_row_chunk(row) for row in rows]
     scope_fields: dict[str, Any] = {}
     if scope_context is not None:

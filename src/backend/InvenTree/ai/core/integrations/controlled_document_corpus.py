@@ -59,6 +59,9 @@ _DOCUMENT_CLASS_ALLOWLIST = (
 )
 
 _SELECT_FIELDS = [
+    "scope_key",
+    "source_sha256",
+    "is_current",
     "id",
     "chunk_id",
     "document_id",
@@ -376,6 +379,9 @@ def search_corpus(
         # the document class but never the asset scope (the no-broadening
         # invariant).
         rows = _run(None)
+    from ai.core.integrations.retrieval_authority import controlled_rows
+
+    rows = controlled_rows(rows, user=user)
     if scope_context is not None and scope_context.explicit and scope_context.shadow:
         # Shadow evidence: whether the legacy result would have changed under
         # the scope's serial filter. Content-free — counts only.
@@ -502,7 +508,9 @@ def search_pinned_document(
         kwargs["search_client"] = search_client
     if embedding_client is not None:
         kwargs["embedding_client"] = embedding_client
-    pinned = search_selected_document(document=document_row, query=query, top_k=top_k, **kwargs)
+    pinned = search_selected_document(
+        document=document_row, user=user, query=query, top_k=top_k, **kwargs
+    )
 
     chunks: list[dict[str, Any]] = []
     for row in pinned.get("chunks") or ():

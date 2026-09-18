@@ -581,3 +581,15 @@ def test_shadow_scope_keeps_legacy_behavior(site_scope, _reset_scope):
     search_client, _, result = _run()
     assert "search.in(asset_id" not in search_client.kwargs["filter"]
     assert result["returned_count"] == 1
+
+
+@pytest.fixture(autouse=True)
+def _native_authority_seam(monkeypatch):
+    """These query/format unit cases use fake native authority.
+
+    Real native revocation/registry rules live in aichat.test_retrieval_authority.
+    This fixture is scoped to this module, never the integration test suite.
+    """
+    from ai.core.integrations import retrieval_authority
+
+    monkeypatch.setattr(retrieval_authority, "controlled_rows", lambda rows, **_kwargs: rows)

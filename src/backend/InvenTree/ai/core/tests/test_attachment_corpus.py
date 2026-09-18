@@ -466,8 +466,9 @@ def test_hybrid_query_shape_and_select_projection(retrieval_on):
     assert kwargs["vector_queries"][0].fields == "text_vector"
     select = kwargs["select"]
     assert "content" in select and "section_path" in select
-    for private in ("client_codes", "scope_key", "source_sha256", "text_vector"):
-        assert private not in select
+    for coordinate in ("client_codes", "scope_key", "source_sha256", "is_current"):
+        assert coordinate in select
+    assert "text_vector" not in select
 
 
 def test_empty_doc_type_result_degrades_to_unfiltered(retrieval_on):
@@ -674,3 +675,15 @@ def test_projection_stop_prevents_provider_work(retrieval_on, monkeypatch):
     assert exc.value.code == "ATTACHMENT_PROJECTION_HELD"
     assert not embedding.queries
     assert search.calls == 0
+
+
+@pytest.fixture(autouse=True)
+def _native_authority_seam(monkeypatch):
+    """These query/format unit cases use fake native authority.
+
+    Real native revocation/registry rules live in aichat.test_retrieval_authority.
+    This fixture is scoped to this module, never the integration test suite.
+    """
+    from ai.core.integrations import retrieval_authority
+
+    monkeypatch.setattr(retrieval_authority, "attachment_rows", lambda rows, **_kwargs: rows)

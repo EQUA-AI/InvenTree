@@ -9,15 +9,10 @@ import json
 from itertools import islice
 
 from django.db import transaction
-from django.db.models import F
 
-from aichat.models import (
-    AttachmentIngest,
-    RagProjectionAudit,
-    RagProjectionGate,
-    RagProjectionOrphan,
-)
+from aichat.models import RagProjectionAudit, RagProjectionGate, RagProjectionOrphan
 from aichat.services.projection_audit import FIELDS
+from aichat.services.projection_authority import projection_row_reason
 from InvenTree.restore_hold import restore_hold_enabled
 
 
@@ -32,54 +27,6 @@ def _projection(corpus):
     return (
         AttachmentSearchProjection if corpus == 'attachment' else MediaSearchProjection
     ).from_settings()
-
-
-def _reason(row, *, corpus, index_name):
-    """Rebuild authority from native records; Search metadata grants nothing."""
-    from ai.core.config import get_settings
-    from aichat.services.attachment_ingestion import derive_client_codes
-    from common.models import Attachment
-
-    attachment_id = row.get('attachment_id')
-    if type(attachment_id) is not int or attachment_id < 1:
-        return 'invalid_source'
-    source = Attachment.objects.filter(pk=attachment_id).first()
-    if source is None:
-        return 'missing_source'
-    ingest = (
-        AttachmentIngest.objects
-        .filter(attachment_id=attachment_id, search_index_name=index_name)
-        .order_by(F('claimed_at').desc(nulls_last=True), '-pk')
-        .first()
-    )
-    if ingest is None:
-        return 'missing_ledger'
-    pipelines = {'doc'} if corpus == 'attachment' else {'image', 'video'}
-    if ingest.state != 'indexed' or ingest.pipeline not in pipelines:
-        return 'inactive_ledger'
-    expected = {
-        'model_type': source.model_type,
-        'model_id': source.model_id,
-        'scope_key': get_settings().single_site_policy_key,
-        'access_class': 'attachment_uploaded'
-        if corpus == 'attachment'
-        else 'evidence_recording',
-        'source_sha256': ingest.source_sha256,
-        'is_current': True,
-    }
-    if any(row.get(key) != value for key, value in expected.items()):
-        return 'metadata_drift'
-    clients = row.get('client_codes')
-    if (
-        not isinstance(clients, list)
-        or any(not isinstance(x, str) for x in clients)
-        or set(clients) != set(derive_client_codes(source.model_type, source.model_id))
-    ):
-        return 'scope_drift'
-    relation = ingest.chunks if corpus == 'attachment' else ingest.segments
-    if not relation.filter(search_doc_id=row.get('id')).exists():
-        return 'missing_chunk'
-    return ''
 
 
 def _identity(corpus, index_name, document_id):
@@ -151,7 +98,9 @@ def scan_orphans(*, corpus, sample=20, offset=0, record=False, projection=None):
         for row in rows[:sample]:
             report['sampled'] += 1
             try:
-                reason = _reason(row, corpus=corpus, index_name=projection.index_name)
+                reason = projection_row_reason(
+                    row, corpus=corpus, index_name=projection.index_name
+                )
                 if reason:
                     report['drift'] += 1
                     report['critical'] += 1
@@ -238,7 +187,9 @@ def recheck_orphan(*, identity, projection=None):
         else:
             if row.get('id') != finding.document_id:
                 raise ValueError('Projection identity changed')
-            reason = _reason(row, corpus=finding.corpus, index_name=finding.index_name)
+            reason = projection_row_reason(
+                row, corpus=finding.corpus, index_name=finding.index_name
+            )
         with transaction.atomic():
             RagProjectionGate.objects.select_for_update().get(corpus=finding.corpus)
             current = RagProjectionOrphan.objects.select_for_update().get(pk=identity)

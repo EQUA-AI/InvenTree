@@ -69,10 +69,13 @@ _DOC_TYPE_ALLOWLIST = (
     "other",
 )
 
-#: Retrieval projection of the index. Never ``client_codes``, ``scope_key``,
-#: ``source_sha256`` or the vector -- authorization coordinates and content
-#: identity stay server-side.
+#: Metadata is selected for final native reauthorization, then omitted from
+#: model-visible chunks. Vectors are never selected.
 _SELECT_FIELDS = [
+    "client_codes",
+    "scope_key",
+    "source_sha256",
+    "is_current",
     "id",
     "attachment_id",
     "model_type",
@@ -442,6 +445,9 @@ def search_corpus_attachments(
         # none. Degrade to the un-narrowed result.
         rows = _run(None)
 
+    from ai.core.integrations.retrieval_authority import attachment_rows
+
+    rows = attachment_rows(rows, user=user, corpus="attachment")
     chunks: list[dict[str, Any]] = []
     for row in rows:
         text = str(row.get("content") or "")[:_EXCERPT_MAX_CHARS]

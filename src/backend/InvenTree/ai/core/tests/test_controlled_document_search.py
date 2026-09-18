@@ -49,8 +49,11 @@ def _document():
     )
 
 
-def test_selected_document_search_applies_trusted_pre_filter_to_hybrid_query():
+def test_selected_document_search_applies_trusted_pre_filter_to_hybrid_query(monkeypatch):
     """Search receives only registry-derived filter coordinates and text_vector."""
+    from ai.core.integrations import retrieval_authority
+
+    monkeypatch.setattr(retrieval_authority, "controlled_rows", lambda rows, **_kwargs: rows)
     client = _SearchClient()
     result = search_selected_document(
         document=_document(),
@@ -72,3 +75,17 @@ def test_selected_document_search_applies_trusted_pre_filter_to_hybrid_query():
     assert citation["section_id"] == "16"
     assert citation["source_sha256_prefix"] == "a" * 12
     assert citation["authorization_class"] == "maintenance_authorized"
+
+
+def test_selected_search_drops_rows_rejected_by_final_authority(monkeypatch):
+    """The exact-document path cannot bypass the final authority seam."""
+    from ai.core.integrations import retrieval_authority
+
+    monkeypatch.setattr(retrieval_authority, "controlled_rows", lambda _rows, **_kwargs: [])
+    result = search_selected_document(
+        document=_document(),
+        query="pump",
+        search_client=_SearchClient(),
+        embedding_client=_EmbeddingClient(),
+    )
+    assert result["chunks"] == []

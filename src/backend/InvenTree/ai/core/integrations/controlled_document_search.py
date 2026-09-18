@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 
 
 _SELECT_FIELDS = [
+    "scope_key",
+    "is_current",
+    "asset_id",
     "id",
     "chunk_id",
     "document_id",
@@ -159,6 +162,7 @@ def _query_vector(*, query: str, embedding_client: EmbeddingClient, dimensions: 
 def search_selected_document(
     *,
     document: ControlledDocument,
+    user=None,
     query: str,
     top_k: int = 5,
     search_client: SearchClient | None = None,
@@ -216,6 +220,18 @@ def search_selected_document(
             "Controlled-document Search query failed", code="CONTROLLED_DOCUMENT_SEARCH_FAILED"
         ) from exc
 
+    from ai.core.integrations.retrieval_authority import controlled_rows
+
+    rows = controlled_rows(list(rows), user=user)
+    rows = [
+        row
+        for row in rows
+        if (
+            row.get("document_id") == document.document_id
+            and row.get("document_revision") == document.revision
+            and row.get("source_sha256") == document.source_sha256
+        )
+    ]
     chunks: list[dict[str, object]] = []
     for row in rows:
         text = str(row.get("chunk") or "")[:8000]
