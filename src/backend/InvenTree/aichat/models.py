@@ -27,6 +27,7 @@ from .memory_fact_models import MemoryFactEvent as MemoryFactEvent
 from .memory_fact_models import MemoryFactJob as MemoryFactJob
 from .memory_fact_models import MemoryFactTombstone as MemoryFactTombstone
 from .memory_models import ClientAISettings as ClientAISettings
+from .memory_models import ClientMemoryErasure as ClientMemoryErasure
 from .memory_models import MemoryMode as MemoryMode
 from .memory_models import MemoryNoticeAcknowledgement as MemoryNoticeAcknowledgement
 from .memory_models import UserMemorySettings as UserMemorySettings

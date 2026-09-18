@@ -137,6 +137,7 @@ class MemoryJournalTests(TestCase):
         """Legacy thread/account evidence is explicitly incomplete for new stores."""
         payload = read_journal(export_journal(since=self.since), since=self.since)
         payload.pop('memories')
+        payload.pop('client_memories')
         for row in payload['threads']:
             row.pop('forget_confirmed_memories')
         payload.update(

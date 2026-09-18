@@ -5,7 +5,7 @@ from django.contrib import admin
 from django.utils import timezone
 
 from ai.core.config import get_settings
-from aichat.models import ClientAISettings
+from aichat.models import ClientAISettings, ClientMemoryErasure
 from aichat.services.memory_controls import NOTICE_COPY
 from aichat.services.memory_eligibility import notice_number
 from InvenTree.restore_hold import restore_hold_enabled
@@ -28,6 +28,12 @@ class ClientMemoryForm(forms.ModelForm):
         current = get_settings().aimms_memory_notice_version
         required = data.get('required_notice_version') or current
         if data.get('memory_enabled'):
+            if ClientMemoryErasure.objects.filter(
+                client_id=self.instance.client_id
+            ).exists():
+                raise forms.ValidationError(
+                    'This client has a durable memory erasure intent.'
+                )
             try:
                 valid = current in NOTICE_COPY and notice_number(
                     required

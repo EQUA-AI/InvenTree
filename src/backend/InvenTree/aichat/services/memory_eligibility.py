@@ -16,6 +16,7 @@ from aichat.models import (
     ChatThreadGrant,
     ChatThreadTombstone,
     ClientAISettings,
+    ClientMemoryErasure,
     MemoryNoticeAcknowledgement,
     UserMemorySettings,
 )
@@ -140,7 +141,7 @@ def _enrolled_clients(actor, clients, *, source_time=None):
     eligible = set()
     enrollments = ClientAISettings.objects.filter(
         client__code__in=clients, client__active=True, memory_enabled=True
-    )
+    ).exclude(client__code__in=ClientMemoryErasure.objects.values('client_code'))
     if source_time is not None:
         enrollments = enrollments.filter(enabled_at__lte=source_time)
     for code, required in enrollments.values_list(

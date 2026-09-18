@@ -10,7 +10,7 @@ from django.utils import timezone
 from tasks.scope import ScopeError, client_codes_for_actor
 
 from aichat.memory_choices import DurableMemoryType, MemoryTopic
-from aichat.models import MemoryFact, UserMemorySettings
+from aichat.models import ClientMemoryErasure, MemoryFact, UserMemorySettings
 from aichat.services.memory_policy import MemoryPolicyError
 from aichat.services.memory_writes import _client_for_entity
 from InvenTree.restore_hold import restore_hold_enabled
@@ -66,6 +66,11 @@ def can_read(owner, fact, *, clients=None):
     from aichat.services.memory_retention import deletion_holds_fact
 
     if deletion_holds_fact(fact):
+        return False
+    if (
+        fact.client_code
+        and ClientMemoryErasure.objects.filter(client_code=fact.client_code).exists()
+    ):
         return False
     if not fact.client_code:
         return fact.entity_kind == 'user' and fact.entity_id == str(owner.pk)

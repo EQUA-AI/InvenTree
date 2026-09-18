@@ -130,6 +130,14 @@ def propose_fact(
     locale = resolve_actor_locale(owner.pk)
     data = validate_candidate(candidate, locale=locale)
     client = _client_for_entity(owner, data, eligibility.clients)
+    if client:
+        from aichat.models import ClientMemoryErasure
+        from assets.models import Client
+
+        # Serialize admission with the short client offboarding intent commit.
+        Client.objects.select_for_update().get(code=client)
+        if ClientMemoryErasure.objects.filter(client_code=client).exists():
+            raise MemoryPolicyError('client_offboarded')
     preference = data['memory_type'] == 'user_preference'
     verification = 'inferred'
     native = None

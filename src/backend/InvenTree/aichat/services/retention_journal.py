@@ -22,7 +22,7 @@ from aichat.models import (
     ChatThread,
     ChatThreadTombstone,
 )
-from aichat.services import memory_journal, retention
+from aichat.services import client_memory_erasure, memory_journal, retention
 from aichat.services.account_erasure import erase_account
 from aichat.services.account_erasure_log import record_erasure
 from InvenTree.restore_hold import restore_hold_enabled
@@ -111,10 +111,21 @@ def export_journal(*, since):
         )
     except ValueError:
         raise JournalError('Memory deletion proof is incomplete') from None
+    try:
+        client_memories = client_memory_erasure.export_proof(limit=MAX_ROWS)
+    except ValueError:
+        raise JournalError('Client memory deletion proof is incomplete') from None
     memory_count = sum(
         len(memories[key]) for key in ('tombstones', 'opt_outs', 'purges')
     )
-    if len(rows) + len(obligations) + len(accounts) + memory_count > MAX_ROWS:
+    if (
+        len(rows)
+        + len(obligations)
+        + len(accounts)
+        + memory_count
+        + len(client_memories)
+        > MAX_ROWS
+    ):
         raise JournalError(
             'Journal exceeds the record limit; no partial export was created'
         )
@@ -125,7 +136,7 @@ def export_journal(*, since):
         for key in ('user_joined_at', 'requested_at'):
             row[key] = row[key].isoformat()
     payload = {
-        'schema_version': 4,
+        'schema_version': 5,
         'source': source,
         'since': lower.isoformat(),
         'as_of': upper.isoformat(),
@@ -135,6 +146,7 @@ def export_journal(*, since):
         'outbox': obligations,
         'accounts': accounts,
         'memories': memories,
+        'client_memories': client_memories,
     }
     token = signing.dumps(payload, salt=SALT, compress=False)
     if len(token.encode('utf-8')) > MAX_BYTES:
@@ -160,7 +172,7 @@ def read_journal(token, *, since):
         if not isinstance(payload, dict):
             raise ValueError
         version = payload.get('schema_version')
-        if type(version) is not int or version not in (1, 2, 3, 4):
+        if type(version) is not int or version not in (1, 2, 3, 4, 5):
             raise ValueError
         fields = {
             'schema_version',
@@ -176,6 +188,8 @@ def read_journal(token, *, since):
             fields.add('accounts')
         if version >= 3:
             fields.add('memories')
+        if version >= 5:
+            fields.add('client_memories')
         if set(payload) != fields:
             raise ValueError
         scope = (
@@ -203,8 +217,12 @@ def read_journal(token, *, since):
             if version >= 3
             else 0
         )
+        client_count = client_memory_erasure.validate_proof(
+            payload.get('client_memories', []), upper=upper, parse_time=aware_time
+        )
         if (
-            len(rows) + len(pending) + len(accounts) + memory_count > MAX_ROWS
+            len(rows) + len(pending) + len(accounts) + memory_count + client_count
+            > MAX_ROWS
             or len(kinds) > 1000
         ):
             raise ValueError
@@ -282,6 +300,15 @@ def read_journal(token, *, since):
             if pair in pairs:
                 raise ValueError
             pairs.add(pair)
+        client_refs = {
+            str(row['client_id']) for row in payload.get('client_memories', [])
+        }
+        if any(
+            row['kind'] == client_memory_erasure.KIND
+            and row['reference'] not in client_refs
+            for row in pending
+        ):
+            raise ValueError
         if version >= 3:
             proof_refs = {row['reference'] for row in payload['memories']['purges']}
             outbox_refs = {
@@ -361,10 +388,16 @@ def replay_journal(token, *, since, execute=False):
     known_non_thread = (
         {'memory_owner_purge'} if payload['schema_version'] >= 3 else set()
     )
+    if payload['schema_version'] >= 5:
+        known_non_thread.add(client_memory_erasure.KIND)
     unknown |= retention.OUTBOX_KINDS.keys() - thread_kinds - known_non_thread
     conflicts = unsupported = 0
     accounts = payload.get('accounts', [])
     account_conflicts = sum(bool(_account_conflict(row)) for row in accounts)
+    client_memories = payload.get('client_memories', [])
+    client_conflicts = client_memory_erasure.conflicts(
+        client_memories, parse_time=aware_time
+    )
     memories = payload.get('memories')
     try:
         memory_conflicts = (
@@ -403,6 +436,8 @@ def replay_journal(token, *, since, execute=False):
         'accounts': len(accounts),
         'account_conflicts': account_conflicts,
         'memory_conflicts': memory_conflicts,
+        'client_memory_conflicts': int(client_conflicts),
+        'client_memory_journal_missing': payload['schema_version'] < 5,
         'memory_journal_missing': payload['schema_version'] < 3,
         'memory_tombstones': len(memories['tombstones']) if memories else 0,
         'memory_opt_outs': len(memories['opt_outs']) if memories else 0,
@@ -424,12 +459,20 @@ def replay_journal(token, *, since, execute=False):
         or report['account_journal_missing']
         or memory_conflicts
         or report['memory_journal_missing']
+        or client_conflicts
+        or report['client_memory_journal_missing']
     ):
         return {**report, 'status': 'replay_incomplete'}
     if not execute:
         return {**report, 'status': 'dry_run'}
     failed = completed = 0
     completed_memories = memory_failures = 0
+    for row in client_memories:
+        try:
+            if not client_memory_erasure.replay(row, parse_time=aware_time):
+                memory_failures += 1
+        except Exception:
+            memory_failures += 1
     for family, handler in (
         ('tombstones', memory_journal.replay_tombstone),
         ('opt_outs', memory_journal.replay_opt_out),

@@ -77,3 +77,21 @@ class UserMemorySettings(models.Model):
     )
     opted_out = models.BooleanField(default=False, db_default=False)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class ClientMemoryErasure(models.Model):
+    """Durable client-memory stop bit; native operational records are preserved."""
+
+    client_id = models.PositiveBigIntegerField(unique=True)
+    client_code = models.SlugField(max_length=64)
+    client_created_at = models.DateTimeField()
+    requested_at = models.DateTimeField()
+
+    class Meta:
+        """Proof persists independently of deletion of the client settings row."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['client_code'], name='aichat_client_erasure_code'
+            )
+        ]

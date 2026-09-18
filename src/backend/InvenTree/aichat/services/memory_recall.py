@@ -24,6 +24,7 @@ from aichat.models import (
     ChatThreadGrant,
     ChatThreadTombstone,
     ClientAISettings,
+    ClientMemoryErasure,
     MemoryFact,
     MemoryFactClaim,
     MemoryFactTombstone,
@@ -126,7 +127,9 @@ def _eligible(repository, thread_id):
         .filter(_minimum__gt=0, _minimum__lte=current)
         .filter(Exists(notices))
     )
-    clients = clients.filter(Exists(enrollment))
+    clients = clients.filter(Exists(enrollment)).exclude(
+        code__in=ClientMemoryErasure.objects.values('client_code')
+    )
     machines = AssetMachine.objects.annotate(
         _identity=Cast('pk', models.CharField())
     ).filter(

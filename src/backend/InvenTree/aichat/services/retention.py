@@ -1638,3 +1638,14 @@ register_outbox_kind(
         probe=lambda reference: ChatThread.objects.filter(pk=reference).count(),
     )
 )
+
+
+from aichat.services import client_memory_erasure
+
+register_outbox_kind(
+    OutboxKind(
+        client_memory_erasure.KIND,
+        handler=client_memory_erasure.retry,
+        probe=client_memory_erasure.residual,
+    )
+)
