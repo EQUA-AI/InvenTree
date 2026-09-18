@@ -42,6 +42,7 @@ MAX_FACTS = 8
 MAX_PREFERENCES = 4
 FIELDS = (
     'id',
+    'owner_id',
     'version',
     'text',
     'text_lang',
@@ -201,6 +202,12 @@ def _eligible(repository, thread_id):
             )
         )
     )
+    fact_notice = (
+        MemoryNoticeAcknowledgement.objects
+        .filter(user_id=actor_id, acknowledged_at__lte=now)
+        .annotate(_number=_notice_number('notice_version'))
+        .filter(_number__gte=OuterRef('_fact_notice'), _number__lte=current)
+    )
     return (
         MemoryFact.objects
         .filter(
@@ -213,7 +220,9 @@ def _eligible(repository, thread_id):
             prohibited=False,
             shield_state__in=['clear', 'flagged'],
         )
-        .filter(Exists(thread), Exists(clients), ~Exists(deleted))
+        .annotate(_fact_notice=_notice_number('notice_version'))
+        .filter(_fact_notice__gt=0)
+        .filter(Exists(thread), Exists(clients), ~Exists(deleted), Exists(fact_notice))
         .annotate(_analysis_scope=Subquery(thread.values('analysis_scope')[:1]))
     )
 
@@ -264,7 +273,6 @@ def candidates(repository, thread_id, recall_filter, *, query_vector=None):
         nearest = operational.order_by(
             CosineDistance('embedding', query_vector)
         ).values('pk')[: MAX_FACTS * 3]
-        selection |= Q(pk__in=Subquery(nearest))
         boost = (
             get_settings().aimms_memory_topic_boost
             if recall_filter.type_filter_enabled
@@ -275,6 +283,14 @@ def candidates(repository, thread_id, recall_filter, *, query_vector=None):
             default=Value(0.0),
             output_field=models.FloatField(),
         )
+        best = (
+            operational
+            .filter(pk__in=Subquery(nearest))
+            .annotate(_distance=distance)
+            .order_by('_distance', '-last_verified_at', 'pk')
+            .values('pk')[:MAX_FACTS]
+        )
+        selection |= Q(pk__in=Subquery(best))
         rank = Case(
             When(memory_type='user_preference', then=Value(-1.0)),
             default=distance,

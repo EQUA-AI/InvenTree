@@ -81,6 +81,23 @@ export function ContextUsedDisclosure({
       value: String(record.factsUsed)
     });
   }
+  for (const source of record.memorySources ?? []) {
+    const reasons: Record<string, string> = {
+      populated: t`included in context`,
+      no_eligible_memories: t`no eligible memories`,
+      query_embedding_unavailable: t`query embedding unavailable`,
+      budget_timeout: t`recall time budget exceeded`,
+      recall_error: t`recall unavailable`
+    };
+    rows.push({
+      key: `memory_${source.slot}`,
+      label:
+        source.slot === 'user_preferences'
+          ? t`Preference recall`
+          : t`Fact recall`,
+      value: `${reasons[source.reason] ?? t`unavailable`} · ${source.n}`
+    });
+  }
   for (const corpus of record.corpora) {
     rows.push({
       key: `corpus_${corpus.corpus}`,
@@ -149,6 +166,12 @@ export function ContextUsedDisclosure({
       </UnstyledButton>
       <Collapse expanded={open}>
         <Stack gap={2} data-testid='context-used-rows'>
+          {!!record.memorySources?.length && (
+            <Text
+              size='xs'
+              c='dimmed'
+            >{t`These records were supplied as context. Retrieval does not prove the answer used them.`}</Text>
+          )}
           {rows.length === 0 ? (
             <Text size='xs' c='dimmed'>
               {t`Nothing was used`}

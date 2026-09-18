@@ -176,6 +176,9 @@ class RecallWindow:
     watermark: int = 0
     next_sequence: int = 0
     db_round_trips: int = 1
+    memory_facts: tuple[dict[str, Any], ...] = ()
+    memory_reason: str = ""
+    facts_reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,10 +227,10 @@ class ContextBundle:
     # ------------------------------------------------------------------ #
     def memory_block(self) -> dict[str, str] | None:
         """The USER-role memory block (label line outside, body beneath)."""
-        item = self.summary_item
-        if item is None:
-            return None
-        return {"role": item.role, "content": item.text}
+        pieces = [self.summary_item.text] if self.summary_item else []
+        for slot in (Slot.USER_PREFERENCES, Slot.VERIFIED_ENTITY_FACTS, Slot.RECALLED_EPISODES):
+            pieces.extend(item.text for item in self.section(slot).items)
+        return {"role": "user", "content": "\n".join(pieces)} if pieces else None
 
     def replay_dict(self) -> list[dict[str, str]]:
         """The ONLY producer of ``context['conversation_history']`` (GR-34).
@@ -285,8 +288,8 @@ class ContextBundle:
         record: dict[str, Any] = {
             "recent_turns": {"used": len(recent.items), "available": recent.available},
             "summary": {"through_sequence": self.watermark} if summary else "none",
-            "preferences_used": 0,
-            "facts_used": 0,
+            "preferences_used": len(self.section(Slot.USER_PREFERENCES).items),
+            "facts_used": len(self.section(Slot.VERIFIED_ENTITY_FACTS).items),
             "corpora": {
                 entry.corpus: {"state": entry.state, "n": entry.n} for entry in self.ledger
             },
@@ -300,6 +303,20 @@ class ContextBundle:
             },
             "degrade_reason": self.degrade_reason,
         }
+        semantic = (Slot.USER_PREFERENCES, Slot.VERIFIED_ENTITY_FACTS)
+        if any(
+            self.section(slot).reason
+            not in {EmptyReason.NO_PREFERENCE_STORE, EmptyReason.NO_VERIFIED_FACTS}
+            for slot in semantic
+        ):
+            record["memory_sources"] = {
+                str(slot): {
+                    "state": "invoked" if self.section(slot).items else "no_usable_evidence",
+                    "reason": self.section(slot).reason,
+                    "n": len(self.section(slot).items),
+                }
+                for slot in semantic
+            }
         envelopes = (
             (retrieval_snapshot or {}).get("envelopes")
             if isinstance(retrieval_snapshot, dict)
@@ -588,12 +605,25 @@ class ContextAssembler:
             start = aligned_window_start(rows[-1].sequence, limit)
             floor = max(start, (window.watermark + 1) if summary_item is not None else 1)
             rows = [row for row in rows if row.sequence >= floor][-limit:]
+        semantic_sections = {}
+        if window.memory_reason:
+            from ai.core.memory.semantic_context import fact_sections
+
+            semantic_sections = fact_sections(
+                window,
+                estimator=self._estimator,
+                total_chars=max_total_chars - (len(summary_item.text) if summary_item else 0),
+                max_message_chars=max_message_chars,
+            )
+        semantic_chars = sum(
+            item.chars + 1 for section in semantic_sections.values() for item in section.items
+        )
         history = [{"role": row.role, "content": row.content} for row in rows]
         budgeted = _budgeted_history(
             history,
             max_message_chars=max_message_chars,
             max_total_chars=max_total_chars,
-            reserved_chars=len(summary_item.text) if summary_item else 0,
+            reserved_chars=(len(summary_item.text) if summary_item else 0) + semantic_chars,
         )
         # _budgeted_history drops oldest-first and keeps order, so the kept
         # entries are the tail of ``rows``.
@@ -628,7 +658,14 @@ class ContextAssembler:
             reason=str(summary_reason),
             available=1 if window.summary.strip() else 0,
         )
+        sections.update(semantic_sections)
+        if window.memory_reason in {
+            str(DegradeReason.BUDGET_TIMEOUT),
+            str(DegradeReason.RECALL_ERROR),
+        }:
+            degrade_reason = window.memory_reason
         items = ([summary_item] if summary_item else []) + list(turn_items)
+        items.extend(item for section in semantic_sections.values() for item in section.items)
         return ContextBundle(
             thread_id=thread_id,
             prior_pack_ids=prior_pack_ids(window.rows),
@@ -664,6 +701,7 @@ class ContextAssembler:
         task_intent: str | None = None,
         routing_fields: RoutingFields | None = None,
         timeout_s: float = RECALL_TIMEOUT_S,
+        query_vector: tuple[float, ...] | None = None,
     ) -> ContextBundle:
         """Recall under the wall clock, then assemble; never raises."""
         routing_fields = routing_fields or RoutingFields()
@@ -694,10 +732,27 @@ class ContextAssembler:
         window: RecallWindow | None = None
         degrade = DegradeReason.NONE
         try:
-            window = await asyncio.wait_for(
-                call_sync(self.recall, repository, thread_id, limit=limit, compaction=compaction),
-                timeout=timeout_s,
-            )
+            if bool(getattr(settings, "feature_semantic_memory_recall", False)):
+                from ai.core.memory.semantic_context import recall_with_facts
+
+                recall = call_sync(
+                    recall_with_facts,
+                    self,
+                    repository,
+                    thread_id,
+                    limit=limit,
+                    compaction=compaction,
+                    recall_filter=recall_filter_for(
+                        task_intent, type_filter_enabled=type_filter_enabled
+                    ),
+                    timeout_s=timeout_s,
+                    query_vector=query_vector,
+                )
+            else:
+                recall = call_sync(
+                    self.recall, repository, thread_id, limit=limit, compaction=compaction
+                )
+            window = await asyncio.wait_for(recall, timeout=timeout_s)
         except TimeoutError:
             degrade = DegradeReason.BUDGET_TIMEOUT
             logger.warning("Conversation history recall exceeded %.0f ms", timeout_s * 1000)

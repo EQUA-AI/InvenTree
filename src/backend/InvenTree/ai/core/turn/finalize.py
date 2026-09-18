@@ -35,6 +35,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ai.core.turn_service")
 
 
+def _memory_lineage(run) -> dict[str, Any]:
+    """Content-free provenance from server-built context, never client metadata."""
+    bundle = getattr(run, "context_bundle", None)
+    if not isinstance(getattr(bundle, "sections", None), dict):
+        return {}
+    items = [
+        item
+        for slot in ("user_preferences", "verified_entity_facts")
+        for item in bundle.section(slot).items
+    ]
+    if not items:
+        return {}
+    return {
+        "memory_informed_clients": sorted({
+            code for item in items for code in item.scope.client_codes
+        }),
+        "memory_fact_ids": [item.item_id for item in items],
+        "memory_fact_versions": {item.item_id: item.version for item in items},
+    }
+
+
 def _terminal_output_metadata(base: dict[str, Any]) -> dict[str, Any]:
     """Attach the resolved model-version stamp to a terminal turn (S17 A10).
 
@@ -228,6 +249,7 @@ async def persist_terminal(
         canonical_result=canonical,
         output_content=output_content,
         output_metadata=_terminal_output_metadata({
+            **_memory_lineage(run),
             "response_state": state,
             "events": canonical["events"],
             "spoken_summary": str(canonical.get("spoken_summary") or ""),

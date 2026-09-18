@@ -1031,7 +1031,7 @@ def _route_facts(metadata: dict[str, Any], *, shared: bool) -> dict[str, Any]:
 
 #: §9.11 rule (ii): memory rows are the thread owner's; a grantee sees the
 #: turn and corpus rows only.
-CONTEXT_USED_OWNER_ONLY_KEYS = ("summary", "preferences_used", "facts_used")
+CONTEXT_USED_OWNER_ONLY_KEYS = ("summary", "preferences_used", "facts_used", "memory_sources")
 
 
 def _context_used_projection(record: Any, *, shared: bool) -> dict[str, Any] | None:

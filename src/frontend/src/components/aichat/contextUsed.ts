@@ -41,6 +41,12 @@ export interface ContextUsedRecord {
   /** Owner-only memory counts; null when the projection withheld them. */
   preferencesUsed: number | null;
   factsUsed: number | null;
+  memorySources?: Array<{
+    slot: 'user_preferences' | 'verified_entity_facts';
+    state: string;
+    reason: string;
+    n: number;
+  }>;
   /** Retrieval ledger: one row per corpus consulted, state + hit count. */
   corpora: ContextUsedCorpus[];
   /** Topology availability code. */
@@ -135,7 +141,34 @@ export function normalizeContextUsed(raw: unknown): ContextUsedRecord | null {
         .slice(0, MAX_ENTRIES)
     : [];
 
+  const memorySources: NonNullable<ContextUsedRecord['memorySources']> = [];
+  if (isRecord(raw.memory_sources)) {
+    const reasons = new Set([
+      'populated',
+      'no_eligible_memories',
+      'query_embedding_unavailable',
+      'budget_timeout',
+      'recall_error'
+    ]);
+    for (const slot of ['user_preferences', 'verified_entity_facts'] as const) {
+      const entry = raw.memory_sources[slot];
+      if (
+        !isRecord(entry) ||
+        !['invoked', 'no_usable_evidence'].includes(String(entry.state)) ||
+        !reasons.has(String(entry.reason))
+      )
+        continue;
+      memorySources.push({
+        slot,
+        state: String(entry.state),
+        reason: String(entry.reason),
+        n: asCount(entry.n) ?? 0
+      });
+    }
+  }
+
   return {
+    ...(memorySources.length ? { memorySources } : {}),
     recentTurns,
     summary,
     summaryProjected,
