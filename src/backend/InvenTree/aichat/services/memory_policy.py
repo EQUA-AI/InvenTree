@@ -234,16 +234,8 @@ def validate_candidate(candidate, *, locale):
         or not re.fullmatch(r'[a-zA-Z0-9_-]{1,100}', entity_id)
     ):
         raise MemoryPolicyError('candidate_entity')
-    if any(unicodedata.category(char) in {'Cf', 'Cs'} for char in text):
-        raise MemoryPolicyError('candidate_text')
+    validate_source_text(text)
     normalized = _normalized(text)
-    redacted, counts = redact_text(text)
-    if counts or redacted != text or '[REDACTED:' in text or entropy_flags(text):
-        raise MemoryPolicyError('sensitive_content')
-    if _SENSITIVE_WORDS.search(normalized):
-        raise MemoryPolicyError('sensitive_content')
-    if classify_directive(text) or _ACTION_DIRECTIVE.search(normalized):
-        raise MemoryPolicyError('directive_content')
     if preference and (
         _TYPED_SETTING_WORDS.search(normalized)
         or slot.split('.')[0] in {'language', 'locale', 'units', 'verbosity'}
@@ -254,6 +246,22 @@ def validate_candidate(candidate, *, locale):
     result = dict(candidate)
     result['text'] = text.strip()
     return result
+
+
+def validate_source_text(text):
+    """Check original source before a paraphrase can hide a prohibited payload."""
+    if not isinstance(text, str) or not 1 <= len(text) <= 10000:
+        raise MemoryPolicyError('source_bounds')
+    if any(unicodedata.category(char) in {'Cf', 'Cs'} for char in text):
+        raise MemoryPolicyError('candidate_text')
+    normalized = _normalized(text)
+    redacted, counts = redact_text(text)
+    if counts or redacted != text or '[REDACTED:' in text or entropy_flags(text):
+        raise MemoryPolicyError('sensitive_content')
+    if _SENSITIVE_WORDS.search(normalized):
+        raise MemoryPolicyError('sensitive_content')
+    if classify_directive(text) or _ACTION_DIRECTIVE.search(normalized):
+        raise MemoryPolicyError('directive_content')
 
 
 def verify_native_field(

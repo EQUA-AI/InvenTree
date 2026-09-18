@@ -114,6 +114,8 @@ class MemoryFact(models.Model):
         default=MemoryShieldState.PENDING,
     )
     claim_fingerprint = models.CharField(max_length=64)
+    # Content-free pointer: old tombstones never become live facts again.
+    revives = models.UUIDField(null=True, blank=True)
     supersedes = models.ForeignKey(
         'self',
         null=True,
@@ -131,6 +133,7 @@ class MemoryFact(models.Model):
     class Meta:
         """SQL enforces scope/authority and the closed vocabulary on direct writes."""
 
+        permissions = [('write_memory', 'Can propose and confirm own memories')]
         indexes = [
             models.Index(
                 fields=['owner', 'client_code', 'lifecycle_state', 'memory_type'],
@@ -290,6 +293,7 @@ class MemoryFactTombstone(models.Model):
         max_length=16,
         choices=[
             ('forget', 'Forget'),
+            ('supersede', 'Supersede'),
             ('opt_out', 'Opt out'),
             ('erasure', 'Erasure'),
             ('client_purge', 'Client purge'),
@@ -318,7 +322,13 @@ class MemoryFactTombstone(models.Model):
             ),
             models.CheckConstraint(
                 condition=Q(
-                    reason__in=['forget', 'opt_out', 'erasure', 'client_purge']
+                    reason__in=[
+                        'forget',
+                        'supersede',
+                        'opt_out',
+                        'erasure',
+                        'client_purge',
+                    ]
                 ),
                 name='memory_tombstone_reason',
             ),
@@ -385,6 +395,9 @@ class MemoryFactEvent(models.Model):
     proposal_id = models.UUIDField(null=True, blank=True)
     action = models.CharField(max_length=16, choices=MemoryEventAction.choices)
     version = models.PositiveIntegerField(default=0)
+    claim_fingerprint = models.CharField(
+        max_length=64, blank=True, default='', db_default=''
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

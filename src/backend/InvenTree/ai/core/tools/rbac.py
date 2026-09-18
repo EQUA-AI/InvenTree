@@ -224,6 +224,7 @@ def _all_pairs() -> frozenset[tuple[str, str]]:
 # migration creates those groups, so only superusers ever passed, and kanban
 # cards are InvenTree work orders with a real ruleset of their own.
 _AIMMS_NATIVE_PERMISSIONS: dict[tuple[str, str], str] = {
+    ("ai_memory", "write"): "aichat.write_memory",
     ("email", "view"): "users.view_email",
     ("email", "send"): "users.send_email",
 }

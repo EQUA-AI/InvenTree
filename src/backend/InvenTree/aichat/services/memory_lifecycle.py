@@ -8,7 +8,7 @@ from datetime import timezone as datetime_timezone
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Max
 from django.utils import timezone
 
 from ai.core.config import get_settings
@@ -81,12 +81,21 @@ def _forget_locked(fact, *, actor_id, reason):
     if reason not in FORGET_REASONS:
         raise ValueError('Invalid memory forget reason')
     source = fingerprint('source-v1', [fact.source_thread_id, fact.source_message_id])
-    tombstone, _created = MemoryFactTombstone.objects.get_or_create(
+    tombstone, _created = MemoryFactTombstone.objects.update_or_create(
         owner_id=fact.owner_id,
         client_code=fact.client_code,
         slot_fingerprint=slot_fingerprint(fact),
         claim_fingerprint=fact.claim_fingerprint,
-        defaults={'source_fingerprint': source, 'fact_id': fact.pk, 'reason': reason},
+        defaults={
+            'source_fingerprint': source,
+            'fact_id': fact.pk,
+            'reason': reason,
+            'deleted_at': timezone.now(),
+            'source_sequence': fact.claims.aggregate(latest=Max('source_sequence'))[
+                'latest'
+            ]
+            or 0,
+        },
     )
     fact.text = ''
     fact.embedding = None
@@ -122,6 +131,7 @@ def _forget_locked(fact, *, actor_id, reason):
         tombstone_id=tombstone.pk,
         action='forget',
         version=fact.version,
+        claim_fingerprint=fact.claim_fingerprint,
     )
     return True
 

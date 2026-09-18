@@ -113,9 +113,10 @@ def evaluate_memory_eligibility(actor, thread, *, purpose='extract', source_time
         return MemoryEligibility('no_authorized_clients')
     current = notice_number(config.aimms_memory_notice_version)
     acknowledged = []
-    for version in MemoryNoticeAcknowledgement.objects.filter(user=actor).values_list(
-        'notice_version', flat=True
-    ):
+    notices = MemoryNoticeAcknowledgement.objects.filter(user=actor)
+    if purpose == 'extract' and source_time is not None:
+        notices = notices.filter(acknowledged_at__lte=source_time)
+    for version in notices.values_list('notice_version', flat=True):
         try:
             number = notice_number(version)
         except ValueError:
@@ -126,9 +127,14 @@ def evaluate_memory_eligibility(actor, thread, *, purpose='extract', source_time
         return MemoryEligibility('notice_required')
     number, version = max(acknowledged)
     eligible = set()
-    for code, required in ClientAISettings.objects.filter(
+    enrollments = ClientAISettings.objects.filter(
         client__code__in=clients, client__active=True, memory_enabled=True
-    ).values_list('client__code', 'required_notice_version'):
+    )
+    if purpose == 'extract' and source_time is not None:
+        enrollments = enrollments.filter(enabled_at__lte=source_time)
+    for code, required in enrollments.values_list(
+        'client__code', 'required_notice_version'
+    ):
         try:
             minimum = notice_number(required)
         except ValueError:

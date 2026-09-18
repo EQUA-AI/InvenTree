@@ -59,11 +59,14 @@ class MemoryEligibilityTests(TestCase):
         ClientAISettings.objects.create(
             client=self.client_a,
             memory_enabled=True,
-            enabled_at=timezone.now(),
+            enabled_at=timezone.now() - timedelta(days=1),
             required_notice_version='memory-v2',
         )
         MemoryNoticeAcknowledgement.objects.create(
             user=self.owner, notice_version='memory-v10'
+        )
+        MemoryNoticeAcknowledgement.objects.filter(user=self.owner).update(
+            acknowledged_at=timezone.now() - timedelta(days=1)
         )
 
     def test_enrollment_is_per_client_and_notice_versions_are_numeric(self):
@@ -171,3 +174,17 @@ class MemoryEligibilityTests(TestCase):
         get_user_model().objects.filter(pk=self.owner.pk).update(is_active=False)
         with self.assertRaises(ValueError):
             service.acknowledge_notice(self.owner, 'memory-v10')
+
+    def test_preconsent_sources_are_not_backfilled(self):
+        """A new acknowledgement or enrollment applies only to later input."""
+        result = service.evaluate_memory_eligibility(
+            self.owner, self.thread, source_time=timezone.now() - timedelta(days=2)
+        )
+        self.assertEqual(result.reason, 'notice_required')
+        ClientAISettings.objects.filter(client=self.client_a).update(
+            enabled_at=timezone.now()
+        )
+        result = service.evaluate_memory_eligibility(
+            self.owner, self.thread, source_time=timezone.now() - timedelta(minutes=5)
+        )
+        self.assertEqual(result.reason, 'no_enrolled_clients')
