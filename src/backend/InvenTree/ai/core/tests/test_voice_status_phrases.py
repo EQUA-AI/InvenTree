@@ -71,7 +71,7 @@ def _session_for(principal, settings):
     return _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )

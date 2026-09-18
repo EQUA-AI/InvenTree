@@ -68,7 +68,7 @@ class CaptureApiTests(TestCase):
             '/api/voice/captures/',
             {
                 'purpose': purpose,
-                'consent_version': 'consent-v2',
+                'consent_version': 'consent-v3-memory',
                 'work_order_id': self.work_order.pk,
                 'work_order_version': self.work_order.lifecycle_version,
             },
@@ -90,7 +90,7 @@ class CaptureApiTests(TestCase):
             created = self._create(client)
             self.assertEqual(created.status_code, 201, created.content)
             capture_id = created.json()['id']
-            self.assertEqual(created.json()['consent_version'], 'consent-v2')
+            self.assertEqual(created.json()['consent_version'], 'consent-v3-memory')
 
             revised = client.post(
                 f'/api/voice/captures/{capture_id}/revise/',
@@ -213,7 +213,7 @@ class CaptureApiTests(TestCase):
                 {
                     'purpose': 'fault_intake',
                     'work_order_id': 2_147_483_647,
-                    'consent_version': 'consent-v2',
+                    'consent_version': 'consent-v3-memory',
                     'work_order_version': 1,
                 },
                 content_type='application/json',
@@ -223,7 +223,7 @@ class CaptureApiTests(TestCase):
                 {
                     'purpose': 'fault_intake',
                     'work_order_id': self.work_order.pk,
-                    'consent_version': 'consent-v2',
+                    'consent_version': 'consent-v3-memory',
                     'work_order_version': self.work_order.lifecycle_version + 1,
                 },
                 content_type='application/json',

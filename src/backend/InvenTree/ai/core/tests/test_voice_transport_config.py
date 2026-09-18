@@ -199,7 +199,7 @@ def test_enabled_voice_decision_lifetime_stays_within_hard_ceiling():
 def test_enabled_voice_decision_ceiling_stays_within_session_idle_timeout():
     with pytest.raises(
         ValidationError,
-        match="consent-v2 requires VOICE_LIVE_IDLE_TIMEOUT_S=300",
+        match="consent-v3-memory requires VOICE_LIVE_IDLE_TIMEOUT_S=300",
     ):
         _settings(
             FEATURE_VOICE_DECISIONS=True,

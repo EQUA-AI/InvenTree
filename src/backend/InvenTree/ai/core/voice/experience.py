@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-CONSENT_VERSION = "consent-v2"
+CONSENT_VERSION = "consent-v3-memory"
 CONSENT_IDLE_TIMEOUT_S = 300
 VOCABULARY_VERSION = "aimms-site-v1"
 VOCABULARY_OWNER = "AIMMS"

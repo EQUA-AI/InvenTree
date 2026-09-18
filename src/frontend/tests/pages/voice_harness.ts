@@ -108,7 +108,7 @@ export const defaultCapability: VoiceCapabilityPayload = {
   voices: [{ locale: 'en-US', voice: 'en-US-AvaNeural' }],
   default_locale: 'en-US',
   default_voice: 'en-US-AvaNeural',
-  consent_version: 'consent-v2',
+  consent_version: 'consent-v3-memory',
   voice_write_locales: ['en-US']
 };
 
@@ -128,7 +128,7 @@ export function sessionPayload(
     analysis_scope_version: 0,
     locale: 'en-US',
     voice: 'en-US-AvaNeural',
-    consent_version: 'consent-v2',
+    consent_version: 'consent-v3-memory',
     ...overrides
   };
 }

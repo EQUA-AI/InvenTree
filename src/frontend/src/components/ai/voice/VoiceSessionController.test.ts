@@ -79,7 +79,7 @@ const cap = {
   voices: [{ locale: 'en-US', voice: 'en-US-AvaNeural' }],
   default_locale: 'en-US',
   default_voice: 'en-US-AvaNeural',
-  consent_version: 'consent-v2',
+  consent_version: 'consent-v3-memory',
   voice_write_locales: ['en-US']
 } satisfies VoiceCapability;
 let controller: VoiceSessionController;
@@ -169,7 +169,7 @@ beforeEach(() => {
       state: 'active',
       locale: 'en-US',
       voice: 'en-US-AvaNeural',
-      consent_version: 'consent-v2',
+      consent_version: 'consent-v3-memory',
       transports_allowed: { webrtc: true, relay: false }
     };
     const body = path.endsWith('/sdp')
@@ -197,7 +197,7 @@ beforeEach(() => {
     voiceListeningMode: 'continuous',
     voiceEarcons: true,
     voiceSrAnnounceTranscripts: false,
-    voiceConsentVersion: 'consent-v2',
+    voiceConsentVersion: 'consent-v3-memory',
     voiceLocale: 'en-US',
     voiceOutputVoice: 'en-US-AvaNeural',
     voiceSpeakerNoticeSeen: false

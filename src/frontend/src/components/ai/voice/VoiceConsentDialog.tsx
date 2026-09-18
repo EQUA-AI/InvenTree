@@ -25,6 +25,7 @@ export function VoiceConsentDisclosure() {
   return (
     <Stack gap='xs'>
       <Text>{t`Starting voice sends your speech to the speech service for live transcription. AIMMS keeps only the text transcript, stored with your chat history; it never keeps a recording of your voice.`}</Text>
+      <Text>{t`If your client has enabled memory and you separately acknowledge the memory notice, eligible voice transcripts can produce memory suggestions for future conversations. Shared conversations are excluded. Review and forget memories on What AIMMS remembers, or turn off learning for a conversation. Accepting this voice disclosure alone does not enable memory.`}</Text>
       <Text>{t`Your voice is never used to identify you or sign you in. Actions run under the account you are logged in with, and every business change still needs your explicit confirmation.`}</Text>
       <Text>{t`AIMMS listens only inside a session you start; there is no wake word and it never listens in the background.`}</Text>
       <Text>{t`Voice stays on while this tab is visible. If you switch apps or lock the screen, AIMMS stops listening and pauses playback; if the tab stays hidden for 5 minutes the voice session ends. Anything waiting for your confirmation is set aside, nothing is executed, and it is read back again for a fresh confirmation when you return.`}</Text>
@@ -120,7 +121,7 @@ export function VoiceConsentDialog() {
           );
           if (
             !pair ||
-            capability?.consent_version !== 'consent-v2' ||
+            capability?.consent_version !== 'consent-v3-memory' ||
             capability.idle_timeout_s !== 300
           )
             return;

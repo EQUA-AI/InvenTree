@@ -962,7 +962,7 @@ class Settings(BaseSettings):
             )
         if self.feature_voice_live and self.voice_live_idle_timeout_s != 300:
             raise ValueError(
-                "consent-v2 requires VOICE_LIVE_IDLE_TIMEOUT_S=300; revise consent first"
+                "consent-v3-memory requires VOICE_LIVE_IDLE_TIMEOUT_S=300; revise consent first"
             )
         if self.feature_voice_approvals and not self.feature_voice_decision_coordinator:
             raise ValueError("FEATURE_VOICE_APPROVALS requires FEATURE_VOICE_DECISIONS")

@@ -190,7 +190,7 @@ def test_voice_rail_converts_the_stop_to_a_typed_503(monkeypatch):
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )

@@ -28,7 +28,7 @@ POLICY = {
     'AIMMS_SINGLE_SITE_POLICY_KEY': 'phase-e-test',
     'AIMMS_VOICE_CAPTURE_ENABLED': '1',
     'AIMMS_VOICE_PURPOSES': 'closeout',
-    'AIMMS_VOICE_CONSENT_VERSION': 'consent-v2',
+    'AIMMS_VOICE_CONSENT_VERSION': 'consent-v3-memory',
 }
 
 
@@ -46,7 +46,7 @@ class CaptureVoiceFlowTests(WorkOrderVoiceFixture, TestCase):
         self.flags = SimpleNamespace(feature_voice_closeout=True)
         self.enterContext(patch('ai.core.config.get_settings', return_value=self.flags))
         self.enterContext(patch.dict(os.environ, POLICY))
-        self.session.consent_version = 'consent-v2'
+        self.session.consent_version = 'consent-v3-memory'
         self.session.save(update_fields=['consent_version'])
         self.order.lifecycle_status = WorkOrderLifecycle.IN_PROGRESS
         self.order.save(update_fields=['lifecycle_status'])
@@ -164,9 +164,17 @@ class CaptureVoiceFlowTests(WorkOrderVoiceFixture, TestCase):
     def test_lowercase_asr_psi_correction_keeps_one_literal_unit(self):
         """Lowercase ASR units do not duplicate or convert a pressure unit."""
         capture = self.consent()
-        for source_unit, replacement_unit in [('psi', 'psi'), ('PSI', 'psi'), ('psi', 'PSI')]:
-            with self.subTest(source_unit=source_unit, replacement_unit=replacement_unit):
-                self.say(f'replace note with Pressure 15 {source_unit}. No physical work performed.')
+        for source_unit, replacement_unit in [
+            ('psi', 'psi'),
+            ('PSI', 'psi'),
+            ('psi', 'PSI'),
+        ]:
+            with self.subTest(
+                source_unit=source_unit, replacement_unit=replacement_unit
+            ):
+                self.say(
+                    f'replace note with Pressure 15 {source_unit}. No physical work performed.'
+                )
                 self.say(f'change 15 to 50 {replacement_unit}')
                 self.assertEqual(
                     capture.revisions.order_by('-revision').first().full_text,
@@ -209,7 +217,9 @@ class CaptureVoiceFlowTests(WorkOrderVoiceFixture, TestCase):
             self.assertTrue(spoken.endswith(suffix))
             pages.append(spoken[len(prefix) : -len(suffix)])
         self.assertEqual(' '.join(' '.join(pages).split()), ' '.join(text.split()))
-        self.assertEqual(VoiceTranscriptRevision.objects.latest('created_at').full_text, text)
+        self.assertEqual(
+            VoiceTranscriptRevision.objects.latest('created_at').full_text, text
+        )
         self.assertEqual(capture.revisions.get().full_text, text)
         decision = self.say('accept this note').decision
         self.assertFalse(decision.voice_eligible)
@@ -426,7 +436,7 @@ class CaptureVoiceFlowTests(WorkOrderVoiceFixture, TestCase):
         self.session.save(update_fields=['consent_version'])
         with self.assertRaisesMessage(ProposalError, 'current consent'):
             self.say(f'start closeout for work order {self.order.pk}')
-        self.session.consent_version = 'consent-v2'
+        self.session.consent_version = 'consent-v3-memory'
         self.session.save(update_fields=['consent_version'])
         self.consent()
         self.say('note Verified repaired seal at fifty PSI.')

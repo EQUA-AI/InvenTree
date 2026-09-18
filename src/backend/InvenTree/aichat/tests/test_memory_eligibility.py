@@ -188,3 +188,47 @@ class MemoryEligibilityTests(TestCase):
             self.owner, self.thread, source_time=timezone.now() - timedelta(minutes=5)
         )
         self.assertEqual(result.reason, 'no_enrolled_clients')
+
+    def test_voice_memory_requires_exact_session_owner_thread_and_new_consent(self):
+        """New enrollment never upgrades historical voice consent implicitly."""
+        from aichat.models import ChatMessage
+        from voice.models import VoiceSession
+
+        session = VoiceSession.objects.create(
+            owner=self.owner,
+            thread_id=self.thread.pk,
+            scope_key='fixture',
+            scope_hash='fixture',
+            policy_version='fixture',
+            consent_version='consent-v2',
+        )
+        source = ChatMessage.objects.create(
+            thread=self.thread,
+            sequence=1,
+            role='user',
+            modality='voice',
+            content='Please remember my preference for a maintenance checklist.',
+            metadata={'voice_session_id': str(session.pk)},
+        )
+        self.assertFalse(service.voice_source_has_memory_consent(source))
+        # A separate new session is the consent act; old session rows stay old.
+        current = VoiceSession.objects.create(
+            owner=self.owner,
+            thread_id=self.thread.pk,
+            scope_key='fixture',
+            scope_hash='fixture',
+            policy_version='fixture',
+            consent_version='consent-v3-memory',
+        )
+        fresh = ChatMessage.objects.create(
+            thread=self.thread,
+            sequence=2,
+            role='user',
+            modality='voice',
+            content=source.content,
+            metadata={'voice_session_id': str(current.pk)},
+        )
+        self.assertTrue(service.voice_source_has_memory_consent(fresh))
+        self.assertFalse(service.voice_source_has_memory_consent(source))
+        VoiceSession.objects.filter(pk=current.pk).update(owner=self.other)
+        self.assertFalse(service.voice_source_has_memory_consent(fresh))

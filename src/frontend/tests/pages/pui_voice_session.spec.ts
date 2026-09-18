@@ -356,7 +356,7 @@ test('consent is required, defaults are mapped, and sample never starts a sessio
   await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
   expect(voice.sessionCreates).toHaveLength(1);
   expect(voice.sessionCreates[0].body).toMatchObject({
-    consent_version: 'consent-v2',
+    consent_version: 'consent-v3-memory',
     locale: 'en-US',
     voice: 'en-US-AvaNeural'
   });

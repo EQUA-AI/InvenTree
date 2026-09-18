@@ -143,7 +143,7 @@ def test_voice_followup_carries_the_preceding_text_turn():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=thread_id)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=thread_id)
         ),
         settings,
     )

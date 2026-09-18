@@ -103,11 +103,11 @@ def test_validation_metrics_default_dependency_and_owner_only_epoch():
 
 @pytest.mark.parametrize("timeout", [30, 299, 301, 3600])
 def test_consent_timeout_coupling(timeout):
-    with pytest.raises(ValueError, match="consent-v2"):
+    with pytest.raises(ValueError, match="consent-v3-memory"):
         _settings(VOICE_LIVE_IDLE_TIMEOUT_S=timeout)
 
 
-@pytest.mark.parametrize("version", ["", "consent-v1", "consent-v3"])
+@pytest.mark.parametrize("version", ["", "consent-v1", "consent-v2", "consent-v3"])
 def test_stale_missing_consent_refuses_without_a_session(version):
     user = _user()
     before = VoiceSession.objects.count()

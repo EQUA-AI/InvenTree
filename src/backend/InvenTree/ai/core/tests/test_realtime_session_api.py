@@ -115,7 +115,7 @@ def test_feature_flag_off_hides_every_voice_route():
     _expect_http(
         _principal(user),
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
         404,
@@ -129,7 +129,7 @@ def test_any_authenticated_user_can_create_a_voice_session():
     result = _run(
         _principal(user),
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -144,7 +144,7 @@ def test_create_get_end_lifecycle_and_credential_free_payload():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -192,7 +192,9 @@ def test_scoped_thread_ids_are_rejected_pre_substrate():
     _expect_http(
         _principal(user),
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id="scoped_abc123")
+            VoiceSessionCreateRequest(
+                consent_version="consent-v3-memory", thread_id="scoped_abc123"
+            )
         ),
         settings,
         404,
@@ -207,14 +209,14 @@ def test_session_limit_returns_429():
     _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
     _expect_http(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
         429,
@@ -229,7 +231,7 @@ def test_sdp_requires_the_webrtc_preview_flag():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -249,7 +251,7 @@ def test_sdp_without_provider_channel_is_honestly_unavailable():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -270,7 +272,7 @@ def test_sdp_relay_with_fake_channel_completes_and_binds_transport():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -317,7 +319,7 @@ def test_turn_bridge_persists_exact_spoken_summary_and_replays():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -368,7 +370,7 @@ def test_turn_bridge_surfaces_a_pending_question():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -426,7 +428,7 @@ def test_turn_bridge_rejects_empty_transcript():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -485,7 +487,7 @@ def test_turn_bridge_dispatches_exact_tts_through_provider_channel():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -535,7 +537,7 @@ def test_turn_bridge_tts_failure_leaves_playback_honestly_pending():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )

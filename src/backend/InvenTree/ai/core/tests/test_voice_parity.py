@@ -110,7 +110,7 @@ def test_absent_confidence_is_not_low_and_the_turn_proceeds():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -166,7 +166,9 @@ def test_session_binds_the_thread_scope_version_at_creation():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id="thread_parity_bind")
+            VoiceSessionCreateRequest(
+                consent_version="consent-v3-memory", thread_id="thread_parity_bind"
+            )
         ),
         settings,
     )
@@ -175,7 +177,7 @@ def test_session_binds_the_thread_scope_version_at_creation():
     unbound = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -193,7 +195,9 @@ def test_scope_change_refuses_the_turn_without_executing_it():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id="thread_parity_stale")
+            VoiceSessionCreateRequest(
+                consent_version="consent-v3-memory", thread_id="thread_parity_stale"
+            )
         ),
         settings,
     )
@@ -227,7 +231,9 @@ def test_scope_change_refuses_the_turn_without_executing_it():
     fresh = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id="thread_parity_stale")
+            VoiceSessionCreateRequest(
+                consent_version="consent-v3-memory", thread_id="thread_parity_stale"
+            )
         ),
         settings,
     )
@@ -250,7 +256,9 @@ def test_matching_scope_version_submits_normally():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id="thread_parity_match")
+            VoiceSessionCreateRequest(
+                consent_version="consent-v3-memory", thread_id="thread_parity_match"
+            )
         ),
         settings,
     )
@@ -319,7 +327,7 @@ def test_voice_turn_payload_never_leaks_evidence_keys():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
@@ -397,7 +405,7 @@ def test_empty_transcript_is_a_typed_422_and_no_turn_runs():
     created = _run(
         principal,
         lambda: create_voice_session(
-            VoiceSessionCreateRequest(consent_version="consent-v2", thread_id=None)
+            VoiceSessionCreateRequest(consent_version="consent-v3-memory", thread_id=None)
         ),
         settings,
     )
