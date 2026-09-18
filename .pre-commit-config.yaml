@@ -75,6 +75,7 @@ repos:
           docs/docs/javascripts/.*|
           docs/docs/webfonts/.* |
           src/frontend/src/locales/.* |
+          src/backend/InvenTree/ai/core/evals/memory_study/corpus\.draft\.jsonl |
           pyproject.toml |
           src/frontend/vite.config.ts |
       )$

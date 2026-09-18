@@ -96,6 +96,7 @@ class ExtractionResult:
     attempted: bool = False
     usage_known: bool = False
     error_code: str = ""
+    resolved_model: str = ""
 
 
 def request_payload(documents, *, owner_id, locale):
@@ -206,7 +207,14 @@ def extract(documents, *, owner_id, locale, settings):
         candidates = parse_candidates(
             response.choices[0].message.content, {row["source_message_id"] for row in documents}
         )
-        return ExtractionResult(candidates, input_tokens, output_tokens, attempted, usage_known)
+        return ExtractionResult(
+            candidates,
+            input_tokens,
+            output_tokens,
+            attempted,
+            usage_known,
+            resolved_model=str(getattr(response, "model", "") or ""),
+        )
     except Exception:
         return ExtractionResult(
             (), input_tokens, output_tokens, attempted, usage_known, "extraction_unavailable"

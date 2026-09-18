@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "campaign_id": "memory-custom-study-draft-20260918",
+  "status": "draft",
+  "runs": 5,
+  "base_seed": 20260918,
+  "seed_controls": "case_order_only",
+  "arms": [
+    "custom"
+  ],
+  "corpus_path": "memory_study/corpus.draft.jsonl",
+  "corpus_sha256": "f9c5a5a59b403703e7ddb138d7d6cfbbf5ef73ff9244783bd5a73f8a2414bd57",
+  "minimum_transcripts": 50,
+  "minimum_messages": 16,
+  "minimum_gold_atoms": 400,
+  "target_gold_atoms": 800,
+  "max_tokens": 0,
+  "max_provider_calls": 0,
+  "extraction_deployment": "REQUIRED_REVIEWED_DEPLOYMENT",
+  "expected_model": "REQUIRED_MODEL_VERSION",
+  "runtime_fingerprint": "REQUIRED_RUNTIME_FINGERPRINT",
+  "judge_fingerprint": "REQUIRED_CALIBRATED_JUDGE",
+  "reviewer": "",
+  "corpus_reviewed": false,
+  "mem0_admission": false,
+  "thresholds": {
+    "recall_lift_min": 0.05,
+    "recall_ci_low_min": 0.0,
+    "precision_ci_low_min": -0.03,
+    "f1_lift_min": 0.1,
+    "duplicate_delta_max": 0.0,
+    "injection_max": 0,
+    "cross_client_max": 0,
+    "prohibited_max": 0,
+    "non_revival_max": 0,
+    "residual_max": 0,
+    "acceptance_lift_min": 0.1,
+    "min_decisions_per_origin": 100,
+    "calibration_agreement_min": 0.9,
+    "calibration_adversarial_min": 0.2
+  },
+  "power_note": "400 atoms is the floor; target 800. Synthetic template count is not evidence of independent observations. Review diversity and observed discordance before counting power.",
+  "bootstrap": {
+    "replicates": 5000,
+    "confidence": 0.9,
+    "seed": 20260918,
+    "cluster": "transcript"
+  }
+}

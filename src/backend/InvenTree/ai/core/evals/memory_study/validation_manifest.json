@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "status": "authored_not_run",
+  "runtime_testing": "paused",
+  "postgresql_required": true,
+  "migrations_unapplied": [
+    "0041",
+    "0042",
+    "0043",
+    "0044",
+    "0045",
+    "0046",
+    "0047",
+    "0048",
+    "0049",
+    "0050"
+  ],
+  "suites": [
+    "src/backend/InvenTree/aichat/tests/test_memory_budget.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_commands.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_controls.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_conversations.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_eligibility.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_episodes.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_extraction.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_fact_jobs.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_fact_schema.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_journal.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_lifecycle.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_policy.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_reads.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_recall.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_summary_guard.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_worker.py",
+    "src/backend/InvenTree/aichat/tests/test_memory_writes.py",
+    "src/backend/InvenTree/aichat/tests/test_client_memory_erasure.py",
+    "src/backend/InvenTree/aichat/tests/test_attachment_memory.py",
+    "src/backend/InvenTree/aichat/tests/test_retention_journal.py",
+    "src/backend/InvenTree/aichat/tests/test_projection_audit.py",
+    "src/backend/InvenTree/ai/core/tests/test_memory_query_embedding.py",
+    "src/backend/InvenTree/ai/core/tests/test_memory_context_builder.py",
+    "src/frontend/tests/pages/pui_durable_memory.spec.ts",
+    "src/frontend/tests/pages/pui_ai_chat_memory.spec.ts",
+    "src/frontend/tests/pages/pui_voice_session.spec.ts"
+  ],
+  "historical_m1_pair": {
+    "campaigns/memory_baseline.dev.yaml": "a8ba8fcb6cc235b24e5cb460cc30b82534d0e77c507c922a5617fe955111efb3",
+    "campaigns/memory_baseline.experimental.yaml": "acface07f64f99128d50802167ee771d065ab98a9065d9e9480cad8b8fd42fff",
+    "battery/memory_battery.yaml": "4cce8840da84c3b9a3d12fbb6ceef2b5fabb3723880b9a35e771464cddd2a54d"
+  },
+  "matrices": [
+    {
+      "id": "M1_replay_pair",
+      "vary": [
+        "history_replay"
+      ],
+      "semantic_recall": false,
+      "semantic_extract": false,
+      "change_existing_campaigns": false
+    },
+    {
+      "id": "semantic_dark",
+      "semantic_recall": false,
+      "semantic_extract": false
+    },
+    {
+      "id": "semantic_enabled",
+      "semantic_recall": true,
+      "semantic_extract": true,
+      "consent_cases": [
+        "current",
+        "missing_notice",
+        "client_disabled",
+        "owner_opted_out",
+        "shared_thread",
+        "voice_old_notice",
+        "client_erased"
+      ]
+    },
+    {
+      "id": "tags",
+      "vary": [
+        "type_filter_on_off",
+        "topic_boost_zero_measured"
+      ]
+    },
+    {
+      "id": "failures",
+      "cases": [
+        "provider_unavailable",
+        "unknown_usage",
+        "lease_abandoned",
+        "outbox_failure",
+        "restore_hold",
+        "tombstone_replay",
+        "attachment_cleanup_overflow",
+        "client_identity_reuse",
+        "query_embedding_deadline",
+        "closeout_amendment_race"
+      ]
+    }
+  ],
+  "manual_requirements": {
+    "summary_reviews": 30,
+    "calibration_rows": 80,
+    "minimum_adversarial_fraction": 0.2,
+    "minimum_judge_agreement": 0.9,
+    "runtime_model_pins": "required",
+    "platform_release_review": "required"
+  },
+  "known_implementation_gaps": [
+    "full_client_transcript_partition_and_offboarding",
+    "full_account_non_chat_store_coverage",
+    "attachment_source_restore_severance_proof",
+    "retrieval_route_audit_and_builder_planning",
+    "projection_search_only_orphan_audit"
+  ],
+  "conditional_tracks": {
+    "mem0": "not_admitted",
+    "graph": "domain_and_funding_decisions_required"
+  }
+}

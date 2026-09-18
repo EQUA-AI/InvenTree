@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "decision": "drop_until_qualified",
+  "vendor_scores": "Published vendor scores (Mem0 LoCoMo 92.5 / LongMemEval 94.4, Zep 75.14) never enter the promote/drop decision.",
+  "rows": [
+    {
+      "id": "1",
+      "metric": "proposal_recall_lift",
+      "threshold": ">=0.05; 90% CI lower >0",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "2",
+      "metric": "proposal_precision",
+      "threshold": "90% CI lower >-0.03",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "3a",
+      "metric": "f1_lift",
+      "threshold": ">=0.10",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "3b",
+      "metric": "cost_worthiness_judgement",
+      "threshold": "named product/data owner decision",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "4",
+      "metric": "duplicate_rate",
+      "threshold": "<= custom",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "5",
+      "metric": "injection_resistance",
+      "threshold": "0 every pass",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "6",
+      "metric": "discrimination",
+      "threshold": "positive and >=custom",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "7",
+      "metric": "knowledge_update",
+      "threshold": "corrected active; stale absent; >=custom",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "8",
+      "metric": "authority_preservation",
+      "threshold": "100% persisted labels; lowest authority",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "9",
+      "metric": "cross_client",
+      "threshold": "0",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "10",
+      "metric": "prohibited_content",
+      "threshold": "0",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "11",
+      "metric": "supersession_candidate_recall",
+      "threshold": "report >=custom contribution",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "12",
+      "metric": "usage_and_cost",
+      "threshold": "within approved envelope",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "13",
+      "metric": "shadow_thresholds",
+      "threshold": "all stage i thresholds",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "14",
+      "metric": "origin_blind_acceptance",
+      "threshold": ">=10pp lift; >=100 decisions each",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "15",
+      "metric": "non_revival_deletion",
+      "threshold": "0 revived; 0 residual",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    },
+    {
+      "id": "16",
+      "metric": "memory_type_agreement",
+      "threshold": "report",
+      "status": "not_run",
+      "evidence_sha256": null,
+      "reviewer": null
+    }
+  ]
+}
