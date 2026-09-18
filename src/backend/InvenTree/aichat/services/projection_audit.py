@@ -15,6 +15,7 @@ from aichat.models import (
     AttachmentIngest,
     RagProjectionAudit,
     RagProjectionGate,
+    RagProjectionOrphan,
     RagProjectionRepair,
 )
 from InvenTree.restore_hold import restore_hold_enabled
@@ -52,7 +53,10 @@ def release_gate(*, corpus, expected_blocked_at):
     )
     if gate is None or gate.updated_at != expected:
         raise ValueError('Stop receipt changed')
-    if RagProjectionRepair.objects.filter(corpus=corpus, resolved=False).exists():
+    if (
+        RagProjectionRepair.objects.filter(corpus=corpus, resolved=False).exists()
+        or RagProjectionOrphan.objects.filter(corpus=corpus, resolved=False).exists()
+    ):
         raise ValueError('Open projection repairs remain')
     latest = (
         RagProjectionAudit.objects
@@ -269,7 +273,17 @@ def scheduled_audit():
                 corpus=corpus, after=cache.get(key, 0), record=True
             )
             cache.set(key, report.get('next_after') or 0, timeout=7 * 86400)
-            results[corpus] = report
+            from aichat.services.projection_orphans import scan_orphans
+
+            reverse_key = f'aimms:projection-audit:{corpus}:reverse-cursor'
+            reverse = scan_orphans(
+                corpus=corpus, offset=cache.get(reverse_key, 0), record=True
+            )
+            if not reverse.get('errors'):
+                cache.set(
+                    reverse_key, reverse.get('next_offset') or 0, timeout=7 * 86400
+                )
+            results[corpus] = {'forward': report, 'reverse': reverse}
         except Exception:
             RagProjectionAudit.objects.create(
                 corpus=corpus, outcome='incomplete', errors=1
@@ -300,6 +314,9 @@ def purge_audits(*, dry_run=False, batch_size=200):
             )
     RagProjectionAudit.objects.filter(pk__in=[row.pk for row in page]).delete()
     RagProjectionRepair.objects.filter(
+        resolved=True, updated_at__lt=timezone.now() - timedelta(days=90)
+    ).delete()
+    RagProjectionOrphan.objects.filter(
         resolved=True, updated_at__lt=timezone.now() - timedelta(days=90)
     ).delete()
     return {'rag_projection_audits': len(page)}

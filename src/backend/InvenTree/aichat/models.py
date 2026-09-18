@@ -33,6 +33,7 @@ from .memory_models import MemoryNoticeAcknowledgement as MemoryNoticeAcknowledg
 from .memory_models import UserMemorySettings as UserMemorySettings
 from .projection_models import RagProjectionAudit as RagProjectionAudit
 from .projection_models import RagProjectionGate as RagProjectionGate
+from .projection_models import RagProjectionOrphan as RagProjectionOrphan
 from .projection_models import RagProjectionRepair as RagProjectionRepair
 
 

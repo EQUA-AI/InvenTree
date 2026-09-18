@@ -35,3 +35,15 @@ class RagProjectionRepair(models.Model):
     snapshot_hash = models.CharField(max_length=64)
     resolved = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class RagProjectionOrphan(models.Model):
+    """Search-origin obligations survive native source and ingest deletion."""
+
+    identity = models.CharField(primary_key=True, max_length=64)
+    corpus = models.CharField(max_length=16, choices=CORPORA)
+    index_name = models.CharField(max_length=128)
+    document_id = models.CharField(max_length=1024)
+    reason = models.CharField(max_length=32)
+    resolved = models.BooleanField(default=False, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
