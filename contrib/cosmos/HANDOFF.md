@@ -322,6 +322,14 @@ untracked duplicate of the same artefact, and duplicates drift.
 nohup sh contrib/cosmos/devtools/keep_emulator_fresh.sh > /tmp/reseed.log 2>&1 < /dev/null &
 ```
 
+The loop had `set -e`, which meant **one failed cycle killed it outright**. The only symptom was
+a log that stopped; five minutes later every reading was stale, which is exactly the
+"looks like a broken connector" state the script exists to prevent. A supervisor that dies on
+the first error is worse than none, because it looks like one is running. Cycles are now
+independent, consecutive failures are counted and announced, and a missing snapshot is fatal at
+startup rather than a silent no-op. The staleness warning is derived from `INTERVAL` rather than
+hardcoded, so it cannot claim "~5 min" when the interval is not 60 s.
+
 Verified afterwards: **581 of 581 bindings populated, all fresh, all `good`**, and previously
 empty bindings such as `/dex/PUMP7_PUMP_COOLING_WATER_INLET_TEMP1` now return real windows in
 strictly ascending order. 189 `machine_health` tests pass.
