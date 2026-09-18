@@ -60,6 +60,11 @@ from aichat.services import (
     ThreadRepository,
 )
 from aichat.services.threads import InvalidBoundary
+from aichat.services.transcript_export import (
+    ExportAccessError,
+    ExportTooLargeError,
+    browser_transcript_export,
+)
 from asgiref.sync import sync_to_async
 from fastapi import (
     Depends,
@@ -1243,6 +1248,29 @@ async def get_evidence_set_members(
         raise _evidence_not_found() from None
     response.headers["Cache-Control"] = "private, no-store"
     return payload
+
+
+@app.post("/threads/export")
+async def export_owned_transcripts() -> Response:
+    """Download the authenticated owner's bounded current-scope transcript JSON."""
+    repository = _repository(_principal())
+    headers = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
+    try:
+        content = await sync_to_async(browser_transcript_export, thread_sensitive=True)(repository)
+    except ExportTooLargeError:
+        raise HTTPException(
+            status_code=413, detail="Transcript download limit exceeded", headers=headers
+        ) from None
+    except ExportAccessError:
+        raise HTTPException(
+            status_code=403, detail="Transcript export unavailable", headers=headers
+        ) from None
+    except Exception:
+        raise HTTPException(
+            status_code=503, detail="Transcript export could not finish", headers=headers
+        ) from None
+    headers["Content-Disposition"] = 'attachment; filename="aimms-conversations.json"'
+    return Response(content=content, media_type="application/json", headers=headers)
 
 
 @app.post("/threads/deletion-plan")

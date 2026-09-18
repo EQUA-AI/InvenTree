@@ -69,6 +69,7 @@ import type {
   OwnedDeletionPage,
   OwnedDeletionPlan
 } from '../../functions/ownedThreadDeletion';
+import type { TranscriptExportCounts } from '../../functions/transcriptExport';
 import {
   type ChatMessage,
   type ChatThread,
@@ -100,6 +101,7 @@ import { ContextUsedDisclosure } from '../aichat/ContextUsedDisclosure';
 import { DeleteOwnedThreadsModal } from '../aichat/DeleteOwnedThreadsModal';
 import { EntityChips } from '../aichat/EntityChips';
 import { EvidenceChips } from '../aichat/EvidenceChips';
+import { ExportThreadsModal } from '../aichat/ExportThreadsModal';
 import { LegacyChatStorageNotice } from '../aichat/LegacyChatStorageNotice';
 import { MarkdownMessage } from '../aichat/MarkdownMessage';
 import { RetrievalCoverage } from '../aichat/RetrievalCoverage';
@@ -313,6 +315,7 @@ function ThreadSelector({
   onNewThread,
   onDeleteThread,
   onPrepareDeletion,
+  onExport,
   onDeletePage,
   bulkDeletionDisabled,
   onRenameThread,
@@ -328,6 +331,7 @@ function ThreadSelector({
   onDeleteThread: (threadId: string) => Promise<ThreadDeleteResult>;
   bulkDeletionDisabled: boolean;
   onPrepareDeletion: () => Promise<OwnedDeletionPlan>;
+  onExport: (signal: AbortSignal) => Promise<TranscriptExportCounts>;
   onDeletePage: (
     plan: OwnedDeletionPlan,
     cursor: string | null
@@ -348,6 +352,7 @@ function ThreadSelector({
   const theme = useMantineTheme();
   const [action, setAction] = useState<ThreadAction | null>(null);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const activeThread =
     threads.find((t) => t.id === activeThreadId) ??
     sharedThreads.find((t) => t.id === activeThreadId);
@@ -410,6 +415,12 @@ function ThreadSelector({
             {t`New conversation`}
           </Menu.Item>
 
+          <Menu.Item
+            aria-label='export-owned-ai-chat-threads'
+            disabled={disabled}
+            leftSection={<IconFileExport size={16} />}
+            onClick={() => setExportOpen(true)}
+          >{t`Export my saved conversations`}</Menu.Item>
           <Menu.Item
             aria-label='delete-owned-ai-chat-threads'
             color='red'
@@ -557,6 +568,12 @@ function ThreadSelector({
           )}
         </Menu.Dropdown>
       </Menu>
+      {exportOpen && (
+        <ExportThreadsModal
+          onExport={onExport}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
       {deleteAllOpen && (
         <DeleteOwnedThreadsModal
           onPrepare={onPrepareDeletion}
@@ -1182,6 +1199,7 @@ function AIChatSessionDrawer({
     createNewThread,
     deleteThread,
     prepareThreadDeletion,
+    exportTranscripts,
     deleteThreadPage,
     renameThread,
     isSyncing,
@@ -1764,6 +1782,7 @@ function AIChatSessionDrawer({
                     return prepareThreadDeletion();
                   }}
                   onDeletePage={deleteThreadPage}
+                  onExport={exportTranscripts}
                   bulkDeletionDisabled={
                     Boolean(voice.session) || voice.transport !== 'off'
                   }

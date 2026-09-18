@@ -15,6 +15,11 @@ import {
   deleteOwnedPage,
   prepareOwnedDeletion
 } from '../functions/ownedThreadDeletion';
+import {
+  type TranscriptExportCounts,
+  fetchTranscriptExport,
+  saveTranscriptDownload
+} from '../functions/transcriptExport';
 import { useAIChatState } from '../states/AIChatState';
 import { useLocalState } from '../states/LocalState';
 import { useUserState } from '../states/UserState';
@@ -1081,6 +1086,7 @@ export function useAIChat(config: AIChatConfig = {}) {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const bulkDeletionControllerRef = useRef<AbortController | null>(null);
+  const exportInProgressRef = useRef(false);
   const syncInProgressRef = useRef(false);
   const syncRunRef = useRef(0);
   // S50: latched when /agui answers 404/405 mid-session — the rest of the
@@ -1864,6 +1870,41 @@ export function useAIChat(config: AIChatConfig = {}) {
       return result;
     },
     [sessionIsCurrent, aiHost, applyThreadDeletion, patchThreadRuntime]
+  );
+
+  const exportTranscripts = useCallback(
+    async (signal: AbortSignal): Promise<TranscriptExportCounts> => {
+      if (
+        !sessionIsCurrent() ||
+        exportInProgressRef.current ||
+        bulkDeletionControllerRef.current
+      )
+        throw new Error('Transcript export unavailable');
+      exportInProgressRef.current = true;
+      const context = cacheContextRef.current;
+      const listVersion = threadListVersionRef.current;
+      try {
+        const artifact = await fetchTranscriptExport(
+          aiHost,
+          String(useUserState.getState().userId()),
+          csrfHeaders(),
+          signal
+        );
+        signal.throwIfAborted();
+        if (
+          !sessionIsCurrent() ||
+          context !== cacheContextRef.current ||
+          listVersion !== threadListVersionRef.current
+        )
+          throw new Error('Chat context changed during export');
+        // No async gap between the final identity/cancel check and file handoff.
+        saveTranscriptDownload(artifact.blob);
+        return { threads: artifact.threads, messages: artifact.messages };
+      } finally {
+        exportInProgressRef.current = false;
+      }
+    },
+    [sessionIsCurrent, aiHost]
   );
 
   const prepareThreadDeletion =
@@ -3333,6 +3374,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     createNewThread,
     deleteThread,
     prepareThreadDeletion,
+    exportTranscripts,
     deleteThreadPage,
     renameThread,
     clearChat,
