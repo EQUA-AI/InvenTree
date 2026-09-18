@@ -41,6 +41,9 @@ class UserErasureTests(TestCase):
         users = get_user_model().objects
         self.owner = users.create_user(username='erasure-owner')
         self.other = users.create_user(username='erasure-other')
+        from aichat.tests.memory_scope_fixtures import grant_shared_fixture_client
+
+        grant_shared_fixture_client(self, self.owner, self.other)
         self.repo = ThreadRepository(self.owner.pk, 'site:main')
         self.files = tempfile.TemporaryDirectory()
         self.addCleanup(self.files.cleanup)

@@ -50,6 +50,9 @@ class AccountErasureTests(TestCase):
         self.owner.set_password(uuid.uuid4().hex)
         self.owner.save(update_fields=['password'])
         self.other = users.create_user(username='account-other')
+        from aichat.tests.memory_scope_fixtures import grant_shared_fixture_client
+
+        grant_shared_fixture_client(self, self.owner, self.other)
         self.repo = ThreadRepository(self.owner, 'site:main')
         self.thread, _ = self.repo.get_or_create()
         self.repo.append(self.thread.pk, role='user', content='Private transcript')

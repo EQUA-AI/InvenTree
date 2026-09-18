@@ -81,6 +81,9 @@ class _Base(TestCase):
         users = get_user_model().objects
         self.owner = users.create_user(username='memory-owner')
         self.grantee = users.create_user(username='memory-grantee')
+        from aichat.tests.memory_scope_fixtures import grant_shared_fixture_client
+
+        grant_shared_fixture_client(self, self.owner, self.grantee)
         self.owner_repo = ThreadRepository(self.owner.pk, SCOPE)
         self.thread, _ = self.owner_repo.get_or_create(title='Pump notes')
         ChatThread.objects.filter(pk=self.thread.pk).update(

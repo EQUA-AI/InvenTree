@@ -32,6 +32,9 @@ class ThreadAnalysisScopeTests(TestCase):
         user_model = get_user_model()
         self.owner = user_model.objects.create_user(username='scope-owner')
         self.stranger = user_model.objects.create_user(username='scope-stranger')
+        from aichat.tests.memory_scope_fixtures import grant_shared_fixture_client
+
+        grant_shared_fixture_client(self, self.owner, self.stranger)
         self.repository = ThreadRepository(self.owner.pk, 'site:main')
         self.thread, _ = self.repository.get_or_create()
 
@@ -61,9 +64,7 @@ class ThreadAnalysisScopeTests(TestCase):
         """A stale expected_version conflicts before any write happens."""
         self.repository.set_scope(self.thread.pk, FLEET_REQUEST, expected_version=0)
         with self.assertRaises(ScopeVersionConflict):
-            self.repository.set_scope(
-                self.thread.pk, FLEET_REQUEST, expected_version=0
-            )
+            self.repository.set_scope(self.thread.pk, FLEET_REQUEST, expected_version=0)
         self.assertEqual(self.repository.get_scope(self.thread.pk)['version'], 1)
 
     def test_site_group_mode_is_rejected_typed(self) -> None:
@@ -142,9 +143,7 @@ class ThreadAnalysisScopeTests(TestCase):
 
         thread_id = f'thread_{uuid.uuid4().hex}'
         self.repository.get_or_create(thread_id)
-        result = self.repository.set_scope(
-            thread_id, FLEET_REQUEST, expected_version=0
-        )
+        result = self.repository.set_scope(thread_id, FLEET_REQUEST, expected_version=0)
         self.assertEqual(result['version'], 1)
 
     # ---- per-turn snapshot ----------------------------------------------

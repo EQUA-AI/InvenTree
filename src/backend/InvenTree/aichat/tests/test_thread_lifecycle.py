@@ -27,6 +27,9 @@ class ThreadLifecycleTests(TestCase):
         """Create isolated actors and a disposable upload root."""
         self.owner = get_user_model().objects.create_user(username='lifecycle-owner')
         self.other = get_user_model().objects.create_user(username='lifecycle-other')
+        from aichat.tests.memory_scope_fixtures import grant_shared_fixture_client
+
+        grant_shared_fixture_client(self, self.owner, self.other)
         self.repo = ThreadRepository(self.owner.pk, 'site:main')
         self.other_repo = ThreadRepository(self.other.pk, 'site:main')
         self.thread, _ = self.repo.get_or_create(title='Pump history')

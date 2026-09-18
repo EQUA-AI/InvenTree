@@ -988,6 +988,10 @@ class ThreadRepository:
         )
         if grant is None:
             raise ThreadNotFound('Thread not found')
+        from aichat.services.memory_sharing import can_read_shared_thread
+
+        if not can_read_shared_thread(self._actor_user(), grant.thread):
+            raise ThreadNotFound('Thread not found')
         return grant.thread
 
     def get_readable(self, thread_id: str) -> tuple[ChatThread, bool]:
@@ -1127,8 +1131,13 @@ class ThreadRepository:
         )
         seen: set[str] = set()
         threads: builtins.list[ChatThread] = []
+        from aichat.services.memory_sharing import can_read_shared_thread
+
+        actor = self._actor_user()
         for grant in rows:
-            if grant.thread_id not in seen:
+            if grant.thread_id not in seen and can_read_shared_thread(
+                actor, grant.thread
+            ):
                 seen.add(grant.thread_id)
                 threads.append(grant.thread)
         return threads
@@ -1143,11 +1152,15 @@ class ThreadRepository:
         if not self._sharing_enabled():
             raise InvalidBoundary('Thread sharing is disabled')
         self._lock_actor_for_write()
-        thread = self._get_thread(thread_id)  # owner-only resolution
+        thread = self._lock_thread(thread_id)  # serialize sharing with memory writes
         if int(grantee_id) == int(self.actor_id):
             raise InvalidBoundary('A thread cannot be shared with its owner')
         grantee = get_user_model().objects.filter(pk=grantee_id, is_active=True).first()
         if grantee is None:
+            raise InvalidBoundary('Grantee is unknown or inactive')
+        from aichat.services.memory_sharing import can_read_shared_thread
+
+        if not can_read_shared_thread(grantee, thread):
             raise InvalidBoundary('Grantee is unknown or inactive')
         existing = (
             self

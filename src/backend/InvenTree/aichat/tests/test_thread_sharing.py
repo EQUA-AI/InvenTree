@@ -19,6 +19,9 @@ class ThreadSharingTests(TestCase):
         users = get_user_model().objects
         self.owner = users.create_user(username='share-owner')
         self.grantee = users.create_user(username='share-grantee')
+        from aichat.tests.memory_scope_fixtures import grant_shared_fixture_client
+
+        grant_shared_fixture_client(self, self.owner, self.grantee)
         self.owner_repo = ThreadRepository(self.owner.pk, 'site:main')
         self.grantee_repo = ThreadRepository(self.grantee.pk, 'site:main')
         self.thread, _ = self.owner_repo.get_or_create(title='Pump notes')
@@ -32,6 +35,60 @@ class ThreadSharingTests(TestCase):
             self.grantee_repo.get_readable(self.thread.pk)
         self.assertEqual(self.grantee_repo.list_shared(), [])
         self.assertEqual(self.grantee_repo.list(), [])
+
+    def test_revoking_client_access_hides_existing_grant(self):
+        """Thread grants do not outlive the recipient's client authorization."""
+        from assets.models import ClientScopeGrant
+
+        self.owner_repo.share(self.thread.pk, grantee_id=self.grantee.pk)
+        ClientScopeGrant.objects.filter(user=self.grantee).delete()
+        with self.assertRaises(ThreadNotFound):
+            self.grantee_repo.get_readable(self.thread.pk)
+        self.assertEqual(self.grantee_repo.list_shared(), [])
+
+    def test_client_superset_and_once_confirmed_explicit_scope(self):
+        """A B-only grantee cannot read an A+B thread or a re-scoped thread."""
+        from ai.core.analysis.scope import AnalysisScope, scope_to_payload
+        from aichat.models import ChatThread
+        from assets.models import AssetMachine, Client, ClientScopeGrant
+
+        client_b = Client.objects.create(code='share-client-b', name='Share client B')
+        machine = AssetMachine.objects.create(
+            name='Share fixture machine', client=client_b
+        )
+        ClientScopeGrant.objects.create(user=self.owner, client=client_b)
+        ClientScopeGrant.objects.filter(user=self.grantee).delete()
+        ClientScopeGrant.objects.create(user=self.grantee, client=client_b)
+        with self.assertRaises(InvalidBoundary):
+            self.owner_repo.share(self.thread.pk, grantee_id=self.grantee.pk)
+        self.assertFalse(ChatThreadGrant.objects.filter(thread=self.thread).exists())
+        ChatThread.objects.filter(pk=self.thread.pk).update(
+            analysis_scope=scope_to_payload(
+                AnalysisScope(mode='explicit_assets', machine_ids=(machine.pk,))
+            ),
+            analysis_scope_version=1,
+        )
+        self.owner_repo.share(self.thread.pk, grantee_id=self.grantee.pk)
+        self.grantee_repo.get_readable(self.thread.pk)
+        ChatThread.objects.filter(pk=self.thread.pk).update(analysis_scope_version=2)
+        with self.assertRaises(ThreadNotFound):
+            self.grantee_repo.get_readable(self.thread.pk)
+
+    def test_memory_informed_client_union_cannot_be_lost_on_scope_change(self):
+        """Historical memory provenance contributes to the whole-thread boundary."""
+        from aichat.models import ChatMessage
+
+        self.owner_repo.share(self.thread.pk, grantee_id=self.grantee.pk)
+        ChatMessage.objects.create(
+            thread=self.thread,
+            sequence=2,
+            role='assistant',
+            content='Fixture response',
+            metadata={'memory_informed_clients': ['formerly-authorized-client']},
+        )
+        with self.assertRaises(ThreadNotFound):
+            self.grantee_repo.get_readable(self.thread.pk)
+        self.assertEqual(self.grantee_repo.list_shared(), [])
 
     def test_grant_confers_read_and_only_read(self) -> None:
         """A granted thread is readable; every write path still refuses."""
