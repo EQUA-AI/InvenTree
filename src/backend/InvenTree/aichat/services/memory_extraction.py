@@ -6,7 +6,7 @@ import uuid
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Exists, F, OuterRef, Q
 from django.utils import timezone
 
 from ai.core.config import get_settings
@@ -14,6 +14,7 @@ from ai.core.trusted_context import resolve_actor_locale
 from aichat.models import (
     ChatMessage,
     ChatThread,
+    ChatTurn,
     MemoryExtractionClaim,
     MemoryExtractionRun,
 )
@@ -47,22 +48,91 @@ def enabled():
     )
 
 
-def enqueue_for_thread(thread):
+def enqueue_for_thread(thread, *, recovery=False):
     """Record an obligation during turn commit; never run providers on the request."""
     try:
         if not enabled():
             return
         with transaction.atomic():
+            repository = ThreadRepository(
+                actor=thread.owner_id,
+                scope_key=thread.scope_key,
+                namespace=thread.namespace,
+            )
+            thread = repository._lock_thread(thread.pk)
+            if recovery and (
+                ChatTurn.objects.filter(thread=thread, state='running').exists()
+                or not ChatTurn.objects.filter(
+                    thread=thread,
+                    completed_at__isnull=False,
+                    output_message__sequence=thread.next_sequence - 1,
+                ).exists()
+            ):
+                return False
             if not evaluate_memory_eligibility(thread.owner, thread).allowed:
                 return
             if thread.next_sequence - 1 <= thread.memory_through_sequence:
                 return
-            claim, _ = MemoryExtractionClaim.objects.get_or_create(
+            claim, created = MemoryExtractionClaim.objects.get_or_create(
                 thread=thread, through_sequence=thread.next_sequence - 1
             )
             transaction.on_commit(lambda: publish(claim.pk))
+            return created
     except Exception:
         logger.warning('Memory extraction admission unavailable')
+    return False
+
+
+def discover_missing_claims():
+    """Repair failed turn admission in bounded, rotating metadata-only pages.
+
+    The cache cursor is only a scan optimization. Losing it restarts the scan;
+    durable uniqueness and current consent still govern every actual admission.
+    Only a finalized last message with no running turn is eligible for recovery.
+    """
+    from django.core.cache import cache
+
+    if not enabled():
+        return 0
+    key = 'aimms:memory:discovery-cursor:v1'
+    cursor = cache.get(key)
+    if not isinstance(cursor, str) or len(cursor) > 80:
+        cursor = ''
+    rows = (
+        ChatThread.objects
+        .filter(
+            owner__is_active=True, memory_through_sequence__lt=F('next_sequence') - 1
+        )
+        .exclude(memory_mode='off')
+        .filter(
+            Exists(
+                ChatTurn.objects.filter(
+                    thread_id=OuterRef('pk'),
+                    output_message__sequence=OuterRef('next_sequence') - 1,
+                    completed_at__isnull=False,
+                )
+            )
+        )
+        .filter(
+            ~Exists(ChatTurn.objects.filter(thread_id=OuterRef('pk'), state='running'))
+        )
+        .filter(
+            ~Exists(
+                MemoryExtractionClaim.objects.filter(
+                    thread_id=OuterRef('pk'),
+                    through_sequence=OuterRef('next_sequence') - 1,
+                )
+            )
+        )
+        .filter(pk__gt=cursor)
+        .order_by('pk')
+    )
+    page = list(rows[:50])
+    created = 0
+    for thread in page:
+        created += bool(enqueue_for_thread(thread, recovery=True))
+    cache.set(key, page[-1].pk if len(page) == 50 else '', timeout=86400)
+    return created
 
 
 def publish(claim_id):
@@ -436,6 +506,7 @@ def sweep():
     fact_jobs = sweep_fact_jobs()
     if not enabled():
         return {'status': 'disabled', 'queued': 0, 'fact_jobs': fact_jobs}
+    recovered = discover_missing_claims()
     now = timezone.now()
     expiry = now - timedelta(seconds=memory_worker.cluster_config()['timeout'] + 180)
     MemoryExtractionClaim.objects.filter(
@@ -448,4 +519,9 @@ def sweep():
         .values_list('pk', flat=True)[:50]
     )
     queued = sum(publish(identity)['status'] == 'queued' for identity in ids)
-    return {'status': 'processed', 'queued': queued, 'fact_jobs': fact_jobs}
+    return {
+        'status': 'processed',
+        'queued': queued,
+        'recovered': recovered,
+        'fact_jobs': fact_jobs,
+    }

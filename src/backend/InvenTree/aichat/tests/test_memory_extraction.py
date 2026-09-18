@@ -5,10 +5,16 @@ from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
-from aichat.models import ChatMessage, MemoryExtractionClaim, MemoryExtractionRun
+from aichat.models import (
+    ChatMessage,
+    ChatTurn,
+    MemoryExtractionClaim,
+    MemoryExtractionRun,
+)
 from aichat.services import memory_extraction as service
 from aichat.services.memory_eligibility import MemoryEligibility
 from aichat.services.threads import ThreadRepository
@@ -59,6 +65,32 @@ class MemoryExtractionTests(TestCase):
         service.enqueue_for_thread(self.thread)
         self.assertEqual(MemoryExtractionClaim.objects.count(), 1)
         self.assertEqual(MemoryExtractionClaim.objects.get().through_sequence, 2)
+
+    def test_discovery_recovers_finalized_thread_without_admission_claim(self):
+        """A failed request-side enqueue is rediscovered, without provider work."""
+        cache.delete('aimms:memory:discovery-cursor:v1')
+        output = ChatMessage.objects.create(
+            thread=self.thread, sequence=2, role='assistant', content='Fixture answer'
+        )
+        ChatTurn.objects.create(
+            thread=self.thread,
+            input_message=self.source,
+            output_message=output,
+            state='complete',
+            modality='chat',
+            request_fingerprint='fixture',
+            idempotency_key='fixture',
+            canonical_result={},
+            completed_at=timezone.now(),
+        )
+        self.assertEqual(service.discover_missing_claims(), 1)
+        self.assertEqual(service.discover_missing_claims(), 0)
+        self.assertEqual(MemoryExtractionClaim.objects.get().through_sequence, 2)
+
+    def test_recovery_rechecks_finalization_under_thread_lock(self):
+        """An unfinalized source is never admitted by the recovery path."""
+        self.assertFalse(service.enqueue_for_thread(self.thread, recovery=True))
+        self.assertFalse(MemoryExtractionClaim.objects.exists())
 
     def test_wrong_lease_cannot_commit_watermark(self):
         """An obsolete worker cannot mark another attempt's source window complete."""
