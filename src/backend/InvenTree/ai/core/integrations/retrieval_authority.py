@@ -107,3 +107,31 @@ def controlled_rows(rows, *, user):
             continue
         accepted.append(row)
     return accepted
+
+
+def native_attachment_owner(actor, attachment):
+    """Authorize inventory metadata even when no ingest/ACL stamp exists."""
+    from tasks.scope import ScopeError, require_machine_scope, require_work_order_scope
+
+    try:
+        if attachment.model_type == "assetmachine":
+            from assets.models import AssetMachine
+
+            machine = AssetMachine.objects.filter(pk=attachment.model_id, active=True).first()
+            if machine is None:
+                return False
+            require_machine_scope(actor, machine)
+            return True
+        if attachment.model_type == "workorder":
+            from tasks.models import WorkOrder
+
+            work_order = (
+                WorkOrder.objects.select_related("machine").filter(pk=attachment.model_id).first()
+            )
+            if work_order is None:
+                return False
+            require_work_order_scope(actor, work_order)
+            return True
+    except ScopeError:
+        return False
+    return False

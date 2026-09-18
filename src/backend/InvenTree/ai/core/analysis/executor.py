@@ -726,8 +726,11 @@ def _retrieve_manual(user: Any, store: EvidenceStore, *, query: str) -> dict[str
     def _attachment_search(**kwargs):
         from ai.core.integrations.attachment_corpus import search_corpus_attachments
 
-        # The corpus derives its scope floor from the bound scope context.
-        return search_corpus_attachments(user=kwargs["user"], query=kwargs["query"])
+        # Preserve the builder's frozen asset set; the corpus intersects it
+        # with the current bound scope and reauthorizes every returned source.
+        return search_corpus_attachments(
+            user=kwargs["user"], query=kwargs["query"], scope_asset_ids=kwargs["scope_asset_ids"]
+        )
 
     as_of = timezone.now().isoformat()
     result = retrieve_manual_fact(user, query=query, attachment_search=_attachment_search)

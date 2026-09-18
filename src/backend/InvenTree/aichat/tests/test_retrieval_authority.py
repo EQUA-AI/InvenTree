@@ -115,3 +115,33 @@ class RetrievalAuthorityTests(TestCase):
                 authority.attachment_rows([row], user=self.user, corpus='attachment'),
                 [],
             )
+
+    def test_inventory_rejects_revoked_role_before_reading_registry(self):
+        """Unregistered metadata never bypasses actor authorization."""
+        from ai.core.analysis.source_gateway import inventory
+
+        self.rule.can_view = False
+        self.rule.save(update_fields=['can_view'])
+        with mock.patch(
+            'ai.core.analysis.source_gateway.controlled_document_inventory'
+        ) as registry:
+            result = inventory(self.user, source_classes=['controlled_document'])
+        registry.assert_not_called()
+        self.assertEqual(result['sections'], {})
+
+    def test_unregistered_work_order_source_still_requires_native_scope(self):
+        """No ingest stamp is needed for a foreign source to be denied."""
+        from tasks.scope import ScopeError
+
+        attachment = SimpleNamespace(model_type='workorder', model_id=77)
+        with (
+            mock.patch('tasks.models.WorkOrder.objects.select_related') as query,
+            mock.patch(
+                'tasks.scope.require_work_order_scope', side_effect=ScopeError('denied')
+            ) as authorize,
+        ):
+            query.return_value.filter.return_value.first.return_value = SimpleNamespace(
+                pk=77
+            )
+            self.assertFalse(authority.native_attachment_owner(self.user, attachment))
+            authorize.assert_called_once()

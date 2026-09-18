@@ -228,6 +228,7 @@ def search_corpus_attachments(
     embedding_client: EmbeddingClient | None = None,
     machine_resolver=None,
     part_resolver=None,
+    scope_asset_ids: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     """Search current uploaded attachment documents and cite fenced excerpts.
 
@@ -400,9 +401,28 @@ def search_corpus_attachments(
     from ai.core.analysis.scope_context import current_turn_scope as _current_scope
 
     scope_context = _current_scope()
-    scope_asset_ids: tuple[str, ...] | None = None
+    if scope_asset_ids is not None:
+        if (
+            not isinstance(scope_asset_ids, tuple)
+            or len(scope_asset_ids) > 100
+            or any(
+                not isinstance(value, str) or not value or len(value) > 255
+                for value in scope_asset_ids
+            )
+        ):
+            raise AttachmentRetrievalError(
+                "Invalid server asset scope", code="ATTACHMENT_SCOPE_UNRESOLVED"
+            )
+        scope_asset_ids = tuple(sorted(set(scope_asset_ids)))
     if scope_context is not None and scope_context.explicit and scope_context.enforce:
-        scope_asset_ids = tuple(sorted(scope_context.machine_serials))
+        current_serials = set(scope_context.machine_serials)
+        scope_asset_ids = tuple(
+            sorted(
+                current_serials
+                if scope_asset_ids is None
+                else current_serials.intersection(scope_asset_ids)
+            )
+        )
 
     def _run(type_filter: str | None):
         filter_expression = attachment_corpus_filter(

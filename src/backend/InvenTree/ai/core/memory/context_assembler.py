@@ -452,6 +452,17 @@ class ContextAssembler:
     def __init__(self, *, estimator: TokenEstimator | None = None):
         self._estimator = estimator or default_estimator()
 
+    @staticmethod
+    def plan_manual_retrieval(*, asset_set, document_selected=False, attachments_available=False):
+        """Own source ordering; executors retain all native authorization and I/O."""
+        from ai.core.memory.retrieval_planning import manual_retrieval_plan
+
+        return manual_retrieval_plan(
+            asset_set=asset_set,
+            document_selected=document_selected,
+            attachments_available=attachments_available,
+        )
+
     # ------------------------------------------------------------------ #
     # Recall (round trip 1)                                                #
     # ------------------------------------------------------------------ #

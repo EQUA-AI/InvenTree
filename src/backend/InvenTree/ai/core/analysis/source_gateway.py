@@ -430,12 +430,23 @@ def attachment_inventory(
         # Fail-closed: with no resolvable codes nothing reports searchable.
         actor_codes = frozenset()
 
+    from ai.core.integrations.retrieval_authority import (
+        fresh_actor,
+        fresh_role,
+        native_attachment_owner,
+    )
+
+    current_actor = fresh_actor(user)
+    readable = current_actor is not None and fresh_role(current_actor, "work_order")
     wanted_pipelines = frozenset(pipelines)
     items: list[dict[str, Any]] = []
     withheld_count = 0
     for attachment in attachment_rows:
         if len(items) >= max(1, int(limit)):
             break
+        if not readable or not native_attachment_owner(current_actor, attachment):
+            withheld_count += 1
+            continue
         ingest = ingest_by_attachment.get(attachment.pk)
         if ingest is not None:
             if str(ingest.pipeline) not in wanted_pipelines:
@@ -498,7 +509,12 @@ def inventory(
     ledger only.
     """
     from ai.core.config import get_settings
+    from ai.core.integrations.retrieval_authority import fresh_actor, fresh_role
+    from InvenTree.restore_hold import restore_hold_enabled
 
+    user = fresh_actor(user)
+    if user is None or not fresh_role(user, "work_order") or restore_hold_enabled():
+        return {"unavailable": True, "code": "source_authority_unavailable", "sections": {}}
     wanted = tuple(source_classes) if source_classes else SOURCE_CLASSES
     unknown = [cls for cls in wanted if cls not in SOURCE_CLASSES]
     if unknown:
@@ -607,6 +623,12 @@ def inventory(
         if thread_files:
             unresolved_rows = True
 
+    current_actor = fresh_actor(user)
+    if current_actor is None or not fresh_role(current_actor, "work_order"):
+        return {"unavailable": True, "code": "source_authority_unavailable", "sections": {}}
+    current_assets = resolve_asset_set(current_actor, tuple(asset_set.machine_pks))
+    if current_assets.machines != asset_set.machines:
+        return {"unavailable": True, "code": "source_authority_changed", "sections": {}}
     if unresolved_rows:
         warnings.append(APPLICABILITY_UNRESOLVED)
 
@@ -691,6 +713,13 @@ def retrieve_manual_fact(
 
     attempts: list[dict[str, Any]] = []
     asset_set = resolve_asset_set(user, machine_ids)
+    from ai.core.memory.context_assembler import ContextAssembler
+
+    plan = ContextAssembler.plan_manual_retrieval(
+        asset_set=asset_set,
+        document_selected=bool(document_ref),
+        attachments_available=attachment_search is not None,
+    )
 
     if pinned_search is None:
         from ai.core.integrations.controlled_document_search import (
@@ -713,7 +742,7 @@ def retrieve_manual_fact(
         """Pinned-revision search over verified document rows, best first."""
         for document in list(documents)[:3]:
             try:
-                pinned = pinned_search(document=document, query=query, top_k=top_k)
+                pinned = pinned_search(document=document, user=user, query=query, top_k=top_k)
             except Exception:
                 attempts.append({"step": step, "outcome": "unavailable", "hit_count": 0})
                 return None
@@ -732,7 +761,7 @@ def retrieve_manual_fact(
     # S8b) still reaches its pinned revisions. Only when no verified route
     # exists is applicability unresolved (zero network calls) — narrowing,
     # never widening.
-    if asset_set.machines and not asset_set.serials:
+    if plan.serial_unresolved:
         verified_documents: list[Any] = []
         try:
             from aichat.services.applicability import verified_documents_for_machines
@@ -775,7 +804,7 @@ def retrieve_manual_fact(
         pass
 
     # Step 1 — explicitly selected current revision (the four-way pin).
-    if document_ref:
+    if "pinned_revision" in plan.steps:
         resolved = resolve_selected_document(
             scope_key=settings_scope_key, document_ref=document_ref
         )
@@ -803,7 +832,7 @@ def retrieve_manual_fact(
             })
         else:
             try:
-                pinned = pinned_search(document=resolved, query=query, top_k=top_k)
+                pinned = pinned_search(document=resolved, user=user, query=query, top_k=top_k)
                 chunk_count = len(pinned.get("chunks") or ())
                 attempts.append({
                     "step": "pinned_revision",
@@ -824,7 +853,7 @@ def retrieve_manual_fact(
                 })
 
     # Step 2 — exact-asset controlled search.
-    serials = tuple(sorted(asset_set.serials)) or None
+    serials = plan.serials or None
     try:
         scoped = corpus_search(user=user, query=query, top_k=top_k, asset_ids=serials)
         hit_count = len(scoped.get("chunks") or ())
@@ -847,12 +876,12 @@ def retrieve_manual_fact(
     # a countersigned mapping ties to this asset set's equipment models,
     # searched by pinned revision. Skipped entirely (no attempt entry) when
     # the machines record no model — the step has nothing to key on.
-    if asset_set.models:
+    if "verified_model_config" in plan.steps:
         model_documents: list[Any] = []
         try:
             from aichat.services.applicability import verified_model_documents
 
-            model_documents = verified_model_documents(sorted(asset_set.models))
+            model_documents = verified_model_documents(plan.models)
         except Exception:
             model_documents = []
         if model_documents:
@@ -872,7 +901,7 @@ def retrieve_manual_fact(
 
     # Step 4 — fleet-wide controlled documents, clearly labeled. Only when a
     # narrower asset step actually ran (otherwise step 2 WAS site-wide).
-    if serials:
+    if "fleet_wide_controlled" in plan.steps:
         try:
             fleet = corpus_search(user=user, query=query, top_k=top_k, fleet_wide=True)
             hit_count = len(fleet.get("chunks") or ())
@@ -896,12 +925,12 @@ def retrieve_manual_fact(
 
     # Step 5 — attachments for the SAME asset set (source class changes,
     # asset scope never). A serial-less set already returned above.
-    if attachment_search is not None:
+    if "asset_attachments" in plan.steps:
         try:
             attachments = attachment_search(
                 user=user,
                 query=query,
-                scope_asset_ids=tuple(sorted(asset_set.serials)),
+                scope_asset_ids=plan.serials,
             )
             hit_count = len(attachments.get("chunks") or ())
             attempts.append({
