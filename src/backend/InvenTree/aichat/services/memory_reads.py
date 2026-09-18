@@ -17,6 +17,45 @@ from InvenTree.restore_hold import restore_hold_enabled
 
 PAGE_SIZE = 50
 CURSOR_SALT = 'aichat.memory.inspection.v1'
+CONVERSATION_SALT = 'aichat.memory.conversations.v1'
+
+
+def excluded_conversations(owner, *, cursor=''):
+    """Page owned exclusion metadata without transcript, title or client labels."""
+    from aichat.models import ChatThread
+    from aichat.services.memory_controls import thread_memory_status
+
+    if restore_hold_enabled():
+        raise ValueError('Memory unavailable')
+    owner = get_user_model().objects.filter(pk=owner.pk, is_active=True).first()
+    if owner is None:
+        raise ValueError('Memory unavailable')
+    after = ''
+    if cursor:
+        try:
+            payload = signing.loads(cursor, salt=CONVERSATION_SALT, max_age=900)
+            if payload['owner'] != owner.pk or not isinstance(payload['after'], str):
+                raise ValueError
+            after = payload['after']
+        except (signing.BadSignature, KeyError, TypeError, ValueError) as exc:
+            raise ValueError('Invalid cursor') from exc
+    rows = list(
+        ChatThread.objects.filter(owner=owner, pk__gt=after).order_by('pk')[
+            : PAGE_SIZE + 1
+        ]
+    )
+    page = rows[:PAGE_SIZE]
+    results = []
+    for thread in page:
+        status = thread_memory_status(owner, thread)
+        if status['extraction_status'] != 'eligible':
+            results.append({**status, 'created_at': thread.created_at.isoformat()})
+    following = (
+        signing.dumps({'owner': owner.pk, 'after': page[-1].pk}, salt=CONVERSATION_SALT)
+        if len(rows) > PAGE_SIZE
+        else None
+    )
+    return {'results': results, 'next_cursor': following}
 
 
 def can_read(owner, fact, *, clients=None):

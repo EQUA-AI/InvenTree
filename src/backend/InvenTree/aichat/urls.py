@@ -24,6 +24,8 @@ from aichat.email_api import (
 )
 from aichat.media_stream import EvidenceMediaStreamView
 from aichat.memory_api import (
+    MemoryConversationModeView,
+    MemoryExcludedConversationView,
     MemoryFactListView,
     MemoryNoticeView,
     MemoryOptOutView,
@@ -35,6 +37,16 @@ from aichat.memory_api import (
 app_name = 'aichat'
 
 urlpatterns = [
+    path(
+        'memory/excluded-conversations/',
+        MemoryExcludedConversationView.as_view(),
+        name='memory-excluded-conversations',
+    ),
+    path(
+        'memory/conversations/<str:thread_id>/mode/',
+        MemoryConversationModeView.as_view(),
+        name='memory-conversation-mode',
+    ),
     path(
         'memory/proposals/', MemoryProposalListView.as_view(), name='memory-proposals'
     ),

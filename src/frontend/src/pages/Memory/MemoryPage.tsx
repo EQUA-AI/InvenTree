@@ -21,6 +21,7 @@ import { useApi } from '../../contexts/ApiContext';
 import { useAIChatState } from '../../states/AIChatState';
 import { useLocalState } from '../../states/LocalState';
 import { useUserState } from '../../states/UserState';
+import { ExcludedConversations } from './ExcludedConversations';
 
 type Fact = {
   id: string;
@@ -346,6 +347,9 @@ function MemoryContents() {
           </Stack>
         </Card>
       )}
+      <ExcludedConversations
+        key={`${status?.opted_out}:${status?.acknowledged}`}
+      />
       <Group>
         <NativeSelect
           label={t`Show`}

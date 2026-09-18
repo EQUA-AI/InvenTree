@@ -39,6 +39,8 @@ test('durable memory requires review and submits the displayed preview hash', as
   await page.route('**/api/aichat/memory/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path.endsWith('/excluded-conversations/'))
+      return route.fulfill({ json: { results: [], next_cursor: null } });
     if (path.endsWith('/settings/')) return route.fulfill({ json: status });
     if (path.endsWith('/facts/'))
       return route.fulfill({ json: { results: [fact], next_cursor: null } });
@@ -97,6 +99,12 @@ test('failed reauthorization clears displayed memory and hides server error text
   const page = await doCachedLogin(browser);
   let denied = false;
   await page.route('**/api/aichat/memory/**', async (route) => {
+    if (
+      new URL(route.request().url()).pathname.endsWith(
+        '/excluded-conversations/'
+      )
+    )
+      return route.fulfill({ json: { results: [], next_cursor: null } });
     if (new URL(route.request().url()).pathname.endsWith('/settings/'))
       return route.fulfill({ json: status });
     return denied
@@ -112,4 +120,48 @@ test('failed reauthorization clears displayed memory and hides server error text
   await expect(
     page.getByText(/Memory could not be loaded or changed/)
   ).toBeVisible();
+});
+
+test('excluded conversation uses a single canonical learning mode change', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  let mode = 'off';
+  let changes = 0;
+  await page.route('**/api/aichat/memory/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/settings/')) return route.fulfill({ json: status });
+    if (path.endsWith('/excluded-conversations/'))
+      return route.fulfill({
+        json: {
+          results: [
+            {
+              thread_id: 'fixture-thread',
+              created_at: '2026-09-18T00:00:00Z',
+              memory_mode: mode,
+              extraction_status: 'memory_off'
+            }
+          ],
+          next_cursor: null
+        }
+      });
+    if (path.endsWith('/conversations/fixture-thread/mode/')) {
+      changes += 1;
+      expect(route.request().method()).toBe('PUT');
+      expect(route.request().postDataJSON()).toEqual({
+        memory_mode: 'extract'
+      });
+      mode = 'extract';
+      return route.fulfill({ json: {} });
+    }
+    return route.fulfill({ json: { results: [], next_cursor: null } });
+  });
+  await navigate(page, 'memory/');
+  await page
+    .getByLabel('Learn memories from this conversation')
+    .selectOption('extract');
+  await expect(
+    page.getByLabel('Learn memories from this conversation')
+  ).toHaveValue('extract');
+  expect(changes).toBe(1);
 });

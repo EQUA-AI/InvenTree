@@ -208,3 +208,53 @@ class MemoryFactListView(MemorySettingsView):
             return Response(list_facts(request.user, **request.query_params.dict()))
         except ValueError:
             return Response({'error': 'memory_list_unavailable'}, status=400)
+
+
+class MemoryExcludedConversationView(MemorySettingsView):
+    """Owner-only learning exclusions; other actors' shared threads stay absent."""
+
+    def get(self, request):
+        """Bounded metadata pages use an owner-bound signed cursor."""
+        from aichat.services.memory_reads import excluded_conversations
+
+        if set(request.query_params) - {'cursor'}:
+            return Response({'error': 'invalid_memory_selection'}, status=400)
+        try:
+            return Response(
+                excluded_conversations(
+                    request.user, cursor=request.query_params.get('cursor', '')
+                )
+            )
+        except ValueError:
+            return Response({'error': 'memory_list_unavailable'}, status=400)
+
+
+class MemoryConversationModeView(MemorySettingsView):
+    """The server reconstructs the owned boundary; callers cannot supply scope."""
+
+    def put(self, request, thread_id):
+        """Use the same locked mode-change service as the conversation panel."""
+        from aichat.models import ChatThread
+        from aichat.services.memory_controls import (
+            set_thread_mode,
+            thread_memory_status,
+        )
+        from aichat.services.threads import (
+            InvalidBoundary,
+            ThreadNotFound,
+            ThreadRepository,
+        )
+
+        if not isinstance(request.data, dict) or set(request.data) != {'memory_mode'}:
+            return Response({'error': 'invalid_memory_mode'}, status=400)
+        thread = ChatThread.objects.filter(pk=thread_id, owner=request.user).first()
+        if thread is None:
+            return Response({'error': 'conversation_unavailable'}, status=404)
+        repository = ThreadRepository(
+            actor=request.user, scope_key=thread.scope_key, namespace=thread.namespace
+        )
+        try:
+            thread = set_thread_mode(repository, thread.pk, request.data['memory_mode'])
+            return Response(thread_memory_status(request.user, thread))
+        except (InvalidBoundary, ThreadNotFound, ValueError):
+            return Response({'error': 'memory_mode_unavailable'}, status=409)
