@@ -52,6 +52,26 @@ class OwnedLifecycleTests(TestCase):
         repository.append(thread.pk, role='user', content=text)
         return thread
 
+    def test_prepared_deletion_is_read_only_and_keeps_its_cutoff_on_retry(self):
+        """Even the first lost deletion response cannot widen a prepared scan."""
+        original = self.thread()
+        plan = self.repo.prepare_deletion()
+        self.assertTrue(ChatThread.objects.filter(pk=original.pk).exists())
+        self.assertFalse(AIRetentionOutbox.objects.exists())
+        later = self.thread(name='thread_later')
+        ChatThread.objects.filter(pk=later.pk).update(
+            created_at=timezone.now() + timedelta(seconds=1)
+        )
+        for _attempt in range(2):
+            receipt = self.repo.delete_all(request_token=plan['request_token'])
+            self.assertEqual(receipt['status'], 'deleted')
+            self.assertEqual(receipt['cutoff'], plan['cutoff'])
+            self.assertEqual(receipt['request_token'], plan['request_token'])
+            self.assertTrue(ChatThread.objects.filter(pk=later.pk).exists())
+        self.assertFalse(ChatThread.objects.filter(pk=original.pk).exists())
+        with self.assertRaises(InvalidBoundary):
+            self.second_scope.delete_all(request_token=plan['request_token'])
+
     def test_delete_all_keeps_foreign_shared_and_other_scope_threads(self):
         """Sharing never expands deletion authority or reveals foreign ids."""
         own = self.thread()
@@ -300,8 +320,15 @@ class OwnedLifecycleTests(TestCase):
         )
         response = Response()
         with mock.patch.object(ai_app, '_principal', return_value=principal):
+            preparation = Response()
+            plan = async_to_sync(ai_app.prepare_thread_deletion)(preparation)
+            self.assertEqual(preparation.headers['Cache-Control'], 'private, no-store')
+            self.assertEqual(ChatThread.objects.count(), 2)
             result = async_to_sync(ai_app.delete_all_threads)(
-                ai_app.ThreadDeleteAllRequest(confirm=True, limit=1), response
+                ai_app.ThreadDeleteAllRequest(
+                    confirm=True, limit=1, request_token=plan['request_token']
+                ),
+                response,
             )
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.headers['Cache-Control'], 'private, no-store')

@@ -9,7 +9,7 @@ export function threadDeletionCopy(incomplete: boolean, persisted: boolean) {
       ? t`Finish deleting conversation`
       : t`Delete conversation?`,
     description: incomplete
-      ? t`The conversation has been removed, but some associated data still needs cleanup. Retry to finish deletion.`
+      ? t`Deletion is not yet complete. Retry to finish removing the conversation and its associated data.`
       : persisted
         ? t`Delete this conversation, its messages and associated uploads? Shared access will also be removed. This cannot be undone.`
         : t`Delete this conversation from this browser? This cannot be undone.`,

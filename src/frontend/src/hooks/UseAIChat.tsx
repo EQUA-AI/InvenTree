@@ -9,9 +9,16 @@ import {
   readChatIndex,
   writeChatIndex
 } from '../functions/chatThreadCache';
+import {
+  type OwnedDeletionPage,
+  type OwnedDeletionPlan,
+  deleteOwnedPage,
+  prepareOwnedDeletion
+} from '../functions/ownedThreadDeletion';
 import { useAIChatState } from '../states/AIChatState';
 import { useLocalState } from '../states/LocalState';
 import { useUserState } from '../states/UserState';
+import { useVoiceSessionState } from '../states/VoiceSessionState';
 import {
   AguiRunError,
   AguiUnavailableError,
@@ -1073,6 +1080,7 @@ export function useAIChat(config: AIChatConfig = {}) {
   );
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const bulkDeletionControllerRef = useRef<AbortController | null>(null);
   const syncInProgressRef = useRef(false);
   const syncRunRef = useRef(0);
   // S50: latched when /agui answers 404/405 mid-session — the rest of the
@@ -1099,6 +1107,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       syncRunRef.current += 1;
       syncInProgressRef.current = false;
       abortControllerRef.current?.abort();
+      bulkDeletionControllerRef.current?.abort();
       storedThreadsRef.current = [];
     };
   }, []);
@@ -1134,6 +1143,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       syncInProgressRef.current ||
       !sessionIsCurrent() ||
       !isLoggedIn ||
+      bulkDeletionControllerRef.current ||
       abortControllerRef.current
     ) {
       return;
@@ -1555,7 +1565,12 @@ export function useAIChat(config: AIChatConfig = {}) {
     async (threadId: string) => {
       // A running turn owns its stream callbacks until it settles. Detail
       // fetches may be superseded freely; their version guards discard replies.
-      if (!sessionIsCurrent() || abortControllerRef.current) return;
+      if (
+        !sessionIsCurrent() ||
+        abortControllerRef.current ||
+        bulkDeletionControllerRef.current
+      )
+        return;
       if (messages.length > 0 && !activeThreadShared)
         saveCurrentThread(messages);
       const version = ++selectionVersionRef.current;
@@ -1624,7 +1639,8 @@ export function useAIChat(config: AIChatConfig = {}) {
    * Create a new thread and switch to it
    */
   const createNewThread = useCallback(() => {
-    if (abortControllerRef.current) return activeThreadIdRef.current;
+    if (abortControllerRef.current || bulkDeletionControllerRef.current)
+      return activeThreadIdRef.current;
     // Save current thread before creating new one (never a shared view).
     if (messages.length > 0 && !activeThreadShared) {
       saveCurrentThread(messages);
@@ -1665,6 +1681,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       activeThreadIdRef.current !== threadId ||
       !before ||
       loadingEarlier ||
+      bulkDeletionControllerRef.current ||
       abortControllerRef.current
     )
       return;
@@ -1717,6 +1734,7 @@ export function useAIChat(config: AIChatConfig = {}) {
   const loadMoreThreads = useCallback(async () => {
     if (
       !threadCursor ||
+      bulkDeletionControllerRef.current ||
       moreThreadsRequestRef.current ||
       syncInProgressRef.current
     )
@@ -1765,22 +1783,14 @@ export function useAIChat(config: AIChatConfig = {}) {
     }
   }, [aiHost, threadCursor, saveStoredThreads, setError, acceptThreadContext]);
 
-  /**
-   * Delete a thread (both locally and on server)
-   */
-  const deleteThread = useCallback(
-    async (threadId: string): Promise<ThreadDeleteResult> => {
-      if (!sessionIsCurrent() || abortControllerRef.current) return 'error';
-      threadListVersionRef.current += 1;
-      const durable = storedThreadsRef.current.find(
-        (thread) => thread.id === threadId
-      )?.isPersisted;
-      const result = durable
-        ? await deleteServerThread(threadId, aiHost)
-        : 'deleted';
-      if (!sessionIsCurrent()) return 'error';
-      if (result === 'error') return result;
-
+  /** Retire content only while this identity/session still owns the response. */
+  const applyThreadDeletion = useCallback(
+    (
+      threadId: string,
+      result: 'deleted' | 'purge_incomplete',
+      publish = true
+    ) => {
+      if (!sessionIsCurrent()) return;
       // Publish after the metadata update so another tab reopens against the
       // deletion receipt, including the row needed for an incomplete-purge retry.
       const next =
@@ -1801,9 +1811,9 @@ export function useAIChat(config: AIChatConfig = {}) {
       setStoredThreads(next);
       retireThreadRuntime(threadId);
       queryClient.removeQueries({ queryKey: ['ai-evidence-set', threadId] });
-      publishChatInvalidation(cacheKey);
-      useAIChatState.getState().clearHint();
+      if (publish) publishChatInvalidation(cacheKey);
       if (threadId === activeThreadIdRef.current) {
+        useAIChatState.getState().clearHint();
         selectionVersionRef.current += 1;
         earlierRequestRef.current += 1;
         const newId = generateThreadId();
@@ -1817,16 +1827,133 @@ export function useAIChat(config: AIChatConfig = {}) {
         patchThreadRuntime(newId, emptyChatThreadRuntime());
         lastTurnRef.current = null;
       }
-      return result;
     },
     [
-      aiHost,
       applyScopeState,
       sessionIsCurrent,
       saveStoredThreads,
       retireThreadRuntime,
       patchThreadRuntime,
       cacheKey
+    ]
+  );
+
+  const deleteThread = useCallback(
+    async (threadId: string): Promise<ThreadDeleteResult> => {
+      if (
+        !sessionIsCurrent() ||
+        abortControllerRef.current ||
+        bulkDeletionControllerRef.current
+      )
+        return 'error';
+      threadListVersionRef.current += 1;
+      selectionVersionRef.current += 1;
+      earlierRequestRef.current += 1;
+      patchThreadRuntime(activeThreadIdRef.current, {
+        isLoading: false,
+        loadingEarlier: false
+      });
+      const durable = storedThreadsRef.current.find(
+        (thread) => thread.id === threadId
+      )?.isPersisted;
+      const result = durable
+        ? await deleteServerThread(threadId, aiHost)
+        : 'deleted';
+      if (!sessionIsCurrent()) return 'error';
+      if (result !== 'error') applyThreadDeletion(threadId, result);
+      return result;
+    },
+    [sessionIsCurrent, aiHost, applyThreadDeletion, patchThreadRuntime]
+  );
+
+  const prepareThreadDeletion =
+    useCallback(async (): Promise<OwnedDeletionPlan> => {
+      if (
+        !sessionIsCurrent() ||
+        abortControllerRef.current ||
+        bulkDeletionControllerRef.current ||
+        useVoiceSessionState.getState().session !== null ||
+        useVoiceSessionState.getState().transport !== 'off'
+      )
+        throw new Error('Conversation deletion unavailable');
+      const controller = new AbortController();
+      bulkDeletionControllerRef.current = controller;
+      const timeout = window.setTimeout(() => controller.abort(), 30_000);
+      try {
+        const plan = await prepareOwnedDeletion(
+          aiHost,
+          csrfHeaders(),
+          controller.signal
+        );
+        if (!sessionIsCurrent()) throw new Error('Chat session changed');
+        return plan;
+      } finally {
+        window.clearTimeout(timeout);
+        bulkDeletionControllerRef.current = null;
+      }
+    }, [sessionIsCurrent, aiHost]);
+
+  const deleteThreadPage = useCallback(
+    async (
+      plan: OwnedDeletionPlan,
+      cursor: string | null
+    ): Promise<OwnedDeletionPage> => {
+      if (
+        !sessionIsCurrent() ||
+        abortControllerRef.current ||
+        bulkDeletionControllerRef.current ||
+        useVoiceSessionState.getState().session !== null ||
+        useVoiceSessionState.getState().transport !== 'off'
+      )
+        throw new Error('Conversation deletion unavailable');
+      const controller = new AbortController();
+      bulkDeletionControllerRef.current = controller;
+      const timeout = window.setTimeout(() => controller.abort(), 30_000);
+      threadListVersionRef.current += 1;
+      selectionVersionRef.current += 1;
+      earlierRequestRef.current += 1;
+      patchThreadRuntime(activeThreadIdRef.current, {
+        isLoading: false,
+        loadingEarlier: false
+      });
+      try {
+        const page = await deleteOwnedPage(
+          aiHost,
+          plan,
+          cursor,
+          csrfHeaders(),
+          controller.signal
+        );
+        if (!sessionIsCurrent()) throw new Error('Chat session changed');
+        for (const result of page.results)
+          applyThreadDeletion(result.thread_id, result.status, false);
+        publishChatInvalidation(cacheKey);
+        return page;
+      } catch (error) {
+        // A lost receipt may follow committed deletion. Hide affected cached
+        // content and preserve retry rows; never infer completion from HTTP alone.
+        if (sessionIsCurrent()) {
+          const affected = storedThreadsRef.current.filter(
+            (thread) =>
+              thread.isPersisted &&
+              Date.parse(thread.createdAt) <= Date.parse(plan.cutoff)
+          );
+          for (const thread of affected)
+            applyThreadDeletion(thread.id, 'purge_incomplete', false);
+          publishChatInvalidation(cacheKey);
+        }
+        throw error;
+      } finally {
+        window.clearTimeout(timeout);
+        bulkDeletionControllerRef.current = null;
+      }
+    },
+    [
+      sessionIsCurrent,
+      aiHost,
+      applyThreadDeletion,
+      cacheKey,
+      patchThreadRuntime
     ]
   );
 
@@ -2130,6 +2257,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         !sessionIsCurrent() ||
         !userContent.trim() ||
         isLoading ||
+        bulkDeletionControllerRef.current ||
         abortControllerRef.current ||
         activeThreadIdRef.current !== activeThreadId ||
         activeThreadShared ||
@@ -3204,6 +3332,8 @@ export function useAIChat(config: AIChatConfig = {}) {
     switchThread,
     createNewThread,
     deleteThread,
+    prepareThreadDeletion,
+    deleteThreadPage,
     renameThread,
     clearChat,
     hasEarlierMessages: Boolean(beforeSequence),

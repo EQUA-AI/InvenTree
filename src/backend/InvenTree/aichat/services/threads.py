@@ -402,6 +402,12 @@ class ThreadRepository:
             )
         return retention.thread_purge_receipt(thread_id)
 
+    def prepare_deletion(self) -> dict:
+        """Prepare an owned-conversation deletion cutoff without any mutation."""
+        from .owned_lifecycle import prepare_owned_deletion
+
+        return prepare_owned_deletion(self)
+
     def delete_all(self, *, limit=20, request_token=None, cursor=None) -> dict:
         """Delete a bounded page of owned threads, preserving retry receipts."""
         from .owned_lifecycle import delete_owned_batch

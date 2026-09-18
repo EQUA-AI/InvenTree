@@ -1245,6 +1245,13 @@ async def get_evidence_set_members(
     return payload
 
 
+@app.post("/threads/deletion-plan")
+async def prepare_thread_deletion(response: Response) -> dict[str, Any]:
+    """Freeze a retry boundary before the browser sends its first deletion."""
+    response.headers["Cache-Control"] = "private, no-store"
+    return await sync_to_async(_repository(_principal()).prepare_deletion, thread_sensitive=True)()
+
+
 class ThreadDeleteAllRequest(BaseModel):
     """A bounded owner-scoped deletion scan with explicit user intent."""
 

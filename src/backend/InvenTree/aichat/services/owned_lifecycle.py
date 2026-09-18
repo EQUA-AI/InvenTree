@@ -37,6 +37,20 @@ def _decode(token, *, salt, repository):
         raise InvalidBoundary('Invalid deletion continuation') from None
 
 
+def prepare_owned_deletion(repository):
+    """Freeze an owner/scope cutoff without deleting or creating any records.
+
+    The browser obtains this token before its first mutation so a lost response
+    can be retried without expanding the operation to later conversations.
+    """
+    request = {'boundary': _boundary(repository), 'cutoff': timezone.now().isoformat()}
+    return {
+        'scope': 'owned_threads',
+        'cutoff': request['cutoff'],
+        'request_token': signing.dumps(request, salt=TOKEN_SALT),
+    }
+
+
 def delete_owned_batch(repository, *, limit=20, request_token=None, cursor=None):
     """Delete at most 100 conversations and verify their registered derivatives.
 
@@ -53,9 +67,8 @@ def delete_owned_batch(repository, *, limit=20, request_token=None, cursor=None)
     if request_token:
         request, cutoff = _decode(request_token, salt=TOKEN_SALT, repository=repository)
     else:
-        cutoff = timezone.now()
-        request = {'boundary': _boundary(repository), 'cutoff': cutoff.isoformat()}
-        request_token = signing.dumps(request, salt=TOKEN_SALT)
+        request_token = prepare_owned_deletion(repository)['request_token']
+        request, cutoff = _decode(request_token, salt=TOKEN_SALT, repository=repository)
     after = ''
     incomplete = processed = 0
     if cursor:

@@ -65,6 +65,10 @@ import {
   chatIndexKey,
   chatInvalidationKey
 } from '../../functions/chatThreadCache';
+import type {
+  OwnedDeletionPage,
+  OwnedDeletionPlan
+} from '../../functions/ownedThreadDeletion';
 import {
   type ChatMessage,
   type ChatThread,
@@ -93,6 +97,7 @@ import { ActiveScopeBanner } from '../aichat/ActiveScopeBanner';
 import { CitationList } from '../aichat/CitationList';
 import { ClaimEvidence } from '../aichat/ClaimEvidence';
 import { ContextUsedDisclosure } from '../aichat/ContextUsedDisclosure';
+import { DeleteOwnedThreadsModal } from '../aichat/DeleteOwnedThreadsModal';
 import { EntityChips } from '../aichat/EntityChips';
 import { EvidenceChips } from '../aichat/EvidenceChips';
 import { LegacyChatStorageNotice } from '../aichat/LegacyChatStorageNotice';
@@ -307,6 +312,9 @@ function ThreadSelector({
   onSelectThread,
   onNewThread,
   onDeleteThread,
+  onPrepareDeletion,
+  onDeletePage,
+  bulkDeletionDisabled,
   onRenameThread,
   onShareThread,
   onInspectMemory,
@@ -318,6 +326,12 @@ function ThreadSelector({
   onSelectThread: (threadId: string) => void;
   onNewThread: () => void;
   onDeleteThread: (threadId: string) => Promise<ThreadDeleteResult>;
+  bulkDeletionDisabled: boolean;
+  onPrepareDeletion: () => Promise<OwnedDeletionPlan>;
+  onDeletePage: (
+    plan: OwnedDeletionPlan,
+    cursor: string | null
+  ) => Promise<OwnedDeletionPage>;
   onRenameThread: (threadId: string, title: string) => Promise<boolean>;
   onShareThread?: (
     threadId: string,
@@ -333,6 +347,7 @@ function ThreadSelector({
 }>) {
   const theme = useMantineTheme();
   const [action, setAction] = useState<ThreadAction | null>(null);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const activeThread =
     threads.find((t) => t.id === activeThreadId) ??
     sharedThreads.find((t) => t.id === activeThreadId);
@@ -394,6 +409,14 @@ function ThreadSelector({
           >
             {t`New conversation`}
           </Menu.Item>
+
+          <Menu.Item
+            aria-label='delete-owned-ai-chat-threads'
+            color='red'
+            disabled={disabled || bulkDeletionDisabled}
+            leftSection={<IconTrash size={16} />}
+            onClick={() => setDeleteAllOpen(true)}
+          >{t`Delete my saved conversations`}</Menu.Item>
 
           {threads.length > 0 && <Menu.Divider />}
 
@@ -534,6 +557,13 @@ function ThreadSelector({
           )}
         </Menu.Dropdown>
       </Menu>
+      {deleteAllOpen && (
+        <DeleteOwnedThreadsModal
+          onPrepare={onPrepareDeletion}
+          onDeletePage={onDeletePage}
+          onClose={() => setDeleteAllOpen(false)}
+        />
+      )}
       {action && (
         <ThreadActionsModal
           key={`${action.kind}:${action.thread.id}`}
@@ -1151,6 +1181,8 @@ function AIChatSessionDrawer({
     switchThread,
     createNewThread,
     deleteThread,
+    prepareThreadDeletion,
+    deleteThreadPage,
     renameThread,
     isSyncing,
     syncThreads,
@@ -1727,6 +1759,14 @@ function AIChatSessionDrawer({
                   onSelectThread={handleSwitchThread}
                   onNewThread={handleNewThread}
                   onDeleteThread={handleDeleteThread}
+                  onPrepareDeletion={async () => {
+                    setMemoryThreadId(null);
+                    return prepareThreadDeletion();
+                  }}
+                  onDeletePage={deleteThreadPage}
+                  bulkDeletionDisabled={
+                    Boolean(voice.session) || voice.transport !== 'off'
+                  }
                   onRenameThread={renameThread}
                   onShareThread={(threadId, username, revoke) =>
                     revoke
