@@ -19,6 +19,10 @@ from .email_models import MailLocation as MailLocation
 from .email_models import MailMessage as MailMessage
 from .email_models import MailReceipt as MailReceipt
 from .email_models import MailSyncState as MailSyncState
+from .memory_models import ClientAISettings as ClientAISettings
+from .memory_models import MemoryMode as MemoryMode
+from .memory_models import MemoryNoticeAcknowledgement as MemoryNoticeAcknowledgement
+from .memory_models import UserMemorySettings as UserMemorySettings
 
 
 def _stable_id(prefix: str) -> str:
@@ -100,6 +104,13 @@ class ChatThread(models.Model):
         max_length=16, choices=ThreadNamespace.choices, default=ThreadNamespace.UNSCOPED
     )
     title = models.CharField(max_length=255, blank=True, default='')
+    memory_mode = models.CharField(
+        max_length=16,
+        choices=MemoryMode.choices,
+        default=MemoryMode.INHERIT,
+        db_default='inherit',
+    )
+    memory_through_sequence = models.PositiveBigIntegerField(default=0, db_default=0)
     # S38 compaction: first line of ``summary`` is a <=60-char label, then a
     # newline and the structured JSON body. Written only by the compaction
     # job; ``summary_through_sequence`` is its watermark — messages with
@@ -137,6 +148,10 @@ class ChatThread(models.Model):
             ),
         ]
         constraints = [
+            models.CheckConstraint(
+                condition=Q(memory_mode__in=MemoryMode.values),
+                name='aichat_thread_memory_mode',
+            ),
             models.CheckConstraint(
                 condition=~Q(scope_key=''), name='aichat_thread_scope_not_empty'
             ),

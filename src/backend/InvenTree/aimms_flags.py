@@ -508,6 +508,27 @@ REGISTRY: tuple[FlagEntry, ...] = (
         ai_field='feature_thread_compaction',
     ),
     FlagEntry(
+        'FEATURE_SEMANTIC_MEMORY_EXTRACT_SHADOW',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_semantic_memory_extract_shadow',
+    ),
+    FlagEntry(
+        'FEATURE_SEMANTIC_MEMORY_RECALL',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_semantic_memory_recall',
+    ),
+    FlagEntry(
+        'FEATURE_SEMANTIC_MEMORY_MEM0',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_semantic_memory_mem0',
+    ),
+    FlagEntry(
         'FEATURE_MEMORY_RAIL_REPLAY',
         'bool',
         False,

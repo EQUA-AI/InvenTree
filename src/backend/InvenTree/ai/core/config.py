@@ -366,6 +366,39 @@ class Settings(BaseSettings):
     aimms_memory_worker_enabled: bool = Field(
         default=False, validation_alias=AliasChoices("AIMMS_MEMORY_WORKER_ENABLED")
     )
+    feature_semantic_memory_extract_shadow: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_SEMANTIC_MEMORY_EXTRACT_SHADOW", "AIMMS_FEATURE_SEMANTIC_MEMORY_EXTRACT_SHADOW"
+        ),
+    )
+    feature_semantic_memory_recall: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_SEMANTIC_MEMORY_RECALL", "AIMMS_FEATURE_SEMANTIC_MEMORY_RECALL"
+        ),
+    )
+    feature_semantic_memory_mem0: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "FEATURE_SEMANTIC_MEMORY_MEM0", "AIMMS_FEATURE_SEMANTIC_MEMORY_MEM0"
+        ),
+    )
+    aimms_memory_default_mode: Literal["off", "extract"] = Field(
+        default="off", alias="AIMMS_MEMORY_DEFAULT_MODE"
+    )
+    aimms_memory_notice_version: str = Field(
+        default="memory-v1", pattern=r"^memory-v[1-9][0-9]*$", alias="AIMMS_MEMORY_NOTICE_VERSION"
+    )
+    aimms_memory_fingerprint_key: SecretStr = Field(
+        default=SecretStr(""), alias="AIMMS_MEMORY_FINGERPRINT_KEY"
+    )
+    memory_embedding_deployment: str = Field(default="", alias="AIMMS_MEMORY_EMBEDDING_DEPLOYMENT")
+    memory_embedding_dims: Literal[1536] = Field(default=1536, alias="AIMMS_MEMORY_EMBEDDING_DIMS")
+    memory_extraction_deployment: str = Field(
+        default="", alias="AIMMS_MEMORY_EXTRACTION_DEPLOYMENT"
+    )
+    memory_shield_endpoint: str = Field(default="", alias="AIMMS_MEMORY_SHIELD_ENDPOINT")
     # M2 PR 3 (plan §8.7 delta ops): when true the compaction summarizer
     # is asked for schema v2 (v1 + ``removals``/``expirations``/
     # ``supersessions`` over the ids of prior protected items). Stored
@@ -1319,6 +1352,29 @@ class Settings(BaseSettings):
         # gpt-4o captions: an ingest-lit plane without the endpoint would
         # fail every image ingest at runtime.
         return not (ingest and not self.azure_openai_endpoint)
+
+    @model_validator(mode="after")
+    def validate_semantic_memory(self) -> "Settings":
+        """Explicit semantic enablement requires its independent providers."""
+        if self.feature_semantic_memory_mem0 and not self.feature_semantic_memory_extract_shadow:
+            raise ValueError("Mem0 requires semantic extraction shadow")
+        if self.feature_semantic_memory_extract_shadow or self.feature_semantic_memory_recall:
+            if len(self.aimms_memory_fingerprint_key.get_secret_value()) < 32:
+                raise ValueError(
+                    "Semantic memory requires a fingerprint key of at least 32 characters"
+                )
+            if (
+                not self.azure_openai_endpoint.startswith("https://")
+                or not self.memory_embedding_deployment
+            ):
+                raise ValueError("Semantic memory embedding provider is incomplete")
+        if self.feature_semantic_memory_extract_shadow and (
+            not self.aimms_memory_worker_enabled
+            or not self.memory_extraction_deployment
+            or not self.memory_shield_endpoint.startswith("https://")
+        ):
+            raise ValueError("Semantic memory extraction providers are incomplete")
+        return self
 
     @model_validator(mode="after")
     def validate_attachment_rag(self) -> "Settings":

@@ -114,6 +114,26 @@ _VOICE_COMPANIONS: dict[str, object] = {
 _COMPANION_ENV: dict[str, dict[str, object]] = {
     **{
         name: {
+            "AIMMS_MEMORY_FINGERPRINT_KEY": "fixture-memory-key-" * 4,
+            "AZURE_OPENAI_ENDPOINT": "https://example.openai.azure.com",
+            "AIMMS_MEMORY_EMBEDDING_DEPLOYMENT": "fixture-embedding",
+            "AIMMS_MEMORY_EXTRACTION_DEPLOYMENT": "fixture-extraction",
+            "AIMMS_MEMORY_SHIELD_ENDPOINT": "https://example.cognitiveservices.azure.com",
+            "AIMMS_MEMORY_WORKER_ENABLED": True,
+            **(
+                {"FEATURE_SEMANTIC_MEMORY_EXTRACT_SHADOW": True}
+                if name == "FEATURE_SEMANTIC_MEMORY_MEM0"
+                else {}
+            ),
+        }
+        for name in (
+            "FEATURE_SEMANTIC_MEMORY_EXTRACT_SHADOW",
+            "FEATURE_SEMANTIC_MEMORY_RECALL",
+            "FEATURE_SEMANTIC_MEMORY_MEM0",
+        )
+    },
+    **{
+        name: {
             **_VOICE_COMPANIONS,
             "FEATURE_VOICE_LIVE": True,
             "FEATURE_VOICE_DECISIONS": True,
