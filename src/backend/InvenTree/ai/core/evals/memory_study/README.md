@@ -68,3 +68,25 @@ gates before adding a paired execution adapter.
 
 Known code/coverage gaps stay explicit in validation_manifest.json and batch
 reports. An authored test or configuration file is not a qualification result.
+
+## Offline human atom-match scoring
+
+`python -m ai.core.evals.score_extraction_study --campaign ... --journal ...
+--review ... --output ...` makes no provider calls. All input/output artifacts must
+be outside the repository. The campaign/corpus must be reviewed and the private
+review must bind the exact journal bytes. Review JSON has `schema_version: 1`,
+`reviewed: true`, a named `reviewer`, `journal_sha256`, a `case_reviews` row for
+every case/pass (`case_id`, `pass_index`, `reviewed: true`), and an `annotations`
+row for every admitted candidate (`window_id`, zero-based `candidate_index`,
+`gold_atom_id` or explicit null for an incorrect/unmatched proposal).
+
+Every window/reservation/pass must be present. Model identity and deterministic
+hard-zero checks are rechecked; reviewed matches must belong to that case/source.
+Empty output still needs human review. Precision is correctly matched proposals
+per proposal; recall is unique matched atoms per gold atom. Empty predictions have
+precision 1; zero-gold abstention recall is 1 only with zero predictions. Duplicate
+rate is proposals per unique matched atom minus one, floored at zero; it can
+exceed 1. With no matched atoms it equals the proposal count (zero for abstention). Freeze these conventions with the campaign before any study.
+The output contains metrics/identities, never candidate text, and stays
+`not_qualified`: human atom scoring does not manufacture judge calibration, Mem0
+admission, cost thresholds or elapsed shadow evidence. No grader has been run.

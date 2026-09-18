@@ -45,5 +45,13 @@
     "confidence": 0.9,
     "seed": 20260918,
     "cluster": "transcript"
+  },
+  "scoring_conventions": {
+    "status": "draft_requires_review",
+    "precision": "correctly_matched_proposals_over_proposals",
+    "recall": "unique_matched_gold_over_gold",
+    "empty_prediction_precision": 1,
+    "abstention_recall": "one_only_if_no_predictions",
+    "duplicate_rate": "max(0, proposals/unique_matched_gold-1); no matched gold uses proposal count"
   }
 }

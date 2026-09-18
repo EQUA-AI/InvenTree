@@ -74,10 +74,11 @@ def load_study(path):
             ):
                 raise ValueError("corpus_source")
             sources.add(row["id"])
+        eligible_sources = {row["id"] for row in case["messages"] if row["eligible"]}
         for atom in case["gold_atoms"]:
             if (
                 atom["id"] in gold_ids
-                or atom["source_message_id"] not in sources
+                or atom["source_message_id"] not in eligible_sources
                 or atom["authority"] != "proposed_only"
             ):
                 raise ValueError("corpus_gold")

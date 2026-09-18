@@ -26,7 +26,8 @@ def _validate(arm):
                 if (
                     type(row.get(metric)) not in (int, float)
                     or not math.isfinite(row[metric])
-                    or not 0 <= row[metric] <= 1
+                    or row[metric] < 0
+                    or (metric != "duplicate_rate" and row[metric] > 1)
                 ):
                     raise ValueError("Invalid reviewed metric")
             expected = (
