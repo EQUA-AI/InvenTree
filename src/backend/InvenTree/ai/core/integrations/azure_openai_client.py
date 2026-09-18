@@ -66,6 +66,11 @@ def reset_token_provider_cache() -> None:
         _TOKEN_PROVIDER = None
 
 
+def cognitive_token_provider() -> Callable[[], str]:
+    """Share the cached keyless credential with other Cognitive Services clients."""
+    return _keyless_token_provider()
+
+
 def build_chat_client(
     deployment: str,
     *,
@@ -159,5 +164,6 @@ __all__ = [
     "build_chat_client",
     "build_openai_client",
     "client_auth_mode",
+    "cognitive_token_provider",
     "reset_token_provider_cache",
 ]
