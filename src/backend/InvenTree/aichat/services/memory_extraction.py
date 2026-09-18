@@ -415,7 +415,9 @@ def run(claim_id):
         )
         memory_budget.settle(reservation, result)
         counters.update(
-            input_tokens=result.input_tokens, output_tokens=result.output_tokens
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            model=str(getattr(result, 'resolved_model', ''))[:128],
         )
         if result.error_code:
             _retry(repository, claim, through, counters)
