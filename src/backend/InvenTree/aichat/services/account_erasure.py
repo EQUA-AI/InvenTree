@@ -13,7 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import salted_hmac
 
-from aichat.services import retention
+from aichat.services import account_domains, retention
 from aichat.services.account_erasure_log import record_erasure
 from aichat.services.voice_retention import selected_ids
 from users.models import UserProfile
@@ -172,6 +172,7 @@ def erase_account(
             'backups',
         ],
         'before': _identity_residuals(user, username, models),
+        'domain_before': account_domains.residuals(user_id),
     }
     if dry_run:
         return {
@@ -246,6 +247,13 @@ def erase_account(
         except Exception:
             failures.append(model._meta.label_lower)
     try:
+        domains = account_domains.purge(user_id, batch_size=batch_size)
+        if domains['status'] != 'purged':
+            failures.append('account_domains')
+    except Exception:
+        failures.append('account_domains')
+        domains = {'status': 'purge_incomplete'}
+    try:
         content = retention.purge_user(user_id, batch_size=batch_size)
     except Exception:
         failures.append('content_store')
@@ -263,5 +271,6 @@ def erase_account(
         'failed_families': failures,
         'residuals': residuals,
         'content': content,
+        'domains': domains,
         'finished_at': timezone.now().isoformat(),
     }

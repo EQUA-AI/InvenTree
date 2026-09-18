@@ -13,6 +13,7 @@ from aichat.models import (
     MemoryFact,
     MemoryNoticeAcknowledgement,
     MessageFeedback,
+    RetrievalMiss,
     UserMemorySettings,
 )
 from aichat.services import retention
@@ -29,6 +30,7 @@ def _residuals(user_id):
     tombstones = ChatThreadTombstone.objects.filter(owner_id=user_id)
     return {
         'owned_threads': ChatThread.objects.filter(owner_id=user_id).count(),
+        'retrieval_queries': RetrievalMiss.objects.filter(user_id=user_id).count(),
         'memory_facts': MemoryFact.objects.filter(
             owner_id=user_id,
             lifecycle_state__in=['proposed', 'active', 'superseded', 'expired'],
@@ -88,7 +90,7 @@ def purge_user_content(user_id, *, dry_run, batch_size):
         'not_covered': [
             'account_anonymization_and_deactivation',
             'legacy_conversations',
-            'retrieval_and_usage_detail',
+            'non_thread_usage_and_quota_audit',
             'mailbox_and_other_ai_domains',
             'provider_state',
             'external_telemetry',
@@ -134,6 +136,12 @@ def purge_user_content(user_id, *, dry_run, batch_size):
     counts['feedback_removed'] = retention._batched_delete(
         MessageFeedback.objects.filter(user_id=user_id, created_at__lte=started),
         family='user_feedback',
+        batch_size=batch_size,
+        dry_run=False,
+    )
+    counts['retrieval_queries_removed'] = retention._batched_delete(
+        RetrievalMiss.objects.filter(user_id=user_id, created_at__lte=started),
+        family='user_retrieval_queries',
         batch_size=batch_size,
         dry_run=False,
     )

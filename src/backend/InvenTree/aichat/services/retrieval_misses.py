@@ -48,24 +48,66 @@ def record_search(
     hash is the thread scope's canonical digest, never machine names.
     """
     try:
+        from django.contrib.auth import get_user_model
+        from django.db import transaction
+
         from aichat.models import RetrievalMiss
 
-        RetrievalMiss.objects.create(
-            user=user if getattr(user, 'pk', None) else None,
-            query=str(query)[:_QUERY_MAX_LENGTH],
-            hit_count=max(0, int(hit_count)),
-            top_score=float(top_score) if top_score is not None else None,
-            machine_filter=str(machine_filter or '')[:16],
-            document_class=str(document_class or '')[:128],
-            scope_key=str(scope_key or '')[:255],
-            corpus=str(corpus or 'governed')[:32],
-            part_filter=str(part_filter or '')[:16],
-            scope_hash=str(scope_hash or '')[:64],
-            scope_mode=str(scope_mode or '')[:32],
-            scope_enforced=bool(scope_enforced),
-            out_of_scope_hits=max(0, int(out_of_scope_hits)),
-        )
+        # Serialize owned query writes with account deactivation. In-flight
+        # retrieval may finish later, but cannot repopulate erased query text.
+        with transaction.atomic():
+            if getattr(user, 'pk', None):
+                user = (
+                    get_user_model()
+                    .objects.select_for_update()
+                    .filter(pk=user.pk, is_active=True)
+                    .first()
+                )
+                if user is None:
+                    return
+            _create_search_row(
+                RetrievalMiss,
+                user=user,
+                query=query,
+                hit_count=hit_count,
+                top_score=top_score,
+                machine_filter=machine_filter,
+                document_class=document_class,
+                scope_key=scope_key,
+                corpus=corpus,
+                part_filter=part_filter,
+                scope_hash=scope_hash,
+                scope_mode=scope_mode,
+                scope_enforced=scope_enforced,
+                out_of_scope_hits=out_of_scope_hits,
+            )
     except Exception as exc:
         from ai.core.faults import fault_location
 
         logger.warning('retrieval-miss ledger write failed %s', fault_location(exc))
+
+
+def _create_search_row(model, **values):
+    # Keep the bounded projection together; no provider call occurs under lock.
+    user, query = values['user'], values['query']
+    hit_count, top_score = values['hit_count'], values['top_score']
+    machine_filter, document_class = values['machine_filter'], values['document_class']
+    scope_key, corpus = values['scope_key'], values['corpus']
+    part_filter, scope_hash = values['part_filter'], values['scope_hash']
+    scope_mode, scope_enforced = values['scope_mode'], values['scope_enforced']
+    out_of_scope_hits = values['out_of_scope_hits']
+    model.objects.create(
+        user=user if getattr(user, 'pk', None) else None,
+        query=str(query)[:_QUERY_MAX_LENGTH],
+        hit_count=max(0, int(hit_count)),
+        top_score=float(top_score) if top_score is not None else None,
+        machine_filter=str(machine_filter or '')[:16],
+        document_class=str(document_class or '')[:128],
+        scope_key=str(scope_key or '')[:255],
+        corpus=str(corpus or 'governed')[:32],
+        part_filter=str(part_filter or '')[:16],
+        scope_hash=str(scope_hash or '')[:64],
+        scope_mode=str(scope_mode or '')[:32],
+        scope_enforced=bool(scope_enforced),
+        out_of_scope_hits=max(0, int(out_of_scope_hits)),
+    )
