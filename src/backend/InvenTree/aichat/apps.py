@@ -57,6 +57,7 @@ class AIChatConfig(AppConfig):
                 'Could not register category lexicon invalidation', exc_info=True
             )
 
+        self._register_attachment_memory_receivers()
         self._register_attachment_rag_receivers()
         self._probe_attachment_rag_config()
         self._register_rollback_floor_check()
@@ -277,3 +278,18 @@ class AIChatConfig(AppConfig):
             logger.warning(
                 'Could not register attachment RAG work-order receiver', exc_info=True
             )
+
+    def _register_attachment_memory_receivers(self):
+        """Memory source cleanup must be registered before any attachment delete."""
+        if not self.apps.is_installed('common'):
+            return
+        from django.db.models.signals import pre_delete
+
+        from aichat.services.attachment_memory import before_attachment_delete
+        from common.models import Attachment
+
+        pre_delete.connect(
+            before_attachment_delete,
+            sender=Attachment,
+            dispatch_uid='aichat.memory_attachment_delete',
+        )
