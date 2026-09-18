@@ -1296,12 +1296,14 @@ FAMILIES = {
 }
 
 from aichat.services.memory_retention import (
+    purge_memory_fact_jobs,
     purge_memory_runs,
     purge_thread_memory,
     thread_memory_residual,
 )
 
 FAMILIES['memory_extraction_runs'] = purge_memory_runs
+FAMILIES['memory_fact_jobs'] = purge_memory_fact_jobs
 THREAD_DERIVATIVES.register(
     ThreadDerivative(
         'memory_facts',

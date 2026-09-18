@@ -55,7 +55,11 @@ def worker_section(since) -> dict:
         {'purpose': row['purpose'], **clean(row)}
         for row in base.values('purpose').annotate(**sums).order_by('purpose')
     ]
-    reserved = clean(base.filter(task='memory_extraction_reserved').aggregate(**sums))
+    reserved = clean(
+        base.filter(
+            task__in=['memory_extraction_reserved', 'memory_embedding_reserved']
+        ).aggregate(**sums)
+    )
     return {
         **totals,
         'per_deployment': per_deployment,

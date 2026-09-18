@@ -1141,6 +1141,10 @@ class Settings(BaseSettings):
         default=0, ge=0, alias="AIMMS_WORKER_DAILY_TOKEN_CAP_EXTRACTION"
     )
 
+    aimms_worker_daily_token_cap_embedding: int = Field(
+        default=0, ge=0, alias="AIMMS_WORKER_DAILY_TOKEN_CAP_EMBEDDING"
+    )
+
     # -------------------------------------------------------------------------
     # S17 model pins and boot probes (fail closed; each has its own kill switch)
     # -------------------------------------------------------------------------

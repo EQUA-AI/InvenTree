@@ -34,6 +34,7 @@ ERROR_CODE_DAILY_CAP = 'daily_cap'
 _CAP_FIELDS = {
     AIWorkerUsagePurpose.SUMMARIZATION: 'aimms_worker_daily_token_cap_summarization',
     AIWorkerUsagePurpose.EXTRACTION: 'aimms_worker_daily_token_cap_extraction',
+    AIWorkerUsagePurpose.EMBEDDING: 'aimms_worker_daily_token_cap_embedding',
 }
 
 

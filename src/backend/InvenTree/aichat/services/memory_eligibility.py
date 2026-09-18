@@ -111,10 +111,18 @@ def evaluate_memory_eligibility(actor, thread, *, purpose='extract', source_time
     clients = resolve_thread_client_context(actor, thread)
     if not clients:
         return MemoryEligibility('no_authorized_clients')
+    return _enrolled_clients(
+        actor, clients, source_time=source_time if purpose == 'extract' else None
+    )
+
+
+def _enrolled_clients(actor, clients, *, source_time=None):
+    """One notice/enrollment rule shared by thread and owner-level providers."""
+    config = get_settings()
     current = notice_number(config.aimms_memory_notice_version)
     acknowledged = []
     notices = MemoryNoticeAcknowledgement.objects.filter(user=actor)
-    if purpose == 'extract' and source_time is not None:
+    if source_time is not None:
         notices = notices.filter(acknowledged_at__lte=source_time)
     for version in notices.values_list('notice_version', flat=True):
         try:
@@ -130,7 +138,7 @@ def evaluate_memory_eligibility(actor, thread, *, purpose='extract', source_time
     enrollments = ClientAISettings.objects.filter(
         client__code__in=clients, client__active=True, memory_enabled=True
     )
-    if purpose == 'extract' and source_time is not None:
+    if source_time is not None:
         enrollments = enrollments.filter(enabled_at__lte=source_time)
     for code, required in enrollments.values_list(
         'client__code', 'required_notice_version'
@@ -186,3 +194,31 @@ def voice_source_has_memory_consent(source):
         consent_version='consent-v3-memory',
         created_at__lte=source.created_at,
     ).exists()
+
+
+def evaluate_owner_memory(actor):
+    """Current owner/client consent for already-confirmed fact preparation."""
+    config = get_settings()
+    if not (
+        config.feature_semantic_memory_extract_shadow
+        or config.feature_semantic_memory_recall
+    ):
+        return MemoryEligibility('feature_disabled')
+    if restore_hold_enabled():
+        return MemoryEligibility('restore_hold')
+    actor = (
+        get_user_model()
+        .objects.filter(pk=getattr(actor, 'pk', None), is_active=True)
+        .first()
+    )
+    if actor is None:
+        return MemoryEligibility('inactive_owner')
+    if UserMemorySettings.objects.filter(user=actor, opted_out=True).exists():
+        return MemoryEligibility('opted_out')
+    try:
+        clients = client_codes_for_actor(actor)
+    except ScopeError:
+        return MemoryEligibility('no_authorized_clients')
+    if not clients:
+        return MemoryEligibility('no_authorized_clients')
+    return _enrolled_clients(actor, clients)

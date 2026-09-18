@@ -45,6 +45,8 @@ class EmbeddingResult:
     input_tokens: int = 0
     attempted: bool = False
     error_code: str = ""
+    usage_known: bool = False
+    output_tokens: int = 0
 
 
 def _texts(documents: list[str]) -> list[str]:
@@ -129,6 +131,7 @@ def embed_memory(text: str, *, settings) -> EmbeddingResult:
     """
     attempted = False
     input_tokens = 0
+    usage_known = False
     try:
         value = _texts([text])[0]
         deployment = settings.memory_embedding_deployment
@@ -148,9 +151,10 @@ def embed_memory(text: str, *, settings) -> EmbeddingResult:
                 model=deployment, input=[value], dimensions=DIMENSIONS, encoding_format="float"
             )
         usage = getattr(response, "usage", None)
-        tokens = getattr(usage, "prompt_tokens", 0)
+        tokens = getattr(usage, "prompt_tokens", None)
         if type(tokens) is int and tokens >= 0:
             input_tokens = tokens
+            usage_known = True
         rows = response.data
         if len(rows) != 1 or rows[0].index != 0:
             raise ValueError("memory_embedding_shape")
@@ -169,8 +173,12 @@ def embed_memory(text: str, *, settings) -> EmbeddingResult:
             f"{deployment}:{DIMENSIONS}",
             input_tokens,
             True,
+            usage_known=usage_known,
         )
     except Exception:
         return EmbeddingResult(
-            input_tokens=input_tokens, attempted=attempted, error_code="embedding_unavailable"
+            input_tokens=input_tokens,
+            attempted=attempted,
+            error_code="embedding_unavailable",
+            usage_known=usage_known,
         )

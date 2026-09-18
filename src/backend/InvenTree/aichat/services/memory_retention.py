@@ -3,7 +3,7 @@
 from datetime import timedelta
 
 from django.db import connection, transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from aichat.models import (
@@ -12,6 +12,7 @@ from aichat.models import (
     MemoryFact,
     MemoryFactClaim,
     MemoryFactEvent,
+    MemoryFactJob,
 )
 
 
@@ -100,3 +101,27 @@ def purge_memory_runs(*, dry_run=False, batch_size=200):
         dry_run=dry_run,
     )
     return {'memory_extraction_runs': count}
+
+
+def purge_memory_fact_jobs(*, dry_run=False, batch_size=200):
+    """Keep current-version retry guards; expire obsolete metadata after 90 days."""
+    from aichat.services.retention import _batched_delete
+
+    rows = MemoryFactJob.objects.filter(
+        updated_at__lt=timezone.now() - timedelta(days=90)
+    ).filter(
+        ~Q(fact_version=F('fact__version'))
+        | Q(
+            fact__lifecycle_state__in=[
+                'forgotten',
+                'withdrawn',
+                'expired',
+                'superseded',
+            ]
+        )
+    )
+    return {
+        'memory_fact_jobs': _batched_delete(
+            rows, family='memory_fact_jobs', batch_size=batch_size, dry_run=dry_run
+        )
+    }

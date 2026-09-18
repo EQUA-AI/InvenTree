@@ -431,8 +431,11 @@ def run(claim_id):
 def sweep():
     """Recover due work and expired leases; metadata only, at most fifty claims."""
     memory_worker.heartbeat()
+    from aichat.services.memory_fact_jobs import sweep as sweep_fact_jobs
+
+    fact_jobs = sweep_fact_jobs()
     if not enabled():
-        return {'status': 'disabled', 'queued': 0}
+        return {'status': 'disabled', 'queued': 0, 'fact_jobs': fact_jobs}
     now = timezone.now()
     expiry = now - timedelta(seconds=memory_worker.cluster_config()['timeout'] + 180)
     MemoryExtractionClaim.objects.filter(
@@ -445,4 +448,4 @@ def sweep():
         .values_list('pk', flat=True)[:50]
     )
     queued = sum(publish(identity)['status'] == 'queued' for identity in ids)
-    return {'status': 'processed', 'queued': queued}
+    return {'status': 'processed', 'queued': queued, 'fact_jobs': fact_jobs}
