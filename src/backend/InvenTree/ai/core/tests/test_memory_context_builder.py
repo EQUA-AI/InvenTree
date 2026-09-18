@@ -566,7 +566,7 @@ def test_recall_filter_table_covers_every_task_intent():
     assert (
         off.memory_types == vocabulary.OPERATIONAL_MEMORY_TYPES and off.type_filter_enabled is False
     )
-    assert recall_filter.recall_filter_for("diagnostic").reauthorize(("a", "b")) == ("a", "b")
+    assert recall_filter.recall_filter_for("diagnostic").reauthorize(("a", "b")) == ()
 
 
 def test_retrieval_plan_records_the_filter_from_the_routed_intent():

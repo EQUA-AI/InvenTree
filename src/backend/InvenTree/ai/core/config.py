@@ -384,6 +384,12 @@ class Settings(BaseSettings):
             "FEATURE_SEMANTIC_MEMORY_MEM0", "AIMMS_FEATURE_SEMANTIC_MEMORY_MEM0"
         ),
     )
+    aimms_memory_type_filter: Literal["on", "off"] = Field(
+        default="on", alias="AIMMS_MEMORY_TYPE_FILTER"
+    )
+    aimms_memory_topic_boost: float = Field(
+        default=0.0, ge=0.0, le=0.2, alias="AIMMS_MEMORY_TOPIC_BOOST"
+    )
     aimms_memory_default_mode: Literal["off", "extract"] = Field(
         default="off", alias="AIMMS_MEMORY_DEFAULT_MODE"
     )

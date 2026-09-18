@@ -20,6 +20,16 @@ def check_memory_configuration(app_configs=None, **kwargs):
         )
         if not enabled:
             return []
+        if config.feature_semantic_memory_recall:
+            from django.conf import settings
+
+            from aichat.services.memory_recall import SUPPORTED_RESOLVERS
+
+            if (
+                getattr(settings, 'AIMMS_MAINTENANCE_SCOPE_RESOLVER', None)
+                not in SUPPORTED_RESOLVERS
+            ):
+                raise ValueError('Memory recall resolver requires a SQL adapter')
         current = config.aimms_memory_notice_version
         if current not in NOTICE_COPY:
             raise ValueError('Notice text unavailable')

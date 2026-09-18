@@ -98,14 +98,33 @@ class RecallFilter:
     boost_topics: frozenset[str] = field(default_factory=frozenset)
     type_filter_enabled: bool = True
 
-    def reauthorize(self, candidate_ids: tuple[str, ...]) -> tuple[str, ...]:
-        """Round trip (2) of GR-31.
+    def reauthorize(
+        self,
+        candidate_ids: tuple[str, ...],
+        *,
+        repository=None,
+        thread_id: str = "",
+        candidate_versions: dict[str, int] | None = None,
+    ) -> tuple[str, ...]:
+        """Fail closed without an owner boundary and exact candidate versions."""
+        if repository is None or not thread_id or not candidate_ids or not candidate_versions:
+            return ()
+        if any(
+            type(candidate_versions.get(identity)) is not int or candidate_versions[identity] < 1
+            for identity in candidate_ids
+        ):
+            return ()
+        from aichat.services.memory_recall import reauthorize
 
-        M1: nothing to reauthorize (no fact store), zero queries — the
-        posture is recorded on ``ScopeLabel.source == "policy_key"``. M3a
-        re-derives ``client_codes_for_actor`` here and fails closed (GR-11).
-        """
-        return tuple(candidate_ids)
+        rows = reauthorize(
+            repository,
+            thread_id,
+            [
+                {"id": identity, "version": candidate_versions[identity]}
+                for identity in candidate_ids
+            ],
+        )
+        return tuple(str(row["id"]) for row in rows)
 
     def as_plan_fields(self) -> dict[str, object]:
         """Content-free projection for ``retrieval_plan`` and telemetry."""
