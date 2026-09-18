@@ -22,7 +22,7 @@ CONVERSATION_SALT = 'aichat.memory.conversations.v1'
 
 def excluded_conversations(owner, *, cursor=''):
     """Page owned exclusion metadata without transcript, title or client labels."""
-    from aichat.models import ChatThread
+    from aichat.models import ChatThread, ChatThreadTombstone
     from aichat.services.memory_controls import thread_memory_status
 
     if restore_hold_enabled():
@@ -40,9 +40,10 @@ def excluded_conversations(owner, *, cursor=''):
         except (signing.BadSignature, KeyError, TypeError, ValueError) as exc:
             raise ValueError('Invalid cursor') from exc
     rows = list(
-        ChatThread.objects.filter(owner=owner, pk__gt=after).order_by('pk')[
-            : PAGE_SIZE + 1
-        ]
+        ChatThread.objects
+        .filter(owner=owner, pk__gt=after)
+        .exclude(pk__in=ChatThreadTombstone.objects.values('thread_id'))
+        .order_by('pk')[: PAGE_SIZE + 1]
     )
     page = rows[:PAGE_SIZE]
     results = []
@@ -61,6 +62,10 @@ def excluded_conversations(owner, *, cursor=''):
 def can_read(owner, fact, *, clients=None):
     """Stored client labels cannot authorize reassigned or deleted entities."""
     if fact.owner_id != owner.pk or not owner.is_active:
+        return False
+    from aichat.services.memory_retention import deletion_holds_fact
+
+    if deletion_holds_fact(fact):
         return False
     if not fact.client_code:
         return fact.entity_kind == 'user' and fact.entity_id == str(owner.pk)

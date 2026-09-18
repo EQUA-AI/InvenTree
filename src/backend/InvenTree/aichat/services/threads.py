@@ -161,7 +161,7 @@ class ThreadRepository:
             scope_key=self.scope_key,
             scope_hash=self.scope_hash,
             namespace=self.namespace,
-        )
+        ).exclude(pk__in=ChatThreadTombstone.objects.values('thread_id'))
 
     def _reject_wrong_namespace_id(self, thread_id: str) -> None:
         """Fail closed on the permanently reserved scoped-rail id prefix.
@@ -370,7 +370,9 @@ class ThreadRepository:
             thread.save(update_fields=['title', 'updated_at'])
         return thread
 
-    def delete(self, thread_id: str) -> dict[str, str]:
+    def delete(
+        self, thread_id: str, *, forget_confirmed: bool = False
+    ) -> dict[str, str]:
         """Purge one boundary-visible transcript through the retention path.
 
         The retention service (S16) is the only correct deletion path: a
@@ -399,6 +401,7 @@ class ThreadRepository:
                 thread.pk,
                 actor_user_id=thread.owner_id,
                 reason=retention.TOMBSTONE_USER_DELETE,
+                forget_confirmed=forget_confirmed,
             )
         return retention.thread_purge_receipt(thread_id)
 
@@ -973,10 +976,14 @@ class ThreadRepository:
 
         from aichat.models import ChatThreadGrant
 
-        return ChatThreadGrant.objects.filter(
-            grantee_id=self.actor_id, revoked_at__isnull=True
-        ).filter(
-            models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=timezone.now())
+        return (
+            ChatThreadGrant.objects
+            .filter(grantee_id=self.actor_id, revoked_at__isnull=True)
+            .exclude(thread_id__in=ChatThreadTombstone.objects.values('thread_id'))
+            .filter(
+                models.Q(expires_at__isnull=True)
+                | models.Q(expires_at__gt=timezone.now())
+            )
         )
 
     def _get_shared_thread(self, thread_id: str) -> ChatThread:

@@ -14,6 +14,7 @@ from ai.core.analysis.scope import MODE_ALL_AUTHORIZED, MODE_EXPLICIT, scope_fro
 from ai.core.config import get_settings
 from aichat.models import (
     ChatThreadGrant,
+    ChatThreadTombstone,
     ClientAISettings,
     MemoryNoticeAcknowledgement,
     UserMemorySettings,
@@ -88,6 +89,8 @@ def evaluate_memory_eligibility(actor, thread, *, purpose='extract', source_time
         return MemoryEligibility('feature_disabled')
     if restore_hold_enabled():
         return MemoryEligibility('restore_hold')
+    if ChatThreadTombstone.objects.filter(thread_id=thread.pk).exists():
+        return MemoryEligibility('thread_deleted')
     if not actor or actor.pk != thread.owner_id:
         return MemoryEligibility('not_owner')
     # Resolve fresh actor state: long-lived queued tasks must not use stale flags.

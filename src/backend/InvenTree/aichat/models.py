@@ -1687,9 +1687,9 @@ class AccountErasureTombstone(models.Model):
 
 
 class ChatThreadTombstone(models.Model):
-    """Non-content receipt of a purged thread (S16, Q48).
+    """Non-content deletion intent and receipt for a thread (S16, Q48).
 
-    Written by every thread purge — immediate user deletion and scheduled
+    Written before every thread purge — immediate user deletion and scheduled
     400-day expiry alike — so grant/audit integrity survives content
     removal. Deliberately carries NO title, summary, or scope key: counts
     and hashes only. Tombstones themselves purge 400 days after
@@ -1721,6 +1721,7 @@ class ChatThreadTombstone(models.Model):
     message_count = models.PositiveIntegerField(default=0)
     turn_count = models.PositiveIntegerField(default=0)
     had_grants = models.BooleanField(default=False)
+    forget_confirmed_memories = models.BooleanField(default=False, db_default=False)
 
     class Meta:
         """The tombstone purge scans by deletion time."""

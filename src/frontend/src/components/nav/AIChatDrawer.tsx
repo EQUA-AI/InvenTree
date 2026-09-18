@@ -1567,9 +1567,9 @@ function AIChatSessionDrawer({
   }, [clearChat]);
 
   const handleDeleteThread = useCallback(
-    (threadId: string) => {
+    (threadId: string, forgetConfirmed = false) => {
       if (memoryThreadId === threadId) setMemoryThreadId(null);
-      return deleteThread(threadId);
+      return deleteThread(threadId, forgetConfirmed);
     },
     [deleteThread, memoryThreadId]
   );

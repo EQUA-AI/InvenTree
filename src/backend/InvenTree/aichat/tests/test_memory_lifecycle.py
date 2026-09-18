@@ -155,3 +155,59 @@ class MemoryLifecycleTests(TestCase):
         self.assertEqual(proposed.lifecycle_state, 'withdrawn')
         self.assertEqual(proposed.text, '')
         self.assertEqual(retained.lifecycle_state, 'superseded')
+
+    def test_optional_thread_forget_is_bounded_and_blocks_reads_until_retry(self):
+        """Deleting sources cannot sever provenance before every fact is scrubbed."""
+        from aichat.models import ChatThreadTombstone
+        from aichat.services.memory_retention import (
+            deletion_holds_fact,
+            forget_thread_batch,
+        )
+
+        first, second = self.fact(), self.fact(slot_key='detail_style')
+        stone = ChatThreadTombstone.objects.create(
+            thread_id=self.thread.pk,
+            owner=self.owner,
+            namespace=self.thread.namespace,
+            scope_hash=self.thread.scope_hash,
+            thread_created_at=self.thread.created_at,
+            reason='user_delete',
+            forget_confirmed_memories=True,
+        )
+        self.assertTrue(deletion_holds_fact(first))
+        self.assertTrue(deletion_holds_fact(second))
+        self.assertFalse(forget_thread_batch(stone, batch_size=1))
+        self.assertEqual(
+            MemoryFact.objects.filter(source_thread=self.thread).count(), 1
+        )
+        self.assertTrue(forget_thread_batch(stone, batch_size=1))
+        self.assertTrue(forget_thread_batch(stone, batch_size=1))
+        self.assertEqual(
+            MemoryFactTombstone.objects.filter(deleted_at=stone.deleted_at).count(), 2
+        )
+
+    def test_normal_thread_delete_preserves_confirmed_fact_and_optional_delete_forgets(
+        self,
+    ):
+        """The default remains source severance, while the explicit choice scrubs."""
+        from aichat.models import ChatThreadTombstone
+        from aichat.services.retention import purge_thread_now
+
+        fact = self.fact()
+        purge_thread_now(self.thread.pk)
+        fact.refresh_from_db()
+        self.assertEqual(fact.text, 'PRIVATE_MEMORY_SENTINEL')
+        self.assertIsNone(fact.source_thread_id)
+        self.assertFalse(
+            ChatThreadTombstone.objects.get(
+                thread_id=self.thread.pk
+            ).forget_confirmed_memories
+        )
+        thread = ChatThread.objects.create(
+            owner=self.owner, scope_key='fixture', scope_hash='fixture'
+        )
+        other = self.fact(source_thread=thread, slot_key='detail_style')
+        purge_thread_now(thread.pk, forget_confirmed=True)
+        other.refresh_from_db()
+        self.assertEqual(other.lifecycle_state, 'forgotten')
+        self.assertEqual(other.text, '')

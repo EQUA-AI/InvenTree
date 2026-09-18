@@ -7,6 +7,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 from aichat.models import (
+    ChatThreadTombstone,
     MemoryExtractionClaim,
     MemoryExtractionRun,
     MemoryFact,
@@ -14,6 +15,68 @@ from aichat.models import (
     MemoryFactEvent,
     MemoryFactJob,
 )
+
+
+def linked_facts(thread_id):
+    """Source provenance determines the set; the caller still binds its owner."""
+    return MemoryFact.objects.filter(
+        Q(source_thread_id=thread_id) | Q(claims__source_thread_id=thread_id)
+    ).distinct()
+
+
+def deletion_holds_fact(fact):
+    """A persisted optional-delete choice stops serving before bounded cleanup."""
+    sources = fact.claims.filter(source_thread_id__isnull=False).values(
+        'source_thread_id'
+    )
+    return (
+        ChatThreadTombstone.objects
+        .filter(forget_confirmed_memories=True)
+        .filter(Q(thread_id=fact.source_thread_id) | Q(thread_id__in=sources))
+        .exists()
+    )
+
+
+@transaction.atomic
+def forget_thread_batch(stone, *, batch_size=200):
+    """Forget before severance; the caller retains the root until this is complete."""
+    from django.contrib.auth import get_user_model
+
+    from aichat.services.memory_lifecycle import (
+        LIVE_STATES,
+        _forget_locked,
+        _invalidate_summaries,
+    )
+
+    if not stone.forget_confirmed_memories:
+        return True
+    owner = (
+        get_user_model().objects.select_for_update().filter(pk=stone.owner_id).first()
+    )
+    if owner is None:
+        return False
+    identities = list(
+        linked_facts(stone.thread_id)
+        .filter(owner=owner, lifecycle_state__in=LIVE_STATES)
+        .order_by('pk')
+        .values_list('pk', flat=True)[:batch_size]
+    )
+    for fact in (
+        MemoryFact.objects.select_for_update().filter(pk__in=identities).order_by('pk')
+    ):
+        _forget_locked(
+            fact,
+            actor_id=stone.deleted_by_id,
+            reason='forget',
+            deleted_at=stone.deleted_at,
+        )
+    if identities:
+        _invalidate_summaries(owner.pk)
+    return (
+        not linked_facts(stone.thread_id)
+        .filter(owner=owner, lifecycle_state__in=LIVE_STATES)
+        .exists()
+    )
 
 
 def store_available():
@@ -30,6 +93,9 @@ def purge_thread_memory(thread_id):
 
     from aichat.services.memory_lifecycle import _scrub_proposals
 
+    stone = ChatThreadTombstone.objects.filter(thread_id=thread_id).first()
+    if stone and not forget_thread_batch(stone):
+        raise ValueError('Linked memory cleanup is pending')
     linked = Q(source_thread_id=thread_id) | Q(claims__source_thread_id=thread_id)
     owner_ids = MemoryFact.objects.filter(linked).values('owner_id')
     list(

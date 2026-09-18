@@ -943,10 +943,15 @@ def _compact_locked(thread_id) -> None:
     from django.utils import timezone
 
     from aichat.models import ChatCompactionOutcome as Outcome
-    from aichat.models import ChatMessage, ChatThread
+    from aichat.models import ChatMessage, ChatThread, ChatThreadTombstone
     from aichat.services.threads import ThreadRepository
 
-    thread = ChatThread.objects.filter(pk=thread_id).first()
+    thread = (
+        ChatThread.objects
+        .filter(pk=thread_id)
+        .exclude(pk__in=ChatThreadTombstone.objects.values('thread_id'))
+        .first()
+    )
     if thread is None:
         return
     expected = thread.summary_through_sequence

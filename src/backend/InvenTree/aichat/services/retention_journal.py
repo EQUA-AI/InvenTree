@@ -42,6 +42,7 @@ FIELDS = (
     'message_count',
     'turn_count',
     'had_grants',
+    'forget_confirmed_memories',
 )
 
 
@@ -124,7 +125,7 @@ def export_journal(*, since):
         for key in ('user_joined_at', 'requested_at'):
             row[key] = row[key].isoformat()
     payload = {
-        'schema_version': 3,
+        'schema_version': 4,
         'source': source,
         'since': lower.isoformat(),
         'as_of': upper.isoformat(),
@@ -159,7 +160,7 @@ def read_journal(token, *, since):
         if not isinstance(payload, dict):
             raise ValueError
         version = payload.get('schema_version')
-        if type(version) is not int or version not in (1, 2, 3):
+        if type(version) is not int or version not in (1, 2, 3, 4):
             raise ValueError
         fields = {
             'schema_version',
@@ -173,13 +174,13 @@ def read_journal(token, *, since):
         }
         if version >= 2:
             fields.add('accounts')
-        if version == 3:
+        if version >= 3:
             fields.add('memories')
         if set(payload) != fields:
             raise ValueError
         scope = (
             'retained_threads_accounts_and_memory'
-            if version == 3
+            if version >= 3
             else 'retained_threads_and_local_account_intents'
             if version == 2
             else 'retained_thread_deletions'
@@ -199,7 +200,7 @@ def read_journal(token, *, since):
             memory_journal.validate_memory(
                 payload['memories'], upper=upper, parse_time=aware_time
             )
-            if version == 3
+            if version >= 3
             else 0
         )
         if (
@@ -230,7 +231,7 @@ def read_journal(token, *, since):
         references = set()
         for row in rows:
             if (
-                set(row) != set(FIELDS)
+                set(row) != set(FIELDS if version >= 4 else FIELDS[:-1])
                 or not _reference(row['thread_id'])
                 or row['thread_id'] in references
             ):
@@ -254,6 +255,8 @@ def read_journal(token, *, since):
                 <= upper
             ):
                 raise ValueError
+            if version >= 4 and type(row['forget_confirmed_memories']) is not bool:
+                raise ValueError
             if type(row['had_grants']) is not bool or any(
                 type(row[k]) is not int or row[k] < 0
                 for k in ('message_count', 'turn_count')
@@ -267,7 +270,7 @@ def read_journal(token, *, since):
                 or not (
                     _reference(row['reference'])
                     or (
-                        version == 3
+                        version >= 3
                         and row['kind'] == 'memory_owner_purge'
                         and isinstance(row['reference'], str)
                         and len(row['reference']) <= 255
@@ -279,7 +282,7 @@ def read_journal(token, *, since):
             if pair in pairs:
                 raise ValueError
             pairs.add(pair)
-        if version == 3:
+        if version >= 3:
             proof_refs = {row['reference'] for row in payload['memories']['purges']}
             outbox_refs = {
                 row['reference']
@@ -353,10 +356,10 @@ def replay_journal(token, *, since, execute=False):
     unknown = set(payload['kinds']) - retention.OUTBOX_KINDS.keys()
     thread_kinds = {
         entry.outbox_kind for entry in retention.THREAD_DERIVATIVES.entries
-    } | {'thread_summary'}
+    } | {'thread_summary', 'thread_root'}
     # A future non-thread outbox kind needs an explicit journal/replay contract.
     known_non_thread = (
-        {'memory_owner_purge'} if payload['schema_version'] == 3 else set()
+        {'memory_owner_purge'} if payload['schema_version'] >= 3 else set()
     )
     unknown |= retention.OUTBOX_KINDS.keys() - thread_kinds - known_non_thread
     conflicts = unsupported = 0
@@ -455,7 +458,6 @@ def replay_journal(token, *, since, execute=False):
             if root:
                 if not _same_thread(root, row):
                     raise JournalError('Thread identity changed during replay')
-                retention.purge_thread_now(ref, reason=row['reason'])
             with transaction.atomic():
                 values = {
                     key: value for key, value in row.items() if key != 'thread_id'
@@ -469,6 +471,12 @@ def replay_journal(token, *, since, execute=False):
                 )
                 if not _same_thread(stone, row, tombstone=True):
                     raise JournalError('Tombstone identity changed during replay')
+                if (
+                    row.get('forget_confirmed_memories', False)
+                    and not stone.forget_confirmed_memories
+                ):
+                    stone.forget_confirmed_memories = True
+                    stone.save(update_fields=['forget_confirmed_memories'])
                 # Replay must not restart the journal's retention clock.
                 if stone.deleted_at > deleted_at:
                     ChatThreadTombstone.objects.filter(pk=stone.pk).update(
@@ -476,6 +484,12 @@ def replay_journal(token, *, since, execute=False):
                     )
                 for kind in thread_kinds:
                     retention.enqueue_outbox(kind, ref)
+            if root:
+                retention.purge_thread_now(
+                    ref,
+                    reason=row['reason'],
+                    forget_confirmed=row.get('forget_confirmed_memories', False),
+                )
             receipt = retention.thread_purge_receipt(ref)
             if receipt['status'] != 'deleted':
                 failed += 1

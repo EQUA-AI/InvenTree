@@ -813,11 +813,12 @@ async function updateThreadScope(
  */
 async function deleteServerThread(
   threadId: string,
-  host: string
+  host: string,
+  forgetConfirmed = false
 ): Promise<ThreadDeleteResult> {
   try {
     const response = await fetch(
-      `${host}/threads/${encodeURIComponent(threadId)}`,
+      `${host}/threads/${encodeURIComponent(threadId)}${forgetConfirmed ? '?forget_confirmed=true' : ''}`,
       {
         method: 'DELETE',
         headers: {
@@ -1845,7 +1846,10 @@ export function useAIChat(config: AIChatConfig = {}) {
   );
 
   const deleteThread = useCallback(
-    async (threadId: string): Promise<ThreadDeleteResult> => {
+    async (
+      threadId: string,
+      forgetConfirmed = false
+    ): Promise<ThreadDeleteResult> => {
       if (
         !sessionIsCurrent() ||
         abortControllerRef.current ||
@@ -1863,7 +1867,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         (thread) => thread.id === threadId
       )?.isPersisted;
       const result = durable
-        ? await deleteServerThread(threadId, aiHost)
+        ? await deleteServerThread(threadId, aiHost, forgetConfirmed)
         : 'deleted';
       if (!sessionIsCurrent()) return 'error';
       if (result !== 'error') applyThreadDeletion(threadId, result);

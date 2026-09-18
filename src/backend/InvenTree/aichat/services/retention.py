@@ -135,6 +135,7 @@ def purge_thread_now(
     *,
     actor_user_id: int | None = None,
     reason: str = TOMBSTONE_USER_DELETE,
+    forget_confirmed: bool = False,
 ) -> dict:
     """Immediately purge one thread's content, leaving only the tombstone.
 
@@ -144,7 +145,11 @@ def purge_thread_now(
     """
     thread = ChatThread.objects.get(pk=thread_id)
     return _purge_thread(
-        thread, reason=reason, actor_user_id=actor_user_id, batch_size=PURGE_BATCH_SIZE
+        thread,
+        reason=reason,
+        actor_user_id=actor_user_id,
+        batch_size=PURGE_BATCH_SIZE,
+        forget_confirmed=forget_confirmed,
     )
 
 
@@ -179,7 +184,12 @@ def purge_expired_threads(
 
 
 def _purge_thread(
-    thread, *, reason: str, actor_user_id: int | None, batch_size: int
+    thread,
+    *,
+    reason: str,
+    actor_user_id: int | None,
+    batch_size: int,
+    forget_confirmed: bool = False,
 ) -> dict:
     """Purge one thread's full content graph, tombstone first.
 
@@ -196,6 +206,40 @@ def _purge_thread(
         'messages': ChatMessage.objects.filter(thread_id=thread_id).count(),
         'turns': ChatTurn.objects.filter(thread_id=thread_id).count(),
     }
+
+    from django.contrib.auth import get_user_model
+
+    from aichat.services.memory_retention import forget_thread_batch
+
+    # Persist the original choice before any source is removed. Repository reads
+    # and all memory admissions exclude this intent immediately. A retry cannot
+    # change a decision after provenance may already have been severed.
+    with transaction.atomic():
+        get_user_model().objects.select_for_update().get(pk=thread.owner_id)
+        locked = ChatThread.objects.select_for_update().filter(pk=thread_id).first()
+        if locked is None:
+            return {'thread': thread_id, 'already_purged': True, **counts}
+        tombstone, _ = ChatThreadTombstone.objects.get_or_create(
+            thread_id=thread_id,
+            defaults={
+                'owner_id': locked.owner_id,
+                'namespace': locked.namespace,
+                'scope_hash': locked.scope_hash,
+                'thread_created_at': locked.created_at,
+                'reason': reason,
+                'deleted_by_id': actor_user_id,
+                'message_count': counts['messages'],
+                'turn_count': counts['turns'],
+                'forget_confirmed_memories': forget_confirmed,
+            },
+        )
+        if tombstone.forget_confirmed_memories:
+            from aichat.services.memory_lifecycle import _invalidate_summaries
+
+            _invalidate_summaries(locked.owner_id)
+        enqueue_outbox('thread_root', thread_id)
+    if not forget_thread_batch(tombstone):
+        return {'thread': thread_id, 'status': 'purge_incomplete', **counts}
 
     _batched_delete(
         ChatEvidenceSetMember.objects.filter(set__turn__thread_id=thread_id),
@@ -236,19 +280,6 @@ def _purge_thread(
         locked = ChatThread.objects.select_for_update().filter(pk=thread_id).first()
         if locked is None:
             return {'thread': thread_id, 'already_purged': True, **counts}
-        tombstone, _created = ChatThreadTombstone.objects.get_or_create(
-            thread_id=thread_id,
-            defaults={
-                'owner_id': locked.owner_id,
-                'namespace': locked.namespace,
-                'scope_hash': locked.scope_hash,
-                'thread_created_at': locked.created_at,
-                'reason': reason,
-                'deleted_by_id': actor_user_id,
-                'message_count': counts['messages'],
-                'turn_count': counts['turns'],
-            },
-        )
         grants = list(ChatThreadGrant.objects.filter(thread_id=thread_id))
         if grants:
             tombstone.had_grants = True
@@ -1087,6 +1118,9 @@ def thread_purge_receipt(thread_id: str) -> dict[str, str]:
     the scheduled outbox worker remains the backstop. Every registered family
     is probed even if its prior outbox work was marked done or is missing.
     """
+    if ChatThreadTombstone.objects.filter(thread_id=thread_id).exists():
+        if ChatThread.objects.filter(pk=thread_id).exists():
+            enqueue_outbox('thread_root', thread_id)
     if (
         not ChatThread.objects.filter(pk=thread_id).exists()
         and ChatThreadTombstone.objects.filter(thread_id=thread_id).exists()
@@ -1573,5 +1607,34 @@ from aichat.services.memory_lifecycle import owner_purge_residual, retry_owner_p
 register_outbox_kind(
     OutboxKind(
         'memory_owner_purge', handler=retry_owner_purge, probe=owner_purge_residual
+    )
+)
+
+
+def _retry_thread_root(reference):
+    stone = ChatThreadTombstone.objects.filter(thread_id=reference).first()
+    root = ChatThread.objects.filter(pk=reference).first()
+    if root is None:
+        return
+    if (
+        stone is None
+        or root.created_at != stone.thread_created_at
+        or root.owner_id != stone.owner_id
+    ):
+        raise ValueError('Thread deletion intent does not match root')
+    _purge_thread(
+        root,
+        reason=stone.reason,
+        actor_user_id=stone.deleted_by_id,
+        batch_size=PURGE_BATCH_SIZE,
+        forget_confirmed=stone.forget_confirmed_memories,
+    )
+
+
+register_outbox_kind(
+    OutboxKind(
+        'thread_root',
+        handler=_retry_thread_root,
+        probe=lambda reference: ChatThread.objects.filter(pk=reference).count(),
     )
 )

@@ -92,6 +92,8 @@ def discover_missing_claims():
     """
     from django.core.cache import cache
 
+    from aichat.models import ChatThreadTombstone
+
     if not enabled():
         return 0
     key = 'aimms:memory:discovery-cursor:v1'
@@ -104,6 +106,7 @@ def discover_missing_claims():
             owner__is_active=True, memory_through_sequence__lt=F('next_sequence') - 1
         )
         .exclude(memory_mode='off')
+        .exclude(pk__in=ChatThreadTombstone.objects.values('thread_id'))
         .filter(
             Exists(
                 ChatTurn.objects.filter(

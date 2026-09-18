@@ -48,6 +48,10 @@ def eligible(fact, job):
     """Recheck current entity ownership as well as stored client and consent."""
     if not enabled() or fact.version != job.fact_version:
         return False
+    from aichat.services.memory_retention import deletion_holds_fact
+
+    if deletion_holds_fact(fact):
+        return False
     now = timezone.now()
     if fact.valid_from > now or (fact.valid_until and fact.valid_until <= now):
         return False

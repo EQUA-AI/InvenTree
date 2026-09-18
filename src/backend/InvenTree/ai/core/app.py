@@ -1305,12 +1305,14 @@ async def delete_all_threads(request: ThreadDeleteAllRequest, response: Response
 
 
 @app.delete("/threads/{thread_id}")
-async def delete_thread(thread_id: str, response: Response) -> dict[str, str]:
+async def delete_thread(
+    thread_id: str, response: Response, forget_confirmed: bool = False
+) -> dict[str, str]:
     """Delete a thread through the sole authorized repository."""
 
     try:
         result = await sync_to_async(_repository(_principal()).delete, thread_sensitive=True)(
-            thread_id
+            thread_id, forget_confirmed=forget_confirmed
         )
     except (ThreadNotFound, ScopedThreadRejected):
         raise HTTPException(status_code=404, detail="Thread not found") from None

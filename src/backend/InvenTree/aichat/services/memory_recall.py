@@ -22,6 +22,7 @@ from ai.core.analysis.scope import MODE_LEGACY, scope_from_stored
 from ai.core.config import get_settings
 from aichat.models import (
     ChatThreadGrant,
+    ChatThreadTombstone,
     ClientAISettings,
     MemoryFact,
     MemoryFactClaim,
@@ -202,6 +203,10 @@ def _eligible(repository, thread_id):
             )
         )
     )
+    held_sources = ChatThreadTombstone.objects.filter(forget_confirmed_memories=True)
+    held_claims = MemoryFactClaim.objects.filter(
+        fact_id=OuterRef('pk'), source_thread_id__in=held_sources.values('thread_id')
+    )
     fact_notice = (
         MemoryNoticeAcknowledgement.objects
         .filter(user_id=actor_id, acknowledged_at__lte=now)
@@ -222,6 +227,8 @@ def _eligible(repository, thread_id):
         )
         .annotate(_fact_notice=_notice_number('notice_version'))
         .filter(_fact_notice__gt=0)
+        .exclude(source_thread_id__in=held_sources.values('thread_id'))
+        .filter(~Exists(held_claims))
         .filter(Exists(thread), Exists(clients), ~Exists(deleted), Exists(fact_notice))
         .annotate(_analysis_scope=Subquery(thread.values('analysis_scope')[:1]))
     )

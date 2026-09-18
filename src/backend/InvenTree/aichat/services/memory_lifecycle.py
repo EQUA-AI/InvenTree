@@ -79,7 +79,7 @@ def _scrub_proposals(fact_id):
     rows.update(intent={}, preview={}, preview_hash='', reason='')
 
 
-def _forget_locked(fact, *, actor_id, reason):
+def _forget_locked(fact, *, actor_id, reason, deleted_at=None):
     if fact.lifecycle_state in {'forgotten', 'withdrawn'}:
         return False
     if reason not in FORGET_REASONS:
@@ -95,7 +95,7 @@ def _forget_locked(fact, *, actor_id, reason):
             'owner_joined_at': fact.owner.date_joined,
             'source_fingerprint': source,
             'reason': reason,
-            'deleted_at': timezone.now(),
+            'deleted_at': deleted_at or timezone.now(),
             'source_sequence': fact.claims.aggregate(latest=Max('source_sequence'))[
                 'latest'
             ]

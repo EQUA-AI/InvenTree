@@ -2,6 +2,7 @@ import { t } from '@lingui/core/macro';
 import {
   Alert,
   Button,
+  Checkbox,
   Group,
   Modal,
   Stack,
@@ -29,7 +30,10 @@ export function ThreadActionsModal({
   action: ThreadAction;
   onClose: () => void;
   onRename: (id: string, title: string) => Promise<boolean>;
-  onDelete: (id: string) => Promise<ThreadDeleteResult>;
+  onDelete: (
+    id: string,
+    forgetConfirmed?: boolean
+  ) => Promise<ThreadDeleteResult>;
   onShare?: (
     id: string,
     username: string,
@@ -39,6 +43,7 @@ export function ThreadActionsModal({
   const [value, setValue] = useState(
     action.kind === 'rename' ? action.thread.title : ''
   );
+  const [forgetConfirmed, setForgetConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [incomplete, setIncomplete] = useState(
@@ -55,7 +60,7 @@ export function ThreadActionsModal({
     setError(null);
     try {
       if (action.kind === 'delete') {
-        const result = await onDelete(action.thread.id);
+        const result = await onDelete(action.thread.id, forgetConfirmed);
         if (result === 'purge_incomplete') {
           setIncomplete(true);
           return;
@@ -105,7 +110,20 @@ export function ThreadActionsModal({
             {action.thread.title}
           </Text>
           {action.kind === 'delete' ? (
-            <Text size='sm'>{deletion.description}</Text>
+            <>
+              <Text size='sm'>{deletion.description}</Text>
+              {action.thread.isPersisted && !incomplete && (
+                <Checkbox
+                  label={t`Also forget saved memories learned from this conversation`}
+                  description={t`This applies to all of your memories still linked to this conversation, including those confirmed earlier. The choice is fixed when deletion starts.`}
+                  checked={forgetConfirmed}
+                  disabled={busy}
+                  onChange={(event) =>
+                    setForgetConfirmed(event.currentTarget.checked)
+                  }
+                />
+              )}
+            </>
           ) : (
             <TextInput
               data-autofocus
