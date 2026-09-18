@@ -138,6 +138,7 @@ class MemoryJournalTests(TestCase):
         payload = read_journal(export_journal(since=self.since), since=self.since)
         payload.pop('memories')
         payload.pop('client_memories')
+        payload.pop('attachment_severances')
         for row in payload['threads']:
             row.pop('forget_confirmed_memories')
         payload.update(

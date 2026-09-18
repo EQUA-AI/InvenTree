@@ -30,18 +30,21 @@ def cleanup(attachment_id, *, require_complete=False):
     """Withdraw proposals with restore proof, retain confirmed facts, sever sources."""
     if type(attachment_id) is not int or attachment_id < 1:
         raise ValueError('A positive attachment id is required')
-    identities = list(
-        MemoryFact.objects
-        .filter(claims__attachment_id=attachment_id)
-        .order_by('pk')
-        .values_list('pk', flat=True)
-        .distinct()[: LIMIT + 1]
+    from common.models import Attachment
+
+    Attachment.objects.select_for_update().filter(pk=attachment_id).first()
+    claims = list(
+        MemoryFactClaim.objects.filter(attachment_id=attachment_id).order_by('pk')[
+            : LIMIT + 1
+        ]
     )
-    if require_complete and len(identities) > LIMIT:
+    if require_complete and len(claims) > LIMIT:
         raise ValueError(
             'Attachment memory cleanup needs bounded operator passes before deletion'
         )
-    identities = identities[:LIMIT]
+    claims = claims[:LIMIT]
+    identities = {claim.fact_id for claim in claims}
+    selected_claims = {claim.pk for claim in claims}
     owners = MemoryFact.objects.filter(pk__in=identities).values('owner_id')
     list(
         get_user_model()
@@ -60,15 +63,23 @@ def cleanup(attachment_id, *, require_complete=False):
             _forget_locked(fact, actor_id=None, reason='forget')
             withdrawn += 1
             continue
+        from aichat.services.attachment_memory_journal import record
+
+        severed_at = timezone.now()
+        current_claims = fact.claims.filter(
+            pk__in=selected_claims, attachment_id=attachment_id
+        )
+        for claim in current_claims:
+            record(claim, fact=fact, severed_at=severed_at)
         _scrub_proposals(fact.pk)
-        fact.claims.filter(attachment_id=attachment_id).update(
+        current_claims.update(
             attachment_id=None,
             source_thread=None,
             source_message=None,
             source_model='',
             source_object_id='',
             source_field='',
-            severed_at=timezone.now(),
+            severed_at=severed_at,
         )
         fact.source_thread = None
         fact.source_message = None

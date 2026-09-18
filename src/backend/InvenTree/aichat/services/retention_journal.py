@@ -22,7 +22,12 @@ from aichat.models import (
     ChatThread,
     ChatThreadTombstone,
 )
-from aichat.services import client_memory_erasure, memory_journal, retention
+from aichat.services import (
+    attachment_memory_journal,
+    client_memory_erasure,
+    memory_journal,
+    retention,
+)
 from aichat.services.account_erasure import erase_account
 from aichat.services.account_erasure_log import record_erasure
 from InvenTree.restore_hold import restore_hold_enabled
@@ -115,6 +120,12 @@ def export_journal(*, since):
         client_memories = client_memory_erasure.export_proof(limit=MAX_ROWS)
     except ValueError:
         raise JournalError('Client memory deletion proof is incomplete') from None
+    try:
+        attachment_severances = attachment_memory_journal.export_proof(
+            upper=upper, limit=MAX_ROWS
+        )
+    except ValueError:
+        raise JournalError('Attachment severance proof is incomplete') from None
     memory_count = sum(
         len(memories[key]) for key in ('tombstones', 'opt_outs', 'purges')
     )
@@ -124,6 +135,7 @@ def export_journal(*, since):
         + len(accounts)
         + memory_count
         + len(client_memories)
+        + len(attachment_severances)
         > MAX_ROWS
     ):
         raise JournalError(
@@ -136,7 +148,7 @@ def export_journal(*, since):
         for key in ('user_joined_at', 'requested_at'):
             row[key] = row[key].isoformat()
     payload = {
-        'schema_version': 5,
+        'schema_version': 6,
         'source': source,
         'since': lower.isoformat(),
         'as_of': upper.isoformat(),
@@ -147,6 +159,7 @@ def export_journal(*, since):
         'accounts': accounts,
         'memories': memories,
         'client_memories': client_memories,
+        'attachment_severances': attachment_severances,
     }
     token = signing.dumps(payload, salt=SALT, compress=False)
     if len(token.encode('utf-8')) > MAX_BYTES:
@@ -172,7 +185,7 @@ def read_journal(token, *, since):
         if not isinstance(payload, dict):
             raise ValueError
         version = payload.get('schema_version')
-        if type(version) is not int or version not in (1, 2, 3, 4, 5):
+        if type(version) is not int or version not in (1, 2, 3, 4, 5, 6):
             raise ValueError
         fields = {
             'schema_version',
@@ -190,6 +203,8 @@ def read_journal(token, *, since):
             fields.add('memories')
         if version >= 5:
             fields.add('client_memories')
+        if version >= 6:
+            fields.add('attachment_severances')
         if set(payload) != fields:
             raise ValueError
         scope = (
@@ -220,8 +235,16 @@ def read_journal(token, *, since):
         client_count = client_memory_erasure.validate_proof(
             payload.get('client_memories', []), upper=upper, parse_time=aware_time
         )
+        attachment_count = attachment_memory_journal.validate_proof(
+            payload.get('attachment_severances', []), upper=upper, parse_time=aware_time
+        )
         if (
-            len(rows) + len(pending) + len(accounts) + memory_count + client_count
+            len(rows)
+            + len(pending)
+            + len(accounts)
+            + memory_count
+            + client_count
+            + attachment_count
             > MAX_ROWS
             or len(kinds) > 1000
         ):
@@ -398,6 +421,10 @@ def replay_journal(token, *, since, execute=False):
     client_conflicts = client_memory_erasure.conflicts(
         client_memories, parse_time=aware_time
     )
+    attachment_severances = payload.get('attachment_severances', [])
+    attachment_conflicts = attachment_memory_journal.conflicts(
+        attachment_severances, parse_time=aware_time
+    )
     memories = payload.get('memories')
     try:
         memory_conflicts = (
@@ -437,6 +464,9 @@ def replay_journal(token, *, since, execute=False):
         'account_conflicts': account_conflicts,
         'memory_conflicts': memory_conflicts,
         'client_memory_conflicts': int(client_conflicts),
+        'attachment_severance_conflicts': int(attachment_conflicts),
+        'attachment_severance_journal_missing': payload['schema_version'] < 6,
+        'attachment_severances': len(attachment_severances),
         'client_memory_journal_missing': payload['schema_version'] < 5,
         'memory_journal_missing': payload['schema_version'] < 3,
         'memory_tombstones': len(memories['tombstones']) if memories else 0,
@@ -461,12 +491,20 @@ def replay_journal(token, *, since, execute=False):
         or report['memory_journal_missing']
         or client_conflicts
         or report['client_memory_journal_missing']
+        or attachment_conflicts
+        or report['attachment_severance_journal_missing']
     ):
         return {**report, 'status': 'replay_incomplete'}
     if not execute:
         return {**report, 'status': 'dry_run'}
     failed = completed = 0
     completed_memories = memory_failures = 0
+    for row in attachment_severances:
+        try:
+            if not attachment_memory_journal.replay(row, parse_time=aware_time):
+                memory_failures += 1
+        except Exception:
+            memory_failures += 1
     for row in client_memories:
         try:
             if not client_memory_erasure.replay(row, parse_time=aware_time):

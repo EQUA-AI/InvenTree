@@ -95,3 +95,17 @@ class ClientMemoryErasure(models.Model):
                 fields=['client_code'], name='aichat_client_erasure_code'
             )
         ]
+
+
+class MemoryAttachmentSeverance(models.Model):
+    """Retained content-free source severance proof, independent of deleted rows."""
+
+    identity = models.CharField(primary_key=True, max_length=64)
+    claim_id = models.PositiveBigIntegerField()
+    claim_created_at = models.DateTimeField()
+    fact_id = models.UUIDField()
+    fact_created_at = models.DateTimeField()
+    owner_id = models.PositiveBigIntegerField()
+    owner_joined_at = models.DateTimeField()
+    attachment_id = models.PositiveBigIntegerField()
+    severed_at = models.DateTimeField(db_index=True)
