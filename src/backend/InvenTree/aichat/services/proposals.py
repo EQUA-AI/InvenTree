@@ -131,6 +131,7 @@ IRREVERSIBLE_CONFIRM_PHRASE: dict[str, str] = {
     ProposalAction.WORK_ORDER_DELETE.value: 'confirm delete',
     ProposalAction.WORK_ORDER_CANCEL.value: 'confirm cancel order',
     ProposalAction.STOCK_REMOVE.value: 'confirm remove',
+    ProposalAction.MEMORY_FORGET_ALL.value: 'forget all my memories',
 }
 
 
@@ -199,6 +200,11 @@ _TARGETLESS_ACTIONS = frozenset({
 
 def _require_role(owner, action_type: str) -> None:
     """Enforce the same RBAC role the UI endpoint requires (permission parity)."""
+    if action_type.startswith('memory.'):
+        from aichat.services.memory_commands import require_permission
+
+        require_permission(owner)
+        return
     role = _REQUIRED_ROLE.get(action_type)
     if role is None:
         return
@@ -219,6 +225,11 @@ def _authorize_and_bind(owner, action_type: str, work_order_id, intent):
     creating actions the target is ``None``; scope is checked against the
     machine (create) or every candidate card (optimize) named in the intent.
     """
+    if action_type.startswith('memory.'):
+        from aichat.services.memory_commands import prepare
+
+        version, preview = prepare(owner, action_type, intent)
+        return None, version, preview
     if action_type.startswith('stock.'):
         from aichat.services.stock_commands import prepare
 
@@ -642,7 +653,7 @@ def _preview(work_order, action_type: str, intent: dict[str, Any]) -> dict[str, 
     have no pinned card; their builders read only from the (server-validated)
     intent.
     """
-    if action_type.startswith('stock.'):
+    if action_type.startswith(('stock.', 'memory.')):
         return dict(work_order)
     base = {
         'action': action_type,
@@ -676,6 +687,10 @@ def _preview(work_order, action_type: str, intent: dict[str, Any]) -> dict[str, 
 #: dispatched by ``_dispatch`` below (asserted in the parity test). Adding an
 #: action means adding both its command mapping here and its ``_dispatch`` branch.
 ACTION_COMMAND: dict[str, str] = {
+    ProposalAction.MEMORY_REMEMBER.value: 'memory_commands.execute',
+    ProposalAction.MEMORY_UPDATE.value: 'memory_commands.execute',
+    ProposalAction.MEMORY_FORGET.value: 'memory_commands.execute',
+    ProposalAction.MEMORY_FORGET_ALL.value: 'memory_commands.execute',
     ProposalAction.CLOSEOUT_CONSENT.value: 'create_capture',
     ProposalAction.CLOSEOUT_ACCEPT.value: 'accept_revision',
     ProposalAction.CLOSEOUT_HANDOFF.value: 'handoff_capture',
@@ -712,6 +727,7 @@ def allowed_actions() -> tuple[str, ...]:
     return tuple(sorted(_ALLOWED_ACTIONS))
 
 
+@transaction.atomic
 def create_proposal(
     *,
     owner,
@@ -738,6 +754,12 @@ def create_proposal(
     telemetry only: it never joins the idempotent-replay comparison, so a
     retried request with a re-minted id still replays cleanly.
     """
+    if action_type.startswith('memory.'):
+        from aichat.services.memory_commands import lock_scope_owner, owner_scope
+
+        if (scope_key, scope_hash) != owner_scope(owner) or thread_id:
+            raise ProposalError('Memory actions require their owner scope')
+        owner = lock_scope_owner(owner, scope_hash)
     if action_type not in _ALLOWED_ACTIONS:
         raise CapabilityDenied(f'{action_type} is not an executable action')
     if not scope_hash:
@@ -746,6 +768,28 @@ def create_proposal(
     # checked here (before the read-back) and again at confirmation.
     _require_role(owner, action_type)
     intent = dict(intent or {})
+    if action_type.startswith('memory.'):
+        from aichat.services.memory_commands import authorize_preview
+
+        replay = ChatActionProposal.objects.filter(
+            owner=owner, idempotency_key=idempotency_key
+        ).first()
+        if replay is not None:
+            if (
+                replay.action_type != action_type
+                or replay.intent != intent
+                or replay.scope_key != scope_key
+                or replay.scope_hash != scope_hash
+                or replay.thread_id != thread_id
+                or replay.source_turn_id != source_turn_id
+                or replay.reason != (reason or '').strip()[:2000]
+                or replay.policy_version != policy_version
+            ):
+                raise ProposalStateConflict(
+                    'A different memory intent already uses this key'
+                )
+            authorize_preview(owner, replay)
+            return replay
     if action_type == ProposalAction.WORK_ORDER_CANCEL:
         supplied_reason = str(reason or '').strip()
         intent_reason = str(intent.get('reason') or '').strip()
@@ -774,6 +818,9 @@ def create_proposal(
                 target_work_order_id=target_id,
                 target_stock_item_id=intent.get('stock_item_id')
                 if action_type.startswith('stock.')
+                else None,
+                target_memory_fact_id=intent.get('memory_fact_id')
+                if action_type.startswith('memory.')
                 else None,
                 target_version=target_version,
                 intent=intent,
@@ -896,6 +943,9 @@ def list_owned_proposals(*, owner, scope_hash: str, limit: int = 20):
 def reject_proposal(*, owner, scope_hash: str, proposal_id) -> ChatActionProposal:
     """Idempotently reject a pending proposal."""
     with transaction.atomic():
+        from aichat.services.memory_commands import lock_scope_owner
+
+        owner = lock_scope_owner(owner, scope_hash)
         proposal = (
             ChatActionProposal.objects
             .select_for_update()
@@ -904,12 +954,22 @@ def reject_proposal(*, owner, scope_hash: str, proposal_id) -> ChatActionProposa
         )
         if proposal is None:
             raise ProposalNotFound('no such proposal')
+        if proposal.action_type.startswith('memory.'):
+            from aichat.services.memory_commands import authorize_preview
+
+            authorize_preview(owner, proposal)
         if proposal.state == ProposalState.REJECTED:
             return proposal
         if proposal.is_terminal:
             raise ProposalStateConflict(f'proposal is {proposal.state}')
+        if proposal.action_type.startswith('memory.'):
+            from aichat.services.memory_commands import reject
+
+            reject(proposal, owner)
         proposal.state = ProposalState.REJECTED
         proposal.save(update_fields=['state', 'updated_at'])
+        if proposal.action_type.startswith('memory.'):
+            proposal.refresh_from_db()
         return proposal
 
 
@@ -1097,6 +1157,10 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
     # id joins utterance -> proposal -> WorkOrderEvent. None (blank or
     # unparsable) lets the command mint, exactly the pre-S36 behavior.
     correlation = _as_uuid(proposal.correlation_id) or uuid.uuid4()
+    if action.startswith('memory.'):
+        from aichat.services.memory_commands import execute
+
+        return execute(proposal, owner)
     if action.startswith('closeout.'):
         from ai.core.decisions.adapters.capture_adapter import execute
 
@@ -1375,6 +1439,9 @@ def confirm_proposal(
 
     try:
         with transaction.atomic():
+            from aichat.services.memory_commands import lock_scope_owner
+
+            owner = lock_scope_owner(owner, scope_hash)
             proposal = (
                 ChatActionProposal.objects
                 .select_for_update()
@@ -1383,6 +1450,15 @@ def confirm_proposal(
             )
             if proposal is None:
                 raise ProposalNotFound('no such proposal')
+            if proposal.action_type.startswith('memory.'):
+                from aichat.services.memory_commands import authorize_preview
+
+                _require_role(owner, proposal.action_type)
+                authorize_preview(owner, proposal)
+                if not expected_preview_hash:
+                    raise ProposalPreviewChanged(
+                        'Review the exact memory preview first'
+                    )
             stored_hash = compute_preview_hash(proposal.preview or {})
             if expected_preview_hash is not None and (
                 not expected_preview_hash
@@ -1417,7 +1493,7 @@ def confirm_proposal(
                 )
             if (
                 not strict_phrase_satisfied
-                or proposal.action_type.startswith('closeout.')
+                or proposal.action_type.startswith(('closeout.', 'memory.'))
                 or proposal.action_type
                 in (
                     ProposalAction.WORK_ORDER_CANCEL,
@@ -1581,7 +1657,7 @@ def _deliver_notification(
     """
     from aichat.services.threads import ThreadRepository, ThreadRepositoryError
 
-    if not proposal.thread_id:
+    if not proposal.thread_id or proposal.action_type.startswith('memory.'):
         return False
     try:
         with transaction.atomic():

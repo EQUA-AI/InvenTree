@@ -33,6 +33,9 @@ def _payload(proposal: ChatActionProposal) -> dict:
         'state': proposal.state,
         'work_order_id': proposal.target_work_order_id,
         'stock_item_id': proposal.target_stock_item_id,
+        'memory_fact_id': str(proposal.target_memory_fact_id)
+        if proposal.target_memory_fact_id
+        else None,
         'target_version': proposal.target_version,
         'intent': proposal.intent,
         'preview': proposal.preview,

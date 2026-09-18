@@ -929,6 +929,10 @@ class ProposalAction(models.TextChoices):
     security review.
     """
 
+    MEMORY_REMEMBER = 'memory.remember', 'Remember a memory'
+    MEMORY_UPDATE = 'memory.update', 'Correct a memory'
+    MEMORY_FORGET = 'memory.forget', 'Forget a memory'
+    MEMORY_FORGET_ALL = 'memory.forget_all', 'Forget all memories'
     WORK_ORDER_HOLD = 'work_order.hold', 'Hold work order'
     WORK_ORDER_RESUME = 'work_order.resume', 'Resume work order'
     # Scheduling actions (Phase 6c). All single-target and version-checked; each
@@ -1030,6 +1034,7 @@ class ChatActionProposal(models.Model):
     target_work_order_id = models.PositiveIntegerField(null=True, blank=True)
     # Plain nullable identity, not a cascading FK: depletion may delete the row.
     target_stock_item_id = models.PositiveIntegerField(null=True, blank=True)
+    target_memory_fact_id = models.UUIDField(null=True, blank=True)
     target_version = models.PositiveIntegerField(null=True, blank=True)
     # Server-validated action parameters (schedule window, assignee, plan fields).
     # Never trusted from the model: re-derived/re-checked at confirmation.

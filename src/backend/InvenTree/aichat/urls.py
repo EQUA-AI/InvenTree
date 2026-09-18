@@ -23,11 +23,25 @@ from aichat.email_api import (
     MailboxSync,
 )
 from aichat.media_stream import EvidenceMediaStreamView
-from aichat.memory_api import MemoryNoticeView, MemoryOptOutView, MemorySettingsView
+from aichat.memory_api import (
+    MemoryNoticeView,
+    MemoryOptOutView,
+    MemoryProposalDecisionView,
+    MemoryProposalListView,
+    MemorySettingsView,
+)
 
 app_name = 'aichat'
 
 urlpatterns = [
+    path(
+        'memory/proposals/', MemoryProposalListView.as_view(), name='memory-proposals'
+    ),
+    path(
+        'memory/proposals/<uuid:proposal_id>/decision/',
+        MemoryProposalDecisionView.as_view(),
+        name='memory-proposal-decision',
+    ),
     path('memory/settings/', MemorySettingsView.as_view(), name='memory-settings'),
     path('memory/notice/', MemoryNoticeView.as_view(), name='memory-notice'),
     path('memory/opt-out/', MemoryOptOutView.as_view(), name='memory-opt-out'),

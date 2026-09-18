@@ -25,7 +25,24 @@ def purge_thread_memory(thread_id):
     """Delete proposals and sever retained confirmed facts from deleted sources."""
     if not store_available():
         return
+    from django.contrib.auth import get_user_model
+
+    from aichat.services.memory_lifecycle import _scrub_proposals
+
     linked = Q(source_thread_id=thread_id) | Q(claims__source_thread_id=thread_id)
+    owner_ids = MemoryFact.objects.filter(linked).values('owner_id')
+    list(
+        get_user_model()
+        .objects.select_for_update()
+        .filter(pk__in=owner_ids)
+        .order_by('pk')
+    )
+    # The memory action scope is owner-wide, so proposal.thread_id is empty.
+    # Scrub copied preview/provenance explicitly before deleting or severing.
+    for identity in (
+        MemoryFact.objects.filter(linked).values_list('pk', flat=True).distinct()
+    ):
+        _scrub_proposals(identity)
     MemoryFact.objects.filter(linked, lifecycle_state='proposed').distinct().delete()
     rows = list(
         MemoryFact.objects.filter(linked).distinct().values('id', 'owner_id', 'version')

@@ -64,3 +64,132 @@ class MemoryOptOutView(MemorySettingsView):
         return Response(
             result, status=202 if result['status'] == 'purge_incomplete' else 200
         )
+
+
+class MemoryProposalListView(MemorySettingsView):
+    """Prepare actions only from already governed facts and server-owned scope."""
+
+    def get(self, request):
+        """List current accessible previews; another rail's scope is never used."""
+        from aichat.api import _error, _payload
+        from aichat.models import ChatActionProposal
+        from aichat.services import memory_commands, proposals
+
+        try:
+            owner = memory_commands.require_permission(request.user)
+            _, scope_hash = memory_commands.owner_scope(owner)
+            rows = ChatActionProposal.objects.filter(
+                owner=owner, scope_hash=scope_hash
+            )[:100]
+            visible = []
+            for proposal in rows:
+                try:
+                    memory_commands.authorize_preview(owner, proposal)
+                except proposals.ProposalNotFound:
+                    continue
+                visible.append(_payload(proposal))
+            return Response({'results': visible})
+        except proposals.ProposalError as exc:
+            return _error(exc)
+
+    def post(self, request):
+        """No candidate text, provider verdict or confirmation comes from a model."""
+        from django.utils import timezone
+
+        from aichat.api import _error, _payload
+        from aichat.models import ChatActionProposal
+        from aichat.services import memory_commands, proposals
+
+        data = request.data
+        if not isinstance(data, dict) or set(data) - {
+            'action_type',
+            'memory_fact_id',
+            'expected_version',
+            'topics',
+            'replacement_fact_id',
+            'idempotency_key',
+        }:
+            return Response({'error': 'invalid_memory_action'}, status=400)
+        action, key = data.get('action_type'), data.get('idempotency_key')
+        if (
+            not isinstance(action, str)
+            or action not in memory_commands.ACTIONS
+            or not isinstance(key, str)
+            or not 1 <= len(key) <= 128
+        ):
+            return Response({'error': 'invalid_memory_action'}, status=400)
+        try:
+            owner = memory_commands.require_permission(request.user)
+            scope_key, scope_hash = memory_commands.owner_scope(owner)
+            intent = {
+                name: value
+                for name, value in data.items()
+                if name not in {'action_type', 'idempotency_key'}
+            }
+            if action == 'memory.forget_all':
+                if intent:
+                    return Response({'error': 'invalid_memory_action'}, status=400)
+                existing = ChatActionProposal.objects.filter(
+                    owner=owner,
+                    idempotency_key=key,
+                    action_type=action,
+                    scope_hash=scope_hash,
+                ).first()
+                intent = (
+                    existing.intent
+                    if existing
+                    else {'before': timezone.now().isoformat()}
+                )
+            proposal = proposals.create_proposal(
+                owner=owner,
+                scope_key=scope_key,
+                scope_hash=scope_hash,
+                action_type=action,
+                work_order_id=None,
+                reason='',
+                idempotency_key=key,
+                policy_version='memory-actions-v1',
+                intent=intent,
+            )
+            return Response(_payload(proposal), status=201)
+        except proposals.ProposalError as exc:
+            return _error(exc)
+
+
+class MemoryProposalDecisionView(MemorySettingsView):
+    """Session/CSRF protected visual confirmation or rejection, one fact at a time."""
+
+    def post(self, request, proposal_id):
+        """Route both decisions through the shared canonical proposal service."""
+        from aichat.api import _error, _payload
+        from aichat.services import memory_commands, proposals
+
+        data = request.data
+        if not isinstance(data, dict) or set(data) - {
+            'decision',
+            'expected_preview_hash',
+            'confirm_phrase',
+        }:
+            return Response({'error': 'invalid_memory_decision'}, status=400)
+        if not isinstance(data.get('confirm_phrase', ''), str):
+            return Response({'error': 'invalid_memory_decision'}, status=400)
+        try:
+            owner = memory_commands.require_permission(request.user)
+            _, scope_hash = memory_commands.owner_scope(owner)
+            if data.get('decision') == 'confirm':
+                proposal = proposals.confirm_proposal(
+                    owner=owner,
+                    scope_hash=scope_hash,
+                    proposal_id=proposal_id,
+                    expected_preview_hash=data.get('expected_preview_hash'),
+                    confirm_phrase=data.get('confirm_phrase', ''),
+                )
+            elif data.get('decision') == 'reject':
+                proposal = proposals.reject_proposal(
+                    owner=owner, scope_hash=scope_hash, proposal_id=proposal_id
+                )
+            else:
+                return Response({'error': 'invalid_memory_decision'}, status=400)
+            return Response(_payload(proposal))
+        except proposals.ProposalError as exc:
+            return _error(exc)

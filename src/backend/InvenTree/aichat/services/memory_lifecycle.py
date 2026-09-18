@@ -8,7 +8,7 @@ from datetime import timezone as datetime_timezone
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import F, Max
+from django.db.models import F, Max, Q
 from django.utils import timezone
 
 from ai.core.config import get_settings
@@ -68,7 +68,11 @@ def slot_fingerprint(fact):
 
 def _scrub_proposals(fact_id):
     """Execution receipts survive; the copied preview, intent and rationale do not."""
-    rows = ChatActionProposal.objects.filter(intent__memory_fact_id=str(fact_id))
+    rows = ChatActionProposal.objects.filter(
+        Q(target_memory_fact_id=fact_id)
+        | Q(intent__memory_fact_id=str(fact_id))
+        | Q(intent__replacement_fact_id=str(fact_id))
+    )
     rows.filter(state='proposed').update(
         state='rejected', failure_code='MEMORY_FORGOTTEN'
     )

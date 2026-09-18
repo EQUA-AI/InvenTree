@@ -340,10 +340,21 @@ def purge_terminal_proposals(
     Closes the recorded Q48 gap ("proposal expiry never deletes"): the
     sweep task still only expires; deletion is retention's job alone.
     """
+    from aichat.models import MemoryFact
+
+    authority_receipts = MemoryFact.objects.filter(
+        lifecycle_state='active', confirming_proposal__isnull=False
+    ).values('confirming_proposal_id')
+    # An active preference's SQL authority constraint requires its receipt.
+    # Retain only that content-free proof until the fact leaves active state.
+    if not dry_run:
+        ChatActionProposal.objects.filter(
+            pk__in=authority_receipts, updated_at__lt=_cutoff(days)
+        ).update(intent={}, preview={}, preview_hash='', reason='')
     count = _batched_delete(
         ChatActionProposal.objects.filter(
             state__in=TERMINAL_PROPOSAL_STATES, updated_at__lt=_cutoff(days)
-        ),
+        ).exclude(pk__in=authority_receipts),
         family='proposals',
         batch_size=batch_size,
         dry_run=dry_run,
