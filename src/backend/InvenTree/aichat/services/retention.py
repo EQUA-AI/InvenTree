@@ -1537,3 +1537,11 @@ register_outbox_kind(
         'thread_summary', handler=_handle_thread_summary, probe=_probe_thread_summary
     )
 )
+
+from aichat.services.memory_lifecycle import owner_purge_residual, retry_owner_purge
+
+register_outbox_kind(
+    OutboxKind(
+        'memory_owner_purge', handler=retry_owner_purge, probe=owner_purge_residual
+    )
+)

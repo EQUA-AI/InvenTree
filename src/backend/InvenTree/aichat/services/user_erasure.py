@@ -10,7 +10,10 @@ from aichat.models import (
     ChatThread,
     ChatThreadGrant,
     ChatThreadTombstone,
+    MemoryFact,
+    MemoryNoticeAcknowledgement,
     MessageFeedback,
+    UserMemorySettings,
 )
 from aichat.services import retention
 from aichat.services.voice_retention import (
@@ -26,8 +29,15 @@ def _residuals(user_id):
     tombstones = ChatThreadTombstone.objects.filter(owner_id=user_id)
     return {
         'owned_threads': ChatThread.objects.filter(owner_id=user_id).count(),
+        'memory_facts': MemoryFact.objects.filter(
+            owner_id=user_id,
+            lifecycle_state__in=['proposed', 'active', 'superseded', 'expired'],
+        ).count(),
         'incoming_grants': ChatThreadGrant.objects.filter(
             grantee_id=user_id, revoked_at__isnull=True
+        ).count(),
+        'memory_notices': MemoryNoticeAcknowledgement.objects.filter(
+            user_id=user_id
         ).count(),
         'authored_feedback': MessageFeedback.objects.filter(user_id=user_id).count(),
         'voice_sessions': VoiceSession.objects.filter(owner_id=user_id).count(),
@@ -68,6 +78,7 @@ def purge_user_content(user_id, *, dry_run, batch_size):
         'backup_window': {'status': 'unverified', 'days': None},
         'preserved': [
             'user_account',
+            'memory_opt_out_and_content_free_audit',
             'operational_records',
             'proposal_actor_references',
             'thread_tombstones',
@@ -94,6 +105,28 @@ def purge_user_content(user_id, *, dry_run, batch_size):
         }
 
     counts = {'threads_attempted': 0, 'thread_failures': 0, 'cleanup_failures': 0}
+    from aichat.services.memory_lifecycle import forget_owner_facts, purge_reference
+
+    # Halt new learning before the first bounded purge; a failure leaves the
+    # durable retry obligation and residual counts visible to the operator.
+    with transaction.atomic():
+        get_user_model().objects.select_for_update().get(pk=user_id)
+        UserMemorySettings.objects.update_or_create(
+            user_id=user_id, defaults={'opted_out': True}
+        )
+        retention.enqueue_outbox(
+            'memory_owner_purge', purge_reference(user_id, started, 'erasure')
+        )
+        counts['memory_notices_removed'] = MemoryNoticeAcknowledgement.objects.filter(
+            user_id=user_id
+        ).delete()[0]
+    try:
+        memory_result = forget_owner_facts(
+            user_id, cutoff=started, reason='erasure', limit=batch_size
+        )
+        counts['memory_facts_forgotten'] = memory_result['forgotten']
+    except Exception:
+        counts['cleanup_failures'] += 1
     # Audit rows survive. Even expired but not yet revoked grants get a stamp.
     counts['grants_revoked'] = ChatThreadGrant.objects.filter(
         grantee_id=user_id, revoked_at__isnull=True
