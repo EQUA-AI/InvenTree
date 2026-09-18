@@ -52,6 +52,9 @@ dependencies = [
     # Logging & Observability
     "structlog>=24.4.0",
 
+    # Seeded offline memory language validation
+    "langdetect==1.0.9",
+
     # Utilities
     "tenacity>=9.0.0",
     "aiofiles>=24.1.0",

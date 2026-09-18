@@ -98,3 +98,5 @@ openai>=1.12.0                          # OpenAI SDK
 pydantic==2.13.4                        # governed by agent-framework-core==1.0.0b251120
 pydantic-settings==2.14.2               # governed by agent-framework-core==1.0.0b251120
 tiktoken==0.14.0                        # o200k_base estimator (ai/core/usage.py); cache baked offline in the image
+
+langdetect==1.0.9                       # Seeded offline memory language validation
