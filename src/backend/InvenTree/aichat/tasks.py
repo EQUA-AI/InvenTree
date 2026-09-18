@@ -972,27 +972,38 @@ def _compact_locked(thread_id) -> None:
     if high - expected < ThreadRepository.COMPACTION_MIN_BACKLOG:
         return
 
+    from aichat.services.memory_summary_guard import (
+        load_guard,
+        scrub_body,
+        source_is_blocked,
+        text_is_blocked,
+    )
+
+    memory_guard = load_guard(thread.owner_id)
+
     rows = (
         ChatMessage.objects
         .filter(thread_id=thread_id, sequence__gt=expected, sequence__lte=high)
         .order_by('sequence')
-        .values('role', 'content', 'sequence')[:COMPACTION_MAX_MESSAGES]
+        .values('role', 'content', 'sequence', 'metadata')[:COMPACTION_MAX_MESSAGES]
     )
     transcript: list[dict] = []
     total_chars = 0
     batch_high = expected
     for row in rows:
+        if source_is_blocked(row.get('metadata'), memory_guard):
+            batch_high = int(row['sequence'])
+            continue
         content = str(row['content'])[:4000]
         if transcript and total_chars + len(content) > COMPACTION_MAX_CHARS:
             break
         batch_high = int(row['sequence'])
         if not content.strip():
             continue
+        if text_is_blocked(content, memory_guard):
+            continue
         transcript.append({'role': row['role'], 'content': content})
         total_chars += len(content)
-    if not transcript:
-        return
-
     # CR-2: redact the STORED prior body too, not only the in-flight payload.
     # ``merge_protected_fields`` unions prior items into every later summary,
     # so an unredacted item minted before 2026-09 would otherwise persist and
@@ -1003,6 +1014,28 @@ def _compact_locked(thread_id) -> None:
 
     prior_raw = thread.summary
     prior_body = redact_payload(parse_summary_body(prior_raw)).value
+    prior_body, _ = scrub_body(prior_body, memory_guard)
+    if not transcript:
+        if batch_high <= expected:
+            return
+        summary_text = (
+            str(prior_body.get('label') or '')[:60]
+            + '\n'
+            + json.dumps(prior_body, ensure_ascii=True)
+        )
+        updated = ChatThread.objects.filter(
+            pk=thread_id, summary_through_sequence=expected, summary=prior_raw
+        ).update(summary=summary_text, summary_through_sequence=batch_high)
+        _event_create(
+            thread_id,
+            outcome=Outcome.SKIPPED if updated else Outcome.RACE_LOST,
+            error_code='no_eligible_sources',
+            finished_at=timezone.now(),
+            from_sequence=expected + 1,
+            through_sequence=batch_high,
+            flag_state=flag_state,
+        )
+        return
     delta_ops = _delta_ops_enabled()
     projection = project_prior_for_model(prior_body, delta_ops=delta_ops)
 
@@ -1134,6 +1167,8 @@ def _compact_locked(thread_id) -> None:
             )
             merge_counts['dropped'] += dropped
             merge_counts['cap_hit'] = merge_counts['cap_hit'] or cap_hit
+        merged, memory_hits = scrub_body(merged, memory_guard)
+        merge_counts['tombstone_hits'] += memory_hits
         # ``kept`` describes the body that is actually stored: after the cap
         # AND after the directive scrub — active items plus citation keys.
         kept = sum(len(active_items(merged, field)) for field in ITEM_LISTS) + len(

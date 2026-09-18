@@ -195,6 +195,25 @@ class CompactionJobTest(TestCase):
         transcript = summarize.call_args.args[0]
         self.assertEqual(len(transcript), 20)
 
+    def test_deleted_memory_sources_advance_without_model(self):
+        """An entirely excluded batch cannot loop or spend on a summarizer."""
+        from aichat.services.memory_summary_guard import SummaryMemoryGuard
+
+        ChatMessage.objects.filter(thread=self.thread).update(
+            metadata={'memory_fact_ids': ['deleted-fact']}
+        )
+        with (
+            mock.patch(
+                'aichat.services.memory_summary_guard.load_guard',
+                return_value=SummaryMemoryGuard(fact_ids=frozenset({'deleted-fact'})),
+            ),
+            mock.patch.object(tasks, '_summarize') as summarize,
+        ):
+            tasks.compact_thread_summary(self.thread.pk)
+        summarize.assert_not_called()
+        self.thread.refresh_from_db()
+        self.assertEqual(self.thread.summary_through_sequence, 20)
+
     def test_prior_protected_facts_merge_forward(self):
         """Verify prior protected facts merge forward."""
         self.thread.summary = 'Old label\n{"machine_facts": ["ancient fact"]}'
