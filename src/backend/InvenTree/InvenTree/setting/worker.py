@@ -85,4 +85,33 @@ def get_worker_config(
         # If sentry is enabled, configure django-q to report errors to sentry
         config['error_reporter'] = {'sentry': {'dsn': sentry_dsn}}
 
+    memory_timeout = int(
+        get_setting('INVENTREE_MEMORY_TIMEOUT', 'background.memory_timeout', 300)
+    )
+    if not 30 <= memory_timeout <= 900:
+        raise ValueError('INVENTREE_MEMORY_TIMEOUT must be between 30 and 900')
+    # django-q2 merges the selected alternative into the default configuration.
+    # Explicitly override transport/sync settings; selecting this cluster must
+    # never inherit inline debug execution or an external broker.
+    config['ALT_CLUSTERS'] = {
+        'ai-memory': {
+            'workers': 1,
+            'timeout': memory_timeout,
+            'retry': memory_timeout + 120,
+            'queue_limit': 20,
+            'bulk': 1,
+            'orm': 'default',
+            'sync': False,
+            'cached': False,
+            'scheduler': True,
+            'catch_up': False,
+            'django_redis': None,
+            'redis': None,
+            'broker_class': None,
+            'iron_mq': None,
+            'sqs': None,
+            'mongo': None,
+        }
+    }
+
     return config

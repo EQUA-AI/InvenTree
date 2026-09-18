@@ -362,6 +362,10 @@ class Settings(BaseSettings):
             "FEATURE_THREAD_COMPACTION", "AIMMS_FEATURE_THREAD_COMPACTION"
         ),
     )
+    # Routing only: deploying this code must not strand work in an unprovisioned queue.
+    aimms_memory_worker_enabled: bool = Field(
+        default=False, validation_alias=AliasChoices("AIMMS_MEMORY_WORKER_ENABLED")
+    )
     # M2 PR 3 (plan §8.7 delta ops): when true the compaction summarizer
     # is asked for schema v2 (v1 + ``removals``/``expirations``/
     # ``supersessions`` over the ids of prior protected items). Stored

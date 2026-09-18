@@ -1,0 +1,30 @@
+# REVIEW INPUT ONLY. Merge into each source worker's reviewed deployment spec.
+# This is not a standalone deployable Container App definition.
+name: "${MEMORY_WORKER_APP}"
+properties:
+  configuration:
+    activeRevisionsMode: Single
+  template:
+    containers:
+      - name: memory-worker
+        image: "${REVIEWED_BACKEND_IMAGE_DIGEST}"
+        command: ["invoke"]
+        args: ["worker"]
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        # Merge by env name; preserve required source-worker settings/secret refs.
+        env:
+          - name: Q_CLUSTER_NAME
+            value: ai-memory
+          - name: INVENTREE_MEMORY_TIMEOUT
+            value: "300"
+          - name: AIMMS_MEMORY_WORKER_ENABLED
+            value: "false"
+          - name: MEM0_TELEMETRY
+            value: "false"
+          - name: MEM0_DIR
+            value: /tmp/mem0
+    scale:
+      minReplicas: 1
+      maxReplicas: 1

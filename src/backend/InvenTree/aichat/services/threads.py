@@ -782,12 +782,16 @@ class ThreadRepository:
             backlog = (thread.next_sequence - 1) - thread.summary_through_sequence
             if backlog < self.COMPACTION_MIN_BACKLOG:
                 return
+            if getattr(settings, 'aimms_memory_worker_enabled', False):
+                from aichat.services.memory_worker import enqueue_compaction
+
+                enqueue_compaction(thread.pk)
+                return
             from aichat import tasks as aichat_tasks
             from InvenTree.tasks import offload_task
 
-            # Plan of record 8.7 (worker placement): route by group with a
-            # per-task timeout now; the dedicated ai-memory cluster (CR-4)
-            # adds the ``cluster`` kwarg when it lands.
+            # Keep current placement until the dedicated consumer is qualified
+            # and the explicit routing switch is enabled on producers.
             offload_task(
                 aichat_tasks.compact_thread_summary,
                 thread.pk,
