@@ -67,6 +67,7 @@ def attachment_rows(rows, *, user, corpus):
 def controlled_rows(rows, *, user):
     """Site-wide controlled manuals retain their existing work-order reader role."""
     from ai.core.config import get_settings
+    from ai.core.integrations.projection_gate import recall_allowed
     from aichat.models import ControlledDocument
 
     actor = fresh_actor(user)
@@ -77,6 +78,7 @@ def controlled_rows(rows, *, user):
         or not fresh_role(actor, "work_order")
         or len(rows) > 5
         or restore_hold_enabled()
+        or not recall_allowed("controlled")
     ):
         return []
     settings = get_settings()

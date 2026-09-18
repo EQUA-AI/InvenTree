@@ -51,3 +51,36 @@ def projection_row_reason(row, *, corpus, index_name):
     if not relation.filter(search_doc_id=row.get('id')).exists():
         return 'missing_chunk'
     return ''
+
+
+def controlled_projection_reason(row, *, index_name):
+    """Rebuild current controlled-source authority without selecting body text."""
+    from ai.core.config import get_settings
+    from aichat.models import ControlledDocument
+
+    scope_key = get_settings().single_site_policy_key
+    if not scope_key or row.get('scope_key') != scope_key:
+        return 'scope_drift'
+    document = ControlledDocument.objects.filter(
+        scope_key=scope_key,
+        document_id=row.get('document_id'),
+        revision=row.get('document_revision'),
+        search_index_name=index_name,
+    ).first()
+    if document is None:
+        return 'missing_registry'
+    if (
+        not document.is_current
+        or document.state != 'indexed'
+        or row.get('is_current') is not True
+    ):
+        return 'inactive_registry'
+    if row.get('source_sha256') != document.source_sha256:
+        return 'source_drift'
+    if (
+        document.access_class != 'maintenance_authorized'
+        or row.get('access_class') != document.access_class
+        or str(row.get('asset_id') or '') != document.asset_id
+    ):
+        return 'metadata_drift'
+    return ''

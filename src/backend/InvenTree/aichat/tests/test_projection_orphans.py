@@ -76,3 +76,36 @@ class ReverseProjectionTests(TestCase):
         result = service.recheck_orphan(identity=finding.pk, projection=self.projection)
         self.assertEqual(result['status'], 'resolved')
         self.assertTrue(RagProjectionGate.objects.get().blocked)
+
+    def test_controlled_orphan_uses_registry_metadata_and_blocks_its_gate(self):
+        """Current controlled chunks with no native revision are not readable."""
+        from ai.core.integrations.projection_gate import recall_allowed
+
+        self.client.search.return_value = [
+            {
+                'id': 'controlled-orphan',
+                'document_id': 'missing',
+                'document_revision': '1',
+                'scope_key': 'fixture',
+                'is_current': True,
+                'source_sha256': 'a' * 64,
+                'access_class': 'maintenance_authorized',
+                'asset_id': '',
+            }
+        ]
+        with mock.patch(
+            'ai.core.config.get_settings',
+            return_value=SimpleNamespace(single_site_policy_key='fixture'),
+        ):
+            result = service.scan_orphans(
+                corpus='controlled', record=True, projection=self.projection
+            )
+        self.assertEqual(result['critical'], 1)
+        self.assertEqual(RagProjectionOrphan.objects.get().reason, 'missing_registry')
+        self.assertFalse(recall_allowed('controlled'))
+        fields = self.client.search.call_args.kwargs['select']
+        self.assertIn('document_revision', fields)
+        self.assertNotIn('chunk', fields)
+        self.assertEqual(
+            self.client.search.call_args.kwargs['filter'], 'is_current eq true'
+        )

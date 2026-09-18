@@ -12,7 +12,10 @@ from django.db import transaction
 
 from aichat.models import RagProjectionAudit, RagProjectionGate, RagProjectionOrphan
 from aichat.services.projection_audit import FIELDS
-from aichat.services.projection_authority import projection_row_reason
+from aichat.services.projection_authority import (
+    controlled_projection_reason,
+    projection_row_reason,
+)
 from InvenTree.restore_hold import restore_hold_enabled
 
 
@@ -22,11 +25,41 @@ def _projection(corpus):
         MediaSearchProjection,
     )
 
+    if corpus == 'controlled':
+        from ai.core.integrations.controlled_document_search import (
+            AzureSelectedDocumentSearch,
+        )
+
+        return AzureSelectedDocumentSearch.from_settings()
     if corpus not in {'attachment', 'media'}:
         raise ValueError('Invalid corpus')
     return (
         AttachmentSearchProjection if corpus == 'attachment' else MediaSearchProjection
     ).from_settings()
+
+
+def _fields(corpus):
+    if corpus == 'controlled':
+        return [
+            'id',
+            'document_id',
+            'document_revision',
+            'source_sha256',
+            'scope_key',
+            'access_class',
+            'asset_id',
+            'is_current',
+        ]
+    return FIELDS
+
+
+def _reason(row, *, corpus, index_name):
+    if corpus == 'controlled':
+        # A deliberately superseded chunk is not a serving-authority orphan.
+        if row.get('is_current') is False:
+            return ''
+        return controlled_projection_reason(row, index_name=index_name)
+    return projection_row_reason(row, corpus=corpus, index_name=index_name)
 
 
 def _identity(corpus, index_name, document_id):
@@ -59,7 +92,7 @@ def _record(*, corpus, index_name, row, reason):
 def scan_orphans(*, corpus, sample=20, offset=0, record=False, projection=None):
     """Check at most 100 Search-origin rows, with bounded offset and no bodies."""
     if (
-        corpus not in {'attachment', 'media'}
+        corpus not in {'attachment', 'media', 'controlled'}
         or type(sample) is not int
         or not 1 <= sample <= 100
         or type(offset) is not int
@@ -84,7 +117,8 @@ def scan_orphans(*, corpus, sample=20, offset=0, record=False, projection=None):
             islice(
                 projection.client().search(
                     search_text='*',
-                    select=FIELDS,
+                    filter='is_current eq true' if corpus == 'controlled' else None,
+                    select=_fields(corpus),
                     skip=offset,
                     top=sample + 1,
                     connection_timeout=5,
@@ -98,9 +132,7 @@ def scan_orphans(*, corpus, sample=20, offset=0, record=False, projection=None):
         for row in rows[:sample]:
             report['sampled'] += 1
             try:
-                reason = projection_row_reason(
-                    row, corpus=corpus, index_name=projection.index_name
-                )
+                reason = _reason(row, corpus=corpus, index_name=projection.index_name)
                 if reason:
                     report['drift'] += 1
                     report['critical'] += 1
@@ -162,7 +194,7 @@ def recheck_orphan(*, identity, projection=None):
         try:
             row = projection.client().get_document(
                 key=finding.document_id,
-                selected_fields=FIELDS,
+                selected_fields=_fields(finding.corpus),
                 connection_timeout=5,
                 read_timeout=10,
                 retry_total=0,
@@ -187,9 +219,7 @@ def recheck_orphan(*, identity, projection=None):
         else:
             if row.get('id') != finding.document_id:
                 raise ValueError('Projection identity changed')
-            reason = projection_row_reason(
-                row, corpus=finding.corpus, index_name=finding.index_name
-            )
+            reason = _reason(row, corpus=finding.corpus, index_name=finding.index_name)
         with transaction.atomic():
             RagProjectionGate.objects.select_for_update().get(corpus=finding.corpus)
             current = RagProjectionOrphan.objects.select_for_update().get(pk=identity)

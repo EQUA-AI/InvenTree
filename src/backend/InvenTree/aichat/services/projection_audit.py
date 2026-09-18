@@ -39,7 +39,7 @@ def release_gate(*, corpus, expected_blocked_at):
     """Explicit operator action after repairs and newer clean evidence; never automatic."""
     from datetime import datetime
 
-    if corpus not in {'attachment', 'media'} or restore_hold_enabled():
+    if corpus not in {'attachment', 'media', 'controlled'} or restore_hold_enabled():
         raise ValueError('Projection release unavailable')
     try:
         expected = datetime.fromisoformat(expected_blocked_at)
@@ -266,13 +266,15 @@ def scheduled_audit():
     if not get_settings().feature_rag_projection_audit or restore_hold_enabled():
         return {'status': 'disabled'}
     results = {}
-    for corpus in ('attachment', 'media'):
+    for corpus in ('attachment', 'media', 'controlled'):
         key = f'aimms:projection-audit:{corpus}:cursor'
         try:
-            report = verify_projection(
-                corpus=corpus, after=cache.get(key, 0), record=True
-            )
-            cache.set(key, report.get('next_after') or 0, timeout=7 * 86400)
+            report = {'outcome': 'not_applicable'}
+            if corpus != 'controlled':
+                report = verify_projection(
+                    corpus=corpus, after=cache.get(key, 0), record=True
+                )
+                cache.set(key, report.get('next_after') or 0, timeout=7 * 86400)
             from aichat.services.projection_orphans import scan_orphans
 
             reverse_key = f'aimms:projection-audit:{corpus}:reverse-cursor'

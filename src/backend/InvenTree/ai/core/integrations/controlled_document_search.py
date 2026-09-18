@@ -86,6 +86,21 @@ class AzureSelectedDocumentSearch:
         self._api_key = api_key
         self._client: SearchClient | None = None
 
+    @property
+    def index_name(self):
+        """Configured native projection identity for metadata-only audits."""
+        return self._index_name
+
+    def close(self):
+        """Release an audit-owned Search transport if one was created."""
+        import contextlib
+
+        client, self._client = self._client, None
+        closer = getattr(client, "close", None)
+        if callable(closer):
+            with contextlib.suppress(Exception):
+                closer()
+
     @classmethod
     def from_settings(cls) -> AzureSelectedDocumentSearch:
         """Build the client from typed controlled-document settings."""

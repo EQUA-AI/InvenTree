@@ -15,7 +15,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         """A stop receipt prevents releasing a newer concurrent incident."""
-        parser.add_argument('--corpus', choices=['attachment', 'media'], required=True)
+        parser.add_argument(
+            '--corpus', choices=['attachment', 'media', 'controlled'], required=True
+        )
         parser.add_argument('--expected-blocked-at')
         parser.add_argument('--execute', action='store_true')
 

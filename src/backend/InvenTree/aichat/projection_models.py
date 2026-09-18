@@ -2,7 +2,11 @@
 
 from django.db import models
 
-CORPORA = [('attachment', 'Attachment documents'), ('media', 'Evidence media')]
+CORPORA = [
+    ('attachment', 'Attachment documents'),
+    ('media', 'Evidence media'),
+    ('controlled', 'Controlled documents'),
+]
 
 
 class RagProjectionAudit(models.Model):

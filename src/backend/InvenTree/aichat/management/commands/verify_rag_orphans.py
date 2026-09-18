@@ -14,7 +14,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         """Choose a sample or exact durable finding recheck."""
-        parser.add_argument('--corpus', choices=['attachment', 'media'])
+        parser.add_argument('--corpus', choices=['attachment', 'media', 'controlled'])
         parser.add_argument('--sample', type=int, default=20)
         parser.add_argument('--offset', type=int, default=0)
         parser.add_argument('--record', action='store_true')
