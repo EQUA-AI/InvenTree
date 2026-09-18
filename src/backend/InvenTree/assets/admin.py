@@ -1,6 +1,10 @@
 """Admin configuration for assets."""
 
 from django.contrib import admin
+from django.utils import timezone
+
+from aichat.memory_admin import ClientMemoryInline
+from aichat.models import ClientAISettings
 
 from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
 
@@ -13,6 +17,18 @@ class ClientAdmin(admin.ModelAdmin):
     list_filter = ('active',)
     search_fields = ('name', 'code')
     ordering = ('name',)
+    inlines = [ClientMemoryInline]
+
+    def save_formset(self, request, form, formset, change):
+        """Stamp the authenticated enroller; clients cannot submit this identity."""
+        if formset.model is not ClientAISettings:
+            return super().save_formset(request, form, formset, change)
+        for instance in formset.save(commit=False):
+            if instance.memory_enabled:
+                instance.enabled_by = request.user
+                instance.enabled_at = timezone.now()
+            instance.save()
+        formset.save_m2m()
 
     def get_readonly_fields(self, request, obj=None):
         """The code is the scope-token identifier — immutable once created."""

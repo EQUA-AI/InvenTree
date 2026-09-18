@@ -243,6 +243,12 @@ class ClientSerializer(serializers.ModelSerializer):
     """Serializer for Client instances - the tenants of this software."""
 
     machine_count = serializers.IntegerField(source='machines.count', read_only=True)
+    memory_enabled = serializers.BooleanField(
+        source='ai_settings.memory_enabled', read_only=True, default=False
+    )
+    required_notice_version = serializers.CharField(
+        source='ai_settings.required_notice_version', read_only=True, default=''
+    )
 
     class Meta:
         """Metaclass defining serializer fields."""
@@ -254,6 +260,8 @@ class ClientSerializer(serializers.ModelSerializer):
             'code',
             'active',
             'machine_count',
+            'memory_enabled',
+            'required_notice_version',
             'created_at',
             'updated_at',
         )

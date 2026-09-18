@@ -59,7 +59,7 @@ from aichat.services import (
     ThreadNotFound,
     ThreadRepository,
 )
-from aichat.services.threads import InvalidBoundary
+from aichat.services.threads import InvalidBoundary, ThreadRepositoryError
 from aichat.services.transcript_export import (
     ExportAccessError,
     ExportTooLargeError,
@@ -1927,3 +1927,55 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+class ThreadLearningModeRequest(BaseModel):
+    """The three owner-controlled modes; compaction is independent."""
+
+    memory_mode: Literal["inherit", "extract", "off"]
+
+
+@app.get("/threads/{thread_id}/learning")
+async def get_thread_learning(thread_id: str, response: Response) -> dict:
+    """Read learning/recall eligibility under the mounted thread boundary."""
+    from aichat.services.memory_controls import thread_memory_status
+    from django.contrib.auth import get_user_model
+
+    principal = _principal()
+    response.headers["Cache-Control"] = "no-store"
+
+    def materialize():
+        repository = _repository(principal)
+        thread = repository.get(thread_id)
+        owner = get_user_model().objects.get(pk=principal.user_pk)
+        return thread_memory_status(owner, thread)
+
+    try:
+        return await sync_to_async(materialize, thread_sensitive=True)()
+    except ThreadRepositoryError as exc:
+        raise HTTPException(status_code=404, detail="Thread not found") from exc
+
+
+@app.put("/threads/{thread_id}/learning")
+async def set_thread_learning(
+    thread_id: str, request: ThreadLearningModeRequest, response: Response
+) -> dict:
+    """Set owner choice; pending work loses its lease when the mode changes."""
+    from aichat.services.memory_controls import set_thread_mode, thread_memory_status
+    from django.contrib.auth import get_user_model
+
+    principal = _principal()
+    response.headers["Cache-Control"] = "no-store"
+
+    def perform():
+        repository = _repository(principal)
+        thread = set_thread_mode(repository, thread_id, request.memory_mode)
+        owner = get_user_model().objects.get(pk=principal.user_pk)
+        return thread_memory_status(owner, thread)
+
+    try:
+        return await sync_to_async(perform, thread_sensitive=True)()
+    except InvalidBoundary as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ThreadRepositoryError as exc:
+        raise HTTPException(status_code=404, detail="Thread not found") from exc

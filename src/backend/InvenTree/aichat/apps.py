@@ -63,6 +63,9 @@ class AIChatConfig(AppConfig):
         from aichat.retention_checks import register_retention_checks
 
         register_retention_checks()
+        from aichat.memory_checks import register_memory_checks
+
+        register_memory_checks()
 
     def _register_rollback_floor_check(self):
         """Register the Django-plane rollback-floor system check (§14).

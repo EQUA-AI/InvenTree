@@ -23,10 +23,14 @@ from aichat.email_api import (
     MailboxSync,
 )
 from aichat.media_stream import EvidenceMediaStreamView
+from aichat.memory_api import MemoryNoticeView, MemoryOptOutView, MemorySettingsView
 
 app_name = 'aichat'
 
 urlpatterns = [
+    path('memory/settings/', MemorySettingsView.as_view(), name='memory-settings'),
+    path('memory/notice/', MemoryNoticeView.as_view(), name='memory-notice'),
+    path('memory/opt-out/', MemoryOptOutView.as_view(), name='memory-opt-out'),
     path(
         'email/oauth/callback/',
         MailboxOAuthCallback.as_view(),
