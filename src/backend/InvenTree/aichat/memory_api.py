@@ -94,10 +94,7 @@ class MemoryProposalListView(MemorySettingsView):
 
     def post(self, request):
         """No candidate text, provider verdict or confirmation comes from a model."""
-        from django.utils import timezone
-
         from aichat.api import _error, _payload
-        from aichat.models import ChatActionProposal
         from aichat.services import memory_commands, proposals
 
         data = request.data
@@ -119,37 +116,15 @@ class MemoryProposalListView(MemorySettingsView):
         ):
             return Response({'error': 'invalid_memory_action'}, status=400)
         try:
-            owner = memory_commands.require_permission(request.user)
-            scope_key, scope_hash = memory_commands.owner_scope(owner)
-            intent = {
-                name: value
-                for name, value in data.items()
-                if name not in {'action_type', 'idempotency_key'}
-            }
-            if action == 'memory.forget_all':
-                if intent:
-                    return Response({'error': 'invalid_memory_action'}, status=400)
-                existing = ChatActionProposal.objects.filter(
-                    owner=owner,
-                    idempotency_key=key,
-                    action_type=action,
-                    scope_hash=scope_hash,
-                ).first()
-                intent = (
-                    existing.intent
-                    if existing
-                    else {'before': timezone.now().isoformat()}
-                )
-            proposal = proposals.create_proposal(
-                owner=owner,
-                scope_key=scope_key,
-                scope_hash=scope_hash,
+            proposal = memory_commands.prepare_action(
+                request.user,
                 action_type=action,
-                work_order_id=None,
-                reason='',
                 idempotency_key=key,
-                policy_version='memory-actions-v1',
-                intent=intent,
+                intent={
+                    name: value
+                    for name, value in data.items()
+                    if name not in {'action_type', 'idempotency_key'}
+                },
             )
             return Response(_payload(proposal), status=201)
         except proposals.ProposalError as exc:
@@ -158,6 +133,31 @@ class MemoryProposalListView(MemorySettingsView):
 
 class MemoryProposalDecisionView(MemorySettingsView):
     """Session/CSRF protected visual confirmation or rejection, one fact at a time."""
+
+    def get(self, request, proposal_id):
+        """Reauthorize the exact proposal addressed by a private review link."""
+        from django.utils import timezone
+
+        from aichat.api import _error, _payload
+        from aichat.models import ChatActionProposal
+        from aichat.services import memory_commands, proposals
+
+        try:
+            owner = memory_commands.require_permission(request.user)
+            _, scope_hash = memory_commands.owner_scope(owner)
+            proposal = ChatActionProposal.objects.filter(
+                pk=proposal_id,
+                owner=owner,
+                scope_hash=scope_hash,
+                state='proposed',
+                expires_at__gt=timezone.now(),
+            ).first()
+            if proposal is None:
+                raise proposals.ProposalNotFound('Memory action unavailable')
+            memory_commands.authorize_preview(owner, proposal)
+            return Response(_payload(proposal))
+        except proposals.ProposalError as exc:
+            return _error(exc)
 
     def post(self, request, proposal_id):
         """Route both decisions through the shared canonical proposal service."""

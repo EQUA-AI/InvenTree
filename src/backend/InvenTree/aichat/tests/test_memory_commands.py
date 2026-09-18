@@ -216,3 +216,66 @@ class MemoryCommandTests(TestCase):
         self.assertIsNotNone(proposal.receipt)
         self.fact.refresh_from_db()
         self.assertEqual(self.fact.confirming_proposal_id, proposal.pk)
+
+    def test_shared_preparation_is_idempotent_without_confirming_a_fact(self):
+        """Browser/model preparation yields the same preview and leaves suggestion state."""
+        intent = {
+            'memory_fact_id': str(self.fact.pk),
+            'expected_version': self.fact.version,
+        }
+        first = commands.prepare_action(
+            self.owner,
+            action_type='memory.remember',
+            idempotency_key='shared-fixture',
+            intent=intent,
+        )
+        second = commands.prepare_action(
+            self.owner,
+            action_type='memory.remember',
+            idempotency_key='shared-fixture',
+            intent=intent,
+        )
+        self.assertEqual(first.pk, second.pk)
+        self.fact.refresh_from_db()
+        self.assertEqual(self.fact.lifecycle_state, 'proposed')
+
+    def test_model_tool_returns_only_private_review_pointer_and_no_fact_content(self):
+        """A model cannot turn proposal creation into confirmation or text recall."""
+        from asgiref.sync import async_to_sync
+
+        from ai.core.integrations.memory_tools import propose_memory_action
+
+        with mock.patch(
+            'ai.core.auth.get_current_principal',
+            return_value=SimpleNamespace(user_pk=self.owner.pk),
+        ):
+            result = async_to_sync(propose_memory_action)(
+                action='remember',
+                request_key='tool-fixture',
+                memory_fact_id=str(self.fact.pk),
+                expected_version=self.fact.version,
+            )
+        self.assertEqual(result['status'], 'awaiting_review')
+        self.assertFalse(result['executed'])
+        self.assertNotIn(self.fact.text, str(result))
+        self.fact.refresh_from_db()
+        self.assertEqual(self.fact.lifecycle_state, 'proposed')
+
+    def test_private_review_link_reauthorizes_owner(self):
+        """A proposal identifier cannot disclose its preview to another actor."""
+        from rest_framework.test import APIClient
+
+        proposal = self.propose()
+        client = APIClient()
+        client.force_authenticate(self.owner)
+        path = f'/api/aichat/memory/proposals/{proposal.pk}/decision/'
+        self.assertEqual(client.get(path).status_code, 200)
+        other = get_user_model().objects.create_superuser(
+            username='memory-link-other',
+            email='other@example.test',
+            password='fixture-unused',
+        )
+        client.force_authenticate(other)
+        response = client.get(path)
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn(self.fact.text, str(response.data))

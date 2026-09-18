@@ -13,6 +13,7 @@ from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
 from ai.core.integrations.kanban_tools import KANBAN_READ_TOOLS, KANBAN_TOOLS
 from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
+from ai.core.integrations.memory_tools import MEMORY_ACTION_TOOLS
 from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
 from ai.core.tools import capabilities
 from ai.core.tools.capabilities import (
@@ -65,6 +66,7 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
         *ATTACHMENT_CORPUS_TOOLS,
         *EVIDENCE_MEDIA_TOOLS,
         *SOURCE_INVENTORY_TOOLS,
+        *MEMORY_ACTION_TOOLS,
     )
     catalog = capability_catalog()
 
@@ -74,9 +76,9 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
     # search_evidence_media; S8a added list_document_sources; R5 retired
     # search_part_documents (59 -> 58, catalog 95 -> 94).
     # Connected mailbox discovery and the owner-bound receipt reader are additive.
-    assert len(wf8_tools) == 60
-    assert len(catalog) == 96
-    assert tuple(entry.tool for entry in catalog[:60]) == wf8_tools
+    assert len(wf8_tools) == 61
+    assert len(catalog) == 97
+    assert tuple(entry.tool for entry in catalog[:61]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -100,6 +102,7 @@ def test_catalog_has_expected_stable_pack_shapes():
     counts = Counter(entry.pack_id for entry in capability_catalog())
 
     assert counts == {
+        "memory.proposals": 1,
         "parts.read": 5,
         "stock.read": 6,
         "bom.read": 2,
@@ -1739,3 +1742,14 @@ def test_stock_and_bom_resolve_names_without_sql(query):
     assert "search_parts" in selected.tool_ids
     assert "get_categories" in selected.tool_ids
     assert len(selected.tool_ids) <= MAX_INITIAL_TOOLS
+
+
+def test_memory_proposals_require_native_permission_and_never_select_fact_execution():
+    selected = select_capabilities(
+        "forget all my memories", authenticated=True, profile=frozenset({("ai_memory", "write")})
+    )
+    assert selected.tool_ids == ("propose_memory_action",)
+    denied = select_capabilities(
+        "forget all my memories", authenticated=True, profile=ALL_VIEW_PROFILE
+    )
+    assert denied.tools == ()

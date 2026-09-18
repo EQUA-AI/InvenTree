@@ -92,6 +92,7 @@ class CapabilitySelection:
 
 
 _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
+    "memory.proposals": (ToolEffect.WRITE, ("propose_memory_action",), ()),
     "parts.read": (
         ToolEffect.READ,
         (
@@ -439,6 +440,7 @@ _DEFAULT_PACK_WORKFLOWS = frozenset({"wf8", "general"})
 _SPECIALIST_WORKFLOWS = frozenset({"wf2", "wf3", "wf4", "wf6"})
 _ALL_PACK_WORKFLOWS = _DEFAULT_PACK_WORKFLOWS | _SPECIALIST_WORKFLOWS
 _PACK_WORKFLOWS: dict[str, frozenset[str]] = {
+    "memory.proposals": _DEFAULT_PACK_WORKFLOWS,
     "documents.read": _ALL_PACK_WORKFLOWS | frozenset({"wf9"}),
     "manuals.read": _ALL_PACK_WORKFLOWS | frozenset({"wf9"}),
     "evidence.read": _ALL_PACK_WORKFLOWS | frozenset({"wf9"}),
@@ -1182,6 +1184,7 @@ def _catalog_tools() -> tuple[Any, ...]:
     from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
     from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
+    from ai.core.integrations.memory_tools import MEMORY_ACTION_TOOLS
     from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
     from ai.core.tools.inventree.read.action_status import get_last_action_status
     from ai.core.tools.inventree.write.purchase_orders import PURCHASE_ORDER_WRITE_TOOLS
@@ -1197,6 +1200,7 @@ def _catalog_tools() -> tuple[Any, ...]:
         *ATTACHMENT_CORPUS_TOOLS,
         *EVIDENCE_MEDIA_TOOLS,
         *SOURCE_INVENTORY_TOOLS,
+        *MEMORY_ACTION_TOOLS,
         # Specialist rails (wf2/wf3/wf4/wf6) below; the wf8 prefix above keeps
         # the existing catalog order stable for the manifest.
         *INVENTORY_TOOLS,
@@ -1923,6 +1927,21 @@ def select_capabilities(
     analysis question with it.
     """
     normalized = " ".join(query.casefold().split())
+    if re.search(r"\b(?:memory|memories)\b", normalized) and re.search(
+        r"\b(?:remember|forget|delete|update|correct)\b", normalized
+    ):
+        entries = tuple(
+            entry
+            for entry in entries_for_packs(("memory.proposals",))
+            if exposure_authorized(entry, profile, authenticated=authenticated)
+        )
+        return CapabilitySelection(
+            pack_ids=("memory.proposals",) if entries else (),
+            tool_ids=tuple(entry.tool_id for entry in entries),
+            tools=tuple(entry.tool for entry in entries),
+            reason="memory_proposal_review" if entries else "memory_permission_required",
+            clarification_required=not bool(entries),
+        )
     if _write_intent(normalized) is not None:
         return CapabilitySelection(
             pack_ids=(),

@@ -45,6 +45,43 @@ ACTIONS = frozenset({
 DAILY_DECISION_LIMIT = 20
 
 
+def prepare_action(owner, *, action_type, idempotency_key, intent):
+    """Shared browser/model preparation; only the decision rail executes effects."""
+    from aichat.models import ChatActionProposal
+
+    owner = require_permission(owner)
+    if (
+        not isinstance(action_type, str)
+        or action_type not in ACTIONS
+        or not isinstance(intent, dict)
+        or not isinstance(idempotency_key, str)
+        or not 1 <= len(idempotency_key) <= 128
+    ):
+        raise proposals.ProposalError('Invalid memory action')
+    scope_key, scope_hash = owner_scope(owner)
+    if action_type == 'memory.forget_all':
+        if intent:
+            raise proposals.ProposalError('Invalid memory action')
+        existing = ChatActionProposal.objects.filter(
+            owner=owner,
+            idempotency_key=idempotency_key,
+            action_type=action_type,
+            scope_hash=scope_hash,
+        ).first()
+        intent = existing.intent if existing else {'before': timezone.now().isoformat()}
+    return proposals.create_proposal(
+        owner=owner,
+        scope_key=scope_key,
+        scope_hash=scope_hash,
+        action_type=action_type,
+        work_order_id=None,
+        reason='',
+        idempotency_key=idempotency_key,
+        policy_version='memory-actions-v1',
+        intent=intent,
+    )
+
+
 def owner_scope(owner):
     """The rail's memory scope is server-derived and cannot broaden client access."""
     key = f'user:{owner.pk}'

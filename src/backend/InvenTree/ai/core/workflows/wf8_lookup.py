@@ -28,6 +28,7 @@ from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
 from ai.core.integrations.kanban_tools import KANBAN_TOOLS
 from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
+from ai.core.integrations.memory_tools import MEMORY_ACTION_TOOLS
 from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
 from ai.core.tools.invocation_guard import (
     CapabilityInvocationMiddleware,
@@ -528,7 +529,7 @@ as the specified torque for a tightening sequence.
 """
 
     #: Base toolset offered to lookups. Read-only inventory tools by design:
-    #: a lookup agent never mutates, and the smaller schema cuts prompt size
+    #: fact changes use separately confirmed proposals; the smaller schema cuts prompt size
     #: and time-to-first-token. The per-user RBAC filter subsets this list.
     BASE_TOOLS: tuple = ()
 
@@ -555,6 +556,7 @@ as the specified torque for a tightening sequence.
                 INVENTORY_READ_TOOLS
                 + EMAIL_TOOLS
                 + KANBAN_TOOLS
+                + MEMORY_ACTION_TOOLS
                 + CONTROLLED_CORPUS_TOOLS
                 + ATTACHMENT_CORPUS_TOOLS
                 + EVIDENCE_MEDIA_TOOLS

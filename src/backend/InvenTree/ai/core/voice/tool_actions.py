@@ -60,6 +60,7 @@ tool and briefly identify what is missing."""
 _SENSITIVE_ARGUMENTS = frozenset({"attachments", "body", "document_data"})
 
 _ACTION_DOMAINS: tuple[tuple[re.Pattern[str], frozenset[str]], ...] = (
+    (re.compile(r"\b(?:memory|memories|remember|forget)\b", re.I), frozenset({"ai_memory"})),
     (
         re.compile(r"\b(?:email|mail|rfq|request for quote|pdf|document)\b", re.I),
         frozenset({"email"}),
@@ -103,6 +104,7 @@ def text_chat_tools() -> tuple[Any, ...]:
     from ai.core.integrations.inventory_tools import INVENTORY_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
     from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
+    from ai.core.integrations.memory_tools import MEMORY_ACTION_TOOLS
     from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
     from ai.core.tools.inventree.read.action_status import get_last_action_status
     from ai.core.tools.inventree.write.purchase_orders import (
@@ -119,6 +121,7 @@ def text_chat_tools() -> tuple[Any, ...]:
         *ATTACHMENT_CORPUS_TOOLS,
         *EVIDENCE_MEDIA_TOOLS,
         *SOURCE_INVENTORY_TOOLS,
+        *MEMORY_ACTION_TOOLS,
     )
     unique: dict[str, Any] = {}
     for tool in ordered:
@@ -593,6 +596,22 @@ class TextToolVoiceExecutor:
                 detail="tool_reported_failure",
                 outcome=VoiceWriteOutcome.NOT_COMPLETED,
                 effect_committed=None,
+            )
+        if (
+            executable.tool_name == "propose_memory_action"
+            and isinstance(result, dict)
+            and result.get("status") == "awaiting_review"
+            and result.get("executed") is False
+            and result.get("proposal_id")
+        ):
+            return VoiceWriteExecutionResult(
+                ok=True,
+                detail="memory_proposal_created_for_review",
+                outcome=VoiceWriteOutcome.SUCCEEDED,
+                record_label="Memory proposal",
+                change_label="prepared for review on the memory page; no memory change was applied",
+                receipt_ref=f"memory-proposal:{result['proposal_id']}",
+                effect_committed=False,
             )
         if (
             executable.tool_name in ("send_email", "generate_and_send_document")

@@ -165,3 +165,35 @@ test('excluded conversation uses a single canonical learning mode change', async
   ).toHaveValue('extract');
   expect(changes).toBe(1);
 });
+
+test('private memory review link loads the exact proposal and cannot auto-confirm', async ({
+  browser
+}) => {
+  const page = await doCachedLogin(browser);
+  const id = 'b2fd0a47-2c39-4ecb-a1dd-c3238751fdab';
+  let decisions = 0;
+  await page.route('**/api/aichat/memory/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('/settings/')) return route.fulfill({ json: status });
+    if (path.endsWith(`/proposals/${id}/decision/`)) {
+      if (request.method() === 'POST') decisions += 1;
+      return route.fulfill({
+        json: {
+          id,
+          action_type: 'memory.forget_all',
+          preview_hash: 'exact',
+          preview: { confirm_phrase: 'forget all my memories', count: 2 }
+        }
+      });
+    }
+    return route.fulfill({ json: { results: [], next_cursor: null } });
+  });
+  await navigate(page, `memory/?proposal=${id}`);
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole('button', { name: 'Confirm', exact: true })
+  ).toBeDisabled();
+  expect(decisions).toBe(0);
+});

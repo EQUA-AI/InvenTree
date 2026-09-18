@@ -42,12 +42,14 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
     from ai.core.integrations import kanban_tools as kt
     from ai.core.integrations import media_corpus as mc
     from ai.core.integrations import source_inventory_tools as sit
+    from ai.core.integrations.memory_tools import propose_memory_action
     from ai.core.tools.inventree.read import machines as mt
     from ai.core.tools.inventree.read import maintenance as wt
     from ai.core.tools.inventree.read.action_status import get_last_action_status
     from ai.core.tools.inventree.write import purchase_orders as po
 
     mapping: dict[Any, tuple[str, str]] = {
+        propose_memory_action: ("ai_memory", "write"),
         get_last_action_status: ("work_order", "view"),
         # Parts
         it.search_parts: ("part", "view"),

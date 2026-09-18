@@ -16,6 +16,7 @@ import {
 } from '@mantine/core';
 import type { AxiosResponse } from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import PageTitle from '../../components/nav/PageTitle';
 import { useApi } from '../../contexts/ApiContext';
 import { useAIChatState } from '../../states/AIChatState';
@@ -107,6 +108,14 @@ export default function MemoryPage() {
 
 function MemoryContents() {
   const api = useApi();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedProposal = searchParams.get('proposal');
+  const clearRequestedProposal = () => {
+    if (!requestedProposal) return;
+    const remaining = new URLSearchParams(searchParams);
+    remaining.delete('proposal');
+    setSearchParams(remaining, { replace: true });
+  };
   const [status, setStatus] = useState<Status | null>(null);
   const [page, setPage] = useState<Page>({ results: [], next_cursor: null });
   const [state, setState] = useState('active');
@@ -169,6 +178,36 @@ function MemoryContents() {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (!requestedProposal) return;
+    const abort = new AbortController();
+    setProposal(null);
+    setReviewed(false);
+    setPhrase('');
+    if (!/^[a-f0-9-]{36}$/i.test(requestedProposal)) {
+      setError(true);
+      return () => abort.abort();
+    }
+    void api
+      .get<Proposal>(
+        `${ROOT}proposals/${encodeURIComponent(requestedProposal)}/decision/`,
+        {
+          signal: abort.signal
+        }
+      )
+      .then((response) => {
+        if (!abort.signal.aborted && alive.current && !inFlight.current)
+          setProposal(response.data);
+      })
+      .catch(() => {
+        if (!abort.signal.aborted && alive.current) {
+          setProposal(null);
+          setError(true);
+        }
+      });
+    return () => abort.abort();
+  }, [api, requestedProposal]);
+
   const act = async (work: () => Promise<void>) => {
     if (inFlight.current) return;
     ticket.current += 1;
@@ -191,6 +230,8 @@ function MemoryContents() {
   };
 
   const prepare = async (action: string, fact?: Fact, topics?: string[]) => {
+    clearRequestedProposal();
+    setProposal(null);
     const result = await api.post<Proposal>(
       `${ROOT}proposals/`,
       {
@@ -223,6 +264,7 @@ function MemoryContents() {
     );
     if (!alive.current) return;
     setProposal(null);
+    clearRequestedProposal();
     setMessage(
       result.data.receipt?.status === 'purge_incomplete'
         ? t`Deletion is still processing. Refresh to check its status.`
@@ -334,6 +376,7 @@ function MemoryContents() {
                   );
                   if (alive.current) {
                     setProposal(null);
+                    clearRequestedProposal();
                     await refresh();
                   }
                 })
@@ -514,7 +557,10 @@ function MemoryContents() {
       <Modal
         opened={proposal !== null}
         onClose={() => {
-          if (!busy) setProposal(null);
+          if (!busy) {
+            setProposal(null);
+            clearRequestedProposal();
+          }
         }}
         title={t`Review memory action`}
       >

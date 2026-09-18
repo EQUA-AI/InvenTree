@@ -448,3 +448,28 @@ def test_receipt_ref_is_bounded_and_opaque():
     assert _receipt_ref({"data": {"order_id": 5}}) == "order_id:5"
     assert _receipt_ref({"body": "secret"}) == ""
     assert _receipt_ref("not a dict") == ""
+
+
+@pytest.mark.asyncio
+async def test_memory_proposal_is_never_spoken_as_a_committed_memory_change():
+    async def propose_memory_action():
+        return {
+            "success": True,
+            "executed": False,
+            "status": "awaiting_review",
+            "proposal_id": "fixture",
+        }
+
+    permission = AsyncMock()
+    permission.allows.return_value = True
+    executor = TextToolVoiceExecutor(tools=[propose_memory_action], permission=permission)
+    with patch("ai.core.voice.tool_actions.capability_for_tool", return_value="ai_memory:write"):
+        result = await executor.execute(
+            ExecutableWrite(tool_name="propose_memory_action", capability="ai_memory:write"),
+            actor=_principal(),
+            trusted_context=object(),
+        )
+    assert result.ok is True
+    assert result.committed is False
+    assert result.receipt_ref == "memory-proposal:fixture"
+    assert result.detail == "memory_proposal_created_for_review"
