@@ -1470,6 +1470,14 @@ def expire_mailbox_content():
     expire_content()
 
 
+@scheduled_task(ScheduledTask.DAILY)
+def verify_rag_projection():
+    """Default-off projection samples; critical drift latches the affected corpus."""
+    from aichat.services.projection_audit import scheduled_audit
+
+    return scheduled_audit()
+
+
 @scheduled_task(ScheduledTask.MINUTES, 5)
 def rescan_mailbox_attachments():
     """Release private artifacts only after the configured scanner accepts them."""

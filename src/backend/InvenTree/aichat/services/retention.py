@@ -1304,6 +1304,9 @@ from aichat.services.memory_retention import (
 
 FAMILIES['memory_extraction_runs'] = purge_memory_runs
 FAMILIES['memory_fact_jobs'] = purge_memory_fact_jobs
+from aichat.services.projection_audit import purge_audits
+
+FAMILIES['rag_projection_audits'] = purge_audits
 THREAD_DERIVATIVES.register(
     ThreadDerivative(
         'memory_facts',
@@ -1367,6 +1370,7 @@ def last_run() -> dict | None:
 
 def retention_status() -> dict:
     """Cheap read-only status for the operations report and gate evidence."""
+    from aichat.models import RagProjectionAudit, RagProjectionGate, RagProjectionRepair
     from aichat.services.retention_audit import last_audit
 
     cutoff_transcript = _cutoff(RETENTION_TRANSCRIPT_DAYS)
@@ -1401,6 +1405,19 @@ def retention_status() -> dict:
         'last_run_age_days': last_run_age_days,
         'last_run': receipt,
         'deletion_audit': last_audit(),
+        'projection_audit': {
+            'rows': RagProjectionAudit.objects.count(),
+            'open_repairs': RagProjectionRepair.objects.filter(resolved=False).count(),
+            'blocked_corpora': list(
+                RagProjectionGate.objects.filter(blocked=True).values_list(
+                    'corpus', flat=True
+                )
+            ),
+            'latest': RagProjectionAudit.objects
+            .order_by('-pk')
+            .values('outcome', 'sampled', 'drift', 'critical', 'errors')
+            .first(),
+        },
         'backlog': {
             'threads': ChatThread.objects.filter(
                 updated_at__lt=cutoff_transcript

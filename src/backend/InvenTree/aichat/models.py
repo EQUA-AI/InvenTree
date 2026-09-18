@@ -30,6 +30,9 @@ from .memory_models import ClientAISettings as ClientAISettings
 from .memory_models import MemoryMode as MemoryMode
 from .memory_models import MemoryNoticeAcknowledgement as MemoryNoticeAcknowledgement
 from .memory_models import UserMemorySettings as UserMemorySettings
+from .projection_models import RagProjectionAudit as RagProjectionAudit
+from .projection_models import RagProjectionGate as RagProjectionGate
+from .projection_models import RagProjectionRepair as RagProjectionRepair
 
 
 def _stable_id(prefix: str) -> str:

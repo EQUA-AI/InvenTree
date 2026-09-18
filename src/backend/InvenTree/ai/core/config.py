@@ -387,6 +387,7 @@ class Settings(BaseSettings):
     aimms_memory_type_filter: Literal["on", "off"] = Field(
         default="on", alias="AIMMS_MEMORY_TYPE_FILTER"
     )
+    feature_rag_projection_audit: bool = Field(default=False, alias="FEATURE_RAG_PROJECTION_AUDIT")
     aimms_memory_topic_boost: float = Field(
         default=0.0, ge=0.0, le=0.2, alias="AIMMS_MEMORY_TOPIC_BOOST"
     )

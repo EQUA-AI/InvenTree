@@ -151,6 +151,9 @@ def _stub_user_roles(monkeypatch, *, granted=("part", "work_order")):
 def retrieval_on(monkeypatch):
     """Flag on, site key configured, actor granted the 'acme' client."""
     monkeypatch.setattr(config, "get_settings", lambda: _settings())
+    from ai.core.integrations import projection_gate
+
+    monkeypatch.setattr(projection_gate, "recall_allowed", lambda _corpus: True)
     _stub_scope(monkeypatch)
 
 
@@ -653,3 +656,21 @@ def test_filter_serial_less_scope_floor_allows_only_unstamped():
         scope_asset_ids=(),
     )
     assert built.endswith("and (asset_id eq '' or asset_id eq null)")
+
+
+def test_projection_stop_prevents_provider_work(retrieval_on, monkeypatch):
+    """The durable stop refuses before embedding or Search access."""
+    from ai.core.integrations import projection_gate
+
+    monkeypatch.setattr(projection_gate, "recall_allowed", lambda _corpus: False)
+    embedding, search = _EmbeddingClient(), _SearchClient()
+    with pytest.raises(AttachmentRetrievalError) as exc:
+        search_corpus_attachments(
+            user=_user(),
+            query="fixture maintenance query",
+            embedding_client=embedding,
+            search_client=search,
+        )
+    assert exc.value.code == "ATTACHMENT_PROJECTION_HELD"
+    assert not embedding.queries
+    assert search.calls == 0

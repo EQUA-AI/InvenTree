@@ -372,6 +372,13 @@ def search_corpus_media(
                 "work_order_filter": work_order_filter,
             }
 
+    from ai.core.integrations.projection_gate import recall_allowed
+
+    if not recall_allowed("media"):
+        raise MediaRetrievalError(
+            "Projection recall is temporarily unavailable", code="MEDIA_PROJECTION_HELD"
+        )
+
     if embedding_client is None:
         embedding_client = _default_embedding_client()
     if search_client is None:

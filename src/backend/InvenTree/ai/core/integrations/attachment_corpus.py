@@ -370,6 +370,13 @@ def search_corpus_attachments(
                 "part_filter": part_filter,
             }
 
+    from ai.core.integrations.projection_gate import recall_allowed
+
+    if not recall_allowed("attachment"):
+        raise AttachmentRetrievalError(
+            "Projection recall is temporarily unavailable", code="ATTACHMENT_PROJECTION_HELD"
+        )
+
     if embedding_client is None:
         embedding_client = _default_embedding_client()
     if search_client is None:
