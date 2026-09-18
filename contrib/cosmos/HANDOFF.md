@@ -297,8 +297,52 @@ Three bugs were found while building it, all of which made the chart lie:
 The chart also refuses to interpolate: `connectNulls` is off, non-numeric samples are counted
 and excluded rather than coerced, and a single sample is called out as not being a trend.
 
-Still worth knowing: most bindings currently carry status codes or saturated sensors, so many
-charts will legitimately look flat or empty until a running snapshot arrives.
+### The dev emulator was only feeding 36 of 581 bindings
+
+Building the picker exposed a fixture problem rather than a code one. The freshness loop
+rebased the **trimmed pilot excerpt**, which carries ~31 tags.
+So 545 of the 581 bindings had never received a sample, and the new picker offered hundreds of
+parameters that could not plot. That reads as a broken chart, when in fact nothing was wrong
+with the chart.
+
+`refresh_samples.py` now takes `--source` / `--target`, and the loop defaults to
+`contrib/pump-cassandra/PH_3.full-snapshot.json` (all 845 tags) with the excerpt still
+available via the
+`SNAPSHOT` environment variable. The loop also now *names the snapshot it used* in its log -
+previously it reseeded silently, so feeding the wrong payload was invisible.
+
+The tooling moved from `data/` to **`contrib/cosmos/devtools/`**, because `data/` is gitignored
+(`.gitignore:90`): anything kept there cannot be committed, so a handover document that
+referenced it was pointing at files the next person would never receive. The loop now defaults
+to the tracked, hash-pinned snapshot for the same reason - the `data/` copy was a second,
+untracked duplicate of the same artefact, and duplicates drift.
+
+```bash
+# from the repository root, inside the dev container
+nohup sh contrib/cosmos/devtools/keep_emulator_fresh.sh > /tmp/reseed.log 2>&1 < /dev/null &
+```
+
+Verified afterwards: **581 of 581 bindings populated, all fresh, all `good`**, and previously
+empty bindings such as `/dex/PUMP7_PUMP_COOLING_WATER_INLET_TEMP1` now return real windows in
+strictly ascending order. 189 `machine_health` tests pass.
+
+Two caveats that follow from the fixture, not from bugs:
+
+- **The full snapshot is a single instant.** The loop replays it once a minute, so most traces
+  are a *flat line of identical values*. That is the fixture repeating, not a stable plant. Only
+  `COMMAN_FORBAY_LEVEL` varies (3 distinct values), because it retains excerpt-era samples.
+- **Nine channels now draw confident lines that should not be believed** - 4 pegged at the
+  float32 register maximum and 5 under-range. All nine return `classify() -> unknown` because no
+  limits are set, so nothing in the UI marks them. Detail in
+  `contrib/pump-cassandra/UNIT_REVIEW.md`. No threshold was invented to hide them.
+
+Diagnostics used, all read-only and all under `contrib/cosmos/devtools/`: `diag_coverage.py`,
+`diag_trend.py`, `diag_saturation.py`, `diag_reconcile.py`. Run them with
+`python manage.py shell < contrib/cosmos/devtools/diag_coverage.py` from
+`src/backend/InvenTree`. Note that `MachineSignalState.value` is a
+dict (`{'unit': ..., 'value': ...}`), not a scalar - an early version of the saturation sweep
+called `float()` on it, skipped all 581 rows and reported "0 pegged", which looked exactly like
+a clean result.
 
 ## 6. Re-run checks and release review
 

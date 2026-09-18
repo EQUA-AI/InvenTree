@@ -167,11 +167,20 @@ indistinguishable from a broken connector. To keep the same payloads re-based on
 current clock every 60 seconds:
 
 ```bash
-nohup data/keep_emulator_fresh.sh > /tmp/keep_fresh.log 2>&1 < /dev/null & disown
+nohup sh contrib/cosmos/devtools/keep_emulator_fresh.sh > /tmp/reseed.log 2>&1 < /dev/null & disown
 pkill -f keep_emulator_fresh.sh      # stop it
 ```
 
 It invents no values; it only moves the clock.
+
+By default it rebases `contrib/pump-cassandra/PH_3.full-snapshot.json` — all 845 tags, which
+populates all 581 bindings. Set `SNAPSHOT=contrib/cosmos/samples/ph3_snapshots.json` for the
+smaller pilot excerpt, but note that the excerpt carries only ~31 tags, so most bindings stay
+empty and the trend picker will list parameters that never plot.
+
+> `pkill -f keep_emulator_fresh.sh` will also match a `sh -c` wrapper containing that string —
+> including the very command you used to run it, which then kills itself and prints nothing.
+> Check with `ps aux | grep keep_emul` from outside, or kill by PID.
 
 > Use `nohup … < /dev/null … & disown`. A bare `&` gets `SIGTTIN`-suspended (process state `TN`).
 

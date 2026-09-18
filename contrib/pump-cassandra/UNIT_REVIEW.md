@@ -114,6 +114,26 @@ unit. They must not be clamped, discarded or rendered as normal readings.
 Alarm limits still require approved plant data. None of the above is a confirmed
 fault; it is a list of readings that should not be believed at face value.
 
+### These faults are now drawn, and nothing marks them
+
+Verified against the live emulator once the full snapshot was seeded
+(`contrib/cosmos/devtools/diag_saturation.py`, 581 active bindings, 566 readable):
+
+- **4 signals sit at the saturation value** and **5 at the under-range values**.
+- Every one of them returns `classify() -> unknown`, because `warn_max` and
+  `critical_max` are `None`. Unbounded means unknown, not normal - which is the
+  correct model behaviour - but it also means **nothing in the UI marks them**.
+
+This mattered less when the values sat in a table cell. The trend chart draws
+`PUMP5_PUMP_COOLING_WATER_INLET_TEMP5` as a clean, level line at 3276.7 labelled
+`degC`, and a straight line is a far more persuasive way to be wrong than a number
+in a list: it reads as a stable, well-behaved instrument. The unit is not the
+problem here - `degC` is right - the *value* is a pegged register.
+
+No threshold has been invented to hide this. Inventing a plausible-looking limit
+would be the same error as inventing a unit. It is recorded so that whoever sets
+alarm limits knows these nine channels need attention first.
+
 ## What to obtain next, in order
 
 1. **A snapshot taken while at least one bay is pumping.** Settles power, current,
