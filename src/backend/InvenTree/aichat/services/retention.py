@@ -1284,6 +1284,28 @@ FAMILIES = {
     'retention_audit': audit_retention,
 }
 
+from aichat.services.memory_retention import (
+    purge_memory_runs,
+    purge_thread_memory,
+    thread_memory_residual,
+)
+
+FAMILIES['memory_extraction_runs'] = purge_memory_runs
+THREAD_DERIVATIVES.register(
+    ThreadDerivative(
+        'memory_facts',
+        (
+            'aichat.memoryfact',
+            'aichat.memoryfactclaim',
+            'aichat.memoryextractionclaim',
+            'aichat.memoryextractionrun',
+        ),
+        purge_thread_memory,
+        thread_memory_residual,
+        'thread_memory_facts',
+    )
+)
+
 
 def run_all(*, dry_run: bool = False, families: set[str] | None = None) -> dict:
     """Run every (or the named) retention families; one failure never stops the rest."""

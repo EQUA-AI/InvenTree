@@ -19,6 +19,12 @@ from .email_models import MailLocation as MailLocation
 from .email_models import MailMessage as MailMessage
 from .email_models import MailReceipt as MailReceipt
 from .email_models import MailSyncState as MailSyncState
+from .memory_fact_models import MemoryExtractionClaim as MemoryExtractionClaim
+from .memory_fact_models import MemoryExtractionRun as MemoryExtractionRun
+from .memory_fact_models import MemoryFact as MemoryFact
+from .memory_fact_models import MemoryFactClaim as MemoryFactClaim
+from .memory_fact_models import MemoryFactEvent as MemoryFactEvent
+from .memory_fact_models import MemoryFactTombstone as MemoryFactTombstone
 from .memory_models import ClientAISettings as ClientAISettings
 from .memory_models import MemoryMode as MemoryMode
 from .memory_models import MemoryNoticeAcknowledgement as MemoryNoticeAcknowledgement
