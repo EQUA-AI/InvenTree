@@ -1236,7 +1236,14 @@ class ThreadRepository:
             models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=timezone.now())
         )
 
-    def recall_window(self, thread_id: str, *, limit: int, exclude_latest: int = 1):
+    def recall_window(
+        self,
+        thread_id: str,
+        *,
+        limit: int,
+        exclude_latest: int = 1,
+        memory_query: bool = False,
+    ):
         """M1 (GR-31 seat 1): the replay window AND the summary in ONE statement.
 
         The boundary is applied in SQL (a subquery over ``_threads()``), the
@@ -1251,16 +1258,23 @@ class ThreadRepository:
         self._reject_wrong_namespace_id(thread_id)
         if limit <= 0:
             return RecallWindow(thread_id=thread_id)
+        annotations = {}
+        if memory_query:
+            from aichat.services.memory_recall import query_admission
+
+            annotations['memory_query_allowed'] = query_admission(self, thread_id)
         rows = list(
             ChatMessage.objects
             .filter(thread__in=self._threads().filter(pk=thread_id))
             .annotate(
+                **annotations,
                 thread_summary=F('thread__summary'),
                 thread_watermark=F('thread__summary_through_sequence'),
                 thread_next=F('thread__next_sequence'),
             )
             .order_by('-sequence')
             .values(
+                *annotations,
                 'sequence',
                 'role',
                 'content',
@@ -1273,12 +1287,14 @@ class ThreadRepository:
                 # M1 (E35): the workflow each assistant turn ran on, for routing
                 # continuity on the next fragment — same statement.
                 'metadata__workflow_used',
-            )[exclude_latest : exclude_latest + limit]
+            )[0 if memory_query else exclude_latest : exclude_latest + limit]
         )
+        first = rows[0] if rows else {}
+        if memory_query:
+            rows = rows[exclude_latest:]
         rows.reverse()
-        if not rows:
+        if not first:
             return RecallWindow(thread_id=thread_id)
-        first = rows[0]
         return RecallWindow(
             thread_id=thread_id,
             rows=tuple(
@@ -1295,6 +1311,7 @@ class ThreadRepository:
             watermark=int(first['thread_watermark'] or 0),
             next_sequence=int(first['thread_next'] or 0),
             db_round_trips=1,
+            memory_query_allowed=bool(first.get('memory_query_allowed', False)),
         )
 
     def recent_messages(

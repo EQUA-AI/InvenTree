@@ -179,6 +179,7 @@ class RecallWindow:
     memory_facts: tuple[dict[str, Any], ...] = ()
     memory_reason: str = ""
     facts_reason: str = ""
+    memory_query_allowed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -702,6 +703,7 @@ class ContextAssembler:
         routing_fields: RoutingFields | None = None,
         timeout_s: float = RECALL_TIMEOUT_S,
         query_vector: tuple[float, ...] | None = None,
+        query_text: str = "",
     ) -> ContextBundle:
         """Recall under the wall clock, then assemble; never raises."""
         routing_fields = routing_fields or RoutingFields()
@@ -733,13 +735,15 @@ class ContextAssembler:
         degrade = DegradeReason.NONE
         try:
             if bool(getattr(settings, "feature_semantic_memory_recall", False)):
-                from ai.core.memory.semantic_context import recall_with_facts
+                from ai.core.memory.semantic_context import recall_with_facts_async
 
-                recall = call_sync(
-                    recall_with_facts,
+                recall = recall_with_facts_async(
                     self,
                     repository,
                     thread_id,
+                    call_sync=call_sync,
+                    settings=settings,
+                    query_text=query_text,
                     limit=limit,
                     compaction=compaction,
                     recall_filter=recall_filter_for(

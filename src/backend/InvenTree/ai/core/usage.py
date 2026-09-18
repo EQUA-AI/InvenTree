@@ -20,6 +20,9 @@ Accounting status by source (S12 keeps this list honest — the spec's bar is
 - COUNTED: wf8, Luna, routing classifier, grounding, intent classifier,
   voice tool_actions, reflection repair, and query-time embeddings
   (the routing embedder; ``document_search`` was retired at R5).
+  Memory query embeddings reserve a conservative UTF-8-byte upper bound in
+  ``memory_query_embedding_reserved`` with ``estimated=1`` before calling;
+  that bound remains for timeouts/unknown outcomes and is not an actual bill.
 - EXPLICITLY BOUNDED, not instrumented: legacy workflows wf1-wf6 and failed
   provider calls on every rail — under ``FEATURE_AI_QUOTA_PROFILES`` an
   executed turn whose ledger stayed empty settles at the configured

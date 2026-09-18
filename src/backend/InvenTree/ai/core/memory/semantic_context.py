@@ -122,3 +122,153 @@ def fact_sections(window, *, estimator, total_chars, max_message_chars):
             available=len(candidates),
         )
     return sections
+
+
+async def recall_with_facts_async(
+    assembler,
+    repository,
+    thread_id,
+    *,
+    call_sync,
+    settings,
+    query_text,
+    limit,
+    compaction,
+    recall_filter,
+    timeout_s,
+    query_vector=None,
+):
+    """One 400ms read budget including embedding; no request-side memory writes.
+
+    Authorization is annotated onto statement one. Embedding runs on a separate
+    pooled thread so a transport/credential overrun cannot block the DB executor.
+    Statement two prefilters/ranks; statement three refreshes authority. A timed
+    out provider may finish in the background; its estimate is charged upfront,
+    its result is discarded and it never writes a vector, message or fact.
+    """
+    from aichat.services import memory_recall
+    from django.db import connection
+
+    # Compatibility callers with an explicitly supplied vector keep their
+    # provider-free path. Production turns provide only the current query text.
+    if query_vector is not None or not query_text:
+        return await call_sync(
+            recall_with_facts,
+            assembler,
+            repository,
+            thread_id,
+            limit=limit,
+            compaction=compaction,
+            recall_filter=recall_filter,
+            timeout_s=timeout_s,
+            query_vector=query_vector,
+        )
+    deadline = time.perf_counter() + timeout_s
+    queries = 0
+    window = None
+
+    def bound(execute, sql, params, many, context):
+        nonlocal queries
+        if queries >= 3 or time.perf_counter() >= deadline:
+            raise TimeoutError("memory_read_budget")
+        queries += 1
+        return execute(sql, params, many, context)
+
+    def history():
+        with connection.execute_wrapper(bound):
+            return repository.recall_window(
+                thread_id,
+                limit=limit + 3,
+                exclude_latest=1,
+                memory_query=True,
+            )
+
+    def facts(vector):
+        with connection.execute_wrapper(bound):
+            rows = memory_recall.candidates(
+                repository, thread_id, recall_filter, query_vector=vector
+            )
+            return memory_recall.reauthorize(repository, thread_id, rows)
+
+    try:
+        window = await call_sync(history)
+        vector, reason = None, "query_embedding_unavailable"
+        if window.memory_query_allowed:
+            vector, reason = await _query_vector(query_text, settings=settings, deadline=deadline)
+        rows = await call_sync(facts, vector)
+        if time.perf_counter() >= deadline:
+            raise TimeoutError("memory_read_budget")
+        return replace(
+            window,
+            memory_facts=tuple(rows),
+            memory_reason="no_eligible_memories",
+            facts_reason="no_eligible_memories" if vector is not None else reason,
+            db_round_trips=queries,
+        )
+    except Exception as exc:
+        if window is None:
+            raise
+        reason = "budget_timeout" if isinstance(exc, TimeoutError) else "recall_error"
+        return replace(window, memory_reason=reason, facts_reason=reason, db_round_trips=queries)
+
+
+async def _query_vector(text, *, settings, deadline):
+    """One bounded foreground embedding, charged to the existing turn ledger.
+
+    This is query-time provider usage, not a worker job. Keep its conservative
+    byte upper bound even for unknown outcomes; never count a second actual row.
+    No query text/vector is cached or persisted. Unbound/full ledgers refuse.
+    """
+    import asyncio
+    import threading
+
+    from ai.core.integrations.memory_providers import EmbeddingResult, embed_memory
+    from ai.core.usage import turn_usage_ledger
+    from aichat.services.memory_policy import validate_source_text
+
+    if not isinstance(text, str) or not text.strip() or len(text.encode("utf-8")) > 2000:
+        return None, "query_embedding_input_bounds"
+    try:
+        validate_source_text(text)
+    except ValueError:
+        return None, "query_embedding_input_excluded"
+    ledger = turn_usage_ledger.get()
+    if (
+        ledger is None
+        or len(ledger.events) >= 32
+        or any(event.get("source") == "memory_query_embedding_reserved" for event in ledger.events)
+    ):
+        return None, "query_embedding_budget_unavailable"
+    remaining = deadline - time.perf_counter()
+    if remaining < 0.1:
+        return None, "budget_timeout"
+    # Leave at least half the remaining wall budget for ranking and reauthorization.
+    timeout = min(0.2, remaining / 2)
+    charge = len(text.encode("utf-8")) + 256
+    ledger.record(
+        "memory_query_embedding_reserved",
+        {
+            "input_tokens": charge,
+            "total_tokens": charge,
+            "estimated": 1,
+            "deployment": settings.memory_embedding_deployment,
+        },
+    )
+    stopped = threading.Event()
+    provider_deadline = time.perf_counter() + timeout
+
+    def call_provider():
+        if stopped.is_set() or time.perf_counter() >= provider_deadline:
+            return EmbeddingResult()
+        return embed_memory(text, settings=settings, timeout_s=timeout)
+
+    try:
+        result = await asyncio.wait_for(asyncio.to_thread(call_provider), timeout=timeout)
+    except TimeoutError:
+        return None, "query_embedding_timeout"
+    finally:
+        stopped.set()
+    profile = f"{settings.memory_embedding_deployment}:1536"
+    if result.vector is None or result.profile != profile:
+        return None, "query_embedding_unavailable"
+    return result.vector, "available"

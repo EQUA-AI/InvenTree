@@ -160,3 +160,21 @@ class MemoryRecallTests(TestCase):
                 recall_filter_for('general'),
                 query_vector=[1.0] * 3072,
             )
+
+    def test_history_annotation_checks_query_admission_without_an_extra_statement(self):
+        """First-turn metadata is available without replaying the current query."""
+        self.repository.append(self.thread.pk, role='user', content='Current query')
+        with self.assertNumQueries(1):
+            window = self.repository.recall_window(
+                self.thread.pk, limit=12, memory_query=True
+            )
+        self.assertEqual(window.rows, ())
+        self.assertEqual(window.next_sequence, 2)
+        # A confirmed preference alone does not justify a provider query.
+        self.assertFalse(window.memory_query_allowed)
+        with self.assertNumQueries(1):
+            other = ThreadRepository(self.other.pk, 'site:main').recall_window(
+                self.thread.pk, limit=12, memory_query=True
+            )
+        self.assertFalse(other.memory_query_allowed)
+        self.assertEqual(other.rows, ())

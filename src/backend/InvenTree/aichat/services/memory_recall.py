@@ -337,3 +337,15 @@ def _materialize(rows):
         if scope.mode != MODE_LEGACY:
             result.append(row)
     return result
+
+
+def query_admission(repository, thread_id):
+    """Lazy authorization annotation on the existing history statement."""
+    if not available():
+        return Value(False, output_field=models.BooleanField())
+    profile = f'{get_settings().memory_embedding_deployment}:1536'
+    return Exists(
+        _eligible(repository, thread_id)
+        .exclude(memory_type='user_preference')
+        .filter(embedding__isnull=False, embedding_profile=profile)
+    )

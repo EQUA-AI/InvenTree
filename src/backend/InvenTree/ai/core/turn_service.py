@@ -376,6 +376,7 @@ class NormalizedTurnService:
                 call_sync=self._call_sync,
                 task_intent=str(getattr(intent, "value", "") or "") or None,
                 routing_fields=routing_fields,
+                query_text=str(getattr(run, "content", "") or ""),
             )
             breach = stage_breach(bundle.wall_ms / 1000.0, "memory_context")
             set_span_attrs(

@@ -122,7 +122,7 @@ def shield_documents(documents: list[str], *, settings) -> ShieldResult:
         return ShieldResult(unavailable, attempted, "shield_unavailable")
 
 
-def embed_memory(text: str, *, settings) -> EmbeddingResult:
+def embed_memory(text: str, *, settings, timeout_s: float = TIMEOUT_SECONDS) -> EmbeddingResult:
     """Request exactly 1536 floats from the dedicated memory deployment.
 
     SDK retries are disabled: durable worker retry policy owns the call budget.
@@ -133,6 +133,8 @@ def embed_memory(text: str, *, settings) -> EmbeddingResult:
     input_tokens = 0
     usage_known = False
     try:
+        if not 0 < timeout_s <= TIMEOUT_SECONDS:
+            raise ValueError("memory_embedding_timeout")
         value = _texts([text])[0]
         deployment = settings.memory_embedding_deployment
         if (
@@ -144,7 +146,7 @@ def embed_memory(text: str, *, settings) -> EmbeddingResult:
             raise ValueError("memory_embedding_config")
         client = build_openai_client(settings=settings, require_keyless=True)
         with client.with_options(
-            timeout=httpx.Timeout(TIMEOUT_SECONDS, connect=5.0), max_retries=0
+            timeout=httpx.Timeout(timeout_s, connect=min(5.0, timeout_s)), max_retries=0
         ) as bounded:
             attempted = True
             response = bounded.embeddings.create(
