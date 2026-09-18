@@ -55,7 +55,13 @@ def worker_section(since) -> dict:
         {'purpose': row['purpose'], **clean(row)}
         for row in base.values('purpose').annotate(**sums).order_by('purpose')
     ]
-    return {**totals, 'per_deployment': per_deployment, 'per_purpose': per_purpose}
+    reserved = clean(base.filter(task='memory_extraction_reserved').aggregate(**sums))
+    return {
+        **totals,
+        'per_deployment': per_deployment,
+        'per_purpose': per_purpose,
+        'unsettled_reservations': reserved,
+    }
 
 
 class Command(BaseCommand):
@@ -232,6 +238,11 @@ class Command(BaseCommand):
                 f'total={entry["total_tokens"]} hit_rate={entry["cached_hit_rate"]}'
             )
         worker = report['worker']
+        if worker['unsettled_reservations']['rows']:
+            self.stdout.write(
+                'Worker totals include conservative estimates for unsettled memory reservations: '
+                f'{worker["unsettled_reservations"]["rows"]} rows'
+            )
         self.stdout.write('')
         self.stdout.write(
             f'Worker ledger: {worker["rows"]} rows, {worker["attempts"]} calls, '

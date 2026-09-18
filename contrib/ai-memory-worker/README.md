@@ -121,3 +121,32 @@ The existing no-egress CI island will collect the authored guard cases.
 The image and startup set `MEM0_TELEMETRY=false`; this does not admit or import
 Mem0, disable other vendors' telemetry, or prove absence of vendor egress. Mem0
 admission and its package-specific verification remain separate prerequisites.
+
+
+## Extraction recovery and spend accounting
+
+The default-off extraction path writes a per-thread/sequence claim after a
+fresh turn. `configure_memory_worker` previews both heartbeat and recovery
+schedules; `--execute` installs both on ai-memory. Code deployment alone does
+not install schedules. A one-minute recovery pass republishes at most 50 due
+claims and releases processing leases older than the worker timeout plus 180
+seconds. The callback publishes only metadata; no model runs on the chat request.
+
+A task handles at most five source messages / 10,000 characters and five
+candidates. Source policy and consent run before provider calls. Three failed
+attempts leave an explicit failed-window diagnostic and advance that bounded
+window so future cumulative claims cannot retry it forever. Those gaps must be
+reviewed in final qualification; they are not successful extractions.
+
+Set `AIMMS_WORKER_DAILY_TOKEN_CAP_EXTRACTION` for the intended environment.
+Its existing value `0` means unlimited. PostgreSQL advisory locking serializes
+admission; the existing usage ledger reserves a conservative byte/schema/output
+bound before a model call. Known usage replaces that row. Unknown outcomes retain
+the estimate, including after a worker crash. `usage_report` identifies unsettled
+reservation totals; they are not measured provider usage.
+
+Model and shield clients are keyless, bounded and have no SDK retry/fallback.
+No provider call, queue schedule or semantic flag has been activated by these
+source changes. Embedding/rescreen workers and runtime qualification are separate.
+Legacy voice sources are excluded until their actual session carries the new
+memory-disclosing consent version; prior consent is never inferred or backfilled.

@@ -20,7 +20,10 @@ from aichat.models import (
     MemoryFactEvent,
     MemoryFactTombstone,
 )
-from aichat.services.memory_eligibility import evaluate_memory_eligibility
+from aichat.services.memory_eligibility import (
+    evaluate_memory_eligibility,
+    voice_source_has_memory_consent,
+)
 from aichat.services.memory_lifecycle import (
     claim_fingerprint,
     fingerprint,
@@ -121,6 +124,8 @@ def propose_fact(
     )
     if not eligibility.allowed:
         raise MemoryPolicyError(eligibility.reason)
+    if not voice_source_has_memory_consent(source):
+        raise MemoryPolicyError('voice_notice_required')
     validate_source_text(source.content)
     locale = resolve_actor_locale(owner.pk)
     data = validate_candidate(candidate, locale=locale)

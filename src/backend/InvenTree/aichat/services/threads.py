@@ -709,6 +709,7 @@ class ThreadRepository:
             # S38: fresh-write path only — the replay guard above returned
             # already, so a replayed terminal can never re-trigger.
             self._maybe_schedule_compaction(thread)
+            self._maybe_schedule_memory(thread)
             return turn
 
     def _persist_evidence_sets(
@@ -762,6 +763,19 @@ class ThreadRepository:
     #: S38: summarize rarely and in large chunks (prefix-cache stability) —
     #: only once this many messages sit above the watermark.
     COMPACTION_MIN_BACKLOG = 16
+
+    def _maybe_schedule_memory(self, thread) -> None:
+        """Dark mode does not import providers or add memory database work."""
+        try:
+            from ai.core.config import get_settings
+
+            if not get_settings().feature_semantic_memory_extract_shadow:
+                return
+            from aichat.services.memory_extraction import enqueue_for_thread
+
+            enqueue_for_thread(thread)
+        except Exception:
+            logger.warning('Memory extraction scheduling unavailable')
 
     def _maybe_schedule_compaction(self, thread) -> None:
         """Queue the compaction job when the un-summarized backlog is large.

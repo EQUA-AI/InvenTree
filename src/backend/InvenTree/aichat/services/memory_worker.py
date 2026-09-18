@@ -225,3 +225,39 @@ def configure_heartbeat(*, execute=False):
         'cluster': CLUSTER,
         'schedule': HEARTBEAT_NAME,
     }
+
+
+def configure_recovery_sweep(*, execute=False):
+    """Preview/install bounded extraction recovery on the same isolated cluster."""
+    cluster_config()
+    name = 'ai-memory-extraction-recovery-v1'
+    function = 'aichat.services.memory_extraction.sweep'
+    rows = Schedule.objects.using('default').filter(name=name)
+    if rows.count() > 1 or rows.exclude(func=function).exists():
+        raise ImproperlyConfigured('Memory recovery schedule identity conflict')
+    values = {
+        'func': function,
+        'cluster': CLUSTER,
+        'schedule_type': Schedule.MINUTES,
+        'minutes': 1,
+        'repeats': -1,
+        'args': '',
+        'hook': None,
+        'kwargs': repr({
+            'q_options': {
+                'group': CLUSTER,
+                'timeout': 60,
+                'sync': False,
+                'cached': False,
+                'save': True,
+            }
+        }),
+        'intended_date_kwarg': None,
+    }
+    if execute:
+        Schedule.objects.using('default').update_or_create(name=name, defaults=values)
+    return {
+        'status': 'configured' if execute else 'dry_run',
+        'cluster': CLUSTER,
+        'schedule': name,
+    }

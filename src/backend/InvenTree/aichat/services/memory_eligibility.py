@@ -164,3 +164,25 @@ def acknowledge_notice(actor, version):
         user=user, notice_version=version
     )
     return row
+
+
+def voice_source_has_memory_consent(source):
+    """Old voice consent did not disclose learned memory; never infer an upgrade."""
+    if source.modality != 'voice':
+        return True
+    import uuid
+
+    from voice.models import VoiceSession
+
+    metadata = source.metadata if isinstance(source.metadata, dict) else {}
+    try:
+        identity = uuid.UUID(str(metadata.get('voice_session_id', '')))
+    except (ValueError, TypeError):
+        return False
+    return VoiceSession.objects.filter(
+        pk=identity,
+        owner_id=source.thread.owner_id,
+        thread_id=source.thread_id,
+        consent_version='consent-v3-memory',
+        created_at__lte=source.created_at,
+    ).exists()
