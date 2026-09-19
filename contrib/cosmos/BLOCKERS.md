@@ -171,6 +171,35 @@ Standalone scripts under `contrib/cosmos/devtools/` sidestep this by accepting a
 token minted on the host in `COSMOS_ACCESS_TOKEN`. That is fine for a one-off
 inspection or copy; it is not a deployment, and the token expires in about an hour.
 
+### Everything after authentication already works - verified
+
+Waiting on step 1 is worth doing only if the rest of the read path is sound.
+It is. On 2026-09-19 the **real connector** was run against the live account with
+the credential substituted and nothing else changed
+(`contrib/cosmos/devtools/prove_live_read.py`):
+
+```
+endpoint: https://epconchatcosmos9d6b.documents.azure.com:443/
+check():  ok=True detail='OK'
+read_latest(): 905 readings
+read_window(6h): 273 samples
+```
+
+That exercises the connector's own partition-key construction, paging, parsing
+and flattening against the documents actually in the live container. So the role
+assignment is the *only* missing piece - there is no second surprise waiting
+behind it.
+
+Two things this also settles:
+
+- **Account keys are not an alternative.** `disableLocalAuth` is `false`, so keys
+  would work at the Azure level, but the developer cannot read them:
+  `listKeys` is in the same `notActions` list. There is no way around step 1.
+- **The chart will draw a flat line.** Every sample of
+  `/dex/COMMAN_FORBAY_LEVEL` in the live container reads `132.0436248779297`,
+  because all 289 synthetic documents are one snapshot replayed. That is correct
+  behaviour on fabricated input, not a broken axis.
+
 ### What to do once the grant exists
 
 Step 1 is the only part that needs someone else. The developer **owns the
