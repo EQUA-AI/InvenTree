@@ -311,6 +311,29 @@ python contrib/cosmos/devtools/push_to_live.py \
   --purge-synthetic --confirm
 ```
 
+A single push is a point-in-time copy, and it decays in two stages that are easy
+to misread. After **300 s** - the source's freshness threshold - every reading in
+it reads as stale, which looks exactly like a broken connector. After **six
+hours** the trend chart's window has moved past it entirely and the chart is
+empty. Measured: 54 minutes after the first push, `last 10 minutes` was already 0.
+
+`keep_live_fresh.sh` holds both open by re-copying the tail every 60 s:
+
+```zsh
+nohup sh contrib/cosmos/devtools/keep_live_fresh.sh > /tmp/live_sync.log 2>&1 < /dev/null & disown
+pkill -f keep_live_fresh.sh      # stop it
+```
+
+It runs on the **host**, not in the container, because the Azure CLI is on the
+host and the Cosmos SDK is in the container - neither side has both. It re-mints
+the token every cycle rather than once, since a token lasts about an hour and a
+loop that minted once would fail silently overnight, with stale readings as the
+only symptom.
+
+It requires `keep_emulator_fresh.sh` to be running: it copies what the emulator
+produces and invents nothing. If the emulator loop is dead, this one will happily
+re-copy the same unchanging tail.
+
 ### How to verify afterwards
 
 ```zsh
