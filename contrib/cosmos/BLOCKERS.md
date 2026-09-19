@@ -171,6 +171,47 @@ Standalone scripts under `contrib/cosmos/devtools/` sidestep this by accepting a
 token minted on the host in `COSMOS_ACCESS_TOKEN`. That is fine for a one-off
 inspection or copy; it is not a deployment, and the token expires in about an hour.
 
+### The portal's Data Explorer will look empty, and the data is still there
+
+A developer holding **Cosmos DB Operator** cannot read documents in the Azure
+portal by default, and the failure is quiet: Data Explorer authenticates to the
+data plane with an **account key**, which it obtains by calling `listKeys` - and
+`listKeys` is in this role's `notActions`, exactly like
+`sqlRoleAssignments/write`. The pane renders empty or errors rather than saying
+"you are using the wrong credential type".
+
+This is the same wall described above, met from a different direction. It is not
+evidence that a write failed. Confirm with the SDK path before concluding
+anything about the data:
+
+```zsh
+TOKEN=$(az account get-access-token \
+  --resource "https://epconchatcosmos9d6b.documents.azure.com" \
+  --query accessToken -o tsv)
+docker exec -e COSMOS_ACCESS_TOKEN="$TOKEN" \
+  -e COSMOS_ACCESS_TOKEN_EXPIRES=$(( $(date +%s) + 3000 )) \
+  inventree-inventree-dev-server-1 sh -c "cd /home/inventree && \
+  python contrib/cosmos/devtools/inventory.py \
+  --endpoint https://epconchatcosmos9d6b.documents.azure.com:443/"
+```
+
+That path uses Entra ID, which this developer *does* hold at the data plane
+(account-scoped Data Contributor), so it reads the documents the portal will not
+show.
+
+To fix the portal itself, switch Data Explorer to Entra ID: in the account blade
+open **Data Explorer**, then the settings cog, and set **"Enable Entra ID RBAC"**
+to **True** (the default is *Automatic*, which prefers keys). The session then
+authenticates as the signed-in user rather than with a key.
+
+Navigation, for the avoidance of doubt - the account has one database and three
+containers, and only one of them holds readings:
+
+```
+epconchatcosmos9d6b  ->  aimms  ->  pumphouse_readings
+                                    (not telemetry, not conversations)
+```
+
 ### Everything after authentication already works - verified
 
 Waiting on step 1 is worth doing only if the rest of the read path is sound.
