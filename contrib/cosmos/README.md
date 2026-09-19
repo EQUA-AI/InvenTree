@@ -275,6 +275,45 @@ read a single document; that needs a data-plane role assignment (see above). Thi
 obstacle: the application's identity gets read-only *data* access and no ability to alter the container,
 while an administrator can manage the container and not read the data.
 
+### Data Explorer → Items is empty, or a query fails on `ORDER BY`
+
+Two separate traps, and they are easy to mistake for "the data was never written".
+
+**Empty Items pane.** Data Explorer reads documents with an **account key**, which it fetches via
+`listKeys` — and `listKeys` is in **Cosmos DB Operator**'s `notActions`, the same list that blocks
+`sqlRoleAssignments/write`. The pane renders empty rather than reporting a credential problem. Fix it in
+the account blade: **Data Explorer → settings cog → "Enable Entra ID RBAC" → True**. The default,
+*Automatic*, prefers keys. An empty Items pane is not evidence about the data.
+
+**`ORDER BY` rejected.** The container deliberately excludes `/*` from indexing to keep write cost off the
+tag payload, so only these paths are indexed and only they can be sorted or filtered efficiently:
+
+```
+/station_uuid  /hour_bucket  /sub_time_period  /egt  /month
+```
+
+Ordering by anything else returns
+`{"Errors":["The index path corresponding to the specified order-by item is excluded."]}`.
+
+**There is also no `sample_time` field on the document.** Sample time is `sub_time_period` (and `egt`),
+stored as **epoch milliseconds**; `hour_bucket` is an epoch-ms **string** mirroring the Cassandra
+`time_period`. A query written against `c.sample_time` silently returns nulls — it does not error, which
+makes it the more dangerous of the two mistakes.
+
+Newest documents first, verified working against the live account:
+
+```sql
+SELECT TOP 20 c.id, c.sub_time_period, c.hour_bucket, c.station_uuid, c.sl, c.synthetic
+FROM c
+ORDER BY c.sub_time_period DESC
+```
+
+Counting dev-injected documents (unindexed filter, fine at this scale, a full scan at any other):
+
+```sql
+SELECT VALUE COUNT(1) FROM c WHERE c.synthetic = true
+```
+
 ---
 
 ## Files here
