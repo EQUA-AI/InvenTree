@@ -220,7 +220,7 @@ msgstr "Dele"
 
 #: lib/enums/ModelInformation.tsx:71
 #: src/pages/assets/EquipmentRegistry.tsx:641
-#: src/pages/assets/health/SignalTrendChart.tsx:185
+#: src/pages/assets/health/SignalTrendChart.tsx:288
 msgid "Parameter"
 msgstr "Parameter"
 
@@ -10230,130 +10230,182 @@ msgstr ""
 msgid "Not configured"
 msgstr "Not configured"
 
-#: src/pages/assets/health/SignalTrend.tsx:88
-#: src/pages/assets/health/SignalTrendChart.tsx:81
+#: src/pages/assets/health/SignalTrend.tsx:113
+#: src/pages/assets/health/SignalTrendChart.tsx:140
 msgid "No trend data is available."
 msgstr ""
 
-#: src/pages/assets/health/SignalTrend.tsx:90
+#: src/pages/assets/health/SignalTrend.tsx:115
 msgid "No trend"
 msgstr ""
 
-#: src/pages/assets/health/SignalTrend.tsx:99
+#: src/pages/assets/health/SignalTrend.tsx:124
 msgid "Too few samples"
 msgstr ""
 
 #. placeholder {0}: trend.samples.length
 #. placeholder {1}: trend.source_name
-#: src/pages/assets/health/SignalTrend.tsx:106
+#: src/pages/assets/health/SignalTrend.tsx:131
 msgid "{0} samples from {1}"
 msgstr ""
 
 #. placeholder {0}: trend.display_name
-#: src/pages/assets/health/SignalTrend.tsx:115
+#: src/pages/assets/health/SignalTrend.tsx:140
 msgid "Recent trend for {0}"
 msgstr ""
 
-#: src/pages/assets/health/SignalTrend.tsx:129
+#: src/pages/assets/health/SignalTrend.tsx:154
 msgid "(trimmed)"
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:29
+#: src/pages/assets/health/SignalTrendChart.tsx:31
+#~ msgid "Last 24 hours"
+#~ msgstr ""
+
+#: src/pages/assets/health/SignalTrendChart.tsx:32
+#~ msgid "Last 7 days"
+#~ msgstr ""
+
+#: src/pages/assets/health/SignalTrendChart.tsx:33
+#~ msgid "Last 30 days"
+#~ msgstr ""
+
+#: src/pages/assets/health/SignalTrendChart.tsx:46
+msgid "Last 15 minutes"
+msgstr ""
+
+#: src/pages/assets/health/SignalTrendChart.tsx:47
 msgid "Last hour"
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:30
+#: src/pages/assets/health/SignalTrendChart.tsx:48
+msgid "Last 3 hours"
+msgstr ""
+
+#: src/pages/assets/health/SignalTrendChart.tsx:49
 msgid "Last 6 hours"
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:31
-msgid "Last 24 hours"
+#: src/pages/assets/health/SignalTrendChart.tsx:73
+msgid "Pick both a start and an end for the window."
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:32
-msgid "Last 7 days"
+#: src/pages/assets/health/SignalTrendChart.tsx:79
+msgid "That is not a readable date and time."
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:33
-msgid "Last 30 days"
+#: src/pages/assets/health/SignalTrendChart.tsx:82
+msgid "The end of the window must come after its start."
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:75
+#. placeholder {0}: MAX_WINDOW_SECONDS / 3600
+#: src/pages/assets/health/SignalTrendChart.tsx:88
+msgid "That window is {hours} hours long. These signals are sampled every few seconds, so a window may not exceed {0} hours."
+msgstr ""
+
+#: src/pages/assets/health/SignalTrendChart.tsx:134
 msgid "This source has no configured connector, so no history can be read."
 msgstr ""
 
 #. placeholder {0}: trend.source_name
-#: src/pages/assets/health/SignalTrendChart.tsx:77
+#: src/pages/assets/health/SignalTrendChart.tsx:136
 msgid "{0} cannot serve historical windows. Only the current value is available."
 msgstr ""
 
 #. placeholder {0}: trend.source_name
-#: src/pages/assets/health/SignalTrendChart.tsx:79
+#: src/pages/assets/health/SignalTrendChart.tsx:138
 msgid "{0} could not be reached for this window. This is an outage, not an absence of data."
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:173
+#: src/pages/assets/health/SignalTrendChart.tsx:276
 msgid "No mapped signals are available to chart."
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:198
+#: src/pages/assets/health/SignalTrendChart.tsx:301
 msgid "Range"
 msgstr ""
 
+#: src/pages/assets/health/SignalTrendChart.tsx:309
+msgid "Custom range…"
+msgstr ""
+
+#: src/pages/assets/health/SignalTrendChart.tsx:317
+#: src/pages/repair/RepairPacketDetail.tsx:293
+msgid "From"
+msgstr ""
+
+#: src/pages/assets/health/SignalTrendChart.tsx:324
+msgid "Start of window"
+msgstr ""
+
+#: src/pages/assets/health/SignalTrendChart.tsx:328
+#: src/pages/repair/RepairPacketDetail.tsx:294
+#: src/tables/settings/EmailTable.tsx:85
+msgid "To"
+msgstr "Til"
+
+#: src/pages/assets/health/SignalTrendChart.tsx:335
+msgid "End of window"
+msgstr ""
+
 #. placeholder {0}: points.length
-#: src/pages/assets/health/SignalTrendChart.tsx:210
+#: src/pages/assets/health/SignalTrendChart.tsx:342
 msgid "{0} samples"
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:218
+#: src/pages/assets/health/SignalTrendChart.tsx:348
+msgid "Choose a window to read"
+msgstr ""
+
+#: src/pages/assets/health/SignalTrendChart.tsx:356
 msgid "Could not load the trend"
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:219
+#: src/pages/assets/health/SignalTrendChart.tsx:357
 msgid "The request for this window failed. No data is shown rather than a partial line."
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:224
+#: src/pages/assets/health/SignalTrendChart.tsx:362
 msgid "No history for this signal"
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:230
+#: src/pages/assets/health/SignalTrendChart.tsx:368
 msgid "This window was truncated"
 msgstr ""
 
 #. placeholder {0}: trend.limits.max_samples
-#: src/pages/assets/health/SignalTrendChart.tsx:231
+#: src/pages/assets/health/SignalTrendChart.tsx:369
 msgid "The source returned more than the {0} sample limit, so the most recent part of this window is not shown. Choose a shorter range to see it."
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:236
+#: src/pages/assets/health/SignalTrendChart.tsx:374
 msgid "Some samples are not plottable"
 msgstr ""
 
 #. placeholder {0}: trend.samples.length
-#: src/pages/assets/health/SignalTrendChart.tsx:237
+#: src/pages/assets/health/SignalTrendChart.tsx:375
 msgid "{skipped} of {0} samples are not numeric and were left off the chart rather than coerced to a number."
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:242
+#: src/pages/assets/health/SignalTrendChart.tsx:380
 msgid "No samples in this window"
 msgstr ""
 
 #. placeholder {0}: trend.source_name
-#: src/pages/assets/health/SignalTrendChart.tsx:243
+#: src/pages/assets/health/SignalTrendChart.tsx:381
 msgid "{0} served this window but had no data in it. That is different from the source being unable to answer."
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:267
+#: src/pages/assets/health/SignalTrendChart.tsx:405
 msgid "Only one sample"
 msgstr ""
 
-#: src/pages/assets/health/SignalTrendChart.tsx:268
+#: src/pages/assets/health/SignalTrendChart.tsx:406
 msgid "A single point is not a trend. Widen the range to see whether it is moving."
 msgstr ""
 
 #. placeholder {0}: trend.source_name
-#: src/pages/assets/health/SignalTrendChart.tsx:274
+#: src/pages/assets/health/SignalTrendChart.tsx:412
 msgid "Read live from {0}. AIMMS does not store this history."
 msgstr ""
 
@@ -12603,15 +12655,6 @@ msgstr "Når"
 #: src/pages/repair/RepairPacketDetail.tsx:292
 msgid "Event"
 msgstr ""
-
-#: src/pages/repair/RepairPacketDetail.tsx:293
-msgid "From"
-msgstr ""
-
-#: src/pages/repair/RepairPacketDetail.tsx:294
-#: src/tables/settings/EmailTable.tsx:85
-msgid "To"
-msgstr "Til"
 
 #: src/pages/repair/components/DiagnosisPanel.tsx:117
 msgid "Verification failed"
