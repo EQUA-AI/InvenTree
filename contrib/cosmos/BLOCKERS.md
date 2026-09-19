@@ -66,25 +66,69 @@ withheld units, then regenerate and apply the review pack as in HANDOFF section 
 
 ## Ask 2: one Cosmos role assignment, by someone with Owner or Contributor
 
-### Status: the identity now exists; the grant is blocked
+### Status: RESOLVED on 2026-09-19. The dashboard now reads live Azure Cosmos.
 
-The original item said "grant the app identity Data Reader". The real blocker
-turned out to be earlier than that: **there was no app identity at all.** The
-subscription contains zero managed identities, and the only data-plane grant on the
-account was to a human.
-
-So a dedicated identity was created:
+Both halves of this blocker are cleared. Kept below because the reasoning explains
+the current configuration and the reverse procedure.
 
 | Field | Value |
 |---|---|
 | Display name | `aimms-pumphouse-connector` |
 | Application (client) ID | `08a359e2-7133-43ee-b100-26a0e0db1bd3` |
 | Service principal object ID | `b46af2ad-9938-4a75-8997-8870004d244b` |
-| Credentials | **none issued** |
-| Permissions | **none** - the role assignment below failed |
+| Role | **Data Reader** (`…0001`), scoped to `/dbs/aimms/colls/pumphouse_readings` |
+| Credential | client secret `inventree-dev-container`, expires 2027-09-19 |
 
-It currently cannot authenticate and cannot reach anything. It is inert until both
-a credential and the role assignment exist.
+Verified end to end, not inferred:
+
+```
+check():        ok=True
+read_latest():  905 readings
+read_window(6h): 240 samples
+write probe:    REJECTED - the role really is read-only
+trend service:  243 samples, truncated=False, quality GOOD
+```
+
+The write probe matters as much as the reads. A working credential proves only
+that the identity can authenticate; it does not prove the grant was scoped as
+intended. An over-granted identity would have read *and* written happily, and
+nothing on the dashboard would have looked different.
+
+The secret lives in `contrib/container/docker.dev.secrets.env`, gitignored via
+`*.env`, mode `0600`, wired into the dev server and worker as an **optional**
+`env_file` (`required: false`). Absent on an ordinary checkout, which is correct:
+without it the connector falls back to the local emulator rather than failing.
+
+**`docker.dev.env` is tracked in git — the secret must never be put there.**
+
+To switch back to the emulator:
+
+```bash
+docker exec -e REPOINT=emulator inventree-inventree-dev-server-1 \
+  sh -c "cd /home/inventree/src/backend/InvenTree && \
+    python manage.py shell < /home/inventree/contrib/cosmos/devtools/repoint_source.py"
+```
+
+### The freshness loops die on container recreate
+
+`keep_emulator_fresh.sh` runs **inside** the dev-server container. Recreating that
+container kills it, silently. `keep_live_fresh.sh` then keeps copying a tail that
+has stopped advancing, so the live account ages out of the 300 s window and every
+reading reports stale — indistinguishable from a dead connector.
+
+Restart it in the container, not on the host:
+
+```bash
+docker exec -d inventree-inventree-dev-server-1 \
+  sh -c "cd /home/inventree && nohup sh contrib/cosmos/devtools/keep_emulator_fresh.sh > /tmp/reseed.log 2>&1"
+```
+
+### Historical: why the grant was blocked
+
+The original item said "grant the app identity Data Reader". The real blocker
+turned out to be earlier than that: **there was no app identity at all.** The
+subscription contains zero managed identities, and the only data-plane grant on the
+account was to a human.
 
 ### The command that needs running
 

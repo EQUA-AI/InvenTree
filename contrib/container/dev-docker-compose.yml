@@ -55,6 +55,12 @@ services:
             - ./:/home/inventree:z
         env_file:
             - contrib/container/docker.dev.env
+            # Optional Entra ID credential for the live Cosmos account.
+            # Absent on a normal checkout, and absent is the correct
+            # default: without it the connector uses the local emulator.
+            # Gitignored via *.env, so it is never committed.
+            - path: contrib/container/docker.dev.secrets.env
+              required: false
         # Local single-tenant registry: only work-order viewers receive this scope.
         environment: &maintenance_scope
             AIMMS_MAINTENANCE_SCOPE_RESOLVER: ${AIMMS_MAINTENANCE_SCOPE_RESOLVER:-tasks.scope.single_site_scope_resolver}
@@ -87,6 +93,10 @@ services:
             - ./:/home/inventree:z
         env_file:
             - contrib/container/docker.dev.env
+            # As above. The scheduled Cosmos poller runs in the worker, so
+            # it needs the same optional credential.
+            - path: contrib/container/docker.dev.secrets.env
+              required: false
         environment: *maintenance_scope
         restart: unless-stopped
 
