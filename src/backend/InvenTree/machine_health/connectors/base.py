@@ -17,8 +17,22 @@ from datetime import datetime
 from typing import TypeVar
 
 #: Trend reads are bounded so one request cannot pull a historian dry.
-MAX_TREND_SAMPLES = 2000
-MAX_TREND_WINDOW_SECONDS = 30 * 24 * 3600
+#:
+#: The bound that matters is the *window*; the sample count follows from it.
+#: How many samples a window holds depends on how fast the source writes, and
+#: PH_3 writes a snapshot every five seconds - verified against the pilot
+#: excerpt, whose consecutive ``sub_time_period`` values are exactly 5000 ms
+#: apart. Six hours is therefore 4320 samples.
+#:
+#: The two are derived from one another on purpose. A sample cap lower than the
+#: window implies is not a safety margin, it is a broken promise: every
+#: full-length window would come back flagged as truncated, and the UI would be
+#: offering a range the server can never actually serve. The old pair (30 days,
+#: 2000 samples) was exactly that - at this cadence 2000 samples is 2.8 hours,
+#: so a "last 30 days" request returned the oldest 2.8 hours and stopped.
+EXPECTED_SAMPLE_INTERVAL_SECONDS = 5
+MAX_TREND_WINDOW_SECONDS = 6 * 3600
+MAX_TREND_SAMPLES = MAX_TREND_WINDOW_SECONDS // EXPECTED_SAMPLE_INTERVAL_SECONDS
 
 
 @dataclass(frozen=True)

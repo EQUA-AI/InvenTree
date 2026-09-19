@@ -34,7 +34,13 @@ from machine_health.connectors.base import (
 logger = logging.getLogger('inventree')
 
 #: Default look-back when the caller does not name one.
-DEFAULT_WINDOW_SECONDS = 24 * 3600
+#:
+#: Deliberately short. At PH_3's five-second cadence an hour is ~720 samples,
+#: and every one of those is a whole-station snapshot the connector must fetch
+#: and parse to extract a single tag. This default is what an unparameterised
+#: caller gets - notably every sparkline on the machine page - so it is sized
+#: for "enough to show a direction", not for the maximum the server permits.
+DEFAULT_WINDOW_SECONDS = 3600
 
 
 class TrendError(Exception):

@@ -75,9 +75,9 @@ ERROR_CODES = frozenset({
 PAGE_SIZE = 100
 
 #: Hour buckets a single window read may walk. The trend window is already capped
-#: at 30 days by ``bounded_window``; this bounds the number of round trips that
-#: window can turn into.
-MAX_BUCKETS_PER_READ = 24 * 31
+#: at six hours by ``bounded_window``, which can straddle at most seven hour
+#: boundaries; this bounds the number of round trips that window can turn into.
+MAX_BUCKETS_PER_READ = 7
 
 #: Hour buckets one poll may walk. A poller that has fallen days behind catches
 #: up over several runs rather than issuing hundreds of queries in one tick and

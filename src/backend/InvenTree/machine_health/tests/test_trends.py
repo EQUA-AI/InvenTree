@@ -13,15 +13,65 @@ from django.utils import timezone
 from assets.models import AssetMachine
 from InvenTree.unit_test import InvenTreeAPITestCase
 from machine_health.connectors.base import (
+    EXPECTED_SAMPLE_INTERVAL_SECONDS,
     MAX_TREND_SAMPLES,
     MAX_TREND_WINDOW_SECONDS,
     HealthConnector,
     Reading,
+    bounded_window,
     register,
 )
-from machine_health.services.trends import TrendError, read_trend
+from machine_health.services.trends import (
+    DEFAULT_WINDOW_SECONDS,
+    TrendError,
+    read_trend,
+)
 
 from .fixtures import HealthEnvMixin
+
+
+class TrendBoundsTest(TestCase):
+    """The window ceiling and the sample cap have to describe the same limit.
+
+    These are two statements about one bound, and the failure mode when they
+    disagree is quiet: every request for the longest permitted window comes back
+    flagged ``truncated``, having dropped the *newest* readings, while the UI
+    goes on offering that range. The old pair said "30 days" and "2000 samples",
+    which at this cadence is 2.8 hours - so "last 30 days" returned the oldest
+    2.8 hours of the month and stopped.
+    """
+
+    def test_the_sample_cap_covers_a_full_length_window(self):
+        """A window the server permits must be one it can return whole."""
+        needed = MAX_TREND_WINDOW_SECONDS // EXPECTED_SAMPLE_INTERVAL_SECONDS
+
+        self.assertGreaterEqual(
+            MAX_TREND_SAMPLES,
+            needed,
+            'The longest permitted window holds more samples than the cap '
+            'allows, so every full-length read would be silently truncated.',
+        )
+
+    def test_the_default_window_is_within_the_ceiling(self):
+        """The unparameterised read must not be one the bound would refuse."""
+        self.assertLessEqual(DEFAULT_WINDOW_SECONDS, MAX_TREND_WINDOW_SECONDS)
+
+    def test_a_window_past_the_ceiling_is_refused(self):
+        """The ceiling is enforced, not merely documented."""
+        end = timezone.now()
+        start = end - timedelta(seconds=MAX_TREND_WINDOW_SECONDS + 1)
+
+        with self.assertRaisesMessage(ValueError, 'may not exceed'):
+            bounded_window(start, end)
+
+    def test_a_window_exactly_at_the_ceiling_is_allowed(self):
+        """An off-by-one here would make the advertised maximum unusable."""
+        end = timezone.now()
+        start = end - timedelta(seconds=MAX_TREND_WINDOW_SECONDS)
+
+        _start, _end, samples = bounded_window(start, end)
+
+        self.assertEqual(samples, MAX_TREND_SAMPLES)
 
 
 @register

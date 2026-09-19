@@ -317,9 +317,7 @@ def machine_signals(machine) -> dict[str, Any]:
     return {'signals': signals, 'total': len(signals)}
 
 
-def machine_signal_trend(
-    machine, *, binding_id: int, hours: int = 24
-) -> dict[str, Any]:
+def machine_signal_trend(machine, *, binding_id: int, hours: int = 1) -> dict[str, Any]:
     """A bounded history window for one mapped signal.
 
     "Is the temperature climbing" is the highest-value spoken question about a
@@ -327,12 +325,18 @@ def machine_signal_trend(
     resolved against this machine inside ``read_trend``, so a binding id from
     another asset is not found rather than read, and an unavailable source
     reports why instead of synthesizing a line.
+
+    ``hours`` is clamped to the service window rather than passed through. A
+    request for a week would otherwise be refused outright by ``bounded_window``
+    and surface to the model as "trend unavailable", which reads as *the source
+    is broken* rather than *you asked for more than anyone can serve*.
     """
     from django.utils import timezone
 
+    from machine_health.connectors.base import MAX_TREND_WINDOW_SECONDS
     from machine_health.services.trends import TrendError, read_trend
 
-    window = max(1, min(int(hours or 24), 168))
+    window = max(1, min(int(hours or 1), MAX_TREND_WINDOW_SECONDS // 3600))
     end = timezone.now()
     start = end - timezone.timedelta(hours=window)
     try:

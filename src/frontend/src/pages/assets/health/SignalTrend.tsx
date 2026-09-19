@@ -13,6 +13,23 @@ const WIDTH = 120;
 const HEIGHT = 28;
 
 /**
+ * Look-back for a sparkline, in seconds.
+ *
+ * Asked for explicitly rather than left to the server's default. A sparkline is
+ * 120px wide, so it cannot render more than ~120 distinct points, and every
+ * sample behind it costs the connector a whole-station snapshot fetched and
+ * parsed to extract one tag. Several of these render per machine page.
+ *
+ * The *window* is what gets shortened, never `max_samples`. Capping the sample
+ * count would look equivalent and is not: `read_window` fills from the oldest
+ * bucket forward and stops, so a cap drops the *newest* readings. A sparkline
+ * trimmed that way would show the oldest ten minutes of its window and hide the
+ * most recent - precisely backwards for a "recent trend". Ten minutes at the
+ * five-second source cadence is ~120 samples, which is the width of the line.
+ */
+const SPARKLINE_WINDOW_SECONDS = 10 * 60;
+
+/**
  * A sparkline for one mapped signal — but only when the source can actually
  * serve one.
  *
@@ -38,9 +55,17 @@ export function SignalTrendSparkline({
     // every focus change.
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
+      const end = new Date();
+      const start = new Date(end.getTime() - SPARKLINE_WINDOW_SECONDS * 1000);
       const response = await api.get(
         apiUrl(ApiEndpoints.machine_health_trend, machineId),
-        { params: { binding: bindingId } }
+        {
+          params: {
+            binding: bindingId,
+            from: start.toISOString(),
+            to: end.toISOString()
+          }
+        }
       );
       return response.data;
     }

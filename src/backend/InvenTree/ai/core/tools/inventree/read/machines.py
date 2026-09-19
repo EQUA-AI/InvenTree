@@ -183,18 +183,20 @@ async def get_machine_signals(machine_id: int) -> dict[str, Any]:
 
 @ai_function
 async def get_machine_signal_trend(
-    machine_id: int, binding_id: int, hours: int = 24
+    machine_id: int, binding_id: int, hours: int = 1
 ) -> dict[str, Any]:
     """
     Get how one machine signal has moved over a recent time window.
 
-    Answers "is the temperature climbing", "has vibration got worse this week".
+    Answers "is the temperature climbing", "has vibration got worse this hour".
     Get binding_id from get_machine_signals first.
 
     Args:
       machine_id: The machine's ID.
       binding_id: Which mapped signal, from get_machine_signals.
-      hours: How far back to look (default 24, max 168).
+      hours: How far back to look (default 1, max 6). Sources sample every few
+        seconds, so six hours is already thousands of readings; longer windows
+        are clamped rather than refused.
 
     Returns:
       Window bounds, sample count and first/last/min/max values. If the source
