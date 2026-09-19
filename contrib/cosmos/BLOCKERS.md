@@ -171,6 +171,76 @@ Standalone scripts under `contrib/cosmos/devtools/` sidestep this by accepting a
 token minted on the host in `COSMOS_ACCESS_TOKEN`. That is fine for a one-off
 inspection or copy; it is not a deployment, and the token expires in about an hour.
 
+### What to do once the grant exists
+
+Step 1 is the only part that needs someone else. The developer **owns the
+`aimms-pumphouse-connector` app registration**, so steps 2-5 need no further
+favours. Verified 2026-09-19: owner is `Aniket`, `passwordCredentials: 0`.
+
+**1. Someone with Owner / Contributor / DocumentDB Account Contributor** runs the
+role assignment command given above. Nothing below works until this lands.
+
+**2. Issue a credential** for the identity (developer can do this):
+
+```zsh
+az ad app credential reset \
+  --id 08a359e2-7133-43ee-b100-26a0e0db1bd3 \
+  --display-name inventree-dev --years 1
+```
+
+Record `appId`, `password`, `tenant`. Treat the password as a secret: it is a
+credential for an identity that, after step 1, can read plant telemetry.
+
+**3. Give the container the credential.** `DefaultAzureCredential` picks up
+`EnvironmentCredential` first, so these three variables are enough - no CLI, no
+mounted token cache, no code change:
+
+```yaml
+# contrib/container/dev-docker-compose.yml, inventree-dev-server environment:
+AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
+```
+
+Keep the values in a local `.env`, never in the compose file.
+
+**4. Point the source at the live account.** `secret_ref` must be **empty** - the
+connector refuses a key against a real endpoint by design, so leaving the
+emulator's key reference set produces a `CosmosConfigError` rather than a
+fallback:
+
+```python
+source = HealthSource.objects.get(pk=1)
+source.secret_ref = ''
+source.config['endpoint'] = 'https://epconchatcosmos9d6b.documents.azure.com:443/'
+source.save()
+```
+
+**5. Verify before trusting the dashboard**, because a blank chart and a failed
+auth look identical on screen:
+
+```zsh
+python src/backend/InvenTree/manage.py check_pumphouse_readiness \
+  --source 1 --probe --allow-incomplete
+```
+
+### State of the live container
+
+As of 2026-09-19 the live container holds **293 documents**: the 4 original
+hand-seeded pilot snapshots from 2025-07-18, plus **289 marked `synthetic: true`**
+copied from the emulator to give the dashboard a recent series to draw.
+
+Those 289 are **not telemetry** - see Ask 1: they are one snapshot taken with the
+station shut down, replayed onto later timestamps. They exist so the read path can
+be demonstrated end to end. Remove them before anyone treats this container as a
+record of plant behaviour:
+
+```zsh
+python contrib/cosmos/devtools/push_to_live.py \
+  --endpoint https://epconchatcosmos9d6b.documents.azure.com:443/ \
+  --purge-synthetic --confirm
+```
+
 ### How to verify afterwards
 
 ```zsh
