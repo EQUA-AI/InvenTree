@@ -35,6 +35,15 @@ from datetime import datetime, timezone
 EMULATOR_ENDPOINT = 'http://localhost:8081'
 EMULATOR_KEY_ENV = 'COSMOS_EMULATOR_KEY'
 
+#: An access token minted outside this process, and when it expires.
+#:
+#: Needed because the SDK and the credentials live in different places: the dev
+#: container has azure-cosmos but no Azure CLI, so DefaultAzureCredential has
+#: no cache to read there. Minting on the host and passing the token in is the
+#: same workaround data/probe_cosmos.py uses.
+TOKEN_ENV = 'COSMOS_ACCESS_TOKEN'
+TOKEN_EXPIRES_ENV = 'COSMOS_ACCESS_TOKEN_EXPIRES'
+
 #: Windows the trend UI can actually request, plus two longer ones for context.
 #: The six-hour entry is the server's ceiling, so anything older than that is
 #: unreachable from a chart no matter how many documents it contains.
@@ -64,6 +73,24 @@ def build_client(args):
 
     if not args.endpoint:
         sys.exit('Pass --endpoint, or set INVENTREE_COSMOS_ENDPOINT.')
+
+    # A token minted elsewhere, for the case this runs somewhere the CLI's
+    # cache is not. The dev container has the SDK but no Azure CLI, so
+    # DefaultAzureCredential finds nothing there and fails with an error that
+    # reads like a permissions problem rather than a missing-cache one.
+    token = os.environ.get(TOKEN_ENV)
+    if token:
+        from azure.core.credentials import AccessToken, TokenCredential
+
+        expires = int(os.environ.get(TOKEN_EXPIRES_ENV, '0'))
+
+        class StaticToken(TokenCredential):
+            """Hand the SDK a token the caller already obtained."""
+
+            def get_token(self, *scopes, **kwargs):
+                return AccessToken(token, expires)
+
+        return CosmosClient(args.endpoint, credential=StaticToken())
 
     from azure.identity import DefaultAzureCredential
 

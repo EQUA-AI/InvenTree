@@ -132,6 +132,45 @@ nothing should be deployed relying on it. The connector itself has no write path
 `upsert_item`, `create_item`, `replace_item` and `delete_item` do not appear
 anywhere in it - so Data Reader is sufficient.
 
+### A second, independent blocker: the container cannot authenticate at all
+
+Granting the role assignment above is necessary but **not sufficient** to make the
+dashboard read from the live account. Even with the role in place, the Django
+container has no credential to present. Verified from inside
+`inventree-dev-server`, every credential in the default chain fails:
+
+```
+EnvironmentCredential:     environment variables are not fully configured
+WorkloadIdentityCredential: workload options are not fully configured
+ManagedIdentityCredential: no response from the IMDS endpoint
+SharedTokenCacheCredential: no accounts were found in the cache
+AzureCliCredential:        Azure CLI not found on path
+AzurePowerShellCredential: PowerShell is not installed
+```
+
+The connector resolves a credential with `DefaultAzureCredential` and, against a
+real account, **refuses a key** (`cosmos_pumphouse.py:283-289`) - deliberately, so
+that the Data Reader role rather than this code enforces read-only. There is no
+hook for an injected token, by design.
+
+So "the dashboard reads live Cosmos" needs **both**:
+
+1. the role assignment above, **and**
+2. a credential the container can actually present - which means either issuing a
+   client secret for `aimms-pumphouse-connector` and setting `AZURE_CLIENT_ID` /
+   `AZURE_TENANT_ID` / `AZURE_CLIENT_SECRET`, or deploying somewhere with a
+   managed identity.
+
+Installing the Azure CLI into the dev image and mounting `~/.azure` would also
+satisfy `DefaultAzureCredential`, but it authenticates as the *human developer* -
+who holds account-scoped **Data Contributor** - so it grants the running
+application write access to the whole account. That is the opposite of what the
+read-only design is for, and should not be used as a shortcut.
+
+Standalone scripts under `contrib/cosmos/devtools/` sidestep this by accepting a
+token minted on the host in `COSMOS_ACCESS_TOKEN`. That is fine for a one-off
+inspection or copy; it is not a deployment, and the token expires in about an hour.
+
 ### How to verify afterwards
 
 ```zsh
