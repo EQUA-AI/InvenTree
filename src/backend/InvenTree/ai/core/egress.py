@@ -104,13 +104,17 @@ def policy_from_environment():
         host = endpoint.hostname
         if endpoint.scheme != "http" or not host or endpoint.username or endpoint.password:
             raise ValueError("Invalid identity endpoint")
-        try:
-            address = ipaddress.ip_address(host)
-        except ValueError:
-            raise ValueError("Identity endpoint must use a local address") from None
-        if not (address.is_private or address.is_loopback) or address.is_unspecified:
-            raise ValueError("Identity endpoint must use a local address")
-        patterns.append(_hostname(host))
+        host = _hostname(host)
+        # Azure Container Apps exposes its managed-identity endpoint on localhost.
+        # Accept that exact name without resolving arbitrary hostnames at startup.
+        if host != "localhost":
+            try:
+                address = ipaddress.ip_address(host)
+            except ValueError:
+                raise ValueError("Identity endpoint must use a local address") from None
+            if not (address.is_private or address.is_loopback) or address.is_unspecified:
+                raise ValueError("Identity endpoint must use a local address")
+        patterns.append(host)
     return HostPolicy(mode, tuple(dict.fromkeys(patterns)))
 
 

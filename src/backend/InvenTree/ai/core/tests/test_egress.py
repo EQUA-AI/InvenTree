@@ -91,6 +91,38 @@ def test_identity_address_only_and_policy_changes_require_restart(monkeypatch):
         egress.install_guard()
 
 
+@pytest.mark.parametrize("host", ["localhost", "LOCALHOST.", "127.0.0.1", "[::1]", "10.0.0.5"])
+def test_local_identity_endpoint_is_allowed_without_dns(monkeypatch, host):
+    monkeypatch.setenv("IDENTITY_ENDPOINT", f"http://{host}:42356/msi/token")
+    monkeypatch.setenv("AIMMS_EGRESS_MODE", "enforce")
+
+    def unexpected_resolution(*_args, **_kwargs):
+        pytest.fail("Identity endpoint validation must not resolve DNS")
+
+    monkeypatch.setattr(socket, "getaddrinfo", unexpected_resolution)
+    egress.install_guard()
+    assert egress._INSTALLED.permits(host.strip("[]"))
+    assert not egress._INSTALLED.permits("localhost.evil.test")
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "http://localhost.evil.test/token",
+        "http://evil.localhost/token",
+        "http://public.evil.test/token",
+        "http://8.8.8.8/token",
+        "http://0.0.0.0/token",
+        "https://localhost/token",
+        "http://user:secret@localhost/token",
+    ],
+)
+def test_unsafe_identity_endpoints_remain_rejected(monkeypatch, endpoint):
+    monkeypatch.setenv("IDENTITY_ENDPOINT", endpoint)
+    with pytest.raises(ValueError):
+        egress.policy_from_environment()
+
+
 @pytest.mark.parametrize(
     "pattern", ["*", "*.com", "foo.*.com", "https://allowed.test", "foo.test/path"]
 )
