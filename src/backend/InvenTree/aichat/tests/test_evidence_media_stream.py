@@ -15,7 +15,6 @@ from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
-from InvenTree.permissions import IsAuthenticatedOrReadScope
 from aichat.media_stream import EvidenceMediaStreamView
 from aichat.models import (
     AttachmentIngest,
@@ -23,6 +22,7 @@ from aichat.models import (
     AttachmentIngestState,
 )
 from common.models import Attachment
+from InvenTree.permissions import IsAuthenticatedOrReadScope
 from part.models import Part
 
 _MEDIA_ROOT = tempfile.mkdtemp(prefix='aimms-evidence-stream-test-')
@@ -72,7 +72,7 @@ class EvidenceMediaStreamTests(TestCase):
         """One owner part, one video attachment, one image attachment."""
         from django.contrib.auth import get_user_model
 
-        cls.user = get_user_model().objects.create_user(
+        cls.user = get_user_model().objects.create_superuser(
             username='evidence-viewer', password='pw'
         )
         cls.part = Part.objects.create(name='Seal Kit', description='seals')
@@ -89,6 +89,11 @@ class EvidenceMediaStreamTests(TestCase):
     def setUp(self):
         """Authenticated session by default; the anon test logs out."""
         self.client.force_login(self.user)
+        scope = mock.patch(
+            'tasks.scope.client_codes_for_actor', return_value=frozenset({'internal'})
+        )
+        self.scopes = scope.start()
+        self.addCleanup(scope.stop)
 
     def test_anonymous_request_is_rejected(self):
         """The endpoint is authenticated-only."""
@@ -99,8 +104,7 @@ class EvidenceMediaStreamTests(TestCase):
     def test_permission_matches_attachment_read_scope(self):
         """OAuth tokens traverse the same read-scope permission as attachments."""
         self.assertEqual(
-            EvidenceMediaStreamView.permission_classes,
-            [IsAuthenticatedOrReadScope],
+            EvidenceMediaStreamView.permission_classes, [IsAuthenticatedOrReadScope]
         )
 
     def test_missing_attachment_is_404(self):
@@ -111,10 +115,7 @@ class EvidenceMediaStreamTests(TestCase):
     def test_row_with_storage_file_gone_is_404(self):
         """A dangling DB row (file deleted from storage) degrades to 404."""
         orphan = _make_attachment(
-            'gone-clip.mp4',
-            _BODY,
-            self.part,
-            pipeline=AttachmentIngestPipeline.VIDEO,
+            'gone-clip.mp4', _BODY, self.part, pipeline=AttachmentIngestPipeline.VIDEO
         )
         default_storage.delete(orphan.attachment.name)
         response = self.client.get(_url(orphan.pk))
@@ -129,10 +130,7 @@ class EvidenceMediaStreamTests(TestCase):
     def test_indexed_media_with_unsupported_suffix_is_404(self):
         """Only the closed image/video content-type allowlist is streamable."""
         renamed = _make_attachment(
-            'recording.bin',
-            _BODY,
-            self.part,
-            pipeline=AttachmentIngestPipeline.VIDEO,
+            'recording.bin', _BODY, self.part, pipeline=AttachmentIngestPipeline.VIDEO
         )
         response = self.client.get(_url(renamed.pk))
         self.assertEqual(response.status_code, 404)
@@ -215,7 +213,7 @@ class EvidenceMediaStreamTests(TestCase):
     def test_unbounded_integer_range_is_ignored_without_500(self):
         """Digit runs beyond the bounded grammar degrade to a full response."""
         response = self.client.get(
-            _url(self.video.pk), HTTP_RANGE=f"bytes={'9' * 5000}-"
+            _url(self.video.pk), HTTP_RANGE=f'bytes={"9" * 5000}-'
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(_body(response), _BODY)
@@ -232,3 +230,60 @@ class EvidenceMediaStreamTests(TestCase):
                 self.assertNotIn(_STEM, str(value), header)
                 self.assertNotIn(stored_name, str(value), header)
             self.assertNotIn(_STEM.encode(), _body(response))
+
+    def test_revoked_scope_cannot_read_metadata_or_bytes(self):
+        """A previously visible attachment becomes indistinguishable from absent."""
+        self.scopes.return_value = frozenset()
+        for suffix in ('', 'metadata/'):
+            self.assertEqual(
+                self.client.get(_url(self.image.pk) + suffix).status_code, 404
+            )
+
+    def test_revoked_role_is_read_fresh(self):
+        """A session does not retain a former role grant."""
+        self.user.is_superuser = False
+        self.user.save(update_fields=['is_superuser'])
+        self.assertEqual(self.client.get(_url(self.image.pk)).status_code, 404)
+
+    def test_revision_is_pinned_and_metadata_is_private(self):
+        """An absent revision never falls back silently to the current bytes."""
+        url = _url(self.image.pk)
+        response = self.client.get(url + 'metadata/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Cache-Control'], 'private, no-store')
+        revision = response.json()['revision']
+        self.assertEqual(revision, hashlib.sha256(_BODY[:512]).hexdigest())
+        self.assertEqual(self.client.get(url, {'revision': '0' * 64}).status_code, 404)
+        self.assertEqual(
+            _body(self.client.get(url, {'revision': revision})), _BODY[:512]
+        )
+
+    def test_bytes_changed_before_reindex_are_unavailable(self):
+        """Storage drift cannot reuse the indexed revision's identity."""
+        with default_storage.open(self.image.attachment.name, 'wb') as handle:
+            handle.write(b'changed bytes')
+        self.assertEqual(self.client.get(_url(self.image.pk)).status_code, 404)
+
+    def test_pdf_metadata_and_source(self):
+        """Physical page count comes from the actual authorized PDF revision."""
+        from io import BytesIO
+
+        from pypdf import PdfWriter
+
+        writer = PdfWriter()
+        writer.add_blank_page(width=300, height=300)
+        writer.add_blank_page(width=300, height=300)
+        data = BytesIO()
+        writer.write(data)
+        pdf = _make_attachment(
+            'source.pdf',
+            data.getvalue(),
+            self.part,
+            pipeline=AttachmentIngestPipeline.DOC,
+        )
+        response = self.client.get(_url(pdf.pk) + 'metadata/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['page_count'], 2)
+        self.assertEqual(
+            self.client.get(_url(pdf.pk))['Content-Type'], 'application/pdf'
+        )

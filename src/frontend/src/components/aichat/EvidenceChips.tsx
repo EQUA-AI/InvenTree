@@ -7,17 +7,17 @@
  * one opens the viewer modal (model-authored links stay dead text).
  */
 
-import { Badge, Group } from '@mantine/core';
-import { IconPhoto, IconVideo } from '@tabler/icons-react';
-import { useState } from 'react';
+import { Button, Group } from '@mantine/core';
+import { IconFileText, IconPhoto, IconVideo } from '@tabler/icons-react';
 
 import type { MediaEvidenceItem } from '../../hooks/UseAIChat';
-import { MediaEvidenceModal } from './MediaEvidenceModal';
+import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
+import { evidenceKey } from './evidenceLocator';
 
 export function EvidenceChips({
   items
 }: Readonly<{ items: MediaEvidenceItem[] }>) {
-  const [selected, setSelected] = useState<MediaEvidenceItem | null>(null);
+  const openEvidence = useEvidenceViewerState((state) => state.open);
 
   if (!items || items.length === 0) {
     return null;
@@ -30,24 +30,29 @@ export function EvidenceChips({
           const key = `${item.attachment_id}:${item.segment_index}`;
           const isVideo = item.media_type === 'video_segment';
           return (
-            <Badge
-              key={key}
-              size='sm'
+            <Button
+              key={evidenceKey(item)}
+              size='compact-sm'
               variant='light'
               color='teal'
               style={{ cursor: 'pointer' }}
               leftSection={
-                isVideo ? <IconVideo size={12} /> : <IconPhoto size={12} />
+                isVideo ? (
+                  <IconVideo size={12} />
+                ) : item.media_type === 'document' ? (
+                  <IconFileText size={12} />
+                ) : (
+                  <IconPhoto size={12} />
+                )
               }
-              onClick={() => setSelected(item)}
+              onClick={(event) => openEvidence(item, event.currentTarget)}
               data-testid={`evidence-chip-${key}`}
             >
               {item.label}
-            </Badge>
+            </Button>
           );
         })}
       </Group>
-      <MediaEvidenceModal item={selected} onClose={() => setSelected(null)} />
     </>
   );
 }

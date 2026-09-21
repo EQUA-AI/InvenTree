@@ -22,7 +22,8 @@ from aichat.email_api import (
     MailboxOAuthCallback,
     MailboxSync,
 )
-from aichat.media_stream import EvidenceMediaStreamView
+from aichat.maintenance_metrics import MaintenanceMetricsView
+from aichat.media_stream import EvidenceMediaMetadataView, EvidenceMediaStreamView
 from aichat.memory_api import (
     MemoryConversationModeView,
     MemoryExcludedConversationView,
@@ -33,10 +34,17 @@ from aichat.memory_api import (
     MemoryProposalListView,
     MemorySettingsView,
 )
+from aichat.ui_metrics import ManagementMetricsView
 
 app_name = 'aichat'
 
 urlpatterns = [
+    path(
+        'ui/maintenance-metrics/',
+        MaintenanceMetricsView.as_view(),
+        name='maintenance-metrics',
+    ),
+    path('ui/metrics/', ManagementMetricsView.as_view(), name='management-metrics'),
     path(
         'memory/excluded-conversations/',
         MemoryExcludedConversationView.as_view(),
@@ -128,6 +136,11 @@ urlpatterns = [
         name='proposal-reject',
     ),
     path('feedback/', MessageFeedbackView.as_view(), name='message-feedback'),
+    path(
+        'evidence/media/<int:attachment_id>/metadata/',
+        EvidenceMediaMetadataView.as_view(),
+        name='evidence-media-metadata',
+    ),
     path(
         'evidence/media/<int:attachment_id>/',
         EvidenceMediaStreamView.as_view(),

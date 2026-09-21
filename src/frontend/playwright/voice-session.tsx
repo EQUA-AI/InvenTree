@@ -3,7 +3,7 @@ import { i18n } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
 import { Button, MantineProvider, Stack, TextInput } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { StrictMode, useState } from 'react';
+import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { VoiceSessionControl } from '../src/components/ai/VoiceSessionControl';
 import { VoiceConsentDialog } from '../src/components/ai/voice/VoiceConsentDialog';
@@ -12,11 +12,13 @@ import { VoiceGlobalIndicator } from '../src/components/ai/voice/VoiceGlobalIndi
 import { VoiceHandsFreeSurface } from '../src/components/ai/voice/VoiceHandsFreeSurface';
 import { useVoiceLiveSession } from '../src/hooks/useVoiceLiveSession';
 import { messages } from '../src/locales/en/messages';
+import { useAIChatState } from '../src/states/AIChatState';
 import { voiceController } from '../src/states/VoiceSessionState';
 import '@mantine/core/styles.css';
 
 i18n.load('en', messages);
 i18n.activate('en');
+useAIChatState.getState().open();
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
 });
@@ -42,7 +44,7 @@ function Panel() {
   );
 }
 function Fixture() {
-  const [panel, setPanel] = useState(true);
+  const panel = useAIChatState((state) => state.isOpen);
   return (
     <Stack p='md'>
       <VoiceGlobalIndicator />
@@ -55,7 +57,9 @@ function Fixture() {
             '',
             `?page=${panel ? 'elsewhere' : 'chat'}`
           );
-          setPanel(!panel);
+          const chat = useAIChatState.getState();
+          if (panel) chat.close();
+          else chat.open();
         }}
       >
         Navigate and toggle panel

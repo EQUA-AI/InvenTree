@@ -21,6 +21,14 @@ test('synthetic interim/final RTP fixture reports once without decision authorit
   page
 }) => {
   const reports: Record<string, any>[] = [];
+  await page.addInitScript(() => {
+    (window as any).__timingDiagnostics = [];
+    window.addEventListener('aimms:voice-timing-diagnostic', (event) => {
+      (window as any).__timingDiagnostics.push(
+        (event as CustomEvent).detail.reason
+      );
+    });
+  });
   const spoken = {
     utterance_id: '11111111-1111-1111-1111-111111111111',
     spoken_summary: 'Synthetic final response',
@@ -119,7 +127,14 @@ test('synthetic interim/final RTP fixture reports once without decision authorit
     m.emit('response.audio.done', { response_id: 'synthetic-final' });
     m.emit('output_audio_buffer.stopped');
   }, spoken.spoken_summary);
-  await expect.poll(() => reports.length).toBe(1);
+  await expect
+    .poll(async () => ({
+      reports: reports.length,
+      diagnostics: await page.evaluate(
+        () => (window as any).__timingDiagnostics
+      )
+    }))
+    .toMatchObject({ reports: 1 });
   expect(reports[0].provenance).toBe('rtp_energy_proxy');
   expect(reports[0].timing.submit_to_observed_playback_ms).toBeGreaterThan(0);
   expect(JSON.stringify(reports)).not.toContain(spoken.spoken_summary);
@@ -363,7 +378,7 @@ test('consent is required, defaults are mapped, and sample never starts a sessio
   await page.getByTestId('voice-end').click();
 });
 
-test('StrictMode session survives panel close and route navigation, global view reuses it', async ({
+test('StrictMode provider survives route unmount and the global assistant entry reuses it', async ({
   page
 }) => {
   const errors: string[] = [];
@@ -378,8 +393,7 @@ test('StrictMode session survives panel close and route navigation, global view 
   await expect(page.getByTestId('voice-state-badge')).toHaveCount(0);
   expect(voice.sessionEnded).toBe(false);
   expect((await readMockState(page)).trackStopped).toBe(false);
-  await page.getByLabel('Open hands-free voice').click();
-  await expect(page.getByTestId('voice-hands-free')).toBeVisible();
+  await page.getByLabel('Open AI Assistant', { exact: true }).click();
   await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
   expect(voice.sessionCreates).toHaveLength(1);
   await expect
@@ -463,8 +477,9 @@ test('hands-free layout survives portrait, landscape and keyboard-sized viewport
   });
   await page.goto('/playwright/voice-session.html');
   await startVoice(page);
-  await page.getByRole('button', { name: 'Navigate and toggle panel' }).click();
-  await page.getByLabel('Open hands-free voice').click();
+  await page
+    .getByRole('button', { name: 'Hands-free view', exact: true })
+    .click();
   const surface = page.getByTestId('voice-hands-free');
   for (const viewport of [
     { width: 393, height: 851 },
@@ -492,7 +507,7 @@ test('hands-free layout survives portrait, landscape and keyboard-sized viewport
       )
       .toBe(true);
   }
-  await page.getByTestId('voice-end').click();
+  await surface.getByTestId('voice-end').click();
 });
 
 test('network interruption never resubmits and requires explicit microphone rearm', async ({

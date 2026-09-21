@@ -723,6 +723,7 @@ def _row_chunk(row: dict[str, Any]) -> dict[str, Any]:
                 str(row.get("source_file_name") or "")[:255]
             ),
             "attachment_id": int(row.get("attachment_id") or 0),
+            "source_sha256": str(row.get("source_sha256") or ""),
             "model_type": str(row.get("model_type") or ""),
             "model_id": int(row.get("model_id") or 0),
             "media_type": str(row.get("media_type") or ""),

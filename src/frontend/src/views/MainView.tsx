@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { setApiDefaults } from '../App';
 import { phoneRoutingEnabled } from '../components/ai/voice/phoneRouting';
+import { useAIChatState } from '../states/AIChatState';
 import { useLocalState } from '../states/LocalState';
 
 function checkMobile() {
@@ -23,6 +24,7 @@ const mobileViewPromise = import('./MobileAppView').then((m) => m.default);
 
 // Main App
 export default function MainView() {
+  const assistantOpen = useAIChatState((state) => state.isOpen);
   const [allowMobile] = useLocalState(
     useShallow((state) => [state.allowMobile])
   );
@@ -46,23 +48,28 @@ export default function MainView() {
 
   const legacySmallViewport = checkMobile();
   // The pilot uses a sticky screen/touch classifier, not viewport height.
-  // Authentication and /voice always stay in the shared router.
+  // Authentication stays in the shared router.
   const isMobile =
     !phoneRoutingEnabled(
       window.INVENTREE_SETTINGS?.voice_phone_short_edge_px
     ) &&
-    !/\/(voice|login|logged-in|logout|mfa|mfa-setup)\/?$/.test(
+    !/\/(login|logged-in|logout|mfa|mfa-setup)\/?$/.test(
       window.location.pathname
     ) &&
     !allowMobile &&
+    !assistantOpen &&
     window.INVENTREE_SETTINGS.mobile_mode !== 'allow-always' &&
     legacySmallViewport;
 
-  const View = isMobile ? MobileView : DesktopView;
-
-  if (!View) {
-    return null;
-  }
-
-  return <View />;
+  // Resizing or opening the keyboard must not destroy the router, chat draft,
+  // conversation, or an in-flight response. The mobile notice is presentation
+  // only; the authenticated application keeps its stable owner underneath it.
+  return (
+    <>
+      <div style={{ display: isMobile ? 'none' : 'contents' }}>
+        {DesktopView && <DesktopView />}
+      </div>
+      {isMobile && MobileView && <MobileView />}
+    </>
+  );
 }

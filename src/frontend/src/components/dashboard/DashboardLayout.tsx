@@ -1,3 +1,4 @@
+import { ModelType } from '@lib/enums/ModelType';
 import { t } from '@lingui/core/macro';
 import {
   Alert,
@@ -21,6 +22,7 @@ import { useUserState } from '../../states/UserState';
 import DashboardMenu from './DashboardMenu';
 import DashboardWidget, { type DashboardWidgetProps } from './DashboardWidget';
 import DashboardWidgetDrawer from './DashboardWidgetDrawer';
+import { maintenanceMetrics } from './widgets/maintenanceMetrics';
 
 const ReactGridLayout = WidthProvider(Responsive);
 
@@ -259,11 +261,53 @@ export default function DashboardLayout() {
       });
     }
 
+    if (
+      [
+        ModelType.purchaseorder,
+        ModelType.workorder,
+        ModelType.part,
+        ModelType.build,
+        ModelType.salesorder
+      ].some((model) => user.hasViewPermission(model))
+    )
+      layouts.push({
+        i: 'management-attention',
+        x: 0,
+        y: 4,
+        w: 12,
+        h: 8,
+        minW: 5,
+        minH: 7
+      });
+    if (user.hasViewPermission(ModelType.workorder)) {
+      maintenanceMetrics()
+        .filter((m) => m.core)
+        .forEach((m, index) =>
+          layouts.push({
+            i: `maintenance-${m.id}`,
+            x: (index % 3) * 4,
+            y: 12 + Math.floor(index / 3) * 6,
+            w: 4,
+            h: 6,
+            minW: 3,
+            minH: 5
+          })
+        );
+    }
     return {
       lg: layouts
     };
   }, [user]);
-  const loadWigs = ['news', 'gstart'];
+  const loadWigs = [
+    'news',
+    'gstart',
+    'management-attention',
+    ...(user.hasViewPermission(ModelType.workorder)
+      ? maintenanceMetrics()
+          .filter((m) => m.core)
+          .map((m) => `maintenance-${m.id}`)
+      : [])
+  ];
   const defaultWidgets = useMemo(() => {
     return loadWigs
       .map((lwid: string) =>

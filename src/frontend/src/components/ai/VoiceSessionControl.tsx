@@ -2,6 +2,7 @@ import { t } from '@lingui/core/macro';
 import { Badge, Button, Group, Text } from '@mantine/core';
 import type { VoiceClientState, VoiceError } from '../../../lib/types/Voice';
 import { useVoiceSessionState } from '../../states/VoiceSessionState';
+import { VOICE_SHORTCUT } from './voice/voiceShortcuts';
 
 export interface VoiceSessionControlProps {
   state: VoiceClientState;
@@ -23,7 +24,11 @@ export function VoiceSessionControl(props: Readonly<VoiceSessionControlProps>) {
     const failed = split.capability.runtime?.state === 'permanently_failed';
     return (
       <Group gap='xs' data-testid='voice-runtime-unavailable'>
-        <Button disabled mih={44} data-testid='voice-start'>{t`Voice`}</Button>
+        <Button
+          disabled
+          mih={44}
+          data-testid='voice-start'
+        >{t`Start voice`}</Button>
         <Text component='output' aria-live='polite' size='sm'>
           {failed
             ? t`Voice is unavailable. An administrator needs to check AI startup.`
@@ -51,8 +56,8 @@ export function VoiceSessionControl(props: Readonly<VoiceSessionControlProps>) {
           data-testid='voice-start'
           disabled={props.error?.code === 'BROWSER_UNSUPPORTED'}
           aria-label={t`Start voice session`}
-          aria-keyshortcuts='Control+Shift+V Meta+Shift+V'
-        >{t`Voice`}</Button>
+          aria-keyshortcuts={VOICE_SHORTCUT.aria}
+        >{t`Start voice`}</Button>
       ) : (
         <>
           <Badge data-testid='voice-state-badge'>{labels[props.state]}</Badge>
@@ -108,8 +113,8 @@ export function VoiceSessionControl(props: Readonly<VoiceSessionControlProps>) {
             color='red'
             onClick={props.onEnd}
             data-testid='voice-end'
-            aria-keyshortcuts='Control+Shift+V Meta+Shift+V'
-          >{t`End voice`}</Button>
+            aria-keyshortcuts={VOICE_SHORTCUT.aria}
+          >{t`Stop voice`}</Button>
         </>
       )}
       {props.webrtcPreview && active && (

@@ -118,10 +118,41 @@ class TestBuildMediaEvidence:
         assert (
             build_media_evidence([
                 _citation(access_class=""),
-                _citation(access_class="attachment_uploaded"),
+                _citation(access_class="maintenance_authorized"),
             ])
             == []
         )
+
+    def test_document_citation_keeps_revision_and_physical_page(self) -> None:
+        entry = build_media_evidence([
+            _citation(access_class="attachment_uploaded", source_sha256="a" * 64, page_number=2)
+        ])[0]
+        assert entry["media_type"] == "document"
+        assert entry["source_revision"] == "a" * 64
+        assert entry["page_index"] == 1
+
+    def test_document_pages_and_revisions_have_distinct_citations(self) -> None:
+        """Repeated chunks collapse, but another physical page or revision survives."""
+        entries = build_media_evidence([
+            _citation(access_class="attachment_uploaded", source_sha256=revision, page_number=page)
+            for revision, page in [("a" * 64, 1), ("a" * 64, 2), ("a" * 64, 1), ("b" * 64, 1)]
+        ])
+        assert [(entry["source_revision"], entry["page_index"]) for entry in entries] == [
+            ("a" * 64, 0),
+            ("a" * 64, 1),
+            ("b" * 64, 0),
+        ]
+        assert entries[0]["label"].endswith("document · page 1")
+        assert entries[1]["label"].endswith("document · page 2")
+
+    @pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+    def test_nonfinite_timecode_does_not_crash_or_escape_into_json(self, value) -> None:
+        """Malformed timing degrades to source-level evidence."""
+        entry = build_media_evidence([_citation(timecode_start_s=value, timecode_end_s=value)])[0]
+        assert entry["timecode_start_s"] is None
+        assert entry["timecode_end_s"] is None
+        assert entry["label"].endswith(" · video")
+        json.dumps(entry, allow_nan=False)
 
     def test_unusable_attachment_ids_are_dropped(self) -> None:
         assert (

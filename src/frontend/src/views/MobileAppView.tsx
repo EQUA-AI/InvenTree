@@ -1,10 +1,10 @@
-import { getBaseUrl } from '@lib/functions/Navigation';
 import { Trans } from '@lingui/react/macro';
-import { Anchor, Center, Container, Stack, Text, Title } from '@mantine/core';
+import { Button, Center, Container, Stack, Text, Title } from '@mantine/core';
 
 import { useShallow } from 'zustand/react/shallow';
 import { ThemeContext } from '../contexts/ThemeContext';
 import { IS_DEV } from '../main';
+import { useAIChatState } from '../states/AIChatState';
 import { useLocalState } from '../states/LocalState';
 
 export default function MobileAppView() {
@@ -29,12 +29,14 @@ export default function MobileAppView() {
                 available in this browser when enabled by your administrator.
               </Trans>
             </Text>
-            <Anchor
-              href={`${getBaseUrl().replace(/\/$/, '')}/voice`}
-              style={{ minHeight: 44 }}
+            <Button
+              onClick={() => {
+                setAllowMobile(true);
+                useAIChatState.getState().open();
+              }}
             >
-              <Trans>Open voice</Trans>
-            </Anchor>
+              <Trans>Open AI Assistant</Trans>
+            </Button>
             {(IS_DEV ||
               window.INVENTREE_SETTINGS.mobile_mode === 'allow-ignore') && (
               <Text

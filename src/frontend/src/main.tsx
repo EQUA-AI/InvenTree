@@ -73,7 +73,7 @@ window.INVENTREE_SETTINGS = {
     ...(IS_DEV
       ? {
           'server-localhost': {
-            host: 'http://localhost:8000',
+            host: `${window.location.origin}/`,
             name: 'Localhost'
           }
         }

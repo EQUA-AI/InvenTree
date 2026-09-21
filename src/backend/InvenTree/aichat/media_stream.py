@@ -6,11 +6,9 @@ video would download from byte zero even where it "works" — evidence
 playback therefore rides this deterministic endpoint regardless of the
 deployment's DEBUG posture, for images and video alike.
 
-Auth posture: matches the PRE-EXISTING ``/api/attachment/{id}`` read posture
-(authenticated, NOT object-scoped — any authenticated user can already fetch
-any attachment record and its media URL), so this endpoint widens nothing.
-Deliberately scope-neutral in v1; diverging from the attachment API would be
-a separate, two-surface security change.
+Source access is rechecked against current role and client grants on every
+metadata and byte request. Revisions identify the exact stored bytes. PDF
+support is limited to existing ingested attachments; no conversion is implied.
 
 Responses never echo the stored filename or path; errors carry value-free
 codes only.
@@ -18,9 +16,10 @@ codes only.
 
 from __future__ import annotations
 
+import hashlib
 import re
 
-from django.http import HttpResponse, StreamingHttpResponse
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 
 from rest_framework.views import APIView
 
@@ -29,6 +28,7 @@ from InvenTree.permissions import IsAuthenticatedOrReadScope
 _BLOCK = 1024 * 1024
 
 _CONTENT_TYPES = {
+    '.pdf': 'application/pdf',
     '.mp4': 'video/mp4',
     '.m4v': 'video/mp4',
     '.mov': 'video/quicktime',
@@ -40,6 +40,110 @@ _CONTENT_TYPES = {
 }
 
 _RANGE_RE = re.compile(r'^bytes=(\d{1,19})?-(\d{1,19})?$')
+
+
+def _resolve_source(request, attachment_id):
+    """Open only authorized indexed bytes, pinned to the requested revision."""
+    from django.core.files.storage import default_storage
+
+    from tasks.scope import ScopeError, client_codes_for_actor
+
+    from ai.core.integrations.retrieval_authority import fresh_actor, fresh_role
+    from aichat.models import AttachmentIngest
+    from aichat.services.attachment_ingestion import derive_client_codes
+    from common.models import Attachment
+
+    actor = fresh_actor(request.user)
+    if actor is None or not fresh_role(actor, 'work_order'):
+        return None
+    attachment = Attachment.objects.filter(pk=attachment_id).first()
+    if attachment is None or attachment.model_type not in {
+        'part',
+        'assetmachine',
+        'workorder',
+        'workorderstepexecution',
+    }:
+        return None
+    if attachment.model_type == 'part' and not fresh_role(actor, 'part'):
+        return None
+    try:
+        if not set(
+            derive_client_codes(attachment.model_type, attachment.model_id)
+        ).intersection(client_codes_for_actor(actor)):
+            return None
+    except ScopeError:
+        return None
+    ingest = (
+        AttachmentIngest.objects
+        .filter(attachment_id=attachment_id)
+        .order_by('-pk')
+        .first()
+    )
+    if (
+        ingest is None
+        or ingest.state != 'indexed'
+        or ingest.pipeline not in {'doc', 'image', 'video'}
+    ):
+        return None
+    requested_revision = request.query_params.get('revision')
+    if requested_revision is not None and requested_revision != ingest.source_sha256:
+        return None
+    name = getattr(attachment.attachment, 'name', '') or ''
+    suffix = ('.' + name.rsplit('.', 1)[-1].lower()) if '.' in name else ''
+    if suffix not in _CONTENT_TYPES or not default_storage.exists(name):
+        return None
+    # Hash and serve the same open file. A replaced attachment must never
+    # masquerade as the indexed revision, even before ingestion catches up.
+    handle = default_storage.open(name, 'rb')
+    try:
+        digest = hashlib.sha256()
+        size = 0
+        while block := handle.read(_BLOCK):
+            digest.update(block)
+            size += len(block)
+        revision = digest.hexdigest()
+        if revision != ingest.source_sha256:
+            handle.close()
+            return None
+        handle.seek(0)
+        return handle, size, _CONTENT_TYPES[suffix], revision
+    except Exception:
+        handle.close()
+        raise
+
+
+class EvidenceMediaMetadataView(APIView):
+    """Resolve a source revision before the viewer requests its bytes."""
+
+    permission_classes = [IsAuthenticatedOrReadScope]
+
+    def get(self, request, attachment_id: int):
+        """Return bounded, verified metadata without storage paths."""
+        resolved = _resolve_source(request, attachment_id)
+        if resolved is None:
+            return HttpResponse(status=404)
+        handle, _, content_type, revision = resolved
+        page_count, page_labels = None, []
+        try:
+            if content_type == 'application/pdf':
+                from pypdf import PdfReader
+
+                reader = PdfReader(handle)
+                page_count = len(reader.pages)
+                page_labels = [str(label)[:100] for label in reader.page_labels[:10000]]
+        except Exception:
+            # The original remains available, but no exact page is asserted.
+            page_count, page_labels = None, []
+        finally:
+            handle.close()
+        response = JsonResponse({
+            'revision': revision,
+            'content_type': content_type,
+            'page_count': page_count,
+            'page_labels': page_labels,
+        })
+        response['Cache-Control'] = 'private, no-store'
+        return response
 
 
 def _iter_file(handle, *, start: int, end: int):
@@ -72,37 +176,10 @@ class EvidenceMediaStreamView(APIView):
 
     def _serve(self, request, attachment_id: int, *, include_body: bool):
         """Build a whole or ranged response for GET/HEAD."""
-        from django.core.files.storage import default_storage
-
-        from aichat.models import (
-            AttachmentIngest,
-            AttachmentIngestPipeline,
-            AttachmentIngestState,
-        )
-        from common.models import Attachment
-
-        is_indexed_media = AttachmentIngest.objects.filter(
-            attachment_id=attachment_id,
-            pipeline__in=[
-                AttachmentIngestPipeline.IMAGE,
-                AttachmentIngestPipeline.VIDEO,
-            ],
-            state=AttachmentIngestState.INDEXED,
-        ).exists()
-        attachment = Attachment.objects.filter(pk=attachment_id).first()
-        name = getattr(getattr(attachment, 'attachment', None), 'name', '') or ''
-        suffix = ('.' + name.rsplit('.', 1)[-1].lower()) if '.' in name else ''
-        if (
-            not is_indexed_media
-            or attachment is None
-            or not name
-            or suffix not in _CONTENT_TYPES
-            or not default_storage.exists(name)
-        ):
+        resolved = _resolve_source(request, attachment_id)
+        if resolved is None:
             return HttpResponse(status=404)
-
-        size = default_storage.size(name)
-        content_type = _CONTENT_TYPES[suffix]
+        handle, size, content_type, revision = resolved
 
         start, end = 0, size - 1
         status = 200
@@ -118,6 +195,7 @@ class EvidenceMediaStreamView(APIView):
                 length = int(match.group(2))
                 start = max(0, size - length)
             if start >= size or start > end:
+                handle.close()
                 response = HttpResponse(status=416)
                 response['Content-Range'] = f'bytes */{size}'
                 response['Accept-Ranges'] = 'bytes'
@@ -128,14 +206,15 @@ class EvidenceMediaStreamView(APIView):
         # A malformed Range header is ignored (200 full), per RFC 9110.
 
         if include_body:
-            handle = default_storage.open(name)
             response = StreamingHttpResponse(
                 _iter_file(handle, start=start, end=end),
                 status=status,
                 content_type=content_type,
             )
         else:
+            handle.close()
             response = HttpResponse(status=status, content_type=content_type)
+        response['ETag'] = f'"{revision}"'
         response['Accept-Ranges'] = 'bytes'
         response['Cache-Control'] = 'private, no-store'
         response['X-Content-Type-Options'] = 'nosniff'

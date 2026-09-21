@@ -108,36 +108,44 @@ for (const slow of ['revalidation', 'execution']) {
   });
 }
 
-test('explicit voice route preserves the login return target', async ({
-  page
-}) => {
+test('assistant preserves the normal login return target', async ({ page }) => {
   const voice = await installVoiceMocks(page);
   await page.goto('/playwright/voice-mobile.html?signed_out');
   await expect(
-    page.getByText('Sign in required. Return to: /voice')
+    page.getByText('Sign in required. Return to: /', { exact: true })
   ).toBeVisible();
   expect(voice.sessionCreates).toHaveLength(0);
 });
 
-test('disabled voice is honest and the full-app escape remains available', async ({
+test('removed voice route is not found and never starts capture', async ({
   page
 }) => {
+  const voice = await installVoiceMocks(page);
+  await page.goto('/playwright/voice-mobile.html?old_route');
+  await expect(page.getByText('Page not found')).toBeVisible();
+  expect(voice.sessionCreates).toHaveLength(0);
+});
+
+test('disabled voice keeps typing and close available', async ({ page }) => {
   const voice = await installVoiceMocks(page, {
     capability: { ...defaultCapability, enabled: false }
   });
   await page.goto('/playwright/voice-mobile.html');
   await expect(
-    page.getByText('Voice is unavailable. You can continue in the full app.')
+    page.getByText('Voice is unavailable. You can continue typing.')
   ).toBeVisible();
-  await expect(page.getByTestId('voice-start')).toHaveCount(0);
+  await page.getByLabel('Message draft').fill('Keep this draft');
   await page
-    .getByRole('link', { name: 'Open full app (not optimized for phones)' })
+    .getByRole('button', { name: 'Close assistant', exact: true })
     .click();
-  await expect(page.getByText('Full app fixture')).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Open AI Assistant', exact: true })
+    .click();
+  await expect(page.getByLabel('Message draft')).toHaveValue('Keep this draft');
   expect(voice.sessionCreates).toHaveLength(0);
 });
 
-test('explicit route survives rotation, escape and logout resets the override', async ({
+test('rotation preserves capture; close stops it and reopen preserves the draft', async ({
   page
 }) => {
   const voice = await installVoiceMocks(page, {
@@ -145,28 +153,126 @@ test('explicit route survives rotation, escape and logout resets the override', 
   });
   await page.goto('/playwright/voice-mobile.html');
   await startVoice(page);
-  await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
+  await page.getByLabel('Message draft').fill('Unsaved draft');
   for (const viewport of [
     { width: 393, height: 851 },
     { width: 851, height: 393 },
     { width: 393, height: 320 }
   ]) {
     await page.setViewportSize(viewport);
-    await expect(page.getByTestId('voice-mobile-page')).toBeVisible();
+    await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
     expect((await readMockState(page)).trackStopped).toBe(false);
   }
   await page
-    .getByRole('link', { name: 'Open full app (not optimized for phones)' })
+    .getByRole('button', { name: 'Close assistant', exact: true })
     .click();
+  await expect.poll(() => voice.sessionEnded).toBe(true);
+  expect((await readMockState(page)).trackStopped).toBe(true);
+  await page
+    .getByRole('button', { name: 'Open AI Assistant', exact: true })
+    .click();
+  await expect(page.getByLabel('Message draft')).toHaveValue('Unsaved draft');
   expect(voice.sessionCreates).toHaveLength(1);
+  await expect(page.getByTestId('voice-start')).toBeVisible();
+});
+
+test('closing during microphone permission stops a late grant without hidden capture', async ({
+  page
+}) => {
+  const voice = await installVoiceMocks(page);
+  await page.addInitScript(() => {
+    const acquire = navigator.mediaDevices.getUserMedia.bind(
+      navigator.mediaDevices
+    );
+    (window as any).__permissionRequests = 0;
+    navigator.mediaDevices.getUserMedia = (constraints) => {
+      (window as any).__permissionRequests++;
+      return new Promise((resolve, reject) => {
+        (window as any).__grantPermission = () =>
+          acquire(constraints).then(resolve, reject);
+      });
+    };
+  });
+  await page.goto('/playwright/voice-mobile.html');
+  await startVoice(page);
+  await page.waitForFunction(
+    () => typeof (window as any).__grantPermission === 'function'
+  );
+  await page
+    .getByRole('button', { name: 'Close assistant', exact: true })
+    .click();
+  await page.evaluate(() => (window as any).__grantPermission());
+  await expect
+    .poll(async () => (await readMockState(page)).trackStopped)
+    .toBe(true);
+  expect(await page.evaluate(() => (window as any).__permissionRequests)).toBe(
+    1
+  );
+  expect(voice.sessionCreates).toHaveLength(1);
+  await expect.poll(() => voice.sessionEnded).toBe(true);
+  await page
+    .getByRole('button', { name: 'Open AI Assistant', exact: true })
+    .click();
+  await expect(page.getByTestId('voice-start')).toBeVisible();
+  expect(voice.sessionCreates).toHaveLength(1);
+});
+
+test('desktop record navigation keeps the same session and draft', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const voice = await installVoiceMocks(page, {
+    capability: { ...defaultCapability, foreground_session: true }
+  });
+  await page.goto('/playwright/voice-mobile.html');
+  await startVoice(page);
+  await page.getByLabel('Message draft').fill('Current draft');
+  await page.getByRole('link', { name: 'Navigate background' }).click();
+  await expect(page.getByText('Related record fixture')).toBeVisible();
+  await expect(page.getByLabel('Message draft')).toHaveValue('Current draft');
   expect((await readMockState(page)).trackStopped).toBe(false);
-  await page.getByRole('link', { name: 'Return to voice fixture' }).click();
-  await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
   expect(voice.sessionCreates).toHaveLength(1);
-  await page.getByRole('link', { name: 'Log out' }).click();
+  await page.getByRole('button', { name: 'Log out', exact: true }).click();
+  await expect.poll(() => voice.sessionEnded).toBe(true);
+  expect((await readMockState(page)).trackStopped).toBe(true);
+});
+
+test('mobile assistant makes background inert and restores it on close', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 393, height: 851 });
+  await installVoiceMocks(page);
+  await page.goto('/playwright/voice-mobile.html');
   await expect(
-    page.getByText('Signed out. Full app preference: false')
+    page.getByRole('dialog', { name: 'AI Assistant' })
   ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.getByTestId('background-app').evaluate((e) => !!e.closest('[inert]'))
+    )
+    .toBe(true);
+  await page
+    .getByRole('button', { name: 'Close assistant', exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.getByTestId('background-app').evaluate((e) => !!e.closest('[inert]'))
+    )
+    .toBe(false);
+});
+
+test('mobile record navigation closes assistant and stops voice', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 393, height: 851 });
+  const voice = await installVoiceMocks(page, {
+    capability: { ...defaultCapability, foreground_session: true }
+  });
+  await page.goto('/playwright/voice-mobile.html');
+  await startVoice(page);
+  await page.getByRole('link', { name: 'Open related record' }).click();
+  await expect(page.getByText('Related record fixture')).toBeVisible();
+  await expect(page.getByTestId('ai-chat-drawer')).not.toBeVisible();
   await expect.poll(() => voice.sessionEnded).toBe(true);
   expect((await readMockState(page)).trackStopped).toBe(true);
 });
@@ -229,81 +335,6 @@ test('guided steps use the active session and only request completion review', a
   expect(requests[1].session_id).toBeTruthy();
   expect(voice.decisionActions).toHaveLength(0);
   await page.getByTestId('voice-end').click();
-});
-
-test('pilot phone defaults to voice and preserves one session across escape and resize', async ({
-  page
-}) => {
-  const voice = await installVoiceMocks(page, {
-    capability: { ...defaultCapability, foreground_session: true }
-  });
-  await page.addInitScript(() => {
-    (window as any).INVENTREE_SETTINGS = { voice_phone_short_edge_px: 600 };
-    Object.defineProperty(navigator, 'maxTouchPoints', {
-      value: 5,
-      configurable: true
-    });
-    Object.defineProperty(window.screen, 'width', {
-      value: 393,
-      configurable: true
-    });
-    Object.defineProperty(window.screen, 'height', {
-      value: 851,
-      configurable: true
-    });
-    const matchMedia = window.matchMedia.bind(window);
-    window.matchMedia = (query) =>
-      query === '(pointer: coarse)'
-        ? ({ ...matchMedia(query), matches: true } as MediaQueryList)
-        : matchMedia(query);
-  });
-  await page.goto('/playwright/voice-mobile.html?pilot');
-  await expect(page.getByTestId('voice-mobile-page')).toBeVisible();
-  await startVoice(page);
-  for (const viewport of [
-    { width: 851, height: 393 },
-    { width: 393, height: 320 }
-  ]) {
-    await page.setViewportSize(viewport);
-    await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
-    expect((await readMockState(page)).trackStopped).toBe(false);
-  }
-  await page
-    .getByRole('link', { name: 'Open full app (not optimized for phones)' })
-    .click();
-  await expect(page.getByText('Full app fixture')).toBeVisible();
-  await page.getByRole('link', { name: 'Back to voice', exact: true }).click();
-  await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
-  expect(voice.sessionCreates).toHaveLength(1);
-  await page.getByRole('link', { name: 'Log out' }).click();
-  await expect(
-    page.getByText('Signed out. Full app preference: false')
-  ).toBeVisible();
-});
-
-test('pilot tablet remains in full app even with a short keyboard viewport', async ({
-  page
-}) => {
-  await installVoiceMocks(page);
-  await page.addInitScript(() => {
-    (window as any).INVENTREE_SETTINGS = { voice_phone_short_edge_px: 600 };
-    Object.defineProperty(navigator, 'maxTouchPoints', {
-      value: 5,
-      configurable: true
-    });
-    Object.defineProperty(window.screen, 'width', {
-      value: 768,
-      configurable: true
-    });
-    Object.defineProperty(window.screen, 'height', {
-      value: 1024,
-      configurable: true
-    });
-  });
-  await page.goto('/playwright/voice-mobile.html?pilot');
-  await page.setViewportSize({ width: 768, height: 300 });
-  await expect(page.getByText('Full app fixture')).toBeVisible();
-  await expect(page.getByTestId('voice-mobile-page')).toHaveCount(0);
 });
 
 test('network estimates keep listening; actual interface handoff pauses without resending', async ({

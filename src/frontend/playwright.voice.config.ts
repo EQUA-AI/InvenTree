@@ -3,7 +3,11 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/pages',
-  testMatch: ['pui_voice_session.spec.ts', 'pui_voice_mobile.spec.ts'],
+  testMatch: [
+    'pui_voice_session.spec.ts',
+    'pui_voice_mobile.spec.ts',
+    'pui_ui_evidence.spec.ts'
+  ],
   workers: 1,
   retries: 0,
   timeout: 30_000,

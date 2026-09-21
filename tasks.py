@@ -624,7 +624,20 @@ def yarn(c, cmd):
         cmd: Yarn command to run.
     """
     path = local_dir().joinpath('src', 'frontend')
-    run(c, cmd, path, False)
+
+    for attempt in range(3):
+        try:
+            return run(c, cmd, path, False)
+        except UnexpectedExit as error_result:
+            output = error_result.result.stdout + error_result.result.stderr
+            if 'EAI_AGAIN' not in output or attempt == 2:
+                raise
+
+            warning(
+                f'Yarn could not resolve the package registry; retrying in 5 seconds '
+                f'(attempt {attempt + 2}/3)'
+            )
+            time.sleep(5)
 
 
 def node_available(versions: bool = False, bypass_yarn: bool = False):

@@ -25,8 +25,13 @@ import { useUserState } from '../../states/UserState';
 import { Wrapper } from './Layout';
 
 export default function Login() {
-  const [hostKey, setHost, hostList] = useLocalState(
-    useShallow((state) => [state.hostKey, state.setHost, state.hostList])
+  const [host, hostKey, setHost, hostList] = useLocalState(
+    useShallow((state) => [
+      state.host,
+      state.hostKey,
+      state.setHost,
+      state.hostList
+    ])
   );
   const [server, fetchServerApiState] = useServerApiState(
     useShallow((state) => [state.server, state.fetchServerApiState])
@@ -80,7 +85,13 @@ export default function Login() {
 
   // Set default host to localhost if no host is selected
   useEffect(() => {
-    if (hostKey === '') {
+    if (
+      import.meta.env.DEV &&
+      hostKey === 'server-localhost' &&
+      host !== window.location.origin
+    ) {
+      ChangeHost('server-localhost', false);
+    } else if (hostKey === '') {
       ChangeHost(defaultHostKey, false);
     }
 

@@ -1,3 +1,9 @@
+export const VOICE_SHORTCUT = {
+  binding: 'mod+shift+v',
+  aria: 'Control+Shift+V Meta+Shift+V',
+  label: 'Ctrl/⌘+Shift+V'
+} as const;
+
 export function isEditingTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&

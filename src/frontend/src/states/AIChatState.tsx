@@ -42,6 +42,8 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
       'chat-action-proposals',
       'ai-evidence-set',
       'voice-capability',
+      'ai-evidence-source',
+      'management-metrics',
       'voice-operation',
       'approval-inbox',
       'approval-review',

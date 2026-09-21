@@ -33,7 +33,7 @@ msgid "Error Details"
 msgstr "Error Details"
 
 #: lib/components/CopyButton.tsx:49
-#: src/components/nav/AIChatDrawer.tsx:587
+#: src/components/nav/AIChatDrawer.tsx:784
 msgid "Copy"
 msgstr "Copy"
 
@@ -64,7 +64,9 @@ msgid "Delete"
 msgstr "Delete"
 
 #: lib/components/RowActions.tsx:76
-#: src/components/ai/voice/VoiceConsentDialog.tsx:178
+#: src/components/ai/voice/VoiceConsentDialog.tsx:179
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:111
+#: src/components/aichat/ThreadActionsModal.tsx:155
 #: src/components/details/DetailsImage.tsx:82
 #: src/components/editors/TemplateEditor/TemplateEditor.tsx:200
 #: src/components/items/ActionDropdown.tsx:284
@@ -109,7 +111,7 @@ msgstr "Actions"
 
 #: lib/components/SearchInput.tsx:34
 #: src/components/forms/fields/RelatedModelField.tsx:549
-#: src/components/nav/Header.tsx:243
+#: src/components/nav/Header.tsx:245
 #: src/components/wizards/ImportPartWizard.tsx:200
 #: src/components/wizards/ImportPartWizard.tsx:233
 #: src/pages/Index/Settings/UserSettings.tsx:78
@@ -671,6 +673,7 @@ msgid "Work Orders"
 msgstr "Work Orders"
 
 #: lib/enums/ModelInformation.tsx:367
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:302
 #: src/components/riskradar/RiskFindingDetailModal.tsx:280
 #: src/components/tasks/TaskGantt.tsx:165
 #: src/pages/maintenance/MaintenanceBoard.tsx:1657
@@ -717,7 +720,7 @@ msgstr "Selection Entries"
 #: lib/enums/ModelInformation.tsx:390
 #: src/components/barcodes/BarcodeInput.tsx:114
 #: src/components/buttons/StarredToggleButton.tsx:46
-#: src/components/dashboard/DashboardLayout.tsx:297
+#: src/components/dashboard/DashboardLayout.tsx:341
 #: src/components/editors/NotesEditor.tsx:401
 #: src/components/editors/NotesEditor.tsx:432
 #: src/components/editors/TemplateEditor/TemplateEditor.tsx:170
@@ -830,11 +833,13 @@ msgid "Process completed successfully"
 msgstr "Process completed successfully"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:20
-#: src/components/ai/ApprovalInboxPanel.tsx:179
+#: src/components/ai/ApprovalInboxPanel.tsx:188
 msgid "Enter a reason of up to 400 characters."
 msgstr "Enter a reason of up to 400 characters."
 
 #: src/components/ai/ApprovalDecisionControls.tsx:40
+#: src/components/aichat/MediaEvidenceModal.tsx:186
+#: src/pages/Memory/MemoryPage.tsx:522
 msgid "Next page"
 msgstr "Next page"
 
@@ -847,105 +852,106 @@ msgid "Skip request"
 msgstr "Skip request"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:65
-#: src/components/ai/ApprovalInboxPanel.tsx:286
+#: src/components/ai/ApprovalInboxPanel.tsx:305
 msgid "I have reviewed every required section of this request."
 msgstr "I have reviewed every required section of this request."
 
 #: src/components/ai/ApprovalDecisionControls.tsx:70
-#: src/components/ai/ApprovalInboxPanel.tsx:291
+#: src/components/ai/ApprovalInboxPanel.tsx:310
 msgid "Confirm reviewed"
 msgstr "Confirm reviewed"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:76
-#: src/components/ai/ApprovalInboxPanel.tsx:302
+#: src/components/ai/ApprovalInboxPanel.tsx:321
 msgid "Prepare approval"
 msgstr "Prepare approval"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:78
-#: src/components/ai/ApprovalInboxPanel.tsx:293
+#: src/components/ai/ApprovalInboxPanel.tsx:312
 msgid "Reason or requested changes"
 msgstr "Reason or requested changes"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:86
-#: src/components/ai/ApprovalInboxPanel.tsx:307
+#: src/components/ai/ApprovalInboxPanel.tsx:326
 msgid "Prepare rejection"
 msgstr "Prepare rejection"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:91
-#: src/components/ai/ApprovalInboxPanel.tsx:314
+#: src/components/ai/ApprovalInboxPanel.tsx:333
 msgid "Request changes"
 msgstr "Request changes"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:96
-#: src/components/ai/ApprovalInboxPanel.tsx:322
+#: src/components/ai/ApprovalInboxPanel.tsx:341
 msgid "Prepare cancellation"
 msgstr "Prepare cancellation"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:91
-#: src/components/nav/AIChatDrawer.tsx:1518
+#: src/components/ai/ApprovalInboxPanel.tsx:100
+#: src/components/nav/AIChatDrawer.tsx:1806
 #: src/pages/repair/RepairPacketDetail.tsx:256
 msgid "Approvals"
 msgstr "Approvals"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:96
+#: src/components/ai/ApprovalInboxPanel.tsx:105
 msgid "Back"
 msgstr "Back"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:104
+#: src/components/ai/ApprovalInboxPanel.tsx:113
 #: src/components/riskradar/RiskRadarPanel.tsx:356
+#: src/pages/Memory/MemoryPage.tsx:431
 #: src/pages/assets/health/MachineHealthPanel.tsx:190
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
 #: src/pages/repair/components/safety/SafetyPanel.tsx:110
 msgid "Refresh"
 msgstr "Refresh"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:107
+#: src/components/ai/ApprovalInboxPanel.tsx:116
 msgid "This approval is unavailable or your access changed. Refresh the inbox."
 msgstr "This approval is unavailable or your access changed. Refresh the inbox."
 
-#: src/components/ai/ApprovalInboxPanel.tsx:110
+#: src/components/ai/ApprovalInboxPanel.tsx:119
 #: src/components/ai/MailboxApprovalReview.tsx:113
 msgid "Loading review…"
 msgstr "Loading review…"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:134
+#: src/components/ai/ApprovalInboxPanel.tsx:143
 msgid "Focused in the shared decision card"
 msgstr "Focused in the shared decision card"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:142
+#: src/components/ai/ApprovalInboxPanel.tsx:151
 msgid "This request is focused in the shared decision card above. Use its controls so voice and touch keep the same confirmation."
 msgstr "This request is focused in the shared decision card above. Use its controls so voice and touch keep the same confirmation."
 
-#: src/components/ai/ApprovalInboxPanel.tsx:242
+#: src/components/ai/ApprovalInboxPanel.tsx:261
 msgid "The action is recorded as succeeded."
 msgstr "The action is recorded as succeeded."
 
-#: src/components/ai/ApprovalInboxPanel.tsx:243
+#: src/components/ai/ApprovalInboxPanel.tsx:262
 msgid "Current recorded status:"
 msgstr "Current recorded status:"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:255
+#: src/components/ai/ApprovalInboxPanel.tsx:274
 msgid "Do not retry an unverified action. Refresh to check its recorded result."
 msgstr "Do not retry an unverified action. Refresh to check its recorded result."
 
-#: src/components/ai/ApprovalInboxPanel.tsx:271
+#: src/components/ai/ApprovalInboxPanel.tsx:290
 msgid "The decision was not verified. Refresh and review the current request before trying again."
 msgstr "The decision was not verified. Refresh and review the current request before trying again."
 
-#: src/components/ai/ApprovalInboxPanel.tsx:279
+#: src/components/ai/ApprovalInboxPanel.tsx:298
 msgid "Open for review"
 msgstr "Open for review"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:331
+#: src/components/ai/ApprovalInboxPanel.tsx:350
 #: src/components/ai/VoiceDecisionCard.tsx:146
 msgid "Type the required confirmation phrase"
 msgstr "Type the required confirmation phrase"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:340
+#: src/components/ai/ApprovalInboxPanel.tsx:359
 msgid "Confirm decision"
 msgstr "Confirm decision"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:344
+#: src/components/ai/ApprovalInboxPanel.tsx:363
 #: src/components/ai/VoiceDecisionCard.tsx:193
 msgid "Set aside"
 msgstr "Set aside"
@@ -1059,6 +1065,7 @@ msgid "Enter a subject"
 msgstr "Enter a subject"
 
 #: src/components/ai/MailboxPanel.tsx:108
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:270
 #: src/pages/repair/RepairPacketDetail.tsx:293
 msgid "From"
 msgstr "From"
@@ -1441,6 +1448,8 @@ msgid "Result not verified — reconciling, do not retry"
 msgstr "Result not verified — reconciling, do not retry"
 
 #: src/components/ai/VoiceDecisionCard.tsx:131
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:580
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:115
 #: src/pages/build/BuildOrderDetailsPanel.tsx:220
 #: src/tables/assets/MaintenanceRecordTable.tsx:121
 #: src/tables/build/BuildOrderTable.tsx:76
@@ -1466,6 +1475,7 @@ msgstr "Unverified"
 #: src/components/ai/VoiceDecisionCard.tsx:177
 #: src/components/riskradar/RiskFindingDetailModal.tsx:299
 #: src/pages/Auth/ChangePassword.tsx:80
+#: src/pages/Memory/MemoryPage.tsx:626
 #: src/pages/repair/components/safety/SafetyGateCard.tsx:157
 #: src/pages/repair/components/safety/SafetyGateConfirmModal.tsx:89
 msgid "Confirm"
@@ -1483,106 +1493,119 @@ msgstr "Cancel the action"
 msgid "Read back"
 msgstr "Read back"
 
-#: src/components/ai/VoiceSessionControl.tsx:23
+#: src/components/ai/VoiceSessionControl.tsx:31
+#: src/components/ai/VoiceSessionControl.tsx:60
+#: src/components/ai/voice/VoiceConsentDialog.tsx:184
+msgid "Start voice"
+msgstr "Start voice"
+
+#: src/components/ai/VoiceSessionControl.tsx:34
+msgid "Voice is unavailable. An administrator needs to check AI startup."
+msgstr "Voice is unavailable. An administrator needs to check AI startup."
+
+#: src/components/ai/VoiceSessionControl.tsx:35
+msgid "Voice is temporarily unavailable while AI starts or recovers. Please wait."
+msgstr "Voice is temporarily unavailable while AI starts or recovers. Please wait."
+
+#: src/components/ai/VoiceSessionControl.tsx:41
 msgid "Voice unavailable"
 msgstr "Voice unavailable"
 
-#: src/components/ai/VoiceSessionControl.tsx:24
+#: src/components/ai/VoiceSessionControl.tsx:42
 msgid "Voice ready"
 msgstr "Voice ready"
 
-#: src/components/ai/VoiceSessionControl.tsx:25
+#: src/components/ai/VoiceSessionControl.tsx:42
+#: src/views/VoiceMobileAppView.tsx:24
+#~ msgid "Voice"
+#~ msgstr "Voice"
+
+#: src/components/ai/VoiceSessionControl.tsx:43
 msgid "Connecting…"
 msgstr "Connecting…"
 
-#: src/components/ai/VoiceSessionControl.tsx:26
+#: src/components/ai/VoiceSessionControl.tsx:44
 msgid "Listening"
 msgstr "Listening"
 
-#: src/components/ai/VoiceSessionControl.tsx:27
-#: src/components/ai/VoiceSessionControl.tsx:78
+#: src/components/ai/VoiceSessionControl.tsx:45
+#: src/components/ai/VoiceSessionControl.tsx:96
 msgid "Confirm transcript"
 msgstr "Confirm transcript"
 
-#: src/components/ai/VoiceSessionControl.tsx:28
+#: src/components/ai/VoiceSessionControl.tsx:46
 msgid "Reviewing…"
 msgstr "Reviewing…"
 
-#: src/components/ai/VoiceSessionControl.tsx:29
+#: src/components/ai/VoiceSessionControl.tsx:47
 msgid "Speaking"
 msgstr "Speaking"
 
-#: src/components/ai/VoiceSessionControl.tsx:30
+#: src/components/ai/VoiceSessionControl.tsx:48
 msgid "Voice error"
 msgstr "Voice error"
 
-#: src/components/ai/VoiceSessionControl.tsx:40
+#: src/components/ai/VoiceSessionControl.tsx:58
 msgid "Start voice session"
 msgstr "Start voice session"
 
-#: src/components/ai/VoiceSessionControl.tsx:42
-#: src/views/VoiceMobileAppView.tsx:24
-msgid "Voice"
-msgstr "Voice"
-
-#: src/components/ai/VoiceSessionControl.tsx:48
+#: src/components/ai/VoiceSessionControl.tsx:66
 msgid "Microphone listening"
 msgstr "Microphone listening"
 
-#: src/components/ai/VoiceSessionControl.tsx:50
+#: src/components/ai/VoiceSessionControl.tsx:68
 msgid "Microphone muted"
 msgstr "Microphone muted"
 
-#: src/components/ai/VoiceSessionControl.tsx:52
+#: src/components/ai/VoiceSessionControl.tsx:70
 msgid "Microphone waiting for push to talk"
 msgstr "Microphone waiting for push to talk"
 
-#: src/components/ai/VoiceSessionControl.tsx:53
+#: src/components/ai/VoiceSessionControl.tsx:71
 msgid "Microphone paused"
 msgstr "Microphone paused"
 
-#: src/components/ai/VoiceSessionControl.tsx:57
+#: src/components/ai/VoiceSessionControl.tsx:75
 msgid "Audio playing"
 msgstr "Audio playing"
 
-#: src/components/ai/VoiceSessionControl.tsx:59
+#: src/components/ai/VoiceSessionControl.tsx:77
 msgid "Waiting for audio"
 msgstr "Waiting for audio"
 
-#: src/components/ai/VoiceSessionControl.tsx:60
+#: src/components/ai/VoiceSessionControl.tsx:78
 msgid "Audio stopped"
 msgstr "Audio stopped"
 
-#: src/components/ai/VoiceSessionControl.tsx:67
+#: src/components/ai/VoiceSessionControl.tsx:85
 msgid "Unmute microphone"
 msgstr "Unmute microphone"
 
-#: src/components/ai/VoiceSessionControl.tsx:67
+#: src/components/ai/VoiceSessionControl.tsx:85
 msgid "Mute microphone"
 msgstr "Mute microphone"
 
-#: src/components/ai/VoiceSessionControl.tsx:69
+#: src/components/ai/VoiceSessionControl.tsx:87
 msgid "Unmute"
 msgstr "Unmute"
 
-#: src/components/ai/VoiceSessionControl.tsx:69
+#: src/components/ai/VoiceSessionControl.tsx:87
 msgid "Mute"
 msgstr "Mute"
 
-#: src/components/ai/VoiceSessionControl.tsx:84
+#: src/components/ai/VoiceSessionControl.tsx:102
 msgid "Discard transcript"
 msgstr "Discard transcript"
 
-#: src/components/ai/VoiceSessionControl.tsx:92
+#: src/components/ai/VoiceSessionControl.tsx:110
 msgid "Stop speaking"
 msgstr "Stop speaking"
 
-#: src/components/ai/VoiceSessionControl.tsx:99
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:117
-msgid "End voice"
-msgstr "End voice"
+#: src/components/ai/VoiceSessionControl.tsx:117
+msgid "Stop voice"
+msgstr "Stop voice"
 
-#: src/components/ai/VoiceSessionControl.tsx:103
+#: src/components/ai/VoiceSessionControl.tsx:121
 msgid "Preview"
 msgstr "Preview"
 
@@ -1618,8 +1641,8 @@ msgstr "Hearing…"
 #: src/components/ai/voice/PhoneVoiceRouting.tsx:35
 #: src/components/ai/voice/VoiceGlobalIndicator.tsx:82
 #: src/components/ai/voice/VoiceGlobalIndicator.tsx:89
-msgid "Back to voice"
-msgstr "Back to voice"
+#~ msgid "Back to voice"
+#~ msgstr "Back to voice"
 
 #: src/components/ai/voice/PushToTalkButton.tsx:66
 msgid "Listening — release to finish"
@@ -1634,60 +1657,60 @@ msgid "Starting voice sends your speech to the speech service for live transcrip
 msgstr "Starting voice sends your speech to the speech service for live transcription. AIMMS keeps only the text transcript, stored with your chat history; it never keeps a recording of your voice."
 
 #: src/components/ai/voice/VoiceConsentDialog.tsx:28
+msgid "If your client has enabled memory and you separately acknowledge the memory notice, eligible voice transcripts can produce memory suggestions for future conversations. Shared conversations are excluded. Review and forget memories on What AIMMS remembers, or turn off learning for a conversation. Accepting this voice disclosure alone does not enable memory."
+msgstr "If your client has enabled memory and you separately acknowledge the memory notice, eligible voice transcripts can produce memory suggestions for future conversations. Shared conversations are excluded. Review and forget memories on What AIMMS remembers, or turn off learning for a conversation. Accepting this voice disclosure alone does not enable memory."
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:29
 msgid "Your voice is never used to identify you or sign you in. Actions run under the account you are logged in with, and every business change still needs your explicit confirmation."
 msgstr "Your voice is never used to identify you or sign you in. Actions run under the account you are logged in with, and every business change still needs your explicit confirmation."
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:29
+#: src/components/ai/voice/VoiceConsentDialog.tsx:30
 msgid "AIMMS listens only inside a session you start; there is no wake word and it never listens in the background."
 msgstr "AIMMS listens only inside a session you start; there is no wake word and it never listens in the background."
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:30
+#: src/components/ai/voice/VoiceConsentDialog.tsx:31
 msgid "Voice stays on while this tab is visible. If you switch apps or lock the screen, AIMMS stops listening and pauses playback; if the tab stays hidden for 5 minutes the voice session ends. Anything waiting for your confirmation is set aside, nothing is executed, and it is read back again for a fresh confirmation when you return."
 msgstr "Voice stays on while this tab is visible. If you switch apps or lock the screen, AIMMS stops listening and pauses playback; if the tab stays hidden for 5 minutes the voice session ends. Anything waiting for your confirmation is set aside, nothing is executed, and it is read back again for a fresh confirmation when you return."
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:59
+#: src/components/ai/voice/VoiceConsentDialog.tsx:60
 msgid "Please review and accept the disclosure."
 msgstr "Please review and accept the disclosure."
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:63
+#: src/components/ai/voice/VoiceConsentDialog.tsx:64
 msgid "Choose an available language and voice."
 msgstr "Choose an available language and voice."
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:113
+#: src/components/ai/voice/VoiceConsentDialog.tsx:114
 msgid "Start a voice session"
 msgstr "Start a voice session"
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:140
+#: src/components/ai/voice/VoiceConsentDialog.tsx:141
 msgid "You can interrupt, say “stop speaking,” or ask “what can I say?”"
 msgstr "You can interrupt, say “stop speaking,” or ask “what can I say?”"
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:142
+#: src/components/ai/voice/VoiceConsentDialog.tsx:143
 msgid "Language and output voice"
 msgstr "Language and output voice"
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:152
+#: src/components/ai/voice/VoiceConsentDialog.tsx:153
 msgid "Voice changes are available only in English during this pilot. Use on-screen review in other languages."
 msgstr "Voice changes are available only in English during this pilot. Use on-screen review in other languages."
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:160
+#: src/components/ai/voice/VoiceConsentDialog.tsx:161
 msgid "Hear a voice sample"
 msgstr "Hear a voice sample"
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:163
+#: src/components/ai/voice/VoiceConsentDialog.tsx:164
 msgid "The sample could not play. Please wait a minute and try again."
 msgstr "The sample could not play. Please wait a minute and try again."
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:166
+#: src/components/ai/voice/VoiceConsentDialog.tsx:167
 msgid "Play voice status sounds"
 msgstr "Play voice status sounds"
 
-#: src/components/ai/voice/VoiceConsentDialog.tsx:170
+#: src/components/ai/voice/VoiceConsentDialog.tsx:171
 msgid "I have read the disclosure and want to start voice."
 msgstr "I have read the disclosure and want to start voice."
-
-#: src/components/ai/voice/VoiceConsentDialog.tsx:183
-msgid "Start voice"
-msgstr "Start voice"
 
 #: src/components/ai/voice/VoiceExperienceControls.tsx:23
 msgid "Voice is paused while this tab is hidden. Pending confirmation is set aside."
@@ -1809,9 +1832,12 @@ msgstr "Connection route"
 msgid "Spoken answer pages"
 msgstr "Spoken answer pages"
 
+#. placeholder {0}: displayPage + 1
 #. placeholder {0}: s.presentation.index + 1
+#. placeholder {1}: metadata.page_count ?? '?'
 #. placeholder {1}: s.presentation.total
 #: src/components/ai/voice/VoiceExperienceControls.tsx:152
+#: src/components/aichat/MediaEvidenceModal.tsx:174
 msgid "Page {0} of {1}"
 msgstr "Page {0} of {1}"
 
@@ -1840,7 +1866,7 @@ msgstr "Transcript revisions"
 msgid "Revision {0}"
 msgstr "Revision {0}"
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:29
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:26
 msgid "Start or end voice"
 msgstr "Start or end voice"
 
@@ -1856,25 +1882,34 @@ msgstr "Voice microphone paused"
 msgid "Voice ended"
 msgstr "Voice ended"
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:103
-msgid "Open hands-free voice"
-msgstr "Open hands-free voice"
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:86
+#: src/views/MobileAppView.tsx:38
+msgid "Open AI Assistant"
+msgstr "Open AI Assistant"
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:106
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:89
 msgid "Voice listening"
 msgstr "Voice listening"
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:106
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:89
 msgid "Voice paused"
 msgstr "Voice paused"
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:107
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:90
 msgid " — confirmation waiting"
 msgstr " — confirmation waiting"
 
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:100
+msgid "End voice"
+msgstr "End voice"
+
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:103
+#~ msgid "Open hands-free voice"
+#~ msgstr "Open hands-free voice"
+
 #: src/components/ai/voice/VoiceGlobalIndicator.tsx:120
-msgid "Voice: Ctrl/⌘+Shift+V · Chat: Ctrl/⌘+K"
-msgstr "Voice: Ctrl/⌘+Shift+V · Chat: Ctrl/⌘+K"
+#~ msgid "Voice: Ctrl/⌘+Shift+V · Chat: Ctrl/⌘+K"
+#~ msgstr "Voice: Ctrl/⌘+Shift+V · Chat: Ctrl/⌘+K"
 
 #: src/components/ai/voice/VoiceHandsFreeSurface.tsx:22
 msgid "Hands-free voice"
@@ -1986,6 +2021,7 @@ msgstr "field: {0}"
 
 #: src/components/aichat/CitationList.tsx:75
 #: src/components/aichat/evidenceFormat.ts:76
+#: src/pages/Memory/MemoryPage.tsx:478
 msgid "Source unavailable"
 msgstr "Source unavailable"
 
@@ -2092,154 +2128,525 @@ msgstr "Preferences"
 msgid "Facts"
 msgstr "Facts"
 
-#: src/components/aichat/ContextUsedDisclosure.tsx:96
+#: src/components/aichat/ContextUsedDisclosure.tsx:86
+msgid "included in context"
+msgstr "included in context"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:87
+msgid "no eligible memories"
+msgstr "no eligible memories"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:88
+msgid "query embedding unavailable"
+msgstr "query embedding unavailable"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:89
+msgid "query embedding timed out"
+msgstr "query embedding timed out"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:90
+msgid "query exceeds the memory recall limit"
+msgstr "query exceeds the memory recall limit"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:91
+msgid "query excluded by memory content policy"
+msgstr "query excluded by memory content policy"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:92
+msgid "query embedding budget unavailable"
+msgstr "query embedding budget unavailable"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:93
+msgid "no usable verified repair history"
+msgstr "no usable verified repair history"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:94
+msgid "recall time budget exceeded"
+msgstr "recall time budget exceeded"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:95
+msgid "recall unavailable"
+msgstr "recall unavailable"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:101
+msgid "Preference recall"
+msgstr "Preference recall"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:103
+msgid "Verified repair history"
+msgstr "Verified repair history"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:104
+msgid "Fact recall"
+msgstr "Fact recall"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:105
+msgid "unavailable"
+msgstr "unavailable"
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:120
 msgid "Retrieval envelopes"
 msgstr "Retrieval envelopes"
 
-#: src/components/aichat/ContextUsedDisclosure.tsx:101
+#: src/components/aichat/ContextUsedDisclosure.tsx:125
 msgid "Topology"
 msgstr "Topology"
 
-#: src/components/aichat/ContextUsedDisclosure.tsx:106
+#: src/components/aichat/ContextUsedDisclosure.tsx:130
 msgid "Truncated"
 msgstr "Truncated"
 
-#: src/components/aichat/ContextUsedDisclosure.tsx:113
+#: src/components/aichat/ContextUsedDisclosure.tsx:137
 msgid "Task intent"
 msgstr "Task intent"
 
-#: src/components/aichat/ContextUsedDisclosure.tsx:120
+#: src/components/aichat/ContextUsedDisclosure.tsx:144
 msgid "Memory types"
 msgstr "Memory types"
 
-#: src/components/aichat/ContextUsedDisclosure.tsx:127
+#: src/components/aichat/ContextUsedDisclosure.tsx:151
 #: src/components/dashboard/widgets/RiskRadarWidget.tsx:142
 msgid "Degraded"
 msgstr "Degraded"
 
-#: src/components/aichat/ContextUsedDisclosure.tsx:137
+#: src/components/aichat/ContextUsedDisclosure.tsx:161
 msgid "Toggle context used"
 msgstr "Toggle context used"
 
-#: src/components/aichat/ContextUsedDisclosure.tsx:146
+#: src/components/aichat/ContextUsedDisclosure.tsx:170
 msgid "Context used"
 msgstr "Context used"
 
-#: src/components/aichat/ContextUsedDisclosure.tsx:154
+#: src/components/aichat/ContextUsedDisclosure.tsx:180
+msgid "These records were supplied as context. Retrieval does not prove the answer used them."
+msgstr "These records were supplied as context. Retrieval does not prove the answer used them."
+
+#: src/components/aichat/ContextUsedDisclosure.tsx:184
 msgid "Nothing was used"
 msgstr "Nothing was used"
 
-#: src/components/aichat/MediaEvidenceModal.tsx:80
-msgid "Evidence file is unavailable"
-msgstr "Evidence file is unavailable"
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:66
+msgid "Delete my saved conversations?"
+msgstr "Delete my saved conversations?"
 
-#: src/components/aichat/MediaEvidenceModal.tsx:118
-#: src/components/riskradar/RiskFindingDetailModal.tsx:322
-#: src/pages/assets/health/AnomalyList.tsx:131
-#: src/pages/maintenance/MaintenanceBoard.tsx:1845
-msgid "Open work order"
-msgstr "Open work order"
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:75
+msgid "Delete all saved conversations you own in your current workspace, including conversations not loaded in this list, their messages and associated uploads? Shared access to these conversations will be removed. This cannot be undone."
+msgstr "Delete all saved conversations you own in your current workspace, including conversations not loaded in this list, their messages and associated uploads? Shared access to these conversations will be removed. This cannot be undone."
+
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:76
+msgid "Conversations shared with you, unsaved drafts and conversations created after deletion starts are kept. This does not erase your account or operational records."
+msgstr "Conversations shared with you, unsaved drafts and conversations created after deletion starts are kept. This does not erase your account or operational records."
+
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:77
+msgid "For a large history, use Continue deletion until completion is shown. Keep this dialog open to retain the same retry selection."
+msgstr "For a large history, use Continue deletion until completion is shown. Keep this dialog open to retain the same retry selection."
+
+#. placeholder {0}: receipt.processed
+#. placeholder {1}: receipt.incomplete
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:83
+msgid "{0} conversations checked; {1} need cleanup."
+msgstr "{0} conversations checked; {1} need cleanup."
+
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:89
+msgid "Deletion completed for the selected conversations."
+msgstr "Deletion completed for the selected conversations."
+
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:95
+msgid "Some data still needs cleanup. Retry to check the same conversations again."
+msgstr "Some data still needs cleanup. Retry to check the same conversations again."
+
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:101
+msgid "Deletion could not finish. Retry uses the same selection. If your workspace changed or the request expired, close this dialog and review a new deletion."
+msgstr "Deletion could not finish. Retry uses the same selection. If your workspace changed or the request expired, close this dialog and review a new deletion."
+
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:107
+msgid "Closing keeps deletions already made but discards this retry selection. Reopening starts a new selection."
+msgstr "Closing keeps deletions already made but discards this retry selection. Reopening starts a new selection."
+
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:111
+#: src/components/aichat/ExportThreadsModal.tsx:77
+#: src/components/importer/ImporterDrawer.tsx:119
+#: src/components/modals/AboutInvenTreeModal.tsx:206
+#: src/components/modals/ServerInfoModal.tsx:134
+#: src/components/nav/AIChatDrawer.tsx:1771
+#: src/components/wizards/ImportPartWizard.tsx:773
+#: src/forms/BomForms.tsx:150
+#: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:687
+msgid "Close"
+msgstr "Close"
+
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:116
+msgid "Retry deletion"
+msgstr "Retry deletion"
+
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:118
+msgid "Continue deletion"
+msgstr "Continue deletion"
+
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:120
+#: src/components/aichat/threadDeletion.ts:16
+msgid "Retry cleanup"
+msgstr "Retry cleanup"
+
+#: src/components/aichat/DeleteOwnedThreadsModal.tsx:121
+#: src/components/nav/AIChatDrawer.tsx:440
+msgid "Delete my saved conversations"
+msgstr "Delete my saved conversations"
+
+#: src/components/aichat/ExportThreadsModal.tsx:48
+msgid "This history is too large for a browser download. Ask an administrator for a transcript export."
+msgstr "This history is too large for a browser download. Ask an administrator for a transcript export."
+
+#: src/components/aichat/ExportThreadsModal.tsx:49
+msgid "The export could not finish. No download was started. Please try again."
+msgstr "The export could not finish. No download was started. Please try again."
+
+#: src/components/aichat/ExportThreadsModal.tsx:58
+#: src/components/nav/AIChatDrawer.tsx:433
+msgid "Export my saved conversations"
+msgstr "Export my saved conversations"
+
+#: src/components/aichat/ExportThreadsModal.tsx:60
+msgid "Download a JSON file containing the titles, stored summaries and messages of conversations you own in your current workspace, including those not loaded in this list."
+msgstr "Download a JSON file containing the titles, stored summaries and messages of conversations you own in your current workspace, including those not loaded in this list."
+
+#: src/components/aichat/ExportThreadsModal.tsx:61
+msgid "Shared-with-me conversations, unsaved drafts, attachments, voice recordings, evidence, operational records and account data are excluded."
+msgstr "Shared-with-me conversations, unsaved drafts, attachments, voice recordings, evidence, operational records and account data are excluded."
+
+#: src/components/aichat/ExportThreadsModal.tsx:62
+msgid "The export reads saved data as it runs. Conversations and messages created after it starts are excluded; concurrent changes may affect the result."
+msgstr "The export reads saved data as it runs. Conversations and messages created after it starts are excluded; concurrent changes may affect the result."
+
+#. placeholder {0}: result.threads
+#. placeholder {1}: result.messages
+#: src/components/aichat/ExportThreadsModal.tsx:73
+msgid "Download started: {0} conversations and {1} messages. Check your browser downloads."
+msgstr "Download started: {0} conversations and {1} messages. Check your browser downloads."
+
+#: src/components/aichat/ExportThreadsModal.tsx:77
+msgid "Cancel export"
+msgstr "Cancel export"
+
+#: src/components/aichat/ExportThreadsModal.tsx:82
+msgid "Download JSON"
+msgstr "Download JSON"
+
+#: src/components/aichat/LegacyChatStorageNotice.tsx:65
+#: src/components/aichat/LegacyChatStorageNotice.tsx:78
+msgid "Older browser history"
+msgstr "Older browser history"
+
+#: src/components/aichat/LegacyChatStorageNotice.tsx:67
+msgid "Older conversations are saved in this browser. Review the backup options before removing them."
+msgstr "Older conversations are saved in this browser. Review the backup options before removing them."
+
+#: src/components/aichat/LegacyChatStorageNotice.tsx:72
+msgid "Review browser history"
+msgstr "Review browser history"
+
+#: src/components/aichat/LegacyChatStorageNotice.tsx:81
+msgid "This older history is not linked to an account. It stays out of your current conversations. If it belongs to you, download a backup to keep any conversations that exist only in this browser."
+msgstr "This older history is not linked to an account. It stays out of your current conversations. If it belongs to you, download a backup to keep any conversations that exist only in this browser."
+
+#: src/components/aichat/LegacyChatStorageNotice.tsx:85
+msgid "Download browser history"
+msgstr "Download browser history"
+
+#: src/components/aichat/LegacyChatStorageNotice.tsx:87
+msgid "The download was started. Check that your backup file was saved before removing the browser copy."
+msgstr "The download was started. Check that your backup file was saved before removing the browser copy."
+
+#: src/components/aichat/LegacyChatStorageNotice.tsx:92
+msgid "I have saved anything I need, or I do not need this older history."
+msgstr "I have saved anything I need, or I do not need this older history."
+
+#: src/components/aichat/LegacyChatStorageNotice.tsx:98
+msgid "The browser operation failed. The older history has not been removed."
+msgstr "The browser operation failed. The older history has not been removed."
+
+#: src/components/aichat/LegacyChatStorageNotice.tsx:104
+msgid "Keep for now"
+msgstr "Keep for now"
+
+#: src/components/aichat/LegacyChatStorageNotice.tsx:114
+msgid "Remove older browser history"
+msgstr "Remove older browser history"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:80
+#~ msgid "Evidence file is unavailable"
+#~ msgstr "Evidence file is unavailable"
 
 #: src/components/aichat/MediaEvidenceModal.tsx:119
-msgid "Open machine"
-msgstr "Open machine"
+#~ msgid "Open machine"
+#~ msgstr "Open machine"
+
+#. placeholder {0}: item.source_revision
+#: src/components/aichat/MediaEvidenceModal.tsx:145
+msgid "Revision: {0}"
+msgstr "Revision: {0}"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:146
+msgid "Unversioned citation — showing the currently authorized source"
+msgstr "Unversioned citation — showing the currently authorized source"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:152
+msgid "Source unavailable. Access may have changed, or the cited revision is no longer available."
+msgstr "Source unavailable. Access may have changed, or the cited revision is no longer available."
+
+#: src/components/aichat/MediaEvidenceModal.tsx:154
+msgid "Loading source"
+msgstr "Loading source"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:161
+msgid "Exact page unavailable. The authorized source is shown below."
+msgstr "Exact page unavailable. The authorized source is shown below."
+
+#: src/components/aichat/MediaEvidenceModal.tsx:162
+msgid "Exact video segment unavailable. You can play the authorized source from the beginning."
+msgstr "Exact video segment unavailable. You can play the authorized source from the beginning."
+
+#: src/components/aichat/MediaEvidenceModal.tsx:172
+msgid "Previous page"
+msgstr "Previous page"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:192
+msgid "Document preview"
+msgstr "Document preview"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:195
+msgid "This browser cannot display the document. Open the original to use your document reader."
+msgstr "This browser cannot display the document. Open the original to use your document reader."
+
+#: src/components/aichat/MediaEvidenceModal.tsx:202
+msgid "Cited time"
+msgstr "Cited time"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:206
+msgid "Position verified"
+msgstr "Position verified"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:252
+msgid "Captions and a transcript are not available for this source."
+msgstr "Captions and a transcript are not available for this source."
+
+#: src/components/aichat/MediaEvidenceModal.tsx:275
+msgid "Zoom out"
+msgstr "Zoom out"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:279
+msgid "Fit"
+msgstr "Fit"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:284
+msgid "Zoom in"
+msgstr "Zoom in"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:291
+msgid "Open original"
+msgstr "Open original"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:312
+msgid "Open related record"
+msgstr "Open related record"
 
 #: src/components/aichat/RetrievalCoverage.tsx:30
 msgid "as of {asOf}"
 msgstr "as of {asOf}"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:45
+#: src/components/aichat/ThreadActionsModal.tsx:79
+msgid "The change could not be completed. Please try again."
+msgstr "The change could not be completed. Please try again."
+
+#: src/components/aichat/ThreadActionsModal.tsx:95
+msgid "Rename conversation"
+msgstr "Rename conversation"
+
+#: src/components/aichat/ThreadActionsModal.tsx:96
+msgid "Share conversation"
+msgstr "Share conversation"
+
+#: src/components/aichat/ThreadActionsModal.tsx:117
+msgid "Also forget saved memories learned from this conversation"
+msgstr "Also forget saved memories learned from this conversation"
+
+#: src/components/aichat/ThreadActionsModal.tsx:118
+msgid "This applies to all of your memories still linked to this conversation, including those confirmed earlier. The choice is fixed when deletion starts."
+msgstr "This applies to all of your memories still linked to this conversation, including those confirmed earlier. The choice is fixed when deletion starts."
+
+#: src/components/aichat/ThreadActionsModal.tsx:131
+#: src/components/forms/AuthenticationForm.tsx:136
+#: src/components/forms/AuthenticationForm.tsx:296
+#: src/pages/Auth/ProviderSignup.tsx:129
+#: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:64
+#: src/pages/core/UserDetail.tsx:43
+msgid "Username"
+msgstr "Username"
+
+#: src/components/aichat/ThreadActionsModal.tsx:131
+msgid "Conversation title"
+msgstr "Conversation title"
+
+#: src/components/aichat/ThreadActionsModal.tsx:135
+msgid "Grant read-only access or revoke existing access."
+msgstr "Grant read-only access or revoke existing access."
+
+#: src/components/aichat/ThreadActionsModal.tsx:162
+msgid "Revoke access"
+msgstr "Revoke access"
+
+#: src/components/aichat/ThreadActionsModal.tsx:173
+#: src/components/editors/TemplateEditor/TemplateEditor.tsx:387
+#: src/components/forms/HostOptionsForm.tsx:90
+#: src/components/items/RoleTable.tsx:499
+#: src/components/items/TransferList.tsx:215
+#: src/components/items/TransferList.tsx:223
+#: src/components/tables/FilterSelectDrawer.tsx:719
+#: src/pages/repair/components/safety/LockoutPointModal.tsx:157
+msgid "Save"
+msgstr "Save"
+
+#: src/components/aichat/ThreadActionsModal.tsx:174
+msgid "Share read-only"
+msgstr "Share read-only"
+
+#: src/components/aichat/ThreadLearningControls.tsx:80
+msgid "What AIMMS remembers across conversations"
+msgstr "What AIMMS remembers across conversations"
+
+#: src/components/aichat/ThreadLearningControls.tsx:82
+msgid "Learning settings are unavailable. Close and reopen this conversation's memory panel to reload."
+msgstr "Learning settings are unavailable. Close and reopen this conversation's memory panel to reload."
+
+#: src/components/aichat/ThreadLearningControls.tsx:87
+#: src/pages/Memory/ExcludedConversations.tsx:117
+msgid "Learn memories from this conversation"
+msgstr "Learn memories from this conversation"
+
+#: src/components/aichat/ThreadLearningControls.tsx:92
+#: src/pages/Memory/ExcludedConversations.tsx:124
+msgid "Use my default"
+msgstr "Use my default"
+
+#: src/components/aichat/ThreadLearningControls.tsx:93
+#: src/pages/Memory/ExcludedConversations.tsx:125
+msgid "Learn from this conversation"
+msgstr "Learn from this conversation"
+
+#: src/components/aichat/ThreadLearningControls.tsx:94
+#: src/pages/Memory/ExcludedConversations.tsx:128
+msgid "Do not learn from this conversation"
+msgstr "Do not learn from this conversation"
+
+#: src/components/aichat/ThreadLearningControls.tsx:99
+msgid "This conversation is eligible for learning."
+msgstr "This conversation is eligible for learning."
+
+#: src/components/aichat/ThreadLearningControls.tsx:101
+msgid "Shared conversations cannot learn or recall personal memories."
+msgstr "Shared conversations cannot learn or recall personal memories."
+
+#: src/components/aichat/ThreadLearningControls.tsx:102
+msgid "Learning is currently excluded by your settings, notice, client enrollment or access."
+msgstr "Learning is currently excluded by your settings, notice, client enrollment or access."
+
+#: src/components/aichat/ThreadLearningControls.tsx:104
+msgid "Turning learning off withdraws pending suggestions. Confirmed memories and conversation summaries remain. It does not turn off recall of existing memories."
+msgstr "Turning learning off withdraws pending suggestions. Confirmed memories and conversation summaries remain. It does not turn off recall of existing memories."
+
+#: src/components/aichat/ThreadMemoryModal.tsx:46
 msgid "Open questions"
 msgstr "Open questions"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:47
+#: src/components/aichat/ThreadMemoryModal.tsx:48
 msgid "Pending proposals"
 msgstr "Pending proposals"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:49
+#: src/components/aichat/ThreadMemoryModal.tsx:50
 msgid "Machine facts"
 msgstr "Machine facts"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:51
+#: src/components/aichat/ThreadMemoryModal.tsx:52
 msgid "Corrections"
 msgstr "Corrections"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:58
+#: src/components/aichat/ThreadMemoryModal.tsx:59
 msgid "superseded"
 msgstr "superseded"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:60
+#: src/components/aichat/ThreadMemoryModal.tsx:61
 msgid "expired"
 msgstr "expired"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:62
+#: src/components/aichat/ThreadMemoryModal.tsx:63
 msgid "forgotten"
 msgstr "forgotten"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:64
+#: src/components/aichat/ThreadMemoryModal.tsx:65
 msgid "removed"
 msgstr "removed"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:109
+#: src/components/aichat/ThreadMemoryModal.tsx:110
 msgid "flagged"
 msgstr "flagged"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:124
+#: src/components/aichat/ThreadMemoryModal.tsx:125
 msgid "This is wrong"
 msgstr "This is wrong"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:134
+#: src/components/aichat/ThreadMemoryModal.tsx:135
+#: src/pages/Memory/MemoryPage.tsx:512
 msgid "Forget"
 msgstr "Forget"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:160
+#: src/components/aichat/ThreadMemoryModal.tsx:161
 #: src/components/items/InfoItem.tsx:27
 msgid "None"
 msgstr "None"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:204
+#: src/components/aichat/ThreadMemoryModal.tsx:205
 msgid "Through message {through} of {latest}"
 msgstr "Through message {through} of {latest}"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:221
+#: src/components/aichat/ThreadMemoryModal.tsx:222
 msgid "Citations"
 msgstr "Citations"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:234
+#: src/components/aichat/ThreadMemoryModal.tsx:235
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:396
 msgid "Narrative"
 msgstr "Narrative"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:243
+#: src/components/aichat/ThreadMemoryModal.tsx:244
 msgid "{forgotten} forgotten"
 msgstr "{forgotten} forgotten"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:270
-#: src/components/nav/AIChatDrawer.tsx:337
+#: src/components/aichat/ThreadMemoryModal.tsx:271
+#: src/components/nav/AIChatDrawer.tsx:470
 msgid "What this chat remembers"
 msgstr "What this chat remembers"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:281
+#: src/components/aichat/ThreadMemoryModal.tsx:289
 msgid "Summary, not verified data"
 msgstr "Summary, not verified data"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:285
+#: src/components/aichat/ThreadMemoryModal.tsx:293
 msgid "These items were written by the assistant from this conversation. Nothing here has been checked against records. Mark an item wrong or forget it to correct what is carried forward."
 msgstr "These items were written by the assistant from this conversation. Nothing here has been checked against records. Mark an item wrong or forget it to correct what is carried forward."
 
-#: src/components/aichat/ThreadMemoryModal.tsx:291
+#: src/components/aichat/ThreadMemoryModal.tsx:299
 msgid "Memory changed, try again"
 msgstr "Memory changed, try again"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:296
+#: src/components/aichat/ThreadMemoryModal.tsx:304
 msgid "Could not update memory"
 msgstr "Could not update memory"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:307
+#: src/components/aichat/ThreadMemoryModal.tsx:315
 msgid "Memory is not available for this conversation"
 msgstr "Memory is not available for this conversation"
 
-#: src/components/aichat/ThreadMemoryModal.tsx:312
+#: src/components/aichat/ThreadMemoryModal.tsx:320
 msgid "Could not load memory"
 msgstr "Could not load memory"
 
@@ -2287,6 +2694,8 @@ msgid "uncontrolled attachment"
 msgstr "uncontrolled attachment"
 
 #: src/components/aichat/evidenceFormat.ts:117
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:489
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:168
 msgid "As of"
 msgstr "As of"
 
@@ -2305,6 +2714,30 @@ msgstr "Limitations"
 #: src/components/aichat/evidenceFormat.ts:140
 msgid "None noted"
 msgstr "None noted"
+
+#: src/components/aichat/threadDeletion.ts:9
+msgid "Finish deleting conversation"
+msgstr "Finish deleting conversation"
+
+#: src/components/aichat/threadDeletion.ts:10
+msgid "Delete conversation?"
+msgstr "Delete conversation?"
+
+#: src/components/aichat/threadDeletion.ts:12
+msgid "Deletion is not yet complete. Retry to finish removing the conversation and its associated data. The original choice about forgetting saved memories will be honored."
+msgstr "Deletion is not yet complete. Retry to finish removing the conversation and its associated data. The original choice about forgetting saved memories will be honored."
+
+#: src/components/aichat/threadDeletion.ts:14
+msgid "Delete this conversation, its messages and associated uploads? Shared access will also be removed. Confirmed memories remain unless you choose to forget them below. This cannot be undone."
+msgstr "Delete this conversation, its messages and associated uploads? Shared access will also be removed. Confirmed memories remain unless you choose to forget them below. This cannot be undone."
+
+#: src/components/aichat/threadDeletion.ts:15
+msgid "Delete this conversation from this browser? This cannot be undone."
+msgstr "Delete this conversation from this browser? This cannot be undone."
+
+#: src/components/aichat/threadDeletion.ts:16
+msgid "Delete conversation"
+msgstr "Delete conversation"
 
 #: src/components/barcodes/BarcodeCameraInput.tsx:103
 msgid "Error while scanning"
@@ -2574,6 +3007,8 @@ msgstr "Error updating order"
 
 #: src/components/calendar/OrderCalendar.tsx:208
 #: src/components/calendar/OrderCalendarToolTip.tsx:68
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:435
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:126
 #: src/components/riskradar/RiskRadarPanel.tsx:421
 #: src/components/tables/Filter.tsx:194
 msgid "Overdue"
@@ -2616,19 +3051,19 @@ msgstr "Target Date"
 msgid "Responsible"
 msgstr "Responsible"
 
-#: src/components/dashboard/DashboardLayout.tsx:68
+#: src/components/dashboard/DashboardLayout.tsx:70
 msgid "Toggle dashboard edit mode"
 msgstr "Toggle dashboard edit mode"
 
-#: src/components/dashboard/DashboardLayout.tsx:298
+#: src/components/dashboard/DashboardLayout.tsx:342
 msgid "Failed to load dashboard widgets."
 msgstr "Failed to load dashboard widgets."
 
-#: src/components/dashboard/DashboardLayout.tsx:309
+#: src/components/dashboard/DashboardLayout.tsx:353
 msgid "No Widgets Selected"
 msgstr "No Widgets Selected"
 
-#: src/components/dashboard/DashboardLayout.tsx:312
+#: src/components/dashboard/DashboardLayout.tsx:356
 msgid "Use the menu to add widgets to the dashboard"
 msgstr "Use the menu to add widgets to the dashboard"
 
@@ -2681,202 +3116,211 @@ msgstr "No Widgets Available"
 msgid "There are no more widgets available for the dashboard"
 msgstr "There are no more widgets available for the dashboard"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:28
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:31
 msgid "Subscribed Parts"
 msgstr "Subscribed Parts"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:29
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:32
 msgid "Show the number of parts which you have subscribed to"
 msgstr "Show the number of parts which you have subscribed to"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:35
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:38
 msgid "Subscribed Categories"
 msgstr "Subscribed Categories"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:36
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:39
 msgid "Show the number of part categories which you have subscribed to"
 msgstr "Show the number of part categories which you have subscribed to"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:45
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:48
 msgid "Invalid BOMs"
 msgstr "Invalid BOMs"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:46
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:49
 msgid "Assemblies requiring bill of materials validation"
 msgstr "Assemblies requiring bill of materials validation"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:57
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:58
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:60
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:61
 msgid "Latest parts"
 msgstr "Latest parts"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:66
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:69
 #: src/tables/part/PartTableFilters.tsx:79
 msgid "Low Stock"
 msgstr "Low Stock"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:68
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:71
 msgid "Show the number of parts which are low on stock"
 msgstr "Show the number of parts which are low on stock"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:77
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:80
 #: src/tables/part/PartTableFilters.tsx:85
 msgid "High Stock"
 msgstr "High Stock"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:79
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:82
 msgid "Show the number of parts which have excess stock"
 msgstr "Show the number of parts which have excess stock"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:88
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:91
 msgid "Required for Build Orders"
 msgstr "Required for Build Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:90
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:93
 msgid "Show parts which are required for active build orders"
 msgstr "Show parts which are required for active build orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:95
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:98
 msgid "Expired Stock Items"
 msgstr "Expired Stock Items"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:97
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:100
 msgid "Show the number of stock items which have expired"
 msgstr "Show the number of stock items which have expired"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:104
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:107
 msgid "Stale Stock Items"
 msgstr "Stale Stock Items"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:106
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:109
 msgid "Show the number of stock items which are stale"
 msgstr "Show the number of stock items which are stale"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:112
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:115
 msgid "Active Build Orders"
 msgstr "Active Build Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:114
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:117
 msgid "Show the number of build orders which are currently active"
 msgstr "Show the number of build orders which are currently active"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:119
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:122
 msgid "Overdue Build Orders"
 msgstr "Overdue Build Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:121
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:124
 msgid "Show the number of build orders which are overdue"
 msgstr "Show the number of build orders which are overdue"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:127
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:130
 msgid "Assigned Build Orders"
 msgstr "Assigned Build Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:129
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:132
 msgid "Show the number of build orders which are assigned to you"
 msgstr "Show the number of build orders which are assigned to you"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:135
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:138
 msgid "Active Sales Orders"
 msgstr "Active Sales Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:137
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:140
 msgid "Show the number of sales orders which are currently active"
 msgstr "Show the number of sales orders which are currently active"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:142
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:145
 msgid "Overdue Sales Orders"
 msgstr "Overdue Sales Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:144
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:147
 msgid "Show the number of sales orders which are overdue"
 msgstr "Show the number of sales orders which are overdue"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:150
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:153
 msgid "Assigned Sales Orders"
 msgstr "Assigned Sales Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:152
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:155
 msgid "Show the number of sales orders which are assigned to you"
 msgstr "Show the number of sales orders which are assigned to you"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:158
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:161
 #: src/pages/sales/SalesIndex.tsx:135
 msgid "Pending Shipments"
 msgstr "Pending Shipments"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:160
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:163
 msgid "Show the number of pending sales order shipments"
 msgstr "Show the number of pending sales order shipments"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:165
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:168
 msgid "Active Purchase Orders"
 msgstr "Active Purchase Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:167
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:170
 msgid "Show the number of purchase orders which are currently active"
 msgstr "Show the number of purchase orders which are currently active"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:172
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:175
 msgid "Overdue Purchase Orders"
 msgstr "Overdue Purchase Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:174
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:177
 msgid "Show the number of purchase orders which are overdue"
 msgstr "Show the number of purchase orders which are overdue"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:180
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:183
 msgid "Assigned Purchase Orders"
 msgstr "Assigned Purchase Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:182
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:185
 msgid "Show the number of purchase orders which are assigned to you"
 msgstr "Show the number of purchase orders which are assigned to you"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:188
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:191
 msgid "Active Return Orders"
 msgstr "Active Return Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:190
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:193
 msgid "Show the number of return orders which are currently active"
 msgstr "Show the number of return orders which are currently active"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:195
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:198
 msgid "Overdue Return Orders"
 msgstr "Overdue Return Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:197
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:200
 msgid "Show the number of return orders which are overdue"
 msgstr "Show the number of return orders which are overdue"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:203
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:206
 msgid "Assigned Return Orders"
 msgstr "Assigned Return Orders"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:205
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:208
 msgid "Show the number of return orders which are assigned to you"
 msgstr "Show the number of return orders which are assigned to you"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:226
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:229
 #: src/components/dashboard/widgets/GetStartedWidget.tsx:15
 #: src/defaults/links.tsx:112
 msgid "Getting Started"
 msgstr "Getting Started"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:227
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:230
 msgid "Getting started with InvenTree"
 msgstr "Getting started with InvenTree"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:235
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:238
 #: src/components/dashboard/widgets/NewsWidget.tsx:123
 msgid "News Updates"
 msgstr "News Updates"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:236
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:239
 msgid "The latest news from Equa AIMMS"
 msgstr "The latest news from Equa AIMMS"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:249
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:252
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:93
+msgid "Needs attention"
+msgstr "Needs attention"
+
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:253
+msgid "Authorized operational exceptions with live record drill-downs"
+msgstr "Authorized operational exceptions with live record drill-downs"
+
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:268
 #: src/components/dashboard/widgets/RiskRadarWidget.tsx:67
 #: src/components/dashboard/widgets/RiskRadarWidget.tsx:83
 #: src/components/riskradar/RiskRadarPanel.tsx:342
@@ -2884,17 +3328,17 @@ msgstr "The latest news from Equa AIMMS"
 msgid "Risk Radar"
 msgstr "Risk Radar"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:250
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:269
 msgid "Top ranked risk findings for your authorized scope"
 msgstr "Top ranked risk findings for your authorized scope"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:258
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:277
 #: src/components/dashboard/widgets/BlockedFlowWidget.tsx:63
 #: src/components/dashboard/widgets/BlockedFlowWidget.tsx:84
 msgid "Blocked Flow"
 msgstr "Blocked Flow"
 
-#: src/components/dashboard/DashboardWidgetLibrary.tsx:259
+#: src/components/dashboard/DashboardWidgetLibrary.tsx:278
 msgid "Repair packet and work order flow state counts"
 msgstr "Repair packet and work order flow state counts"
 
@@ -2936,6 +3380,269 @@ msgstr "Change Language"
 #: src/components/dashboard/widgets/LanguageSelectWidget.tsx:23
 msgid "Change the language of the user interface"
 msgstr "Change the language of the user interface"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:222
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:596
+msgid "minutes"
+msgstr "minutes"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:224
+msgid "machines"
+msgstr "machines"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:225
+msgid "work orders"
+msgstr "work orders"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:245
+msgid "Filters"
+msgstr "Filters"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:252
+msgid "Reporting period"
+msgstr "Reporting period"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:256
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:127
+#: src/components/tasks/TaskGantt.tsx:213
+#: src/components/tasks/TaskGantt.tsx:320
+msgid "Today"
+msgstr "Today"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:257
+msgid "This week"
+msgstr "This week"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:258
+msgid "This month"
+msgstr "This month"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:259
+msgid "Last 30 days"
+msgstr "Last 30 days"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:260
+msgid "Last 90 days"
+msgstr "Last 90 days"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:261
+msgid "Custom"
+msgstr "Custom"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:276
+msgid "Through"
+msgstr "Through"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:284
+msgid "Upcoming calendar days"
+msgstr "Upcoming calendar days"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:294
+msgid "Client"
+msgstr "Client"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:310
+msgid "Machine criticality"
+msgstr "Machine criticality"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:319
+msgid "Assigned user"
+msgstr "Assigned user"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:327
+#: src/pages/maintenance/MaintenanceBoard.tsx:1347
+#: src/pages/maintenance/MaintenanceBoard.tsx:1897
+#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:409
+msgid "Priority"
+msgstr "Priority"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:334
+msgid "Work-order type"
+msgstr "Work-order type"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:347
+#: src/components/tables/Filter.tsx:178
+msgid "Assigned to me"
+msgstr "Assigned to me"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:372
+msgid "Reset scope filters"
+msgstr "Reset scope filters"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:376
+msgid "Choose a valid start and end date."
+msgstr "Choose a valid start and end date."
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:381
+msgid "Refresh failed. Last successful values may be stale."
+msgstr "Refresh failed. Last successful values may be stale."
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:386
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:104
+msgid "Retry"
+msgstr "Retry"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:389
+msgid "Unavailable for your current role or maintenance scope."
+msgstr "Unavailable for your current role or maintenance scope."
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:396
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:637
+msgid "No qualifying records"
+msgstr "No qualifying records"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:402
+msgid "Period in progress"
+msgstr "Period in progress"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:403
+msgid "Selected period"
+msgstr "Selected period"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:404
+msgid "Now"
+msgstr "Now"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:408
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:147
+msgid "View contributing records"
+msgstr "View contributing records"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:435
+msgid "High priority"
+msgstr "High priority"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:479
+msgid "Comparison interval"
+msgstr "Comparison interval"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:489
+msgid "Your authorized records"
+msgstr "Your authorized records"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:505
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:179
+msgid "Live records may have changed since the count was loaded."
+msgstr "Live records may have changed since the count was loaded."
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:514
+msgid "Show all contributing records"
+msgstr "Show all contributing records"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:519
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:183
+msgid "Records unavailable"
+msgstr "Records unavailable"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:523
+msgid "records"
+msgstr "records"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:529
+msgid "Record"
+msgstr "Record"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:530
+msgid "Machine / status"
+msgstr "Machine / status"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:531
+msgid "Recorded details"
+msgstr "Recorded details"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:567
+msgid "Assigned to"
+msgstr "Assigned to"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:575
+msgid "Due"
+msgstr "Due"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:585
+#: src/components/riskradar/RiskFindingDetailModal.tsx:313
+#: src/pages/build/BuildOrderDetailsPanel.tsx:196
+#: src/pages/stock/StockDetailsPanel.tsx:357
+#: src/pages/tasks/workorders/WorkOrderDetail.tsx:201
+#: src/tables/repair/RepairPacketTable.tsx:47
+#: src/tables/settings/ApiTokenTable.tsx:101
+#: src/tables/settings/PendingTasksTable.tsx:41
+#: src/tables/stock/StockItemTable.tsx:160
+msgid "Created"
+msgstr "Created"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:590
+msgid "Verifying since"
+msgstr "Verifying since"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:597
+#: src/pages/tasks/workorders/WorkOrderDetail.tsx:536
+#: src/tables/assets/MaintenanceRecordTable.tsx:133
+msgid "Amended"
+msgstr "Amended"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:601
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:130
+msgid "Parts not fully allocated"
+msgstr "Parts not fully allocated"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:605
+msgid "Data health"
+msgstr "Data health"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:622
+msgid "Active alerts"
+msgstr "Active alerts"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:624
+#: src/pages/assets/health/AnomalyList.tsx:148
+msgid "First observed"
+msgstr "First observed"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:627
+#: src/pages/assets/health/AnomalyList.tsx:154
+msgid "Last observed"
+msgstr "Last observed"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:644
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:213
+msgid "Previous"
+msgstr "Previous"
+
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:649
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:218
+#: src/components/wizards/ImportPartWizard.tsx:511
+msgid "Next"
+msgstr "Next"
+
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:97
+msgid "Your authorized records · Live counts"
+msgstr "Your authorized records · Live counts"
+
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:100
+msgid "Metrics unavailable. Retry to refresh the source."
+msgstr "Metrics unavailable. Retry to refresh the source."
+
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:137
+msgid "Missing dates"
+msgstr "Missing dates"
+
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:150
+#: src/pages/stock/StockDetail.tsx:716
+msgid "Unavailable"
+msgstr "Unavailable"
+
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:156
+#: src/pages/assets/health/SignalTable.tsx:117
+msgid "Not configured"
+msgstr "Not configured"
+
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:169
+msgid "Definition version 1"
+msgstr "Definition version 1"
+
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:207
+msgid "No overdue records"
+msgstr "No overdue records"
 
 #: src/components/dashboard/widgets/NewsWidget.tsx:60
 #: src/components/nav/NotificationDrawer.tsx:94
@@ -3006,6 +3713,394 @@ msgstr "Stocktake"
 #: src/components/dashboard/widgets/StocktakeDashboardWidget.tsx:65
 msgid "Generate a new stocktake report"
 msgstr "Generate a new stocktake report"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:8
+msgid "Open work orders"
+msgstr "Open work orders"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:9
+msgid "Current authorized work from planned through verification. Drafts are counted separately."
+msgstr "Current authorized work from planned through verification. Drafts are counted separately."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:14
+msgid "Completed work orders"
+msgstr "Completed work orders"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:15
+msgid "Actual completions in the selected period, including archived work. Missing completion dates remain outside the period."
+msgstr "Actual completions in the selected period, including archived work. Missing completion dates remain outside the period."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:21
+msgid "Overdue work orders"
+msgstr "Overdue work orders"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:22
+msgid "Open work orders due before today in the plant timezone."
+msgstr "Open work orders due before today in the plant timezone."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:27
+msgid "Preventive maintenance due"
+msgstr "Preventive maintenance due"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:28
+msgid "Existing preventive work orders that are overdue, due today, or due in the selected upcoming window."
+msgstr "Existing preventive work orders that are overdue, due today, or due in the selected upcoming window."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:33
+msgid "Assignment queue"
+msgstr "Assignment queue"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:34
+msgid "Open work by assigned user. Estimates are elapsed work estimates, not labor utilization."
+msgstr "Open work by assigned user. Estimates are elapsed work estimates, not labor utilization."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:39
+msgid "Backlog age"
+msgstr "Backlog age"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:40
+msgid "Calendar days since creation for currently open work, including time spent as a draft."
+msgstr "Calendar days since creation for currently open work, including time spent as a draft."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:45
+msgid "Machines with active alerts"
+msgstr "Machines with active alerts"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:46
+msgid "Distinct active machines with open or acknowledged warning/critical alerts. Alerts require investigation; they do not establish failure or downtime."
+msgstr "Distinct active machines with open or acknowledged warning/critical alerts. Alerts require investigation; they do not establish failure or downtime."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:52
+msgid "On hold and parts readiness"
+msgstr "On hold and parts readiness"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:53
+msgid "Open jobs on hold or with parts not fully allocated. Groups overlap. Allocation gaps do not establish a stock shortage."
+msgstr "Open jobs on hold or with parts not fully allocated. Groups overlap. Allocation gaps do not establish a stock shortage."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:58
+msgid "Verification queue"
+msgstr "Verification queue"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:59
+msgid "Open work awaiting verification. Age starts at the latest recorded entry into verification."
+msgstr "Open work awaiting verification. Age starts at the latest recorded entry into verification."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:64
+msgid "PM on-time completion"
+msgstr "PM on-time completion"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:65
+msgid "Completed by the currently recorded due date divided by eligible preventive jobs due in the period, including unfinished jobs. Due-date edits can restate history; today is provisional."
+msgstr "Completed by the currently recorded due date divided by eligible preventive jobs due in the period, including unfinished jobs. Due-date edits can restate history; today is provisional."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:71
+msgid "Elapsed execution time"
+msgstr "Elapsed execution time"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:72
+msgid "Median time from actual start to completion. Includes holds and waiting; this is not hands-on repair time or MTTR."
+msgstr "Median time from actual start to completion. Includes holds and waiting; this is not hands-on repair time or MTTR."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:78
+msgid "Maintenance type mix"
+msgstr "Maintenance type mix"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:79
+msgid "Completed jobs by maintenance type. Job-count percentages are not planned maintenance labor percentages."
+msgstr "Completed jobs by maintenance type. Job-count percentages are not planned maintenance labor percentages."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:85
+msgid "Repeated corrective work"
+msgstr "Repeated corrective work"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:86
+msgid "Machines with at least two completed corrective jobs in the period. This does not prove repeat failure."
+msgstr "Machines with at least two completed corrective jobs in the period. This does not prove repeat failure."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:92
+msgid "Recorded downtime"
+msgstr "Recorded downtime"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:93
+msgid "Effective amended downtime recorded on jobs completed in the period. Entries may overlap or fall outside the period; this is not unique outage duration."
+msgstr "Effective amended downtime recorded on jobs completed in the period. Entries may overlap or fall outside the period; this is not unique outage duration."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:99
+msgid "Machine data health"
+msgstr "Machine data health"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:100
+msgid "Active machines grouped by mapping, signal freshness and quality. Current data does not guarantee healthy equipment."
+msgstr "Active machines grouped by mapping, signal freshness and quality. Current data does not guarantee healthy equipment."
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:110
+#: src/pages/tasks/workorders/CloseoutPanel.tsx:666
+msgid "Planned"
+msgstr "Planned"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:111
+msgid "Ready"
+msgstr "Ready"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:112
+msgid "In progress"
+msgstr "In progress"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:113
+msgid "On hold"
+msgstr "On hold"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:114
+msgid "Verifying"
+msgstr "Verifying"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:116
+#: src/tables/assets/MaintenanceRecordTable.tsx:15
+msgid "Corrective"
+msgstr "Corrective"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:117
+#: src/tables/assets/MaintenanceRecordTable.tsx:16
+msgid "Preventive"
+msgstr "Preventive"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:118
+#: src/pages/repair/components/InvestigationPanel.tsx:30
+#: src/tables/assets/MaintenanceRecordTable.tsx:17
+msgid "Inspection"
+msgstr "Inspection"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:119
+#: src/tables/assets/MaintenanceRecordTable.tsx:18
+msgid "Calibration"
+msgstr "Calibration"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:120
+#: src/pages/repair/components/InvestigationPanel.tsx:33
+#: src/pages/repair/components/safety/safetyApi.ts:87
+#: src/pages/repair/components/safety/safetyApi.ts:134
+#: src/tables/assets/MaintenanceRecordTable.tsx:19
+msgid "Other"
+msgstr "Other"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:121
+#: src/components/riskradar/RiskRadarCommon.tsx:357
+#: src/pages/maintenance/MaintenanceBoard.tsx:606
+#: src/pages/maintenance/MaintenanceBoard.tsx:1221
+#: src/pages/maintenance/MaintenanceBoard.tsx:1901
+#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:413
+#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:437
+msgid "High"
+msgstr "High"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:122
+#: src/components/riskradar/RiskRadarCommon.tsx:359
+#: src/pages/maintenance/MaintenanceBoard.tsx:605
+#: src/pages/maintenance/MaintenanceBoard.tsx:1224
+#: src/pages/maintenance/MaintenanceBoard.tsx:1900
+#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:412
+#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:436
+msgid "Medium"
+msgstr "Medium"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:123
+#: src/components/riskradar/RiskRadarCommon.tsx:361
+#: src/pages/maintenance/MaintenanceBoard.tsx:604
+#: src/pages/maintenance/MaintenanceBoard.tsx:1217
+#: src/pages/maintenance/MaintenanceBoard.tsx:1899
+#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:411
+#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:435
+msgid "Low"
+msgstr "Low"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:124
+#: src/components/riskradar/RiskRadarCommon.tsx:355
+#: src/pages/assets/health/common.tsx:55
+#: src/pages/assets/health/common.tsx:78
+#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:438
+msgid "Critical"
+msgstr "Critical"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:125
+#: src/pages/assets/health/common.tsx:49
+#: src/pages/assets/health/common.tsx:84
+msgid "Warning"
+msgstr "Warning"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:128
+msgid "Upcoming"
+msgstr "Upcoming"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:129
+msgid "Unassigned"
+msgstr "Unassigned"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:131
+msgid "On time"
+msgstr "On time"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:132
+msgid "Late"
+msgstr "Late"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:133
+msgid "Unfinished"
+msgstr "Unfinished"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:134
+#: src/components/nav/AIChatDrawer.tsx:135
+#: src/pages/assets/health/AnomalyList.tsx:165
+#: src/pages/assets/health/common.tsx:67
+#: src/pages/assets/health/common.tsx:133
+msgid "Unknown"
+msgstr "Unknown"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:135
+msgid "Invalid date"
+msgstr "Invalid date"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:136
+msgid "No mapped signals"
+msgstr "No mapped signals"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:137
+msgid "All signals stale or missing"
+msgstr "All signals stale or missing"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:138
+#: src/pages/assets/health/HealthSummary.tsx:100
+msgid "Degraded data"
+msgstr "Degraded data"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:139
+msgid "Current good data"
+msgstr "Current good data"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:140
+msgid "Completed without a date — period unknown"
+msgstr "Completed without a date — period unknown"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:141
+msgid "Missing due date"
+msgstr "Missing due date"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:142
+msgid "Missing estimate"
+msgstr "Missing estimate"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:143
+msgid "Missing verification entry"
+msgstr "Missing verification entry"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:144
+msgid "Missing actual start"
+msgstr "Missing actual start"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:145
+msgid "Invalid duration"
+msgstr "Invalid duration"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:146
+msgid "Machine unavailable for grouping"
+msgstr "Machine unavailable for grouping"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:147
+msgid "Downtime not recorded"
+msgstr "Downtime not recorded"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:148
+msgid "Drafts (excluded)"
+msgstr "Drafts (excluded)"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:149
+msgid "Previous interval completions"
+msgstr "Previous interval completions"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:150
+msgid "Change from previous interval"
+msgstr "Change from previous interval"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:151
+msgid "Legacy assignment needs review"
+msgstr "Legacy assignment needs review"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:152
+msgid "Estimated elapsed minutes"
+msgstr "Estimated elapsed minutes"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:153
+msgid "Orders in both groups"
+msgstr "Orders in both groups"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:154
+msgid "Completed on time"
+msgstr "Completed on time"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:155
+msgid "Eligible jobs due"
+msgstr "Eligible jobs due"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:156
+msgid "Mean elapsed minutes"
+msgstr "Mean elapsed minutes"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:157
+msgid "Eligible population"
+msgstr "Eligible population"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:158
+msgid "High-priority jobs"
+msgstr "High-priority jobs"
+
+#: src/components/dashboard/widgets/maintenanceMetrics.ts:159
+msgid "Machines with connector issues (overlapping)"
+msgstr "Machines with connector issues (overlapping)"
+
+#: src/components/dashboard/widgets/managementMetrics.ts:10
+msgid "Material shortages"
+msgstr "Material shortages"
+
+#: src/components/dashboard/widgets/managementMetrics.ts:11
+msgid "part/site pairs"
+msgstr "part/site pairs"
+
+#: src/components/dashboard/widgets/managementMetrics.ts:13
+msgid "Needs a validated demand and allocation calculation. Minimum-stock alerts are a different metric."
+msgstr "Needs a validated demand and allocation calculation. Minimum-stock alerts are a different metric."
+
+#: src/components/dashboard/widgets/managementMetrics.ts:18
+msgid "Material-blocked builds"
+msgstr "Material-blocked builds"
+
+#: src/components/dashboard/widgets/managementMetrics.ts:19
+msgid "builds"
+msgstr "builds"
+
+#: src/components/dashboard/widgets/managementMetrics.ts:21
+msgid "Needs distinct open builds with material shortages under the same allocation policy."
+msgstr "Needs distinct open builds with material shortages under the same allocation policy."
+
+#: src/components/dashboard/widgets/managementMetrics.ts:26
+msgid "Overdue purchase orders"
+msgstr "Overdue purchase orders"
+
+#: src/components/dashboard/widgets/managementMetrics.ts:27
+#: src/components/dashboard/widgets/managementMetrics.ts:35
+msgid "orders"
+msgstr "orders"
+
+#: src/components/dashboard/widgets/managementMetrics.ts:29
+msgid "Open orders with unreceived quantities due before today. Uses each line's expected date, falling back to the order date. Each order counts once."
+msgstr "Open orders with unreceived quantities due before today. Uses each line's expected date, falling back to the order date. Each order counts once."
+
+#: src/components/dashboard/widgets/managementMetrics.ts:34
+msgid "Overdue sales commitments"
+msgstr "Overdue sales commitments"
+
+#: src/components/dashboard/widgets/managementMetrics.ts:37
+msgid "Requires a verified ship-commitment field. The current order target is a delivery date."
+msgstr "Requires a verified ship-commitment field. The current order target is a delivery date."
 
 #: src/components/details/Details.tsx:129
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:76
@@ -3343,16 +4438,6 @@ msgstr "Use the currently stored template from the server"
 msgid "Save the current template and reload the preview"
 msgstr "Save the current template and reload the preview"
 
-#: src/components/editors/TemplateEditor/TemplateEditor.tsx:387
-#: src/components/forms/HostOptionsForm.tsx:90
-#: src/components/items/RoleTable.tsx:499
-#: src/components/items/TransferList.tsx:215
-#: src/components/items/TransferList.tsx:223
-#: src/components/tables/FilterSelectDrawer.tsx:719
-#: src/pages/repair/components/safety/LockoutPointModal.tsx:157
-msgid "Save"
-msgstr "Save"
-
 #: src/components/editors/TemplateEditor/TemplateEditor.tsx:444
 msgid "Select instance to preview"
 msgstr "Select instance to preview"
@@ -3465,14 +4550,6 @@ msgstr "Mail delivery failed"
 msgid "Or continue with other methods"
 msgstr "Or continue with other methods"
 
-#: src/components/forms/AuthenticationForm.tsx:136
-#: src/components/forms/AuthenticationForm.tsx:296
-#: src/pages/Auth/ProviderSignup.tsx:129
-#: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:64
-#: src/pages/core/UserDetail.tsx:43
-msgid "Username"
-msgstr "Username"
-
 #: src/components/forms/AuthenticationForm.tsx:138
 #: src/components/forms/AuthenticationForm.tsx:298
 #: src/pages/Auth/ProviderSignup.tsx:131
@@ -3558,7 +4635,7 @@ msgid "Repeat password"
 msgstr "Repeat password"
 
 #: src/components/forms/AuthenticationForm.tsx:332
-#: src/pages/Auth/Login.tsx:136
+#: src/pages/Auth/Login.tsx:147
 #: src/pages/Auth/Register.tsx:13
 msgid "Register"
 msgstr "Register"
@@ -3907,16 +4984,6 @@ msgstr "Import Complete"
 #: src/components/importer/ImporterDrawer.tsx:117
 msgid "Data has been imported successfully"
 msgstr "Data has been imported successfully"
-
-#: src/components/importer/ImporterDrawer.tsx:119
-#: src/components/modals/AboutInvenTreeModal.tsx:206
-#: src/components/modals/ServerInfoModal.tsx:134
-#: src/components/nav/AIChatDrawer.tsx:1483
-#: src/components/wizards/ImportPartWizard.tsx:773
-#: src/forms/BomForms.tsx:150
-#: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:687
-msgid "Close"
-msgstr "Close"
 
 #: src/components/importer/ImporterDrawer.tsx:138
 msgid "Importing Data"
@@ -4394,74 +5461,58 @@ msgstr "Email Settings"
 msgid "Email settings not configured."
 msgstr "Email settings not configured."
 
-#: src/components/nav/AIChatDrawer.tsx:105
-#: src/pages/assets/health/AnomalyList.tsx:165
-#: src/pages/assets/health/common.tsx:67
-#: src/pages/assets/health/common.tsx:133
-msgid "Unknown"
-msgstr "Unknown"
-
-#: src/components/nav/AIChatDrawer.tsx:114
-#: src/components/nav/AIChatDrawer.tsx:259
+#: src/components/nav/AIChatDrawer.tsx:144
+#: src/components/nav/AIChatDrawer.tsx:373
 msgid "Just now"
 msgstr "Just now"
 
-#: src/components/nav/AIChatDrawer.tsx:115
-#: src/components/nav/AIChatDrawer.tsx:260
+#: src/components/nav/AIChatDrawer.tsx:145
+#: src/components/nav/AIChatDrawer.tsx:374
 msgid "{minutes}m ago"
 msgstr "{minutes}m ago"
 
-#: src/components/nav/AIChatDrawer.tsx:116
-#: src/components/nav/AIChatDrawer.tsx:261
+#: src/components/nav/AIChatDrawer.tsx:146
+#: src/components/nav/AIChatDrawer.tsx:375
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
 
-#: src/components/nav/AIChatDrawer.tsx:117
-#: src/components/nav/AIChatDrawer.tsx:262
+#: src/components/nav/AIChatDrawer.tsx:147
+#: src/components/nav/AIChatDrawer.tsx:376
 msgid "{days}d ago"
 msgstr "{days}d ago"
 
-#: src/components/nav/AIChatDrawer.tsx:168
+#: src/components/nav/AIChatDrawer.tsx:251
 msgid "Search conversations..."
 msgstr "Search conversations..."
 
-#: src/components/nav/AIChatDrawer.tsx:178
+#: src/components/nav/AIChatDrawer.tsx:259
+msgid "Conversation search failed. Edit the search or retry loading more results."
+msgstr "Conversation search failed. Edit the search or retry loading more results."
+
+#: src/components/nav/AIChatDrawer.tsx:264
 msgid "No conversations match"
 msgstr "No conversations match"
 
-#: src/components/nav/AIChatDrawer.tsx:179
+#: src/components/nav/AIChatDrawer.tsx:265
 msgid "No conversations yet"
 msgstr "No conversations yet"
-
-#: src/components/nav/AIChatDrawer.tsx:201
-#: src/components/nav/AIChatDrawer.tsx:1515
-msgid "Chat"
-msgstr "Chat"
 
 #: src/components/nav/AIChatDrawer.tsx:281
 #~ msgid "Failed to load approvals"
 #~ msgstr "Failed to load approvals"
 
-#: src/components/nav/AIChatDrawer.tsx:286
-msgid "New Chat"
-msgstr "New Chat"
-
-#: src/components/nav/AIChatDrawer.tsx:293
-msgid "Conversations"
-msgstr "Conversations"
+#: src/components/nav/AIChatDrawer.tsx:287
+#: src/components/nav/AIChatDrawer.tsx:1803
+msgid "Chat"
+msgstr "Chat"
 
 #: src/components/nav/AIChatDrawer.tsx:295
 #~ msgid "Failed to load approval detail"
 #~ msgstr "Failed to load approval detail"
 
-#: src/components/nav/AIChatDrawer.tsx:302
-#: src/components/nav/AIChatDrawer.tsx:1470
-msgid "New conversation"
-msgstr "New conversation"
-
-#: src/components/nav/AIChatDrawer.tsx:324
-msgid "Rename conversation"
-msgstr "Rename conversation"
+#: src/components/nav/AIChatDrawer.tsx:306
+msgid "Load more conversations"
+msgstr "Load more conversations"
 
 #: src/components/nav/AIChatDrawer.tsx:350
 #: src/components/nav/AIChatDrawer.tsx:494
@@ -4469,8 +5520,8 @@ msgstr "Rename conversation"
 #~ msgstr "Tier"
 
 #: src/components/nav/AIChatDrawer.tsx:360
-msgid "Share read-only with username (prefix with - to revoke)"
-msgstr "Share read-only with username (prefix with - to revoke)"
+#~ msgid "Share read-only with username (prefix with - to revoke)"
+#~ msgstr "Share read-only with username (prefix with - to revoke)"
 
 #: src/components/nav/AIChatDrawer.tsx:367
 #~ msgid "No details available"
@@ -4480,216 +5531,247 @@ msgstr "Share read-only with username (prefix with - to revoke)"
 #~ msgid "(complex value)"
 #~ msgstr "(complex value)"
 
+#: src/components/nav/AIChatDrawer.tsx:401
+msgid "New Chat"
+msgstr "New Chat"
+
 #: src/components/nav/AIChatDrawer.tsx:411
-msgid "Shared with me"
-msgstr "Shared with me"
+msgid "Conversations"
+msgstr "Conversations"
+
+#: src/components/nav/AIChatDrawer.tsx:416
+#: src/pages/Memory/MemoryPage.tsx:321
+msgid "What AIMMS remembers"
+msgstr "What AIMMS remembers"
 
 #: src/components/nav/AIChatDrawer.tsx:424
 #~ msgid "Developer details"
 #~ msgstr "Developer details"
 
-#: src/components/nav/AIChatDrawer.tsx:435
+#: src/components/nav/AIChatDrawer.tsx:425
+#: src/components/nav/AIChatDrawer.tsx:1758
+msgid "New conversation"
+msgstr "New conversation"
+
+#: src/components/nav/AIChatDrawer.tsx:539
+msgid "Shared with me"
+msgstr "Shared with me"
+
+#: src/components/nav/AIChatDrawer.tsx:565
 msgid "Read-only"
 msgstr "Read-only"
 
-#: src/components/nav/AIChatDrawer.tsx:446
+#: src/components/nav/AIChatDrawer.tsx:576
 msgid "No previous conversations"
 msgstr "No previous conversations"
 
-#: src/components/nav/AIChatDrawer.tsx:464
-#: src/components/nav/AIChatDrawer.tsx:748
-#: src/components/nav/AIChatDrawer.tsx:1437
-msgid "AI Assistant"
-msgstr "AI Assistant"
+#. placeholder {0}: VOICE_SHORTCUT.label
+#: src/components/nav/AIChatDrawer.tsx:643
+msgid "AI Assistant · Voice: {0}"
+msgstr "AI Assistant · Voice: {0}"
 
-#: src/components/nav/AIChatDrawer.tsx:587
+#: src/components/nav/AIChatDrawer.tsx:784
 msgid "Copied!"
 msgstr "Copied!"
 
-#: src/components/nav/AIChatDrawer.tsx:600
+#: src/components/nav/AIChatDrawer.tsx:797
 msgid "Good response"
 msgstr "Good response"
 
-#: src/components/nav/AIChatDrawer.tsx:611
+#: src/components/nav/AIChatDrawer.tsx:808
 msgid "Bad response"
 msgstr "Bad response"
 
-#: src/components/nav/AIChatDrawer.tsx:623
+#: src/components/nav/AIChatDrawer.tsx:820
 msgid "Export as Markdown"
 msgstr "Export as Markdown"
 
-#: src/components/nav/AIChatDrawer.tsx:636
+#: src/components/nav/AIChatDrawer.tsx:833
 msgid "Regenerate"
 msgstr "Regenerate"
 
-#: src/components/nav/AIChatDrawer.tsx:667
+#: src/components/nav/AIChatDrawer.tsx:864
 msgid "No matching records among the {populationCount} evaluated."
 msgstr "No matching records among the {populationCount} evaluated."
 
-#: src/components/nav/AIChatDrawer.tsx:668
+#: src/components/nav/AIChatDrawer.tsx:865
 msgid "No matching records in the fully evaluated population."
 msgstr "No matching records in the fully evaluated population."
 
-#: src/components/nav/AIChatDrawer.tsx:670
+#: src/components/nav/AIChatDrawer.tsx:867
 msgid "This falls outside the active scope selection."
 msgstr "This falls outside the active scope selection."
 
-#: src/components/nav/AIChatDrawer.tsx:672
+#: src/components/nav/AIChatDrawer.tsx:869
 msgid "Source not available."
 msgstr "Source not available."
 
-#: src/components/nav/AIChatDrawer.tsx:674
+#: src/components/nav/AIChatDrawer.tsx:871
 msgid "The search could not be completed."
 msgstr "The search could not be completed."
 
-#: src/components/nav/AIChatDrawer.tsx:676
+#: src/components/nav/AIChatDrawer.tsx:873
 msgid "Could not determine which documents apply."
 msgstr "Could not determine which documents apply."
 
-#: src/components/nav/AIChatDrawer.tsx:678
+#: src/components/nav/AIChatDrawer.tsx:875
 msgid "Coverage was incomplete; no conclusion was drawn."
 msgstr "Coverage was incomplete; no conclusion was drawn."
 
-#: src/components/nav/AIChatDrawer.tsx:687
+#: src/components/nav/AIChatDrawer.tsx:884
 msgid "Confirming scope"
 msgstr "Confirming scope"
 
-#: src/components/nav/AIChatDrawer.tsx:689
+#: src/components/nav/AIChatDrawer.tsx:886
 msgid "Reviewing records"
 msgstr "Reviewing records"
 
-#: src/components/nav/AIChatDrawer.tsx:691
+#: src/components/nav/AIChatDrawer.tsx:888
 msgid "Validating evidence"
 msgstr "Validating evidence"
 
-#: src/components/nav/AIChatDrawer.tsx:693
+#: src/components/nav/AIChatDrawer.tsx:890
 msgid "Working"
 msgstr "Working"
 
-#: src/components/nav/AIChatDrawer.tsx:880
+#: src/components/nav/AIChatDrawer.tsx:945
+#: src/components/nav/AIChatDrawer.tsx:1666
+#: src/components/nav/AIChatDrawer.tsx:1725
+msgid "AI Assistant"
+msgstr "AI Assistant"
+
+#: src/components/nav/AIChatDrawer.tsx:1077
 msgid "Partial answer — some checks did not finish."
 msgstr "Partial answer — some checks did not finish."
 
 #. placeholder {0}: message.confidence
-#: src/components/nav/AIChatDrawer.tsx:932
+#: src/components/nav/AIChatDrawer.tsx:1129
 msgid "Declared confidence: {0}"
 msgstr "Declared confidence: {0}"
 
-#: src/components/nav/AIChatDrawer.tsx:951
+#: src/components/nav/AIChatDrawer.tsx:1148
 msgid "No cited sources — not grounded in machine data."
 msgstr "No cited sources — not grounded in machine data."
 
-#: src/components/nav/AIChatDrawer.tsx:975
+#: src/components/nav/AIChatDrawer.tsx:1172
 msgid "You"
 msgstr "You"
-
-#: src/components/nav/AIChatDrawer.tsx:1189
-msgid "Search parts"
-msgstr "Search parts"
-
-#: src/components/nav/AIChatDrawer.tsx:1190
-msgid "Create order"
-msgstr "Create order"
-
-#: src/components/nav/AIChatDrawer.tsx:1191
-msgid "Low stock"
-msgstr "Low stock"
-
-#: src/components/nav/AIChatDrawer.tsx:1238
-msgid "Could not set the machine scope — sending without it."
-msgstr "Could not set the machine scope — sending without it."
 
 #: src/components/nav/AIChatDrawer.tsx:1364
 #~ msgid "Voice session"
 #~ msgstr "Voice session"
 
-#: src/components/nav/AIChatDrawer.tsx:1440
+#: src/components/nav/AIChatDrawer.tsx:1465
+msgid "Search parts"
+msgstr "Search parts"
+
+#: src/components/nav/AIChatDrawer.tsx:1466
+msgid "Create order"
+msgstr "Create order"
+
+#: src/components/nav/AIChatDrawer.tsx:1467
+msgid "Low stock"
+msgstr "Low stock"
+
+#: src/components/nav/AIChatDrawer.tsx:1520
+msgid "Could not set the machine scope — sending without it."
+msgstr "Could not set the machine scope — sending without it."
+
+#: src/components/nav/AIChatDrawer.tsx:1556
+#~ msgid "Sharing failed"
+#~ msgstr "Sharing failed"
+
+#: src/components/nav/AIChatDrawer.tsx:1728
 msgid "Powered by AIMMS AI"
 msgstr "Powered by AIMMS AI"
 
-#: src/components/nav/AIChatDrawer.tsx:1447
+#: src/components/nav/AIChatDrawer.tsx:1735
 msgid "Syncing..."
 msgstr "Syncing..."
 
-#: src/components/nav/AIChatDrawer.tsx:1447
+#: src/components/nav/AIChatDrawer.tsx:1735
 msgid "Sync conversations"
 msgstr "Sync conversations"
 
-#: src/components/nav/AIChatDrawer.tsx:1500
+#: src/components/nav/AIChatDrawer.tsx:1788
 msgid "Syncing conversations with server..."
 msgstr "Syncing conversations with server..."
 
-#: src/components/nav/AIChatDrawer.tsx:1526
+#: src/components/nav/AIChatDrawer.tsx:1814
 #: src/pages/Notifications.tsx:83
 #: src/pages/repair/RepairPacketDetail.tsx:285
 msgid "History"
 msgstr "History"
 
-#: src/components/nav/AIChatDrawer.tsx:1527
+#: src/components/nav/AIChatDrawer.tsx:1815
 msgid "Mail"
 msgstr "Mail"
 
-#: src/components/nav/AIChatDrawer.tsx:1556
-msgid "Sharing failed"
-msgstr "Sharing failed"
+#: src/components/nav/AIChatDrawer.tsx:1930
+msgid "Current page"
+msgstr "Current page"
 
-#: src/components/nav/AIChatDrawer.tsx:1635
+#: src/components/nav/AIChatDrawer.tsx:1960
+msgid "Load earlier messages"
+msgstr "Load earlier messages"
+
+#: src/components/nav/AIChatDrawer.tsx:1981
 msgid "Hi! 👋 How can I help?"
 msgstr "Hi! 👋 How can I help?"
 
-#: src/components/nav/AIChatDrawer.tsx:1638
+#: src/components/nav/AIChatDrawer.tsx:1984
 msgid "I can help you search for parts, create orders, and automate tasks in AIMMS."
 msgstr "I can help you search for parts, create orders, and automate tasks in AIMMS."
 
-#: src/components/nav/AIChatDrawer.tsx:1733
+#: src/components/nav/AIChatDrawer.tsx:2079
 msgid "Send again"
 msgstr "Send again"
 
-#: src/components/nav/AIChatDrawer.tsx:1755
+#: src/components/nav/AIChatDrawer.tsx:2101
 msgid "No actions waiting for review"
 msgstr "No actions waiting for review"
 
-#: src/components/nav/AIChatDrawer.tsx:1772
+#: src/components/nav/AIChatDrawer.tsx:2121
 msgid "Resolved actions"
 msgstr "Resolved actions"
 
-#: src/components/nav/AIChatDrawer.tsx:1782
+#: src/components/nav/AIChatDrawer.tsx:2131
 msgid "No resolved actions yet"
 msgstr "No resolved actions yet"
 
-#: src/components/nav/AIChatDrawer.tsx:1853
+#: src/components/nav/AIChatDrawer.tsx:2202
 msgid "Asking about"
 msgstr "Asking about"
 
-#: src/components/nav/AIChatDrawer.tsx:1894
+#: src/components/nav/AIChatDrawer.tsx:2220
 msgid "Attach file"
 msgstr "Attach file"
 
-#: src/components/nav/AIChatDrawer.tsx:1912
+#: src/components/nav/AIChatDrawer.tsx:2244
 msgid "Shared conversation — read-only"
 msgstr "Shared conversation — read-only"
 
-#: src/components/nav/AIChatDrawer.tsx:1914
+#: src/components/nav/AIChatDrawer.tsx:2246
 msgid "Answer the question above, or ask something else..."
 msgstr "Answer the question above, or ask something else..."
 
-#: src/components/nav/AIChatDrawer.tsx:1916
+#: src/components/nav/AIChatDrawer.tsx:2248
 msgid "Add a message about attached files..."
 msgstr "Add a message about attached files..."
 
-#: src/components/nav/AIChatDrawer.tsx:1917
+#: src/components/nav/AIChatDrawer.tsx:2249
 msgid "Type a message..."
 msgstr "Type a message..."
 
-#: src/components/nav/AIChatDrawer.tsx:1944
+#: src/components/nav/AIChatDrawer.tsx:2281
 msgid "Stop generating"
 msgstr "Stop generating"
 
-#: src/components/nav/AIChatDrawer.tsx:1957
+#: src/components/nav/AIChatDrawer.tsx:2294
 msgid "Send message"
 msgstr "Send message"
 
-#: src/components/nav/AIChatDrawer.tsx:1988
+#: src/components/nav/AIChatDrawer.tsx:2326
 msgid "AI may make mistakes. Verify important information."
 msgstr "AI may make mistakes. Verify important information."
 
@@ -4759,12 +5841,12 @@ msgstr "Remove navigation filters from current view"
 msgid "{0} of {1}"
 msgstr "{0} of {1}"
 
-#: src/components/nav/Header.tsx:104
-#: src/components/nav/Header.tsx:111
+#: src/components/nav/Header.tsx:105
+#: src/components/nav/Header.tsx:112
 msgid "Open search"
 msgstr "Open search"
 
-#: src/components/nav/Header.tsx:264
+#: src/components/nav/Header.tsx:266
 #: src/components/nav/NavigationDrawer.tsx:149
 #: src/components/nav/NotificationDrawer.tsx:181
 #: src/pages/Index/Settings/SystemSettings.tsx:146
@@ -4774,15 +5856,15 @@ msgstr "Open search"
 msgid "Notifications"
 msgstr "Notifications"
 
-#: src/components/nav/Header.tsx:288
+#: src/components/nav/Header.tsx:293
 msgid "Superuser Mode"
 msgstr "Superuser Mode"
 
-#: src/components/nav/Header.tsx:288
+#: src/components/nav/Header.tsx:293
 msgid "Admin Mode"
 msgstr "Admin Mode"
 
-#: src/components/nav/Header.tsx:294
+#: src/components/nav/Header.tsx:299
 msgid "The current user has elevated privileges and should not be used for regular usage."
 msgstr "The current user has elevated privileges and should not be used for regular usage."
 
@@ -5433,54 +6515,15 @@ msgstr "Open repair work already exists for this machine — confirm only if thi
 msgid "Discard draft"
 msgstr "Discard draft"
 
-#: src/components/riskradar/RiskFindingDetailModal.tsx:313
-#: src/pages/build/BuildOrderDetailsPanel.tsx:196
-#: src/pages/stock/StockDetailsPanel.tsx:357
-#: src/pages/tasks/workorders/WorkOrderDetail.tsx:201
-#: src/tables/repair/RepairPacketTable.tsx:47
-#: src/tables/settings/ApiTokenTable.tsx:101
-#: src/tables/settings/PendingTasksTable.tsx:41
-#: src/tables/stock/StockItemTable.tsx:160
-msgid "Created"
-msgstr "Created"
+#: src/components/riskradar/RiskFindingDetailModal.tsx:322
+#: src/pages/assets/health/AnomalyList.tsx:131
+#: src/pages/maintenance/MaintenanceBoard.tsx:1845
+msgid "Open work order"
+msgstr "Open work order"
 
 #: src/components/riskradar/RiskFindingDetailModal.tsx:328
 msgid "Draft discarded"
 msgstr "Draft discarded"
-
-#: src/components/riskradar/RiskRadarCommon.tsx:355
-#: src/pages/assets/health/common.tsx:55
-#: src/pages/assets/health/common.tsx:78
-#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:438
-msgid "Critical"
-msgstr "Critical"
-
-#: src/components/riskradar/RiskRadarCommon.tsx:357
-#: src/pages/maintenance/MaintenanceBoard.tsx:606
-#: src/pages/maintenance/MaintenanceBoard.tsx:1221
-#: src/pages/maintenance/MaintenanceBoard.tsx:1901
-#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:413
-#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:437
-msgid "High"
-msgstr "High"
-
-#: src/components/riskradar/RiskRadarCommon.tsx:359
-#: src/pages/maintenance/MaintenanceBoard.tsx:605
-#: src/pages/maintenance/MaintenanceBoard.tsx:1224
-#: src/pages/maintenance/MaintenanceBoard.tsx:1900
-#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:412
-#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:436
-msgid "Medium"
-msgstr "Medium"
-
-#: src/components/riskradar/RiskRadarCommon.tsx:361
-#: src/pages/maintenance/MaintenanceBoard.tsx:604
-#: src/pages/maintenance/MaintenanceBoard.tsx:1217
-#: src/pages/maintenance/MaintenanceBoard.tsx:1899
-#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:411
-#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:435
-msgid "Low"
-msgstr "Low"
 
 #: src/components/riskradar/RiskRadarCommon.tsx:451
 msgid "Data unavailable"
@@ -6003,10 +7046,6 @@ msgstr "Serial Above"
 msgid "Show items with serial numbers greater than or equal to a given value"
 msgstr "Show items with serial numbers greater than or equal to a given value"
 
-#: src/components/tables/Filter.tsx:178
-msgid "Assigned to me"
-msgstr "Assigned to me"
-
 #: src/components/tables/Filter.tsx:179
 msgid "Show orders assigned to me"
 msgstr "Show orders assigned to me"
@@ -6520,11 +7559,6 @@ msgstr "Start"
 msgid "Effort"
 msgstr "Effort"
 
-#: src/components/tasks/TaskGantt.tsx:213
-#: src/components/tasks/TaskGantt.tsx:320
-msgid "Today"
-msgstr "Today"
-
 #: src/components/tasks/TaskGantt.tsx:233
 msgid "Filter work orders"
 msgstr "Filter work orders"
@@ -6654,10 +7688,6 @@ msgstr "Create Parameters"
 #: src/components/wizards/ImportPartWizard.tsx:493
 msgid "Create initial stock for the imported part."
 msgstr "Create initial stock for the imported part."
-
-#: src/components/wizards/ImportPartWizard.tsx:511
-msgid "Next"
-msgstr "Next"
 
 #: src/components/wizards/ImportPartWizard.tsx:540
 #: src/pages/part/PartDetail.tsx:657
@@ -7976,19 +9006,19 @@ msgstr "SSO Login Failed"
 msgid "Checking if you are already logged in"
 msgstr "Checking if you are already logged in"
 
-#: src/pages/Auth/Login.tsx:37
+#: src/pages/Auth/Login.tsx:42
 msgid "No selection"
 msgstr "No selection"
 
-#: src/pages/Auth/Login.tsx:115
+#: src/pages/Auth/Login.tsx:126
 msgid "Login"
 msgstr "Login"
 
-#: src/pages/Auth/Login.tsx:121
+#: src/pages/Auth/Login.tsx:132
 msgid "Logging you in"
 msgstr "Logging you in"
 
-#: src/pages/Auth/Login.tsx:128
+#: src/pages/Auth/Login.tsx:139
 msgid "Don't have an account?"
 msgstr "Don't have an account?"
 
@@ -8209,6 +9239,7 @@ msgstr "Position"
 
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:90
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:967
+#: src/pages/Memory/MemoryPage.tsx:408
 #: src/pages/maintenance/workorders/components/WorkOrderSafetyReadiness.tsx:82
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:171
 #: src/tables/assets/MaintenanceRecordTable.tsx:94
@@ -9343,6 +10374,222 @@ msgstr "Security"
 msgid "Display Options"
 msgstr "Display Options"
 
+#: src/pages/Memory/ExcludedConversations.tsx:94
+msgid "Excluded conversations"
+msgstr "Excluded conversations"
+
+#: src/pages/Memory/ExcludedConversations.tsx:95
+msgid "These owned conversations are currently excluded from learning. Changing a setting does not acknowledge the notice or enroll a client. Confirmed memories and recall are controlled separately."
+msgstr "These owned conversations are currently excluded from learning. Changing a setting does not acknowledge the notice or enroll a client. Confirmed memories and recall are controlled separately."
+
+#: src/pages/Memory/ExcludedConversations.tsx:97
+msgid "Conversation settings are unavailable. Refresh to retry."
+msgstr "Conversation settings are unavailable. Refresh to retry."
+
+#: src/pages/Memory/ExcludedConversations.tsx:103
+msgid "Conversation created"
+msgstr "Conversation created"
+
+#: src/pages/Memory/ExcludedConversations.tsx:109
+msgid "Shared conversations cannot learn memories."
+msgstr "Shared conversations cannot learn memories."
+
+#: src/pages/Memory/ExcludedConversations.tsx:111
+msgid "Learning is off for this conversation."
+msgstr "Learning is off for this conversation."
+
+#: src/pages/Memory/ExcludedConversations.tsx:113
+msgid "Memory learning is not enabled on this server."
+msgstr "Memory learning is not enabled on this server."
+
+#: src/pages/Memory/ExcludedConversations.tsx:114
+msgid "Your notice, account settings, client enrollment or access currently excludes learning."
+msgstr "Your notice, account settings, client enrollment or access currently excludes learning."
+
+#: src/pages/Memory/ExcludedConversations.tsx:136
+msgid "No excluded conversations on this page."
+msgstr "No excluded conversations on this page."
+
+#: src/pages/Memory/ExcludedConversations.tsx:143
+msgid "Refresh conversations"
+msgstr "Refresh conversations"
+
+#: src/pages/Memory/ExcludedConversations.tsx:149
+msgid "Next conversations"
+msgstr "Next conversations"
+
+#: src/pages/Memory/MemoryPage.tsx:270
+msgid "Deletion is still processing. Refresh to check its status."
+msgstr "Deletion is still processing. Refresh to check its status."
+
+#: src/pages/Memory/MemoryPage.tsx:272
+msgid "Suggestion rejected."
+msgstr "Suggestion rejected."
+
+#: src/pages/Memory/MemoryPage.tsx:273
+msgid "Memory action completed."
+msgstr "Memory action completed."
+
+#: src/pages/Memory/MemoryPage.tsx:315
+msgid "Memory export downloaded. It contains the records available to you during this export."
+msgstr "Memory export downloaded. It contains the records available to you during this export."
+
+#: src/pages/Memory/MemoryPage.tsx:322
+msgid "Review memories used across your conversations. Suggestions need individual review. Conversation summaries are managed inside each chat."
+msgstr "Review memories used across your conversations. Suggestions need individual review. Conversation summaries are managed inside each chat."
+
+#: src/pages/Memory/MemoryPage.tsx:324
+msgid "Memory could not be loaded or changed. Your access or the record may have changed. Refresh and review again."
+msgstr "Memory could not be loaded or changed. Your access or the record may have changed. Refresh and review again."
+
+#: src/pages/Memory/MemoryPage.tsx:327
+msgid "Loading memory"
+msgstr "Loading memory"
+
+#: src/pages/Memory/MemoryPage.tsx:334
+msgid "Learning available"
+msgstr "Learning available"
+
+#: src/pages/Memory/MemoryPage.tsx:335
+msgid "Learning unavailable"
+msgstr "Learning unavailable"
+
+#: src/pages/Memory/MemoryPage.tsx:339
+msgid "Recall available"
+msgstr "Recall available"
+
+#: src/pages/Memory/MemoryPage.tsx:340
+msgid "Recall unavailable"
+msgstr "Recall unavailable"
+
+#: src/pages/Memory/MemoryPage.tsx:343
+msgid "Client enrollment, your notice acknowledgement and each conversation's settings determine whether learning is eligible. Shared conversations are excluded."
+msgstr "Client enrollment, your notice acknowledgement and each conversation's settings determine whether learning is eligible. Shared conversations are excluded."
+
+#: src/pages/Memory/MemoryPage.tsx:345
+msgid "Memory deletion is still processing. Refresh to check completion."
+msgstr "Memory deletion is still processing. Refresh to check completion."
+
+#: src/pages/Memory/MemoryPage.tsx:348
+msgid "Memory is temporarily unavailable while data is being restored."
+msgstr "Memory is temporarily unavailable while data is being restored."
+
+#: src/pages/Memory/MemoryPage.tsx:364
+msgid "I have read and acknowledge this memory notice"
+msgstr "I have read and acknowledge this memory notice"
+
+#: src/pages/Memory/MemoryPage.tsx:386
+msgid "Allow eligible future memories"
+msgstr "Allow eligible future memories"
+
+#: src/pages/Memory/MemoryPage.tsx:387
+msgid "Opt out and remove my memories"
+msgstr "Opt out and remove my memories"
+
+#: src/pages/Memory/MemoryPage.tsx:389
+msgid "Opting out removes learned memories and clears summaries. Original chat messages remain. Allowing memory again does not restore forgotten memories and requires a fresh notice acknowledgement."
+msgstr "Opting out removes learned memories and clears summaries. Original chat messages remain. Allowing memory again does not restore forgotten memories and requires a fresh notice acknowledgement."
+
+#: src/pages/Memory/MemoryPage.tsx:398
+msgid "Show"
+msgstr "Show"
+
+#: src/pages/Memory/MemoryPage.tsx:403
+msgid "Confirmed memories"
+msgstr "Confirmed memories"
+
+#: src/pages/Memory/MemoryPage.tsx:404
+msgid "Suggestions"
+msgstr "Suggestions"
+
+#: src/pages/Memory/MemoryPage.tsx:413
+msgid "All types"
+msgstr "All types"
+
+#: src/pages/Memory/MemoryPage.tsx:421
+msgid "Topic"
+msgstr "Topic"
+
+#: src/pages/Memory/MemoryPage.tsx:425
+msgid "All topics"
+msgstr "All topics"
+
+#: src/pages/Memory/MemoryPage.tsx:436
+msgid "Export my memories"
+msgstr "Export my memories"
+
+#: src/pages/Memory/MemoryPage.tsx:442
+msgid "Forget all memories"
+msgstr "Forget all memories"
+
+#: src/pages/Memory/MemoryPage.tsx:446
+msgid "No accessible memories match this page. Continue to the next page if one is available."
+msgstr "No accessible memories match this page. Continue to the next page if one is available."
+
+#: src/pages/Memory/MemoryPage.tsx:477
+msgid "Source conversation retained"
+msgstr "Source conversation retained"
+
+#: src/pages/Memory/MemoryPage.tsx:481
+msgid "This is an unconfirmed suggestion, not verified operational data."
+msgstr "This is an unconfirmed suggestion, not verified operational data."
+
+#: src/pages/Memory/MemoryPage.tsx:495
+msgid "Review suggestion"
+msgstr "Review suggestion"
+
+#: src/pages/Memory/MemoryPage.tsx:505
+msgid "Edit topics"
+msgstr "Edit topics"
+
+#: src/pages/Memory/MemoryPage.tsx:527
+msgid "To correct a claim, explain the correction in an eligible conversation, then review the new suggestion. Operational claims must be checked against their source records."
+msgstr "To correct a claim, explain the correction in an eligible conversation, then review the new suggestion. Operational claims must be checked against their source records."
+
+#: src/pages/Memory/MemoryPage.tsx:533
+msgid "Edit memory topics"
+msgstr "Edit memory topics"
+
+#: src/pages/Memory/MemoryPage.tsx:554
+msgid "Review change"
+msgstr "Review change"
+
+#: src/pages/Memory/MemoryPage.tsx:565
+msgid "Review memory action"
+msgstr "Review memory action"
+
+#: src/pages/Memory/MemoryPage.tsx:584
+msgid "Screening"
+msgstr "Screening"
+
+#: src/pages/Memory/MemoryPage.tsx:588
+msgid "The source is untrusted text. Confirming a preference does not authorize actions."
+msgstr "The source is untrusted text. Confirming a preference does not authorize actions."
+
+#: src/pages/Memory/MemoryPage.tsx:591
+msgid "This replaces an existing memory in the same category."
+msgstr "This replaces an existing memory in the same category."
+
+#: src/pages/Memory/MemoryPage.tsx:594
+msgid "This explicitly creates a new memory after an earlier deletion."
+msgstr "This explicitly creates a new memory after an earlier deletion."
+
+#: src/pages/Memory/MemoryPage.tsx:601
+msgid "Selected memories"
+msgstr "Selected memories"
+
+#: src/pages/Memory/MemoryPage.tsx:606
+msgid "Type the confirmation phrase"
+msgstr "Type the confirmation phrase"
+
+#: src/pages/Memory/MemoryPage.tsx:615
+msgid "I have reviewed this exact action."
+msgstr "I have reviewed this exact action."
+
+#: src/pages/Memory/MemoryPage.tsx:632
+msgid "Reject suggestion"
+msgstr "Reject suggestion"
+
 #: src/pages/Notifications.tsx:91
 msgid "Mark as unread"
 msgstr "Mark as unread"
@@ -9488,14 +10735,6 @@ msgstr "No active anomalies."
 msgid "Analyze"
 msgstr "Analyze"
 
-#: src/pages/assets/health/AnomalyList.tsx:148
-msgid "First observed"
-msgstr "First observed"
-
-#: src/pages/assets/health/AnomalyList.tsx:154
-msgid "Last observed"
-msgstr "Last observed"
-
 #: src/pages/assets/health/AnomalyList.tsx:160
 msgid "Detected by"
 msgstr "Detected by"
@@ -9602,10 +10841,6 @@ msgstr "No current data"
 #: src/pages/assets/health/HealthSummary.tsx:91
 msgid "Every mapped signal for this machine is older than its source's freshness budget. Treat the values below as historical, not as the machine's current state."
 msgstr "Every mapped signal for this machine is older than its source's freshness budget. Treat the values below as historical, not as the machine's current state."
-
-#: src/pages/assets/health/HealthSummary.tsx:100
-msgid "Degraded data"
-msgstr "Degraded data"
 
 #: src/pages/assets/health/HealthSummary.tsx:102
 msgid "Some signals are stale or reported with poor quality. Confirm the readings you rely on before acting on them."
@@ -9810,10 +11045,6 @@ msgstr "Quality"
 msgid "Limits"
 msgstr "Limits"
 
-#: src/pages/assets/health/SignalTable.tsx:117
-msgid "Not configured"
-msgstr "Not configured"
-
 #: src/pages/assets/health/SignalTrend.tsx:86
 msgid "No trend data is available."
 msgstr "No trend data is available."
@@ -9844,11 +11075,6 @@ msgstr "(trimmed)"
 #: src/pages/assets/health/common.tsx:43
 msgid "Normal"
 msgstr "Normal"
-
-#: src/pages/assets/health/common.tsx:49
-#: src/pages/assets/health/common.tsx:84
-msgid "Warning"
-msgstr "Warning"
 
 #: src/pages/assets/health/common.tsx:61
 msgid "Offline"
@@ -10596,12 +11822,6 @@ msgstr "Title, description, or owner"
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:333
 msgid "Column"
 msgstr "Column"
-
-#: src/pages/maintenance/MaintenanceBoard.tsx:1347
-#: src/pages/maintenance/MaintenanceBoard.tsx:1897
-#: src/pages/maintenance/components/WorkOrderCreateModal.tsx:409
-msgid "Priority"
-msgstr "Priority"
 
 #: src/pages/maintenance/MaintenanceBoard.tsx:1372
 msgid "Employee"
@@ -11924,11 +13144,6 @@ msgstr "Telemetry"
 msgid "Measurement"
 msgstr "Measurement"
 
-#: src/pages/repair/components/InvestigationPanel.tsx:30
-#: src/tables/assets/MaintenanceRecordTable.tsx:17
-msgid "Inspection"
-msgstr "Inspection"
-
 #: src/pages/repair/components/InvestigationPanel.tsx:31
 msgid "Operator report"
 msgstr "Operator report"
@@ -11936,13 +13151,6 @@ msgstr "Operator report"
 #: src/pages/repair/components/InvestigationPanel.tsx:32
 msgid "Functional test"
 msgstr "Functional test"
-
-#: src/pages/repair/components/InvestigationPanel.tsx:33
-#: src/pages/repair/components/safety/safetyApi.ts:87
-#: src/pages/repair/components/safety/safetyApi.ts:134
-#: src/tables/assets/MaintenanceRecordTable.tsx:19
-msgid "Other"
-msgstr "Other"
 
 #: src/pages/repair/components/InvestigationPanel.tsx:84
 msgid "No findings have been recorded yet."
@@ -12751,10 +13959,6 @@ msgstr "Convert"
 msgid "Convert this stock item to a different part"
 msgstr "Convert this stock item to a different part"
 
-#: src/pages/stock/StockDetail.tsx:716
-msgid "Unavailable"
-msgstr "Unavailable"
-
 #: src/pages/stock/StockDetailsPanel.tsx:85
 msgid "Base Part"
 msgstr "Base Part"
@@ -12929,10 +14133,6 @@ msgstr "Refresh from custody truth"
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:659
 msgid "No usage rows yet. Refresh to seed rows from the job kit."
 msgstr "No usage rows yet. Refresh to seed rows from the job kit."
-
-#: src/pages/tasks/workorders/CloseoutPanel.tsx:666
-msgid "Planned"
-msgstr "Planned"
 
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:667
 msgid "Issued"
@@ -13170,11 +14370,6 @@ msgstr "Safety gates"
 msgid "Completion"
 msgstr "Completion"
 
-#: src/pages/tasks/workorders/WorkOrderDetail.tsx:536
-#: src/tables/assets/MaintenanceRecordTable.tsx:133
-msgid "Amended"
-msgstr "Amended"
-
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:546
 #: src/tables/assets/MaintenanceRecordTable.tsx:126
 msgid "Downtime"
@@ -13188,18 +14383,6 @@ msgstr "No audit events yet."
 #: src/states/IconState.tsx:77
 msgid "Error loading icon package from server"
 msgstr "Error loading icon package from server"
-
-#: src/tables/assets/MaintenanceRecordTable.tsx:15
-msgid "Corrective"
-msgstr "Corrective"
-
-#: src/tables/assets/MaintenanceRecordTable.tsx:16
-msgid "Preventive"
-msgstr "Preventive"
-
-#: src/tables/assets/MaintenanceRecordTable.tsx:18
-msgid "Calibration"
-msgstr "Calibration"
 
 #: src/tables/assets/MaintenanceRecordTable.tsx:27
 msgid "{minutes} min"
@@ -15997,22 +17180,21 @@ msgstr "The full app is optimized for tablets and desktops. Voice is available i
 #~ msgstr "Read the docs"
 
 #: src/views/MobileAppView.tsx:36
-msgid "Open voice"
-msgstr "Open voice"
+#~ msgid "Open voice"
+#~ msgstr "Open voice"
 
 #: src/views/MobileAppView.tsx:42
 #~ msgid "Ignore and continue to Desktop view"
 #~ msgstr "Ignore and continue to Desktop view"
 
-#: src/views/MobileAppView.tsx:44
-#: src/views/VoiceMobileAppView.tsx:32
+#: src/views/MobileAppView.tsx:46
 msgid "Open full app (not optimized for phones)"
 msgstr "Open full app (not optimized for phones)"
 
 #: src/views/VoiceMobileAppView.tsx:34
-msgid "Log out"
-msgstr "Log out"
+#~ msgid "Log out"
+#~ msgstr "Log out"
 
 #: src/views/VoiceMobileAppView.tsx:43
-msgid "Voice is unavailable. You can continue in the full app."
-msgstr "Voice is unavailable. You can continue in the full app."
+#~ msgid "Voice is unavailable. You can continue in the full app."
+#~ msgstr "Voice is unavailable. You can continue in the full app."

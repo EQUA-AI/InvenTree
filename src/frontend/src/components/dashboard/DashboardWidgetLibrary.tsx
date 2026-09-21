@@ -8,11 +8,14 @@ import BlockedFlowWidget from './widgets/BlockedFlowWidget';
 import ColorToggleDashboardWidget from './widgets/ColorToggleWidget';
 import GetStartedWidget from './widgets/GetStartedWidget';
 import LanguageSelectDashboardWidget from './widgets/LanguageSelectWidget';
+import MaintenanceWidget from './widgets/MaintenanceWidget';
+import ManagementAttentionWidget from './widgets/ManagementAttentionWidget';
 import NewsWidget from './widgets/NewsWidget';
 import QueryCountDashboardWidget from './widgets/QueryCountDashboardWidget';
 import QueryDashboardWidget from './widgets/QueryDashboardWidget';
 import RiskRadarWidget from './widgets/RiskRadarWidget';
 import StocktakeDashboardWidget from './widgets/StocktakeDashboardWidget';
+import { maintenanceMetrics } from './widgets/maintenanceMetrics';
 
 /**
  *
@@ -245,6 +248,22 @@ function BuiltinGettingStartedWidgets(): DashboardWidgetProps[] {
 function BuiltinRiskWidgets(): DashboardWidgetProps[] {
   return [
     {
+      label: 'management-attention',
+      title: t`Needs attention`,
+      description: t`Authorized operational exceptions with live record drill-downs`,
+      minWidth: 5,
+      minHeight: 7,
+      visible: () =>
+        [
+          ModelType.purchaseorder,
+          ModelType.workorder,
+          ModelType.part,
+          ModelType.build,
+          ModelType.salesorder
+        ].some((model) => useUserState.getState().hasViewPermission(model)),
+      render: () => <ManagementAttentionWidget />
+    },
+    {
       label: 'risk-radar',
       title: t`Risk Radar`,
       description: t`Top ranked risk findings for your authorized scope`,
@@ -279,6 +298,17 @@ function BuiltinActionWidgets(): DashboardWidgetProps[] {
  */
 export default function DashboardWidgetLibrary(): DashboardWidgetProps[] {
   return [
+    ...maintenanceMetrics().map((definition) => ({
+      label: `maintenance-${definition.id}`,
+      title: definition.title,
+      description: definition.description,
+      minWidth: 3,
+      minHeight: 5,
+      modelType: ModelType.workorder,
+      visible: () =>
+        useUserState.getState().hasViewPermission(ModelType.workorder),
+      render: () => <MaintenanceWidget definition={definition} />
+    })),
     ...BuiltinQueryCountWidgets(),
     ...BuiltinRiskWidgets(),
     ...BuiltinGettingStartedWidgets(),

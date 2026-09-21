@@ -6,7 +6,6 @@ import {
   Box,
   Button,
   CopyButton,
-  Drawer,
   Group,
   Loader,
   Menu,
@@ -22,7 +21,7 @@ import {
   UnstyledButton,
   useMantineTheme
 } from '@mantine/core';
-import { useLocalStorage } from '@mantine/hooks';
+import { useLocalStorage, useMediaQuery } from '@mantine/hooks';
 import { showNotification } from '@mantine/notifications';
 import {
   IconBrain,
@@ -56,7 +55,7 @@ import {
   useRef,
   useState
 } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 import { Boundary } from '@lib/components/Boundary';
 import { useQuery } from '@tanstack/react-query';
@@ -82,20 +81,25 @@ import {
 import { useChatProposals } from '../../hooks/useChatProposals';
 import { useVoiceLiveSession } from '../../hooks/useVoiceLiveSession';
 import { useAIChatState } from '../../states/AIChatState';
+import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
 import { useLocalState } from '../../states/LocalState';
 import { useUserState } from '../../states/UserState';
 import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
-import { useVoiceSurfaceState } from '../../states/VoiceSessionState';
+import {
+  useVoiceSurfaceState,
+  voiceController
+} from '../../states/VoiceSessionState';
 import { ApprovalInboxPanel } from '../ai/ApprovalInboxPanel';
 import { ChatActionProposalList } from '../ai/ChatActionProposals';
 import { MailboxPanel } from '../ai/MailboxPanel';
 import { QuestionCard } from '../ai/QuestionCard';
-import { VoiceContextBadge } from '../ai/VoiceContextBadge';
 import { VoiceDecisionCard } from '../ai/VoiceDecisionCard';
 import { VoiceSessionControl } from '../ai/VoiceSessionControl';
 import { VoiceTranscript } from '../ai/VoiceTranscript';
 import { VoiceExperienceControls } from '../ai/voice/VoiceExperienceControls';
+import { VOICE_SHORTCUT } from '../ai/voice/voiceShortcuts';
 import { ActiveScopeBanner } from '../aichat/ActiveScopeBanner';
+import { AssistantSurface } from '../aichat/AssistantSurface';
 import { CitationList } from '../aichat/CitationList';
 import { ClaimEvidence } from '../aichat/ClaimEvidence';
 import { ContextUsedDisclosure } from '../aichat/ContextUsedDisclosure';
@@ -606,18 +610,61 @@ function ThreadSelector({
  * CopilotKit-style sparkle icon button
  */
 export function AIChatButton({
-  onClick
+  onClick,
+  opened = false
 }: Readonly<{
   onClick: () => void;
+  opened?: boolean;
 }>) {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  );
+  const showTooltip = () => {
+    clearTimeout(tooltipTimer.current);
+    setTooltipOpen(true);
+  };
+  const hideTooltip = () => {
+    tooltipTimer.current = setTimeout(() => setTooltipOpen(false), 150);
+  };
+  useEffect(() => {
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTooltipOpen(false);
+    };
+    window.addEventListener('keydown', dismiss);
+    return () => {
+      window.removeEventListener('keydown', dismiss);
+      clearTimeout(tooltipTimer.current);
+    };
+  }, []);
   return (
-    <Tooltip position='bottom-end' label={t`AI Assistant`}>
+    <Tooltip
+      position='bottom-end'
+      label={t`AI Assistant · Voice: ${VOICE_SHORTCUT.label}`}
+      opened={tooltipOpen}
+      events={{ hover: true, focus: true, touch: false }}
+      styles={{ tooltip: { pointerEvents: 'auto' } }}
+      onMouseEnter={showTooltip}
+      onMouseLeave={hideTooltip}
+    >
       <ActionIcon
         onClick={onClick}
         variant='subtle'
         size='lg'
         radius='xl'
         aria-label='open-ai-chat'
+        aria-expanded={opened}
+        aria-controls='ai-chat-drawer'
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
+        onFocus={showTooltip}
+        onBlur={() => setTooltipOpen(false)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            setTooltipOpen(false);
+            event.stopPropagation();
+          }
+        }}
         style={{
           transition: 'transform 0.2s ease, background-color 0.2s ease'
         }}
@@ -1281,11 +1328,28 @@ function AIChatSessionDrawer({
     }
   });
   const handleClose = useCallback(() => {
-    voice.minimize();
+    void voice.end();
+    useVoiceSurfaceState.getState().closeConsent();
     clearRoutingHint();
     onClose();
-  }, [onClose, voice.minimize, clearRoutingHint]);
+  }, [onClose, voice.end, clearRoutingHint]);
   const voiceFullscreen = useVoiceSurfaceState((state) => state.fullscreen);
+  const evidenceOpen = useEvidenceViewerState((state) => state.item !== null);
+  const consentOpen = useVoiceSurfaceState((state) => state.consent);
+  const narrow = useMediaQuery('(max-width: 48em)');
+  const location = useLocation();
+  useEffect(() => {
+    if (!opened) {
+      void voice.end();
+      useVoiceSurfaceState.getState().closeConsent();
+    }
+  }, [opened, voice.end]);
+  useEffect(
+    () => () => {
+      void voiceController.end();
+    },
+    []
+  );
   const proposals = useChatProposals();
   const voiceDecision = useVoiceDecisionState((state) => state.decision);
 
@@ -1589,36 +1653,18 @@ function AIChatSessionDrawer({
 
   return (
     <>
-      <Drawer
+      <AssistantSurface
         opened={opened}
-        size={drawerWidth}
-        position='right'
+        modal={Boolean(narrow)}
+        suspended={
+          consentOpen ||
+          voiceFullscreen ||
+          evidenceOpen ||
+          memoryThreadId !== null
+        }
+        width={drawerWidth}
+        title={t`AI Assistant`}
         onClose={handleClose}
-        // The live suites' resilient fallbacks read the transcript through
-        // this id; it was referenced by tests but never existed, so the
-        // fallback branch hung to the whole-test timeout (found 2026-08-28).
-        data-testid='ai-chat-drawer'
-        withCloseButton={false}
-        closeOnClickOutside={false}
-        trapFocus={false}
-        lockScroll={false}
-        withOverlay={false}
-        transitionProps={{ transition: 'slide-left', duration: 250 }}
-        styles={{
-          content: {
-            display: 'flex',
-            flexDirection: 'column',
-            background: 'var(--mantine-color-body)',
-            position: 'relative'
-          },
-          body: {
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            padding: 0,
-            overflow: 'hidden'
-          }
-        }}
       >
         {/* Resize handle on the left edge */}
         <Box
@@ -1745,7 +1791,7 @@ function AIChatSessionDrawer({
 
             {/* Drawer tab strip (Chat / Approvals / History) */}
             <Box mt='sm'>
-              <Group justify='space-between' wrap='nowrap'>
+              <Group justify='space-between' wrap='wrap'>
                 <Tabs
                   value={activeTab}
                   onChange={(v) =>
@@ -1799,7 +1845,13 @@ function AIChatSessionDrawer({
                       : shareThread(threadId, username)
                   }
                   onInspectMemory={setMemoryThreadId}
-                  disabled={isLoading || isSyncing || isApplyingScope}
+                  disabled={
+                    isLoading ||
+                    isSyncing ||
+                    isApplyingScope ||
+                    Boolean(voice.session) ||
+                    voice.transport === 'connecting'
+                  }
                 />
               </Box>
             )}
@@ -1814,36 +1866,71 @@ function AIChatSessionDrawer({
             onClose={() => setMemoryThreadId(null)}
           />
 
-          <Box px='md' py='xs' data-voice-surface>
-            <Group gap='xs' mb={6} wrap='nowrap'>
-              <VoiceSessionControl
-                state={voice.state}
-                error={voice.error}
-                muted={voice.muted}
-                webrtcPreview={voice.session?.webrtc_preview ?? true}
-                onStart={() => void voice.start()}
-                onEnd={() => void voice.end()}
-                onCancel={() => void voice.cancel()}
-                onToggleMute={voice.toggleMute}
-                onConfirmTranscript={() => void voice.confirmPending()}
-                onDiscardTranscript={voice.discardPending}
+          {activeTab === 'chat' && (
+            <Box px='md' py='xs' data-voice-surface>
+              <Group
+                gap='xs'
+                mb={6}
+                align='flex-start'
+                data-testid='assistant-toolbar'
+              >
+                {scopeCapable && (
+                  <ActiveScopeBanner
+                    scope={activeScope}
+                    readOnly={
+                      activeThreadShared ||
+                      activeThreadDeletionPending ||
+                      activeScope?.editable === false
+                    }
+                    busy={isApplyingScope}
+                    hint={routingHint ?? undefined}
+                    onSelectFleet={() => {
+                      void setThreadScope({ mode: 'all_authorized_assets' });
+                    }}
+                    onSelectHintMachine={
+                      routingHint
+                        ? () => {
+                            void setThreadScope({
+                              mode: 'explicit_assets',
+                              machine_ids: [routingHint.machineId],
+                              display_label: routingHint.machineName.slice(
+                                0,
+                                120
+                              )
+                            });
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+                <VoiceSessionControl
+                  state={voice.state}
+                  error={voice.error}
+                  muted={voice.muted}
+                  webrtcPreview={voice.session?.webrtc_preview ?? true}
+                  onStart={() => void voice.start()}
+                  onEnd={() => void voice.end()}
+                  onCancel={() => void voice.cancel()}
+                  onToggleMute={voice.toggleMute}
+                  onConfirmTranscript={() => void voice.confirmPending()}
+                  onDiscardTranscript={voice.discardPending}
+                />
+              </Group>
+              <VoiceTranscript
+                partial={voice.partial}
+                listening={voice.state === 'listening'}
+                pendingConfirm={voice.pendingConfirm}
+                holdPrompt={voice.holdPrompt}
               />
-              <VoiceContextBadge
-                threadId={voice.session?.thread_id ?? null}
-                scoped={false}
-              />
-            </Group>
-            <VoiceTranscript
-              partial={voice.partial}
-              listening={voice.state === 'listening'}
-              pendingConfirm={voice.pendingConfirm}
-              holdPrompt={voice.holdPrompt}
-            />
-            {!voiceFullscreen && (
-              <VoiceDecisionCard key={voiceDecision?.decision_id ?? 'none'} />
-            )}
-            {!voiceFullscreen && <VoiceExperienceControls />}
-          </Box>
+              {!voiceFullscreen && (
+                <VoiceDecisionCard key={voiceDecision?.decision_id ?? 'none'} />
+              )}
+              {voice.session && !voiceFullscreen && <VoiceExperienceControls />}
+              <Text size='xs' c='dimmed' data-testid='assistant-page-context'>
+                {t`Current page`}: {location.pathname}
+              </Text>
+            </Box>
+          )}
           {/* Main content area */}
           <ScrollArea
             style={{ flex: 1 }}
@@ -2119,32 +2206,7 @@ function AIChatSessionDrawer({
               {/* S2: the server-confirmed analysis scope, always visible
                 above the composer when the backend advertises the
                 capability. */}
-              {scopeCapable && (
-                <ActiveScopeBanner
-                  scope={activeScope}
-                  readOnly={
-                    activeThreadShared ||
-                    activeThreadDeletionPending ||
-                    activeScope?.editable === false
-                  }
-                  busy={isApplyingScope}
-                  hint={routingHint ?? undefined}
-                  onSelectFleet={() => {
-                    void setThreadScope({ mode: 'all_authorized_assets' });
-                  }}
-                  onSelectHintMachine={
-                    routingHint
-                      ? () => {
-                          void setThreadScope({
-                            mode: 'explicit_assets',
-                            machine_ids: [routingHint.machineId],
-                            display_label: routingHint.machineName.slice(0, 120)
-                          });
-                        }
-                      : undefined
-                  }
-                />
-              )}
+
               <Paper
                 radius='xl'
                 p='xs'
@@ -2266,7 +2328,7 @@ function AIChatSessionDrawer({
             </Box>
           )}
         </Boundary>
-      </Drawer>
+      </AssistantSurface>
     </>
   );
 }

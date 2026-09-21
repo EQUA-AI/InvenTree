@@ -9,17 +9,17 @@
 
 import { ModelInformationDict } from '@lib/enums/ModelInformation';
 import { ModelType } from '@lib/enums/ModelType';
-import { getDetailUrl, navigateToLink } from '@lib/functions/Navigation';
+import { getDetailUrl } from '@lib/functions/Navigation';
 import { Anchor, Badge, Group } from '@mantine/core';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 import type { EntityChip } from '../../hooks/UseAIChat';
+import { useAssistantNavigation } from './useAssistantNavigation';
 
 export function EntityChips({
   entities
 }: Readonly<{ entities: EntityChip[] }>) {
-  const navigate = useNavigate();
-
+  const onNavigate = useAssistantNavigation();
   if (!entities || entities.length === 0) {
     return null;
   }
@@ -34,7 +34,12 @@ export function EntityChips({
           : undefined;
         const info = model ? ModelInformationDict[model] : undefined;
         const url =
-          model && info?.url_detail ? getDetailUrl(model, entity.pk) : '';
+          model &&
+          info?.url_detail &&
+          Number.isSafeInteger(entity.pk) &&
+          entity.pk > 0
+            ? getDetailUrl(model, entity.pk)
+            : '';
         const label = entity.label || `${entity.model} #${entity.pk}`;
         const key = `${entity.model}:${entity.pk}`;
 
@@ -55,8 +60,9 @@ export function EntityChips({
         return (
           <Anchor
             key={key}
-            href={url}
-            onClick={(event) => navigateToLink(url, navigate, event)}
+            component={Link}
+            to={url}
+            onClick={onNavigate}
             underline='never'
           >
             <Badge

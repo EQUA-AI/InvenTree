@@ -2,7 +2,7 @@ import type { JSX } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useUserState } from '../../states/UserState';
 
-/** Shared authentication boundary for both the full app and explicit /voice. */
+/** Shared authentication boundary for application routes. */
 export function ProtectedRoute({ children }: { children: JSX.Element }) {
   const location = useLocation();
   const { isLoggedIn } = useUserState();

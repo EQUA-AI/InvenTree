@@ -429,6 +429,8 @@ export interface EntityChip {
 
 /** R4 media-evidence chip: server-verified retrieval hit, never model text. */
 export interface MediaEvidenceItem {
+  source_revision?: string | null;
+  page_index?: number | null;
   attachment_id: number;
   model_type: string;
   model_id?: number | null;
@@ -2411,8 +2413,7 @@ export function useAIChat(config: AIChatConfig = {}) {
                     fileIds:
                       fileIds && fileIds.length > 0 ? fileIds : undefined,
                     idempotencyKey,
-                    expectedScopeVersion:
-                      activeScopeVersionRef.current ?? undefined,
+                    expectedScopeVersion: payload.expected_scope_version,
                     signal: abortControllerRef.current!.signal,
                     csrfToken: getCsrfCookie() || undefined,
                     callbacks: {

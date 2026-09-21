@@ -45,6 +45,7 @@ export class VoiceSessionController {
   private audio: HTMLAudioElement | null = null;
   private generation = 0;
   private starting = false;
+  private permissionPending = false;
   private submitting = false;
   private held = false;
   private seen = new Set<string>();
@@ -978,6 +979,7 @@ export class VoiceSessionController {
       !cap?.enabled ||
       cap.runtime?.available === false ||
       this.starting ||
+      this.permissionPending ||
       this.snapshot.session ||
       document.hidden
     )
@@ -1048,9 +1050,17 @@ export class VoiceSessionController {
       this.playback = new DecisionPlayback();
       if (!created.transports_allowed.webrtc)
         throw new VoiceHttpError('VOICE_TRANSPORT_UNAVAILABLE', 0);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true }
-      });
+      // A browser permission prompt cannot be cancelled. Keep one acquisition
+      // in flight even when Stop invalidates the surrounding provider session.
+      this.permissionPending = true;
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true }
+        });
+      } finally {
+        this.permissionPending = false;
+      }
       if (generation !== this.generation) {
         stream.getTracks().forEach((track) => track.stop());
         return;

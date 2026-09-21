@@ -1,9 +1,7 @@
 import { useInvenTreeHotkeys } from '@lib/functions/Events';
-import { getBaseUrl } from '@lib/functions/Navigation';
 import { t } from '@lingui/core/macro';
-import { Button, Group, Text, VisuallyHidden } from '@mantine/core';
+import { Button, Group, VisuallyHidden } from '@mantine/core';
 import { useEffect } from 'react';
-import { Link, useInRouterContext } from 'react-router-dom';
 import { useThrottledAriaLive } from '../../../hooks/useThrottledAriaLive';
 import { useAIChatState } from '../../../states/AIChatState';
 import { useLocalState } from '../../../states/LocalState';
@@ -14,18 +12,17 @@ import {
   voiceController
 } from '../../../states/VoiceSessionState';
 import { noticeText } from './VoiceExperienceControls';
-import { isVoiceShortcut, voiceEscape } from './voiceShortcuts';
+import { VOICE_SHORTCUT, isVoiceShortcut, voiceEscape } from './voiceShortcuts';
 
 export function VoiceGlobalIndicator({
   embedded = false
 }: { embedded?: boolean }) {
-  const routed = useInRouterContext();
   const s = useVoiceSessionState();
   const decision = useVoiceDecisionState((state) => state.decision);
   const sr = useLocalState((state) => state.voiceSrAnnounceTranscripts);
   useInvenTreeHotkeys([
     [
-      'mod+shift+v',
+      VOICE_SHORTCUT.binding,
       t`Start or end voice`,
       (event) => {
         if (
@@ -35,7 +32,10 @@ export function VoiceGlobalIndicator({
           return;
         event.preventDefault();
         if (useVoiceSessionState.getState().session) void voiceController.end();
-        else useVoiceSurfaceState.getState().requestStart();
+        else {
+          useAIChatState.getState().open();
+          useVoiceSurfaceState.getState().requestStart();
+        }
       }
     ]
   ]);
@@ -53,7 +53,7 @@ export function VoiceGlobalIndicator({
       else {
         useVoiceSurfaceState.getState().closeFullscreen();
         useAIChatState.getState().close();
-        voiceController.minimize();
+        void voiceController.end();
       }
     };
     window.addEventListener('keydown', handle, true);
@@ -72,22 +72,6 @@ export function VoiceGlobalIndicator({
   if (!s.capability?.enabled) return null;
   return (
     <Group gap='xs' data-testid='voice-global-indicator'>
-      {!embedded &&
-        (routed ? (
-          <Button
-            component={Link}
-            to='/voice'
-            mih={44}
-            variant='subtle'
-          >{t`Back to voice`}</Button>
-        ) : (
-          <Button
-            component='a'
-            href={`${getBaseUrl().replace(/\/$/, '')}/voice`}
-            mih={44}
-            variant='subtle'
-          >{t`Back to voice`}</Button>
-        ))}
       <VisuallyHidden component='output' aria-live='polite' aria-atomic='true'>
         {announced}
       </VisuallyHidden>
@@ -97,10 +81,9 @@ export function VoiceGlobalIndicator({
             mih={44}
             variant='light'
             onClick={() => {
-              useAIChatState.getState().close();
-              useVoiceSurfaceState.getState().openFullscreen();
+              useAIChatState.getState().open();
             }}
-            aria-label={t`Open hands-free voice`}
+            aria-label={t`Open AI Assistant`}
             data-testid='voice-minimized-indicator'
           >
             {s.mic === 'listening' ? t`Voice listening` : t`Voice paused`}
@@ -117,7 +100,6 @@ export function VoiceGlobalIndicator({
           >{t`End voice`}</Button>
         </>
       )}
-      <Text size='xs'>{t`Voice: Ctrl/⌘+Shift+V · Chat: Ctrl/⌘+K`}</Text>
     </Group>
   );
 }

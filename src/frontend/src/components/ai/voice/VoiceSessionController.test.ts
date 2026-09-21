@@ -632,3 +632,26 @@ it('detectable output loss cancels the server and never repeats a business turn'
   expect(state.getState().notice).toBe('route_changed');
   expect(requests.some((r) => r.path.endsWith('/turns'))).toBe(false);
 });
+
+it('stops a late permission grant and never overlaps a pending acquisition', async () => {
+  let grant!: (value: MediaStream) => void;
+  vi.mocked(navigator.mediaDevices.getUserMedia).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        grant = resolve;
+      })
+  );
+  const starting = controller.start();
+  await flush();
+  expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+  await controller.end();
+  await controller.start();
+  expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+  grant({ getTracks: () => [track] } as unknown as MediaStream);
+  await starting;
+  expect(track.stop).toHaveBeenCalledTimes(1);
+  expect(state.getState().session).toBeNull();
+  expect(FakePeer.peers).toHaveLength(0);
+  await controller.start();
+  expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
+});

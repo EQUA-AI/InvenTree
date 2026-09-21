@@ -20,9 +20,6 @@ export const MemoryPage = Loadable(
 );
 
 export const Home = Loadable(lazy(() => import('./pages/Index/Home')));
-export const VoiceMobile = Loadable(
-  lazy(() => import('./views/VoiceMobileAppView'))
-);
 
 export const CompanyDetail = Loadable(
   lazy(() => import('./pages/company/CompanyDetail'))
@@ -201,11 +198,6 @@ export const VerifyEmail = Loadable(
 // Routes
 export const routes = (
   <Routes>
-    <Route
-      path='/voice'
-      element={<VoiceMobile />}
-      errorElement={<ErrorPage />}
-    />
     <Route path='*' element={<NotFound />} errorElement={<ErrorPage />} />
     <Route path='/' element={<LayoutComponent />} errorElement={<ErrorPage />}>
       <Route index element={<Home />} />,
