@@ -14,6 +14,7 @@ from assets.ingestion_models import IngestionCheckpoint
 from assets.models import AssetMachine, DictionaryPoint
 from InvenTree.conversion import convert_physical_value
 from InvenTree.validators import validate_physical_units
+from machine_health.connectors.base import PUMPHOUSE_CONNECTOR_TYPES
 from machine_health.connectors.cosmos_pumphouse import bucket_of, to_epoch_ms
 
 
@@ -52,7 +53,9 @@ def source_choices(station):
     return [
         source
         for source in HealthSource.objects.filter(
-            client_id=station.client_id, active=True, connector_type='cosmos_pumphouse'
+            client_id=station.client_id,
+            active=True,
+            connector_type__in=PUMPHOUSE_CONNECTOR_TYPES,
         ).order_by('name')
         if str(station.source_entity_uuid) in configured_stations(source)
     ]
@@ -63,7 +66,7 @@ def _validate_source(station, source):
         station.asset_type != 'pumphouse'
         or not station.client.active
         or source.client_id != station.client_id
-        or source.connector_type != 'cosmos_pumphouse'
+        or source.connector_type not in PUMPHOUSE_CONNECTOR_TYPES
     ):
         raise ValidationError('Source is not configured for this station and Client.')
 

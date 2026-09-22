@@ -145,11 +145,21 @@ class MimicTests(InvenTreeAPITestCase):
         self.assertEqual(result['alarms'], [])
 
     def test_totals_require_every_bay_and_convert_reviewed_units(self):
-        """Incomplete bay data cannot silently become a low plant total."""
-        self.add_point('/pd/P1/pmw', 1)
+        """Incomplete bay data cannot silently become a low plant total.
+
+        The per-bay contributor is the reviewed ``ACTIVE_POWER`` tag, not the
+        snapshot's ``/pd/<bay>/pmw`` field: review found no catalogue target for
+        the latter, so it is never approved, never bound, and a total summed from
+        it could only ever report "incomplete".
+
+        The numbered template it uses can always be expanded: ``ensure_pump`` is
+        the only way a bay is registered and it rejects any key outside
+        ``P1``-``P9999``, which is a subset of what the pointer accepts.
+        """
+        self.add_point('/dex/PUMP1_ACTIVE_POWER', 1)
         self.assertIsNone(self.get_mimic().data['totals']['power']['value'])
         _, binding = self.add_point(
-            '/pd/P17/pmw', 2000, machine=self.other_pump, unit='kW'
+            '/dex/PUMP17_ACTIVE_POWER', 2000, machine=self.other_pump, unit='kW'
         )
         total = self.get_mimic().data['totals']['power']
         self.assertEqual(total['value'], 3)

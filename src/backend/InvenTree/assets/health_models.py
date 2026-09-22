@@ -28,6 +28,8 @@ from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from machine_health.connectors.base import PUMPHOUSE_CONNECTOR_TYPES
+
 
 class SourceType(models.TextChoices):
     """Industrial system families a health source can represent."""
@@ -111,7 +113,7 @@ class HealthSource(models.Model):
         Explicit thresholds and positional database hydration are preserved.
         Other connector types retain their existing default.
         """
-        if not args and kwargs.get('connector_type') == 'cosmos_pumphouse':
+        if not args and kwargs.get('connector_type') in PUMPHOUSE_CONNECTOR_TYPES:
             kwargs.setdefault('freshness_threshold_seconds', 300)
         super().__init__(*args, **kwargs)
 

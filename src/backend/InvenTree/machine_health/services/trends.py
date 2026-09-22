@@ -128,14 +128,42 @@ def read_trend(
             'detail': 'This source cannot serve historical windows.',
             'samples': [],
         }
-    except Exception:
+    except Exception as exc:
         # A connector failure is an outage, not a data point. Nothing is
         # synthesized to fill the gap.
+        #
+        # A timeout is reported separately from unreachability. Both leave
+        # `available` false and no samples, but they send an operator to
+        # different places: "could not be reached" points at the network, the
+        # endpoint or credentials, whereas a timeout usually means the window
+        # asked for more than the source could return in time. Measured against
+        # the live account, an hour of ~95 KB documents at 400 RU/s times out
+        # while fifteen minutes of the same data succeeds - so the remedy is a
+        # narrower window or more throughput, not a connectivity hunt.
+        #
+        # Matched on class name so this service stays connector-agnostic: it
+        # must not import the Cosmos SDK to classify a Cosmos error.
+        timed_out = 'timeout' in type(exc).__name__.lower()
+
         logger.warning(
-            'machine_health.trend_failed source=%s binding=%s',
+            'machine_health.trend_failed source=%s binding=%s error=%s timeout=%s',
             binding.source_id,
             binding.pk,
+            type(exc).__name__,
+            timed_out,
         )
+        if timed_out:
+            return {
+                **base,
+                'available': False,
+                'reason': 'SOURCE_TIMEOUT',
+                'detail': (
+                    'The source did not return this window in time. It was '
+                    'reachable - the read was too large or too slow. Try a '
+                    'shorter window.'
+                ),
+                'samples': [],
+            }
         return {
             **base,
             'available': False,
