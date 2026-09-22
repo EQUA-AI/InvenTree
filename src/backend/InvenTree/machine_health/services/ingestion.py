@@ -33,6 +33,7 @@ from assets.health_models import (
     SignalQuality,
 )
 from assets.models import AssetMachine
+from machine_health.connectors.base import PUMPHOUSE_CONNECTOR_TYPES
 
 logger = logging.getLogger('inventree')
 
@@ -204,7 +205,7 @@ def ingest_readings(
         active=True,
         external_key__in=[item['external_key'] for item in parsed],
     )
-    if source.connector_type == 'cosmos_pumphouse' and station is None:
+    if source.connector_type in PUMPHOUSE_CONNECTOR_TYPES and station is None:
         raise IngestionError(
             'Cosmos ingestion requires an explicit registered station.'
         )

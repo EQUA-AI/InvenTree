@@ -148,6 +148,34 @@ class _BrokenHistorian(HealthConnector):
         raise ConnectionError('historian unreachable')
 
 
+class _ReadTimeout(Exception):
+    """Named to match the SDK exceptions the service classifies by name.
+
+    `trends` must not import the Cosmos SDK to recognise a Cosmos error, so it
+    matches on the class name instead. Naming this the way a real one is named
+    is what makes the test exercise that rule rather than a mock of it.
+    """
+
+
+@register
+class _SlowHistorian(HealthConnector):
+    """A connector that is reachable but does not answer in time."""
+
+    key = 'test-slow'
+
+    def check(self):
+        """Always reachable - that is the point of this fixture."""
+        return True, ''
+
+    def read_latest(self, external_keys):
+        """Not used by the trend path."""
+        return []
+
+    def read_window(self, external_key, start, end, *, max_samples=None):
+        """Time out the way an over-large window does."""
+        raise _ReadTimeout('the request failed to complete within the given timeout')
+
+
 class TrendReadTest(HealthEnvMixin, TestCase):
     """The service-level trend read."""
 
@@ -295,6 +323,38 @@ class TrendReadTest(HealthEnvMixin, TestCase):
         self.assertFalse(result['available'])
         self.assertEqual(result['reason'], 'SOURCE_UNAVAILABLE')
         self.assertEqual(result['samples'], [])
+
+    def test_a_timeout_is_reported_as_a_timeout_not_as_unreachable(self):
+        """The two failures send an operator to different places.
+
+        'Could not be reached' points at the network, the endpoint or
+        credentials. A timeout usually means the window asked for more than the
+        source could return in time - measured against the live account, an
+        hour of ~95 KB documents at 400 RU/s times out while fifteen minutes of
+        the same data succeeds. Collapsing both into SOURCE_UNAVAILABLE sends
+        someone hunting connectivity when the fix is a shorter window.
+        """
+        self.source.connector_type = 'test-slow'
+        self.source.save(update_fields=['connector_type'])
+
+        result = read_trend(self.machine, binding_id=self.binding.pk, now=self.now)
+
+        self.assertFalse(result['available'])
+        self.assertEqual(result['reason'], 'SOURCE_TIMEOUT')
+        self.assertEqual(result['samples'], [])
+        self.assertIn('shorter window', result['detail'])
+        # And it must not claim the source was unreachable, because it wasn't.
+        self.assertNotIn('could not be reached', result['detail'].lower())
+
+    def test_a_timeout_still_returns_no_samples(self):
+        """Availability is the flag; an empty series must never imply success."""
+        self.source.connector_type = 'test-slow'
+        self.source.save(update_fields=['connector_type'])
+
+        result = read_trend(self.machine, binding_id=self.binding.pk, now=self.now)
+
+        self.assertEqual(result['samples'], [])
+        self.assertFalse(result['available'])
 
     def test_unregistered_connector_does_not_fall_back(self):
         """An unknown adapter reads as unconfigured, not as some default."""

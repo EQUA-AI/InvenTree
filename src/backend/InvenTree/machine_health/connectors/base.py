@@ -100,8 +100,25 @@ ConnectorType = TypeVar('ConnectorType', bound=HealthConnector)
 #: Modules whose import side effect is registering a built-in adapter. They are
 #: imported on first lookup rather than from this module, because a connector may
 #: import models and this module is imported while Django is still loading apps.
-_BUILTIN_MODULES = ('machine_health.connectors.cosmos_pumphouse',)
+_BUILTIN_MODULES = (
+    'machine_health.connectors.cosmos_pumphouse',
+    'machine_health.connectors.cosmos_replay',
+)
 _loaded = False
+
+#: Adapters that read a pumphouse station out of a Cosmos container. They share a
+#: constructor signature and an ingestion checkpoint, so every caller that
+#: resolves one must accept any of them - naming a single key would silently skip
+#: a station whose source is configured for one of the others.
+PUMPHOUSE_CONNECTOR_TYPES = frozenset({'cosmos_pumphouse', 'cosmos_pumphouse_replay'})
+
+
+def pumphouse_connector_class(connector_type: str):
+    """Return the registered pumphouse adapter class, or None if unregistered."""
+    if connector_type not in PUMPHOUSE_CONNECTOR_TYPES:
+        return None
+    load_builtin_connectors()
+    return _REGISTRY.get(connector_type)
 
 
 def register(connector_class: type[ConnectorType]) -> type[ConnectorType]:
@@ -136,11 +153,10 @@ def get_connector(source, *, machine=None):
     connector_class = _REGISTRY.get(source.connector_type)
     if (
         connector_class
-        and source.connector_type == 'cosmos_pumphouse'
+        and source.connector_type in PUMPHOUSE_CONNECTOR_TYPES
         and machine is not None
     ):
         from assets.ingestion_models import IngestionCheckpoint
-        from machine_health.connectors.cosmos_pumphouse import CosmosPumphouseConnector
 
         station = machine if machine.asset_type == 'pumphouse' else machine.parent
         if (
@@ -158,7 +174,7 @@ def get_connector(source, *, machine=None):
         ).first()
         if checkpoint is None:
             return None
-        return CosmosPumphouseConnector(source, station_uuid=checkpoint.station_uuid)
+        return connector_class(source, station_uuid=checkpoint.station_uuid)
     return connector_class(source) if connector_class else None
 
 

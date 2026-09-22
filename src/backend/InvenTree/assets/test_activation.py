@@ -252,7 +252,7 @@ class StationActivationTests(InvenTreeAPITestCase):
         )
         with (
             self.settings(AIMMS_COSMOS_PUMPHOUSE_ENABLED=True),
-            patch('assets.tasks.CosmosPumphouseConnector') as connector,
+            patch('assets.tasks.connector_for') as connector,
         ):
             self.assertEqual(poll_cosmos_pumphouse_sources(), 0)
         connector.assert_not_called()
