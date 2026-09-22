@@ -11,11 +11,49 @@ The two size figures in play differ by ~24x, and which one is right changes the
 answer from under a day to nearly three weeks. So both are reported rather than
 one being picked.
 
+A backfill costs about HALF that, corrected 2026-09-21
+------------------------------------------------------
+
+`96.76 RU` is the cost of **replacing a document that already exists**, which is
+what "three upserts of a real document" measured. A backfill does not do that -
+it inserts documents that are not there yet, and an insert is cheaper because
+Cosmos is not also tearing down the old version's index entries.
+
+Measured on 2026-09-21, one full previously-unmigrated hour of Parvathi PH
+written to the live container:
+
+  721 documents  ->  36,533 RU  ->  50.67 RU per insert
+
+The replace figure was re-confirmed the same day and is equally real: 24 of 25
+re-upserts of already-present documents charged **exactly** 96.76 RU. So both
+numbers are correct and they measure different operations:
+
+  first insert        50.67 RU   <- what a backfill pays, used below
+  replace/re-run      96.76 RU   <- what re-running a completed range pays
+
+That distinction is worth stating because it is easy to measure the wrong one.
+Re-upserting existing documents to "check the cost" reports ~97 and makes a
+backfill look twice as expensive as it is; both directions of that mistake were
+made before this note was written.
+
+Practically: a re-run over an already-migrated range costs ~1.9x the original
+write. Re-runs are still safe and sometimes necessary - the document id is the
+sample time, so they are idempotent - but they are not free, and resuming from a
+progress file rather than restarting is the cheaper path by a wide margin.
+
+Observed document size over 30 documents was 74,642-94,916 B (median 94,747), a
+little under the 97,243 B above, so the storage figures here are slightly
+conservative. Left as-is for that reason.
+
 Run:  python contrib/cosmos/devtools/estimate_backfill.py
 """
 
 DOC_BYTES = 97_243
-RU_PER_DOC = 96.76
+
+# The cost of an INSERT, which is what a backfill issues. See the note above:
+# replacing an existing document costs 96.76 RU, nearly twice as much.
+RU_PER_DOC = 50.67
+RU_PER_REPLACE = 96.76
 GIB = 1024**3
 
 # Cosmos pricing, East US pay-as-you-go, for order of magnitude only.
@@ -46,7 +84,10 @@ def report(label: str, docs: float, note: str = '') -> None:
 
 print('measured inputs')
 print(f'  document size: {DOC_BYTES:,} B')
-print(f'  write cost:    {RU_PER_DOC} RU')
+print(
+    f'  write cost:    {RU_PER_DOC} RU per insert '
+    f'({RU_PER_REPLACE} RU to replace an existing document)'
+)
 print('  current ceiling: 400 RU/s, shared with the rest of the database')
 
 # Scenario A: the 25 GB is the size once landed in Cosmos.
