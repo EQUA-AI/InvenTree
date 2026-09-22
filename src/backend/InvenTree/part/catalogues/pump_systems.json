@@ -139,6 +139,32 @@
      "units": "rpm",
      "unit_status": "proposed",
      "note": "Confirm revolutions per minute versus another source scaling."
+    },
+    {
+     "name": "Motor Winding RTD {channel}",
+     "tag": "PUMP_MOTOR_WINDING_TEMP{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      12
+     ]
+    },
+    {
+     "name": "Motor Stator Core RTD {channel}",
+     "tag": "MOTOR_STATOR_CORE_RTD{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      8
+     ]
     }
    ]
   },
@@ -245,6 +271,32 @@
      "units": "",
      "unit_status": "unresolved",
      "note": "Confirm displacement, velocity or acceleration and RMS or peak convention."
+    },
+    {
+     "name": "Thrust Bearing Pad Temperature {channel}",
+     "tag": "PUMP_THRUST_BEARING_PAD_TEMP{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      10
+     ]
+    },
+    {
+     "name": "Bottom Oil Reservoir Temperature {channel}",
+     "tag": "PUMP_BOTTOM_OIL_RESERVOR_TEMP{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      2
+     ]
     }
    ]
   },
@@ -252,9 +304,75 @@
    "code": "GUIDE-BRG",
    "name": "Guide Radial Bearing",
    "group": "Bearings",
-   "description": "Guide or radial-bearing family. Supplied radial-pad tags are defined separately under Guide Radial Pad to avoid duplicate signal ownership.",
+   "description": "Guide radial bearing family. Pad, oil and reservoir temperatures where the machine has them; no physical assignment is implied.",
    "virtual": false,
-   "parameters": []
+   "parameters": [
+    {
+     "name": "Upper Guide Bearing Pad Temperature {channel}",
+     "tag": "PUMP_UPPER_GUIDE_BEARING_PAD_TEMP{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      8
+     ]
+    },
+    {
+     "name": "Lower Guide Bearing Pad Temperature {channel}",
+     "tag": "PUMP_LOWER_GUIDE_BEARING_PAD_TEMP{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      8
+     ]
+    },
+    {
+     "name": "Guide Bearing Oil Temperature {channel}",
+     "tag": "PUMP_GUIDE_BEARING_OIL_TEMP{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      2
+     ]
+    },
+    {
+     "name": "Upper Oil Reservoir Temperature {channel}",
+     "tag": "PUMP_UPPER_OIL_RESERVOR_TEMP{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      2
+     ]
+    },
+    {
+     "name": "Bearing Temperature {channel}",
+     "tag": "PUMP_BEARING_TEMP{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      4
+     ]
+    }
+   ]
   },
   {
    "code": "WATER-COOLING",
@@ -297,6 +415,19 @@
      "units": "degC",
      "unit_status": "proposed",
      "note": "Preserve the repeated PUMP and D3 spelling; check for an alias of another inlet channel before binding."
+    },
+    {
+     "name": "Cooling Water RTD {channel}",
+     "tag": "COOLING_WATER_RTD{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      4
+     ]
     }
    ]
   },
@@ -328,6 +459,32 @@
      "units": "degC",
      "unit_status": "proposed",
      "note": "Only channel 2 was supplied; preserve the space and confirm the real tag spelling."
+    },
+    {
+     "name": "Cold Air RTD {channel}",
+     "tag": "COLD_AIR_RTD{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      4
+     ]
+    },
+    {
+     "name": "Hot Air RTD {channel}",
+     "tag": "HOT_AIR_RTD{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      4
+     ]
     }
    ]
   },
