@@ -188,6 +188,7 @@ export enum ApiEndpoints {
   machine_health_anomaly_evidence = 'machine-health/machines/:id/health/anomalies/:anomalyId/evidence/',
   machine_health_anomaly_analysis = 'machine-health/machines/:id/health/anomalies/:anomalyId/preliminary-analysis/',
   machine_health_trend = 'machine-health/machines/:id/health/trend/',
+  machine_health_trends = 'machine-health/machines/:id/health/trends/',
   machine_health_snapshots = 'machine-health/machines/:id/health/snapshots/',
   asset_maintenance_list = 'assets/maintenance/',
   asset_maintenance_detail = 'assets/maintenance/:id/',

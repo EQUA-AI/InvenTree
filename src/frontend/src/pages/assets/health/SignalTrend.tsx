@@ -44,13 +44,27 @@ const SPARKLINE_WINDOW_SECONDS = 10 * 60;
 export function SignalTrendSparkline({
   machineId,
   bindingId,
-  enabled = true
-}: Readonly<{ machineId: number; bindingId: number; enabled?: boolean }>) {
+  enabled = true,
+  trend: supplied
+}: Readonly<{
+  machineId: number;
+  bindingId: number;
+  enabled?: boolean;
+  /**
+   * A trend already fetched for this binding, normally by the signal table
+   * reading the whole page in one request. When present no request is made
+   * here: a table of thirty sparklines each fetching its own window makes the
+   * source read and parse the same documents thirty times over.
+   */
+  trend?: SignalTrend;
+}>) {
   const api = useApi();
 
   const trendQuery = useQuery<SignalTrend>({
     queryKey: ['machine-health-trend', machineId, bindingId],
-    enabled,
+    // Only when nobody has supplied one; a lone sparkline outside the table
+    // still works on its own.
+    enabled: enabled && supplied === undefined,
     // Trends are a federated read against the historian; don't re-fetch them on
     // every focus change.
     staleTime: 5 * 60 * 1000,
@@ -71,8 +85,12 @@ export function SignalTrendSparkline({
     }
   });
 
+  // One source of truth for the rest of the component: whatever the table
+  // supplied, or this sparkline's own fetch when it is standing alone.
+  const trend = supplied ?? trendQuery.data;
+
   const path = useMemo(() => {
-    const samples = (trendQuery.data?.samples ?? [])
+    const samples = (trend?.samples ?? [])
       .map((sample) => Number(sample.value))
       .filter((value) => Number.isFinite(value));
 
@@ -96,17 +114,15 @@ export function SignalTrendSparkline({
         return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
       })
       .join(' ');
-  }, [trendQuery.data]);
+  }, [trend]);
 
   if (!enabled) {
     return null;
   }
 
-  if (trendQuery.isLoading) {
+  if (supplied === undefined && trendQuery.isLoading) {
     return <Loader size='xs' />;
   }
-
-  const trend = trendQuery.data;
 
   if (!trend?.available) {
     return (

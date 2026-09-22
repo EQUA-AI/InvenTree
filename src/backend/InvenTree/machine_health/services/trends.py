@@ -197,3 +197,152 @@ def read_trend(
             for reading in trimmed
         ],
     }
+
+
+def read_trends(
+    machine,
+    *,
+    binding_ids,
+    start=None,
+    end=None,
+    max_samples: int | None = None,
+    now=None,
+) -> list[dict]:
+    """Return bounded trends for several of the machine's signals at once.
+
+    Same contract as :func:`read_trend` for each binding, and the same
+    protections: bindings are resolved against ``machine`` first, so an id
+    belonging to another asset is simply not returned, and the connector is
+    handed mapped external keys rather than client strings.
+
+    This exists because the per-binding call is the wrong shape for the page
+    that actually uses it. A pump's signal table draws one sparkline per bound
+    parameter - thirty to seventy of them - and each was a separate federated
+    read of the same window, so the source served and parsed the same documents
+    once per line. One call reads the window once.
+
+    A failure is reported per binding rather than raised, so one unreadable tag
+    does not blank the whole table.
+    """
+    now = now or timezone.now()
+
+    bindings = list(
+        MachineSignalBinding.objects.select_related('source', 'machine').filter(
+            pk__in=list(binding_ids), machine=machine, active=True
+        )
+    )
+    if not bindings:
+        return []
+
+    end = end or now
+    start = start or (end - timezone.timedelta(seconds=DEFAULT_WINDOW_SECONDS))
+    try:
+        start, end, samples = bounded_window(start, end, max_samples=max_samples)
+    except ValueError as exc:
+        raise TrendError(str(exc)) from exc
+
+    def envelope(binding):
+        return {
+            'binding_id': binding.pk,
+            'display_name': binding.display_name,
+            'unit': binding.unit,
+            'signal_kind': binding.signal_kind,
+            'source_id': binding.source_id,
+            'source_name': binding.source.name,
+            'source_type': binding.source.source_type,
+            'window_start': start.isoformat(),
+            'window_end': end.isoformat(),
+            'max_samples': samples,
+            'limits': {
+                'max_window_seconds': MAX_TREND_WINDOW_SECONDS,
+                'max_samples': MAX_TREND_SAMPLES,
+            },
+        }
+
+    def unavailable(binding, reason, detail):
+        return {
+            **envelope(binding),
+            'available': False,
+            'reason': reason,
+            'detail': detail,
+            'samples': [],
+        }
+
+    # Bindings may span several sources; each source is read once for its own
+    # keys rather than once per binding.
+    results: dict[int, dict] = {}
+    by_source: dict[int, list] = {}
+    for binding in bindings:
+        by_source.setdefault(binding.source_id, []).append(binding)
+
+    for group in by_source.values():
+        connector = get_connector(group[0].source, machine=machine)
+        if connector is None:
+            for binding in group:
+                results[binding.pk] = unavailable(
+                    binding,
+                    'NO_CONNECTOR',
+                    'This source has no configured connector to read history from.',
+                )
+            continue
+        try:
+            readings = connector.read_windows(
+                [binding.external_key for binding in group],
+                start,
+                end,
+                max_samples=samples + 1,
+            )
+        except NotImplementedError:
+            for binding in group:
+                results[binding.pk] = unavailable(
+                    binding,
+                    'HISTORY_UNSUPPORTED',
+                    'This source cannot serve historical windows.',
+                )
+            continue
+        except Exception as exc:
+            timed_out = 'timeout' in type(exc).__name__.lower()
+            logger.warning(
+                'machine_health.trends_failed source=%s bindings=%s error=%s timeout=%s',
+                group[0].source_id,
+                len(group),
+                type(exc).__name__,
+                timed_out,
+            )
+            for binding in group:
+                results[binding.pk] = unavailable(
+                    binding,
+                    'SOURCE_TIMEOUT' if timed_out else 'SOURCE_UNAVAILABLE',
+                    'The source did not return this window in time. It was '
+                    'reachable - the read was too large or too slow. Try a '
+                    'shorter window.'
+                    if timed_out
+                    else 'The source could not be reached for this window.',
+                )
+            continue
+        finally:
+            try:
+                connector.close()
+            except Exception:
+                logger.warning(
+                    'machine_health.trend_close_failed source=%s', group[0].source_id
+                )
+
+        for binding in group:
+            found = list(readings.get(binding.external_key) or [])
+            trimmed = found[:samples]
+            results[binding.pk] = {
+                **envelope(binding),
+                'available': True,
+                'truncated': len(found) > len(trimmed),
+                'samples': [
+                    {
+                        'observed_at': reading.observed_at.isoformat(),
+                        'value': reading.value,
+                        'quality': reading.quality,
+                    }
+                    for reading in trimmed
+                ],
+            }
+
+    return [results[b.pk] for b in bindings if b.pk in results]

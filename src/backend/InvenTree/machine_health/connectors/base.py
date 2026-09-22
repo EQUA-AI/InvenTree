@@ -85,6 +85,24 @@ class HealthConnector(abc.ABC):
             f'{type(self).__name__} cannot read historical windows'
         )
 
+    def read_windows(self, external_keys, start, end, *, max_samples=None):
+        """Return bounded samples for several tags over one window.
+
+        Defaults to one :meth:`read_window` per tag, which is correct but is the
+        thing worth avoiding: a source whose unit of storage is a whole-station
+        snapshot pays the full scan once per tag, so a page of thirty sparklines
+        reads and parses the same documents thirty times. Such a connector should
+        override this and make a single pass.
+
+        Returns:
+            A mapping of external key to its readings. A key with no data maps
+            to an empty list rather than being absent.
+        """
+        return {
+            key: self.read_window(key, start, end, max_samples=max_samples)
+            for key in external_keys
+        }
+
     def subscribe(self, handler):
         """Optional push subscription. Not required for polling sources."""
         raise NotImplementedError(f'{type(self).__name__} does not support subscribe')
