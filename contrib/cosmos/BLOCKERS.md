@@ -8,6 +8,50 @@ turns into a vague request.
 
 ## Ask 1: one snapshot taken while a pump is running
 
+### Status: SATISFIED on 2026-09-21, and it settled less than expected.
+
+Running data was found in the local Cassandra dump - no export request was
+needed. `Saraswati PH` (`9c09411d-ab94-44b8-a398-8768f58c223e`, `dex.ID` `PH_2`,
+12 bays) runs with bay P5 loaded in 2,443 of 2,448 sampled rows, carrying an
+untrimmed 867-tag `dex`. The station this ask was written against, `Parvathi PH`
+(`bafc976f-…`, `PH_3`), was idle for the whole of July 2025, which is why no
+amount of looking at *it* would ever have helped.
+
+**The premise below - "a single running snapshot settles most of them at once" -
+turned out to be false.** Measured by comparing the loaded bay P5 against idle
+bay P1 in the same snapshot:
+
+| tag | P5 (running) | P1 (idle) | what it settles |
+|---|---|---|---|
+| `ACTIVE_POWER` | 24.5 | 0 | **MW.** Settled, three ways: it equals station `/pmw` (documented MW) exactly, and the plant's own nameplate gives Saraswati 40 MW rated / 24.5 MW observed. At kW, 24.5 against a 40 MW rating is 0.06% of rated. |
+| `PUMP_CURRENT_AVG` | **0** | 0 | **Nothing. The tag does not respond to load.** No snapshot can ever settle it. |
+| `PUMP_REACTIVE_POWER` | **0** | 0 | **Nothing.** Same - dead under load. |
+| `PUMP_POWERFATCOR` | **0** | 0.378 | **Nothing, and it is inverted**: zero while loaded, non-zero while idle. |
+| `PUMP_LINE_TO_LINE_VOLTAGE` | 55.30 | 0 | Responds, but settles nothing: 55.3 fits neither V nor kV on an 11 kV-class motor. |
+| `DISCHARGE_PRESSURE` | 18.96 | 0.57 | Responds, but contradicts the nameplate: 18.96 matches no unit against Saraswati's stated 34 m lift head (bar, metres or kg/cm2). |
+| `SPEED` | 474.06 | -0.70 | Responds. 474 rpm is plausible for a vertical pump but is not confirmed by anything. |
+| `MTR_NDE_BRG_VBRTN1_PROCESS_VALUE` | 59.2575 | -0.07 | Responds, but sits on a value that recurs as a constant elsewhere in the payload, so it may be a sentinel rather than a reading. D9 stands. |
+
+So of the eight families this ask expected to resolve: **one is settled, three
+are dead regardless of load, two respond but disagree with the plant's own
+figures, and two remain ambiguous.**
+
+**The actionable consequence: stop asking for running snapshots.** Current,
+reactive power and power factor will not be settled by better data, because
+those tags do not move when the machine is loaded. They need an instrumentation
+answer from the plant - are they wired at all? - not another export.
+
+What *is* now approvable on evidence is narrow: `pmw` and `ACTIVE_POWER` as MW
+(29 points on PH_3), and `pc` as a dimensionless count (1 point, confirming D7 -
+it read 1.0 with exactly one bay running). That is 30 of PH_3's 324 unapproved
+points. Two more are blocked by us rather than by data: `pmvar` (15 points)
+needs `var`/`MVar` accepted by the unit registry (see HANDOFF.md section 3), and
+`sl` needs a surge-pool-level parameter that the catalogue does not define.
+
+The original reasoning is kept below because it is still correct about *why* a
+stopped machine cannot confirm a unit. It is only wrong about how much one
+running machine fixes.
+
 ### Why
 
 The reference row `PH_3.full-snapshot.json` was captured with **the station shut
@@ -18,6 +62,10 @@ is 0 either way.
 
 That is why 264 dictionary points are withheld rather than approved. A single
 running snapshot settles most of them at once.
+
+> **Superseded 2026-09-21.** The second sentence is wrong - see the status block
+> above. A running snapshot settles `ACTIVE_POWER` and nothing else on this
+> list, because three of the tags read zero even under load.
 
 ### We checked whether we already had one. We do not.
 
@@ -48,10 +96,18 @@ also show which tags move under load and which are static.
 
 ### What it settles
 
+> **Superseded 2026-09-21** by measurement - see the status block at the top of
+> this ask. This list was the expectation; the table up there is the result.
+> Only `ACTIVE_POWER` was settled. `PUMP_CURRENT_AVG` cannot be settled by any
+> snapshot, because it reads zero on a loaded pump.
+
 `ACTIVE_POWER` (kW vs MW), `PUMP_CURRENT_AVG`, `PUMP_LINE_TO_LINE_VOLTAGE` (V vs
 kV), `SPEED`, `DISCHARGE_PRESSURE` (bar vs kg/cm2 vs metres of head), and all seven
 vibration families. It also unblocks the two headline mimic totals, which currently
 read `null / incomplete` because pump power has no approved point.
+
+The headline-totals claim does still hold: `pmw` becoming approvable is what
+lets the station power total resolve instead of reading `incomplete`.
 
 ### How to use it when it arrives
 
