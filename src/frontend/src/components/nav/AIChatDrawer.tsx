@@ -1350,7 +1350,7 @@ function AIChatSessionDrawer({
     },
     []
   );
-  const proposals = useChatProposals();
+  const proposals = useChatProposals(opened);
   const voiceDecision = useVoiceDecisionState((state) => state.decision);
 
   const [activeTab, setActiveTab] = useLocalStorage<AIChatDrawerTab>({

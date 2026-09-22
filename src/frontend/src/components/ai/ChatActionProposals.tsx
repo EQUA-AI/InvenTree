@@ -20,6 +20,7 @@ import {
   Button,
   Card,
   Group,
+  Loader,
   Stack,
   Text,
   TextInput
@@ -35,6 +36,7 @@ import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
 
 import { api } from '../../App';
 import { InlineMarkdown } from '../aichat/MarkdownMessage';
+import { ReadErrorNotice } from '../common/ReadErrorNotice';
 import { describeFailure, parseBusinessResult } from './businessResult';
 
 export interface ChatActionProposalPreview {
@@ -334,8 +336,18 @@ export function ProposalCard({
 
 export function ChatActionProposalList({
   proposals,
-  refresh
-}: Readonly<{ proposals: ChatActionProposalPayload[]; refresh: () => void }>) {
+  refresh,
+  error,
+  loading
+}: Readonly<{
+  proposals: ChatActionProposalPayload[];
+  refresh: () => void;
+  error?: unknown;
+  loading?: boolean;
+}>) {
+  if (error) return <ReadErrorNotice error={error} retry={refresh} />;
+  if (loading)
+    return <Loader size='xs' aria-label={t`Loading action proposals`} />;
   if (proposals.length === 0) {
     return null;
   }

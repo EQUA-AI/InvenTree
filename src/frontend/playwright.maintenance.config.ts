@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests/pages',
-  testMatch: 'pui_maintenance_widgets.spec.ts',
+  testMatch: ['pui_maintenance_widgets.spec.ts', 'pui_read_recovery.spec.ts'],
   workers: 1,
   retries: 0,
   timeout: 30_000,

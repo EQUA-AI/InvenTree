@@ -5,7 +5,14 @@ import { useEffect, useMemo } from 'react';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { useApi } from '../contexts/ApiContext';
+import {
+  InvalidReadResponse,
+  readQueryPolicy
+} from '../functions/readQueryPolicy';
+import { useAIChatState } from '../states/AIChatState';
+import { useLocalState } from '../states/LocalState';
 import { useUserState } from '../states/UserState';
+import { useUICapabilities } from './useUICapabilities';
 
 export interface RiskScopeState {
   scopes: string[];
@@ -32,6 +39,12 @@ interface RiskScopeResponse {
 export function useRiskScope(): RiskScopeState {
   const api = useApi();
   const userId = useUserState((state) => state.user?.pk);
+  const host = useLocalState((state) => state.getHost());
+  const generation = useAIChatState((state) => state.sessionGeneration);
+  const capabilities = useUICapabilities();
+  // Older servers may not advertise capabilities; their scope endpoint remains
+  // authoritative. An explicit disabled advertisement avoids probing it.
+  const featureDisabled = capabilities.data?.risk_radar === false;
 
   // Synchronous read: with the default deferred hydration, a remount with
   // a warm query cache would run the reset effect against the pre-hydration
@@ -42,32 +55,32 @@ export function useRiskScope(): RiskScopeState {
     getInitialValueInEffect: false
   });
 
-  const scopesQuery = useQuery({
-    queryKey: ['risk-scopes', userId],
-    enabled: userId != null,
-    retry: false,
-    gcTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: 'always',
-    queryFn: () =>
-      api.get(apiUrl(ApiEndpoints.risk_scope_list)).then((response) => {
-        const data = response.data as Partial<RiskScopeResponse>;
-        if (
-          !Array.isArray(data?.scopes) ||
-          !data.scopes.every((scope) => typeof scope === 'string') ||
-          typeof data.authorization_fingerprint !== 'string' ||
-          !data.authorization_fingerprint
-        ) {
-          throw new Error('Invalid risk scope response');
-        }
-        return data as RiskScopeResponse;
-      })
+  const scopesQuery = useQuery<RiskScopeResponse>({
+    ...readQueryPolicy,
+    queryKey: ['risk-scopes', host, userId, generation],
+    enabled: userId != null && !capabilities.isPending && !featureDisabled,
+    queryFn: ({ signal }) =>
+      api
+        .get(apiUrl(ApiEndpoints.risk_scope_list), { baseURL: host, signal })
+        .then((response) => {
+          const data = response.data as Partial<RiskScopeResponse>;
+          if (
+            !Array.isArray(data?.scopes) ||
+            !data.scopes.every((scope) => typeof scope === 'string') ||
+            typeof data.authorization_fingerprint !== 'string' ||
+            !data.authorization_fingerprint
+          ) {
+            throw new InvalidReadResponse('Invalid risk scope response');
+          }
+          return data as RiskScopeResponse;
+        })
   });
 
   // Never expose cached authorization data while the server is revalidating
   // the current user. This prevents a previous session's scope and findings
   // from rendering during a background refetch.
-  const scopeDataReady = scopesQuery.isSuccess && !scopesQuery.isFetching;
+  const scopeDataReady =
+    !featureDisabled && scopesQuery.isSuccess && !scopesQuery.isFetching;
   const scopes: string[] = useMemo(
     () => (scopeDataReady ? (scopesQuery.data?.scopes ?? []) : []),
     [scopeDataReady, scopesQuery.data]
@@ -83,7 +96,9 @@ export function useRiskScope(): RiskScopeState {
   // (the Risk Radar panel itself) refetches this shared query, and hiding the
   // parent tab during that refetch would unmount/remount the panel forever.
   const unavailable: boolean =
-    scopesQuery.isError || (scopeDataReady && scopes.length === 0);
+    featureDisabled ||
+    scopesQuery.isError ||
+    (scopeDataReady && scopes.length === 0);
 
   // Reset an unauthorized stored scope to the first available scope. An
   // empty stored value is left alone: the displayed scope falls back to
@@ -112,6 +127,10 @@ export function useRiskScope(): RiskScopeState {
     authorizationFingerprint,
     setScope: setStoredScope,
     unavailable,
-    isLoading: scopesQuery.isLoading || scopesQuery.isFetching
+    isLoading:
+      !featureDisabled &&
+      (capabilities.isLoading ||
+        scopesQuery.isLoading ||
+        scopesQuery.isFetching)
   };
 }

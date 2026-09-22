@@ -673,7 +673,7 @@ msgid "Work Orders"
 msgstr "Work Orders"
 
 #: lib/enums/ModelInformation.tsx:367
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:302
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:325
 #: src/components/riskradar/RiskFindingDetailModal.tsx:280
 #: src/components/tasks/TaskGantt.tsx:165
 #: src/pages/maintenance/MaintenanceBoard.tsx:1657
@@ -956,9 +956,13 @@ msgstr "Confirm decision"
 msgid "Set aside"
 msgstr "Set aside"
 
-#: src/components/ai/ChatActionProposals.tsx:231
+#: src/components/ai/ChatActionProposals.tsx:233
 msgid "Review this action in the shared voice decision card above."
 msgstr "Review this action in the shared voice decision card above."
+
+#: src/components/ai/ChatActionProposals.tsx:350
+msgid "Loading action proposals"
+msgstr "Loading action proposals"
 
 #: src/components/ai/MailboxApprovalReview.tsx:90
 msgid "Canceled by reviewer"
@@ -1065,7 +1069,7 @@ msgid "Enter a subject"
 msgstr "Enter a subject"
 
 #: src/components/ai/MailboxPanel.tsx:108
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:270
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:293
 #: src/pages/repair/RepairPacketDetail.tsx:293
 msgid "From"
 msgstr "From"
@@ -1448,7 +1452,7 @@ msgid "Result not verified — reconciling, do not retry"
 msgstr "Result not verified — reconciling, do not retry"
 
 #: src/components/ai/VoiceDecisionCard.tsx:131
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:580
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:611
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:115
 #: src/pages/build/BuildOrderDetailsPanel.tsx:220
 #: src/tables/assets/MaintenanceRecordTable.tsx:121
@@ -2694,7 +2698,7 @@ msgid "uncontrolled attachment"
 msgstr "uncontrolled attachment"
 
 #: src/components/aichat/evidenceFormat.ts:117
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:489
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:518
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:168
 msgid "As of"
 msgstr "As of"
@@ -3007,7 +3011,7 @@ msgstr "Error updating order"
 
 #: src/components/calendar/OrderCalendar.tsx:208
 #: src/components/calendar/OrderCalendarToolTip.tsx:68
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:435
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:464
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:126
 #: src/components/riskradar/RiskRadarPanel.tsx:421
 #: src/components/tables/Filter.tsx:194
@@ -3050,6 +3054,38 @@ msgstr "Target Date"
 #: src/pages/stock/TransferOrderDetailsPanel.tsx:107
 msgid "Responsible"
 msgstr "Responsible"
+
+#: src/components/common/ReadErrorNotice.tsx:18
+msgid "Your session has expired. Sign in again, then retry."
+msgstr "Your session has expired. Sign in again, then retry."
+
+#: src/components/common/ReadErrorNotice.tsx:20
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:399
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:412
+msgid "Unavailable for your current role or maintenance scope."
+msgstr "Unavailable for your current role or maintenance scope."
+
+#: src/components/common/ReadErrorNotice.tsx:22
+msgid "This feature is unavailable on the selected server."
+msgstr "This feature is unavailable on the selected server."
+
+#: src/components/common/ReadErrorNotice.tsx:24
+msgid "The server could not provide a valid result. Check your filters or contact your administrator."
+msgstr "The server could not provide a valid result. Check your filters or contact your administrator."
+
+#: src/components/common/ReadErrorNotice.tsx:26
+msgid "Refresh failed. Last successful values may be stale."
+msgstr "Refresh failed. Last successful values may be stale."
+
+#: src/components/common/ReadErrorNotice.tsx:27
+msgid "Unable to load this information. Please retry."
+msgstr "Unable to load this information. Please retry."
+
+#: src/components/common/ReadErrorNotice.tsx:35
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:417
+#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:104
+msgid "Retry"
+msgstr "Retry"
 
 #: src/components/dashboard/DashboardLayout.tsx:70
 msgid "Toggle dashboard edit mode"
@@ -3381,184 +3417,171 @@ msgstr "Change Language"
 msgid "Change the language of the user interface"
 msgstr "Change the language of the user interface"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:222
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:596
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:245
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:627
 msgid "minutes"
 msgstr "minutes"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:224
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:247
 msgid "machines"
 msgstr "machines"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:225
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:248
 msgid "work orders"
 msgstr "work orders"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:245
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:268
 msgid "Filters"
 msgstr "Filters"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:252
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:275
 msgid "Reporting period"
 msgstr "Reporting period"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:256
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:279
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:127
 #: src/components/tasks/TaskGantt.tsx:213
 #: src/components/tasks/TaskGantt.tsx:320
 msgid "Today"
 msgstr "Today"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:257
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:280
 msgid "This week"
 msgstr "This week"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:258
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:281
 msgid "This month"
 msgstr "This month"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:259
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:282
 msgid "Last 30 days"
 msgstr "Last 30 days"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:260
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:283
 msgid "Last 90 days"
 msgstr "Last 90 days"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:261
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:284
 msgid "Custom"
 msgstr "Custom"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:276
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:299
 msgid "Through"
 msgstr "Through"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:284
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:307
 msgid "Upcoming calendar days"
 msgstr "Upcoming calendar days"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:294
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:317
 msgid "Client"
 msgstr "Client"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:310
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:333
 msgid "Machine criticality"
 msgstr "Machine criticality"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:319
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:342
 msgid "Assigned user"
 msgstr "Assigned user"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:327
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:350
 #: src/pages/maintenance/MaintenanceBoard.tsx:1347
 #: src/pages/maintenance/MaintenanceBoard.tsx:1897
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:409
 msgid "Priority"
 msgstr "Priority"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:334
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:357
 msgid "Work-order type"
 msgstr "Work-order type"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:347
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:370
 #: src/components/tables/Filter.tsx:178
 msgid "Assigned to me"
 msgstr "Assigned to me"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:372
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:395
 msgid "Reset scope filters"
 msgstr "Reset scope filters"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:376
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:401
 msgid "Choose a valid start and end date."
 msgstr "Choose a valid start and end date."
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:381
-msgid "Refresh failed. Last successful values may be stale."
-msgstr "Refresh failed. Last successful values may be stale."
-
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:386
-#: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:104
-msgid "Retry"
-msgstr "Retry"
-
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:389
-msgid "Unavailable for your current role or maintenance scope."
-msgstr "Unavailable for your current role or maintenance scope."
-
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:396
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:637
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:425
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:669
 msgid "No qualifying records"
 msgstr "No qualifying records"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:402
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:431
 msgid "Period in progress"
 msgstr "Period in progress"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:403
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:432
 msgid "Selected period"
 msgstr "Selected period"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:404
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:433
 msgid "Now"
 msgstr "Now"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:408
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:437
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:147
 msgid "View contributing records"
 msgstr "View contributing records"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:435
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:464
 msgid "High priority"
 msgstr "High priority"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:479
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:508
 msgid "Comparison interval"
 msgstr "Comparison interval"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:489
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:518
 msgid "Your authorized records"
 msgstr "Your authorized records"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:505
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:534
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:179
 msgid "Live records may have changed since the count was loaded."
 msgstr "Live records may have changed since the count was loaded."
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:514
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:543
 msgid "Show all contributing records"
 msgstr "Show all contributing records"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:519
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:548
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:183
 msgid "Records unavailable"
 msgstr "Records unavailable"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:523
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:552
 msgid "records"
 msgstr "records"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:529
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:558
 msgid "Record"
 msgstr "Record"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:530
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:559
 msgid "Machine / status"
 msgstr "Machine / status"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:531
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:560
 msgid "Recorded details"
 msgstr "Recorded details"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:567
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:598
 msgid "Assigned to"
 msgstr "Assigned to"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:575
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:606
 msgid "Due"
 msgstr "Due"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:585
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:616
 #: src/components/riskradar/RiskFindingDetailModal.tsx:313
 #: src/pages/build/BuildOrderDetailsPanel.tsx:196
 #: src/pages/stock/StockDetailsPanel.tsx:357
@@ -3570,45 +3593,45 @@ msgstr "Due"
 msgid "Created"
 msgstr "Created"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:590
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:621
 msgid "Verifying since"
 msgstr "Verifying since"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:597
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:628
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:536
 #: src/tables/assets/MaintenanceRecordTable.tsx:133
 msgid "Amended"
 msgstr "Amended"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:601
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:632
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:130
 msgid "Parts not fully allocated"
 msgstr "Parts not fully allocated"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:605
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:636
 msgid "Data health"
 msgstr "Data health"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:622
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:654
 msgid "Active alerts"
 msgstr "Active alerts"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:624
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:656
 #: src/pages/assets/health/AnomalyList.tsx:148
 msgid "First observed"
 msgstr "First observed"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:627
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:659
 #: src/pages/assets/health/AnomalyList.tsx:154
 msgid "Last observed"
 msgstr "Last observed"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:644
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:676
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:213
 msgid "Previous"
 msgstr "Previous"
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:649
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:681
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:218
 #: src/components/wizards/ImportPartWizard.tsx:511
 msgid "Next"
@@ -13260,14 +13283,14 @@ msgid "Failed to save lockout point"
 msgstr "Failed to save lockout point"
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:100
-#: src/pages/repair/components/safety/LockoutPointTable.tsx:61
-msgid "Add lockout point"
-msgstr "Add lockout point"
-
-#: src/pages/repair/components/safety/LockoutPointModal.tsx:100
 #: src/pages/repair/components/safety/LockoutPointTable.tsx:99
 msgid "Edit lockout point"
 msgstr "Edit lockout point"
+
+#: src/pages/repair/components/safety/LockoutPointModal.tsx:100
+#: src/pages/repair/components/safety/LockoutPointTable.tsx:61
+msgid "Add lockout point"
+msgstr "Add lockout point"
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:104
 msgid "Energy source"

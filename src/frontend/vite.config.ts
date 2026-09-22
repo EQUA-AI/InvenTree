@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { platform, release } from 'node:os';
 import { codecovVitePlugin } from '@codecov/vite-plugin';
 import { vanillaExtractPlugin } from '@vanilla-extract/vite-plugin';
@@ -19,6 +20,21 @@ if (IS_IN_WSL) {
 // Output directory for the built files
 const OUTPUT_DIR = '../../src/backend/InvenTree/web/static/web';
 
+function buildIdentity() {
+  const supplied = process.env.INVENTREE_COMMIT_HASH;
+  if (supplied) return { commit: supplied, dirty: false, ui_contract: 1 };
+  try {
+    return {
+      commit: execFileSync('git', ['rev-parse', 'HEAD']).toString().trim(),
+      dirty:
+        execFileSync('git', ['status', '--porcelain']).toString().trim() !== '',
+      ui_contract: 1
+    };
+  } catch {
+    return { commit: null, dirty: true, ui_contract: 1 };
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
   // In 'build' mode, we want to use an empty base URL (for static file generation)
@@ -26,6 +42,17 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     plugins: [
+      {
+        name: 'aimms-build-identity',
+        apply: 'build',
+        generateBundle() {
+          this.emitFile({
+            type: 'asset',
+            fileName: 'build-info.json',
+            source: JSON.stringify(buildIdentity())
+          });
+        }
+      },
       react({
         babel: {
           plugins: ['macros']

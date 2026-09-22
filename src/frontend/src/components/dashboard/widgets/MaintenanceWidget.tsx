@@ -20,12 +20,19 @@ import {
 } from '@mantine/core';
 import { useDocumentVisibility, useLocalStorage } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
 import { type MouseEvent, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
+import {
+  InvalidReadResponse,
+  readFailure,
+  readPollInterval,
+  readQueryPolicy
+} from '../../../functions/readQueryPolicy';
 import { useAIChatState } from '../../../states/AIChatState';
+import { useLocalState } from '../../../states/LocalState';
 import { useUserState } from '../../../states/UserState';
+import { ReadErrorNotice } from '../../common/ReadErrorNotice';
 import { type MaintenanceMetric, metricLabels } from './maintenanceMetrics';
 
 type Filters = {
@@ -130,11 +137,12 @@ export default function MaintenanceWidget({
   definition
 }: { definition: MaintenanceMetric }) {
   const user = useUserState();
+  const host = useLocalState((state) => state.getHost());
   const generation = useAIChatState((s) => s.sessionGeneration);
   // Remount configuration on identity/permission boundaries, including open dialogs.
   return (
     <MaintenanceWidgetContent
-      key={`${user.user?.pk}:${generation}`}
+      key={`${host}:${user.user?.pk}:${generation}`}
       definition={definition}
     />
   );
@@ -144,6 +152,7 @@ function MaintenanceWidgetContent({
   definition
 }: { definition: MaintenanceMetric }) {
   const api = useApi();
+  const host = useLocalState((state) => state.getHost());
   const user = useUserState();
   const generation = useAIChatState((s) => s.sessionGeneration);
   const visibility = useDocumentVisibility();
@@ -177,9 +186,11 @@ function MaintenanceWidgetContent({
     setOffset(0);
     setGroup('');
   };
-  const query = useQuery({
+  const query = useQuery<MaintenanceResult>({
+    ...readQueryPolicy,
     queryKey: [
       'maintenance-metrics',
+      host,
       user.user?.pk,
       generation,
       definition.id,
@@ -188,24 +199,28 @@ function MaintenanceWidgetContent({
       offset
     ],
     enabled: permitted && customValid && visibility === 'visible',
-    retry: false,
-    refetchInterval: 60_000,
+    refetchInterval: (query) =>
+      query.state.data?.state === 'unavailable'
+        ? false
+        : readPollInterval(query, 60_000),
     refetchIntervalInBackground: false,
     queryFn: async ({ signal }) => {
       const { data } = await api.get('/api/aichat/ui/maintenance-metrics/', {
+        baseURL: host,
         params: { ...filters, metric: definition.id, group, offset },
         signal
       });
-      return parseMaintenanceResult(data, definition.id);
+      try {
+        return parseMaintenanceResult(data, definition.id);
+      } catch {
+        throw new InvalidReadResponse('Invalid maintenance result');
+      }
     }
   });
   const data =
     query.data?.state === 'ready' &&
     permitted &&
-    !(
-      isAxiosError(query.error) &&
-      [401, 403].includes(query.error.response?.status || 0)
-    )
+    (!query.error || readFailure(query.error) === 'temporary')
       ? query.data
       : undefined;
   const followRecord = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -385,21 +400,27 @@ function MaintenanceWidgetContent({
           >{t`Reset scope filters`}</Button>
         </Stack>
       )}
-      {!customValid ? (
+      {!permitted ? (
+        <Alert color='gray'>{t`Unavailable for your current role or maintenance scope.`}</Alert>
+      ) : !customValid ? (
         <Text size='sm'>{t`Choose a valid start and end date.`}</Text>
       ) : query.isPending ? (
         <Loader size='sm' />
       ) : query.isError ? (
-        <Alert color='yellow'>
-          {t`Refresh failed. Last successful values may be stale.`}
+        <ReadErrorNotice
+          error={query.error}
+          stale={!!data}
+          retry={() => void query.refetch()}
+        />
+      ) : !data ? (
+        <Alert color='gray'>
+          {t`Unavailable for your current role or maintenance scope.`}
           <Button
             size='compact-xs'
             variant='subtle'
             onClick={() => void query.refetch()}
           >{t`Retry`}</Button>
         </Alert>
-      ) : !data ? (
-        <Alert color='gray'>{t`Unavailable for your current role or maintenance scope.`}</Alert>
       ) : null}
       {data && customValid && (
         <>

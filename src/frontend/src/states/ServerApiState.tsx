@@ -6,6 +6,7 @@ import { apiUrl } from '@lib/functions/Api';
 import type { AuthConfig, AuthContext } from '@lib/types/Auth';
 import { api } from '../App';
 import { emptyServerAPI } from '../defaults/defaults';
+import { useLocalState } from './LocalState';
 import type { ServerAPIProps } from './states';
 
 interface ServerApiStateProps {
@@ -31,8 +32,13 @@ function get_server_setting(val: any) {
   return val;
 }
 
-let pendingServerApiFetch: Promise<void> | null = null;
-let serverApiFetched = false;
+let pendingServerApiFetch: {
+  host: string;
+  task: Promise<void>;
+  controller: AbortController;
+} | null = null;
+let fetchedServerHost: string | null = null;
+let activeServerHost: string | null = null;
 
 export const useServerApiState = create<ServerApiStateProps>()(
   persist(
@@ -40,44 +46,64 @@ export const useServerApiState = create<ServerApiStateProps>()(
       server: emptyServerAPI,
       setServer: (newServer: ServerAPIProps) => set({ server: newServer }),
       fetchServerApiState: async (force = false) => {
-        if (pendingServerApiFetch && !force) {
-          return pendingServerApiFetch;
-        }
-
-        if (serverApiFetched && !force) {
+        const host = useLocalState.getState().getHost();
+        if (!force && pendingServerApiFetch?.host === host)
+          return pendingServerApiFetch.task;
+        if (!force && fetchedServerHost === host && activeServerHost === host)
           return;
+
+        pendingServerApiFetch?.controller.abort();
+        if (activeServerHost !== host) {
+          set({
+            server: emptyServerAPI,
+            auth_config: undefined,
+            auth_context: undefined,
+            mfa_context: undefined
+          });
+          activeServerHost = host;
+          fetchedServerHost = null;
         }
-
-        pendingServerApiFetch = Promise.all([
-          // Fetch server data
-          api
-            .get(apiUrl(ApiEndpoints.api_server_info))
-            .then((response) => {
-              set({ server: response.data });
-            })
-            .catch(() => {
-              console.error('ERR: Error fetching server info');
-            }),
-
-          // Fetch login/SSO behaviour
-          api
-            .get(apiUrl(ApiEndpoints.auth_config), {
-              headers: { Authorization: '' }
-            })
-            .then((response) => {
-              set({ auth_config: response.data.data });
-            })
-            .catch(() => {
-              console.error('ERR: Error fetching SSO information');
-            })
-        ]).then(() => {});
-
-        try {
-          await pendingServerApiFetch;
-          serverApiFetched = true;
-        } finally {
-          pendingServerApiFetch = null;
-        }
+        const controller = new AbortController();
+        const current = () =>
+          pendingServerApiFetch?.controller === controller &&
+          useLocalState.getState().getHost() === host;
+        const task = Promise.all([
+          api.get(apiUrl(ApiEndpoints.api_server_info), {
+            baseURL: host,
+            signal: controller.signal
+          }),
+          api.get(apiUrl(ApiEndpoints.auth_config), {
+            baseURL: host,
+            signal: controller.signal,
+            headers: { Authorization: '' }
+          })
+        ])
+          .then(([server, auth]) => {
+            if (!current()) return;
+            if (
+              !server.data ||
+              typeof server.data !== 'object' ||
+              !auth.data?.data ||
+              typeof auth.data.data !== 'object'
+            ) {
+              throw new Error('Invalid server metadata');
+            }
+            set({ server: server.data, auth_config: auth.data.data });
+            fetchedServerHost = host;
+          })
+          .catch(() => {
+            // A failed request must remain retryable, including a failed force refresh.
+            if (current()) {
+              fetchedServerHost = null;
+              console.error('ERR: Error fetching server metadata');
+            }
+          })
+          .finally(() => {
+            if (pendingServerApiFetch?.controller === controller)
+              pendingServerApiFetch = null;
+          });
+        pendingServerApiFetch = { host, task, controller };
+        await task;
       },
       auth_config: undefined,
       auth_context: undefined,

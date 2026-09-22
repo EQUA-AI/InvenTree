@@ -1666,6 +1666,27 @@ def server(c, address='0.0.0.0:8000', no_reload=False, no_threading=False):
     manage(c, cmd, pty=True)
 
 
+@task(
+    pre=[wait],
+    help={'no_reload': 'Disable source reload for the ASGI development server'},
+)
+def asgi_server(c, host='0.0.0.0', port=8000, no_reload=False):
+    """Serve Django and the mounted AIMMS APIs together during local development."""
+    args = [
+        'python3',
+        '-m',
+        'uvicorn',
+        'InvenTree.asgi:application',
+        '--host',
+        host,
+        '--port',
+        str(port),
+    ]
+    if not no_reload:
+        args.append('--reload')
+    run(c, shlex.join(args), manage_py_dir(), pty=True)
+
+
 @task(pre=[wait], help={'verbose': 'Print verbose output from the command'})
 def worker(c, verbose: bool = False):
     """Run the InvenTree background worker process.
@@ -2612,6 +2633,7 @@ def monitor(c):
 
 # Collection sorting
 development = Collection(
+    asgi_server,
     delete_data,
     docs_server,
     frontend_server,

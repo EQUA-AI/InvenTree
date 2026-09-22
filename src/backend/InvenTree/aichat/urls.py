@@ -34,11 +34,13 @@ from aichat.memory_api import (
     MemoryProposalListView,
     MemorySettingsView,
 )
+from aichat.ui_capabilities import UICapabilitiesView
 from aichat.ui_metrics import ManagementMetricsView
 
 app_name = 'aichat'
 
 urlpatterns = [
+    path('ui/capabilities/', UICapabilitiesView.as_view(), name='ui-capabilities'),
     path(
         'ui/maintenance-metrics/',
         MaintenanceMetricsView.as_view(),

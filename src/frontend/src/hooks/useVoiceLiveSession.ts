@@ -8,6 +8,14 @@ import type {
 import type { VoiceCapability } from '../components/ai/voice/types';
 import { voiceHttp } from '../components/ai/voice/voiceHttp';
 import {
+  InvalidReadResponse,
+  readFailure,
+  readPollInterval,
+  readQueryPolicy
+} from '../functions/readQueryPolicy';
+import { useAIChatState } from '../states/AIChatState';
+import { useUserState } from '../states/UserState';
+import {
   useVoiceSessionState,
   useVoiceSurfaceState,
   voiceController
@@ -24,21 +32,47 @@ export function useVoiceLiveSession(options: UseVoiceLiveSessionOptions) {
   const snapshot = useVoiceSessionState();
   const callbacks = useRef(options);
   callbacks.current = options;
+  const userId = useUserState((state) => state.user?.pk);
+  const generation = useAIChatState((state) => state.sessionGeneration);
   const capability = useQuery({
-    queryKey: ['voice-capability', options.host],
+    ...readQueryPolicy,
+    queryKey: ['voice-capability', options.host, userId, generation],
     enabled: options.enabled,
-    queryFn: () => voiceHttp<VoiceCapability>(options.host, 'capability'),
+    queryFn: async ({ signal }) => {
+      const data = await voiceHttp<VoiceCapability>(
+        options.host,
+        'capability',
+        'GET',
+        undefined,
+        signal
+      );
+      if (typeof data?.enabled !== 'boolean')
+        throw new InvalidReadResponse('Invalid voice capability');
+      return data;
+    },
     staleTime: 60_000,
     refetchInterval: (query) =>
-      query.state.data?.runtime?.available === false ? 5_000 : 60_000,
+      readPollInterval(
+        query,
+        query.state.data?.runtime?.available === false ? 5_000 : 60_000
+      ),
     refetchIntervalInBackground: false
   });
   useEffect(() => {
     voiceController.configure(options.host, options.threadId);
     voiceController.setCapability(
-      options.enabled ? (capability.data ?? null) : null
+      options.enabled &&
+        (!capability.error || readFailure(capability.error) === 'temporary')
+        ? (capability.data ?? null)
+        : null
     );
-  }, [options.host, options.threadId, options.enabled, capability.data]);
+  }, [
+    options.host,
+    options.threadId,
+    options.enabled,
+    capability.data,
+    capability.error
+  ]);
   useEffect(() => {
     const listener = {
       onTurnResult: (turn: VoiceTurnResponse) =>

@@ -11,7 +11,7 @@ import {
 export interface VoiceDecisionStore extends DecisionState {
   setSession: (sessionId: string | null) => void;
   applyTurn: (sessionId: string, snapshot: DecisionSnapshot) => void;
-  refresh: () => Promise<void>;
+  refresh: (signal?: AbortSignal) => Promise<void>;
   decide: (
     action: string,
     phrase?: string,
@@ -24,11 +24,12 @@ export const useVoiceDecisionState = create<VoiceDecisionStore>((set, get) => ({
   setSession: (sessionId) => set({ ...emptyDecisionState, sessionId }),
   applyTurn: (sessionId, snapshot) =>
     set((state) => decisionReducer(state, sessionId, snapshot)),
-  refresh: async () => {
+  refresh: async (signal) => {
     const { sessionId, decision: before } = get();
     if (!sessionId) return;
     const response = await api.get(
-      `/api/ai/voice/sessions/${sessionId}/decision`
+      `/api/ai/voice/sessions/${sessionId}/decision`,
+      { signal }
     );
     if (!response.data.pending_decision) {
       // A null read has no server sequence. Only clear the exact snapshot

@@ -1,10 +1,12 @@
 import type { VoiceErrorCode } from '../../../../lib/types/Voice';
+import { InvalidReadResponse } from '../../../functions/readQueryPolicy';
 import { parseBusinessResult } from '../businessResult';
 
 export class VoiceHttpError extends Error {
   constructor(
     public code: VoiceErrorCode,
-    public status: number
+    public status: number,
+    public retryAfter?: string | null
   ) {
     super(code);
   }
@@ -36,7 +38,10 @@ export async function voiceHttp<T>(
       AbortSignal.timeout(path.endsWith('/turns') ? 240_000 : 20_000)
     ])
   });
-  const payload = await response.json();
+  const payload = await response.json().catch(() => null);
+  if (response.ok && (!payload || typeof payload !== 'object')) {
+    throw new InvalidReadResponse('Invalid voice response');
+  }
   const result = parseBusinessResult<T>(
     response.status ?? (response.ok ? 200 : 503),
     payload
@@ -47,7 +52,11 @@ export async function voiceHttp<T>(
       result.code === 'IDEMPOTENCY_CONFLICT'
         ? (result.code as VoiceErrorCode)
         : 'VOICE_SESSION_UNAVAILABLE';
-    throw new VoiceHttpError(code, response.status);
+    throw new VoiceHttpError(
+      code,
+      response.status,
+      response.headers?.get('Retry-After')
+    );
   }
   return result.data;
 }

@@ -83,7 +83,17 @@ jobs:
       - name: Install dependencies
         run: cd src/frontend && yarn install --ignore-scripts
       - name: Build frontend
+        env:
+          INVENTREE_COMMIT_HASH: ${{ github.sha }}
         run: cd src/frontend && yarn run compile && yarn run lib && yarn run build
+      - name: Verify frontend build identity
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          metadata = json.loads(Path('src/backend/InvenTree/web/static/web/build-info.json').read_text())
+          assert metadata == {'commit': os.environ['GITHUB_SHA'], 'dirty': False, 'ui_contract': 1}, metadata
+          PY
       - name: Write version file - SHA
         run: cd src/backend/InvenTree/web/static/web/.vite && echo "$GITHUB_SHA" > sha.txt
       - name: Zip frontend
@@ -117,6 +127,31 @@ jobs:
         run: cd src/frontend && yarn tsc --noEmit
       - name: Unit tests (pure modules)
         run: cd src/frontend && yarn test:unit
+      - name: Release gate regression tests
+        run: python -m unittest discover -s .github/scripts -p test_aimms_release_smoke.py
+
+  maintenance-recovery:
+    name: Maintenance and API recovery (desktop and Pixel 7)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: ["paths-filter"]
+    if: github.ref == 'refs/heads/master' || needs.paths-filter.outputs.frontend == 'true' || needs.paths-filter.outputs.force == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Environment Setup
+        uses: ./.github/actions/setup
+        with:
+          npm: true
+      - name: Install frontend dependencies
+        run: cd src/frontend && yarn install --frozen-lockfile
+      - name: Install Chromium
+        run: cd src/frontend && yarn playwright install --with-deps chromium
+      - name: Compile translations
+        run: cd src/frontend && yarn compile
+      - name: Maintenance and recovery regressions
+        run: cd src/frontend && yarn playwright test --config playwright.maintenance.config.ts
 
   voice-mobile:
     name: Voice desktop and Pixel 7 (recording-only)

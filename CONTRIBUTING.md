@@ -120,6 +120,11 @@ invoke dev.frontend-server
 invoke worker
 ```
 
+For AIMMS work, use `invoke dev.asgi-server --no-reload` instead of
+`invoke dev.server`. The ASGI server mounts the AI service alongside Django on
+port 8000. See [AIMMS release checks](contrib/container/AIMMS-release-checks.md)
+for authenticated feature and build-identity verification.
+
 A VS Code Dev Container configuration is available at `.devcontainer/` and includes PostgreSQL 15 and Redis 7 sidecar services.
 
 To see all available tasks, run `invoke --list`.
