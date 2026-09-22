@@ -99,6 +99,52 @@ class RegistryTests(InvenTreeAPITestCase):
             format='multipart',
         )
 
+    def test_pd_block_resolves_only_the_tags_with_no_dex_counterpart(self):
+        """The per-bay summary must not shadow the dex block it duplicates.
+
+        `pmw` and `pmvar` restate ACTIVE_POWER and REACTIVE_POWER, so resolving
+        them would give one catalogue parameter two dictionary points and the
+        approval clash guard would reject whichever came second. `dv` has no dex
+        counterpart, so it is the only source for discharge rate and must
+        resolve - otherwise the station flow total has nothing it can ever bind.
+        """
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I', 'dv': 2931.0, 'pmw': 24.5, 'pmvar': 1.0}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+            },
+        }).encode()
+        points = {p['path']: p for p in plan_dictionary(self.station, raw)['points']}
+
+        self.assertEqual(points['/pd/P1/dv']['match_method'], 'exact')
+        self.assertTrue(points['/pd/P1/dv']['template'])
+        self.assertEqual(points['/pd/P1/st']['match_method'], 'exact')
+        for tag in ('pmw', 'pmvar'):
+            self.assertEqual(points[f'/pd/P1/{tag}']['match_method'], 'unresolved')
+            self.assertIsNone(points[f'/pd/P1/{tag}']['template'])
+
+    def test_a_resolved_discharge_rate_carries_no_unit(self):
+        """`dv` maps to a parameter whose unit is deliberately unresolved."""
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I', 'dv': 2931.0}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+            },
+        }).encode()
+        point = next(
+            p
+            for p in plan_dictionary(self.station, raw)['points']
+            if p['path'] == '/pd/P1/dv'
+        )
+        self.assertEqual(point['unit'], '')
+        self.assertEqual(point['unit_status'], 'unresolved')
+
     def imported(self):
         """Import a tiny dictionary and return its motor-temperature point."""
         raw = self.raw()

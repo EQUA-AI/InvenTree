@@ -288,6 +288,63 @@ class ApplyReviewTests(TestCase):
         self.assertIn('Instrument type unknown.', self.point.review_note)
         self.assertIn('Ask the site.', self.point.review_note)
 
+    def test_a_withheld_point_may_still_be_given_a_catalogue_home(self):
+        """Knowing what a tag is, and approving it, are separate claims.
+
+        The flow tags are the case this exists for: `dv` is identified beyond
+        doubt - it reads the design discharge while running and zero while
+        stopped - but no source confirms its unit, so it must be mapped without
+        being approved. Before this, the only way to record the identification
+        was to approve it, which would have asserted a unit nobody has.
+        """
+        self.point.component = None
+        self.point.template = None
+        self.point.status = 'unresolved'
+        self.point.save()
+
+        self.apply({
+            'station_source_uuid': str(SOURCE_UUID),
+            'withhold': [
+                {
+                    'paths': [self.point.path],
+                    'reason': 'Identified, but the unit is unconfirmed.',
+                    'mapping': {
+                        'part_ipn': self.status_component.part.IPN,
+                        'component_code': self.status_component.code,
+                        'parameter': self.status_template.name,
+                    },
+                }
+            ],
+        })
+
+        self.point.refresh_from_db()
+        # Mapped...
+        self.assertEqual(self.point.template_id, self.status_template.pk)
+        self.assertEqual(self.point.match_method, 'review')
+        # ...and moved off 'unresolved', because it now resolves somewhere...
+        self.assertEqual(self.point.status, 'draft')
+        # ...but emphatically not approved, and therefore never bound.
+        self.assertNotEqual(self.point.status, 'approved')
+        self.assertIn('unit is unconfirmed', self.point.review_note)
+
+    def test_a_withheld_mapping_still_refuses_a_bad_crosswalk(self):
+        """Skipping approval must not skip the crosswalk's own validation."""
+        with self.assertRaises(CommandError):
+            self.apply({
+                'station_source_uuid': str(SOURCE_UUID),
+                'withhold': [
+                    {
+                        'paths': [self.point.path],
+                        'reason': 'Identified.',
+                        'mapping': {
+                            'part_ipn': 'PS-NOT-A-PART',
+                            'component_code': 'NOPE:1',
+                            'parameter': self.status_template.name,
+                        },
+                    }
+                ],
+            })
+
     def test_dry_run_writes_nothing(self):
         """A preview that wrote would be worse than no preview."""
         payload = {

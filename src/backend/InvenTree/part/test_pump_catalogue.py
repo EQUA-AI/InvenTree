@@ -80,8 +80,8 @@ class PumpCatalogueTests(TestCase):
         counts = {model: model.objects.count() for model in unrelated}
         output = self.load()
         self.assertIn('part_created=20', output)
-        self.assertIn('template_created=63', output)
-        self.assertIn('parameter_slots_created=63', output)
+        self.assertIn('template_created=64', output)
+        self.assertIn('parameter_slots_created=64', output)
         self.assertEqual(Part.objects.filter(IPN__startswith='PS-').count(), 20)
         self.assertTrue(PartCategory.objects.get(name=ROOT_CATEGORY).structural)
         for parameter in Parameter.objects.filter(template__name__startswith='PUMP | '):

@@ -23,6 +23,20 @@ from .models import AssetComponent, AssetMachine, DictionaryPoint
 MAX_BYTES = 8 * 1024 * 1024
 MAX_POINTS = 25000
 PUMP = re.compile(r'^PUMP([1-9][0-9]{0,3})_')
+#: pd-block tags the matcher may resolve against the catalogue.
+#:
+#: The pd block is a per-bay *summary* of measurements the dex block also carries
+#: in full, so resolving it wholesale would give one catalogue parameter two
+#: dictionary points and make approval ambiguous: `pmw` duplicates ACTIVE_POWER
+#: and `pmvar` duplicates REACTIVE_POWER, and the clash guard in review would
+#: reject whichever was approved second.
+#:
+#: `st` and `dv` are the exceptions. Neither has a dex counterpart, so each is the
+#: only source for its measurement - equipment status and per-bay discharge rate -
+#: and leaving `dv` out is why the station flow total had no contributor it could
+#: ever bind.
+PD_MAPPABLE_TAGS = frozenset({'st', 'dv'})
+
 ALIASES = [
     (r'MOTOR_CORE_RTD([1-6])_PROCESS_VALUE', r'MOTOR_CORE_RTD\1'),
     (r'THRST_BRG_THRST_PD_RTD([1-3])_PROCESS_VALUE', r'THRST_BRG_THRST_PD_RTD\1'),
@@ -413,7 +427,7 @@ def plan_dictionary(station, raw):
                     value,
                     key,
                     tag,
-                    allow_match=tag == 'st',
+                    allow_match=tag in PD_MAPPABLE_TAGS,
                 )
         for tag, value in payload['dex'].items():
             if tag in {'ID', 'TIMESTAMP'}:
