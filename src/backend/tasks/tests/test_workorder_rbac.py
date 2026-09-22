@@ -56,6 +56,12 @@ class WorkOrderRulesetRegistrationTest(TestCase):
                 'assets_assetmachine',
                 'assets_assetmaintenancerecord',
                 'assets_machinepart',
+                # The equipment registry describes the asset a job is performed
+                # on, so it answers to the same authority as the job rather
+                # than carrying a ruleset of its own. Added to the ruleset with
+                # the registry itself in f2e0d794c.
+                'assets_assetcomponent',
+                'assets_dictionarypoint',
             },
         )
 

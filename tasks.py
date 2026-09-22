@@ -337,6 +337,35 @@ def builtin_apps():
     ]
 
 
+def fork_apps():
+    """Returns the fork-added app labels that carry their own test suites.
+
+    Deliberately separate from builtin_apps() rather than folded into it. Two
+    reasons:
+
+    - builtin_apps() feeds the default `invoke dev.test`, which the blocking
+      upstream-parity CI job runs with no --runtest. Fork suites carry
+      documented pre-existing failures (see the fork-ai job in
+      qc_checks.yaml), so adding them there would turn a green gate red for
+      reasons that gate is not meant to police.
+    - Keeping the upstream list byte-identical keeps this file's merge surface
+      to the single added function, which matters on a fork that trails
+      upstream by a wide margin.
+
+    `machine_health` is included even though it is not a Django app: its ORM
+    models live in `assets`, but its tests are discoverable by label.
+    """
+    return [
+        'aichat',
+        'approvals',
+        'assets',
+        'machine_health',
+        'repair',
+        'tasks',
+        'voice',
+    ]
+
+
 def content_excludes(
     allow_auth: bool = True,
     allow_email: bool = False,
@@ -1761,6 +1790,8 @@ def test_translations(c):
         'check': 'Run sanity check on the django install (default = False)',
         'disable_pty': 'Disable PTY',
         'runtest': 'Specify which tests to run, in format <module>.<file>.<class>.<method>',
+        'fork': 'Also run the fork-added app suites (default = False, which covers none of them)',
+        'testrunner': 'Override the Django test runner (e.g. django.test.runner.DiscoverRunner)',
         'migrations': 'Run migration unit tests',
         'report': 'Display a report of slow tests',
         'coverage': 'Run code coverage analysis (requires coverage package)',
@@ -1775,6 +1806,8 @@ def test(
     check: bool = False,
     disable_pty: bool = False,
     runtest: str = '',
+    fork: bool = False,
+    testrunner: str = '',
     migrations: bool = False,
     report: bool = False,
     coverage: bool = False,
@@ -1792,6 +1825,15 @@ def test(
     Example:
         test --runtest=company.test_api
     will run tests in the company/test_api.py file.
+
+    Note that the default app set is upstream-only: a plain `dev.test` reports
+    success without executing any of the fork's suites. Pass --fork to include
+    them, or name them with --runtest.
+
+    In the Docker dev container, add
+    --testrunner=django.test.runner.DiscoverRunner: that image deliberately
+    does not ship django_slowtests, which settings.py selects as the runner
+    whenever TESTING is true (see contrib/container/DEV_RUNBOOK.md section 9).
     """
     # Run sanity check on the django install
     if check:
@@ -1805,7 +1847,8 @@ def test(
 
     pty = not disable_pty
 
-    tested_apps = ' '.join(builtin_apps())
+    apps = builtin_apps() + (fork_apps() if fork else [])
+    tested_apps = ' '.join(apps)
 
     cmd = 'test'
 
@@ -1815,6 +1858,9 @@ def test(
     else:
         # Run all tests
         cmd += f' {tested_apps}'
+
+    if testrunner:
+        cmd += f' --testrunner={testrunner}'
 
     if report:
         cmd += ' --slowreport'

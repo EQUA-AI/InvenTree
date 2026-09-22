@@ -1406,8 +1406,24 @@ AIMMS_MAINTENANCE_AI_READ_ENABLED = get_boolean_setting(
 
 # Dotted path to the maintenance scope resolver; empty means unresolved
 # (fail closed) unless actors carry explicit maintenance_scopes.
-AIMMS_MAINTENANCE_SCOPE_RESOLVER = get_setting(
-    'AIMMS_MAINTENANCE_SCOPE_RESOLVER', 'aimms_maintenance_scope_resolver', None
+#
+# Never inherited from the environment under test. tasks.scope.scope_for_actor
+# prefers a configured resolver OVER an actor's explicit maintenance_scopes, so
+# an ambient resolver silently replaces the scopes a test assigned with whatever
+# the surrounding deployment authorizes. The dev container sets one by default
+# (contrib/container/dev-docker-compose.yml), which is why the tasks/aichat/
+# repair/approvals suites produce hundreds of "Actor and work-order maintenance
+# scopes do not match" errors when run there and pass in CI, where the variable
+# is absent. A test must assert its own policy, not the host's.
+#
+# Suites that exercise a resolver still set one explicitly with
+# override_settings / self.settings(...), which takes precedence over this.
+AIMMS_MAINTENANCE_SCOPE_RESOLVER = (
+    None
+    if TESTING
+    else get_setting(
+        'AIMMS_MAINTENANCE_SCOPE_RESOLVER', 'aimms_maintenance_scope_resolver', None
+    )
 )
 
 # Dotted path to the diagnostic capability resolver consulted by the AI
