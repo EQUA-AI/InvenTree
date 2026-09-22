@@ -123,7 +123,7 @@
      "tag": "PUMP_MOTOR_WINDING_TEMPERATURED{channel}",
      "channels": [
       1,
-      11
+      12
      ],
      "kind": "temperature",
      "data_type": "number",
@@ -165,6 +165,55 @@
       1,
       8
      ]
+    },
+    {
+     "name": "Brush Gear Temperature",
+     "tag": "PUMP_BRUSH_GEARD2",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC confirmed with a bay under load and at rest; the band excludes degF and K."
+    },
+    {
+     "name": "Motor Shell Temperature Right",
+     "tag": "PUMP_SHELL_RIGHTD1",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC confirmed with a bay under load and at rest; the band excludes degF and K."
+    },
+    {
+     "name": "Stator Winding RTD {channel}",
+     "tag": "MT_STTR_WND_RTD{channel}_PROCESS_VALUE",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC from the at-rest band, but the channel pins to the 3277 over-range sentinel whenever a bay runs.",
+     "channels": [
+      1,
+      6
+     ]
+    },
+    {
+     "name": "Motor Shell Temperature Left",
+     "tag": "PUMP_SHELL_LEFTD23",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC from the at-rest band, but the channel pins to the 3277 over-range sentinel whenever a bay runs."
+    },
+    {
+     "name": "Motor Shell Temperature Sump",
+     "tag": "PUMP_SHELL_SUMPD24",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC from the at-rest band, but the channel pins to the 3277 over-range sentinel whenever a bay runs."
     }
    ]
   },
@@ -293,6 +342,19 @@
      "units": "degC",
      "unit_status": "proposed",
      "note": "Ranganayaka Sagar spelling; a 134 MW machine with a different RTD layout from the 40 MW stations. degC from ambient soak: medians 28-29 with the plant idle, which excludes degF and K.",
+     "channels": [
+      1,
+      2
+     ]
+    },
+    {
+     "name": "Cooling Oil Outlet Temperature {channel}",
+     "tag": "COOLING_OIL_OUTLET_TEMP{channel}",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC from the at-rest band, but the channel pins to the 3277 over-range sentinel whenever a bay runs.",
      "channels": [
       1,
       2
@@ -428,6 +490,33 @@
       1,
       4
      ]
+    },
+    {
+     "name": "Cooler Water Outlet Left",
+     "tag": "PUMP_COOLING_WATER_COOL_OUTLET_LEFTD17",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC confirmed with a bay under load and at rest; the band excludes degF and K."
+    },
+    {
+     "name": "Cooler Water Outlet Right",
+     "tag": "PUMP_COOLING_WATER_COOL_OUTLET_RIGHTD18",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC confirmed with a bay under load and at rest; the band excludes degF and K."
+    },
+    {
+     "name": "Outlet Cooling Water Temperature D4",
+     "tag": "PUMP_PUMP_OUTLET_COOLING_WATER_TEMP_1D4",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC confirmed with a bay under load and at rest; the band excludes degF and K."
     }
    ]
   },
@@ -485,6 +574,42 @@
       1,
       4
      ]
+    },
+    {
+     "name": "Cooling Air DE Left Cold",
+     "tag": "PUMP_COOLING_AIR_D_END_LEFT_COLDD15",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC confirmed with a bay under load and at rest; the band excludes degF and K."
+    },
+    {
+     "name": "Cooling Air DE Right Cold",
+     "tag": "PUMP_COOLING_AIR_D_END_RIGHT_COLDD16",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC confirmed with a bay under load and at rest; the band excludes degF and K."
+    },
+    {
+     "name": "Cooling Air NDE Left Cold",
+     "tag": "PUMP_COOLING_AIR_ND_END_LEFT_COLDD13",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC confirmed with a bay under load and at rest; the band excludes degF and K."
+    },
+    {
+     "name": "Cooling Air NDE Right Cold",
+     "tag": "PUMP_COOLING_AIR_ND_END_RIGHT_COLDD14",
+     "kind": "temperature",
+     "data_type": "number",
+     "units": "degC",
+     "unit_status": "proposed",
+     "note": "Saraswati PH spelling. degC confirmed with a bay under load and at rest; the band excludes degF and K."
     }
    ]
   },
