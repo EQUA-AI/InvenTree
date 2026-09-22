@@ -112,6 +112,9 @@ ENTRYPOINT ["/bin/bash", "./init.sh"]
 # Multi-stage build to compile project requirements
 FROM inventree_base AS builder_stage
 
+# ACR's classic Docker builder does not inherit ARG values from the parent stage.
+ARG commit_hash=""
+
 # Copy source files
 COPY src ${INVENTREE_HOME}/src
 COPY tasks.py ${INVENTREE_HOME}/tasks.py
@@ -146,12 +149,16 @@ RUN npm install -g n --ignore-scripts
 RUN bash -c "n lts"
 RUN npm install -g yarn --ignore-scripts && \
     yarn config set network-timeout 600000 -g
-RUN cd "${INVENTREE_HOME}" && INVENTREE_COMMIT_HASH="${commit_hash}" invoke int.frontend-compile --extract
+RUN cd "${INVENTREE_HOME}" && INVENTREE_COMMIT_HASH="${commit_hash}" invoke int.frontend-compile --extract && \
+    python -c 'import json, sys; from pathlib import Path; expected = sys.argv[1]; data = json.loads(Path("src/backend/InvenTree/web/static/web/build-info.json").read_text()); assert not expected or data == {"commit": expected, "dirty": False, "ui_contract": 1}, "Frontend build identity does not match commit_hash"' "${commit_hash}"
 
 # InvenTree production image:
 # - Copies required files from local directory
 # - Starts a gunicorn webserver
 FROM inventree_base AS production
+
+ARG commit_hash=""
+ARG commit_date=""
 
 ENV INVENTREE_DEBUG=False
 
