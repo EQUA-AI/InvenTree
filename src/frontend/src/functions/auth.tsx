@@ -80,16 +80,31 @@ export async function doBasicLogin(
   const { setAuthContext, setMfaContext } = useServerApiState.getState();
 
   if (username.length == 0 || password.length == 0) {
-    return;
+    notifications.show({
+      title: t`Login failed`,
+      message: t`Enter your username and password.`,
+      color: 'red',
+      id: 'auth-login-error'
+    });
+    return false;
   }
 
-  clearCsrfCookie();
-  await ensureCsrf();
+  notifications.hide('auth-login-error');
+  const host: string = getHost();
+  // Keep an existing cookie: Django rotates it after successful login.
+  // Never submit credentials if bootstrap timed out or cookies were blocked.
+  if (!(await ensureCsrf(host))) {
+    notifications.show({
+      title: t`Login failed`,
+      message: t`Could not prepare a secure login. Check your connection and allow cookies for this site, then try again.`,
+      color: 'red',
+      id: 'auth-login-error'
+    });
+    return false;
+  }
 
   let loginDone = false;
   let success = false;
-
-  const host: string = getHost();
 
   // Attempt login with basic info
   await api
@@ -158,7 +173,7 @@ export async function doBasicLogin(
           title: t`Login failed`,
           message: t`No response from server.`,
           color: 'red',
-          id: 'login-error'
+          id: 'auth-login-error'
         });
       }
     });
@@ -181,7 +196,7 @@ export async function doBasicLogin(
 
   async function handlePossibleMFAError(err: any) {
     setAuthContext(err.response.data?.data);
-    const mfa_flow = err.response.data.data.flows.find(
+    const mfa_flow = err.response.data?.data?.flows?.find(
       (flow: any) => flow.id == FlowEnum.MfaAuthenticate
     );
     if (mfa_flow?.is_pending) {
@@ -210,6 +225,13 @@ export async function doBasicLogin(
         success = true;
         navigate('/mfa');
       }
+    } else {
+      notifications.show({
+        title: t`Login failed`,
+        message: t`Check your input and try again.`,
+        color: 'red',
+        id: 'auth-login-error'
+      });
     }
   }
 }
@@ -344,11 +366,17 @@ function observeProfile() {
   }
 }
 
-export async function ensureCsrf() {
-  const cookie = getCsrfCookie();
-  if (cookie == undefined) {
-    await api.get(apiUrl(ApiEndpoints.auth_session)).catch(() => {});
+export async function ensureCsrf(baseURL = useLocalState.getState().getHost()) {
+  if (!getCsrfCookie()) {
+    try {
+      await api.get(apiUrl(ApiEndpoints.auth_session), { baseURL });
+    } catch (err) {
+      // An anonymous session returns 401 but still sets the CSRF cookie.
+      if (!axios.isAxiosError(err) || err.response?.status !== 401)
+        return false;
+    }
   }
+  return !!getCsrfCookie();
 }
 
 export function handleReset(
@@ -545,7 +573,7 @@ export function getCsrfCookie() {
 }
 
 /*
- * Clear out the CSRF and session cookies (force session logout)
+ * Clear the CSRF cookie. Session logout requires a server request.
  */
 export function clearCsrfCookie() {
   document.cookie =

@@ -6,7 +6,6 @@ import { UserPermissions, type UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
 import type { UserProps, UserStateProps } from '@lib/types/User';
 import { api, setApiDefaults } from '../App';
-import { clearCsrfCookie } from '../functions/auth';
 import { useAIChatState } from './AIChatState';
 import { useServerApiState } from './ServerApiState';
 
@@ -56,7 +55,8 @@ export const useUserState = create<UserStateProps>((set, get) => ({
   clearUserState: () => {
     useAIChatState.getState().resetSession();
     set({ user: undefined, is_authed: false });
-    clearCsrfCookie();
+    // Anonymous session checks must not erase the cookie needed by login.
+    // Explicit logout clears it after ending the server session.
     setApiDefaults();
   },
   fetchUserToken: async () => {

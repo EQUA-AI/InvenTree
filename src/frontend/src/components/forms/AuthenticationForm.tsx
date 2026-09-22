@@ -66,8 +66,6 @@ export function AuthenticationForm() {
         classicForm.values.code
       )
         .then((success) => {
-          setIsLoggingIn(false);
-
           if (isLoggedIn()) {
             showLoginNotification({
               title: t`Login successful`,
@@ -76,21 +74,17 @@ export function AuthenticationForm() {
             followRedirect(navigate, location?.state);
           } else if (success) {
             // MFA login
-          } else {
-            showLoginNotification({
-              title: t`Login failed`,
-              message: t`Check your input and try again.`,
-              success: false
-            });
           }
         })
         .catch(() => {
           showNotification({
             title: t`Login failed`,
             message: t`Check your input and try again.`,
-            color: 'red'
+            color: 'red',
+            id: 'auth-login-error'
           });
-        });
+        })
+        .finally(() => setIsLoggingIn(false));
     } else {
       doSimpleLogin(simpleForm.values.email).then((ret) => {
         setIsLoggingIn(false);
