@@ -205,11 +205,29 @@ class Command(BaseCommand):
                         raise CommandError('Withholding requires a reason.')
                     if entry.get('recommendation'):
                         note = f'{note} Recommended: {entry["recommendation"]}'
+
+                    fields = ['review_note', 'reviewed_at', 'status']
+                    if entry.get('mapping'):
+                        # Recording what a tag *is* does not approve it. A point
+                        # can be identified with certainty and still be withheld
+                        # - an unconfirmed unit is the usual reason - and without
+                        # this the only way to give a tag a catalogue home would
+                        # be to approve it, which is precisely the claim we are
+                        # declining to make. Nothing is published either way:
+                        # only approved points are ever bound.
+                        map_review_point(point, entry)
+                        fields += ['component', 'template', 'match_method']
+                        if point.status == 'unresolved':
+                            # It now resolves to a catalogue parameter, so it is
+                            # a draft awaiting approval rather than a tag with
+                            # nowhere to go.
+                            point.status = 'draft'
+
                     point.review_note = note
                     point.reviewed_at = timezone.now()
                     if point.status == 'approved':
                         point.status = 'draft'
-                    point.save(update_fields=['review_note', 'reviewed_at', 'status'])
+                    point.save(update_fields=fields)
                     withheld += 1
 
             self.stdout.write(f'station   : {station.name}')
