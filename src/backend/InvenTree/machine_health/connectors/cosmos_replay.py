@@ -145,6 +145,24 @@ class CosmosPumphouseReplayConnector(CosmosPumphouseConnector):
         )
         return [self._restamp(reading) for reading in readings]
 
+    def read_windows(self, external_keys, start, end, *, max_samples=None):
+        """Return replayed samples for many tags, stamped in wall time."""
+        source_start, source_end = self.to_source(start), self.to_source(end)
+        span = (source_end - source_start).total_seconds()
+        if span > MAX_TREND_WINDOW_SECONDS:
+            raise ValueError(
+                f'At {self.replay[3]}x this window covers '
+                f'{span / 3600:.1f} source hours, over the '
+                f'{MAX_TREND_WINDOW_SECONDS // 3600}-hour limit'
+            )
+        batched = super().read_windows(
+            external_keys, source_start, source_end, max_samples=max_samples
+        )
+        return {
+            key: [self._restamp(reading) for reading in readings]
+            for key, readings in batched.items()
+        }
+
     def read_latest(self, external_keys=None) -> list[Reading]:
         """Return the newest snapshot at or before the replay's current instant.
 

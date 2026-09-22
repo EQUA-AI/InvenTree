@@ -44,7 +44,7 @@ from .services import snapshots as snapshot_services
 from .services.ingestion import IngestionError, coerce_datetime, ingest_readings
 from .services.preliminary import analyze_anomaly
 from .services.summary import health_summary, signal_rows
-from .services.trends import TrendError, read_trend
+from .services.trends import TrendError, read_trend, read_trends
 
 #: Anomaly lists are bounded; the blade shows the active set, not a history dump.
 MAX_ANOMALY_PAGE = 200
@@ -180,6 +180,73 @@ class MachineHealthTrend(_MachineHealthView):
             )
 
         return Response(result)
+
+
+class MachineHealthTrends(_MachineHealthView):
+    """Bounded historical windows for several of a machine's signals at once.
+
+    The signal table draws a sparkline per bound parameter, which on a pump is
+    thirty to seventy of them. Asking per binding made that many federated reads
+    of the same window; this asks once. Bindings are still resolved against the
+    machine, so an id belonging to another asset is simply absent from the reply.
+    """
+
+    #: A page of sparklines, not an export route.
+    MAX_BINDINGS = 200
+
+    def get(self, request, pk):
+        """Read trends for the named bindings, or say why each is unavailable."""
+        machine = _machine(pk)
+
+        raw = request.query_params.get('bindings', '')
+        parts = [part for part in raw.replace(' ', '').split(',') if part]
+        if not parts or not all(part.isdigit() for part in parts):
+            return Response(
+                {
+                    'code': 'BINDINGS_REQUIRED',
+                    'detail': 'A comma-separated list of numeric binding ids is required.',
+                },
+                status=400,
+            )
+        if len(parts) > self.MAX_BINDINGS:
+            return Response(
+                {
+                    'code': 'TOO_MANY_BINDINGS',
+                    'detail': f'At most {self.MAX_BINDINGS} bindings per request.',
+                },
+                status=400,
+            )
+
+        try:
+            start = (
+                coerce_datetime(request.query_params['from'])
+                if request.query_params.get('from')
+                else None
+            )
+            end = (
+                coerce_datetime(request.query_params['to'])
+                if request.query_params.get('to')
+                else None
+            )
+        except IngestionError as exc:
+            return Response({'code': 'INVALID_WINDOW', 'detail': str(exc)}, status=400)
+
+        max_samples = request.query_params.get('max_samples')
+        try:
+            results = read_trends(
+                machine,
+                binding_ids=[int(part) for part in parts],
+                start=start,
+                end=end,
+                max_samples=int(max_samples) if max_samples else None,
+            )
+        except (TrendError, ValueError) as exc:
+            return Response(
+                {'code': getattr(exc, 'code', 'TREND_INVALID'), 'detail': str(exc)},
+                status=400,
+            )
+
+        return Response({'results': results})
 
 
 class MachineHealthSnapshots(_MachineHealthView):
@@ -433,6 +500,9 @@ machine_health_api_urls = [
                 name='machine-health-anomaly-preliminary-analysis',
             ),
             path('trend/', MachineHealthTrend.as_view(), name='machine-health-trend'),
+            path(
+                'trends/', MachineHealthTrends.as_view(), name='machine-health-trends'
+            ),
             path(
                 'snapshots/',
                 MachineHealthSnapshots.as_view(),

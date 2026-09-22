@@ -1,7 +1,13 @@
 import { t } from '@lingui/core/macro';
 import { Group, Paper, Stack, Table, Text } from '@mantine/core';
+import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 
-import type { MachineSignal } from '@lib/types/MachineHealth';
+import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
+import { apiUrl } from '@lib/functions/Api';
+import type { MachineSignal, SignalTrend } from '@lib/types/MachineHealth';
+
+import { useApi } from '../../../contexts/ApiContext';
 
 import { SignalTrendSparkline } from './SignalTrend';
 import {
@@ -41,10 +47,54 @@ function formatLimits(signal: MachineSignal): string {
  * but its state reads Unknown rather than Normal, so an old number can never be
  * mistaken for a healthy machine.
  */
+/** The sparkline window, matched to the one the standalone sparkline uses. */
+const SPARKLINE_WINDOW_SECONDS = 10 * 60;
+
 export function SignalTable({
   signals,
   machineId
 }: Readonly<{ signals: MachineSignal[]; machineId: number }>) {
+  const api = useApi();
+
+  const bindingIds = useMemo(
+    () => signals.map((signal) => signal.binding_id).filter(Boolean),
+    [signals]
+  );
+
+  // One federated read for the whole table rather than one per row. Each
+  // sparkline used to fetch its own window, and because a snapshot is a
+  // whole-station document the source then read and parsed the same documents
+  // once per row - about thirty times on a pump, seventy on some. Measured at
+  // 6.4s per row against 6.7s for the entire table.
+  const trendsQuery = useQuery<{ results: SignalTrend[] }>({
+    queryKey: ['machine-health-trends', machineId, bindingIds],
+    enabled: bindingIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const end = new Date();
+      const start = new Date(end.getTime() - SPARKLINE_WINDOW_SECONDS * 1000);
+      const response = await api.get(
+        apiUrl(ApiEndpoints.machine_health_trends, machineId),
+        {
+          params: {
+            bindings: bindingIds.join(','),
+            from: start.toISOString(),
+            to: end.toISOString()
+          }
+        }
+      );
+      return response.data;
+    }
+  });
+
+  const trendByBinding = useMemo(() => {
+    const map = new Map<number, SignalTrend>();
+    for (const trend of trendsQuery.data?.results ?? []) {
+      map.set(trend.binding_id, trend);
+    }
+    return map;
+  }, [trendsQuery.data]);
+
   if (signals.length === 0) {
     return (
       <Paper withBorder radius='md' p='md'>
@@ -99,6 +149,7 @@ export function SignalTable({
                 <SignalTrendSparkline
                   machineId={machineId}
                   bindingId={signal.binding_id}
+                  trend={trendByBinding.get(signal.binding_id)}
                 />
               </Table.Td>
               <Table.Td>

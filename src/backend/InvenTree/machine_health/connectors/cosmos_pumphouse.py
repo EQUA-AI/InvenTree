@@ -498,6 +498,52 @@ class CosmosPumphouseConnector(HealthConnector):
                         return collected
         return collected
 
+    def read_windows(self, external_keys, start, end, *, max_samples=None):
+        """Return samples for many tags from a single pass over the documents.
+
+        A snapshot is a whole-station document holding every tag, and
+        ``flatten_snapshot`` parses all of them. Reading one tag at a time means
+        fetching and parsing each document once per tag - for a pump page of
+        thirty-odd sparklines that is thirty identical scans, and it is the
+        largest avoidable cost this adapter has. Here every requested key is
+        collected as each document goes past, so the window is read once.
+
+        Returns:
+            A mapping of external key to its readings, oldest first; a key with
+            no data in the window maps to an empty list.
+        """
+        wanted = {str(key) for key in external_keys}
+        if not wanted:
+            return {}
+
+        start, end, samples = bounded_window(
+            start, end, max_samples=max_samples, ceiling=MAX_TREND_SAMPLES + 1
+        )
+        station = self.station
+        start_ms, end_ms = to_epoch_ms(start), to_epoch_ms(end)
+
+        collected: dict[str, list[Reading]] = {key: [] for key in wanted}
+        # Stop only when *every* key has filled, not when the first one has:
+        # tags do not all report at the same cadence.
+        outstanding = set(wanted)
+
+        for bucket in self._buckets(start_ms, end_ms, MAX_BUCKETS_PER_READ):
+            window_from = max(start_ms, bucket)
+            window_to = min(end_ms, bucket + HOUR_MS)
+            for document in self.documents_in_bucket(
+                station, bucket, window_from, window_to
+            ):
+                for reading in flatten_snapshot(document):
+                    key = reading.external_key
+                    if key not in outstanding:
+                        continue
+                    collected[key].append(reading)
+                    if len(collected[key]) >= samples:
+                        outstanding.discard(key)
+                if not outstanding:
+                    return collected
+        return collected
+
     @staticmethod
     def _buckets(start_ms: int, end_ms: int, limit: int):
         """Yield each hour bucket touched by ``[start_ms, end_ms)``, bounded."""

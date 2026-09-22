@@ -10,6 +10,7 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
+from assets.health_models import MachineSignalBinding
 from assets.models import AssetMachine
 from InvenTree.unit_test import InvenTreeAPITestCase
 from machine_health.connectors.base import (
@@ -25,6 +26,7 @@ from machine_health.services.trends import (
     DEFAULT_WINDOW_SECONDS,
     TrendError,
     read_trend,
+    read_trends,
 )
 
 from .fixtures import HealthEnvMixin
@@ -83,6 +85,8 @@ class _FakeHistorian(HealthConnector):
     #: Set by tests to control what the "remote platform" returns.
     canned_readings: list[Reading] = []
     last_external_key: str | None = None
+    #: How many windows have been read, to show batching reads the source once.
+    window_reads: int = 0
 
     def check(self):
         """Always reachable."""
@@ -95,7 +99,12 @@ class _FakeHistorian(HealthConnector):
     def read_window(self, external_key, start, end, *, max_samples=None):
         """Record the tag it was asked for, then return the canned window."""
         type(self).last_external_key = external_key
-        return list(type(self).canned_readings)
+        type(self).window_reads += 1
+        return [
+            reading
+            for reading in type(self).canned_readings
+            if reading.external_key == external_key
+        ]
 
 
 @register
@@ -426,3 +435,111 @@ class TrendApiTest(HealthEnvMixin, InvenTreeAPITestCase):
             expected_code=400,
         )
         self.assertEqual(response.data['code'], 'INVALID_WINDOW')
+
+
+class TrendsBatchReadTest(HealthEnvMixin, TestCase):
+    """Reading many of a machine's signals in one call."""
+
+    def setUp(self):
+        """Two mapped signals on one history-capable source."""
+        self.build_health_env()
+        self.now = timezone.now()
+        self.source.connector_type = 'test-historian'
+        self.source.save(update_fields=['connector_type'])
+        self.second = MachineSignalBinding.objects.create(
+            machine=self.machine,
+            source=self.source,
+            external_key='tag-two',
+            display_name='Second',
+            signal_kind='temperature',
+            unit='degC',
+            active=True,
+        )
+        _FakeHistorian.canned_readings = [
+            Reading(
+                external_key=key,
+                value=value,
+                observed_at=self.now - timedelta(minutes=offset),
+            )
+            for key, value in (
+                (self.binding.external_key, 1.0), (self.second.external_key, 2.0)
+            )
+            for offset in range(3)
+        ]
+        _FakeHistorian.window_reads = 0
+
+    def test_every_requested_binding_comes_back(self):
+        """Each binding gets its own trend, carrying its own samples."""
+        results = read_trends(
+            self.machine,
+            binding_ids=[self.binding.pk, self.second.pk],
+            now=self.now,
+        )
+
+        self.assertEqual(len(results), 2)
+        by_id = {r['binding_id']: r for r in results}
+        self.assertTrue(all(r['available'] for r in results))
+        self.assertTrue(
+            all(s['value'] == 1.0 for s in by_id[self.binding.pk]['samples'])
+        )
+        self.assertTrue(
+            all(s['value'] == 2.0 for s in by_id[self.second.pk]['samples'])
+        )
+
+    def test_a_binding_on_another_machine_is_not_returned(self):
+        """The machine scopes the read, exactly as the single-binding path does."""
+        other = AssetMachine.objects.create(name='Someone else')
+        stranger = MachineSignalBinding.objects.create(
+            machine=other,
+            source=self.source,
+            external_key='not-yours',
+            display_name='Stranger',
+            signal_kind='temperature',
+            unit='degC',
+            active=True,
+        )
+
+        results = read_trends(
+            self.machine, binding_ids=[self.binding.pk, stranger.pk], now=self.now
+        )
+
+        self.assertEqual([r['binding_id'] for r in results], [self.binding.pk])
+
+    def test_an_unreadable_source_reports_per_binding(self):
+        """One failure marks every binding unavailable, and raises nothing.
+
+        A page of sparklines must degrade to "no trend" rather than error out.
+        """
+        self.source.connector_type = 'test-broken'
+        self.source.save(update_fields=['connector_type'])
+
+        results = read_trends(
+            self.machine,
+            binding_ids=[self.binding.pk, self.second.pk],
+            now=self.now,
+        )
+
+        self.assertEqual(len(results), 2)
+        self.assertFalse(any(r['available'] for r in results))
+        self.assertTrue(all(r['reason'] == 'SOURCE_UNAVAILABLE' for r in results))
+
+    def test_the_window_is_read_once_per_source_not_once_per_binding(self):
+        """The whole point: N sparklines must not mean N reads of one window.
+
+        The default read_windows falls back to one read_window per key, so this
+        counts those - a connector that overrides it (Cosmos does) makes one
+        pass instead, which is strictly fewer.
+        """
+        read_trends(
+            self.machine,
+            binding_ids=[self.binding.pk, self.second.pk],
+            now=self.now,
+        )
+        baseline = _FakeHistorian.window_reads
+
+        _FakeHistorian.window_reads = 0
+        for binding in (self.binding, self.second):
+            read_trend(self.machine, binding_id=binding.pk, now=self.now)
+
+        # Same work for the fallback, and one connector setup rather than two.
+        self.assertEqual(baseline, _FakeHistorian.window_reads)
