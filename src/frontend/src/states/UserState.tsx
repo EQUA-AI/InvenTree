@@ -7,6 +7,7 @@ import { UserPermissions, type UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
 import type { UserProps, UserStateProps } from '@lib/types/User';
 import { api, queryClient, setApiDefaults } from '../App';
+import { SESSION_CHECK_BUDGET_MS, readSession } from '../functions/sessionRead';
 import { useAIChatState } from './AIChatState';
 import { useLocalState } from './LocalState';
 import { useServerApiState } from './ServerApiState';
@@ -80,7 +81,9 @@ export const useUserState = create<UserStateProps>((set, get) => ({
     // Explicit logout clears it after ending the server session.
     setApiDefaults();
   },
-  fetchUserToken: async () => {
+  fetchUserToken: async (
+    deadline = performance.now() + SESSION_CHECK_BUDGET_MS
+  ) => {
     const host = useLocalState.getState().getHost();
     const generation = get().authGeneration;
     const request = ++tokenRequest;
@@ -91,9 +94,15 @@ export const useUserState = create<UserStateProps>((set, get) => ({
     set({ authStatus: 'checking' });
     // Session cookies are HttpOnly; document.cookie cannot establish expiry.
     try {
-      const response = await api.get(apiUrl(ApiEndpoints.auth_session), {
-        baseURL: host
-      });
+      const response = await readSession(
+        (timeout) =>
+          api.get(apiUrl(ApiEndpoints.auth_session), {
+            baseURL: host,
+            timeout
+          }),
+        current,
+        deadline
+      );
       if (!current()) return 'stale';
       if (
         response.status === 200 &&
@@ -123,6 +132,7 @@ export const useUserState = create<UserStateProps>((set, get) => ({
     return 'unavailable';
   },
   fetchUserState: async (checkSession = false) => {
+    const deadline = performance.now() + SESSION_CHECK_BUDGET_MS;
     const host = useLocalState.getState().getHost();
     const generation = get().authGeneration;
     const request = ++profileRequest;
@@ -131,7 +141,7 @@ export const useUserState = create<UserStateProps>((set, get) => ({
       generation === get().authGeneration &&
       host === useLocalState.getState().getHost();
     if (checkSession || !get().isAuthed()) {
-      const result = await get().fetchUserToken();
+      const result = await get().fetchUserToken(deadline);
       if (result !== 'authenticated') return result;
     }
     if (!current()) return 'stale';
@@ -143,15 +153,21 @@ export const useUserState = create<UserStateProps>((set, get) => ({
     // user_me_roles.
     let response: AxiosResponse;
     try {
-      response = await api.get(apiUrl(ApiEndpoints.user_me), {
-        baseURL: host,
-        params: { roles: true }
-      });
+      response = await readSession(
+        (timeout) =>
+          api.get(apiUrl(ApiEndpoints.user_me), {
+            baseURL: host,
+            params: { roles: true },
+            timeout
+          }),
+        current,
+        deadline
+      );
     } catch (err: any) {
       if (!current()) return 'stale';
       // A forbidden profile alone does not prove that the session expired.
       if ([401, 403].includes(err?.response?.status)) {
-        const result = await get().fetchUserToken();
+        const result = await get().fetchUserToken(deadline);
         if (result !== 'authenticated') return result;
         if (!current()) return 'stale';
       }

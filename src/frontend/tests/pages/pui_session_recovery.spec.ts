@@ -82,7 +82,7 @@ for (const failure of ['timeout', 'offline', 'server-error', 'malformed']) {
     });
     await page.goto('/playwright/auth-csrf.html?restore=1');
     await expect(page.getByText('Could not verify your session')).toBeVisible({
-      timeout: 10000
+      timeout: 25000
     });
     await expect(page.getByTestId('destination')).toHaveText('/logged-in');
     await expect(
@@ -93,6 +93,67 @@ for (const failure of ['timeout', 'offline', 'server-error', 'malformed']) {
     await page.getByRole('button', { name: 'Retry session check' }).click();
     await expect(page.getByTestId('destination')).toHaveText('/home');
     expect(posts).toBe(0);
+  });
+}
+
+test('refresh and a new tab restore slow session and profile reads', async ({
+  page,
+  context
+}) => {
+  test.setTimeout(45000);
+  await page.goto('/playwright/auth-csrf.html?restore=1');
+  await expect(page.getByTestId('destination')).toHaveText('/home');
+  // Context routes also apply to a newly opened tab, which starts with no
+  // in-memory user state. Each read exceeds the old five-second timeout.
+  await page.unrouteAll();
+  await context.route('**/api/**', (route) => route.fulfill({ json: [] }));
+  for (const [url, json] of [
+    [session, { meta: { is_authenticated: true } }],
+    [profile, user]
+  ] as const) {
+    await context.route(url, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+      await route.fulfill({ json });
+    });
+  }
+  await page.reload();
+  await expect(page.getByTestId('destination')).toHaveText('/home', {
+    timeout: 16000
+  });
+  const tab = await context.newPage();
+  await tab.goto('/playwright/auth-csrf.html?restore=1');
+  await expect(tab.getByTestId('destination')).toHaveText('/home', {
+    timeout: 16000
+  });
+  await expect(tab.getByTestId('session-state')).toContainText('"user":42');
+  await expect(tab.getByText('Could not verify your session')).toHaveCount(0);
+});
+
+for (const endpoint of [session, profile]) {
+  test(`a transient ${endpoint} failure recovers automatically`, async ({
+    page
+  }) => {
+    let reads = 0;
+    let mutations = 0;
+    page.on('request', (request) => {
+      if (
+        ['POST', 'DELETE'].includes(request.method()) &&
+        request.url().includes('/auth/')
+      ) {
+        mutations++;
+      }
+    });
+    await page.route(endpoint, (route) => {
+      reads++;
+      return route.fulfill({
+        status: reads === 1 ? 503 : 200,
+        json: endpoint === session ? { meta: { is_authenticated: true } } : user
+      });
+    });
+    await page.goto('/playwright/auth-csrf.html?restore=1');
+    await expect(page.getByTestId('destination')).toHaveText('/home');
+    expect(reads).toBe(2);
+    expect(mutations).toBe(0);
   });
 }
 

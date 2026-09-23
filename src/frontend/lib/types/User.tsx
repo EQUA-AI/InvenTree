@@ -47,7 +47,7 @@ export interface UserStateProps {
   userId: () => number | undefined;
   username: () => string;
   setAuthenticated: (authed?: boolean) => void;
-  fetchUserToken: () => Promise<AuthCheckResult>;
+  fetchUserToken: (deadline?: number) => Promise<AuthCheckResult>;
   setUser: (newUser: UserProps | undefined) => void;
   getUser: () => UserProps | undefined;
   fetchUserState: (checkSession?: boolean) => Promise<AuthCheckResult>;
