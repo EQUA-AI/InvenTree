@@ -87,12 +87,16 @@ google-api-python-client                # Gmail integration (ai email tools)
 google-auth                             # Gmail integration auth
 tenacity                                # Retry policies (ai InvenTree client)
 azure-ai-documentintelligence>=1.0.0    # Azure Document Intelligence
+azure-ai-projects==2.7.0                # Match deployed Foundry client; requires OpenAI 3.x
 azure-identity>=1.15.0                  # Azure Identity
 azure-search-documents                  # Azure AI Search integration
 httpx                                   # Cohere Embed v4 wire + retry middleware (attachment RAG, R5)
 google-genai                            # Gemini Embedding 2 via Vertex AI (media RAG, R0)
 pgvector                                # Postgres vector columns for the RAG system of record
-openai>=1.12.0                          # OpenAI SDK
+openai==3.18.0                          # Match deployed SDK; resolved with azure-ai-projects
+google-auth-oauthlib>=1.2.0             # Gmail OAuth, included in the image manifest
+pybreaker>=1.0.0                        # AI circuit breakers
+opentelemetry-instrumentation-fastapi==0.65b0  # Same instrumentation wave as the backend
 # M1 pin ledger (plan of record §9.7 / GR-26): app code imports these, so they are
 # admitted HERE (the hashed image manifest), never in the unhashed ai/requirements.txt.
 pydantic==2.13.4                        # governed by agent-framework-core==1.0.0b251120

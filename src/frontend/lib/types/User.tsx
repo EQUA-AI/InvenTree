@@ -31,16 +31,26 @@ export interface UserProps {
   profile: UserProfile;
 }
 
+export type AuthStatus =
+  | 'unknown'
+  | 'checking'
+  | 'authenticated'
+  | 'unauthenticated'
+  | 'unavailable';
+export type AuthCheckResult = AuthStatus | 'stale';
+
 export interface UserStateProps {
   user: UserProps | undefined;
   is_authed: boolean;
+  authStatus: AuthStatus;
+  authGeneration: number;
   userId: () => number | undefined;
   username: () => string;
   setAuthenticated: (authed?: boolean) => void;
-  fetchUserToken: () => Promise<void>;
+  fetchUserToken: () => Promise<AuthCheckResult>;
   setUser: (newUser: UserProps | undefined) => void;
   getUser: () => UserProps | undefined;
-  fetchUserState: () => Promise<void>;
+  fetchUserState: (checkSession?: boolean) => Promise<AuthCheckResult>;
   clearUserState: () => void;
   checkUserRole: (role: UserRoles, permission: UserPermissions) => boolean;
   hasDeleteRole: (role: UserRoles) => boolean;

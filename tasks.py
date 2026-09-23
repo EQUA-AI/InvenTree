@@ -2266,7 +2266,10 @@ def frontend_install(c):
         c: Context variable
     """
     info('Installing frontend dependencies')
-    yarn(c, 'yarn install')
+    frozen = (
+        str(os.environ.get('INVENTREE_FRONTEND_FROZEN_LOCKFILE', '')).lower() == 'true'
+    )
+    yarn(c, 'yarn install --frozen-lockfile' if frozen else 'yarn install')
 
 
 @task(help={'extract': 'Extract translations (changes sourcecode), default: True'})

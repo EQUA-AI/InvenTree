@@ -157,6 +157,7 @@ anyio==4.14.2 \
     # via
     #   google-genai
     #   httpx
+    #   httpx2
     #   mcp
     #   openai
     #   sse-starlette
@@ -170,6 +171,7 @@ asgiref==3.12.1 \
     #   django-allauth
     #   django-cors-headers
     #   django-structlog
+    #   opentelemetry-instrumentation-asgi
 attrs==26.1.0 \
     --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309 \
     --hash=sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32
@@ -181,23 +183,34 @@ azure-ai-documentintelligence==1.0.2 \
     --hash=sha256:4d75a2513f2839365ebabc0e0e1772f5601b3a8c9a71e75da12440da13b63484 \
     --hash=sha256:e1fb446abbdeccc9759d897898a0fe13141ed29f9ad11fc705f951925822ed59
     # via -r src/backend/requirements.in
+azure-ai-projects==2.7.0 \
+    --hash=sha256:4bce987ebc93641311f7f9406b94f75f00d96b7d388056bb8b06e1f6f64deeaf \
+    --hash=sha256:ba3c6626bfa710031de37f927ae488ca9614168382407d7b2bb8d6e20fe32ff8
+    # via -r src/backend/requirements.in
 azure-core==1.41.0 \
     --hash=sha256:522b4011e8180b1a3dcd2024396a4e7fe9ac37fb8597db47163d230b5efe892d \
     --hash=sha256:f46ff5dfcd230f25cf1c19e8a34b8dc08a337b2503e268bb600a16c00db8ad5a
     # via
     #   azure-ai-documentintelligence
+    #   azure-ai-projects
     #   azure-identity
     #   azure-search-documents
+    #   azure-storage-blob
 azure-identity==1.25.3 \
     --hash=sha256:ab23c0d63015f50b630ef6c6cf395e7262f439ce06e5d07a64e874c724f8d9e6 \
     --hash=sha256:f4d0b956a8146f30333e071374171f3cfa7bdb8073adb8c3814b65567aa7447c
     # via
     #   -r src/backend/requirements.in
     #   agent-framework-core
+    #   azure-ai-projects
 azure-search-documents==12.0.0 \
     --hash=sha256:8e6d73ec0ed1623083435b757e34324db65d72d4e09cca061a59fc7e90c8ddbc \
     --hash=sha256:d88114e4179cd753845711042380a4571e7faa8619addf5e017928ebe37fc0d1
     # via -r src/backend/requirements.in
+azure-storage-blob==12.30.3 \
+    --hash=sha256:31760221ceff36b7ceed741ba0093d08ec857911b92294dce3e4efe8fa40245e \
+    --hash=sha256:80729a5397e5f0a63dbbdff74da675c5db1eacaf25fd5db0074b7ba6c17e2498
+    # via azure-ai-projects
 babel==2.18.0 \
     --hash=sha256:b80b99a14bd085fcacfa15c9165f651fbb3406e66cc603abf11c5750937c992d \
     --hash=sha256:e2b422b277c2b9a9630c1d7903c2a00d0830c409c59ac8cae9081c92f1aeba35
@@ -730,6 +743,7 @@ cryptography==50.0.1 \
     # via
     #   -r src/backend/requirements.in
     #   azure-identity
+    #   azure-storage-blob
     #   django-anymail
     #   djangorestframework-simplejwt
     #   fido2
@@ -749,9 +763,7 @@ defusedxml==0.7.1 \
 distro==1.9.0 \
     --hash=sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed \
     --hash=sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2
-    # via
-    #   google-genai
-    #   openai
+    # via google-genai
 django==5.2.17 \
     --hash=sha256:9d4d93be539a18ab80d058eb515900e10951e04c537c5a6b394fc49528d3251f \
     --hash=sha256:f04fb3b36ee119e1af4fa1d397d5fd6cf12700f49321e84d4f4c642c5b1973db
@@ -1247,11 +1259,16 @@ google-auth[requests]==2.56.2 \
     #   google-api-core
     #   google-api-python-client
     #   google-auth-httplib2
+    #   google-auth-oauthlib
     #   google-genai
 google-auth-httplib2==0.4.0 \
     --hash=sha256:8e55cfafa3358cba85f6cad4a886138e88e158d71e7e5c9ee5936a5c1507fb91 \
     --hash=sha256:d5b030a204b7a4b4d553ba9ca701b62481ee2b74419325580be70f7d85ffed35
     # via google-api-python-client
+google-auth-oauthlib==1.4.1 \
+    --hash=sha256:1a83f5f2a8421dedadaa3caf25b3a710dddf85a33a63144be41c2fc79174b106 \
+    --hash=sha256:a1be43ec69fe563ac9b2c4d6fc4334b323b21cbdc59a638b5fa34dd4d5a2a348
+    # via -r src/backend/requirements.in
 google-genai==2.18.1 \
     --hash=sha256:36a5949233e64a60f6cc4521bff7a76b7c569d0aa227bbe9fa642213b8a3a3b2 \
     --hash=sha256:a1e2be75c16234adc6641afd1ad4dd44218c9eec005d938bdc428585a048918a
@@ -1327,11 +1344,16 @@ h11==0.16.0 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
     #   httpcore
+    #   httpcore2
     #   uvicorn
 httpcore==1.0.9 \
     --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
     --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
     # via httpx
+httpcore2==2.13.0 \
+    --hash=sha256:2adc8be4fb285fbcd6d894298db3b52c177e74b6674eda3a76bd36be3292a3db \
+    --hash=sha256:35ae5be347aa40467b4a5dc032ac67ebb6d27189fc97e8cebcf99616f6a1bb9e
+    # via httpx2
 httplib2==0.32.0 \
     --hash=sha256:48a0ef30a42db65d8f3399045e1d09ab0ba66e3b9efc360d07f80ea55d286025 \
     --hash=sha256:dc6705cacdf3fb0a2aba7629fa33c90fd93e30035db0c157325826be177e4816
@@ -1397,11 +1419,14 @@ httpx==0.28.1 \
     #   -r src/backend/requirements.in
     #   google-genai
     #   mcp
-    #   openai
 httpx-sse==0.4.3 \
     --hash=sha256:0ac1c9fe3c0afad2e0ebb25a934a59f4c7823b60792691f779fad2c5568830fc \
     --hash=sha256:9b1ed0127459a66014aec3c56bebd93da3c1bc8bb6618c8082039a44889a755d
     # via mcp
+httpx2==2.13.0 \
+    --hash=sha256:81bd07dc67a3701729ef1f777a3c00c915d4539604fdb5afd327f8682f6b7b44 \
+    --hash=sha256:fc12720cedf72faa26cca6b4ca394e05c894e7d7933fc45cafe767960804e49a
+    # via openai
 icalendar==7.3.0 \
     --hash=sha256:7bd001c8e648205e1bde5c6a5b77096598e8d0893dcf57755c6c597635620132 \
     --hash=sha256:8355acfe17be81b368f0b1e3740817cea9b56ea889931f8f1a87c62f2d28db0b
@@ -1414,6 +1439,7 @@ idna==3.19 \
     #   django-anymail
     #   email-validator
     #   httpx
+    #   httpx2
     #   requests
     #   yarl
 inflection==0.5.1 \
@@ -1429,7 +1455,9 @@ isodate==0.7.2 \
     --hash=sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6
     # via
     #   azure-ai-documentintelligence
+    #   azure-ai-projects
     #   azure-search-documents
+    #   azure-storage-blob
     #   python3-saml
 jinja2==3.1.6 \
     --hash=sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d \
@@ -2090,12 +2118,14 @@ oauthlib==3.3.1 \
     # via
     #   django-allauth
     #   django-oauth-toolkit
-openai==2.48.0 \
-    --hash=sha256:231b1e7661dda14574986c2f71451e9d584b7fe69e0ee6480e12ed090b48fc16 \
-    --hash=sha256:c98df30aaaf93c51979f64d3e7c5b76464f8be0173368266229eb8fe6bd30f2c
+    #   requests-oauthlib
+openai==3.18.0 \
+    --hash=sha256:31f170b59865cbf35ceb15699bd33b190fa660eb2f36591c74a161afc67152e7 \
+    --hash=sha256:780946991bc825f110ddde12c8c84885dd012ae64143d56d494922b7bb879b78
     # via
     #   -r src/backend/requirements.in
     #   agent-framework-core
+    #   azure-ai-projects
 openpyxl==3.1.5 \
     --hash=sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2 \
     --hash=sha256:cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050
@@ -2109,8 +2139,10 @@ opentelemetry-api==1.44.0 \
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-dbapi
     #   opentelemetry-instrumentation-django
+    #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-instrumentation-psycopg
     #   opentelemetry-instrumentation-pymysql
     #   opentelemetry-instrumentation-redis
@@ -2144,8 +2176,10 @@ opentelemetry-instrumentation==0.65b0 \
     --hash=sha256:071d9d9eced9bd6460444ec3b0c77229870ed05a881c22c84fdede58e4eed09b \
     --hash=sha256:ea967a72b9939b5fcfdad572753b4306c59dcb99e3f382d95dae04286805e137
     # via
+    #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-dbapi
     #   opentelemetry-instrumentation-django
+    #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-instrumentation-psycopg
     #   opentelemetry-instrumentation-pymysql
     #   opentelemetry-instrumentation-redis
@@ -2153,6 +2187,10 @@ opentelemetry-instrumentation==0.65b0 \
     #   opentelemetry-instrumentation-sqlite3
     #   opentelemetry-instrumentation-system-metrics
     #   opentelemetry-instrumentation-wsgi
+opentelemetry-instrumentation-asgi==0.65b0 \
+    --hash=sha256:3a845a8ebd1c4ef0d8263401e6545f5b219b2feee612090d50f578a87e71fd65 \
+    --hash=sha256:892bca67c56522ffa85a8a83cf934d7b50b3be2132e45cbee705825f0a5ba426
+    # via opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-dbapi==0.65b0 \
     --hash=sha256:50b662578a6903b028e09b73f604de687752f5f904aa0ca032969157b29d60f2 \
     --hash=sha256:da048bb683347ddad2f47344bacfe1e111bf7bfb2e5a39796b1083679ad4f0f3
@@ -2163,6 +2201,10 @@ opentelemetry-instrumentation-dbapi==0.65b0 \
 opentelemetry-instrumentation-django==0.65b0 \
     --hash=sha256:915117536c421c3e61e34dadbd373fc404447c7a786303e02f732bc8860e3ba0 \
     --hash=sha256:f79914e03ccf7f34a4dfd257ea9fa1236a6568cd1756e5f969dc026252fad6e9
+    # via -r src/backend/requirements.in
+opentelemetry-instrumentation-fastapi==0.65b0 \
+    --hash=sha256:10a3a95486036230413a58fe4fdf4a83fa6bba46918407e527476994bd92bd97 \
+    --hash=sha256:cda2610a0ec1b22d19886f33e4d861e9f5dbb886aeaa3a1263b47aff82c36943
     # via -r src/backend/requirements.in
 opentelemetry-instrumentation-psycopg==0.65b0 \
     --hash=sha256:62921ceaad2a0d0813a4185ce724aba40e583ead52db03bc3506de5ef53cab84 \
@@ -2215,8 +2257,10 @@ opentelemetry-semantic-conventions==0.65b0 \
     --hash=sha256:f9b2b81e9d5b64f11bc952075e7e9c7fb0aab075c7fd1c46d597f1b919852d60
     # via
     #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-dbapi
     #   opentelemetry-instrumentation-django
+    #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-instrumentation-redis
     #   opentelemetry-instrumentation-requests
     #   opentelemetry-instrumentation-system-metrics
@@ -2231,7 +2275,9 @@ opentelemetry-util-http==0.65b0 \
     --hash=sha256:7553b606f963097cb190536dc30556cce85090692e471a422fff30ca29b04348 \
     --hash=sha256:84f82d826978bba416ab453460ff6a7391cdc3534c93a786595e4068680016b7
     # via
+    #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-django
+    #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-instrumentation-requests
     #   opentelemetry-instrumentation-wsgi
 packaging==26.3 \
@@ -2545,6 +2591,10 @@ pyasn1-modules==0.4.2 \
     --hash=sha256:29253a9207ce32b64c3ac6600edc75368f98473906e8fd1043bd6b5b1de2c14a \
     --hash=sha256:677091de870a80aae844b1ca6134f54652fa2c8c5a52aa396440ac3106e941e6
     # via google-auth
+pybreaker==1.4.1 \
+    --hash=sha256:8df2d245c73ba40c8242c56ffb4f12138fbadc23e296224740c2028ea9dc1178 \
+    --hash=sha256:b4dab4a05195b7f2a64a6c1a6c4ba7a96534ef56ea7210e6bcb59f28897160e0
+    # via -r src/backend/requirements.in
 pycparser==3.0 \
     --hash=sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29 \
     --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
@@ -3126,7 +3176,12 @@ requests==2.34.2 \
     #   google-genai
     #   msal
     #   opentelemetry-exporter-otlp-proto-http
+    #   requests-oauthlib
     #   tiktoken
+requests-oauthlib==2.0.0 \
+    --hash=sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36 \
+    --hash=sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9
+    # via google-auth-oauthlib
 rpds-py==2026.6.3 \
     --hash=sha256:0be972be84cfcaf46c8c6edf690ca0f154ac17babf1f6a955a51579b34ad2dc5 \
     --hash=sha256:127565fead0a10943b282957bd5447804ff3160ad79f2ad2635e6d249e380680 \
@@ -3388,9 +3443,13 @@ tinyhtml5==2.1.0 \
 tqdm==4.70.0 \
     --hash=sha256:55b0b0dbd97462d06ebee91e4dac24ed4d4702be82b24f07e6c1d27e08cea220 \
     --hash=sha256:7f585706bfddbdebf89daac705b2dfcc16890130727d3197ca62c732b4310953
+    # via -r src/backend/requirements.in
+truststore==0.10.4 \
+    --hash=sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301 \
+    --hash=sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981
     # via
-    #   -r src/backend/requirements.in
-    #   openai
+    #   httpcore2
+    #   httpx2
 typing-extensions==4.16.0 \
     --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
     --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
@@ -3401,9 +3460,11 @@ typing-extensions==4.16.0 \
     #   aiosignal
     #   anyio
     #   azure-ai-documentintelligence
+    #   azure-ai-projects
     #   azure-core
     #   azure-identity
     #   azure-search-documents
+    #   azure-storage-blob
     #   django-redis
     #   django-stubs-ext
     #   fastapi
@@ -3411,6 +3472,7 @@ typing-extensions==4.16.0 \
     #   flexparser
     #   google-genai
     #   grpcio
+    #   httpx2
     #   icalendar
     #   jwcrypto
     #   mcp

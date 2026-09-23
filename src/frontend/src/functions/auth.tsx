@@ -75,8 +75,7 @@ export async function doBasicLogin(
   code?: string
 ) {
   const { getHost } = useLocalState.getState();
-  const { clearUserState, setAuthenticated, fetchUserState } =
-    useUserState.getState();
+  const { setAuthenticated, fetchUserState } = useUserState.getState();
   const { setAuthContext, setMfaContext } = useServerApiState.getState();
 
   if (username.length == 0 || password.length == 0) {
@@ -91,9 +90,14 @@ export async function doBasicLogin(
 
   notifications.hide('auth-login-error');
   const host: string = getHost();
+  let generation = useUserState.getState().authGeneration;
+  const current = () =>
+    host === getHost() && generation === useUserState.getState().authGeneration;
   // Keep an existing cookie: Django rotates it after successful login.
   // Never submit credentials if bootstrap timed out or cookies were blocked.
-  if (!(await ensureCsrf(host))) {
+  const csrfReady = await ensureCsrf(host);
+  if (!current()) return false;
+  if (!csrfReady) {
     notifications.show({
       title: t`Login failed`,
       message: t`Could not prepare a secure login. Check your connection and allow cookies for this site, then try again.`,
@@ -105,6 +109,7 @@ export async function doBasicLogin(
 
   let loginDone = false;
   let success = false;
+  let profileReady = false;
 
   // Attempt login with basic info
   await api
@@ -119,14 +124,17 @@ export async function doBasicLogin(
       }
     )
     .then((response) => {
+      if (!current()) return;
       setAuthContext(response.data?.data);
       if (response.status == 200 && response.data?.meta?.is_authenticated) {
         setAuthenticated(true);
+        generation = useUserState.getState().authGeneration;
         loginDone = true;
         success = true;
       }
     })
     .catch(async (err) => {
+      if (!current()) return;
       notifications.hide('auth-login-error');
 
       if (err?.response?.status) {
@@ -135,14 +143,23 @@ export async function doBasicLogin(
             await handlePossibleMFAError(err);
             break;
           case 409:
-            doLogout(navigate);
-            notifications.show({
-              title: t`Logged Out`,
-              message: t`There was a conflicting session for this browser, which has been logged out.`,
-              color: 'red',
-              id: 'auth-login-error',
-              autoClose: true
-            });
+            // Allauth reports 409 when a server session already exists.
+            // Recover that account; only explicit sign-out may destroy it.
+            const restored = await fetchUserState(true);
+            if (restored === 'authenticated') {
+              loginDone = true;
+              success = true;
+              profileReady = true;
+            } else if (restored === 'unavailable') {
+              success = true;
+            } else if (restored === 'unauthenticated') {
+              notifications.show({
+                title: t`Login failed`,
+                message: t`Your previous session has ended. Please sign in again.`,
+                color: 'red',
+                id: 'auth-login-error'
+              });
+            }
             break;
           default:
             const data = err.response?.data ?? {};
@@ -178,19 +195,23 @@ export async function doBasicLogin(
       }
     });
 
+  if (!current()) return false;
+
   // see if mfa registration is required
   if (loginDone) {
     // stop further processing if mfa setup is required
-    if (!(await MfaSetupOk(navigate))) loginDone = false;
+    if (!(await MfaSetupOk(navigate, current))) loginDone = false;
   }
+  if (!current()) return false;
 
   // we are successfully logged in - gather required states for app
   if (loginDone) {
-    await fetchUserState();
+    const result = profileReady ? 'authenticated' : await fetchUserState();
+    if (result !== 'authenticated') return result === 'unavailable';
+    if (!current()) return false;
     await fetchGlobalStates(true);
+    if (!current()) return false;
     observeProfile();
-  } else if (!success) {
-    clearUserState();
   }
   return success;
 
@@ -211,6 +232,7 @@ export async function doBasicLogin(
         );
         if (rslt) {
           setAuthenticated(true);
+          generation = useUserState.getState().authGeneration;
           loginDone = true;
           success = true;
           notifications.show({
@@ -244,12 +266,42 @@ export async function doBasicLogin(
 export const doLogout = async (navigate: NavigateFunction) => {
   const { clearUserState, isLoggedIn } = useUserState.getState();
   const { setAuthContext } = useServerApiState.getState();
+  const host = useLocalState.getState().getHost();
+  const endSession = isLoggedIn() || !!getCsrfCookie();
+  // Invalidate in-flight profile/login requests before waiting for the server.
+  clearUserState();
+  setAuthContext(undefined);
+  resetGlobalStatesFetched();
+  const generation = useUserState.getState().authGeneration;
+  const current = () =>
+    generation === useUserState.getState().authGeneration &&
+    host === useLocalState.getState().getHost();
+  useUserState.setState({ authStatus: 'checking' });
 
   // Logout from the server session
-  if (isLoggedIn() || !!getCsrfCookie()) {
-    await authApi(apiUrl(ApiEndpoints.auth_session), undefined, 'delete').catch(
-      () => {}
-    );
+  if (endSession) {
+    let ended = false;
+    try {
+      const response = await authApi(
+        apiUrl(ApiEndpoints.auth_session),
+        { baseURL: host },
+        'delete'
+      );
+      ended = response.data?.meta?.is_authenticated === false;
+    } catch (err: any) {
+      ended = err?.response?.status === 401;
+    }
+    if (!current()) return;
+    if (!ended) {
+      useUserState.setState({ authStatus: 'unavailable' });
+      notifications.show({
+        title: t`Sign out incomplete`,
+        message: t`The server could not confirm sign-out. Check your connection and try again.`,
+        color: 'red',
+        id: 'auth-logout-error'
+      });
+      return;
+    }
     // remove MFA token (mfa_trusted)
     document.cookie =
       'mfa_trusted=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
@@ -260,10 +312,9 @@ export const doLogout = async (navigate: NavigateFunction) => {
     });
   }
 
-  clearUserState();
+  if (!current()) return;
+  useUserState.setState({ authStatus: 'unauthenticated' });
   clearCsrfCookie();
-  setAuthContext(undefined);
-  resetGlobalStatesFetched();
   navigate('/login');
 };
 
@@ -287,13 +338,14 @@ export const doSimpleLogin = async (email: string) => {
   return mail;
 };
 
-function MfaSetupOk(navigate: NavigateFunction) {
+function MfaSetupOk(navigate: NavigateFunction, current = () => true) {
   return api
     .get(apiUrl(ApiEndpoints.auth_base))
     .then(() => {
       return true;
     })
     .catch((err) => {
+      if (!current()) return false;
       if (err?.response?.status == 401) {
         const mfa_register = err.response.data.id == FlowEnum.MfaRegister;
         if (mfa_register && navigate != undefined) {
@@ -473,7 +525,12 @@ export const checkLoginState = async (
     redirect = '/home';
   }
 
-  const { isLoggedIn, fetchUserState } = useUserState.getState();
+  const { isLoggedIn, fetchUserState, authStatus } = useUserState.getState();
+  const host = useLocalState.getState().getHost();
+  const generation = useUserState.getState().authGeneration;
+  const current = () =>
+    generation === useUserState.getState().authGeneration &&
+    host === useLocalState.getState().getHost();
 
   // Callback function when login is successful
   const loginSuccess = async () => {
@@ -482,8 +539,8 @@ export const checkLoginState = async (
       title: t`Logged In`,
       message: t`Successfully logged in`
     });
-    MfaSetupOk(navigate).then(async (isOk) => {
-      if (isOk) {
+    await MfaSetupOk(navigate, current).then(async (isOk) => {
+      if (isOk && current()) {
         observeProfile();
         // Not forced: this runs on every page load's auth check, and
         // LanguageContext's own locale-activation effect (which always
@@ -491,12 +548,12 @@ export const checkLoginState = async (
         // route tree) will typically have already triggered this fetch.
         await fetchGlobalStates();
 
-        followRedirect(navigate, redirect);
+        if (current()) followRedirect(navigate, redirect);
       }
     });
   };
 
-  if (isLoggedIn()) {
+  if (isLoggedIn() && authStatus === 'authenticated') {
     // Already logged in
     await loginSuccess();
     return;
@@ -504,7 +561,12 @@ export const checkLoginState = async (
 
   // Not yet logged in, but we might have a valid session cookie
   // Attempt to login
-  await fetchUserState();
+  const result = await fetchUserState(true);
+  if (result === 'stale') return;
+  if (result === 'unavailable') {
+    setLoginChecked(true);
+    return;
+  }
 
   if (isLoggedIn()) {
     await loginSuccess();
@@ -545,15 +607,25 @@ export function handleSuccessFullAuth(
     setAuthContext(response.data?.data);
   }
   setAuthenticated();
+  const host = useLocalState.getState().getHost();
+  const generation = useUserState.getState().authGeneration;
+  const current = () =>
+    generation === useUserState.getState().authGeneration &&
+    host === useLocalState.getState().getHost();
 
   // see if mfa registration is required
-  MfaSetupOk(navigate).then(async (isOk) => {
-    if (isOk) {
-      await fetchUserState();
+  MfaSetupOk(navigate, current).then(async (isOk) => {
+    if (isOk && current()) {
+      const result = await fetchUserState();
+      if (result === 'stale') return;
+      if (result !== 'authenticated') {
+        navigate('/logged-in', { state: location?.state });
+        return;
+      }
       observeProfile();
       await fetchGlobalStates(true);
 
-      if (location !== undefined) {
+      if (current() && location !== undefined) {
         followRedirect(navigate, location?.state);
       }
     }

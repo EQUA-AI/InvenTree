@@ -7,7 +7,6 @@ import type { UserTheme } from '@lib/types/Core';
 import type { HostList } from '@lib/types/Server';
 import { api } from '../App';
 import type { VoicePreferences } from '../components/ai/voice/types';
-import { useAIChatState } from './AIChatState';
 import { useUserState } from './UserState';
 
 interface LocalStateProps extends VoicePreferences {
@@ -106,10 +105,12 @@ export const useLocalState = create<LocalStateProps>()(
         return host;
       },
       setHost: (newHost, newHostKey) => {
-        if (newHost !== get().host || newHostKey !== get().hostKey) {
-          useAIChatState.getState().resetSession();
-        }
+        const previousHost = get().getHost();
         set({ host: newHost, hostKey: newHostKey });
+        if (previousHost !== get().getHost()) {
+          useUserState.getState().clearUserState();
+          useUserState.getState().setLoginChecked(false);
+        }
       },
       hostKey: '',
       hostList: {},

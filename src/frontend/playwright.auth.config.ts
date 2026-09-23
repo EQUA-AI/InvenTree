@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/pages',
-  testMatch: 'pui_auth_csrf.spec.ts',
+  testMatch: ['pui_auth_csrf.spec.ts', 'pui_session_recovery.spec.ts'],
   workers: 1,
   retries: 0,
   timeout: 30_000,

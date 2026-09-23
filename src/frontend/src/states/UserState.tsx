@@ -1,3 +1,4 @@
+import type { AxiosResponse } from 'axios';
 import { create } from 'zustand';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -5,9 +6,13 @@ import type { ModelType } from '@lib/enums/ModelType';
 import { UserPermissions, type UserRoles } from '@lib/enums/Roles';
 import { apiUrl } from '@lib/functions/Api';
 import type { UserProps, UserStateProps } from '@lib/types/User';
-import { api, setApiDefaults } from '../App';
+import { api, queryClient, setApiDefaults } from '../App';
 import { useAIChatState } from './AIChatState';
+import { useLocalState } from './LocalState';
 import { useServerApiState } from './ServerApiState';
+
+let tokenRequest = 0;
+let profileRequest = 0;
 
 /**
  * Global user information state, using Zustand manager
@@ -15,9 +20,18 @@ import { useServerApiState } from './ServerApiState';
 export const useUserState = create<UserStateProps>((set, get) => ({
   user: undefined,
   is_authed: false,
+  authStatus: 'unknown',
+  authGeneration: 0,
   setAuthenticated: (authed = true) => {
-    if (!authed && get().is_authed) useAIChatState.getState().resetSession();
-    set({ is_authed: authed });
+    if (!authed) {
+      get().clearUserState();
+      return;
+    }
+    set({
+      is_authed: authed,
+      authStatus: authed ? 'authenticated' : 'unauthenticated',
+      authGeneration: get().authGeneration + 1
+    });
     setApiDefaults();
   },
   userId: () => {
@@ -48,70 +62,110 @@ export const useUserState = create<UserStateProps>((set, get) => ({
       ]);
     if (previous && boundary(previous) !== boundary(newUser)) {
       useAIChatState.getState().resetSession();
+      queryClient.clear();
     }
     set({ user: newUser });
   },
   getUser: () => get().user,
   clearUserState: () => {
     useAIChatState.getState().resetSession();
-    set({ user: undefined, is_authed: false });
+    queryClient.clear();
+    set({
+      user: undefined,
+      is_authed: false,
+      authStatus: 'unauthenticated',
+      authGeneration: get().authGeneration + 1
+    });
     // Anonymous session checks must not erase the cookie needed by login.
     // Explicit logout clears it after ending the server session.
     setApiDefaults();
   },
   fetchUserToken: async () => {
-    // If neither the csrf or session cookies are available, we cannot fetch a token
-    if (
-      !document.cookie.includes('csrftoken') &&
-      !document.cookie.includes('sessionid')
-    ) {
-      get().setAuthenticated(false);
-      return;
-    }
-
-    await api
-      .get(apiUrl(ApiEndpoints.auth_session))
-      .then((response) => {
-        if (response.status == 200 && response.data.meta.is_authenticated) {
-          get().setAuthenticated(true);
-        } else {
-          get().setAuthenticated(false);
-        }
-      })
-      .catch((err) => {
-        // Capture any pending auth flow (e.g. a pending SSO provider signup)
-        // reported alongside the failure, so callers can act on it.
-        if (err?.response?.data?.data) {
-          useServerApiState.getState().setAuthContext(err.response.data.data);
-        }
-        get().setAuthenticated(false);
+    const host = useLocalState.getState().getHost();
+    const generation = get().authGeneration;
+    const request = ++tokenRequest;
+    const current = () =>
+      request === tokenRequest &&
+      generation === get().authGeneration &&
+      host === useLocalState.getState().getHost();
+    set({ authStatus: 'checking' });
+    // Session cookies are HttpOnly; document.cookie cannot establish expiry.
+    try {
+      const response = await api.get(apiUrl(ApiEndpoints.auth_session), {
+        baseURL: host
       });
+      if (!current()) return 'stale';
+      if (
+        response.status === 200 &&
+        response.data?.meta?.is_authenticated === true
+      ) {
+        const id = response.data?.data?.user?.id;
+        if (id && get().user && id !== get().user?.pk) get().setUser(undefined);
+        set({ is_authed: true, authStatus: 'authenticated' });
+        return 'authenticated';
+      }
+      if (
+        response.status === 200 &&
+        response.data?.meta?.is_authenticated === false
+      ) {
+        get().clearUserState();
+        return 'unauthenticated';
+      }
+    } catch (err: any) {
+      if (!current()) return 'stale';
+      if (err?.response?.status === 401) {
+        useServerApiState.getState().setAuthContext(err.response.data?.data);
+        get().clearUserState();
+        return 'unauthenticated';
+      }
+    }
+    set({ authStatus: 'unavailable' });
+    return 'unavailable';
   },
-  fetchUserState: async () => {
-    if (!get().isAuthed()) {
-      await get().fetchUserToken();
+  fetchUserState: async (checkSession = false) => {
+    const host = useLocalState.getState().getHost();
+    const generation = get().authGeneration;
+    const request = ++profileRequest;
+    const current = () =>
+      request === profileRequest &&
+      generation === get().authGeneration &&
+      host === useLocalState.getState().getHost();
+    if (checkSession || !get().isAuthed()) {
+      const result = await get().fetchUserToken();
+      if (result !== 'authenticated') return result;
     }
-
-    // If we still don't have a token, clear the user state and return
-    if (!get().isAuthed()) {
-      get().clearUserState();
-      return;
-    }
+    if (!current()) return 'stale';
+    set({ authStatus: 'checking' });
 
     // Fetch user data along with role/permission data in a single request -
     // the '?roles=true' param asks the API to include the same role and
     // permission data that used to require a separate request to
     // user_me_roles.
-    const response = await api
-      .get(apiUrl(ApiEndpoints.user_me), {
-        params: { roles: true },
-        timeout: 2000
-      })
-      .catch(() => undefined);
-
-    if (response?.status !== 200) {
-      get().clearUserState();
-      return;
+    let response: AxiosResponse;
+    try {
+      response = await api.get(apiUrl(ApiEndpoints.user_me), {
+        baseURL: host,
+        params: { roles: true }
+      });
+    } catch (err: any) {
+      if (!current()) return 'stale';
+      // A forbidden profile alone does not prove that the session expired.
+      if ([401, 403].includes(err?.response?.status)) {
+        const result = await get().fetchUserToken();
+        if (result !== 'authenticated') return result;
+        if (!current()) return 'stale';
+      }
+      set({ authStatus: 'unavailable' });
+      return 'unavailable';
+    }
+    if (!current()) return 'stale';
+    if (
+      response.status !== 200 ||
+      !Number.isSafeInteger(response.data?.pk) ||
+      response.data.pk <= 0
+    ) {
+      set({ authStatus: 'unavailable' });
+      return 'unavailable';
     }
 
     const user: UserProps = {
@@ -128,6 +182,8 @@ export const useUserState = create<UserStateProps>((set, get) => ({
       is_superuser: response.data?.is_superuser ?? false
     };
     get().setUser(user);
+    set({ authStatus: 'authenticated' });
+    return 'authenticated';
   },
   isAuthed: () => {
     return get().is_authed;

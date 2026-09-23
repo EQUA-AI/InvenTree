@@ -33,6 +33,7 @@ import { useServerApiState } from '../../states/ServerApiState';
 import { useUserState } from '../../states/UserState';
 import { SsoButton } from '../buttons/SSOButton';
 import { errorCodeLink } from '../nav/Alerts';
+import { SessionRecovery } from './SessionRecovery';
 
 export function AuthenticationForm() {
   const classicForm = useForm({
@@ -50,7 +51,7 @@ export function AuthenticationForm() {
     );
   const navigate = useNavigate();
   const location = useLocation();
-  const { isLoggedIn } = useUserState();
+  const { isLoggedIn, authStatus } = useUserState();
 
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
@@ -66,7 +67,11 @@ export function AuthenticationForm() {
         classicForm.values.code
       )
         .then((success) => {
-          if (isLoggedIn()) {
+          if (
+            success &&
+            isLoggedIn() &&
+            useUserState.getState().authStatus === 'authenticated'
+          ) {
             showLoginNotification({
               title: t`Login successful`,
               message: t`Logged in successfully`
@@ -104,6 +109,9 @@ export function AuthenticationForm() {
       });
     }
   }
+
+  if (authStatus === 'unavailable' || authStatus === 'checking')
+    return <SessionRecovery />;
 
   return (
     <>

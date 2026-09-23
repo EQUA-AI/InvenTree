@@ -673,7 +673,7 @@ msgid "Work Orders"
 msgstr ""
 
 #: lib/enums/ModelInformation.tsx:367
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:325
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:330
 #: src/components/riskradar/RiskFindingDetailModal.tsx:280
 #: src/components/tasks/TaskGantt.tsx:165
 #: src/pages/maintenance/MaintenanceBoard.tsx:1657
@@ -740,7 +740,7 @@ msgstr ""
 #: src/components/wizards/ImportPartWizard.tsx:574
 #: src/components/wizards/ImportPartWizard.tsx:719
 #: src/forms/BomForms.tsx:87
-#: src/functions/auth.tsx:734
+#: src/functions/auth.tsx:834
 #: src/pages/ErrorPage.tsx:11
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:317
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:408
@@ -1069,7 +1069,7 @@ msgid "Enter a subject"
 msgstr ""
 
 #: src/components/ai/MailboxPanel.tsx:108
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:293
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:298
 #: src/pages/repair/RepairPacketDetail.tsx:293
 msgid "From"
 msgstr ""
@@ -1452,7 +1452,7 @@ msgid "Result not verified — reconciling, do not retry"
 msgstr ""
 
 #: src/components/ai/VoiceDecisionCard.tsx:131
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:611
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:616
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:115
 #: src/pages/build/BuildOrderDetailsPanel.tsx:220
 #: src/tables/assets/MaintenanceRecordTable.tsx:121
@@ -2478,8 +2478,8 @@ msgid "This applies to all of your memories still linked to this conversation, i
 msgstr ""
 
 #: src/components/aichat/ThreadActionsModal.tsx:131
-#: src/components/forms/AuthenticationForm.tsx:136
-#: src/components/forms/AuthenticationForm.tsx:296
+#: src/components/forms/AuthenticationForm.tsx:138
+#: src/components/forms/AuthenticationForm.tsx:298
 #: src/pages/Auth/ProviderSignup.tsx:129
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:64
 #: src/pages/core/UserDetail.tsx:43
@@ -2697,7 +2697,7 @@ msgid "uncontrolled attachment"
 msgstr ""
 
 #: src/components/aichat/evidenceFormat.ts:117
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:518
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:523
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:168
 msgid "As of"
 msgstr ""
@@ -3010,7 +3010,7 @@ msgstr ""
 
 #: src/components/calendar/OrderCalendar.tsx:208
 #: src/components/calendar/OrderCalendarToolTip.tsx:68
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:464
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:469
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:126
 #: src/components/riskradar/RiskRadarPanel.tsx:421
 #: src/components/tables/Filter.tsx:194
@@ -3059,8 +3059,8 @@ msgid "Your session has expired. Sign in again, then retry."
 msgstr ""
 
 #: src/components/common/ReadErrorNotice.tsx:20
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:399
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:412
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:404
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:417
 msgid "Unavailable for your current role or maintenance scope."
 msgstr ""
 
@@ -3081,7 +3081,7 @@ msgid "Unable to load this information. Please retry."
 msgstr ""
 
 #: src/components/common/ReadErrorNotice.tsx:35
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:417
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:422
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:104
 msgid "Retry"
 msgstr ""
@@ -3416,171 +3416,171 @@ msgstr ""
 msgid "Change the language of the user interface"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:245
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:627
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:250
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:632
 msgid "minutes"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:247
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:252
 msgid "machines"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:248
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:253
 msgid "work orders"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:268
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:273
 msgid "Filters"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:275
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:280
 msgid "Reporting period"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:279
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:284
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:127
 #: src/components/tasks/TaskGantt.tsx:213
 #: src/components/tasks/TaskGantt.tsx:320
 msgid "Today"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:280
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:285
 msgid "This week"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:281
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:286
 msgid "This month"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:282
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:287
 msgid "Last 30 days"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:283
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:288
 msgid "Last 90 days"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:284
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:289
 msgid "Custom"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:299
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:304
 msgid "Through"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:307
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:312
 msgid "Upcoming calendar days"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:317
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:322
 msgid "Client"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:333
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:338
 msgid "Machine criticality"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:342
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:347
 msgid "Assigned user"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:350
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:355
 #: src/pages/maintenance/MaintenanceBoard.tsx:1347
 #: src/pages/maintenance/MaintenanceBoard.tsx:1897
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:409
 msgid "Priority"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:357
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:362
 msgid "Work-order type"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:370
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:375
 #: src/components/tables/Filter.tsx:178
 msgid "Assigned to me"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:395
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:400
 msgid "Reset scope filters"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:401
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:406
 msgid "Choose a valid start and end date."
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:425
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:669
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:430
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:674
 msgid "No qualifying records"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:431
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:436
 msgid "Period in progress"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:432
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:437
 msgid "Selected period"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:433
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:438
 msgid "Now"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:437
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:442
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:147
 msgid "View contributing records"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:464
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:469
 msgid "High priority"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:508
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:513
 msgid "Comparison interval"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:518
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:523
 msgid "Your authorized records"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:534
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:539
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:179
 msgid "Live records may have changed since the count was loaded."
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:543
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:548
 msgid "Show all contributing records"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:548
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:553
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:183
 msgid "Records unavailable"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:552
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:557
 msgid "records"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:558
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:563
 msgid "Record"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:559
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:564
 msgid "Machine / status"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:560
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:565
 msgid "Recorded details"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:598
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:603
 msgid "Assigned to"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:606
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:611
 msgid "Due"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:616
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:621
 #: src/components/riskradar/RiskFindingDetailModal.tsx:313
 #: src/pages/build/BuildOrderDetailsPanel.tsx:196
 #: src/pages/stock/StockDetailsPanel.tsx:357
@@ -3592,45 +3592,45 @@ msgstr ""
 msgid "Created"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:621
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:626
 msgid "Verifying since"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:628
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:633
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:536
 #: src/tables/assets/MaintenanceRecordTable.tsx:133
 msgid "Amended"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:632
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:637
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:130
 msgid "Parts not fully allocated"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:636
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:641
 msgid "Data health"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:654
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:659
 msgid "Active alerts"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:656
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:661
 #: src/pages/assets/health/AnomalyList.tsx:148
 msgid "First observed"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:659
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:664
 #: src/pages/assets/health/AnomalyList.tsx:154
 msgid "Last observed"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:676
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:681
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:213
 msgid "Previous"
 msgstr ""
 
-#: src/components/dashboard/widgets/MaintenanceWidget.tsx:681
+#: src/components/dashboard/widgets/MaintenanceWidget.tsx:686
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:218
 #: src/components/wizards/ImportPartWizard.tsx:511
 msgid "Next"
@@ -4531,146 +4531,149 @@ msgstr ""
 msgid "Update"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:73
+#: src/components/forms/AuthenticationForm.tsx:76
 msgid "Login successful"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:74
+#: src/components/forms/AuthenticationForm.tsx:77
 msgid "Logged in successfully"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:81
-#: src/components/forms/AuthenticationForm.tsx:89
-#: src/functions/auth.tsx:149
-#: src/functions/auth.tsx:158
+#: src/components/forms/AuthenticationForm.tsx:86
+#: src/functions/auth.tsx:83
+#: src/functions/auth.tsx:102
+#: src/functions/auth.tsx:157
+#: src/functions/auth.tsx:181
+#: src/functions/auth.tsx:190
+#: src/functions/auth.tsx:252
 msgid "Login failed"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:82
-#: src/components/forms/AuthenticationForm.tsx:90
-#: src/components/forms/AuthenticationForm.tsx:106
-#: src/functions/auth.tsx:135
-#: src/functions/auth.tsx:371
+#: src/components/forms/AuthenticationForm.tsx:87
+#: src/components/forms/AuthenticationForm.tsx:105
+#: src/functions/auth.tsx:167
+#: src/functions/auth.tsx:253
+#: src/functions/auth.tsx:451
 #: src/pages/Auth/ProviderSignup.tsx:103
 msgid "Check your input and try again."
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:100
-#: src/functions/auth.tsx:362
+#: src/components/forms/AuthenticationForm.tsx:99
+#: src/functions/auth.tsx:442
 msgid "Mail delivery successful"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:101
+#: src/components/forms/AuthenticationForm.tsx:100
 msgid "Check your inbox for the login link. If you have an account, you will receive a login link. Check in spam too."
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:105
+#: src/components/forms/AuthenticationForm.tsx:104
 msgid "Mail delivery failed"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:125
+#: src/components/forms/AuthenticationForm.tsx:127
 msgid "Or continue with other methods"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:138
-#: src/components/forms/AuthenticationForm.tsx:298
+#: src/components/forms/AuthenticationForm.tsx:140
+#: src/components/forms/AuthenticationForm.tsx:300
 #: src/pages/Auth/ProviderSignup.tsx:131
 msgid "Your username"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:143
-#: src/components/forms/AuthenticationForm.tsx:311
+#: src/components/forms/AuthenticationForm.tsx:145
+#: src/components/forms/AuthenticationForm.tsx:313
 #: src/pages/Auth/ResetPassword.tsx:34
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:195
 msgid "Password"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:145
-#: src/components/forms/AuthenticationForm.tsx:313
+#: src/components/forms/AuthenticationForm.tsx:147
+#: src/components/forms/AuthenticationForm.tsx:315
 msgid "Your password"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:164
+#: src/components/forms/AuthenticationForm.tsx:166
 msgid "Reset password"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:173
-#: src/components/forms/AuthenticationForm.tsx:303
+#: src/components/forms/AuthenticationForm.tsx:175
+#: src/components/forms/AuthenticationForm.tsx:305
 #: src/pages/Auth/ProviderSignup.tsx:135
 #: src/pages/Auth/Reset.tsx:17
 #: src/pages/core/UserDetail.tsx:66
 msgid "Email"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:174
+#: src/components/forms/AuthenticationForm.tsx:176
 #: src/pages/Auth/Reset.tsx:18
 msgid "We will send you a link to login - if you are registered"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:190
+#: src/components/forms/AuthenticationForm.tsx:192
 msgid "Send me an email"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:192
+#: src/components/forms/AuthenticationForm.tsx:194
 msgid "Use username and password"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:201
+#: src/components/forms/AuthenticationForm.tsx:203
 msgid "Log In"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:203
+#: src/components/forms/AuthenticationForm.tsx:205
 #: src/pages/Auth/Reset.tsx:26
 msgid "Send Email"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:239
+#: src/components/forms/AuthenticationForm.tsx:241
 msgid "Passwords do not match"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:256
+#: src/components/forms/AuthenticationForm.tsx:258
 msgid "Registration successful"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:257
+#: src/components/forms/AuthenticationForm.tsx:259
 msgid "Please confirm your email address to complete the registration"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:280
+#: src/components/forms/AuthenticationForm.tsx:282
 msgid "Input error"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:281
+#: src/components/forms/AuthenticationForm.tsx:283
 msgid "Check your input and try again. "
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:305
+#: src/components/forms/AuthenticationForm.tsx:307
 msgid "This will be used for a confirmation"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:318
+#: src/components/forms/AuthenticationForm.tsx:320
 msgid "Password repeat"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:320
+#: src/components/forms/AuthenticationForm.tsx:322
 msgid "Repeat password"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:332
+#: src/components/forms/AuthenticationForm.tsx:334
 #: src/pages/Auth/Login.tsx:147
 #: src/pages/Auth/Register.tsx:13
 msgid "Register"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:338
+#: src/components/forms/AuthenticationForm.tsx:340
 msgid "Or use SSO"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:348
+#: src/components/forms/AuthenticationForm.tsx:350
 msgid "Registration not active"
 msgstr ""
 
-#: src/components/forms/AuthenticationForm.tsx:349
+#: src/components/forms/AuthenticationForm.tsx:351
 msgid "This might be related to missing mail settings or could be a deliberate decision."
 msgstr ""
 
@@ -4758,6 +4761,26 @@ msgstr ""
 
 #: src/components/forms/InstanceOptions.tsx:151
 msgid "Running"
+msgstr ""
+
+#: src/components/forms/SessionRecovery.tsx:17
+msgid "Checking your session"
+msgstr ""
+
+#: src/components/forms/SessionRecovery.tsx:19
+msgid "Could not verify your session"
+msgstr ""
+
+#: src/components/forms/SessionRecovery.tsx:21
+msgid "The server could not finish checking your account. Check your connection and retry. You do not need to enter your password again."
+msgstr ""
+
+#: src/components/forms/SessionRecovery.tsx:25
+msgid "Retry session check"
+msgstr ""
+
+#: src/components/forms/SessionRecovery.tsx:29
+msgid "Sign out"
 msgstr ""
 
 #: src/components/forms/fields/ApiFormField.tsx:149
@@ -4931,7 +4954,7 @@ msgstr ""
 #: src/components/importer/ImporterColumnSelector.tsx:299
 #: src/components/items/ErrorItem.tsx:12
 #: src/functions/api.tsx:63
-#: src/functions/auth.tsx:418
+#: src/functions/auth.tsx:498
 msgid "An error occurred"
 msgstr ""
 
@@ -8750,102 +8773,121 @@ msgstr ""
 msgid "Internal server error"
 msgstr ""
 
-#: src/functions/auth.tsx:125
-#: src/functions/auth.tsx:236
-msgid "Logged Out"
+#: src/functions/auth.tsx:84
+msgid "Enter your username and password."
+msgstr ""
+
+#: src/functions/auth.tsx:103
+msgid "Could not prepare a secure login. Check your connection and allow cookies for this site, then try again."
 msgstr ""
 
 #: src/functions/auth.tsx:126
-msgid "There was a conflicting session for this browser, which has been logged out."
+#~ msgid "There was a conflicting session for this browser, which has been logged out."
+#~ msgstr ""
+
+#: src/functions/auth.tsx:158
+msgid "Your previous session has ended. Please sign in again."
 msgstr ""
 
-#: src/functions/auth.tsx:159
+#: src/functions/auth.tsx:191
 msgid "No response from server."
 msgstr ""
 
-#: src/functions/auth.tsx:202
+#: src/functions/auth.tsx:239
 msgid "MFA Login successful"
 msgstr ""
 
-#: src/functions/auth.tsx:203
+#: src/functions/auth.tsx:240
 msgid "MFA details were automatically provided in the browser"
 msgstr ""
 
-#: src/functions/auth.tsx:237
+#: src/functions/auth.tsx:298
+msgid "Sign out incomplete"
+msgstr ""
+
+#: src/functions/auth.tsx:299
+msgid "The server could not confirm sign-out. Check your connection and try again."
+msgstr ""
+
+#: src/functions/auth.tsx:310
+msgid "Logged Out"
+msgstr ""
+
+#: src/functions/auth.tsx:311
 msgid "Successfully logged out"
 msgstr ""
 
-#: src/functions/auth.tsx:305
+#: src/functions/auth.tsx:379
 msgid "Language changed"
 msgstr ""
 
-#: src/functions/auth.tsx:306
+#: src/functions/auth.tsx:380
 msgid "Your active language has been changed to the one set in your profile"
 msgstr ""
 
-#: src/functions/auth.tsx:327
+#: src/functions/auth.tsx:401
 msgid "Theme changed"
 msgstr ""
 
-#: src/functions/auth.tsx:328
+#: src/functions/auth.tsx:402
 msgid "Your active theme has been changed to the one set in your profile"
 msgstr ""
 
-#: src/functions/auth.tsx:363
+#: src/functions/auth.tsx:443
 msgid "Check your inbox for a reset link. This only works if you have an account. Check in spam too."
 msgstr ""
 
-#: src/functions/auth.tsx:370
-#: src/functions/auth.tsx:660
+#: src/functions/auth.tsx:450
+#: src/functions/auth.tsx:760
 msgid "Reset failed"
 msgstr ""
 
-#: src/functions/auth.tsx:397
+#: src/functions/auth.tsx:477
 msgid "Already logged in"
 msgstr ""
 
-#: src/functions/auth.tsx:398
+#: src/functions/auth.tsx:478
 msgid "There is a conflicting session on the server for this browser. Please logout of that first."
 msgstr ""
 
-#: src/functions/auth.tsx:454
+#: src/functions/auth.tsx:539
 msgid "Logged In"
 msgstr ""
 
-#: src/functions/auth.tsx:455
+#: src/functions/auth.tsx:540
 msgid "Successfully logged in"
 msgstr ""
 
-#: src/functions/auth.tsx:615
+#: src/functions/auth.tsx:715
 msgid "Failed to set up MFA"
 msgstr ""
 
-#: src/functions/auth.tsx:634
+#: src/functions/auth.tsx:734
 msgid "MFA Setup successful"
 msgstr ""
 
-#: src/functions/auth.tsx:635
+#: src/functions/auth.tsx:735
 msgid "MFA via TOTP has been set up successfully; you will need to login again."
 msgstr ""
 
-#: src/functions/auth.tsx:650
+#: src/functions/auth.tsx:750
 msgid "Password set"
 msgstr ""
 
-#: src/functions/auth.tsx:651
-#: src/functions/auth.tsx:760
+#: src/functions/auth.tsx:751
+#: src/functions/auth.tsx:860
 msgid "The password was set successfully. You can now login with your new password"
 msgstr ""
 
-#: src/functions/auth.tsx:725
+#: src/functions/auth.tsx:825
 msgid "Password could not be changed"
 msgstr ""
 
-#: src/functions/auth.tsx:743
+#: src/functions/auth.tsx:843
 msgid "The two password fields didn’t match"
 msgstr ""
 
-#: src/functions/auth.tsx:759
+#: src/functions/auth.tsx:859
 msgid "Password Changed"
 msgstr ""
 
@@ -8996,35 +9038,35 @@ msgstr ""
 msgid "Log off"
 msgstr ""
 
-#: src/pages/Auth/LoggedIn.tsx:16
+#: src/pages/Auth/LoggedIn.tsx:18
 msgid "Registration via SSO is currently disabled."
 msgstr ""
 
-#: src/pages/Auth/LoggedIn.tsx:18
+#: src/pages/Auth/LoggedIn.tsx:20
 msgid "Login was cancelled."
 msgstr ""
 
-#: src/pages/Auth/LoggedIn.tsx:20
+#: src/pages/Auth/LoggedIn.tsx:22
 msgid "Access was denied by the identity provider."
 msgstr ""
 
-#: src/pages/Auth/LoggedIn.tsx:22
+#: src/pages/Auth/LoggedIn.tsx:24
 msgid "You do not have permission to log in this way."
 msgstr ""
 
-#: src/pages/Auth/LoggedIn.tsx:24
+#: src/pages/Auth/LoggedIn.tsx:26
 msgid "You need to reauthenticate to continue."
 msgstr ""
 
-#: src/pages/Auth/LoggedIn.tsx:26
+#: src/pages/Auth/LoggedIn.tsx:28
 msgid "An error occurred during SSO login ({error})."
 msgstr ""
 
-#: src/pages/Auth/LoggedIn.tsx:40
+#: src/pages/Auth/LoggedIn.tsx:43
 msgid "SSO Login Failed"
 msgstr ""
 
-#: src/pages/Auth/LoggedIn.tsx:52
+#: src/pages/Auth/LoggedIn.tsx:58
 msgid "Checking if you are already logged in"
 msgstr ""
 
@@ -13282,13 +13324,13 @@ msgid "Failed to save lockout point"
 msgstr ""
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:100
-#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
-msgid "Edit lockout point"
+#: src/pages/repair/components/safety/LockoutPointTable.tsx:61
+msgid "Add lockout point"
 msgstr ""
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:100
-#: src/pages/repair/components/safety/LockoutPointTable.tsx:61
-msgid "Add lockout point"
+#: src/pages/repair/components/safety/LockoutPointTable.tsx:99
+msgid "Edit lockout point"
 msgstr ""
 
 #: src/pages/repair/components/safety/LockoutPointModal.tsx:104

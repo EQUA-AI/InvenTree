@@ -96,20 +96,37 @@ export default function Login() {
     }
 
     // Only check here if a check hasn't already happened this session
-    if (!loginChecked) {
-      checkLoginState(navigate, location?.state, true);
-    }
+    const restore = !loginChecked
+      ? checkLoginState(navigate, location?.state, true)
+      : Promise.resolve();
 
     // check if we got login params (login and password)
     if (searchParams.has('login') && searchParams.has('password')) {
+      const loginHost = useLocalState.getState().getHost();
       setIsLoggingIn(true);
-      doBasicLogin(
-        searchParams.get('login') ?? '',
-        searchParams.get('password') ?? '',
-        navigate
-      ).then(() => {
-        followRedirect(navigate, location?.state);
-      });
+      // Finish restoration before submitting credentials: its anonymous 401
+      // must not invalidate a simultaneous login request.
+      restore
+        .then(async () => {
+          if (
+            loginHost !== useLocalState.getState().getHost() ||
+            useUserState.getState().authStatus !== 'unauthenticated'
+          )
+            return;
+          const success = await doBasicLogin(
+            searchParams.get('login') ?? '',
+            searchParams.get('password') ?? '',
+            navigate
+          );
+          if (
+            success &&
+            useUserState.getState().authStatus === 'authenticated' &&
+            useUserState.getState().isLoggedIn()
+          ) {
+            followRedirect(navigate, location?.state);
+          }
+        })
+        .finally(() => setIsLoggingIn(false));
     }
   }, []);
 

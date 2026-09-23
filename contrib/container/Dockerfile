@@ -18,7 +18,7 @@ ARG commit_hash=""
 ARG commit_date=""
 
 ARG data_dir="data"
-ARG NODE_VERSION=24
+ARG NODE_VERSION=24.21.0
 
 ENV PYTHONUNBUFFERED=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -115,6 +115,9 @@ FROM inventree_base AS builder_stage
 # ACR's classic Docker builder does not inherit ARG values from the parent stage.
 ARG commit_hash=""
 
+ARG NODE_VERSION=24.21.0
+ENV INVENTREE_FRONTEND_FROZEN_LOCKFILE=True
+
 # Copy source files
 COPY src ${INVENTREE_HOME}/src
 COPY tasks.py ${INVENTREE_HOME}/tasks.py
@@ -130,7 +133,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Build and install python dependencies
 RUN pip install --user --require-hashes -r base_requirements.txt --no-cache-dir && \
     pip install --user --require-hashes -r requirements.txt --no-cache-dir && \
-    pip install --user -r src/backend/InvenTree/ai/requirements.txt --no-cache-dir && \
+    python -m pip check && \
     pip cache purge && \
     rm -rf /root/.cache/pip
 
@@ -146,7 +149,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g n --ignore-scripts
-RUN bash -c "n lts"
+RUN n "${NODE_VERSION}"
 RUN npm install -g yarn --ignore-scripts && \
     yarn config set network-timeout 600000 -g
 RUN cd "${INVENTREE_HOME}" && INVENTREE_COMMIT_HASH="${commit_hash}" invoke int.frontend-compile --extract && \

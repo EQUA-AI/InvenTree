@@ -2,8 +2,10 @@ import { t } from '@lingui/core/macro';
 import { useEffect } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
+import { SessionRecovery } from '../../components/forms/SessionRecovery';
 import { checkLoginState } from '../../functions/auth';
 import { showLoginNotification } from '../../functions/notifications';
+import { useUserState } from '../../states/UserState';
 import { Wrapper } from './Layout';
 
 // Maps the 'error' query param allauth appends to this callback URL when an
@@ -31,6 +33,7 @@ export default function Logged_In() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const authStatus = useUserState((state) => state.authStatus);
 
   useEffect(() => {
     const error = searchParams.get('error');
@@ -45,10 +48,17 @@ export default function Logged_In() {
       return;
     }
 
-    checkLoginState(navigate, location?.state);
+    if (useUserState.getState().authStatus !== 'unavailable') {
+      checkLoginState(navigate, location?.state);
+    }
   }, [navigate]);
 
   return (
-    <Wrapper titleText={t`Checking if you are already logged in`} loader />
+    <Wrapper
+      titleText={t`Checking if you are already logged in`}
+      loader={authStatus !== 'unavailable'}
+    >
+      {authStatus === 'unavailable' && <SessionRecovery />}
+    </Wrapper>
   );
 }

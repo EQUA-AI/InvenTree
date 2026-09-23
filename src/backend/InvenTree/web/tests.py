@@ -6,12 +6,28 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from django.test import override_settings
+from django.test import RequestFactory, override_settings
 
 from InvenTree.config import get_frontend_settings
 from InvenTree.unit_test import InvenTreeTestCase
 
 from .templatetags import spa_helper
+from .urls import spa_view
+
+
+class SpaCacheTest(InvenTreeTestCase):
+    """The entry document must not outlive its image's asset manifest."""
+
+    def test_entry_document_is_not_cached(self):
+        """Every SPA route receives cache protection and a CSRF cookie."""
+        for path in ('/web', '/web/login', '/web/home'):
+            with self.subTest(path=path):
+                response = spa_view(RequestFactory().get(path))
+                response.render()
+                self.assertEqual(response.status_code, 200)
+                for directive in ('no-cache', 'no-store', 'must-revalidate', 'private'):
+                    self.assertIn(directive, response['Cache-Control'])
+                self.assertIn('csrftoken', response.cookies)
 
 
 class TemplateTagTest(InvenTreeTestCase):
