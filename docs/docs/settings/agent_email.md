@@ -18,6 +18,7 @@ Set configuration through the deployment secret manager, not chat, source contro
 | --- | --- |
 | `INVENTREE_AGENT_EMAIL_ENABLED` | Enable the connected mailbox service; default false |
 | `INVENTREE_AGENT_EMAIL_SEND_PAUSED` | Stop new mailbox dispatch claims and legacy direct sends; default false |
+| `INVENTREE_AGENT_EMAIL_SYNC_PAUSED` | Pause mailbox polling, queued sync attempts/retries and manual sync; default false |
 | `INVENTREE_AGENT_EMAIL_CREDENTIAL_KEYS` | Comma-separated Fernet keys; first key encrypts, all keys may decrypt |
 | `INVENTREE_AGENT_EMAIL_MESSAGE_ID_DOMAIN` | Operator-controlled domain for stable RFC Message-IDs |
 | `INVENTREE_AGENT_EMAIL_OAUTH_REDIRECT_URI` | Exact registered HTTPS redirect URI for consent |
@@ -71,6 +72,18 @@ Normal received content, copied conversation subjects and unprotected attachment
 Run `python manage.py agent_email_audit` for counts of connections, operation states, sync gaps and legacy recovery dependencies. It prints no credential values or message bodies. Monitor pending dispatch age, stale submitting/unknown/partial operations, sync lag and gaps, quarantine backlog and token health. Treat any unknown or partial result as a reason to pause expansion and investigate; agree pilot-specific limits and observation duration before enabling normal sends.
 
 For a global stop, set `INVENTREE_AGENT_EMAIL_SEND_PAUSED=true` and restart/drain all dispatch workers. This also blocks legacy direct sends. Already submitted operations may still complete; inspect their existing receipts. Per-account pause stops new work for that account. Disconnect erases its stored credentials and increments its binding version while keeping history and receipts.
+
+To stop mailbox synchronization and its repeated task failures, set
+`INVENTREE_AGENT_EMAIL_SYNC_PAUSED=true` on the web app and every mailbox worker,
+then restart/redeploy them with an image supporting this setting. The YAML
+equivalent is `agent_email.sync_paused: true`. Scheduled sweeps and already queued
+sync attempts finish as successful no-ops before database/provider access;
+manual sync returns `sync_paused`. The schedule remains registered, so setting
+the flag back to `false` and restarting resumes normal polling. Existing failed
+task reports are retained, and already running attempts may finish during the
+restart. This does not pause sending, notification email, retention or attachment
+scanning, and does not change retries for unrelated background tasks. Verify the
+effective value using `python manage.py agent_email_audit` (`sync_paused`).
 
 For key rotation, prepend the new key, retain old keys, restart all mailbox workers with the updated key ring, then run `python manage.py agent_email_rotate_keys`. This command re-encrypts stored credentials without exposing them. Remove an old key only after stored records and retained backups no longer need it.
 

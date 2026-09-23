@@ -24,6 +24,7 @@ class Command(BaseCommand):
         result = {
             'enabled': settings.AGENT_EMAIL_ENABLED,
             'send_paused': settings.AGENT_EMAIL_SEND_PAUSED,
+            'sync_paused': settings.AGENT_EMAIL_SYNC_PAUSED,
             'credential_keys_configured': bool(settings.AGENT_EMAIL_CREDENTIAL_KEYS),
             'message_id_domain_configured': bool(
                 settings.AGENT_EMAIL_MESSAGE_ID_DOMAIN

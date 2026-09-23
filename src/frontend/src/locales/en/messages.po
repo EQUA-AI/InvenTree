@@ -14,19 +14,31 @@ msgstr ""
 "Plural-Forms: \n"
 "X-Generator: @lingui/cli\n"
 
-#: lib/components/Boundary.tsx:16
+#: lib/components/Boundary.tsx:17
+msgid "Page resources could not be loaded"
+msgstr "Page resources could not be loaded"
+
+#: lib/components/Boundary.tsx:21
+msgid "This can happen after an update or a connection problem. Reload this page to try again. Unsaved changes may be lost."
+msgstr "This can happen after an update or a connection problem. Reload this page to try again. Unsaved changes may be lost."
+
+#: lib/components/Boundary.tsx:24
+msgid "Reload page"
+msgstr "Reload page"
+
+#: lib/components/Boundary.tsx:35
 msgid "Error rendering component"
 msgstr "Error rendering component"
 
-#: lib/components/Boundary.tsx:20
+#: lib/components/Boundary.tsx:39
 msgid "An error occurred while rendering this component."
 msgstr "An error occurred while rendering this component."
 
-#: lib/components/Boundary.tsx:23
+#: lib/components/Boundary.tsx:42
 msgid "Try reloading the page, or contact your administrator if the problem persists."
 msgstr "Try reloading the page, or contact your administrator if the problem persists."
 
-#: lib/components/Boundary.tsx:28
+#: lib/components/Boundary.tsx:47
 #: src/tables/settings/ErrorTable.tsx:146
 #: src/tables/settings/FailedTasksTable.tsx:65
 msgid "Error Details"
@@ -4661,7 +4673,7 @@ msgid "Repeat password"
 msgstr "Repeat password"
 
 #: src/components/forms/AuthenticationForm.tsx:334
-#: src/pages/Auth/Login.tsx:147
+#: src/pages/Auth/Login.tsx:164
 #: src/pages/Auth/Register.tsx:13
 msgid "Register"
 msgstr "Register"
@@ -9075,15 +9087,15 @@ msgstr "Checking if you are already logged in"
 msgid "No selection"
 msgstr "No selection"
 
-#: src/pages/Auth/Login.tsx:126
+#: src/pages/Auth/Login.tsx:143
 msgid "Login"
 msgstr "Login"
 
-#: src/pages/Auth/Login.tsx:132
+#: src/pages/Auth/Login.tsx:149
 msgid "Logging you in"
 msgstr "Logging you in"
 
-#: src/pages/Auth/Login.tsx:139
+#: src/pages/Auth/Login.tsx:156
 msgid "Don't have an account?"
 msgstr "Don't have an account?"
 

@@ -245,6 +245,10 @@ def _ingest(account, state, change, parsed):
 
 def sync_account(account_id, collection):
     """Fetch one page outside transactions and commit content with its cursor."""
+    # A queued task (including a retry) must finish successfully while paused,
+    # without touching the database or provider and generating another retry.
+    if getattr(settings, 'AGENT_EMAIL_SYNC_PAUSED', False):
+        return
     require_enabled()
     with transaction.atomic():
         account = ConnectedMailbox.objects.select_for_update().get(pk=account_id)

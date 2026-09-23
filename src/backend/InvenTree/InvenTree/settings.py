@@ -1490,6 +1490,9 @@ AGENT_EMAIL_ENABLED = get_boolean_setting(
 AGENT_EMAIL_SEND_PAUSED = get_boolean_setting(
     'INVENTREE_AGENT_EMAIL_SEND_PAUSED', 'agent_email.send_paused', False
 )
+AGENT_EMAIL_SYNC_PAUSED = get_boolean_setting(
+    'INVENTREE_AGENT_EMAIL_SYNC_PAUSED', 'agent_email.sync_paused', False
+)
 AGENT_EMAIL_CREDENTIAL_KEYS = [
     key.strip()
     for key in os.environ.get('INVENTREE_AGENT_EMAIL_CREDENTIAL_KEYS', '').split(',')

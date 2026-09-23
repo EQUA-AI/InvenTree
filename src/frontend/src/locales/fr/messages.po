@@ -19,19 +19,31 @@ msgstr ""
 "X-Crowdin-Project-ID: 452300\n"
 "X-Generator: @lingui/cli\n"
 
-#: lib/components/Boundary.tsx:16
+#: lib/components/Boundary.tsx:17
+msgid "Page resources could not be loaded"
+msgstr ""
+
+#: lib/components/Boundary.tsx:21
+msgid "This can happen after an update or a connection problem. Reload this page to try again. Unsaved changes may be lost."
+msgstr ""
+
+#: lib/components/Boundary.tsx:24
+msgid "Reload page"
+msgstr ""
+
+#: lib/components/Boundary.tsx:35
 msgid "Error rendering component"
 msgstr "Erreur lors de l'affichage de l'application"
 
-#: lib/components/Boundary.tsx:20
+#: lib/components/Boundary.tsx:39
 msgid "An error occurred while rendering this component."
 msgstr ""
 
-#: lib/components/Boundary.tsx:23
+#: lib/components/Boundary.tsx:42
 msgid "Try reloading the page, or contact your administrator if the problem persists."
 msgstr "Essayez de recharger la page, ou contactez votre administrateur si le problème persiste."
 
-#: lib/components/Boundary.tsx:28
+#: lib/components/Boundary.tsx:47
 #: src/tables/settings/ErrorTable.tsx:146
 #: src/tables/settings/FailedTasksTable.tsx:65
 msgid "Error Details"
@@ -4665,7 +4677,7 @@ msgid "Repeat password"
 msgstr "Répéter le mot de passe"
 
 #: src/components/forms/AuthenticationForm.tsx:334
-#: src/pages/Auth/Login.tsx:147
+#: src/pages/Auth/Login.tsx:164
 #: src/pages/Auth/Register.tsx:13
 msgid "Register"
 msgstr "S'enregistrer"
@@ -9079,15 +9091,15 @@ msgstr "Vérifier si vous êtes déjà connecté"
 msgid "No selection"
 msgstr "Aucune sélection"
 
-#: src/pages/Auth/Login.tsx:126
+#: src/pages/Auth/Login.tsx:143
 msgid "Login"
 msgstr "Se connecter"
 
-#: src/pages/Auth/Login.tsx:132
+#: src/pages/Auth/Login.tsx:149
 msgid "Logging you in"
 msgstr "Connexion en cours"
 
-#: src/pages/Auth/Login.tsx:139
+#: src/pages/Auth/Login.tsx:156
 msgid "Don't have an account?"
 msgstr "Pas encore de compte ?"
 

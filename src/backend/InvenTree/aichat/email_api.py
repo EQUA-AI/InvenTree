@@ -65,6 +65,7 @@ class MailboxList(MailboxView):
             'setup': {
                 'microsoft_shared': microsoft_shared_configured(),
                 'send_paused': settings.AGENT_EMAIL_SEND_PAUSED,
+                'sync_paused': settings.AGENT_EMAIL_SYNC_PAUSED,
             },
             'results': [
                 {
@@ -331,6 +332,8 @@ class MailboxSync(MailboxView):
         from django_q.tasks import async_task
 
         account = require_account(request.user, account_id, 'admin')
+        if settings.AGENT_EMAIL_SYNC_PAUSED:
+            raise MailboxError('sync_paused')
         if not account.enabled or not account.receive_enabled:
             raise MailboxError('receive_disabled')
         for collection in {

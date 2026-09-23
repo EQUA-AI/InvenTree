@@ -1,13 +1,32 @@
 import { t } from '@lingui/core/macro';
-import { Alert, Stack, Text } from '@mantine/core';
+import { Alert, Button, Stack, Text } from '@mantine/core';
 import { ErrorBoundary, type FallbackRender } from '@sentry/react';
 import { IconExclamationCircle, IconInfoCircle } from '@tabler/icons-react';
 import { type ReactNode, useCallback, useState } from 'react';
+import { isChunkLoadError } from '../functions/ChunkError';
 
 export function DefaultFallback({
   title,
   error
 }: Readonly<{ title: string; error: string | null }>): ReactNode {
+  if (isChunkLoadError(error)) {
+    return (
+      <Alert
+        color='yellow'
+        icon={<IconExclamationCircle />}
+        title={t`Page resources could not be loaded`}
+      >
+        <Stack gap='xs'>
+          <Text size='sm'>
+            {t`This can happen after an update or a connection problem. Reload this page to try again. Unsaved changes may be lost.`}
+          </Text>
+          <Button onClick={() => window.location.reload()}>
+            {t`Reload page`}
+          </Button>
+        </Stack>
+      </Alert>
+    );
+  }
   return (
     <>
       <Alert

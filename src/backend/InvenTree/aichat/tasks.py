@@ -1442,6 +1442,9 @@ def publish_pending_email():
         publish(operation)
 
 
+MAILBOX_SYNC_BATCH_SIZE = 100
+
+
 @scheduled_task(ScheduledTask.MINUTES, 2)
 def synchronize_mailboxes():
     """Poll configured mailboxes using bounded pages and per-collection leases."""
@@ -1451,20 +1454,36 @@ def synchronize_mailboxes():
 
     from aichat.models import ConnectedMailbox
 
-    if not getattr(settings, 'AGENT_EMAIL_ENABLED', False):
+    if not getattr(settings, 'AGENT_EMAIL_ENABLED', False) or getattr(
+        settings, 'AGENT_EMAIL_SYNC_PAUSED', False
+    ):
         return
-    for account in ConnectedMailbox.objects.filter(
-        enabled=True, receive_enabled=True
-    ).iterator():
-        for collection in {
-            account.options.get('inbox', 'Inbox'),
-            account.options.get('sent', 'Sent'),
-        }:
-            async_task(
-                'aichat.services.email.receive.sync_account',
-                str(account.pk),
-                collection,
-            )
+    last_pk = None
+    while True:
+        accounts = ConnectedMailbox.objects.filter(enabled=True, receive_enabled=True)
+        if last_pk is not None:
+            accounts = accounts.filter(pk__gt=last_pk)
+        # The ORM queue broker calls close_old_connections() when enqueueing.
+        # Finish each bounded query before publishing; a streaming server cursor
+        # would otherwise be invalidated while this loop is still consuming it.
+        batch = list(
+            accounts.order_by('pk').values_list('pk', 'options')[
+                :MAILBOX_SYNC_BATCH_SIZE
+            ]
+        )
+        if not batch:
+            return
+        for account_id, options in batch:
+            for collection in {
+                options.get('inbox', 'Inbox'),
+                options.get('sent', 'Sent'),
+            }:
+                async_task(
+                    'aichat.services.email.receive.sync_account',
+                    str(account_id),
+                    collection,
+                )
+        last_pk = batch[-1][0]
 
 
 @scheduled_task(ScheduledTask.DAILY)
