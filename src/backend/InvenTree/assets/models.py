@@ -35,6 +35,9 @@ class Client(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Serialize structural writes inside a client on every supported database.
+    location_revision = models.PositiveBigIntegerField(default=0, editable=False)
+
     class Meta:
         """Model metadata."""
 
@@ -133,6 +136,15 @@ class AssetMachine(
         verbose_name=_('Location'),
         help_text=_('Free-text location (e.g. "Bay 4", "Sydney")'),
     )
+
+    physical_location = models.ForeignKey(
+        'assets.AssetLocation',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='machines',
+    )
+    placement_version = models.PositiveBigIntegerField(default=0, editable=False)
 
     # The client is what makes a machine scope-resolvable. Machines carry no
     # sales-customer identity: that claim belongs to work orders and
@@ -325,3 +337,7 @@ from .health_models import (  # noqa: F401
     SnapshotReason,
     SourceType,
 )
+from .location_models import AssetLocation as AssetLocation
+from .location_models import LocationParentHistory as LocationParentHistory
+from .location_models import MachineLocationTransfer as MachineLocationTransfer
+from .location_models import MachinePlacementHistory as MachinePlacementHistory

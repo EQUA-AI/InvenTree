@@ -14,6 +14,7 @@ import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
+from .location_api import location_api_urls
 from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
 from .serializers import (
     AssetMachineSerializer,
@@ -243,6 +244,7 @@ class AssetMaintenanceRecordDetail(RetrieveUpdateDestroyAPI):
 
 
 assets_api_urls = [
+    path('locations/', include(location_api_urls)),
     path(
         'clients/',
         include([

@@ -1,17 +1,30 @@
 """Tests for the equipment-machine demo dataset extension."""
 
 import datetime
+import uuid
 from io import StringIO
 
+from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.core.management import CommandError, call_command
 from django.db import connection
 from django.db.models import Sum
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from tasks.models import KanbanCard, WorkOrder, WorkOrderLifecycle
 
+from assets.locations import save_location, transfer_machines
 from assets.management.commands.load_asset_demo_data import Command
-from assets.models import AssetMachine, AssetMaintenanceRecord, MachinePart
+from assets.models import (
+    AssetLocation,
+    AssetMachine,
+    AssetMaintenanceRecord,
+    Client,
+    ClientScopeGrant,
+    LocationParentHistory,
+    MachinePart,
+    MachinePlacementHistory,
+)
 from part.models import Part, PartCategory
 
 RICH_MACHINE_NAMES = (
@@ -557,3 +570,85 @@ class AssetDemoDataTest(TestCase):
 
         with self.assertRaisesMessage(CommandError, 'not owned'):
             self.load_demo_data()
+
+
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+)
+class AssetLocationDemoTest(TestCase):
+    """Location import protects ownership and operator placement changes."""
+
+    setUpTestData = classmethod(AssetDemoDataTest.setUpTestData.__func__)
+    load_demo_data = AssetDemoDataTest.load_demo_data
+
+    def setUp(self):
+        """Use the demo client's explicitly scoped operator."""
+        ContentType.objects.clear_cache()
+        self.load_demo_data()
+        self.actor = get_user_model().objects.create_superuser(
+            username='demo-location-operator', password=None
+        )
+        ClientScopeGrant.objects.create(
+            user=self.actor, client=Client.objects.get(code='internal')
+        )
+
+    def load_locations(self, **options):
+        """Run the real command with an audited actor."""
+        call_command(
+            'load_asset_location_demo',
+            actor=self.actor.username,
+            stdout=StringIO(),
+            **options,
+        )
+
+    def test_location_import_is_idempotent_and_preserves_later_moves(self):
+        """Initial placements are recorded once; reloading cannot reset a user move."""
+        self.load_locations()
+        self.assertEqual(AssetLocation.objects.count(), 38)
+        self.assertEqual(MachinePlacementHistory.objects.count(), 16)
+        machine = AssetMachine.objects.get(name='Air Compressor #4')
+        self.assertEqual(machine.physical_location.name, 'Pad C4')
+        self.assertEqual(
+            machine.location, 'Plant A / Utilities Building / Compressor Room / Pad C4'
+        )
+        transfer_machines(
+            self.actor,
+            {
+                'machines': [
+                    {'machine_id': machine.pk, 'expected_placement_version': 1}
+                ],
+                'destination_location_id': None,
+                'reason': 'Operator moved equipment',
+                'idempotency_key': str(uuid.uuid4()),
+            },
+        )
+        self.load_locations()
+        machine.refresh_from_db()
+        self.assertIsNone(machine.physical_location)
+        self.assertEqual(machine.placement_version, 2)
+        self.assertEqual(MachinePlacementHistory.objects.count(), 17)
+        self.assertEqual(LocationParentHistory.objects.count(), 38)
+
+    def test_location_import_dry_run_rolls_back(self):
+        """Preview leaves nodes, placements and machine versions unchanged."""
+        self.load_locations(dry_run=True)
+        self.assertFalse(AssetLocation.objects.exists())
+        self.assertFalse(MachinePlacementHistory.objects.exists())
+        self.assertFalse(AssetMachine.objects.filter(placement_version__gt=0).exists())
+
+    def test_location_import_rejects_unowned_collision(self):
+        """A matching name and code alone never establish demo ownership."""
+        save_location(
+            self.actor,
+            {
+                'client': Client.objects.get(code='internal').pk,
+                'name': 'Plant A',
+                'code': 'demo-plant-a',
+                'timezone': 'America/Chicago',
+                'reason': 'Real operator location',
+            },
+        )
+        with self.assertRaises(CommandError):
+            self.load_locations()
+        self.assertEqual(AssetLocation.objects.count(), 1)
+        self.assertFalse(MachinePlacementHistory.objects.exists())

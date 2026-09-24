@@ -814,7 +814,7 @@
     },
     {
       "ipn": "EQ-BLR-RSN-CAT",
-      "name": "Cation exchange resin, 1 ft³",
+      "name": "Cation exchange resin, 1 ft\u00b3",
       "description": "One-cubic-foot charge of cation-exchange resin for industrial demineralization. Exhaustion degrades treated-water quality.",
       "category_path": "Demineralization/Media",
       "link": null,
@@ -1107,7 +1107,8 @@
           }
         }
       ],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-plant-a-packaging-hall-line-2-zone-p2-04"
     },
     {
       "name": "Unit 3 Switchgear Breaker",
@@ -1195,7 +1196,8 @@
           }
         }
       ],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-plant-a-substation-u3-lineup-sg-3-cubicle-3b"
     },
     {
       "name": "Air Compressor #4",
@@ -1283,7 +1285,8 @@
           }
         }
       ],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-plant-a-utilities-building-compressor-room-pad-c4"
     },
     {
       "name": "Boiler Feed Pump B",
@@ -1371,7 +1374,8 @@
           }
         }
       ],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-plant-a-boiler-house-feedwater-skid-position-b"
     },
     {
       "name": "Customer Test Stand (ACME)",
@@ -1459,7 +1463,8 @@
           }
         }
       ],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-acme-manufacturing-austin-tx-quality-lab-cell-a-01"
     },
     {
       "name": "Electronics Test Bench 1",
@@ -1552,7 +1557,8 @@
           }
         }
       ],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-plant-a-engineering-lab-bench-e-01"
     },
     {
       "name": "Influent Pump Station No. 1",
@@ -1571,14 +1577,40 @@
         "criticality": "high",
         "maintenance_strategy": "preventive",
         "components": [
-          {"name": "Submersible pump unit", "ref": "PMP"},
-          {"name": "N-hydraulic chopper impeller", "ref": "IMP", "parent_ref": "PMP"},
-          {"name": "Mechanical seal cartridge", "ref": "SEAL", "parent_ref": "PMP"},
-          {"name": "Suction wear ring", "ref": "WRG", "parent_ref": "PMP"},
-          {"name": "Drive-end bearing 6316", "ref": "BRG", "parent_ref": "PMP"},
-          {"name": "Variable frequency drive", "ref": "VFD"}
+          {
+            "name": "Submersible pump unit",
+            "ref": "PMP"
+          },
+          {
+            "name": "N-hydraulic chopper impeller",
+            "ref": "IMP",
+            "parent_ref": "PMP"
+          },
+          {
+            "name": "Mechanical seal cartridge",
+            "ref": "SEAL",
+            "parent_ref": "PMP"
+          },
+          {
+            "name": "Suction wear ring",
+            "ref": "WRG",
+            "parent_ref": "PMP"
+          },
+          {
+            "name": "Drive-end bearing 6316",
+            "ref": "BRG",
+            "parent_ref": "PMP"
+          },
+          {
+            "name": "Variable frequency drive",
+            "ref": "VFD"
+          }
         ],
-        "energy_sources": ["electrical", "mechanical", "gravity"],
+        "energy_sources": [
+          "electrical",
+          "mechanical",
+          "gravity"
+        ],
         "fault_codes": [
           "AL-OVERCURRENT",
           "AL-SEAL-LEAK",
@@ -1626,7 +1658,8 @@
         }
       ],
       "maintenance": [],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-tomahawk-creek-wrf-headworks-influent-gallery"
     },
     {
       "name": "Aeration Blower No. 2",
@@ -1660,7 +1693,8 @@
         }
       ],
       "maintenance": [],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-tomahawk-creek-wrf-aeration-blower-building"
     },
     {
       "name": "Aeration Basin No. 3 Diffuser Grid",
@@ -1682,7 +1716,8 @@
         }
       ],
       "maintenance": [],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-tomahawk-creek-wrf-aeration-basin-3"
     },
     {
       "name": "Mechanical Bar Screen No. 1",
@@ -1716,7 +1751,8 @@
         }
       ],
       "maintenance": [],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-tomahawk-creek-wrf-headworks-screen-channel-1"
     },
     {
       "name": "Dewatering Centrifuge No. 2",
@@ -1750,7 +1786,8 @@
         }
       ],
       "maintenance": [],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-tomahawk-creek-wrf-solids-dewatering-building"
     },
     {
       "name": "Secondary Clarifier No. 4",
@@ -1780,7 +1817,8 @@
         }
       ],
       "maintenance": [],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-tomahawk-creek-wrf-secondary-clarifier-4"
     },
     {
       "name": "UV Disinfection Channel No. 1",
@@ -1810,7 +1848,8 @@
         }
       ],
       "maintenance": [],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-tomahawk-creek-wrf-disinfection-uv-channel-1"
     },
     {
       "name": "UF/RO Skid No. 1",
@@ -1860,7 +1899,8 @@
         }
       ],
       "maintenance": [],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-industrial-water-plant-treatment-bay-1"
     },
     {
       "name": "Cooling Water Train A",
@@ -1894,10 +1934,11 @@
         }
       ],
       "maintenance": [],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-industrial-water-plant-cooling-yard"
     },
     {
-      "name": "Remote Lift Station 14 — Blue River",
+      "name": "Remote Lift Station 14 \u2014 Blue River",
       "description": "Duplex submersible grinder station with standby generator and cellular RTU. It is 22 minutes from the plant, so first-visit failure is expensive. No permanent site-power backup exists beyond the generator. Criticality: High; PM cadence: quarterly wet-well cleaning and monthly generator exercise.",
       "active": true,
       "location": "Collection System / Basin 4 / Blue River",
@@ -1960,7 +2001,314 @@
         }
       ],
       "maintenance": [],
-      "client": "internal"
+      "client": "internal",
+      "physical_location_code": "demo-collection-system-basin-4-blue-river"
+    }
+  ],
+  "locations": [
+    {
+      "client": "internal",
+      "name": "Plant A",
+      "code": "demo-plant-a",
+      "parent": null,
+      "kind": "site",
+      "timezone": "America/Chicago"
+    },
+    {
+      "client": "internal",
+      "name": "Packaging Hall",
+      "code": "demo-plant-a-packaging-hall",
+      "parent": "demo-plant-a",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Line 2",
+      "code": "demo-plant-a-packaging-hall-line-2",
+      "parent": "demo-plant-a-packaging-hall",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Zone P2-04",
+      "code": "demo-plant-a-packaging-hall-line-2-zone-p2-04",
+      "parent": "demo-plant-a-packaging-hall-line-2",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Substation U3",
+      "code": "demo-plant-a-substation-u3",
+      "parent": "demo-plant-a",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Lineup SG-3",
+      "code": "demo-plant-a-substation-u3-lineup-sg-3",
+      "parent": "demo-plant-a-substation-u3",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Cubicle 3B",
+      "code": "demo-plant-a-substation-u3-lineup-sg-3-cubicle-3b",
+      "parent": "demo-plant-a-substation-u3-lineup-sg-3",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Utilities Building",
+      "code": "demo-plant-a-utilities-building",
+      "parent": "demo-plant-a",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Compressor Room",
+      "code": "demo-plant-a-utilities-building-compressor-room",
+      "parent": "demo-plant-a-utilities-building",
+      "kind": "room",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Pad C4",
+      "code": "demo-plant-a-utilities-building-compressor-room-pad-c4",
+      "parent": "demo-plant-a-utilities-building-compressor-room",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Boiler House",
+      "code": "demo-plant-a-boiler-house",
+      "parent": "demo-plant-a",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Feedwater Skid",
+      "code": "demo-plant-a-boiler-house-feedwater-skid",
+      "parent": "demo-plant-a-boiler-house",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Position B",
+      "code": "demo-plant-a-boiler-house-feedwater-skid-position-b",
+      "parent": "demo-plant-a-boiler-house-feedwater-skid",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "ACME Manufacturing",
+      "code": "demo-acme-manufacturing",
+      "parent": null,
+      "kind": "site",
+      "timezone": "America/Chicago"
+    },
+    {
+      "client": "internal",
+      "name": "Austin, TX",
+      "code": "demo-acme-manufacturing-austin-tx",
+      "parent": "demo-acme-manufacturing",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Quality Lab",
+      "code": "demo-acme-manufacturing-austin-tx-quality-lab",
+      "parent": "demo-acme-manufacturing-austin-tx",
+      "kind": "room",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Cell A-01",
+      "code": "demo-acme-manufacturing-austin-tx-quality-lab-cell-a-01",
+      "parent": "demo-acme-manufacturing-austin-tx-quality-lab",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Engineering Lab",
+      "code": "demo-plant-a-engineering-lab",
+      "parent": "demo-plant-a",
+      "kind": "room",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Bench E-01",
+      "code": "demo-plant-a-engineering-lab-bench-e-01",
+      "parent": "demo-plant-a-engineering-lab",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Tomahawk Creek WRF",
+      "code": "demo-tomahawk-creek-wrf",
+      "parent": null,
+      "kind": "site",
+      "timezone": "America/Chicago"
+    },
+    {
+      "client": "internal",
+      "name": "Headworks",
+      "code": "demo-tomahawk-creek-wrf-headworks",
+      "parent": "demo-tomahawk-creek-wrf",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Influent Gallery",
+      "code": "demo-tomahawk-creek-wrf-headworks-influent-gallery",
+      "parent": "demo-tomahawk-creek-wrf-headworks",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Aeration",
+      "code": "demo-tomahawk-creek-wrf-aeration",
+      "parent": "demo-tomahawk-creek-wrf",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Blower Building",
+      "code": "demo-tomahawk-creek-wrf-aeration-blower-building",
+      "parent": "demo-tomahawk-creek-wrf-aeration",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Basin 3",
+      "code": "demo-tomahawk-creek-wrf-aeration-basin-3",
+      "parent": "demo-tomahawk-creek-wrf-aeration",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Screen Channel 1",
+      "code": "demo-tomahawk-creek-wrf-headworks-screen-channel-1",
+      "parent": "demo-tomahawk-creek-wrf-headworks",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Solids",
+      "code": "demo-tomahawk-creek-wrf-solids",
+      "parent": "demo-tomahawk-creek-wrf",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Dewatering Building",
+      "code": "demo-tomahawk-creek-wrf-solids-dewatering-building",
+      "parent": "demo-tomahawk-creek-wrf-solids",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Secondary",
+      "code": "demo-tomahawk-creek-wrf-secondary",
+      "parent": "demo-tomahawk-creek-wrf",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Clarifier 4",
+      "code": "demo-tomahawk-creek-wrf-secondary-clarifier-4",
+      "parent": "demo-tomahawk-creek-wrf-secondary",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Disinfection",
+      "code": "demo-tomahawk-creek-wrf-disinfection",
+      "parent": "demo-tomahawk-creek-wrf",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "UV Channel 1",
+      "code": "demo-tomahawk-creek-wrf-disinfection-uv-channel-1",
+      "parent": "demo-tomahawk-creek-wrf-disinfection",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Industrial Water Plant",
+      "code": "demo-industrial-water-plant",
+      "parent": null,
+      "kind": "site",
+      "timezone": "America/Chicago"
+    },
+    {
+      "client": "internal",
+      "name": "Treatment Bay 1",
+      "code": "demo-industrial-water-plant-treatment-bay-1",
+      "parent": "demo-industrial-water-plant",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Cooling Yard",
+      "code": "demo-industrial-water-plant-cooling-yard",
+      "parent": "demo-industrial-water-plant",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Collection System",
+      "code": "demo-collection-system",
+      "parent": null,
+      "kind": "site",
+      "timezone": "America/Chicago"
+    },
+    {
+      "client": "internal",
+      "name": "Basin 4",
+      "code": "demo-collection-system-basin-4",
+      "parent": "demo-collection-system",
+      "kind": "area",
+      "timezone": ""
+    },
+    {
+      "client": "internal",
+      "name": "Blue River",
+      "code": "demo-collection-system-basin-4-blue-river",
+      "parent": "demo-collection-system-basin-4",
+      "kind": "area",
+      "timezone": ""
     }
   ]
 }

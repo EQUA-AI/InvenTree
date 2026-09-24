@@ -1,0 +1,34 @@
+@media (max-width: 48em) {
+	.workspace [aria-label="panel-group-asset-machine-index"] {
+		flex-direction: column;
+	}
+
+	.workspace [aria-label="panel-tabs-asset-machine-index"] {
+		border: 0;
+		margin-bottom: var(--mantine-spacing-sm);
+	}
+
+	.workspace [aria-label="panel-tabs-asset-machine-index"] > div:first-child {
+		display: flex;
+	}
+
+	.workspace [aria-label="panel-tabs-asset-machine-index"] button[role="tab"] {
+		flex: 1 1 0;
+		min-width: 0;
+		padding: var(--mantine-spacing-xs);
+		white-space: normal;
+		font-size: var(--mantine-font-size-xs);
+	}
+
+	.workspace
+		[aria-label="panel-tabs-asset-machine-index"]
+		[class~="mantine-Tabs-tabSection"] {
+		display: none;
+	}
+
+	.workspace
+		[aria-label="panel-tabs-asset-machine-index"]
+		> div:not(:first-child) {
+		display: none;
+	}
+}

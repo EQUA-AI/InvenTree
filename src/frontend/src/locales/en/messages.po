@@ -91,6 +91,8 @@ msgstr "Delete"
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:148
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:323
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:414
+#: src/pages/assets/locations/LocationDialogs.tsx:221
+#: src/pages/assets/locations/LocationDialogs.tsx:353
 #: src/pages/maintenance/MaintenanceBoard.tsx:1302
 #: src/pages/maintenance/MaintenanceBoard.tsx:1781
 #: src/pages/maintenance/MaintenanceBoard.tsx:2077
@@ -149,6 +151,7 @@ msgstr "Fail"
 #: src/components/tables/Filter.tsx:41
 #: src/components/tables/Filter.tsx:77
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:775
+#: src/pages/assets/locations/LocationWorkspace.tsx:393
 #: src/tables/assets/AssetMachineTable.tsx:49
 msgid "Yes"
 msgstr "Yes"
@@ -157,6 +160,7 @@ msgstr "Yes"
 #: src/components/tables/Filter.tsx:41
 #: src/components/tables/Filter.tsx:78
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:775
+#: src/pages/assets/locations/LocationWorkspace.tsx:393
 #: src/tables/assets/AssetMachineTable.tsx:49
 msgid "No"
 msgstr "No"
@@ -688,6 +692,7 @@ msgstr "Work Orders"
 #: src/components/dashboard/widgets/MaintenanceWidget.tsx:330
 #: src/components/riskradar/RiskFindingDetailModal.tsx:280
 #: src/components/tasks/TaskGantt.tsx:165
+#: src/pages/assets/locations/LocationWorkspace.tsx:331
 #: src/pages/maintenance/MaintenanceBoard.tsx:1657
 #: src/pages/maintenance/MaintenanceBoard.tsx:1874
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:380
@@ -701,9 +706,8 @@ msgstr "Machine"
 #: src/defaults/links.tsx:59
 #: src/pages/Index/Settings/AdminCenter/Index.tsx:276
 #: src/pages/Index/Settings/AdminCenter/MachineManagementPanel.tsx:52
-#: src/pages/assets/MachineDetail.tsx:186
-#: src/pages/assets/MachineIndex.tsx:20
-#: src/pages/assets/MachineIndex.tsx:29
+#: src/pages/assets/MachineDetail.tsx:190
+#: src/pages/assets/MachineIndex.tsx:45
 #: src/tables/machine/MachineTypeTable.tsx:326
 msgid "Machines"
 msgstr "Machines"
@@ -905,6 +909,7 @@ msgid "Approvals"
 msgstr "Approvals"
 
 #: src/components/ai/ApprovalInboxPanel.tsx:105
+#: src/pages/assets/locations/LocationDialogs.tsx:353
 msgid "Back"
 msgstr "Back"
 
@@ -912,6 +917,7 @@ msgstr "Back"
 #: src/components/riskradar/RiskRadarPanel.tsx:356
 #: src/pages/Memory/MemoryPage.tsx:431
 #: src/pages/assets/health/MachineHealthPanel.tsx:190
+#: src/pages/assets/locations/LocationWorkspace.tsx:500
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
 #: src/pages/repair/components/safety/SafetyPanel.tsx:110
 msgid "Refresh"
@@ -1286,7 +1292,8 @@ msgstr "Add agent mailbox"
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:670
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:741
 #: src/pages/Index/Settings/AdminCenter/UnitManagementPanel.tsx:19
-#: src/pages/assets/MachineDetail.tsx:59
+#: src/pages/assets/MachineDetail.tsx:60
+#: src/pages/assets/locations/LocationDialogs.tsx:157
 #: src/pages/maintenance/MaintenanceBoard.tsx:2097
 #: src/pages/part/PartCategoryDetailsPanel.tsx:22
 #: src/pages/part/PartDetailsPanel.tsx:79
@@ -3096,6 +3103,7 @@ msgstr "Unable to load this information. Please retry."
 #: src/components/common/ReadErrorNotice.tsx:35
 #: src/components/dashboard/widgets/MaintenanceWidget.tsx:422
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:104
+#: src/pages/assets/locations/LocationWorkspace.tsx:306
 msgid "Retry"
 msgstr "Retry"
 
@@ -3668,6 +3676,7 @@ msgstr "Unavailable"
 
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:156
 #: src/pages/assets/health/SignalTable.tsx:117
+#: src/pages/assets/locations/LocationWorkspace.tsx:589
 msgid "Not configured"
 msgstr "Not configured"
 
@@ -3912,6 +3921,7 @@ msgid "Calibration"
 msgstr "Calibration"
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:120
+#: src/pages/assets/locations/LocationDialogs.tsx:116
 #: src/pages/repair/components/InvestigationPanel.tsx:33
 #: src/pages/repair/components/safety/safetyApi.ts:87
 #: src/pages/repair/components/safety/safetyApi.ts:134
@@ -3968,6 +3978,10 @@ msgid "Upcoming"
 msgstr "Upcoming"
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:129
+#: src/pages/assets/MachineIndex.tsx:36
+#: src/pages/assets/locations/LocationDialogs.tsx:308
+#: src/pages/assets/locations/LocationWorkspace.tsx:380
+#: src/pages/assets/locations/MachineLocationCard.tsx:60
 msgid "Unassigned"
 msgstr "Unassigned"
 
@@ -4393,6 +4407,7 @@ msgid "There are no notes here yet."
 msgstr "There are no notes here yet."
 
 #: src/components/editors/TemplateEditor/CodeEditor/index.tsx:15
+#: src/pages/assets/locations/LocationDialogs.tsx:164
 msgid "Code"
 msgstr "Code"
 
@@ -6022,7 +6037,7 @@ msgstr "Sales"
 
 #: src/components/nav/NavigationDrawer.tsx:105
 #: src/defaults/links.tsx:85
-#: src/pages/assets/MachineDetail.tsx:160
+#: src/pages/assets/MachineDetail.tsx:164
 #: src/pages/maintenance/MaintenanceIndex.tsx:73
 msgid "Maintenance"
 msgstr "Maintenance"
@@ -6198,7 +6213,8 @@ msgstr "Plugin Information"
 
 #: src/components/plugins/PluginDrawer.tsx:88
 #: src/components/tables/ColumnRenderers.tsx:495
-#: src/pages/assets/MachineDetail.tsx:104
+#: src/pages/assets/MachineDetail.tsx:105
+#: src/pages/assets/locations/LocationDialogs.tsx:199
 #: src/pages/build/BuildOrderDetailsPanel.tsx:96
 #: src/pages/company/CompanyDetailsPanel.tsx:29
 #: src/pages/company/ManufacturerPartDetailsPanel.tsx:46
@@ -6234,7 +6250,8 @@ msgstr "Date"
 
 #: src/components/plugins/PluginDrawer.tsx:108
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:68
-#: src/pages/assets/MachineDetail.tsx:64
+#: src/pages/assets/MachineDetail.tsx:65
+#: src/pages/assets/locations/LocationWorkspace.tsx:334
 #: src/pages/core/UserDetail.tsx:76
 #: src/pages/core/UserDetail.tsx:206
 #: src/pages/part/PartDetailsPanel.tsx:244
@@ -6388,7 +6405,7 @@ msgstr "In Production"
 
 #: src/components/render/Part.tsx:78
 #: src/components/riskradar/RiskRadarPanel.tsx:446
-#: src/pages/assets/MachineDetail.tsx:126
+#: src/pages/assets/MachineDetail.tsx:127
 #: src/tables/assets/MaintenanceRecordTable.tsx:174
 #: src/tables/stock/StockTrackingTable.tsx:273
 msgid "Details"
@@ -6426,7 +6443,6 @@ msgstr "Category"
 #: src/forms/StockForms.tsx:1884
 #: src/forms/StockForms.tsx:1928
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:88
-#: src/pages/assets/MachineDetail.tsx:69
 #: src/pages/core/UserDetail.tsx:153
 #: src/pages/stock/StockDetailsPanel.tsx:237
 #: src/tables/assets/AssetMachineTable.tsx:27
@@ -6436,7 +6452,7 @@ msgstr "Location"
 
 #: src/components/render/Stock.tsx:95
 #: src/forms/StockForms.tsx:719
-#: src/pages/assets/MachineDetail.tsx:91
+#: src/pages/assets/MachineDetail.tsx:92
 #: src/pages/stock/StockDetail.tsx:667
 #: src/pages/stock/StockDetailsPanel.tsx:135
 #: src/tables/build/BuildOutputTable.tsx:110
@@ -7330,7 +7346,7 @@ msgid "Filter by user"
 msgstr "Filter by user"
 
 #: src/components/tables/Filter.tsx:454
-#: src/pages/assets/MachineDetail.tsx:81
+#: src/pages/assets/MachineDetail.tsx:82
 #: src/pages/company/CompanyDetailsPanel.tsx:78
 #: src/pages/company/ManufacturerDetail.tsx:8
 #: src/pages/company/ManufacturerPartDetail.tsx:197
@@ -7559,6 +7575,7 @@ msgid "Maximum stock"
 msgstr "Maximum stock"
 
 #: src/components/tables/PartStockCell.tsx:62
+#: src/pages/assets/locations/LocationDialogs.tsx:111
 #: src/tables/bom/BomTable.tsx:390
 msgid "Building"
 msgstr "Building"
@@ -9317,6 +9334,7 @@ msgstr "Position"
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:90
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:967
 #: src/pages/Memory/MemoryPage.tsx:408
+#: src/pages/assets/locations/LocationDialogs.tsx:170
 #: src/pages/maintenance/workorders/components/WorkOrderSafetyReadiness.tsx:82
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:171
 #: src/tables/assets/MaintenanceRecordTable.tsx:94
@@ -10724,43 +10742,57 @@ msgstr "Verified causes"
 msgid "From verified closeouts"
 msgstr "From verified closeouts"
 
-#: src/pages/assets/MachineDetail.tsx:86
+#: src/pages/assets/MachineDetail.tsx:70
+msgid "Legacy location label"
+msgstr "Legacy location label"
+
+#: src/pages/assets/MachineDetail.tsx:87
 #: src/tables/assets/AssetMachineTable.tsx:37
 #: src/tables/general/BarcodeScanTable.tsx:52
 msgid "Model"
 msgstr "Model"
 
-#: src/pages/assets/MachineDetail.tsx:144
+#: src/pages/assets/MachineDetail.tsx:148
 msgid "Health"
 msgstr "Health"
 
-#: src/pages/assets/MachineDetail.tsx:152
+#: src/pages/assets/MachineDetail.tsx:156
 msgid "Installed Parts"
 msgstr "Installed Parts"
 
-#: src/pages/assets/MachineDetail.tsx:168
+#: src/pages/assets/MachineDetail.tsx:172
 msgid "Fault History"
 msgstr "Fault History"
 
-#: src/pages/assets/MachineDetail.tsx:185
+#: src/pages/assets/MachineDetail.tsx:189
 #: src/tables/machine/MachineListTable.tsx:766
 msgid "Machine Detail"
 msgstr "Machine Detail"
 
-#: src/pages/assets/MachineDetail.tsx:213
+#: src/pages/assets/MachineDetail.tsx:217
 msgid "Ask about this machine"
 msgstr "Ask about this machine"
 
-#: src/pages/assets/MachineDetail.tsx:223
+#: src/pages/assets/MachineDetail.tsx:227
 #: src/pages/assets/health/AnomalyList.tsx:140
 msgid "Create repair"
 msgstr "Create repair"
 
-#: src/pages/assets/MachineDetail.tsx:234
+#: src/pages/assets/MachineDetail.tsx:238
 #: src/pages/assets/StartRepairModal.tsx:131
 #: src/pages/assets/StartRepairModal.tsx:203
 msgid "Start repair"
 msgstr "Start repair"
+
+#: src/pages/assets/MachineIndex.tsx:24
+#: src/pages/assets/locations/LocationWorkspace.tsx:483
+msgid "Sites & Facilities"
+msgstr "Sites & Facilities"
+
+#: src/pages/assets/MachineIndex.tsx:30
+#: src/pages/assets/locations/LocationWorkspace.tsx:485
+msgid "All Machines"
+msgstr "All Machines"
 
 #: src/pages/assets/StartRepairModal.tsx:119
 msgid "Could not start the repair"
@@ -11222,6 +11254,356 @@ msgstr "No reading"
 #: src/tables/stock/StockItemTable.tsx:279
 msgid "Stale"
 msgstr "Stale"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:30
+msgid "This record changed. Close this dialog, refresh, and review before trying again."
+msgstr "This record changed. Close this dialog, refresh, and review before trying again."
+
+#: src/pages/assets/locations/LocationDialogs.tsx:32
+msgid "You no longer have permission to make this change."
+msgstr "You no longer have permission to make this change."
+
+#: src/pages/assets/locations/LocationDialogs.tsx:40
+msgid "The change could not be saved. Your inputs have been kept."
+msgstr "The change could not be saved. Your inputs have been kept."
+
+#: src/pages/assets/locations/LocationDialogs.tsx:80
+msgid "Enter a name"
+msgstr "Enter a name"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:84
+msgid "Use letters, numbers, hyphens or underscores"
+msgstr "Use letters, numbers, hyphens or underscores"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:85
+msgid "Choose a workspace"
+msgstr "Choose a workspace"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:86
+#: src/pages/assets/locations/LocationDialogs.tsx:250
+msgid "Enter a reason"
+msgstr "Enter a reason"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:109
+msgid "Site"
+msgstr "Site"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:110
+msgid "Facility"
+msgstr "Facility"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:112
+msgid "Area"
+msgstr "Area"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:113
+msgid "Production Line"
+msgstr "Production Line"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:114
+msgid "Cell"
+msgstr "Cell"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:115
+msgid "Room"
+msgstr "Room"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:128
+#: src/pages/assets/locations/LocationWorkspace.tsx:580
+msgid "Edit location"
+msgstr "Edit location"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:128
+#: src/pages/assets/locations/LocationWorkspace.tsx:573
+msgid "Add sublocation"
+msgstr "Add sublocation"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:128
+#: src/pages/assets/locations/LocationWorkspace.tsx:505
+msgid "Add location"
+msgstr "Add location"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:143
+msgid "Workspace"
+msgstr "Workspace"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:177
+msgid "Parent location"
+msgstr "Parent location"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:184
+#: src/pages/assets/locations/LocationWorkspace.tsx:588
+msgid "Timezone"
+msgstr "Timezone"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:187
+msgid "Leave blank to inherit the parent timezone."
+msgstr "Leave blank to inherit the parent timezone."
+
+#: src/pages/assets/locations/LocationDialogs.tsx:188
+msgid "Required for a top-level location, for example Europe/London."
+msgstr "Required for a top-level location, for example Europe/London."
+
+#: src/pages/assets/locations/LocationDialogs.tsx:196
+msgid "Changing ancestry or timezone affects future reporting. Earlier history and existing maintenance schedules are preserved."
+msgstr "Changing ancestry or timezone affects future reporting. Earlier history and existing maintenance schedules are preserved."
+
+#: src/pages/assets/locations/LocationDialogs.tsx:205
+#: src/pages/assets/locations/LocationWorkspace.tsx:107
+#: src/pages/assets/locations/LocationWorkspace.tsx:564
+msgid "Archived"
+msgstr "Archived"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:206
+msgid "Active machines and child locations must be moved or retired first."
+msgstr "Active machines and child locations must be moved or retired first."
+
+#: src/pages/assets/locations/LocationDialogs.tsx:211
+msgid "Reason for change"
+msgstr "Reason for change"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:225
+msgid "Save location"
+msgstr "Save location"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:280
+msgid "Move machines"
+msgstr "Move machines"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:297
+msgid "Select machines from one workspace for each move."
+msgstr "Select machines from one workspace for each move."
+
+#: src/pages/assets/locations/LocationDialogs.tsx:300
+msgid "Selected machines"
+msgstr "Selected machines"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:313
+#: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:100
+#: src/tables/purchasing/PurchaseOrderLineItemTable.tsx:285
+msgid "Destination"
+msgstr "Destination"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:324
+msgid "Reason for move"
+msgstr "Reason for move"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:331
+msgid "These machines will become unassigned. Their previous placement history will be retained."
+msgstr "These machines will become unassigned. Their previous placement history will be retained."
+
+#: src/pages/assets/locations/LocationDialogs.tsx:336
+msgid "The move takes effect now. Existing work-order instructions and planned service venues are not changed."
+msgstr "The move takes effect now. Existing work-order instructions and planned service venues are not changed."
+
+#: src/pages/assets/locations/LocationDialogs.tsx:338
+msgid "Review the selected machines and destination. Confirming moves the entire selection together."
+msgstr "Review the selected machines and destination. Confirming moves the entire selection together."
+
+#: src/pages/assets/locations/LocationDialogs.tsx:356
+msgid "Confirm move"
+msgstr "Confirm move"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:356
+msgid "Review move"
+msgstr "Review move"
+
+#: src/pages/assets/locations/LocationPicker.tsx:62
+msgid "Search by name or code. Any active level can hold machines."
+msgstr "Search by name or code. Any active level can hold machines."
+
+#: src/pages/assets/locations/LocationPicker.tsx:73
+msgid "Locations could not be loaded"
+msgstr "Locations could not be loaded"
+
+#: src/pages/assets/locations/LocationPicker.tsx:75
+msgid "Loading locations…"
+msgstr "Loading locations…"
+
+#: src/pages/assets/locations/LocationPicker.tsx:76
+#: src/pages/assets/locations/LocationWorkspace.tsx:167
+msgid "No matching locations"
+msgstr "No matching locations"
+
+#: src/pages/assets/locations/LocationPicker.tsx:81
+msgid "Locations could not be loaded. Try again."
+msgstr "Locations could not be loaded. Try again."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:114
+msgid "Expand to load sublocations"
+msgstr "Expand to load sublocations"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:135
+msgid "Locations"
+msgstr "Locations"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:138
+msgid "Search locations"
+msgstr "Search locations"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:139
+msgid "Search names or codes"
+msgstr "Search names or codes"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:151
+msgid "Locations could not be loaded."
+msgstr "Locations could not be loaded."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:184
+msgid "All top-level locations"
+msgstr "All top-level locations"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:187
+msgid "Some locations could not be loaded."
+msgstr "Some locations could not be loaded."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:193
+msgid "Sites and facilities"
+msgstr "Sites and facilities"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:199
+msgid "This branch shows its first 100 locations. Search by name or code to find more."
+msgstr "This branch shows its first 100 locations. Search by name or code to find more."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:205
+msgid "Create your first site to organize machines."
+msgstr "Create your first site to organize machines."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:272
+#: src/pages/assets/locations/LocationWorkspace.tsx:273
+msgid "Search machines"
+msgstr "Search machines"
+
+#. placeholder {0}: query.data.count
+#: src/pages/assets/locations/LocationWorkspace.tsx:284
+msgid "{0} machines"
+msgstr "{0} machines"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:293
+msgid "Move selected"
+msgstr "Move selected"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:301
+msgid "Machines unavailable"
+msgstr "Machines unavailable"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:302
+msgid "Check your maintenance scope or try refreshing."
+msgstr "Check your maintenance scope or try refreshing."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:318
+msgid "Select machines on this page"
+msgstr "Select machines on this page"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:332
+#: src/pages/assets/locations/MachineLocationCard.tsx:42
+msgid "Physical location"
+msgstr "Physical location"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:333
+msgid "Manufacturer / model"
+msgstr "Manufacturer / model"
+
+#. placeholder {0}: machine.name
+#: src/pages/assets/locations/LocationWorkspace.tsx:343
+msgid "Select {0}"
+msgstr "Select {0}"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:384
+msgid "Legacy label"
+msgstr "Legacy label"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:403
+msgid "No unassigned machines in your workspace."
+msgstr "No unassigned machines in your workspace."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:404
+msgid "No machines match this view."
+msgstr "No machines match this view."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:486
+msgid "Unassigned machines"
+msgstr "Unassigned machines"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:490
+msgid "Organize physical locations and see where maintenance is needed."
+msgstr "Organize physical locations and see where maintenance is needed."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:491
+msgid "Physical placement is separate from the legacy location label."
+msgstr "Physical placement is separate from the legacy location label."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:513
+msgid "Location workspace unavailable"
+msgstr "Location workspace unavailable"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:514
+msgid "Your role or maintenance scope could not be resolved. Refresh or ask your administrator to check access."
+msgstr "Your role or maintenance scope could not be resolved. Refresh or ask your administrator to check access."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:535
+msgid "The location link is invalid."
+msgstr "The location link is invalid."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:539
+msgid "This location is unavailable or you no longer have access."
+msgstr "This location is unavailable or you no longer have access."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:592
+msgid "Location scope"
+msgstr "Location scope"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:604
+msgid "Including sublocations"
+msgstr "Including sublocations"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:606
+msgid "Direct only"
+msgstr "Direct only"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:613
+msgid "Machines now"
+msgstr "Machines now"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:622
+msgid "Direct at this location"
+msgstr "Direct at this location"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:631
+msgid "Open work orders now"
+msgstr "Open work orders now"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:638
+msgid "Drafts excluded; work orders counted once."
+msgstr "Drafts excluded; work orders counted once."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:650
+msgid "Historical performance will appear when validated event and placement history is available. Current placement does not establish past downtime."
+msgstr "Historical performance will appear when validated event and placement history is available. Current placement does not establish past downtime."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:657
+msgid "Choose a location"
+msgstr "Choose a location"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:661
+msgid "Select a site or sublocation to see its machines and current maintenance counts."
+msgstr "Select a site or sublocation to see its machines and current maintenance counts."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:666
+msgid "View unassigned machines"
+msgstr "View unassigned machines"
+
+#: src/pages/assets/locations/MachineLocationCard.tsx:48
+msgid "Move machine"
+msgstr "Move machine"
+
+#: src/pages/assets/locations/MachineLocationCard.tsx:65
+msgid "Loading location…"
+msgstr "Loading location…"
+
+#: src/pages/assets/locations/MachineLocationCard.tsx:66
+msgid "Location is unavailable for your current scope."
+msgstr "Location is unavailable for your current scope."
 
 #: src/pages/build/BuildDetail.tsx:67
 msgid "No Required Items"
@@ -13095,11 +13477,6 @@ msgstr "Supplier Reference"
 #: src/pages/stock/TransferOrderDetailsPanel.tsx:81
 msgid "Completed Line Items"
 msgstr "Completed Line Items"
-
-#: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:100
-#: src/tables/purchasing/PurchaseOrderLineItemTable.tsx:285
-msgid "Destination"
-msgstr "Destination"
 
 #: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:106
 #: src/pages/sales/ReturnOrderDetailsPanel.tsx:105

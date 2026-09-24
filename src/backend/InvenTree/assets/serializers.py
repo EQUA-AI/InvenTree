@@ -1,6 +1,7 @@
 """Serializers for the assets (equipment machines) application."""
 
 from django.conf import settings
+from django.db import transaction
 
 from rest_framework import serializers
 from tasks.scope import ScopeError, require_work_order_scope
@@ -59,11 +60,38 @@ class AssetMachineSerializer(serializers.ModelSerializer):
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.messages) from exc
 
+    def validate(self, attrs):
+        """A linked machine cannot change tenant through legacy asset editing."""
+        if (
+            self.instance
+            and self.instance.placement_version
+            and 'client' in attrs
+            and attrs['client'] != self.instance.client
+        ):
+            raise serializers.ValidationError({
+                'client': 'A machine with placement history cannot change client.'
+            })
+        return attrs
+
     def create(self, validated_data):
         """Ensure every machine created through the API carries a client."""
         if validated_data.get('client') is None:
             validated_data['client'] = get_default_client()
         return super().create(validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        """Serialize legacy edits with moves and retain their current placement."""
+        instance = AssetMachine.objects.select_for_update().get(pk=instance.pk)
+        if (
+            instance.placement_version
+            and 'client' in validated_data
+            and validated_data['client'].pk != instance.client_id
+        ):
+            raise serializers.ValidationError({
+                'client': 'A machine with placement history cannot change client.'
+            })
+        return super().update(instance, validated_data)
 
 
 class MachinePartSerializer(serializers.ModelSerializer):

@@ -248,6 +248,7 @@ def get_ruleset_models() -> dict:
             'assets_assetmachine',
             'assets_assetmaintenancerecord',
             'assets_machinepart',
+            'assets_assetlocation',
         ],
     }
 
@@ -318,6 +319,10 @@ def get_ruleset_ignore() -> list[str]:
         'approvals_approvalreviewdelivery',
         'approvals_approvalexecution',
         'assets_client',
+        # Immutable physical-location audit rows are written only by commands.
+        'assets_locationparenthistory',
+        'assets_machinelocationtransfer',
+        'assets_machineplacementhistory',
         'assets_healthevidencesnapshot',
         'assets_healthsource',
         'assets_machineanomaly',

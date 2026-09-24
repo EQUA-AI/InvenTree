@@ -36,6 +36,7 @@ import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateM
 import FaultHistoryPanel from './FaultHistoryPanel';
 import { StartRepairModal } from './StartRepairModal';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
+import { MachineLocationCard } from './locations/MachineLocationCard';
 
 export default function MachineDetail() {
   const { id } = useParams();
@@ -66,7 +67,7 @@ export default function MachineDetail() {
       {
         name: 'location',
         type: 'text',
-        label: t`Location`
+        label: t`Legacy location label`
       }
     ],
     []
@@ -126,15 +127,18 @@ export default function MachineDetail() {
         label: t`Details`,
         icon: <IconInfoCircle />,
         content: machine?.pk ? (
-          <ItemDetailsGrid>
-            <DetailsTable fields={detailsLeft} item={machine} />
-            <DetailsTable fields={detailsRight} item={machine} />
-            {!!machine.description && (
-              <div style={{ gridColumn: '1 / -1' }}>
-                <DetailsTable fields={detailsDescription} item={machine} />
-              </div>
-            )}
-          </ItemDetailsGrid>
+          <Stack>
+            <MachineLocationCard machineId={machine.pk} />
+            <ItemDetailsGrid>
+              <DetailsTable fields={detailsLeft} item={machine} />
+              <DetailsTable fields={detailsRight} item={machine} />
+              {!!machine.description && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <DetailsTable fields={detailsDescription} item={machine} />
+                </div>
+              )}
+            </ItemDetailsGrid>
+          </Stack>
         ) : null
       },
       {
