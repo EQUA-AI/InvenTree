@@ -8,7 +8,8 @@ import {
   Paper,
   Select,
   Stack,
-  Text
+  Text,
+  Tooltip
 } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
@@ -34,7 +35,29 @@ import { useApi } from '../../../contexts/ApiContext';
 const MAX_WINDOW_SECONDS = 6 * 3600;
 
 /** Sentinel for the range select; not a duration. */
+/** What the source reports about the history it holds for this station. */
+interface DataRange {
+  available: boolean;
+  from: string;
+  to: string;
+  hours_with_data?: number;
+  hours_probed?: number;
+  source_name?: string;
+  reason?: string;
+}
+
 const CUSTOM = 'custom';
+
+/** A range edge, short enough for a badge but unambiguous about the date. */
+function formatRangeEdge(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
 
 /**
  * Preset look-back windows, in seconds.
@@ -43,10 +66,12 @@ const CUSTOM = 'custom';
  * silently shrink, would make the axis lie about which window was actually read.
  */
 const RANGES = [
-  { value: '900', label: () => t`Last 15 minutes` },
-  { value: '3600', label: () => t`Last hour` },
-  { value: '10800', label: () => t`Last 3 hours` },
-  { value: `${MAX_WINDOW_SECONDS}`, label: () => t`Last 6 hours` }
+  { value: '300', label: () => t`5 minutes` },
+  { value: '600', label: () => t`10 minutes` },
+  { value: '900', label: () => t`15 minutes` },
+  { value: '3600', label: () => t`1 hour` },
+  { value: '10800', label: () => t`3 hours` },
+  { value: `${MAX_WINDOW_SECONDS}`, label: () => t`6 hours` }
 ];
 
 /** Format Mantine's picker value (`YYYY-MM-DD HH:mm:ss`) for the API. */
@@ -177,7 +202,29 @@ export function SignalTrendChart({
   const [bindingId, setBindingId] = useState<string | null>(
     selectable.length > 0 ? String(selectable[0].binding_id) : null
   );
-  const [rangeSeconds, setRangeSeconds] = useState<string>('3600');
+  // Ten minutes, not an hour. Each snapshot is a whole-station document of
+  // ~55KB that the source must fetch and parse, so an hour is ~720 of them -
+  // tens of megabytes for a line a few hundred pixels wide. Ten minutes is
+  // ~120 samples, which is more than the chart can distinguish anyway.
+  // What history the source actually holds. Recorded server-side, because the
+  // edges can only be found by probing partitions - far too slow for a page.
+  const rangeQuery = useQuery<DataRange>({
+    queryKey: ['machine-health-data-range', machineId],
+    staleTime: 60 * 60 * 1000,
+    queryFn: async () => {
+      const response = await api.get(
+        apiUrl(ApiEndpoints.machine_health_data_range, machineId)
+      );
+      return response.data;
+    }
+  });
+  const dataRange = rangeQuery.data;
+
+  // Ten minutes, not an hour. Each snapshot is a whole-station document of
+  // ~55KB that the source must fetch and parse, so an hour is ~720 of them -
+  // tens of megabytes for a line a few hundred pixels wide. Ten minutes is
+  // ~120 samples, which is more than the chart can distinguish anyway.
+  const [rangeSeconds, setRangeSeconds] = useState<string>('600');
   const [customFrom, setCustomFrom] = useState<string | null>(null);
   const [customTo, setCustomTo] = useState<string | null>(null);
 
@@ -227,12 +274,18 @@ export function SignalTrendChart({
     enabled: bindingId != null && (!isCustom || customRange != null),
     staleTime: 60 * 1000,
     queryFn: async () => {
-      // A preset is relative to *now*, so it is resolved at fetch time rather
-      // than at render: a chart left open overnight should not keep asking for
-      // the hour in which it was mounted.
+      // A preset ends at the most recent reading the source actually holds, not
+      // at "now". History is stored at its own observation times, which may be
+      // months behind the wall clock - anchoring to now asks for a window the
+      // source was never going to have anything in, and draws an empty chart
+      // with nothing to explain it. Falls back to now only while the range is
+      // still unknown.
+      const anchor = dataRange?.available
+        ? new Date(dataRange.to).getTime()
+        : Date.now();
       const window = customRange ?? {
-        from: new Date(Date.now() - windowSeconds * 1000).toISOString(),
-        to: new Date().toISOString()
+        from: new Date(anchor - windowSeconds * 1000).toISOString(),
+        to: new Date(anchor).toISOString()
       };
       const response = await api.get(
         apiUrl(ApiEndpoints.machine_health_trend, machineId),
@@ -304,7 +357,7 @@ export function SignalTrendChart({
           <Select
             label={t`Range`}
             value={rangeSeconds}
-            onChange={(value) => setRangeSeconds(value ?? '3600')}
+            onChange={(value) => setRangeSeconds(value ?? '600')}
             data={[
               ...RANGES.map((range) => ({
                 value: range.value,
@@ -324,7 +377,12 @@ export function SignalTrendChart({
                 valueFormat='YYYY-MM-DD HH:mm:ss'
                 withSeconds
                 clearable
-                maxDate={new Date()}
+                minDate={
+                  dataRange?.available ? new Date(dataRange.from) : undefined
+                }
+                maxDate={
+                  dataRange?.available ? new Date(dataRange.to) : new Date()
+                }
                 placeholder={t`Start of window`}
                 style={{ minWidth: 210 }}
               />
@@ -335,7 +393,13 @@ export function SignalTrendChart({
                 valueFormat='YYYY-MM-DD HH:mm:ss'
                 withSeconds
                 clearable
-                minDate={customFrom ?? undefined}
+                minDate={
+                  customFrom ??
+                  (dataRange?.available ? new Date(dataRange.from) : undefined)
+                }
+                maxDate={
+                  dataRange?.available ? new Date(dataRange.to) : new Date()
+                }
                 placeholder={t`End of window`}
                 style={{ minWidth: 210 }}
               />
@@ -345,6 +409,15 @@ export function SignalTrendChart({
             <Badge variant='light' color='gray'>
               {t`${points.length} samples`}
             </Badge>
+          )}
+          {dataRange?.available && (
+            <Tooltip
+              label={t`This source holds readings from ${formatRangeEdge(dataRange.from)} to ${formatRangeEdge(dataRange.to)}. Windows outside that hold nothing.`}
+            >
+              <Badge variant='light' color='gray'>
+                {t`Data to ${formatRangeEdge(dataRange.to)}`}
+              </Badge>
+            </Tooltip>
           )}
         </Group>
 
