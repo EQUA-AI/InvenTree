@@ -78,7 +78,9 @@ export function SignalTrendSparkline({
             binding: bindingId,
             from: start.toISOString(),
             to: end.toISOString()
-          }
+          },
+          // A historian read does not fit the global 5s default.
+          timeout: 30 * 1000
         }
       );
       return response.data;

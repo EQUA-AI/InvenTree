@@ -241,7 +241,11 @@ export function SignalTrendChart({
             binding: bindingId,
             from: window.from,
             to: window.to
-          }
+          },
+          // This is the widest read in the panel - the range picker goes to the
+          // service limit of six hours - and the global default is 5s. The
+          // server bounds the window; the client just has to wait for it.
+          timeout: 60 * 1000
         }
       );
       return response.data;
