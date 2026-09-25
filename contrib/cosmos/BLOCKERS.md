@@ -52,6 +52,42 @@ The original reasoning is kept below because it is still correct about *why* a
 stopped machine cannot confirm a unit. It is only wrong about how much one
 running machine fixes.
 
+### Update 2026-09-25: published plant figures settled three of these
+
+Two rows of the table above rested on "Saraswati's stated 34 m lift head". That
+figure is wrong for this lift, and it was the contradiction this file had
+already flagged. The scheme's published pond levels put Saraswati's pumphouse at
+Annaram (120.0 m) lifting to Sundilla (130.0 m), and the station's own forebay
+tag reads 115.2 m - so its lift is about 15 m, not 34 m. Correcting the head
+turned two "disagrees with the plant's figures" rows into settled units, and
+made a third an outright correction.
+
+| tag | settled as | what settled it |
+|---|---|---|
+| `dv` (30 points) | `cusec` | A published operating report for the Annaram pumphouse gives four pumps yielding 11,724 cusecs - 2,931 each - and the tag reads exactly 2931 whenever its bay runs. The sibling figure for Medigadda (12,708 over six pumps = 2,118) does not match, so the arithmetic identifies the station as well as the unit. At 2,931 ft3/s = 83.0 m3/s, against 18.96 m of head and 24.5 MW, that is 63% wire-to-water; m3/s implies 22,000%, m3/min 37%, L/s 2%. |
+| `DISCHARGE_PRESSURE` (29 points) | `mH2O`, **not** the proposed `bar` | 18.96 m is the 14.9 m static lift at the observed forebay level plus about 4 m of losses. Under `bar` the same reading is 193 m of head on a 15 m lift, and under `kg/cm2` 186 m - both impossible, so `bar` is excluded rather than merely unconfirmed. |
+| `ACTIVE_POWER` (4 points) | `MW`, **not** the proposed `kW` | These four were the only ones left proposing kW; the catalogue's own Active Power parameter is MW and the 29 siblings approved earlier are MW. |
+
+`cusec` was not a unit the registry knew; it is now defined as a `CustomUnit`
+(`cusec = foot**3/second`), which is the deployment-level extension point rather
+than a patch to InvenTree's own registry. **The station flow total now resolves**
+- 82.997 m3/s at Saraswati - where it had read `incomplete` since the migration.
+
+Applied with `contrib/cosmos/devtools/approve_researched_units.py`, which is
+re-runnable and states in each approval note which station carries the direct
+evidence and which inherit the unit as the same field of the same document
+schema.
+
+**What this did not settle, and why no further reading will.** 442 of the 950
+pending points are a single constant across the whole ten-day window - dead
+channels, which no published figure revives. And the one bay that ever runs
+reports a frozen block: all 68 of P5's tags hold one value across 105 snapshots
+spanning ten days, with current, frequency and power factor reading 0 *while
+running*, valve position at 118.5%, every vibration channel identical at 59.257,
+and many RTDs at the 3276.7 over-range sentinel. That block cannot corroborate a
+magnitude, so the families resting on it stay withheld. The remaining asks are
+unchanged: they need an instrumentation answer from the plant, not more data.
+
 ### Why
 
 The reference row `PH_3.full-snapshot.json` was captured with **the station shut
