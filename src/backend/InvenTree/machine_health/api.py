@@ -14,6 +14,7 @@ import json
 
 from django.shortcuts import get_object_or_404
 from django.urls import include, path
+from django.utils import timezone
 
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -42,6 +43,7 @@ from .serializers import (
 )
 from .services import anomalies as anomaly_services
 from .services import snapshots as snapshot_services
+from .services.display_time import display_shift, to_display
 from .services.ingestion import IngestionError, coerce_datetime, ingest_readings
 from .services.preliminary import analyze_anomaly
 from .services.summary import health_summary, signal_rows
@@ -285,10 +287,22 @@ class MachineHealthDataRange(_MachineHealthView):
                 'detail': 'The span of history for this station has not been recorded yet.',
             })
 
+        # Offered in the clock the dashboard shows, so the picker spans the last
+        # ten days rather than a fortnight in 2025 that a user has no reason to
+        # guess at. The plant's own edges are returned alongside, because an
+        # engineer matching a trace to a logbook needs the real ones.
+        shift = display_shift(station, source)
+        start = timezone.datetime.fromisoformat(recorded['from'])
+        end = timezone.datetime.fromisoformat(recorded['to'])
+
         return Response({
             'available': True,
-            'from': recorded['from'],
-            'to': recorded['to'],
+            'from': to_display(start, shift).isoformat(),
+            'to': to_display(end, shift).isoformat(),
+            'source_from': recorded['from'],
+            'source_to': recorded['to'],
+            'display_shifted': bool(shift),
+            'display_shift_seconds': int(shift.total_seconds()),
             'hours_with_data': recorded.get('hours_with_data'),
             'hours_probed': recorded.get('hours_probed'),
             'discovered_at': recorded.get('discovered_at'),

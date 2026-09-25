@@ -30,6 +30,7 @@ from machine_health.connectors.base import (
     bounded_window,
     get_connector,
 )
+from machine_health.services.display_time import display_shift, to_display, to_source
 
 logger = logging.getLogger('inventree')
 
@@ -82,6 +83,12 @@ def read_trend(
     except ValueError as exc:
         raise TrendError(str(exc)) from exc
 
+    # The caller asked in the clock the dashboard shows; the source answers in
+    # the plant's. Both ends move together, so the window keeps its length.
+    station = machine if machine.asset_type == 'pumphouse' else machine.parent
+    shift = display_shift(station, binding.source, now=now)
+    read_start, read_end = to_source(start, shift), to_source(end, shift)
+
     base = {
         'binding_id': binding.pk,
         'display_name': binding.display_name,
@@ -93,6 +100,10 @@ def read_trend(
         'window_start': start.isoformat(),
         'window_end': end.isoformat(),
         'max_samples': samples,
+        # Said plainly rather than left for the reader to infer: these times are
+        # not the plant's. Subtract the shift to recover them.
+        'display_shifted': bool(shift),
+        'display_shift_seconds': int(shift.total_seconds()),
         'limits': {
             'max_window_seconds': MAX_TREND_WINDOW_SECONDS,
             'max_samples': MAX_TREND_SAMPLES,
@@ -118,7 +129,7 @@ def read_trend(
         # be reported and the chart would drop data while claiming to be
         # complete. The extra sample is trimmed below and never reaches the API.
         readings = connector.read_window(
-            binding.external_key, start, end, max_samples=samples + 1
+            binding.external_key, read_start, read_end, max_samples=samples + 1
         )
     except NotImplementedError:
         return {
@@ -190,7 +201,7 @@ def read_trend(
         'truncated': len(readings) > len(trimmed),
         'samples': [
             {
-                'observed_at': reading.observed_at.isoformat(),
+                'observed_at': to_display(reading.observed_at, shift).isoformat(),
                 'value': reading.value,
                 'quality': reading.quality,
             }
@@ -241,6 +252,12 @@ def read_trends(
     except ValueError as exc:
         raise TrendError(str(exc)) from exc
 
+    # One shift for the whole table: every binding here belongs to the same
+    # machine, so they share a station and therefore a recorded data range.
+    station = machine if machine.asset_type == 'pumphouse' else machine.parent
+    shift = display_shift(station, bindings[0].source, now=now)
+    read_start, read_end = to_source(start, shift), to_source(end, shift)
+
     def envelope(binding):
         return {
             'binding_id': binding.pk,
@@ -253,6 +270,8 @@ def read_trends(
             'window_start': start.isoformat(),
             'window_end': end.isoformat(),
             'max_samples': samples,
+            'display_shifted': bool(shift),
+            'display_shift_seconds': int(shift.total_seconds()),
             'limits': {
                 'max_window_seconds': MAX_TREND_WINDOW_SECONDS,
                 'max_samples': MAX_TREND_SAMPLES,
@@ -288,8 +307,8 @@ def read_trends(
         try:
             readings = connector.read_windows(
                 [binding.external_key for binding in group],
-                start,
-                end,
+                read_start,
+                read_end,
                 max_samples=samples + 1,
             )
         except NotImplementedError:
@@ -337,7 +356,9 @@ def read_trends(
                 'truncated': len(found) > len(trimmed),
                 'samples': [
                     {
-                        'observed_at': reading.observed_at.isoformat(),
+                        'observed_at': to_display(
+                            reading.observed_at, shift
+                        ).isoformat(),
                         'value': reading.value,
                         'quality': reading.quality,
                     }
