@@ -209,6 +209,12 @@ export interface TrendSample {
   observed_at: string;
   value: number | string | boolean | null;
   quality: SignalQuality;
+  /**
+   * The number to draw, when the raw value is not one but still means something
+   * on an axis - a status code, which the server maps from the plant's own
+   * status vocabulary. Absent when the sample simply is a number.
+   */
+  plot_value?: number | null;
 }
 
 /**

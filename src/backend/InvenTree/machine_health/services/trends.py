@@ -30,6 +30,7 @@ from machine_health.connectors.base import (
     bounded_window,
     get_connector,
 )
+from machine_health.mimic_layout import load_layout
 from machine_health.services.display_time import display_shift, to_display, to_source
 
 logger = logging.getLogger('inventree')
@@ -42,6 +43,43 @@ logger = logging.getLogger('inventree')
 #: caller gets - notably every sparkline on the machine page - so it is sized
 #: for "enough to show a direction", not for the maximum the server permits.
 DEFAULT_WINDOW_SECONDS = 3600
+
+
+#: A status code plotted on a numeric axis. Running above idle so a line rises
+#: when a machine starts, and fault below both so it cannot be mistaken for
+#: either. Read from the mimic layout rather than written out here, because that
+#: file is where the plant's status vocabulary is defined and a second copy
+#: would drift from it silently.
+_STATUS_PLOT_VALUES = {'running': 1.0, 'idle': 0.0, 'fault': -1.0}
+
+
+def status_numbers() -> dict:
+    """Map each status code the layout knows to a number a chart can draw."""
+    try:
+        vocabulary = load_layout().get('status_values') or {}
+    except Exception:  # a malformed layout must not break a trend read
+        return {}
+    return {
+        str(code): _STATUS_PLOT_VALUES[kind]
+        for kind, codes in vocabulary.items()
+        if kind in _STATUS_PLOT_VALUES
+        for code in (codes or [])
+    }
+
+
+def plottable(value, statuses: dict):
+    """Return a number for a sample, or None when it is not plottable.
+
+    A status arrives as a code - "R", "I" - which is not a number but is not
+    unplottable either: a run/stop trace is one of the more useful lines on
+    this page. Anything else non-numeric is left alone rather than coerced,
+    because inventing a number for a value nobody defined is worse than a gap.
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return statuses.get(str(value).strip())
 
 
 class TrendError(Exception):
@@ -88,6 +126,7 @@ def read_trend(
     station = machine if machine.asset_type == 'pumphouse' else machine.parent
     shift = display_shift(station, binding.source, now=now)
     read_start, read_end = to_source(start, shift), to_source(end, shift)
+    statuses = status_numbers()
 
     base = {
         'binding_id': binding.pk,
@@ -203,6 +242,7 @@ def read_trend(
             {
                 'observed_at': to_display(reading.observed_at, shift).isoformat(),
                 'value': reading.value,
+                'plot_value': plottable(reading.value, statuses),
                 'quality': reading.quality,
             }
             for reading in trimmed
@@ -257,6 +297,7 @@ def read_trends(
     station = machine if machine.asset_type == 'pumphouse' else machine.parent
     shift = display_shift(station, bindings[0].source, now=now)
     read_start, read_end = to_source(start, shift), to_source(end, shift)
+    statuses = status_numbers()
 
     def envelope(binding):
         return {
@@ -360,6 +401,7 @@ def read_trends(
                             reading.observed_at, shift
                         ).isoformat(),
                         'value': reading.value,
+                        'plot_value': plottable(reading.value, statuses),
                         'quality': reading.quality,
                     }
                     for reading in trimmed
