@@ -551,6 +551,58 @@ class PollTests(SimpleTestCase):
         list(connector.poll(checkpoint, now=later))
         self.assertEqual(len(connector._container.calls), MAX_BUCKETS_PER_POLL)
 
+    def _ranges_to(self, moment_ms):
+        """A ``data_ranges`` config recording this station's history end."""
+        end = datetime.fromtimestamp(moment_ms / 1000, tz=timezone.utc)
+        return {'data_ranges': {STATION: {'from': '2025-07-02T01:01:00+00:00',
+                                          'to': end.isoformat()}}}
+
+    def test_polling_stops_at_the_recorded_end_of_a_shifted_window(self):
+        """A document past the window is dated into the future, then wins forever.
+
+        The dashboard derives its display offset from the recorded end, so
+        anything later reads as "in N days" the moment it is shown - and, the
+        checkpoint being forward-only, no later reading can ever replace it.
+        """
+        checkpoint = self.Checkpoint(STATION, self.base, self.base - 1)
+        connector = connector_for(
+            self.documents, config=self._ranges_to(self.samples[1])
+        )
+        long_after = datetime.fromtimestamp(
+            (self.base + 400 * 24 * HOUR_MS) / 1000, tz=timezone.utc
+        )
+
+        produced = [doc for doc, _ in connector.poll(checkpoint, now=long_after)]
+
+        self.assertEqual(
+            [d['sub_time_period'] for d in produced], self.samples[:2]
+        )
+
+    def test_polling_reads_to_the_wall_clock_without_a_recorded_range(self):
+        """A station nobody has probed keeps its original reach."""
+        checkpoint = self.Checkpoint(STATION, self.base, self.base - 1)
+        connector = connector_for(self.documents)
+
+        produced = [doc for doc, _ in connector.poll(checkpoint, now=self.now)]
+
+        self.assertEqual([d['sub_time_period'] for d in produced], self.samples)
+
+    def test_a_current_recorded_range_does_not_clamp(self):
+        """No shift is applied to recent history, so nothing needs holding back."""
+        checkpoint = self.Checkpoint(STATION, self.base, self.base - 1)
+        connector = connector_for(
+            self.documents, config=self._ranges_to(self.samples[1])
+        )
+        half_an_hour_later = datetime.fromtimestamp(
+            (self.samples[1] + 1_800_000) / 1000, tz=timezone.utc
+        )
+
+        produced = [
+            doc for doc, _ in connector.poll(checkpoint, now=half_an_hour_later)
+        ]
+
+        self.assertEqual([d['sub_time_period'] for d in produced], self.samples)
+
 
 class IngestTests(HealthEnvMixin, TestCase):
     """The checkpoint advances per snapshot, never per batch."""

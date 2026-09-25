@@ -155,7 +155,14 @@ export function SignalTable({
                 <SignalTrendSparkline
                   machineId={machineId}
                   bindingId={signal.binding_id}
-                  trend={trendByBinding.get(signal.binding_id)}
+                  // `?? null` is load-bearing: this table supplies every row,
+                  // so a binding the batch has not delivered must still read as
+                  // supplied. Passing the bare `map.get(...)` hands back
+                  // `undefined` until the batch resolves, which each sparkline
+                  // reads as "nobody is supplying" and answers with its own
+                  // request - the N+1 this batch exists to remove.
+                  trend={trendByBinding.get(signal.binding_id) ?? null}
+                  supplierPending={trendsQuery.isLoading}
                 />
               </Table.Td>
               <Table.Td>
