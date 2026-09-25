@@ -80,7 +80,13 @@ export function SignalTable({
             bindings: bindingIds.join(','),
             from: start.toISOString(),
             to: end.toISOString()
-          }
+          },
+          // The global default is 5s, which a federated read of a historian
+          // window does not fit in - measured at about 5s server-side for a
+          // wide table before the network. Left at the default, every one of
+          // these would time out and then retry, which is what made this page
+          // fail rather than merely be slow.
+          timeout: 60 * 1000
         }
       );
       return response.data;
