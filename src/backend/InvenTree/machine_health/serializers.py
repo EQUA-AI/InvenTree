@@ -12,6 +12,10 @@ from assets.health_models import (
     MachineAnomaly,
     MachineSignalBinding,
 )
+from InvenTree.serializers import (
+    InvenTreeIsoDateTimeField,
+    InvenTreeIsoDateTimeModelSerializerMixin,
+)
 
 
 class MachineSignalSerializer(serializers.Serializer):
@@ -25,8 +29,8 @@ class MachineSignalSerializer(serializers.Serializer):
     signal_kind = serializers.CharField(read_only=True)
     unit = serializers.CharField(read_only=True)
     value = serializers.JSONField(read_only=True)
-    observed_at = serializers.DateTimeField(read_only=True, allow_null=True)
-    received_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    observed_at = InvenTreeIsoDateTimeField(read_only=True, allow_null=True)
+    received_at = InvenTreeIsoDateTimeField(read_only=True, allow_null=True)
     quality = serializers.CharField(read_only=True)
     stale = serializers.BooleanField(read_only=True)
     freshness_threshold_seconds = serializers.IntegerField(read_only=True)
@@ -42,8 +46,8 @@ class HealthSourceStatusSerializer(serializers.Serializer):
     source_type = serializers.CharField(read_only=True)
     active = serializers.BooleanField(read_only=True)
     healthy = serializers.BooleanField(read_only=True)
-    last_success_at = serializers.DateTimeField(read_only=True, allow_null=True)
-    last_error_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    last_success_at = InvenTreeIsoDateTimeField(read_only=True, allow_null=True)
+    last_error_at = InvenTreeIsoDateTimeField(read_only=True, allow_null=True)
     # Redacted classification only; connector messages never reach a client.
     last_error_code = serializers.CharField(read_only=True)
     freshness_threshold_seconds = serializers.IntegerField(read_only=True)
@@ -58,13 +62,15 @@ class MachineHealthSummarySerializer(serializers.Serializer):
     signal_count = serializers.IntegerField(read_only=True)
     stale_signal_count = serializers.IntegerField(read_only=True)
     degraded_data = serializers.BooleanField(read_only=True)
-    last_observed_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    last_observed_at = InvenTreeIsoDateTimeField(read_only=True, allow_null=True)
     anomaly_counts = serializers.JSONField(read_only=True)
     active_anomaly_count = serializers.IntegerField(read_only=True)
     sources = HealthSourceStatusSerializer(many=True, read_only=True)
 
 
-class MachineAnomalySerializer(serializers.ModelSerializer):
+class MachineAnomalySerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """An anomaly as the Health blade renders it."""
 
     source_name = serializers.CharField(
@@ -131,7 +137,9 @@ class MachineAnomalySerializer(serializers.ModelSerializer):
         return actor.get_full_name() or actor.get_username()
 
 
-class HealthEvidenceSnapshotSerializer(serializers.ModelSerializer):
+class HealthEvidenceSnapshotSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """An immutable evidence snapshot, as cited by a preliminary result."""
 
     class Meta:
@@ -161,7 +169,9 @@ class HealthEvidenceSnapshotSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class MachineSignalBindingSerializer(serializers.ModelSerializer):
+class MachineSignalBindingSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """Administrative view of a tag mapping."""
 
     source_name = serializers.CharField(source='source.name', read_only=True)

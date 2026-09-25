@@ -6,6 +6,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from assets.registry_api import LiveSourceSerializer, RegistryAPI
+from InvenTree.serializers import InvenTreeIsoDateTimeField
 from machine_health.services.mimic import station_mimic
 
 
@@ -18,7 +19,7 @@ class MimicPointSerializer(serializers.Serializer):
     value = serializers.JSONField(allow_null=True)
     unit = serializers.CharField(allow_blank=True)
     quality = serializers.CharField()
-    observed_at = serializers.DateTimeField(allow_null=True)
+    observed_at = InvenTreeIsoDateTimeField(allow_null=True)
     age_seconds = serializers.FloatField(allow_null=True)
     reason = serializers.CharField(allow_null=True)
     condition = serializers.CharField()
@@ -30,9 +31,9 @@ class MimicSerializer(serializers.Serializer):
 
     station = serializers.IntegerField()
     name = serializers.CharField()
-    generated_at = serializers.DateTimeField()
+    generated_at = InvenTreeIsoDateTimeField()
     source = LiveSourceSerializer(allow_null=True)
-    last_poll_at = serializers.DateTimeField(allow_null=True)
+    last_poll_at = InvenTreeIsoDateTimeField(allow_null=True)
     last_error_code = serializers.CharField(allow_blank=True)
     enabled = serializers.BooleanField()
     layout = serializers.JSONField()

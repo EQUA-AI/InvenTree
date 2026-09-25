@@ -3,7 +3,7 @@
 import json
 import time
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.core.cache import cache
 from django.test import override_settings
@@ -74,6 +74,27 @@ class MachineHealthReadApiTest(HealthEnvMixin, InvenTreeAPITestCase):
         self.assertEqual(row['unit'], 'mm/s')
         self.assertFalse(row['stale'])
         self.assertEqual(row['limits']['critical_max'], 9.0)
+
+    def test_serialized_times_are_iso_8601(self):
+        """A timestamp the browser has to guess about is a timestamp it gets wrong.
+
+        The API-wide format renders ``2026-09-25 21:31``: space-separated, no
+        seconds and - where the project runs with time zones on - no offset.
+        ``Date`` and ``dayjs`` both read a string of that shape as *local* time,
+        so a client east or west of UTC misplaces every instant by its own
+        offset and a reading taken a moment ago is captioned hours old.
+
+        Asserted on the *wire* bytes rather than ``response.data``, because the
+        defect lives in rendering and never reaches the Python side.
+        """
+        payload = json.loads(self.get(self.url('signals/'), expected_code=200).content)
+
+        [row] = payload['results']
+        self.assertIn('T', row['observed_at'], 'not ISO-8601; a space separator')
+        # The old format truncated to the minute, so an exact match also proves
+        # the seconds survived.
+        self.assertEqual(datetime.fromisoformat(row['observed_at']), self.now)
+        self.assertEqual(datetime.fromisoformat(row['received_at']).date(), self.now.date())
 
     def test_anomaly_list_defaults_to_the_active_set(self):
         """The blade shows what still demands attention."""
