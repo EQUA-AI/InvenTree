@@ -73,7 +73,13 @@ def signal_rows(machine, *, now=None):
         state = getattr(binding, 'state', None)
         threshold = binding.source.freshness_threshold_seconds
         observed_at = to_display(state.observed_at, shift) if state else None
-        stale = observed_at is None or (now - observed_at).total_seconds() > threshold
+        # Too old and dated-in-the-future are both "not a current reading". A
+        # future observation means the stored value sits outside the span this
+        # station is presenting - a leftover from an earlier load, say - and
+        # showing it as live would put a reading on screen that has not
+        # happened yet.
+        age = (now - observed_at).total_seconds() if observed_at else None
+        stale = age is None or age > threshold or age < 0
         value = (state.value or {}).get('value') if state else None
 
         rows.append({

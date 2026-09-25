@@ -126,8 +126,23 @@ function customWindowError(
   return null;
 }
 
-/** Values the historian can return that cannot be plotted on a numeric axis. */
-function numericValue(value: unknown): number | null {
+/**
+ * What to draw for one sample, or null when it cannot be drawn.
+ *
+ * The server sends `plot_value` for samples whose raw value is not a number but
+ * still means something on an axis - a status code like "R" or "I", which it
+ * maps from the plant's own status vocabulary so the two cannot drift apart.
+ * Everything else non-numeric is left off rather than coerced: inventing a
+ * number for a value nobody defined is worse than a gap in the line.
+ */
+function numericValue(sample: {
+  value: unknown;
+  plot_value?: number | null;
+}): number | null {
+  if (typeof sample.plot_value === 'number') {
+    return sample.plot_value;
+  }
+  const { value } = sample;
   if (value === null || value === undefined || typeof value === 'boolean') {
     return null;
   }
@@ -324,7 +339,7 @@ export function SignalTrendChart({
 
     // Samples arrive oldest-first, which is already left-to-right.
     for (const sample of samples) {
-      const value = numericValue(sample.value);
+      const value = numericValue(sample);
       if (value === null) {
         ignored += 1;
         continue;
