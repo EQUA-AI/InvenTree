@@ -65,13 +65,23 @@ function formatRangeEdge(iso: string): string {
  * All within the server's maximum. Offering a range the server will refuse, or
  * silently shrink, would make the axis lie about which window was actually read.
  */
+/**
+ * Windows this source can actually serve.
+ *
+ * A snapshot is a whole-station document of ~55KB that must be fetched and
+ * parsed to extract one tag, so a window's cost is its document count, not its
+ * sample count. Measured against the live account: fifteen minutes returns in
+ * about ten seconds, an hour times out, three hours took two minutes and six
+ * hours four. None of the long ones draw a better line - a chart a few hundred
+ * pixels wide cannot show three thousand points - so they are not offered.
+ * A longer window is still reachable through a custom range, where the wait is
+ * at least deliberate.
+ */
 const RANGES = [
   { value: '300', label: () => t`5 minutes` },
   { value: '600', label: () => t`10 minutes` },
   { value: '900', label: () => t`15 minutes` },
-  { value: '3600', label: () => t`1 hour` },
-  { value: '10800', label: () => t`3 hours` },
-  { value: `${MAX_WINDOW_SECONDS}`, label: () => t`6 hours` }
+  { value: '1800', label: () => t`30 minutes` }
 ];
 
 /** Format Mantine's picker value (`YYYY-MM-DD HH:mm:ss`) for the API. */
@@ -274,18 +284,18 @@ export function SignalTrendChart({
     enabled: bindingId != null && (!isCustom || customRange != null),
     staleTime: 60 * 1000,
     queryFn: async () => {
-      // A preset ends at the most recent reading the source actually holds, not
-      // at "now". History is stored at its own observation times, which may be
-      // months behind the wall clock - anchoring to now asks for a window the
-      // source was never going to have anything in, and draws an empty chart
-      // with nothing to explain it. Falls back to now only while the range is
-      // still unknown.
-      const anchor = dataRange?.available
-        ? new Date(dataRange.to).getTime()
-        : Date.now();
+      // Relative to now, and resolved at fetch time rather than at render so a
+      // chart left open does not keep asking for the window it was mounted in.
+      //
+      // "Now" is correct even though the readings are a year old: the server
+      // presents this source's history in the clock the dashboard shows, so the
+      // newest reading is always at the present edge. Waiting on the data-range
+      // request to anchor this would delay the first plot for an answer it
+      // already has; that request only bounds the custom pickers.
+      const end = Date.now();
       const window = customRange ?? {
-        from: new Date(anchor - windowSeconds * 1000).toISOString(),
-        to: new Date(anchor).toISOString()
+        from: new Date(end - windowSeconds * 1000).toISOString(),
+        to: new Date(end).toISOString()
       };
       const response = await api.get(
         apiUrl(ApiEndpoints.machine_health_trend, machineId),
