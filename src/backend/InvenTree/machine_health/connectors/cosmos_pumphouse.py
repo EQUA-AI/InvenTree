@@ -54,6 +54,10 @@ logger = logging.getLogger('inventree')
 #: ``hour_bucket <= sub_time_period < hour_bucket + HOUR_MS``.
 HOUR_MS = 3_600_000
 
+#: Per-request ceiling when a source does not configure one. Unchanged from the
+#: value this connector has always used, so nothing moves without being asked.
+DEFAULT_REQUEST_SECONDS = 5.0
+
 #: The whole vocabulary a failure may be reported as. Anything the provider says
 #: is collapsed into one of these before it can reach a log line or a database
 #: row. ``CONFIG`` covers a source that cannot be used as configured - calling
@@ -328,8 +332,8 @@ class CosmosPumphouseConnector(HealthConnector):
             endpoint,
             credential=self._credential(),
             timeout=self.request_timeout(),
-            connection_timeout=5,
-            read_timeout=5,
+            connection_timeout=self.request_seconds,
+            read_timeout=self.request_seconds,
             retry_total=0,
         )
         self._client = client
@@ -407,12 +411,35 @@ class CosmosPumphouseConnector(HealthConnector):
             return
         self.request_charge = (self.request_charge or 0.0) + charge
 
+    @property
+    def request_seconds(self) -> float:
+        """How long one request to the account may take.
+
+        Five seconds suits an application deployed beside its Cosmos account,
+        and is wrong for one reaching it across the internet: measured from a
+        developer machine a single partition query to a remote account takes
+        three to nine seconds, so a five second cap fails about half of them -
+        not on volume, since the same queries are charged only ten to thirteen
+        RU, but on round-trip latency alone. Configurable so a distant
+        deployment can say so, and defaulted to the original value so a nearby
+        one is unaffected.
+        """
+        configured = (self.config or {}).get('request_timeout_seconds')
+        try:
+            seconds = float(configured)
+        except (TypeError, ValueError):
+            return DEFAULT_REQUEST_SECONDS
+        return seconds if seconds > 0 else DEFAULT_REQUEST_SECONDS
+
     def request_timeout(self):
         """Bound each request by the remaining station and sweep budget."""
-        remaining = 5.0 if self.deadline is None else self.deadline - time.monotonic()
+        allowed = self.request_seconds
+        remaining = (
+            allowed if self.deadline is None else self.deadline - time.monotonic()
+        )
         if remaining <= 0:
             raise PollBudgetError
-        return min(5.0, remaining)
+        return min(allowed, remaining)
 
     def latest_document(self, station: str, hour_bucket) -> dict | None:
         """Newest snapshot in one station-hour, or None when the hour is empty."""
