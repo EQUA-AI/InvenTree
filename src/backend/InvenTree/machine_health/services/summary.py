@@ -25,6 +25,7 @@ from assets.health_models import (
     MachineSignalBinding,
     SignalQuality,
 )
+from machine_health.services.display_time import display_shift, to_display
 
 #: Anomaly severity mapped onto the machine's overall condition.
 _SEVERITY_STATE = {
@@ -43,21 +44,36 @@ _STATE_RANK = {
 
 
 def signal_rows(machine, *, now=None):
-    """Return each active binding with its current state and freshness."""
+    """Return each active binding with its current state and freshness.
+
+    Observation times are presented in the clock the dashboard shows, and
+    freshness is judged after that move. Judging it before would mark every row
+    stale on the same reading the chart beside it draws happily - the signal
+    table and the trend panel would be describing one value in two different
+    times, which reads as a fault rather than as the design.
+    """
     now = now or timezone.now()
     rows = []
 
-    bindings = (
+    bindings = list(
         MachineSignalBinding.objects
         .select_related('source', 'state')
         .filter(machine=machine, active=True)
         .order_by('display_name')
     )
 
+    station = machine if machine.asset_type == 'pumphouse' else machine.parent
+    shift = (
+        display_shift(station, bindings[0].source, now=now)
+        if bindings
+        else timezone.timedelta(0)
+    )
+
     for binding in bindings:
         state = getattr(binding, 'state', None)
         threshold = binding.source.freshness_threshold_seconds
-        stale = state is None or state.is_stale(threshold, now=now)
+        observed_at = to_display(state.observed_at, shift) if state else None
+        stale = observed_at is None or (now - observed_at).total_seconds() > threshold
         value = (state.value or {}).get('value') if state else None
 
         rows.append({
@@ -69,8 +85,8 @@ def signal_rows(machine, *, now=None):
             'signal_kind': binding.signal_kind,
             'unit': binding.unit,
             'value': value,
-            'observed_at': state.observed_at if state else None,
-            'received_at': state.received_at if state else None,
+            'observed_at': observed_at,
+            'received_at': to_display(state.received_at, shift) if state else None,
             'quality': state.quality if state else SignalQuality.UNKNOWN,
             'stale': stale,
             'freshness_threshold_seconds': threshold,
