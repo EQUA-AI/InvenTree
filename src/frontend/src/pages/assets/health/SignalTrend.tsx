@@ -45,26 +45,46 @@ export function SignalTrendSparkline({
   machineId,
   bindingId,
   enabled = true,
-  trend: supplied
+  trend: supplied,
+  supplierPending = false
 }: Readonly<{
   machineId: number;
   bindingId: number;
   enabled?: boolean;
   /**
    * A trend already fetched for this binding, normally by the signal table
-   * reading the whole page in one request. When present no request is made
-   * here: a table of thirty sparklines each fetching its own window makes the
-   * source read and parse the same documents thirty times over.
+   * reading the whole page in one request. When a supplier owns this binding no
+   * request is made here: a table of thirty sparklines each fetching its own
+   * window makes the source read and parse the same documents thirty times
+   * over.
+   *
+   * `null` means a supplier owns the binding but has nothing for it - because
+   * its batch is still in flight, or because it came back without this one.
+   * That is still a supplier, so it must suppress the local fetch exactly like
+   * a delivered trend does. Only `undefined` - nobody is supplying - lets this
+   * sparkline read for itself.
    */
-  trend?: SignalTrend;
+  trend?: SignalTrend | null;
+  /**
+   * The supplier's batched request is still in flight, so show a loader rather
+   * than the "no trend" it would otherwise be indistinguishable from.
+   */
+  supplierPending?: boolean;
 }>) {
   const api = useApi();
 
+  // `undefined` is the only value that means nobody is supplying a trend.
+  // Testing for it directly here is what went wrong before: the table hands
+  // every row `map.get(id)`, which is `undefined` for all of them until the
+  // batch resolves, so every sparkline fired its own request first and the
+  // batch saved nothing.
+  const managed = supplied !== undefined;
+
   const trendQuery = useQuery<SignalTrend>({
     queryKey: ['machine-health-trend', machineId, bindingId],
-    // Only when nobody has supplied one; a lone sparkline outside the table
+    // Only when nobody is supplying one; a lone sparkline outside the table
     // still works on its own.
-    enabled: enabled && supplied === undefined,
+    enabled: enabled && !managed,
     // Trends are a federated read against the historian; don't re-fetch them on
     // every focus change.
     staleTime: 5 * 60 * 1000,
@@ -122,7 +142,7 @@ export function SignalTrendSparkline({
     return null;
   }
 
-  if (supplied === undefined && trendQuery.isLoading) {
+  if (managed ? supplierPending : trendQuery.isLoading) {
     return <Loader size='xs' />;
   }
 

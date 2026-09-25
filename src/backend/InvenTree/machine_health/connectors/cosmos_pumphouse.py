@@ -47,6 +47,7 @@ from machine_health.connectors.pumphouse_payload import (
     flatten_snapshot,
     in_batches,
 )
+from machine_health.services.display_time import MINIMUM_SHIFT
 
 logger = logging.getLogger('inventree')
 
@@ -585,6 +586,37 @@ class CosmosPumphouseConnector(HealthConnector):
     # Polling
     # ------------------------------------------------------------------
 
+    def read_ceiling(self, station: str, now_ms: int) -> int:
+        """The newest instant this station may be read up to.
+
+        Normally the wall clock. For a station whose history is a *recorded
+        window* - one ``discover_data_range`` has probed, and old enough that the
+        dashboard is shifting its times forward to read as live - it is the end
+        of that window instead.
+
+        The two must agree. The display offset is derived from the recorded end,
+        so a document later than that end is dated *past* the present the moment
+        it is shown. Worse, it then wins permanently: ingestion drops an older
+        observation as a replay, so nothing that follows can replace it, and the
+        station's tiles stay in the future until someone deletes the rows by
+        hand. Stations nobody has probed, and windows recent enough that no shift
+        is applied, keep reading to the wall clock as before.
+        """
+        entry = (self.config.get('data_ranges') or {}).get(str(station)) or {}
+        stamp = entry.get('to')
+        if not stamp:
+            return now_ms
+        try:
+            recorded = datetime.fromisoformat(str(stamp))
+        except (TypeError, ValueError):
+            return now_ms
+        if recorded.tzinfo is None:
+            recorded = recorded.replace(tzinfo=timezone.utc)
+        recorded_ms = to_epoch_ms(recorded)
+        if now_ms - recorded_ms < MINIMUM_SHIFT.total_seconds() * 1000:
+            return now_ms
+        return min(now_ms, recorded_ms)
+
     def poll(self, checkpoint, *, now=None, max_documents=None, on_scanned=None):
         """Yield ``(document, readings)`` from just after the checkpoint onward.
 
@@ -592,9 +624,13 @@ class CosmosPumphouseConnector(HealthConnector):
         so re-reading it would re-present data the application has taken. This
         reads only - the caller decides what to do with a failure, which is what
         lets :meth:`ingest` keep the checkpoint honest.
+
+        Reading stops at :meth:`read_ceiling`, not at the wall clock, so the
+        poller cannot outrun the window the dashboard anchors to.
         """
         station = checkpoint.station_uuid
         now_ms = to_epoch_ms(now or datetime.now(tz=timezone.utc))
+        ceiling_ms = self.read_ceiling(station, now_ms)
         from_ts = max(
             int(checkpoint.sub_time_period) + 1,
             (getattr(checkpoint, 'scan_until', None) or 0) - POLL_LOOKBACK_MS,
@@ -602,10 +638,10 @@ class CosmosPumphouseConnector(HealthConnector):
         cap = int(max_documents or self.config.get('max_docs_per_poll') or 200)
         produced = 0
 
-        for bucket in self._buckets(from_ts, now_ms + 1, MAX_BUCKETS_PER_POLL):
+        for bucket in self._buckets(from_ts, ceiling_ms + 1, MAX_BUCKETS_PER_POLL):
             self.request_timeout()
             window_from = max(from_ts, bucket)
-            window_to = min(now_ms + 1, bucket + HOUR_MS)
+            window_to = min(ceiling_ms + 1, bucket + HOUR_MS)
             for document in self.documents_in_bucket(
                 station, bucket, window_from, window_to
             ):
