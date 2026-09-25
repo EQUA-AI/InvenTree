@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 import InvenTree.permissions
+from assets.activation import live_status
 from assets.health_models import (
     ACTIVE_ANOMALY_STATUSES,
     AnomalyStatus,
@@ -247,6 +248,53 @@ class MachineHealthTrends(_MachineHealthView):
             )
 
         return Response({'results': results})
+
+
+class MachineHealthDataRange(_MachineHealthView):
+    """The span of history the machine's source actually holds.
+
+    A range picker offering dates nobody recorded produces an empty chart and no
+    explanation for it. This is what bounds the picker, and what the chart
+    anchors its default window to - the source stores history at its own
+    observation times, which are not "now" and need not be near it.
+
+    Recorded ahead of time by ``discover_data_range``: the container is
+    partitioned per station-hour with cross-partition queries disabled, so the
+    edges can only be found by probing buckets, which is far too slow to do on a
+    page load.
+    """
+
+    def get(self, request, pk):
+        """Return the station's recorded data range, or say there is none."""
+        machine = _machine(pk)
+        station = machine if machine.asset_type == 'pumphouse' else machine.parent
+        status = live_status(station) if station is not None else None
+        source_id = (status or {}).get('source', {}) or {}
+
+        if station is None or not source_id.get('pk'):
+            return Response({'available': False, 'reason': 'NO_SOURCE'})
+
+        source = HealthSource.objects.filter(pk=source_id['pk']).first()
+        recorded = ((source.config or {}).get('data_ranges') or {}).get(
+            str(station.source_entity_uuid)
+        )
+        if not recorded:
+            return Response({
+                'available': False,
+                'reason': 'NOT_DISCOVERED',
+                'detail': 'The span of history for this station has not been recorded yet.',
+            })
+
+        return Response({
+            'available': True,
+            'from': recorded['from'],
+            'to': recorded['to'],
+            'hours_with_data': recorded.get('hours_with_data'),
+            'hours_probed': recorded.get('hours_probed'),
+            'discovered_at': recorded.get('discovered_at'),
+            'source_id': source.pk,
+            'source_name': source.name,
+        })
 
 
 class MachineHealthSnapshots(_MachineHealthView):
@@ -498,6 +546,11 @@ machine_health_api_urls = [
                 'anomalies/<int:anomaly_pk>/preliminary-analysis/',
                 MachineAnomalyPreliminaryAnalysis.as_view(),
                 name='machine-health-anomaly-preliminary-analysis',
+            ),
+            path(
+                'data-range/',
+                MachineHealthDataRange.as_view(),
+                name='machine-health-data-range',
             ),
             path('trend/', MachineHealthTrend.as_view(), name='machine-health-trend'),
             path(
