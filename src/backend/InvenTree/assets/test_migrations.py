@@ -1,8 +1,11 @@
-"""Migration tests for the client backfill and the customer column removal."""
+"""Migration tests for the client backfill, customer column and unit registry."""
 
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.test import TransactionTestCase, tag
+from django.test import TestCase, TransactionTestCase, tag
+
+from common.models import CustomUnit
+from InvenTree.conversion import convert_physical_value, reload_unit_registry
 
 
 @tag('migration_test')
@@ -66,3 +69,34 @@ class ClientBackfillMigrationTests(TransactionTestCase):
         )
 
         MigrationExecutor(connection).migrate(self.migrate_to)
+
+
+class CusecUnitMigrationTests(TestCase):
+    """The estate must be rebuildable from the repository alone."""
+
+    def test_the_cusec_resolves_without_anyone_creating_it_by_hand(self):
+        """Thirty approved discharge points are stored in a unit Pint lacks.
+
+        This asserts against a database built only by migrations. Before 0015
+        the unit existed solely as a row somebody had typed into one deployment,
+        so a fresh database could not convert it and re-applying the checked-in
+        review packs failed at every discharge point.
+
+        The reload is load-bearing. The registry is built once at startup and
+        cached in a module global, and at that point the process is still
+        pointed at the developer's own database - which has the hand-made row.
+        Without forcing a rebuild this test reads that registry and passes on
+        any machine where someone has already created the unit by hand, which
+        is precisely the state it is meant to detect.
+        """
+        reload_unit_registry()
+
+        self.assertEqual(
+            float(convert_physical_value('2931 cusec', 'm**3/s')), 82.99667736115198
+        )
+
+    def test_the_definition_is_the_one_the_approvals_assume(self):
+        """A cusec is a cubic foot per second; nothing else reproduces 82.997."""
+        unit = CustomUnit.objects.get(name='cusec')
+
+        self.assertEqual(unit.definition, 'foot**3/second')
