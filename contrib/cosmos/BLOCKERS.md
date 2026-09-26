@@ -2,7 +2,7 @@
 
 | | ask | status |
 |---|---|---|
-| 1 | One snapshot taken while a pump is running | **Satisfied** 2026-09-21, and it settled less than expected |
+| 1 | One snapshot taken while a pump is running | **Satisfied** 2026-09-21, but its instrumentation consequence is open - 220 points |
 | 2 | One Cosmos role assignment | **Resolved** 2026-09-19 |
 | 3 | What six OPC-UA tags measure | **Open** - blocks 72 points at Saraswati; a seventh is now settled as dead |
 
@@ -64,6 +64,37 @@ needs `var`/`MVar` accepted by the unit registry (see HANDOFF.md section 3), and
 The original reasoning is kept below because it is still correct about *why* a
 stopped machine cannot confirm a unit. It is only wrong about how much one
 running machine fixes.
+
+### Measured 2026-09-26: the vibration tags are a signal question, not a unit one
+
+158 vibration points were withheld as a units question - "the catalogue defines
+no unit and ISO 20816 admits both um and mm/s" - which invites ending it by
+choosing. Measuring first shows why that would be wrong.
+
+Both candidates are **magnitudes**. Neither displacement amplitude in um nor
+velocity RMS in mm/s can be negative. Between 10% and 34% of these readings are,
+verbatim in the payload at full float precision:
+
+```
+PUMP12_MTR_NDE_BRG_VBRTN1_PROCESS_VALUE = '-0.12116609513759613'
+PUMP14_MOTOR_DE_VIBRATION1              = '-0.1519097238779068'
+```
+
+Not a sentinel, not a parse artefact. So the channel is not emitting a vibration
+magnitude in either unit, and the unit is not what blocks it. **The question
+belongs here, not in a standards decision**: is the signal rectified or
+RMS-converted at all, or is this a raw signed analogue word? Choosing mm/s would
+put a velocity on an operator's screen that goes negative.
+
+The half that is real, kept so it is not re-derived: at 474 rpm the factor is
+2*pi*f = 49.6, so the same motion reads about 20x larger in um than in mm/s, and
+medians of 0.035-0.21 on stopped machines fit a velocity transducer's noise floor
+rather than a proximity probe's resolution. Nothing can be settled on that. The
+reading that would settle it is one loaded machine, and none exists in usable
+form: the estate's only running bay holds its entire block frozen at 59.257,
+itself a sentinel.
+
+Adds 158 points to this ask, taking it from 62 to 220.
 
 ### Update 2026-09-25: published plant figures settled three of these
 
