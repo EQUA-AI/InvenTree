@@ -18,6 +18,7 @@ from django.test import SimpleTestCase, TestCase
 from assets.health_models import MachineSignalBinding
 from assets.ingestion_models import IngestionCheckpoint
 from machine_health.connectors.base import get_connector
+from machine_health.connectors import cosmos_pumphouse
 from machine_health.connectors.cosmos_pumphouse import (
     HOUR_MS,
     MAX_BUCKETS_PER_POLL,
@@ -498,6 +499,78 @@ class CredentialTests(SimpleTestCase):
         with mock.patch.dict('os.environ', {}, clear=True):
             with self.assertRaises(CosmosConfigError):
                 connector._credential()
+
+
+class SharedIdentityTests(SimpleTestCase):
+    """One Entra credential per process, so its token cache is shared.
+
+    Built per connector, the credential chain was walked again for every
+    request the page made, and those token round trips - not the queries -
+    were what failed when several charts loaded at once.
+    """
+
+    def setUp(self):
+        """Each test starts with no credential built."""
+        self._restore = cosmos_pumphouse._IDENTITY
+        cosmos_pumphouse._IDENTITY = None
+        self.addCleanup(setattr, cosmos_pumphouse, '_IDENTITY', self._restore)
+
+    def test_every_connector_answers_with_the_same_credential(self):
+        """A second reader reuses the first reader's token, not its own."""
+        built = []
+
+        def factory(**kwargs):
+            built.append(kwargs)
+            return mock.Mock(name=f'credential-{len(built)}')
+
+        with mock.patch('azure.identity.DefaultAzureCredential', factory):
+            first = connector_for()._credential()
+            second = connector_for()._credential()
+
+        self.assertIs(first, second)
+        self.assertEqual(len(built), 1)
+
+    def test_the_token_request_is_given_its_own_budget(self):
+        """The identity provider is a different host from the account."""
+        with mock.patch('azure.identity.DefaultAzureCredential') as factory:
+            connector_for()._credential()
+
+        kwargs = factory.call_args.kwargs
+        self.assertEqual(kwargs['read_timeout'], cosmos_pumphouse.IDENTITY_TIMEOUT_SECONDS)
+        self.assertEqual(kwargs['connection_timeout'], cosmos_pumphouse.IDENTITY_TIMEOUT_SECONDS)
+        self.assertEqual(kwargs['retry_total'], cosmos_pumphouse.IDENTITY_RETRIES)
+        self.assertGreater(kwargs['read_timeout'], 5)
+
+    def test_closing_a_connector_leaves_the_shared_credential_open(self):
+        """Closing it would discard the cache every other reader is using."""
+        with mock.patch('azure.identity.DefaultAzureCredential') as factory:
+            connector = connector_for()
+            credential = connector._credential()
+            connector.close()
+
+        credential.close.assert_not_called()
+        self.assertIs(cosmos_pumphouse._IDENTITY, credential)
+        del factory
+
+    def test_a_closed_connector_builds_a_fresh_client(self):
+        """A closed session cannot serve the next query."""
+        connector = connector_for()
+        connector._client = mock.Mock()
+        connector.close()
+
+        self.assertIsNone(connector._client)
+        self.assertIsNone(connector._container)
+
+    def test_the_emulator_key_is_never_shared(self):
+        """It is named per source and read fresh, so a change takes effect."""
+        connector = connector_for(
+            config={'endpoint': EMULATOR}, secret_ref='COSMOS_EMULATOR_KEY'
+        )
+        with mock.patch.dict('os.environ', {'COSMOS_EMULATOR_KEY': 'first'}):
+            self.assertEqual(connector._credential(), 'first')
+        with mock.patch.dict('os.environ', {'COSMOS_EMULATOR_KEY': 'second'}):
+            self.assertEqual(connector._credential(), 'second')
+        self.assertIsNone(cosmos_pumphouse._IDENTITY)
 
 
 class PollTests(SimpleTestCase):

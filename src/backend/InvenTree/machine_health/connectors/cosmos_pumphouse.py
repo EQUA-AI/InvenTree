@@ -124,6 +124,68 @@ QUERY_FIRST_IN_RANGE = (
     'ORDER BY c.sub_time_period ASC'
 )
 
+#: How long the shared credential may spend obtaining a token, and how many
+#: times it may retry.
+#:
+#: Deliberately separate from :data:`DEFAULT_REQUEST_SECONDS`: that budget
+#: bounds a query to the Cosmos account, while this one bounds a round trip to
+#: the identity provider, which is a different host at a different distance.
+#: Five seconds - the query budget - is what a service principal's token
+#: request was being given, and across the internet it was not enough: the
+#: reads that failed under load failed on the token, not on the data. Because
+#: the credential below is now built once per process rather than once per
+#: request, a more forgiving budget is paid once rather than on every read.
+IDENTITY_TIMEOUT_SECONDS = 10
+IDENTITY_RETRIES = 2
+
+#: Retries for one request to the account, for transient faults only.
+#:
+#: Previously zero, which made a single dropped connection an outage on the
+#: page: "the source could not be reached" where a second attempt would have
+#: succeeded. Retries stay inside the per-request timeout, so this widens what
+#: a request survives without widening how long it may take. Throttling has
+#: its own policy in the SDK and honours the server's retry-after; this covers
+#: connection and read failures.
+REQUEST_RETRIES = 2
+
+#: One credential for this process, and the lock that builds it once.
+#:
+#: ``DefaultAzureCredential`` walks a chain of sources - environment, managed
+#: identity, the Azure CLI - and every walk that reaches the network costs a
+#: round trip to the identity provider. Built per connector, that walk ran
+#: again for every API request the page made, and a page that reads a dozen
+#: series ran a dozen of them at once, each against a five second budget.
+#: Sharing one credential shares the SDK's own token cache with it, so the
+#: chain is walked once per process and the token is reused until it expires.
+#:
+#: It is a module global rather than an attribute of the source, because a
+#: source row says where to read and must never say how to authenticate.
+_IDENTITY_LOCK = threading.Lock()
+_IDENTITY = None
+
+
+def _shared_identity():
+    """Return the process-wide Entra ID credential, building it at most once."""
+    global _IDENTITY
+
+    if _IDENTITY is not None:
+        return _IDENTITY
+    with _IDENTITY_LOCK:
+        if _IDENTITY is None:
+            from azure.identity import DefaultAzureCredential
+
+            # A credential that fails is still worth keeping: it caches which
+            # link of the chain answered, and the next call retries the
+            # network rather than the whole chain.
+            _IDENTITY = DefaultAzureCredential(
+                process_timeout=IDENTITY_TIMEOUT_SECONDS,
+                connection_timeout=IDENTITY_TIMEOUT_SECONDS,
+                read_timeout=IDENTITY_TIMEOUT_SECONDS,
+                retry_total=IDENTITY_RETRIES,
+            )
+    return _IDENTITY
+
+
 #: Concurrent slot reads in one sampled window. Each is a single-document
 #: query costing about 4 RU, so throughput is never the limit - 240 of them
 #: spend ~60 RU/s against a 400 RU/s account. What bounds the read is moving
@@ -205,7 +267,6 @@ class CosmosPumphouseConnector(HealthConnector):
         super().__init__(source)
         self._container = None
         self._client = None
-        self._identity = None
         self._station_uuid = station_uuid
         self.deadline = deadline
         self.last_error_code = ''
@@ -301,15 +362,16 @@ class CosmosPumphouseConnector(HealthConnector):
         against the local emulator, and only from the environment variable named
         by ``secret_ref`` - so a key can never be read out of the database, an API
         response or a log.
+
+        The Entra credential is shared by the whole process (see
+        :func:`_shared_identity`) so that its token cache is shared too. The
+        emulator key is not: it is named per source and read from the
+        environment on every call, so that changing it takes effect at once and
+        so that one source's key can never answer for another's.
         """
         ref = (self.source.secret_ref or '').strip()
         if not ref:
-            from azure.identity import DefaultAzureCredential
-
-            self._identity = DefaultAzureCredential(
-                process_timeout=5, connection_timeout=5, read_timeout=5, retry_total=0
-            )
-            return self._identity
+            return _shared_identity()
 
         if not self._is_emulator():
             raise CosmosConfigError(
@@ -361,7 +423,7 @@ class CosmosPumphouseConnector(HealthConnector):
             timeout=self.request_timeout(),
             connection_timeout=self.request_seconds,
             read_timeout=self.request_seconds,
-            retry_total=0,
+            retry_total=REQUEST_RETRIES,
         )
         self._client = client
         self._container = client.get_database_client(database).get_container_client(
@@ -370,13 +432,19 @@ class CosmosPumphouseConnector(HealthConnector):
         return self._container
 
     def close(self):
-        """Release HTTP sessions and credential transports after a scheduled poll."""
-        try:
-            if self._client is not None:
-                self._client.close()
-        finally:
-            if self._identity is not None:
-                self._identity.close()
+        """Release this connector's HTTP session after a read.
+
+        The credential is deliberately left open: it belongs to the process,
+        not to this connector, and closing it would throw away the token cache
+        that every other reader is sharing - which is the cost this connector
+        was paying per request before the credential was shared.
+        """
+        if self._client is not None:
+            self._client.close()
+        # A closed client cannot serve another query, so forget it; the next
+        # caller builds a fresh one rather than failing on a dead session.
+        self._client = None
+        self._container = None
 
     # ------------------------------------------------------------------
     # Reading
