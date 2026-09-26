@@ -81,6 +81,12 @@ def signal_rows(machine, *, now=None):
         age = (now - observed_at).total_seconds() if observed_at else None
         stale = age is None or age > threshold or age < 0
         value = (state.value or {}).get('value') if state else None
+        quality = state.quality if state else SignalQuality.UNKNOWN
+        # Unusable is as disqualifying as old. The mimic has always refused to
+        # classify a reading whose quality is not good; this row did not, so a
+        # pegged channel could drive a machine's condition on the Health blade
+        # while the same row displayed "Unusable or unknown" beside it.
+        usable = not stale and quality == SignalQuality.GOOD
 
         rows.append({
             'binding_id': binding.pk,
@@ -98,10 +104,10 @@ def signal_rows(machine, *, now=None):
             # value - so adding the offset would date the arrival of a reading
             # over a year after the reading itself.
             'received_at': state.received_at if state else None,
-            'quality': state.quality if state else SignalQuality.UNKNOWN,
+            'quality': quality,
             'stale': stale,
             'freshness_threshold_seconds': threshold,
-            'state': binding.classify(value) if not stale else HealthState.UNKNOWN,
+            'state': binding.classify(value) if usable else HealthState.UNKNOWN,
             'limits': {
                 'normal_min': binding.normal_min,
                 'normal_max': binding.normal_max,

@@ -11,6 +11,7 @@ from assets.health_models import (
     AnomalyStatus,
     HealthState,
     MachineAnomaly,
+    SignalQuality,
 )
 from machine_health.services.anomalies import (
     AnomalyError,
@@ -230,3 +231,56 @@ class AcknowledgementTest(HealthEnvMixin, TestCase):
                 title='x',
                 severity='catastrophic',
             )
+
+
+class UnusableReadingTest(HealthEnvMixin, TestCase):
+    """A pegged channel is not evidence, in either direction."""
+
+    def setUp(self):
+        """One bounded signal; the environment's limits warn at 6 and trip at 9."""
+        super().setUp()
+        self.build_health_env()
+        self.now = timezone.now()
+
+    def test_a_bad_quality_breach_raises_nothing(self):
+        """The source's over-range marker must not become a plant condition.
+
+        3276.7 is the signed 16-bit maximum at 0.1 resolution and reaches 3.3%
+        of readings on approved temperature points. Classified rather than
+        refused, roughly one reading in thirty would open a critical anomaly
+        about a measurement that never happened.
+        """
+        self.set_signal(3276.7, observed_at=self.now, quality=SignalQuality.BAD)
+
+        self.assertEqual(evaluate_thresholds(self.machine, now=self.now), [])
+        self.assertFalse(MachineAnomaly.objects.filter(machine=self.machine).exists())
+
+    def test_a_channel_going_bad_does_not_resolve_an_open_anomaly(self):
+        """"The sensor stopped reporting" is not "the signal returned inside its limits".
+
+        Auto-resolution closes any open threshold anomaly whose fingerprint was
+        not seen this pass, with exactly that note. So skipping an unusable
+        reading outright would silently clear a real condition and attribute a
+        recovery to it that nobody observed.
+        """
+        self.set_signal(10.0, observed_at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+
+        self.set_signal(3276.7, observed_at=self.now, quality=SignalQuality.BAD)
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+        self.assertEqual(raised.resolution_note, '')
+
+    def test_a_good_reading_inside_limits_still_resolves(self):
+        """The guard must not break recovery for readings that are usable."""
+        self.set_signal(10.0, observed_at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.set_signal(3.0, observed_at=self.now)
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)

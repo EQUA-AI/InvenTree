@@ -88,6 +88,25 @@ class HealthSummaryTest(HealthEnvMixin, TestCase):
         self.assertLessEqual(row['received_at'], self.now)
         self.assertFalse(row['stale'])
 
+    def test_an_unusable_reading_does_not_drive_the_condition(self):
+        """The Health blade refused stale data but classified pegged data.
+
+        The mimic has always declined to classify a reading whose quality is not
+        good. This row did not, so one channel stuck at the over-range marker
+        could make a whole machine read CRITICAL while the same row displayed
+        "Unusable or unknown" beside it.
+        """
+        self.set_signal(3276.7, observed_at=self.now, quality=SignalQuality.BAD)
+
+        [row] = signal_rows(self.machine, now=self.now)
+
+        self.assertEqual(row['quality'], SignalQuality.BAD)
+        self.assertFalse(row['stale'])
+        self.assertEqual(row['state'], HealthState.UNKNOWN)
+        self.assertNotEqual(
+            health_summary(self.machine, now=self.now)['state'], HealthState.CRITICAL
+        )
+
     def test_every_signal_stale_reads_offline(self):
         """A connector outage reads as an outage, not as a healthy machine."""
         self.set_signal(3.0, observed_at=self.now - timedelta(hours=2))

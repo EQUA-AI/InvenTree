@@ -12,6 +12,7 @@ from django.test import SimpleTestCase
 from assets.health_models import SignalQuality
 from machine_health.connectors.pumphouse_payload import (
     SnapshotError,
+    _coerce,
     flatten_snapshot,
     in_batches,
     observed_at,
@@ -324,3 +325,38 @@ class BatchingTests(SimpleTestCase):
         """A size of zero would loop forever rather than fail."""
         with self.assertRaises(ValueError):
             list(in_batches([1, 2, 3], size=0))
+
+
+class OverRangeSentinelTests(SimpleTestCase):
+    """3276.7 is a pegged channel, not a reading."""
+
+    #: The two float32 encodings the source actually sends, one ULP apart, each
+    #: carried at Saraswati by its own disjoint set of tags. An equality test
+    #: catches one and misses the other, which is why the check is a tolerance.
+    ENCODINGS = ('3276.699951171875', '3276.7001953125')
+
+    def test_both_encodings_of_the_peg_are_marked_bad(self):
+        """The signed 16-bit maximum at 0.1 resolution is 32767/10, not a temperature."""
+        for text in self.ENCODINGS:
+            with self.subTest(text):
+                value, quality = _coerce(text)
+
+                self.assertEqual(quality, SignalQuality.BAD)
+                self.assertAlmostEqual(value, 3276.7, places=3)
+
+    def test_the_peg_is_kept_rather_than_dropped_or_zeroed(self):
+        """"Pegged" and "zero" are different facts about a plant."""
+        value, _ = _coerce(self.ENCODINGS[0])
+
+        self.assertIsNotNone(value)
+        self.assertNotEqual(value, 0)
+
+    def test_a_reading_near_the_peg_is_still_good(self):
+        """The tolerance is tight enough not to swallow a real measurement."""
+        for text in ('3276.0', '3277.5', '327.67', '-3276.7'):
+            with self.subTest(text):
+                self.assertEqual(_coerce(text)[1], SignalQuality.GOOD)
+
+    def test_an_ordinary_temperature_is_unaffected(self):
+        """The common case keeps its quality."""
+        self.assertEqual(_coerce('29.3'), (29.3, SignalQuality.GOOD))
