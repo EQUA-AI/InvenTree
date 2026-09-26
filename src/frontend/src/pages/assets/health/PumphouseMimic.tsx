@@ -43,6 +43,8 @@ type LayoutElement = {
 };
 type Bay = {
   key: string;
+  /** The pump slot's own machine, for linking to its pages. */
+  machine: number;
   name: string;
   active: boolean;
   state: string;

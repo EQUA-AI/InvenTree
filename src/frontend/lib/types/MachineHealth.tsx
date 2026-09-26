@@ -72,6 +72,8 @@ export interface MachineSignal {
   source_id: number;
   source_name: string;
   source_type: HealthSourceType;
+  /** The mapped pointer, e.g. `/dex/PUMP3_SPEED`; what a page groups by. */
+  external_key: string;
   display_name: string;
   signal_kind: string;
   unit: string;
@@ -240,4 +242,74 @@ export interface SignalTrend {
   detail?: string;
   truncated?: boolean;
   samples: TrendSample[];
+}
+
+/**
+ * One point of a series: display-clock epoch milliseconds, the number drawn,
+ * and the reading's quality. `raw` is present only when the value is not
+ * itself the number drawn - a status code, or something unplottable.
+ */
+export interface SeriesSample {
+  t: number;
+  v: number | null;
+  q: SignalQuality;
+  raw?: unknown;
+}
+
+export interface SeriesEntry {
+  binding_id: number;
+  machine_id: number;
+  external_key: string;
+  display_name: string;
+  unit: string;
+  signal_kind: string;
+  source_id: number;
+  source_name: string;
+  limits: MachineSignalLimits;
+  available: boolean;
+  reason?: string;
+  detail?: string;
+  count: number;
+  samples: SeriesSample[];
+}
+
+export type SeriesMode = 'complete' | 'sampled';
+
+export interface SeriesLive {
+  enabled: boolean;
+  last_poll_at: string | null;
+  last_error_code: string;
+  poll_interval_seconds: number;
+}
+
+/**
+ * Several signals over one window, sized for a chart.
+ *
+ * `mode` says what the points are: `complete` is every reading the source
+ * holds for the window; `sampled` is one real reading per slot, `slots` of
+ * them across the window. Nothing in either is averaged or interpolated.
+ */
+export interface SeriesResponse {
+  machine: number;
+  station: { pk: number; name: string } | null;
+  window_start: string;
+  window_end: string;
+  window_seconds: number;
+  mode: SeriesMode;
+  slots: number | null;
+  resolution_seconds: number;
+  cadence_seconds: number | null;
+  expected_documents: number;
+  documents_read: number;
+  display_shifted: boolean;
+  display_shift_seconds: number;
+  live: SeriesLive;
+  limits: {
+    max_window_seconds: number;
+    complete_read_max_documents: number;
+    min_points: number;
+    max_points: number;
+    expected_sample_interval_seconds: number;
+  };
+  series: SeriesEntry[];
 }

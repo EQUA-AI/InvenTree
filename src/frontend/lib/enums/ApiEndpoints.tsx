@@ -190,6 +190,7 @@ export enum ApiEndpoints {
   machine_health_data_range = 'machine-health/machines/:id/health/data-range/',
   machine_health_trend = 'machine-health/machines/:id/health/trend/',
   machine_health_trends = 'machine-health/machines/:id/health/trends/',
+  machine_health_series = 'machine-health/machines/:id/health/series/',
   machine_health_snapshots = 'machine-health/machines/:id/health/snapshots/',
   asset_maintenance_list = 'assets/maintenance/',
   asset_maintenance_detail = 'assets/maintenance/:id/',

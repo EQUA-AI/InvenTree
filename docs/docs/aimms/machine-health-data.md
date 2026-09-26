@@ -9,6 +9,10 @@ signal values, open anomalies, and the immutable snapshots that every
 preliminary result cites. This page records where that data comes from, how it
 gets in, and how long we keep it.
 
+The [Performance tab](performance-tab.md) beside it draws the same signals over
+time - trends, sensor families, and relationships between parameters - from a
+bounded, sampled read of the source's history.
+
 ## How data gets in
 
 **Signed webhook.** The one generic ingestion path we ship. A gateway POSTs a

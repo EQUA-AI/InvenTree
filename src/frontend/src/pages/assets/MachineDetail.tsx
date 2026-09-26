@@ -2,6 +2,7 @@ import { t } from '@lingui/core/macro';
 import { Button, Stack, Text } from '@mantine/core';
 import {
   IconActivityHeartbeat,
+  IconChartLine,
   IconInfoCircle,
   IconListCheck,
   IconMessageChatbot,
@@ -31,6 +32,7 @@ import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateM
 import { StartRepairModal } from './StartRepairModal';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
 import PumphouseMimic from './health/PumphouseMimic';
+import { PerformancePanel } from './performance/PerformancePanel';
 
 export default function MachineDetail() {
   const { id } = useParams();
@@ -152,6 +154,14 @@ export default function MachineDetail() {
         content: machine?.pk ? (
           <MachineHealthPanel machineId={machine.pk} />
         ) : null
+      },
+      {
+        // Performance follows Health: condition first, then how the machine
+        // is running and what its parameters have been doing.
+        name: 'performance',
+        label: t`Performance`,
+        icon: <IconChartLine />,
+        content: machine?.pk ? <PerformancePanel machine={machine} /> : null
       },
       {
         name: 'parts',
