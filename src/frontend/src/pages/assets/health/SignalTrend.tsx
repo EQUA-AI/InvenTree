@@ -8,6 +8,7 @@ import { apiUrl } from '@lib/functions/Api';
 import type { SignalTrend } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
+import { numericValue } from './common';
 
 const WIDTH = 120;
 const HEIGHT = 28;
@@ -112,9 +113,12 @@ export function SignalTrendSparkline({
   const trend = supplied ?? trendQuery.data;
 
   const path = useMemo(() => {
+    // Via the shared reader, so a status trace ("R"/"I") draws here exactly as
+    // it does in the full chart. Reading `sample.value` directly is what made
+    // every status sparkline report "Too few samples".
     const samples = (trend?.samples ?? [])
-      .map((sample) => Number(sample.value))
-      .filter((value) => Number.isFinite(value));
+      .map((sample) => numericValue(sample))
+      .filter((value): value is number => value !== null);
 
     if (samples.length < 2) {
       return null;

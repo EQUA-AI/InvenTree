@@ -148,7 +148,12 @@ function Diagram({ data, unit }: { data: MimicData; unit?: string }) {
             <g key={element.id} data-point={pointer}>
               <title>
                 {elementLabel(element)}: {valueText(point)}{' '}
-                {reasonLabel(point?.reason ?? 'not_bound')}
+                {/* `point.reason` is null for a healthy point, so `??` fell
+                    through to "not bound" and labelled every live tile as
+                    unbound - contradicting the value drawn in the same tile.
+                    Only a *missing* point is unbound; a present one states its
+                    own reason, and `reasonLabel(null)` is deliberately "". */}
+                {point ? reasonLabel(point.reason) : reasonLabel('not_bound')}
               </title>
               <rect
                 x={element.x - 60}

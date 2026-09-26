@@ -47,15 +47,28 @@ class HealthEnvMixin:
         )
         return self.machine
 
-    def set_signal(self, value, *, observed_at=None, quality=SignalQuality.GOOD):
-        """Write a current reading for the environment's binding."""
+    def set_signal(
+        self,
+        value,
+        *,
+        observed_at=None,
+        received_at=None,
+        quality=SignalQuality.GOOD,
+    ):
+        """Write a current reading for the environment's binding.
+
+        ``received_at`` defaults to ``observed_at``, which is what a source
+        polled in real time produces. Pass it separately to represent migrated
+        history, where the plant observed a value long before this deployment
+        accepted it.
+        """
         observed_at = observed_at or timezone.now()
         state, _created = MachineSignalState.objects.update_or_create(
             binding=self.binding,
             defaults={
                 'value': {'value': value, 'unit': self.binding.unit},
                 'observed_at': observed_at,
-                'received_at': observed_at,
+                'received_at': received_at or observed_at,
                 'quality': quality,
             },
         )
