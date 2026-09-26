@@ -1,7 +1,7 @@
 # Alarm thresholds: a draft, and why none of it is switched on
 
 **Status: the stator-winding row is applied; everything else is still a draft.**
-274 of 1,294 active bindings now carry limits. The rest remain unbounded, so
+307 of 1,294 active bindings now carry limits. The rest remain unbounded, so
 `classify()` still returns `unknown` for them.
 
 This file records what was applied and why, what is still only drafted, and the
@@ -58,7 +58,7 @@ because the objections are the useful part.
 
 | family | pts | warn | crit | standing |
 |---|---:|---:|---:|---|
-| Stator winding ETDs | 318 | 125 | 145 | **APPLIED to 274 of them, 2026-09-26.** IS/IEC 60034-1 Table 7 item 1a: 85 K rise by embedded detector for thermal class 130(B) on the 40 degC reference coolant, so 125 is the highest reading the machine is designed to produce. Trip from IEEE Std 3004.8-2016 cl. 8.5.2.1, "5 degC to 10 degC below the insulation class maximum" (155 - 10). |
+| Stator winding ETDs | 318 | 125 | 145 | **APPLIED to 307 of them, 2026-09-26.** IS/IEC 60034-1 Table 7 item 1a: 85 K rise by embedded detector for thermal class 130(B) on the 40 degC reference coolant, so 125 is the highest reading the machine is designed to produce. Trip from IEEE Std 3004.8-2016 cl. 8.5.2.1, "5 degC to 10 degC below the insulation class maximum" (155 - 10). |
 | Motor / stator core RTDs | 106 | 125 | 145 | **Backstop only.** No standard gives a core figure - cl. 8.10.4 is qualitative and there is no core row in Table 7 - so these carry the winding numbers unchanged. A plausible lower number was deliberately *not* invented: it would be the first thing to fire on a hot day. |
 | Thrust + guide bearing pads | 181 | 80 | 90 | **Challenged.** 80 is a comparable plant's *trip* value (its alarm is 77), from a single low-profile paper on a 200 rpm Kaplan machine. 90 traces to API 610 cl. 6.10.2.4, which is a shop-test acceptance criterion for bearing metal, not an alarm setpoint. |
 | Bearing oil / reservoir | 10 | 70 | 80 | **Challenged hardest.** The only row the draft marked "no plant confirmation needed", and the one whose warning point is within reach of normal running: the reference band for a large vertical oil bath is 50-60 degC. The 70 is cited from API 610's *pressurized-system* oil outlet; these are ring-oiled sumps. |
@@ -99,12 +99,35 @@ every one of them**, and four of those are out of range in every sample taken:
 
 So the channels were classified from the data before any limit was written, and
 `contrib/cosmos/devtools/apply_winding_thresholds.py` sets limits only where a
-channel has at least 20 usable samples and none of them impossible. That is 274
+channel has at least 20 usable samples and none of them impossible. That is 307
 points. The six faulty channels are an instrumentation question - Ask 1's kind,
-not a limit question - and 38 more (mostly Ranganayaka, which holds only 50
-hours of data) simply have too few samples for silence to count as evidence.
+not a limit question.
 
-Result: 274 points classify, **0 anomalies raised**, 0 open.
+Five points are left, and they are a third kind of thing again: at Millbrook
+(Saraswati), `PUMP1_..._TEMPERATURED1`, `D10` and `D4`, `PUMP6_..._TEMPERATURED1`
+and `PUMP9_..._TEMPERATURED6` returned **zero** samples across all 288 hours of
+that station's span. The tags are approved in the dictionary and bound, but the
+payload never carries them, so those five bindings will read `unknown` forever
+however the limits are set. That is a dictionary question - either the tag names
+drifted or those detectors are not wired - and it belongs with Ask 1.
+
+Result: 307 points classify, **0 anomalies raised**, 0 open.
+
+An earlier run set 274 and reported the other 38 as "too few samples", blaming
+Ranganayaka's sparse span. The span was not the problem; the sampler was. It
+probed `hours // 70` apart across 288 hours, which is a fine stride when ~80% of
+the hours hold data (Millbrook and Cedar Creek) and a bad one at Ranganayaka,
+where 50 do - it landed on about a dozen. The tool now re-probes at half the
+stride while any channel is still short, so a dense station is read exactly as
+before, with no extra requests, and a sparse one is walked as densely as it
+takes. It halves rather than stopping at the first 20 samples on purpose:
+stopping early would judge every channel on the opening hours of the span and
+miss the intermittent faults this classification exists to catch. The six faulty
+channels came back identical under the denser walk, which is the evidence that
+the change did not move the classification, only its coverage.
+
+The 38 were also not all Ranganayaka's: 32 were, and the other 6 were at
+Millbrook - 1 that the denser walk resolved and the 5 absent tags above.
 
 A counting note, because the draft got it wrong and so did I when reporting it:
 318 is the number of *points*, but only 197 distinct tag paths - the same tag
@@ -126,7 +149,7 @@ warrant different bands).
 ## The one to send first
 
 Question 1 below is the only item on this whole list that costs five minutes
-instead of a document request, and it is the one that decides whether the 274
+instead of a document request, and it is the one that decides whether the 307
 limits now live are right. Ready to forward as-is:
 
 > **Subject: One photo needed - motor rating plate, Saraswati or Parvathi**
@@ -151,11 +174,13 @@ design ambient. One photograph therefore answers questions 1, 2 and 3 below, and
 part of 8, for the same five minutes - whereas asking for "the insulation class"
 gets exactly one of them.
 
-**Ranganayaka Sagar needs its own plate.** Those are a different machine (the
-catalogue records 134 MW with a different detector layout), and they carry no
-winding limits today - all 38 of their points fell below the sample count needed
-to judge the channels. Worth a second photograph when convenient, but it is not
-what is holding anything up.
+**Ranganayaka Sagar needs its own plate.** Those are a different machine - the
+catalogue records 134 MW with a different detector layout - and all 32 of their
+winding points now carry the same 125/145 band, which was derived from the
+*Annaram* assumption. That makes the second photograph worth more than it was
+when the points were simply unlimited: the band is now live on a machine nobody
+has checked the class of. Still not urgent, because the assumption errs early
+rather than late, but it is no longer free.
 
 ## What the plant could answer
 
