@@ -449,11 +449,14 @@ class ApplyReviewTests(TestCase):
 class ShippedReviewFileTests(TestCase):
     """The review file committed for the PH_3 pilot."""
 
-    REVIEW = (
-        Path(__file__).resolve().parents[4]
-        / 'contrib'
-        / 'pump-cassandra'
-        / 'PH_3.review.json'
+    #: Anchored on a directory that exists only at the repository root, not on
+    #: a count of parents. The count was right and silently became wrong when
+    #: this module moved one level deeper into a tests package - the sort of
+    #: breakage that reports as six unrelated errors.
+    REVIEW = next(
+        parent / 'contrib' / 'pump-cassandra' / 'PH_3.review.json'
+        for parent in Path(__file__).resolve().parents
+        if (parent / 'contrib' / 'pump-cassandra').is_dir()
     )
 
     def setUp(self):

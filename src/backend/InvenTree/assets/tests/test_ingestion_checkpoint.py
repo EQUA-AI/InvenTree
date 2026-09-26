@@ -5,7 +5,7 @@ from django.db import IntegrityError, transaction
 
 from InvenTree.unit_test import InvenTreeTestCase
 
-from .models import HealthSource, IngestionCheckpoint
+from assets.models import HealthSource, IngestionCheckpoint
 
 STATION = 'bafc976f-1ccc-4a91-aaa6-c3eac2470d36'
 BUCKET = '1752850800000'
