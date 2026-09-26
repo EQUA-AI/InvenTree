@@ -1,8 +1,21 @@
 # Three external asks, made precise
 
-Each of the remaining blockers needs someone other than the developer. This file
-states exactly what is needed, why, and how to verify it afterwards, so none of
-them turns into a vague request.
+| | ask | status |
+|---|---|---|
+| 1 | One snapshot taken while a pump is running | **Satisfied** 2026-09-21, and it settled less than expected |
+| 2 | One Cosmos role assignment | **Resolved** 2026-09-19 |
+| 3 | What seven OPC-UA tags measure | **Open** - blocks 84 points at Saraswati, and nothing else |
+
+**Only Ask 3 is outstanding.** Each ask needs someone other than the developer,
+and each states exactly what is needed, why, and how to verify it afterwards, so
+none of them turns into a vague request.
+
+The two closed ones are kept because their reasoning is still load-bearing, not
+as history. Ask 1 is why a stopped machine cannot confirm a unit, and why no
+further export will settle the tags that do not respond to load: what is left
+there is an instrumentation question - are they wired at all? - and asking for
+more data is the specific thing it tells you not to do. Ask 2 is the
+configuration the live connector runs on, and how to reverse it.
 
 ---
 
