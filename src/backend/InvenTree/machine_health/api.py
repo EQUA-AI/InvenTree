@@ -46,6 +46,7 @@ from .services import snapshots as snapshot_services
 from .services.display_time import display_shift, to_display
 from .services.ingestion import IngestionError, coerce_datetime, ingest_readings
 from .services.preliminary import analyze_anomaly
+from .services.series import MAX_SERIES_TARGETS, SeriesError, read_series
 from .services.summary import health_summary, signal_rows
 from .services.trends import TrendError, read_trend, read_trends
 
@@ -250,6 +251,76 @@ class MachineHealthTrends(_MachineHealthView):
             )
 
         return Response({'results': results})
+
+
+class MachineHealthSeries(_MachineHealthView):
+    """Sampled or complete history for several signals, sized for a chart.
+
+    The Performance blade's read. Where ``trends/`` returns every snapshot in a
+    window and so stops at six hours, this returns a fixed number of points
+    across a window of up to a day, each one a real snapshot. Targets are named
+    as binding ids or as mapped keys; both are resolved within the machine's
+    station before any source is asked, so a client cannot read another
+    station's telemetry by naming its tag.
+    """
+
+    def get(self, request, pk):
+        """Read the requested series, or say why the request is invalid."""
+        machine = _machine(pk)
+
+        raw_ids = request.query_params.get('bindings', '')
+        raw_keys = request.query_params.get('keys', '')
+        ids = [part for part in raw_ids.replace(' ', '').split(',') if part]
+        keys = [part.strip() for part in raw_keys.split(',') if part.strip()]
+        if not ids and not keys:
+            return Response(
+                {
+                    'code': 'TARGETS_REQUIRED',
+                    'detail': 'Name at least one binding id or mapped key.',
+                },
+                status=400,
+            )
+        if not all(part.isdigit() for part in ids):
+            return Response(
+                {'code': 'BINDINGS_INVALID', 'detail': 'Binding ids must be numeric.'},
+                status=400,
+            )
+        if len(ids) + len(keys) > MAX_SERIES_TARGETS:
+            return Response(
+                {
+                    'code': 'TOO_MANY_TARGETS',
+                    'detail': f'At most {MAX_SERIES_TARGETS} signals per request.',
+                },
+                status=400,
+            )
+
+        try:
+            start = (
+                coerce_datetime(request.query_params['from'])
+                if request.query_params.get('from')
+                else None
+            )
+            end = (
+                coerce_datetime(request.query_params['to'])
+                if request.query_params.get('to')
+                else None
+            )
+        except IngestionError as exc:
+            return Response({'code': 'INVALID_WINDOW', 'detail': str(exc)}, status=400)
+
+        try:
+            result = read_series(
+                machine,
+                binding_ids=[int(part) for part in ids],
+                keys=keys,
+                start=start,
+                end=end,
+                points=request.query_params.get('points'),
+            )
+        except SeriesError as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=400)
+
+        return Response(result)
 
 
 class MachineHealthDataRange(_MachineHealthView):
@@ -569,6 +640,9 @@ machine_health_api_urls = [
             path('trend/', MachineHealthTrend.as_view(), name='machine-health-trend'),
             path(
                 'trends/', MachineHealthTrends.as_view(), name='machine-health-trends'
+            ),
+            path(
+                'series/', MachineHealthSeries.as_view(), name='machine-health-series'
             ),
             path(
                 'snapshots/',

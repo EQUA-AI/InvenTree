@@ -25,6 +25,7 @@ class MachineSignalSerializer(serializers.Serializer):
     source_id = serializers.IntegerField(read_only=True)
     source_name = serializers.CharField(read_only=True)
     source_type = serializers.CharField(read_only=True)
+    external_key = serializers.CharField(read_only=True)
     display_name = serializers.CharField(read_only=True)
     signal_kind = serializers.CharField(read_only=True)
     unit = serializers.CharField(read_only=True)
