@@ -1,8 +1,8 @@
-# Two external asks, made precise
+# Three external asks, made precise
 
-Both of the remaining blockers need someone other than the developer. This file
-states exactly what is needed, why, and how to verify it afterwards, so neither
-turns into a vague request.
+Each of the remaining blockers needs someone other than the developer. This file
+states exactly what is needed, why, and how to verify it afterwards, so none of
+them turns into a vague request.
 
 ---
 
@@ -483,3 +483,70 @@ python src/backend/InvenTree/manage.py check_pumphouse_readiness --source SOURCE
 A successful read probe does **not** prove the absence of write permission. To
 check least privilege actually holds, attempt a write with the new identity and
 confirm it is refused.
+
+
+---
+
+## Ask 3: what seven OPC-UA tags measure
+
+### Status: OPEN. Blocks 84 points at Saraswati, and nothing else.
+
+The source spells bay-scoped measurements twice. Most arrive as `PUMP5_...`,
+which the catalogue keys on. A second set arrives as the raw node id of an
+OPC-UA subscription:
+
+```
+NS=1;S=T|PS1_PROG_19_4_2019_OS(2)::P5_WT_CDIN_WT1_M.PROCESS_VALUE
+```
+
+Ownership of those is settled - `registry.OPC_PUMP` reads the bay out of the
+node id, and `assets.0016` moved the 120 already stored onto their bays, where
+they had been filed against the station. What is not settled is what seven of
+every bay's ten actually measure.
+
+### The three that need nothing
+
+`PMP_THRST_BRG_VBRTN1`, `2` and `3` are a second spelling of
+`/dex/PUMP<n>_PMP_THRST_BRG_VBRTN<c>_PROCESS_VALUE`, which review already
+handles. They stay unmapped on purpose: one catalogue parameter with two
+dictionary points makes approval ambiguous, and of the two paths the node id is
+the one that stops responding - on a loaded bay it reads 0 where the catalogued
+tag reads 59.257. Only reopen these if the plant says the node id is the
+trustworthy path, in which case it is the catalogued tag that should be withheld.
+
+### The seven that do
+
+| tag | what is known |
+|---|---|
+| `MV_PMP_DRF_TB_PT` | varies; 10 of 12 channels live |
+| `OL_SMP_BRG_LT` | varies, 40.1-79.3 |
+| `TOP_CVR_DRNG` | varies, 0.002-0.86 |
+| `VS_NDE_BG2_M` | varies; one channel sits on the 59.257 sentinel |
+| `WT_CDIN_WT1_M`, `WT_CDIN_WT2_M` | varies, median 35.2 |
+| `WT_CLR_CLD_INLT_WT_RTD2` | constant across the whole window - dead |
+
+Each carries a measurement no other tag provides, so unlike the dead families in
+Ask 1 these would become real signals. The obstacle is not the unit: it is that
+a catalogue entry has to name a component and a physical *kind*, and nothing
+states what these abbreviations mean. They do not appear in published tag-naming
+conventions, and the values do not identify the quantity - a median around 35
+fits degC, percent and metres equally. Asserting a meaning from the abbreviation
+would be a stronger claim than any unit approved here has rested on.
+
+### What to ask for
+
+The OPC-UA tag list for `PS1_PROG_19_4_2019` - an address-space export, a point
+schedule, or simply what each of the seven measures. One line per tag is enough.
+
+### How to use it when it arrives
+
+Add the seven to `part/catalogues/pump_systems.json` under the component each
+belongs to, with `unit_status: unresolved`, then set
+`allow_match=bool(match) or bool(opc) or tag == 'COMMAN_FORBAY_LEVEL'` in
+`registry.plan_dictionary` so the node ids are offered to the matcher. Re-import
+the station dictionary and review the units as usual. Do **not** normalise the
+node id's `.PROCESS_VALUE` to `_PROCESS_VALUE`: the dot is what currently stops
+these colliding with the catalogued short-form tags.
+
+The reason recorded on each of the 84 points names its own tag and repeats this
+ask, so nobody has to find this file first.

@@ -23,6 +23,20 @@ from .models import AssetComponent, AssetMachine, DictionaryPoint
 MAX_BYTES = 8 * 1024 * 1024
 MAX_POINTS = 25000
 PUMP = re.compile(r'^PUMP([1-9][0-9]{0,3})_')
+#: The same bay, named inside an OPC-UA node id rather than as a tag prefix.
+#:
+#: The source carries two spellings for bay-scoped measurements. Most arrive as
+#: ``PUMP5_...``; a second set arrives as
+#: ``NS=1;S=T|PS1_PROG_19_4_2019_OS(2)::P5_...``, which is the raw node id of an
+#: OPC-UA subscription. Only the first was recognised, so the second was filed
+#: against the *station* - putting 120 bay-scoped tags into the station's own
+#: readings, where an operator looking at one pump saw another pump's tags and
+#: no pump saw its own.
+#:
+#: The ``::`` is what makes this safe to match on. A bare ``P5_`` occurs inside
+#: the program name (``PS1_PROG_...``); only the node id's own separator
+#: introduces the bay.
+OPC_PUMP = re.compile(r'::P([1-9][0-9]{0,3})_')
 #: pd-block tags the matcher may resolve against the catalogue.
 #:
 #: The pd block is a per-bay *summary* of measurements the dex block also carries
@@ -433,7 +447,14 @@ def plan_dictionary(station, raw):
             if tag in {'ID', 'TIMESTAMP'}:
                 continue
             match = PUMP.match(tag)
-            owner_key = f'P{match[1]}' if match else ''
+            # Ownership only. The node id is still offered to the matcher as a
+            # whole, because the catalogue keys on the short spelling's local
+            # tag and nothing states that the two names mean the same sensor -
+            # where both exist they disagree, one reading 0 against the other's
+            # 59.257. Knowing which bay a tag belongs to needs no such claim:
+            # the tag says so.
+            opc = None if match else OPC_PUMP.search(tag)
+            owner_key = f'P{match[1]}' if match else (f'P{opc[1]}' if opc else '')
             if owner_key:
                 pumps.add(owner_key)
             local = tag[match.end() :] if match else tag
