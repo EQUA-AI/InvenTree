@@ -92,7 +92,12 @@ def signal_rows(machine, *, now=None):
             'unit': binding.unit,
             'value': value,
             'observed_at': observed_at,
-            'received_at': to_display(state.received_at, shift) if state else None,
+            # Not shifted, unlike observed_at. The shift exists to move a
+            # *source* clock up to the present; received_at is already the
+            # present - the wall-clock instant this deployment accepted the
+            # value - so adding the offset would date the arrival of a reading
+            # over a year after the reading itself.
+            'received_at': state.received_at if state else None,
             'quality': state.quality if state else SignalQuality.UNKNOWN,
             'stale': stale,
             'freshness_threshold_seconds': threshold,

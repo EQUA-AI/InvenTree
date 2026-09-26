@@ -21,6 +21,7 @@ import { apiUrl } from '@lib/functions/Api';
 import type { MachineSignal, SignalTrend } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
+import { numericValue } from './common';
 
 /**
  * Longest window the server will read, in seconds.
@@ -124,30 +125,6 @@ function customWindowError(
   }
 
   return null;
-}
-
-/**
- * What to draw for one sample, or null when it cannot be drawn.
- *
- * The server sends `plot_value` for samples whose raw value is not a number but
- * still means something on an axis - a status code like "R" or "I", which it
- * maps from the plant's own status vocabulary so the two cannot drift apart.
- * Everything else non-numeric is left off rather than coerced: inventing a
- * number for a value nobody defined is worse than a gap in the line.
- */
-function numericValue(sample: {
-  value: unknown;
-  plot_value?: number | null;
-}): number | null {
-  if (typeof sample.plot_value === 'number') {
-    return sample.plot_value;
-  }
-  const { value } = sample;
-  if (value === null || value === undefined || typeof value === 'boolean') {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatTimestamp(
