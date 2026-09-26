@@ -51,6 +51,16 @@ OPC_PUMP = re.compile(r'::P([1-9][0-9]{0,3})_')
 #: ever bind.
 PD_MAPPABLE_TAGS = frozenset({'st', 'dv'})
 
+#: Station-level payload fields the matcher may resolve, on the same rule.
+#:
+#: `st` is the station's own status. `pc` is the count of bays reporting running,
+#: and it is the only station field with no counterpart anywhere else in the
+#: payload: `pmw` and `pmvar` restate the summed dex power tags, `dv` is the exact
+#: sum of the per-bay discharge, and `sl` has no catalogue parameter to resolve
+#: to. So `pc` is the only one whose resolution cannot create a second
+#: dictionary point for a measurement the review already handles.
+TOP_LEVEL_MAPPABLE_TAGS = frozenset({'st', 'pc'})
+
 ALIASES = [
     (r'MOTOR_CORE_RTD([1-6])_PROCESS_VALUE', r'MOTOR_CORE_RTD\1'),
     (r'THRST_BRG_THRST_PD_RTD([1-3])_PROCESS_VALUE', r'THRST_BRG_THRST_PD_RTD\1'),
@@ -425,7 +435,14 @@ def plan_dictionary(station, raw):
             )
         for key, value in payload.items():
             if key not in {'pd', 'dex', 'sr', 'egt', 'ext', 'dsc'}:
-                add('/' + pointer(key), key, value, '', key, allow_match=key == 'st')
+                add(
+                    '/' + pointer(key),
+                    key,
+                    value,
+                    '',
+                    key,
+                    allow_match=key in TOP_LEVEL_MAPPABLE_TAGS,
+                )
         for key, summary in payload['pd'].items():
             if not re.fullmatch(r'P[1-9][0-9]{0,3}', key) or not isinstance(
                 summary, dict

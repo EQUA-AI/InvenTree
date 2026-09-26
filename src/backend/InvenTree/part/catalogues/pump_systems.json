@@ -780,6 +780,15 @@
      "units": "",
      "unit_status": "unitless",
      "note": "Preserve case; do not assign this to a pump or pumphouse until the JSON context and state encoding are known."
+    },
+    {
+     "name": "Running Pump Count",
+     "tag": "pc",
+     "kind": "count",
+     "data_type": "number",
+     "units": "",
+     "unit_status": "unitless",
+     "note": "Station-level count of bays reporting running. Unitless: it equals the number of pd entries with st=R in 72 of 72 sampled snapshots across all three stations, including a 1-to-0 transition at Saraswati."
     }
    ]
   }
