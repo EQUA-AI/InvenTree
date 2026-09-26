@@ -11,7 +11,7 @@ from assets.health_models import HealthSource, MachineSignalBinding, MachineSign
 from assets.ingestion_models import IngestionCheckpoint
 from assets.models import Client, DictionaryPoint
 from assets.registry import ensure_pump, register_station
-from assets.test_registry import test_scope
+from assets.tests.test_registry import test_scope
 from InvenTree.unit_test import InvenTreeAPITestCase
 from machine_health.mimic_layout import expand_pointer, layout_coverage, load_layout
 from machine_health.services.mimic import station_mimic

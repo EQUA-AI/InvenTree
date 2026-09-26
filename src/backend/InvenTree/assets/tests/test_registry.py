@@ -16,14 +16,14 @@ from django.test.utils import CaptureQueriesContext
 from InvenTree.unit_test import InvenTreeAPITestCase
 from part.models import Part
 
-from .models import (
+from assets.models import (
     AssetComponent,
     AssetMachine,
     Client,
     DictionaryPoint,
     MachineSignalState,
 )
-from .registry import (
+from assets.registry import (
     decode_upload,
     ensure_pump,
     import_dictionary,
