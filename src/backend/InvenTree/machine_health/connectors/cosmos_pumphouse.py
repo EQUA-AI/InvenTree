@@ -124,11 +124,14 @@ QUERY_FIRST_IN_RANGE = (
     'ORDER BY c.sub_time_period ASC'
 )
 
-#: Concurrent slot reads in one sampled window. Each is a single-document query
-#: that costs a few RU and mostly waits on the network, so running several at
-#: once turns a few hundred sequential round trips into a few seconds. Bounded
-#: so a page cannot open hundreds of connections to the account at once.
-SAMPLE_WORKERS = 8
+#: Concurrent slot reads in one sampled window. Each is a single-document
+#: query costing about 4 RU, so throughput is never the limit - 240 of them
+#: spend ~60 RU/s against a 400 RU/s account. What bounds the read is moving
+#: 50 KB of snapshot per point: from a developer machine 240 points is ~12 MB
+#: and takes ~15 s whether eight or sixteen run at once. The pool exists so the
+#: round trips overlap that transfer, and is bounded so a page cannot open
+#: hundreds of connections to the account.
+SAMPLE_WORKERS = 16
 
 
 class CosmosConfigError(Exception):

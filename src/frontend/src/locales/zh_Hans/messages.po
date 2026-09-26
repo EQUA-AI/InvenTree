@@ -143,7 +143,7 @@ msgstr "失效"
 #: lib/components/YesNoButton.tsx:43
 #: src/components/tables/Filter.tsx:41
 #: src/components/tables/Filter.tsx:77
-#: src/pages/assets/health/PumphouseMimic.tsx:109
+#: src/pages/assets/health/PumphouseMimic.tsx:111
 #: src/tables/assets/AssetMachineTable.tsx:49
 msgid "Yes"
 msgstr "是"
@@ -151,7 +151,7 @@ msgstr "是"
 #: lib/components/YesNoButton.tsx:44
 #: src/components/tables/Filter.tsx:41
 #: src/components/tables/Filter.tsx:78
-#: src/pages/assets/health/PumphouseMimic.tsx:109
+#: src/pages/assets/health/PumphouseMimic.tsx:111
 #: src/tables/assets/AssetMachineTable.tsx:49
 msgid "No"
 msgstr "否"
@@ -710,7 +710,7 @@ msgstr "设备"
 #: src/pages/Index/Settings/AdminCenter/Index.tsx:261
 #: src/pages/Index/Settings/AdminCenter/MachineManagementPanel.tsx:52
 #: src/pages/assets/EquipmentRegistry.tsx:368
-#: src/pages/assets/MachineDetail.tsx:184
+#: src/pages/assets/MachineDetail.tsx:194
 #: src/pages/assets/MachineIndex.tsx:21
 #: src/pages/assets/MachineIndex.tsx:30
 #: src/tables/machine/MachineTypeTable.tsx:326
@@ -860,7 +860,7 @@ msgstr "项目"
 
 #: src/components/ai/HITLApprovalModal.tsx:203
 #: src/components/render/Part.tsx:78
-#: src/pages/assets/MachineDetail.tsx:120
+#: src/pages/assets/MachineDetail.tsx:122
 #: src/tables/assets/MaintenanceRecordTable.tsx:165
 #: src/tables/stock/StockTrackingTable.tsx:273
 msgid "Details"
@@ -2298,7 +2298,7 @@ msgstr "主机"
 #: src/components/forms/InstanceOptions.tsx:125
 #: src/components/plugins/PluginDrawer.tsx:68
 #: src/pages/Index/Settings/AdminCenter/UnitManagementPanel.tsx:19
-#: src/pages/assets/MachineDetail.tsx:53
+#: src/pages/assets/MachineDetail.tsx:55
 #: src/pages/maintenance/MaintenanceBoard.tsx:2097
 #: src/pages/part/PartCategoryDetailsPanel.tsx:22
 #: src/pages/part/PartDetailsPanel.tsx:79
@@ -2414,7 +2414,9 @@ msgid "Stopped"
 msgstr "已停止"
 
 #: src/components/forms/InstanceOptions.tsx:151
-#: src/pages/assets/health/PumphouseMimic.tsx:97
+#: src/pages/assets/health/PumphouseMimic.tsx:99
+#: src/pages/assets/performance/StationPerformance.tsx:484
+#: src/pages/assets/performance/kpis.ts:127
 msgid "Running"
 msgstr "运行中"
 
@@ -3248,12 +3250,14 @@ msgstr "电子邮件设置未配置。"
 
 #: src/components/nav/AIChatDrawer.tsx:116
 #: src/pages/assets/health/AnomalyList.tsx:165
-#: src/pages/assets/health/PumphouseMimic.tsx:102
 #: src/pages/assets/health/PumphouseMimic.tsx:104
-#: src/pages/assets/health/PumphouseMimic.tsx:238
-#: src/pages/assets/health/PumphouseMimic.tsx:245
+#: src/pages/assets/health/PumphouseMimic.tsx:106
+#: src/pages/assets/health/PumphouseMimic.tsx:240
+#: src/pages/assets/health/PumphouseMimic.tsx:247
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
+#: src/pages/assets/performance/StationPerformance.tsx:489
+#: src/pages/assets/performance/kpis.ts:125
 msgid "Unknown"
 msgstr ""
 
@@ -3311,7 +3315,8 @@ msgstr ""
 #: src/components/riskradar/RiskRadarPanel.tsx:353
 #: src/pages/assets/StationLiveSource.tsx:116
 #: src/pages/assets/health/MachineHealthPanel.tsx:191
-#: src/pages/assets/health/PumphouseMimic.tsx:295
+#: src/pages/assets/health/PumphouseMimic.tsx:297
+#: src/pages/assets/performance/TimeRangeControl.tsx:168
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
 #: src/pages/repair/components/safety/SafetyPanel.tsx:110
 msgid "Refresh"
@@ -3692,7 +3697,7 @@ msgstr "销售"
 
 #: src/components/nav/NavigationDrawer.tsx:105
 #: src/defaults/links.tsx:85
-#: src/pages/assets/MachineDetail.tsx:166
+#: src/pages/assets/MachineDetail.tsx:176
 #: src/pages/maintenance/MaintenanceIndex.tsx:73
 msgid "Maintenance"
 msgstr ""
@@ -3876,7 +3881,7 @@ msgstr "插件信息"
 
 #: src/components/plugins/PluginDrawer.tsx:73
 #: src/components/tables/ColumnRenderers.tsx:495
-#: src/pages/assets/MachineDetail.tsx:98
+#: src/pages/assets/MachineDetail.tsx:100
 #: src/pages/build/BuildOrderDetailsPanel.tsx:96
 #: src/pages/company/CompanyDetailsPanel.tsx:29
 #: src/pages/company/ManufacturerPartDetailsPanel.tsx:46
@@ -3912,7 +3917,7 @@ msgstr "日期"
 
 #: src/components/plugins/PluginDrawer.tsx:93
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:68
-#: src/pages/assets/MachineDetail.tsx:58
+#: src/pages/assets/MachineDetail.tsx:60
 #: src/pages/core/UserDetail.tsx:76
 #: src/pages/core/UserDetail.tsx:206
 #: src/pages/part/PartDetailsPanel.tsx:244
@@ -4153,7 +4158,7 @@ msgstr "类别"
 #: src/forms/StockForms.tsx:1844
 #: src/forms/StockForms.tsx:1888
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:88
-#: src/pages/assets/MachineDetail.tsx:63
+#: src/pages/assets/MachineDetail.tsx:65
 #: src/pages/core/UserDetail.tsx:153
 #: src/pages/stock/StockDetailsPanel.tsx:237
 #: src/tables/assets/AssetMachineTable.tsx:27
@@ -4163,7 +4168,7 @@ msgstr "位置"
 
 #: src/components/render/Stock.tsx:94
 #: src/forms/StockForms.tsx:679
-#: src/pages/assets/MachineDetail.tsx:85
+#: src/pages/assets/MachineDetail.tsx:87
 #: src/pages/stock/StockDetail.tsx:657
 #: src/pages/stock/StockDetailsPanel.tsx:135
 #: src/tables/build/BuildOutputTable.tsx:109
@@ -4226,7 +4231,7 @@ msgid "Batch"
 msgstr "批次"
 
 #: src/components/riskradar/RiskRadarCommon.tsx:316
-#: src/pages/assets/health/PumphouseMimic.tsx:240
+#: src/pages/assets/health/PumphouseMimic.tsx:242
 #: src/pages/assets/health/common.tsx:55
 #: src/pages/assets/health/common.tsx:78
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:438
@@ -4316,6 +4321,7 @@ msgstr ""
 
 #: src/components/riskradar/RiskRadarPanel.tsx:382
 #: src/pages/assets/health/SignalTable.tsx:119
+#: src/pages/assets/performance/StationPerformance.tsx:421
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:646
 msgid "State"
 msgstr ""
@@ -4372,7 +4378,7 @@ msgstr "设置"
 #: src/components/settings/ConfigValueList.tsx:39
 #: src/pages/assets/StationLiveSource.tsx:133
 #: src/pages/assets/health/HealthSourceStatus.tsx:33
-#: src/pages/assets/health/PumphouseMimic.tsx:324
+#: src/pages/assets/health/PumphouseMimic.tsx:326
 #: src/pages/assets/health/SignalTable.tsx:123
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:78
 #: src/pages/repair/components/InvestigationPanel.tsx:95
@@ -5017,7 +5023,7 @@ msgid "Filter by user"
 msgstr "按用户筛选"
 
 #: src/components/tables/Filter.tsx:454
-#: src/pages/assets/MachineDetail.tsx:75
+#: src/pages/assets/MachineDetail.tsx:77
 #: src/pages/company/CompanyDetailsPanel.tsx:78
 #: src/pages/company/ManufacturerDetail.tsx:8
 #: src/pages/company/ManufacturerPartDetail.tsx:189
@@ -5095,8 +5101,10 @@ msgstr "移除过滤器"
 #: src/components/tables/FilterSelectDrawer.tsx:249
 #: src/components/tables/FilterSelectDrawer.tsx:276
 #: src/components/tables/FilterSelectDrawer.tsx:290
-#: src/pages/assets/health/PumphouseMimic.tsx:199
+#: src/pages/assets/health/PumphouseMimic.tsx:201
 #: src/pages/assets/health/SignalTable.tsx:118
+#: src/pages/assets/performance/SensorGroupCard.tsx:363
+#: src/pages/assets/performance/sections/OtherSection.tsx:31
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:77
 #: src/pages/part/PartStockHistoryDetail.tsx:67
 #: src/pages/repair/components/InvestigationPanel.tsx:94
@@ -9341,6 +9349,7 @@ msgstr "单位"
 
 #: src/pages/assets/EquipmentRegistry.tsx:667
 #: src/pages/assets/EquipmentRegistry.tsx:771
+#: src/pages/assets/performance/parameters.ts:587
 msgid "Station"
 msgstr ""
 
@@ -9481,39 +9490,44 @@ msgstr ""
 msgid "Save review"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:80
+#: src/pages/assets/MachineDetail.tsx:82
 #: src/tables/assets/AssetMachineTable.tsx:37
 #: src/tables/general/BarcodeScanTable.tsx:52
 msgid "Model"
 msgstr "型号"
 
-#: src/pages/assets/MachineDetail.tsx:138
+#: src/pages/assets/MachineDetail.tsx:140
 msgid "Pumphouse mimic"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:150
+#: src/pages/assets/MachineDetail.tsx:152
 msgid "Health"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:158
+#: src/pages/assets/MachineDetail.tsx:162
+#: src/pages/assets/performance/PerformancePanel.tsx:264
+msgid "Performance"
+msgstr ""
+
+#: src/pages/assets/MachineDetail.tsx:168
 msgid "Installed Parts"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:183
+#: src/pages/assets/MachineDetail.tsx:193
 #: src/tables/machine/MachineListTable.tsx:766
 msgid "Machine Detail"
 msgstr "设备详情"
 
-#: src/pages/assets/MachineDetail.tsx:203
+#: src/pages/assets/MachineDetail.tsx:213
 msgid "Ask about this machine"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:213
+#: src/pages/assets/MachineDetail.tsx:223
 #: src/pages/assets/health/AnomalyList.tsx:140
 msgid "Create repair"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:224
+#: src/pages/assets/MachineDetail.tsx:234
 #: src/pages/assets/StartRepairModal.tsx:131
 #: src/pages/assets/StartRepairModal.tsx:203
 msgid "Start repair"
@@ -9610,12 +9624,12 @@ msgid "Unbound"
 msgstr ""
 
 #: src/pages/assets/StationLiveSource.tsx:158
-#: src/pages/assets/health/PumphouseMimic.tsx:327
+#: src/pages/assets/health/PumphouseMimic.tsx:329
 msgid "Last poll"
 msgstr ""
 
 #: src/pages/assets/StationLiveSource.tsx:161
-#: src/pages/assets/health/PumphouseMimic.tsx:330
+#: src/pages/assets/health/PumphouseMimic.tsx:332
 msgid "Not polled yet"
 msgstr ""
 
@@ -9732,12 +9746,14 @@ msgid "Never"
 msgstr ""
 
 #. placeholder {0}: Math.round(source.freshness_threshold_seconds / 60)
+#. placeholder {0}: Number.isInteger(minutes) ? minutes : minutes.toFixed(1)
 #: src/pages/assets/health/HealthSourceStatus.tsx:92
+#: src/pages/assets/performance/format.ts:60
 msgid "{0} min"
 msgstr ""
 
 #: src/pages/assets/health/HealthSummary.tsx:39
-#: src/pages/assets/health/PumphouseMimic.tsx:202
+#: src/pages/assets/health/PumphouseMimic.tsx:204
 msgid "Condition"
 msgstr ""
 
@@ -9826,6 +9842,7 @@ msgstr ""
 
 #: src/pages/assets/health/MachineHealthPanel.tsx:234
 #: src/pages/assets/health/SignalTable.tsx:121
+#: src/pages/assets/performance/TrendChart.tsx:148
 msgid "Trend"
 msgstr ""
 
@@ -9962,245 +9979,265 @@ msgstr ""
 msgid "{0} signal(s) of poor quality"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:78
+#: src/pages/assets/health/PumphouseMimic.tsx:80
 msgid "Polling disabled"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:79
-#: src/pages/assets/health/PumphouseMimic.tsx:101
-#: src/pages/assets/health/PumphouseMimic.tsx:324
+#: src/pages/assets/health/PumphouseMimic.tsx:81
+#: src/pages/assets/health/PumphouseMimic.tsx:103
+#: src/pages/assets/health/PumphouseMimic.tsx:326
 msgid "Not bound"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:80
+#: src/pages/assets/health/PumphouseMimic.tsx:82
 msgid "Not approved"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:81
-#: src/pages/assets/health/PumphouseMimic.tsx:226
+#: src/pages/assets/health/PumphouseMimic.tsx:83
+#: src/pages/assets/health/PumphouseMimic.tsx:228
 #: src/pages/assets/health/common.tsx:184
+#: src/pages/assets/performance/KpiStrip.tsx:153
+#: src/pages/assets/performance/KpiStrip.tsx:186
+#: src/pages/assets/performance/StationPerformance.tsx:522
 msgid "No reading"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:82
-#: src/pages/assets/health/PumphouseMimic.tsx:100
+#: src/pages/assets/health/PumphouseMimic.tsx:84
+#: src/pages/assets/health/PumphouseMimic.tsx:102
 #: src/pages/assets/health/common.tsx:193
+#: src/pages/assets/performance/KpiStrip.tsx:147
+#: src/pages/assets/performance/TimeRangeControl.tsx:277
 #: src/pages/stock/StockDetail.tsx:694
 #: src/tables/stock/StockItemTable.tsx:279
 msgid "Stale"
 msgstr "呆滞"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:83
+#: src/pages/assets/health/PumphouseMimic.tsx:85
 msgid "Unusable quality"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:84
+#: src/pages/assets/health/PumphouseMimic.tsx:86
 msgid "Source clock is ahead"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:85
+#: src/pages/assets/health/PumphouseMimic.tsx:87
 msgid "Mapping changed"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:86
+#: src/pages/assets/health/PumphouseMimic.tsx:88
 msgid "Unexpected value type"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:87
-#: src/pages/assets/health/PumphouseMimic.tsx:397
+#: src/pages/assets/health/PumphouseMimic.tsx:89
+#: src/pages/assets/health/PumphouseMimic.tsx:399
+#: src/pages/assets/performance/StationPerformance.tsx:465
 msgid "Inactive equipment"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:88
+#: src/pages/assets/health/PumphouseMimic.tsx:90
 msgid "Missing contributors"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:89
+#: src/pages/assets/health/PumphouseMimic.tsx:91
 msgid "Unit needs review"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:90
+#: src/pages/assets/health/PumphouseMimic.tsx:92
 msgid "Incompatible units"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:92
-#: src/pages/assets/health/PumphouseMimic.tsx:108
-#: src/pages/assets/health/PumphouseMimic.tsx:349
+#: src/pages/assets/health/PumphouseMimic.tsx:94
+#: src/pages/assets/health/PumphouseMimic.tsx:110
+#: src/pages/assets/health/PumphouseMimic.tsx:351
 #: src/pages/stock/StockDetail.tsx:706
 msgid "Unavailable"
 msgstr "不可用"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:98
+#: src/pages/assets/health/PumphouseMimic.tsx:100
+#: src/pages/assets/performance/StationPerformance.tsx:488
+#: src/pages/assets/performance/kpis.ts:130
 msgid "Idle"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:99
+#: src/pages/assets/health/PumphouseMimic.tsx:101
+#: src/pages/assets/performance/StationPerformance.tsx:486
+#: src/pages/assets/performance/kpis.ts:129
 #: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:64
 #: src/pages/repair/RepairPacketDetail.tsx:184
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:471
 msgid "Fault"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:115
+#: src/pages/assets/health/PumphouseMimic.tsx:117
+#: src/pages/assets/performance/parameters.ts:521
 msgid "Forebay level"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:116
+#: src/pages/assets/health/PumphouseMimic.tsx:118
+#: src/pages/assets/performance/parameters.ts:548
 msgid "Station status"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:117
+#: src/pages/assets/health/PumphouseMimic.tsx:119
+#: src/pages/assets/performance/StationPerformance.tsx:154
+#: src/pages/assets/performance/parameters.ts:539
 msgid "Pumps running"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:118
+#: src/pages/assets/health/PumphouseMimic.tsx:120
 msgid "Pump status"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:119
+#: src/pages/assets/health/PumphouseMimic.tsx:121
 msgid "Input power"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:120
+#: src/pages/assets/health/PumphouseMimic.tsx:122
+#: src/pages/assets/performance/StationPerformance.tsx:423
+#: src/pages/assets/performance/parameters.ts:243
 msgid "Discharge flow"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:133
+#: src/pages/assets/health/PumphouseMimic.tsx:135
 msgid "Pump unit schematic"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:133
+#: src/pages/assets/health/PumphouseMimic.tsx:135
 msgid "Station schematic"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:198
+#: src/pages/assets/health/PumphouseMimic.tsx:200
 #: src/pages/assets/health/SignalTable.tsx:117
+#: src/pages/assets/performance/sections/OtherSection.tsx:30
 msgid "Signal"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:200
+#: src/pages/assets/health/PumphouseMimic.tsx:202
 #: src/pages/assets/health/SignalTable.tsx:122
+#: src/pages/assets/performance/sections/OtherSection.tsx:34
 msgid "Quality"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:201
+#: src/pages/assets/health/PumphouseMimic.tsx:203
 msgid "Observed at"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:221
+#: src/pages/assets/health/PumphouseMimic.tsx:223
 #: src/pages/assets/health/common.tsx:127
 msgid "Good"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:221
+#: src/pages/assets/health/PumphouseMimic.tsx:223
 msgid "Unusable or unknown"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:229
+#: src/pages/assets/health/PumphouseMimic.tsx:231
 msgid "Age at response"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:230
+#: src/pages/assets/health/PumphouseMimic.tsx:232
 msgid "seconds"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:236
+#: src/pages/assets/health/PumphouseMimic.tsx:238
 msgid "No threshold configured"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:242
+#: src/pages/assets/health/PumphouseMimic.tsx:244
 #: src/pages/assets/health/common.tsx:49
 #: src/pages/assets/health/common.tsx:84
 msgid "Warning"
 msgstr "Warning"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:244
+#: src/pages/assets/health/PumphouseMimic.tsx:246
 #: src/pages/assets/health/common.tsx:43
 msgid "Normal"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:283
+#: src/pages/assets/health/PumphouseMimic.tsx:285
 msgid "Other reviewed points"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:290
+#: src/pages/assets/health/PumphouseMimic.tsx:292
 msgid "Pumphouse overview"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:299
+#: src/pages/assets/health/PumphouseMimic.tsx:301
 msgid "Live readings are unavailable. Refresh to retry; cached values are hidden."
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:304
-#: src/pages/assets/health/PumphouseMimic.tsx:417
+#: src/pages/assets/health/PumphouseMimic.tsx:306
+#: src/pages/assets/health/PumphouseMimic.tsx:419
 msgid "Overview only"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:312
+#: src/pages/assets/health/PumphouseMimic.tsx:314
 msgid "This schematic awaits plant review. Missing mappings are shown as unavailable."
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:315
+#: src/pages/assets/health/PumphouseMimic.tsx:317
 msgid "Polling is disabled for this station. Live values are unavailable."
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:319
+#: src/pages/assets/health/PumphouseMimic.tsx:321
 msgid "Last station polling error"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:333
+#: src/pages/assets/health/PumphouseMimic.tsx:335
 msgid "Response time"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:342
+#: src/pages/assets/health/PumphouseMimic.tsx:344
+#: src/pages/assets/performance/StationPerformance.tsx:195
 msgid "Plant power"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:344
+#: src/pages/assets/health/PumphouseMimic.tsx:346
+#: src/pages/assets/performance/StationPerformance.tsx:196
 msgid "Plant flow"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:353
+#: src/pages/assets/health/PumphouseMimic.tsx:355
 msgid "Derived total"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:353
+#: src/pages/assets/health/PumphouseMimic.tsx:355
 msgid "Source measurement"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:404
+#: src/pages/assets/health/PumphouseMimic.tsx:406
 msgid "No pump slots are registered for this station."
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:406
+#: src/pages/assets/health/PumphouseMimic.tsx:408
 msgid "Station readings"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:412
+#: src/pages/assets/health/PumphouseMimic.tsx:414
 msgid "Pump unit"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:421
+#: src/pages/assets/health/PumphouseMimic.tsx:423
 msgid "Filter unit readings"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:432
+#: src/pages/assets/health/PumphouseMimic.tsx:434
 msgid "No matching readings."
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:436
+#: src/pages/assets/health/PumphouseMimic.tsx:438
 msgid "Select a pump bay to view its instruments and readings."
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:438
+#: src/pages/assets/health/PumphouseMimic.tsx:440
 msgid "Threshold alarms"
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:442
+#: src/pages/assets/health/PumphouseMimic.tsx:444
 msgid "No active alarms from configured thresholds."
 msgstr ""
 
-#: src/pages/assets/health/PumphouseMimic.tsx:446
+#: src/pages/assets/health/PumphouseMimic.tsx:448
 msgid "Points without configured thresholds"
 msgstr ""
 
@@ -10221,6 +10258,7 @@ msgid "No signals are mapped for this machine."
 msgstr ""
 
 #: src/pages/assets/health/SignalTable.tsx:120
+#: src/pages/assets/performance/sections/OtherSection.tsx:32
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:79
 #: src/pages/repair/components/InvestigationPanel.tsx:96
 msgid "Observed"
@@ -10311,6 +10349,7 @@ msgid "Pick both a start and an end for the window."
 msgstr ""
 
 #: src/pages/assets/health/SignalTrendChart.tsx:115
+#: src/pages/assets/performance/TimeRangeControl.tsx:87
 msgid "That is not a readable date and time."
 msgstr ""
 
@@ -10350,21 +10389,25 @@ msgid "Custom range…"
 msgstr ""
 
 #: src/pages/assets/health/SignalTrendChart.tsx:376
+#: src/pages/assets/performance/TimeRangeControl.tsx:181
 #: src/pages/repair/RepairPacketDetail.tsx:293
 msgid "From"
 msgstr ""
 
 #: src/pages/assets/health/SignalTrendChart.tsx:388
+#: src/pages/assets/performance/TimeRangeControl.tsx:190
 msgid "Start of window"
 msgstr ""
 
 #: src/pages/assets/health/SignalTrendChart.tsx:392
+#: src/pages/assets/performance/TimeRangeControl.tsx:194
 #: src/pages/repair/RepairPacketDetail.tsx:294
 #: src/tables/settings/EmailTable.tsx:85
 msgid "To"
 msgstr "到"
 
 #: src/pages/assets/health/SignalTrendChart.tsx:405
+#: src/pages/assets/performance/TimeRangeControl.tsx:203
 msgid "End of window"
 msgstr ""
 
@@ -10494,6 +10537,898 @@ msgstr ""
 
 #: src/pages/assets/health/common.tsx:148
 msgid "Manual"
+msgstr ""
+
+#: src/pages/assets/performance/KpiStrip.tsx:73
+msgid "Trend over the selected window"
+msgstr ""
+
+#: src/pages/assets/performance/KpiStrip.tsx:100
+msgid "Rising over the window"
+msgstr ""
+
+#: src/pages/assets/performance/KpiStrip.tsx:102
+msgid "Falling over the window"
+msgstr ""
+
+#: src/pages/assets/performance/KpiStrip.tsx:103
+msgid "Steady over the window"
+msgstr ""
+
+#: src/pages/assets/performance/KpiStrip.tsx:121
+#: src/pages/assets/performance/sections/OtherSection.tsx:33
+msgid "Window"
+msgstr ""
+
+#. placeholder {0}: formatClock(tile.observedAt)
+#: src/pages/assets/performance/KpiStrip.tsx:181
+msgid "Observed {0}"
+msgstr ""
+
+#: src/pages/assets/performance/KpiStrip.tsx:189
+msgid "no limit configured"
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:234
+#: src/pages/assets/performance/StationPerformance.tsx:304
+msgid "Performance data unavailable"
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:236
+msgid "The health service could not be reached. Nothing on this tab is cached or estimated."
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:246
+msgid "No signals are mapped for this machine"
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:248
+msgid "Map this machine's tags to a health source to see its performance here. Until then there is nothing to draw."
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:300
+#: src/pages/assets/performance/StationPerformance.tsx:351
+msgid "Could not read history for this window"
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:302
+msgid "The request failed. Current values above are still live; the charts below show nothing rather than a partial line."
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:310
+msgid "The source could not serve this window"
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:313
+msgid "No history is available for this window."
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:335
+msgid "Speed, operation and hydraulics"
+msgstr ""
+
+#. placeholder {0}: response.series[0]?.source_name ?? t`the source`
+#: src/pages/assets/performance/PerformancePanel.tsx:393
+msgid "Read live from {0}. AIMMS stores current values only; every chart here is a bounded read of the source's own history."
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:393
+msgid "the source"
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:482
+msgid "Anything unusual?"
+msgstr ""
+
+#. placeholder {0}: critical.length
+#. placeholder {1}: critical .map((p) => p.label) .slice(0, 3) .join(', ')
+#. placeholder {2}: critical.length > 3 ? '…' : ''
+#: src/pages/assets/performance/PerformancePanel.tsx:486
+msgid "{0} critical: {1}{2}"
+msgstr ""
+
+#. placeholder {0}: warning.length
+#. placeholder {1}: warning .map((p) => p.label) .slice(0, 3) .join(', ')
+#. placeholder {2}: warning.length > 3 ? '…' : ''
+#: src/pages/assets/performance/PerformancePanel.tsx:494
+msgid "{0} warning: {1}{2}"
+msgstr ""
+
+#. placeholder {0}: stale.length
+#. placeholder {1}: parameters.length
+#: src/pages/assets/performance/PerformancePanel.tsx:502
+msgid "{0} of {1} signals stale"
+msgstr ""
+
+#. placeholder {0}: poor.length
+#: src/pages/assets/performance/PerformancePanel.tsx:507
+msgid "{0} with poor quality"
+msgstr ""
+
+#. placeholder {0}: unavailable.length
+#: src/pages/assets/performance/PerformancePanel.tsx:512
+msgid "{0} without history in this window"
+msgstr ""
+
+#: src/pages/assets/performance/PerformancePanel.tsx:517
+msgid "Nothing outside configured limits"
+msgstr ""
+
+#. placeholder {0}: configured.length
+#. placeholder {1}: parameters.length
+#: src/pages/assets/performance/PerformancePanel.tsx:521
+msgid "{0} of {1} signals have limits configured; the rest are drawn without a verdict."
+msgstr ""
+
+#. placeholder {0}: formatTick(slice[0].t, windowSeconds)
+#. placeholder {1}: formatTick(slice[slice.length - 1].t, windowSeconds)
+#: src/pages/assets/performance/RelationChart.tsx:53
+msgid "{0} – {1}"
+msgstr ""
+
+#: src/pages/assets/performance/RelationChart.tsx:66
+msgid "Too few paired readings in this window to show a relationship."
+msgstr ""
+
+#: src/pages/assets/performance/RelationChart.tsx:90
+msgid "Each point is one snapshot in which both were read; colour darkens toward the present. A pattern here is an operating pattern, not a cause."
+msgstr ""
+
+#. placeholder {0}: formatValue(warnMax, decimals, unit)
+#. placeholder {0}: formatValue(warnMin, decimals, unit)
+#: src/pages/assets/performance/SensorGroupCard.tsx:163
+#: src/pages/assets/performance/SensorGroupCard.tsx:175
+msgid "Warn {0}"
+msgstr ""
+
+#. placeholder {0}: formatValue(criticalMax, decimals, unit)
+#. placeholder {0}: formatValue(criticalMin, decimals, unit)
+#: src/pages/assets/performance/SensorGroupCard.tsx:169
+#: src/pages/assets/performance/SensorGroupCard.tsx:181
+msgid "Critical {0}"
+msgstr ""
+
+#. placeholder {0}: summary.highest.parameter.label
+#. placeholder {1}: formatValue(summary.highest.value, decimals, unit)
+#: src/pages/assets/performance/SensorGroupCard.tsx:279
+msgid "Highest now: {0} {1}"
+msgstr ""
+
+#. placeholder {0}: formatValue(summary.mean, decimals, unit)
+#: src/pages/assets/performance/SensorGroupCard.tsx:282
+msgid "Mean {0}"
+msgstr ""
+
+#. placeholder {0}: formatValue(summary.spread, decimals, unit)
+#: src/pages/assets/performance/SensorGroupCard.tsx:286
+msgid "Spread {0} (calculated)"
+msgstr ""
+
+#. placeholder {0}: formatValue(windowStats.max.value, decimals, unit)
+#. placeholder {1}: windowStats.max.label
+#: src/pages/assets/performance/SensorGroupCard.tsx:291
+msgid "Window peak {0} ({1})"
+msgstr ""
+
+#. placeholder {0}: summary.over
+#. placeholder {1}: summary.configured
+#: src/pages/assets/performance/SensorGroupCard.tsx:301
+msgid "{0} of {1} over a limit"
+msgstr ""
+
+#. placeholder {0}: summary.configured
+#: src/pages/assets/performance/SensorGroupCard.tsx:302
+msgid "{0} within limits"
+msgstr ""
+
+#: src/pages/assets/performance/SensorGroupCard.tsx:306
+msgid "No limits configured"
+msgstr ""
+
+#: src/pages/assets/performance/SensorGroupCard.tsx:335
+msgid "Sensors over time"
+msgstr ""
+
+#: src/pages/assets/performance/SensorGroupCard.tsx:349
+msgid "Current reading by sensor"
+msgstr ""
+
+#: src/pages/assets/performance/SensorGroupCard.tsx:379
+msgid "A sensor with no current reading is drawn at zero and greyed; zero is not its value."
+msgstr ""
+
+#: src/pages/assets/performance/SensorHeatmap.tsx:80
+msgid "Sensor heatmap"
+msgstr ""
+
+#. placeholder {0}: row.label
+#. placeholder {1}: formatTick(column.start, windowSeconds)
+#. placeholder {2}: formatTick(column.end, windowSeconds)
+#: src/pages/assets/performance/SensorHeatmap.tsx:100
+msgid "{0} · {1}–{2} · no reading"
+msgstr ""
+
+#. placeholder {0}: row.label
+#. placeholder {1}: formatTick(column.start, windowSeconds)
+#. placeholder {2}: formatTick(column.end, windowSeconds)
+#. placeholder {3}: formatValue(cell, decimals, unit)
+#. placeholder {4}: row.counts[c]
+#: src/pages/assets/performance/SensorHeatmap.tsx:101
+msgid "{0} · {1}–{2} · {3} (mean of {4} readings)"
+msgstr ""
+
+#: src/pages/assets/performance/SensorHeatmap.tsx:143
+msgid "Scale spans the observed range:"
+msgstr ""
+
+#: src/pages/assets/performance/SensorHeatmap.tsx:156
+msgid "· each cell is the mean of the readings in its column"
+msgstr ""
+
+#. placeholder {0}: bays.length
+#: src/pages/assets/performance/StationPerformance.tsx:166
+msgid "of {0} registered bays"
+msgstr ""
+
+#. placeholder {0}: lasts.length
+#. placeholder {1}: bays.length
+#: src/pages/assets/performance/StationPerformance.tsx:192
+msgid "Calculated: sum of {0} of {1} bays' newest readings"
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:306
+msgid "The health service could not be reached."
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:317
+msgid "Station performance"
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:353
+msgid "The request failed; the charts below show nothing rather than a partial line."
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:367
+msgid "Forebay level and pumps running"
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:368
+msgid "Level on the left axis; the running count on the right, as steps."
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:384
+msgid "Active power by bay"
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:399
+msgid "Discharge flow by bay"
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:420
+msgid "Bay"
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:422
+#: src/pages/assets/performance/parameters.ts:86
+msgid "Active power"
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:424
+#: src/pages/assets/performance/parameters.ts:183
+msgid "Shaft speed"
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:425
+msgid "Window peak power"
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:426
+msgid "Newest reading"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:34
+msgid "15 min"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:35
+msgid "1 h"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:36
+msgid "6 h"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:37
+msgid "12 h"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:38
+msgid "24 h"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:83
+msgid "Pick both a start and an end."
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:88
+msgid "The end must come after the start."
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:90
+msgid "A window may not exceed 24 hours."
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:118
+msgid "Custom"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:130
+msgid "Clear zoom"
+msgstr ""
+
+#. placeholder {0}: formatTick(zoomed.from, windowSeconds(zoomed))
+#. placeholder {1}: formatTick(zoomed.to, windowSeconds(zoomed))
+#: src/pages/assets/performance/TimeRangeControl.tsx:138
+msgid "Zoomed {0} – {1}"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:139
+msgid "Zoomed"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:146
+msgid "Live: the window follows the clock and re-reads as the source is polled."
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:147
+msgid "Paused: the window is frozen where you left it."
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:158
+#: src/pages/assets/performance/TimeRangeControl.tsx:280
+msgid "Live"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:164
+msgid "Re-read now"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:214
+msgid "Apply"
+msgstr ""
+
+#. placeholder {0}: dayjs(dataRange.from).format('D MMM HH:mm')
+#. placeholder {1}: dayjs(dataRange.to).format('D MMM HH:mm')
+#: src/pages/assets/performance/TimeRangeControl.tsx:223
+msgid "History held from {0} to {1}."
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:272
+msgid "Paused"
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:274
+msgid "Polling off"
+msgstr ""
+
+#. placeholder {0}: response.documents_read
+#. placeholder {1}: formatDuration(response.cadence_seconds ?? cadence ?? 0)
+#: src/pages/assets/performance/TimeRangeControl.tsx:289
+msgid "Every reading in the window ({0} snapshots, cadence {1})."
+msgstr ""
+
+#. placeholder {0}: formatDuration(response.resolution_seconds)
+#. placeholder {1}: response.documents_read
+#. placeholder {2}: response.expected_documents.toLocaleString()
+#: src/pages/assets/performance/TimeRangeControl.tsx:291
+msgid "Sampled: one reading every {0} — {1} of about {2} snapshots."
+msgstr ""
+
+#: src/pages/assets/performance/TimeRangeControl.tsx:320
+msgid "Not read yet"
+msgstr ""
+
+#. placeholder {0}: formatClock(updatedAt)
+#: src/pages/assets/performance/TimeRangeControl.tsx:321
+msgid "Updated {0}"
+msgstr ""
+
+#. placeholder {0}: formatClock(newestAt)
+#: src/pages/assets/performance/TimeRangeControl.tsx:323
+msgid "newest reading {0}"
+msgstr ""
+
+#. placeholder {0}: formatDuration(cadence)
+#: src/pages/assets/performance/TimeRangeControl.tsx:329
+msgid "Source writes every {0}"
+msgstr ""
+
+#. placeholder {0}: formatDuration(poll)
+#: src/pages/assets/performance/TimeRangeControl.tsx:332
+msgid "read here every {0}"
+msgstr ""
+
+#. placeholder {0}: dayjs(response.live.last_poll_at).format('HH:mm:ss')
+#: src/pages/assets/performance/TimeRangeControl.tsx:335
+msgid "last poll {0}"
+msgstr ""
+
+#. placeholder {0}: formatDuration(response.display_shift_seconds)
+#: src/pages/assets/performance/TimeRangeControl.tsx:345
+msgid "Recorded history presented as current; the plant's own times are {0} earlier."
+msgstr ""
+
+#: src/pages/assets/performance/TrendChart.tsx:126
+#: src/pages/assets/performance/TrendChart.tsx:131
+msgid "Open full screen"
+msgstr ""
+
+#: src/pages/assets/performance/TrendChart.tsx:217
+msgid "No readings in this window."
+msgstr ""
+
+#. placeholder {0}: formatTick(zoomRange.from, windowSeconds)
+#. placeholder {1}: formatTick(zoomRange.to, windowSeconds)
+#: src/pages/assets/performance/TrendChart.tsx:303
+msgid "Zoom to {0} – {1}"
+msgstr ""
+
+#: src/pages/assets/performance/TrendChart.tsx:366
+#: src/pages/assets/performance/format.ts:69
+#: src/pages/assets/performance/sections/ThermalSections.tsx:279
+msgid "no reading"
+msgstr ""
+
+#. placeholder {0}: Math.round(seconds)
+#: src/pages/assets/performance/format.ts:56
+msgid "{0} s"
+msgstr ""
+
+#. placeholder {0}: Number.isInteger(hours) ? hours : hours.toFixed(1)
+#: src/pages/assets/performance/format.ts:63
+msgid "{0} h"
+msgstr ""
+
+#: src/pages/assets/performance/format.ts:73
+msgid "{seconds} s ago"
+msgstr ""
+
+#. placeholder {0}: Math.round(seconds / 60)
+#: src/pages/assets/performance/format.ts:76
+msgid "{0} min ago"
+msgstr ""
+
+#. placeholder {0}: (seconds / 3600).toFixed(1)
+#: src/pages/assets/performance/format.ts:79
+msgid "{0} h ago"
+msgstr ""
+
+#. placeholder {0}: Math.round(seconds / 86400)
+#: src/pages/assets/performance/format.ts:81
+msgid "{0} d ago"
+msgstr ""
+
+#. placeholder {0}: pool.length
+#. placeholder {1}: top.label
+#: src/pages/assets/performance/kpis.ts:110
+msgid "Highest of {0}: {1}"
+msgstr ""
+
+#. placeholder {0}: parameter.signal.value
+#: src/pages/assets/performance/kpis.ts:143
+msgid "Plant status code: {0}"
+msgstr ""
+
+#: src/pages/assets/performance/kpis.ts:185
+msgid "Vibration"
+msgstr ""
+
+#: src/pages/assets/performance/kpis.ts:188
+#: src/pages/assets/performance/sections/ThermalSections.tsx:116
+msgid "No approved vibration channel"
+msgstr ""
+
+#: src/pages/assets/performance/kpis.ts:198
+msgid "Winding temperature"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:96
+msgid "Reactive power"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:105
+msgid "Power factor"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:115
+msgid "Motor current"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:125
+msgid "Phase current"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:134
+msgid "Line-to-line voltage"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:144
+msgid "Phase voltage"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:153
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:141
+msgid "Frequency"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:163
+msgid "Excitation field current"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:172
+msgid "Excitation field voltage"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:193
+msgid "Equipment status"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:200
+msgid "The plant's own run/stop status for this bay."
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:204
+msgid "Motor status"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:213
+msgid "EOPD valve position"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:222
+msgid "HOPD valve position"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:233
+msgid "Discharge pressure"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:253
+#: src/pages/assets/performance/sections/OperationSection.tsx:42
+msgid "Draft tube"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:262
+#: src/pages/assets/performance/sections/OperationSection.tsx:43
+msgid "Spiral casing"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:271
+#: src/pages/assets/performance/sections/OperationSection.tsx:44
+msgid "Delivery line"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:282
+msgid "Winding"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:291
+msgid "Stator winding RTD"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:300
+msgid "Stator core"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:309
+msgid "Brush gear"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:320
+#: src/pages/assets/performance/sections/ThermalSections.tsx:143
+msgid "Motor NDE bearing vibration"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:330
+#: src/pages/assets/performance/sections/ThermalSections.tsx:144
+msgid "Motor DE vibration"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:339
+#: src/pages/assets/performance/sections/ThermalSections.tsx:145
+msgid "Thrust bearing vibration"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:349
+msgid "Vibration sensor"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:358
+msgid "Motor velometer"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:369
+#: src/pages/assets/performance/sections/ThermalSections.tsx:342
+msgid "Cooling water inlet"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:379
+#: src/pages/assets/performance/parameters.ts:388
+#: src/pages/assets/performance/sections/ThermalSections.tsx:354
+msgid "Cooling water outlet"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:398
+msgid "Cooling water RTD"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:407
+#: src/pages/assets/performance/sections/ThermalSections.tsx:397
+msgid "Cooling air, cold side"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:417
+msgid "Cold air"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:426
+msgid "Hot air"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:437
+msgid "Thrust bearing pad"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:447
+msgid "Thrust axial pad"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:456
+msgid "Guide radial pad"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:465
+msgid "Guide bearing pad"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:474
+msgid "Guide bearing RTD"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:483
+msgid "Bearing"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:492
+msgid "Oil reservoir"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:501
+msgid "Guide bearing oil"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:510
+msgid "Cooler oil outlet"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:530
+msgid "Surge pool level"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:573
+#: src/pages/repair/components/safety/safetyApi.ts:127
+msgid "Electrical"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:575
+msgid "Speed and operation"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:577
+msgid "Hydraulic and process"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:579
+msgid "Motor winding temperature"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:581
+msgid "Vibration and mechanical"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:583
+msgid "Cooling and thermal"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:585
+msgid "Bearing and lubrication"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:589
+msgid "Other signals"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:77
+msgid "Power and power factor"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:80
+msgid "Active power on the left axis; reactive power and power factor on the right."
+msgstr ""
+
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:81
+msgid "Active power on the left axis; power factor on the right."
+msgstr ""
+
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:102
+msgid "Current and voltage"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:103
+msgid "Current on the left axis, voltage on the right."
+msgstr ""
+
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:122
+msgid "Excitation"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:123
+msgid "Field current on the left axis, field voltage on the right."
+msgstr ""
+
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:160
+msgid "Relationship: active power and shaft speed"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:173
+msgid "Relationship: motor current and active power"
+msgstr ""
+
+#: src/pages/assets/performance/sections/OperationSection.tsx:110
+msgid "Shaft speed and status"
+msgstr ""
+
+#: src/pages/assets/performance/sections/OperationSection.tsx:113
+msgid "Speed on the left axis; the plant's run/stop status on the right, drawn as steps (1 running, 0 idle)."
+msgstr ""
+
+#. placeholder {0}: Math.round(running.share * 100)
+#. placeholder {1}: running.samples
+#. placeholder {2}: window.resolutionSeconds > 10 ? t`, sampled` : ''
+#: src/pages/assets/performance/sections/OperationSection.tsx:135
+msgid "Reported running for {0}% of the window ({1} status readings{2})."
+msgstr ""
+
+#: src/pages/assets/performance/sections/OperationSection.tsx:135
+msgid ", sampled"
+msgstr ""
+
+#: src/pages/assets/performance/sections/OperationSection.tsx:142
+msgid "Discharge pressure and valve position"
+msgstr ""
+
+#: src/pages/assets/performance/sections/OperationSection.tsx:145
+msgid "Pressure on the left axis, valve positions on the right."
+msgstr ""
+
+#: src/pages/assets/performance/sections/OperationSection.tsx:166
+msgid "Forebay level and discharge flow"
+msgstr ""
+
+#: src/pages/assets/performance/sections/OperationSection.tsx:169
+msgid "Level on the left axis, flow on the right."
+msgstr ""
+
+#: src/pages/assets/performance/sections/OperationSection.tsx:222
+msgid "Relationship: speed and discharge pressure"
+msgstr ""
+
+#: src/pages/assets/performance/sections/OperationSection.tsx:235
+msgid "Relationship: active power and discharge pressure"
+msgstr ""
+
+#: src/pages/assets/performance/sections/OperationSection.tsx:248
+msgid "Relationship: valve position and discharge pressure"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:42
+msgid "Stator winding temperature"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:43
+msgid "Every winding RTD on one axis. The highest sensor and the spread between sensors are the two numbers that change first."
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:60
+msgid "Stator core temperature"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:72
+msgid "Other motor temperatures"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:119
+msgid "This pump's vibration tags are in the dictionary but have not passed review, because the source does not say whether they report displacement (µm) or velocity (mm/s). Until that is confirmed they are not shown as live readings, so this section has nothing it can honestly draw."
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:128
+#: src/pages/assets/performance/sections/ThermalSections.tsx:146
+msgid "Vibration sensors"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:129
+msgid "Motor NDE, DE and thrust bearing channels on one axis."
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:147
+msgid "Motor velometers"
+msgstr ""
+
+#. placeholder {0}: pair.a.index
+#: src/pages/assets/performance/sections/ThermalSections.tsx:223
+msgid "ΔT {0}"
+msgstr ""
+
+#. placeholder {0}: pair.a.label
+#. placeholder {1}: pair.b.label
+#: src/pages/assets/performance/sections/ThermalSections.tsx:224
+msgid "ΔT {0} − {1}"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:282
+msgid "window"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:288
+msgid "Calculated"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:366
+msgid "Cooling water rise (outlet − inlet)"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:367
+msgid "How much heat the water carries away. Calculated from sensors paired by number, only where both were read at the same instant."
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:379
+msgid "Cooling water RTDs"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:380
+msgid "The dictionary does not say which of these are inlet and which outlet, so they are drawn as one family."
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:409
+msgid "Cooling air, hot side"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:421
+msgid "Air rise (hot − cold)"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:422
+msgid "Calculated from hot and cold sensors paired by number."
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:455
+msgid "Thrust bearing pads"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:468
+msgid "Guide bearing pads"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:485
+msgid "Bearing temperatures"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:497
+msgid "Lubricating oil"
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:498
+msgid "Reservoir, guide bearing and cooler outlet oil temperatures."
 msgstr ""
 
 #: src/pages/build/BuildDetail.tsx:66
@@ -13114,10 +14049,6 @@ msgstr ""
 
 #: src/pages/repair/components/safety/safetyApi.ts:85
 msgid "Hot Work"
-msgstr ""
-
-#: src/pages/repair/components/safety/safetyApi.ts:127
-msgid "Electrical"
 msgstr ""
 
 #: src/pages/repair/components/safety/safetyApi.ts:128
