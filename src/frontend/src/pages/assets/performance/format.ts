@@ -127,6 +127,27 @@ export function formatClock(ms: number | null | undefined): string {
   return dayjs(ms).format('HH:mm:ss');
 }
 
+/**
+ * A clock time that says the day when it is not the reference's day.
+ *
+ * A reading's own instant is not always today: a custom window over yesterday
+ * printed "newest reading 23:49:00" beside "Updated 22:10:40", which reads as
+ * a reading from the future. The date is added only when it differs, because
+ * the full instant is noise for the common same-day case.
+ */
+export function formatClockOn(
+  ms: number | null | undefined,
+  reference: number
+): string {
+  if (ms === null || ms === undefined) {
+    return '—';
+  }
+  const moment = dayjs(ms);
+  return moment.isSame(dayjs(reference), 'day')
+    ? moment.format('HH:mm:ss')
+    : moment.format('D MMM HH:mm:ss');
+}
+
 /** "5 s", "6 min", "1.5 h" - a duration short enough for a badge. */
 export function formatDuration(seconds: number): string {
   if (seconds < 60) {
@@ -159,6 +180,33 @@ export function formatAge(ms: number | null | undefined, now: number): string {
     return t`${(seconds / 3600).toFixed(1)} h ago`;
   }
   return t`${Math.round(seconds / 86400)} d ago`;
+}
+
+/**
+ * The ticks Recharts will choose for a numeric axis over `[min, max]`.
+ *
+ * An axis is as wide as the widest label it prints, and the labels are the
+ * ticks - not the data. Measured from the data instead, a width fitting "0.03"
+ * wrapped every "-0.5 MW" onto two lines, because Recharts rounds the extremes
+ * outwards and appends the unit. Its rule: a step of about a quarter of the
+ * span, rounded up to the next 1, 2, 2.5 or 5 times a power of ten, from the
+ * multiple below the minimum to the multiple above the maximum.
+ */
+export function niceTicks(min: number, max: number, count = 4): number[] {
+  const raw = (max - min) / count;
+  if (!(raw > 0)) return [];
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const step =
+    magnitude * ([1, 2, 2.5, 5, 10].find((m) => raw <= m * magnitude) ?? 10);
+  // Multiples of the step, rounded to the step's own precision: accumulated
+  // in floating point, a step of 0.05 prints its third tick as
+  // 0.15000000000000002.
+  const places = Math.max(0, Math.ceil(-Math.log10(step)) + 1);
+  const ticks: number[] = [];
+  for (let i = Math.floor(min / step); i <= Math.ceil(max / step); i++) {
+    ticks.push(Number((i * step).toFixed(places)));
+  }
+  return ticks;
 }
 
 /** Candidate tick spacings, in minutes; the first that fits `target` ticks wins. */

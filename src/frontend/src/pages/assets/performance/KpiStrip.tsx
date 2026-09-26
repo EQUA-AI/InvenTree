@@ -22,7 +22,7 @@ import type {
 } from '@lib/types/MachineHealth';
 
 import { HealthStateBadge } from '../health/common';
-import { formatAge, formatClock, formatRange, formatValue } from './format';
+import { formatAge, formatClockOn, formatRange, formatValue } from './format';
 import { type SeriesStats, type Trend, seriesStats, trendOf } from './series';
 
 /**
@@ -43,6 +43,13 @@ export interface KpiTile {
   quality?: SignalQuality;
   /** The configured-limit verdict; 'unconfigured' when no limit exists. */
   state: HealthState | 'unconfigured';
+  /**
+   * Whether the binding has any limit configured. `state` says 'unconfigured'
+   * for an unusable reading too, so it cannot answer this on its own.
+   */
+  limitsConfigured?: boolean;
+  /** A derived number - a sum of bays, say: limits cannot apply to it. */
+  calculated?: boolean;
   series?: SeriesEntry;
   /** A second line under the value: "Highest: winding 7", say. */
   caption?: string;
@@ -163,27 +170,14 @@ export function KpiTileCard({
   return (
     <Paper withBorder radius='md' p='sm' data-kpi={tile.key}>
       <Stack gap={4}>
-        {/* The badge drops under the label rather than squeezing it. */}
-        <Group justify='space-between' wrap='wrap' gap={4} align='center'>
-          <Text size='xs' c='dimmed' fw={500}>
-            {tile.label}
-          </Text>
-          {tile.state !== 'unconfigured' && !missing && !tile.stale && (
-            <Box style={{ flexShrink: 0 }}>
-              <HealthStateBadge state={tile.state} size='xs' />
-            </Box>
-          )}
-          {tile.quality && tile.quality !== 'good' && !missing && (
-            <Badge size='xs' color='gray' variant='light'>
-              {tile.quality === 'bad' ? t`Bad quality` : t`Uncertain quality`}
-            </Badge>
-          )}
-          {tile.stale && !missing && (
-            <Badge size='xs' color='yellow' variant='light'>
-              {t`Stale`}
-            </Badge>
-          )}
-        </Group>
+        {/* The label alone, always one line. A badge beside it wrapped the
+            header on the one tile that carried a verdict, which dropped that
+            tile's value a line below its neighbours' - so the badges sit on
+            the age row at the foot instead, where the Stale badge also lands
+            beside the yellow age it explains. */}
+        <Text size='xs' c='dimmed' fw={500}>
+          {tile.label}
+        </Text>
         {missing ? (
           <Text size='sm' c='dimmed' py={6}>
             {tile.missingReason ?? t`No reading`}
@@ -213,23 +207,45 @@ export function KpiTileCard({
             {tile.caption}
           </Text>
         )}
-        {!missing && (
+        {/* A tile whose latest value is unusable still has a window and a
+            reading age; dropping both left it saying only "Unavailable". */}
+        {(!missing || stats !== null) && (
           <Range stats={stats} decimals={tile.decimals} unit={tile.unit} />
         )}
-        {!missing && (
-          <Tooltip
-            label={t`Observed ${formatClock(tile.observedAt)}`}
-            disabled={tile.observedAt === null}
-          >
-            <Text size='xs' c={tile.stale ? 'yellow.8' : 'dimmed'}>
-              {tile.observedAt === null
-                ? t`No reading`
-                : formatAge(tile.observedAt, now)}
-              {tile.state === 'unconfigured' && !tile.valueText
-                ? ` · ${t`no limit configured`}`
-                : ''}
-            </Text>
-          </Tooltip>
+        {(!missing || tile.observedAt !== null) && (
+          <Group gap={6} wrap='wrap' align='center'>
+            <Tooltip
+              label={t`Observed ${formatClockOn(tile.observedAt, now)}`}
+              disabled={tile.observedAt === null}
+            >
+              <Text size='xs' c={tile.stale ? 'yellow.8' : 'dimmed'}>
+                {tile.observedAt === null
+                  ? t`No reading`
+                  : formatAge(tile.observedAt, now)}
+                {/* Only where a limit could exist and none does: an unusable
+                    reading has limits all the same, and a calculated total
+                    cannot have any. */}
+                {!tile.limitsConfigured && !tile.calculated && !tile.valueText
+                  ? ` · ${t`no limit configured`}`
+                  : ''}
+              </Text>
+            </Tooltip>
+            {tile.state !== 'unconfigured' && !missing && !tile.stale && (
+              <Box style={{ flexShrink: 0 }}>
+                <HealthStateBadge state={tile.state} size='xs' />
+              </Box>
+            )}
+            {tile.quality && tile.quality !== 'good' && !missing && (
+              <Badge size='xs' color='gray' variant='light'>
+                {tile.quality === 'bad' ? t`Bad quality` : t`Uncertain quality`}
+              </Badge>
+            )}
+            {tile.stale && !missing && (
+              <Badge size='xs' color='yellow' variant='light'>
+                {t`Stale`}
+              </Badge>
+            )}
+          </Group>
         )}
       </Stack>
     </Paper>

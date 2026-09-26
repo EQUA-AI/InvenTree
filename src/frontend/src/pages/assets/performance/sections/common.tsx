@@ -81,7 +81,8 @@ export function ParameterTrend({
   onZoom,
   unit,
   rightUnit,
-  height
+  height,
+  title
 }: Readonly<{
   parameters: ResolvedParameter[];
   lines: TrendSeries[];
@@ -92,6 +93,8 @@ export function ParameterTrend({
   unit?: string;
   rightUnit?: string;
   height?: number;
+  /** What the enclosing card is called, so the maximised view can say it. */
+  title?: string;
 }>) {
   const rows = rowsFor(parameters, series, window);
   return (
@@ -104,6 +107,7 @@ export function ParameterTrend({
       unit={unit}
       rightUnit={rightUnit}
       syncId={syncId}
+      title={title}
       onZoom={onZoom}
       toggleable={lines.length > 2}
       height={height}

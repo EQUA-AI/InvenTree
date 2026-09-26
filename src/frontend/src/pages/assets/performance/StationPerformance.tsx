@@ -13,7 +13,8 @@ import {
   SimpleGrid,
   Stack,
   Table,
-  Text
+  Text,
+  useComputedColorScheme
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
@@ -26,7 +27,7 @@ import type { PerformanceMachine } from './PerformancePanel';
 import { useClock, useWindowState, windowInfoFrom } from './PerformancePanel';
 import { LiveIndicator, TimeRangeControl } from './TimeRangeControl';
 import { TrendChart, type TrendSeries, familyColors } from './TrendChart';
-import { formatAge, formatValue } from './format';
+import { formatAge, formatAt, formatDuration, precisionFor } from './format';
 import { resolveParameters, withRole } from './resolve';
 import { ChartCard } from './sections/common';
 import {
@@ -49,6 +50,28 @@ const STATION_KEYS = [
   '/pc',
   '/st'
 ];
+
+/**
+ * One precision for a whole column.
+ *
+ * Adaptive precision per cell is right where a value stands alone, but down a
+ * column it gave "0", "0.02" and "-0.0007" three different shapes in three
+ * rows, which cannot be compared at a glance. The column asks for what its
+ * widest-spread member needs, and every cell prints at that.
+ */
+function columnPrecision(
+  base: number,
+  values: (number | null | undefined)[]
+): number {
+  const numbers = values.filter(
+    (v): v is number => typeof v === 'number' && Number.isFinite(v)
+  );
+  if (numbers.length === 0) {
+    return base;
+  }
+  const range = Math.max(...numbers) - Math.min(...numbers);
+  return Math.max(...numbers.map((v) => precisionFor(base, range, v)));
+}
 
 /** The per-bay keys a station page compares. */
 function bayNumber(bay: string): number {
@@ -80,6 +103,7 @@ export function StationPerformance({
   station
 }: Readonly<{ station: PerformanceMachine }>) {
   const api = useApi();
+  const scheme = useComputedColorScheme('light');
   const now = useClock();
   const range = useWindowState();
   const signalsQuery = useMachineSignals(station.pk, range.live);
@@ -197,28 +221,47 @@ export function StationPerformance({
         .filter((s): s is SeriesSample => !!s);
       if (lasts.length === 0) return;
       const sum = lasts.reduce((acc, s) => acc + (s.v as number), 0);
+      // A sum is only as current as its oldest input. Dated by the freshest
+      // bay, the tile read "27 s ago" over a total that included a bay which
+      // had stopped reporting minutes earlier; the lagging bays stay in the
+      // sum - this is the plant total - but the stamp is the weakest one's,
+      // and a spread wider than the page's own same-instant tolerance is said.
+      const newest = Math.max(...lasts.map((s) => s.t));
+      const oldest = Math.min(...lasts.map((s) => s.t));
+      const spread = newest - oldest;
       out.push({
         key,
         label,
         value: sum,
         unit: entries[0].unit,
         decimals: 1,
-        observedAt: Math.max(...lasts.map((s) => s.t)),
+        observedAt: oldest,
         stale: false,
         state: 'unconfigured',
-        caption: t`Calculated: sum of ${lasts.length} of ${bays.length} bays' newest readings`
+        calculated: true,
+        caption:
+          spread > gapThresholdMs(window.resolutionSeconds)
+            ? t`Calculated: sum of ${lasts.length} of ${bays.length} bays' newest readings, spanning ${formatDuration(spread / 1000)}`
+            : t`Calculated: sum of ${lasts.length} of ${bays.length} bays' newest readings`
       });
     };
     total((k) => k.power, t`Plant power`, 'plant-power');
     total((k) => k.flow, t`Plant flow`, 'plant-flow');
     return out;
-  }, [parameters, series, bays, byKey]);
+  }, [parameters, series, bays, byKey, window.resolutionSeconds]);
 
   const bayLines = (
     pick: (k: ReturnType<typeof bayKeys>) => string,
     hue: string
   ) => {
-    const colors = familyColors(bays.length, [hue, 'cyan']);
+    // Fourteen bays need fourteen legible colours, and each scheme has only a
+    // few shades that clear 3:1; the variety comes from more hues rather than
+    // from shades that vanish into the card.
+    const colors = familyColors(
+      bays.length,
+      [hue, 'cyan', 'grape', 'orange'],
+      scheme
+    );
     const items = bays.map((bay, i) => ({
       key: bay.key,
       label: bay.name.split('/').pop()?.trim() || bay.key,
@@ -243,11 +286,11 @@ export function StationPerformance({
 
   const power = useMemo(
     () => bayLines((k) => k.power, 'blue'),
-    [bays, byKey, window.resolutionSeconds]
+    [bays, byKey, window.resolutionSeconds, scheme]
   );
   const flow = useMemo(
     () => bayLines((k) => k.flow, 'teal'),
-    [bays, byKey, window.resolutionSeconds]
+    [bays, byKey, window.resolutionSeconds, scheme]
   );
 
   const stationLines = useMemo(() => {
@@ -305,6 +348,56 @@ export function StationPerformance({
       unit: forebay?.signal.unit ?? surge?.signal.unit ?? ''
     };
   }, [parameters, series, window.resolutionSeconds]);
+
+  // The table's own rows: one lookup per bay, and one precision and one unit
+  // per column. Power and its window peak share a precision so the two can be
+  // read against each other.
+  const table = useMemo(() => {
+    const last = (key: string) => {
+      const entry = byKey.get(key);
+      if (!entry?.available) return null;
+      // An unusable newest reading is no reading: the row shows a dash rather
+      // than the marker's value.
+      return [...entry.samples].reverse().find(usable) ?? null;
+    };
+    const rows = bays.map((bay) => {
+      const k = bayKeys(bay.key);
+      const st = last(k.status);
+      return {
+        bay,
+        power: last(k.power),
+        flow: last(k.flow),
+        speed: last(k.speed),
+        status: st,
+        peak: seriesStats(byKey.get(k.power)),
+        units: {
+          power: byKey.get(k.power)?.unit ?? '',
+          flow: byKey.get(k.flow)?.unit ?? '',
+          speed: byKey.get(k.speed)?.unit ?? ''
+        }
+      };
+    });
+    const unitOf = (pick: (r: (typeof rows)[number]) => string) =>
+      rows.map(pick).find((u) => !!u) ?? '';
+    return {
+      rows,
+      powerDp: columnPrecision(
+        2,
+        rows.flatMap((r) => [r.power?.v, r.peak?.max])
+      ),
+      flowDp: columnPrecision(
+        1,
+        rows.map((r) => r.flow?.v)
+      ),
+      speedDp: columnPrecision(
+        0,
+        rows.map((r) => r.speed?.v)
+      ),
+      powerUnit: unitOf((r) => r.units.power),
+      flowUnit: unitOf((r) => r.units.flow),
+      speedUnit: unitOf((r) => r.units.speed)
+    };
+  }, [bays, byKey]);
 
   if (signalsQuery.isLoading || baysQuery.isLoading) {
     return (
@@ -406,6 +499,7 @@ export function StationPerformance({
                   unit={stationLines.unit}
                   rightUnit=''
                   syncId={syncId}
+                  title={t`Forebay level and pumps running`}
                   onZoom={range.onZoom}
                 />
               </ChartCard>
@@ -420,6 +514,7 @@ export function StationPerformance({
                   windowSeconds={window.seconds}
                   unit={power.unit}
                   syncId={syncId}
+                  title={t`Active power by bay`}
                   toggleable
                   onZoom={range.onZoom}
                 />
@@ -435,6 +530,7 @@ export function StationPerformance({
                   windowSeconds={window.seconds}
                   unit={flow.unit}
                   syncId={syncId}
+                  title={t`Discharge flow by bay`}
                   toggleable
                   onZoom={range.onZoom}
                 />
@@ -449,28 +545,31 @@ export function StationPerformance({
                   <Table.Tr>
                     <Table.Th>{t`Bay`}</Table.Th>
                     <Table.Th>{t`State`}</Table.Th>
-                    <Table.Th>{t`Active power`}</Table.Th>
-                    <Table.Th>{t`Discharge flow`}</Table.Th>
-                    <Table.Th>{t`Shaft speed`}</Table.Th>
-                    <Table.Th>{t`Window peak power`}</Table.Th>
+                    {/* The unit belongs to the column, not to every cell in
+                        it; right-aligned, the decimal points line up. */}
+                    <Table.Th ta='right'>
+                      {t`Active power`}
+                      {table.powerUnit ? ` (${table.powerUnit})` : ''}
+                    </Table.Th>
+                    <Table.Th ta='right'>
+                      {t`Discharge flow`}
+                      {table.flowUnit ? ` (${table.flowUnit})` : ''}
+                    </Table.Th>
+                    <Table.Th ta='right'>
+                      {t`Shaft speed`}
+                      {table.speedUnit ? ` (${table.speedUnit})` : ''}
+                    </Table.Th>
+                    <Table.Th ta='right'>
+                      {t`Window peak power`}
+                      {table.powerUnit ? ` (${table.powerUnit})` : ''}
+                    </Table.Th>
                     <Table.Th>{t`Newest reading`}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {bays.map((bay) => {
-                    const k = bayKeys(bay.key);
-                    const last = (key: string) => {
-                      const entry = byKey.get(key);
-                      if (!entry?.available) return null;
-                      // An unusable newest reading is no reading: the row
-                      // shows a dash rather than the marker's value.
-                      return [...entry.samples].reverse().find(usable) ?? null;
-                    };
-                    const p = last(k.power);
-                    const f = last(k.flow);
-                    const s = last(k.speed);
-                    const st = last(k.status);
-                    const peak = seriesStats(byKey.get(k.power));
+                  {table.rows.map((row) => {
+                    const { bay, power: p, flow: f, speed: s, peak } = row;
+                    const st = row.status;
                     const newest = Math.max(
                       ...[p, f, s, st].map((x) => x?.t ?? 0)
                     );
@@ -521,31 +620,17 @@ export function StationPerformance({
                                   : t`Unknown`}
                           </Badge>
                         </Table.Td>
-                        <Table.Td>
-                          {formatValue(
-                            p?.v ?? null,
-                            2,
-                            byKey.get(k.power)?.unit
-                          )}
+                        <Table.Td ta='right'>
+                          {p?.v == null ? '—' : formatAt(p.v, table.powerDp)}
                         </Table.Td>
-                        <Table.Td>
-                          {formatValue(
-                            f?.v ?? null,
-                            1,
-                            byKey.get(k.flow)?.unit
-                          )}
+                        <Table.Td ta='right'>
+                          {f?.v == null ? '—' : formatAt(f.v, table.flowDp)}
                         </Table.Td>
-                        <Table.Td>
-                          {formatValue(
-                            s?.v ?? null,
-                            0,
-                            byKey.get(k.speed)?.unit
-                          )}
+                        <Table.Td ta='right'>
+                          {s?.v == null ? '—' : formatAt(s.v, table.speedDp)}
                         </Table.Td>
-                        <Table.Td>
-                          {peak
-                            ? formatValue(peak.max, 2, byKey.get(k.power)?.unit)
-                            : '—'}
+                        <Table.Td ta='right'>
+                          {peak ? formatAt(peak.max, table.powerDp) : '—'}
                         </Table.Td>
                         <Table.Td>
                           <Text size='xs' c='dimmed'>

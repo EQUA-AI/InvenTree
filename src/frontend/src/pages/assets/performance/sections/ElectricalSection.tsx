@@ -1,6 +1,6 @@
 import { t } from '@lingui/core/macro';
-import { SimpleGrid, Stack } from '@mantine/core';
-import { useMemo } from 'react';
+import { Box, SimpleGrid, Stack } from '@mantine/core';
+import { Children, type ReactNode, useMemo } from 'react';
 
 import { RelationChart } from '../RelationChart';
 import { familyColors } from '../TrendChart';
@@ -12,6 +12,32 @@ import {
   type SectionProps,
   lineFor
 } from './common';
+
+/**
+ * The section's two-column grid, where an odd last card fills the row.
+ *
+ * Which cards exist depends on the tags a machine carries, so an odd count is
+ * normal; without this the final chart is squeezed into half a page of blank.
+ * At base the grid is one column and the span is already a no-op.
+ */
+function CardGrid({ children }: Readonly<{ children: ReactNode }>) {
+  // toArray drops the `false` that an absent card's guard leaves behind.
+  const cards = Children.toArray(children);
+  const spanLast = cards.length % 2 === 1;
+  return (
+    <SimpleGrid cols={{ base: 1, lg: 2 }} spacing='md'>
+      {cards.map((card, index) =>
+        spanLast && index === cards.length - 1 ? (
+          <Box key={index} style={{ gridColumn: '1 / -1' }}>
+            {card}
+          </Box>
+        ) : (
+          card
+        )
+      )}
+    </SimpleGrid>
+  );
+}
 
 /**
  * Electrical performance: what the machine draws and how cleanly.
@@ -71,7 +97,7 @@ export function ElectricalSection({
 
   return (
     <Stack gap='md'>
-      <SimpleGrid cols={{ base: 1, lg: 2 }} spacing='md'>
+      <CardGrid>
         {hasPower && (
           <ChartCard
             title={t`Power and power factor`}
@@ -157,14 +183,13 @@ export function ElectricalSection({
               syncId={syncId}
               onZoom={onZoom}
               unit={frequency[0].signal.unit}
-              height={180}
             />
           </ChartCard>
         )}
-      </SimpleGrid>
+      </CardGrid>
 
       {(powerVsSpeed.length > 0 || currentVsPower.length > 0) && (
-        <SimpleGrid cols={{ base: 1, lg: 2 }} spacing='md'>
+        <CardGrid>
           {powerVsSpeed.length > 0 && power[0] && speed[0] && (
             <RelationChart
               title={t`Relationship: active power and shaft speed`}
@@ -191,7 +216,7 @@ export function ElectricalSection({
               windowSeconds={window.seconds}
             />
           )}
-        </SimpleGrid>
+        </CardGrid>
       )}
     </Stack>
   );

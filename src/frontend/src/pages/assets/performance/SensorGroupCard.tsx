@@ -1,11 +1,19 @@
 import { t } from '@lingui/core/macro';
 import { BarChart } from '@mantine/charts';
-import { Badge, Group, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
+import {
+  Badge,
+  Group,
+  Paper,
+  SimpleGrid,
+  Stack,
+  Text,
+  useComputedColorScheme
+} from '@mantine/core';
 import { useMemo } from 'react';
 
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 
-import { SensorHeatmap } from './SensorHeatmap';
+import { SensorHeatmap, measureText } from './SensorHeatmap';
 import {
   type ReferenceLine,
   TrendChart,
@@ -67,11 +75,12 @@ export function SensorGroupCard({
   onZoom,
   description
 }: Readonly<SensorGroupCardProps>) {
+  const scheme = useComputedColorScheme('light');
   const unit = parameters[0]?.signal.unit ?? '';
   const decimals = parameters[0]?.definition.decimals ?? 1;
   const colors = useMemo(
-    () => familyColors(parameters.length, [hue]),
-    [parameters.length, hue]
+    () => familyColors(parameters.length, [hue], scheme),
+    [parameters.length, hue, scheme]
   );
 
   const lines: TrendSeries[] = useMemo(
@@ -239,6 +248,33 @@ export function SensorGroupCard({
     [comparison, current, hue]
   );
 
+  // Only a sensor with a usable reading has a bar. Feeding a null as zero drew
+  // a bar of no length at a baseline the reader could not see, and the caption
+  // pointed at empty space; the sensors are named instead, below the chart.
+  const readable = useMemo(() => bars.filter((b) => b.value !== null), [bars]);
+  const unreadable = useMemo(
+    () => bars.filter((b) => b.value === null),
+    [bars]
+  );
+
+  // Recharts reserves what it is given for a vertical chart's category axis
+  // and wraps a longer name inside it, so a fixed width wrapped every sensor
+  // name onto two lines that then overlapped the row below. Measure the
+  // widest name and reserve that, and give a row that still wraps the height
+  // two lines need.
+  const barAxis = useMemo(() => {
+    const widest = Math.max(0, ...readable.map((b) => measureText(b.sensor)));
+    // Recharts wraps a name the moment its words plus a space each reach the
+    // width it was given, so the room it is told about is a few pixels more
+    // than the name measures; the axis then holds that plus its tick gutter.
+    const text = Math.min(226, Math.ceil(widest) + 10);
+    return {
+      text,
+      width: Math.max(110, text + 14),
+      wraps: Math.ceil(widest) + 10 > text
+    };
+  }, [readable]);
+
   // The chart colours a bar by its value alone, so the state colour is looked
   // up by value; two sensors reading exactly alike share a colour, which is
   // the least surprising outcome.
@@ -324,14 +360,15 @@ export function SensorGroupCard({
           unit={unit}
           referenceLines={referenceLines}
           syncId={syncId}
+          title={title}
           toggleable={parameters.length > 1}
           onZoom={onZoom}
           height={parameters.length > 6 ? 280 : 220}
         />
 
-        {(matrix || bars.length > 1) && (
+        {(matrix || readable.length > 1) && (
           <SimpleGrid
-            cols={{ base: 1, lg: matrix && bars.length > 1 ? 2 : 1 }}
+            cols={{ base: 1, lg: matrix && readable.length > 1 ? 2 : 1 }}
             spacing='md'
           >
             {matrix && (
@@ -348,16 +385,19 @@ export function SensorGroupCard({
                 />
               </Stack>
             )}
-            {bars.length > 1 && (
+            {readable.length > 1 && (
               <Stack gap={4}>
                 <Text size='sm' fw={500}>
                   {t`Current reading by sensor`}
                 </Text>
                 <BarChart
-                  h={Math.max(120, bars.length * 22 + 30)}
-                  data={bars.map((b) => ({
+                  h={Math.max(
+                    120,
+                    readable.length * (barAxis.wraps ? 32 : 22) + 30
+                  )}
+                  data={readable.map((b) => ({
                     sensor: b.sensor,
-                    value: b.value ?? 0,
+                    value: b.value as number,
                     color: b.color
                   }))}
                   dataKey='sensor'
@@ -375,17 +415,37 @@ export function SensorGroupCard({
                     formatValue(value, decimals, unit, summary?.spread)
                   }
                   yAxisProps={{
-                    width: 150,
+                    width: barAxis.width,
                     interval: 0,
-                    tick: { fontSize: 11 }
+                    tick: {
+                      transform: 'translate(-10, 0)',
+                      fill: 'currentColor',
+                      fontSize: 11,
+                      // Recharts decides where to wrap by measuring the name
+                      // in a span it styles from `style` alone - and only a
+                      // CSS string reaches that span. Given the size as a
+                      // prop, it measured every name at the body's 16px and
+                      // broke all of them onto two lines.
+                      style: { fontSize: '11px' },
+                      width: barAxis.text
+                    }
                   }}
-                  xAxisProps={{ domain: ['auto', 'auto'] }}
+                  // Bar length is the encoding, so the axis starts at zero; an
+                  // auto baseline made a 0.3 degC difference look like the
+                  // whole reading, and moved whenever a sensor dropped out.
+                  // Signed channels keep their negative side.
+                  xAxisProps={{
+                    domain: [
+                      (min: number) => Math.min(0, min),
+                      (max: number) => Math.max(0, max)
+                    ]
+                  }}
                   barProps={{ isAnimationActive: false, radius: 2 }}
                   tooltipAnimationDuration={0}
                 />
-                {bars.some((b) => b.value === null) && (
+                {unreadable.length > 0 && (
                   <Text size='xs' c='dimmed'>
-                    {t`A sensor with no usable current reading is drawn at zero and greyed; zero is not its value.`}
+                    {t`No usable current reading, so not plotted: ${unreadable.map((b) => b.sensor).join(', ')}`}
                   </Text>
                 )}
               </Stack>

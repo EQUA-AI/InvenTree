@@ -22,7 +22,12 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 
-import { formatClock, formatDuration, formatTick } from './format';
+import {
+  formatClock,
+  formatClockOn,
+  formatDuration,
+  formatTick
+} from './format';
 import {
   type DataRange,
   type RangePreset,
@@ -100,6 +105,11 @@ export function TimeRangeControl({
     }
     return null;
   }, [customFrom, customTo]);
+
+  // An empty field is guidance; a filled pair the page refuses is a refusal,
+  // and a refusal printed in the same dimmed grey as the help text beside it
+  // read as one long sentence about history.
+  const customInvalid = customError !== null && !!customFrom && !!customTo;
 
   const minDate =
     dataRange?.available && dataRange.from
@@ -185,54 +195,69 @@ export function TimeRangeControl({
       </Group>
 
       {pickingCustom && (
-        <Group gap='sm' align='flex-end' wrap='wrap'>
-          <DateTimePicker
-            label={t`From`}
-            size='xs'
-            value={customFrom}
-            onChange={setCustomFrom}
-            valueFormat='YYYY-MM-DD HH:mm:ss'
-            withSeconds
-            clearable
-            minDate={minDate}
-            maxDate={maxDate}
-            placeholder={t`Start of window`}
-            style={{ minWidth: 200 }}
-          />
-          <DateTimePicker
-            label={t`To`}
-            size='xs'
-            value={customTo}
-            onChange={setCustomTo}
-            valueFormat='YYYY-MM-DD HH:mm:ss'
-            withSeconds
-            clearable
-            minDate={customFrom ? new Date(customFrom) : minDate}
-            maxDate={maxDate}
-            placeholder={t`End of window`}
-            style={{ minWidth: 200 }}
-          />
-          <Button
-            size='xs'
-            disabled={customError !== null}
-            onClick={() => {
-              if (!customFrom || !customTo) return;
-              onCustom(dayjs(customFrom).valueOf(), dayjs(customTo).valueOf());
-            }}
-          >
-            {t`Apply`}
-          </Button>
-          {customError && (
-            <Text size='xs' c='dimmed'>
-              {customError}
-            </Text>
-          )}
+        <>
+          <Group gap='sm' align='flex-end' wrap='wrap'>
+            <DateTimePicker
+              label={t`From`}
+              size='xs'
+              value={customFrom}
+              onChange={setCustomFrom}
+              valueFormat='YYYY-MM-DD HH:mm:ss'
+              withSeconds
+              clearable
+              minDate={minDate}
+              maxDate={maxDate}
+              placeholder={t`Start of window`}
+              style={{ minWidth: 200 }}
+            />
+            <DateTimePicker
+              label={t`To`}
+              size='xs'
+              value={customTo}
+              onChange={setCustomTo}
+              valueFormat='YYYY-MM-DD HH:mm:ss'
+              withSeconds
+              clearable
+              minDate={customFrom ? new Date(customFrom) : minDate}
+              maxDate={maxDate}
+              placeholder={t`End of window`}
+              // Every refusal is about the end relative to the start, so this
+              // is the field the reader has to change.
+              error={customInvalid || undefined}
+              style={{ minWidth: 200 }}
+            />
+            <Button
+              size='xs'
+              disabled={customError !== null}
+              onClick={() => {
+                if (!customFrom || !customTo) return;
+                onCustom(
+                  dayjs(customFrom).valueOf(),
+                  dayjs(customTo).valueOf()
+                );
+              }}
+            >
+              {t`Apply`}
+            </Button>
+            {customError && (
+              <Text
+                size='xs'
+                c={customInvalid ? 'red' : 'dimmed'}
+                fw={customInvalid ? 500 : undefined}
+                role={customInvalid ? 'alert' : undefined}
+              >
+                {customError}
+              </Text>
+            )}
+          </Group>
+          {/* Its own line: sharing a row with the refusal above made the two
+              grey sentences read as one. */}
           {dataRange?.available && dataRange.from && dataRange.to && (
             <Text size='xs' c='dimmed'>
               {t`History held from ${dayjs(dataRange.from).format('D MMM HH:mm')} to ${dayjs(dataRange.to).format('D MMM HH:mm')}.`}
             </Text>
           )}
-        </Group>
+        </>
       )}
     </Stack>
   );
@@ -328,8 +353,9 @@ export function LiveIndicator({
           {updatedAt === null
             ? t`Not read yet`
             : t`Updated ${formatClock(updatedAt)}`}
+          {/* The read happened now; the reading it found need not have. */}
           {newestAt !== null
-            ? ` · ${t`newest reading ${formatClock(newestAt)}`}`
+            ? ` · ${t`newest reading ${formatClockOn(newestAt, now)}`}`
             : ''}
         </Text>
       </Group>

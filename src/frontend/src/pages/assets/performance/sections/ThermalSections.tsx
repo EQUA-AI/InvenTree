@@ -1,5 +1,13 @@
 import { t } from '@lingui/core/macro';
-import { Alert, Badge, Group, SimpleGrid, Stack, Text } from '@mantine/core';
+import {
+  Alert,
+  Badge,
+  Group,
+  SimpleGrid,
+  Stack,
+  Text,
+  useComputedColorScheme
+} from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 import { useMemo } from 'react';
 
@@ -7,7 +15,7 @@ import type { SeriesEntry } from '@lib/types/MachineHealth';
 
 import { SensorGroupCard } from '../SensorGroupCard';
 import { TrendChart, type TrendSeries, familyColors } from '../TrendChart';
-import { formatValue } from '../format';
+import { formatRange, formatValue } from '../format';
 import { type ResolvedParameter, withRole } from '../resolve';
 import {
   alignRows,
@@ -224,9 +232,10 @@ function DifferenceCard({
   syncId: string;
   hue: string;
 }>) {
+  const scheme = useComputedColorScheme('light');
   const unit = pairs[0]?.a.signal.unit ?? '';
   const decimals = pairs[0]?.a.definition.decimals ?? 1;
-  const colors = familyColors(pairs.length, [hue]);
+  const colors = familyColors(pairs.length, [hue], scheme);
 
   const computed = useMemo(
     () =>
@@ -235,10 +244,16 @@ function DifferenceCard({
         // number alone no longer says which sensors were subtracted.
         const shared =
           pairs.filter((other) => other.a.index === pair.a.index).length > 1;
+        // Naming both sensors in full overran the badge, which cut the
+        // window range off mid-sentence. The card title already says which
+        // way round the subtraction goes, so only the family that differs
+        // needs saying.
         const label =
-          pair.a.index !== null && !shared
-            ? t`ΔT ${pair.a.index}`
-            : t`ΔT ${pair.a.label} − ${pair.b.label}`;
+          pair.a.index === null
+            ? t`ΔT ${pair.a.label} − ${pair.b.label}`
+            : shared
+              ? t`ΔT ${pair.a.index} (${pair.b.definition.label()})`
+              : t`ΔT ${pair.a.index}`;
         const samples = differenceSeries(
           series.get(pair.a.signal.binding_id),
           series.get(pair.b.signal.binding_id)
@@ -290,6 +305,9 @@ function DifferenceCard({
               variant='light'
               color={c.stale ? 'gray' : hue}
               size='sm'
+              // A truncated badge loses the window range, which is the half
+              // that says whether the value has been steady.
+              style={{ maxWidth: '100%', height: 'auto', whiteSpace: 'normal' }}
             >
               {c.label}:{' '}
               {c.current === null
@@ -300,8 +318,11 @@ function DifferenceCard({
                     unit,
                     stats ? stats.max - stats.min : null
                   )}
+              {/* The shared joiner, which reads "to" when either end is
+                  negative: a ΔT window of -1.6 to -1.3 joined by a dash read
+                  as "-1.6--1.3". */}
               {stats
-                ? ` (${t`window`} ${formatValue(stats.min, decimals, undefined, stats.max - stats.min)}–${formatValue(stats.max, decimals, undefined, stats.max - stats.min)})`
+                ? ` (${t`window`} ${formatRange(stats.min, stats.max, decimals)})`
                 : ''}
             </Badge>
           );
@@ -318,6 +339,7 @@ function DifferenceCard({
         windowSeconds={window.seconds}
         unit={unit}
         syncId={syncId}
+        title={title}
         toggleable={lines.length > 2}
         height={200}
       />

@@ -17,7 +17,13 @@ import { IconMaximize, IconZoomIn } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { ReferenceArea } from 'recharts';
 
-import { formatInstant, formatTick, formatValue, timeTicks } from './format';
+import {
+  formatInstant,
+  formatTick,
+  formatValue,
+  niceTicks,
+  timeTicks
+} from './format';
 import { type ChartRow, axisDomain } from './series';
 
 /**
@@ -102,30 +108,33 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
       return next;
     });
 
+  // The chips are the show/hide control as well as the key to the colours, so
+  // the maximised view gets them too - the same node, and the same state,
+  // because `hidden` lives here.
+  const chips =
+    props.toggleable && props.series.length > 1 ? (
+      <Group gap={4} wrap='wrap'>
+        {props.series.map((s) => (
+          <Chip
+            key={s.key}
+            size='xs'
+            variant='outline'
+            color={s.color}
+            checked={!hidden.has(s.key)}
+            onChange={() => toggle(s.key)}
+          >
+            {s.label}
+          </Chip>
+        ))}
+      </Group>
+    ) : null;
+
+  // The card above already carries the title; only the modal, which replaces
+  // that card, has to say what it is showing.
   const header = (
     <Group justify='space-between' align='flex-start' wrap='nowrap' gap='xs'>
       <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-        {props.title && (
-          <Text size='sm' fw={600}>
-            {props.title}
-          </Text>
-        )}
-        {props.toggleable && props.series.length > 1 && (
-          <Group gap={4} wrap='wrap'>
-            {props.series.map((s) => (
-              <Chip
-                key={s.key}
-                size='xs'
-                variant='outline'
-                color={s.color}
-                checked={!hidden.has(s.key)}
-                onChange={() => toggle(s.key)}
-              >
-                {s.label}
-              </Chip>
-            ))}
-          </Group>
-        )}
+        {chips}
       </Stack>
       <Tooltip label={t`Open full screen`}>
         <ActionIcon
@@ -151,11 +160,14 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
         fullScreen
         title={props.title ?? t`Trend`}
       >
-        <ChartBody
-          {...props}
-          series={visible}
-          height={Math.max(420, window.innerHeight - 200)}
-        />
+        <Stack gap={6}>
+          {chips}
+          <ChartBody
+            {...props}
+            series={visible}
+            height={Math.max(420, window.innerHeight - 200)}
+          />
+        </Stack>
       </Modal>
     </Stack>
   );
@@ -230,30 +242,76 @@ function ChartBody({
   const withRight = anyLeftAxis && series.some((s) => s.yAxisId === 'right');
   const leftUnit = anyLeftAxis ? unit : rightUnit;
 
-  // Axis widths follow the widest tick label they will print: a fixed width
-  // fits "0" to "4" and squeezes "-0.105" against the unit. Ticks are nice
-  // numbers within the data's extremes, so the extremes bound their length.
-  // The same walk collects each side's extremes, which is what decides
-  // whether that side moved at all.
+  // Axis widths follow the widest tick label they will print, so the ticks
+  // themselves are computed here and handed to the axis: measured from the
+  // data values instead, the width was short by the digits Recharts adds when
+  // it rounds a range outwards ("-0.105" against a width fitting "-0.1"), and
+  // the labels were clipped. The same walk collects each side's extremes,
+  // which is what decides whether that side moved at all.
   const axis = useMemo(() => {
-    const side = (which: 'left' | 'right') => {
-      let chars = 1;
+    const side = (
+      which: 'left' | 'right'
+    ): {
+      width: number;
+      domain: [number | 'auto', number | 'auto'];
+      ticks?: number[];
+      allowDecimals?: boolean;
+    } => {
+      const own = series.filter((s) => {
+        const onRight = s.yAxisId === 'right' && withRight;
+        return (which === 'right') === onRight;
+      });
       let min = Number.POSITIVE_INFINITY;
       let max = Number.NEGATIVE_INFINITY;
-      for (const s of series) {
-        const onRight = s.yAxisId === 'right' && withRight;
-        if ((which === 'right') !== onRight) continue;
+      for (const s of own) {
         for (const row of rows) {
           const v = row[s.key];
           if (v === null || v === undefined || !Number.isFinite(v)) continue;
           if (v < min) min = v;
           if (v > max) max = v;
-          chars = Math.max(chars, formatValue(v, s.decimals).length);
         }
       }
+      const widthFor = (labels: string[]) =>
+        14 + 7 * Math.min(Math.max(1, ...labels.map((l) => l.length)), 10);
+      if (!Number.isFinite(min) || !Number.isFinite(max)) {
+        return { width: widthFor(['0']), domain: axisDomain(min, max) };
+      }
+      if (min === max) {
+        // The constant band says the value did not move - but the band is
+        // derived from the value, so its edges are as unround as the reading
+        // is: a voltage pinned at -592.5925903320312 gave Recharts the bounds
+        // to tick between, and the axis printed "-586.666664428711". Tick it
+        // at round numbers inside the band, as a moving axis is ticked.
+        const [low, high] = axisDomain(min, max);
+        if (typeof low !== 'number' || typeof high !== 'number') {
+          return {
+            width: widthFor([String(min)]),
+            domain: axisDomain(min, max)
+          };
+        }
+        const ticks = niceTicks(low, high);
+        if (ticks.length < 2) {
+          return { width: widthFor([String(min)]), domain: [low, high] };
+        }
+        return {
+          width: widthFor(ticks.map(String)),
+          domain: [ticks[0], ticks[ticks.length - 1]] as [number, number],
+          ticks,
+          allowDecimals: true
+        };
+      }
+      // A count or a state has no quarter: 0.25 of a running pump is not a
+      // reading the dictionary has, so such an axis is ticked at its two whole
+      // values. Whole readings, not merely a catalogue that rounds to whole
+      // ones - a shaft speed printed as "745" still drifts between ticks.
+      const counted =
+        max - min <= 1 && Number.isInteger(min) && Number.isInteger(max);
+      const ticks = counted ? [min, max] : niceTicks(min, max);
       return {
-        width: 14 + 7 * Math.min(chars, 10),
-        domain: axisDomain(min, max)
+        width: widthFor(ticks.map(String)),
+        domain: [ticks[0], ticks[ticks.length - 1]] as [number, number],
+        ticks,
+        allowDecimals: !counted
       };
     };
     return { left: side('left'), right: side('right') };
@@ -348,17 +406,30 @@ function ChartBody({
         // The toggle chips already name and colour every line; a legend as
         // well wraps under a narrow card and runs into whatever follows.
         withLegend={!toggleable && series.length > 1 && series.length <= 8}
-        legendProps={{ verticalAlign: 'bottom', height: 28 }}
+        // The reserved band has to cover the 37px the legend renders. Its
+        // order is the series order: Recharts sorts its legend by each item's
+        // value, which is the series *key*, so the forebay card listed "Pumps
+        // running" ahead of "Forebay level" - the reverse of the order its own
+        // description names them in.
+        legendProps={{
+          verticalAlign: 'bottom',
+          height: 40,
+          itemSorter: null
+        }}
         withRightYAxis={withRight}
         yAxisProps={{
           width: axis.left.width,
           allowDataOverflow: false,
-          domain: axis.left.domain
+          domain: axis.left.domain,
+          ticks: axis.left.ticks,
+          allowDecimals: axis.left.allowDecimals
         }}
         rightYAxisProps={{
           width: axis.right.width,
           allowDataOverflow: false,
-          domain: axis.right.domain
+          domain: axis.right.domain,
+          ticks: axis.right.ticks,
+          allowDecimals: axis.right.allowDecimals
         }}
         xAxisProps={{
           type: 'number',
@@ -377,7 +448,9 @@ function ChartBody({
         lineChartProps={{
           syncId,
           syncMethod: 'value',
-          margin: { top: 8, right: withRight ? 0 : 12, bottom: 0, left: 0 },
+          // Both sides keep their margin: zeroed on the right, the last tick
+          // label of a two-axis chart lost its final character.
+          margin: { top: 8, right: 12, bottom: 0, left: 0 },
           onMouseDown: (state: unknown) => {
             const at = instantOf(state);
             if (!onZoom || at === null) return;
@@ -418,27 +491,34 @@ function ChartBody({
           />
         )}
       </LineChart>
-      {onZoom && zoomRange && (
-        <Group justify='flex-end' mt={4} gap='xs'>
-          <Button
-            size='compact-xs'
-            variant='subtle'
-            color='gray'
-            onClick={() => setSelection(null)}
-          >
-            {t`Clear selection`}
-          </Button>
-          <Button
-            size='compact-xs'
-            variant='light'
-            leftSection={<IconZoomIn size={14} />}
-            onClick={() => {
-              onZoom(zoomRange.from, zoomRange.to);
-              setSelection(null);
-            }}
-          >
-            {t`Zoom to ${formatTick(zoomRange.from, windowSeconds)} – ${formatTick(zoomRange.to, windowSeconds)}`}
-          </Button>
+      {/* The row's height is reserved from the start, and clears the legend
+          above it: mounted only once a drag finished, it grew the card under
+          the cursor and started inside the legend's glyphs. */}
+      {onZoom && (
+        <Group justify='flex-end' mt='xs' gap='xs' mih={22}>
+          {zoomRange && (
+            <>
+              <Button
+                size='compact-xs'
+                variant='subtle'
+                color='gray'
+                onClick={() => setSelection(null)}
+              >
+                {t`Clear selection`}
+              </Button>
+              <Button
+                size='compact-xs'
+                variant='light'
+                leftSection={<IconZoomIn size={14} />}
+                onClick={() => {
+                  onZoom(zoomRange.from, zoomRange.to);
+                  setSelection(null);
+                }}
+              >
+                {t`Zoom to ${formatTick(zoomRange.from, windowSeconds)} – ${formatTick(zoomRange.to, windowSeconds)}`}
+              </Button>
+            </>
+          )}
         </Group>
       )}
     </Box>
@@ -522,12 +602,27 @@ function TrendTooltip({
  * Colours for a family of lines. One hue family, cycled through shades so a
  * dozen winding sensors read as one family rather than a rainbow, with a
  * second hue interleaved once the first runs out of distinguishable shades.
+ *
+ * Which shades are distinguishable depends on what they are drawn on: a fixed
+ * ladder put two of the fourteen bay lines below 3:1 against the dark card and
+ * three below it against the white one, where a chip's outline all but
+ * disappeared. Hence a ladder per scheme, and a caller that says which; a
+ * caller that does not gets the shades that clear 3:1 on either card, which is
+ * fewer of them and so repeats a hue sooner.
  */
 export function familyColors(
   count: number,
-  hues: string[] = ['blue']
+  hues: string[] = ['blue'],
+  scheme?: 'light' | 'dark'
 ): string[] {
-  const shades = [6, 8, 4, 9, 5, 7, 3];
+  // Shades clearing 3:1 against the card they are drawn on: 6-9 on white,
+  // 2-8 on the dark card, 6-8 on both.
+  const shades =
+    scheme === 'dark'
+      ? [5, 3, 7, 4, 6, 2, 8]
+      : scheme === 'light'
+        ? [6, 9, 7, 8]
+        : [6, 8, 7];
   const colors: string[] = [];
   for (let i = 0; i < count; i++) {
     const hue = hues[Math.floor(i / shades.length) % hues.length];

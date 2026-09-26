@@ -45,6 +45,7 @@ function tileFor(
     observedAt: instant(signal),
     stale: signal.stale,
     quality: signal.quality,
+    limitsConfigured: hasLimits(signal),
     // A limit verdict on an unusable reading is no verdict.
     state:
       hasLimits(signal) && signal.quality === 'good'
@@ -89,6 +90,7 @@ function highestTile(
       observedAt: null,
       stale: false,
       state: 'unconfigured',
+      limitsConfigured: false,
       missingReason
     };
   }
@@ -117,6 +119,7 @@ function highestTile(
     observedAt: instant(top.signal),
     stale: top.signal.stale,
     state: worst,
+    limitsConfigured: pool.some((p) => hasLimits(p.signal)),
     series: series.get(top.signal.binding_id),
     caption: top.signal.unit
       ? t`Highest of ${pool.length}: ${top.label}`

@@ -58,10 +58,16 @@ test('families are drawn as sections with a heatmap and calculated rises', async
   await expect(
     page.getByText('No approved vibration channel', { exact: true })
   ).toHaveCount(2);
-  // A sensor without a reading is said to have none, not to read zero.
+  // A sensor without a usable reading is named as one the chart left out,
+  // and no bar of its own is drawn for it.
   await expect(
-    page.getByText(/drawn at zero and greyed/).first()
+    page.getByText(/No usable current reading, so not plotted:.*Winding 4/)
   ).toBeVisible();
+  await expect(
+    page
+      .locator('.recharts-cartesian-axis-tick-value')
+      .filter({ hasText: /^Winding 4$/ })
+  ).toHaveCount(0);
 });
 
 test('the time range control changes what is asked of the server', async ({

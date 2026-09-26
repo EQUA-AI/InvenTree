@@ -10,7 +10,7 @@ import {
 import { useElementSize } from '@mantine/hooks';
 import { useMemo } from 'react';
 
-import { formatTick, formatValue } from './format';
+import { formatTick, formatValue, timeTicks } from './format';
 import { type HeatmapMatrix, limitState } from './series';
 
 //: Row labels are measured, not assumed; these only bound the result, so one
@@ -24,7 +24,8 @@ const AXIS_HEIGHT = 18;
 const GAP = 1;
 
 /**
- * Width of a label in the font the heatmap draws it in.
+ * Width of a label in the 11px font the heatmap - and the bar chart beside
+ * it - draws its sensor names in.
  *
  * SVG text does not wrap or truncate: a label wider than the space reserved
  * for it is simply drawn outside the picture and clipped from its *front*,
@@ -35,7 +36,7 @@ const GAP = 1;
  */
 let canvasContext: CanvasRenderingContext2D | null | undefined;
 
-function measureText(text: string): number {
+export function measureText(text: string): number {
   if (canvasContext === undefined) {
     canvasContext = document.createElement('canvas').getContext('2d');
     if (canvasContext) canvasContext.font = LABEL_FONT;
@@ -95,14 +96,23 @@ export function SensorHeatmap({
   // bright row" promises.
   const [rampLow, rampHigh] = scheme === 'dark' ? [9, 3] : [1, 8];
 
+  // The row label is the sensor's name and nothing else. Appending the
+  // window's last reading put a second, unlabelled number beside a name -
+  // read as a current value, and so as a contradiction of the bar chart
+  // beside it, which shows the signal's own current reading. The fact keeps
+  // its place on hover, where it can be named.
   const labels = useMemo(
+    () => matrix.rows.map((row) => row.label),
+    [matrix.rows]
+  );
+  const rowTitles = useMemo(
     () =>
       matrix.rows.map((row) =>
         row.last !== null
-          ? `${row.label}  ${formatValue(row.last, decimals, undefined, matrix.max - matrix.min)}`
+          ? t`${row.label} · last reading in window ${formatValue(row.last, decimals, unit, matrix.max - matrix.min)}`
           : row.label
       ),
-    [matrix.rows, matrix.max, matrix.min, decimals]
+    [matrix.rows, matrix.max, matrix.min, decimals, unit]
   );
   const labelWidth = useMemo(
     () =>
@@ -131,10 +141,18 @@ export function SensorHeatmap({
     };
   }, [matrix.min, matrix.max, palette, rampLow, rampHigh]);
 
-  // A handful of time labels along the bottom, never one per column.
-  const labelEvery = Math.max(
-    1,
-    Math.ceil(columns / Math.max(2, Math.floor(gridWidth / 90)))
+  // A handful of time labels along the bottom, at the same instants the trend
+  // chart in the same card prints: every nth column start gave 21:11, 21:21,
+  // 21:31 under a chart ticking 21:15, 21:20, 21:25, so the two axes of one
+  // card named different times.
+  const axisStart = matrix.columns[0]?.start ?? 0;
+  const axisEnd = matrix.columns[columns - 1]?.end ?? axisStart;
+  const ticks = useMemo(
+    () =>
+      axisEnd > axisStart
+        ? timeTicks(axisStart, axisEnd, Math.max(2, Math.floor(gridWidth / 90)))
+        : [],
+    [axisStart, axisEnd, gridWidth]
   );
 
   const stateColor: Record<string, string> = {
@@ -161,16 +179,21 @@ export function SensorHeatmap({
               fill='var(--mantine-color-text)'
             >
               {fitText(labels[r], labelWidth - LABEL_GUTTER * 2)}
-              <title>{labels[r]}</title>
+              <title>{rowTitles[r]}</title>
             </text>
             {row.cells.map((cell, c) => {
               const column = matrix.columns[c];
               const state = limitState(cell, row.limits);
               const outline = stateColor[state];
+              // A cell resting on one reading is that reading, not a mean of
+              // one: "mean of 1 readings" claims an average that averages
+              // nothing.
               const title =
                 cell === null
                   ? t`${row.label} · ${formatTick(column.start, windowSeconds)}–${formatTick(column.end, windowSeconds)} · no reading`
-                  : t`${row.label} · ${formatTick(column.start, windowSeconds)}–${formatTick(column.end, windowSeconds)} · ${formatValue(cell, decimals, unit, matrix.max - matrix.min)} (mean of ${row.counts[c]} readings)`;
+                  : row.counts[c] === 1
+                    ? t`${row.label} · ${formatTick(column.start, windowSeconds)}–${formatTick(column.end, windowSeconds)} · ${formatValue(cell, decimals, unit, matrix.max - matrix.min)} (one reading)`
+                    : t`${row.label} · ${formatTick(column.start, windowSeconds)}–${formatTick(column.end, windowSeconds)} · ${formatValue(cell, decimals, unit, matrix.max - matrix.min)} (mean of ${row.counts[c]} readings)`;
               return (
                 <rect
                   key={c}
@@ -195,19 +218,28 @@ export function SensorHeatmap({
           </g>
         ))}
         <g transform={`translate(0, ${matrix.rows.length * ROW_HEIGHT})`}>
-          {matrix.columns.map((column, c) =>
-            c % labelEvery === 0 ? (
+          {ticks.map((at) => {
+            const text = formatTick(at, windowSeconds);
+            const offset = (at - axisStart) / (axisEnd - axisStart);
+            const x = labelWidth + offset * gridWidth;
+            // A centred label near either end would hang off the grid.
+            const half = measureText(text) / 2;
+            if (x - half < labelWidth || x + half > labelWidth + gridWidth) {
+              return null;
+            }
+            return (
               <text
-                key={c}
-                x={labelWidth + c * cellWidth}
+                key={at}
+                x={x}
                 y={13}
                 fontSize={10}
+                textAnchor='middle'
                 fill='var(--mantine-color-dimmed)'
               >
-                {formatTick(column.start, windowSeconds)}
+                {text}
               </text>
-            ) : null
-          )}
+            );
+          })}
         </g>
       </Box>
       <Group gap='xs' justify='flex-end'>

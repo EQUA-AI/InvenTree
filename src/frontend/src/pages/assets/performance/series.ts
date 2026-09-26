@@ -416,6 +416,9 @@ export function axisDomain(
 ): [number | 'auto', number | 'auto'] {
   if (!Number.isFinite(min) || !Number.isFinite(max)) return ['auto', 'auto'];
   if (min !== max) return ['auto', 'auto'];
-  const pad = min === 0 ? 1 : Math.abs(min) * 0.01;
+  // A pad proportional to the value keeps the band in scale with the reading,
+  // but one tenth of the value's own magnitude also lands on a round number,
+  // so the axis drawn inside it can be ticked without fractions of a digit.
+  const pad = min === 0 ? 1 : 10 ** Math.floor(Math.log10(Math.abs(min))) / 10;
   return [min - pad, max + pad];
 }
