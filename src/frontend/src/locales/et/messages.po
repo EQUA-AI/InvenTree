@@ -2416,7 +2416,7 @@ msgstr "Peatatud"
 #: src/components/forms/InstanceOptions.tsx:151
 #: src/pages/assets/health/PumphouseMimic.tsx:99
 #: src/pages/assets/performance/StationPerformance.tsx:492
-#: src/pages/assets/performance/kpis.ts:133
+#: src/pages/assets/performance/kpis.ts:135
 msgid "Running"
 msgstr "Käimas"
 
@@ -3257,7 +3257,7 @@ msgstr "E-Kirja seaded on seadistamata."
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
 #: src/pages/assets/performance/StationPerformance.tsx:497
-#: src/pages/assets/performance/kpis.ts:131
+#: src/pages/assets/performance/kpis.ts:133
 msgid "Unknown"
 msgstr ""
 
@@ -9749,7 +9749,7 @@ msgstr ""
 #. placeholder {0}: Math.round(source.freshness_threshold_seconds / 60)
 #. placeholder {0}: Number.isInteger(minutes) ? minutes : minutes.toFixed(1)
 #: src/pages/assets/health/HealthSourceStatus.tsx:92
-#: src/pages/assets/performance/format.ts:63
+#: src/pages/assets/performance/format.ts:104
 msgid "{0} min"
 msgstr ""
 
@@ -9997,8 +9997,8 @@ msgstr ""
 #: src/pages/assets/health/PumphouseMimic.tsx:83
 #: src/pages/assets/health/PumphouseMimic.tsx:228
 #: src/pages/assets/health/common.tsx:184
-#: src/pages/assets/performance/KpiStrip.tsx:155
-#: src/pages/assets/performance/KpiStrip.tsx:188
+#: src/pages/assets/performance/KpiStrip.tsx:156
+#: src/pages/assets/performance/KpiStrip.tsx:195
 #: src/pages/assets/performance/StationPerformance.tsx:530
 msgid "No reading"
 msgstr ""
@@ -10006,7 +10006,7 @@ msgstr ""
 #: src/pages/assets/health/PumphouseMimic.tsx:84
 #: src/pages/assets/health/PumphouseMimic.tsx:102
 #: src/pages/assets/health/common.tsx:193
-#: src/pages/assets/performance/KpiStrip.tsx:149
+#: src/pages/assets/performance/KpiStrip.tsx:150
 #: src/pages/assets/performance/TimeRangeControl.tsx:277
 #: src/pages/stock/StockDetail.tsx:694
 #: src/tables/stock/StockItemTable.tsx:279
@@ -10056,13 +10056,13 @@ msgstr "Pole saadaval"
 
 #: src/pages/assets/health/PumphouseMimic.tsx:100
 #: src/pages/assets/performance/StationPerformance.tsx:496
-#: src/pages/assets/performance/kpis.ts:136
+#: src/pages/assets/performance/kpis.ts:138
 msgid "Idle"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:101
 #: src/pages/assets/performance/StationPerformance.tsx:494
-#: src/pages/assets/performance/kpis.ts:135
+#: src/pages/assets/performance/kpis.ts:137
 #: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:64
 #: src/pages/repair/RepairPacketDetail.tsx:184
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:471
@@ -10562,11 +10562,11 @@ msgid "Window"
 msgstr ""
 
 #. placeholder {0}: formatClock(tile.observedAt)
-#: src/pages/assets/performance/KpiStrip.tsx:183
+#: src/pages/assets/performance/KpiStrip.tsx:190
 msgid "Observed {0}"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:191
+#: src/pages/assets/performance/KpiStrip.tsx:198
 msgid "no limit configured"
 msgstr ""
 
@@ -10690,17 +10690,17 @@ msgid "Critical {0}"
 msgstr ""
 
 #. placeholder {0}: summary.highest.parameter.label
-#. placeholder {1}: formatValue(summary.highest.value, decimals, unit)
+#. placeholder {1}: formatValue(summary.highest.value, decimals, unit, summary.spread)
 #: src/pages/assets/performance/SensorGroupCard.tsx:279
 msgid "Highest now: {0} {1}"
 msgstr ""
 
-#. placeholder {0}: formatValue(summary.mean, decimals, unit)
+#. placeholder {0}: formatValue(summary.mean, decimals, unit, summary.spread)
 #: src/pages/assets/performance/SensorGroupCard.tsx:282
 msgid "Mean {0}"
 msgstr ""
 
-#. placeholder {0}: formatValue(summary.spread, decimals, unit)
+#. placeholder {0}: formatValue(summary.spread, decimals, unit, summary.spread)
 #: src/pages/assets/performance/SensorGroupCard.tsx:286
 msgid "Spread {0} (calculated)"
 msgstr ""
@@ -10745,24 +10745,24 @@ msgstr ""
 #. placeholder {0}: row.label
 #. placeholder {1}: formatTick(column.start, windowSeconds)
 #. placeholder {2}: formatTick(column.end, windowSeconds)
-#: src/pages/assets/performance/SensorHeatmap.tsx:100
+#: src/pages/assets/performance/SensorHeatmap.tsx:102
 msgid "{0} · {1}–{2} · no reading"
 msgstr ""
 
 #. placeholder {0}: row.label
 #. placeholder {1}: formatTick(column.start, windowSeconds)
 #. placeholder {2}: formatTick(column.end, windowSeconds)
-#. placeholder {3}: formatValue(cell, decimals, unit)
+#. placeholder {3}: formatValue(cell, decimals, unit, matrix.max - matrix.min)
 #. placeholder {4}: row.counts[c]
-#: src/pages/assets/performance/SensorHeatmap.tsx:101
+#: src/pages/assets/performance/SensorHeatmap.tsx:103
 msgid "{0} · {1}–{2} · {3} (mean of {4} readings)"
 msgstr ""
 
-#: src/pages/assets/performance/SensorHeatmap.tsx:143
+#: src/pages/assets/performance/SensorHeatmap.tsx:145
 msgid "Scale spans the observed range:"
 msgstr ""
 
-#: src/pages/assets/performance/SensorHeatmap.tsx:156
+#: src/pages/assets/performance/SensorHeatmap.tsx:162
 msgid "· each cell is the mean of the readings in its column"
 msgstr ""
 
@@ -10964,85 +10964,91 @@ msgstr ""
 msgid "Open full screen"
 msgstr ""
 
-#: src/pages/assets/performance/TrendChart.tsx:234
+#: src/pages/assets/performance/TrendChart.tsx:252
 msgid "No readings in this window."
 msgstr ""
 
-#: src/pages/assets/performance/TrendChart.tsx:331
+#: src/pages/assets/performance/TrendChart.tsx:350
 msgid "Clear selection"
 msgstr ""
 
 #. placeholder {0}: formatTick(zoomRange.from, windowSeconds)
 #. placeholder {1}: formatTick(zoomRange.to, windowSeconds)
-#: src/pages/assets/performance/TrendChart.tsx:342
+#: src/pages/assets/performance/TrendChart.tsx:361
 msgid "Zoom to {0} – {1}"
 msgstr ""
 
-#: src/pages/assets/performance/TrendChart.tsx:405
-#: src/pages/assets/performance/format.ts:75
-#: src/pages/assets/performance/sections/ThermalSections.tsx:279
+#: src/pages/assets/performance/TrendChart.tsx:426
+#: src/pages/assets/performance/format.ts:116
+#: src/pages/assets/performance/sections/ThermalSections.tsx:286
 msgid "no reading"
 msgstr ""
 
 #. placeholder {0}: Math.round(seconds)
-#: src/pages/assets/performance/format.ts:59
+#: src/pages/assets/performance/format.ts:100
 msgid "{0} s"
 msgstr ""
 
 #. placeholder {0}: Number.isInteger(hours) ? hours : hours.toFixed(1)
-#: src/pages/assets/performance/format.ts:67
+#: src/pages/assets/performance/format.ts:108
 msgid "{0} h"
 msgstr ""
 
 #. placeholder {0}: Math.round(seconds / 86400)
-#: src/pages/assets/performance/format.ts:69
+#: src/pages/assets/performance/format.ts:110
 msgid "{0} d"
 msgstr ""
 
-#: src/pages/assets/performance/format.ts:79
+#: src/pages/assets/performance/format.ts:120
 msgid "{seconds} s ago"
 msgstr ""
 
 #. placeholder {0}: Math.round(seconds / 60)
-#: src/pages/assets/performance/format.ts:82
+#: src/pages/assets/performance/format.ts:123
 msgid "{0} min ago"
 msgstr ""
 
 #. placeholder {0}: (seconds / 3600).toFixed(1)
-#: src/pages/assets/performance/format.ts:85
+#: src/pages/assets/performance/format.ts:126
 msgid "{0} h ago"
 msgstr ""
 
 #. placeholder {0}: Math.round(seconds / 86400)
-#: src/pages/assets/performance/format.ts:87
+#: src/pages/assets/performance/format.ts:128
 msgid "{0} d ago"
 msgstr ""
 
 #. placeholder {0}: pool.length
 #. placeholder {1}: top.label
-#: src/pages/assets/performance/kpis.ts:110
+#: src/pages/assets/performance/kpis.ts:111
 msgid "Highest of {0}: {1}"
 msgstr ""
 
-#: src/pages/assets/performance/kpis.ts:130
+#. placeholder {0}: pool.length
+#. placeholder {1}: top.label
+#: src/pages/assets/performance/kpis.ts:112
+msgid "Highest of {0}: {1} · unit unconfirmed, raw source value"
+msgstr ""
+
+#: src/pages/assets/performance/kpis.ts:132
 msgid "Code {code}"
 msgstr ""
 
 #. placeholder {0}: parameter.signal.value
-#: src/pages/assets/performance/kpis.ts:149
+#: src/pages/assets/performance/kpis.ts:151
 msgid "Plant status code: {0}"
 msgstr ""
 
-#: src/pages/assets/performance/kpis.ts:191
+#: src/pages/assets/performance/kpis.ts:193
 msgid "Vibration"
 msgstr ""
 
-#: src/pages/assets/performance/kpis.ts:194
+#: src/pages/assets/performance/kpis.ts:196
 #: src/pages/assets/performance/sections/ThermalSections.tsx:116
 msgid "No approved vibration channel"
 msgstr ""
 
-#: src/pages/assets/performance/kpis.ts:204
+#: src/pages/assets/performance/kpis.ts:206
 msgid "Winding temperature"
 msgstr ""
 
@@ -11139,17 +11145,17 @@ msgid "Brush gear"
 msgstr ""
 
 #: src/pages/assets/performance/parameters.ts:320
-#: src/pages/assets/performance/sections/ThermalSections.tsx:143
+#: src/pages/assets/performance/sections/ThermalSections.tsx:150
 msgid "Motor NDE bearing vibration"
 msgstr ""
 
 #: src/pages/assets/performance/parameters.ts:330
-#: src/pages/assets/performance/sections/ThermalSections.tsx:144
+#: src/pages/assets/performance/sections/ThermalSections.tsx:151
 msgid "Motor DE vibration"
 msgstr ""
 
 #: src/pages/assets/performance/parameters.ts:339
-#: src/pages/assets/performance/sections/ThermalSections.tsx:145
+#: src/pages/assets/performance/sections/ThermalSections.tsx:152
 msgid "Thrust bearing vibration"
 msgstr ""
 
@@ -11162,13 +11168,13 @@ msgid "Motor velometer"
 msgstr ""
 
 #: src/pages/assets/performance/parameters.ts:369
-#: src/pages/assets/performance/sections/ThermalSections.tsx:342
+#: src/pages/assets/performance/sections/ThermalSections.tsx:354
 msgid "Cooling water inlet"
 msgstr ""
 
 #: src/pages/assets/performance/parameters.ts:379
 #: src/pages/assets/performance/parameters.ts:388
-#: src/pages/assets/performance/sections/ThermalSections.tsx:354
+#: src/pages/assets/performance/sections/ThermalSections.tsx:366
 msgid "Cooling water outlet"
 msgstr ""
 
@@ -11177,7 +11183,7 @@ msgid "Cooling water RTD"
 msgstr ""
 
 #: src/pages/assets/performance/parameters.ts:407
-#: src/pages/assets/performance/sections/ThermalSections.tsx:397
+#: src/pages/assets/performance/sections/ThermalSections.tsx:409
 msgid "Cooling air, cold side"
 msgstr ""
 
@@ -11365,83 +11371,87 @@ msgstr ""
 msgid "This pump's vibration tags are in the dictionary but have not passed review, because the source does not say whether they report displacement (µm) or velocity (mm/s). Until that is confirmed they are not shown as live readings, so this section has nothing it can honestly draw."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:128
-#: src/pages/assets/performance/sections/ThermalSections.tsx:146
+#: src/pages/assets/performance/sections/ThermalSections.tsx:131
+#: src/pages/assets/performance/sections/ThermalSections.tsx:153
 msgid "Vibration sensors"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:129
+#: src/pages/assets/performance/sections/ThermalSections.tsx:134
+msgid "Raw source values, drawn without a unit: the plant has not confirmed whether these channels report displacement (µm) or velocity (mm/s), and the readings can be signed. The chart shows how each channel moves, not a magnitude to judge against a standard."
+msgstr ""
+
+#: src/pages/assets/performance/sections/ThermalSections.tsx:135
 msgid "Motor NDE, DE and thrust bearing channels on one axis."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:147
+#: src/pages/assets/performance/sections/ThermalSections.tsx:154
 msgid "Motor velometers"
 msgstr ""
 
 #. placeholder {0}: pair.a.index
-#: src/pages/assets/performance/sections/ThermalSections.tsx:223
+#: src/pages/assets/performance/sections/ThermalSections.tsx:230
 msgid "ΔT {0}"
 msgstr ""
 
 #. placeholder {0}: pair.a.label
 #. placeholder {1}: pair.b.label
-#: src/pages/assets/performance/sections/ThermalSections.tsx:224
+#: src/pages/assets/performance/sections/ThermalSections.tsx:231
 msgid "ΔT {0} − {1}"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:282
+#: src/pages/assets/performance/sections/ThermalSections.tsx:294
 msgid "window"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:288
+#: src/pages/assets/performance/sections/ThermalSections.tsx:300
 msgid "Calculated"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:366
+#: src/pages/assets/performance/sections/ThermalSections.tsx:378
 msgid "Cooling water rise (outlet − inlet)"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:367
+#: src/pages/assets/performance/sections/ThermalSections.tsx:379
 msgid "How much heat the water carries away. Calculated from sensors paired by number, only where both were read at the same instant."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:379
+#: src/pages/assets/performance/sections/ThermalSections.tsx:391
 msgid "Cooling water RTDs"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:380
+#: src/pages/assets/performance/sections/ThermalSections.tsx:392
 msgid "The dictionary does not say which of these are inlet and which outlet, so they are drawn as one family."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:409
+#: src/pages/assets/performance/sections/ThermalSections.tsx:421
 msgid "Cooling air, hot side"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:421
+#: src/pages/assets/performance/sections/ThermalSections.tsx:433
 msgid "Air rise (hot − cold)"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:422
+#: src/pages/assets/performance/sections/ThermalSections.tsx:434
 msgid "Calculated from hot and cold sensors paired by number."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:455
+#: src/pages/assets/performance/sections/ThermalSections.tsx:467
 msgid "Thrust bearing pads"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:468
+#: src/pages/assets/performance/sections/ThermalSections.tsx:480
 msgid "Guide bearing pads"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:485
+#: src/pages/assets/performance/sections/ThermalSections.tsx:497
 msgid "Bearing temperatures"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:497
+#: src/pages/assets/performance/sections/ThermalSections.tsx:509
 msgid "Lubricating oil"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:498
+#: src/pages/assets/performance/sections/ThermalSections.tsx:510
 msgid "Reservoir, guide bearing and cooler outlet oil temperatures."
 msgstr ""
 
