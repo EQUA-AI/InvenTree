@@ -4,4 +4,5 @@
   <path d="m550 60 15 10-15 10M300 70v55M420 70v55"/>
   <g id="forebay" data-point="/dex/COMMAN_FORBAY_LEVEL"/>
   <g id="station-status" data-point="/st"/>
+  <g id="pumps-running" data-point="/pc"/>
 </svg>
