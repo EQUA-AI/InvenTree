@@ -38,6 +38,11 @@ of them do so in every sample taken. Those are an instrumentation question
 (BLOCKERS Ask 1), not a limit question, and giving them limits would open
 persistent critical anomalies about measurements that never happened. So the
 channels are classified from the data first and only the clean ones are set.
+
+A channel is also left alone when too little of it has been read to tell the two
+apart - a silent channel and an absent one look identical below a handful of
+samples. That is a statement about the sampling, so the sampler has to be honest
+about it: see :func:`_probe_station`.
 """
 
 import json
@@ -65,9 +70,76 @@ PLAUSIBLE = (0.0, 125.0)
 #: as evidence of health rather than absence of data.
 MIN_SAMPLES = 20
 
+#: Buckets to probe on the first pass over a station's span. Enough to catch an
+#: intermittent fault anywhere in it without reading all 288 hours.
+FIRST_PASS_PROBES = 70
+
+
+def _sample(connector, uuid, moment, paths, station_id, seen, bad):
+    """Fold one bucket's winding readings into the ``seen`` and ``bad`` counts."""
+    document = connector.latest_document(uuid, bucket_of(to_epoch_ms(moment)))
+    if not document:
+        return
+    extension = json.loads(document['data1_raw']).get('dex') or {}
+    for tag, raw in extension.items():
+        path = f'/dex/{tag}'
+        if path not in paths:
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if _pegged(value):
+            continue  # already bad quality; not the channel's fault
+        seen[station_id, path] += 1
+        if not PLAUSIBLE[0] <= value <= PLAUSIBLE[1]:
+            bad[station_id, path] += 1
+
+
+def _probe_station(connector, uuid, start, hours, paths, station_id, seen, bad):
+    """Probe a station's span, spread wide first and densified only if needed.
+
+    The stride is what a station's *span* divides into, but the samples come
+    from its *populated hours*, and those are not the same number. Saraswati and
+    Parvathi hold data in about 80% of their 288 hours, so one strided pass
+    leaves every channel far above :data:`MIN_SAMPLES`. Ranganayaka holds data in
+    50 of them, and the same pass landed on a dozen - which read as "not
+    observed enough to judge" and left 38 real channels without limits. The
+    shortfall was in the sampler, not in the plant.
+
+    So each pass covers the whole span at the current stride, and the stride only
+    halves while some channel is still short. A station whose data is dense is
+    read exactly as before, with no extra requests; a sparse one is walked as
+    densely as it takes, down to every hour. Halving rather than early-exiting
+    keeps every pass spread across the full span: stopping the moment a counter
+    reached 20 would judge each channel on the first 20 hours alone and miss the
+    intermittent faults this classification exists to catch.
+    """
+    probed = set()
+    stride = max(1, hours // FIRST_PASS_PROBES)
+    while True:
+        for index in range(0, hours, stride):
+            if index in probed:
+                continue
+            probed.add(index)
+            _sample(
+                connector,
+                uuid,
+                start + timedelta(hours=index),
+                paths,
+                station_id,
+                seen,
+                bad,
+            )
+        if stride == 1:
+            return
+        if all(seen[station_id, path] >= MIN_SAMPLES for path in paths):
+            return
+        stride //= 2
+
 
 def classify_channels():
-    """Return (clean, faulty, unobserved) sets of (station_id, path)."""
+    """Return (clean, faulty, unobserved) keys and the per-channel sample count."""
     points = [
         point
         for point in DictionaryPoint.objects.filter(
@@ -95,40 +167,28 @@ def classify_channels():
         end = datetime.fromisoformat(ranges[uuid]['to'])
         connector = connector_class(source, station_uuid=uuid)
         try:
-            hours = int((end - start).total_seconds() // 3600)
-            for index in range(0, hours, max(1, hours // 70)):
-                moment = start + timedelta(hours=index)
-                document = connector.latest_document(
-                    uuid, bucket_of(to_epoch_ms(moment))
-                )
-                if not document:
-                    continue
-                extension = json.loads(document['data1_raw']).get('dex') or {}
-                for tag, raw in extension.items():
-                    path = f'/dex/{tag}'
-                    if path not in paths:
-                        continue
-                    try:
-                        value = float(raw)
-                    except (TypeError, ValueError):
-                        continue
-                    if _pegged(value):
-                        continue  # already bad quality; not the channel's fault
-                    seen[station.pk, path] += 1
-                    if not PLAUSIBLE[0] <= value <= PLAUSIBLE[1]:
-                        bad[station.pk, path] += 1
+            _probe_station(
+                connector,
+                uuid,
+                start,
+                int((end - start).total_seconds() // 3600),
+                paths,
+                station.pk,
+                seen,
+                bad,
+            )
         finally:
             connector.close()
 
     keys = {(point.station_id, point.path) for point in points}
     faulty = {key for key in keys if bad[key]}
     clean = {key for key in keys if seen[key] >= MIN_SAMPLES and not bad[key]}
-    return clean, faulty, keys - clean - faulty
+    return clean, faulty, keys - clean - faulty, seen
 
 
 def apply(*, dry_run):
     """Set the limits on every clean winding binding."""
-    clean, faulty, unobserved = classify_channels()
+    clean, faulty, unobserved, seen = classify_channels()
     bindings = MachineSignalBinding.objects.filter(
         active=True, dictionary_point__status='approved'
     ).select_related('dictionary_point')
@@ -144,6 +204,11 @@ def apply(*, dry_run):
     print(f'bindings to set: {len(targets)}')
     for key in sorted(faulty):
         print(f'   skipped (emits impossible readings): station {key[0]} {key[1]}')
+    for key in sorted(unobserved):
+        print(
+            f'   skipped (only {seen[key]} of {MIN_SAMPLES} samples): '
+            f'station {key[0]} {key[1]}'
+        )
     if dry_run:
         print('Dry run; nothing written.')
         return
