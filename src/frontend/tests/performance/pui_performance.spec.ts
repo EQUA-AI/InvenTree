@@ -15,13 +15,16 @@ test('the KPI strip shows fixture values and states what it cannot show', async 
   await expect(page.locator('[data-kpi="vibration"]')).toContainText(
     'No approved vibration channel'
   );
-  await expect(page.locator('[data-kpi="winding"]')).toContainText(
-    'Highest of 11'
-  );
+  // Winding 4 is pegged at the over-range marker with quality bad: it is not
+  // the highest sensor, and 3276.7 appears nowhere on the tile.
+  const winding = page.locator('[data-kpi="winding"]');
+  await expect(winding).toContainText('Highest of 10');
+  await expect(winding).not.toContainText('3,276.7');
+  await expect(winding).toContainText('82');
   await expect(page.locator('[data-kpi="status"]')).toContainText('Running');
   // The one sensor without a reading is reported as poor quality, so the
   // strip is not calm - and must not claim to be.
-  await expect(page.getByText('1 with poor quality')).toBeVisible();
+  await expect(page.getByText('2 with poor quality')).toBeVisible();
   await expect(page.getByText('Nothing outside configured limits')).toHaveCount(
     0
   );
@@ -38,6 +41,7 @@ test('families are drawn as sections with a heatmap and calculated rises', async
     page.getByText('Stator winding temperature', { exact: true })
   ).toBeVisible();
   await expect(page.getByText(/Highest now: Winding 11/)).toBeVisible();
+  await expect(page.getByText(/Highest now: Winding 4/)).toHaveCount(0);
   await expect(
     page.getByText(/Spread .* \(calculated\)/).first()
   ).toBeVisible();
@@ -55,7 +59,9 @@ test('families are drawn as sections with a heatmap and calculated rises', async
     page.getByText('No approved vibration channel', { exact: true })
   ).toHaveCount(2);
   // A sensor without a reading is said to have none, not to read zero.
-  await expect(page.getByText(/drawn at zero and greyed/)).toBeVisible();
+  await expect(
+    page.getByText(/drawn at zero and greyed/).first()
+  ).toBeVisible();
 });
 
 test('the time range control changes what is asked of the server', async ({
