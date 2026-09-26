@@ -44,7 +44,13 @@ import logging
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
-from machine_health.connectors.base import MAX_TREND_WINDOW_SECONDS, Reading, register
+from machine_health.connectors.base import (
+    MAX_SERIES_WINDOW_SECONDS,
+    MAX_TREND_WINDOW_SECONDS,
+    Reading,
+    SampledWindow,
+    register,
+)
 from machine_health.connectors.cosmos_pumphouse import (
     HOUR_MS,
     CosmosConfigError,
@@ -162,6 +168,28 @@ class CosmosPumphouseReplayConnector(CosmosPumphouseConnector):
             key: [self._restamp(reading) for reading in readings]
             for key, readings in batched.items()
         }
+
+    def sample_windows(self, external_keys, start, end, *, slots: int) -> SampledWindow:
+        """Return one replayed snapshot per slot, stamped in wall time."""
+        source_start, source_end = self.to_source(start), self.to_source(end)
+        span = (source_end - source_start).total_seconds()
+        if span > MAX_SERIES_WINDOW_SECONDS:
+            raise ValueError(
+                f'At {self.replay[3]}x this window covers '
+                f'{span / 3600:.1f} source hours, over the '
+                f'{MAX_SERIES_WINDOW_SECONDS // 3600}-hour limit'
+            )
+        sampled = super().sample_windows(
+            external_keys, source_start, source_end, slots=slots
+        )
+        return SampledWindow(
+            {
+                key: [self._restamp(reading) for reading in readings]
+                for key, readings in sampled.readings.items()
+            },
+            documents_read=sampled.documents_read,
+            slots=sampled.slots,
+        )
 
     def read_latest(self, external_keys=None) -> list[Reading]:
         """Return the newest snapshot at or before the replay's current instant.

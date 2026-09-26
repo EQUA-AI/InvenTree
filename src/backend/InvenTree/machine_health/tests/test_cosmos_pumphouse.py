@@ -101,7 +101,16 @@ class FakeContainer:
         ]
 
         if 'TOP 1' in kwargs['query']:
-            rows.sort(key=lambda d: d['sub_time_period'], reverse=True)
+            if '@from_ts' in params:
+                # The sampled read: the oldest snapshot inside a slot.
+                rows = [
+                    document
+                    for document in rows
+                    if params['@from_ts'] <= document['sub_time_period'] < params['@to_ts']
+                ]
+                rows.sort(key=lambda d: d['sub_time_period'])
+            else:
+                rows.sort(key=lambda d: d['sub_time_period'], reverse=True)
             return iter(rows[:1])
 
         rows = [

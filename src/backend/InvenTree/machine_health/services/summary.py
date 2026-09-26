@@ -93,6 +93,11 @@ def signal_rows(machine, *, now=None):
             'source_id': binding.source_id,
             'source_name': binding.source.name,
             'source_type': binding.source.source_type,
+            # The mapped pointer, as the mimic already shows it. A page that
+            # groups a pump's sixty signals into electrical, thermal and
+            # mechanical needs the tag's own name; display names differ from
+            # one station's dictionary to the next.
+            'external_key': binding.external_key,
             'display_name': binding.display_name,
             'signal_kind': binding.signal_kind,
             'unit': binding.unit,

@@ -30,7 +30,9 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from django.db import transaction
@@ -39,8 +41,10 @@ from machine_health.connectors.base import (
     MAX_TREND_SAMPLES,
     HealthConnector,
     Reading,
+    SampledWindow,
     bounded_window,
     register,
+    slot_edges,
 )
 from machine_health.connectors.pumphouse_payload import (
     SnapshotError,
@@ -109,6 +113,22 @@ QUERY_SLICE = (
     'AND c.sub_time_period >= @from_ts AND c.sub_time_period < @to_ts '
     'ORDER BY c.sub_time_period ASC'
 )
+
+#: The oldest snapshot in a range: what a sampled read asks for, once per slot.
+#: ``TOP 1`` is what makes sampling cheap - the account returns one 50 KB
+#: document per slot instead of the seven hundred an hour of them holds.
+QUERY_FIRST_IN_RANGE = (
+    'SELECT TOP 1 * FROM c '
+    'WHERE c.station_uuid = @station AND c.hour_bucket = @bucket '
+    'AND c.sub_time_period >= @from_ts AND c.sub_time_period < @to_ts '
+    'ORDER BY c.sub_time_period ASC'
+)
+
+#: Concurrent slot reads in one sampled window. Each is a single-document query
+#: that costs a few RU and mostly waits on the network, so running several at
+#: once turns a few hundred sequential round trips into a few seconds. Bounded
+#: so a page cannot open hundreds of connections to the account at once.
+SAMPLE_WORKERS = 8
 
 
 class CosmosConfigError(Exception):
@@ -188,6 +208,9 @@ class CosmosPumphouseConnector(HealthConnector):
         self.last_error_code = ''
         self.request_charge: float | None = None
         self._charge_missing = False
+        # Sampled reads run several queries at once; the RU tally they share
+        # must not lose increments to a race.
+        self._charge_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Configuration
@@ -410,7 +433,8 @@ class CosmosPumphouseConnector(HealthConnector):
             self._charge_missing = True
             self.request_charge = None
             return
-        self.request_charge = (self.request_charge or 0.0) + charge
+        with self._charge_lock:
+            self.request_charge = (self.request_charge or 0.0) + charge
 
     @property
     def request_seconds(self) -> float:
@@ -470,6 +494,91 @@ class CosmosPumphouseConnector(HealthConnector):
             station,
             hour_bucket,
         )
+
+    def first_document_in_range(
+        self, station: str, hour_bucket, from_ts, to_ts
+    ) -> dict | None:
+        """Oldest snapshot in one bucket within ``[from_ts, to_ts)``, or None."""
+        rows = self._query(
+            QUERY_FIRST_IN_RANGE,
+            [
+                {'name': '@station', 'value': station},
+                {'name': '@bucket', 'value': str(hour_bucket)},
+                {'name': '@from_ts', 'value': int(from_ts)},
+                {'name': '@to_ts', 'value': int(to_ts)},
+            ],
+            station,
+            hour_bucket,
+        )
+        for row in rows:
+            return row
+        return None
+
+    def sample_windows(self, external_keys, start, end, *, slots: int) -> SampledWindow:
+        """Return one snapshot per slot, fetched as one document each.
+
+        A full read of a window costs every snapshot in it - seven hundred
+        documents an hour, fifty kilobytes each - which is why trends stop at six
+        hours and pages wait tens of seconds for one. This asks the account for
+        the first snapshot in each of ``slots`` equal parts of the window, and
+        nothing else, so a day costs a few hundred small queries whatever its
+        length. The queries run concurrently because each one is mostly a round
+        trip.
+
+        Every reading returned is a snapshot the plant actually wrote, carrying
+        its own timestamp; nothing is averaged. A slot with no snapshot in it is
+        simply absent, so the chart shows the gap. Since every key in a snapshot
+        shares its instant, the readings for different keys line up slot for
+        slot, which is what lets one chart draw several of them on one axis.
+        """
+        keys = {str(key) for key in external_keys}
+        if not keys or slots < 1:
+            return SampledWindow({key: [] for key in keys}, documents_read=0, slots=0)
+        if end <= start:
+            raise ValueError('Trend window end must not precede its start')
+
+        station = self.station
+        edges = [
+            (to_epoch_ms(slot_start), to_epoch_ms(slot_end))
+            for slot_start, slot_end in slot_edges(start, end, slots)
+        ]
+        # Build the client on this thread, before any worker needs it, so the
+        # credential and connection setup happen once and not eight times.
+        self.container()
+
+        def fetch(edge):
+            from_ms, to_ms = edge
+            # A slot that straddles an hour boundary spans two partitions. The
+            # earlier one is asked first; only if it holds nothing is the later
+            # one asked, so the reading is still the first in the slot.
+            bucket = bucket_of(from_ms)
+            while bucket < to_ms:
+                document = self.first_document_in_range(
+                    station, bucket, max(from_ms, bucket), min(to_ms, bucket + HOUR_MS)
+                )
+                if document is not None:
+                    return document
+                bucket += HOUR_MS
+            return None
+
+        workers = min(SAMPLE_WORKERS, len(edges))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            documents = list(pool.map(fetch, edges))
+
+        # Slots are half-open and disjoint, and each query is bounded by its
+        # own slot, so no snapshot can be picked twice; the documents come back
+        # in slot order, which is time order.
+        collected: dict[str, list[Reading]] = {key: [] for key in keys}
+        fetched = 0
+        for document in documents:
+            if document is None:
+                continue
+            fetched += 1
+            for reading in flatten_snapshot(document):
+                if reading.external_key in keys:
+                    collected[reading.external_key].append(reading)
+
+        return SampledWindow(collected, documents_read=fetched, slots=len(edges))
 
     def read_latest(self, external_keys=None) -> list[Reading]:
         """Return the current value for each requested key.

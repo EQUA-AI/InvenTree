@@ -18,6 +18,10 @@ from machine_health.connectors.base import (
 from machine_health.connectors.cosmos_pumphouse import CosmosConfigError, _classify
 from machine_health.services.ingestion import record_source_error
 
+#: How often the sweep below runs. Named so a page can say how live "live"
+#: is: the plant writes every five seconds, this reads it once a minute.
+POLL_INTERVAL_SECONDS = 60
+
 STATION_BUDGET_SECONDS = 20
 RUN_BUDGET_SECONDS = 50
 MAX_DOCUMENTS_PER_STATION = 200
@@ -38,7 +42,7 @@ def connector_for(source, **kwargs):
     return connector_class(source, **kwargs)
 
 
-@scheduled_task(ScheduledTask.MINUTES, 1)
+@scheduled_task(ScheduledTask.MINUTES, POLL_INTERVAL_SECONDS // 60)
 def poll_cosmos_pumphouse_sources():
     """Visit least-recently attempted stations first, isolating their failures.
 
