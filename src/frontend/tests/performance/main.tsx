@@ -29,7 +29,9 @@ if (root)
   createRoot(root).render(
     <I18nProvider i18n={i18n}>
       <QueryClientProvider client={client}>
-        <MantineProvider>
+        <MantineProvider
+          forceColorScheme={params.get('scheme') === 'dark' ? 'dark' : 'light'}
+        >
           <MemoryRouter>
             <PerformancePanel machine={machine} />
           </MemoryRouter>
