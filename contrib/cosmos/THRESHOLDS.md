@@ -1,12 +1,11 @@
 # Alarm thresholds: a draft, and why none of it is switched on
 
-**Status: drafted 2026-09-26, nothing applied.** 1,294 active bindings carry
-zero thresholds, so `classify()` returns `unknown` for every point, the `alarms`
-array is empty by construction, and the anomaly detector has nothing to fire on.
-The dashboard is a display, not a monitor.
+**Status: the stator-winding row is applied; everything else is still a draft.**
+274 of 1,294 active bindings now carry limits. The rest remain unbounded, so
+`classify()` still returns `unknown` for them.
 
-This file is the draft that would change that, the reasons it is not yet safe to
-apply, and the questions that would make it safe.
+This file records what was applied and why, what is still only drafted, and the
+questions that would let the rest follow.
 
 ---
 
@@ -59,7 +58,7 @@ because the objections are the useful part.
 
 | family | pts | warn | crit | standing |
 |---|---:|---:|---:|---|
-| Stator winding ETDs | 318 | 125 | 145 | **Defensible, conditional.** IS/IEC 60034-1 Table 7 item 1a: 85 K rise by embedded detector for thermal class 130(B) on the 40 degC reference coolant, so 125 is the highest reading the machine is designed to produce. Trip from IEEE Std 3004.8-2016 cl. 8.5.2.1, "5 degC to 10 degC below the insulation class maximum" (155 - 10). |
+| Stator winding ETDs | 318 | 125 | 145 | **APPLIED to 274 of them, 2026-09-26.** IS/IEC 60034-1 Table 7 item 1a: 85 K rise by embedded detector for thermal class 130(B) on the 40 degC reference coolant, so 125 is the highest reading the machine is designed to produce. Trip from IEEE Std 3004.8-2016 cl. 8.5.2.1, "5 degC to 10 degC below the insulation class maximum" (155 - 10). |
 | Motor / stator core RTDs | 106 | 125 | 145 | **Backstop only.** No standard gives a core figure - cl. 8.10.4 is qualitative and there is no core row in Table 7 - so these carry the winding numbers unchanged. A plausible lower number was deliberately *not* invented: it would be the first thing to fire on a hot day. |
 | Thrust + guide bearing pads | 181 | 80 | 90 | **Challenged.** 80 is a comparable plant's *trip* value (its alarm is 77), from a single low-profile paper on a 200 rpm Kaplan machine. 90 traces to API 610 cl. 6.10.2.4, which is a shop-test acceptance criterion for bearing metal, not an alarm setpoint. |
 | Bearing oil / reservoir | 10 | 70 | 80 | **Challenged hardest.** The only row the draft marked "no plant confirmation needed", and the one whose warning point is within reach of normal running: the reference band for a large vertical oil bath is 50-60 degC. The 70 is cited from API 610's *pressurized-system* oil outlet; these are ring-oiled sumps. |
@@ -78,6 +77,40 @@ does not exist.
 justified as a dead-channel gate, which is precisely what the draft's own rule
 forbids: a quality gate written into a threshold field fires on exactly the
 readings it exists to suppress. That is what the sentinel handling above is for.
+
+### What applying the winding row actually took
+
+Setting it on all 318 would have raised alarms immediately, and the sentinel fix
+did not prevent that. After 3276.7 was marked bad, **41 of 7,573 sampled winding
+readings still breached** - 12 above 145 and 29 between 125 and 145, including
+191 and 192.8 degC on a plant whose every bay is stopped in a 29 degC hall.
+
+They are not spread across the fleet. **Six channels, all at Saraswati, produce
+every one of them**, and four of those are out of range in every sample taken:
+
+| channel | bad samples |
+|---|---|
+| `PUMP2_..._TEMPERATURED1` | 73 of 73 |
+| `PUMP2_..._TEMPERATURED2` | 73 of 73 |
+| `PUMP7_..._TEMPERATURED10` | 71 of 71 |
+| `PUMP2_..._TEMPERATURED10` | 12 of 12 |
+| `PUMP6_..._TEMPERATURED3` | 43 of 73 |
+| `PUMP6_..._TEMPERATURED2` | 31 of 74 |
+
+So the channels were classified from the data before any limit was written, and
+`contrib/cosmos/devtools/apply_winding_thresholds.py` sets limits only where a
+channel has at least 20 usable samples and none of them impossible. That is 274
+points. The six faulty channels are an instrumentation question - Ask 1's kind,
+not a limit question - and 38 more (mostly Ranganayaka, which holds only 50
+hours of data) simply have too few samples for silence to count as evidence.
+
+Result: 274 points classify, **0 anomalies raised**, 0 open.
+
+A counting note, because the draft got it wrong and so did I when reporting it:
+318 is the number of *points*, but only 197 distinct tag paths - the same tag
+exists at more than one station. Any per-channel analysis has to key on
+(station, path) or it will clear a point at one station because its namesake
+elsewhere is clean.
 
 ### Undeterminable, honestly
 
