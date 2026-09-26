@@ -29,6 +29,7 @@ from assets.health_models import (
     MachineAnomaly,
     MachineSignalBinding,
     MachineSignalState,
+    SignalQuality,
 )
 
 THRESHOLD_DETECTOR = 'threshold'
@@ -162,11 +163,24 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
     for state in states:
         binding = state.binding
         value = (state.value or {}).get('value')
-        classification = binding.classify(value)
 
         fingerprint = fingerprint_for(
             THRESHOLD_DETECTOR, binding.pk, binding.external_key
         )
+
+        if state.quality != SignalQuality.GOOD:
+            # An unusable reading is not evidence either way, and the second
+            # half of that matters as much as the first. It must not raise an
+            # anomaly, because the value is not a measurement. It must not
+            # resolve one either: dropping the fingerprint here would let
+            # _auto_resolve_threshold_anomalies close an open condition with
+            # "Signal returned inside its configured limits", which is a
+            # different and untrue claim from "the sensor stopped reporting".
+            # Holding the fingerprint leaves an open condition open.
+            seen_fingerprints.add(fingerprint)
+            continue
+
+        classification = binding.classify(value)
 
         if classification not in _STATE_SEVERITY:
             continue
