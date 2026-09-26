@@ -96,6 +96,16 @@ itself a sentinel.
 
 Adds 158 points to this ask, taking it from 62 to 220.
 
+**Decision 2026-09-26: shown anyway, as raw unitless values.** The operator asked
+to see the channels regardless, so the 158 points are approved the one way that
+asserts nothing false - `unit_status: unitless`, no unit, no threshold - by
+`contrib/cosmos/devtools/approve_vibration_raw.py`, with the finding above kept
+on every point. The Health blade and the Performance tab draw them without a
+unit and say in words that the value is the plant's raw word, may be signed, and
+is not a magnitude to judge against a standard. Nothing here answers the
+question: it still takes one loaded machine, and when it is answered a re-review
+can write the unit and the bindings refresh in place.
+
 ### Update 2026-09-25: published plant figures settled three of these
 
 Two rows of the table above rested on "Saraswati's stated 34 m lift head". That

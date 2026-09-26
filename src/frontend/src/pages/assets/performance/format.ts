@@ -7,20 +7,61 @@ import dayjs from 'dayjs';
  * unambiguous.
  */
 
+/** The most decimals a value is ever printed with; past this the digits are noise. */
+export const MAX_DECIMALS = 5;
+
+/**
+ * How many decimals a number needs so the reader sees what the chart shows.
+ *
+ * The catalogue's `decimals` is a floor, not a ceiling: two decimals suit a
+ * discharge pressure of 12.4 mH2O but print a stopped pump's -0.0012 as "0",
+ * and zero decimals suit 745 rpm but print a line wandering between 745.1 and
+ * 745.4 as one unchanging "745". So precision is raised in two cases: a small
+ * value keeps three significant figures, and a value from a series whose
+ * whole range is narrower than the floor's resolution gets enough decimals to
+ * tell its ends apart. Capped at five, where the digits stop meaning anything.
+ */
+export function precisionFor(
+  base: number,
+  range?: number | null,
+  value?: number | null
+): number {
+  let needed = base;
+  if (
+    value !== null &&
+    value !== undefined &&
+    value !== 0 &&
+    Math.abs(value) < 1
+  ) {
+    needed = Math.max(needed, Math.ceil(-Math.log10(Math.abs(value))) + 2);
+  }
+  if (
+    range !== null &&
+    range !== undefined &&
+    range > 0 &&
+    Number.isFinite(range)
+  ) {
+    needed = Math.max(needed, Math.ceil(-Math.log10(range)) + 1);
+  }
+  return Math.min(MAX_DECIMALS, Math.max(base, needed));
+}
+
 export function formatValue(
   value: number | null | undefined,
   decimals: number,
-  unit?: string
+  unit?: string,
+  range?: number | null
 ): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return '—';
   }
+  const shown = precisionFor(decimals, range, value);
   // Round first so a reading of -0.0012 mH2O prints as 0, not as "-0".
-  const factor = 10 ** decimals;
+  const factor = 10 ** shown;
   const rounded = Math.round(value * factor) / factor;
   const text = (rounded === 0 ? 0 : rounded).toLocaleString(undefined, {
     minimumFractionDigits: 0,
-    maximumFractionDigits: decimals
+    maximumFractionDigits: shown
   });
   return unit ? `${text} ${unit}` : text;
 }

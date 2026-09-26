@@ -118,8 +118,9 @@ function Range({
   if (!stats) return null;
   return (
     <Text size='xs' c='dimmed'>
-      {t`Window`} {formatValue(stats.min, decimals)}–
-      {formatValue(stats.max, decimals, unit)}
+      {t`Window`}{' '}
+      {formatValue(stats.min, decimals, undefined, stats.max - stats.min)}–
+      {formatValue(stats.max, decimals, unit, stats.max - stats.min)}
     </Text>
   );
 }
@@ -158,7 +159,13 @@ export function KpiTileCard({
           <Group justify='space-between' align='flex-end' wrap='nowrap'>
             <Group gap={6} align='baseline' wrap='nowrap'>
               <Text fz={24} fw={600} lh={1.1}>
-                {tile.valueText ?? formatValue(tile.value, tile.decimals)}
+                {tile.valueText ??
+                  formatValue(
+                    tile.value,
+                    tile.decimals,
+                    undefined,
+                    stats ? stats.max - stats.min : null
+                  )}
               </Text>
               {!tile.valueText && tile.unit && (
                 <Text size='sm' c='dimmed'>
