@@ -4,7 +4,7 @@ import { Paper, Stack, Text } from '@mantine/core';
 import { useMemo } from 'react';
 
 import { formatTick, formatValue } from './format';
-import type { RelationPoint } from './series';
+import { type RelationPoint, axisDomain } from './series';
 
 export interface RelationChartProps {
   title: string;
@@ -39,6 +39,37 @@ export function RelationChart({
   windowSeconds,
   height = 240
 }: Readonly<RelationChartProps>) {
+  // Both axes may hold a parameter that never moved, and a near-constant one
+  // still needs enough decimals to tell its ticks apart - the valve position
+  // that sits at 100.2966-100.3002 printed the same "100.3 percent" five
+  // times while the plot plainly showed two clusters.
+  const extent = useMemo(() => {
+    const spread = (pick: (p: RelationPoint) => number) => {
+      const values = points.map(pick).filter((v) => Number.isFinite(v));
+      if (values.length === 0)
+        return { min: Number.NaN, max: Number.NaN, range: null };
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      return { min, max, range: max - min };
+    };
+    return { x: spread((p) => p.x), y: spread((p) => p.y) };
+  }, [points]);
+
+  // As wide as the longest tick it will print, for the same reason the trend
+  // charts measure theirs: a fixed 56px wraps every pressure tick onto two
+  // lines.
+  const yAxisWidth = useMemo(() => {
+    const longest = Math.max(
+      ...[extent.y.min, extent.y.max]
+        .filter((v) => Number.isFinite(v))
+        .map(
+          (v) => formatValue(v, yDecimals, undefined, extent.y.range).length
+        ),
+      1
+    );
+    return 14 + 7 * Math.min(longest, 10);
+  }, [extent.y, yDecimals]);
+
   const bands = useMemo(() => {
     if (points.length === 0) return [];
     const third = Math.max(1, Math.ceil(points.length / 3));
@@ -75,11 +106,16 @@ export function RelationChart({
             labels={{ x: xLabel, y: yLabel }}
             unit={{ x: xUnit ? ` ${xUnit}` : '', y: yUnit ? ` ${yUnit}` : '' }}
             valueFormatter={{
-              x: (value: number) => formatValue(value, xDecimals),
-              y: (value: number) => formatValue(value, yDecimals)
+              x: (value: number) =>
+                formatValue(value, xDecimals, undefined, extent.x.range),
+              y: (value: number) =>
+                formatValue(value, yDecimals, undefined, extent.y.range)
             }}
-            xAxisProps={{ domain: ['auto', 'auto'] }}
-            yAxisProps={{ domain: ['auto', 'auto'], width: 56 }}
+            xAxisProps={{ domain: axisDomain(extent.x.min, extent.x.max) }}
+            yAxisProps={{
+              domain: axisDomain(extent.y.min, extent.y.max),
+              width: yAxisWidth
+            }}
             withLegend
             legendProps={{ verticalAlign: 'bottom', height: 28 }}
             scatterProps={{ isAnimationActive: false }}

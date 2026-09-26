@@ -8,6 +8,7 @@ import type {
 
 import type { KpiTile } from './KpiStrip';
 import { type ResolvedParameter, withKey, withRole } from './resolve';
+import { usable } from './series';
 
 const MAX_TILES = 8;
 
@@ -128,8 +129,10 @@ function statusTile(
   series: Map<number, SeriesEntry>
 ): KpiTile {
   const entry = series.get(parameter.signal.binding_id);
+  // A bad-quality status sample would state "Running" as confidently as a
+  // good one; the tile would then contradict its own caption.
   const last = entry?.available
-    ? entry.samples[entry.samples.length - 1]
+    ? [...entry.samples].reverse().find(usable)
     : undefined;
   const drawn = last?.v ?? null;
   const code =

@@ -52,6 +52,8 @@ export interface KpiTile {
 
 const SPARK_W = 96;
 const SPARK_H = 24;
+//: Half the stroke width, so the line is inside the box it is drawn in.
+const SPARK_PAD = 1;
 
 export function Sparkline({ entry }: Readonly<{ entry: SeriesEntry }>) {
   const points = entry.samples
@@ -60,12 +62,22 @@ export function Sparkline({ entry }: Readonly<{ entry: SeriesEntry }>) {
   if (points.length < 2) return null;
   const min = Math.min(...points);
   const max = Math.max(...points);
-  const span = max - min || 1;
+  const span = max - min;
   const step = SPARK_W / (points.length - 1);
+  // Inset by half the stroke so a peak or a dip is drawn whole: pinned to
+  // the viewBox edge, the svg's own clipping shaves it flat. A series that
+  // never moved is drawn down the middle rather than along the bottom, where
+  // a full-width rule reads as a divider between the value and its caption
+  // instead of as a flat line; the tile's "Window" caption says it is flat.
   const path = points
     .map((v, i) => {
       const x = i * step;
-      const y = SPARK_H - ((v - min) / span) * SPARK_H;
+      const y =
+        span === 0
+          ? SPARK_H / 2
+          : SPARK_H -
+            SPARK_PAD -
+            ((v - min) / span) * (SPARK_H - 2 * SPARK_PAD);
       return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(' ');

@@ -399,3 +399,23 @@ export function limitState(
   }
   return 'normal';
 }
+
+/**
+ * A y-axis domain for values that may not have moved at all.
+ *
+ * Recharts, given a degenerate [0, 0] domain, invents its own 0-4 scale: an
+ * idle pump's flat 0 MW line then sits under an axis implying the machine
+ * scales to four megawatts, and a dimensionless power factor gets an axis
+ * running to 4 when its physical maximum is 1. A band around the value says
+ * the same thing the reading says - it did not move - without inventing a
+ * range the source never reported.
+ */
+export function axisDomain(
+  min: number,
+  max: number
+): [number | 'auto', number | 'auto'] {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return ['auto', 'auto'];
+  if (min !== max) return ['auto', 'auto'];
+  const pad = min === 0 ? 1 : Math.abs(min) * 0.01;
+  return [min - pad, max + pad];
+}

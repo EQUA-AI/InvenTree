@@ -369,8 +369,20 @@ export const PARAMETERS: readonly ParameterDefinition[] = [
     label: () => t`Cooling water inlet`,
     category: 'cooling',
     role: 'water_inlet',
-    match:
-      /^(?:PUMP_COOLING_WATER_INLET_TEMP|COOLING_WATER_INLET-?|PUMP_PUMP_INLET_COOLING_WATER_TEMPERATURED)(\d+)$/i,
+    match: /^(?:PUMP_COOLING_WATER_INLET_TEMP|COOLING_WATER_INLET-?)(\d+)$/i,
+    decimals: 1,
+    chart: 'line'
+  },
+  {
+    // A second, differently named inlet family on the same pump. It shares the
+    // card and the axis - same role - but not the name: read under one label
+    // the two were indistinguishable on screen, and one of them was silently
+    // dropped from the calculated rise.
+    key: 'COOLING_WATER_INLET_ALT',
+    label: () => t`Inlet cooling water`,
+    category: 'cooling',
+    role: 'water_inlet',
+    match: /^PUMP_PUMP_INLET_COOLING_WATER_TEMPERATURED(\d+)$/i,
     decimals: 1,
     chart: 'line'
   },

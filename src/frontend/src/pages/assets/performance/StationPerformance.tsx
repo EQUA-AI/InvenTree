@@ -1,4 +1,4 @@
-import type { SeriesEntry } from '@lib/types/MachineHealth';
+import type { SeriesEntry, SeriesSample } from '@lib/types/MachineHealth';
 import { t } from '@lingui/core/macro';
 import {
   Alert,
@@ -34,7 +34,8 @@ import {
   gapThresholdMs,
   indexSeries,
   newestInstant,
-  seriesStats
+  seriesStats,
+  usable
 } from './series';
 import {
   useDataRange,
@@ -187,9 +188,13 @@ export function StationPerformance({
       const entries = bays
         .map((bay) => byKey.get(pick(bayKeys(bay.key))))
         .filter((e): e is SeriesEntry => !!e?.available);
+      // The newest *usable* reading, not merely the newest: a sample carrying
+      // the source's over-range marker is bad quality, and every other view
+      // of this series already drops it. Summed into a plant total it became
+      // the largest number on the page while the chart beside it drew zero.
       const lasts = entries
-        .map((e) => e.samples[e.samples.length - 1])
-        .filter((s) => s && s.v !== null);
+        .map((e) => [...e.samples].reverse().find(usable))
+        .filter((s): s is SeriesSample => !!s);
       if (lasts.length === 0) return;
       const sum = lasts.reduce((acc, s) => acc + (s.v as number), 0);
       out.push({
@@ -457,7 +462,9 @@ export function StationPerformance({
                     const last = (key: string) => {
                       const entry = byKey.get(key);
                       if (!entry?.available) return null;
-                      return entry.samples[entry.samples.length - 1] ?? null;
+                      // An unusable newest reading is no reading: the row
+                      // shows a dash rather than the marker's value.
+                      return [...entry.samples].reverse().find(usable) ?? null;
                     };
                     const p = last(k.power);
                     const f = last(k.flow);

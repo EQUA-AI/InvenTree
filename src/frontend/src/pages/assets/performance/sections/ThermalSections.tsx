@@ -180,14 +180,20 @@ function pairByIndex(
   a: ResolvedParameter[],
   b: ResolvedParameter[]
 ): { a: ResolvedParameter; b: ResolvedParameter }[] {
-  const byIndex = new Map<number, ResolvedParameter>();
+  // Several sensors can carry the same index - two inlet families numbered
+  // from one - so an index maps to a list. Keyed on a single sensor, the
+  // second one overwrote the first and vanished from the card without a word.
+  const byIndex = new Map<number, ResolvedParameter[]>();
   for (const p of b) {
-    if (p.index !== null) byIndex.set(p.index, p);
+    if (p.index === null) continue;
+    const found = byIndex.get(p.index);
+    if (found) found.push(p);
+    else byIndex.set(p.index, [p]);
   }
   const pairs: { a: ResolvedParameter; b: ResolvedParameter }[] = [];
   for (const p of a) {
-    const other = p.index !== null ? byIndex.get(p.index) : undefined;
-    if (other) pairs.push({ a: p, b: other });
+    const others = p.index !== null ? (byIndex.get(p.index) ?? []) : [];
+    for (const other of others) pairs.push({ a: p, b: other });
   }
   // Two lone sensors with no indexes still make one pair.
   if (pairs.length === 0 && a.length === 1 && b.length === 1) {
@@ -225,8 +231,12 @@ function DifferenceCard({
   const computed = useMemo(
     () =>
       pairs.map((pair, i) => {
+        // Two pairs can share an index once a family has a namesake; then the
+        // number alone no longer says which sensors were subtracted.
+        const shared =
+          pairs.filter((other) => other.a.index === pair.a.index).length > 1;
         const label =
-          pair.a.index !== null
+          pair.a.index !== null && !shared
             ? t`ΔT ${pair.a.index}`
             : t`ΔT ${pair.a.label} − ${pair.b.label}`;
         const samples = differenceSeries(

@@ -18,7 +18,7 @@ import {
   IconZoomReset
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 
@@ -77,7 +77,16 @@ export function TimeRangeControl({
 }: Readonly<TimeRangeControlProps>) {
   const [customFrom, setCustomFrom] = useState<string | null>(null);
   const [customTo, setCustomTo] = useState<string | null>(null);
-  const [pickingCustom, setPickingCustom] = useState(preset === CUSTOM);
+  // Opening the custom form is local, but the window it belongs to is not:
+  // re-enabling Live clears the custom range upstream, and a flag kept only
+  // here went on highlighting "Custom" over abandoned dates while the charts
+  // were back on a preset. The form closes whenever the window stops being
+  // custom, so the highlighted segment is always the one being drawn.
+  const [manualOpen, setManualOpen] = useState(false);
+  const pickingCustom = preset === CUSTOM || manualOpen;
+  useEffect(() => {
+    if (preset !== CUSTOM) setManualOpen(false);
+  }, [preset]);
 
   const customError = useMemo(() => {
     if (!customFrom || !customTo) return t`Pick both a start and an end.`;
@@ -107,10 +116,10 @@ export function TimeRangeControl({
           value={pickingCustom ? CUSTOM : preset}
           onChange={(value) => {
             if (value === CUSTOM) {
-              setPickingCustom(true);
+              setManualOpen(true);
               return;
             }
-            setPickingCustom(false);
+            setManualOpen(false);
             onPreset(value as RangePreset);
           }}
           data={[

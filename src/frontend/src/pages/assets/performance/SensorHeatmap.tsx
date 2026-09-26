@@ -1,15 +1,56 @@
 import { t } from '@lingui/core/macro';
-import { Box, Group, Stack, Text, useMantineTheme } from '@mantine/core';
+import {
+  Box,
+  Group,
+  Stack,
+  Text,
+  useComputedColorScheme,
+  useMantineTheme
+} from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 import { useMemo } from 'react';
 
 import { formatTick, formatValue } from './format';
 import { type HeatmapMatrix, limitState } from './series';
 
-const LABEL_WIDTH = 150;
+//: Row labels are measured, not assumed; these only bound the result, so one
+//: long sensor name cannot eat the grid and a short one cannot strand it.
+const MIN_LABEL_WIDTH = 110;
+const MAX_LABEL_WIDTH = 260;
+const LABEL_GUTTER = 8;
+const LABEL_FONT = '11px system-ui, sans-serif';
 const ROW_HEIGHT = 18;
 const AXIS_HEIGHT = 18;
 const GAP = 1;
+
+/**
+ * Width of a label in the font the heatmap draws it in.
+ *
+ * SVG text does not wrap or truncate: a label wider than the space reserved
+ * for it is simply drawn outside the picture and clipped from its *front*,
+ * which silently renames a sensor - "Motor NDE bearing vibration 1" becomes
+ * "DE bearing vibration 1", the name of a different channel on the same pump.
+ * So the width is measured and the text, if it still does not fit, is cut at
+ * the end where a reader can see that it was cut.
+ */
+let canvasContext: CanvasRenderingContext2D | null | undefined;
+
+function measureText(text: string): number {
+  if (canvasContext === undefined) {
+    canvasContext = document.createElement('canvas').getContext('2d');
+    if (canvasContext) canvasContext.font = LABEL_FONT;
+  }
+  // Without a canvas - jsdom, say - fall back to a width per character that
+  // over-estimates slightly, so a label is trimmed rather than clipped.
+  return canvasContext?.measureText(text).width ?? text.length * 6.2;
+}
+
+function fitText(text: string, maxWidth: number): string {
+  if (measureText(text) <= maxWidth) return text;
+  let cut = text.length;
+  while (cut > 1 && measureText(`${text.slice(0, cut)}…`) > maxWidth) cut--;
+  return `${text.slice(0, cut)}…`;
+}
 
 export interface SensorHeatmapProps {
   matrix: HeatmapMatrix;
@@ -42,10 +83,40 @@ export function SensorHeatmap({
   hue = 'orange'
 }: Readonly<SensorHeatmapProps>) {
   const theme = useMantineTheme();
+  const scheme = useComputedColorScheme('light');
   const { ref, width } = useElementSize<HTMLDivElement>();
 
   const palette = theme.colors[hue] ?? theme.colors.orange;
-  const gridWidth = Math.max(120, width - LABEL_WIDTH);
+  // Which end of the ramp is "low" depends on what the card is made of. On
+  // white, low is pale and high is saturated; on a dark card those same fills
+  // invert the meaning - the coolest sensors become the brightest rows - so
+  // low there is the shade nearest the background instead. Either way, further
+  // from the card means higher, which is what "a sensor running hot is a
+  // bright row" promises.
+  const [rampLow, rampHigh] = scheme === 'dark' ? [9, 3] : [1, 8];
+
+  const labels = useMemo(
+    () =>
+      matrix.rows.map((row) =>
+        row.last !== null
+          ? `${row.label}  ${formatValue(row.last, decimals, undefined, matrix.max - matrix.min)}`
+          : row.label
+      ),
+    [matrix.rows, matrix.max, matrix.min, decimals]
+  );
+  const labelWidth = useMemo(
+    () =>
+      Math.min(
+        MAX_LABEL_WIDTH,
+        Math.max(
+          MIN_LABEL_WIDTH,
+          Math.max(0, ...labels.map(measureText)) + LABEL_GUTTER * 2
+        )
+      ),
+    [labels]
+  );
+
+  const gridWidth = Math.max(120, width - labelWidth);
   const columns = matrix.columns.length;
   const cellWidth = gridWidth / columns;
   const height = matrix.rows.length * ROW_HEIGHT + AXIS_HEIGHT;
@@ -53,11 +124,12 @@ export function SensorHeatmap({
   const shade = useMemo(() => {
     const span = matrix.max - matrix.min;
     return (value: number) => {
-      if (span === 0) return palette[4];
+      if (span === 0)
+        return palette[rampLow + Math.round((rampHigh - rampLow) / 2)];
       const norm = Math.max(0, Math.min(1, (value - matrix.min) / span));
-      return palette[1 + Math.round(norm * 7)];
+      return palette[rampLow + Math.round(norm * (rampHigh - rampLow))];
     };
-  }, [matrix.min, matrix.max, palette]);
+  }, [matrix.min, matrix.max, palette, rampLow, rampHigh]);
 
   // A handful of time labels along the bottom, never one per column.
   const labelEvery = Math.max(
@@ -82,16 +154,14 @@ export function SensorHeatmap({
         {matrix.rows.map((row, r) => (
           <g key={row.key} transform={`translate(0, ${r * ROW_HEIGHT})`}>
             <text
-              x={LABEL_WIDTH - 8}
+              x={labelWidth - LABEL_GUTTER}
               y={ROW_HEIGHT / 2 + 4}
               fontSize={11}
               textAnchor='end'
               fill='var(--mantine-color-text)'
             >
-              {row.label}
-              {row.last !== null
-                ? `  ${formatValue(row.last, decimals, undefined, matrix.max - matrix.min)}`
-                : ''}
+              {fitText(labels[r], labelWidth - LABEL_GUTTER * 2)}
+              <title>{labels[r]}</title>
             </text>
             {row.cells.map((cell, c) => {
               const column = matrix.columns[c];
@@ -104,7 +174,7 @@ export function SensorHeatmap({
               return (
                 <rect
                   key={c}
-                  x={LABEL_WIDTH + c * cellWidth + GAP / 2}
+                  x={labelWidth + c * cellWidth + GAP / 2}
                   y={GAP}
                   width={Math.max(0.5, cellWidth - GAP)}
                   height={ROW_HEIGHT - GAP * 2}
@@ -129,7 +199,7 @@ export function SensorHeatmap({
             c % labelEvery === 0 ? (
               <text
                 key={c}
-                x={LABEL_WIDTH + c * cellWidth}
+                x={labelWidth + c * cellWidth}
                 y={13}
                 fontSize={10}
                 fill='var(--mantine-color-dimmed)'
@@ -152,7 +222,7 @@ export function SensorHeatmap({
           h={8}
           style={{
             borderRadius: 2,
-            background: `linear-gradient(90deg, ${palette[1]}, ${palette[8]})`
+            background: `linear-gradient(90deg, ${palette[rampLow]}, ${palette[rampHigh]})`
           }}
         />
         <Text size='xs'>

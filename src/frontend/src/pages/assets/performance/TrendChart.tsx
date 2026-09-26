@@ -12,12 +12,13 @@ import {
   Text,
   Tooltip
 } from '@mantine/core';
+import { useElementSize } from '@mantine/hooks';
 import { IconMaximize, IconZoomIn } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { ReferenceArea } from 'recharts';
 
 import { formatInstant, formatTick, formatValue, timeTicks } from './format';
-import type { ChartRow } from './series';
+import { type ChartRow, axisDomain } from './series';
 
 /**
  * One drawn line: which column of the rows, how to name and colour it, and
@@ -232,29 +233,64 @@ function ChartBody({
   // Axis widths follow the widest tick label they will print: a fixed width
   // fits "0" to "4" and squeezes "-0.105" against the unit. Ticks are nice
   // numbers within the data's extremes, so the extremes bound their length.
-  const axisWidth = useMemo(() => {
-    const widest = (side: 'left' | 'right') => {
+  // The same walk collects each side's extremes, which is what decides
+  // whether that side moved at all.
+  const axis = useMemo(() => {
+    const side = (which: 'left' | 'right') => {
       let chars = 1;
+      let min = Number.POSITIVE_INFINITY;
+      let max = Number.NEGATIVE_INFINITY;
       for (const s of series) {
         const onRight = s.yAxisId === 'right' && withRight;
-        if ((side === 'right') !== onRight) continue;
+        if ((which === 'right') !== onRight) continue;
         for (const row of rows) {
           const v = row[s.key];
           if (v === null || v === undefined || !Number.isFinite(v)) continue;
+          if (v < min) min = v;
+          if (v > max) max = v;
           chars = Math.max(chars, formatValue(v, s.decimals).length);
         }
       }
-      return Math.min(chars, 10);
+      return {
+        width: 14 + 7 * Math.min(chars, 10),
+        domain: axisDomain(min, max)
+      };
     };
-    return {
-      left: 14 + 7 * widest('left'),
-      right: withRight ? 14 + 7 * widest('right') : 0
-    };
+    return { left: side('left'), right: side('right') };
   }, [series, rows, withRight]);
 
+  // An axis with no unit is not self-explanatory when there are two of them:
+  // a power factor drawn opposite megawatts gave two identical numeric
+  // columns, neither saying which was which. Name the side by its series
+  // instead, when it is the only one there.
+  const titleFor = (which: 'left' | 'right') => {
+    const own = series.filter(
+      (s) => (s.yAxisId === 'right' && withRight ? 'right' : 'left') === which
+    );
+    const unitOf = which === 'right' ? rightUnit : leftUnit;
+    if (unitOf) return unitOf;
+    return own.length === 1 ? own[0].label : '';
+  };
+  const leftTitle = titleFor('left');
+  const rightTitle = withRight ? titleFor('right') : '';
+
+  // Ticks are sized to the plot, not to a fixed count: at 24 h each label
+  // carries a date and six of them overprint each other on a narrow card.
+  // Cards in a row are the same width, so they still share one list.
+  const { ref: plotRef, width: plotWidth } = useElementSize<HTMLDivElement>();
   const ticks = useMemo(
-    () => timeTicks(windowStart, windowEnd),
-    [windowStart, windowEnd]
+    () =>
+      timeTicks(
+        windowStart,
+        windowEnd,
+        Math.max(
+          2,
+          Math.floor(
+            (plotWidth || 600) / (windowSeconds > 12 * 3600 ? 116 : 68)
+          )
+        )
+      ),
+    [windowStart, windowEnd, plotWidth, windowSeconds]
   );
 
   const zoomRange = useMemo(() => {
@@ -285,17 +321,17 @@ function ChartBody({
   }
 
   return (
-    <Box>
+    <Box ref={plotRef}>
       {/* Units sit upright above their axis; a one-letter unit rotated
           through ninety degrees ("V", "m") reads as a chevron or an E. */}
-      {(leftUnit || (withRight && rightUnit)) && (
-        <Group justify='space-between' gap='xs' px={4} mb={-4}>
-          <Text size='xs' c='dimmed'>
-            {leftUnit || ''}
+      {(leftTitle || rightTitle) && (
+        <Group justify='space-between' gap='xs' px={4} mb={-4} wrap='nowrap'>
+          <Text size='xs' c='dimmed' truncate>
+            {leftTitle}
           </Text>
           {withRight && (
-            <Text size='xs' c='dimmed'>
-              {rightUnit || ''}
+            <Text size='xs' c='dimmed' truncate>
+              {rightTitle}
             </Text>
           )}
         </Group>
@@ -315,14 +351,14 @@ function ChartBody({
         legendProps={{ verticalAlign: 'bottom', height: 28 }}
         withRightYAxis={withRight}
         yAxisProps={{
-          width: axisWidth.left,
+          width: axis.left.width,
           allowDataOverflow: false,
-          domain: ['auto', 'auto']
+          domain: axis.left.domain
         }}
         rightYAxisProps={{
-          width: axisWidth.right,
+          width: axis.right.width,
           allowDataOverflow: false,
-          domain: ['auto', 'auto']
+          domain: axis.right.domain
         }}
         xAxisProps={{
           type: 'number',

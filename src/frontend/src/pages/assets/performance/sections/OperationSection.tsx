@@ -6,7 +6,7 @@ import { RelationChart } from '../RelationChart';
 import { SensorGroupCard } from '../SensorGroupCard';
 import { familyColors } from '../TrendChart';
 import { withRole } from '../resolve';
-import { relationPoints } from '../series';
+import { relationPoints, usable } from '../series';
 import {
   ChartCard,
   ParameterTrend,
@@ -51,7 +51,7 @@ export function OperationSection({
       ? series.get(status[0].signal.binding_id)
       : undefined;
     if (!entry?.available) return null;
-    const known = entry.samples.filter((s) => s.v !== null);
+    const known = entry.samples.filter(usable);
     if (known.length === 0) return null;
     const on = known.filter((s) => (s.v as number) > 0).length;
     return { share: on / known.length, samples: known.length };

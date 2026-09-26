@@ -172,7 +172,9 @@ const TICK_STEPS_MINUTES = [
  * Recharts picks ticks per chart from its own width, so two charts side by
  * side print different times and the shared crosshair looks unshared. One
  * tick list from the window - round local-clock multiples of a step that
- * gives about `target` ticks - keeps every axis on the page identical.
+ * gives about `target` ticks - keeps every axis of the same width identical.
+ * The caller sizes `target` to its plot, because a label carrying a date
+ * needs roughly twice the room of one carrying a clock time.
  */
 export function timeTicks(start: number, end: number, target = 6): number[] {
   const span = end - start;

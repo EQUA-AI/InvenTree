@@ -2415,8 +2415,8 @@ msgstr "Arrêté"
 
 #: src/components/forms/InstanceOptions.tsx:151
 #: src/pages/assets/health/PumphouseMimic.tsx:99
-#: src/pages/assets/performance/StationPerformance.tsx:509
-#: src/pages/assets/performance/kpis.ts:145
+#: src/pages/assets/performance/StationPerformance.tsx:519
+#: src/pages/assets/performance/kpis.ts:148
 msgid "Running"
 msgstr "En cours d'exécution"
 
@@ -3256,8 +3256,8 @@ msgstr "Les paramètres du courrier électronique ne sont pas configurés."
 #: src/pages/assets/health/PumphouseMimic.tsx:247
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
-#: src/pages/assets/performance/StationPerformance.tsx:514
-#: src/pages/assets/performance/kpis.ts:143
+#: src/pages/assets/performance/StationPerformance.tsx:524
+#: src/pages/assets/performance/kpis.ts:146
 msgid "Unknown"
 msgstr ""
 
@@ -3316,7 +3316,7 @@ msgstr ""
 #: src/pages/assets/StationLiveSource.tsx:116
 #: src/pages/assets/health/MachineHealthPanel.tsx:191
 #: src/pages/assets/health/PumphouseMimic.tsx:297
-#: src/pages/assets/performance/TimeRangeControl.tsx:168
+#: src/pages/assets/performance/TimeRangeControl.tsx:177
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
 #: src/pages/repair/components/safety/SafetyPanel.tsx:110
 msgid "Refresh"
@@ -4321,7 +4321,7 @@ msgstr ""
 
 #: src/components/riskradar/RiskRadarPanel.tsx:382
 #: src/pages/assets/health/SignalTable.tsx:119
-#: src/pages/assets/performance/StationPerformance.tsx:446
+#: src/pages/assets/performance/StationPerformance.tsx:454
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:646
 msgid "State"
 msgstr ""
@@ -9229,7 +9229,7 @@ msgstr ""
 
 #: src/pages/assets/EquipmentRegistry.tsx:400
 #: src/pages/assets/performance/PerformancePanel.tsx:246
-#: src/pages/assets/performance/StationPerformance.tsx:325
+#: src/pages/assets/performance/StationPerformance.tsx:333
 msgid "Retry"
 msgstr ""
 
@@ -9351,7 +9351,7 @@ msgstr "Unités"
 
 #: src/pages/assets/EquipmentRegistry.tsx:667
 #: src/pages/assets/EquipmentRegistry.tsx:771
-#: src/pages/assets/performance/parameters.ts:587
+#: src/pages/assets/performance/parameters.ts:600
 msgid "Station"
 msgstr ""
 
@@ -9749,7 +9749,7 @@ msgstr ""
 #. placeholder {0}: Math.round(source.freshness_threshold_seconds / 60)
 #. placeholder {0}: Number.isInteger(minutes) ? minutes : minutes.toFixed(1)
 #: src/pages/assets/health/HealthSourceStatus.tsx:92
-#: src/pages/assets/performance/format.ts:133
+#: src/pages/assets/performance/format.ts:137
 msgid "{0} min"
 msgstr ""
 
@@ -9843,7 +9843,7 @@ msgstr ""
 
 #: src/pages/assets/health/MachineHealthPanel.tsx:234
 #: src/pages/assets/health/SignalTable.tsx:121
-#: src/pages/assets/performance/TrendChart.tsx:151
+#: src/pages/assets/performance/TrendChart.tsx:152
 msgid "Trend"
 msgstr ""
 
@@ -9997,17 +9997,17 @@ msgstr ""
 #: src/pages/assets/health/PumphouseMimic.tsx:83
 #: src/pages/assets/health/PumphouseMimic.tsx:228
 #: src/pages/assets/health/common.tsx:184
-#: src/pages/assets/performance/KpiStrip.tsx:176
-#: src/pages/assets/performance/KpiStrip.tsx:213
-#: src/pages/assets/performance/StationPerformance.tsx:547
+#: src/pages/assets/performance/KpiStrip.tsx:187
+#: src/pages/assets/performance/KpiStrip.tsx:224
+#: src/pages/assets/performance/StationPerformance.tsx:557
 msgid "No reading"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:84
 #: src/pages/assets/health/PumphouseMimic.tsx:102
 #: src/pages/assets/health/common.tsx:193
-#: src/pages/assets/performance/KpiStrip.tsx:170
-#: src/pages/assets/performance/TimeRangeControl.tsx:277
+#: src/pages/assets/performance/KpiStrip.tsx:181
+#: src/pages/assets/performance/TimeRangeControl.tsx:286
 #: src/pages/stock/StockDetail.tsx:694
 #: src/tables/stock/StockItemTable.tsx:279
 msgid "Stale"
@@ -10031,7 +10031,7 @@ msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:89
 #: src/pages/assets/health/PumphouseMimic.tsx:399
-#: src/pages/assets/performance/StationPerformance.tsx:490
+#: src/pages/assets/performance/StationPerformance.tsx:500
 msgid "Inactive equipment"
 msgstr ""
 
@@ -10055,14 +10055,14 @@ msgid "Unavailable"
 msgstr "Indisponible"
 
 #: src/pages/assets/health/PumphouseMimic.tsx:100
-#: src/pages/assets/performance/StationPerformance.tsx:513
-#: src/pages/assets/performance/kpis.ts:148
+#: src/pages/assets/performance/StationPerformance.tsx:523
+#: src/pages/assets/performance/kpis.ts:151
 msgid "Idle"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:101
-#: src/pages/assets/performance/StationPerformance.tsx:511
-#: src/pages/assets/performance/kpis.ts:147
+#: src/pages/assets/performance/StationPerformance.tsx:521
+#: src/pages/assets/performance/kpis.ts:150
 #: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:64
 #: src/pages/repair/RepairPacketDetail.tsx:184
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:471
@@ -10070,18 +10070,18 @@ msgid "Fault"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:117
-#: src/pages/assets/performance/parameters.ts:521
+#: src/pages/assets/performance/parameters.ts:534
 msgid "Forebay level"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:118
-#: src/pages/assets/performance/parameters.ts:548
+#: src/pages/assets/performance/parameters.ts:561
 msgid "Station status"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:119
-#: src/pages/assets/performance/StationPerformance.tsx:166
-#: src/pages/assets/performance/parameters.ts:539
+#: src/pages/assets/performance/StationPerformance.tsx:170
+#: src/pages/assets/performance/parameters.ts:552
 msgid "Pumps running"
 msgstr ""
 
@@ -10094,7 +10094,7 @@ msgid "Input power"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:122
-#: src/pages/assets/performance/StationPerformance.tsx:448
+#: src/pages/assets/performance/StationPerformance.tsx:456
 #: src/pages/assets/performance/parameters.ts:243
 msgid "Discharge flow"
 msgstr ""
@@ -10189,12 +10189,12 @@ msgid "Response time"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:344
-#: src/pages/assets/performance/StationPerformance.tsx:207
+#: src/pages/assets/performance/StationPerformance.tsx:215
 msgid "Plant power"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:346
-#: src/pages/assets/performance/StationPerformance.tsx:208
+#: src/pages/assets/performance/StationPerformance.tsx:216
 msgid "Plant flow"
 msgstr ""
 
@@ -10350,7 +10350,7 @@ msgid "Pick both a start and an end for the window."
 msgstr ""
 
 #: src/pages/assets/health/SignalTrendChart.tsx:115
-#: src/pages/assets/performance/TimeRangeControl.tsx:87
+#: src/pages/assets/performance/TimeRangeControl.tsx:96
 msgid "That is not a readable date and time."
 msgstr ""
 
@@ -10390,25 +10390,25 @@ msgid "Custom range…"
 msgstr ""
 
 #: src/pages/assets/health/SignalTrendChart.tsx:376
-#: src/pages/assets/performance/TimeRangeControl.tsx:181
+#: src/pages/assets/performance/TimeRangeControl.tsx:190
 #: src/pages/repair/RepairPacketDetail.tsx:293
 msgid "From"
 msgstr ""
 
 #: src/pages/assets/health/SignalTrendChart.tsx:388
-#: src/pages/assets/performance/TimeRangeControl.tsx:190
+#: src/pages/assets/performance/TimeRangeControl.tsx:199
 msgid "Start of window"
 msgstr ""
 
 #: src/pages/assets/health/SignalTrendChart.tsx:392
-#: src/pages/assets/performance/TimeRangeControl.tsx:194
+#: src/pages/assets/performance/TimeRangeControl.tsx:203
 #: src/pages/repair/RepairPacketDetail.tsx:294
 #: src/tables/settings/EmailTable.tsx:85
 msgid "To"
 msgstr "À"
 
 #: src/pages/assets/health/SignalTrendChart.tsx:405
-#: src/pages/assets/performance/TimeRangeControl.tsx:203
+#: src/pages/assets/performance/TimeRangeControl.tsx:212
 msgid "End of window"
 msgstr ""
 
@@ -10540,46 +10540,46 @@ msgstr ""
 msgid "Manual"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:80
+#: src/pages/assets/performance/KpiStrip.tsx:90
 msgid "Trend over the selected window"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:109
+#: src/pages/assets/performance/KpiStrip.tsx:119
 msgid "Rising over the window"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:111
+#: src/pages/assets/performance/KpiStrip.tsx:121
 msgid "Falling over the window"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:112
+#: src/pages/assets/performance/KpiStrip.tsx:122
 msgid "Steady over the window"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:130
+#: src/pages/assets/performance/KpiStrip.tsx:140
 #: src/pages/assets/performance/sections/OtherSection.tsx:33
 msgid "Window"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:165
+#: src/pages/assets/performance/KpiStrip.tsx:176
 msgid "Bad quality"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:165
+#: src/pages/assets/performance/KpiStrip.tsx:176
 msgid "Uncertain quality"
 msgstr ""
 
 #. placeholder {0}: formatClock(tile.observedAt)
-#: src/pages/assets/performance/KpiStrip.tsx:208
+#: src/pages/assets/performance/KpiStrip.tsx:219
 msgid "Observed {0}"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:216
+#: src/pages/assets/performance/KpiStrip.tsx:227
 msgid "no limit configured"
 msgstr ""
 
 #: src/pages/assets/performance/PerformancePanel.tsx:237
-#: src/pages/assets/performance/StationPerformance.tsx:316
+#: src/pages/assets/performance/StationPerformance.tsx:324
 msgid "Performance data unavailable"
 msgstr ""
 
@@ -10596,7 +10596,7 @@ msgid "Map this machine's tags to a health source to see its performance here. U
 msgstr ""
 
 #: src/pages/assets/performance/PerformancePanel.tsx:313
-#: src/pages/assets/performance/StationPerformance.tsx:371
+#: src/pages/assets/performance/StationPerformance.tsx:379
 msgid "Could not read history for this window"
 msgstr ""
 
@@ -10671,15 +10671,15 @@ msgstr ""
 
 #. placeholder {0}: formatTick(slice[0].t, windowSeconds)
 #. placeholder {1}: formatTick(slice[slice.length - 1].t, windowSeconds)
-#: src/pages/assets/performance/RelationChart.tsx:53
+#: src/pages/assets/performance/RelationChart.tsx:81
 msgid "{0} – {1}"
 msgstr ""
 
-#: src/pages/assets/performance/RelationChart.tsx:66
+#: src/pages/assets/performance/RelationChart.tsx:94
 msgid "Too few paired readings in this window to show a relationship."
 msgstr ""
 
-#: src/pages/assets/performance/RelationChart.tsx:90
+#: src/pages/assets/performance/RelationChart.tsx:121
 msgid "Each point is one snapshot in which both were read; colour darkens toward the present. A pattern here is an operating pattern, not a cause."
 msgstr ""
 
@@ -10750,14 +10750,14 @@ msgstr ""
 #~ msgid "A sensor with no current reading is drawn at zero and greyed; zero is not its value."
 #~ msgstr ""
 
-#: src/pages/assets/performance/SensorHeatmap.tsx:80
+#: src/pages/assets/performance/SensorHeatmap.tsx:151
 msgid "Sensor heatmap"
 msgstr ""
 
 #. placeholder {0}: row.label
 #. placeholder {1}: formatTick(column.start, windowSeconds)
 #. placeholder {2}: formatTick(column.end, windowSeconds)
-#: src/pages/assets/performance/SensorHeatmap.tsx:102
+#: src/pages/assets/performance/SensorHeatmap.tsx:171
 msgid "{0} · {1}–{2} · no reading"
 msgstr ""
 
@@ -10766,26 +10766,26 @@ msgstr ""
 #. placeholder {2}: formatTick(column.end, windowSeconds)
 #. placeholder {3}: formatValue(cell, decimals, unit, matrix.max - matrix.min)
 #. placeholder {4}: row.counts[c]
-#: src/pages/assets/performance/SensorHeatmap.tsx:103
+#: src/pages/assets/performance/SensorHeatmap.tsx:172
 msgid "{0} · {1}–{2} · {3} (mean of {4} readings)"
 msgstr ""
 
-#: src/pages/assets/performance/SensorHeatmap.tsx:145
+#: src/pages/assets/performance/SensorHeatmap.tsx:214
 msgid "Scale spans the observed range:"
 msgstr ""
 
-#: src/pages/assets/performance/SensorHeatmap.tsx:162
+#: src/pages/assets/performance/SensorHeatmap.tsx:231
 msgid "· each cell is the mean of the readings in its column"
 msgstr ""
 
 #. placeholder {0}: bays.length
-#: src/pages/assets/performance/StationPerformance.tsx:178
+#: src/pages/assets/performance/StationPerformance.tsx:182
 msgid "of {0} registered bays"
 msgstr ""
 
 #. placeholder {0}: lasts.length
 #. placeholder {1}: bays.length
-#: src/pages/assets/performance/StationPerformance.tsx:204
+#: src/pages/assets/performance/StationPerformance.tsx:212
 msgid "Calculated: sum of {0} of {1} bays' newest readings"
 msgstr ""
 
@@ -10793,49 +10793,49 @@ msgstr ""
 #~ msgid "Station performance"
 #~ msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:318
+#: src/pages/assets/performance/StationPerformance.tsx:326
 msgid "The health service could not be reached."
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:373
+#: src/pages/assets/performance/StationPerformance.tsx:381
 msgid "The request failed; the charts below show nothing rather than a partial line."
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:387
+#: src/pages/assets/performance/StationPerformance.tsx:395
 msgid "Forebay level and pumps running"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:391
+#: src/pages/assets/performance/StationPerformance.tsx:399
 msgid "Level on the left axis; the running count on the right, as steps."
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:409
+#: src/pages/assets/performance/StationPerformance.tsx:417
 msgid "Active power by bay"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:424
+#: src/pages/assets/performance/StationPerformance.tsx:432
 msgid "Discharge flow by bay"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:445
+#: src/pages/assets/performance/StationPerformance.tsx:453
 msgid "Bay"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:447
+#: src/pages/assets/performance/StationPerformance.tsx:455
 #: src/pages/assets/performance/parameters.ts:86
 msgid "Active power"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:449
+#: src/pages/assets/performance/StationPerformance.tsx:457
 #: src/pages/assets/performance/parameters.ts:183
 msgid "Shaft speed"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:450
+#: src/pages/assets/performance/StationPerformance.tsx:458
 msgid "Window peak power"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:451
+#: src/pages/assets/performance/StationPerformance.tsx:459
 msgid "Newest reading"
 msgstr ""
 
@@ -10859,212 +10859,212 @@ msgstr ""
 msgid "24 h"
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:83
+#: src/pages/assets/performance/TimeRangeControl.tsx:92
 msgid "Pick both a start and an end."
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:88
+#: src/pages/assets/performance/TimeRangeControl.tsx:97
 msgid "The end must come after the start."
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:90
+#: src/pages/assets/performance/TimeRangeControl.tsx:99
 msgid "A window may not exceed 24 hours."
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:118
+#: src/pages/assets/performance/TimeRangeControl.tsx:127
 msgid "Custom"
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:130
+#: src/pages/assets/performance/TimeRangeControl.tsx:139
 msgid "Clear zoom"
 msgstr ""
 
 #. placeholder {0}: formatTick(zoomed.from, windowSeconds(zoomed))
 #. placeholder {1}: formatTick(zoomed.to, windowSeconds(zoomed))
-#: src/pages/assets/performance/TimeRangeControl.tsx:138
+#: src/pages/assets/performance/TimeRangeControl.tsx:147
 msgid "Zoomed {0} – {1}"
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:139
+#: src/pages/assets/performance/TimeRangeControl.tsx:148
 msgid "Zoomed"
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:146
+#: src/pages/assets/performance/TimeRangeControl.tsx:155
 msgid "Live: the window follows the clock and re-reads as the source is polled."
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:147
+#: src/pages/assets/performance/TimeRangeControl.tsx:156
 msgid "Paused: the window is frozen where you left it."
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:158
-#: src/pages/assets/performance/TimeRangeControl.tsx:280
+#: src/pages/assets/performance/TimeRangeControl.tsx:167
+#: src/pages/assets/performance/TimeRangeControl.tsx:289
 msgid "Live"
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:164
+#: src/pages/assets/performance/TimeRangeControl.tsx:173
 msgid "Re-read now"
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:214
+#: src/pages/assets/performance/TimeRangeControl.tsx:223
 msgid "Apply"
 msgstr ""
 
 #. placeholder {0}: dayjs(dataRange.from).format('D MMM HH:mm')
 #. placeholder {1}: dayjs(dataRange.to).format('D MMM HH:mm')
-#: src/pages/assets/performance/TimeRangeControl.tsx:223
+#: src/pages/assets/performance/TimeRangeControl.tsx:232
 msgid "History held from {0} to {1}."
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:272
+#: src/pages/assets/performance/TimeRangeControl.tsx:281
 msgid "Paused"
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:274
+#: src/pages/assets/performance/TimeRangeControl.tsx:283
 msgid "Polling off"
 msgstr ""
 
 #. placeholder {0}: response.documents_read
 #. placeholder {1}: formatDuration(response.cadence_seconds ?? cadence ?? 0)
-#: src/pages/assets/performance/TimeRangeControl.tsx:289
+#: src/pages/assets/performance/TimeRangeControl.tsx:298
 msgid "Every reading in the window ({0} snapshots, cadence {1})."
 msgstr ""
 
 #. placeholder {0}: formatDuration(response.resolution_seconds)
 #. placeholder {1}: response.documents_read
 #. placeholder {2}: response.expected_documents.toLocaleString()
-#: src/pages/assets/performance/TimeRangeControl.tsx:291
+#: src/pages/assets/performance/TimeRangeControl.tsx:300
 msgid "Sampled: one reading every {0} — {1} of about {2} snapshots."
 msgstr ""
 
-#: src/pages/assets/performance/TimeRangeControl.tsx:320
+#: src/pages/assets/performance/TimeRangeControl.tsx:329
 msgid "Not read yet"
 msgstr ""
 
 #. placeholder {0}: formatClock(updatedAt)
-#: src/pages/assets/performance/TimeRangeControl.tsx:321
+#: src/pages/assets/performance/TimeRangeControl.tsx:330
 msgid "Updated {0}"
 msgstr ""
 
 #. placeholder {0}: formatClock(newestAt)
-#: src/pages/assets/performance/TimeRangeControl.tsx:323
+#: src/pages/assets/performance/TimeRangeControl.tsx:332
 msgid "newest reading {0}"
 msgstr ""
 
 #. placeholder {0}: formatDuration(cadence)
-#: src/pages/assets/performance/TimeRangeControl.tsx:329
+#: src/pages/assets/performance/TimeRangeControl.tsx:338
 msgid "Source writes every {0}"
 msgstr ""
 
 #. placeholder {0}: formatDuration(poll)
-#: src/pages/assets/performance/TimeRangeControl.tsx:332
+#: src/pages/assets/performance/TimeRangeControl.tsx:341
 msgid "read here every {0}"
 msgstr ""
 
 #. placeholder {0}: dayjs(response.live.last_poll_at).format('HH:mm:ss')
-#: src/pages/assets/performance/TimeRangeControl.tsx:335
+#: src/pages/assets/performance/TimeRangeControl.tsx:344
 msgid "last poll {0}"
 msgstr ""
 
 #. placeholder {0}: formatDuration(response.display_shift_seconds)
-#: src/pages/assets/performance/TimeRangeControl.tsx:345
+#: src/pages/assets/performance/TimeRangeControl.tsx:354
 msgid "Recorded history presented as current; the plant's own times are {0} earlier."
 msgstr ""
 
-#: src/pages/assets/performance/TrendChart.tsx:129
-#: src/pages/assets/performance/TrendChart.tsx:134
+#: src/pages/assets/performance/TrendChart.tsx:130
+#: src/pages/assets/performance/TrendChart.tsx:135
 msgid "Open full screen"
 msgstr ""
 
-#: src/pages/assets/performance/TrendChart.tsx:281
+#: src/pages/assets/performance/TrendChart.tsx:317
 msgid "No readings in this window."
 msgstr ""
 
-#: src/pages/assets/performance/TrendChart.tsx:393
+#: src/pages/assets/performance/TrendChart.tsx:429
 msgid "Clear selection"
 msgstr ""
 
 #. placeholder {0}: formatTick(zoomRange.from, windowSeconds)
 #. placeholder {1}: formatTick(zoomRange.to, windowSeconds)
-#: src/pages/assets/performance/TrendChart.tsx:404
+#: src/pages/assets/performance/TrendChart.tsx:440
 msgid "Zoom to {0} – {1}"
 msgstr ""
 
-#: src/pages/assets/performance/TrendChart.tsx:469
-#: src/pages/assets/performance/format.ts:145
-#: src/pages/assets/performance/sections/ThermalSections.tsx:286
+#: src/pages/assets/performance/TrendChart.tsx:505
+#: src/pages/assets/performance/format.ts:149
+#: src/pages/assets/performance/sections/ThermalSections.tsx:296
 msgid "no reading"
 msgstr ""
 
-#: src/pages/assets/performance/format.ts:94
+#: src/pages/assets/performance/format.ts:98
 msgid "to"
 msgstr ""
 
 #. placeholder {0}: Math.round(seconds)
-#: src/pages/assets/performance/format.ts:129
+#: src/pages/assets/performance/format.ts:133
 msgid "{0} s"
 msgstr ""
 
 #. placeholder {0}: Number.isInteger(hours) ? hours : hours.toFixed(1)
-#: src/pages/assets/performance/format.ts:137
+#: src/pages/assets/performance/format.ts:141
 msgid "{0} h"
 msgstr ""
 
 #. placeholder {0}: Math.round(seconds / 86400)
-#: src/pages/assets/performance/format.ts:139
+#: src/pages/assets/performance/format.ts:143
 msgid "{0} d"
 msgstr ""
 
-#: src/pages/assets/performance/format.ts:149
+#: src/pages/assets/performance/format.ts:153
 msgid "{seconds} s ago"
 msgstr ""
 
 #. placeholder {0}: Math.round(seconds / 60)
-#: src/pages/assets/performance/format.ts:152
+#: src/pages/assets/performance/format.ts:156
 msgid "{0} min ago"
 msgstr ""
 
 #. placeholder {0}: (seconds / 3600).toFixed(1)
-#: src/pages/assets/performance/format.ts:155
+#: src/pages/assets/performance/format.ts:159
 msgid "{0} h ago"
 msgstr ""
 
 #. placeholder {0}: Math.round(seconds / 86400)
-#: src/pages/assets/performance/format.ts:157
+#: src/pages/assets/performance/format.ts:161
 msgid "{0} d ago"
 msgstr ""
 
 #. placeholder {0}: pool.length
 #. placeholder {1}: top.label
-#: src/pages/assets/performance/kpis.ts:121
+#: src/pages/assets/performance/kpis.ts:122
 msgid "Highest of {0}: {1}"
 msgstr ""
 
 #. placeholder {0}: pool.length
 #. placeholder {1}: top.label
-#: src/pages/assets/performance/kpis.ts:122
+#: src/pages/assets/performance/kpis.ts:123
 msgid "Highest of {0}: {1} · unit unconfirmed, raw source value"
 msgstr ""
 
-#: src/pages/assets/performance/kpis.ts:142
+#: src/pages/assets/performance/kpis.ts:145
 msgid "Code {code}"
 msgstr ""
 
 #. placeholder {0}: parameter.signal.value
-#: src/pages/assets/performance/kpis.ts:161
+#: src/pages/assets/performance/kpis.ts:164
 msgid "Plant status code: {0}"
 msgstr ""
 
-#: src/pages/assets/performance/kpis.ts:203
+#: src/pages/assets/performance/kpis.ts:206
 msgid "Vibration"
 msgstr ""
 
-#: src/pages/assets/performance/kpis.ts:206
+#: src/pages/assets/performance/kpis.ts:209
 #: src/pages/assets/performance/sections/ThermalSections.tsx:116
 msgid "No approved vibration channel"
 msgstr ""
 
-#: src/pages/assets/performance/kpis.ts:216
+#: src/pages/assets/performance/kpis.ts:219
 msgid "Winding temperature"
 msgstr ""
 
@@ -11184,103 +11184,107 @@ msgid "Motor velometer"
 msgstr ""
 
 #: src/pages/assets/performance/parameters.ts:369
-#: src/pages/assets/performance/sections/ThermalSections.tsx:354
+#: src/pages/assets/performance/sections/ThermalSections.tsx:364
 msgid "Cooling water inlet"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:379
-#: src/pages/assets/performance/parameters.ts:388
-#: src/pages/assets/performance/sections/ThermalSections.tsx:366
+#: src/pages/assets/performance/parameters.ts:383
+msgid "Inlet cooling water"
+msgstr ""
+
+#: src/pages/assets/performance/parameters.ts:392
+#: src/pages/assets/performance/parameters.ts:401
+#: src/pages/assets/performance/sections/ThermalSections.tsx:376
 msgid "Cooling water outlet"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:398
+#: src/pages/assets/performance/parameters.ts:411
 msgid "Cooling water RTD"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:407
-#: src/pages/assets/performance/sections/ThermalSections.tsx:409
+#: src/pages/assets/performance/parameters.ts:420
+#: src/pages/assets/performance/sections/ThermalSections.tsx:419
 msgid "Cooling air, cold side"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:417
+#: src/pages/assets/performance/parameters.ts:430
 msgid "Cold air"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:426
+#: src/pages/assets/performance/parameters.ts:439
 msgid "Hot air"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:437
+#: src/pages/assets/performance/parameters.ts:450
 msgid "Thrust bearing pad"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:447
+#: src/pages/assets/performance/parameters.ts:460
 msgid "Thrust axial pad"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:456
+#: src/pages/assets/performance/parameters.ts:469
 msgid "Guide radial pad"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:465
+#: src/pages/assets/performance/parameters.ts:478
 msgid "Guide bearing pad"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:474
+#: src/pages/assets/performance/parameters.ts:487
 msgid "Guide bearing RTD"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:483
+#: src/pages/assets/performance/parameters.ts:496
 msgid "Bearing"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:492
+#: src/pages/assets/performance/parameters.ts:505
 msgid "Oil reservoir"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:501
+#: src/pages/assets/performance/parameters.ts:514
 msgid "Guide bearing oil"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:510
+#: src/pages/assets/performance/parameters.ts:523
 msgid "Cooler oil outlet"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:530
+#: src/pages/assets/performance/parameters.ts:543
 msgid "Surge pool level"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:573
+#: src/pages/assets/performance/parameters.ts:586
 #: src/pages/repair/components/safety/safetyApi.ts:127
 msgid "Electrical"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:575
+#: src/pages/assets/performance/parameters.ts:588
 msgid "Speed and operation"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:577
+#: src/pages/assets/performance/parameters.ts:590
 msgid "Hydraulic and process"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:579
+#: src/pages/assets/performance/parameters.ts:592
 msgid "Motor winding temperature"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:581
+#: src/pages/assets/performance/parameters.ts:594
 msgid "Vibration and mechanical"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:583
+#: src/pages/assets/performance/parameters.ts:596
 msgid "Cooling and thermal"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:585
+#: src/pages/assets/performance/parameters.ts:598
 msgid "Bearing and lubrication"
 msgstr ""
 
-#: src/pages/assets/performance/parameters.ts:589
+#: src/pages/assets/performance/parameters.ts:602
 msgid "Other signals"
 msgstr ""
 
@@ -11409,69 +11413,69 @@ msgid "Motor velometers"
 msgstr ""
 
 #. placeholder {0}: pair.a.index
-#: src/pages/assets/performance/sections/ThermalSections.tsx:230
+#: src/pages/assets/performance/sections/ThermalSections.tsx:240
 msgid "ΔT {0}"
 msgstr ""
 
 #. placeholder {0}: pair.a.label
 #. placeholder {1}: pair.b.label
-#: src/pages/assets/performance/sections/ThermalSections.tsx:231
+#: src/pages/assets/performance/sections/ThermalSections.tsx:241
 msgid "ΔT {0} − {1}"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:294
+#: src/pages/assets/performance/sections/ThermalSections.tsx:304
 msgid "window"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:300
+#: src/pages/assets/performance/sections/ThermalSections.tsx:310
 msgid "Calculated"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:378
+#: src/pages/assets/performance/sections/ThermalSections.tsx:388
 msgid "Cooling water rise (outlet − inlet)"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:379
+#: src/pages/assets/performance/sections/ThermalSections.tsx:389
 msgid "How much heat the water carries away. Calculated from sensors paired by number, only where both were read at the same instant."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:391
+#: src/pages/assets/performance/sections/ThermalSections.tsx:401
 msgid "Cooling water RTDs"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:392
+#: src/pages/assets/performance/sections/ThermalSections.tsx:402
 msgid "The dictionary does not say which of these are inlet and which outlet, so they are drawn as one family."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:421
+#: src/pages/assets/performance/sections/ThermalSections.tsx:431
 msgid "Cooling air, hot side"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:433
+#: src/pages/assets/performance/sections/ThermalSections.tsx:443
 msgid "Air rise (hot − cold)"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:434
+#: src/pages/assets/performance/sections/ThermalSections.tsx:444
 msgid "Calculated from hot and cold sensors paired by number."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:467
+#: src/pages/assets/performance/sections/ThermalSections.tsx:477
 msgid "Thrust bearing pads"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:480
+#: src/pages/assets/performance/sections/ThermalSections.tsx:490
 msgid "Guide bearing pads"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:497
+#: src/pages/assets/performance/sections/ThermalSections.tsx:507
 msgid "Bearing temperatures"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:509
+#: src/pages/assets/performance/sections/ThermalSections.tsx:519
 msgid "Lubricating oil"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ThermalSections.tsx:510
+#: src/pages/assets/performance/sections/ThermalSections.tsx:520
 msgid "Reservoir, guide bearing and cooler outlet oil temperatures."
 msgstr ""
 
