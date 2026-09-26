@@ -107,7 +107,9 @@ function highestTile(
     stale: top.signal.stale,
     state: worst,
     series: series.get(top.signal.binding_id),
-    caption: t`Highest of ${pool.length}: ${top.label}`
+    caption: top.signal.unit
+      ? t`Highest of ${pool.length}: ${top.label}`
+      : t`Highest of ${pool.length}: ${top.label} · unit unconfirmed, raw source value`
   };
 }
 

@@ -205,6 +205,24 @@ function ChartBody({
   );
 
   const byKey = useMemo(() => new Map(series.map((s) => [s.key, s])), [series]);
+  // Each line's spread over the window, so the tooltip prints enough decimals
+  // to tell the line's own movement apart.
+  const rangeByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of series) {
+      let min = Number.POSITIVE_INFINITY;
+      let max = Number.NEGATIVE_INFINITY;
+      for (const row of rows) {
+        const v = row[s.key];
+        if (v !== null && v !== undefined && Number.isFinite(v)) {
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+      }
+      map.set(s.key, Number.isFinite(max - min) ? max - min : 0);
+    }
+    return map;
+  }, [series, rows]);
   // A right axis only makes sense opposite a left one. When every line asked
   // for the right axis - the left-axis parameter is not mapped on this pump -
   // they take the left axis instead, rather than leaving it labelled and empty.
@@ -305,6 +323,7 @@ function ChartBody({
               instant={typeof label === 'number' ? label : null}
               payload={(payload as any[]) ?? []}
               byKey={byKey}
+              rangeByKey={rangeByKey}
             />
           )
         }}
@@ -356,7 +375,8 @@ function ChartBody({
 function TrendTooltip({
   instant,
   payload,
-  byKey
+  byKey,
+  rangeByKey
 }: Readonly<{
   instant: number | null;
   payload: {
@@ -366,6 +386,7 @@ function TrendTooltip({
     color?: string;
   }[];
   byKey: Map<string, TrendSeries>;
+  rangeByKey: Map<string, number>;
 }>) {
   if (instant === null || payload.length === 0) {
     return null;
@@ -403,7 +424,12 @@ function TrendTooltip({
               >
                 {value === null
                   ? t`no reading`
-                  : formatValue(value, meta?.decimals ?? 2, meta?.unit)}
+                  : formatValue(
+                      value,
+                      meta?.decimals ?? 2,
+                      meta?.unit,
+                      rangeByKey.get(key)
+                    )}
               </Text>
             </Group>
           );

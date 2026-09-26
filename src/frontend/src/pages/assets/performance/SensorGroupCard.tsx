@@ -276,14 +276,14 @@ export function SensorGroupCard({
           {summary && (
             <Group gap='xs' wrap='wrap'>
               <Badge variant='light' color={hue} size='sm'>
-                {t`Highest now: ${summary.highest.parameter.label} ${formatValue(summary.highest.value, decimals, unit)}`}
+                {t`Highest now: ${summary.highest.parameter.label} ${formatValue(summary.highest.value, decimals, unit, summary.spread)}`}
               </Badge>
               <Badge variant='light' color='gray' size='sm'>
-                {t`Mean ${formatValue(summary.mean, decimals, unit)}`}
+                {t`Mean ${formatValue(summary.mean, decimals, unit, summary.spread)}`}
               </Badge>
               {summary.live > 1 && (
                 <Badge variant='light' color='gray' size='sm'>
-                  {t`Spread ${formatValue(summary.spread, decimals, unit)} (calculated)`}
+                  {t`Spread ${formatValue(summary.spread, decimals, unit, summary.spread)} (calculated)`}
                 </Badge>
               )}
               {windowStats.max && (
@@ -367,7 +367,7 @@ export function SensorGroupCard({
                   getBarColor={(value) => barColors.get(value) ?? `${hue}.6`}
                   withLegend={false}
                   valueFormatter={(value: number) =>
-                    formatValue(value, decimals, unit)
+                    formatValue(value, decimals, unit, summary?.spread)
                   }
                   yAxisProps={{
                     width: 150,

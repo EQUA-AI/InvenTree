@@ -89,7 +89,9 @@ export function SensorHeatmap({
               fill='var(--mantine-color-text)'
             >
               {row.label}
-              {row.last !== null ? `  ${formatValue(row.last, decimals)}` : ''}
+              {row.last !== null
+                ? `  ${formatValue(row.last, decimals, undefined, matrix.max - matrix.min)}`
+                : ''}
             </text>
             {row.cells.map((cell, c) => {
               const column = matrix.columns[c];
@@ -98,7 +100,7 @@ export function SensorHeatmap({
               const title =
                 cell === null
                   ? t`${row.label} · ${formatTick(column.start, windowSeconds)}–${formatTick(column.end, windowSeconds)} · no reading`
-                  : t`${row.label} · ${formatTick(column.start, windowSeconds)}–${formatTick(column.end, windowSeconds)} · ${formatValue(cell, decimals, unit)} (mean of ${row.counts[c]} readings)`;
+                  : t`${row.label} · ${formatTick(column.start, windowSeconds)}–${formatTick(column.end, windowSeconds)} · ${formatValue(cell, decimals, unit, matrix.max - matrix.min)} (mean of ${row.counts[c]} readings)`;
               return (
                 <rect
                   key={c}
@@ -142,7 +144,9 @@ export function SensorHeatmap({
         <Text size='xs' c='dimmed'>
           {t`Scale spans the observed range:`}
         </Text>
-        <Text size='xs'>{formatValue(matrix.min, decimals, unit)}</Text>
+        <Text size='xs'>
+          {formatValue(matrix.min, decimals, unit, matrix.max - matrix.min)}
+        </Text>
         <Box
           w={96}
           h={8}
@@ -151,7 +155,9 @@ export function SensorHeatmap({
             background: `linear-gradient(90deg, ${palette[1]}, ${palette[8]})`
           }}
         />
-        <Text size='xs'>{formatValue(matrix.max, decimals, unit)}</Text>
+        <Text size='xs'>
+          {formatValue(matrix.max, decimals, unit, matrix.max - matrix.min)}
+        </Text>
         <Text size='xs' c='dimmed'>
           {t`· each cell is the mean of the readings in its column`}
         </Text>

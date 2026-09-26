@@ -122,11 +122,18 @@ export function VibrationSection({
     );
   }
   const units = new Set(vibration.map((p) => p.signal.unit));
+  // A channel approved without a unit is the plant's raw word, not a
+  // magnitude against a standard: say so where the numbers are.
+  const unconfirmed = vibration.some((p) => !p.signal.unit);
   if (units.size === 1) {
     return (
       <SensorGroupCard
         title={t`Vibration sensors`}
-        description={t`Motor NDE, DE and thrust bearing channels on one axis.`}
+        description={
+          unconfirmed
+            ? t`Raw source values, drawn without a unit: the plant has not confirmed whether these channels report displacement (µm) or velocity (mm/s), and the readings can be signed. The chart shows how each channel moves, not a magnitude to judge against a standard.`
+            : t`Motor NDE, DE and thrust bearing channels on one axis.`
+        }
         parameters={vibration}
         series={series}
         window={window}
@@ -277,9 +284,14 @@ function DifferenceCard({
               {c.label}:{' '}
               {c.current === null
                 ? t`no reading`
-                : formatValue(c.current, decimals, unit)}
+                : formatValue(
+                    c.current,
+                    decimals,
+                    unit,
+                    stats ? stats.max - stats.min : null
+                  )}
               {stats
-                ? ` (${t`window`} ${formatValue(stats.min, decimals)}–${formatValue(stats.max, decimals)})`
+                ? ` (${t`window`} ${formatValue(stats.min, decimals, undefined, stats.max - stats.min)}–${formatValue(stats.max, decimals, undefined, stats.max - stats.min)})`
                 : ''}
             </Badge>
           );
