@@ -123,6 +123,40 @@ warrant different bands).
 
 ---
 
+## The one to send first
+
+Question 1 below is the only item on this whole list that costs five minutes
+instead of a document request, and it is the one that decides whether the 274
+limits now live are right. Ready to forward as-is:
+
+> **Subject: One photo needed - motor rating plate, Saraswati or Parvathi**
+>
+> Could someone photograph the rating plate on any one of the 40 MW pump motors?
+> Any machine will do - they are identical, so whichever is easiest to reach.
+>
+> The whole plate please, straight on and in focus, rather than a typed extract.
+> It carries several things we need and we would rather read them than retype
+> them.
+>
+> Why: the condition-monitoring dashboard now raises a winding-temperature alarm
+> at 125 degC and a critical at 145 degC. Those came from the standard using an
+> *assumed* insulation class F with temperature rise limited to class B. If the
+> plate says otherwise the alarm points move by up to 25 degC - in one direction
+> we get nuisance alarms, in the other a hot machine stays quiet - so we would
+> rather read the plate than keep the assumption.
+
+**Ask for the whole plate, not the two lines.** A rating plate normally carries
+insulation class, temperature rise, rated voltage, rated current, duty and
+design ambient. One photograph therefore answers questions 1, 2 and 3 below, and
+part of 8, for the same five minutes - whereas asking for "the insulation class"
+gets exactly one of them.
+
+**Ranganayaka Sagar needs its own plate.** Those are a different machine (the
+catalogue records 134 MW with a different detector layout), and they carry no
+winding limits today - all 38 of their points fell below the sample count needed
+to judge the channels. Worth a second photograph when convenient, but it is not
+what is holding anything up.
+
 ## What the plant could answer
 
 Ordered by how much each one moves. The first alone swings the winding band by
