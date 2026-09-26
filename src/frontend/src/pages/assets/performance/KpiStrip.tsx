@@ -15,7 +15,11 @@ import {
   IconMinus
 } from '@tabler/icons-react';
 
-import type { HealthState, SeriesEntry } from '@lib/types/MachineHealth';
+import type {
+  HealthState,
+  SeriesEntry,
+  SignalQuality
+} from '@lib/types/MachineHealth';
 
 import { HealthStateBadge } from '../health/common';
 import { formatAge, formatClock, formatValue } from './format';
@@ -35,6 +39,8 @@ export interface KpiTile {
   decimals: number;
   observedAt: number | null;
   stale: boolean;
+  /** The reading's quality; anything but good is shown as such, not judged. */
+  quality?: SignalQuality;
   /** The configured-limit verdict; 'unconfigured' when no limit exists. */
   state: HealthState | 'unconfigured';
   series?: SeriesEntry;
@@ -144,6 +150,11 @@ export function KpiTileCard({
             <Box style={{ flexShrink: 0 }}>
               <HealthStateBadge state={tile.state} size='xs' />
             </Box>
+          )}
+          {tile.quality && tile.quality !== 'good' && !missing && (
+            <Badge size='xs' color='gray' variant='light'>
+              {tile.quality === 'bad' ? t`Bad quality` : t`Uncertain quality`}
+            </Badge>
           )}
           {tile.stale && !missing && (
             <Badge size='xs' color='yellow' variant='light'>

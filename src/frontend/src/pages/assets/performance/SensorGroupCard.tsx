@@ -109,8 +109,11 @@ export function SensorGroupCard({
             ? p.signal.value
             : null,
         stale: p.signal.stale,
+        good: p.signal.quality === 'good',
         state: limitState(
-          typeof p.signal.value === 'number' ? p.signal.value : null,
+          typeof p.signal.value === 'number' && p.signal.quality === 'good'
+            ? p.signal.value
+            : null,
           p.signal.limits
         )
       })),
@@ -118,7 +121,9 @@ export function SensorGroupCard({
   );
 
   const summary = useMemo(() => {
-    const live = current.filter((c) => c.value !== null && !c.stale);
+    // Good-quality, current readings only; a pegged sensor is neither the
+    // highest nor part of the mean.
+    const live = current.filter((c) => c.value !== null && !c.stale && c.good);
     if (live.length === 0) return null;
     const values = live.map((c) => c.value as number);
     const highest = live.reduce((a, b) =>
@@ -215,7 +220,7 @@ export function SensorGroupCard({
         ? current
             .map((c) => ({
               sensor: c.parameter.label,
-              value: c.value,
+              value: c.good ? c.value : null,
               color:
                 c.state === 'critical'
                   ? 'red.7'
@@ -380,7 +385,7 @@ export function SensorGroupCard({
                 />
                 {bars.some((b) => b.value === null) && (
                   <Text size='xs' c='dimmed'>
-                    {t`A sensor with no current reading is drawn at zero and greyed; zero is not its value.`}
+                    {t`A sensor with no usable current reading is drawn at zero and greyed; zero is not its value.`}
                   </Text>
                 )}
               </Stack>

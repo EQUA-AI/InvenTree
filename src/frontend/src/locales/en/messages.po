@@ -2411,7 +2411,7 @@ msgstr "Stopped"
 #: src/components/forms/InstanceOptions.tsx:151
 #: src/pages/assets/health/PumphouseMimic.tsx:99
 #: src/pages/assets/performance/StationPerformance.tsx:492
-#: src/pages/assets/performance/kpis.ts:135
+#: src/pages/assets/performance/kpis.ts:145
 msgid "Running"
 msgstr "Running"
 
@@ -3252,7 +3252,7 @@ msgstr "Email settings not configured."
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
 #: src/pages/assets/performance/StationPerformance.tsx:497
-#: src/pages/assets/performance/kpis.ts:133
+#: src/pages/assets/performance/kpis.ts:143
 msgid "Unknown"
 msgstr "Unknown"
 
@@ -5098,7 +5098,7 @@ msgstr "Remove filter"
 #: src/components/tables/FilterSelectDrawer.tsx:290
 #: src/pages/assets/health/PumphouseMimic.tsx:201
 #: src/pages/assets/health/SignalTable.tsx:118
-#: src/pages/assets/performance/SensorGroupCard.tsx:363
+#: src/pages/assets/performance/SensorGroupCard.tsx:368
 #: src/pages/assets/performance/sections/OtherSection.tsx:31
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:77
 #: src/pages/part/PartStockHistoryDetail.tsx:67
@@ -9992,8 +9992,8 @@ msgstr "Not approved"
 #: src/pages/assets/health/PumphouseMimic.tsx:83
 #: src/pages/assets/health/PumphouseMimic.tsx:228
 #: src/pages/assets/health/common.tsx:184
-#: src/pages/assets/performance/KpiStrip.tsx:156
-#: src/pages/assets/performance/KpiStrip.tsx:195
+#: src/pages/assets/performance/KpiStrip.tsx:167
+#: src/pages/assets/performance/KpiStrip.tsx:206
 #: src/pages/assets/performance/StationPerformance.tsx:530
 msgid "No reading"
 msgstr "No reading"
@@ -10001,7 +10001,7 @@ msgstr "No reading"
 #: src/pages/assets/health/PumphouseMimic.tsx:84
 #: src/pages/assets/health/PumphouseMimic.tsx:102
 #: src/pages/assets/health/common.tsx:193
-#: src/pages/assets/performance/KpiStrip.tsx:150
+#: src/pages/assets/performance/KpiStrip.tsx:161
 #: src/pages/assets/performance/TimeRangeControl.tsx:277
 #: src/pages/stock/StockDetail.tsx:694
 #: src/tables/stock/StockItemTable.tsx:279
@@ -10051,13 +10051,13 @@ msgstr "Unavailable"
 
 #: src/pages/assets/health/PumphouseMimic.tsx:100
 #: src/pages/assets/performance/StationPerformance.tsx:496
-#: src/pages/assets/performance/kpis.ts:138
+#: src/pages/assets/performance/kpis.ts:148
 msgid "Idle"
 msgstr "Idle"
 
 #: src/pages/assets/health/PumphouseMimic.tsx:101
 #: src/pages/assets/performance/StationPerformance.tsx:494
-#: src/pages/assets/performance/kpis.ts:137
+#: src/pages/assets/performance/kpis.ts:147
 #: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:64
 #: src/pages/repair/RepairPacketDetail.tsx:184
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:471
@@ -10535,33 +10535,41 @@ msgstr "Webhook"
 msgid "Manual"
 msgstr "Manual"
 
-#: src/pages/assets/performance/KpiStrip.tsx:73
+#: src/pages/assets/performance/KpiStrip.tsx:79
 msgid "Trend over the selected window"
 msgstr "Trend over the selected window"
 
-#: src/pages/assets/performance/KpiStrip.tsx:100
+#: src/pages/assets/performance/KpiStrip.tsx:106
 msgid "Rising over the window"
 msgstr "Rising over the window"
 
-#: src/pages/assets/performance/KpiStrip.tsx:102
+#: src/pages/assets/performance/KpiStrip.tsx:108
 msgid "Falling over the window"
 msgstr "Falling over the window"
 
-#: src/pages/assets/performance/KpiStrip.tsx:103
+#: src/pages/assets/performance/KpiStrip.tsx:109
 msgid "Steady over the window"
 msgstr "Steady over the window"
 
-#: src/pages/assets/performance/KpiStrip.tsx:121
+#: src/pages/assets/performance/KpiStrip.tsx:127
 #: src/pages/assets/performance/sections/OtherSection.tsx:33
 msgid "Window"
 msgstr "Window"
 
+#: src/pages/assets/performance/KpiStrip.tsx:156
+msgid "Bad quality"
+msgstr "Bad quality"
+
+#: src/pages/assets/performance/KpiStrip.tsx:156
+msgid "Uncertain quality"
+msgstr "Uncertain quality"
+
 #. placeholder {0}: formatClock(tile.observedAt)
-#: src/pages/assets/performance/KpiStrip.tsx:190
+#: src/pages/assets/performance/KpiStrip.tsx:201
 msgid "Observed {0}"
 msgstr "Observed {0}"
 
-#: src/pages/assets/performance/KpiStrip.tsx:198
+#: src/pages/assets/performance/KpiStrip.tsx:209
 msgid "no limit configured"
 msgstr "no limit configured"
 
@@ -10672,66 +10680,70 @@ msgstr "Each point is one snapshot in which both were read; colour darkens towar
 
 #. placeholder {0}: formatValue(warnMax, decimals, unit)
 #. placeholder {0}: formatValue(warnMin, decimals, unit)
-#: src/pages/assets/performance/SensorGroupCard.tsx:163
-#: src/pages/assets/performance/SensorGroupCard.tsx:175
+#: src/pages/assets/performance/SensorGroupCard.tsx:168
+#: src/pages/assets/performance/SensorGroupCard.tsx:180
 msgid "Warn {0}"
 msgstr "Warn {0}"
 
 #. placeholder {0}: formatValue(criticalMax, decimals, unit)
 #. placeholder {0}: formatValue(criticalMin, decimals, unit)
-#: src/pages/assets/performance/SensorGroupCard.tsx:169
-#: src/pages/assets/performance/SensorGroupCard.tsx:181
+#: src/pages/assets/performance/SensorGroupCard.tsx:174
+#: src/pages/assets/performance/SensorGroupCard.tsx:186
 msgid "Critical {0}"
 msgstr "Critical {0}"
 
 #. placeholder {0}: summary.highest.parameter.label
 #. placeholder {1}: formatValue(summary.highest.value, decimals, unit, summary.spread)
-#: src/pages/assets/performance/SensorGroupCard.tsx:279
+#: src/pages/assets/performance/SensorGroupCard.tsx:284
 msgid "Highest now: {0} {1}"
 msgstr "Highest now: {0} {1}"
 
 #. placeholder {0}: formatValue(summary.mean, decimals, unit, summary.spread)
-#: src/pages/assets/performance/SensorGroupCard.tsx:282
+#: src/pages/assets/performance/SensorGroupCard.tsx:287
 msgid "Mean {0}"
 msgstr "Mean {0}"
 
 #. placeholder {0}: formatValue(summary.spread, decimals, unit, summary.spread)
-#: src/pages/assets/performance/SensorGroupCard.tsx:286
+#: src/pages/assets/performance/SensorGroupCard.tsx:291
 msgid "Spread {0} (calculated)"
 msgstr "Spread {0} (calculated)"
 
 #. placeholder {0}: formatValue(windowStats.max.value, decimals, unit)
 #. placeholder {1}: windowStats.max.label
-#: src/pages/assets/performance/SensorGroupCard.tsx:291
+#: src/pages/assets/performance/SensorGroupCard.tsx:296
 msgid "Window peak {0} ({1})"
 msgstr "Window peak {0} ({1})"
 
 #. placeholder {0}: summary.over
 #. placeholder {1}: summary.configured
-#: src/pages/assets/performance/SensorGroupCard.tsx:301
+#: src/pages/assets/performance/SensorGroupCard.tsx:306
 msgid "{0} of {1} over a limit"
 msgstr "{0} of {1} over a limit"
 
 #. placeholder {0}: summary.configured
-#: src/pages/assets/performance/SensorGroupCard.tsx:302
+#: src/pages/assets/performance/SensorGroupCard.tsx:307
 msgid "{0} within limits"
 msgstr "{0} within limits"
 
-#: src/pages/assets/performance/SensorGroupCard.tsx:306
+#: src/pages/assets/performance/SensorGroupCard.tsx:311
 msgid "No limits configured"
 msgstr "No limits configured"
 
-#: src/pages/assets/performance/SensorGroupCard.tsx:335
+#: src/pages/assets/performance/SensorGroupCard.tsx:340
 msgid "Sensors over time"
 msgstr "Sensors over time"
 
-#: src/pages/assets/performance/SensorGroupCard.tsx:349
+#: src/pages/assets/performance/SensorGroupCard.tsx:354
 msgid "Current reading by sensor"
 msgstr "Current reading by sensor"
 
-#: src/pages/assets/performance/SensorGroupCard.tsx:383
-msgid "A sensor with no current reading is drawn at zero and greyed; zero is not its value."
-msgstr "A sensor with no current reading is drawn at zero and greyed; zero is not its value."
+#: src/pages/assets/performance/SensorGroupCard.tsx:388
+msgid "A sensor with no usable current reading is drawn at zero and greyed; zero is not its value."
+msgstr "A sensor with no usable current reading is drawn at zero and greyed; zero is not its value."
+
+#: src/pages/assets/performance/SensorGroupCard.tsx:388
+#~ msgid "A sensor with no current reading is drawn at zero and greyed; zero is not its value."
+#~ msgstr "A sensor with no current reading is drawn at zero and greyed; zero is not its value."
 
 #: src/pages/assets/performance/SensorHeatmap.tsx:80
 msgid "Sensor heatmap"
@@ -11015,35 +11027,35 @@ msgstr "{0} d ago"
 
 #. placeholder {0}: pool.length
 #. placeholder {1}: top.label
-#: src/pages/assets/performance/kpis.ts:111
+#: src/pages/assets/performance/kpis.ts:121
 msgid "Highest of {0}: {1}"
 msgstr "Highest of {0}: {1}"
 
 #. placeholder {0}: pool.length
 #. placeholder {1}: top.label
-#: src/pages/assets/performance/kpis.ts:112
+#: src/pages/assets/performance/kpis.ts:122
 msgid "Highest of {0}: {1} · unit unconfirmed, raw source value"
 msgstr "Highest of {0}: {1} · unit unconfirmed, raw source value"
 
-#: src/pages/assets/performance/kpis.ts:132
+#: src/pages/assets/performance/kpis.ts:142
 msgid "Code {code}"
 msgstr "Code {code}"
 
 #. placeholder {0}: parameter.signal.value
-#: src/pages/assets/performance/kpis.ts:151
+#: src/pages/assets/performance/kpis.ts:161
 msgid "Plant status code: {0}"
 msgstr "Plant status code: {0}"
 
-#: src/pages/assets/performance/kpis.ts:193
+#: src/pages/assets/performance/kpis.ts:203
 msgid "Vibration"
 msgstr "Vibration"
 
-#: src/pages/assets/performance/kpis.ts:196
+#: src/pages/assets/performance/kpis.ts:206
 #: src/pages/assets/performance/sections/ThermalSections.tsx:116
 msgid "No approved vibration channel"
 msgstr "No approved vibration channel"
 
-#: src/pages/assets/performance/kpis.ts:206
+#: src/pages/assets/performance/kpis.ts:216
 msgid "Winding temperature"
 msgstr "Winding temperature"
 

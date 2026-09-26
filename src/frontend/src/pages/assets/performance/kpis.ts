@@ -17,6 +17,11 @@ function instant(signal: MachineSignal): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+/** A reading a tile may show as the machine's state: numeric and good. */
+function usableSignal(signal: MachineSignal): boolean {
+  return numeric(signal) !== null && signal.quality === 'good';
+}
+
 function numeric(signal: MachineSignal): number | null {
   return typeof signal.value === 'number' && Number.isFinite(signal.value)
     ? signal.value
@@ -38,7 +43,12 @@ function tileFor(
     decimals: parameter.definition.decimals,
     observedAt: instant(signal),
     stale: signal.stale,
-    state: hasLimits(signal) ? signal.state : 'unconfigured',
+    quality: signal.quality,
+    // A limit verdict on an unusable reading is no verdict.
+    state:
+      hasLimits(signal) && signal.quality === 'good'
+        ? signal.state
+        : 'unconfigured',
     series: series.get(signal.binding_id)
   };
 }
@@ -63,11 +73,11 @@ function highestTile(
   series: Map<number, SeriesEntry>,
   missingReason: string
 ): KpiTile {
-  const live = family.filter(
-    (p) => numeric(p.signal) !== null && !p.signal.stale
-  );
+  // Only good-quality readings compete: a pegged sensor reporting 3276.7 with
+  // quality bad is the loudest number in the family and means nothing.
+  const live = family.filter((p) => usableSignal(p.signal) && !p.signal.stale);
   const pool =
-    live.length > 0 ? live : family.filter((p) => numeric(p.signal) !== null);
+    live.length > 0 ? live : family.filter((p) => usableSignal(p.signal));
   if (pool.length === 0) {
     return {
       key,

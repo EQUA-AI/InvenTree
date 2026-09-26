@@ -20,6 +20,7 @@ interface SignalSpec {
   >;
   stale?: boolean;
   state?: string;
+  quality?: string;
 }
 
 export const SIGNALS: SignalSpec[] = [
@@ -75,10 +76,12 @@ export const SIGNALS: SignalSpec[] = [
   { key: '/pd/P1/dv', value: 812.5, unit: 'cusec', name: 'dv' },
   ...Array.from({ length: 11 }, (_, i) => ({
     key: `/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED${i + 1}`,
-    value: 78 + i * 0.4,
+    value: i === 3 ? 3276.7 : 78 + i * 0.4,
     unit: 'degC',
     name: `Motor Winding Temperature ${i + 1}`,
-    limits: { warn_max: 125, critical_max: 145 }
+    limits: { warn_max: 125, critical_max: 145 },
+    quality: i === 3 ? 'bad' : 'good',
+    state: i === 3 ? 'unknown' : 'normal'
   })),
   ...Array.from({ length: 6 }, (_, i) => ({
     key: `/dex/PUMP1_MOTOR_CORE_RTD${i + 1}_PROCESS_VALUE`,
@@ -127,7 +130,7 @@ export function signalRows() {
     observed_at:
       spec.value === null ? null : new Date(NOW - 20_000).toISOString(),
     received_at: new Date(NOW - 10_000).toISOString(),
-    quality: spec.value === null ? 'unknown' : 'good',
+    quality: spec.quality ?? (spec.value === null ? 'unknown' : 'good'),
     stale: spec.stale ?? false,
     freshness_threshold_seconds: 300,
     state: spec.state ?? (spec.limits ? 'normal' : 'unknown'),
@@ -187,6 +190,7 @@ export function seriesFor(url: URL, options: { fail?: boolean } = {}) {
         // A gap in the middle third of the window, so it can be seen to be one.
         if (i > count * 0.45 && i < count * 0.55) return null;
         const wobble = Math.sin(i / 9) * (Math.abs(base) * 0.02 || 0.1);
+        if (row.quality === 'bad') return { t, v: base, q: 'bad' };
         return { t, v: Number((base + wobble).toFixed(3)), q: 'good' };
       }).filter((s): s is NonNullable<typeof s> => s !== null);
       return {

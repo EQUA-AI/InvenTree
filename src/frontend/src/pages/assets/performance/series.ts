@@ -49,8 +49,20 @@ export function indexSeries(
   return map;
 }
 
+/**
+ * Whether a sample is a value the page may use.
+ *
+ * Only a good-quality number is. A pegged over-range marker arrives as a
+ * number with quality `bad`; drawing it would put 3276.7 degC on a winding
+ * chart and make it the "highest sensor". The same rule the Health blade and
+ * the mimic apply: unusable is as disqualifying as absent, so it is a gap.
+ */
+export function usable(sample: SeriesSample): boolean {
+  return sample.v !== null && Number.isFinite(sample.v) && sample.q === 'good';
+}
+
 function numeric(samples: readonly SeriesSample[]): SeriesSample[] {
-  return samples.filter((s) => s.v !== null && Number.isFinite(s.v));
+  return samples.filter(usable);
 }
 
 export function seriesStats(
@@ -142,8 +154,7 @@ export function alignRows(
         for (const k of keys) row[k] = null;
         byInstant.set(sample.t, row);
       }
-      row[key] =
-        sample.v !== null && Number.isFinite(sample.v) ? sample.v : null;
+      row[key] = usable(sample) ? sample.v : null;
     }
   }
   const rows = [...byInstant.values()].sort((a, b) => a.t - b.t);
@@ -180,13 +191,13 @@ export function differenceSeries(
   }
   const bAt = new Map<number, number>();
   for (const s of b.samples) {
-    if (s.v !== null && Number.isFinite(s.v)) bAt.set(s.t, s.v);
+    if (usable(s)) bAt.set(s.t, s.v as number);
   }
   const out: SeriesSample[] = [];
   for (const s of a.samples) {
     const other = bAt.get(s.t);
-    if (s.v !== null && Number.isFinite(s.v) && other !== undefined) {
-      out.push({ t: s.t, v: s.v - other, q: s.q });
+    if (usable(s) && other !== undefined) {
+      out.push({ t: s.t, v: (s.v as number) - other, q: s.q });
     }
   }
   return out;
@@ -237,13 +248,13 @@ export function relationPoints(
   }
   const yAt = new Map<number, number>();
   for (const s of y.samples) {
-    if (s.v !== null && Number.isFinite(s.v)) yAt.set(s.t, s.v);
+    if (usable(s)) yAt.set(s.t, s.v as number);
   }
   const out: RelationPoint[] = [];
   for (const s of x.samples) {
     const other = yAt.get(s.t);
-    if (s.v !== null && Number.isFinite(s.v) && other !== undefined) {
-      out.push({ x: s.v, y: other, t: s.t });
+    if (usable(s) && other !== undefined) {
+      out.push({ x: s.v as number, y: other, t: s.t });
     }
   }
   return out;
@@ -311,14 +322,14 @@ export function heatmapMatrix(
     const counts = new Array<number>(columnCount).fill(0);
     let last: number | null = null;
     for (const s of entry.samples) {
-      if (s.v === null || !Number.isFinite(s.v)) continue;
+      if (!usable(s)) continue;
       const i = Math.min(
         columnCount - 1,
         Math.max(0, Math.floor((s.t - windowStart) / width))
       );
-      sums[i] += s.v;
+      sums[i] += s.v as number;
       counts[i] += 1;
-      last = s.v;
+      last = s.v as number;
     }
     const cells = sums.map((sum, i) => {
       if (counts[i] === 0) return null;
