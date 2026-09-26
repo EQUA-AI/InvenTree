@@ -33,6 +33,9 @@ import sys
 
 OPC = re.compile(r'^/dex/NS=.*::P([1-9][0-9]{0,3})_(.+)$')
 
+#: Tags whose behaviour settles them without anyone naming them.
+DEAD_TAGS = {'WT_CLR_CLD_INLT_WT_RTD2'}
+
 DUPLICATE = (
     'Second spelling of a tag the catalogue already handles. This OPC-UA node id '
     'names the same measurement as /dex/PUMP{bay}_{local}_PROCESS_VALUE, and the two '
@@ -41,6 +44,16 @@ DUPLICATE = (
     'points makes approval ambiguous, and of the two paths this is the one that stops '
     'responding. Nothing to decide unless the plant says the node id is the '
     'trustworthy path, in which case the catalogued tag is what should be withheld.'
+)
+
+#: Settled by measurement rather than by a name, so it is not part of the ask.
+DEAD = (
+    'Dead channel: constant 0 across 524 samples spanning the whole migrated '
+    'window, on running and idle bays alike. Knowing what "{local}" was meant to '
+    'measure would not make it usable, so this is an instrumentation question '
+    '(BLOCKERS.md Ask 1) and not the tag-meaning one. Removed from Ask 3 on '
+    '2026-09-26 for that reason - asking the plant what a channel measures when '
+    'it measures nothing is wasted breath.'
 )
 
 UNIQUE = (
@@ -82,7 +95,7 @@ def build(pk):
     every += [path for entry in fresh['approve'] for path in entry['paths']]
     duplicate, unique = classify(every)
 
-    withhold, restated = [], {'duplicate': 0, 'unique': 0}
+    withhold, restated = [], {'duplicate': 0, 'unique': 0, 'dead': 0}
     for entry in fresh['pending']:
         path = entry['paths'][0]
         if path in duplicate:
@@ -94,6 +107,10 @@ def build(pk):
         if path in unique:
             bay, local = unique[path]
             local = local.replace('.PROCESS_VALUE', '')
+            if local in DEAD_TAGS:
+                withhold.append({**entry, 'reason': DEAD.format(local=local)})
+                restated['dead'] += 1
+                continue
             withhold.append({**entry, 'reason': UNIQUE.format(bay=bay, local=local)})
             restated['unique'] += 1
             continue
@@ -119,6 +136,7 @@ if __name__ == '__main__':
     print(
         f'station {station}: withhold {len(pack["withhold"])} '
         f'({restated["duplicate"]} duplicate spellings, '
+        f'{restated["dead"]} dead by measurement, '
         f'{restated["unique"]} awaiting a meaning, '
         f'{len(pack["withhold"]) - sum(restated.values())} carried forward)'
     )

@@ -4,7 +4,7 @@
 |---|---|---|
 | 1 | One snapshot taken while a pump is running | **Satisfied** 2026-09-21, and it settled less than expected |
 | 2 | One Cosmos role assignment | **Resolved** 2026-09-19 |
-| 3 | What seven OPC-UA tags measure | **Open** - blocks 84 points at Saraswati, and nothing else |
+| 3 | What six OPC-UA tags measure | **Open** - blocks 72 points at Saraswati; a seventh is now settled as dead |
 
 **Only Ask 3 is outstanding.** Each ask needs someone other than the developer,
 and each states exactly what is needed, why, and how to verify it afterwards, so
@@ -500,9 +500,9 @@ confirm it is refused.
 
 ---
 
-## Ask 3: what seven OPC-UA tags measure
+## Ask 3: what six OPC-UA tags measure
 
-### Status: OPEN. Blocks 84 points at Saraswati, and nothing else.
+### Status: OPEN. Blocks 72 points at Saraswati, and nothing else.
 
 The source spells bay-scoped measurements twice. Most arrive as `PUMP5_...`,
 which the catalogue keys on. A second set arrives as the raw node id of an
@@ -536,7 +536,7 @@ trustworthy path, in which case it is the catalogued tag that should be withheld
 | `TOP_CVR_DRNG` | varies, 0.002-0.86 |
 | `VS_NDE_BG2_M` | varies; one channel sits on the 59.257 sentinel |
 | `WT_CDIN_WT1_M`, `WT_CDIN_WT2_M` | varies, median 35.2 |
-| `WT_CLR_CLD_INLT_WT_RTD2` | constant across the whole window - dead |
+| `WT_CLR_CLD_INLT_WT_RTD2` | constant 0 across the window - **dead, and now recorded as such; not part of the ask** |
 
 Each carries a measurement no other tag provides, so unlike the dead families in
 Ask 1 these would become real signals. The obstacle is not the unit: it is that
@@ -546,10 +546,94 @@ conventions, and the values do not identify the quantity - a median around 35
 fits degC, percent and metres equally. Asserting a meaning from the abbreviation
 would be a stronger claim than any unit approved here has rested on.
 
+### Researched 2026-09-26: the web is not the route, and two guesses are traps
+
+Five independent search angles, then two adversarial passes over their findings.
+Nothing was identified, and the negative is worth recording so nobody repeats it.
+
+**The control is what makes the negative meaningful.** All seven tags return
+nothing, searched verbatim, in combination, restricted to code-hosting domains,
+and as OPC-UA node ids. So do the *already-catalogued* spellings -
+`MTR_NDE_BRG_VBRTN`, `PMP_THRST_BRG_VBRTN`, `THRST_BRG_THRST_PD_RTD` - and a
+GitHub code search returns zero for each. The whole tag vocabulary of this plant
+is absent from the indexed web, not just the seven unexplained ones. Caveat
+recorded by the adversarial pass: grep.app, searchcode and authenticated GitHub
+code search were not reachable, so this is "absent from every index queried",
+not "provably absent".
+
+**Where a published convention exists for this machine class, it looks nothing
+like ours.** The AHEC-IITR/MNRE standard uses IEEE C37.2 device numbers - 38GT
+guide bearing temperature, 38THT thrust bearing temperature, 38QB bearing oil
+temperature, 71QBH/L oil level high/low, 26GS stator winding temperature. Ours
+is word-fragment mnemonics, which corroborates an integrator-authored namespace
+that was never published.
+
+**Two warnings against the readings that look obvious.** Both argue that
+abbreviation-led guessing is *less* safe here, not more:
+
+- Every source consulted treats bearing-oil-reservoir level as a **high/low
+  switch**, not a continuous analogue - which sits badly with `OL_SMP_BRG_LT`
+  varying continuously. The same sources put a temperature detector in every oil
+  reservoir, so its 40-79 band fits degC at least as well as a level.
+- In Indian lift-irrigation tender language "sump" routinely means the **intake
+  water sump**, not an oil sump, and "cooling water inlet" is its own thing. Two
+  of the seven contain `SMP` and `CDIN`/`WT`. Convention supplies *competing*
+  readings for exactly the fragments in question.
+
+**Do not redirect this ask to ABB.** A tempting chain - ABB published that it
+supplied "the PLC based SCADA" and 37 motors of 40 MW and 43 MW for KLIS, and
+Saraswati's 12 plus Parvathi's 14 is 26, which fits inside 37 - does not
+survive. MEIL's own release states the Laxmi, Saraswati and Parvathi houses hold
+**43 machines of 40 MW each**, so 37 cannot cover that set, and 26-inside-37
+picks out no particular machines. That release names BHEL, Andritz and Xylem and
+does not mention ABB. ABB's page names no pump house, no product and no tag.
+
+**The primary-source avenue is live but gated.** An earlier pass wrote it off as
+a DNS block; that was this machine's stub resolver, and the adversarial pass
+caught it. Through a public resolver, `eprocurement.telangana.gov.in` serves its
+real front page (HTTP 200, 26 KB) and `irrigation.telangana.gov.in` redirects to
+`/icad/home`. But the front page is a static shell of FAQs and G.O.s with no
+tender search, `tender.telangana.gov.in/TenderDetailsHome.html` bounces to
+`SessionTimeOut.html?error=1`, and ICAD serves an 815-byte JavaScript shell. The
+bid documents that would carry an I/O schedule sit behind bidder login. So the
+route is a bidder contact or an RTI request, not a search engine.
+
+### Measured 2026-09-26: what the behaviour says, with no name at all
+
+Sampled across the window, all 12 bays. This is the evidence standard the rest
+of the review uses, and it settles one of the seven outright:
+
+| tag | behaviour | reading |
+|---|---|---|
+| `WT_CLR_CLD_INLT_WT_RTD2` | constant 0 across 524 samples | **dead channel** - no meaning needed, and asking is wasted breath |
+| `WT_CDIN_WT1_M` | 5.1-56.9, median 34.2, 249 distinct | varies genuinely; coincides with stator and thrust-pad RTDs about a tenth of the time, so a temperature in that band is the natural reading |
+| `WT_CDIN_WT2_M` | 20.7-51.9, median 34.5, 192 distinct | as above |
+| `MV_PMP_DRF_TB_PT` | range exactly -18.96..18.96; running 19, idle 0.013 | frozen-constant pattern |
+| `OL_SMP_BRG_LT` | exactly -118.5..118.5; running 119, idle 74.5 | frozen-constant pattern |
+| `TOP_CVR_DRNG` | exactly -7.111..7.111; running 7.11, idle 0.54 | frozen-constant pattern |
+| `VS_NDE_BG2_M` | exactly -59.26..59.26; running 59.3, idle 0.12 | frozen-constant pattern |
+
+The last four sit on the same recurring plant constants the frozen P5 block
+carries - 18.96, 118.5, 7.111, 59.257 - one value while running, near zero while
+idle, with a perfectly symmetric range. That looked like register aliasing, so it
+was tested: for each, how often does another tag on the same bay hold the
+identical value in the same snapshot? Between 8% and 30%, not the ~100% aliasing
+would require. **The hypothesis is not supported**; the coincidences are what you
+get when many channels share a small pool of sentinel values. Recorded so nobody
+re-derives it and stops at the appealing half.
+
 ### What to ask for
 
 The OPC-UA tag list for `PS1_PROG_19_4_2019` - an address-space export, a point
-schedule, or simply what each of the seven measures. One line per tag is enough.
+schedule, or simply what each tag measures. One line per tag is enough.
+
+**Six tags, not seven.** `WT_CLR_CLD_INLT_WT_RTD2` is constant 0 across 524
+samples and is now recorded as a dead channel, which is an Ask 1 question rather
+than this one. And ask the *integrator*, not the OEM: the supplier attribution
+is unsettled (see above), so route it through MEIL, who hold the contract, and
+let them name whoever wrote `PS1_PROG_19_4_2019`. A search engine will not
+answer this - that has now been tried across five angles and the whole tag
+vocabulary, catalogued spellings included, is absent from every index reachable.
 
 ### How to use it when it arrives
 
