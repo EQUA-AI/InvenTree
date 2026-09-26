@@ -432,3 +432,73 @@ az containerapp ingress traffic set \
 ```
 
 Keep `aimms-experimental--0000016` active at 0% through at least `2026-07-25T05:16:22Z`.
+
+---
+
+## 13. Prepared Rollout — 2026-09-26 (Performance tab, sampled series read, pumphouse fixes)
+
+> **Status:** Built and verified locally; **Azure rollout blocked on RBAC** — the
+> signed-in account `Aniket@equa.work` holds only `Cosmos DB Operator` on
+> `epconchatcosmos9d6b` and is denied `Microsoft.App/containerApps/read` on
+> `EpconChat`, so nothing below has been run against Azure.
+
+| Attribute | Value |
+|-----------|-------|
+| Git commit | `37e31e8e9877f45d45bab16cad6c985c7a8f5d81` on `origin/inventTree-aniket` (pushed 2026-09-26) |
+| Change | Performance tab for pumps and stations; `series/` sampled history endpoint; winding-limit sampler; ISO timestamps on repair APIs; cached over-range readings marked bad (`assets.0017`) |
+| Migrations to apply | `assets.0015_cusec_unit`, `assets.0016_opc_tag_bay_ownership`, `assets.0017_pegged_state_quality` (data, irreversible), `part.0155_discharge_rate_note` |
+| Target web app | `aimms-dev` in `EpconChat` (currently on mutable tag `aimms-dev:latest`) |
+| Target worker | the Container App built from `worker-revision.yaml` (currently on `inventree:kanban-board`, an older image — it must move to the same image as the web app: the poller and ingestion code changed) |
+| Registry | `aimms-hjcxb6epgvhgbyge.azurecr.io` |
+| Image | `aimms-dev:inventree-aniket-37e31e8e9877` (immutable) |
+
+Local verification before this rollout: backend suites `machine_health` (278), `repair` (313), `assets` (212) green; frontend `tsc`, biome and the Performance harness (6 Playwright checks) green; every station and pump's Health and Mimic driven in a real browser against the live source, all rendering; the Performance tab rendered at `:8000/web` from the built bundle.
+
+### 13.1 Rights the operator needs
+
+`Contributor` (or `Container Apps Contributor`) on the two Container Apps, and `AcrPush` on registry `aimms-hjcxb6epgvhgbyge`, or run as the identity that performed sections 1–12.
+
+### 13.2 Commands (commit-pinned, same recipe as sections 4 and 11)
+
+```bash
+SHA=37e31e8e9877f45d45bab16cad6c985c7a8f5d81
+TAG=inventree-aniket-${SHA:0:12}
+ACR=aimms-hjcxb6epgvhgbyge
+IMAGE="$ACR.azurecr.io/aimms-dev:$TAG"
+
+# Build in ACR from the exact GitHub commit (the production stage does not
+# forward the commit ARGs into ENV - see section 12 - so they are also set on
+# the revision below).
+az acr build --registry "$ACR" --image "aimms-dev:$TAG" \
+  --file contrib/container/Dockerfile --target production \
+  --build-arg commit_hash="$SHA" --build-arg commit_date=2026-09-26T17:02:28+03:00 \
+  --build-arg commit_tag=inventree-aniket \
+  "https://github.com/EQUA-AI/InvenTree.git#$SHA"
+
+# Record the current revisions as rollback targets first.
+az containerapp revision list -n aimms-dev -g EpconChat \
+  --query "[?properties.active].{name:name, traffic:properties.trafficWeight, image:properties.template.containers[0].image}" -o table
+
+# Web app: new revision on the immutable image.
+az containerapp update -n aimms-dev -g EpconChat --image "$IMAGE" \
+  --set-env-vars INVENTREE_COMMIT_HASH="$SHA" INVENTREE_COMMIT_DATE=2026-09-26T17:02:28+03:00
+
+# The container does not migrate at start (contrib/container/init.sh only
+# collects static files), so apply the migrations once the revision is ready.
+az containerapp exec -n aimms-dev -g EpconChat --command "python src/backend/InvenTree/manage.py migrate --noinput"
+
+# Worker: same image, so the poller ingests with the same rules as the web app.
+az containerapp update -n <worker-app-name> -g EpconChat --image "$IMAGE"
+```
+
+### 13.3 Verification
+
+- `GET https://aimms-dev.kindpebble-bfe407e4.eastus2.azurecontainerapps.io/api/` → 200
+- `/` → redirects to `/web`, 200; sign in; a pump page shows **Performance** beside Health.
+- Authenticated `GET /api/machine-health/machines/<pump>/health/series/?keys=/pc&from=<now-15m>&to=<now>&points=60` → 200 with `mode` and `series`.
+- The Health tab of a pump with pegged winding channels (Millbrook Pump 01) shows those rows as quality **Bad**, not Good.
+- Worker replica logs show `poll_cosmos_pumphouse_sources` running from the new image.
+
+### 13.4 Rollback
+
+`az containerapp update -n aimms-dev -g EpconChat --image <previous image from 13.2>`; the migrations are additive apart from `assets.0017`, which corrects cached quality values and needs no reversal.
