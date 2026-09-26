@@ -50,7 +50,7 @@
      "data_type": "number",
      "units": "",
      "unit_status": "unresolved",
-     "note": "Per-pump discharge rate: reads the stated design discharge while running, 0 while stopped, and the station /dv is their exact sum. Unit unconfirmed; hydraulics exclude m3/s, m3/h, L/s, cusec."
+     "note": "Per-pump discharge rate: the stated design discharge while running, 0 while stopped; the station /dv is their exact sum. Cusecs, settled 2026-09-25: Annaram's published 11,724 for four pumps is this tag's 2,931 each."
     }
    ]
   },
