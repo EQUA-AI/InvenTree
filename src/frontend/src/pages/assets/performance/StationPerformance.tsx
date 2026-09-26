@@ -50,6 +50,10 @@ const STATION_KEYS = [
 ];
 
 /** The per-bay keys a station page compares. */
+function bayNumber(bay: string): number {
+  return Number((bay.match(/\d+/) ?? ['0'])[0]);
+}
+
 function bayKeys(bay: string): {
   power: string;
   flow: string;
@@ -91,7 +95,15 @@ export function StationPerformance({
         })
       ).data
   });
-  const bays = useMemo(() => baysQuery.data?.bays ?? [], [baysQuery.data]);
+  // The mimic lists bays in key order, which puts P10 before P2; the page
+  // reads them the way the plant numbers them.
+  const bays = useMemo(
+    () =>
+      [...(baysQuery.data?.bays ?? [])].sort(
+        (a, b) => bayNumber(a.key) - bayNumber(b.key)
+      ),
+    [baysQuery.data]
+  );
 
   const keys = useMemo(
     () => [
@@ -373,7 +385,12 @@ export function StationPerformance({
             {stationLines.lines.length > 0 && (
               <ChartCard
                 title={t`Forebay level and pumps running`}
-                description={t`Level on the left axis; the running count on the right, as steps.`}
+                description={
+                  stationLines.lines.some((l) => l.yAxisId === 'right') &&
+                  stationLines.lines.some((l) => l.yAxisId !== 'right')
+                    ? t`Level on the left axis; the running count on the right, as steps.`
+                    : undefined
+                }
               >
                 <TrendChart
                   rows={stationLines.rows}

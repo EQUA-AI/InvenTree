@@ -112,6 +112,8 @@ test('dragging across a chart offers a zoom, and taking it narrows the window', 
   await expect(page.getByText(/Sampled: one reading every/)).toBeVisible();
   const chart = page.locator('.recharts-wrapper').first();
   await expect(chart).toBeVisible();
+  // Raw mouse events do not scroll: the chart must be inside the viewport.
+  await chart.scrollIntoViewIfNeeded();
   const box = (await chart.boundingBox())!;
   // Drag across the middle third of the plot area.
   const y = box.y + box.height * 0.45;

@@ -16,7 +16,7 @@ import { IconMaximize, IconZoomIn } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { ReferenceArea } from 'recharts';
 
-import { formatInstant, formatTick, formatValue } from './format';
+import { formatInstant, formatTick, formatValue, timeTicks } from './format';
 import type { ChartRow } from './series';
 
 /**
@@ -227,6 +227,35 @@ function ChartBody({
   // for the right axis - the left-axis parameter is not mapped on this pump -
   // they take the left axis instead, rather than leaving it labelled and empty.
   const withRight = anyLeftAxis && series.some((s) => s.yAxisId === 'right');
+  const leftUnit = anyLeftAxis ? unit : rightUnit;
+
+  // Axis widths follow the widest tick label they will print: a fixed width
+  // fits "0" to "4" and squeezes "-0.105" against the unit. Ticks are nice
+  // numbers within the data's extremes, so the extremes bound their length.
+  const axisWidth = useMemo(() => {
+    const widest = (side: 'left' | 'right') => {
+      let chars = 1;
+      for (const s of series) {
+        const onRight = s.yAxisId === 'right' && withRight;
+        if ((side === 'right') !== onRight) continue;
+        for (const row of rows) {
+          const v = row[s.key];
+          if (v === null || v === undefined || !Number.isFinite(v)) continue;
+          chars = Math.max(chars, formatValue(v, s.decimals).length);
+        }
+      }
+      return Math.min(chars, 10);
+    };
+    return {
+      left: 14 + 7 * widest('left'),
+      right: withRight ? 14 + 7 * widest('right') : 0
+    };
+  }, [series, rows, withRight]);
+
+  const ticks = useMemo(
+    () => timeTicks(windowStart, windowEnd),
+    [windowStart, windowEnd]
+  );
 
   const zoomRange = useMemo(() => {
     if (!selection || dragging) return null;
@@ -257,6 +286,20 @@ function ChartBody({
 
   return (
     <Box>
+      {/* Units sit upright above their axis; a one-letter unit rotated
+          through ninety degrees ("V", "m") reads as a chevron or an E. */}
+      {(leftUnit || (withRight && rightUnit)) && (
+        <Group justify='space-between' gap='xs' px={4} mb={-4}>
+          <Text size='xs' c='dimmed'>
+            {leftUnit || ''}
+          </Text>
+          {withRight && (
+            <Text size='xs' c='dimmed'>
+              {rightUnit || ''}
+            </Text>
+          )}
+        </Group>
+      )}
       <LineChart
         h={height}
         data={rows}
@@ -270,16 +313,14 @@ function ChartBody({
         // well wraps under a narrow card and runs into whatever follows.
         withLegend={!toggleable && series.length > 1 && series.length <= 8}
         legendProps={{ verticalAlign: 'bottom', height: 28 }}
-        yAxisLabel={(anyLeftAxis ? unit : rightUnit) || undefined}
         withRightYAxis={withRight}
-        rightYAxisLabel={withRight ? rightUnit || undefined : undefined}
         yAxisProps={{
-          width: 56,
+          width: axisWidth.left,
           allowDataOverflow: false,
           domain: ['auto', 'auto']
         }}
         rightYAxisProps={{
-          width: 56,
+          width: axisWidth.right,
           allowDataOverflow: false,
           domain: ['auto', 'auto']
         }}
@@ -288,8 +329,9 @@ function ChartBody({
           scale: 'time',
           domain: [windowStart, windowEnd],
           allowDataOverflow: true,
-          tickFormatter: (value: number) => formatTick(value, windowSeconds),
-          minTickGap: 48
+          ticks,
+          interval: 0,
+          tickFormatter: (value: number) => formatTick(value, windowSeconds)
         }}
         referenceLines={referenceLines?.map((line) => ({
           y: line.y,
@@ -299,6 +341,7 @@ function ChartBody({
         lineChartProps={{
           syncId,
           syncMethod: 'value',
+          margin: { top: 8, right: withRight ? 0 : 12, bottom: 0, left: 0 },
           onMouseDown: (state: unknown) => {
             const at = instantOf(state);
             if (!onZoom || at === null) return;

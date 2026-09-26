@@ -76,9 +76,11 @@ export function ElectricalSection({
           <ChartCard
             title={t`Power and power factor`}
             description={
-              reactive.length > 0
-                ? t`Active power on the left axis; reactive power and power factor on the right.`
-                : t`Active power on the left axis; power factor on the right.`
+              power.length === 0 || reactive.length + factor.length === 0
+                ? undefined
+                : reactive.length > 0
+                  ? t`Active power on the left axis; reactive power and power factor on the right.`
+                  : t`Active power on the left axis; power factor on the right.`
             }
           >
             <ParameterTrend
@@ -100,7 +102,11 @@ export function ElectricalSection({
         {hasSupply && (
           <ChartCard
             title={t`Current and voltage`}
-            description={t`Current on the left axis, voltage on the right.`}
+            description={
+              currents.length > 0 && voltages.length > 0
+                ? t`Current on the left axis, voltage on the right.`
+                : undefined
+            }
           >
             <ParameterTrend
               parameters={[...currents, ...voltages]}
@@ -120,7 +126,11 @@ export function ElectricalSection({
         {hasExcitation && (
           <ChartCard
             title={t`Excitation`}
-            description={t`Field current on the left axis, field voltage on the right.`}
+            description={
+              excitationCurrent.length > 0 && excitationVoltage.length > 0
+                ? t`Field current on the left axis, field voltage on the right.`
+                : undefined
+            }
           >
             <ParameterTrend
               parameters={[...excitationCurrent, ...excitationVoltage]}

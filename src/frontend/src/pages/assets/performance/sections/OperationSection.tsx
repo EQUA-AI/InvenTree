@@ -109,9 +109,11 @@ export function OperationSection({
           <ChartCard
             title={t`Shaft speed and status`}
             description={
-              status.length > 0
+              status.length > 0 && speed.length > 0
                 ? t`Speed on the left axis; the plant's run/stop status on the right, drawn as steps (1 running, 0 idle).`
-                : undefined
+                : status.length > 0
+                  ? t`The plant's run/stop status, drawn as steps (1 running, 0 idle).`
+                  : undefined
             }
           >
             <ParameterTrend
@@ -141,7 +143,7 @@ export function OperationSection({
           <ChartCard
             title={t`Discharge pressure and valve position`}
             description={
-              valves.length > 0
+              valves.length > 0 && pressure.length > 0
                 ? t`Pressure on the left axis, valve positions on the right.`
                 : undefined
             }

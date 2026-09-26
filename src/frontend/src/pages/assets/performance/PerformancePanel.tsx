@@ -302,7 +302,9 @@ function PumpPerformance({
 
       <KpiStrip tiles={tiles} now={now} />
 
-      <UnusualStrip parameters={allParameters} response={response} />
+      {/* Counts are of this machine's own signals; the station context read
+          alongside them is not something this pump has limits on. */}
+      <UnusualStrip parameters={parameters} response={response} />
 
       {seriesQuery.isError && (
         <Alert

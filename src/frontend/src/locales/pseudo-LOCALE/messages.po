@@ -2514,7 +2514,7 @@ msgstr ""
 
 #: src/components/forms/InstanceOptions.tsx:151
 #: src/pages/assets/health/PumphouseMimic.tsx:99
-#: src/pages/assets/performance/StationPerformance.tsx:492
+#: src/pages/assets/performance/StationPerformance.tsx:509
 #: src/pages/assets/performance/kpis.ts:145
 msgid "Running"
 msgstr ""
@@ -3375,7 +3375,7 @@ msgstr ""
 #: src/pages/assets/health/PumphouseMimic.tsx:247
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
-#: src/pages/assets/performance/StationPerformance.tsx:497
+#: src/pages/assets/performance/StationPerformance.tsx:514
 #: src/pages/assets/performance/kpis.ts:143
 msgid "Unknown"
 msgstr ""
@@ -4391,7 +4391,7 @@ msgstr ""
 
 #: src/components/riskradar/RiskRadarPanel.tsx:382
 #: src/pages/assets/health/SignalTable.tsx:119
-#: src/pages/assets/performance/StationPerformance.tsx:429
+#: src/pages/assets/performance/StationPerformance.tsx:446
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:646
 msgid "State"
 msgstr ""
@@ -9168,7 +9168,7 @@ msgstr ""
 
 #: src/pages/assets/EquipmentRegistry.tsx:400
 #: src/pages/assets/performance/PerformancePanel.tsx:246
-#: src/pages/assets/performance/StationPerformance.tsx:313
+#: src/pages/assets/performance/StationPerformance.tsx:325
 msgid "Retry"
 msgstr ""
 
@@ -9688,7 +9688,7 @@ msgstr ""
 #. placeholder {0}: Math.round(source.freshness_threshold_seconds / 60)
 #. placeholder {0}: Number.isInteger(minutes) ? minutes : minutes.toFixed(1)
 #: src/pages/assets/health/HealthSourceStatus.tsx:92
-#: src/pages/assets/performance/format.ts:104
+#: src/pages/assets/performance/format.ts:133
 msgid "{0} min"
 msgstr ""
 
@@ -9936,16 +9936,16 @@ msgstr ""
 #: src/pages/assets/health/PumphouseMimic.tsx:83
 #: src/pages/assets/health/PumphouseMimic.tsx:228
 #: src/pages/assets/health/common.tsx:184
-#: src/pages/assets/performance/KpiStrip.tsx:167
-#: src/pages/assets/performance/KpiStrip.tsx:206
-#: src/pages/assets/performance/StationPerformance.tsx:530
+#: src/pages/assets/performance/KpiStrip.tsx:176
+#: src/pages/assets/performance/KpiStrip.tsx:213
+#: src/pages/assets/performance/StationPerformance.tsx:547
 msgid "No reading"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:84
 #: src/pages/assets/health/PumphouseMimic.tsx:102
 #: src/pages/assets/health/common.tsx:193
-#: src/pages/assets/performance/KpiStrip.tsx:161
+#: src/pages/assets/performance/KpiStrip.tsx:170
 #: src/pages/assets/performance/TimeRangeControl.tsx:277
 #: src/pages/stock/StockDetail.tsx:694
 #: src/tables/stock/StockItemTable.tsx:279
@@ -9970,7 +9970,7 @@ msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:89
 #: src/pages/assets/health/PumphouseMimic.tsx:399
-#: src/pages/assets/performance/StationPerformance.tsx:473
+#: src/pages/assets/performance/StationPerformance.tsx:490
 msgid "Inactive equipment"
 msgstr ""
 
@@ -9994,13 +9994,13 @@ msgid "Unavailable"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:100
-#: src/pages/assets/performance/StationPerformance.tsx:496
+#: src/pages/assets/performance/StationPerformance.tsx:513
 #: src/pages/assets/performance/kpis.ts:148
 msgid "Idle"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:101
-#: src/pages/assets/performance/StationPerformance.tsx:494
+#: src/pages/assets/performance/StationPerformance.tsx:511
 #: src/pages/assets/performance/kpis.ts:147
 #: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:64
 #: src/pages/repair/RepairPacketDetail.tsx:184
@@ -10019,7 +10019,7 @@ msgid "Station status"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:119
-#: src/pages/assets/performance/StationPerformance.tsx:154
+#: src/pages/assets/performance/StationPerformance.tsx:166
 #: src/pages/assets/performance/parameters.ts:539
 msgid "Pumps running"
 msgstr ""
@@ -10033,7 +10033,7 @@ msgid "Input power"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:122
-#: src/pages/assets/performance/StationPerformance.tsx:431
+#: src/pages/assets/performance/StationPerformance.tsx:448
 #: src/pages/assets/performance/parameters.ts:243
 msgid "Discharge flow"
 msgstr ""
@@ -10128,12 +10128,12 @@ msgid "Response time"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:344
-#: src/pages/assets/performance/StationPerformance.tsx:195
+#: src/pages/assets/performance/StationPerformance.tsx:207
 msgid "Plant power"
 msgstr ""
 
 #: src/pages/assets/health/PumphouseMimic.tsx:346
-#: src/pages/assets/performance/StationPerformance.tsx:196
+#: src/pages/assets/performance/StationPerformance.tsx:208
 msgid "Plant flow"
 msgstr ""
 
@@ -10479,46 +10479,46 @@ msgstr ""
 msgid "Manual"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:79
+#: src/pages/assets/performance/KpiStrip.tsx:80
 msgid "Trend over the selected window"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:106
+#: src/pages/assets/performance/KpiStrip.tsx:109
 msgid "Rising over the window"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:108
+#: src/pages/assets/performance/KpiStrip.tsx:111
 msgid "Falling over the window"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:109
+#: src/pages/assets/performance/KpiStrip.tsx:112
 msgid "Steady over the window"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:127
+#: src/pages/assets/performance/KpiStrip.tsx:130
 #: src/pages/assets/performance/sections/OtherSection.tsx:33
 msgid "Window"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:156
+#: src/pages/assets/performance/KpiStrip.tsx:165
 msgid "Bad quality"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:156
+#: src/pages/assets/performance/KpiStrip.tsx:165
 msgid "Uncertain quality"
 msgstr ""
 
 #. placeholder {0}: formatClock(tile.observedAt)
-#: src/pages/assets/performance/KpiStrip.tsx:201
+#: src/pages/assets/performance/KpiStrip.tsx:208
 msgid "Observed {0}"
 msgstr ""
 
-#: src/pages/assets/performance/KpiStrip.tsx:209
+#: src/pages/assets/performance/KpiStrip.tsx:216
 msgid "no limit configured"
 msgstr ""
 
 #: src/pages/assets/performance/PerformancePanel.tsx:237
-#: src/pages/assets/performance/StationPerformance.tsx:304
+#: src/pages/assets/performance/StationPerformance.tsx:316
 msgid "Performance data unavailable"
 msgstr ""
 
@@ -10534,77 +10534,77 @@ msgstr ""
 msgid "Map this machine's tags to a health source to see its performance here. Until then there is nothing to draw."
 msgstr ""
 
-#: src/pages/assets/performance/PerformancePanel.tsx:311
-#: src/pages/assets/performance/StationPerformance.tsx:359
+#: src/pages/assets/performance/PerformancePanel.tsx:313
+#: src/pages/assets/performance/StationPerformance.tsx:371
 msgid "Could not read history for this window"
 msgstr ""
 
-#: src/pages/assets/performance/PerformancePanel.tsx:313
+#: src/pages/assets/performance/PerformancePanel.tsx:315
 msgid "The request failed. Current values above are still live; the charts below show nothing rather than a partial line."
 msgstr ""
 
-#: src/pages/assets/performance/PerformancePanel.tsx:321
+#: src/pages/assets/performance/PerformancePanel.tsx:323
 msgid "The source could not serve this window"
 msgstr ""
 
-#: src/pages/assets/performance/PerformancePanel.tsx:324
+#: src/pages/assets/performance/PerformancePanel.tsx:326
 msgid "No history is available for this window."
 msgstr ""
 
-#: src/pages/assets/performance/PerformancePanel.tsx:346
+#: src/pages/assets/performance/PerformancePanel.tsx:348
 msgid "Speed, operation and hydraulics"
 msgstr ""
 
 #. placeholder {0}: response.series[0]?.source_name ?? t`the source`
-#: src/pages/assets/performance/PerformancePanel.tsx:404
+#: src/pages/assets/performance/PerformancePanel.tsx:406
 msgid "Read live from {0}. AIMMS stores current values only; every chart here is a bounded read of the source's own history."
 msgstr ""
 
-#: src/pages/assets/performance/PerformancePanel.tsx:404
+#: src/pages/assets/performance/PerformancePanel.tsx:406
 msgid "the source"
 msgstr ""
 
-#: src/pages/assets/performance/PerformancePanel.tsx:493
+#: src/pages/assets/performance/PerformancePanel.tsx:495
 msgid "Anything unusual?"
 msgstr ""
 
 #. placeholder {0}: critical.length
 #. placeholder {1}: critical .map((p) => p.label) .slice(0, 3) .join(', ')
 #. placeholder {2}: critical.length > 3 ? '…' : ''
-#: src/pages/assets/performance/PerformancePanel.tsx:497
+#: src/pages/assets/performance/PerformancePanel.tsx:499
 msgid "{0} critical: {1}{2}"
 msgstr ""
 
 #. placeholder {0}: warning.length
 #. placeholder {1}: warning .map((p) => p.label) .slice(0, 3) .join(', ')
 #. placeholder {2}: warning.length > 3 ? '…' : ''
-#: src/pages/assets/performance/PerformancePanel.tsx:505
+#: src/pages/assets/performance/PerformancePanel.tsx:507
 msgid "{0} warning: {1}{2}"
 msgstr ""
 
 #. placeholder {0}: stale.length
 #. placeholder {1}: parameters.length
-#: src/pages/assets/performance/PerformancePanel.tsx:513
+#: src/pages/assets/performance/PerformancePanel.tsx:515
 msgid "{0} of {1} signals stale"
 msgstr ""
 
 #. placeholder {0}: poor.length
-#: src/pages/assets/performance/PerformancePanel.tsx:518
+#: src/pages/assets/performance/PerformancePanel.tsx:520
 msgid "{0} with poor quality"
 msgstr ""
 
 #. placeholder {0}: unavailable.length
-#: src/pages/assets/performance/PerformancePanel.tsx:523
+#: src/pages/assets/performance/PerformancePanel.tsx:525
 msgid "{0} without history in this window"
 msgstr ""
 
-#: src/pages/assets/performance/PerformancePanel.tsx:528
+#: src/pages/assets/performance/PerformancePanel.tsx:530
 msgid "Nothing outside configured limits"
 msgstr ""
 
 #. placeholder {0}: configured.length
 #. placeholder {1}: parameters.length
-#: src/pages/assets/performance/PerformancePanel.tsx:532
+#: src/pages/assets/performance/PerformancePanel.tsx:534
 msgid "{0} of {1} signals have limits configured; the rest are drawn without a verdict."
 msgstr ""
 
@@ -10718,63 +10718,63 @@ msgid "· each cell is the mean of the readings in its column"
 msgstr ""
 
 #. placeholder {0}: bays.length
-#: src/pages/assets/performance/StationPerformance.tsx:166
+#: src/pages/assets/performance/StationPerformance.tsx:178
 msgid "of {0} registered bays"
 msgstr ""
 
 #. placeholder {0}: lasts.length
 #. placeholder {1}: bays.length
-#: src/pages/assets/performance/StationPerformance.tsx:192
+#: src/pages/assets/performance/StationPerformance.tsx:204
 msgid "Calculated: sum of {0} of {1} bays' newest readings"
-msgstr ""
-
-#: src/pages/assets/performance/StationPerformance.tsx:306
-msgid "The health service could not be reached."
 msgstr ""
 
 #: src/pages/assets/performance/StationPerformance.tsx:317
 #~ msgid "Station performance"
 #~ msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:361
+#: src/pages/assets/performance/StationPerformance.tsx:318
+msgid "The health service could not be reached."
+msgstr ""
+
+#: src/pages/assets/performance/StationPerformance.tsx:373
 msgid "The request failed; the charts below show nothing rather than a partial line."
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:375
+#: src/pages/assets/performance/StationPerformance.tsx:387
 msgid "Forebay level and pumps running"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:376
+#: src/pages/assets/performance/StationPerformance.tsx:391
 msgid "Level on the left axis; the running count on the right, as steps."
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:392
+#: src/pages/assets/performance/StationPerformance.tsx:409
 msgid "Active power by bay"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:407
+#: src/pages/assets/performance/StationPerformance.tsx:424
 msgid "Discharge flow by bay"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:428
+#: src/pages/assets/performance/StationPerformance.tsx:445
 msgid "Bay"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:430
+#: src/pages/assets/performance/StationPerformance.tsx:447
 #: src/pages/assets/performance/parameters.ts:86
 msgid "Active power"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:432
+#: src/pages/assets/performance/StationPerformance.tsx:449
 #: src/pages/assets/performance/parameters.ts:183
 msgid "Shaft speed"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:433
+#: src/pages/assets/performance/StationPerformance.tsx:450
 msgid "Window peak power"
 msgstr ""
 
-#: src/pages/assets/performance/StationPerformance.tsx:434
+#: src/pages/assets/performance/StationPerformance.tsx:451
 msgid "Newest reading"
 msgstr ""
 
@@ -10915,57 +10915,61 @@ msgstr ""
 msgid "Open full screen"
 msgstr ""
 
-#: src/pages/assets/performance/TrendChart.tsx:252
+#: src/pages/assets/performance/TrendChart.tsx:281
 msgid "No readings in this window."
 msgstr ""
 
-#: src/pages/assets/performance/TrendChart.tsx:350
+#: src/pages/assets/performance/TrendChart.tsx:393
 msgid "Clear selection"
 msgstr ""
 
 #. placeholder {0}: formatTick(zoomRange.from, windowSeconds)
 #. placeholder {1}: formatTick(zoomRange.to, windowSeconds)
-#: src/pages/assets/performance/TrendChart.tsx:361
+#: src/pages/assets/performance/TrendChart.tsx:404
 msgid "Zoom to {0} – {1}"
 msgstr ""
 
-#: src/pages/assets/performance/TrendChart.tsx:426
-#: src/pages/assets/performance/format.ts:116
+#: src/pages/assets/performance/TrendChart.tsx:469
+#: src/pages/assets/performance/format.ts:145
 #: src/pages/assets/performance/sections/ThermalSections.tsx:286
 msgid "no reading"
 msgstr ""
 
+#: src/pages/assets/performance/format.ts:94
+msgid "to"
+msgstr ""
+
 #. placeholder {0}: Math.round(seconds)
-#: src/pages/assets/performance/format.ts:100
+#: src/pages/assets/performance/format.ts:129
 msgid "{0} s"
 msgstr ""
 
 #. placeholder {0}: Number.isInteger(hours) ? hours : hours.toFixed(1)
-#: src/pages/assets/performance/format.ts:108
+#: src/pages/assets/performance/format.ts:137
 msgid "{0} h"
 msgstr ""
 
 #. placeholder {0}: Math.round(seconds / 86400)
-#: src/pages/assets/performance/format.ts:110
+#: src/pages/assets/performance/format.ts:139
 msgid "{0} d"
 msgstr ""
 
-#: src/pages/assets/performance/format.ts:120
+#: src/pages/assets/performance/format.ts:149
 msgid "{seconds} s ago"
 msgstr ""
 
 #. placeholder {0}: Math.round(seconds / 60)
-#: src/pages/assets/performance/format.ts:123
+#: src/pages/assets/performance/format.ts:152
 msgid "{0} min ago"
 msgstr ""
 
 #. placeholder {0}: (seconds / 3600).toFixed(1)
-#: src/pages/assets/performance/format.ts:126
+#: src/pages/assets/performance/format.ts:155
 msgid "{0} h ago"
 msgstr ""
 
 #. placeholder {0}: Math.round(seconds / 86400)
-#: src/pages/assets/performance/format.ts:128
+#: src/pages/assets/performance/format.ts:157
 msgid "{0} d ago"
 msgstr ""
 
@@ -11028,7 +11032,7 @@ msgid "Phase voltage"
 msgstr ""
 
 #: src/pages/assets/performance/parameters.ts:153
-#: src/pages/assets/performance/sections/ElectricalSection.tsx:141
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:151
 msgid "Frequency"
 msgstr ""
 
@@ -11223,35 +11227,35 @@ msgstr ""
 msgid "Power and power factor"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ElectricalSection.tsx:80
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:82
 msgid "Active power on the left axis; reactive power and power factor on the right."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ElectricalSection.tsx:81
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:83
 msgid "Active power on the left axis; power factor on the right."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ElectricalSection.tsx:102
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:104
 msgid "Current and voltage"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ElectricalSection.tsx:103
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:107
 msgid "Current on the left axis, voltage on the right."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ElectricalSection.tsx:122
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:128
 msgid "Excitation"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ElectricalSection.tsx:123
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:131
 msgid "Field current on the left axis, field voltage on the right."
 msgstr ""
 
-#: src/pages/assets/performance/sections/ElectricalSection.tsx:160
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:170
 msgid "Relationship: active power and shaft speed"
 msgstr ""
 
-#: src/pages/assets/performance/sections/ElectricalSection.tsx:173
+#: src/pages/assets/performance/sections/ElectricalSection.tsx:183
 msgid "Relationship: motor current and active power"
 msgstr ""
 
@@ -11263,42 +11267,46 @@ msgstr ""
 msgid "Speed on the left axis; the plant's run/stop status on the right, drawn as steps (1 running, 0 idle)."
 msgstr ""
 
+#: src/pages/assets/performance/sections/OperationSection.tsx:115
+msgid "The plant's run/stop status, drawn as steps (1 running, 0 idle)."
+msgstr ""
+
 #. placeholder {0}: Math.round(running.share * 100)
 #. placeholder {1}: running.samples
 #. placeholder {2}: window.resolutionSeconds > 10 ? t`, sampled` : ''
-#: src/pages/assets/performance/sections/OperationSection.tsx:135
+#: src/pages/assets/performance/sections/OperationSection.tsx:137
 msgid "Reported running for {0}% of the window ({1} status readings{2})."
 msgstr ""
 
-#: src/pages/assets/performance/sections/OperationSection.tsx:135
+#: src/pages/assets/performance/sections/OperationSection.tsx:137
 msgid ", sampled"
 msgstr ""
 
-#: src/pages/assets/performance/sections/OperationSection.tsx:142
+#: src/pages/assets/performance/sections/OperationSection.tsx:144
 msgid "Discharge pressure and valve position"
 msgstr ""
 
-#: src/pages/assets/performance/sections/OperationSection.tsx:145
+#: src/pages/assets/performance/sections/OperationSection.tsx:147
 msgid "Pressure on the left axis, valve positions on the right."
 msgstr ""
 
-#: src/pages/assets/performance/sections/OperationSection.tsx:166
+#: src/pages/assets/performance/sections/OperationSection.tsx:168
 msgid "Forebay level and discharge flow"
 msgstr ""
 
-#: src/pages/assets/performance/sections/OperationSection.tsx:169
+#: src/pages/assets/performance/sections/OperationSection.tsx:171
 msgid "Level on the left axis, flow on the right."
 msgstr ""
 
-#: src/pages/assets/performance/sections/OperationSection.tsx:222
+#: src/pages/assets/performance/sections/OperationSection.tsx:224
 msgid "Relationship: speed and discharge pressure"
 msgstr ""
 
-#: src/pages/assets/performance/sections/OperationSection.tsx:235
+#: src/pages/assets/performance/sections/OperationSection.tsx:237
 msgid "Relationship: active power and discharge pressure"
 msgstr ""
 
-#: src/pages/assets/performance/sections/OperationSection.tsx:248
+#: src/pages/assets/performance/sections/OperationSection.tsx:250
 msgid "Relationship: valve position and discharge pressure"
 msgstr ""
 

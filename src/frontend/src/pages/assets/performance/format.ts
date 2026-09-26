@@ -55,15 +55,48 @@ export function formatValue(
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return '—';
   }
-  const shown = precisionFor(decimals, range, value);
+  return formatAt(value, precisionFor(decimals, range, value), unit);
+}
+
+/** A number at exactly this many decimals at most - no adaptive raising. */
+export function formatAt(
+  value: number,
+  decimals: number,
+  unit?: string
+): string {
   // Round first so a reading of -0.0012 mH2O prints as 0, not as "-0".
-  const factor = 10 ** shown;
+  const factor = 10 ** decimals;
   const rounded = Math.round(value * factor) / factor;
   const text = (rounded === 0 ? 0 : rounded).toLocaleString(undefined, {
     minimumFractionDigits: 0,
-    maximumFractionDigits: shown
+    maximumFractionDigits: decimals
   });
   return unit ? `${text} ${unit}` : text;
+}
+
+/**
+ * "a – b unit" for a window's extremes, both ends at the same precision so
+ * they can be compared digit for digit. A negative end is joined with "to"
+ * instead of a dash, because "-0.0098–0.021" reads as three numbers.
+ */
+export function formatRange(
+  min: number,
+  max: number,
+  decimals: number,
+  unit?: string
+): string {
+  const range = max - min;
+  const shown = Math.max(
+    precisionFor(decimals, range, min),
+    precisionFor(decimals, range, max)
+  );
+  const low = formatAt(min, shown);
+  const high = formatAt(max, shown, unit);
+  if (low === formatAt(max, shown)) {
+    return high;
+  }
+  const joiner = min < 0 || max < 0 ? ` ${t`to`} ` : ' – ';
+  return `${low}${joiner}${high}`;
 }
 
 /** A clock time, with seconds only when the window is short enough to need them. */
@@ -126,4 +159,34 @@ export function formatAge(ms: number | null | undefined, now: number): string {
     return t`${(seconds / 3600).toFixed(1)} h ago`;
   }
   return t`${Math.round(seconds / 86400)} d ago`;
+}
+
+/** Candidate tick spacings, in minutes; the first that fits `target` ticks wins. */
+const TICK_STEPS_MINUTES = [
+  1, 2, 5, 10, 15, 20, 30, 60, 120, 180, 240, 360, 720, 1440
+];
+
+/**
+ * The instants every chart of a window prints on its time axis.
+ *
+ * Recharts picks ticks per chart from its own width, so two charts side by
+ * side print different times and the shared crosshair looks unshared. One
+ * tick list from the window - round local-clock multiples of a step that
+ * gives about `target` ticks - keeps every axis on the page identical.
+ */
+export function timeTicks(start: number, end: number, target = 6): number[] {
+  const span = end - start;
+  if (!(span > 0)) return [];
+  const step =
+    TICK_STEPS_MINUTES.map((m) => m * 60_000).find((s) => span / s <= target) ??
+    TICK_STEPS_MINUTES[TICK_STEPS_MINUTES.length - 1] * 60_000;
+  // Align to the local clock, so a step of an hour lands on :00 and not on
+  // some UTC offset's :30.
+  const offset = new Date(start).getTimezoneOffset() * 60_000;
+  const first = Math.ceil((start - offset) / step) * step + offset;
+  const ticks: number[] = [];
+  for (let at = first; at <= end; at += step) {
+    ticks.push(at);
+  }
+  return ticks;
 }

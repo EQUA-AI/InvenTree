@@ -22,7 +22,7 @@ import type {
 } from '@lib/types/MachineHealth';
 
 import { HealthStateBadge } from '../health/common';
-import { formatAge, formatClock, formatValue } from './format';
+import { formatAge, formatClock, formatRange, formatValue } from './format';
 import { type SeriesStats, type Trend, seriesStats, trendOf } from './series';
 
 /**
@@ -72,11 +72,13 @@ export function Sparkline({ entry }: Readonly<{ entry: SeriesEntry }>) {
   return (
     <Box
       component='svg'
-      width={SPARK_W}
+      width='100%'
       height={SPARK_H}
       viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}
+      preserveAspectRatio='none'
       role='img'
       aria-label={t`Trend over the selected window`}
+      style={{ display: 'block' }}
     >
       <path
         d={path}
@@ -85,6 +87,7 @@ export function Sparkline({ entry }: Readonly<{ entry: SeriesEntry }>) {
         strokeWidth={1.5}
         strokeLinejoin='round'
         strokeLinecap='round'
+        vectorEffect='non-scaling-stroke'
         opacity={0.6}
       />
     </Box>
@@ -124,9 +127,7 @@ function Range({
   if (!stats) return null;
   return (
     <Text size='xs' c='dimmed'>
-      {t`Window`}{' '}
-      {formatValue(stats.min, decimals, undefined, stats.max - stats.min)}–
-      {formatValue(stats.max, decimals, unit, stats.max - stats.min)}
+      {t`Window`} {formatRange(stats.min, stats.max, decimals, unit)}
     </Text>
   );
 }
@@ -138,12 +139,21 @@ export function KpiTileCard({
   const stats = tile.series ? seriesStats(tile.series) : null;
   const trend = tile.series ? trendOf(tile.series) : null;
   const missing = tile.value === null && !tile.valueText;
+  const valueText =
+    tile.valueText ??
+    formatValue(
+      tile.value,
+      tile.decimals,
+      undefined,
+      stats ? stats.max - stats.min : null
+    );
 
   return (
     <Paper withBorder radius='md' p='sm' data-kpi={tile.key}>
       <Stack gap={4}>
-        <Group justify='space-between' wrap='nowrap' gap={4}>
-          <Text size='xs' c='dimmed' fw={500} truncate>
+        {/* The badge drops under the label rather than squeezing it. */}
+        <Group justify='space-between' wrap='wrap' gap={4} align='center'>
+          <Text size='xs' c='dimmed' fw={500}>
             {tile.label}
           </Text>
           {tile.state !== 'unconfigured' && !missing && !tile.stale && (
@@ -167,26 +177,24 @@ export function KpiTileCard({
             {tile.missingReason ?? t`No reading`}
           </Text>
         ) : (
-          <Group justify='space-between' align='flex-end' wrap='nowrap'>
-            <Group gap={6} align='baseline' wrap='nowrap'>
-              <Text fz={24} fw={600} lh={1.1}>
-                {tile.valueText ??
-                  formatValue(
-                    tile.value,
-                    tile.decimals,
-                    undefined,
-                    stats ? stats.max - stats.min : null
-                  )}
+          <Stack gap={2}>
+            {/* Value, unit and trend may wrap; a long reading such as
+                -0.00058 mH2O must never push its unit out of the tile. */}
+            <Group gap={6} align='baseline' wrap='wrap' style={{ rowGap: 0 }}>
+              <Text fz={valueText.length > 7 ? 20 : 24} fw={600} lh={1.1}>
+                {valueText}
               </Text>
-              {!tile.valueText && tile.unit && (
-                <Text size='sm' c='dimmed'>
-                  {tile.unit}
-                </Text>
-              )}
-              <TrendMark trend={trend} />
+              <Group gap={4} align='center' wrap='nowrap'>
+                {!tile.valueText && tile.unit && (
+                  <Text size='sm' c='dimmed'>
+                    {tile.unit}
+                  </Text>
+                )}
+                <TrendMark trend={trend} />
+              </Group>
             </Group>
             {tile.series && <Sparkline entry={tile.series} />}
-          </Group>
+          </Stack>
         )}
         {tile.caption && (
           <Text size='xs' c='dimmed'>
