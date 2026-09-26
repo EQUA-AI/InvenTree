@@ -126,6 +126,58 @@ class RegistryTests(InvenTreeAPITestCase):
             self.assertEqual(points[f'/pd/P1/{tag}']['match_method'], 'unresolved')
             self.assertIsNone(points[f'/pd/P1/{tag}']['template'])
 
+    def test_an_opc_node_id_belongs_to_the_bay_it_names(self):
+        """A bay-scoped tag must not land on the station just for being spelled oddly.
+
+        The source names a bay two ways: as a `PUMP5_` prefix, and inside the
+        raw node id of an OPC-UA subscription. Only the first was recognised, so
+        120 bay-scoped tags were filed against the station - an operator opening
+        a pump saw none of them, and the station's own readings were filled with
+        other bays' tags.
+
+        Matching is deliberately not asserted here. Where both spellings exist
+        they disagree, so nothing yet says they are the same sensor; which bay a
+        tag belongs to needs no such claim.
+        """
+        node = 'NS=1;S=T|PS1_PROG_19_4_2019_OS(2)::P7_OL_SMP_BRG_LT.PROCESS_VALUE'
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I'}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+                node: '35.2',
+            },
+        }).encode()
+
+        plan = plan_dictionary(self.station, raw)
+        point = next(p for p in plan['points'] if node in p['path'])
+
+        self.assertEqual(point['owner_key'], 'P7')
+        self.assertIn('P7', plan['pumps'])
+
+    def test_a_program_name_is_not_mistaken_for_a_bay(self):
+        """`PS1_PROG_...` contains `P1_`; only the node id's own `::` introduces a bay."""
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I'}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+                'PS1_PROG_19_4_2019_OS_HEARTBEAT': '1',
+            },
+        }).encode()
+
+        point = next(
+            p
+            for p in plan_dictionary(self.station, raw)['points']
+            if 'HEARTBEAT' in p['path']
+        )
+
+        self.assertEqual(point['owner_key'], '')
+
     def test_a_resolved_discharge_rate_carries_no_unit(self):
         """`dv` maps to a parameter whose unit is deliberately unresolved."""
         raw = json.dumps({
