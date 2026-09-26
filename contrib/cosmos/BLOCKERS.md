@@ -100,7 +100,10 @@ Adds 158 points to this ask, taking it from 62 to 220.
 to see the channels regardless, so the 158 points are approved the one way that
 asserts nothing false - `unit_status: unitless`, no unit, no threshold - by
 `contrib/cosmos/devtools/approve_vibration_raw.py`, with the finding above kept
-on every point. The Health blade and the Performance tab draw them without a
+on every point, and seeded with their current value by
+`seed_bindings_from_latest.py` (the poller reads strictly after its checkpoint,
+so a binding created after a recorded window ended would otherwise never get
+one). The Health blade and the Performance tab draw them without a
 unit and say in words that the value is the plant's raw word, may be signed, and
 is not a magnitude to judge against a standard. Nothing here answers the
 question: it still takes one loaded machine, and when it is answered a re-review
