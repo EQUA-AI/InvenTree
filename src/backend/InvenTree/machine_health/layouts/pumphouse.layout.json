@@ -6,6 +6,7 @@
   "elements": [
     {"id": "forebay", "view": "station", "pointer": "/dex/COMMAN_FORBAY_LEVEL", "role": "level", "label": "Forebay level", "x": 70, "y": 95},
     {"id": "station-status", "view": "station", "pointer": "/st", "role": "status", "label": "Station status", "x": 420, "y": 45},
+    {"id": "pumps-running", "view": "station", "pointer": "/pc", "role": "value", "label": "Pumps running", "x": 420, "y": 155},
     {"id": "pump-status", "view": "unit", "pointer": "/pd/{pump}/st", "role": "status", "label": "Pump status", "x": 260, "y": 50},
     {"id": "pump-power", "view": "unit", "pointer": "/dex/PUMP{pump_number}_ACTIVE_POWER", "role": "value", "label": "Input power", "x": 370, "y": 120},
     {"id": "pump-flow", "view": "unit", "pointer": "/pd/{pump}/dv", "role": "value", "label": "Discharge flow", "x": 390, "y": 255}

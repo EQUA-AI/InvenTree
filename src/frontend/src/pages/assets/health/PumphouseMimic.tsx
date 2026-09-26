@@ -114,6 +114,7 @@ function elementLabel(element: LayoutElement) {
   const labels: Record<string, string> = {
     forebay: t`Forebay level`,
     'station-status': t`Station status`,
+    'pumps-running': t`Pumps running`,
     'pump-status': t`Pump status`,
     'pump-power': t`Input power`,
     'pump-flow': t`Discharge flow`

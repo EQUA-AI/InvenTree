@@ -215,7 +215,7 @@ msgstr "Parts"
 
 #: lib/enums/ModelInformation.tsx:71
 #: src/pages/assets/EquipmentRegistry.tsx:641
-#: src/pages/assets/health/SignalTrendChart.tsx:355
+#: src/pages/assets/health/SignalTrendChart.tsx:347
 msgid "Parameter"
 msgstr "Parameter"
 
@@ -3245,8 +3245,8 @@ msgstr "Email settings not configured."
 #: src/pages/assets/health/AnomalyList.tsx:165
 #: src/pages/assets/health/PumphouseMimic.tsx:102
 #: src/pages/assets/health/PumphouseMimic.tsx:104
-#: src/pages/assets/health/PumphouseMimic.tsx:232
-#: src/pages/assets/health/PumphouseMimic.tsx:239
+#: src/pages/assets/health/PumphouseMimic.tsx:238
+#: src/pages/assets/health/PumphouseMimic.tsx:245
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
 msgid "Unknown"
@@ -3306,7 +3306,7 @@ msgstr "Back"
 #: src/components/riskradar/RiskRadarPanel.tsx:353
 #: src/pages/assets/StationLiveSource.tsx:116
 #: src/pages/assets/health/MachineHealthPanel.tsx:191
-#: src/pages/assets/health/PumphouseMimic.tsx:289
+#: src/pages/assets/health/PumphouseMimic.tsx:295
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
 #: src/pages/repair/components/safety/SafetyPanel.tsx:110
 msgid "Refresh"
@@ -4221,7 +4221,7 @@ msgid "Batch"
 msgstr "Batch"
 
 #: src/components/riskradar/RiskRadarCommon.tsx:316
-#: src/pages/assets/health/PumphouseMimic.tsx:234
+#: src/pages/assets/health/PumphouseMimic.tsx:240
 #: src/pages/assets/health/common.tsx:55
 #: src/pages/assets/health/common.tsx:78
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:438
@@ -4367,7 +4367,7 @@ msgstr "Setting"
 #: src/components/settings/ConfigValueList.tsx:39
 #: src/pages/assets/StationLiveSource.tsx:133
 #: src/pages/assets/health/HealthSourceStatus.tsx:33
-#: src/pages/assets/health/PumphouseMimic.tsx:318
+#: src/pages/assets/health/PumphouseMimic.tsx:324
 #: src/pages/assets/health/SignalTable.tsx:123
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:78
 #: src/pages/repair/components/InvestigationPanel.tsx:95
@@ -5090,7 +5090,7 @@ msgstr "Remove filter"
 #: src/components/tables/FilterSelectDrawer.tsx:249
 #: src/components/tables/FilterSelectDrawer.tsx:276
 #: src/components/tables/FilterSelectDrawer.tsx:290
-#: src/pages/assets/health/PumphouseMimic.tsx:193
+#: src/pages/assets/health/PumphouseMimic.tsx:199
 #: src/pages/assets/health/SignalTable.tsx:118
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:77
 #: src/pages/part/PartStockHistoryDetail.tsx:67
@@ -9605,12 +9605,12 @@ msgid "Unbound"
 msgstr "Unbound"
 
 #: src/pages/assets/StationLiveSource.tsx:158
-#: src/pages/assets/health/PumphouseMimic.tsx:321
+#: src/pages/assets/health/PumphouseMimic.tsx:327
 msgid "Last poll"
 msgstr "Last poll"
 
 #: src/pages/assets/StationLiveSource.tsx:161
-#: src/pages/assets/health/PumphouseMimic.tsx:324
+#: src/pages/assets/health/PumphouseMimic.tsx:330
 msgid "Not polled yet"
 msgstr "Not polled yet"
 
@@ -9732,7 +9732,7 @@ msgid "{0} min"
 msgstr "{0} min"
 
 #: src/pages/assets/health/HealthSummary.tsx:39
-#: src/pages/assets/health/PumphouseMimic.tsx:196
+#: src/pages/assets/health/PumphouseMimic.tsx:202
 msgid "Condition"
 msgstr "Condition"
 
@@ -9963,7 +9963,7 @@ msgstr "Polling disabled"
 
 #: src/pages/assets/health/PumphouseMimic.tsx:79
 #: src/pages/assets/health/PumphouseMimic.tsx:101
-#: src/pages/assets/health/PumphouseMimic.tsx:318
+#: src/pages/assets/health/PumphouseMimic.tsx:324
 msgid "Not bound"
 msgstr "Not bound"
 
@@ -9972,7 +9972,7 @@ msgid "Not approved"
 msgstr "Not approved"
 
 #: src/pages/assets/health/PumphouseMimic.tsx:81
-#: src/pages/assets/health/PumphouseMimic.tsx:220
+#: src/pages/assets/health/PumphouseMimic.tsx:226
 #: src/pages/assets/health/common.tsx:184
 msgid "No reading"
 msgstr "No reading"
@@ -10002,7 +10002,7 @@ msgid "Unexpected value type"
 msgstr "Unexpected value type"
 
 #: src/pages/assets/health/PumphouseMimic.tsx:87
-#: src/pages/assets/health/PumphouseMimic.tsx:391
+#: src/pages/assets/health/PumphouseMimic.tsx:397
 msgid "Inactive equipment"
 msgstr "Inactive equipment"
 
@@ -10020,7 +10020,7 @@ msgstr "Incompatible units"
 
 #: src/pages/assets/health/PumphouseMimic.tsx:92
 #: src/pages/assets/health/PumphouseMimic.tsx:108
-#: src/pages/assets/health/PumphouseMimic.tsx:343
+#: src/pages/assets/health/PumphouseMimic.tsx:349
 #: src/pages/stock/StockDetail.tsx:706
 msgid "Unavailable"
 msgstr "Unavailable"
@@ -10045,153 +10045,157 @@ msgid "Station status"
 msgstr "Station status"
 
 #: src/pages/assets/health/PumphouseMimic.tsx:117
+msgid "Pumps running"
+msgstr "Pumps running"
+
+#: src/pages/assets/health/PumphouseMimic.tsx:118
 msgid "Pump status"
 msgstr "Pump status"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:118
+#: src/pages/assets/health/PumphouseMimic.tsx:119
 msgid "Input power"
 msgstr "Input power"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:119
+#: src/pages/assets/health/PumphouseMimic.tsx:120
 msgid "Discharge flow"
 msgstr "Discharge flow"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:132
+#: src/pages/assets/health/PumphouseMimic.tsx:133
 msgid "Pump unit schematic"
 msgstr "Pump unit schematic"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:132
+#: src/pages/assets/health/PumphouseMimic.tsx:133
 msgid "Station schematic"
 msgstr "Station schematic"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:192
+#: src/pages/assets/health/PumphouseMimic.tsx:198
 #: src/pages/assets/health/SignalTable.tsx:117
 msgid "Signal"
 msgstr "Signal"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:194
+#: src/pages/assets/health/PumphouseMimic.tsx:200
 #: src/pages/assets/health/SignalTable.tsx:122
 msgid "Quality"
 msgstr "Quality"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:195
+#: src/pages/assets/health/PumphouseMimic.tsx:201
 msgid "Observed at"
 msgstr "Observed at"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:215
+#: src/pages/assets/health/PumphouseMimic.tsx:221
 #: src/pages/assets/health/common.tsx:127
 msgid "Good"
 msgstr "Good"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:215
+#: src/pages/assets/health/PumphouseMimic.tsx:221
 msgid "Unusable or unknown"
 msgstr "Unusable or unknown"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:223
+#: src/pages/assets/health/PumphouseMimic.tsx:229
 msgid "Age at response"
 msgstr "Age at response"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:224
+#: src/pages/assets/health/PumphouseMimic.tsx:230
 msgid "seconds"
 msgstr "seconds"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:230
+#: src/pages/assets/health/PumphouseMimic.tsx:236
 msgid "No threshold configured"
 msgstr "No threshold configured"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:236
+#: src/pages/assets/health/PumphouseMimic.tsx:242
 #: src/pages/assets/health/common.tsx:49
 #: src/pages/assets/health/common.tsx:84
 msgid "Warning"
 msgstr "Warning"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:238
+#: src/pages/assets/health/PumphouseMimic.tsx:244
 #: src/pages/assets/health/common.tsx:43
 msgid "Normal"
 msgstr "Normal"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:277
+#: src/pages/assets/health/PumphouseMimic.tsx:283
 msgid "Other reviewed points"
 msgstr "Other reviewed points"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:284
+#: src/pages/assets/health/PumphouseMimic.tsx:290
 msgid "Pumphouse overview"
 msgstr "Pumphouse overview"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:293
+#: src/pages/assets/health/PumphouseMimic.tsx:299
 msgid "Live readings are unavailable. Refresh to retry; cached values are hidden."
 msgstr "Live readings are unavailable. Refresh to retry; cached values are hidden."
 
-#: src/pages/assets/health/PumphouseMimic.tsx:298
-#: src/pages/assets/health/PumphouseMimic.tsx:411
+#: src/pages/assets/health/PumphouseMimic.tsx:304
+#: src/pages/assets/health/PumphouseMimic.tsx:417
 msgid "Overview only"
 msgstr "Overview only"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:306
+#: src/pages/assets/health/PumphouseMimic.tsx:312
 msgid "This schematic awaits plant review. Missing mappings are shown as unavailable."
 msgstr "This schematic awaits plant review. Missing mappings are shown as unavailable."
 
-#: src/pages/assets/health/PumphouseMimic.tsx:309
+#: src/pages/assets/health/PumphouseMimic.tsx:315
 msgid "Polling is disabled for this station. Live values are unavailable."
 msgstr "Polling is disabled for this station. Live values are unavailable."
 
-#: src/pages/assets/health/PumphouseMimic.tsx:313
+#: src/pages/assets/health/PumphouseMimic.tsx:319
 msgid "Last station polling error"
 msgstr "Last station polling error"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:327
+#: src/pages/assets/health/PumphouseMimic.tsx:333
 msgid "Response time"
 msgstr "Response time"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:336
+#: src/pages/assets/health/PumphouseMimic.tsx:342
 msgid "Plant power"
 msgstr "Plant power"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:338
+#: src/pages/assets/health/PumphouseMimic.tsx:344
 msgid "Plant flow"
 msgstr "Plant flow"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:347
+#: src/pages/assets/health/PumphouseMimic.tsx:353
 msgid "Derived total"
 msgstr "Derived total"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:347
+#: src/pages/assets/health/PumphouseMimic.tsx:353
 msgid "Source measurement"
 msgstr "Source measurement"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:398
+#: src/pages/assets/health/PumphouseMimic.tsx:404
 msgid "No pump slots are registered for this station."
 msgstr "No pump slots are registered for this station."
 
-#: src/pages/assets/health/PumphouseMimic.tsx:400
+#: src/pages/assets/health/PumphouseMimic.tsx:406
 msgid "Station readings"
 msgstr "Station readings"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:406
+#: src/pages/assets/health/PumphouseMimic.tsx:412
 msgid "Pump unit"
 msgstr "Pump unit"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:415
+#: src/pages/assets/health/PumphouseMimic.tsx:421
 msgid "Filter unit readings"
 msgstr "Filter unit readings"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:426
+#: src/pages/assets/health/PumphouseMimic.tsx:432
 msgid "No matching readings."
 msgstr "No matching readings."
 
-#: src/pages/assets/health/PumphouseMimic.tsx:430
+#: src/pages/assets/health/PumphouseMimic.tsx:436
 msgid "Select a pump bay to view its instruments and readings."
 msgstr "Select a pump bay to view its instruments and readings."
 
-#: src/pages/assets/health/PumphouseMimic.tsx:432
+#: src/pages/assets/health/PumphouseMimic.tsx:438
 msgid "Threshold alarms"
 msgstr "Threshold alarms"
 
-#: src/pages/assets/health/PumphouseMimic.tsx:436
+#: src/pages/assets/health/PumphouseMimic.tsx:442
 msgid "No active alarms from configured thresholds."
 msgstr "No active alarms from configured thresholds."
 
-#: src/pages/assets/health/PumphouseMimic.tsx:440
+#: src/pages/assets/health/PumphouseMimic.tsx:446
 msgid "Points without configured thresholds"
 msgstr "Points without configured thresholds"
 
@@ -10221,35 +10225,35 @@ msgstr "Observed"
 msgid "Limits"
 msgstr "Limits"
 
-#: src/pages/assets/health/SignalTable.tsx:174
+#: src/pages/assets/health/SignalTable.tsx:181
 msgid "Not configured"
 msgstr "Not configured"
 
-#: src/pages/assets/health/SignalTrend.tsx:131
-#: src/pages/assets/health/SignalTrendChart.tsx:175
+#: src/pages/assets/health/SignalTrend.tsx:155
+#: src/pages/assets/health/SignalTrendChart.tsx:167
 msgid "No trend data is available."
 msgstr "No trend data is available."
 
-#: src/pages/assets/health/SignalTrend.tsx:133
+#: src/pages/assets/health/SignalTrend.tsx:157
 msgid "No trend"
 msgstr "No trend"
 
-#: src/pages/assets/health/SignalTrend.tsx:142
+#: src/pages/assets/health/SignalTrend.tsx:166
 msgid "Too few samples"
 msgstr "Too few samples"
 
 #. placeholder {0}: trend.samples.length
 #. placeholder {1}: trend.source_name
-#: src/pages/assets/health/SignalTrend.tsx:149
+#: src/pages/assets/health/SignalTrend.tsx:173
 msgid "{0} samples from {1}"
 msgstr "{0} samples from {1}"
 
 #. placeholder {0}: trend.display_name
-#: src/pages/assets/health/SignalTrend.tsx:158
+#: src/pages/assets/health/SignalTrend.tsx:182
 msgid "Recent trend for {0}"
 msgstr "Recent trend for {0}"
 
-#: src/pages/assets/health/SignalTrend.tsx:172
+#: src/pages/assets/health/SignalTrend.tsx:196
 msgid "(trimmed)"
 msgstr "(trimmed)"
 
@@ -10281,153 +10285,153 @@ msgstr "(trimmed)"
 #~ msgid "Last 6 hours"
 #~ msgstr "Last 6 hours"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:81
+#: src/pages/assets/health/SignalTrendChart.tsx:82
 msgid "5 minutes"
 msgstr "5 minutes"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:82
+#: src/pages/assets/health/SignalTrendChart.tsx:83
 msgid "10 minutes"
 msgstr "10 minutes"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:83
+#: src/pages/assets/health/SignalTrendChart.tsx:84
 msgid "15 minutes"
 msgstr "15 minutes"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:84
+#: src/pages/assets/health/SignalTrendChart.tsx:85
 msgid "30 minutes"
 msgstr "30 minutes"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:108
+#: src/pages/assets/health/SignalTrendChart.tsx:109
 msgid "Pick both a start and an end for the window."
 msgstr "Pick both a start and an end for the window."
 
-#: src/pages/assets/health/SignalTrendChart.tsx:114
+#: src/pages/assets/health/SignalTrendChart.tsx:115
 msgid "That is not a readable date and time."
 msgstr "That is not a readable date and time."
 
-#: src/pages/assets/health/SignalTrendChart.tsx:117
+#: src/pages/assets/health/SignalTrendChart.tsx:118
 msgid "The end of the window must come after its start."
 msgstr "The end of the window must come after its start."
 
 #. placeholder {0}: MAX_WINDOW_SECONDS / 3600
-#: src/pages/assets/health/SignalTrendChart.tsx:123
+#: src/pages/assets/health/SignalTrendChart.tsx:124
 msgid "That window is {hours} hours long. These signals are sampled every few seconds, so a window may not exceed {0} hours."
 msgstr "That window is {hours} hours long. These signals are sampled every few seconds, so a window may not exceed {0} hours."
 
-#: src/pages/assets/health/SignalTrendChart.tsx:169
+#: src/pages/assets/health/SignalTrendChart.tsx:161
 msgid "This source has no configured connector, so no history can be read."
 msgstr "This source has no configured connector, so no history can be read."
 
 #. placeholder {0}: trend.source_name
-#: src/pages/assets/health/SignalTrendChart.tsx:171
+#: src/pages/assets/health/SignalTrendChart.tsx:163
 msgid "{0} cannot serve historical windows. Only the current value is available."
 msgstr "{0} cannot serve historical windows. Only the current value is available."
 
 #. placeholder {0}: trend.source_name
-#: src/pages/assets/health/SignalTrendChart.tsx:173
+#: src/pages/assets/health/SignalTrendChart.tsx:165
 msgid "{0} could not be reached for this window. This is an outage, not an absence of data."
 msgstr "{0} could not be reached for this window. This is an outage, not an absence of data."
 
-#: src/pages/assets/health/SignalTrendChart.tsx:343
+#: src/pages/assets/health/SignalTrendChart.tsx:335
 msgid "No mapped signals are available to chart."
 msgstr "No mapped signals are available to chart."
 
-#: src/pages/assets/health/SignalTrendChart.tsx:368
+#: src/pages/assets/health/SignalTrendChart.tsx:360
 msgid "Range"
 msgstr "Range"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:376
+#: src/pages/assets/health/SignalTrendChart.tsx:368
 msgid "Custom range…"
 msgstr "Custom range…"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:384
+#: src/pages/assets/health/SignalTrendChart.tsx:376
 #: src/pages/repair/RepairPacketDetail.tsx:293
 msgid "From"
 msgstr "From"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:396
+#: src/pages/assets/health/SignalTrendChart.tsx:388
 msgid "Start of window"
 msgstr "Start of window"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:400
+#: src/pages/assets/health/SignalTrendChart.tsx:392
 #: src/pages/repair/RepairPacketDetail.tsx:294
 #: src/tables/settings/EmailTable.tsx:85
 msgid "To"
 msgstr "To"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:413
+#: src/pages/assets/health/SignalTrendChart.tsx:405
 msgid "End of window"
 msgstr "End of window"
 
 #. placeholder {0}: points.length
-#: src/pages/assets/health/SignalTrendChart.tsx:420
+#: src/pages/assets/health/SignalTrendChart.tsx:412
 msgid "{0} samples"
 msgstr "{0} samples"
 
 #. placeholder {0}: formatRangeEdge(dataRange.from)
 #. placeholder {1}: formatRangeEdge(dataRange.to)
-#: src/pages/assets/health/SignalTrendChart.tsx:425
+#: src/pages/assets/health/SignalTrendChart.tsx:417
 msgid "This source holds readings from {0} to {1}. Windows outside that hold nothing."
 msgstr "This source holds readings from {0} to {1}. Windows outside that hold nothing."
 
 #. placeholder {0}: formatRangeEdge(dataRange.to)
-#: src/pages/assets/health/SignalTrendChart.tsx:428
+#: src/pages/assets/health/SignalTrendChart.tsx:420
 msgid "Data to {0}"
 msgstr "Data to {0}"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:435
+#: src/pages/assets/health/SignalTrendChart.tsx:427
 msgid "Choose a window to read"
 msgstr "Choose a window to read"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:443
+#: src/pages/assets/health/SignalTrendChart.tsx:435
 msgid "Could not load the trend"
 msgstr "Could not load the trend"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:444
+#: src/pages/assets/health/SignalTrendChart.tsx:436
 msgid "The request for this window failed. No data is shown rather than a partial line."
 msgstr "The request for this window failed. No data is shown rather than a partial line."
 
-#: src/pages/assets/health/SignalTrendChart.tsx:449
+#: src/pages/assets/health/SignalTrendChart.tsx:441
 msgid "No history for this signal"
 msgstr "No history for this signal"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:455
+#: src/pages/assets/health/SignalTrendChart.tsx:447
 msgid "This window was truncated"
 msgstr "This window was truncated"
 
 #. placeholder {0}: trend.limits.max_samples
-#: src/pages/assets/health/SignalTrendChart.tsx:456
+#: src/pages/assets/health/SignalTrendChart.tsx:448
 msgid "The source returned more than the {0} sample limit, so the most recent part of this window is not shown. Choose a shorter range to see it."
 msgstr "The source returned more than the {0} sample limit, so the most recent part of this window is not shown. Choose a shorter range to see it."
 
-#: src/pages/assets/health/SignalTrendChart.tsx:461
+#: src/pages/assets/health/SignalTrendChart.tsx:453
 msgid "Some samples are not plottable"
 msgstr "Some samples are not plottable"
 
 #. placeholder {0}: trend.samples.length
-#: src/pages/assets/health/SignalTrendChart.tsx:462
+#: src/pages/assets/health/SignalTrendChart.tsx:454
 msgid "{skipped} of {0} samples are not numeric and were left off the chart rather than coerced to a number."
 msgstr "{skipped} of {0} samples are not numeric and were left off the chart rather than coerced to a number."
 
-#: src/pages/assets/health/SignalTrendChart.tsx:467
+#: src/pages/assets/health/SignalTrendChart.tsx:459
 msgid "No samples in this window"
 msgstr "No samples in this window"
 
 #. placeholder {0}: trend.source_name
-#: src/pages/assets/health/SignalTrendChart.tsx:468
+#: src/pages/assets/health/SignalTrendChart.tsx:460
 msgid "{0} served this window but had no data in it. That is different from the source being unable to answer."
 msgstr "{0} served this window but had no data in it. That is different from the source being unable to answer."
 
-#: src/pages/assets/health/SignalTrendChart.tsx:492
+#: src/pages/assets/health/SignalTrendChart.tsx:484
 msgid "Only one sample"
 msgstr "Only one sample"
 
-#: src/pages/assets/health/SignalTrendChart.tsx:493
+#: src/pages/assets/health/SignalTrendChart.tsx:485
 msgid "A single point is not a trend. Widen the range to see whether it is moving."
 msgstr "A single point is not a trend. Widen the range to see whether it is moving."
 
 #. placeholder {0}: trend.source_name
-#: src/pages/assets/health/SignalTrendChart.tsx:499
+#: src/pages/assets/health/SignalTrendChart.tsx:491
 msgid "Read live from {0}. AIMMS does not store this history."
 msgstr "Read live from {0}. AIMMS does not store this history."
 
